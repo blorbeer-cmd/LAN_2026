@@ -5,16 +5,18 @@ GitHub-Historie. Gemergte Pull Requests erhalten eine Datei unter `docs/changelo
 zugehörigen Arbeitsbranches sind unter `docs/changelog/branches/` erfasst.
 
 Stand: 2026-08-05 · Basis: `main` auf `e973e6a` · Lückenlos dokumentiert ist der Bereich
-#214–#260; #214–#225, #249 und #254 wurden nicht gemergt und erhalten daher keinen Eintrag. Danach
-folgt nur #352, sodass die dazwischenliegenden gemergten PRs noch nachzutragen sind. Beim früheren
-Vollabgleich fielen außerdem neun ältere, nicht zu R5 gehörende Lücken auf: #90, #93, #94, #96,
-#97, #99, #197, #204 und #205.
+#214–#352; #214–#225, #249, #254, #310, #315, #324–#340 und #351 wurden nicht gemergt (offen,
+geschlossen oder unter einer anderen PR-Nummer im selben Branch gelandet) und erhalten daher keinen
+eigenen Eintrag. Beim früheren Vollabgleich fielen außerdem neun ältere, nicht zu R5 gehörende
+Lücken auf: #90, #93, #94, #96, #97, #99, #197, #204 und #205. Die Zusammenfassungen der am
+2026-08-05 nachgetragenen PRs #261–#351 stammen aus dem PR-Titel, nicht aus einer vollständigen
+Diff-Analyse.
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 179 (Dateien unter `pr/`)
-- Branch-Seiten dokumentiert: 139 (Dateien unter `branches/`)
-- Gemergte PRs #214–#260: 33 von 33 dokumentiert; zwischen #261 und #351 fehlen die Einträge noch
+- Gemergte PRs dokumentiert: 229 (Dateien unter `pr/`)
+- Branch-Seiten dokumentiert: 188 (Dateien unter `branches/`)
+- Gemergte PRs #214–#352: 83 von 83 dokumentiert
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 
 ## Chronologie
@@ -22,6 +24,56 @@ Vollabgleich fielen außerdem neun ältere, nicht zu R5 gehörende Lücken auf: 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
 | 2026-08-05 | [#352](https://github.com/blorbeer-cmd/LAN_2026/pull/352) | [Show the matchmaking fallback rating in team skill displays](pr/pr-352-show-the-matchmaking-fallback-rating-in-team-skill-displays.md) | `claude/unbewertet-spieler-skill-anzeige-yn6zxv` |
+| 2026-08-04 | [#350](https://github.com/blorbeer-cmd/LAN_2026/pull/350) | [Allow claude[bot] as agent-pipeline PR author](pr/pr-350-allow-claudebot-as-agent-pipeline-pr-author.md) | `claude/codex-review-pipeline-qp77ud` |
+| 2026-08-04 | [#349](https://github.com/blorbeer-cmd/LAN_2026/pull/349) | [Prio 3: Konsistenz-/Politur-Punkte aus der UI/UX-Analyse](pr/pr-349-prio-3-konsistenz-politur-punkte-aus-der-uiux-analyse.md) | `claude/prio3-consistency-polish` |
+| 2026-08-04 | [#348](https://github.com/blorbeer-cmd/LAN_2026/pull/348) | [Soften sticky-action-bar overlap on long selection lists](pr/pr-348-soften-sticky-action-bar-overlap-on-long-selection-lists.md) | `claude/sticky-actions-mode-consistency` |
+| 2026-08-04 | [#347](https://github.com/blorbeer-cmd/LAN_2026/pull/347) | [Secure destructive confirm dialogs and fix minor UI text issues](pr/pr-347-secure-destructive-confirm-dialogs-and-fix-minor-ui-text-issues.md) | `claude/codex-uix-analysis-review-4dfjup` |
+| 2026-08-01 | [#346](https://github.com/blorbeer-cmd/LAN_2026/pull/346) | [Remove legacy shared authentication](pr/pr-346-remove-legacy-shared-authentication.md) | `codex/remove-legacy-auth` |
+| 2026-08-01 | [#345](https://github.com/blorbeer-cmd/LAN_2026/pull/345) | [Implement P0 reliability safeguards](pr/pr-345-implement-p0-reliability-safeguards.md) | `codex/p0-reliability` |
+| 2026-08-01 | [#344](https://github.com/blorbeer-cmd/LAN_2026/pull/344) | [Improve Challenge Rush testing, pacing, and difficulty](pr/pr-344-improve-challenge-rush-testing-pacing-and-difficulty.md) | `codex/challenge-rush-issues-324-340` |
+| 2026-08-01 | [#343](https://github.com/blorbeer-cmd/LAN_2026/pull/343) | [Resolve completed review threads before merge](pr/pr-343-resolve-completed-review-threads-before-merge.md) | `codex/review-thread-resolution` |
+| 2026-08-01 | [#342](https://github.com/blorbeer-cmd/LAN_2026/pull/342) | [Reposition player and game search fields](pr/pr-342-reposition-player-and-game-search-fields.md) | `codex/searchbar-list-position` |
+| 2026-08-01 | [#341](https://github.com/blorbeer-cmd/LAN_2026/pull/341) | [Unify arcade AI button labels](pr/pr-341-unify-arcade-ai-button-labels.md) | `codex/unify-arcade-ai-labels` |
+| 2026-07-30 | [#323](https://github.com/blorbeer-cmd/LAN_2026/pull/323) | [Add game search bar to Spiele view](pr/pr-323-add-game-search-bar-to-spiele-view.md) | `claude/spiele-suchleiste-spielebereich-eh29c1` |
+| 2026-07-30 | [#322](https://github.com/blorbeer-cmd/LAN_2026/pull/322) | [Sort vote history so rounds with a result rank above empty ones](pr/pr-322-sort-vote-history-so-rounds-with-a-result-rank-above-empty-ones.md) | `claude/vote-history-sorting-gxnwr8` |
+| 2026-07-30 | [#321](https://github.com/blorbeer-cmd/LAN_2026/pull/321) | [Rebuild Challenge Rush with 40 games](pr/pr-321-rebuild-challenge-rush-with-40-games.md) | `codex/challenge-rush-40-rebuild` |
+| 2026-07-29 | [#320](https://github.com/blorbeer-cmd/LAN_2026/pull/320) | [KI-Gegner für weitere Arcade-Modi](pr/pr-320-ki-gegner-für-weitere-arcade-modi.md) | `claude/ki-gegner-spiele-r5oqcd` |
+| 2026-07-29 | [#319](https://github.com/blorbeer-cmd/LAN_2026/pull/319) | [Add search filters to selection checklists](pr/pr-319-add-search-filters-to-selection-checklists.md) | `codex/checklist-search` |
+| 2026-07-29 | [#318](https://github.com/blorbeer-cmd/LAN_2026/pull/318) | [Remove game icons from selection dropdowns](pr/pr-318-remove-game-icons-from-selection-dropdowns.md) | `codex/remove-game-dropdown-icons` |
+| 2026-07-29 | [#317](https://github.com/blorbeer-cmd/LAN_2026/pull/317) | [Redesign arcade lobby mode selector as a compact segmented switch](pr/pr-317-redesign-arcade-lobby-mode-selector-as-a-compact-segmented-switch.md) | `claude/arcade-mode-buttons-redesign-nffdhy` |
+| 2026-07-29 | [#316](https://github.com/blorbeer-cmd/LAN_2026/pull/316) | [Fix Tetris Arena result-screen display bugs](pr/pr-316-fix-tetris-arena-result-screen-display-bugs.md) | `claude/tetris-arena-display-bugs-6kbxll` |
+| 2026-07-29 | [#314](https://github.com/blorbeer-cmd/LAN_2026/pull/314) | [restore arcade mode buttons](pr/pr-314-restore-arcade-mode-buttons.md) | `codex/arcade-mode-buttons` |
+| 2026-07-29 | [#313](https://github.com/blorbeer-cmd/LAN_2026/pull/313) | [Replace native game dropdown with themed combobox](pr/pr-313-replace-native-game-dropdown-with-themed-combobox.md) | `codex/custom-game-dropdown` |
+| 2026-07-29 | [#312](https://github.com/blorbeer-cmd/LAN_2026/pull/312) | [Stabilize and speed up Challenge Rush CI tests](pr/pr-312-stabilize-and-speed-up-challenge-rush-ci-tests.md) | `codex/stabilize-ci-challenge-rush` |
+| 2026-07-29 | [#311](https://github.com/blorbeer-cmd/LAN_2026/pull/311) | [fix searchable game dropdown](pr/pr-311-fix-searchable-game-dropdown.md) | `codex/fix-game-combobox` |
+| 2026-07-29 | [#309](https://github.com/blorbeer-cmd/LAN_2026/pull/309) | [Unify arcade lobby mode layout](pr/pr-309-unify-arcade-lobby-mode-layout.md) | `codex/SchiffeVerschenkenFix` |
+| 2026-07-29 | [#308](https://github.com/blorbeer-cmd/LAN_2026/pull/308) | [Add Snake arena mode](pr/pr-308-add-snake-arena-mode.md) | `codex/snake-arena-mode` |
+| 2026-07-29 | [#304](https://github.com/blorbeer-cmd/LAN_2026/pull/304) | [Scope Vote genre filter to select-all/none and round start](pr/pr-304-scope-vote-genre-filter-to-select-allnone-and-round-start.md) | `claude/genre-filter-vote-section-5tqqyb` |
+| 2026-07-28 | [#307](https://github.com/blorbeer-cmd/LAN_2026/pull/307) | [Implement Tetris Arena multiplayer mode](pr/pr-307-implement-tetris-arena-multiplayer-mode.md) | `codex/tetris-arena` |
+| 2026-07-28 | [#306](https://github.com/blorbeer-cmd/LAN_2026/pull/306) | [Add Pong 2v2 doubles mode](pr/pr-306-add-pong-2v2-doubles-mode.md) | `codex/pong-2v2-blobby-rules` |
+| 2026-07-28 | [#305](https://github.com/blorbeer-cmd/LAN_2026/pull/305) | [Add Battleship AI opponent for admins](pr/pr-305-add-battleship-ai-opponent-for-admins.md) | `codex/battleship-admin-ai` |
+| 2026-07-28 | [#303](https://github.com/blorbeer-cmd/LAN_2026/pull/303) | [Move genre filter to Vote, make game dropdowns searchable](pr/pr-303-move-genre-filter-to-vote-make-game-dropdowns-searchable.md) | `claude/matchmaking-genre-filter-fix` |
+| 2026-07-28 | [#302](https://github.com/blorbeer-cmd/LAN_2026/pull/302) | [Add MOBA, 4X and ten further game genres to the multiselect](pr/pr-302-add-moba-4x-and-ten-further-game-genres-to-the-multiselect.md) | `claude/missing-game-genres-3z64jy` |
+| 2026-07-28 | [#301](https://github.com/blorbeer-cmd/LAN_2026/pull/301) | [Fix Challenge Rush countdown showing the result timeout](pr/pr-301-fix-challenge-rush-countdown-showing-the-result-timeout.md) | `claude/challenge-rush-countdown-display-l28vwe` |
+| 2026-07-28 | [#300](https://github.com/blorbeer-cmd/LAN_2026/pull/300) | [Add Phase 3 Challenge Rush mini-challenges](pr/pr-300-add-phase-3-challenge-rush-mini-challenges.md) | `claude/nice-knuth-69ctpp` |
+| 2026-07-28 | [#299](https://github.com/blorbeer-cmd/LAN_2026/pull/299) | [Turn game genre into a multiselect and add genre filters](pr/pr-299-turn-game-genre-into-a-multiselect-and-add-genre-filters.md) | `claude/game-genre-multiselect-filters-64yfjb` |
+| 2026-07-28 | [#298](https://github.com/blorbeer-cmd/LAN_2026/pull/298) | [Fix Challenge Rush lobby not rerendering in Arcade view](pr/pr-298-fix-challenge-rush-lobby-not-rerendering-in-arcade-view.md) | `claude/challenge-rush-lobby-display-7ciebi` |
+| 2026-07-28 | [#297](https://github.com/blorbeer-cmd/LAN_2026/pull/297) | [Fix Battleship end-screen board overflow](pr/pr-297-fix-battleship-end-screen-board-overflow.md) | `claude/brave-wright-zrqp2m` |
+| 2026-07-28 | [#296](https://github.com/blorbeer-cmd/LAN_2026/pull/296) | [Fix Challenge Rush falsely reporting a draw for high match totals](pr/pr-296-fix-challenge-rush-falsely-reporting-a-draw-for-high-match-totals.md) | `claude/challenge-rush-leaderboard-tie-p88bdp` |
+| 2026-07-28 | [#294](https://github.com/blorbeer-cmd/LAN_2026/pull/294) | [Add end/leave controls, ready gate, and per-challenge summary to Challenge Rush](pr/pr-294-add-endleave-controls-ready-gate-and-per-challenge-summary-to-challenge-rush.md) | `claude/challenge-rush-adjustments-l64f76` |
+| 2026-07-27 | [#295](https://github.com/blorbeer-cmd/LAN_2026/pull/295) | [Add retro sound effects and a mute toggle to every Arcade game](pr/pr-295-add-retro-sound-effects-and-a-mute-toggle-to-every-arcade-game.md) | `claude/arcade-sounds-music-y8m5uw` |
+| 2026-07-27 | [#293](https://github.com/blorbeer-cmd/LAN_2026/pull/293) | [Fix battleship placement, add shot visibility, and hide sunk reveal](pr/pr-293-fix-battleship-placement-add-shot-visibility-and-hide-sunk-reveal.md) | `claude/schiffe-versenken-fixes-gg1t9z` |
+| 2026-07-27 | [#292](https://github.com/blorbeer-cmd/LAN_2026/pull/292) | [Hide own finished match from Arcade running-games list](pr/pr-292-hide-own-finished-match-from-arcade-running-games-list.md) | `claude/arcade-game-ended-showing-active-prwsz0` |
+| 2026-07-27 | [#291](https://github.com/blorbeer-cmd/LAN_2026/pull/291) | [Fix number-stepper buttons not working on step="any" fields](pr/pr-291-fix-number-stepper-buttons-not-working-on-stepany-fields.md) | `claude/arrow-keys-result-entry-0xe57y` |
+| 2026-07-27 | [#290](https://github.com/blorbeer-cmd/LAN_2026/pull/290) | [Fix Blobby Volley mode dropdown layout and lobby card height](pr/pr-290-fix-blobby-volley-mode-dropdown-layout-and-lobby-card-height.md) | `claude/blobby-volley-modus-dropdown-1cu890` |
+| 2026-07-27 | [#289](https://github.com/blorbeer-cmd/LAN_2026/pull/289) | [Add agent pipeline task contract validation](pr/pr-289-add-agent-pipeline-task-contract-validation.md) | `claude/pr278-agent-pipeline-review-q7se8d` |
+| 2026-07-27 | [#288](https://github.com/blorbeer-cmd/LAN_2026/pull/288) | [Explain disabled arcade lobby buttons and fix lobby leave/order issues](pr/pr-288-explain-disabled-arcade-lobby-buttons-and-fix-lobby-leaveorder-issues.md) | `claude/arcade-button-states-feedback-930c36` |
+| 2026-07-27 | [#287](https://github.com/blorbeer-cmd/LAN_2026/pull/287) | [Add game genre/info fields and demote catalog games to suggestions](pr/pr-287-add-game-genreinfo-fields-and-demote-catalog-games-to-suggestions.md) | `claude/games-catalog-suggestions-info-xqg52a` |
+| 2026-07-27 | [#286](https://github.com/blorbeer-cmd/LAN_2026/pull/286) | [Hide deactivated players from the event-scoped seating roster](pr/pr-286-hide-deactivated-players-from-the-event-scoped-seating-roster.md) | `claude/deactivated-users-sitzplan-tdz8dv` |
+| 2026-07-26 | [#285](https://github.com/blorbeer-cmd/LAN_2026/pull/285) | [Require branch reuse checks for new sessions](pr/pr-285-require-branch-reuse-checks-for-new-sessions.md) | `codex/session-branch-default` |
+| 2026-07-26 | [#284](https://github.com/blorbeer-cmd/LAN_2026/pull/284) | [Avoid Challenge Rush E2E port collision](pr/pr-284-avoid-challenge-rush-e2e-port-collision.md) | `codex/SchiffeVerschenkenFix` |
+| 2026-07-26 | [#283](https://github.com/blorbeer-cmd/LAN_2026/pull/283) | [Prevent reuse of merged pull request branches](pr/pr-283-prevent-reuse-of-merged-pull-request-branches.md) | `codex/worktree-pr-safety` |
+| 2026-07-26 | [#282](https://github.com/blorbeer-cmd/LAN_2026/pull/282) | [Address Challenge Rush review findings](pr/pr-282-address-challenge-rush-review-findings.md) | `codex/GruppenEventZugriffVerweigert` |
 | 2026-07-21 | [#260](https://github.com/blorbeer-cmd/LAN_2026/pull/260) | [R3: Mehrgruppen-Kommentare auf Ein-Gruppen-Modell ausrichten](pr/pr-260-align-multi-group-comments-with-single-group-model.md) | `codex/reset-plan-r3` |
 | 2026-07-21 | [#259](https://github.com/blorbeer-cmd/LAN_2026/pull/259) | [Fix broken main (semantic conflict #253×#257) + record PR #257 changelog](pr/pr-259-fix-broken-main-semantic-conflict-and-record-pr-257-changelog.md) | `claude/reset-plan-r4-migrations-v0zond` |
 | 2026-07-21 | [#258](https://github.com/blorbeer-cmd/LAN_2026/pull/258) | [R2: remove multi-group surface, keep single-group model](pr/pr-258-remove-multi-group-surface-keep-single-group-model.md) | `claude/reset-phase-r2-multigroup-removal-u8s7j6` |
