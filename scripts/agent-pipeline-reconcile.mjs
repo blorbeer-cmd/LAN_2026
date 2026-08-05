@@ -204,14 +204,31 @@ export function evaluateReviewThreads(threads) {
 }
 
 /**
+ * True for a comment the pipeline may act on.
+ *
+ * The repository is public, so anyone can comment on a participating pull request. A marker in a
+ * stranger's comment must not clear a gate or be adopted as the pipeline's own status comment.
+ * Apps can only comment once an admin installed them, so a bot author counts as trusted.
+ */
+export function isTrustedCommentAuthor(comment) {
+  return (
+    isBotLogin(comment?.author) ||
+    WRITE_ASSOCIATIONS.has(comment?.authorAssociation)
+  );
+}
+
+/**
  * Extracts the head SHA a UI/UX notice was written for.
  *
- * Returns the newest match so a re-sent notice supersedes an older one, and null when no comment
- * carries a well-formed marker.
+ * Only trusted authors count: the notice satisfies a merge gate, so anyone able to post one could
+ * otherwise declare a UI change reviewed that nobody ever looked at. Returns the newest match so a
+ * re-sent notice supersedes an older one, and null when no trusted comment carries a well-formed
+ * marker.
  */
 export function parseUiNoticeHeadSha(comments) {
   let found = null;
   for (const comment of comments ?? []) {
+    if (!isTrustedCommentAuthor(comment)) continue;
     const match = comment?.body?.match(UI_NOTICE_PATTERN);
     if (match) found = match[1];
   }
@@ -710,8 +727,19 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
     fetchReviewThreads({ owner, repo, pullNumber, token }),
   ]);
 
-  const statusComment = comments.find((comment) =>
-    comment.body?.startsWith(STATUS_COMMENT_MARKER),
+  const trustedComments = comments.map((comment) => ({
+    id: comment.id,
+    body: comment.body,
+    author: comment.user?.login ?? null,
+    authorAssociation: comment.author_association,
+  }));
+
+  // A decoy comment carrying the marker must not become the comment the pipeline overwrites; when
+  // one exists, the reconciler simply posts its own alongside it.
+  const statusComment = trustedComments.find(
+    (comment) =>
+      comment.body?.startsWith(STATUS_COMMENT_MARKER) &&
+      isTrustedCommentAuthor(comment),
   );
 
   return {
@@ -746,7 +774,7 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       reviewThreads: graph?.reviewThreads ?? [],
       // A discussion that could not be read completely must block, and must say why.
       reviewThreadsReadable: graph?.readable === true,
-      uiNoticeHeadSha: parseUiNoticeHeadSha(comments),
+      uiNoticeHeadSha: parseUiNoticeHeadSha(trustedComments),
       statusCommentBody: statusComment?.body ?? null,
     },
     statusCommentId: statusComment?.id ?? null,

@@ -7,6 +7,7 @@ import {
   evaluateChecks,
   evaluateReviews,
   isOwnCheckRun,
+  isTrustedCommentAuthor,
   paginate,
   parseUiNoticeHeadSha,
   planLabels,
@@ -790,11 +791,23 @@ test("the status comment is deterministic and carries its marker", () => {
   assert.match(first, new RegExp(HEAD));
 });
 
+/** A comment from an account that could write to the repository anyway. */
+function trusted(body, overrides = {}) {
+  return {
+    body,
+    author: "a-maintainer",
+    authorAssociation: "COLLABORATOR",
+    ...overrides,
+  };
+}
+
 test("a UI notice written with the exported marker is parsed back", () => {
   // Guards the marker and the parser against drifting apart: a notice that cannot be read back
   // would block every UI pull request forever.
-  const notice = `${UI_NOTICE_MARKER} ${HEAD} -->\n\nPlease check the home view.`;
-  assert.equal(parseUiNoticeHeadSha([{ body: notice }]), HEAD);
+  const notice = trusted(
+    `${UI_NOTICE_MARKER} ${HEAD} -->\n\nPlease check the home view.`,
+  );
+  assert.equal(parseUiNoticeHeadSha([notice]), HEAD);
 
   const readiness = deriveReadiness(
     {
@@ -802,26 +815,98 @@ test("a UI notice written with the exported marker is parsed back", () => {
         body: contractBody({ scope: "frontend", "ui-change": "yes" }),
         changedFiles: ["server/public/js/views/home.js"],
       }),
-      uiNoticeHeadSha: parseUiNoticeHeadSha([{ body: notice }]),
+      uiNoticeHeadSha: parseUiNoticeHeadSha([notice]),
     },
     config,
   );
   assert.equal(readiness.ready, true);
 });
 
+test("a UI notice from the pipeline's own bot identity counts", () => {
+  const notice = {
+    body: `${UI_NOTICE_MARKER} ${HEAD} -->`,
+    author: "github-actions[bot]",
+    // Bots often report no write association, so the bot identity itself is the trust signal.
+    authorAssociation: "NONE",
+  };
+  assert.equal(parseUiNoticeHeadSha([notice]), HEAD);
+});
+
+test("a UI notice from an outsider cannot clear the gate", () => {
+  // The repository is public: anyone can comment. Posting the marker must not declare a UI change
+  // reviewed that nobody looked at.
+  const hostile = {
+    body: `${UI_NOTICE_MARKER} ${HEAD} -->`,
+    author: "drive-by-stranger",
+    authorAssociation: "NONE",
+  };
+  assert.equal(parseUiNoticeHeadSha([hostile]), null);
+
+  const readiness = deriveReadiness(
+    {
+      ...readySnapshot({
+        body: contractBody({ scope: "frontend", "ui-change": "yes" }),
+        changedFiles: ["server/public/js/views/home.js"],
+      }),
+      uiNoticeHeadSha: parseUiNoticeHeadSha([hostile]),
+    },
+    config,
+  );
+  assert.equal(readiness.ready, false);
+  assert.match(readiness.blockers.join("\n"), /needs its review notice/);
+});
+
+test("a status comment from an outsider is not adopted as the pipeline's own", () => {
+  assert.equal(
+    isTrustedCommentAuthor({
+      author: "drive-by-stranger",
+      authorAssociation: "NONE",
+    }),
+    false,
+  );
+  assert.equal(
+    isTrustedCommentAuthor({
+      author: "github-actions[bot]",
+      authorAssociation: "NONE",
+    }),
+    true,
+  );
+  assert.equal(
+    isTrustedCommentAuthor({
+      author: "a-maintainer",
+      authorAssociation: "COLLABORATOR",
+    }),
+    true,
+  );
+  // A comment with no author information at all is not trusted.
+  assert.equal(isTrustedCommentAuthor({}), false);
+});
+
 test("UI notice parsing ignores malformed markers and prefers the newest", () => {
   assert.equal(parseUiNoticeHeadSha([]), null);
-  assert.equal(parseUiNoticeHeadSha([{ body: "no marker here" }]), null);
+  assert.equal(parseUiNoticeHeadSha([trusted("no marker here")]), null);
   assert.equal(
-    parseUiNoticeHeadSha([{ body: `${UI_NOTICE_MARKER} not-a-sha -->` }]),
+    parseUiNoticeHeadSha([trusted(`${UI_NOTICE_MARKER} not-a-sha -->`)]),
     null,
   );
   assert.equal(
     parseUiNoticeHeadSha([
-      { body: `${UI_NOTICE_MARKER} ${OLD_HEAD} -->` },
-      { body: `${UI_NOTICE_MARKER} ${HEAD} -->` },
+      trusted(`${UI_NOTICE_MARKER} ${OLD_HEAD} -->`),
+      trusted(`${UI_NOTICE_MARKER} ${HEAD} -->`),
     ]),
     HEAD,
+  );
+  // An untrusted newer notice must not supersede a trusted older one.
+  assert.equal(
+    parseUiNoticeHeadSha([
+      trusted(`${UI_NOTICE_MARKER} ${OLD_HEAD} -->`),
+      {
+        body: `${UI_NOTICE_MARKER} ${HEAD} -->`,
+        author: "drive-by-stranger",
+        authorAssociation: "NONE",
+      },
+    ]),
+    OLD_HEAD,
   );
 });
 

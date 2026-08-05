@@ -122,6 +122,12 @@ no comment. The pull-request body is under the fork author's control, so any lat
 would let an outsider steer the pipeline bot into writing on their own pull request. This matches
 the plan: the writing automation is for branches in the main repository only.
 
+For the same reason, comments only count when they come from a bot identity or an account with
+write access. The UI/UX notice satisfies a merge gate, so anyone able to post `<!--
+agent-pipeline:ui-notice <head sha> -->` could otherwise declare a UI change reviewed that nobody
+looked at. The sticky status comment is matched the same way, so a decoy comment carrying the
+marker is never adopted and overwritten — the reconciler posts its own alongside it instead.
+
 Note for the current transitional setup: GitHub forbids approving your own pull request. While
 agent pull requests are authored by the repository owner's own account rather than by
 `claude[bot]`, that approval cannot be given, and a protected-path pull request stays escalated
