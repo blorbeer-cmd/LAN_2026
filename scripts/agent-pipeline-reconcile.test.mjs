@@ -371,6 +371,7 @@ test("protected path changes require an explicit human approval", () => {
         },
         {
           author: "blorbeer-cmd",
+          authorAssociation: "OWNER",
           state: "APPROVED",
           commitSha: HEAD,
           submittedAt: "2026-08-04T11:00:00Z",
@@ -380,6 +381,117 @@ test("protected path changes require an explicit human approval", () => {
     config,
   );
   assert.equal(withHuman.ready, true);
+});
+
+test("an outsider approval cannot satisfy the protected-path gate", () => {
+  // The repository is public, so anyone may approve. Only someone who could write to it anyway
+  // may clear a workflow or infrastructure change.
+  for (const association of ["NONE", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR"]) {
+    const readiness = deriveReadiness(
+      readySnapshot({
+        changedFiles: [".github/workflows/deploy.yml"],
+        reviews: [
+          {
+            author: CODEX_REVIEWER,
+            authorAssociation: "NONE",
+            state: "APPROVED",
+            commitSha: HEAD,
+            submittedAt: "2026-08-04T10:00:00Z",
+          },
+          {
+            author: "drive-by-stranger",
+            authorAssociation: association,
+            state: "APPROVED",
+            commitSha: HEAD,
+            submittedAt: "2026-08-04T11:00:00Z",
+          },
+        ],
+      }),
+      config,
+    );
+    assert.equal(readiness.ready, false, association);
+    assert.equal(readiness.phase, "awaiting-human-approval", association);
+    assert.match(readiness.blockers.join("\n"), /explicit human approval/);
+  }
+});
+
+test("a collaborator approval does satisfy the protected-path gate", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({
+      changedFiles: [".github/workflows/deploy.yml"],
+      reviews: [
+        {
+          author: CODEX_REVIEWER,
+          authorAssociation: "NONE",
+          state: "APPROVED",
+          commitSha: HEAD,
+          submittedAt: "2026-08-04T10:00:00Z",
+        },
+        {
+          author: "a-maintainer",
+          authorAssociation: "COLLABORATOR",
+          state: "APPROVED",
+          commitSha: HEAD,
+          submittedAt: "2026-08-04T11:00:00Z",
+        },
+      ],
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, true);
+});
+
+test("a fork pull request gets no writing automation at all", () => {
+  // The pull-request body is under the fork author's control, so the fork check must come first.
+  const plan = reconcile(
+    readySnapshot({
+      headRepository: "attacker/LAN_2026",
+      authorLogin: "attacker",
+    }),
+    config,
+  );
+  assert.equal(plan.readiness.phase, "fork");
+  assert.equal(plan.readiness.participating, false);
+  assert.equal(plan.readiness.mutate, false);
+  assert.deepEqual(plan.labels, { add: [], remove: [] });
+  assert.equal(plan.comment, null);
+});
+
+test("unreadable review threads block with their own reason", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({ reviewThreads: [], reviewThreadsReadable: false }),
+    config,
+  );
+  assert.equal(readiness.ready, false);
+  assert.match(readiness.blockers.join("\n"), /could not be read completely/);
+  // Must not claim an open thread the maintainer would go looking for.
+  assert.doesNotMatch(readiness.blockers.join("\n"), /review thread\(s\) are still unresolved/);
+
+  // A genuine open thread still reports the count.
+  const real = deriveReadiness(
+    readySnapshot({ reviewThreads: [{ isResolved: false, isOutdated: false }] }),
+    config,
+  );
+  assert.match(real.blockers.join("\n"), /1 review thread\(s\) are still unresolved/);
+});
+
+test("a passed cross-review does not keep the review phase", () => {
+  // Only the UI notice is missing; nobody is reviewing, so agent:review would contradict the
+  // verdict the status comment shows.
+  const readiness = deriveReadiness(
+    readySnapshot({
+      body: contractBody({ scope: "frontend", "ui-change": "yes" }),
+      changedFiles: ["server/public/app.js"],
+    }),
+    config,
+  );
+  assert.equal(readiness.details.reviews.verdict, "pass");
+  assert.equal(readiness.ready, false);
+  assert.notEqual(readiness.phase, "review");
+
+  // A genuinely outstanding review round still selects the review phase.
+  const outstanding = deriveReadiness(readySnapshot({ reviews: [] }), config);
+  assert.equal(outstanding.phase, "review");
 });
 
 test("a human approval never substitutes for the cross-review", () => {

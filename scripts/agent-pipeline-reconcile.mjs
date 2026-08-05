@@ -65,6 +65,10 @@ const FAILING_CONCLUSIONS = new Set([
 
 const PASSING_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
 
+// GitHub's author_association values that imply write access to this repository. Anything else —
+// CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR, NONE — is an outsider on a public repository.
+const WRITE_ASSOCIATIONS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+
 function labelName(config, key) {
   return config.labels[key];
 }
@@ -120,8 +124,14 @@ export function evaluateReviews(reviews, headSha, allowedReviewerLogins) {
     verdict = "pass";
   }
 
+  // The repository is public, so anyone with a GitHub account can approve a pull request here.
+  // Only an approval from someone who could write to the repository anyway may satisfy the
+  // protected-path gate; a drive-by approval from an outsider must not.
   const humanApproval = decisive.some(
-    (review) => review.state === "APPROVED" && !isBotLogin(review.author),
+    (review) =>
+      review.state === "APPROVED" &&
+      !isBotLogin(review.author) &&
+      WRITE_ASSOCIATIONS.has(review.authorAssociation),
   );
 
   return { verdict, humanApproval };
@@ -253,6 +263,19 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     };
   }
 
+  // Fork pull requests never take part in the writing automation. The pull-request body is under
+  // the fork author's control, so deciding this after parsing the contract would let an outsider
+  // steer the pipeline bot into labelling and commenting on their own pull request.
+  if (snapshot.headRepository !== snapshot.repository) {
+    return {
+      participating: false,
+      mutate: false,
+      phase: "fork",
+      ready: false,
+      blockers: [],
+    };
+  }
+
   const parsed = parseTaskContract(snapshot.body);
   if (!parsed.participating) {
     return {
@@ -351,8 +374,15 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     );
   }
 
+  // An unreadable discussion blocks, but it must say so rather than invent an open thread the
+  // maintainer would go looking for.
+  const threadsReadable = snapshot.reviewThreadsReadable !== false;
   const threads = evaluateReviewThreads(snapshot.reviewThreads);
-  if (threads.blockingCount > 0) {
+  if (!threadsReadable) {
+    blockers.push(
+      "Review threads could not be read completely for the current head SHA.",
+    );
+  } else if (threads.blockingCount > 0) {
     blockers.push(
       `${threads.blockingCount} review thread(s) are still unresolved.`,
     );
@@ -386,6 +416,7 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     !snapshot.isDraft &&
     !escalated &&
     !waiting &&
+    threadsReadable &&
     mergeability === "clean" &&
     checks.state === "passing";
 
@@ -411,7 +442,9 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     phase = "ready-for-merge";
   } else if (
     mechanicallyGreen &&
-    reviews.verdict !== "changes-required" &&
+    // Only while a review round is genuinely outstanding. With a verdict already in, nobody is
+    // reviewing and the label would contradict the verdict shown in the status comment.
+    reviews.verdict === "none" &&
     threads.blockingCount === 0
   ) {
     // Everything mechanical is green; the pull request is waiting on its review round.
@@ -606,14 +639,13 @@ const REVIEW_THREADS_QUERY = `
   }
 `;
 
-// A thread the reconciler could not read must block rather than silently count as resolved.
-const UNREADABLE_THREAD = { isResolved: false, isOutdated: false };
-
 /**
  * Reads mergeStateStatus and every review thread, following the GraphQL cursor.
  *
- * Returns null when the query fails, and a blocking placeholder thread when the page cap is
- * reached, so an incompletely read discussion can never open the gate.
+ * Reports `readable: false` when the query fails or the page cap is reached, so the caller blocks
+ * on an incompletely read discussion and can say so instead of reporting a thread that does not
+ * exist. Failures are logged: a systematically failing query would otherwise hold every pull
+ * request without leaving a trace in the job log.
  */
 async function fetchReviewThreads({ owner, repo, pullNumber, token }) {
   const nodes = [];
@@ -628,24 +660,35 @@ async function fetchReviewThreads({ owner, repo, pullNumber, token }) {
         { owner, repo, number: Number(pullNumber), after },
         token,
       );
-    } catch {
-      return null;
+    } catch (error) {
+      console.error(
+        `Could not read review threads for #${pullNumber}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { mergeStateStatus, reviewThreads: nodes, readable: false };
     }
 
     const pullRequest = data?.repository?.pullRequest;
-    if (!pullRequest) return null;
+    if (!pullRequest) {
+      console.error(
+        `Review-thread query for #${pullNumber} returned no pull request.`,
+      );
+      return { mergeStateStatus, reviewThreads: nodes, readable: false };
+    }
     mergeStateStatus = pullRequest.mergeStateStatus ?? mergeStateStatus;
     nodes.push(...(pullRequest.reviewThreads?.nodes ?? []));
 
     const pageInfo = pullRequest.reviewThreads?.pageInfo;
     if (!pageInfo?.hasNextPage) {
-      return { mergeStateStatus, reviewThreads: nodes };
+      return { mergeStateStatus, reviewThreads: nodes, readable: true };
     }
     after = pageInfo.endCursor;
   }
 
   // More threads exist than the cap allows. Block instead of judging on a partial read.
-  return { mergeStateStatus, reviewThreads: [...nodes, UNREADABLE_THREAD] };
+  console.error(
+    `Review threads for #${pullNumber} exceed the page cap; readiness stays blocked.`,
+  );
+  return { mergeStateStatus, reviewThreads: nodes, readable: false };
 }
 
 /** Reads everything the pure logic needs, all bound to the current head SHA. */
@@ -695,12 +738,14 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       })),
       reviews: reviews.map((review) => ({
         author: review.user?.login ?? null,
+        authorAssociation: review.author_association,
         state: review.state,
         commitSha: review.commit_id,
         submittedAt: review.submitted_at,
       })),
-      // A missing GraphQL result must not look like "no unresolved threads".
-      reviewThreads: graph?.reviewThreads ?? [UNREADABLE_THREAD],
+      reviewThreads: graph?.reviewThreads ?? [],
+      // A discussion that could not be read completely must block, and must say why.
+      reviewThreadsReadable: graph?.readable === true,
       uiNoticeHeadSha: parseUiNoticeHeadSha(comments),
       statusCommentBody: statusComment?.body ?? null,
     },

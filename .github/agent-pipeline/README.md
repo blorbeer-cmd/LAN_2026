@@ -107,10 +107,20 @@ merge-base diff; use `root` for intentional multi-area changes. `ui-change: unkn
 blocking until a later classification resolves it.
 
 Changes below `.github/workflows/` and `infra/` are reported as protected paths. The reconciler
-holds such a pull request in the `awaiting-human-approval` phase until an approval review from a
-non-bot account covers the exact current head SHA, because no agent can clear that condition
-itself. A merge conflict or a failing check still takes precedence, since an agent can resolve
-those; the approval blocker stays listed and readiness remains closed either way.
+holds such a pull request in the `awaiting-human-approval` phase until an approval review covers
+the exact current head SHA, because no agent can clear that condition itself. A merge conflict or
+a failing check still takes precedence, since an agent can resolve those; the approval blocker
+stays listed and readiness remains closed either way.
+
+That approval only counts from an account with write access — `author_association` of `OWNER`,
+`MEMBER` or `COLLABORATOR`. This repository is public and allows forking, so any GitHub account
+can submit an approving review; without that restriction a drive-by approval from an outsider
+would satisfy the one control the plan defines for workflow and infrastructure changes.
+
+Fork pull requests are dropped before the task contract is even parsed, and receive no label and
+no comment. The pull-request body is under the fork author's control, so any later decision point
+would let an outsider steer the pipeline bot into writing on their own pull request. This matches
+the plan: the writing automation is for branches in the main repository only.
 
 Note for the current transitional setup: GitHub forbids approving your own pull request. While
 agent pull requests are authored by the repository owner's own account rather than by
