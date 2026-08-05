@@ -19,6 +19,7 @@ import { withStepUp } from '../reauth.js';
 import { GAME_GENRES, MAX_GENRES_PER_GAME } from '../gameGenres.js';
 import { wireSelectionSearch } from '../selectionSearch.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let activeTab = 'catalog'; // 'catalog' | 'suggestions'
 let sortKey = 'name';
@@ -450,6 +451,17 @@ function openGameDetail(gameId, ctx) {
             <input type="number" id="edit-max" min="1" max="20" value="${game.max_team_size}" />
           </div>
         </div>
+        <div class="check-row">
+          <input type="checkbox" id="edit-consider-seat-neighbors" ${game.considerSeatNeighborsDefault ? 'checked' : ''} />
+          <span class="title-with-info tournament-option-label">
+            <label for="edit-consider-seat-neighbors">Sitznachbarn bei Auslosung</label>
+            ${infoTooltipHtml(
+              'edit-consider-seat-neighbors-help',
+              'Sitznachbarn bei Auslosung',
+              'Voreinstellung für die Teams-Auslosung: Ist dieses Spiel ausgewählt, startet „Sitznachbarn“ dort mit diesem Wert. Lässt sich bei jeder Auslosung weiterhin einzeln umschalten.',
+            )}
+          </span>
+        </div>
 
         <div class="section-title">Prozessname</div>
         <div class="chip-list">${processChips || '<span class="muted">Noch keine.</span>'}</div>
@@ -482,6 +494,7 @@ function openGameDetail(gameId, ctx) {
         const info = modalEl.querySelector('#edit-info').value.trim();
         const minTeamSize = modalEl.querySelector('#edit-min').value;
         const maxTeamSize = modalEl.querySelector('#edit-max').value;
+        const considerSeatNeighborsDefault = modalEl.querySelector('#edit-consider-seat-neighbors').checked;
         const newProcess = modalEl.querySelector('#new-process').value.trim();
         const dirty =
           name !== (game.name ?? '') ||
@@ -492,11 +505,13 @@ function openGameDetail(gameId, ctx) {
           info !== (game.info ?? '') ||
           Number(minTeamSize) !== game.min_team_size ||
           Number(maxTeamSize) !== game.max_team_size ||
+          considerSeatNeighborsDefault !== Boolean(game.considerSeatNeighborsDefault) ||
           Boolean(newProcess);
         return dirty ? 'Deine Änderungen am Spiel (Name, Plattform, Team-Größen, Prozessname) werden nicht gespeichert.' : null;
       },
       onMount: (el) => {
         modalEl = el;
+        wireInfoTooltips(el);
         el.querySelectorAll('[data-genre-toggle]').forEach((chip) => {
           chip.addEventListener('click', () => {
             const g = chip.dataset.genreToggle;
@@ -522,6 +537,7 @@ function openGameDetail(gameId, ctx) {
           const platformUrl = el.querySelector('#edit-platform-url').value.trim();
           const trailerUrl = el.querySelector('#edit-trailer').value.trim();
           const info = el.querySelector('#edit-info').value.trim();
+          const considerSeatNeighborsDefault = el.querySelector('#edit-consider-seat-neighbors').checked;
           try {
             await api.games.update(gameId, {
               name,
@@ -532,6 +548,7 @@ function openGameDetail(gameId, ctx) {
               trailerUrl: trailerUrl || null,
               genres: [...selectedGenres],
               info: info || null,
+              considerSeatNeighborsDefault,
             });
             close();
             await ctx.refresh();

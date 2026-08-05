@@ -78,7 +78,28 @@ test('POST /api/games creates a game with defaults', async () => {
   assert.equal(res.body.min_team_size, 1);
   assert.equal(res.body.max_team_size, 5);
   assert.deepEqual(res.body.processNames, []);
+  assert.equal(res.body.considerSeatNeighborsDefault, false);
   createdId = res.body.id;
+});
+
+test('POST /api/games accepts considerSeatNeighborsDefault', async () => {
+  const res = await request(app)
+    .post('/api/games')
+    .send({ name: 'Sitznachbarn-Spiel', considerSeatNeighborsDefault: true });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.considerSeatNeighborsDefault, true);
+
+  const list = await request(app).get('/api/games');
+  const g = list.body.find((x: { id: string }) => x.id === res.body.id);
+  assert.equal(g.considerSeatNeighborsDefault, true);
+});
+
+test('POST /api/games rejects a non-boolean considerSeatNeighborsDefault', async () => {
+  const res = await request(app)
+    .post('/api/games')
+    .send({ name: 'Bad Sitznachbarn Game', considerSeatNeighborsDefault: 'yes' });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /considerSeatNeighborsDefault/);
 });
 
 test('POST /api/games rejects a duplicate name (case-insensitive), so votes/skills never split across two identical entries', async () => {
@@ -111,6 +132,22 @@ test('PATCH /api/games/:id updates fields', async () => {
 test('PATCH /api/games/:id 404s for an unknown id', async () => {
   const res = await request(app).patch('/api/games/nope').send({ icon: '🧪' });
   assert.equal(res.status, 404);
+});
+
+test('PATCH /api/games/:id updates considerSeatNeighborsDefault and leaves it untouched when omitted', async () => {
+  const res = await request(app).patch(`/api/games/${createdId}`).send({ considerSeatNeighborsDefault: true });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.considerSeatNeighborsDefault, true);
+
+  const untouched = await request(app).patch(`/api/games/${createdId}`).send({ icon: '🎯' });
+  assert.equal(untouched.status, 200);
+  assert.equal(untouched.body.considerSeatNeighborsDefault, true);
+});
+
+test('PATCH /api/games/:id rejects a non-boolean considerSeatNeighborsDefault', async () => {
+  const res = await request(app).patch(`/api/games/${createdId}`).send({ considerSeatNeighborsDefault: 1 });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /considerSeatNeighborsDefault/);
 });
 
 const TINY_PNG =
