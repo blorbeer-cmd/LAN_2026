@@ -643,10 +643,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 59);
+  assert.equal(migrations.length, 61);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 59 }, (_, index) => index + 1),
+    Array.from({ length: 61 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -657,6 +657,10 @@ test('records the complete migration history and does not duplicate it on restar
     const row = migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
     assert.ok(row, `${table} should be created for legacy databases`);
   }
+  const musicSessionColumns = migrated.prepare('PRAGMA table_info(music_sessions)').all() as Array<{ name: string }>;
+  assert.ok(musicSessionColumns.some((column) => column.name === 'playback_context_json'));
+  const musicControllerColumns = migrated.prepare('PRAGMA table_info(music_controllers)').all() as Array<{ name: string }>;
+  assert.ok(musicControllerColumns.some((column) => column.name === 'connection_status_json'));
   for (const removedTable of ['spotify_connections', 'spotify_oauth_states']) {
     assert.equal(
       migrated.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(removedTable),
@@ -711,6 +715,52 @@ test('records the complete migration history and does not duplicate it on restar
   }>;
   assert.equal(seatingEvent.find((column) => column.name === 'event_id')?.notnull, 0);
   assert.ok(migrated.prepare("SELECT id FROM groups WHERE id = 'default-group'").get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('music reconnect migrations preserve existing sessions and are restart-safe', () => {
+  const dbFile = makeTempDbPath('music-playback-context');
+  const now = Date.now();
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('music-migration-player', 'Music Migration Player', 'music-migration-key', now);
+  fixture.prepare(
+    `INSERT INTO music_sessions
+       (id, group_id, host_player_id, device_id, device_name, status, current_track_uri,
+        current_track_json, playback_is_playing, playback_progress_ms, playback_updated_at, started_at)
+     VALUES (?, 'default-group', ?, 'speaker-1', 'LAN Boxen', 'active', ?, ?, 1, 1234, ?, ?)`,
+  ).run(
+    'music-migration-session',
+    'music-migration-player',
+    'spotify:track:AAAAAAAAAAAAAAAAAAAAAA',
+    JSON.stringify({ name: 'Existing Track' }),
+    now,
+    now,
+  );
+  fixture.exec('ALTER TABLE music_sessions DROP COLUMN playback_context_json');
+  fixture.exec('ALTER TABLE music_controllers DROP COLUMN connection_status_json');
+  fixture.prepare('DELETE FROM schema_migrations WHERE version IN (60, 61)').run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'a second start must skip the recorded migration');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  const columns = migrated.prepare('PRAGMA table_info(music_sessions)').all() as Array<{ name: string }>;
+  assert.ok(columns.some((column) => column.name === 'playback_context_json'));
+  const controllerColumns = migrated.prepare('PRAGMA table_info(music_controllers)').all() as Array<{ name: string }>;
+  assert.ok(controllerColumns.some((column) => column.name === 'connection_status_json'));
+  const session = migrated.prepare(
+    'SELECT current_track_uri AS currentTrackUri, playback_progress_ms AS progressMs, playback_context_json AS context FROM music_sessions WHERE id = ?',
+  ).get('music-migration-session') as { currentTrackUri: string; progressMs: number; context: string | null };
+  assert.equal(session.currentTrackUri, 'spotify:track:AAAAAAAAAAAAAAAAAAAAAA');
+  assert.equal(session.progressMs, 1234);
+  assert.equal(session.context, null);
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 60').get());
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 61').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
@@ -1116,8 +1166,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 59 }, (_, index) => index + 1),
-    'every version 1..59 runs exactly once',
+    Array.from({ length: 61 }, (_, index) => index + 1),
+    'every version 1..61 runs exactly once',
   );
 });
 

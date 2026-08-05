@@ -22,3 +22,8 @@ Gruppen-Owner und Admins beschränkt.
 Das Beenden einer Jam-Session bleibt zuverlässig möglich, auch wenn das Spotify-Connect-Gerät den
 optionalen Pause-Befehl mit einer Gerätebeschränkung ablehnt; Respawn beendet dann die Session und
 zeigt einen entsprechenden Hinweis.
+
+Der Themenstrang wird auf `codex/spotify-playlist-search` fortgeführt. Dort kommen Playlist-Suche,
+dauerhafte Installation, Wiederkopplung ohne erneuten Download, automatische Verbindungsversuche
+und die aktualisierten Bedienhinweise hinzu. Der aktuelle Gesamtstand ist in
+[`docs/JAM.md`](../../JAM.md) beschrieben.

@@ -3126,6 +3126,36 @@ registerMigration({
   up: addGamesConsiderSeatNeighborsDefault,
 });
 
+// Keeps the public metadata of a playlist started through Jam alongside the
+// ordinary current-track snapshot. Spotify authorization and private playlist
+// contents remain on the local controller; Respawn only needs enough context
+// to present the active source and keep queue controls honest after a restart.
+function addMusicPlaybackContext(): void {
+  const columns = db.prepare('PRAGMA table_info(music_sessions)').all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === 'playback_context_json')) return;
+  db.exec('ALTER TABLE music_sessions ADD COLUMN playback_context_json TEXT');
+}
+registerMigration({
+  version: 60,
+  name: 'add music playlist playback context',
+  up: addMusicPlaybackContext,
+});
+
+// A controller can remain reachable while Spotify itself needs a new login or
+// is temporarily unavailable. Keeping that small public status separate from
+// the playback snapshot prevents a Spotify outage from looking like a dead
+// controller and avoids clearing the last known track on transient failures.
+function addMusicControllerConnectionStatus(): void {
+  const columns = db.prepare('PRAGMA table_info(music_controllers)').all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === 'connection_status_json')) return;
+  db.exec('ALTER TABLE music_controllers ADD COLUMN connection_status_json TEXT');
+}
+registerMigration({
+  version: 61,
+  name: 'add music controller connection status',
+  up: addMusicControllerConnectionStatus,
+});
+
 // Every migration is registered by now — run them all in ascending version
 // order (see registerMigration/runRegisteredMigrations above). This is the
 // single place migrations actually execute.
