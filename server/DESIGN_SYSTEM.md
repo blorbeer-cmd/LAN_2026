@@ -396,8 +396,18 @@ Components are plain CSS classes (no JS component library) in `style.css`:
     snapshot and read the current rating from state.
 - **Game catalog** — The list has three tabs: „Katalog“ (the accepted games), „Vorschläge“ (the
   proposals waiting to be accepted) and „Alle“ (both together). „Alle“ means all — in that mixed
-  list every suggestion keeps its `.badge-paused` „Vorschlag“ marker (`.game-row-status-badge`),
-  which an accepted game never carries, so the two remain distinguishable without switching tabs.
+  list every suggestion keeps its `.badge-paused` marker (`.game-row-status-badge`) plus a matching
+  `.is-suggestion` border/inset-shadow tint on the row itself, which an accepted game never
+  carries, so the two remain distinguishable without switching tabs. The marker is icon-only (a
+  lightbulb with an accessible name and native title, not the spelled-out word) since it repeats on
+  every suggestion row in that mixed list; the „Vorschläge“ tab's own label and active state already
+  say what the whole list is, so its rows carry no additional per-row marker.
+  Below the tabs, „Sortieren“ and „Filtern“ are two separate `.tournament-section-panel` groups —
+  the same bordered/accent-rail pattern the Tournament create form and result dialogs use to
+  separate sibling control groups — so sort buttons and filter chips read as two distinct
+  categories instead of one undifferentiated stack of buttons. The active sort key gets `.btn-primary`
+  plus its direction arrow; genre, „Bock offen“/„Skill offen“ and the free-text search each sit
+  under their own visible `.field-label` inside the „Filtern“ panel.
   Every other surface that picks a game to actually play — Vote, Turnier, Team-Auslosung, Captain
   Draft, „Ergebnis eintragen“ and game pings — offers accepted games only (`catalogGames()` in
   `public/js/state.js`, enforced server-side by `src/routes/gameSelection.ts`), which is what keeps

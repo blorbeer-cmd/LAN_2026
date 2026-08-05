@@ -2888,9 +2888,20 @@ button.card {
 }
 /* "Vorschlag" marker, only rendered in the mixed "Alle" list where catalog
    games and suggestions sit side by side. Unlike the genre tag it must not
-   give way on narrow rows — it is the row's status, not a detail. */
+   give way on narrow rows — it is the row's status, not a detail. Icon-only
+   (see gameRowHtml in gameCatalog.js) so the status reads at a glance
+   without spelling the word out on every row; the icon carries an
+   accessible name and a native title for that. */
 .game-row-status-badge {
   flex: 0 0 auto;
+}
+/* Same status, reinforced on the row itself so it doesn't depend on
+   noticing the small badge alone — same border+inset-shadow pattern as
+   .matchmaking-draw-team.is-winner, just in the paused/amber color already
+   tied to "Vorschlag" everywhere else. */
+.game-table-row.is-suggestion {
+  border-color: var(--state-paused);
+  box-shadow: inset 0 0 0 1px var(--state-paused);
 }
 /* Static (non-interactive) marker for "agent can detect this game", reusing
    the same green already used for "spielt"/"trackt gerade" elsewhere so the
