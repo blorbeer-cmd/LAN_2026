@@ -30,7 +30,7 @@
 
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { state } from '../state.js';
+import { state, catalogGames } from '../state.js';
 import { escapeHtml, formatDate, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
@@ -124,9 +124,10 @@ let voteGameSearchQuery = '';
 let voteGenreFilter = new Set();
 
 // Genres actually carried by at least one catalog game right now — the same
-// set the chip list itself is built from.
+// set the chip list itself is built from. Suggestions are not on the ballot
+// (see catalogGames()), so their genres must not offer a chip either.
 function usedVoteGenres() {
-  return GAME_GENRES.filter((g) => state.games.some((game) => (game.genres ?? []).includes(g)));
+  return GAME_GENRES.filter((g) => catalogGames().some((game) => (game.genres ?? []).includes(g)));
 }
 
 // Games currently visible under the genre filter above — the single source
@@ -134,7 +135,7 @@ function usedVoteGenres() {
 // itself are allowed to touch, so a narrowed filter never affects games it
 // doesn't show.
 function voteFilterVisibleGames() {
-  if (voteGenreFilter.size === 0) return state.games;
+  if (voteGenreFilter.size === 0) return catalogGames();
   // A game that lost its last genre (retagged/deleted elsewhere in the SPA
   // session) leaves voteGenreFilter holding a genre no chip still offers —
   // silently prune it here instead of matching against a filter the user
@@ -144,8 +145,8 @@ function voteFilterVisibleGames() {
   for (const genre of voteGenreFilter) {
     if (!active.includes(genre)) voteGenreFilter.delete(genre);
   }
-  if (voteGenreFilter.size === 0) return state.games;
-  return state.games.filter((g) => (g.genres ?? []).some((genre) => voteGenreFilter.has(genre)));
+  if (voteGenreFilter.size === 0) return catalogGames();
+  return catalogGames().filter((g) => (g.genres ?? []).some((genre) => voteGenreFilter.has(genre)));
 }
 
 function voteSearchVisibleGames() {

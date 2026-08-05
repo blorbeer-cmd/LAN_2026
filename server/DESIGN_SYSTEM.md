@@ -394,15 +394,33 @@ Components are plain CSS classes (no JS component library) in `style.css`:
     draw used, `null` where there was none. Those values are shown as-is, so a self-rating entered
     later cannot retroactively change a recorded lineup's rows or total. Live selections carry no
     snapshot and read the current rating from state.
-- **Game catalog** — Bock and Skill sliders in the game catalog are stored 1-10 and have no true
+- **Game catalog** — The list has three tabs: „Katalog“ (the accepted games), „Vorschläge“ (the
+  proposals waiting to be accepted) and „Alle“ (both together). „Alle“ means all — in that mixed
+  list every suggestion keeps its `.badge-paused` „Vorschlag“ marker (`.game-row-status-badge`),
+  which an accepted game never carries, so the two remain distinguishable without switching tabs.
+  Every other surface that picks a game to actually play — Vote, Turnier, Team-Auslosung, Captain
+  Draft, „Ergebnis eintragen“ and game pings — offers accepted games only (`catalogGames()` in
+  `public/js/state.js`, enforced server-side by `src/routes/gameSelection.ts`), which is what keeps
+  those pickers short. Demoting a game must not strand what it already produced, so
+  `gamesWithHistory()` adds back every game that already carries data wherever a picker also
+  scopes existing records: the Rangliste's game filter and the Teams view's game select, whose
+  one control also scopes the Historie below it. Such a game stays visible but cannot start
+  anything new — the Teams view disables „Teams auslosen“/„Draft starten“ with the usual red
+  warning tooltip naming the reason, and „Ergebnis eintragen“ preselects a different game and
+  says why in a toast instead of silently swapping it. The one action that stays open is
+  completing a draw made while the game was still in the catalog: a result carrying that
+  `drawId` is accepted, because recording what was actually played is history rather than
+  scheduling. Both meters are editable on every tab, suggestions included — how good the group
+  already is at a game is part of deciding whether to accept it.
+  Bock and Skill sliders in the game catalog are stored 1-10 and have no true
   empty position, so an untouched slider still renders at a plausible mid-value; it stays dimmed
   (`.skill-row-slider-unset`) and its number label shows an en dash for "no rating yet" until the
   player's own input event fires. The dash belongs to this own-rating input, where no value has
   been given at all — unlike the team views, where a missing rating still enters the draw as the
   parenthesized fallback. Two independent chip
-  filters, „Bock offen“ and „Skill offen“ (the latter only on the catalog tab, since suggestions
-  never collect a skill rating), narrow the list to games the current identity hasn't rated yet on
-  that facet; both active at once is an AND, unlike the genre chips' OR-within-one-facet semantics.
+  filters, „Bock offen“ and „Skill offen“, narrow the list to games the current identity hasn't
+  rated yet on that facet; both active at once is an AND, unlike the genre chips'
+  OR-within-one-facet semantics.
 - **Player profiles** — The roster is available to signed-in members and opens read-only details for other participants.
   The session account is marked as „Mein Profil“ and opens the dedicated self-service
   profile editor. Foreign profiles expose neither edit/delete actions nor the private agent key;
@@ -732,7 +750,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   The participant action spans the full width, with equal-width „Abbrechen“ and „Beenden“ actions below.
   The optional game checkbox grid has a directly labeled text search in addition to its genre chips.
   Both controls filter the visible rows, while text-search-hidden checkbox selections remain intact;
-  bulk selection actions apply only to the currently visible intersection.
+  bulk selection actions apply only to the currently visible intersection. That grid, an
+  unrestricted round's ballot and „Top 10 nach Bock-Level“ all cover the accepted games only;
+  suggestions are not votable (see „Game catalog“). A suggestion's own Bock ranking stays visible
+  in the Spiele view, which sorts by Ø Bock on every tab. A round keeps the exact games it was
+  started with for its whole life: a game demoted mid-round keeps the votes already cast for it,
+  stays votable for everyone else and can still win, and „Stichwahl starten“ still offers every
+  tied winner of the closed round. Only a fresh selection is restricted.
   Vote-specific empty states center icon and copy vertically in both overview and history.
   Every identity can submit only once per round: the server enforces this atomically with `409`,
   empty points submissions are invalid, and the client replaces the submit action with a green

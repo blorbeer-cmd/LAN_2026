@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { state, playerById, gameById } from './state.js';
+import { state, playerById, gameById, catalogGames, gamesWithHistory } from './state.js';
 
 test('state starts with the expected empty defaults', () => {
   assert.deepEqual(state.players, []);
@@ -30,4 +30,50 @@ test('gameById finds a game by id', () => {
 test('gameById returns undefined for an unknown id', () => {
   state.games = [];
   assert.equal(gameById('missing'), undefined);
+});
+
+test('catalogGames keeps the accepted games and drops the suggestions', () => {
+  state.games = [
+    { id: 'g1', name: 'CS2', isSuggestion: false },
+    { id: 'g2', name: 'Neuer Vorschlag', isSuggestion: true },
+    { id: 'g3', name: 'Rocket League' },
+  ];
+  assert.deepEqual(
+    catalogGames().map((g) => g.id),
+    ['g1', 'g3'],
+  );
+});
+
+test('catalogGames is empty while only suggestions exist', () => {
+  state.games = [{ id: 'g1', name: 'Nur ein Vorschlag', isSuggestion: true }];
+  assert.deepEqual(catalogGames(), []);
+});
+
+test('gamesWithHistory keeps a demoted game that already carries results', () => {
+  state.games = [
+    { id: 'g1', name: 'CS2', isSuggestion: false },
+    { id: 'g2', name: 'Zurückgestuft', isSuggestion: true },
+    { id: 'g3', name: 'Frischer Vorschlag', isSuggestion: true },
+  ];
+  state.matches = [{ id: 'm1', gameId: 'g2' }];
+  assert.deepEqual(
+    gamesWithHistory().map((g) => g.id),
+    ['g1', 'g2'],
+  );
+});
+
+test('gamesWithHistory also keeps the extra ids it is handed', () => {
+  state.games = [
+    { id: 'g1', name: 'CS2', isSuggestion: false },
+    { id: 'g2', name: 'Frisch ausgelost', isSuggestion: true },
+  ];
+  state.matches = [];
+  assert.deepEqual(
+    gamesWithHistory([undefined, 'g2']).map((g) => g.id),
+    ['g1', 'g2'],
+  );
+  assert.deepEqual(
+    gamesWithHistory().map((g) => g.id),
+    ['g1'],
+  );
 });

@@ -2886,6 +2886,12 @@ button.card {
   white-space: nowrap;
   font-size: var(--font-size-xs);
 }
+/* "Vorschlag" marker, only rendered in the mixed "Alle" list where catalog
+   games and suggestions sit side by side. Unlike the genre tag it must not
+   give way on narrow rows — it is the row's status, not a detail. */
+.game-row-status-badge {
+  flex: 0 0 auto;
+}
 /* Static (non-interactive) marker for "agent can detect this game", reusing
    the same green already used for "spielt"/"trackt gerade" elsewhere so the
    color itself carries the meaning at a glance. Sized to match the glyph

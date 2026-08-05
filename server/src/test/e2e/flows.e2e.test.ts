@@ -1209,11 +1209,51 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
   // confirm-before-discard guard steps in — confirm it away.
   await page.click('[data-confirm]');
 
+  // A suggestion carries both meters, Bock *and* Skill — how good the group
+  // already is at a game is part of deciding whether to accept it at all.
+  const suggestionRow = page.locator('.game-table-row', { hasText: 'E2E Partyspiel' });
+  await suggestionRow.locator('.skill-row[data-kind="skill"] input[type="range"]').waitFor();
+
+  // "Katalog" holds the accepted games only, so the still-open suggestion is
+  // not in it; "Alle" lists both and keeps the suggestion recognizable
+  // through its Vorschlag badge, which an accepted game never carries.
+  await page.click('button[data-tab="catalog"]');
+  await page.waitForSelector('.game-table-row:has-text("E2E Partyspiel")', { state: 'detached' });
+  await page.click('button[data-tab="all"]');
+  await suggestionRow.locator('.game-row-status-badge:has-text("Vorschlag")').waitFor();
+  const acceptedRow = page.locator('.game-table-row', { hasText: 'Counter-Strike 2' });
+  await acceptedRow.waitFor();
+  assert.equal(await acceptedRow.locator('.game-row-status-badge').count(), 0);
+  await page.click('button[data-tab="suggestions"]');
+  await suggestionRow.waitFor();
+
+  // ... and wherever a game gets picked to actually play, only the accepted
+  // ones are offered — the Vote round's game list must not list it.
+  const openRound = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
+  if (openRound.open) {
+    const cancelled = await page.request.post(`${BASE_URL}/api/votes/cancel`);
+    assert.ok(cancelled.ok(), `vote cleanup failed (${cancelled.status()}): ${await cancelled.text()}`);
+  }
+  await page.click('.nav-btn[data-view="votes"]');
+  await page.waitForSelector('#votes-start');
+  await page.click('#votes-limit-games');
+  await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
+  await page.locator('#votes-game-select label.check-row', { hasText: 'Counter-Strike 2' }).waitFor();
+  assert.equal(
+    await page.locator('#votes-game-select label.check-row', { hasText: 'E2E Partyspiel' }).count(),
+    0,
+    'a suggestion must not be offered as a votable game',
+  );
+  // Leave the panel closed again for whatever runs next on this shared page.
+  await page.click('#votes-limit-games');
+  await page.click('.nav-btn[data-view="more"]');
+  await page.click('[data-navigate="gameCatalog"]');
+  await suggestionRow.waitFor();
+
   // Promote the suggestion into the catalog via its detail modal (row-level
   // actions live only in there now — the row itself just carries the info
   // icon), then rate it right in the row — no detour through a separate
   // profile page needed.
-  const suggestionRow = page.locator('.game-table-row', { hasText: 'E2E Partyspiel' });
   await suggestionRow.locator('[data-detail]').click();
   await page.click('#edit-promote');
   await page.waitForSelector('button[data-tab="catalog"].btn-primary');

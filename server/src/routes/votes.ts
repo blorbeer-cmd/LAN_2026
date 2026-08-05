@@ -20,6 +20,7 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db, getState, setState } from '../db';
+import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { broadcast, Events } from '../realtime';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
 import { getTrackingEventId, OUTSIDE_EVENTS_ID } from '../events';
@@ -126,6 +127,43 @@ function getRoundMeta(groupId: string, round: number): RoundMeta {
   };
 }
 
+// The tied winners a runoff continues with. A runoff is not a fresh pick: it
+// re-asks the exact games the closed round produced, so one of them being a
+// suggestion by now (demoted afterwards, or already one back when suggestions
+// were still on every ballot) must not block the whole runoff.
+function winnerGameIdsOfRound(groupId: string, round: number): Set<string> {
+  if (round < 1) return new Set();
+  const row = db
+    .prepare('SELECT winner_game_ids AS winnerJson FROM vote_rounds WHERE group_id = ? AND round = ?')
+    .get(groupId, round) as { winnerJson: string | null } | undefined;
+  if (!row?.winnerJson) return new Set();
+  try {
+    const parsed = JSON.parse(row.winnerJson);
+    return new Set(Array.isArray(parsed) ? (parsed as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+// Mirrors buildAllResults' HAVING rule for the submit paths: a suggestion is
+// never on a fresh ballot, but one this round actually put there stays
+// votable — either explicitly (a runoff's selectedGameIds) or because it
+// already carries votes of this round (it was demoted mid-round). Otherwise
+// the round would show a game to some voters and reject it for the next one.
+function suggestionIsOnBallot(
+  groupId: string,
+  round: number,
+  gameId: string,
+  selectedGameIds: string[] | null,
+): boolean {
+  if (selectedGameIds) return selectedGameIds.includes(gameId);
+  return Boolean(
+    db
+      .prepare('SELECT 1 FROM votes WHERE group_id = ? AND round = ? AND game_id = ? LIMIT 1')
+      .get(groupId, round, gameId),
+  );
+}
+
 interface ResultRow {
   gameId: string;
   gameName: string;
@@ -164,8 +202,24 @@ function voteWinCountsByGame(groupId: string): Map<string, number> {
 // a single call's underlying query/sort can be reused for both the
 // round-scoped view and the always-full-catalog "Bock" popularity view
 // (buildPayload's `catalogResults`) instead of querying twice.
-function buildAllResults(groupId: string, round: number, mode: VoteMode): ResultRow[] {
+// Suggestions are not on the ballot (see gameSelection.ts): a round nobody
+// restricted covers the catalog, not the proposal pool. The HAVING exception
+// keeps a suggestion that already carries votes in *this* round visible, so
+// a round recorded before this rule (or a game demoted afterwards) still
+// shows the votes that were actually cast for it.
+function buildAllResults(
+  groupId: string,
+  round: number,
+  mode: VoteMode,
+  ballotGameIds: string[] | null = null,
+): ResultRow[] {
   const now = Date.now();
+  // A round that named its games explicitly (a runoff continues the closed
+  // round's tied winners) keeps every one of them on its own ballot, even if
+  // one has been demoted since — /start validated that selection when the
+  // round began. The placeholders carry ids as bound values, never as SQL.
+  const ballotIds = ballotGameIds ?? [];
+  const ballotClause = ballotIds.length ? ` OR g.id IN (${ballotIds.map(() => '?').join(', ')})` : '';
   const rows = db
     .prepare(
       `SELECT g.id AS gameId, g.name AS gameName, g.icon AS icon,
@@ -189,9 +243,10 @@ function buildAllResults(groupId: string, round: number, mode: VoteMode): Result
          FROM play_sessions WHERE group_id = ? GROUP BY game_id
        ) ps ON ps.game_id = g.id
        WHERE g.arcade_key IS NULL AND g.group_id = ?
-       GROUP BY g.id`,
+       GROUP BY g.id
+       HAVING g.status != 'suggestion' OR COUNT(v.player_id) > 0${ballotClause}`,
     )
-    .all(groupId, round, groupId, groupId, now, groupId, groupId) as Array<
+    .all(groupId, round, groupId, groupId, now, groupId, groupId, ...ballotIds) as Array<
     Omit<ResultRow, 'score' | 'totalPlaytimeFormatted' | 'voteWinCount'>
   >;
 
@@ -227,7 +282,7 @@ function buildResults(
   mode: VoteMode,
   selectedGameIds: string[] | null = null,
 ): ResultRow[] {
-  return filterResults(buildAllResults(groupId, round, mode), selectedGameIds);
+  return filterResults(buildAllResults(groupId, round, mode, selectedGameIds), selectedGameIds);
 }
 
 // While a round is open, nobody — not even the person about to close it —
@@ -259,7 +314,7 @@ function buildPayload(groupId: string, extra: Record<string, unknown> = {}) {
   // bestimmte Spiele zur Wahl stellen" restriction, but recomputing the same
   // SQL join a second time just to drop that restriction would be redundant
   // — filtering the already-fetched rows in JS is enough.
-  const catalogFullResults = buildAllResults(groupId, state.round, state.mode);
+  const catalogFullResults = buildAllResults(groupId, state.round, state.mode, meta.selectedGameIds);
   const fullResults = filterResults(catalogFullResults, meta.selectedGameIds);
   const totalVotes = fullResults.reduce((sum, r) => sum + r.votes, 0);
   const totalPoints = fullResults.reduce((sum, r) => sum + r.points, 0);
@@ -391,6 +446,7 @@ votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   }
 
   let selectedGameIds: string[] | null = null;
+  const runoffWinners = winnerGameIdsOfRound(groupId, state.round);
   if (gameIds !== undefined) {
     if (!Array.isArray(gameIds) || gameIds.length === 0) {
       return res.status(400).json({ error: 'Mindestens ein Spiel muss ausgewählt sein.' });
@@ -398,8 +454,13 @@ votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
     const uniqueIds = [...new Set(gameIds)];
     for (const id of uniqueIds) {
       if (typeof id !== 'string' || !id) return res.status(400).json({ error: 'Ungültige gameId.' });
-      const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(id, req.group!.id);
+      const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(id, req.group!.id) as
+        | { id: string; status: string }
+        | undefined;
       if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+      if (isSuggestionGame(game) && !runoffWinners.has(id)) {
+        return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
+      }
     }
     selectedGameIds = uniqueIds as string[];
   }
@@ -471,9 +532,14 @@ votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   }
   const player = activeGroupPlayers(groupId, [playerId]).get(playerId);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id);
+  const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
+    | { id: string; status: string }
+    | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
   const meta = getRoundMeta(groupId, state.round);
+  if (isSuggestionGame(game) && !suggestionIsOnBallot(groupId, state.round, gameId, meta.selectedGameIds)) {
+    return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
+  }
   if (meta.selectedGameIds && !meta.selectedGameIds.includes(gameId)) {
     return res.status(400).json({ error: 'Dieses Spiel ist in dieser Abstimmung nicht auswählbar.' });
   }
@@ -542,8 +608,13 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
     if (!isIntInRange(points, 1, 10)) {
       return res.status(400).json({ error: 'Punkte müssen eine Ganzzahl zwischen 1 und 10 sein.' });
     }
-    const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id);
+    const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
+      | { id: string; status: string }
+      | undefined;
     if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+    if (isSuggestionGame(game) && !suggestionIsOnBallot(groupId, state.round, gameId, meta.selectedGameIds)) {
+      return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
+    }
     if (meta.selectedGameIds && !meta.selectedGameIds.includes(gameId)) {
       return res.status(400).json({ error: 'Dieses Spiel ist in dieser Abstimmung nicht auswählbar.' });
     }
