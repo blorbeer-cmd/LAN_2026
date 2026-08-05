@@ -22,7 +22,19 @@ import { competitionPlayersBelongToGroup, trackingEventIdForGroup } from '../com
 
 export const matchmakingRouter = Router();
 
-const DEFAULT_RATING = 5; // neutral middle rating for players without one
+// Neutral middle rating for players without one. It is what balanceTeams
+// works with, but a stored teams snapshot keeps `rating: null` for such a
+// player instead of the substituted number: only then can a later reader tell
+// "rated 5" from "had no rating and was drawn as a 5". The frontend shows the
+// same value in parentheses for a null and includes it in the team total
+// (UNRATED_SKILL_VALUE in public/js/skillDisplay.js) — change both together,
+// or the displayed totals stop matching the draw they came from.
+const DEFAULT_RATING = 5;
+
+// Team total the way the draw itself saw it: a player without an own rating
+// contributes the neutral fallback, exactly as in the balancing input.
+const totalRatingOf = (players: Array<{ rating: number | null }>): number =>
+  players.reduce((sum, p) => sum + (p.rating ?? DEFAULT_RATING), 0);
 const deliveryEventId = (eventId: string): string | null => (eventId === OUTSIDE_EVENTS_ID ? null : eventId);
 
 interface GameRow {
@@ -66,10 +78,10 @@ export function buildTeamsSnapshot(gameId: string, teamPlayerIdLists: string[][]
         name: p?.name ?? '?',
         color: p?.color ?? '#888888',
         avatar: p?.avatar ?? null,
-        rating: ratingByPlayer.get(id) ?? DEFAULT_RATING,
+        rating: ratingByPlayer.get(id) ?? null,
       };
     });
-    return { players: teamPlayers, totalRating: teamPlayers.reduce((sum, p) => sum + p.rating, 0) };
+    return { players: teamPlayers, totalRating: totalRatingOf(teamPlayers) };
   });
 }
 
@@ -199,14 +211,14 @@ matchmakingRouter.post('/', (req, res) => {
       const neighborIds = conflictNeighbors.get(id);
       return {
         ...playerById.get(id)!,
-        rating: ratingByPlayer.get(id) ?? DEFAULT_RATING,
+        rating: ratingByPlayer.get(id) ?? null,
         seatConflict: !!neighborIds,
         seatConflictNames: neighborIds?.map((nid) => playerById.get(nid)?.name).filter((n): n is string => !!n) ?? [],
       };
     });
     return {
       players: teamPlayers,
-      totalRating: teamPlayers.reduce((sum, p) => sum + p.rating, 0),
+      totalRating: totalRatingOf(teamPlayers),
     };
   });
 
@@ -427,7 +439,15 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
   }
 
   const row = db.prepare('SELECT * FROM matchmaking_draws WHERE id = ? AND group_id = ?').get(req.params.id, req.group!.id) as
-    | { id: string; game_id: string; event_id: string; teams: string; match_id: string | null; seat_pairs_considered: number }
+    | {
+        id: string;
+        game_id: string;
+        event_id: string;
+        teams: string;
+        match_id: string | null;
+        seat_pairs_considered: number;
+        source: string | null;
+      }
     | undefined;
   if (!row) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
   if (row.match_id) {
@@ -456,8 +476,11 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
       1
     );
     teams[toTeamIndex].players.push(player);
+    // A captain draft is logged into the same history but never used ratings
+    // (see routes/draft.ts): its snapshot keeps every rating null and a total
+    // of 0, so moving a player must not invent a balancing total for it.
     for (const t of [teams[fromTeamIndex], teams[toTeamIndex]]) {
-      t.totalRating = t.players.reduce((sum, p) => sum + (p.rating ?? 0), 0);
+      t.totalRating = row.source === 'draft' ? 0 : totalRatingOf(t.players);
     }
   }
 

@@ -289,7 +289,7 @@ function renderCreateForm(el, ctx) {
         <input type="checkbox" data-create-player="${p.id}" ${createCheckedIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
-        ${playerSkillHtml(p.id, selectedGameId)}
+        ${playerSkillHtml(p, selectedGameId)}
       </label>`
     )
     .join('');
@@ -315,7 +315,7 @@ function renderCreateForm(el, ctx) {
           <div class="team-card tournament-draft-team${selectedTeamIndex !== -1 && selectedTeamIndex !== i ? ' is-select-target' : ''}" data-tourn-drop-team="${i}" role="group" aria-label="${escapeHtml(t.name)}">
             <div class="team-card-header tournament-team-skill-header">
               <input type="text" data-team-name="${i}" value="${escapeHtml(t.name)}" maxlength="60" />
-              ${teamSkillHtml(t.players, selectedGameId)}
+              ${teamSkillHtml(t.players, selectedGameId, { stored: true })}
             </div>
             ${t.players
               .map(
@@ -324,7 +324,7 @@ function renderCreateForm(el, ctx) {
                 ${avatarHtml(p, 18)}
                 <span class="player-name team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
                 ${seatConflictIconHtml(p)}
-                ${playerSkillHtml(p.id, selectedGameId)}
+                ${playerSkillHtml(p, selectedGameId, { stored: true })}
               </button>`
               )
               .join('')}
@@ -1064,7 +1064,7 @@ function renderTournamentTeams(t) {
                   <div class="team-player">
                     ${avatarHtml(player, 24)}
                     <span class="player-name team-player-name" style="flex:1;">${escapeHtml(player.name)}</span>
-                    ${playerSkillHtml(player.id, t.gameId)}
+                    ${playerSkillHtml(player, t.gameId)}
                   </div>`
                 )
                 .join('')

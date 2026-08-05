@@ -360,9 +360,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   chips; the drafted teams are introduced by the parallel heading „Captains“. Decorative draft icons
   and the redundant local-turn hint are omitted.
   Every player row in both setup flows, the live draft and the drawn teams shows the shared activity
-  icon followed by the selected game's `1–10` skill value; an en dash makes a missing self-rating
-  explicit instead of silently presenting the matchmaking fallback as a real rating. The title and
-  accessible label retain the full term „Skill-Level“.
+  icon followed by the selected game's `1–10` skill value; in the rating-balanced draw a missing
+  self-rating shows the matchmaking fallback in parentheses, so the visible value matches the one
+  the draw balanced with, while the captain draft keeps the en dash because it never uses ratings.
+  The title and accessible label retain the full term „Skill-Level“.
   Open draws and recorded results share one newest-first „Historie“ because they are two states of
   the same lineup. It starts collapsed through the shared collapsible-section component. Every
   history card repeats its game name. Recorded results omit a status badge;
@@ -373,15 +374,32 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Successful seat-neighbor grouping stays silent; a note appears only when requested seat neighbors
   still had to be placed in opposing teams.
 - **Player skill display** — `skillDisplay.js` renders the shared activity icon plus the selected
-  game's current self-rating, or an en dash when no rating exists. Teams and Tournaments reuse it
-  in participant selection, drawn-team previews, live drafts, histories and tournament detail teams;
-  the icon's tooltip and accessible label retain the full „Skill-Level“ meaning. Team headers show
-  the same icon with a dynamically calculated total; missing ratings contribute `0`, stated
-  explicitly in its tooltip and accessible label.
+  game's skill value. Teams and Tournaments reuse it in participant selection, drawn-team previews,
+  live drafts, histories and tournament detail teams; the icon's tooltip and accessible label
+  retain the full „Skill-Level“ meaning. Two call-site options decide what an honest value is:
+  - `balanced` (default `true`) — the shown teams really were built from these ratings. A player
+    without an own rating then shows the neutral matchmaking fallback dimmed and in parentheses
+    (`.rating-unrated`, `5`, mirroring `DEFAULT_RATING` in `src/routes/matchmaking.ts`) instead of
+    an en dash, because that is the value the draw balanced with; the team header's total includes
+    those fallbacks and appends the dimmed parenthesized count of unrated players. Changing the
+    server-side fallback requires updating `UNRATED_SKILL_VALUE` in the same work item so the shown
+    totals cannot drift away from the balancing again.
+  - `balanced: false` — the captain draft, which picks by turn order and never reads ratings
+    (`src/routes/draft.ts`). Its values are purely informational for the picking captain, so a
+    missing rating stays an en dash („Noch kein Skill-Level eingetragen“) and neither the row nor
+    the total claims that anything counted with `5`. This covers the live draft board, the draft
+    participant/captain selections and drafted lineups in the history.
+  - `stored: true` — the player objects come from a persisted draw snapshot
+    (`matchmaking_draws.teams`, the `POST /api/matchmaking` response) and carry the rating that
+    draw used, `null` where there was none. Those values are shown as-is, so a self-rating entered
+    later cannot retroactively change a recorded lineup's rows or total. Live selections carry no
+    snapshot and read the current rating from state.
 - **Game catalog** — Bock and Skill sliders in the game catalog are stored 1-10 and have no true
   empty position, so an untouched slider still renders at a plausible mid-value; it stays dimmed
-  (`.skill-row-slider-unset`) and its number label shows the same en dash `skillDisplay.js` uses
-  elsewhere for "no rating yet" until the player's own input event fires. Two independent chip
+  (`.skill-row-slider-unset`) and its number label shows an en dash for "no rating yet" until the
+  player's own input event fires. The dash belongs to this own-rating input, where no value has
+  been given at all — unlike the team views, where a missing rating still enters the draw as the
+  parenthesized fallback. Two independent chip
   filters, „Bock offen“ and „Skill offen“ (the latter only on the catalog tab, since suggestions
   never collect a skill rating), narrow the list to games the current identity hasn't rated yet on
   that facet; both active at once is an AND, unlike the genre chips' OR-within-one-facet semantics.
