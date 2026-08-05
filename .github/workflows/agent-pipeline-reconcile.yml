@@ -1,8 +1,8 @@
 name: Agent pipeline reconcile
 
 # Derives the pipeline state of an agent pull request from the current GitHub state and keeps the
-# pipeline labels and the sticky status comment in sync. It starts no agent, writes no commit
-# status, and never approves or merges.
+# pipeline labels, the sticky status comment and the `Agent pipeline / ready for human merge`
+# commit status in sync. It starts no agent and never approves or merges.
 
 on:
   # These events always load the workflow definition from the trusted default branch.
@@ -84,6 +84,9 @@ jobs:
       checks: read
       # Covers the pipeline labels and the sticky status comment on pull requests.
       pull-requests: write
+      # Covers the `Agent pipeline / ready for human merge` commit status on the head SHA. It
+      # grants no access to code, branches or the merge itself.
+      statuses: write
     strategy:
       fail-fast: false
       matrix:

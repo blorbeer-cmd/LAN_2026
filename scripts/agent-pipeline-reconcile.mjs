@@ -6,8 +6,10 @@
 // classification falls back to "unknown", and therefore to blocking, when it does not belong to
 // the current head SHA.
 //
-// This phase reports readiness only. It starts no agent, writes no commit status, and never
-// approves or merges anything.
+// Besides reporting readiness on the pull request, this module owns the merge gate: the
+// `Agent pipeline / ready for human merge` commit status for the current head SHA. It still starts
+// no agent and never approves or merges anything — the status only states whether the conditions
+// from section 11 of the plan hold, and the merge itself stays a human decision.
 
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -555,11 +557,84 @@ export function renderStatusComment(readiness, snapshot) {
   ].join("\n");
 }
 
-/** Full plan for one pull request: labels plus the sticky status comment. */
+// GitHub rejects a longer status description, so the reason is trimmed rather than lost.
+export const GATE_DESCRIPTION_LIMIT = 140;
+
+function trimDescription(text) {
+  if (text.length <= GATE_DESCRIPTION_LIMIT) return text;
+  return `${text.slice(0, GATE_DESCRIPTION_LIMIT - 3)}...`;
+}
+
+/**
+ * Decides the `Agent pipeline / ready for human merge` commit status for the current head SHA.
+ *
+ * Two states only: `success` once every gate condition holds, `pending` while any blocker is open.
+ * A blocked pull request is not an error — the pipeline is still working on it — and the reason
+ * travels in the description, where the merge box shows it without opening the status comment.
+ *
+ * Success for a pull request the pipeline does not manage is deliberate. Once this context is a
+ * required check, a status that is never written leaves the pull request unmergeable forever, so
+ * every non-participating pull request — a human one, a Dependabot bump, a fork — would
+ * deadlock on a gate that was never meant to apply to it. The gate therefore states that it does
+ * not apply instead of staying silent. It is not the control that keeps an agent PR honest: an
+ * agent pull request without a task contract also gets no pipeline label and no status comment, so
+ * its absence is visible, and the branch-protection review requirement still applies to everyone.
+ *
+ * Returns null when no status belongs on the commit at all.
+ */
+export function planGateStatus(readiness, config = loadConfig()) {
+  // A closed or merged pull request is history; writing a verdict on it now would be noise.
+  if (readiness.phase === "closed") return null;
+
+  if (!readiness.participating) {
+    const reason =
+      readiness.phase === "fork"
+        ? "Fork pull request: the agent-pipeline gate does not apply."
+        : "No agent task contract: the agent-pipeline gate does not apply.";
+    return { context: config.statusContext, state: "success", description: reason };
+  }
+
+  if (readiness.ready) {
+    return {
+      context: config.statusContext,
+      state: "success",
+      description: "Every gate condition holds for this head. The merge stays yours.",
+    };
+  }
+
+  const blockers = readiness.blockers ?? [];
+  const remaining = blockers.length > 1 ? ` (+${blockers.length - 1} more)` : "";
+  const first = blockers[0] ?? "Readiness could not be determined for this head.";
+  return {
+    context: config.statusContext,
+    state: "pending",
+    description: trimDescription(`${readiness.phase}: ${first}${remaining}`),
+  };
+}
+
+/**
+ * Full plan for one pull request: labels, the sticky status comment and the merge-gate status.
+ *
+ * The gate is planned even when no mutation is allowed. `agent:no-auto` stops the pipeline from
+ * acting on a pull request, and section 11 of the plan counts that kill switch as a gate condition
+ * of its own; leaving the status behind at a stale `success` would turn a paused pull request into
+ * a mergeable one. The same holds for pull requests the pipeline does not manage, which need the
+ * "does not apply" verdict precisely because nothing else will ever write it.
+ */
 export function reconcile(snapshot, config = loadConfig()) {
   const readiness = deriveReadiness(snapshot, config);
+  const gate = planGateStatus(readiness, config);
+  // An unchanged verdict needs no API call. Statuses are append-only, so rewriting one on every
+  // sweep would bury the commit's status history under identical entries.
+  const current = snapshot.gateStatus;
+  const status =
+    gate &&
+    (current?.state !== gate.state || current?.description !== gate.description)
+      ? gate
+      : null;
+
   if (!readiness.mutate) {
-    return { readiness, labels: { add: [], remove: [] }, comment: null };
+    return { readiness, labels: { add: [], remove: [] }, comment: null, status };
   }
 
   const body = renderStatusComment(readiness, snapshot);
@@ -568,6 +643,7 @@ export function reconcile(snapshot, config = loadConfig()) {
     labels: planLabels(snapshot.labels, readiness, config),
     // An unchanged body needs no API call at all.
     comment: snapshot.statusCommentBody === body ? null : { body },
+    status,
   };
 }
 
@@ -733,7 +809,7 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
   const pr = await api(`/repos/${owner}/${repo}/pulls/${pullNumber}`, { token });
   const headSha = pr.head.sha;
 
-  const [files, checkRuns, reviews, comments, graph] = await Promise.all([
+  const [files, checkRuns, reviews, comments, graph, combinedStatus] = await Promise.all([
     paginate(`/repos/${owner}/${repo}/pulls/${pullNumber}/files`, token),
     // `filter=latest` keeps only the most recent attempt per check, so a rerun of a failed job on
     // an unchanged head supersedes its earlier failure. Set explicitly rather than relying on the
@@ -745,6 +821,11 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
     paginate(`/repos/${owner}/${repo}/pulls/${pullNumber}/reviews`, token),
     paginate(`/repos/${owner}/${repo}/issues/${pullNumber}/comments`, token),
     fetchReviewThreads({ owner, repo, pullNumber, token }),
+    // The combined status reports only the latest entry per context, which is exactly the verdict
+    // the gate would overwrite.
+    api(`/repos/${owner}/${repo}/commits/${headSha}/status?per_page=100`, {
+      token,
+    }),
   ]);
 
   const trustedComments = comments.map((comment) => ({
@@ -760,6 +841,11 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
     (comment) =>
       comment.body?.startsWith(STATUS_COMMENT_MARKER) &&
       isTrustedCommentAuthor(comment),
+  );
+
+  const config = loadConfig();
+  const gateStatus = (combinedStatus?.statuses ?? []).find(
+    (status) => status.context === config.statusContext,
   );
 
   return {
@@ -796,12 +882,24 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       reviewThreadsReadable: graph?.readable === true,
       uiNoticeHeadSha: parseUiNoticeHeadSha(trustedComments),
       statusCommentBody: statusComment?.body ?? null,
+      gateStatus: gateStatus
+        ? { state: gateStatus.state, description: gateStatus.description ?? null }
+        : null,
     },
     statusCommentId: statusComment?.id ?? null,
   };
 }
 
-async function applyPlan({ owner, repo, pullNumber, token, plan, statusCommentId }) {
+async function applyPlan({
+  owner,
+  repo,
+  pullNumber,
+  token,
+  plan,
+  statusCommentId,
+  headSha,
+  targetUrl,
+}) {
   const applied = [];
 
   if (plan.labels.add.length) {
@@ -845,6 +943,33 @@ async function applyPlan({ owner, repo, pullNumber, token, plan, statusCommentId
     }
   }
 
+  // Last on purpose. A failure above aborts the run before the gate moves, so the verdict on the
+  // commit can go stale only in the blocking direction, never towards an unearned `success`.
+  if (plan.status) {
+    try {
+      await api(`/repos/${owner}/${repo}/statuses/${headSha}`, {
+        method: "POST",
+        body: {
+          state: plan.status.state,
+          context: plan.status.context,
+          description: plan.status.description,
+          ...(targetUrl ? { target_url: targetUrl } : {}),
+        },
+        token,
+      });
+      applied.push(`set ${plan.status.context} to ${plan.status.state}`);
+    } catch (error) {
+      // A head commit this repository cannot address — a fork branch deleted mid-run, for example
+      // — carries no status. Report it and keep the labels and the status comment, which are the
+      // part a maintainer actually reads.
+      if (!String(error.message).includes("failed with 422")) throw error;
+      console.error(
+        `Could not write the merge-gate status: ${headSha} is not addressable in ${owner}/${repo}.`,
+      );
+      applied.push(`merge-gate status skipped for ${headSha}`);
+    }
+  }
+
   return applied;
 }
 
@@ -852,6 +977,20 @@ function option(args, name) {
   const index = args.indexOf(name);
   if (index === -1 || index + 1 >= args.length) return null;
   return args[index + 1];
+}
+
+/**
+ * Link target for the merge-gate status: the run that wrote it.
+ *
+ * The description holds only the first blocker, so the status needs somewhere to point for the
+ * full picture. Returns null outside Actions, where no run exists to link to.
+ */
+function currentRunUrl() {
+  const server = process.env.GITHUB_SERVER_URL;
+  const repository = process.env.GITHUB_REPOSITORY;
+  const runId = process.env.GITHUB_RUN_ID;
+  if (!server || !repository || !runId) return null;
+  return `${server}/${repository}/actions/runs/${runId}`;
 }
 
 async function reconcileCommand(args) {
@@ -890,6 +1029,9 @@ async function reconcileCommand(args) {
         blockers: plan.readiness.blockers,
         labels: plan.labels,
         commentChanged: Boolean(plan.comment),
+        gateStatus: plan.status
+          ? { state: plan.status.state, description: plan.status.description }
+          : "no write needed",
       },
       null,
       2,
@@ -908,6 +1050,8 @@ async function reconcileCommand(args) {
     token,
     plan,
     statusCommentId,
+    headSha: snapshot.headSha,
+    targetUrl: option(args, "--target-url") ?? currentRunUrl(),
   });
   console.log(applied.length ? applied.join("\n") : "Nothing to change.");
 }
@@ -921,7 +1065,7 @@ if (isMainModule) {
     if (command === "reconcile") await reconcileCommand(args);
     else {
       throw new Error(
-        "Usage: node scripts/agent-pipeline-reconcile.mjs reconcile --pr <number> [--repository <owner/repo>] [--apply]",
+        "Usage: node scripts/agent-pipeline-reconcile.mjs reconcile --pr <number> [--repository <owner/repo>] [--target-url <url>] [--apply]",
       );
     }
   } catch (error) {

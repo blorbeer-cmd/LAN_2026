@@ -9,8 +9,8 @@ The pipeline reports state; it does not act on it yet:
 
 - `.github/workflows/agent-pipeline-contract.yml` validates an activated task contract.
 - `scripts/agent-pipeline.mjs` parses and validates task contracts.
-- `scripts/agent-pipeline-reconcile.mjs` derives the readiness state and keeps the pipeline labels
-  and the sticky status comment in sync (phase 2 of the plan).
+- `scripts/agent-pipeline-reconcile.mjs` derives the readiness state and keeps the pipeline labels,
+  the sticky status comment and the merge-gate commit status in sync (phases 2 and 7 of the plan).
 - `.github/workflows/agent-pipeline-reconcile.yml` runs that reconciler per pull request.
 - `.github/workflows/agent-pipeline-tests.yml` runs the unit tests for both.
 - `review-session-prompt.md` contains the copy-paste prompt and operating instructions for an
@@ -19,7 +19,8 @@ The pipeline reports state; it does not act on it yet:
   the validator, reconciler and configuration from that same trusted branch. The declared PR base
   must equal the configured default branch. The pull-request head is fetched only as diff data and
   is never executed by those workflows.
-- No agent is invoked, no commit status is written, and no branch-protection setting is changed yet.
+- No agent is invoked and no branch-protection setting is changed yet. The merge-gate status is
+  written but is not a required check until someone adds it by hand.
 
 ## Readiness reconciler
 
@@ -37,12 +38,12 @@ What it does:
   `agent:needs-human` or the human-approval wait gets no phase label, because those states are
   already named by their own label or by the status comment,
 - maintains one sticky status comment marked with `<!-- agent-pipeline:status -->`,
-- reports every open blocker in that comment.
+- reports every open blocker in that comment,
+- writes the `Agent pipeline / ready for human merge` commit status for the current head SHA.
 
 What it deliberately does not do:
 
 - start an agent, request a review, or push a fix,
-- write the `Agent pipeline / ready for human merge` commit status (phase 7),
 - approve or merge anything,
 - set or clear `agent:waiting` and `agent:review-fallback`, which belong to the provider phases,
 - accept a fallback review as satisfying the gate. Only an approval from the counter provider's
@@ -72,9 +73,42 @@ without that exclusion the reconciler would read its own job as a running — or
 `cancel-in-progress`, a cancelled and therefore failing — CI check. `selfCheckNames` must stay in
 sync with the job names in `.github/workflows/agent-pipeline-reconcile.yml`.
 
-Idempotence: labels already in the desired state produce no API call, and an unchanged status
-comment body is not rewritten. Re-running the reconciler on an unchanged pull request performs no
-writes at all.
+Idempotence: labels already in the desired state produce no API call, an unchanged status comment
+body is not rewritten, and an unchanged gate verdict is not posted again. Re-running the
+reconciler on an unchanged pull request performs no writes at all.
+
+## Merge gate
+
+The `Agent pipeline / ready for human merge` commit status is the required check from section 11
+of the plan. It is written for the pull request's current head SHA and knows two states:
+
+- `success` once `deriveReadiness` reports no blocker left, described as "the merge stays yours",
+- `pending` while any blocker is open, described as `<phase>: <first blocker> (+N more)`, trimmed
+  to GitHub's 140-character limit and linked to the run that wrote it.
+
+A blocked pull request is pending rather than failing: the pipeline is still working on it, and
+the merge box should read as "waiting", not as a broken check. The reason lives in the
+description, so the merge box shows it without opening the status comment.
+
+Two cases deliberately get `success` even though the pipeline does not manage them at all:
+
+- a pull request without an activated task contract — a human one, a Dependabot bump,
+- a fork pull request.
+
+Both report "the agent-pipeline gate does not apply". Once this context is a required check, a
+status that is never written leaves the pull request unmergeable forever, so staying silent would
+deadlock every pull request the gate was never meant to cover. This is not the control that keeps
+an agent pull request honest: such a pull request also gets no pipeline label and no status
+comment, so the gap is visible, and the branch-protection review requirement still applies to
+everyone.
+
+The kill switch is the one case where nothing else is written but the gate still is.
+`agent:no-auto` suppresses every mutation, yet section 11 counts it as a gate condition of its
+own; leaving an earlier `success` in place would make a paused pull request mergeable while
+paused. A closed or merged pull request gets no verdict at all.
+
+The reconcile workflow needs `statuses: write` for this and nothing more. That permission covers
+commit statuses only — no code, no branches, and not the merge.
 
 Kill switches:
 
@@ -144,10 +178,10 @@ git diff --check
 ```
 
 The validator and the test suites write nothing to GitHub. The reconciler writes only pipeline
-labels and its own sticky status comment, and only when invoked with `--apply`. Later phases add
-the agent adapters and finally the required `Agent pipeline / ready for human merge` status.
-`config.json` already declares the labels and timeouts those phases will use; the ones this phase
-does not own are inert until then.
+labels, its own sticky status comment and the `Agent pipeline / ready for human merge` status, and
+only when invoked with `--apply`. Later phases add the agent adapters. `config.json` already
+declares the labels and timeouts those phases will use; the ones this phase does not own are inert
+until then.
 
 For a manual cross- or fallback-review during the rollout, follow
 [`review-session-prompt.md`](review-session-prompt.md). A new commit invalidates the previous
@@ -168,8 +202,14 @@ Still required before enabling agent mutations:
 
 1. Verify in a pilot pull request that both app identities can update their own feature branches
    but cannot push or merge to `main`.
-2. Add the final readiness status to branch protection only after that status exists and has been
-   validated in the pilot. Adding it earlier blocks every agent pull request.
+2. Add `Agent pipeline / ready for human merge` to branch protection only after the reconciler has
+   written it on `main` at least once and a pilot pull request has shown both verdicts. Until then
+   the context exists in no branch-protection rule, and a required check that nothing reports
+   blocks every pull request for everyone without administrator rights.
+
+If that context is already required while no run has written it, every open pull request sits at
+"Expected — waiting for status to be reported". Removing it from branch protection or letting the
+reconciler run once on the merged default branch both clear that state.
 
 Repository workflow defaults may remain read-only. Future jobs must request only the granular
 permissions they need.

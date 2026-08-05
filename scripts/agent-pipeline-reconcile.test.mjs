@@ -7,10 +7,12 @@ import {
   deriveReadiness,
   evaluateChecks,
   evaluateReviews,
+  GATE_DESCRIPTION_LIMIT,
   isOwnCheckRun,
   isTrustedCommentAuthor,
   paginate,
   parseUiNoticeHeadSha,
+  planGateStatus,
   planLabels,
   reconcile,
   renderStatusComment,
@@ -739,15 +741,21 @@ test("a repeated run on an unchanged pull request plans no writes", () => {
     ...snapshot,
     labels: [...snapshot.labels, ...first.labels.add],
     statusCommentBody: first.comment.body,
+    gateStatus: {
+      state: first.status.state,
+      description: first.status.description,
+    },
   };
   const second = reconcile(applied, config);
   assert.deepEqual(second.labels, { add: [], remove: [] });
   assert.equal(second.comment, null);
+  assert.equal(second.status, null);
 
   // And a third delivery stays just as quiet.
   const third = reconcile(applied, config);
   assert.deepEqual(third.labels, { add: [], remove: [] });
   assert.equal(third.comment, null);
+  assert.equal(third.status, null);
 });
 
 test("paginate refuses to truncate instead of reading a partial list", async () => {
@@ -937,4 +945,112 @@ test("the status comment lists the blockers it reports", () => {
   assert.match(comment, /still a draft/);
   assert.match(comment, /merge conflict/);
   assert.match(comment, /Ready for human merge: `false`/);
+});
+
+test("the merge gate succeeds only once every condition holds", () => {
+  const readiness = deriveReadiness(readySnapshot(), config);
+  const status = planGateStatus(readiness, config);
+  assert.equal(status.context, config.statusContext);
+  assert.equal(status.state, "success");
+  assert.match(status.description, /merge stays yours/i);
+});
+
+test("a blocked pull request keeps the gate pending and names the reason", () => {
+  // Pending, not failure: the pipeline is still working on this pull request, and the merge box
+  // should read as "waiting" rather than as a broken check.
+  const readiness = deriveReadiness(
+    readySnapshot({ isDraft: true, mergeable: false }),
+    config,
+  );
+  const status = planGateStatus(readiness, config);
+  assert.equal(status.state, "pending");
+  assert.match(status.description, /^conflict-fix: /);
+  assert.match(status.description, /still a draft/);
+  // More than one blocker is open, and the description says so instead of hiding the rest.
+  assert.match(status.description, /\(\+\d+ more\)$/);
+});
+
+test("a long blocker list still fits into a status description", () => {
+  // GitHub rejects a description over the limit; losing the status would leave the gate unwritten.
+  const failing = Array.from({ length: 40 }, (_, index) => ({
+    name: `Very long check name number ${index}`,
+    status: "completed",
+    conclusion: "failure",
+  }));
+  const readiness = deriveReadiness(
+    readySnapshot({ checkRuns: failing }),
+    config,
+  );
+  const status = planGateStatus(readiness, config);
+  assert.equal(status.state, "pending");
+  assert.ok(status.description.length <= GATE_DESCRIPTION_LIMIT);
+  assert.match(status.description, /\.\.\.$/);
+});
+
+test("a pull request outside the pipeline is told the gate does not apply", () => {
+  // Without this the required check would never be written for a human or Dependabot pull request,
+  // and it could never be merged by anyone without administrator rights.
+  const plan = reconcile(
+    readySnapshot({ body: "A regular human pull request." }),
+    config,
+  );
+  assert.equal(plan.readiness.participating, false);
+  assert.deepEqual(plan.labels, { add: [], remove: [] });
+  assert.equal(plan.comment, null);
+  assert.equal(plan.status.state, "success");
+  assert.match(plan.status.description, /does not apply/);
+});
+
+test("a fork pull request gets the gate verdict but no other write", () => {
+  const plan = reconcile(
+    readySnapshot({ headRepository: "outsider/LAN_2026" }),
+    config,
+  );
+  assert.equal(plan.readiness.phase, "fork");
+  assert.deepEqual(plan.labels, { add: [], remove: [] });
+  assert.equal(plan.comment, null);
+  assert.equal(plan.status.state, "success");
+  assert.match(plan.status.description, /Fork pull request/);
+});
+
+test("a closed pull request gets no gate verdict at all", () => {
+  const plan = reconcile(readySnapshot({ state: "closed" }), config);
+  assert.equal(plan.status, null);
+});
+
+test("the kill switch holds the gate closed instead of leaving it open", () => {
+  // `agent:no-auto` stops every mutation, but section 11 of the plan counts it as a gate condition:
+  // a paused pull request that kept an earlier `success` would be mergeable while paused.
+  const plan = reconcile(
+    readySnapshot({
+      labels: [config.labels.noAuto],
+      gateStatus: { state: "success", description: "stale verdict" },
+    }),
+    config,
+  );
+  assert.equal(plan.readiness.mutate, false);
+  assert.deepEqual(plan.labels, { add: [], remove: [] });
+  assert.equal(plan.comment, null);
+  assert.equal(plan.status.state, "pending");
+  assert.match(plan.status.description, /^no-auto: /);
+});
+
+test("a changed verdict is written and an unchanged one is not", () => {
+  const ready = readySnapshot();
+  const verdict = planGateStatus(deriveReadiness(ready, config), config);
+
+  assert.equal(reconcile({ ...ready, gateStatus: verdict }, config).status, null);
+  // A stale description for the same state is a real difference: it names the wrong blocker.
+  assert.ok(
+    reconcile(
+      { ...ready, gateStatus: { state: "success", description: "something else" } },
+      config,
+    ).status,
+  );
+  assert.ok(
+    reconcile(
+      { ...ready, gateStatus: { state: "pending", description: verdict.description } },
+      config,
+    ).status,
+  );
 });
