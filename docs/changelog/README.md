@@ -4,22 +4,24 @@ Diese Übersicht dokumentiert die Entwicklung von Respawn aus der verifizierten 
 GitHub-Historie. Gemergte Pull Requests erhalten eine Datei unter `docs/changelog/pr/`; die
 zugehörigen Arbeitsbranches sind unter `docs/changelog/branches/` erfasst.
 
-Stand: 2026-07-21 · Basis: `main` auf `cfc1aac` · Ab PR #214 vollständig: alle 33 tatsächlich
-gemergten PRs sind dokumentiert. #214–#225, #249 und #254 wurden nicht gemergt und erhalten daher
-keinen Eintrag. Beim Vollabgleich fielen neun ältere, nicht zu R5 gehörende Lücken auf:
-#90, #93, #94, #96, #97, #99, #197, #204 und #205.
+Stand: 2026-08-05 · Basis: `main` auf `e973e6a` · Lückenlos dokumentiert ist der Bereich
+#214–#260; #214–#225, #249 und #254 wurden nicht gemergt und erhalten daher keinen Eintrag. Danach
+folgt nur #352, sodass die dazwischenliegenden gemergten PRs noch nachzutragen sind. Beim früheren
+Vollabgleich fielen außerdem neun ältere, nicht zu R5 gehörende Lücken auf: #90, #93, #94, #96,
+#97, #99, #197, #204 und #205.
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 176
-- Branch-Seiten dokumentiert: 136
-- Gemergte PRs ab #214: 33 von 33 dokumentiert
+- Gemergte PRs dokumentiert: 179 (Dateien unter `pr/`)
+- Branch-Seiten dokumentiert: 139 (Dateien unter `branches/`)
+- Gemergte PRs #214–#260: 33 von 33 dokumentiert; zwischen #261 und #351 fehlen die Einträge noch
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 
 ## Chronologie
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-08-05 | [#352](https://github.com/blorbeer-cmd/LAN_2026/pull/352) | [Show the matchmaking fallback rating in team skill displays](pr/pr-352-show-the-matchmaking-fallback-rating-in-team-skill-displays.md) | `claude/unbewertet-spieler-skill-anzeige-yn6zxv` |
 | 2026-07-21 | [#260](https://github.com/blorbeer-cmd/LAN_2026/pull/260) | [R3: Mehrgruppen-Kommentare auf Ein-Gruppen-Modell ausrichten](pr/pr-260-align-multi-group-comments-with-single-group-model.md) | `codex/reset-plan-r3` |
 | 2026-07-21 | [#259](https://github.com/blorbeer-cmd/LAN_2026/pull/259) | [Fix broken main (semantic conflict #253×#257) + record PR #257 changelog](pr/pr-259-fix-broken-main-semantic-conflict-and-record-pr-257-changelog.md) | `claude/reset-plan-r4-migrations-v0zond` |
 | 2026-07-21 | [#258](https://github.com/blorbeer-cmd/LAN_2026/pull/258) | [R2: remove multi-group surface, keep single-group model](pr/pr-258-remove-multi-group-surface-keep-single-group-model.md) | `claude/reset-phase-r2-multigroup-removal-u8s7j6` |

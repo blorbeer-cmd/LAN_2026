@@ -135,6 +135,24 @@ test('a full 2-captain draft: snake order, turn enforcement, auto-assigned last 
     teamHistory.body.history.some((entry: { source: string }) => entry.source === 'draft'),
     'a completed group-room draft must remain visible in Team-Historie',
   );
+
+  // A draft never balanced by rating, so its snapshot carries none — and
+  // moving a player inside it must not invent a balancing total either.
+  type DraftDraw = {
+    id: string;
+    source: string;
+    teams: Array<{ players: Array<{ id: string; rating: number | null }>; totalRating: number }>;
+  };
+  const drafted: DraftDraw = teamHistory.body.history.find((entry: DraftDraw) => entry.source === 'draft');
+  assert.ok(drafted.teams.every((t) => t.totalRating === 0 && t.players.every((p) => p.rating === null)));
+
+  const fromTeam = drafted.teams.findIndex((t) => t.players.length > 1);
+  const toTeam = fromTeam === 0 ? 1 : 0;
+  const moved = await request(app)
+    .patch(`/api/matchmaking/draws/${drafted.id}/move`)
+    .send({ playerId: drafted.teams[fromTeam].players[0].id, toTeamIndex: toTeam });
+  assert.equal(moved.status, 200);
+  assert.ok(moved.body.teams.every((t: { totalRating: number }) => t.totalRating === 0));
 });
 
 test('POST /api/draft/cancel abandons a running draft', async () => {
