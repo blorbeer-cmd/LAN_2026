@@ -1,7 +1,8 @@
 # Konzept: Automatisierte Agenten-Pipeline bis zum menschlich freigegebenen Merge
 
-Status: beschlossenes Zielkonzept; read-only Foundation für Task-Vertrag und Zustandslogik in Umsetzung
-Stand: 2026-07-26
+Status: beschlossenes Zielkonzept; Phasen 0 bis 2 umgesetzt (Task-Vertrag, Labels, stateless
+Readiness-Reconciler). Ab Phase 3 startet die Automatik noch keine Agenten.
+Stand: 2026-08-04
 
 Dieses Dokument beschreibt, wie eine Aufgabe von Codex oder Claude Code implementiert, vom
 jeweils anderen Coding-Agent geprüft und anhand der Review-Findings automatisch korrigiert wird.

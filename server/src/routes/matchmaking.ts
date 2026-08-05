@@ -138,9 +138,13 @@ function loadAvoidPairs(groupId: string, eventId: string, playerIds: string[]): 
 // POST /api/matchmaking
 // Body: { gameId: string, playerIds: string[], teamCount?: number,
 //         avoidAdjacentOpponents?: boolean }
-// avoidAdjacentOpponents is a per-draw choice, not a game setting — whether
-// it's worth keeping seat-neighbors off opposing teams depends on how
-// competitive/serious that particular round is, not the game itself.
+// avoidAdjacentOpponents is always an explicit per-draw choice here, never
+// implied by the game. games.consider_seat_neighbors_default (routes/games.ts)
+// only prefills this checkbox client-side when a game is selected — it still
+// arrives as an ordinary boolean in this request body and stays freely
+// overridable per draw, since whether it's worth keeping seat-neighbors off
+// opposing teams can depend on how competitive/serious that particular round
+// is, not just the game itself.
 matchmakingRouter.post('/', (req, res) => {
   const { gameId, playerIds, teamCount, avoidAdjacentOpponents } = req.body ?? {};
 

@@ -81,6 +81,7 @@ interface GameRow {
   created_at: number;
   group_id: string | null;
   arcade_key?: string | null;
+  consider_seat_neighbors_default: number;
 }
 
 // Case-insensitive lookup used to give a friendly 409 instead of silently
@@ -103,6 +104,7 @@ function withProcessNames(game: GameRow) {
     isSuggestion: game.status === 'suggestion',
     processNames: procs.map((p) => p.process_name),
     genres: parseGenreColumn(genre),
+    considerSeatNeighborsDefault: Boolean(game.consider_seat_neighbors_default),
   };
 }
 
@@ -227,8 +229,21 @@ gamesRouter.post(
     next();
   },
   (req, res) => {
-    const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, genres, info, status, playerId } =
-      req.body ?? {};
+    const {
+      name,
+      icon,
+      iconImage,
+      minTeamSize,
+      maxTeamSize,
+      platform,
+      platformUrl,
+      trailerUrl,
+      genres,
+      info,
+      status,
+      playerId,
+      considerSeatNeighborsDefault,
+    } = req.body ?? {};
 
     if (!isNonEmptyString(name, MAX_TITLE_LENGTH)) {
       return res.status(400).json({ error: `Name ist erforderlich (1-${MAX_TITLE_LENGTH} Zeichen).` });
@@ -252,6 +267,9 @@ gamesRouter.post(
     if (parsedGenres === undefined) return res.status(400).json({ error: 'Genre-Auswahl ist ungültig.' });
     const parsedInfo = optionalText(info ?? null, MAX_INFO_LENGTH);
     if (parsedInfo === undefined) return res.status(400).json({ error: 'Info ist zu lang.' });
+    if (considerSeatNeighborsDefault !== undefined && typeof considerSeatNeighborsDefault !== 'boolean') {
+      return res.status(400).json({ error: 'considerSeatNeighborsDefault muss ein Boolean sein.' });
+    }
     const resolvedStatus: GameStatus = status === 'suggestion' ? 'suggestion' : 'catalog';
     const createdBy = assertPlayer(playerId);
     if (createdBy === undefined) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
@@ -277,11 +295,12 @@ gamesRouter.post(
       created_by: createdBy,
       created_at: Date.now(),
       group_id: req.group!.id,
+      consider_seat_neighbors_default: considerSeatNeighborsDefault ? 1 : 0,
     };
 
     db.prepare(
-      `INSERT INTO games (id, name, icon, icon_image, min_team_size, max_team_size, platform, platform_url, trailer_url, genre, info, status, created_by, created_at, group_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO games (id, name, icon, icon_image, min_team_size, max_team_size, platform, platform_url, trailer_url, genre, info, status, created_by, created_at, group_id, consider_seat_neighbors_default)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       row.id,
       row.name,
@@ -298,6 +317,7 @@ gamesRouter.post(
       row.created_by,
       row.created_at,
       row.group_id,
+      row.consider_seat_neighbors_default,
     );
 
     broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
@@ -320,7 +340,7 @@ const resolveGame = resolveGroupResource<GameRow>({
 gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => {
   const existing = req.groupResource as GameRow;
 
-  const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, genres, info } =
+  const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, genres, info, considerSeatNeighborsDefault } =
     req.body ?? {};
   if (name !== undefined && !isNonEmptyString(name, MAX_TITLE_LENGTH)) {
     return res.status(400).json({ error: `Name muss 1-${MAX_TITLE_LENGTH} Zeichen lang sein.` });
@@ -356,6 +376,9 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => 
   if (parsedInfo === undefined && info !== undefined) {
     return res.status(400).json({ error: 'Info ist zu lang.' });
   }
+  if (considerSeatNeighborsDefault !== undefined && typeof considerSeatNeighborsDefault !== 'boolean') {
+    return res.status(400).json({ error: 'considerSeatNeighborsDefault muss ein Boolean sein.' });
+  }
 
   if (name !== undefined && nameTaken(req.group!.id, name.trim(), existing.id)) {
     return res.status(409).json({ error: `Das Spiel "${name.trim()}" gibt es schon.` });
@@ -373,11 +396,15 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => 
     trailer_url: trailerUrl !== undefined ? (parsedTrailer ?? null) : existing.trailer_url,
     genre: genres !== undefined ? (parsedGenres!.length ? JSON.stringify(parsedGenres) : null) : existing.genre,
     info: info !== undefined ? (parsedInfo ?? null) : existing.info,
+    consider_seat_neighbors_default:
+      considerSeatNeighborsDefault !== undefined
+        ? (considerSeatNeighborsDefault ? 1 : 0)
+        : existing.consider_seat_neighbors_default,
   };
 
   db.prepare(
     `UPDATE games
-     SET name = ?, icon = ?, icon_image = ?, min_team_size = ?, max_team_size = ?, platform = ?, platform_url = ?, trailer_url = ?, genre = ?, info = ?
+     SET name = ?, icon = ?, icon_image = ?, min_team_size = ?, max_team_size = ?, platform = ?, platform_url = ?, trailer_url = ?, genre = ?, info = ?, consider_seat_neighbors_default = ?
      WHERE id = ?`,
   ).run(
     next.name,
@@ -390,6 +417,7 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => 
     next.trailer_url,
     next.genre,
     next.info,
+    next.consider_seat_neighbors_default,
     next.id,
   );
 
