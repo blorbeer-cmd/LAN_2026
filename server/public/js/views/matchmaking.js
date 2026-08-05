@@ -105,6 +105,11 @@ function findDrawById(id) {
 // changes its actions inside the shared Historie. Selecting a player and
 // then a team is the touch equivalent; arrow keys provide the keyboard path.
 function renderDrawCard(draw, { editable, showGame = false }) {
+  // A drawn lineup carries the ratings it was balanced with, so it keeps
+  // showing those instead of drifting when someone rates the game later. A
+  // drafted lineup was never balanced by rating and stores none, so its rows
+  // stay informational and read from the current state.
+  const skillOptions = draw.source === 'draft' ? { balanced: false } : { stored: true };
   const selectedTeamIndex =
     editable && selectedDrawPlayer?.drawId === draw.id
       ? draw.teams.findIndex((team) => team.players.some((player) => player.id === selectedDrawPlayer.playerId))
@@ -124,7 +129,7 @@ function renderDrawCard(draw, { editable, showGame = false }) {
 
       return `
       <div class="team-card tournament-draft-team matchmaking-draw-team${isWinner ? ' is-winner' : ''}${selectedTeamIndex !== -1 && selectedTeamIndex !== i ? ' is-select-target' : ''}" role="group" aria-label="Team ${i + 1}${isWinner ? ', Gewinner' : ''}" ${editable ? `data-draw-drop-team="${i}" data-draw-id="${draw.id}"` : ''}>
-        <div class="team-card-header"><span>Team ${i + 1}</span>${teamSkillHtml(t.players, draw.gameId)}</div>
+        <div class="team-card-header"><span>Team ${i + 1}</span>${teamSkillHtml(t.players, draw.gameId, skillOptions)}</div>
         ${resultLine}
         ${t.players
           .map(
@@ -133,7 +138,7 @@ function renderDrawCard(draw, { editable, showGame = false }) {
             ${avatarHtml(p, 18)}
             <span class="team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
             ${seatConflictIconHtml(p)}
-            ${playerSkillHtml(p.id, draw.gameId)}
+            ${playerSkillHtml(p, draw.gameId, skillOptions)}
           ${editable ? '</button>' : '</div>'}`
           )
           .join('')}
@@ -433,6 +438,9 @@ function renderHistory() {
 // ---------- captain draft: live board ----------
 
 function renderDraftBoard(draft, ctx) {
+  // Captains pick by turn order, not by rating (routes/draft.ts): the values
+  // here inform the picking captain, they never enter a calculation.
+  const skillOptions = { balanced: false };
   const myId = getMyId();
   const isMyTurn = draft.turnCaptainId === myId;
   const turnCaptain = draft.teams[draft.turnCaptainIndex]?.captain;
@@ -443,9 +451,9 @@ function renderDraftBoard(draft, ctx) {
       <div class="team-card" ${draft.turnCaptainIndex === i ? 'style="border-color:var(--accent);"' : ''}>
         <div class="team-card-header">
           <span>${escapeHtml(t.captain.name)}</span>
-          <span class="row" style="gap:var(--space-2);">${teamSkillHtml(t.players, draft.gameId)}${draft.turnCaptainIndex === i ? '<span style="color:var(--accent);">am Zug</span>' : ''}</span>
+          <span class="row" style="gap:var(--space-2);">${teamSkillHtml(t.players, draft.gameId, skillOptions)}${draft.turnCaptainIndex === i ? '<span style="color:var(--accent);">am Zug</span>' : ''}</span>
         </div>
-        ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 20)} <span class="team-player-name">${escapeHtml(p.name)}</span>${playerSkillHtml(p.id, draft.gameId)}</div>`).join('')}
+        ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 20)} <span class="team-player-name">${escapeHtml(p.name)}</span>${playerSkillHtml(p, draft.gameId, skillOptions)}</div>`).join('')}
       </div>`
     )
     .join('');
@@ -453,8 +461,8 @@ function renderDraftBoard(draft, ctx) {
   const poolHtml = draft.pool
     .map((p) =>
       isMyTurn
-        ? `<button type="button" class="check-row draft-pool-player" data-draft-pick="${p.id}">${avatarHtml(p, 20)} <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>${playerSkillHtml(p.id, draft.gameId)}</button>`
-        : `<div class="check-row draft-pool-player">${avatarHtml(p, 20)} <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>${playerSkillHtml(p.id, draft.gameId)}</div>`
+        ? `<button type="button" class="check-row draft-pool-player" data-draft-pick="${p.id}">${avatarHtml(p, 20)} <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>${playerSkillHtml(p, draft.gameId, skillOptions)}</button>`
+        : `<div class="check-row draft-pool-player">${avatarHtml(p, 20)} <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>${playerSkillHtml(p, draft.gameId, skillOptions)}</div>`
     )
     .join('');
 
@@ -550,7 +558,7 @@ export function renderMatchmaking(container, ctx) {
         <input type="checkbox" data-player="${p.id}" ${checkedIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
-        ${playerSkillHtml(p.id, selectedGameId)}
+        ${playerSkillHtml(p, selectedGameId)}
       </label>`
     )
     .join('');
@@ -561,7 +569,7 @@ export function renderMatchmaking(container, ctx) {
         <input type="checkbox" data-draft-player="${p.id}" ${draftPlayerIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
-        ${playerSkillHtml(p.id, selectedGameId)}
+        ${playerSkillHtml(p, selectedGameId, { balanced: false })}
       </label>`
     )
     .join('');
@@ -575,7 +583,7 @@ export function renderMatchmaking(container, ctx) {
         <input type="checkbox" data-captain-toggle="${p.id}" ${draftCaptainIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
-        ${playerSkillHtml(p.id, selectedGameId)}
+        ${playerSkillHtml(p, selectedGameId, { balanced: false })}
       </label>`
     )
     .join('');

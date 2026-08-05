@@ -83,16 +83,27 @@ test('POST /api/matchmaking respects an explicit teamCount', async () => {
   }
 });
 
-test('POST /api/matchmaking uses a neutral default rating for unrated players', async () => {
+test('POST /api/matchmaking balances an unrated player with the neutral default but stores no rating', async () => {
   const unrated = await request(app).post('/api/players').send({ name: 'Unrated' });
   const res = await request(app)
     .post('/api/matchmaking')
     .send({ gameId, playerIds: [...playerIds, unrated.body.id], teamCount: 2 });
   assert.equal(res.status, 200);
+  type SnapshotTeam = { players: Array<{ id: string; rating: number | null }>; totalRating: number };
   const found = res.body.teams
-    .flatMap((t: { players: { id: string; rating: number }[] }) => t.players)
+    .flatMap((t: SnapshotTeam) => t.players)
     .find((p: { id: string }) => p.id === unrated.body.id);
-  assert.equal(found.rating, 5);
+  // null instead of the substituted 5: a later reader must be able to tell an
+  // absent self-rating from someone who really rated the game a 5.
+  assert.equal(found.rating, null);
+  // The total still counts that player with the fallback the draw balanced on.
+  const teamOfUnrated = res.body.teams.find((t: SnapshotTeam) =>
+    t.players.some((p) => p.id === unrated.body.id)
+  );
+  assert.equal(
+    teamOfUnrated.totalRating,
+    teamOfUnrated.players.reduce((sum: number, p: { rating: number | null }) => sum + (p.rating ?? 5), 0)
+  );
 });
 
 test('POST /api/matchmaking ignores seat neighbors unless this draw asks for it', async () => {
