@@ -22,6 +22,11 @@ import { emptyStateHtml } from '../emptyState.js';
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
 let checkedIds = null;
 let avoidAdjacentOpponents = false;
+// Tracks which game's default `avoidAdjacentOpponents` currently reflects, so
+// switching games re-applies that game's stored default (considerSeatNeighborsDefault)
+// exactly once per change, without clobbering a manual toggle on repeat re-renders
+// for the same game (e.g. from an unrelated realtime update).
+let avoidAdjacentOpponentsGameId = null;
 let teamCountValue = '2';
 let selectedDrawPlayer = null;
 let drawPlayerSearchQuery = '';
@@ -544,6 +549,11 @@ export function renderMatchmaking(container, ctx) {
   draftCaptainIds = new Set([...draftCaptainIds].filter((id) => draftPlayerIds.has(id)));
 
   const selectedGameId = state.games.some((g) => g.id === state.selectedGameId) ? state.selectedGameId : state.games[0].id;
+
+  if (avoidAdjacentOpponentsGameId !== selectedGameId) {
+    avoidAdjacentOpponentsGameId = selectedGameId;
+    avoidAdjacentOpponents = Boolean(gameById(selectedGameId)?.considerSeatNeighborsDefault);
+  }
 
   if (historyForGameId !== selectedGameId && !historyLoading) {
     loadHistory(selectedGameId, ctx);
