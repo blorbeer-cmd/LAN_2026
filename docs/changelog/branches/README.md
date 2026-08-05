@@ -1,6 +1,6 @@
 # Branch-Historie
 
-Stand: 2026-07-21 · 138 Branch-Seiten. Die Statusangaben wurden gegen die GitHub-PR-Metadaten
+Stand: 2026-08-05 · 139 Branch-Seiten. Die Statusangaben wurden gegen die GitHub-PR-Metadaten
 abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Themenstrang erkennbar.
 
 - [`agent/arcade-kiosk-stream`](./agent-arcade-kiosk-stream.md) — 1 gemergt, 0 offen
@@ -86,6 +86,7 @@ abgeglichen; mehrere PRs desselben Arbeitsbranches bleiben als gemeinsamer Theme
 - [`claude/tournament-lobby-features-yt5cgp`](./claude-tournament-lobby-features-yt5cgp.md) — 2 gemergt, 0 offen
 - [`claude/tournament-teams-consistency-lkkns1`](./claude-tournament-teams-consistency-lkkns1.md) — 1 gemergt, 0 offen
 - [`claude/tracking-tool-pause-feature-62phr2`](./claude-tracking-tool-pause-feature-62phr2.md) — 1 gemergt, 0 offen
+- [`claude/unbewertet-spieler-skill-anzeige-yn6zxv`](./claude-unbewertet-spieler-skill-anzeige-yn6zxv.md) — 1 gemergt, 0 offen
 - [`claude/user-management-concept-xbro77`](./claude-user-management-concept-xbro77.md) — 4 gemergt, 0 offen
 - [`claude/voting-page-improvements-3bsox6`](./claude-voting-page-improvements-3bsox6.md) — 2 gemergt, 0 offen
 - [`claude/voting-section-redesign-dop6cu`](./claude-voting-section-redesign-dop6cu.md) — 2 gemergt, 0 offen
