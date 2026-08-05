@@ -127,14 +127,14 @@ test("a complete task contract is parsed and normalized", () => {
 });
 
 test("the CLI exposes validated contract metadata as GitHub outputs", () => {
+  // Both SHAs point at HEAD so the diff is empty and the assertion does not depend on whatever
+  // the surrounding checkout happens to contain. Scope coverage against a real diff is asserted
+  // by the dedicated scope tests below; mixing both here made this test fail whenever the working
+  // copy sat on unrelated commits.
   const actualHeadSha = execFileSync("git", ["rev-parse", "HEAD"], {
     encoding: "utf8",
   }).trim();
-  const actualBaseSha = execFileSync(
-    "git",
-    ["merge-base", "HEAD", "origin/main"],
-    { encoding: "utf8" },
-  ).trim();
+  const actualBaseSha = actualHeadSha;
   const { result, output, summary } = runValidatorCli(
     body({ "base-sha": actualBaseSha }),
     {},
@@ -287,6 +287,32 @@ test("changed files are classified from the merge base", () => {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("the real git ancestor check accepts and rejects actual commits", () => {
+  // Exercises validateBaseShaAncestry through its default `isAncestor`, which shells out to
+  // `git merge-base --is-ancestor`. The mocked test below covers the branching, but only this one
+  // proves the subprocess itself still behaves as the contract assumes.
+  const head = execFileSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim();
+  const parent = execFileSync("git", ["rev-parse", "HEAD~1"], {
+    encoding: "utf8",
+  }).trim();
+  assert.notEqual(head, parent);
+
+  // The parent really is an ancestor of HEAD, so nothing is reported.
+  assert.deepEqual(validateBaseShaAncestry(parent, parent, head), []);
+
+  // Reversed, HEAD is not an ancestor of its own parent, so both checks must fire.
+  const errors = validateBaseShaAncestry(head, parent, parent);
+  assert.ok(
+    errors.some((error) => error.includes("ancestor of the current PR head")),
+  );
+  assert.ok(errors.some((error) => error.includes("base branch")));
+
+  // A commit is its own ancestor, so the self-comparison must stay silent.
+  assert.deepEqual(validateBaseShaAncestry(head, head, head), []);
 });
 
 test("declared base SHA must also belong to the PR base branch", () => {

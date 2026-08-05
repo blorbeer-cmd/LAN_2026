@@ -97,6 +97,10 @@ db.exec(`
     status        TEXT NOT NULL DEFAULT 'catalog' CHECK (status IN ('suggestion', 'catalog')),
     created_by    TEXT REFERENCES players(id) ON DELETE SET NULL,
     created_at    INTEGER NOT NULL,
+    -- Per-game default for the "Sitznachbarn" draw checkbox (routes/matchmaking.ts):
+    -- prefills the draw form when this game is selected, but stays a per-draw
+    -- override there, never a constraint enforced server-side on the draw itself.
+    consider_seat_neighbors_default INTEGER NOT NULL DEFAULT 0 CHECK (consider_seat_neighbors_default IN (0, 1)),
     -- Set only for the 5 built-in Arcade titles (quiz/tetris/scribble/blobby/
     -- snake), so live_status_games/play_sessions (FR-29) can reuse the exact
     -- same "who's playing"/playtime machinery the agent uses for PC games,
@@ -3104,6 +3108,22 @@ registerMigration({
   version: 58,
   name: 'backfill legacy auth cutover memberships and grants',
   up: backfillLegacyAuthCutoverState,
+});
+
+// Lets a catalog entry carry a default for the "Sitznachbarn" draw checkbox
+// (routes/matchmaking.ts, routes/games.ts) — some games (LAN shooters, where
+// crosstalk between neighbors matters) usually want it on, others (racing,
+// arcade) usually don't. The draw form prefills from this default when the
+// game is selected but always still accepts an explicit per-draw override.
+function addGamesConsiderSeatNeighborsDefault(): void {
+  const columns = db.prepare('PRAGMA table_info(games)').all() as Array<{ name: string }>;
+  if (columns.some((c) => c.name === 'consider_seat_neighbors_default')) return;
+  db.exec('ALTER TABLE games ADD COLUMN consider_seat_neighbors_default INTEGER NOT NULL DEFAULT 0');
+}
+registerMigration({
+  version: 59,
+  name: 'add games consider seat neighbors default',
+  up: addGamesConsiderSeatNeighborsDefault,
 });
 
 // Every migration is registered by now — run them all in ascending version

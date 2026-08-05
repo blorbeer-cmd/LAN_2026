@@ -9,6 +9,11 @@
     "codex": ["blorbeer-cmd", "chatgpt-codex-connector[bot]"],
     "claude": ["blorbeer-cmd", "claude[bot]"]
   },
+  "//providerReviewerAllowlist": "Who may satisfy the cross-review, deliberately separate from the author list. It holds agent identities only: a human approval is a human approval, never a substitute for the counter provider's review.",
+  "providerReviewerAllowlist": {
+    "codex": ["chatgpt-codex-connector[bot]"],
+    "claude": ["claude[bot]"]
+  },
   "allowedScopes": ["root", "server", "frontend", "agent", "docs", "infra"],
   "scopePathPrefixes": {
     "server": ["server/src/", "server/package", "server/tsconfig"],
@@ -27,6 +32,7 @@
   "protectedPathPrefixes": [".github/workflows/", "infra/"],
   "reviewPromptPath": ".github/agent-pipeline/review-session-prompt.md",
   "statusContext": "Agent pipeline / ready for human merge",
+  "selfCheckNames": ["Collect pull requests", "Reconcile pull request"],
   "reviewTimeoutMinutes": 45,
   "waitingEscalationHours": 24,
   "labels": {

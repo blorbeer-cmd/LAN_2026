@@ -5,19 +5,89 @@ This directory contains configuration for the agent PR pipeline described in
 
 ## Current rollout state
 
-The foundation is deliberately read-only:
+The pipeline reports state; it does not act on it yet:
 
 - `.github/workflows/agent-pipeline-contract.yml` validates an activated task contract.
-- `scripts/agent-pipeline.mjs` parses and validates task contracts. It holds no orchestration
-  state; the state model of phase 2 in the plan is deliberately not implemented yet.
+- `scripts/agent-pipeline.mjs` parses and validates task contracts.
+- `scripts/agent-pipeline-reconcile.mjs` derives the readiness state and keeps the pipeline labels
+  and the sticky status comment in sync (phase 2 of the plan).
+- `.github/workflows/agent-pipeline-reconcile.yml` runs that reconciler per pull request.
+- `.github/workflows/agent-pipeline-tests.yml` runs the unit tests for both.
 - `review-session-prompt.md` contains the copy-paste prompt and operating instructions for an
   isolated Codex or Claude review session.
-- The `pull_request_target` workflow definition is loaded from the trusted default branch and runs
-  the validator and configuration from that same trusted branch. The declared PR base must equal the
-  configured default branch. The pull-request head is fetched only as diff data, never executed,
-  and the workflow currently has no write permissions or secrets.
-- No agent is invoked, no label or commit status is written, and no branch-protection setting is
-  changed yet.
+- The `pull_request_target` workflow definitions are loaded from the trusted default branch and run
+  the validator, reconciler and configuration from that same trusted branch. The declared PR base
+  must equal the configured default branch. The pull-request head is fetched only as diff data and
+  is never executed by those workflows.
+- No agent is invoked, no commit status is written, and no branch-protection setting is changed yet.
+
+## Readiness reconciler
+
+The reconciler reads the complete current state from GitHub on every run and computes readiness as
+a pure function of that snapshot. It keeps no history of its own, so a duplicated, delayed or
+out-of-order event cannot corrupt the result, and every head-bound fact that does not belong to the
+current head SHA falls back to "unknown" and therefore blocks. This is the architecture fixed in
+`docs/plans/auto-feature-to-deploy-pipeline.md`; the earlier event-reducer draft was rejected.
+
+What it does:
+
+- maintains `agent:pipeline` plus at most one phase label
+  (`agent:implementing`, `agent:ci-fix`, `agent:conflict-fix`, `agent:review`,
+  `agent:ready-for-merge`) and `ui:changed`. A pull request held by `agent:waiting`,
+  `agent:needs-human` or the human-approval wait gets no phase label, because those states are
+  already named by their own label or by the status comment,
+- maintains one sticky status comment marked with `<!-- agent-pipeline:status -->`,
+- reports every open blocker in that comment.
+
+What it deliberately does not do:
+
+- start an agent, request a review, or push a fix,
+- write the `Agent pipeline / ready for human merge` commit status (phase 7),
+- approve or merge anything,
+- set or clear `agent:waiting` and `agent:review-fallback`, which belong to the provider phases,
+- accept a fallback review as satisfying the gate. Only an approval from the counter provider's
+  reviewer allowlist counts, so a pull request reviewed through the fallback path described in the
+  plan still reports a missing cross-review. Phase 5 owns the fallback flow; wiring it up here,
+  where `agent:review-fallback` is only a hand-set label and nothing verifies that a fallback
+  review actually happened, would turn the label into a gate bypass.
+
+Who may satisfy the cross-review is configured in `providerReviewerAllowlist`, deliberately
+separate from `providerAuthorAllowlist`. The author list contains the human maintainer, so reusing
+it would let a single human approval count as the counter provider's review and satisfy the
+protected-path approval at the same time — two independent gates collapsing into one click. Only
+agent identities can produce a cross-review verdict; a human approval counts solely as the human
+approval.
+
+Escalations the reconciler cannot derive from GitHub state — an exhausted round limit, a critical
+decision, the 24-hour waiting escalation — stay with `agent:needs-human`, exactly as the plan
+describes: raised by a human or by a later provider phase, blocking while set, and never written
+or cleared here. The one escalation this phase can derive, a protected path awaiting human
+approval, uses its own `awaiting-human-approval` phase instead of borrowing that label, so
+approving the head clears it without label bookkeeping and no genuine escalation is ever wiped by
+a sweep. To stop automation by hand, use `agent:no-auto`.
+
+Its own check runs are excluded from the CI evaluation via `selfCheckNames`. The reconcile
+workflow runs on `pull_request_target`, whose check runs attach to the pull request's head SHA, so
+without that exclusion the reconciler would read its own job as a running — or, after
+`cancel-in-progress`, a cancelled and therefore failing — CI check. `selfCheckNames` must stay in
+sync with the job names in `.github/workflows/agent-pipeline-reconcile.yml`.
+
+Idempotence: labels already in the desired state produce no API call, and an unchanged status
+comment body is not rewritten. Re-running the reconciler on an unchanged pull request performs no
+writes at all.
+
+Kill switches:
+
+- `agent:no-auto` on a pull request suppresses every mutation for that pull request,
+- the repository variable `AGENT_PIPELINE_DISABLED=true` suppresses all runs,
+- disabling the workflow stops it entirely.
+
+Local dry run against a real pull request (reads only, writes nothing without `--apply`):
+
+```powershell
+$env:GITHUB_TOKEN = "<token with pull-requests: read>"
+node scripts/agent-pipeline-reconcile.mjs reconcile --repository blorbeer-cmd/LAN_2026 --pr 123
+```
 
 Do not make `Agent pipeline / contract` a required check until this foundation has been merged and
 the first post-merge pilot run has succeeded. GitHub does not run a newly introduced
@@ -36,41 +106,70 @@ declared implementer, and its verified PR author must appear in that provider's
 merge-base diff; use `root` for intentional multi-area changes. `ui-change: unknown` remains
 blocking until a later classification resolves it.
 
-Changes below `.github/workflows/` and `infra/` are reported as protected paths. Acting on that
-signal — blocking readiness until a human approves the exact current head — belongs to the
-orchestration phase and does not happen yet.
+Changes below `.github/workflows/` and `infra/` are reported as protected paths. The reconciler
+holds such a pull request in the `awaiting-human-approval` phase until an approval review covers
+the exact current head SHA, because no agent can clear that condition itself. A merge conflict or
+a failing check still takes precedence, since an agent can resolve those; the approval blocker
+stays listed and readiness remains closed either way.
+
+That approval only counts from an account with write access — `author_association` of `OWNER`,
+`MEMBER` or `COLLABORATOR`. This repository is public and allows forking, so any GitHub account
+can submit an approving review; without that restriction a drive-by approval from an outsider
+would satisfy the one control the plan defines for workflow and infrastructure changes.
+
+Fork pull requests are dropped before the task contract is even parsed, and receive no label and
+no comment. The pull-request body is under the fork author's control, so any later decision point
+would let an outsider steer the pipeline bot into writing on their own pull request. This matches
+the plan: the writing automation is for branches in the main repository only.
+
+For the same reason, comments only count when they come from a bot identity or an account with
+write access. The UI/UX notice satisfies a merge gate, so anyone able to post `<!--
+agent-pipeline:ui-notice <head sha> -->` could otherwise declare a UI change reviewed that nobody
+looked at. The sticky status comment is matched the same way, so a decoy comment carrying the
+marker is never adopted and overwritten — the reconciler posts its own alongside it instead.
+
+Note for the current transitional setup: GitHub forbids approving your own pull request. While
+agent pull requests are authored by the repository owner's own account rather than by
+`claude[bot]`, that approval cannot be given, and a protected-path pull request stays escalated
+until it is merged by hand. Once the pipeline opens pull requests under the app identity, the
+owner can approve them normally.
 
 ## Local verification
 
 ```powershell
 node --test scripts/agent-pipeline.test.mjs
+node --test scripts/agent-pipeline-reconcile.test.mjs
 node --test scripts/agent-preflight.test.mjs
 git diff --check
 ```
 
-Nothing here writes to GitHub. Later phases add the readiness model, labels, agent adapters and
-finally the required `Agent pipeline / ready for human merge` status. `config.json` already
-declares the labels and timeouts those phases will use; they are inert until then.
+The validator and the test suites write nothing to GitHub. The reconciler writes only pipeline
+labels and its own sticky status comment, and only when invoked with `--apply`. Later phases add
+the agent adapters and finally the required `Agent pipeline / ready for human merge` status.
+`config.json` already declares the labels and timeouts those phases will use; the ones this phase
+does not own are inert until then.
 
 For a manual cross- or fallback-review during the rollout, follow
 [`review-session-prompt.md`](review-session-prompt.md). A new commit invalidates the previous
 verdict and requires a fresh session for the new head SHA.
 
-## Manual setup still required
+## Manual setup
 
-Before enabling agent mutations:
+Completed for this repository:
 
-1. Connect Claude's GitHub App and store `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` as an
-   Actions secret.
-2. Enable Codex Cloud code review for the repository, without global automatic reviews; the
-   orchestrator will request one review per current head SHA.
-3. Store the GitHub username for notifications in repository variable `AGENT_PIPELINE_OWNER`.
-4. Verify both app identities can update their own feature branches but cannot push or merge to
-   `main`.
-5. Replace or extend `providerAuthorAllowlist` with the verified GitHub actors that actually create
-   Codex and Claude PRs in this repository.
-6. Add the final readiness status to branch protection only after that status exists and has been
-   validated in the pilot.
+1. Claude's GitHub App is connected and `CLAUDE_CODE_OAUTH_TOKEN` is stored as an Actions secret.
+2. Codex code review is enabled without global automatic reviews; the orchestrator will request one
+   review per current head SHA.
+3. The GitHub username for notifications is stored in repository variable `AGENT_PIPELINE_OWNER`.
+4. `providerAuthorAllowlist` lists the verified actors for both providers.
+5. Pipeline labels from `config.json` exist in the repository.
+
+Still required before enabling agent mutations:
+
+1. Verify in a pilot pull request that both app identities can update their own feature branches
+   but cannot push or merge to `main`.
+2. Add the final readiness status to branch protection only after that status exists and has been
+   validated in the pilot. Adding it earlier blocks every agent pull request.
 
 Repository workflow defaults may remain read-only. Future jobs must request only the granular
 permissions they need.
