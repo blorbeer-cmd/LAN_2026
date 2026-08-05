@@ -7,6 +7,7 @@ import {
   evaluateChecks,
   evaluateReviews,
   isOwnCheckRun,
+  paginate,
   parseUiNoticeHeadSha,
   planLabels,
   reconcile,
@@ -351,11 +352,11 @@ test("protected path changes require an explicit human approval", () => {
   );
   assert.equal(withBotOnly.ready, false);
   assert.match(withBotOnly.blockers.join("\n"), /explicit human approval/);
-  // No agent can clear this, so it must escalate visibly instead of parking under "review".
-  assert.equal(withBotOnly.phase, "needs-human");
+  // No agent can clear this, so it must not park under "review" as if one were running. It also
+  // must not borrow agent:needs-human, which belongs to escalations this phase cannot derive.
+  assert.equal(withBotOnly.phase, "awaiting-human-approval");
   assert.deepEqual(planLabels([], withBotOnly, config).add, [
     config.labels.pipeline,
-    config.labels.needsHuman,
   ]);
 
   const withHuman = deriveReadiness(
@@ -379,12 +380,75 @@ test("protected path changes require an explicit human approval", () => {
     config,
   );
   assert.equal(withHuman.ready, true);
-  // The escalation label must come off again once the human approved that exact head.
-  assert.deepEqual(
-    planLabels([config.labels.pipeline, config.labels.needsHuman], withHuman, config)
-      .remove,
-    [config.labels.needsHuman],
+});
+
+test("a human approval never substitutes for the cross-review", () => {
+  // providerAuthorAllowlist lists the human maintainer for both providers. Using it as the
+  // reviewer list would let one human approval satisfy the cross-review and the protected-path
+  // approval at once, so the reviewer list is a separate, bot-only allowlist.
+  const humanOnly = deriveReadiness(
+    readySnapshot({
+      reviews: [
+        {
+          author: "blorbeer-cmd",
+          state: "APPROVED",
+          commitSha: HEAD,
+          submittedAt: "2026-08-04T10:00:00Z",
+        },
+      ],
+    }),
+    config,
   );
+  assert.equal(humanOnly.ready, false);
+  assert.equal(humanOnly.details.reviews.verdict, "none");
+  assert.match(humanOnly.blockers.join("\n"), /No codex review has approved/);
+
+  // On a protected path the same lone approval must not open both gates either.
+  const humanOnlyProtected = deriveReadiness(
+    readySnapshot({
+      changedFiles: [".github/workflows/agent-pipeline-reconcile.yml"],
+      reviews: [
+        {
+          author: "blorbeer-cmd",
+          state: "APPROVED",
+          commitSha: HEAD,
+          submittedAt: "2026-08-04T10:00:00Z",
+        },
+      ],
+    }),
+    config,
+  );
+  assert.equal(humanOnlyProtected.ready, false);
+  assert.match(
+    humanOnlyProtected.blockers.join("\n"),
+    /No codex review has approved/,
+  );
+});
+
+test("an automatable state outranks the human-approval wait", () => {
+  const protectedPath = {
+    changedFiles: [".github/workflows/agent-pipeline-reconcile.yml"],
+  };
+
+  const failing = deriveReadiness(
+    readySnapshot({
+      ...protectedPath,
+      checkRuns: [
+        { name: "server tests", status: "completed", conclusion: "failure" },
+      ],
+    }),
+    config,
+  );
+  assert.equal(failing.phase, "ci-fix");
+  assert.equal(failing.ready, false);
+  assert.match(failing.blockers.join("\n"), /explicit human approval/);
+
+  const conflicted = deriveReadiness(
+    readySnapshot({ ...protectedPath, mergeable: false }),
+    config,
+  );
+  assert.equal(conflicted.phase, "conflict-fix");
+  assert.match(conflicted.blockers.join("\n"), /explicit human approval/);
 });
 
 test("a UI change blocks until its notice covers the current head", () => {
@@ -452,18 +516,37 @@ test("an invalid contract reports a diagnosis and stays self-healing", () => {
   assert.ok(!plan.add.includes(config.labels.needsHuman));
 });
 
-test("the escalation label is derived, not read back as its own cause", () => {
-  // A stale agent:needs-human on an otherwise green pull request must not keep it stopped, or the
-  // phase would depend on its own previous value and could never recover.
+test("the escalation label stops automation and is never written or cleared here", () => {
+  // agent:needs-human covers escalations this phase cannot derive, such as an exhausted round
+  // limit. A sweep must not wipe one, or the escalation would silently disappear.
   const readiness = deriveReadiness(
     readySnapshot({ labels: [config.labels.needsHuman] }),
     config,
   );
-  assert.equal(readiness.phase, "ready-for-merge");
-  assert.equal(readiness.ready, true);
+  assert.equal(readiness.phase, "needs-human");
+  assert.equal(readiness.ready, false);
 
   const plan = planLabels([config.labels.needsHuman], readiness, config);
-  assert.ok(plan.remove.includes(config.labels.needsHuman));
+  assert.ok(!plan.remove.includes(config.labels.needsHuman));
+  assert.ok(!plan.add.includes(config.labels.needsHuman));
+  // No phase label on top: the escalation label already describes the state.
+  assert.deepEqual(plan.add, [config.labels.pipeline]);
+});
+
+test("a waiting pull request gets no contradictory implementing label", () => {
+  // agent:waiting means no agent is working, so claiming agent:implementing alongside it would
+  // report work nobody is doing.
+  const readiness = deriveReadiness(
+    readySnapshot({ labels: [config.labels.waiting] }),
+    config,
+  );
+  assert.equal(readiness.phase, "waiting");
+  assert.equal(readiness.ready, false);
+
+  const plan = planLabels([config.labels.waiting], readiness, config);
+  assert.deepEqual(plan.add, [config.labels.pipeline]);
+  assert.ok(!plan.add.includes(config.labels.implementing));
+  assert.deepEqual(plan.remove, []);
 });
 
 test("an invalid contract keeps a still-correct ui:changed label", () => {
@@ -532,6 +615,56 @@ test("a repeated run on an unchanged pull request plans no writes", () => {
   const third = reconcile(applied, config);
   assert.deepEqual(third.labels, { add: [], remove: [] });
   assert.equal(third.comment, null);
+});
+
+test("paginate refuses to truncate instead of reading a partial list", async () => {
+  // A short changedFiles would make protected-path and UI detection miss a path, and a short
+  // comment list would hide the sticky comment and duplicate it on every run. Both fail open, so
+  // the read must fail loudly instead.
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => Array.from({ length: 100 }, (_, i) => ({ id: i })),
+    };
+  };
+
+  try {
+    await assert.rejects(
+      () => paginate("/repos/o/r/pulls/1/files", "token"),
+      /refusing to judge readiness on a truncated read/,
+    );
+    assert.equal(requests, 10);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("paginate returns everything when the last page is short", async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    return {
+      ok: true,
+      status: 200,
+      json: async () =>
+        requests === 1
+          ? Array.from({ length: 100 }, (_, i) => ({ id: i }))
+          : [{ id: 100 }],
+    };
+  };
+
+  try {
+    const items = await paginate("/repos/o/r/pulls/1/files", "token");
+    assert.equal(items.length, 101);
+    assert.equal(requests, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("the status comment is deterministic and carries its marker", () => {

@@ -34,23 +34,24 @@ const MANAGED_LABEL_KEYS = [
   "review",
   "readyForMerge",
   "uiChanged",
-  // Derived from the live escalation condition, not from its own previous value. Treating it as
-  // add-only would strand a pull request under it forever once the condition was resolved, and
-  // reading it back as an input would make the phase depend on itself. `agent:no-auto` remains the
-  // manual way for a human to stop automation.
-  "needsHuman",
 ];
 
-// `noAuto` is never written at all. `waiting` and `reviewFallback` belong to the provider phases
-// that do not exist yet, so this reconciler must neither set nor clear them.
+// Read as input, never written and never cleared: `needsHuman` (escalations raised by a human or
+// by the later provider phases, for example an exhausted round limit, which cannot be derived from
+// GitHub state), `waiting` and `reviewFallback` (owned by those phases), and `noAuto` (the manual
+// kill switch). The one escalation this phase can derive — a protected path awaiting human
+// approval — gets its own phase instead of borrowing this label, so that clearing it needs no
+// label bookkeeping and a genuine escalation is never wiped by a sweep.
 
+// Phases without an entry carry no phase label of their own. `waiting` and `needs-human` are
+// already described by the label that produced them, and `awaiting-human-approval` has no label in
+// the plan's set — inventing one here would go beyond this phase.
 const PHASE_LABEL_KEYS = {
   implementing: "implementing",
   "ci-fix": "ciFix",
   "conflict-fix": "conflictFix",
   review: "review",
   "ready-for-merge": "readyForMerge",
-  "needs-human": "needsHuman",
 };
 
 const FAILING_CONCLUSIONS = new Set([
@@ -85,6 +86,9 @@ function isBotLogin(login) {
  * Only the latest review per author counts, and a plain comment never carries a verdict.
  */
 export function evaluateReviews(reviews, headSha, allowedReviewerLogins) {
+  // `allowedReviewerLogins` must be the reviewer allowlist, never the author allowlist: the latter
+  // contains the human maintainer, whose approval would otherwise silently count as the counter
+  // provider's cross-review and collapse both gates into one click.
   const currentHead = (reviews ?? []).filter(
     (review) => review.commitSha === headSha,
   );
@@ -102,8 +106,11 @@ export function evaluateReviews(reviews, headSha, allowedReviewerLogins) {
   }
 
   const decisive = [...latestByAuthor.values()];
-  const fromReviewer = decisive.filter((review) =>
-    (allowedReviewerLogins ?? []).includes(review.author),
+  const fromReviewer = decisive.filter(
+    (review) =>
+      (allowedReviewerLogins ?? []).includes(review.author) &&
+      // A human is never the counter provider, even if their login were listed by mistake.
+      isBotLogin(review.author),
   );
 
   let verdict = "none";
@@ -294,6 +301,14 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
   const contract = validation.normalized;
   const blockers = [];
 
+  // Escalations this phase cannot derive: raised by a human or by a later provider phase, and
+  // cleared the same way. Automation must not resume on its own while one is set.
+  const escalated = hasLabel("needsHuman");
+  if (escalated) {
+    blockers.push(
+      "A human decision is pending; the escalation label is still set.",
+    );
+  }
   const waiting = hasLabel("waiting");
   if (waiting) {
     blockers.push("A required provider or service is temporarily unavailable.");
@@ -326,7 +341,7 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
   const reviews = evaluateReviews(
     snapshot.reviews,
     snapshot.headSha,
-    config.providerAuthorAllowlist?.[reviewerProvider] ?? [],
+    config.providerReviewerAllowlist?.[reviewerProvider] ?? [],
   );
   if (reviews.verdict === "changes-required") {
     blockers.push("The cross-review requested changes for the current head SHA.");
@@ -369,18 +384,29 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
 
   const mechanicallyGreen =
     !snapshot.isDraft &&
+    !escalated &&
     !waiting &&
     mergeability === "clean" &&
     checks.state === "passing";
 
   let phase;
-  if (needsHumanApproval) {
-    // Must outrank the review phase: no amount of agent work can clear this one.
+  if (escalated) {
+    // Set from outside and cleared from outside; nothing here may override it.
     phase = "needs-human";
+  } else if (waiting) {
+    // `agent:waiting` already describes this. Adding a phase label on top would claim an agent is
+    // working while the pull request waits for a provider that is not available.
+    phase = "waiting";
   } else if (mergeability === "conflicted") {
+    // Conflicts and CI failures rank above the human-approval wait: an agent can resolve them, and
+    // the plan classifies both as work to do without asking. The approval blocker stays in the
+    // list either way, so readiness remains closed.
     phase = "conflict-fix";
   } else if (checks.state === "failing") {
     phase = "ci-fix";
+  } else if (needsHumanApproval) {
+    // Nothing an agent does can clear this one, so it must outrank review and ready-for-merge.
+    phase = "awaiting-human-approval";
   } else if (!blockers.length) {
     phase = "ready-for-merge";
   } else if (
@@ -540,18 +566,30 @@ async function graphql(query, variables, token) {
   return payload.data;
 }
 
-async function paginate(path, token) {
+const PAGE_LIMIT = 10;
+
+/**
+ * Reads every page of a REST collection.
+ *
+ * Throws rather than truncating when the cap is reached: a short `changedFiles` would make the
+ * protected-path and UI detection miss a path, and a short comment list would hide the sticky
+ * status comment and duplicate it on every run. Failing the run leaves the previous state intact,
+ * which is the safe direction.
+ */
+export async function paginate(path, token) {
   const items = [];
-  for (let page = 1; page <= 10; page += 1) {
+  for (let page = 1; page <= PAGE_LIMIT; page += 1) {
     const separator = path.includes("?") ? "&" : "?";
     const batch = await api(`${path}${separator}per_page=100&page=${page}`, {
       token,
     });
     const list = Array.isArray(batch) ? batch : (batch?.check_runs ?? []);
     items.push(...list);
-    if (list.length < 100) break;
+    if (list.length < 100) return items;
   }
-  return items;
+  throw new Error(
+    `GitHub API ${path} returned more than ${PAGE_LIMIT * 100} entries; refusing to judge readiness on a truncated read.`,
+  );
 }
 
 const REVIEW_THREADS_QUERY = `

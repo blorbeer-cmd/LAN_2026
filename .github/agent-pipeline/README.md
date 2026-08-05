@@ -31,9 +31,11 @@ current head SHA falls back to "unknown" and therefore blocks. This is the archi
 
 What it does:
 
-- maintains `agent:pipeline` plus exactly one phase label
+- maintains `agent:pipeline` plus at most one phase label
   (`agent:implementing`, `agent:ci-fix`, `agent:conflict-fix`, `agent:review`,
-  `agent:ready-for-merge`) and `ui:changed`,
+  `agent:ready-for-merge`) and `ui:changed`. A pull request held by `agent:waiting`,
+  `agent:needs-human` or the human-approval wait gets no phase label, because those states are
+  already named by their own label or by the status comment,
 - maintains one sticky status comment marked with `<!-- agent-pipeline:status -->`,
 - reports every open blocker in that comment.
 
@@ -44,15 +46,25 @@ What it deliberately does not do:
 - approve or merge anything,
 - set or clear `agent:waiting` and `agent:review-fallback`, which belong to the provider phases,
 - accept a fallback review as satisfying the gate. Only an approval from the counter provider's
-  allowlist counts, so a pull request reviewed through the fallback path described in the plan
-  still reports a missing cross-review. Phase 5 owns the fallback flow; wiring it up here, where
-  `agent:review-fallback` is only a hand-set label and nothing verifies that a fallback review
-  actually happened, would turn the label into a gate bypass.
+  reviewer allowlist counts, so a pull request reviewed through the fallback path described in the
+  plan still reports a missing cross-review. Phase 5 owns the fallback flow; wiring it up here,
+  where `agent:review-fallback` is only a hand-set label and nothing verifies that a fallback
+  review actually happened, would turn the label into a gate bypass.
 
-`agent:needs-human` is derived from the live escalation condition rather than kept as its own
-state, so it clears again once that condition is gone. Reading it back as an input would make the
-phase depend on its own previous value and could strand a pull request under it forever. To stop
-automation by hand, use `agent:no-auto`.
+Who may satisfy the cross-review is configured in `providerReviewerAllowlist`, deliberately
+separate from `providerAuthorAllowlist`. The author list contains the human maintainer, so reusing
+it would let a single human approval count as the counter provider's review and satisfy the
+protected-path approval at the same time — two independent gates collapsing into one click. Only
+agent identities can produce a cross-review verdict; a human approval counts solely as the human
+approval.
+
+Escalations the reconciler cannot derive from GitHub state — an exhausted round limit, a critical
+decision, the 24-hour waiting escalation — stay with `agent:needs-human`, exactly as the plan
+describes: raised by a human or by a later provider phase, blocking while set, and never written
+or cleared here. The one escalation this phase can derive, a protected path awaiting human
+approval, uses its own `awaiting-human-approval` phase instead of borrowing that label, so
+approving the head clears it without label bookkeeping and no genuine escalation is ever wiped by
+a sweep. To stop automation by hand, use `agent:no-auto`.
 
 Its own check runs are excluded from the CI evaluation via `selfCheckNames`. The reconcile
 workflow runs on `pull_request_target`, whose check runs attach to the pull request's head SHA, so
@@ -95,8 +107,10 @@ merge-base diff; use `root` for intentional multi-area changes. `ui-change: unkn
 blocking until a later classification resolves it.
 
 Changes below `.github/workflows/` and `infra/` are reported as protected paths. The reconciler
-escalates such a pull request to `agent:needs-human` until an approval review from a non-bot
-account covers the exact current head SHA, because no agent can clear that condition itself.
+holds such a pull request in the `awaiting-human-approval` phase until an approval review from a
+non-bot account covers the exact current head SHA, because no agent can clear that condition
+itself. A merge conflict or a failing check still takes precedence, since an agent can resolve
+those; the approval blocker stays listed and readiness remains closed either way.
 
 Note for the current transitional setup: GitHub forbids approving your own pull request. While
 agent pull requests are authored by the repository owner's own account rather than by
