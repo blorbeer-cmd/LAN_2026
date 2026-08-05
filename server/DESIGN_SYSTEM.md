@@ -401,10 +401,17 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Every other surface that picks a game to actually play — Vote, Turnier, Team-Auslosung, Captain
   Draft, „Ergebnis eintragen“ and game pings — offers accepted games only (`catalogGames()` in
   `public/js/state.js`, enforced server-side by `src/routes/gameSelection.ts`), which is what keeps
-  those pickers short. The Rangliste's own game filter is the one exception: it additionally keeps
-  a game that already carries results, so moving a played game back to the suggestions does not
-  hide its ranking. Both meters are editable on every tab, suggestions included — how good the
-  group already is at a game is part of deciding whether to accept it.
+  those pickers short. Demoting a game must not strand what it already produced, so
+  `gamesWithHistory()` adds back every game that already carries data wherever a picker also
+  scopes existing records: the Rangliste's game filter and the Teams view's game select, whose
+  one control also scopes the Historie below it. Such a game stays visible but cannot start
+  anything new — the Teams view disables „Teams auslosen“/„Draft starten“ with the usual red
+  warning tooltip naming the reason, and „Ergebnis eintragen“ preselects a different game and
+  says why in a toast instead of silently swapping it. The one action that stays open is
+  completing a draw made while the game was still in the catalog: a result carrying that
+  `drawId` is accepted, because recording what was actually played is history rather than
+  scheduling. Both meters are editable on every tab, suggestions included — how good the group
+  already is at a game is part of deciding whether to accept it.
   Bock and Skill sliders in the game catalog are stored 1-10 and have no true
   empty position, so an untouched slider still renders at a plausible mid-value; it stays dimmed
   (`.skill-row-slider-unset`) and its number label shows an en dash for "no rating yet" until the
@@ -724,7 +731,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   bulk selection actions apply only to the currently visible intersection. That grid, an
   unrestricted round's ballot and „Top 10 nach Bock-Level“ all cover the accepted games only;
   suggestions are not votable (see „Game catalog“). A suggestion's own Bock ranking stays visible
-  in the Spiele view, which sorts by Ø Bock on every tab.
+  in the Spiele view, which sorts by Ø Bock on every tab. A round keeps the exact games it was
+  started with for its whole life: a game demoted mid-round keeps the votes already cast for it,
+  stays votable for everyone else and can still win, and „Stichwahl starten“ still offers every
+  tied winner of the closed round. Only a fresh selection is restricted.
   Vote-specific empty states center icon and copy vertically in both overview and history.
   Every identity can submit only once per round: the server enforces this atomically with `409`,
   empty points submissions are invalid, and the client replaces the submit action with a green

@@ -6,7 +6,7 @@
 // two teams at once.
 
 import { api } from '../api.js';
-import { state, catalogGames } from '../state.js';
+import { state, catalogGames, gamesWithHistory, gameById } from '../state.js';
 import { escapeHtml, avatarHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
@@ -20,12 +20,9 @@ export function renderLeaderboard(container, ctx) {
   // Accepted games only — plus any game that already carries results, so a
   // game moved back to the suggestions after it was played keeps its own
   // ranking reachable instead of silently dropping out of the filter.
-  const playedGameIds = new Set(state.matches.map((m) => m.gameId));
   const lbGameOptions = [
     { value: '', label: 'Gesamt' },
-    ...state.games
-      .filter((g) => !g.isSuggestion || playedGameIds.has(g.id))
-      .map((g) => ({ value: g.id, label: g.name })),
+    ...gamesWithHistory().map((g) => ({ value: g.id, label: g.name })),
   ];
 
   const standings = state.leaderboard?.standings || [];
@@ -161,8 +158,13 @@ export function renderLeaderboard(container, ctx) {
 // in the shared Historie.
 export function openMatchForm(ctx, options = {}) {
   // A result is recorded for a game the group actually plays, so the picker
-  // offers accepted games only (see catalogGames()).
+  // offers accepted games only (see catalogGames()) — plus, when the dialog
+  // was opened from one specific draw, that draw's own game: a lineup drawn
+  // while the game was still in the catalog stays completable even after a
+  // demotion, and the server allows exactly that case (see matches.ts).
   const selectableGames = catalogGames();
+  const drawGame = options.presetDrawId && options.presetGameId ? gameById(options.presetGameId) : null;
+  if (drawGame && !selectableGames.some((g) => g.id === drawGame.id)) selectableGames.push(drawGame);
   if (selectableGames.length === 0 || state.players.length === 0) {
     return showToast('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', { error: true });
   }
@@ -176,11 +178,18 @@ export function openMatchForm(ctx, options = {}) {
   let advancedMode = false;
   // The ranking filter may still point at a game that is not selectable here
   // (a played game that was moved back to the suggestions), so fall back
-  // instead of preselecting a value the picker does not offer.
+  // instead of preselecting a value the picker does not offer. Silently
+  // swapping the game would let a result land on the wrong one, so say why:
+  // the dialog is opened straight out of a list filtered to that very game.
   const preferredGameId = options.presetGameId || state.selectedGameId;
-  const defaultGameId = selectableGames.some((g) => g.id === preferredGameId)
-    ? preferredGameId
-    : selectableGames[0].id;
+  const preferredIsSelectable = selectableGames.some((g) => g.id === preferredGameId);
+  const defaultGameId = preferredIsSelectable ? preferredGameId : selectableGames[0].id;
+  if (preferredGameId && !preferredIsSelectable) {
+    const preferredName = state.games.find((g) => g.id === preferredGameId)?.name;
+    if (preferredName) {
+      showToast(`„${preferredName}“ ist nur ein Vorschlag – dafür lässt sich kein Ergebnis eintragen.`, { error: true });
+    }
+  }
   const matchGameOptions = selectableGames.map((g) => ({ value: g.id, label: g.name }));
 
   const presetTeamIndexByPlayer = new Map();

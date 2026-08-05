@@ -151,7 +151,20 @@ matchesRouter.post('/', (req, res) => {
     | { id: string; status: string }
     | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
-  if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
+  if (isSuggestionGame(game)) {
+    // A suggestion can't be picked ad-hoc, but a draw created while the game
+    // was still in the catalog has to stay completable: recording what was
+    // actually played is history, not scheduling. The draw itself is fully
+    // validated further below (existence, group, already-recorded); this only
+    // asks whether the result belongs to one for this very game.
+    const drawForGame =
+      typeof drawId === 'string' && drawId
+        ? db
+            .prepare('SELECT id FROM matchmaking_draws WHERE id = ? AND group_id = ? AND game_id = ?')
+            .get(drawId, req.group!.id, gameId)
+        : undefined;
+    if (!drawForGame) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
+  }
 
   const validated = validateTeams(teams, winnerTeamIndex);
   if ('error' in validated) return res.status(400).json({ error: validated.error });

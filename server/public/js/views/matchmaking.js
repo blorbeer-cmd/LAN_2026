@@ -6,7 +6,7 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { confirmDialog, openModal } from '../modal.js';
-import { state, gameById, catalogGames } from '../state.js';
+import { state, gameById, catalogGames, gamesWithHistory } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { openMatchForm } from './leaderboard.js';
@@ -515,9 +515,13 @@ function wireDraftBoard(container, ctx) {
 
 export function renderMatchmaking(container, ctx) {
   // Only accepted games can be drawn/drafted for — an open suggestion is not
-  // something to build teams for yet (see catalogGames()).
-  const pickableGames = catalogGames();
-  if (pickableGames.length === 0 || state.players.length === 0) {
+  // something to build teams for yet (see catalogGames()). The picker still
+  // lists a game that was moved back to the suggestions *after* it was drawn
+  // or played, because this one <select> also scopes the Historie below:
+  // without it, that draw's Ergebnis-/Rematch-Aktionen would be unreachable.
+  // Drawing and drafting stay blocked for such a game (see drawDisabledReason).
+  const pickableGames = gamesWithHistory([state.lastMatchmaking?.gameId]);
+  if (catalogGames().length === 0 || state.players.length === 0) {
     container.innerHTML = `
       <h1 class="view-title">Teams</h1>
       ${emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', { icon: icon(domainIcon('matchmaking')) })}`;
@@ -551,7 +555,7 @@ export function renderMatchmaking(container, ctx) {
   draftPlayerIds = new Set([...draftPlayerIds].filter((id) => availablePlayerIds.has(id)));
   draftCaptainIds = new Set([...draftCaptainIds].filter((id) => draftPlayerIds.has(id)));
 
-  const selectedGameId = pickableGames.some((g) => g.id === state.selectedGameId) ? state.selectedGameId : pickableGames[0].id;
+  const selectedGameId = pickableGames.some((g) => g.id === state.selectedGameId) ? state.selectedGameId : catalogGames()[0].id;
 
   if (avoidAdjacentOpponentsGameId !== selectedGameId) {
     avoidAdjacentOpponentsGameId = selectedGameId;
@@ -601,17 +605,28 @@ export function renderMatchmaking(container, ctx) {
     )
     .join('');
   const draftPoolSize = draftPlayers.length - draftCaptainIds.size;
-  const draftReady = draftCaptainIds.size >= 2 && draftCaptainIds.size <= 4 && draftPoolSize >= 1;
+  // A game that is only in the picker because it still carries history (see
+  // pickableGames) must not start anything new — the server refuses it too.
+  const selectedIsSuggestion = gameById(selectedGameId)?.isSuggestion === true;
+  const suggestionBlockedReason =
+    'Dieses Spiel steht wieder als Vorschlag in der Spiele-Liste. Erst in den Katalog aufnehmen, dann sind Auslosung und Draft wieder möglich.';
+
+  const draftReady =
+    !selectedIsSuggestion && draftCaptainIds.size >= 2 && draftCaptainIds.size <= 4 && draftPoolSize >= 1;
   // Mirrors the disabled "Draft starten" button below: named so the reason
   // is visible up front instead of only after a click is attempted.
   let draftDisabledReason = '';
   if (!draftReady) {
-    if (draftCaptainIds.size < 2) draftDisabledReason = 'Mindestens 2 Captains auswählen, um den Draft zu starten.';
+    if (selectedIsSuggestion) draftDisabledReason = suggestionBlockedReason;
+    else if (draftCaptainIds.size < 2) draftDisabledReason = 'Mindestens 2 Captains auswählen, um den Draft zu starten.';
     else if (draftCaptainIds.size > 4) draftDisabledReason = 'Maximal 4 Captains auswählen.';
     else draftDisabledReason = 'Mindestens 1 weiteren Spieler zusätzlich zu den Captains auswählen.';
   }
 
-  const drawReady = checkedIds.size >= 2;
+  const drawReady = !selectedIsSuggestion && checkedIds.size >= 2;
+  const drawDisabledReason = selectedIsSuggestion
+    ? suggestionBlockedReason
+    : 'Mindestens 2 Spieler auswählen, um Teams auszulosen.';
 
   const modeToggleHtml = `
       <div class="selection-toolbar" role="group" aria-labelledby="mm-mode-label">
@@ -662,7 +677,7 @@ export function renderMatchmaking(container, ctx) {
             ${drawReady ? '' : infoTooltipHtml(
                 'matchmaking-draw-disabled-help',
                 'Warum ist „Teams auslosen“ deaktiviert?',
-                'Mindestens 2 Spieler auswählen, um Teams auszulosen.',
+                drawDisabledReason,
                 'warning'
               )}
           </div>

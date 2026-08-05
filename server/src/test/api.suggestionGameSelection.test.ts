@@ -139,3 +139,107 @@ test('a game demoted after it was played keeps its recorded result editable', as
     .send({ gameId: suggestionGameId, winnerTeamIndex: 1 });
   assert.equal(movedBack.status, 400);
 });
+
+test('an open draw of a game demoted afterwards can still be completed', async () => {
+  // Everything below runs on a second catalog game, so the demotion here does
+  // not interfere with the shared fixtures above.
+  const gameId = (await request(app).post('/api/games').send({ name: 'Selection Drawn Game' })).body.id;
+  const draw = await request(app).post('/api/matchmaking').send({ gameId, playerIds: players });
+  assert.equal(draw.status, 200, JSON.stringify(draw.body));
+
+  const demoted = await request(app).post(`/api/games/${gameId}/demote`).send();
+  assert.equal(demoted.status, 200);
+  assert.equal(demoted.body.isSuggestion, true);
+
+  // Recording what was actually played is history, not scheduling: the result
+  // linked to that draw goes through.
+  const recorded = await request(app)
+    .post('/api/matches')
+    .send({
+      gameId,
+      drawId: draw.body.id,
+      teams: [{ playerIds: [players[0]] }, { playerIds: [players[1]] }],
+      winnerTeamIndex: 0,
+    });
+  assert.equal(recorded.status, 201, JSON.stringify(recorded.body));
+
+  // An ad-hoc result without that link stays refused, and so does a fresh draw.
+  const adHoc = await request(app)
+    .post('/api/matches')
+    .send({ gameId, teams: [{ playerIds: [players[0]] }, { playerIds: [players[1]] }] });
+  assert.equal(adHoc.status, 400);
+  const rematch = await request(app)
+    .post('/api/matchmaking/rematch')
+    .send({ gameId, teams: [{ playerIds: [players[0]] }, { playerIds: [players[1]] }] });
+  assert.equal(rematch.status, 400);
+});
+
+test('a game demoted mid-round keeps this round votes, totals and winner chance', async () => {
+  const otherId = (await request(app).post('/api/games').send({ name: 'Selection Voted Game' })).body.id;
+  const started = await request(app).post('/api/votes/start').send();
+  assert.equal(started.status, 201);
+
+  const submitted = await request(app)
+    .post('/api/votes/points')
+    .send({
+      playerId: players[1],
+      entries: [
+        { gameId: catalogGameId, points: 4 },
+        { gameId: otherId, points: 9 },
+      ],
+    });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.body));
+
+  const demoted = await request(app).post(`/api/games/${otherId}/demote`).send();
+  assert.equal(demoted.status, 200);
+
+  // The demotion must not erase what was already cast: the game stays on this
+  // round's ballot with its points, and the totals stay whole.
+  const current = await request(app).get('/api/votes');
+  assert.equal(current.status, 200);
+  const ballotIds = current.body.results.map((r: { gameId: string }) => r.gameId);
+  assert.ok(ballotIds.includes(otherId), 'a demoted game with votes stays on this round');
+  assert.ok(!ballotIds.includes(suggestionGameId), 'a suggestion without votes stays off the ballot');
+  assert.equal(current.body.totalPoints, 13);
+
+  // A player who had not submitted yet can still rate it — everyone sees the
+  // same ballot for the whole round.
+  const late = await request(app)
+    .post('/api/votes/points')
+    .send({ playerId: players[2], entries: [{ gameId: otherId, points: 2 }] });
+  assert.equal(late.status, 200, JSON.stringify(late.body));
+
+  const closed = await request(app).post('/api/votes/close').send();
+  assert.equal(closed.status, 200);
+  assert.deepEqual(closed.body.winnerGameIds, [otherId], 'the demoted game can still win its own round');
+  const closedRow = closed.body.results.find((r: { gameId: string }) => r.gameId === otherId);
+  assert.equal(closedRow.points, 11);
+});
+
+test('a runoff still offers the tied winners after one of them was demoted', async () => {
+  const history = await request(app).get('/api/votes/history');
+  const lastRound = history.body.history[0];
+  assert.ok(lastRound.winners.length >= 1);
+
+  // The previous round's winners are what the "Stichwahl" button sends — a
+  // demoted winner among them must not block the whole runoff.
+  const runoff = await request(app)
+    .post('/api/votes/start')
+    .send({ mode: 'single', title: 'Stichwahl', gameIds: lastRound.winners.map((w: { gameId: string }) => w.gameId) });
+  assert.equal(runoff.status, 201, JSON.stringify(runoff.body));
+  const runoffIds = runoff.body.results.map((r: { gameId: string }) => r.gameId);
+  assert.ok(runoffIds.includes(lastRound.winners[0].gameId), 'the demoted winner is on the runoff ballot');
+
+  // Voting for it works too, otherwise the runoff could not be decided.
+  const vote = await request(app)
+    .post('/api/votes')
+    .send({ playerId: players[0], gameId: lastRound.winners[0].gameId });
+  assert.equal(vote.status, 200, JSON.stringify(vote.body));
+
+  // A suggestion that never won anything stays refused as a runoff candidate.
+  await request(app).post('/api/votes/cancel').send();
+  const bogus = await request(app)
+    .post('/api/votes/start')
+    .send({ mode: 'single', gameIds: [catalogGameId, suggestionGameId] });
+  assert.equal(bogus.status, 400);
+});

@@ -37,3 +37,16 @@ export function gameById(id) {
 export function catalogGames() {
   return state.games.filter((g) => !g.isSuggestion);
 }
+
+// Games a picker must keep reachable even after a demotion: the catalog plus
+// every game the group already produced data for. A suggestion may not be
+// picked to play (catalogGames() above), but a game moved back to the
+// suggestions after it was drawn or played still owns a ranking, an open draw
+// and that draw's "Ergebnis eintragen"/"Rematch" actions — dropping it from
+// the picker would strand exactly those. Pass extra ids for data the client
+// knows about outside state.matches (e.g. the freshly drawn lineup).
+export function gamesWithHistory(extraGameIds = []) {
+  const kept = new Set(extraGameIds.filter(Boolean));
+  for (const match of state.matches) kept.add(match.gameId);
+  return state.games.filter((game) => !game.isSuggestion || kept.has(game.id));
+}
