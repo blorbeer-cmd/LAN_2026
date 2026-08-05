@@ -6,7 +6,7 @@
 // two teams at once.
 
 import { api } from '../api.js';
-import { state } from '../state.js';
+import { state, catalogGames } from '../state.js';
 import { escapeHtml, avatarHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
@@ -17,9 +17,15 @@ import { emptyStateHtml } from '../emptyState.js';
 
 export function renderLeaderboard(container, ctx) {
   const filterGameId = state.selectedGameId || '';
+  // Accepted games only — plus any game that already carries results, so a
+  // game moved back to the suggestions after it was played keeps its own
+  // ranking reachable instead of silently dropping out of the filter.
+  const playedGameIds = new Set(state.matches.map((m) => m.gameId));
   const lbGameOptions = [
     { value: '', label: 'Gesamt' },
-    ...state.games.map((g) => ({ value: g.id, label: g.name })),
+    ...state.games
+      .filter((g) => !g.isSuggestion || playedGameIds.has(g.id))
+      .map((g) => ({ value: g.id, label: g.name })),
   ];
 
   const standings = state.leaderboard?.standings || [];
@@ -154,8 +160,11 @@ export function renderLeaderboard(container, ctx) {
 // the saved match back to that matchmaking_draws row and updates its actions
 // in the shared Historie.
 export function openMatchForm(ctx, options = {}) {
-  if (state.games.length === 0 || state.players.length === 0) {
-    return showToast('Dafür braucht es mindestens ein Spiel und 2 Spieler.', { error: true });
+  // A result is recorded for a game the group actually plays, so the picker
+  // offers accepted games only (see catalogGames()).
+  const selectableGames = catalogGames();
+  if (selectableGames.length === 0 || state.players.length === 0) {
+    return showToast('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', { error: true });
   }
 
   let teamCount = options.presetTeams ? Math.max(2, options.presetTeams.length) : 2;
@@ -165,8 +174,14 @@ export function openMatchForm(ctx, options = {}) {
   // player in FFA) — the winner is then derived from those instead of asked
   // for separately, so there's no way for the two to disagree.
   let advancedMode = false;
-  const defaultGameId = options.presetGameId || state.selectedGameId || state.games[0].id;
-  const matchGameOptions = state.games.map((g) => ({ value: g.id, label: g.name }));
+  // The ranking filter may still point at a game that is not selectable here
+  // (a played game that was moved back to the suggestions), so fall back
+  // instead of preselecting a value the picker does not offer.
+  const preferredGameId = options.presetGameId || state.selectedGameId;
+  const defaultGameId = selectableGames.some((g) => g.id === preferredGameId)
+    ? preferredGameId
+    : selectableGames[0].id;
+  const matchGameOptions = selectableGames.map((g) => ({ value: g.id, label: g.name }));
 
   const presetTeamIndexByPlayer = new Map();
   if (options.presetTeams) {

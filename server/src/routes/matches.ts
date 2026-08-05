@@ -10,6 +10,7 @@ import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { broadcast, Events } from '../realtime';
 import { applySeatConflicts, buildTeamsSnapshot } from './matchmaking';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
@@ -146,8 +147,11 @@ matchesRouter.post('/', (req, res) => {
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
   }
-  const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id);
+  const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
+    | { id: string; status: string }
+    | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+  if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
 
   const validated = validateTeams(teams, winnerTeamIndex);
   if ('error' in validated) return res.status(400).json({ error: validated.error });
@@ -245,8 +249,16 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
     if (typeof gameId !== 'string' || !gameId) {
       return res.status(400).json({ error: 'gameId ist ungültig.' });
     }
-    const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id);
+    const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
+      | { id: string; status: string }
+      | undefined;
     if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+    // Only a *change* is guarded: a game that was moved back to the
+    // suggestions after this result was recorded must stay editable (score,
+    // winner) instead of freezing the whole match.
+    if (gameId !== existing.game_id && isSuggestionGame(game)) {
+      return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
+    }
     nextGameId = gameId;
   }
 

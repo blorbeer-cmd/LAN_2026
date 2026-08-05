@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { broadcast, Events } from '../realtime';
 import {
   balanceTeams,
@@ -41,6 +42,7 @@ interface GameRow {
   id: string;
   name: string;
   max_team_size: number;
+  status: string;
 }
 
 interface PlayerRow {
@@ -165,10 +167,11 @@ matchmakingRouter.post('/', (req, res) => {
     return res.status(400).json({ error: 'avoidAdjacentOpponents muss ein Boolean sein.' });
   }
 
-  const game = db.prepare('SELECT id, name, max_team_size FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
-    | GameRow
-    | undefined;
+  const game = db
+    .prepare('SELECT id, name, max_team_size, status FROM games WHERE id = ? AND group_id = ?')
+    .get(gameId, req.group!.id) as GameRow | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+  if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
 
   const eventId = trackingEventIdForGroup(req.group!.id);
   if (!eventId) {
@@ -281,10 +284,11 @@ matchmakingRouter.post('/rematch', (req, res) => {
     return res.status(400).json({ error: 'Ein Spieler ist in mehreren Teams.' });
   }
 
-  const game = db.prepare('SELECT id, name, max_team_size FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
-    | GameRow
-    | undefined;
+  const game = db
+    .prepare('SELECT id, name, max_team_size, status FROM games WHERE id = ? AND group_id = ?')
+    .get(gameId, req.group!.id) as GameRow | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+  if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
 
   const eventId = trackingEventIdForGroup(req.group!.id);
   if (!eventId) {

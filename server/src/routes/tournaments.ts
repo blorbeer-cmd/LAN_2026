@@ -9,6 +9,7 @@ import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { nanoid } from 'nanoid';
 import { db, OUTSIDE_EVENTS_ID } from '../db';
+import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { broadcast, Events } from '../realtime';
 import { getTrackingEventId } from '../events';
 import { isNonEmptyString } from '../validation';
@@ -337,10 +338,11 @@ tournamentsRouter.post('/', (req, res) => {
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
   }
-  const game = db.prepare('SELECT id, name, icon FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
-    | { id: string; name: string; icon: string }
-    | undefined;
+  const game = db
+    .prepare('SELECT id, name, icon, status FROM games WHERE id = ? AND group_id = ?')
+    .get(gameId, req.group!.id) as { id: string; name: string; icon: string; status: string } | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+  if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
 
   if (typeof format !== 'string' || !FORMATS.includes(format as TournamentFormat)) {
     return res.status(400).json({ error: `format muss eines von ${FORMATS.join(', ')} sein.` });

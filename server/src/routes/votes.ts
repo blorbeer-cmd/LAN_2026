@@ -20,6 +20,7 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db, getState, setState } from '../db';
+import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { broadcast, Events } from '../realtime';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
 import { getTrackingEventId, OUTSIDE_EVENTS_ID } from '../events';
@@ -164,6 +165,11 @@ function voteWinCountsByGame(groupId: string): Map<string, number> {
 // a single call's underlying query/sort can be reused for both the
 // round-scoped view and the always-full-catalog "Bock" popularity view
 // (buildPayload's `catalogResults`) instead of querying twice.
+// Suggestions are not on the ballot (see gameSelection.ts): a round nobody
+// restricted covers the catalog, not the proposal pool. The HAVING exception
+// keeps a suggestion that already carries votes in *this* round visible, so
+// a round recorded before this rule (or a game demoted afterwards) still
+// shows the votes that were actually cast for it.
 function buildAllResults(groupId: string, round: number, mode: VoteMode): ResultRow[] {
   const now = Date.now();
   const rows = db
@@ -189,7 +195,8 @@ function buildAllResults(groupId: string, round: number, mode: VoteMode): Result
          FROM play_sessions WHERE group_id = ? GROUP BY game_id
        ) ps ON ps.game_id = g.id
        WHERE g.arcade_key IS NULL AND g.group_id = ?
-       GROUP BY g.id`,
+       GROUP BY g.id
+       HAVING g.status != 'suggestion' OR COUNT(v.player_id) > 0`,
     )
     .all(groupId, round, groupId, groupId, now, groupId, groupId) as Array<
     Omit<ResultRow, 'score' | 'totalPlaytimeFormatted' | 'voteWinCount'>
@@ -398,8 +405,11 @@ votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
     const uniqueIds = [...new Set(gameIds)];
     for (const id of uniqueIds) {
       if (typeof id !== 'string' || !id) return res.status(400).json({ error: 'Ungültige gameId.' });
-      const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(id, req.group!.id);
+      const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(id, req.group!.id) as
+        | { id: string; status: string }
+        | undefined;
       if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+      if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
     }
     selectedGameIds = uniqueIds as string[];
   }
@@ -471,8 +481,11 @@ votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   }
   const player = activeGroupPlayers(groupId, [playerId]).get(playerId);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id);
+  const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
+    | { id: string; status: string }
+    | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+  if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
   const meta = getRoundMeta(groupId, state.round);
   if (meta.selectedGameIds && !meta.selectedGameIds.includes(gameId)) {
     return res.status(400).json({ error: 'Dieses Spiel ist in dieser Abstimmung nicht auswählbar.' });
@@ -542,8 +555,11 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
     if (!isIntInRange(points, 1, 10)) {
       return res.status(400).json({ error: 'Punkte müssen eine Ganzzahl zwischen 1 und 10 sein.' });
     }
-    const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id);
+    const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
+      | { id: string; status: string }
+      | undefined;
     if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+    if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
     if (meta.selectedGameIds && !meta.selectedGameIds.includes(gameId)) {
       return res.status(400).json({ error: 'Dieses Spiel ist in dieser Abstimmung nicht auswählbar.' });
     }

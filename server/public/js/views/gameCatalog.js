@@ -20,7 +20,11 @@ import { GAME_GENRES, MAX_GENRES_PER_GAME } from '../gameGenres.js';
 import { wireSelectionSearch } from '../selectionSearch.js';
 import { emptyStateHtml } from '../emptyState.js';
 
-let activeTab = 'catalog'; // 'catalog' | 'suggestions'
+// 'catalog' = the accepted games (everything that is not a suggestion, the
+// only ones Vote/Turnier/Auslosung offer), 'suggestions' = the pool waiting
+// to be accepted, 'all' = both in one list with suggestions still marked by
+// their Vorschlag badge.
+let activeTab = 'catalog'; // 'catalog' | 'suggestions' | 'all'
 let sortKey = 'name';
 let sortDir = 'asc';
 // Genre chip filter for the list (OR semantics: a game matches if it has at
@@ -112,7 +116,11 @@ export function invalidateSkillSuggestions() {
 
 export function focusGameCatalog(gameId) {
   const game = state.games.find((entry) => entry.id === gameId);
-  if (game) activeTab = game.isSuggestion ? 'suggestions' : 'catalog';
+  if (!game) return;
+  // "Alle" already contains every game, suggestion or not — switching tabs
+  // there would only take the user out of the list they chose.
+  if (activeTab === 'all') return;
+  activeTab = game.isSuggestion ? 'suggestions' : 'catalog';
 }
 
 async function loadSuggestions(ctx) {
@@ -273,7 +281,7 @@ function gameRowIconsHtml(game) {
   return `<span class="game-row-links">${trackIndicator}${detailBtn}${linkIcons}</span>`;
 }
 
-function gameRowHtml(game, myId) {
+function gameRowHtml(game, myId, showSuggestionBadge) {
   const bockStats = ratingStats(state.preferences, game.id);
   const skillStats = ratingStats(state.skills, game.id);
   const myBock = myId ? myRating(state.preferences, myId, game.id) : null;
@@ -291,38 +299,40 @@ function gameRowHtml(game, myId) {
     disabled: !myId,
   });
 
-  // A suggestion has no skill rating yet (Promote/Delete live in the detail
-  // modal, via the info icon, instead) — with only one meter to show, it
-  // sits in the right-hand (skill) column instead of the left one, so it
-  // doesn't look stranded in the middle of an otherwise empty row.
-  const [bockCell, skillCell] = game.isSuggestion
-    ? ['', bockRow]
-    : [
-        bockRow,
-        ratingRowHtml({
-          label: `${icon(domainIcon('skill'))} Skill`,
-          accentClass: '',
-          mine: mySkill,
-          avg: skillStats.avg,
-          count: skillStats.count,
-          gameId: game.id,
-          gameName: game.name,
-          kind: 'skill',
-          disabled: !myId,
-          suggestionHtml: suggestionChipHtml(game.id, suggestionFor(game.id, myId), mySkill),
-        }),
-      ];
+  // Suggestions carry both meters just like catalog games: how good the group
+  // already is at a game is part of deciding whether to accept it at all, so
+  // the Skill slider stays available before the promotion too.
+  const skillRow = ratingRowHtml({
+    label: `${icon(domainIcon('skill'))} Skill`,
+    accentClass: '',
+    mine: mySkill,
+    avg: skillStats.avg,
+    count: skillStats.count,
+    gameId: game.id,
+    gameName: game.name,
+    kind: 'skill',
+    disabled: !myId,
+    suggestionHtml: suggestionChipHtml(game.id, suggestionFor(game.id, myId), mySkill),
+  });
+
+  // Only the mixed "Alle" list needs the marker — in the two single-status
+  // tabs every row would carry the same badge, which says nothing.
+  const suggestionBadge =
+    showSuggestionBadge && game.isSuggestion
+      ? `<span class="badge badge-paused game-row-status-badge">${icon('lightbulb')} Vorschlag</span>`
+      : '';
 
   return `
     <div class="card game-table-row" data-search-game="${game.id}" data-game-catalog-search-item data-selection-search="${escapeHtml(game.name)}">
       <div class="game-row-name">
                 <strong class="game-row-title">${escapeHtml(game.name)}</strong>
+        ${suggestionBadge}
         ${game.genres?.length ? `<span class="muted game-row-genre">${escapeHtml(game.genres.join(', '))}</span>` : ''}
         ${gameRowIconsHtml(game)}
       </div>
       <div class="game-row-sliders">
-        <div class="game-row-bock">${bockCell}</div>
-        <div class="game-row-skill">${skillCell}</div>
+        <div class="game-row-bock">${bockRow}</div>
+        <div class="game-row-skill">${skillRow}</div>
       </div>
     </div>`;
 }
@@ -636,28 +646,34 @@ export function renderGameCatalog(container, ctx) {
   if (suggestionsCache === null && !suggestionsLoading) loadSuggestions(ctx);
 
   const myId = getMyId();
-  const tabGames = state.games.filter((g) => (activeTab === 'suggestions' ? g.isSuggestion : !g.isSuggestion));
+  const tabGames = state.games.filter((g) => {
+    if (activeTab === 'suggestions') return g.isSuggestion;
+    if (activeTab === 'catalog') return !g.isSuggestion;
+    return true;
+  });
   const games = tabGames
     .filter((g) => genreFilter.size === 0 || (g.genres ?? []).some((genre) => genreFilter.has(genre)))
     .filter((g) => {
       if (!myId || ratingFilter.size === 0) return true;
       if (ratingFilter.has('bock') && myRating(state.preferences, myId, g.id) !== null) return false;
-      // Suggestions never show or collect a skill rating (see gameRowHtml),
-      // so this facet no-ops there instead of hiding every suggestion just
-      // because none of them have one.
-      if (activeTab === 'catalog' && ratingFilter.has('skill') && myRating(state.skills, myId, g.id) !== null) return false;
+      if (ratingFilter.has('skill') && myRating(state.skills, myId, g.id) !== null) return false;
       return true;
     });
   const rows = sortedGames(games, myId);
+  const sectionTitle =
+    activeTab === 'catalog' ? 'Spielekatalog' : activeTab === 'suggestions' ? 'Vorschläge' : 'Alle Spiele';
   const usedGenres = GAME_GENRES.filter((g) => state.games.some((game) => (game.genres ?? []).includes(g)));
   // Distinguishes a genuinely empty catalog/suggestion pool from "filtered
   // down to nothing" - the rating filter case gets a positive framing since
   // reaching it is the point of using that filter, not an error state.
+  const emptyTabMessages = {
+    suggestions: 'Noch keine vorgeschlagenen Spiele.',
+    catalog: 'Noch keine Spiele im Katalog.',
+    all: 'Noch keine Spiele eingetragen.',
+  };
   const emptyMessage =
     tabGames.length === 0
-      ? activeTab === 'suggestions'
-        ? 'Noch keine vorgeschlagenen Spiele.'
-        : 'Noch keine Spiele im Katalog.'
+      ? emptyTabMessages[activeTab]
       : ratingFilter.size > 0
         ? 'Alles bewertet – keine offenen Spiele mit diesem Filter.'
         : 'Keine Spiele für diese Filter.';
@@ -670,16 +686,17 @@ export function renderGameCatalog(container, ctx) {
     </div>
     <div class="grouped-page-sections" style="margin-top:var(--space-3);">
       <section class="card stack grouped-page-section" aria-labelledby="game-catalog-list-title">
-        <div class="grouped-page-section-title"><h2 id="game-catalog-list-title">${activeTab === 'catalog' ? 'Spielekatalog' : 'Vorschläge'}</h2></div>
+        <div class="grouped-page-section-title"><h2 id="game-catalog-list-title">${sectionTitle}</h2></div>
         <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
-          <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Alle</button>
+          <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Katalog</button>
           <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
+          <button type="button" class="btn btn-sm ${activeTab === 'all' ? 'btn-primary' : ''}" data-tab="all">Alle</button>
         </div>
         <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
           ${sortButton('name', 'Name')}
           ${sortButton('myBock', 'Mein Bock')}
           ${sortButton('avgBock', 'Ø Bock')}
-          ${activeTab === 'catalog' ? sortButton('avgSkill', 'Ø Skill') : ''}
+          ${sortButton('avgSkill', 'Ø Skill')}
         </div>
         ${
           usedGenres.length
@@ -697,7 +714,7 @@ export function renderGameCatalog(container, ctx) {
           myId
             ? `<div class="chip-list" role="group" aria-label="Nach fehlender eigener Bewertung filtern">
                  <button type="button" class="chip${ratingFilter.has('bock') ? ' is-active' : ''}" data-rating-filter="bock" aria-pressed="${ratingFilter.has('bock')}">Bock offen</button>
-                 ${activeTab === 'catalog' ? `<button type="button" class="chip${ratingFilter.has('skill') ? ' is-active' : ''}" data-rating-filter="skill" aria-pressed="${ratingFilter.has('skill')}">Skill offen</button>` : ''}
+                 <button type="button" class="chip${ratingFilter.has('skill') ? ' is-active' : ''}" data-rating-filter="skill" aria-pressed="${ratingFilter.has('skill')}">Skill offen</button>
                </div>`
             : ''
         }
@@ -706,7 +723,7 @@ export function renderGameCatalog(container, ctx) {
           ${
             rows.length === 0
               ? emptyStateHtml(emptyMessage, { icon: icon(domainIcon('gameCatalog')) })
-              : rows.map((g) => gameRowHtml(g, myId)).join('')
+              : rows.map((g) => gameRowHtml(g, myId, activeTab === 'all')).join('')
           }
         </div>
         <p class="muted" data-game-catalog-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>

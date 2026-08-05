@@ -6,7 +6,7 @@
 
 import { api } from '../api.js';
 import { confirmDialog } from '../modal.js';
-import { state, gameById } from '../state.js';
+import { state, gameById, catalogGames } from '../state.js';
 import { escapeHtml, avatarHtml, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
@@ -262,9 +262,16 @@ function renderList(container, ctx) {
   }
 }
 
+// A tournament runs on an accepted game only — a suggestion nobody has taken
+// into the catalog yet is not something to schedule a bracket for.
+function createFormGameId() {
+  const games = catalogGames();
+  return games.some((game) => game.id === state.selectedGameId) ? state.selectedGameId : games[0]?.id;
+}
+
 function renderCreateForm(el, ctx) {
-  if (state.games.length === 0 || state.players.length < 2) {
-    el.innerHTML = emptyStateHtml('Dafür braucht es mindestens ein Spiel und 2 Spieler.', {
+  if (catalogGames().length === 0 || state.players.length < 2) {
+    el.innerHTML = emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', {
       style: 'padding:var(--space-4);',
     });
     return;
@@ -275,12 +282,10 @@ function renderCreateForm(el, ctx) {
     if (createCheckedIds.size === 0) createCheckedIds = new Set(state.players.map((p) => p.id));
   }
 
-  const selectedGameId = state.games.some((game) => game.id === state.selectedGameId)
-    ? state.selectedGameId
-    : state.games[0].id;
+  const selectedGameId = createFormGameId();
   state.selectedGameId = selectedGameId;
 
-  const gameSelectOptions = state.games.map((g) => ({ value: g.id, label: g.name }));
+  const gameSelectOptions = catalogGames().map((g) => ({ value: g.id, label: g.name }));
 
   const playerRows = state.players
     .map(
@@ -561,7 +566,7 @@ function renderCreateForm(el, ctx) {
   }
 
   async function proposeTeams() {
-    const gameId = state.selectedGameId || state.games[0].id;
+    const gameId = createFormGameId();
     const playerIds = [...createCheckedIds];
     if (playerIds.length < 2) {
       return showToast('Mindestens 2 Spieler auswählen.', { error: true });
@@ -675,7 +680,7 @@ function renderCreateForm(el, ctx) {
   if (submitBtn) {
     submitBtn.addEventListener('click', async () => {
       if (!createProposedTeams) return;
-      const gameId = state.selectedGameId || state.games[0].id;
+      const gameId = createFormGameId();
       try {
         const created = await api.tournaments.create({
           gameId,

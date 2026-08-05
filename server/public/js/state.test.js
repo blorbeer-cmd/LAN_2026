@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { state, playerById, gameById } from './state.js';
+import { state, playerById, gameById, catalogGames } from './state.js';
 
 test('state starts with the expected empty defaults', () => {
   assert.deepEqual(state.players, []);
@@ -30,4 +30,21 @@ test('gameById finds a game by id', () => {
 test('gameById returns undefined for an unknown id', () => {
   state.games = [];
   assert.equal(gameById('missing'), undefined);
+});
+
+test('catalogGames keeps the accepted games and drops the suggestions', () => {
+  state.games = [
+    { id: 'g1', name: 'CS2', isSuggestion: false },
+    { id: 'g2', name: 'Neuer Vorschlag', isSuggestion: true },
+    { id: 'g3', name: 'Rocket League' },
+  ];
+  assert.deepEqual(
+    catalogGames().map((g) => g.id),
+    ['g1', 'g3'],
+  );
+});
+
+test('catalogGames is empty while only suggestions exist', () => {
+  state.games = [{ id: 'g1', name: 'Nur ein Vorschlag', isSuggestion: true }];
+  assert.deepEqual(catalogGames(), []);
 });

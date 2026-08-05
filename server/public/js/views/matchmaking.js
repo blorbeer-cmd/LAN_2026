@@ -6,7 +6,7 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { confirmDialog, openModal } from '../modal.js';
-import { state, gameById } from '../state.js';
+import { state, gameById, catalogGames } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { openMatchForm } from './leaderboard.js';
@@ -509,10 +509,13 @@ function wireDraftBoard(container, ctx) {
 }
 
 export function renderMatchmaking(container, ctx) {
-  if (state.games.length === 0 || state.players.length === 0) {
+  // Only accepted games can be drawn/drafted for — an open suggestion is not
+  // something to build teams for yet (see catalogGames()).
+  const pickableGames = catalogGames();
+  if (pickableGames.length === 0 || state.players.length === 0) {
     container.innerHTML = `
       <h1 class="view-title">Teams</h1>
-      ${emptyStateHtml('Dafür braucht es mindestens ein Spiel und 2 Spieler.', { icon: icon(domainIcon('matchmaking')) })}`;
+      ${emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', { icon: icon(domainIcon('matchmaking')) })}`;
     return;
   }
 
@@ -543,13 +546,13 @@ export function renderMatchmaking(container, ctx) {
   draftPlayerIds = new Set([...draftPlayerIds].filter((id) => availablePlayerIds.has(id)));
   draftCaptainIds = new Set([...draftCaptainIds].filter((id) => draftPlayerIds.has(id)));
 
-  const selectedGameId = state.games.some((g) => g.id === state.selectedGameId) ? state.selectedGameId : state.games[0].id;
+  const selectedGameId = pickableGames.some((g) => g.id === state.selectedGameId) ? state.selectedGameId : pickableGames[0].id;
 
   if (historyForGameId !== selectedGameId && !historyLoading) {
     loadHistory(selectedGameId, ctx);
   }
 
-  const gameSelectOptions = state.games.map((g) => ({ value: g.id, label: g.name }));
+  const gameSelectOptions = pickableGames.map((g) => ({ value: g.id, label: g.name }));
 
   const playerRows = state.players
     .map(

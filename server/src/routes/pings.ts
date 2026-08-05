@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { writeAdminAudit } from '../adminAudit';
 import { db } from '../db';
+import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { requireGroupEventAccess, resolveGroupEventScope, type GroupEventScope } from '../groupEventScope';
 import { resolveGroupResource } from '../groupAuthorization';
 import { activeGroupPlayers } from '../groupPlayers';
@@ -153,9 +154,10 @@ pingsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const player = activeGroupPlayers(req.group!.id, [playerId]).get(playerId);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   const game = db
-    .prepare('SELECT id, name, icon FROM games WHERE id = ? AND group_id = ?')
-    .get(gameId, req.group!.id) as { id: string; name: string; icon: string } | undefined;
+    .prepare('SELECT id, name, icon, status FROM games WHERE id = ? AND group_id = ?')
+    .get(gameId, req.group!.id) as { id: string; name: string; icon: string; status: string } | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+  if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
 
   const now = Date.now();
   db.prepare(

@@ -12,6 +12,7 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { broadcast, Events } from '../realtime';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { withBodyPlayerIdentity } from '../sessions';
@@ -180,9 +181,10 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
     return res.status(400).json({ error: 'Ein Spieler kann nicht doppelt teilnehmen (Captain und Pool).' });
   }
 
-  const game = db.prepare('SELECT id, name FROM games WHERE id = ? AND group_id = ?').get(gameId, groupId) as
-    { id: string; name: string } | undefined;
+  const game = db.prepare('SELECT id, name, status FROM games WHERE id = ? AND group_id = ?').get(gameId, groupId) as
+    { id: string; name: string; status: string } | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+  if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
 
   const known = activeGroupPlayers(groupId, allIds);
   if (known.size !== allIds.length) {
