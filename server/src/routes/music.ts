@@ -26,6 +26,8 @@ import { withBodyPlayerIdentity } from '../sessions';
 export const musicRouter = Router();
 
 const PAIRING_TTL_MS = 10 * 60 * 1000;
+const PLAYLIST_SEARCH_TTL_MS = 10 * 60 * 1000;
+const MAX_CACHED_PLAYLISTS = 200;
 const CONTROLLER_SCRIPT_PATH = path.join(__dirname, '..', '..', 'scripts', 'jam-controller.mjs');
 
 interface MusicSessionRow {
@@ -37,6 +39,7 @@ interface MusicSessionRow {
   status: 'active' | 'ended';
   current_track_uri: string | null;
   current_track_json: string | null;
+  playback_context_json: string | null;
   playback_is_playing: number;
   playback_progress_ms: number;
   playback_updated_at: number | null;
@@ -52,6 +55,25 @@ interface PublicTrack {
   album: string;
   imageUrl: string | null;
   durationMs: number;
+}
+
+interface PublicPlaylist {
+  id: string;
+  uri: string;
+  name: string;
+  owner: string;
+  imageUrl: string | null;
+  trackCount: number;
+}
+
+interface PublicPlaybackContext extends PublicPlaylist {
+  remainingTrackCount: number;
+}
+
+interface CachedPlaylist {
+  groupId: string;
+  playlist: PublicPlaylist;
+  expiresAt: number;
 }
 
 interface MusicRequestPayload {
@@ -71,6 +93,8 @@ interface MusicRequestPayload {
 }
 
 type AsyncRoute = (req: Request, res: Response) => Promise<void | Response>;
+
+const playlistSearchCache = new Map<string, CachedPlaylist>();
 
 function asyncRoute(handler: AsyncRoute): RequestHandler {
   return (req, res, next: NextFunction) => {
@@ -116,6 +140,16 @@ function mayManageController(req: Request, _player: { isAdmin: number }): boolea
   return req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
 }
 
+function optionalImageUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 2_048) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 function validTrack(value: unknown): PublicTrack | null {
   if (!value || typeof value !== 'object') return null;
   const track = value as Record<string, unknown>;
@@ -130,9 +164,73 @@ function validTrack(value: unknown): PublicTrack | null {
     name: track.name.slice(0, 300),
     artist: track.artist.slice(0, 300),
     album: typeof track.album === 'string' ? track.album.slice(0, 300) : '',
-    imageUrl: typeof track.imageUrl === 'string' ? track.imageUrl : null,
+    imageUrl: optionalImageUrl(track.imageUrl),
     durationMs: Number(track.durationMs),
   };
+}
+
+function validPlaylist(value: unknown): PublicPlaylist | null {
+  if (!value || typeof value !== 'object') return null;
+  const playlist = value as Record<string, unknown>;
+  if (
+    typeof playlist.id !== 'string' || !/^[A-Za-z0-9]{22}$/.test(playlist.id) ||
+    playlist.uri !== `spotify:playlist:${playlist.id}` || typeof playlist.name !== 'string' ||
+    typeof playlist.owner !== 'string' || !Number.isSafeInteger(playlist.trackCount) ||
+    Number(playlist.trackCount) < 0
+  ) return null;
+  return {
+    id: playlist.id,
+    uri: playlist.uri,
+    name: playlist.name.slice(0, 300),
+    owner: playlist.owner.slice(0, 300),
+    imageUrl: optionalImageUrl(playlist.imageUrl),
+    trackCount: Number(playlist.trackCount),
+  };
+}
+
+function playlistCacheKey(groupId: string, playlistId: string): string {
+  return `${groupId}:${playlistId}`;
+}
+
+function prunePlaylistSearchCache(now = Date.now()): void {
+  for (const [key, entry] of playlistSearchCache) {
+    if (entry.expiresAt <= now) playlistSearchCache.delete(key);
+  }
+  while (playlistSearchCache.size > MAX_CACHED_PLAYLISTS) {
+    const oldestKey = playlistSearchCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    playlistSearchCache.delete(oldestKey);
+  }
+}
+
+function rememberPlaylists(groupId: string, playlists: PublicPlaylist[]): void {
+  const expiresAt = Date.now() + PLAYLIST_SEARCH_TTL_MS;
+  prunePlaylistSearchCache();
+  for (const playlist of playlists) {
+    playlistSearchCache.set(playlistCacheKey(groupId, playlist.id), { groupId, playlist, expiresAt });
+  }
+  prunePlaylistSearchCache();
+}
+
+function cachedPlaylist(groupId: string, playlistId: string): PublicPlaylist | null {
+  prunePlaylistSearchCache();
+  const cached = playlistSearchCache.get(playlistCacheKey(groupId, playlistId));
+  return cached?.groupId === groupId ? cached.playlist : null;
+}
+
+function playbackContext(session: MusicSessionRow): PublicPlaybackContext | null {
+  try {
+    const stored = session.playback_context_json ? JSON.parse(session.playback_context_json) as Record<string, unknown> : null;
+    const playlist = validPlaylist(stored);
+    if (!playlist) return null;
+    const fallback = Math.max(0, playlist.trackCount - (session.current_track_uri ? 1 : 0));
+    const remainingTrackCount = Number.isSafeInteger(stored?.remainingTrackCount)
+      ? Math.max(0, Math.min(playlist.trackCount, Number(stored?.remainingTrackCount)))
+      : fallback;
+    return { ...playlist, remainingTrackCount };
+  } catch {
+    return null;
+  }
 }
 
 function requestRows(sessionId: string): MusicRequestPayload[] {
@@ -164,6 +262,7 @@ function sessionPayload(session: MusicSessionRow | undefined) {
     deviceId: session.device_id,
     deviceName: session.device_name,
     currentTrack,
+    playbackContext: playbackContext(session),
     isPlaying: Boolean(session.playback_is_playing),
     progressMs: session.playback_progress_ms,
     playbackUpdatedAt: session.playback_updated_at,
@@ -192,7 +291,7 @@ function trackFromRequest(request: MusicRequestPayload): PublicTrack {
 }
 
 async function rescheduleQueue(groupId: string, session: MusicSessionRow): Promise<void> {
-  if (!session.current_track_uri || !session.playback_is_playing) return;
+  if (!session.current_track_uri || !session.playback_is_playing || playbackContext(session)) return;
   let durationMs = 0;
   try { durationMs = Number(JSON.parse(session.current_track_json || '{}').durationMs || 0); } catch { /* ignore */ }
   const uris = requestRows(session.id).filter((entry) => entry.status === 'queued').map((entry) => entry.trackUri);
@@ -221,7 +320,9 @@ musicRouter.post('/pairing', ...withBodyPlayerIdentity, (req, res) => {
   const player = activePlayer(req);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   if (!mayManageController(req, player)) return res.status(403).json({ error: 'Nur Gruppen-Admins können den Jam-Controller koppeln.' });
-  if (activeSession(req.group!.id)) return res.status(409).json({ error: 'Laufenden Jam zuerst beenden.' });
+  if (activeSession(req.group!.id) && controllerSummary(req.group!.id)?.online) {
+    return res.status(409).json({ error: 'Der verbundene Jam-Controller ist bereits erreichbar.' });
+  }
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const code = Array.from(randomBytes(8), (byte) => alphabet[byte % alphabet.length]).join('');
   const now = Date.now();
@@ -312,6 +413,7 @@ musicRouter.post('/sessions', ...withBodyPlayerIdentity, asyncRoute(async (req, 
   const session: MusicSessionRow = {
     id: nanoid(), group_id: req.group!.id, host_player_id: player.id, device_id: deviceId,
     device_name: device.name, status: 'active', current_track_uri: null, current_track_json: null,
+    playback_context_json: null,
     playback_is_playing: 0, playback_progress_ms: 0, playback_updated_at: null,
     started_at: Date.now(), ended_at: null,
   };
@@ -327,8 +429,46 @@ musicRouter.get('/search', asyncRoute(async (req, res) => {
   if (!activeSession(req.group!.id)) return res.status(409).json({ error: 'Kein Jam aktiv.' });
   const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   if (query.length < 2 || query.length > 80) return res.status(400).json({ error: 'Suche muss zwischen 2 und 80 Zeichen lang sein.' });
-  const data = await issueMusicControllerCommand<{ tracks?: unknown[] }>(req.group!.id, 'search', { query });
-  res.json({ tracks: (data.tracks ?? []).map(validTrack).filter(Boolean) });
+  const data = await issueMusicControllerCommand<{ tracks?: unknown[]; playlists?: unknown[] }>(req.group!.id, 'search', { query });
+  const tracks = (Array.isArray(data?.tracks) ? data.tracks : []).map(validTrack).filter((track): track is PublicTrack => Boolean(track));
+  const playlists = (Array.isArray(data?.playlists) ? data.playlists : [])
+    .map(validPlaylist)
+    .filter((playlist): playlist is PublicPlaylist => Boolean(playlist));
+  rememberPlaylists(req.group!.id, playlists);
+  res.json({ tracks, playlists });
+}));
+
+musicRouter.post('/playlists/:playlistId/play', ...withBodyPlayerIdentity, asyncRoute(async (req, res) => {
+  const player = activePlayer(req);
+  const session = activeSession(req.group!.id);
+  if (!player || !session) return res.status(404).json({ error: 'Jam nicht gefunden.' });
+  const playlistId = req.params.playlistId;
+  if (!/^[A-Za-z0-9]{22}$/.test(playlistId)) return res.status(400).json({ error: 'Ungültige Spotify-Playlist.' });
+  const playlist = cachedPlaylist(req.group!.id, playlistId);
+  if (!playlist) return res.status(404).json({ error: 'Playlist bitte erneut suchen.' });
+
+  await issueMusicControllerCommand(req.group!.id, 'playContext', {
+    deviceId: session.device_id,
+    uri: playlist.uri,
+  });
+  const now = Date.now();
+  db.transaction(() => {
+    db.prepare("UPDATE music_requests SET status = 'played', played_at = ? WHERE session_id = ? AND status = 'playing'")
+      .run(now, session.id);
+    db.prepare("UPDATE music_requests SET status = 'failed' WHERE session_id = ? AND status IN ('sending', 'queued')")
+      .run(session.id);
+    db.prepare(
+      `UPDATE music_sessions SET current_track_uri = NULL, current_track_json = NULL,
+       playback_context_json = ?, playback_is_playing = 1, playback_progress_ms = 0,
+       playback_updated_at = ? WHERE id = ?`,
+    ).run(JSON.stringify({
+      ...playlist,
+      remainingTrackCount: playlist.trackCount,
+      observedTrackUri: null,
+    }), now, session.id);
+  })();
+  musicChanged(req.group!.id);
+  res.json({ playlist });
 }));
 
 musicRouter.post('/requests', ...withBodyPlayerIdentity, asyncRoute(async (req, res) => {
@@ -353,7 +493,7 @@ musicRouter.post('/requests', ...withBodyPlayerIdentity, asyncRoute(async (req, 
     throw error;
   }
   try {
-    if (!session.current_track_uri) {
+    if (!session.current_track_uri && !playbackContext(session)) {
       await issueMusicControllerCommand(req.group!.id, 'playUris', { deviceId: session.device_id, uris: [track.uri] });
       const now = Date.now();
       db.prepare("UPDATE music_requests SET status = 'playing' WHERE id = ?").run(requestId);
@@ -379,6 +519,9 @@ musicRouter.delete('/requests/:requestId', ...withBodyPlayerIdentity, asyncRoute
   const player = activePlayer(req);
   const session = activeSession(req.group!.id);
   if (!player || !session) return res.status(404).json({ error: 'Jam nicht gefunden.' });
+  if (playbackContext(session)) {
+    return res.status(409).json({ error: 'Songwünsche können während einer Playlist nicht entfernt werden.' });
+  }
   const row = db.prepare("SELECT id FROM music_requests WHERE id = ? AND session_id = ? AND status = 'queued'")
     .get(req.params.requestId, session.id);
   if (!row) return res.status(404).json({ error: 'Songwunsch nicht gefunden.' });
@@ -392,6 +535,9 @@ musicRouter.put('/requests/order', ...withBodyPlayerIdentity, asyncRoute(async (
   const player = activePlayer(req);
   const session = activeSession(req.group!.id);
   if (!player || !session) return res.status(404).json({ error: 'Jam nicht gefunden.' });
+  if (playbackContext(session)) {
+    return res.status(409).json({ error: 'Songwünsche laufen während einer Playlist in Eingangsreihenfolge.' });
+  }
   const requestIds = req.body?.requestIds;
   const queued = requestRows(session.id).filter((entry) => entry.status === 'queued');
   const expected = new Set(queued.map((entry) => entry.id));
@@ -414,6 +560,21 @@ musicRouter.post('/skip', ...withBodyPlayerIdentity, asyncRoute(async (req, res)
   const player = activePlayer(req);
   const session = activeSession(req.group!.id);
   if (!player || !session) return res.status(404).json({ error: 'Jam nicht gefunden.' });
+  if (playbackContext(session)) {
+    await issueMusicControllerCommand(req.group!.id, 'next', { deviceId: session.device_id });
+    const now = Date.now();
+    db.transaction(() => {
+      db.prepare("UPDATE music_requests SET status = 'played', played_at = ? WHERE session_id = ? AND status = 'playing'")
+        .run(now, session.id);
+      db.prepare(
+        `UPDATE music_sessions SET current_track_uri = NULL, current_track_json = NULL,
+         playback_is_playing = 1, playback_progress_ms = 0, playback_updated_at = ? WHERE id = ?`,
+      ).run(now, session.id);
+    })();
+    musicChanged(req.group!.id);
+    res.json({ ok: true });
+    return;
+  }
   const queued = requestRows(session.id).filter((entry) => entry.status === 'queued');
   const now = Date.now();
   db.prepare("UPDATE music_requests SET status = 'played', played_at = ? WHERE session_id = ? AND status = 'playing'").run(now, session.id);

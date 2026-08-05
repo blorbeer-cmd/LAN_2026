@@ -632,15 +632,23 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   logic/memory trial challenges. A lobby that further humans join before it starts keeps the
   full forty-challenge catalog like any other match, and the bot then simply scores 0 on
   whichever trial challenges come up.
-- **Jam sessions** — Jam is a grouped page below „Mehr“. Its setup card, shown whenever no
-  controller is paired yet or the paired one is offline, leads with a title-with-info explaining
-  Jam's purpose, the controller/host concept and that only the controller device needs Spotify —
-  the unconfigured state is not silently empty. A dedicated local controller on the
+- **Jam sessions** — Jam is a grouped page below „Mehr“. Its page heading always exposes an info
+  tooltip explaining the shared title/playlist workflow, controller lifecycle and that only the
+  controller device needs Spotify. The setup card is shown whenever no controller is paired yet or
+  the paired one is offline, so the unconfigured state is not silently empty. A dedicated local controller on the
   playback PC or kiosk Raspberry Pi connects Spotify through PKCE and never appears as a player.
   The server stores neither Spotify application credentials nor OAuth tokens. One participant
   starts a session on an explicitly selected playback device; this player is the host. All active
-  group members share pause, resume and skip controls and search the same
-  catalog and add any number of requests. Requests use stable full-width rows with artwork,
+  group members share pause, resume and skip controls and search the same catalog for tracks and
+  playlists. „Als Nächstes“ follows directly below „Jetzt läuft“ before the search workflow. Search
+  results stay inside one stable block and use a full-width two-button switch built from the shared
+  secondary and primary button treatments to switch between titles and playlists. Both choices get
+  equal space, and only the active result type receives primary emphasis. A playlist
+  result starts its complete Spotify playback context and replaces the
+  current playback plus pending requests after explicit confirmation. While that context is active,
+  „Als Nächstes“ shows the remaining playlist-track count separately from additional song requests.
+  Those requests follow Spotify's append-only queue in request order; reorder and remove
+  controls stay hidden because Spotify exposes neither operation for its live queue. Requests use stable full-width rows with artwork,
   title, artist and requester instead of pills; their order is the shared queue order. The current
   track is the most prominent nested surface, with progress and host controls directly attached.
   Members can reorder two or more queued requests through native drag-and-drop or the equivalent
@@ -651,9 +659,23 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   loopback redirect `http://127.0.0.1:43821/callback` makes controller setup independent of the
   Respawn server URL. A short-lived pairing code replaces an existing controller; only its hashed
   credential and public playback/queue metadata reach the server.
-  The setup card offers a generated portable controller ZIP instead of repository or `npm`
-  instructions. It contains prefilled server/pairing data and platform launchers for macOS,
-  Windows and Raspberry Pi/Linux; the launchers provision an isolated runtime on first use.
+  The setup card offers a fresh pairing code independently from the generated controller ZIP, so an
+  already installed controller can always be paired again without another download. Explicitly
+  disconnecting a controller immediately creates and displays such a code; the ZIP remains the
+  secondary first-installation or recovery fallback instead of becoming the only available action.
+  The package needs neither repository nor `npm` instructions.
+  It contains prefilled server/pairing data and platform launchers for macOS, Windows and Raspberry
+  Pi/Linux; the first launch installs the controller and its isolated runtime once below the user's
+  `.respawn` directory. Its local status page can enable login autostart, retry immediately, renew
+  Spotify authorization independently and re-pair an existing installation with a fresh code.
+  Respawn's offline state therefore offers reconnection first and a new download only as a fallback.
+  Controller requests have bounded timeouts and retry automatically after transient network errors.
+  The controller heartbeat remains online when Spotify is temporarily unavailable and omits the
+  unavailable playback snapshot so the server retains the last confirmed track. An invalid Respawn
+  credential explicitly requests re-pairing; an expired or revoked Spotify refresh token explicitly
+  requests only Spotify reauthorization, never an unnecessary controller reinstall. Realtime
+  playback refreshes retain the current Jam DOM while new status is fetched; active controls keep
+  focus and the view preserves its internal scroll position instead of flashing a loading state.
 - **Analytics** — All three tabs share the same event dropdown and show no additional date controls.
   Playtime and tournament data use the selected event directly; Arcade internally derives the
   event's date bounds because arcade results have no event assignment. The daily match chart is

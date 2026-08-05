@@ -529,6 +529,10 @@ export const api = {
     start: (playerId, deviceId) =>
       apiFetch('/api/music/sessions', { method: 'POST', body: JSON.stringify({ playerId, deviceId }) }),
     search: (query) => apiFetch(`/api/music/search?q=${encodeURIComponent(query)}`),
+    playPlaylist: (playerId, playlistId) =>
+      apiFetch(`/api/music/playlists/${encodeURIComponent(playlistId)}/play`, {
+        method: 'POST', body: JSON.stringify({ playerId }),
+      }),
     request: (playerId, trackId) =>
       apiFetch('/api/music/requests', { method: 'POST', body: JSON.stringify({ playerId, trackId }) }),
     removeRequest: (playerId, requestId) =>

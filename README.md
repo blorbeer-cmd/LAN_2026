@@ -41,7 +41,7 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 | 🎪 **Events** | Mehrere LAN-Termine können nebeneinander in derselben Installation existieren; nur eines „trackt" gleichzeitig (Live-Status/Spielzeit). Was außerhalb eines getrackten Events passiert, läuft normal unter „Außerhalb von Events". |
 | 🔗 **Einladungslink & QR-Code** | Ein Link (trägt bei Bedarf das Zugangs-Token) führt neue Leute direkt zur Profil-Erstellung – auch als QR-Code zum Aushängen, serverseitig gerendert statt über einen Drittanbieter. |
 | 🖥️ **TV-/Kiosk-Ansicht** | Scrollfreies Read-only-Dashboard (`/kiosk.html`) im 2×2-Aufbau: Live-Status und Rangliste oben, Live-Vote und Turnier unten. Offene Votes maskieren die Spiele, zeigen nach dem Ende einen Countdown und halten das Ergebnis anschließend zeitlich begrenzt sichtbar. |
-| 🎵 **Jam** | Gemeinsame Spotify-Warteschlange mit Suche, Wiedergabesteuerung und Kiosk-Anzeige. Ein fester Musik-PC oder Raspberry Pi hält die Spotify-Anmeldung lokal; auf dem Respawn-Server liegen keine Spotify-Zugangsdaten oder OAuth-Tokens. [Kurzanleitung](docs/JAM.md) |
+| 🎵 **Jam** | Gemeinsame Spotify-Wiedergabe mit Titel- und Playlist-Suche, sichtbarem Playlist-Restbestand, Songwünschen, Wiedergabesteuerung und Kiosk-Anzeige. Ein einmalig installierter Musik-PC oder Raspberry Pi hält die Spotify-Anmeldung lokal, verbindet sich nach Unterbrechungen erneut und kann ohne neues Downloadpaket wieder gekoppelt werden. [Einrichtung und Bedienung](docs/JAM.md) |
 | 🔔 **Push-Benachrichtigungen** | Optionaler Web-Push-Opt-in fürs Handy: neue Abstimmung, neue Durchsage, anstehendes Turnier-Match – auch wenn die Seite gerade nicht offen ist. Ein Tipp springt direkt in den passenden Bereich; verpasste Nachrichten stehen in der Glocke der Kopfzeile. |
 | ⚙️ **Spiele & Events verwalten** | Spiele, Icons/eigene Logos, Teamgrößen und Prozessname-Zuordnungen (für die Live-Erkennung) zentral pflegen; Events anlegen und Tracking gezielt starten/stoppen. |
 | 📡 **Verbindungsstatus** | Wird die Live-Verbindung unterbrochen oder ist das Gerät offline, erscheint global ein Hinweis. Nach erfolgreichem Reconnect verschwindet er automatisch und die Gruppe wird neu abonniert. |
@@ -81,10 +81,13 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
   im LAN darauf zugreifen könnte – siehe [„Agent-Steuerung"](#agent-steuerung-kontroll-tool) unten.
 - **Web-UI**: keine Installation, jeder öffnet einfach die URL im Browser und legt sich selbst ein
   Profil an.
-- **Jam-Controller**: fertiges portables Download-Paket für den Musik-PC oder Raspberry Pi. Es
-  meldet sich per PKCE bei Spotify an, führt die Wiedergabebefehle aus und bleibt unsichtbar in
-  Spielerlisten und Statistiken. Repository, `npm` und eine installierte Node-Laufzeit sind auf dem
-  Musikgerät nicht nötig. Siehe [Jam einrichten](docs/JAM.md).
+- **Jam-Controller**: einmaliges Download-Paket für den festen Musik-PC oder Raspberry Pi. Die
+  Startdatei installiert den Controller samt privater Laufzeit unter `.respawn`; danach genügen
+  Autostart oder dieselbe Startdatei. Die lokale Statusseite trennt Respawn- und Spotify-Verbindung,
+  wiederholt vorübergehend fehlgeschlagene Verbindungen und erlaubt eine neue Kopplung oder
+  Spotify-Anmeldung ohne erneuten Download. Der Controller führt Titel-, Playlist- und
+  Wiedergabebefehle aus, hält Client-ID und OAuth-Tokens lokal und bleibt unsichtbar in
+  Spielerlisten und Statistiken. Siehe [Jam einrichten und bedienen](docs/JAM.md).
 
 ## Verzeichnisstruktur
 
