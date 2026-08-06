@@ -724,14 +724,10 @@ export function renderGameCatalog(container, ctx) {
           <button type="button" class="btn btn-sm ${activeTab === 'all' ? 'btn-primary' : ''}" data-tab="all">Alle</button>
         </div>
         <section class="tournament-section-panel stack" aria-label="Sortieren und Filtern">
-          <div>
-            <span class="field-label" id="game-catalog-sort-title">Sortieren</span>
-            <div class="row" role="group" aria-labelledby="game-catalog-sort-title" style="gap:var(--space-2);flex-wrap:wrap;">
-              ${SORT_OPTIONS.map((o) => sortButton(o.key, o.label)).join('')}
-            </div>
+          <div class="row" role="group" aria-label="Sortieren" style="gap:var(--space-2);flex-wrap:wrap;">
+            ${SORT_OPTIONS.map((o) => sortButton(o.key, o.label)).join('')}
           </div>
-          <div class="stack game-catalog-filter-group" style="gap:var(--space-2);">
-            <span class="field-label" id="game-catalog-filter-title">Filtern</span>
+          <div class="stack game-catalog-filter-group" role="group" aria-label="Filtern" style="gap:var(--space-2);">
             ${[
               usedGenres.length
                 ? `<div class="chip-list" role="group" aria-label="Nach Genre filtern">
