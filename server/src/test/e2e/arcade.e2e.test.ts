@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
+import { laidOutRect } from './canvasHelpers';
 import {
   addSessionCookie,
   authenticatedServerEnv,
@@ -751,10 +752,10 @@ test('Scribble: expanded canvas keeps 8:5, live thumbs-up survives a reconnect, 
     await host.page.waitForSelector('.arcade-game-shell.is-expanded');
 
     // Draw something clearly visible, then let the guest guess correctly.
-    const box = await host.page.locator('#scribble-canvas').boundingBox();
-    await host.page.mouse.move(box!.x + 30, box!.y + 30);
+    const box = await laidOutRect(host.page, '#scribble-canvas');
+    await host.page.mouse.move(box.x + 30, box.y + 30);
     await host.page.mouse.down();
-    await host.page.mouse.move(box!.x + 200, box!.y + 120, { steps: 10 });
+    await host.page.mouse.move(box.x + 200, box.y + 120, { steps: 10 });
     await host.page.mouse.up();
     await guest.page.waitForFunction(
       () => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) >= 1

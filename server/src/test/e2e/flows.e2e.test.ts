@@ -10,6 +10,7 @@ import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { chromium, Browser, Page } from 'playwright';
 import { normalizeAnswer } from '../../arcade/quizLogic';
+import { laidOutRect } from './canvasHelpers';
 import {
   addSessionCookie,
   authenticatedServerEnv,
@@ -1963,11 +1964,10 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     const guesserMask = await guesserPage.locator('.scribble-word-mask').textContent();
     assert.ok(!guesserMask?.includes(chosenWord), 'the guesser must not see the real word before guessing');
 
-    await page.waitForSelector('#scribble-canvas');
-    const box = await page.locator('#scribble-canvas').boundingBox();
-    await page.mouse.move(box!.x + 20, box!.y + 20);
+    const box = await laidOutRect(page, '#scribble-canvas');
+    await page.mouse.move(box.x + 20, box.y + 20);
     await page.mouse.down();
-    await page.mouse.move(box!.x + 120, box!.y + 90, { steps: 8 });
+    await page.mouse.move(box.x + 120, box.y + 90, { steps: 8 });
     await page.mouse.up();
 
     await page.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) >= 1);
@@ -2061,10 +2061,10 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     // small network batches, see scribble.ts's strokeId grouping). Re-queries
     // the canvas position fresh rather than reusing `box`, in case anything
     // shifted the layout since the first stroke.
-    const box2 = await page.locator('#scribble-canvas').boundingBox();
-    await page.mouse.move(box2!.x + 200, box2!.y + 20);
+    const box2 = await laidOutRect(page, '#scribble-canvas');
+    await page.mouse.move(box2.x + 200, box2.y + 20);
     await page.mouse.down();
-    await page.mouse.move(box2!.x + 260, box2!.y + 60, { steps: 8 });
+    await page.mouse.move(box2.x + 260, box2.y + 60, { steps: 8 });
     await page.mouse.up();
     await page.waitForFunction(() => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) >= 2);
     await guesserPage.waitForFunction(
@@ -2132,8 +2132,8 @@ test('Arcade: Scribble - host draws, a second device guesses correctly, both see
     // can auto-scroll the page and shift it.
     await page.click('[data-color="#e03131"]');
     await page.click('#scribble-fill');
-    const box3 = await page.locator('#scribble-canvas').boundingBox();
-    await page.mouse.click(box3!.x + 280, box3!.y + 20);
+    const box3 = await laidOutRect(page, '#scribble-canvas');
+    await page.mouse.click(box3.x + 280, box3.y + 20);
     await guesserPage.waitForFunction((before) => {
       const c = document.querySelector('#scribble-canvas') as HTMLCanvasElement | null;
       if (!c) return false;
