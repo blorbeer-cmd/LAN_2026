@@ -601,7 +601,6 @@ function openGameDetail(gameId, ctx) {
             await api.games.demote(gameId);
             close();
             await ctx.refresh();
-            activeTab = 'suggestions';
             ctx.rerender();
             showToast('Spiel zurück in die Vorschlagsliste verschoben.');
           } catch (err) {
