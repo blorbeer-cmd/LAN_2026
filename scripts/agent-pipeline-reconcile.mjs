@@ -708,6 +708,26 @@ async function fetchReviewThreads({ owner, repo, pullNumber, token }) {
   return { mergeStateStatus, reviewThreads: nodes, readable: false };
 }
 
+/**
+ * Keeps only the most recent check run per name across every check suite for the head SHA.
+ *
+ * The Check Runs API's `filter=latest` dedupes only within a single check suite. Each
+ * `pull_request_target` retrigger (an edited body, `ready_for_review`, ...) creates a new check
+ * suite for the same head SHA, so a head that accumulated several suites still gets one "latest"
+ * entry per suite back from the API — a stale failing attempt from an earlier suite then keeps
+ * sitting alongside the newer, passing one under the same check name, and `evaluateChecks` treats
+ * any failing entry as gating. Check-run ids are assigned in strictly increasing order regardless
+ * of which suite they belong to, so the highest id per name is reliably the actually-latest attempt.
+ */
+export function dedupeCheckRunsByName(checkRuns) {
+  const latestByName = new Map();
+  for (const run of checkRuns ?? []) {
+    const existing = latestByName.get(run.name);
+    if (!existing || run.id > existing.id) latestByName.set(run.name, run);
+  }
+  return [...latestByName.values()];
+}
+
 /** Reads everything the pure logic needs, all bound to the current head SHA. */
 export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
   const pr = await api(`/repos/${owner}/${repo}/pulls/${pullNumber}`, { token });
@@ -759,7 +779,7 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       labels: (pr.labels ?? []).map((label) => label.name),
       changedFiles: files.map((file) => file.filename),
       checkRunsHeadSha: headSha,
-      checkRuns: checkRuns.map((run) => ({
+      checkRuns: dedupeCheckRunsByName(checkRuns).map((run) => ({
         name: run.name,
         status: run.status,
         conclusion: run.conclusion,

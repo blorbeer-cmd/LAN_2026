@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import { loadConfig } from "./agent-pipeline.mjs";
 import {
+  dedupeCheckRunsByName,
   deriveReadiness,
   evaluateChecks,
   evaluateReviews,
@@ -243,6 +244,25 @@ test("a failing check selects the ci-fix phase", () => {
   );
   assert.equal(readiness.phase, "ci-fix");
   assert.match(readiness.blockers.join("\n"), /Checks are failing: server tests/);
+});
+
+test("dedupeCheckRunsByName keeps only the highest id per name across check suites", () => {
+  // Each pull_request_target retrigger (an edited body, ready_for_review, ...) opens a new check
+  // suite; the Check Runs API's filter=latest dedupes only within one suite, so a head SHA that
+  // accumulated several suites still returns one "latest" entry per suite. A stale failing attempt
+  // from an earlier suite must not keep gating readiness once a later suite passed.
+  const deduped = dedupeCheckRunsByName([
+    { id: 10, name: "Agent pipeline / contract", status: "completed", conclusion: "failure" },
+    { id: 30, name: "Agent pipeline / contract", status: "completed", conclusion: "success" },
+    { id: 20, name: "server tests", status: "completed", conclusion: "success" },
+  ]);
+  assert.deepEqual(
+    deduped.map((run) => ({ id: run.id, name: run.name, conclusion: run.conclusion })),
+    [
+      { id: 30, name: "Agent pipeline / contract", conclusion: "success" },
+      { id: 20, name: "server tests", conclusion: "success" },
+    ],
+  );
 });
 
 test("a running check blocks but does not start a fix", () => {
