@@ -176,8 +176,9 @@ function sortedGames(games, myId) {
 }
 
 function sortButton(key, label) {
-  const mark = sortKey === key ? ` ${icon(sortDir === 'asc' ? 'arrowUp' : 'arrowDown')}` : '';
-  return `<button type="button" class="btn btn-sm" data-sort="${key}">${label}${mark}</button>`;
+  const active = sortKey === key;
+  const mark = active ? ` ${icon(sortDir === 'asc' ? 'arrowUp' : 'arrowDown')}` : '';
+  return `<button type="button" class="btn btn-sm${active ? ' btn-primary' : ''}" data-sort="${key}" aria-pressed="${active}">${label}${mark}</button>`;
 }
 
 function statusBadgeHtml(game) {
@@ -185,6 +186,16 @@ function statusBadgeHtml(game) {
   if (game.processNames.length > 0) return `<span class="badge badge-playing">getrackt</span>`;
   return `<span class="badge badge-offline">${icon('library')} Katalog</span>`;
 }
+
+// Sort keys grouped for the "Sortieren" panel below — kept as one array so
+// the panel and its wiring stay in sync automatically if a sort option is
+// ever added or removed.
+const SORT_OPTIONS = [
+  { key: 'name', label: 'Name' },
+  { key: 'myBock', label: 'Mein Bock' },
+  { key: 'avgBock', label: 'Ø Bock' },
+  { key: 'avgSkill', label: 'Ø Skill' },
+];
 
 // The process suggestion chip: only rendered once there's actually a suggestion
 // for this player+game (see suggestionFor/loadSuggestions above). Deliberately
@@ -317,14 +328,18 @@ function gameRowHtml(game, myId, showSuggestionBadge) {
   });
 
   // Only the mixed "Alle" list needs the marker — in the two single-status
-  // tabs every row would carry the same badge, which says nothing.
-  const suggestionBadge =
-    showSuggestionBadge && game.isSuggestion
-      ? `<span class="badge badge-paused game-row-status-badge">${icon('lightbulb')} Vorschlag</span>`
-      : '';
+  // tabs every row would carry the same badge, which says nothing. The badge
+  // itself is icon-only (an accessible name covers screen readers, a native
+  // title covers mouse hover) and the row picks up a matching border tint
+  // via .is-suggestion, so the status doesn't rely on reading a spelled-out
+  // "Vorschlag" label at a glance.
+  const isMarkedSuggestion = showSuggestionBadge && game.isSuggestion;
+  const suggestionBadge = isMarkedSuggestion
+    ? `<span class="badge badge-paused game-row-status-badge" title="Vorschlag">${icon('lightbulb', { label: 'Vorschlag' })}</span>`
+    : '';
 
   return `
-    <div class="card game-table-row" data-search-game="${game.id}" data-game-catalog-search-item data-selection-search="${escapeHtml(game.name)}">
+    <div class="card game-table-row${isMarkedSuggestion ? ' is-suggestion' : ''}" data-search-game="${game.id}" data-game-catalog-search-item data-selection-search="${escapeHtml(game.name)}">
       <div class="game-row-name">
                 <strong class="game-row-title">${escapeHtml(game.name)}</strong>
         ${suggestionBadge}
@@ -708,33 +723,35 @@ export function renderGameCatalog(container, ctx) {
           <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
           <button type="button" class="btn btn-sm ${activeTab === 'all' ? 'btn-primary' : ''}" data-tab="all">Alle</button>
         </div>
-        <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
-          ${sortButton('name', 'Name')}
-          ${sortButton('myBock', 'Mein Bock')}
-          ${sortButton('avgBock', 'Ø Bock')}
-          ${sortButton('avgSkill', 'Ø Skill')}
-        </div>
-        ${
-          usedGenres.length
-            ? `<div class="chip-list" role="group" aria-label="Nach Genre filtern">
-                 ${usedGenres
-                   .map(
-                     (g) =>
-                       `<button type="button" class="chip${genreFilter.has(g) ? ' is-active' : ''}" data-genre-filter="${escapeHtml(g)}" aria-pressed="${genreFilter.has(g)}">${escapeHtml(g)}</button>`,
-                   )
-                   .join('')}
-               </div>`
-            : ''
-        }
-        ${
-          myId
-            ? `<div class="chip-list" role="group" aria-label="Nach fehlender eigener Bewertung filtern">
-                 <button type="button" class="chip${ratingFilter.has('bock') ? ' is-active' : ''}" data-rating-filter="bock" aria-pressed="${ratingFilter.has('bock')}">Bock offen</button>
-                 <button type="button" class="chip${ratingFilter.has('skill') ? ' is-active' : ''}" data-rating-filter="skill" aria-pressed="${ratingFilter.has('skill')}">Skill offen</button>
-               </div>`
-            : ''
-        }
-        <input type="search" id="game-catalog-search" value="${escapeHtml(gameSearchQuery)}" placeholder="Spiele suchen…" aria-label="Spiele suchen" autocomplete="off" />
+        <section class="tournament-section-panel stack" aria-label="Sortieren und Filtern">
+          <div class="row" role="group" aria-label="Sortieren" style="gap:var(--space-2);flex-wrap:wrap;">
+            ${SORT_OPTIONS.map((o) => sortButton(o.key, o.label)).join('')}
+          </div>
+          <div class="stack game-catalog-filter-group" role="group" aria-label="Filtern" style="gap:var(--space-2);">
+            ${[
+              usedGenres.length
+                ? `<div class="chip-list" role="group" aria-label="Nach Genre filtern">
+                     ${usedGenres
+                       .map(
+                         (g) =>
+                           `<button type="button" class="chip${genreFilter.has(g) ? ' is-active' : ''}" data-genre-filter="${escapeHtml(g)}" aria-pressed="${genreFilter.has(g)}">${escapeHtml(g)}</button>`,
+                       )
+                       .join('')}
+                   </div>`
+                : null,
+              myId
+                ? `<div class="chip-list" role="group" aria-label="Nach fehlender eigener Bewertung filtern">
+                     <button type="button" class="chip${ratingFilter.has('bock') ? ' is-active' : ''}" data-rating-filter="bock" aria-pressed="${ratingFilter.has('bock')}">Bock offen</button>
+                     <button type="button" class="chip${ratingFilter.has('skill') ? ' is-active' : ''}" data-rating-filter="skill" aria-pressed="${ratingFilter.has('skill')}">Skill offen</button>
+                   </div>`
+                : null,
+              `<input type="search" id="game-catalog-search" value="${escapeHtml(gameSearchQuery)}" placeholder="Spiele suchen…" aria-label="Spiele suchen" autocomplete="off" />`,
+            ]
+              .filter(Boolean)
+              .map((html, i) => (i === 0 ? html : `<div class="game-catalog-filter-divider">${html}</div>`))
+              .join('')}
+          </div>
+        </section>
         <div class="game-table">
           ${
             rows.length === 0

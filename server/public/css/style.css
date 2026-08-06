@@ -1742,6 +1742,22 @@ button.draft-pool-player {
   border-radius: 0 var(--radius-full) var(--radius-full) 0;
   background: var(--accent-gradient);
 }
+/* Spiele view: "Sortieren" and "Filtern" share one compact panel (see
+   gameCatalog.js) instead of two full nested sections each with their own
+   border/padding - a hairline plus a little top padding is enough to still
+   read as two categories without doubling the panel chrome. */
+.game-catalog-filter-group {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+/* Genre chips, the "Meine Bewertung" chips and the search field sit directly
+   under the single "Filtern" heading with no per-row label of their own
+   (each control's own text/aria-label already says what it does) - the same
+   hairline divider used above separates them from each other instead. */
+.game-catalog-filter-divider {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
 .tournament-create-step-title {
   display: flex;
   flex-direction: column;
@@ -2888,9 +2904,20 @@ button.card {
 }
 /* "Vorschlag" marker, only rendered in the mixed "Alle" list where catalog
    games and suggestions sit side by side. Unlike the genre tag it must not
-   give way on narrow rows — it is the row's status, not a detail. */
+   give way on narrow rows — it is the row's status, not a detail. Icon-only
+   (see gameRowHtml in gameCatalog.js) so the status reads at a glance
+   without spelling the word out on every row; the icon carries an
+   accessible name and a native title for that. */
 .game-row-status-badge {
   flex: 0 0 auto;
+}
+/* Same status, reinforced on the row itself so it doesn't depend on
+   noticing the small badge alone — same border+inset-shadow pattern as
+   .matchmaking-draw-team.is-winner, just in the paused/amber color already
+   tied to "Vorschlag" everywhere else. */
+.game-table-row.is-suggestion {
+  border-color: var(--state-paused);
+  box-shadow: inset 0 0 0 1px var(--state-paused);
 }
 /* Static (non-interactive) marker for "agent can detect this game", reusing
    the same green already used for "spielt"/"trackt gerade" elsewhere so the
