@@ -1216,14 +1216,17 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
 
   // "Katalog" holds the accepted games only, so the still-open suggestion is
   // not in it; "Alle" lists both and keeps the suggestion recognizable
-  // through its Vorschlag badge, which an accepted game never carries.
+  // through its icon-only "Vorschlag" badge (plus a matching row border),
+  // which an accepted game never carries.
   await page.click('button[data-tab="catalog"]');
   await page.waitForSelector('.game-table-row:has-text("E2E Partyspiel")', { state: 'detached' });
   await page.click('button[data-tab="all"]');
-  await suggestionRow.locator('.game-row-status-badge:has-text("Vorschlag")').waitFor();
+  await suggestionRow.locator('.game-row-status-badge[title="Vorschlag"]').waitFor();
+  assert.ok(await suggestionRow.evaluate((el) => el.classList.contains('is-suggestion')));
   const acceptedRow = page.locator('.game-table-row', { hasText: 'Counter-Strike 2' });
   await acceptedRow.waitFor();
   assert.equal(await acceptedRow.locator('.game-row-status-badge').count(), 0);
+  assert.equal(await acceptedRow.evaluate((el) => el.classList.contains('is-suggestion')), false);
   await page.click('button[data-tab="suggestions"]');
   await suggestionRow.waitFor();
 

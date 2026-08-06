@@ -396,8 +396,25 @@ Components are plain CSS classes (no JS component library) in `style.css`:
     snapshot and read the current rating from state.
 - **Game catalog** — The list has three tabs: „Katalog“ (the accepted games), „Vorschläge“ (the
   proposals waiting to be accepted) and „Alle“ (both together). „Alle“ means all — in that mixed
-  list every suggestion keeps its `.badge-paused` „Vorschlag“ marker (`.game-row-status-badge`),
-  which an accepted game never carries, so the two remain distinguishable without switching tabs.
+  list every suggestion keeps its `.badge-paused` marker (`.game-row-status-badge`) plus a matching
+  `.is-suggestion` border/inset-shadow tint on the row itself, which an accepted game never
+  carries, so the two remain distinguishable without switching tabs. The marker is icon-only (a
+  lightbulb with an accessible name and native title, not the spelled-out word) since it repeats on
+  every suggestion row in that mixed list; the „Vorschläge“ tab's own label and active state already
+  say what the whole list is, so its rows carry no additional per-row marker.
+  Below the tabs, the sort buttons and the filter controls share one compact
+  `.tournament-section-panel` — the same bordered/accent-rail pattern the Tournament create form
+  and result dialogs use to separate sibling control groups, but one panel instead of two so the
+  combined control area doesn't push the actual list further down than it has to. Neither group
+  carries a visible text heading; `.game-catalog-filter-group`'s hairline `border-top` is the only
+  visual separator between them, and each group still has an `aria-label` (`role="group"`) so the
+  category survives for assistive tech even without on-screen text. The active sort key gets
+  `.btn-primary` plus its direction arrow, which combined with the `.btn`/`.chip` shape difference
+  from the filter controls below is enough to read as sort vs. filter without a heading for either.
+  Inside the filter group, genre chips, the „Bock offen“/„Skill offen“ chips and the free-text
+  search carry no per-row label either — each control's own text or accessible name already says
+  what it does — and `.game-catalog-filter-divider` separates them from each other with the same
+  kind of hairline.
   Every other surface that picks a game to actually play — Vote, Turnier, Team-Auslosung, Captain
   Draft, „Ergebnis eintragen“ and game pings — offers accepted games only (`catalogGames()` in
   `public/js/state.js`, enforced server-side by `src/routes/gameSelection.ts`), which is what keeps
