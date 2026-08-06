@@ -1742,6 +1742,22 @@ button.draft-pool-player {
   border-radius: 0 var(--radius-full) var(--radius-full) 0;
   background: var(--accent-gradient);
 }
+/* Spiele view: "Sortieren" and "Filtern" share one compact panel (see
+   gameCatalog.js) instead of two full nested sections each with their own
+   border/padding - a hairline plus a little top padding is enough to still
+   read as two categories without doubling the panel chrome. */
+.game-catalog-filter-group {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+/* Genre chips, the "Meine Bewertung" chips and the search field sit directly
+   under the single "Filtern" heading with no per-row label of their own
+   (each control's own text/aria-label already says what it does) - the same
+   hairline divider used above separates them from each other instead. */
+.game-catalog-filter-divider {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
 .tournament-create-step-title {
   display: flex;
   flex-direction: column;

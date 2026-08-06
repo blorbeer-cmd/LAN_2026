@@ -723,43 +723,37 @@ export function renderGameCatalog(container, ctx) {
           <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
           <button type="button" class="btn btn-sm ${activeTab === 'all' ? 'btn-primary' : ''}" data-tab="all">Alle</button>
         </div>
-        <section class="tournament-section-panel stack" aria-labelledby="game-catalog-sort-title">
-          <div class="grouped-page-section-title"><h2 id="game-catalog-sort-title">Sortieren</h2></div>
-          <div class="row" role="group" aria-label="Sortieren nach" style="gap:var(--space-2);flex-wrap:wrap;">
-            ${SORT_OPTIONS.map((o) => sortButton(o.key, o.label)).join('')}
+        <section class="tournament-section-panel stack" aria-label="Sortieren und Filtern">
+          <div>
+            <span class="field-label" id="game-catalog-sort-title">Sortieren</span>
+            <div class="row" role="group" aria-labelledby="game-catalog-sort-title" style="gap:var(--space-2);flex-wrap:wrap;">
+              ${SORT_OPTIONS.map((o) => sortButton(o.key, o.label)).join('')}
+            </div>
           </div>
-        </section>
-        <section class="tournament-section-panel stack" aria-labelledby="game-catalog-filter-title">
-          <div class="grouped-page-section-title"><h2 id="game-catalog-filter-title">Filtern</h2></div>
-          ${
-            usedGenres.length
-              ? `<div>
-                   <span class="field-label" id="game-catalog-genre-filter-label">Genre</span>
-                   <div class="chip-list" role="group" aria-labelledby="game-catalog-genre-filter-label">
+          <div class="stack game-catalog-filter-group" style="gap:var(--space-2);">
+            <span class="field-label" id="game-catalog-filter-title">Filtern</span>
+            ${[
+              usedGenres.length
+                ? `<div class="chip-list" role="group" aria-label="Nach Genre filtern">
                      ${usedGenres
                        .map(
                          (g) =>
                            `<button type="button" class="chip${genreFilter.has(g) ? ' is-active' : ''}" data-genre-filter="${escapeHtml(g)}" aria-pressed="${genreFilter.has(g)}">${escapeHtml(g)}</button>`,
                        )
                        .join('')}
-                   </div>
-                 </div>`
-              : ''
-          }
-          ${
-            myId
-              ? `<div>
-                   <span class="field-label" id="game-catalog-rating-filter-label">Meine Bewertung</span>
-                   <div class="chip-list" role="group" aria-labelledby="game-catalog-rating-filter-label">
+                   </div>`
+                : null,
+              myId
+                ? `<div class="chip-list" role="group" aria-label="Nach fehlender eigener Bewertung filtern">
                      <button type="button" class="chip${ratingFilter.has('bock') ? ' is-active' : ''}" data-rating-filter="bock" aria-pressed="${ratingFilter.has('bock')}">Bock offen</button>
                      <button type="button" class="chip${ratingFilter.has('skill') ? ' is-active' : ''}" data-rating-filter="skill" aria-pressed="${ratingFilter.has('skill')}">Skill offen</button>
-                   </div>
-                 </div>`
-              : ''
-          }
-          <div>
-            <label class="field-label" for="game-catalog-search">Suche</label>
-            <input type="search" id="game-catalog-search" value="${escapeHtml(gameSearchQuery)}" placeholder="Spiele suchen…" autocomplete="off" />
+                   </div>`
+                : null,
+              `<input type="search" id="game-catalog-search" value="${escapeHtml(gameSearchQuery)}" placeholder="Spiele suchen…" aria-label="Spiele suchen" autocomplete="off" />`,
+            ]
+              .filter(Boolean)
+              .map((html, i) => (i === 0 ? html : `<div class="game-catalog-filter-divider">${html}</div>`))
+              .join('')}
           </div>
         </section>
         <div class="game-table">
