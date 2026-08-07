@@ -1,9 +1,12 @@
 # Konzept: Nutzergesteuerte Review-Modus-Wahl in der Agenten-Pipeline
 
-Status: Konzeptentwurf zur Entscheidung; nichts umgesetzt.
+Status: vom Nutzer beschlossen und umgesetzt. Stufe A (Auswahlpunkt in der Session) und Stufe B
+(Wahl und Gate auf GitHub) sind implementiert; `self` und `human` dürfen das Merge-Gate öffnen,
+sichtbar über Label und Protokoll.
 Stand: 2026-08-07
 Bezug: ändert [`auto-feature-to-deploy-pipeline.md`](auto-feature-to-deploy-pipeline.md) in den
-Abschnitten 3, 4, 6, 8, 9, 11 und 12.
+Abschnitten 1, 3, 4, 6, 8, 9, 11, 12 und 14. Der Ablauf steht in
+`.github/agent-pipeline/review-decision.md`.
 
 ## 1. Auftrag
 
@@ -220,11 +223,27 @@ Verfügbarkeits- und Fallback-Automatik entfällt, weil der Nutzer entscheidet.
   ändere") eine spätere, kleine Ergänzung — bewusst nicht Teil dieses Entwurfs, weil sie dem
   Auftrag „ich will jedes Mal entscheiden" widerspricht.
 
-## 10. Offene Punkte für den Nutzer
+## 10. Entscheidungen des Nutzers
 
-1. Sollen b) und c) das Merge-Gate wirklich öffnen dürfen? Ohne das bleibt die Wahl folgenlos.
-   Empfehlung: ja, mit sichtbarem Label und Protokoll.
-2. Reicht zunächst Stufe A, oder soll Stufe B direkt mitgebaut werden? Empfehlung: Stufe A zuerst,
-   Stufe B zusammen mit dem Required Check.
-3. Soll die Auswahl auch nach reinen CI-Fix-Commits ohne Review-Findings erscheinen? Empfehlung:
-   ja, aber mit Empfehlung „menschliches Review genügt", wenn sich fachlich nichts geändert hat.
+1. b) und c) dürfen das Merge-Gate öffnen, mit sichtbarem Label und Protokoll im Statuskommentar.
+2. Stufe A und Stufe B wurden zusammen umgesetzt.
+3. Die Auswahl erscheint nach jedem Head-Wechsel, auch nach reinen CI-Fix-Commits.
+
+## 11. Abweichungen der Umsetzung vom Entwurf
+
+Zwei Punkte wurden während der Umsetzung anders gelöst als oben skizziert:
+
+- **Head-Bindung ohne Timeline-Abfrage.** Der Entwurf wollte den Zeitpunkt des `labeled`-Events mit
+  dem Commit-Zeitpunkt des Head-SHAs vergleichen. Das ist in beide Richtungen unscharf: ein lokal
+  früher erzeugter, später gepushter Commit könnte ein Label fälschlich als gültig erscheinen
+  lassen. Stattdessen hält der Reconciler in seinem eigenen Statuskommentar fest, an welchem Head
+  er ein Wahl-Label zuerst gesehen hat. Das braucht keine zusätzliche API und keine neue
+  Berechtigung, und es bleibt bei der reinen Funktion über dem GitHub-Snapshot, weil der Datensatz
+  selbst aus GitHub gelesen wird.
+- **Der Ergebnis-Marker gilt nur für `self`.** Für `cross` und `human` ist die Approval zum exakten
+  Head-SHA die stärkere und fälschungssichere Evidenz; ein zusätzlicher Marker würde dort nur eine
+  zweite, schwächere Quelle für dieselbe Aussage schaffen.
+
+Bewusst streng geblieben: Der gewählte Modus entscheidet allein, welche Evidenz zählt. Eine
+Cross-Approval erfüllt ein gewähltes `review:self` nicht, obwohl sie stärker wäre — wer sie nutzen
+will, setzt `review:cross`. Das hält das Gate vorhersagbar statt nachsichtig.

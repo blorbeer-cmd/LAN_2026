@@ -26,6 +26,22 @@ export const STATUS_COMMENT_MARKER = "<!-- agent-pipeline:status -->";
 export const UI_NOTICE_MARKER = "<!-- agent-pipeline:ui-notice";
 const UI_NOTICE_PATTERN = /<!--\s*agent-pipeline:ui-notice\s+([0-9a-f]{40})\s*-->/;
 
+// The head SHA a review-mode label was first observed at, written by the reconciler into its own
+// status comment: `<!-- agent-pipeline:review-decision <40-char head sha> mode=cross -->`. It is
+// what makes a choice expire with its head, so the next head asks again instead of silently
+// inheriting the previous answer.
+export const REVIEW_DECISION_MARKER = "<!-- agent-pipeline:review-decision";
+const REVIEW_DECISION_PATTERN =
+  /<!--\s*agent-pipeline:review-decision\s+([0-9a-f]{40})\s+mode=(cross|self|human)\s*-->/;
+
+// Published by the review session for the `self` mode, where GitHub carries no native evidence:
+// `<!-- agent-pipeline:review-result <sha> mode=self verdict=pass session=<id> read-only=true -->`
+export const REVIEW_RESULT_MARKER = "<!-- agent-pipeline:review-result";
+const REVIEW_RESULT_SOURCE =
+  "<!--\\s*agent-pipeline:review-result\\s+([0-9a-f]{40})\\s+mode=(cross|self|human)\\s+verdict=(pass|changes-required|blocked)\\s+session=(\\S+)\\s+read-only=(true|false)\\s*-->";
+
+export const REVIEW_MODES = ["cross", "self", "human"];
+
 // Labels this phase owns and may both add and remove. Every other label on the pull request stays
 // untouched, including labels a human added by hand.
 const MANAGED_LABEL_KEYS = [
@@ -37,6 +53,11 @@ const MANAGED_LABEL_KEYS = [
   "readyForMerge",
   "uiChanged",
 ];
+
+// The review-mode labels (`review:cross`, `review:self`, `review:human`) are the user's answer to
+// who reviews the current head. They are read as input and never added here; the single write this
+// module performs on them is removing one that was bound to an earlier head, which is what makes
+// the question be asked again instead of an old answer applying to code the user never saw.
 
 // Read as input, never written and never cleared: `needsHuman` (escalations raised by a human or
 // by the later provider phases, for example an exhausted round limit, which cannot be derived from
@@ -237,6 +258,177 @@ export function parseUiNoticeHeadSha(comments) {
   return found;
 }
 
+/**
+ * Reads the review-mode binding out of the reconciler's own status comment.
+ *
+ * Deliberately not read from any trusted comment: this record decides whether a choice still
+ * belongs to the current head, so a hand-written copy carrying an older SHA must not be able to
+ * keep an expired choice alive. Only the comment the reconciler itself maintains counts.
+ */
+export function parseReviewDecision(statusCommentBody) {
+  const match = statusCommentBody?.match(REVIEW_DECISION_PATTERN);
+  return match ? { headSha: match[1], mode: match[2] } : null;
+}
+
+/**
+ * Collects every published review result, in comment order.
+ *
+ * Only trusted authors count, for the same reason the UI notice does: a result satisfies a merge
+ * gate, so an outsider must not be able to declare a review passed that nobody performed.
+ */
+export function parseReviewResults(comments) {
+  const results = [];
+  for (const comment of comments ?? []) {
+    if (!isTrustedCommentAuthor(comment)) continue;
+    const matches = comment?.body?.matchAll(new RegExp(REVIEW_RESULT_SOURCE, "g")) ?? [];
+    for (const match of matches) {
+      results.push({
+        headSha: match[1],
+        mode: match[2],
+        verdict: match[3],
+        sessionId: match[4],
+        readOnlyEnforced: match[5] === "true",
+        author: comment.author ?? null,
+      });
+    }
+  }
+  return results;
+}
+
+/** The newest published result for exactly this head and mode, or null. */
+export function latestReviewResult(results, headSha, mode) {
+  let found = null;
+  for (const result of results ?? []) {
+    if (result.headSha === headSha && result.mode === mode) found = result;
+  }
+  return found;
+}
+
+/**
+ * Resolves which review mode applies to the current head.
+ *
+ * The label is the user's choice and is never written by the pipeline. The binding record decides
+ * whether that choice still refers to the current head: a label first observed at an earlier head
+ * is consumed, so the pipeline removes it and asks again rather than reusing an answer the user
+ * gave for different code. Switching the label at the same head is a legitimate correction — the
+ * counter provider running out of quota is exactly the case this feature exists for — and simply
+ * rebinds to the new mode.
+ *
+ * A stale label can never open the gate on its own: every piece of review evidence is bound to the
+ * head SHA independently, so the worst a wrong binding could do is skip one question.
+ */
+export function evaluateReviewDecision(snapshot, config = loadConfig()) {
+  const labels = new Set(snapshot.labels ?? []);
+  const modeLabels = config.reviewModeLabels ?? {};
+  const chosen = REVIEW_MODES.filter((mode) => labels.has(modeLabels[mode]));
+
+  if (chosen.length > 1) {
+    return {
+      mode: null,
+      ambiguous: true,
+      chosenLabels: chosen.map((mode) => modeLabels[mode]),
+      staleLabels: [],
+      record: null,
+    };
+  }
+
+  if (!chosen.length) {
+    return { mode: null, ambiguous: false, chosenLabels: [], staleLabels: [], record: null };
+  }
+
+  const mode = chosen[0];
+  const record = parseReviewDecision(snapshot.statusCommentBody);
+  if (record && record.headSha !== snapshot.headSha) {
+    return {
+      mode: null,
+      ambiguous: false,
+      chosenLabels: [modeLabels[mode]],
+      staleLabels: [modeLabels[mode]],
+      record: null,
+      staleHeadSha: record.headSha,
+    };
+  }
+
+  return {
+    mode,
+    ambiguous: false,
+    chosenLabels: [modeLabels[mode]],
+    staleLabels: [],
+    record: { headSha: snapshot.headSha, mode },
+  };
+}
+
+/** True when a review already passed for some earlier head of this pull request. */
+export function hasEarlierPassingReview(snapshot, allowedReviewerLogins) {
+  const earlierApproval = (snapshot.reviews ?? []).some(
+    (review) =>
+      review.commitSha !== snapshot.headSha &&
+      review.state === "APPROVED" &&
+      ((allowedReviewerLogins ?? []).includes(review.author) ||
+        (!isBotLogin(review.author) &&
+          WRITE_ASSOCIATIONS.has(review.authorAssociation))),
+  );
+  const earlierResult = (snapshot.reviewResults ?? []).some(
+    (result) => result.headSha !== snapshot.headSha && result.verdict === "pass",
+  );
+  return earlierApproval || earlierResult;
+}
+
+function isDocumentationPath(path) {
+  return path.startsWith("docs/") || path.endsWith(".md");
+}
+
+/**
+ * Advises which review mode fits the current head. Advisory only — it never changes the gate.
+ *
+ * It reasons about what the reconciler can actually see: the changed paths and whether an earlier
+ * head already passed a review. The severity of the findings that were just fixed is the stronger
+ * signal, but it lives in the review session, not in GitHub state, so the session-side flow in
+ * `.github/agent-pipeline/review-decision.md` refines this recommendation rather than replacing it.
+ */
+export function recommendReviewMode(
+  { changedFiles, protectedPaths, priorReviewPassed },
+  config = loadConfig(),
+) {
+  const files = changedFiles ?? [];
+
+  if ((protectedPaths ?? []).length) {
+    return {
+      mode: "cross",
+      reason:
+        "workflow or infrastructure paths changed and need the most independent review available",
+    };
+  }
+
+  const sensitive = matchingPaths(files, config.sensitivePathPrefixes);
+  if (sensitive.length) {
+    return {
+      mode: "cross",
+      reason: `sensitive paths changed (${sensitive.slice(0, 3).join(", ")})`,
+    };
+  }
+
+  if (files.length && files.every(isDocumentationPath)) {
+    return {
+      mode: "human",
+      reason: "only documentation changed, so a read-through is enough",
+    };
+  }
+
+  if (priorReviewPassed) {
+    return {
+      mode: "self",
+      reason:
+        "an earlier head already passed a review and the remaining change touches no sensitive path",
+    };
+  }
+
+  return {
+    mode: "cross",
+    reason: "no review has passed for this pull request yet",
+  };
+}
+
 function evaluateMergeability(snapshot) {
   if (snapshot.mergeable === false) return "conflicted";
   if (snapshot.mergeable !== true) return "unknown";
@@ -382,24 +574,94 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     blockers.push("No check results are available for the current head SHA.");
   }
 
+  // Computed before the review evidence because the review mode decides what evidence even counts,
+  // and because a missing choice is only worth reporting once everything mechanical is green.
+  const threadsReadable = snapshot.reviewThreadsReadable !== false;
+  const threads = evaluateReviewThreads(snapshot.reviewThreads);
+  const protectedPaths = matchingPaths(
+    snapshot.changedFiles,
+    config.protectedPathPrefixes,
+  );
+  const mechanicallyGreen =
+    !snapshot.isDraft &&
+    !escalated &&
+    !waiting &&
+    threadsReadable &&
+    mergeability === "clean" &&
+    checks.state === "passing";
+
   const reviewerProvider = reviewerProviderFor(contract.implementer, config);
+  const allowedReviewers =
+    config.providerReviewerAllowlist?.[reviewerProvider] ?? [];
   const reviews = evaluateReviews(
     snapshot.reviews,
     snapshot.headSha,
-    config.providerReviewerAllowlist?.[reviewerProvider] ?? [],
+    allowedReviewers,
   );
-  if (reviews.verdict === "changes-required") {
-    blockers.push("The cross-review requested changes for the current head SHA.");
-  } else if (reviews.verdict !== "pass") {
+
+  // Who reviews this head is the user's decision, not the pipeline's. Everything after the
+  // decision — starting the review, handing over the findings, fixing them — stays automatic.
+  const decision = evaluateReviewDecision(snapshot, config);
+  const selfResult = latestReviewResult(
+    snapshot.reviewResults,
+    snapshot.headSha,
+    "self",
+  );
+
+  // Whether the chosen mode is still waiting for its verdict, as opposed to having one already.
+  let evidenceOutstanding = false;
+  if (decision.ambiguous) {
     blockers.push(
-      `No ${reviewerProvider ?? "cross"} review has approved the current head SHA yet.`,
+      `More than one review-mode label is set (${decision.chosenLabels.join(", ")}); keep exactly one.`,
     );
+  } else if (!decision.mode) {
+    // Before that, the pull request is not ready to be reviewed at all and the gate is already
+    // blocked by the mechanical condition; asking then would only burn quota on a head that is
+    // about to change.
+    if (mechanicallyGreen) {
+      blockers.push(
+        decision.staleLabels.length
+          ? "The review mode was chosen for an earlier head SHA; choose again for the current head."
+          : "No review mode has been chosen for the current head SHA.",
+      );
+    }
+  } else if (decision.mode === "cross") {
+    if (reviews.verdict === "changes-required") {
+      blockers.push("The cross-review requested changes for the current head SHA.");
+    } else if (reviews.verdict !== "pass") {
+      evidenceOutstanding = true;
+      blockers.push(
+        `No ${reviewerProvider ?? "cross"} review has approved the current head SHA yet.`,
+      );
+    }
+  } else if (decision.mode === "self") {
+    // GitHub carries no native evidence for a same-provider review, so the published result is all
+    // there is. It is deliberately weaker than a cross-review: the gate can check that the record
+    // is head-bound, complete and posted by a trusted identity, but not that the session really was
+    // independent. That reduced independence is the user's explicit choice here.
+    if (!selfResult) {
+      evidenceOutstanding = true;
+      blockers.push("No self-review result has been published for the current head SHA.");
+    } else if (!selfResult.readOnlyEnforced) {
+      blockers.push(
+        "The self-review result does not confirm a technically enforced read-only session.",
+      );
+    } else if (selfResult.verdict === "changes-required") {
+      blockers.push("The self-review requested changes for the current head SHA.");
+    } else if (selfResult.verdict !== "pass") {
+      blockers.push(`The self-review reported \`${selfResult.verdict}\` for the current head SHA.`);
+    }
+  } else if (decision.mode === "human") {
+    // Review and merge collapse into the same person here. That is only acceptable because it was
+    // deliberately chosen for this head, is visible as a label, and is recorded below.
+    if (!reviews.humanApproval) {
+      evidenceOutstanding = true;
+      blockers.push("No human approval covers the current head SHA yet.");
+    }
   }
 
   // An unreadable discussion blocks, but it must say so rather than invent an open thread the
   // maintainer would go looking for.
-  const threadsReadable = snapshot.reviewThreadsReadable !== false;
-  const threads = evaluateReviewThreads(snapshot.reviewThreads);
   if (!threadsReadable) {
     blockers.push(
       "Review threads could not be read completely for the current head SHA.",
@@ -410,10 +672,6 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     );
   }
 
-  const protectedPaths = matchingPaths(
-    snapshot.changedFiles,
-    config.protectedPathPrefixes,
-  );
   // Automation must not resolve this itself: a workflow or infrastructure change needs a human to
   // approve the exact current head. Escalation is derived from that condition rather than from a
   // label, so approving the head clears it again without any label bookkeeping.
@@ -434,13 +692,14 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     );
   }
 
-  const mechanicallyGreen =
-    !snapshot.isDraft &&
-    !escalated &&
-    !waiting &&
-    threadsReadable &&
-    mergeability === "clean" &&
-    checks.state === "passing";
+  const recommendation = recommendReviewMode(
+    {
+      changedFiles: snapshot.changedFiles,
+      protectedPaths,
+      priorReviewPassed: hasEarlierPassingReview(snapshot, allowedReviewers),
+    },
+    config,
+  );
 
   let phase;
   if (escalated) {
@@ -460,13 +719,18 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
   } else if (needsHumanApproval) {
     // Nothing an agent does can clear this one, so it must outrank review and ready-for-merge.
     phase = "awaiting-human-approval";
+  } else if (decision.ambiguous || (!decision.mode && mechanicallyGreen)) {
+    // Waiting on the user to say who reviews this head. No agent may answer this, so it outranks
+    // the review phase, and deliberately nothing starts meanwhile: an automatic fallback would
+    // spend exactly the quota this decision exists to protect.
+    phase = "awaiting-review-decision";
   } else if (!blockers.length) {
     phase = "ready-for-merge";
   } else if (
     mechanicallyGreen &&
     // Only while a review round is genuinely outstanding. With a verdict already in, nobody is
     // reviewing and the label would contradict the verdict shown in the status comment.
-    reviews.verdict === "none" &&
+    evidenceOutstanding &&
     threads.blockingCount === 0
   ) {
     // Everything mechanical is green; the pull request is waiting on its review round.
@@ -490,6 +754,11 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
       mergeability,
       protectedPaths,
       uiChanged,
+      mechanicallyGreen,
+      reviewMode: decision.mode,
+      reviewDecision: decision,
+      selfResult,
+      recommendation,
     },
   };
 }
@@ -512,13 +781,21 @@ export function planLabels(currentLabels, readiness, config = loadConfig()) {
 
   const managed = MANAGED_LABEL_KEYS.map((key) => labelName(config, key));
 
+  // The review-mode labels belong to the user and are never added here. The one exception is
+  // removing a label that was bound to an earlier head: leaving it in place would answer the
+  // question for code the user never saw, and removing it is what makes the choice be asked again.
+  const staleChoiceLabels = (readiness.details?.reviewDecision?.staleLabels ?? []).filter(
+    (label) => current.has(label),
+  );
+
   return {
     add: [...desired].filter(
       (label) => !current.has(label) && managed.includes(label),
     ),
-    remove: managed.filter(
-      (label) => current.has(label) && !desired.has(label),
-    ),
+    remove: [
+      ...managed.filter((label) => current.has(label) && !desired.has(label)),
+      ...staleChoiceLabels,
+    ],
   };
 }
 
@@ -533,9 +810,57 @@ function formatList(items) {
  * Deterministic for a given snapshot, so the caller can skip the API write when nothing changed.
  * The comment reports state; round counters are never derived from comment history.
  */
-export function renderStatusComment(readiness, snapshot) {
+function reviewModeLine(readiness, config) {
+  const details = readiness.details ?? {};
+  const mode = details.reviewMode;
+  if (!mode) return "- Review mode: `not chosen for this head`";
+
+  const independence =
+    mode === "cross"
+      ? "independent counter provider"
+      : mode === "self"
+        ? "same provider, reduced independence — chosen deliberately"
+        : "human review, chosen deliberately; review and merge are the same person";
+  const label = config.reviewModeLabels?.[mode] ?? mode;
+  return `- Review mode: \`${mode}\` via \`${label}\` (${independence})`;
+}
+
+/**
+ * Renders the review-mode question, which is the actual choice surface on GitHub.
+ *
+ * Only rendered while the answer is missing, so a decided pull request does not keep asking.
+ */
+function reviewDecisionSection(readiness, config) {
+  const details = readiness.details ?? {};
+  const modeLabels = config.reviewModeLabels ?? {};
+  const recommendation = details.recommendation;
+  const lines = [
+    "### Who reviews this head?",
+    "",
+    `Set exactly one label. Recommended: \`${modeLabels[recommendation?.mode] ?? "review:cross"}\`` +
+      (recommendation?.reason ? ` — ${recommendation.reason}.` : "."),
+    "",
+    `- \`${modeLabels.cross}\` — cross-review by ${readiness.reviewerProvider ?? "the other provider"}; most independent.`,
+    `- \`${modeLabels.self}\` — fresh, read-only session of ${readiness.contract?.implementer ?? "the implementer"}; spares the other provider's quota, less independent.`,
+    `- \`${modeLabels.human}\` — you review it yourself; approve this exact head to satisfy the gate.`,
+    "",
+    "The chosen review starts automatically, its findings are fixed automatically, and the",
+    "question returns for the next head SHA. Nothing starts until a label is set.",
+  ];
+  return lines.join("\n");
+}
+
+export function renderStatusComment(readiness, snapshot, config = loadConfig()) {
   const contract = readiness.contract ?? {};
   const details = readiness.details ?? {};
+  const record = details.reviewDecision?.record;
+  // Asked exactly when the blocker is raised: while anything mechanical is still open the pull
+  // request is not ready to be reviewed, and the head it would bind to is about to change anyway.
+  const awaitingDecision =
+    Boolean(details.reviewDecision) &&
+    !details.reviewMode &&
+    (details.mechanicallyGreen === true || details.reviewDecision.ambiguous === true);
+
   return [
     STATUS_COMMENT_MARKER,
     "## Agent pipeline status",
@@ -546,17 +871,27 @@ export function renderStatusComment(readiness, snapshot) {
     `- Task: \`${contract.taskId ?? "unknown"}\``,
     `- Implementer: \`${contract.implementer ?? "unknown"}\``,
     `- Reviewer: \`${readiness.reviewerProvider ?? "unknown"}\``,
+    reviewModeLine(readiness, config),
     `- Checks: \`${details.checks?.state ?? "unknown"}\``,
     `- Review verdict: \`${details.reviews?.verdict ?? "unknown"}\``,
+    ...(details.selfResult
+      ? [`- Self-review result: \`${details.selfResult.verdict}\` (session \`${details.selfResult.sessionId}\`)`]
+      : []),
     `- Unresolved review threads: \`${details.threads?.blockingCount ?? "unknown"}\``,
     `- Mergeability: \`${details.mergeability ?? "unknown"}\``,
     "",
+    ...(awaitingDecision ? [reviewDecisionSection(readiness, config), ""] : []),
     "### Blockers",
     "",
     formatList(readiness.blockers ?? []),
     "",
     "_Maintained by the agent pipeline reconciler. It reports state only; it does not approve or",
     "merge. The final merge is always a human decision._",
+    // Binds the review-mode label to the head it was chosen for. Written by the reconciler and read
+    // back on the next run; a new head expires the binding and the question above returns.
+    ...(record
+      ? [`${REVIEW_DECISION_MARKER} ${record.headSha} mode=${record.mode} -->`]
+      : []),
   ].join("\n");
 }
 
@@ -640,7 +975,7 @@ export function reconcile(snapshot, config = loadConfig()) {
     return { readiness, labels: { add: [], remove: [] }, comment: null, status };
   }
 
-  const body = renderStatusComment(readiness, snapshot);
+  const body = renderStatusComment(readiness, snapshot, config);
   return {
     readiness,
     labels: planLabels(snapshot.labels, readiness, config),
@@ -884,6 +1219,8 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       // A discussion that could not be read completely must block, and must say why.
       reviewThreadsReadable: graph?.readable === true,
       uiNoticeHeadSha: parseUiNoticeHeadSha(trustedComments),
+      // Published review verdicts for the `self` mode, which GitHub itself cannot represent.
+      reviewResults: parseReviewResults(trustedComments),
       statusCommentBody: statusComment?.body ?? null,
       gateStatus: gateStatus
         ? { state: gateStatus.state, description: gateStatus.description ?? null }

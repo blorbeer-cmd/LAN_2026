@@ -17,10 +17,27 @@ Replace every `<PLACEHOLDER>` before starting the review:
 | `<EXPECTED_HEAD_SHA>`    | Full 40-character PR head SHA                                                                      |
 | `<IMPLEMENTER>`          | `codex` or `claude`                                                                                |
 | `<REVIEWER_PROVIDER>`    | Provider running this review: `codex` or `claude`                                                  |
-| `<REVIEW_MODE>`          | `cross` for the other provider, `fallback` for a fresh session of the implementation provider      |
+| `<REVIEW_MODE>`          | `cross`, `self` or `fallback` — see "Review modes" below                                            |
 | `<REVIEW_SESSION_ID>`    | Unique identifier for this fresh, isolated review session                                          |
 | `<READ_ONLY_ENFORCED>`   | Must be `true`; otherwise the reviewer is unavailable and the review is blocked                    |
 | `<TASK_GOAL>`            | Original objective and acceptance criteria, without the implementation session's private reasoning |
+
+## Review modes
+
+The mode is the user's answer to the question in [`review-decision.md`](review-decision.md), never
+a decision this session makes:
+
+| Mode       | When                                                                     | Reviewer                       |
+| ---------- | ------------------------------------------------------------------------ | ------------------------------ |
+| `cross`    | user chose `review:cross`                                                | the other provider             |
+| `self`     | user chose `review:self`, usually to spare the other provider's quota    | implementation provider, fresh |
+| `fallback` | the chosen provider turned out to be unavailable and the user re-chose it | implementation provider, fresh |
+
+`self` and `fallback` run identically and are equally strict; they differ only in why they were
+used, and the pull request records which one applied. `self` and `fallback` publish their verdict
+as the `agent-pipeline:review-result` marker described in `review-decision.md`, because GitHub
+carries no native evidence for a same-provider review. A `cross` review needs no marker: its
+evidence is the counter provider's approval of the exact head SHA.
 
 Resolve the current head immediately before the review. For example:
 
@@ -43,7 +60,7 @@ Erwarteter Head-Branch: <EXPECTED_HEAD_BRANCH>
 Erwarteter Head-SHA: <EXPECTED_HEAD_SHA>
 Implementierungs-Agent: <IMPLEMENTER>
 Review-Anbieter: <REVIEWER_PROVIDER>
-Review-Modus: <REVIEW_MODE>
+Review-Modus: <REVIEW_MODE> (cross | self | fallback)
 Review-Session-ID: <REVIEW_SESSION_ID>
 Read-only technisch erzwungen: <READ_ONLY_ENFORCED>
 
@@ -127,7 +144,7 @@ Beende die Antwort mit genau einem JSON-Block und danach keinem weiteren Text:
   "repository": "<REPOSITORY>",
   "pull_request": "<PR_NUMBER_OR_URL>",
   "reviewer_provider": "<REVIEWER_PROVIDER>",
-  "review_mode": "<REVIEW_MODE>",
+  "review_mode": "cross|self|fallback",
   "review_session_id": "<REVIEW_SESSION_ID>",
   "isolated_session": true,
   "read_only_enforced": true,
@@ -188,19 +205,31 @@ Bei `anchor: none` müssen `file` und `line` stattdessen als JSON-`null` ausgege
 3. Prefer a clean, dedicated worktree checked out at `<EXPECTED_HEAD_BRANCH>`. Start Claude only
    with a technically enforced non-editing permission mode and credentials without repository
    write access. If that cannot be guaranteed, treat Claude as unavailable.
+   A review subagent restricted to read-only tools satisfies the enforcement requirement, because
+   the restriction lives in the tool surface rather than in the prompt. Its task description must
+   then be built solely from the task contract, the diff and the published pull-request discussion —
+   passing along the implementation session's reasoning would reintroduce exactly the dependency
+   the separate session exists to avoid.
 4. Do not use `--from-pr` if it would resume a session previously linked to the implementation PR;
    session separation is more important than convenience.
 5. Confirm that no files changed and that the final `reviewed_head_sha` matches GitHub.
 6. Publish or forward only the review result. The implementation session handles all fixes.
 7. Start a new review session after every fix commit.
 
-## Fallback use
+## Choosing the mode
 
-For the normal cross-review, set `review_mode` to `cross` and use the provider opposite the
-implementer. If that provider is unavailable, start a fresh session of the implementation
-provider and set `review_mode` to `fallback`, but only with enforced read-only permissions. Never
-reuse the implementation conversation, never rely on prompt-only write restrictions and never
-change `verdict` to `pass` merely because the preferred reviewer ran out of quota.
+The user picks the mode per head SHA; this session never picks it. Set `review_mode` to whatever
+the chosen `review:*` label says.
+
+If the chosen provider turns out to be unavailable, do not quietly review with the other one: that
+would spend exactly the quota the user was steering around. Report the observed reason — a known
+quota message, an error, a timeout — and put the choice back to the user. If they then choose the
+implementation provider, the mode is `fallback`.
+
+`self` and `fallback` are held to the same bar as `cross`: a fresh session, no implementation
+conversation, no reasoning carried over, and technically enforced read-only permissions. Never rely
+on prompt-only write restrictions, and never change `verdict` to `pass` merely because the
+preferred reviewer ran out of quota.
 
 The reviewer does not resolve threads itself because the session is read-only. After a finding is
 confirmed fixed, an accepted rejection, or confirmed obsolete, the implementation session must

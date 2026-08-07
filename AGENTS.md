@@ -64,11 +64,16 @@ für normale Implementierungsdetails gelten diese Kurzregeln:
   Scope und Ausgangs-SHA müssen der tatsächlichen Arbeit entsprechen.
 - Der Implementierungs-Agent behebt eigene CI-Fehler, Mergekonflikte und berechtigte
   Review-Findings. Nach jedem neuen Commit sind CI und Review für den neuen Head-SHA erneut nötig.
-- Claude-Implementierungen werden regulär von Codex, Codex-Implementierungen von Claude geprüft.
-  Ist der Gegen-Agent nicht verfügbar, erfolgt das Review in einer frischen, isolierten und
-  schreibgeschützten Session des Implementierungs-Anbieters. Ein Review darf nie übersprungen
-  werden. Separate Reviews verwenden den Prompt und Ablauf unter
-  `.github/agent-pipeline/review-session-prompt.md`.
+- Wer reviewt, entscheidet der Nutzer pro Head-SHA: Cross-Review durch den Gegen-Anbieter
+  (`review:cross`), Review durch denselben Anbieter in einer frischen, isolierten und
+  schreibgeschützten Session (`review:self`) oder menschliches Review (`review:human`). Der Agent
+  legt die Auswahl mit einer Empfehlung vor, sobald CI grün und der PR konfliktfrei ist, setzt aber
+  nie selbst ein Wahl-Label. Ablauf und Empfehlungsregeln:
+  `.github/agent-pipeline/review-decision.md`.
+- Nach der Wahl laufen Reviewstart, Findings-Übergabe und Fix wieder automatisch. Ein Review darf
+  nie übersprungen werden; ist der gewählte Anbieter nicht verfügbar, wird der Ausfall gemeldet und
+  die Auswahl erneut vorgelegt, nie stillschweigend ein anderer Modus verwendet. Separate Reviews
+  verwenden den Prompt und Ablauf unter `.github/agent-pipeline/review-session-prompt.md`.
 - Nur kritische oder wesentlich mehrdeutige Entscheidungen werden dem Nutzer vorgelegt. Normale
   Fixes laufen bis zum grünen, konfliktfreien und vollständig reviewten PR automatisch weiter.
 - Bei sichtbaren UI/UX-Änderungen den Nutzer informieren, sobald der Branch sinnvoll prüfbar ist:
