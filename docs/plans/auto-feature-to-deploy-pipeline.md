@@ -1,8 +1,10 @@
 # Konzept: Automatisierte Agenten-Pipeline bis zum menschlich freigegebenen Merge
 
 Status: beschlossenes Zielkonzept; Phasen 0 bis 2 umgesetzt (Task-Vertrag, Labels, stateless
-Readiness-Reconciler). Ab Phase 3 startet die Automatik noch keine Agenten.
-Stand: 2026-08-04
+Readiness-Reconciler) sowie Phase 7 (Commit-Status `Agent pipeline / ready for human merge`;
+Eintrag als Required Check bleibt eine manuelle Nutzerentscheidung). Ab Phase 3 startet die
+Automatik noch keine Agenten.
+Stand: 2026-08-05
 
 Dieses Dokument beschreibt, wie eine Aufgabe von Codex oder Claude Code implementiert, vom
 jeweils anderen Coding-Agent geprüft und anhand der Review-Findings automatisch korrigiert wird.
@@ -465,6 +467,12 @@ aktuell; ein reiner Backend-PR erzeugt keine UI-Nachricht.
 
 Abnahme: Nur der Nutzer kann einen vollständig grünen PR mergen; ein neuer Commit, offenes
 Finding oder fehlende UI-Nachricht schließt das Gate wieder.
+
+Umsetzungsstand: Schritte 1, 2, 4 und 5 sind im Reconciler umgesetzt; der Status kennt `success`
+und `pending` und trägt den ersten offenen Blocker in seiner Beschreibung. PRs ohne aktivierten
+Task-Vertrag und Fork-PRs erhalten bewusst `success` mit dem Hinweis, dass das Gate für sie nicht
+gilt — sonst würde ein Required Check, den niemand schreibt, jeden fremden PR dauerhaft blockieren.
+Schritt 3 bleibt manuell und wird erst nach dem Piloten ausgeführt.
 
 ### Phase 8 – Pilot und schrittweise Aktivierung
 
