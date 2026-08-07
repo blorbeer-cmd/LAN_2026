@@ -259,7 +259,20 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
   const labels = snapshot.labels ?? [];
   const hasLabel = (key) => labels.includes(labelName(config, key));
 
-  // Kill switch first: an operator disabled automation for this pull request.
+  // Closed/merged first: a pull request is history the moment it leaves the open state, and
+  // labels outlive that transition, so a stale `agent:no-auto` must never resurrect it as
+  // "still being worked on" below.
+  if (snapshot.state !== "open") {
+    return {
+      participating: false,
+      mutate: false,
+      phase: "closed",
+      ready: false,
+      blockers: [],
+    };
+  }
+
+  // Kill switch: an operator disabled automation for this pull request.
   if (hasLabel("noAuto")) {
     return {
       participating: true,
@@ -269,16 +282,6 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
       blockers: [
         "Automation is disabled for this pull request via the kill-switch label.",
       ],
-    };
-  }
-
-  if (snapshot.state !== "open") {
-    return {
-      participating: false,
-      mutate: false,
-      phase: "closed",
-      ready: false,
-      blockers: [],
     };
   }
 

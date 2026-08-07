@@ -1018,6 +1018,17 @@ test("a closed pull request gets no gate verdict at all", () => {
   assert.equal(plan.status, null);
 });
 
+test("a closed pull request that still carries agent:no-auto gets no gate verdict either", () => {
+  // Labels outlive the state transition: a pull request closed while paused must still read as
+  // history, not resurrect the kill-switch's `pending` verdict on an already-final commit.
+  const plan = reconcile(
+    readySnapshot({ state: "closed", labels: [config.labels.noAuto] }),
+    config,
+  );
+  assert.equal(plan.readiness.phase, "closed");
+  assert.equal(plan.status, null);
+});
+
 test("the kill switch holds the gate closed instead of leaving it open", () => {
   // `agent:no-auto` stops every mutation, but section 11 of the plan counts it as a gate condition:
   // a paused pull request that kept an earlier `success` would be mergeable while paused.
