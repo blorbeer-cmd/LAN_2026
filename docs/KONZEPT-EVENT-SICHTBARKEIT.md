@@ -5,12 +5,18 @@ Stand: 2026-08-07 · Status: **Konzept, noch nicht umgesetzt**
 Auftrag: Ein Event soll nur sehen, wer dazu eingeladen wurde — einschließlich aller
 Auswertungen, Statistiken und Ranglisten.
 
+Ausgangslage: Es gibt **noch keine echten Statistik- oder Eventdaten, nur Testdaten.** Das ist
+für dieses Vorhaben der entscheidende Umstand — es macht den teuersten Konzeptteil, die
+Kompatibilitätsmigration für gewachsene Historie, vollständig überflüssig (Abschnitt 4.3) und
+verwandelt die Sichtbarkeitsregel in eine reine Vorwärtsentscheidung.
+
 Kurzantwort auf „wäre das aufwändig?“: **Der Zugriffsmechanismus existiert bereits fast
 vollständig; der Aufwand liegt fast ausschließlich in den Auswertungsflächen.** Die reine
 Event-Sichtbarkeit (Listen, Detailseiten, eventgebundene Fachdaten) ist ein kleiner Eingriff.
 Statistiken, Ranglisten und Hall of Fame sind der teure Teil, weil sie heute bewusst
 eventübergreifend aggregieren und dabei jede Sichtbarkeitsgrenze umgehen. Realistische
-Gesamtgröße: **mittel bis groß, sinnvoll in vier Phasen mit je einem eigenen PR.**
+Gesamtgröße: **mittel bis groß, sinnvoll in drei Phasen mit je einem eigenen PR.** Jetzt
+umgesetzt ist es deutlich billiger als nach der ersten echten LAN.
 
 ---
 
@@ -107,8 +113,8 @@ wer sonst noch eingeladen war.
 `visibility_scope` bleibt erhalten und behält seine Bedeutung:
 
 - `participants` — Zielzustand und Default für neue Events (Stufenmodell oben).
-- `group` — bewusst geöffnetes Event, für alle aktiven Mitglieder auf Stufe 2. Nötig für
-  Bestandsdaten (siehe 4.3) und für „das Sommer-LAN sieht jeder".
+- `group` — bewusst geöffnetes Event, für alle aktiven Mitglieder auf Stufe 2. Für „das
+  Sommer-LAN sieht jeder", nicht mehr als Kompatibilitätskrücke für Bestandsdaten (siehe 4.3).
 - `public` — heute nirgends von `group` unterschieden. Empfehlung: **im Rahmen dieses Umbaus
   entfernen** (Migration auf `group`), statt eine dritte Semantik mitzuschleppen, die kein
   Bedienkonzept hat.
@@ -120,6 +126,11 @@ Gesamt-Ranglisten, weil ihre Menge sichtbarer Events unterschiedlich ist. Das is
 unvermeidliche Folge des Auftrags, aber sie sollte bewusst getroffen und in der UI erklärt
 werden („Basis: 3 von 5 Events").
 
+Weil es bislang **keine echten Statistikdaten gibt, nur Testdaten**, ist das hier eine reine
+Vorwärtsentscheidung: es zerfällt keine gewachsene gemeinsame Historie, und niemand verliert
+Zahlen, die er schon kannte. Die Regel gilt ab dem ersten echten Event — das ist der
+günstigste denkbare Zeitpunkt für diesen Umbau.
+
 Zwei Umsetzungsvarianten stehen zur Wahl:
 
 | Variante | Regel | Aufwand | Bewertung |
@@ -130,6 +141,10 @@ Zwei Umsetzungsvarianten stehen zur Wahl:
 Empfehlung: **V1**. V2 ist nur sinnvoll, wenn Statistiken bewusst als „gemeinsame
 Gruppenhistorie" verstanden werden sollen und nur die operative Eventplanung privat ist. Das
 wäre eine andere Produktaussage und sollte dann auch so benannt werden.
+
+Solange nur Testdaten existieren, ist V1 zusätzlich risikoarm: die Umstellung lässt sich gegen
+neu erzeugte Testdaten vollständig durchprüfen, und ein späterer Wechsel von V2 auf V1 wäre
+teurer, weil dann echte Zahlen sichtbar verschwinden würden.
 
 ---
 
@@ -257,17 +272,34 @@ Empfehlung: Ablehnen zurücknehmen erlauben (`declined → accepted` direkt), so
 weder beendet noch abgesagt ist. Kleiner Zusatz, verhindert eine offensichtlich unfertige
 Bedienung.
 
-### 4.3 Bestandsdaten — das größte Betriebsrisiko
+### 4.3 Bestandsdaten — entschärft, weil es nur Testdaten gibt
 
-Der DB-Default ist bereits `participants`, und Rosters wurden je nach Weg als `accepted`
-(`setParticipants`) oder gar nicht gesetzt. Ohne Migration würde nach dem Deploy **die gesamte
-Historie für alle verschwinden**, deren Teilnahme nie explizit eingetragen wurde — inklusive
-Hall of Fame und Gesamt-Rangliste.
+Ursprünglich war das der teuerste Punkt des Konzepts: eine Kompatibilitätsmigration, die alle
+Altevents auf `visibility_scope = 'group'` setzt, damit nach dem Deploy nicht die gesamte
+Historie inklusive Hall of Fame und Gesamt-Rangliste verschwindet.
 
-Verbindlich: Eine Migration setzt **alle vor diesem Umbau existierenden Events** explizit auf
-`visibility_scope = 'group'`. Erst neu angelegte Events starten auf `participants`. Damit ist der
-Umbau rückwärtskompatibel und ein Admin kann Altevents bewusst einzeln schließen. Die Migration
-ist idempotent und braucht einen Legacy-Fixture-Test nach `server/TESTING.md`.
+**Das entfällt.** Es existieren keine echten Statistik- oder Eventdaten, nur Testdaten. Damit
+gilt:
+
+- **Keine Kompatibilitätsmigration.** Alle Events — bestehende wie neue — laufen auf dem
+  DB-Default `participants`. Kein Backfill, kein Legacy-Fixture-Test, keine
+  Rückwärtskompatibilitätsschulden.
+- **Testdaten sind unkritisch und regenerierbar.** `testData.ts:36` löscht sie über
+  `is_test = 1` vollständig, und `testData.ts:99` trägt alle Testspieler als Teilnehmer jedes
+  Testevents ein (Spaltendefault `status = 'accepted'`, `db.ts:75`). Testevents bleiben für
+  Testspieler also vollständig sichtbar. Ein echtes Nicht-Admin-Konto verliert sie — genau
+  richtig, es sind keine echten Events.
+- **Die einzige verbleibende Migration** ist die Vereinheitlichung von `public` auf `group`
+  (Abschnitt 2.2), und auch die betrifft nach heutigem Stand null Zeilen. Sie bleibt trotzdem
+  sinnvoll, um die dritte Semantik dauerhaft loszuwerden.
+
+Zusätzliche Chance aus derselben Lage: `PUT /api/events/:id/participants`
+(`setParticipants`, `server/src/events.ts:342`) schreibt heute alle übergebenen Personen direkt
+auf `accepted` und umgeht damit den Einladungsablauf komplett. Der Endpunkt ist in `api.js:307`
+zwar exponiert, wird im Frontend aber **nirgends aufgerufen**. Solange keine echten Daten
+daranhängen, lässt er sich kostenlos bereinigen: entweder auf `invited` umstellen oder
+ersatzlos entfernen. Danach ist die Einladung der einzige Weg in ein Event — was die
+Sichtbarkeitsregel überhaupt erst konsistent macht.
 
 ### 4.4 Kiosk
 
@@ -297,11 +329,15 @@ Performance. Bei ~15 Personen und einer Handvoll Events kostet ein zusätzliches
 | 4 | Realtime/Push/Kiosk angleichen | S | 1 |
 | 5 | Frontend: Auswahl, Teaser, Auswertungsbasis | S–M | 2, 3 |
 | 6 | Negativ-Testsuite, E2E, Doku | M | alle |
-| — | Migration Bestandsdaten (4.3) | S | — |
+| — | `setParticipants` bereinigen, `public` → `group` (4.3) | XS | — |
+
+Die frühere Zeile „Migration Bestandsdaten" entfällt ersatzlos — ohne echte Daten gibt es
+nichts zu erhalten (4.3).
 
 Ohne Phase 3 (also Variante V2): **klein**, gut in einem PR machbar. Mit Phase 3 (Variante V1,
-Auftrag wörtlich erfüllt): **mittel bis groß**, sinnvoll auf vier PRs verteilt —
-(1+2), (3), (4+5), (6+Migration) — damit jeder PR für sich reviewbar und grün bleibt.
+Auftrag wörtlich erfüllt): **mittel bis groß**, sinnvoll auf drei PRs verteilt —
+(1+2+4), (3), (5+6) — damit jeder PR für sich reviewbar und grün bleibt. Der erste PR liefert
+bereits den sichtbaren Nutzen: Events tauchen nur noch bei Eingeladenen auf.
 
 ---
 
@@ -314,6 +350,7 @@ Auftrag wörtlich erfüllt): **mittel bis groß**, sinnvoll auf vier PRs verteil
 - Ein eingeladenes, noch nicht beigetretenes Mitglied sieht genau den Teaser und kann annehmen
   oder ablehnen — nicht mehr.
 - Gruppen-Admin und Owner sehen und verwalten weiterhin alles.
-- Bestandsevents sind nach der Migration unverändert für alle sichtbar.
+- Ein Event wird ausschließlich über eine Einladung betretbar; es gibt keinen Weg mehr, jemanden
+  ohne Einladung auf `accepted` zu setzen.
 - Jeder Endpunkt mit `?eventId=` hat einen Negativtest gegen ein fremdes Event.
 - `npm run lint`, `npm run build`, `npm test` und `npm run test:e2e` sind grün.
