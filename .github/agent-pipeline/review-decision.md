@@ -84,8 +84,10 @@ das Kontingent verbrauchen, das diese Frage schützen soll.
 
 ## Nach der Antwort
 
-1. Das zugehörige Label am Pull Request setzen, damit die Wahl auch außerhalb der Session gilt und
-   im Merge-Gate ankommt. Genau ein Wahl-Label gleichzeitig.
+1. Der Agent setzt das zugehörige Label selbst am Pull Request, sofort nach der Antwort und ohne
+   weitere Rückfrage. Der Nutzer muss dafür nicht auf GitHub wechseln. Genau ein Wahl-Label
+   gleichzeitig: ein zuvor gesetztes anderes wird dabei entfernt. Erst das Label bringt die Wahl
+   ins Merge-Gate und macht sie außerhalb der Session sichtbar.
 2. Bei a) und b) das Review nach
    [`review-session-prompt.md`](review-session-prompt.md) starten — `review_mode: cross`
    beziehungsweise `self`.
@@ -108,8 +110,14 @@ das Kontingent verbrauchen, das diese Frage schützen soll.
 
 ## Was die Wahl nicht verändert
 
-- Kein Agent setzt ein Wahl-Label. Die Entscheidung gehört dem Nutzer, sonst wäre sie eine
-  Selbstbedienung am Merge-Gate.
+- Die Entscheidung gehört dem Nutzer. Der Agent überträgt sie nur: Er setzt das Label ausschließlich
+  als Ergebnis einer ausdrücklichen Antwort in derselben Session und erfindet, ändert oder ersetzt
+  es nie von sich aus. Ein Agent, der seinen eigenen Reviewmodus wählt, bedient sich am Merge-Gate.
+  Das Gate kann diese Herkunft nicht prüfen — es sieht nur ein gesetztes Label —, deshalb ist die
+  Regel verbindlich und die Label-Historie des Pull Requests der Prüfpfad.
+- Unbeaufsichtigte Automatik setzt nie ein Wahl-Label: weder der Reconciler noch ein späterer
+  Dispatcher, eine Review-Session oder ein CI-Job. Die einzige Label-Schreiboperation der Pipeline
+  bleibt das Entfernen einer an einen früheren Head gebundenen Wahl.
 - Alle übrigen Gate-Bedingungen gelten unverändert: grüne CI, konfliktfrei, aufgelöste Threads,
   UI/UX-Nachricht, menschliche Freigabe geschützter Pfade.
 - Der Merge bleibt in jedem Modus beim Nutzer.

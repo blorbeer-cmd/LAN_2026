@@ -45,8 +45,10 @@ wiederkehrenden Entscheidung des Nutzers — wer das Review durchführt:
 - Kein automatischer Merge und kein automatisches Aktivieren von Auto-Merge.
 - Keine Umgehung von Nutzungslimits oder Sicherheitsgrenzen.
 - Kein automatisches Überspringen eines Reviews.
-- Keine Wahl des Review-Modus durch einen Agenten. Kein Agent setzt ein `review:*`-Label; das wäre
-  eine Selbstbedienung am Merge-Gate.
+- Keine Wahl des Review-Modus durch einen Agenten. Eine interaktive Session setzt das
+  `review:*`-Label als Übertragung einer ausdrücklichen Nutzerantwort; sie erfindet, ändert oder
+  ersetzt es nie. Unbeaufsichtigte Automatik — Reconciler, Dispatcher, Review-Session, CI-Job —
+  setzt es nie, denn ein Agent, der seinen eigenen Reviewmodus wählt, bedient sich am Merge-Gate.
 - Kein stillschweigender Wechsel des Review-Modus bei Anbieter-Ausfall und kein Auto-Start nach
   Zeitablauf, wenn die Auswahl unbeantwortet bleibt.
 - Keine Agenten-Schreibrechte auf `main` und keine Deploy-Berechtigungen für Agenten.

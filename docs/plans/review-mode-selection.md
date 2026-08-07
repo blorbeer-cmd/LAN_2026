@@ -42,7 +42,9 @@ Drei Punkte müssen dabei bewusst entschieden werden, sonst entsteht ein widersp
    vertretbar, wenn es eine bewusste Wahl pro Head-SHA ist und im PR protokolliert wird — nicht,
    wenn es unbemerkt passiert.
 3. **Die Modus-Wahl darf kein Agent selbst treffen.** Sonst ist sie ein Selbstbedienungs-Bypass des
-   Merge-Gates. Der Agent darf das Review-*Ergebnis* melden, nie den *Modus* setzen.
+   Merge-Gates. Das Label *im Auftrag* des Nutzers zu setzen, direkt nach dessen Antwort, ist
+   dagegen genau die Bequemlichkeit, die den Ablauf brauchbar macht — die Grenze verläuft zwischen
+   Übertragen und Entscheiden, nicht zwischen Mensch und Agent an der Tastatur.
 
 Der bestehende Grundsatz „ein Review wird nie übersprungen" bleibt erhalten: c) ist kein
 Überspringen, sondern die Verlagerung des Reviews auf den Menschen. Genau deshalb deckt c) auch den
@@ -125,9 +127,10 @@ gewählt wurde, aber `review:human` darf nie Default sein und nie stillschweigen
 Die Wahl muss aus dem GitHub-Zustand ableitbar sein, damit das zustandslose Reconciler-Prinzip
 erhalten bleibt (kein eigener Eventstrom, keine Snapshot-IDs).
 
-- **Träger der Wahl ist ein Label** (`review:cross`, `review:self`, `review:human`), gesetzt vom
-  Nutzer. Labels kann in diesem Repository nur setzen, wer Schreibrechte hat — damit ist die
-  Wahl automatisch gegen Fremdsteuerung geschützt, ohne neue Prüflogik.
+- **Träger der Wahl ist ein Label** (`review:cross`, `review:self`, `review:human`). Die
+  interaktive Session setzt es unmittelbar nach der Antwort des Nutzers, damit dieser dafür nicht
+  auf GitHub wechseln muss. Labels kann in diesem Repository nur setzen, wer Schreibrechte hat —
+  damit ist die Wahl automatisch gegen Fremdsteuerung geschützt, ohne neue Prüflogik.
 - **Head-Bindung über die Timeline:** Ein Wahl-Label, das vor dem Commit-Zeitpunkt des aktuellen
   Head-SHAs gesetzt wurde, gilt als verbraucht. Der Reconciler entfernt es und fragt erneut. Damit
   gilt die Wahl pro Head-SHA, ohne eigenen Zustandsspeicher.
@@ -136,8 +139,10 @@ erhalten bleibt (kein eigener Eventstrom, keine Snapshot-IDs).
 - **Das Review-Ergebnis** bleibt beim bestehenden Format aus Abschnitt 8 des Hauptkonzepts und wird
   zusätzlich als maschinenlesbarer Kommentar-Marker abgelegt, analog zur bestehenden UI-Notiz:
   `<!-- agent-pipeline:review-result <head-sha> mode=cross|self|human verdict=pass -->`.
-- **Kein Agent darf ein Wahl-Label setzen oder entfernen** (außer der Reconciler beim Verbrauchen
-  eines veralteten Labels). Das gehört in die Nicht-Bestandteil-Liste des Hauptkonzepts.
+- **Ein Agent darf ein Wahl-Label nur als Übertragung einer ausdrücklichen Nutzerantwort setzen**,
+  nie von sich aus und nie unbeaufsichtigt. Die einzige Label-Schreiboperation der Automatik bleibt
+  das Entfernen eines veralteten Labels durch den Reconciler. Das gehört in die
+  Nicht-Bestandteil-Liste des Hauptkonzepts.
 
 Neue Phase im Reconciler: `awaiting-review-decision` — alles Mechanische grün, kein gültiges
 Wahl-Label für den aktuellen Head. Sie rangiert unter `conflict-fix`/`ci-fix` (die darf der Agent

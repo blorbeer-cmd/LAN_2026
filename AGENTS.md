@@ -67,8 +67,9 @@ für normale Implementierungsdetails gelten diese Kurzregeln:
 - Wer reviewt, entscheidet der Nutzer pro Head-SHA: Cross-Review durch den Gegen-Anbieter
   (`review:cross`), Review durch denselben Anbieter in einer frischen, isolierten und
   schreibgeschützten Session (`review:self`) oder menschliches Review (`review:human`). Der Agent
-  legt die Auswahl mit einer Empfehlung vor, sobald CI grün und der PR konfliktfrei ist, setzt aber
-  nie selbst ein Wahl-Label. Ablauf und Empfehlungsregeln:
+  legt die Auswahl mit einer Empfehlung vor, sobald CI grün und der PR konfliktfrei ist, und setzt
+  danach das gewählte Label selbst. Ohne ausdrückliche Antwort des Nutzers wird nie ein Wahl-Label
+  gesetzt oder geändert. Ablauf und Empfehlungsregeln:
   `.github/agent-pipeline/review-decision.md`.
 - Nach der Wahl laufen Reviewstart, Findings-Übergabe und Fix wieder automatisch. Ein Review darf
   nie übersprungen werden; ist der gewählte Anbieter nicht verfügbar, wird der Ausfall gemeldet und
