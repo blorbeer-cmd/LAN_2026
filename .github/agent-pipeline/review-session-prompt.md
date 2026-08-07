@@ -17,7 +17,7 @@ Replace every `<PLACEHOLDER>` before starting the review:
 | `<EXPECTED_HEAD_SHA>`    | Full 40-character PR head SHA                                                                      |
 | `<IMPLEMENTER>`          | `codex` or `claude`                                                                                |
 | `<REVIEWER_PROVIDER>`    | Provider running this review: `codex` or `claude`                                                  |
-| `<REVIEW_MODE>`          | `cross`, `self` or `fallback` — see "Review modes" below                                            |
+| `<REVIEW_MODE>`          | `cross` or `self` — a fallback review runs as `self`, see "Review modes" below                      |
 | `<REVIEW_SESSION_ID>`    | Unique identifier for this fresh, isolated review session                                          |
 | `<READ_ONLY_ENFORCED>`   | Must be `true`; otherwise the reviewer is unavailable and the review is blocked                    |
 | `<TASK_GOAL>`            | Original objective and acceptance criteria, without the implementation session's private reasoning |
@@ -34,10 +34,11 @@ a decision this session makes:
 | `fallback` | the chosen provider turned out to be unavailable and the user re-chose it | implementation provider, fresh |
 
 `self` and `fallback` run identically and are equally strict; they differ only in why they were
-used, and the pull request records which one applied. `self` and `fallback` publish their verdict
-as the `agent-pipeline:review-result` marker described in `review-decision.md`, because GitHub
-carries no native evidence for a same-provider review. A `cross` review needs no marker: its
-evidence is the counter provider's approval of the exact head SHA.
+used. A fallback is marked on the pull request by `agent:review-fallback`, and its verdict is
+published as a `mode=self` marker — the gate knows the three modes the user can choose and would
+silently ignore a fourth. That marker exists because GitHub carries no native evidence for a
+same-provider review. A `cross` review needs none: its evidence is the counter provider's approval
+of the exact head SHA.
 
 Resolve the current head immediately before the review. For example:
 
@@ -60,7 +61,7 @@ Erwarteter Head-Branch: <EXPECTED_HEAD_BRANCH>
 Erwarteter Head-SHA: <EXPECTED_HEAD_SHA>
 Implementierungs-Agent: <IMPLEMENTER>
 Review-Anbieter: <REVIEWER_PROVIDER>
-Review-Modus: <REVIEW_MODE> (cross | self | fallback)
+Review-Modus: <REVIEW_MODE> (cross | self)
 Review-Session-ID: <REVIEW_SESSION_ID>
 Read-only technisch erzwungen: <READ_ONLY_ENFORCED>
 
@@ -144,7 +145,7 @@ Beende die Antwort mit genau einem JSON-Block und danach keinem weiteren Text:
   "repository": "<REPOSITORY>",
   "pull_request": "<PR_NUMBER_OR_URL>",
   "reviewer_provider": "<REVIEWER_PROVIDER>",
-  "review_mode": "cross|self|fallback",
+  "review_mode": "cross|self",
   "review_session_id": "<REVIEW_SESSION_ID>",
   "isolated_session": true,
   "read_only_enforced": true,
@@ -208,7 +209,7 @@ from the outside whether that worktree is still untouched.
 node ./scripts/agent-review-session.mjs --pr 363 --mode self
 ```
 
-`--mode cross|self|fallback`, `--implementer codex|claude` (otherwise read from the branch prefix),
+`--mode cross|self`, `--enforced`, `--implementer codex|claude` (otherwise read from the branch prefix),
 `--focus-file` and `--goal-file` to override the defaults, `--print-only` to just get the prompt and
 the command without launching anything.
 

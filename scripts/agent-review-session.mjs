@@ -2,13 +2,16 @@
 //
 // The review prompt asks a session not to write. That is instruction, not enforcement: a prompt
 // cannot stop the session it is addressed to. Enforcement has to come from outside, which is what
-// this script assembles — the editing tools are removed from the session, the writing paths left
-// through Bash are denied by `review-readonly.settings.json`, the review happens in a throwaway
-// worktree detached at the exact head SHA, and after the session ends this script checks from the
-// outside whether that worktree is still untouched.
+// this script assembles — the editing tools are removed from the session, the writing git and gh
+// subcommands are denied by `review-readonly.settings.json`, and the review happens in a throwaway
+// worktree detached at the exact head SHA.
 //
-// That last check is the point. `read_only_enforced: true` is otherwise a claim the reviewing
-// session makes about itself; here it is a fact someone else verified.
+// What this script does *not* do is the layer that would make the claim airtight: restricted
+// credentials and a genuinely unwritable tree. A shell stays a wide surface, and the check below
+// runs after the session ended — it detects a violation, it does not prevent one, and by then a
+// review-result marker may already be posted. So `read_only_enforced: true` is not asserted here.
+// `--enforced` is how the operator states they put that layer in place; without it the generated
+// prompt forbids the marker, and the review counts as input for a human rather than for the gate.
 
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -22,7 +25,11 @@ export const SETTINGS_PATH = ".github/agent-pipeline/review-readonly.settings.js
 // in this list does not exist in the session and cannot be called at all.
 export const REVIEW_TOOLS = "Read,Grep,Glob,Bash";
 
-export const REVIEW_MODES = new Set(["cross", "self", "fallback"]);
+// The gate knows exactly these two as evidence-bearing review modes. A fallback review — the
+// counter provider was unavailable and the user picked the implementer instead — runs as `self`
+// and is marked as a fallback by the `agent:review-fallback` label, not by a third marker mode the
+// reconciler would never read.
+export const REVIEW_MODES = new Set(["cross", "self"]);
 
 /**
  * Builds the complete review prompt.
@@ -48,8 +55,8 @@ export function renderReviewPrompt({
   focus,
 }) {
   const enforcement = readOnlyEnforced
-    ? "ja — Editierwerkzeuge sind der Session entzogen, Schreibpfade über Bash sind per Deny-Regel gesperrt, und der Arbeitsbaum wird nach der Session von außen geprüft"
-    : "nein — nur diese Anweisung";
+    ? "ja — Editierwerkzeuge sind der Session entzogen, schreibende git- und gh-Befehle sind per Deny-Regel gesperrt, die Credentials haben kein Code-Schreibrecht, und der Arbeitsbaum wird nach der Session von außen geprüft"
+    : "nein — Editierwerkzeuge sind zwar entzogen und schreibende git-/gh-Befehle gesperrt, aber ohne eingeschränkte Credentials bleibt eine Shell eine breite Oberfläche";
 
   const marker = readOnlyEnforced
     ? [
@@ -195,6 +202,9 @@ export function parseOptions(argv) {
     worktree: null,
     focusFile: null,
     goalFile: null,
+    // Opt-in and never inferred: only the operator knows whether the credentials in this shell can
+    // push. Claiming it by default would put the one flag the gate checks beyond anyone's control.
+    enforced: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -206,6 +216,7 @@ export function parseOptions(argv) {
     else if (arg === "--focus-file") options.focusFile = next();
     else if (arg === "--goal-file") options.goalFile = next();
     else if (arg === "--print-only") options.launch = false;
+    else if (arg === "--enforced") options.enforced = true;
     else throw new Error(`Unknown option: ${arg}`);
   }
 
@@ -296,7 +307,17 @@ function main(argv) {
   );
   // Detached at the exact SHA: a push to the branch during the review must not move the code out
   // from under the verdict, which is bound to this SHA.
-  run("git", ["worktree", "add", "--detach", worktree, pr.headRefOid]);
+  try {
+    run("git", ["worktree", "add", "--detach", worktree, pr.headRefOid]);
+  } catch (error) {
+    // Usually a worktree an aborted earlier run left registered. Say what to do rather than making
+    // the operator decode git's message.
+    throw new Error(
+      `Could not create the review worktree at ${worktree}.\n` +
+        `If an earlier run left one behind: git worktree remove --force ${worktree}\n` +
+        `Or pick another path with --worktree.\n${error.message}`,
+    );
+  }
 
   const prompt = renderReviewPrompt({
     repository,
@@ -310,7 +331,7 @@ function main(argv) {
     reviewerProvider: reviewerFor(implementer, options.mode),
     reviewMode: options.mode,
     sessionId,
-    readOnlyEnforced: true,
+    readOnlyEnforced: options.enforced,
     taskGoal: options.goalFile
       ? readFileSync(options.goalFile, "utf8").trim()
       : goalFromBody(pr.body, pr.title),
@@ -331,6 +352,13 @@ function main(argv) {
   console.log(`Worktree     : ${worktree}`);
   console.log(`Prompt       : ${promptPath}`);
   console.log(`Command      : ${command.join(" ")}`);
+  console.log(
+    `Read-only    : ${
+      options.enforced
+        ? "asserted via --enforced; the prompt permits the merge-gate marker"
+        : "tools removed and writing git/gh denied, but not asserted — the prompt forbids the marker (pass --enforced once credentials cannot push)"
+    }`,
+  );
   console.log("");
 
   if (!options.launch) {
@@ -342,8 +370,10 @@ function main(argv) {
   console.log("Starting the review session. Paste the prompt above into it.\n");
   run(command[0], command.slice(1), { capture: false, cwd: worktree });
 
-  // The check the prompt could only ask for. Anything else here is a report the reviewer wrote
-  // about itself; this is the part someone else verified.
+  // A detector, not a preventer: it runs after the session ended, so a violating session has
+  // already done whatever it did. It also only sees this worktree — writes elsewhere are invisible.
+  // Worth having anyway, because the failure it catches is the likely one: a reviewer that helpfully
+  // fixed what it found and then reported a pass on its own repair.
   const dirty = run("git", ["status", "--porcelain"], { cwd: worktree });
   const head = run("git", ["rev-parse", "HEAD"], { cwd: worktree });
   console.log("");
@@ -351,13 +381,17 @@ function main(argv) {
     console.error("READ-ONLY VIOLATED: the review session changed its worktree.");
     if (dirty) console.error(dirty);
     if (head !== pr.headRefOid) console.error(`HEAD moved to ${head}.`);
-    console.error(
-      "Treat the review as invalid, and remove any review-result marker it posted before the merge gate reads it.",
-    );
+    console.error("Treat the review as invalid.");
+    if (options.enforced) {
+      console.error(
+        `Delete any agent-pipeline:review-result marker for ${pr.headRefOid} from pull request #${pr.number} now:\n` +
+          "the reconciler runs on a schedule and would read it as a passing review.",
+      );
+    }
     process.exitCode = 1;
     return;
   }
-  console.log(`Read-only verified: ${worktree} is unchanged at ${pr.headRefOid}.`);
+  console.log(`Worktree unchanged at ${pr.headRefOid}; no write reached the reviewed code.`);
   console.log(`Clean up with: git worktree remove ${worktree}`);
 }
 

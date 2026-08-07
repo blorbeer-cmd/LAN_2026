@@ -90,6 +90,9 @@ function readySnapshot(overrides = {}) {
     mergeStateStatus: "CLEAN",
     // The user picked who reviews this head; without it the pipeline waits for that decision.
     labels: [CROSS_LABEL],
+    // The reconciler has already seen this head, so the label above belongs to it. Without that
+    // record a label could just as well predate the head, and the answer would not bind.
+    statusCommentBody: decisionRecord(HEAD, "cross"),
     changedFiles: ["scripts/agent-pipeline-reconcile.mjs"],
     checkRunsHeadSha: HEAD,
     checkRuns: [
@@ -1406,8 +1409,9 @@ test("the status comment asks the question and records the answer", () => {
   assert.match(asking, new RegExp(SELF_LABEL));
   assert.match(asking, new RegExp(HUMAN_LABEL));
   assert.match(asking, /Recommended: /);
-  // Nothing is bound while no answer exists.
-  assert.equal(parseReviewDecision(asking), null);
+  // Nothing is bound yet, but the head is recorded as seen — that is what lets the next run tell a
+  // fresh answer from one that predates this head.
+  assert.deepEqual(parseReviewDecision(asking), { headSha: HEAD, mode: "none" });
 
   const decided = readySnapshot();
   const answered = renderStatusComment(deriveReadiness(decided, config), decided, config);
@@ -1459,4 +1463,146 @@ test("the merge gate reports the awaited decision", () => {
   assert.equal(status.state, "pending");
   assert.match(status.description, /^awaiting-review-decision: /);
   assert.ok(status.description.length <= GATE_DESCRIPTION_LIMIT);
+});
+
+// ---------------------------------------------------------------------------
+// Binding an answer to one head
+//
+// The cases from the review of 5ebf032: without a "seen this head, nothing chosen" state, a label
+// that predates the head is indistinguishable from a fresh answer, and the ambiguity resolved
+// towards opening the gate.
+// ---------------------------------------------------------------------------
+
+test("a label the reconciler never saw at this head does not bind", () => {
+  // The status comment was deleted, automation was paused across several pushes, or the bootstrap
+  // run never wrote one. The label survives all of that; the binding must not.
+  const snapshot = readySnapshot({ statusCommentBody: null });
+  const readiness = deriveReadiness(snapshot, config);
+
+  assert.equal(readiness.ready, false);
+  assert.equal(readiness.phase, "awaiting-review-decision");
+  assert.equal(readiness.details.reviewMode, null);
+  assert.deepEqual(readiness.blockers, [
+    "A review-mode label was set before this head was first seen and could not be bound to it; set it again.",
+  ]);
+  assert.deepEqual(planLabels(snapshot.labels, readiness, config).remove, [CROSS_LABEL]);
+});
+
+test("a self-review cannot open the gate for a head nobody was asked about", () => {
+  // The published result is head-bound and genuine, so only the missing question separates this
+  // from a legitimate pass. That is exactly the acceptance criterion.
+  const readiness = deriveReadiness(
+    readySnapshot({
+      statusCommentBody: null,
+      labels: [SELF_LABEL],
+      reviews: [],
+      reviewResults: parseReviewResults([selfResultComment(HEAD)]),
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, false);
+  assert.equal(readiness.phase, "awaiting-review-decision");
+});
+
+test("the run that sees a new head records it even with nothing chosen", () => {
+  const snapshot = readySnapshot({ labels: [], statusCommentBody: null });
+  const plan = reconcile(snapshot, config);
+  assert.deepEqual(parseReviewDecision(plan.comment.body), { headSha: HEAD, mode: "none" });
+});
+
+test("an answer given after the head was seen binds without another round", () => {
+  // Sequence: run at the new head records `none` and clears the old label, the user answers, the
+  // next run binds. Two runs, no manual repetition.
+  const fresh = readySnapshot({ labels: [], statusCommentBody: null });
+  const observing = reconcile(fresh, config);
+  assert.equal(observing.readiness.phase, "awaiting-review-decision");
+
+  const answered = deriveReadiness(
+    { ...fresh, labels: [CROSS_LABEL], statusCommentBody: observing.comment.body },
+    config,
+  );
+  assert.equal(answered.details.reviewMode, "cross");
+  assert.equal(answered.ready, true);
+  assert.deepEqual(answered.details.reviewDecision.staleLabels, []);
+});
+
+test("a fix commit invalidates the binding and the question returns", () => {
+  const bound = readySnapshot();
+  const afterFix = reconcile(
+    { ...bound, headSha: OLD_HEAD, checkRunsHeadSha: OLD_HEAD },
+    config,
+  );
+  assert.equal(afterFix.readiness.phase, "awaiting-review-decision");
+  assert.deepEqual(afterFix.labels.remove, [CROSS_LABEL]);
+  assert.match(afterFix.readiness.blockers[0], /chosen for an earlier head SHA/);
+  // And the run records the new head, so the next answer binds to it.
+  assert.deepEqual(parseReviewDecision(afterFix.comment.body), {
+    headSha: OLD_HEAD,
+    mode: "none",
+  });
+});
+
+test("two labels are never resolved by removing one", () => {
+  const snapshot = readySnapshot({ labels: [CROSS_LABEL, SELF_LABEL] });
+  const readiness = deriveReadiness(snapshot, config);
+  assert.deepEqual(planLabels(snapshot.labels, readiness, config).remove, []);
+  assert.match(readiness.blockers[0], /More than one review-mode label/);
+});
+
+test("only the implementation provider may publish a self-review result", () => {
+  // Any app installed on the repository posts as some `[bot]`; that is not the same as being the
+  // provider that ran the review.
+  const foreign = deriveReadiness(
+    readySnapshot({
+      labels: [SELF_LABEL],
+      reviews: [],
+      reviewResults: parseReviewResults([
+        { ...selfResultComment(HEAD), author: "dependabot[bot]", authorAssociation: "NONE" },
+      ]),
+    }),
+    config,
+  );
+  assert.equal(foreign.ready, false);
+  assert.match(foreign.blockers[0], /No self-review result/);
+
+  const own = deriveReadiness(
+    readySnapshot({
+      labels: [SELF_LABEL],
+      reviews: [],
+      reviewResults: parseReviewResults([
+        { ...selfResultComment(HEAD), author: "claude[bot]", authorAssociation: "NONE" },
+      ]),
+    }),
+    config,
+  );
+  assert.equal(own.ready, true);
+});
+
+test("an unusable self-review waits on a review, not on the implementer", () => {
+  for (const overrides of [{ "read-only": "false" }, { verdict: "blocked" }]) {
+    const readiness = deriveReadiness(
+      readySnapshot({
+        labels: [SELF_LABEL],
+        reviews: [],
+        reviewResults: parseReviewResults([selfResultComment(HEAD, overrides)]),
+      }),
+      config,
+    );
+    // Only a new, properly enforced session can clear either one.
+    assert.equal(readiness.phase, "review", JSON.stringify(overrides));
+    assert.equal(readiness.ready, false);
+  }
+
+  // Changes requested is different: that one is the implementer's turn.
+  const changes = deriveReadiness(
+    readySnapshot({
+      labels: [SELF_LABEL],
+      reviews: [],
+      reviewResults: parseReviewResults([
+        selfResultComment(HEAD, { verdict: "changes-required" }),
+      ]),
+    }),
+    config,
+  );
+  assert.equal(changes.phase, "implementing");
 });

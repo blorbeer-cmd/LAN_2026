@@ -31,13 +31,15 @@ const UI_NOTICE_PATTERN = /<!--\s*agent-pipeline:ui-notice\s+([0-9a-f]{40})\s*--
 // what makes a choice expire with its head, so the next head asks again instead of silently
 // inheriting the previous answer.
 export const REVIEW_DECISION_MARKER = "<!-- agent-pipeline:review-decision";
+// `mode=none` records that the reconciler saw this head while nothing was chosen. That state is
+// what lets the next run tell a fresh answer from one that predates the head entirely.
 const REVIEW_DECISION_PATTERN =
-  /<!--\s*agent-pipeline:review-decision\s+([0-9a-f]{40})\s+mode=(cross|self|human)\s*-->/;
+  /<!--\s*agent-pipeline:review-decision\s+([0-9a-f]{40})\s+mode=(cross|self|human|none)\s*-->/;
 
 // Published by the review session for the `self` mode, where GitHub carries no native evidence:
 // `<!-- agent-pipeline:review-result <sha> mode=self verdict=pass session=<id> read-only=true -->`
 export const REVIEW_RESULT_MARKER = "<!-- agent-pipeline:review-result";
-const REVIEW_RESULT_SOURCE =
+export const REVIEW_RESULT_SOURCE =
   "<!--\\s*agent-pipeline:review-result\\s+([0-9a-f]{40})\\s+mode=(cross|self|human)\\s+verdict=(pass|changes-required|blocked)\\s+session=(\\S+)\\s+read-only=(true|false)\\s*-->";
 
 export const REVIEW_MODES = ["cross", "self", "human"];
@@ -295,57 +297,98 @@ export function parseReviewResults(comments) {
   return results;
 }
 
-/** The newest published result for exactly this head and mode, or null. */
-export function latestReviewResult(results, headSha, mode) {
+/**
+ * The newest published result for exactly this head and mode, from an identity allowed to produce
+ * one, or null.
+ *
+ * `isTrustedCommentAuthor` alone is too wide here: it accepts every `[bot]` login, so any app
+ * installed on the repository could post a passing self-review. The cross-review path checks its
+ * verdict against `providerReviewerAllowlist` for exactly that reason, and this evidence opens the
+ * same gate. Only the implementation provider's own identities — the ones that could have run the
+ * review — count.
+ */
+export function latestReviewResult(results, headSha, mode, allowedAuthors) {
+  const allowed = allowedAuthors ?? [];
   let found = null;
   for (const result of results ?? []) {
-    if (result.headSha === headSha && result.mode === mode) found = result;
+    if (result.headSha !== headSha || result.mode !== mode) continue;
+    if (!allowed.includes(result.author)) continue;
+    found = result;
   }
   return found;
+}
+
+/** Identities that may publish a review result for a provider: its agent and its human operator. */
+export function resultAuthorsFor(provider, config = loadConfig()) {
+  return [
+    ...(config.providerReviewerAllowlist?.[provider] ?? []),
+    ...(config.providerAuthorAllowlist?.[provider] ?? []),
+  ];
 }
 
 /**
  * Resolves which review mode applies to the current head.
  *
- * The label is the user's choice and is never written by the pipeline. The binding record decides
- * whether that choice still refers to the current head: a label first observed at an earlier head
- * is consumed, so the pipeline removes it and asks again rather than reusing an answer the user
- * gave for different code. Switching the label at the same head is a legitimate correction — the
- * counter provider running out of quota is exactly the case this feature exists for — and simply
- * rebinds to the new mode.
+ * The label is the user's answer and is never written by the pipeline. What makes an answer belong
+ * to one head is the observation record in the reconciler's own status comment, which is written on
+ * every run — including as `mode=none` when nothing is chosen yet. That "seen this head, no choice
+ * yet" state is what the whole binding rests on:
  *
- * A stale label can never open the gate on its own: every piece of review evidence is bound to the
- * head SHA independently, so the worst a wrong binding could do is skip one question.
+ * - A label only binds when a record for the *current* head already exists. The run that wrote that
+ *   record removed any label standing at the time, so a label sitting next to it must have arrived
+ *   afterwards, and therefore refers to this head.
+ * - No record for the current head means the reconciler cannot vouch for the label: it may predate
+ *   the head entirely (status comment deleted, automation paused, bootstrap run skipped). It is
+ *   removed and the question is asked again.
+ *
+ * Without the `none` state those two cases are indistinguishable, and the ambiguity resolves
+ * towards accepting an answer the user gave for code they never saw. It resolves towards asking
+ * once more instead — at the price of one extra round when a label is set in the same moment a new
+ * head appears.
+ *
+ * Switching the label at the same head is a legitimate correction — the counter provider running
+ * out of quota is exactly the case this feature exists for — and simply rebinds to the new mode.
  */
 export function evaluateReviewDecision(snapshot, config = loadConfig()) {
   const labels = new Set(snapshot.labels ?? []);
   const modeLabels = config.reviewModeLabels ?? {};
   const chosen = REVIEW_MODES.filter((mode) => labels.has(modeLabels[mode]));
 
+  // Written on every run, so the next one can tell "this head was already seen" from "no idea".
+  const observed = { headSha: snapshot.headSha, mode: "none" };
+  const record = parseReviewDecision(snapshot.statusCommentBody);
+  const seenThisHead = record?.headSha === snapshot.headSha;
+
   if (chosen.length > 1) {
+    // Two answers are no answer. Removing one would be picking for the user.
     return {
       mode: null,
       ambiguous: true,
       chosenLabels: chosen.map((mode) => modeLabels[mode]),
       staleLabels: [],
-      record: null,
+      record: observed,
     };
   }
 
   if (!chosen.length) {
-    return { mode: null, ambiguous: false, chosenLabels: [], staleLabels: [], record: null };
+    return {
+      mode: null,
+      ambiguous: false,
+      chosenLabels: [],
+      staleLabels: [],
+      record: observed,
+    };
   }
 
   const mode = chosen[0];
-  const record = parseReviewDecision(snapshot.statusCommentBody);
-  if (record && record.headSha !== snapshot.headSha) {
+  if (!seenThisHead) {
     return {
       mode: null,
       ambiguous: false,
       chosenLabels: [modeLabels[mode]],
       staleLabels: [modeLabels[mode]],
-      record: null,
-      staleHeadSha: record.headSha,
+      record: observed,
+      unboundReason: record ? "earlier-head" : "never-observed",
     };
   }
 
@@ -602,10 +645,12 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
   // Who reviews this head is the user's decision, not the pipeline's. Everything after the
   // decision — starting the review, handing over the findings, fixing them — stays automatic.
   const decision = evaluateReviewDecision(snapshot, config);
+  // A self-review is run by the implementation provider, so only its identities may report one.
   const selfResult = latestReviewResult(
     snapshot.reviewResults,
     snapshot.headSha,
     "self",
+    resultAuthorsFor(contract.implementer, config),
   );
 
   // Whether the chosen mode is still waiting for its verdict, as opposed to having one already.
@@ -620,9 +665,11 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     // about to change.
     if (mechanicallyGreen) {
       blockers.push(
-        decision.staleLabels.length
+        decision.unboundReason === "earlier-head"
           ? "The review mode was chosen for an earlier head SHA; choose again for the current head."
-          : "No review mode has been chosen for the current head SHA.",
+          : decision.unboundReason === "never-observed"
+            ? "A review-mode label was set before this head was first seen and could not be bound to it; set it again."
+            : "No review mode has been chosen for the current head SHA.",
       );
     }
   } else if (decision.mode === "cross") {
@@ -643,12 +690,17 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
       evidenceOutstanding = true;
       blockers.push("No self-review result has been published for the current head SHA.");
     } else if (!selfResult.readOnlyEnforced) {
+      // A review round is still owed: only a new, actually enforced session can clear this, so the
+      // pull request waits on a review rather than on the implementer.
+      evidenceOutstanding = true;
       blockers.push(
         "The self-review result does not confirm a technically enforced read-only session.",
       );
     } else if (selfResult.verdict === "changes-required") {
       blockers.push("The self-review requested changes for the current head SHA.");
     } else if (selfResult.verdict !== "pass") {
+      // `blocked` means the review could not be completed, not that the code needs work.
+      evidenceOutstanding = true;
       blockers.push(`The self-review reported \`${selfResult.verdict}\` for the current head SHA.`);
     }
   } else if (decision.mode === "human") {

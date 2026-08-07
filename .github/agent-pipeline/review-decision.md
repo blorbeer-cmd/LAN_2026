@@ -101,12 +101,19 @@ das Kontingent verbrauchen, das diese Frage schützen soll.
    ```
 
    `verdict=changes-required` oder `verdict=blocked` blockieren das Gate; `read-only=false` zählt
-   nicht als Review. Der Marker gehört zum vollständigen, menschenlesbaren Reviewergebnis, nicht
-   an dessen Stelle.
+   nicht als Review. Alle Felder sind Pflicht — ein unvollständiger Marker wird nicht erkannt und
+   das Gate meldet weiterhin ein fehlendes Review. Der Kommentar muss von einer Identität des
+   Implementierungs-Anbieters stammen (`providerAuthorAllowlist` oder `providerReviewerAllowlist`);
+   ein beliebiges `[bot]`-Konto genügt nicht. Der Marker gehört zum vollständigen,
+   menschenlesbaren Reviewergebnis, nicht an dessen Stelle.
+   Ein Fallback-Review — der zuerst gewählte Anbieter war nicht verfügbar — verwendet denselben
+   Marker mit `mode=self` und wird zusätzlich mit `agent:review-fallback` gekennzeichnet.
 5. Bei a) genügt die Approval des Gegen-Anbieters, bei c) die Approval des Menschen — beide für
    exakt den aktuellen Head-SHA. Ein Ergebnis-Marker ist dort nicht nötig.
 6. Nach einem Fix-Commit beginnt der Ablauf von vorn: Der Reconciler entfernt das an den alten
-   Head gebundene Wahl-Label, und die Frage wird erneut gestellt.
+   Head gebundene Wahl-Label, und die Frage wird erneut gestellt. Das neue Label erst setzen, wenn
+   der Statuskommentar den neuen Head-SHA nennt — vorher kann der Reconciler die Antwort nicht
+   diesem Head zuordnen und würde sie noch einmal erfragen.
 
 ## Was die Wahl nicht verändert
 

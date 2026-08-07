@@ -106,7 +106,7 @@ Fallback-Review wird von der Notlösung zur regulären, wählbaren Option b).
 | Modus       | Label            | Was das Gate für den aktuellen Head-SHA verlangt                                                                              |
 | ----------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `cross` (a) | `review:cross`   | wie heute: Approval eines Accounts aus `providerReviewerAllowlist` des Gegen-Anbieters, `verdict: pass`, alle Threads gelöst  |
-| `self` (b)  | `review:self`    | Ergebnis-Record des Implementierungs-Anbieters mit `review_mode: self`, `read_only_enforced: true`, eigener `review_session_id`, `verdict: pass`, alle Threads gelöst |
+| `self` (b)  | `review:self`    | Ergebnis-Marker eines Accounts des Implementierungs-Anbieters mit `mode=self`, `read-only=true`, eigener `session=`, `verdict=pass`, alle Threads gelöst |
 | `human` (c) | `review:human`   | Approval eines Menschen mit Schreibzugriff (`OWNER`/`MEMBER`/`COLLABORATOR`) für exakt diesen Head-SHA, alle Threads gelöst   |
 
 Für alle drei Modi gilt unverändert: CI grün, konfliktfrei, kein `agent:waiting`/`agent:needs-human`/
@@ -131,14 +131,20 @@ erhalten bleibt (kein eigener Eventstrom, keine Snapshot-IDs).
   interaktive Session setzt es unmittelbar nach der Antwort des Nutzers, damit dieser dafür nicht
   auf GitHub wechseln muss. Labels kann in diesem Repository nur setzen, wer Schreibrechte hat —
   damit ist die Wahl automatisch gegen Fremdsteuerung geschützt, ohne neue Prüflogik.
-- **Head-Bindung über die Timeline:** Ein Wahl-Label, das vor dem Commit-Zeitpunkt des aktuellen
-  Head-SHAs gesetzt wurde, gilt als verbraucht. Der Reconciler entfernt es und fragt erneut. Damit
-  gilt die Wahl pro Head-SHA, ohne eigenen Zustandsspeicher.
+- **Head-Bindung über einen Beobachtungs-Datensatz:** Der Reconciler hält in seinem eigenen
+  Statuskommentar fest, welchen Head er gesehen hat — auch dann, wenn noch nichts gewählt ist
+  (`mode=none`). Ein Wahl-Label bindet nur, wenn für den aktuellen Head bereits ein Datensatz
+  existiert; der Lauf, der ihn geschrieben hat, hat ein damals gesetztes Label entfernt, also kann
+  ein danebenstehendes Label nur später gekommen sein. Fehlt der Datensatz, ist die Wahl nicht
+  zuzuordnen und wird entfernt statt geraten.
 - **Genau ein Wahl-Label gleichzeitig.** Mehrere gesetzte Labels sind ein Blocker mit klarer
   Meldung, kein geratener Vorrang.
 - **Das Review-Ergebnis** bleibt beim bestehenden Format aus Abschnitt 8 des Hauptkonzepts und wird
-  zusätzlich als maschinenlesbarer Kommentar-Marker abgelegt, analog zur bestehenden UI-Notiz:
-  `<!-- agent-pipeline:review-result <head-sha> mode=cross|self|human verdict=pass -->`.
+  im Modus `self` zusätzlich als maschinenlesbarer Kommentar-Marker abgelegt, analog zur
+  bestehenden UI-Notiz. Alle Felder sind Pflicht, ein unvollständiger Marker wird nicht erkannt:
+  `<!-- agent-pipeline:review-result <head-sha> mode=self verdict=pass session=<id> read-only=true -->`.
+  Für `cross` und `human` ist die Approval zum exakten Head-SHA der Nachweis; dort gibt es keinen
+  Marker.
 - **Ein Agent darf ein Wahl-Label nur als Übertragung einer ausdrücklichen Nutzerantwort setzen**,
   nie von sich aus und nie unbeaufsichtigt. Die einzige Label-Schreiboperation der Automatik bleibt
   das Entfernen eines veralteten Labels durch den Reconciler. Das gehört in die
@@ -241,10 +247,14 @@ Zwei Punkte wurden während der Umsetzung anders gelöst als oben skizziert:
 - **Head-Bindung ohne Timeline-Abfrage.** Der Entwurf wollte den Zeitpunkt des `labeled`-Events mit
   dem Commit-Zeitpunkt des Head-SHAs vergleichen. Das ist in beide Richtungen unscharf: ein lokal
   früher erzeugter, später gepushter Commit könnte ein Label fälschlich als gültig erscheinen
-  lassen. Stattdessen hält der Reconciler in seinem eigenen Statuskommentar fest, an welchem Head
-  er ein Wahl-Label zuerst gesehen hat. Das braucht keine zusätzliche API und keine neue
-  Berechtigung, und es bleibt bei der reinen Funktion über dem GitHub-Snapshot, weil der Datensatz
-  selbst aus GitHub gelesen wird.
+  lassen. Stattdessen hält der Reconciler in seinem eigenen Statuskommentar fest, welchen Head er
+  gesehen hat. Das braucht keine zusätzliche API und keine neue Berechtigung, und es bleibt bei der
+  reinen Funktion über dem GitHub-Snapshot, weil der Datensatz selbst aus GitHub gelesen wird.
+  Entscheidend ist dabei der Zustand `mode=none`: Ohne ihn wäre „kein Datensatz" nicht von „für
+  diesen Head gewählt" zu unterscheiden, und die Mehrdeutigkeit fiele auf die gate-öffnende Seite —
+  ein gelöschter Statuskommentar oder eine pausierte Automatik hätten genügt, damit eine Wahl aus
+  Head A für Head D gilt. Das Review zu `5ebf032` hat genau das nachgewiesen; seither wird bei jedem
+  Lauf ein Datensatz für den aktuellen Head geschrieben.
 - **Der Ergebnis-Marker gilt nur für `self`.** Für `cross` und `human` ist die Approval zum exakten
   Head-SHA die stärkere und fälschungssichere Evidenz; ein zusätzlicher Marker würde dort nur eine
   zweite, schwächere Quelle für dieselbe Aussage schaffen.

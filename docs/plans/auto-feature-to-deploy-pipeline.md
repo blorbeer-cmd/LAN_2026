@@ -237,7 +237,7 @@ Jedes Review liefert maschinenlesbar:
 
 ```text
 reviewer-provider: claude|codex
-review-mode: cross|self|fallback
+review-mode: cross|self
 reviewed-head-sha: <sha>
 verdict: pass|changes-required|blocked
 findings:
@@ -276,15 +276,18 @@ Nach jedem Fix-Commit beginnt ein vollständiger Review des neuen Head-SHAs, und
 Auswahl des Modus samt Empfehlung. Nach drei erfolglosen Reviewrunden wird nicht weiter zwischen
 Agenten gependelt; der PR wechselt zu `agent:needs-human`.
 
-Ein Review im Modus `self` oder `fallback` besitzt in GitHub keine eigene Entsprechung. Es
-veröffentlicht sein Verdikt deshalb zusätzlich als maschinenlesbaren Marker im PR:
+Ein Review durch den Implementierungs-Anbieter besitzt in GitHub keine eigene Entsprechung. Es
+veröffentlicht sein Verdikt deshalb zusätzlich als maschinenlesbaren Marker im PR. Ein
+Fallback-Review verwendet denselben Marker mit `mode=self` und wird durch
+`agent:review-fallback` als solches ausgewiesen; einen vierten Marker-Modus kennt das Gate nicht:
 
 ```text
 <!-- agent-pipeline:review-result <head-sha> mode=self verdict=pass session=<id> read-only=true -->
 ```
 
-Nur ein Marker eines vertrauenswürdigen Autors mit `read-only=true`, passendem Head-SHA und
-`verdict=pass` erfüllt das Gate in diesem Modus. Für `cross` und `human` ist die Approval des
+Nur ein Marker mit `read-only=true`, passendem Head-SHA und `verdict=pass` von einer Identität des
+Implementierungs-Anbieters erfüllt das Gate in diesem Modus. Die Autorenprüfung ist bewusst enger
+als „vertrauenswürdiger Kommentarautor", der jedes `[bot]`-Konto einschließt. Für `cross` und `human` ist die Approval des
 jeweiligen Reviewers zum exakten Head-SHA der Nachweis; dort ist kein Marker nötig.
 
 ## 9. Nutzungslimits und Nichtverfügbarkeit

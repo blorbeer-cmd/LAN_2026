@@ -75,7 +75,7 @@ the audit trail.
 | Label          | Mode     | What satisfies the gate for the current head SHA                                                   |
 | -------------- | -------- | ---------------------------------------------------------------------------------------------------- |
 | `review:cross` | `cross`  | an approval from the counter provider's `providerReviewerAllowlist`                                  |
-| `review:self`  | `self`   | a published `agent-pipeline:review-result` marker: same head, `verdict=pass`, `read-only=true`, from a trusted author |
+| `review:self`  | `self`   | a published `agent-pipeline:review-result` marker: same head, `verdict=pass`, `read-only=true`, from one of the implementation provider's own identities |
 | `review:human` | `human`  | an approving review from an account with write access, covering exactly this head                     |
 
 With no label set and everything mechanical green, the pull request sits in the
@@ -84,18 +84,28 @@ derived from the changed paths and whether an earlier head already passed. Nothi
 timeout: an automatic fallback would spend exactly the quota this decision exists to steer. Two
 labels at once block rather than picking a winner.
 
-The choice expires with its head. The reconciler records the head a label was first seen at in its
-own status comment (`agent-pipeline:review-decision`) and removes a label bound to an earlier head,
-which is what makes the question return after a fix commit. Switching the label at the same head is
-a legitimate correction — the counter provider running out of quota mid-round is the case this
-exists for — and simply rebinds. A stale binding can never open the gate on its own: every piece of
-review evidence is head-bound independently, so the worst it could do is skip one question.
+The choice expires with its head. Every run records the head it saw in the reconciler's own status
+comment (`agent-pipeline:review-decision`), including as `mode=none` while nothing is chosen. A
+label binds only when a record for the *current* head already exists — the run that wrote it removed
+any label standing at the time, so a label next to it must have arrived afterwards. Without a record
+for the current head the label cannot be vouched for, is removed, and the question is asked again.
+
+That `none` state is what closes the hole: with it, "no record" is distinguishable from "chosen for
+this head". Without it, a deleted status comment, a paused pipeline or a skipped bootstrap run was
+enough for a choice made at head A to apply at head D — the ambiguity resolved towards accepting an
+answer the user gave for code they never saw. The price is one extra round when a label is set in
+the same moment a new head appears; the safe direction is asking twice, not binding once too often.
+
+Switching the label at the same head is a legitimate correction — the counter provider running out
+of quota mid-round is the case this exists for — and simply rebinds.
 
 `self` and `human` are weaker than a cross-review, deliberately and visibly:
 
-- In `self` mode the gate can verify that the result marker is head-bound, complete and posted by a
-  trusted identity — not that the session really was independent or read-only. It believes a claim
-  made by the provider that also implemented the change.
+- In `self` mode the gate can verify that the result marker is head-bound, complete and posted by
+  one of that provider's own identities — not that the session really was independent or read-only.
+  It believes a claim made by the provider that also implemented the change. The author check is
+  deliberately narrower than `isTrustedCommentAuthor`, which accepts every `[bot]` login: any app
+  installed on the repository would otherwise be able to declare a self-review passed.
 - In `human` mode review and merge are the same person.
 
 Both are acceptable only because they were explicitly chosen for one specific head, stay visible as
