@@ -186,12 +186,34 @@ test("read-only is asserted only when the operator says so", () => {
 
 test("the read-only level follows what the launcher can actually back up", () => {
   // Only the operator knows about credentials.
-  assert.equal(readOnlyLevelFor({ enforced: true, launch: true }), "true");
-  assert.equal(readOnlyLevelFor({ enforced: true, launch: false }), "true");
-  // A launched run verifies its own worktree afterwards, so it earns the middle level.
-  assert.equal(readOnlyLevelFor({ enforced: false, launch: true }), "verified");
+  assert.equal(readOnlyLevelFor({ enforced: true, launch: true, headless: true }), "true");
+  assert.equal(readOnlyLevelFor({ enforced: true, launch: false, headless: false }), "true");
+  // Headless publishes from the launcher, after the check — that ordering is what `verified` means.
+  assert.equal(readOnlyLevelFor({ enforced: false, launch: true, headless: true }), "verified");
   // --print-only never sees the session it hands the prompt to and can claim nothing.
-  assert.equal(readOnlyLevelFor({ enforced: false, launch: false }), "false");
+  assert.equal(readOnlyLevelFor({ enforced: false, launch: false, headless: false }), "false");
+});
+
+test("an interactive run cannot claim verified, because it publishes before the check", () => {
+  // Regression from the self-review of c16dd00: `verified` depended only on `launch`, so the
+  // documented default call (interactive, no --enforced) produced a verified marker that the
+  // session itself posted while still running — the check it names had not happened yet. Before
+  // the level existed that same call wrote no marker at all, so this made a safe default unsafe.
+  assert.equal(readOnlyLevelFor({ enforced: false, launch: true, headless: false }), "false");
+
+  // And the two halves must stay consistent: whoever publishes decides which levels are reachable.
+  const interactive = parseOptions(["--pr", "365"]);
+  assert.equal(interactive.headless, false, "interactive is still the default");
+  assert.equal(readOnlyLevelFor(interactive), "false");
+  const none = prompt({ readOnlyLevel: readOnlyLevelFor(interactive), publisher: "session" });
+  assert.equal(
+    none.split("\n").find((line) => line.startsWith("<!-- agent-pipeline:review-result")),
+    undefined,
+    "an interactive default run must offer the session no marker to publish",
+  );
+
+  const headless = parseOptions(["--pr", "365", "--headless"]);
+  assert.equal(readOnlyLevelFor(headless), "verified");
 });
 
 test("the unenforced prompt is honest about what is missing", () => {

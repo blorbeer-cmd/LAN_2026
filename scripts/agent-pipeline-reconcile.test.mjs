@@ -1305,6 +1305,38 @@ test("an unknown read-only value is ranked as the weakest, never as a pass", () 
   assert.ok(meetsReadOnlyMinimum("true", "false"));
 });
 
+test("an invalid configured minimum fails loudly instead of accepting everything", () => {
+  // From the self-review of c16dd00: ranking an unknown minimum at zero made a typo in
+  // selfReviewMinimumEnforcement accept every marker, `read-only=false` included — the entire
+  // check disabled with no error, no log line and no failing test.
+  for (const broken of ["verifed", "", "TRUE", null, 1]) {
+    assert.throws(
+      () => meetsReadOnlyMinimum("false", broken),
+      /selfReviewMinimumEnforcement must be one of/,
+      `a minimum of ${JSON.stringify(broken)} must not silently pass`,
+    );
+  }
+  // The valid ones keep working, including the deliberate opt-out.
+  assert.ok(meetsReadOnlyMinimum("false", "false"));
+  assert.ok(!meetsReadOnlyMinimum("verified", "true"));
+});
+
+test("a broken minimum blocks the gate rather than opening it", () => {
+  // The throw has to surface where the gate is computed, not be swallowed into a pass.
+  assert.throws(
+    () =>
+      deriveReadiness(
+        readySnapshot({
+          labels: [SELF_LABEL],
+          reviews: [],
+          reviewResults: parseReviewResults([selfResultComment(HEAD, { "read-only": "false" })]),
+        }),
+        { ...config, selfReviewMinimumEnforcement: "verifed" },
+      ),
+    /selfReviewMinimumEnforcement must be one of/,
+  );
+});
+
 test("a self-review reporting changes or blocked keeps the gate closed", () => {
   for (const [verdict, expected] of [
     ["changes-required", /requested changes/],

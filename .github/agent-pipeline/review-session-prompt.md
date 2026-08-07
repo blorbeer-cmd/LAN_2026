@@ -209,8 +209,11 @@ without the editing tools and with the read-only settings — and after the sess
 from the outside whether that worktree is still untouched.
 
 ```powershell
-node ./scripts/agent-review-session.mjs --pr 363 --mode self
+node ./scripts/agent-review-session.mjs --pr 363 --mode self --headless
 ```
+
+`--headless` is part of the default example on purpose: without it the run is interactive, stays at
+`read-only=false` and writes no marker, so it informs a human but cannot satisfy the gate.
 
 `--mode cross|self`, `--enforced`, `--implementer codex|claude` (otherwise read from the branch prefix),
 `--focus-file` and `--goal-file` to override the defaults, `--print-only` to just get the prompt and
@@ -234,8 +237,9 @@ A headless run inverts the old order, and that matters more than the convenience
 | | interactive | headless |
 | --- | --- | --- |
 | writes the comment | the review session | the launcher |
-| marker written | before the worktree check | only after it passed |
-| on a violation | a passing marker already exists; delete it before the reconciler reads it | nothing was published, the result is discarded |
+| read-only level | `false` (or `true` with `--enforced`) | `verified` (or `true` with `--enforced`) |
+| marker written | none, unless `--enforced` | only after the check passed |
+| on a violation | with `--enforced`: a passing marker already exists; delete it before the reconciler reads it | nothing was published, the result is discarded |
 
 The session in a headless run is told to write nothing at all and simply to output its review. The
 launcher captures that, runs the worktree check, extracts the `Verdikt:` line and only then appends
@@ -266,6 +270,12 @@ node ./scripts/agent-review-session.mjs --pr-json pr.json --repository blorbeer-
 Without `--repository` the name is derived from the `origin` remote. The head SHA must be the full
 40 characters — a short one would otherwise surface as an obscure `git worktree add` failure.
 
+Nothing in the file proves its fields belong together, so where `gh` *is* available the launcher
+cross-checks head SHA, head branch and base branch against GitHub and refuses a mismatch: a review
+bound to the wrong pull request is worse than none, because its marker looks entirely valid. Where
+`gh` is missing that check cannot run, and the launcher says so rather than implying the metadata
+was verified.
+
 That final check is why the script exists at all. A prompt cannot enforce read-only on the session
 it is addressed to — it can only ask. The launcher removes the capability beforehand and verifies
 the outcome afterwards, so the read-only claim stops being something the reviewer says about itself:
@@ -291,8 +301,14 @@ The marker carries one of three values, and the merge gate compares it against
 | Level      | What backs it                                                                                                                   | Who can claim it |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | `true`     | everything under `verified`, plus credentials without code write access, so a write fails server-side                            | the operator, via `--enforced` |
-| `verified` | editing tools removed, writing git/gh denied, review in a throwaway worktree detached at the reviewed SHA, and the launcher checked afterwards that the worktree was untouched | `agent-review-session.mjs` whenever it launches the session itself |
-| `false`    | nothing outside the prompt                                                                                                      | anything else, including `--print-only` |
+| `verified` | editing tools removed, writing git/gh denied, review in a throwaway worktree detached at the reviewed SHA, and the launcher checked afterwards that the worktree was untouched | `agent-review-session.mjs --headless` only |
+| `false`    | nothing outside the prompt                                                                                                      | anything else, including an interactive launch and `--print-only` |
+
+`verified` requires `--headless` because only a headless run publishes from the launcher, i.e.
+*after* the check. An interactive session posts its own comment while it is still running, so the
+verification the level names has not happened yet at that moment — claiming it there would describe
+an ordering that does not exist. An interactive run therefore stays at `false` and writes no marker,
+and the launcher says so before it starts.
 
 `verified` exists because `true` is not reachable everywhere. A session whose only credentials can
 push cannot honestly assert it — and demanding it anyway left `self` unusable in exactly those

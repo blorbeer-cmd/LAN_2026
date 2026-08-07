@@ -61,10 +61,20 @@ export const DEFAULT_SELF_REVIEW_MINIMUM = "verified";
 /**
  * Whether `level` is at least as strong as `minimum`.
  *
- * Unknown values are treated as the weakest possible reading rather than rejected: an unparseable
- * claim must never come out stronger than an honest `false`.
+ * The two arguments fail in opposite directions on purpose. An unknown `level` is read as the
+ * weakest possible claim, so an unparseable marker never comes out stronger than an honest `false`.
+ * An unknown `minimum` throws instead: it is repository policy, and silently ranking it at zero
+ * would let a typo in `selfReviewMinimumEnforcement` — `"verifed"` for `"verified"` — accept every
+ * marker including `read-only=false`, disabling the whole check without a failing test or a log
+ * line. A misconfigured gate has to be loud.
  */
 export function meetsReadOnlyMinimum(level, minimum = DEFAULT_SELF_REVIEW_MINIMUM) {
+  if (!REVIEW_READ_ONLY_LEVELS.includes(minimum)) {
+    throw new Error(
+      `selfReviewMinimumEnforcement must be one of ${REVIEW_READ_ONLY_LEVELS.join(", ")}; got ` +
+        `${JSON.stringify(minimum)}.`,
+    );
+  }
   const rank = (value) => {
     const index = REVIEW_READ_ONLY_LEVELS.indexOf(value);
     return index === -1 ? 0 : index;

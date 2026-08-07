@@ -276,10 +276,19 @@ export function usage() {
  * Derived rather than passed, so the marker cannot end up stronger than what the launcher actually
  * does: `--print-only` never sees the session it hands the prompt to, and only `--enforced` says
  * anything about credentials.
+ *
+ * `verified` additionally requires `headless`, and that condition is the whole point of the level.
+ * Only a headless run publishes from the launcher, i.e. *after* the worktree check. An interactive
+ * run lets the session post its own comment while it is still running, so the check it would be
+ * claiming has not happened yet at publication time — the level would describe an ordering that
+ * does not exist. Such a run stays at `false` and writes no marker, exactly as before this level
+ * was introduced.
  */
-export function readOnlyLevelFor({ enforced, launch }) {
+export function readOnlyLevelFor({ enforced, launch, headless }) {
+  // `true` is an assertion about credentials, not about ordering: with a token that cannot write,
+  // a violating session cannot reach the repository whatever it publishes and whenever.
   if (enforced) return "true";
-  return launch ? "verified" : "false";
+  return launch && headless ? "verified" : "false";
 }
 
 /** Derives `owner/repo` from an origin URL, so the repository name needs no gh call. */
@@ -454,7 +463,34 @@ function readPullRequest(options) {
     } catch (error) {
       throw new Error(`Could not read --pr-json ${options.prJsonFile}.\n${error.message}`);
     }
-    return validatePullRequest(parsed, `--pr-json ${options.prJsonFile}`);
+    const pr = validatePullRequest(parsed, `--pr-json ${options.prJsonFile}`);
+
+    // The file says which pull request this is; nothing in it proves the fields belong together.
+    // Where gh exists, ask GitHub and refuse a mismatch — a review bound to the wrong number or SHA
+    // is worse than no review, because its marker looks exactly like a valid one.
+    let authoritative = null;
+    try {
+      authoritative = JSON.parse(
+        run("gh", ["pr", "view", String(pr.number), "--json", "headRefOid,headRefName,baseRefName"]),
+      );
+    } catch {
+      console.warn(
+        "Note: gh is unavailable, so the --pr-json metadata could not be checked against GitHub.\n" +
+          "      Head SHA, branch and pull-request number are taken on trust from the file.",
+      );
+    }
+    if (authoritative) {
+      const mismatches = ["headRefOid", "headRefName", "baseRefName"].filter(
+        (field) => authoritative[field] && authoritative[field] !== pr[field],
+      );
+      if (mismatches.length > 0) {
+        throw new Error(
+          `--pr-json disagrees with GitHub for pull request #${pr.number} on: ` +
+            `${mismatches.map((f) => `${f} (file ${pr[f]}, GitHub ${authoritative[f]})`).join("; ")}.`,
+        );
+      }
+    }
+    return pr;
   }
 
   const fields = "number,url,title,body,headRefName,headRefOid,baseRefName,isDraft";
@@ -527,6 +563,14 @@ function main(argv) {
   const pr = readPullRequest(options);
   const repository = resolveRepository(options);
   const readOnlyLevel = readOnlyLevelFor(options);
+  if (options.launch && !options.headless && !options.enforced) {
+    // Say it before the run rather than leaving the operator to notice a missing marker afterwards.
+    console.warn(
+      "Note: an interactive run publishes from the session itself, before the worktree check.\n" +
+        "      It therefore stays at read-only=false and writes no marker. Use --headless for a\n" +
+        "      gate-eligible review, or --enforced if credentials cannot write.",
+    );
+  }
 
   const implementer =
     options.implementer ?? implementerFromBranch(pr.headRefName) ?? "claude";
