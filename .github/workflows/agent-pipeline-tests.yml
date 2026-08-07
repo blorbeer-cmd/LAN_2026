@@ -48,3 +48,6 @@ jobs:
 
       - name: Test agent preflight
         run: node --test scripts/agent-preflight.test.mjs
+
+      - name: Test review session launcher
+        run: node --test scripts/agent-review-session.test.mjs

@@ -14,6 +14,23 @@
     "codex": ["chatgpt-codex-connector[bot]"],
     "claude": ["claude[bot]"]
   },
+  "//reviewModeLabels": "Set by the user, never by an agent: they decide who reviews the current head. The reconciler only removes one that was bound to an earlier head, so the choice is asked again per head SHA.",
+  "reviewModeLabels": {
+    "cross": "review:cross",
+    "self": "review:self",
+    "human": "review:human"
+  },
+  "//statusCommentAuthors": "Identities whose status comment may carry the review-mode binding. Narrower than the trusted-author check used to adopt a comment, because that one accepts every [bot] login and the binding decides whether an answer counts for this head.",
+  "statusCommentAuthors": ["github-actions[bot]", "claude[bot]", "blorbeer-cmd"],
+  "//sensitivePathPrefixes": "Paths that always make the recommendation fall back to the independent cross-review, regardless of how small the diff looks.",
+  "sensitivePathPrefixes": [
+    ".github/",
+    "infra/",
+    "server/src/db",
+    "server/src/auth",
+    "server/src/routes/admin",
+    "agent/src/"
+  ],
   "allowedScopes": ["root", "server", "frontend", "agent", "docs", "infra"],
   "scopePathPrefixes": {
     "server": ["server/src/", "server/package", "server/tsconfig"],

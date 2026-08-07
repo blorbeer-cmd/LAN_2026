@@ -15,6 +15,8 @@ The pipeline reports state; it does not act on it yet:
 - `.github/workflows/agent-pipeline-tests.yml` runs the unit tests for both.
 - `review-session-prompt.md` contains the copy-paste prompt and operating instructions for an
   isolated Codex or Claude review session.
+- `review-decision.md` describes the one decision that is not automated: who reviews the current
+  head.
 - The `pull_request_target` workflow definitions are loaded from the trusted default branch and run
   the validator, reconciler and configuration from that same trusted branch. The declared PR base
   must equal the configured default branch. The pull-request head is fetched only as diff data and
@@ -38,7 +40,9 @@ What it does:
   `agent:needs-human` or the human-approval wait gets no phase label, because those states are
   already named by their own label or by the status comment,
 - maintains one sticky status comment marked with `<!-- agent-pipeline:status -->`,
-- reports every open blocker in that comment,
+- reports every open blocker in that comment, asks for the review mode while it is missing and
+  records the answer,
+- removes a `review:*` label that was bound to an earlier head, so the choice is asked again,
 - writes the `Agent pipeline / ready for human merge` commit status for the current head SHA.
 
 What it deliberately does not do:
@@ -46,18 +50,78 @@ What it deliberately does not do:
 - start an agent, request a review, or push a fix,
 - approve or merge anything,
 - set or clear `agent:waiting` and `agent:review-fallback`, which belong to the provider phases,
-- accept a fallback review as satisfying the gate. Only an approval from the counter provider's
-  reviewer allowlist counts, so a pull request reviewed through the fallback path described in the
-  plan still reports a missing cross-review. Phase 5 owns the fallback flow; wiring it up here,
-  where `agent:review-fallback` is only a hand-set label and nothing verifies that a fallback
-  review actually happened, would turn the label into a gate bypass.
+- choose the review mode, or set any `review:*` label.
 
-Who may satisfy the cross-review is configured in `providerReviewerAllowlist`, deliberately
+Who may satisfy the `cross` review is configured in `providerReviewerAllowlist`, deliberately
 separate from `providerAuthorAllowlist`. The author list contains the human maintainer, so reusing
-it would let a single human approval count as the counter provider's review and satisfy the
-protected-path approval at the same time — two independent gates collapsing into one click. Only
-agent identities can produce a cross-review verdict; a human approval counts solely as the human
-approval.
+it would let a single human approval count as the counter provider's review — and in `cross` mode
+also satisfy the protected-path approval at the same time, two independent gates collapsing into
+one click. Only agent identities can produce a cross-review verdict; a human approval counts as the
+human approval, and satisfies the review itself only in the explicitly chosen `human` mode.
+
+## Review-mode selection
+
+Who reviews the current head is the user's decision, taken per head SHA, because it is really a
+question about which provider's quota to spend. Everything else stays automatic.
+
+The answer is one of three labels. An interactive session sets the label for the user right after
+they answer, so nobody has to switch to GitHub for it — but only ever as a transcription of an
+explicit answer, never invented or changed on its own. Unattended automation never sets one: not
+the reconciler, not a later dispatcher, not a review session, not a CI job. An agent choosing its
+own review mode would be helping itself past the merge gate. The gate cannot verify that
+provenance — it only sees a label — so the rule is binding and the pull request's label history is
+the audit trail.
+
+| Label          | Mode     | What satisfies the gate for the current head SHA                                                   |
+| -------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `review:cross` | `cross`  | an approval from the counter provider's `providerReviewerAllowlist`                                  |
+| `review:self`  | `self`   | a published `agent-pipeline:review-result` marker: same head, `verdict=pass`, `read-only=true`, from one of the implementation provider's own identities |
+| `review:human` | `human`  | an approving review from an account with write access, covering exactly this head                     |
+
+With no label set and everything mechanical green, the pull request sits in the
+`awaiting-review-decision` phase and the status comment asks the question, with a recommendation
+derived from the changed paths and whether an earlier head already passed. Nothing starts on a
+timeout: an automatic fallback would spend exactly the quota this decision exists to steer. Two
+labels at once block rather than picking a winner.
+
+The choice expires with its head. Every run records the head it saw in the reconciler's own status
+comment (`agent-pipeline:review-decision`), including as `mode=none` while nothing is chosen. A
+label binds only when a record for the *current* head already exists — the run that wrote it removed
+any label standing at the time, so a label next to it must have arrived afterwards. Without a record
+for the current head the label cannot be vouched for, is removed, and the question is asked again.
+
+The record counts only from an identity in `statusCommentAuthors`. Adopting a comment to update
+uses the wide trusted-author check, which accepts every `[bot]` login; the binding may not, or a
+decoy comment carrying the marker could bind an old label whenever the real status comment is
+missing.
+
+A run that changes no labels records no head either — with two review-mode labels standing, or with
+a broken task contract, the previous record is carried through unchanged. Recording a head asserts
+"any label standing now arrived after me", and that is only true of a run that cleared them.
+
+That `none` state is what closes the hole: with it, "no record" is distinguishable from "chosen for
+this head". Without it, a deleted status comment, a paused pipeline or a skipped bootstrap run was
+enough for a choice made at head A to apply at head D — the ambiguity resolved towards accepting an
+answer the user gave for code they never saw. The price is one extra round when a label is set in
+the same moment a new head appears; the safe direction is asking twice, not binding once too often.
+
+Switching the label at the same head is a legitimate correction — the counter provider running out
+of quota mid-round is the case this exists for — and simply rebinds.
+
+`self` and `human` are weaker than a cross-review, deliberately and visibly:
+
+- In `self` mode the gate can verify that the result marker is head-bound, complete and posted by
+  one of that provider's own identities — not that the session really was independent or read-only.
+  It believes a claim made by the provider that also implemented the change. The author check is
+  deliberately narrower than `isTrustedCommentAuthor`, which accepts every `[bot]` login: any app
+  installed on the repository would otherwise be able to declare a self-review passed.
+- In `human` mode review and merge are the same person.
+
+Both are acceptable only because they were explicitly chosen for one specific head, stay visible as
+a label, and are named as reduced independence in the status comment. The pull request's label
+history is the audit trail for who chose what and when. Every other gate condition — green checks,
+no conflict, resolved threads, the UI/UX notice, human approval of protected paths — applies
+unchanged in all three modes, and the merge stays with the user in all of them.
 
 Escalations the reconciler cannot derive from GitHub state — an exhausted round limit, a critical
 decision, the 24-hour waiting escalation — stay with `agent:needs-human`, exactly as the plan
@@ -196,7 +260,8 @@ Completed for this repository:
    review per current head SHA.
 3. The GitHub username for notifications is stored in repository variable `AGENT_PIPELINE_OWNER`.
 4. `providerAuthorAllowlist` lists the verified actors for both providers.
-5. Pipeline labels from `config.json` exist in the repository.
+5. Pipeline labels from `config.json` exist in the repository, including the three review-mode
+   labels `review:cross`, `review:self` and `review:human`.
 
 Still required before enabling agent mutations:
 
