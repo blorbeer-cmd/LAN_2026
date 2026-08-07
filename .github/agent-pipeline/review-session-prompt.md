@@ -227,6 +227,31 @@ node ./scripts/agent-review-session.mjs --pr 364 --mode self --headless
 The read-only flags are unchanged by this — `--headless` only adds `--print`; it never trades away
 the removed tools or the settings file.
 
+### Who publishes the result
+
+A headless run inverts the old order, and that matters more than the convenience:
+
+| | interactive | headless |
+| --- | --- | --- |
+| writes the comment | the review session | the launcher |
+| marker written | before the worktree check | only after it passed |
+| on a violation | a passing marker already exists; delete it before the reconciler reads it | nothing was published, the result is discarded |
+
+The session in a headless run is told to write nothing at all and simply to output its review. The
+launcher captures that, runs the worktree check, extracts the `Verdikt:` line and only then appends
+the marker. An absent or ambiguous verdict — including the untouched
+`pass | changes-required | blocked` template — produces **no** marker and a non-zero exit, because a
+guessed verdict would go straight into the merge gate.
+
+This also removes the reviewer's need for any GitHub access, which is what made the headless path
+work at all where neither `gh` nor MCP tools exist: the session runs with `Read,Grep,Glob,Bash` and
+nothing else. Where `gh` is present the launcher posts the comment itself; where it is not, the
+result is written to `--result-file` with the marker already in place, to be posted verbatim.
+
+The trade-off, stated plainly: the launcher runs in the implementation context, so it — not the
+isolated session — is what puts the verdict on the pull request. The author allowlist already
+assumed that identity, but the relay is a step the interactive route did not have.
+
 ### Without the GitHub CLI
 
 The script reads the pull request through `gh` by default. Where that binary does not exist — a

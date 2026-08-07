@@ -106,6 +106,11 @@ das Kontingent verbrauchen, das diese Frage schützen soll.
    vergleicht den Wert mit `selfReviewMinimumEnforcement` aus `config.json` (Standard `verified`);
    Details in [`review-session-prompt.md`](review-session-prompt.md).
 
+   Bei einem Lauf mit `--headless` schreibt nicht die Session, sondern der Launcher: Er nimmt das
+   Review entgegen, prüft den Arbeitsbaum und hängt den Marker erst danach an. Eine Verletzung führt
+   dann dazu, dass gar nichts veröffentlicht wird — statt dass ein bereits gesetzter Marker gegen den
+   Reconciler-Zeitplan gelöscht werden muss.
+
    `verdict=changes-required` oder `verdict=blocked` blockieren das Gate; `read-only=false` zählt
    nicht als Review. Alle Felder sind Pflicht — ein unvollständiger Marker wird nicht erkannt und
    das Gate meldet weiterhin ein fehlendes Review. Der Kommentar muss von einer Identität des

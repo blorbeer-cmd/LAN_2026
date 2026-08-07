@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  buildResultMarker,
   claudeCommand,
   DEFAULT_FOCUS,
   detectWorktreeViolation,
   goalFromBody,
+  parseVerdict,
   implementerFromBranch,
   parseOptions,
   readOnlyLevelFor,
@@ -303,6 +305,53 @@ test("the check behind read-only=verified catches both ways a session can write"
 
   const both = detectWorktreeViolation({ dirty: "?? x", head: "b".repeat(40), expectedSha: HEAD });
   assert.equal(both.reasons.length, 2, "both findings must be reported, not just the first");
+});
+
+// ---------------------------------------------------------------------------
+// The launcher publishes, so the marker follows the check instead of preceding it
+// ---------------------------------------------------------------------------
+
+test("a launcher-published review tells the session to write nothing at all", () => {
+  const body = prompt({ readOnlyLevel: "verified", publisher: "launcher" });
+  assert.match(body, /Poste NICHTS an GitHub/);
+  assert.match(body, /Diese Session schreibt überhaupt nichts nach außen/);
+  // No marker template: the session must not be able to produce one before the check has run.
+  assert.equal(
+    body.split("\n").find((line) => line.startsWith("<!-- agent-pipeline:review-result")),
+    undefined,
+  );
+  // The session-published variant keeps its own instructions.
+  assert.match(prompt({ readOnlyLevel: "verified" }), /Poste genau einen Kommentar/);
+});
+
+test("the verdict is read from the review, never guessed", () => {
+  assert.equal(parseVerdict("- Verdikt: pass"), "pass");
+  assert.equal(parseVerdict("Verdikt: `changes-required`"), "changes-required");
+  assert.equal(parseVerdict("...\n- Verdikt: blocked\n..."), "blocked");
+
+  // An untouched template lists all three; treating that as a pass would open the gate on nothing.
+  assert.equal(parseVerdict("- Verdikt: pass | changes-required | blocked"), null);
+  // Two different verdicts in one text is a contradiction, not a decision.
+  assert.equal(parseVerdict("- Verdikt: pass\n- Verdikt: blocked"), null);
+  assert.equal(parseVerdict("no verdict here"), null);
+  assert.equal(parseVerdict(""), null);
+});
+
+test("the marker the launcher builds is one the gate can read", () => {
+  const marker = buildResultMarker({
+    headSha: HEAD,
+    reviewMode: "self",
+    verdict: "pass",
+    sessionId: "claude-review-1",
+    readOnlyLevel: "verified",
+  });
+  assert.ok(new RegExp(REVIEW_RESULT_SOURCE).test(marker), marker);
+  assert.match(marker, /read-only=verified/);
+});
+
+test("a result file can be requested explicitly", () => {
+  assert.equal(parseOptions(["--pr", "364"]).resultFile, null);
+  assert.equal(parseOptions(["--pr", "364", "--result-file", "out.md"]).resultFile, "out.md");
 });
 
 test("the default minimum accepts a verified launcher run but not an unbacked one", () => {

@@ -284,7 +284,11 @@ Auswahl des Modus samt Empfehlung. Nach drei erfolglosen Reviewrunden wird nicht
 Agenten gependelt; der PR wechselt zu `agent:needs-human`.
 
 Ein Review durch den Implementierungs-Anbieter besitzt in GitHub keine eigene Entsprechung. Es
-veröffentlicht sein Verdikt deshalb zusätzlich als maschinenlesbaren Marker im PR. Ein
+veröffentlicht sein Verdikt deshalb zusätzlich als maschinenlesbaren Marker im PR. Wird das Review
+über `agent-review-session.mjs --headless` gestartet, schreibt die Review-Session selbst nichts: Sie
+gibt ihr Ergebnis nur aus, der Launcher prüft danach den Arbeitsbaum und hängt den Marker erst an,
+wenn diese Prüfung bestanden ist. Dadurch kann eine Verletzung keinen bereits veröffentlichten
+Marker hinterlassen, und die Review-Session braucht überhaupt keinen GitHub-Zugriff. Ein
 Fallback-Review verwendet denselben Marker mit `mode=self` und wird durch
 `agent:review-fallback` als solches ausgewiesen; einen vierten Marker-Modus kennt das Gate nicht:
 
