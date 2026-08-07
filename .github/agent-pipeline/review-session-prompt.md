@@ -197,6 +197,29 @@ Bei `anchor: none` müssen `file` und `line` stattdessen als JSON-`null` ausgege
 8. After fixes are pushed, close this review context and start another detached review for the new
    SHA.
 
+## One command instead of this checklist
+
+`scripts/agent-review-session.mjs` does everything below in one step: it reads the pull request,
+creates a throwaway worktree detached at the exact head SHA, fills this prompt in, launches Claude
+without the editing tools and with the read-only settings — and after the session ends it checks
+from the outside whether that worktree is still untouched.
+
+```powershell
+node ./scripts/agent-review-session.mjs --pr 363 --mode self
+```
+
+`--mode cross|self|fallback`, `--implementer codex|claude` (otherwise read from the branch prefix),
+`--focus-file` and `--goal-file` to override the defaults, `--print-only` to just get the prompt and
+the command without launching anything.
+
+That final check is why the script exists at all. A prompt cannot enforce read-only on the session
+it is addressed to — it can only ask. The launcher removes the capability beforehand and verifies
+the outcome afterwards, so `read_only_enforced: true` stops being a claim the reviewer makes about
+itself. If the worktree did change, the script says so and tells you to treat the review as invalid
+before the merge gate reads any marker it posted.
+
+The manual route below stays valid, and explains what the script sets up.
+
 ## Enforcing read-only for a Claude review session
 
 `<READ_ONLY_ENFORCED>` must be `true`, and a review session that cannot confirm it has to stop with
