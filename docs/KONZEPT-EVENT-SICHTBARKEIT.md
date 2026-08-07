@@ -2,21 +2,23 @@
 
 Stand: 2026-08-07 · Status: **Konzept, noch nicht umgesetzt**
 
-Auftrag: Ein Event soll nur sehen, wer dazu eingeladen wurde — einschließlich aller
-Auswertungen, Statistiken und Ranglisten.
+Auftrag: Ein Event soll nur sehen, wer dazu eingeladen wurde. Die Gesamtrangliste bleibt dabei
+vollständig; gefiltert werden darf nur auf Events, bei denen man selbst dabei war.
 
-Ausgangslage: Es gibt **noch keine echten Statistik- oder Eventdaten, nur Testdaten.** Das ist
-für dieses Vorhaben der entscheidende Umstand — es macht den teuersten Konzeptteil, die
-Kompatibilitätsmigration für gewachsene Historie, vollständig überflüssig (Abschnitt 4.3) und
-verwandelt die Sichtbarkeitsregel in eine reine Vorwärtsentscheidung.
+Zwei Umstände machen das Vorhaben deutlich kleiner, als es zunächst aussah:
 
-Kurzantwort auf „wäre das aufwändig?“: **Der Zugriffsmechanismus existiert bereits fast
-vollständig; der Aufwand liegt fast ausschließlich in den Auswertungsflächen.** Die reine
-Event-Sichtbarkeit (Listen, Detailseiten, eventgebundene Fachdaten) ist ein kleiner Eingriff.
-Statistiken, Ranglisten und Hall of Fame sind der teure Teil, weil sie heute bewusst
-eventübergreifend aggregieren und dabei jede Sichtbarkeitsgrenze umgehen. Realistische
-Gesamtgröße: **mittel bis groß, sinnvoll in drei Phasen mit je einem eigenen PR.** Jetzt
-umgesetzt ist es deutlich billiger als nach der ersten echten LAN.
+1. **Es gibt noch keine echten Statistik- oder Eventdaten, nur Testdaten.** Damit entfällt die
+   Kompatibilitätsmigration für gewachsene Historie — ursprünglich der teuerste und riskanteste
+   Teil (Abschnitt 4.3).
+2. **Die Aggregate bleiben unangetastet.** Weil die Gesamtrangliste bewusst alle Daten enthält,
+   entfällt der Umbau von rund 20 Auswertungsendpunkten auf eine Sichtbarkeits-Allowlist —
+   ursprünglich der größte Arbeitsblock (Abschnitt 2.3).
+
+Kurzantwort auf „wäre das aufwändig?“: **Nein.** Der Zugriffsmechanismus existiert bereits fast
+vollständig — `visibility_scope`, Einladungsstatus, REST-Guard und Realtime-Prüfung sind da und
+getestet. Es fehlt die flächendeckende Anwendung, und die ist überwiegend mechanisch.
+Realistische Gesamtgröße: **klein bis mittel, sinnvoll in zwei PRs.** Jetzt umgesetzt ist es
+deutlich billiger als nach der ersten echten LAN.
 
 ---
 
@@ -65,12 +67,16 @@ Voraussetzung dafür, dass die bestehende Einladungs-UI in `server/public/js/vie
 | `GET /api/matchmaking/history`, `GET /api/draft/history` | `?eventId=` ungeprüft | `routes/matchmaking.ts:406`, `routes/draft.ts:131` |
 | `GET /api/export/*` (CSV/PDF) | `?eventId=` ungeprüft, Default `getTrackingEventId()` | `routes/export.ts:368-385` |
 
-**Lücke C — Aggregate über mehrere Events.**
-Selbst mit perfekten Einzelguards bleibt eine strukturelle Lücke: Gesamt-Rangliste,
-Gesamt-Spielzeit, Profilstatistiken und Hall of Fame fassen bewusst *alle* Events zusammen.
-Wer nicht eingeladen war, sieht die Ergebnisse dieses Events dann zwar nicht mehr namentlich,
-aber weiterhin in jeder Summe. Das ist keine Randnotiz, sondern der eigentliche Kern des
-Aufwands: **jede Aggregation braucht eine Sichtbarkeits-Allowlist statt eines Eventfilters.**
+**Lücke C — eventbenennende Ausgaben in Auswertungen.**
+Zu unterscheiden von den reinen Summen: Manche Auswertungen geben einzelne Events preis, nicht
+nur Zahlen. Die Hall of Fame listet jedes Event namentlich mit Zeitraum, Gesamtsieger und
+Endstand (`routes/hallOfFame.ts:29-95`); `GET /api/matches` und `GET /api/tournaments` liefern
+pro Zeile eine `eventId` mit (`routes/matches.ts:57`). Diese drei sind echte Lücken und werden
+geschlossen.
+
+Die *Summen* dagegen — Gesamt-Rangliste, Gesamt-Spielzeit, Profilstatistiken,
+All-Time-Zähler — bleiben bewusst vollständig. Das ist keine Lücke, sondern die
+Produktentscheidung aus Abschnitt 2.3.
 
 **Lücke D — „eingeladen“ ist heute nicht sichtbarkeitsrelevant.**
 `isParticipant()` und `ACCEPTED_EVENT_PARTICIPANT_SQL` bedeuten ausschließlich
@@ -119,32 +125,37 @@ wer sonst noch eingeladen war.
   entfernen** (Migration auf `group`), statt eine dritte Semantik mitzuschleppen, die kein
   Bedienkonzept hat.
 
-### 2.3 Konsequenz für Auswertungen — die eigentliche Produktentscheidung
+### 2.3 Auswertungen — entschieden
 
-Mit der Grundregel wird jede Statistik **personalisiert**: zwei Personen sehen unterschiedliche
-Gesamt-Ranglisten, weil ihre Menge sichtbarer Events unterschiedlich ist. Das ist die
-unvermeidliche Folge des Auftrags, aber sie sollte bewusst getroffen und in der UI erklärt
-werden („Basis: 3 von 5 Events").
+**Produktentscheidung (2026-08-07): Die Gesamtrangliste enthält alle Daten. Gefiltert werden
+darf nur auf Events, bei denen man selbst dabei war.**
 
-Weil es bislang **keine echten Statistikdaten gibt, nur Testdaten**, ist das hier eine reine
-Vorwärtsentscheidung: es zerfällt keine gewachsene gemeinsame Historie, und niemand verliert
-Zahlen, die er schon kannte. Die Regel gilt ab dem ersten echten Event — das ist der
-günstigste denkbare Zeitpunkt für diesen Umbau.
+Damit ist die Trennlinie nicht „welche Zahlen fließen ein", sondern **„wird ein einzelnes Event
+benannt oder identifizierbar"**:
 
-Zwei Umsetzungsvarianten stehen zur Wahl:
+| Art der Ausgabe | Regel | Beispiele |
+|---|---|---|
+| **Summe ohne Eventbezug** | vollständig, gruppenweit — kein Filter | Gesamtrangliste, Gesamt-Spielzeit pro Person/Spiel, All-Time-Zähler der Hall of Fame, Analytics-Kennzahlen ohne Eventauswahl |
+| **Eventauswahl** (`?eventId=`) | nur sichtbare Events; fremde ID → `404` | jeder Filter in Statistiken, Analytics, Export, Seating |
+| **Ausgabe, die ein Event benennt** | nur sichtbare Events | Eventliste und -filter, Hall-of-Fame-Abschnitte pro Event, `GET /api/matches` und `GET /api/tournaments` (jede Zeile trägt `eventId`, `routes/matches.ts:57`) |
 
-| Variante | Regel | Aufwand | Bewertung |
-|---|---|---|---|
-| **V1 — vollständig** (empfohlen) | jede Aggregation läuft über `event_id IN (sichtbare Events)` | mittel-groß | erfüllt den Auftrag wörtlich, keine Restleaks |
-| **V2 — nur Flächen** | Listen/Detail/Fachdaten werden gefiltert; Gesamt-Rangliste, Gesamt-Spielzeit und Hall of Fame bleiben gruppenweit | klein | deutlich billiger, aber die Existenz und die Ergebnisse fremder Events bleiben in jeder Summe ablesbar — der Auftrag ist damit nicht erfüllt |
+Das ist die konsistente Ausformulierung der Entscheidung: Die Gruppe hat **eine** gemeinsame
+Bestenliste über ihre gesamte Geschichte — aber wer bei einem Event nicht dabei war, erfährt
+nicht, dass es stattgefunden hat, wer dort war und was dort passiert ist.
 
-Empfehlung: **V1**. V2 ist nur sinnvoll, wenn Statistiken bewusst als „gemeinsame
-Gruppenhistorie" verstanden werden sollen und nur die operative Eventplanung privat ist. Das
-wäre eine andere Produktaussage und sollte dann auch so benannt werden.
+Praktisch heißt das für die UI: Das Event-Auswahlfeld enthält nur die eigenen Events, die
+unfilterte Gesamtansicht bleibt für alle identisch. Kein „Basis: 3 von 5 Events"-Hinweis nötig —
+die Gesamtzahlen sind vollständig und für jeden gleich.
 
-Solange nur Testdaten existieren, ist V1 zusätzlich risikoarm: die Umstellung lässt sich gegen
-neu erzeugte Testdaten vollständig durchprüfen, und ein späterer Wechsel von V2 auf V1 wäre
-teurer, weil dann echte Zahlen sichtbar verschwinden würden.
+**Bewusst in Kauf genommener Restschluss:** Wer seine eigenen Eventsummen von der Gesamtsumme
+abzieht, kann auf die Existenz und den Umfang weiterer Events schließen — nicht aber auf deren
+Namen, Zeitraum, Teilnehmer oder Ergebnisse. Das ist die direkte Folge einer vollständigen
+Gesamtrangliste und ausdrücklich akzeptiert; es ist kein Fehler, der später „behoben" werden
+muss.
+
+Weil es bislang **keine echten Statistikdaten gibt, nur Testdaten**, ist das eine reine
+Vorwärtsentscheidung: es zerfällt keine gewachsene Historie, und niemand verliert Zahlen, die
+er schon kannte.
 
 ---
 
@@ -182,30 +193,43 @@ Aufwand: klein. 1 neue Datei, 2 angepasste, Unit-Tests für die Stufenmatrix.
 
 Aufwand: klein-mittel. Eine Datei, klar abgegrenzt.
 
-### 3.3 Phase 3 — Auswertungsflächen (der Hauptteil)
+### 3.3 Phase 3 — Auswertungsflächen
 
-Jeder Endpunkt aus der Tabelle in 1.2 bekommt dieselbe Behandlung:
+Durch die Entscheidung aus 2.3 schrumpft diese Phase erheblich: **die Aggregate bleiben, wie sie
+sind.** `leaderboard.ts` und die unfilterten Pfade von `stats.ts`, `analytics.ts` und
+`players.ts` werden gar nicht angefasst — sie sollen weiterhin alles zusammenfassen. Zu tun
+bleiben zwei mechanische Dinge.
 
-1. Ein übergebenes `?eventId=` wird über `requireGroupEventAccess` geprüft (→ `404` statt leerer
-   Antwort, damit die Existenz nicht ableitbar ist).
-2. Ohne `?eventId=` wird nicht mehr „alles" aggregiert, sondern `event_id IN (sichtbare
-   Events)`.
-3. Die Antwort nennt die Auswertungsbasis (`consideredEventIds` bzw. `eventCount`), damit die UI
-   „Basis: 3 von 5 Events" anzeigen kann.
+**(a) Jedes `?eventId=` validieren.** Rund 15 Endpunkte übernehmen den Parameter heute ungeprüft
+(Tabelle in 1.2). Sie bekommen alle dieselben zwei Zeilen:
 
-Betroffen: `stats.ts`, `analytics.ts` (6 Endpunkte), `leaderboard.ts`, `hallOfFame.ts`,
-`matches.ts`, `tournaments.ts`, `matchmaking.ts`, `draft.ts`, `export.ts` sowie die
-Profilstatistik in `players.ts`. Rund 20 Endpunkte, jeder für sich mechanisch, in Summe der
-größte Block.
+```
+const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+```
 
-Zwei Sonderfälle brauchen eine bewusste Entscheidung:
+Das Muster existiert bereits und ist in `analytics.ts:484-487` vorgemacht — es wird nur auf die
+übrigen Endpunkte gezogen. Betroffen: `stats.ts`, `analytics.ts` (6 Endpunkte), `matches.ts`,
+`tournaments.ts`, `matchmaking.ts`, `draft.ts`, `export.ts`.
 
-- **Hall of Fame** wird pro Person gefiltert. Ein Event, bei dem man nicht dabei war,
-  verschwindet inklusive seines Gesamtsiegers.
-- **Export (CSV/PDF)** ist heute faktisch ein Vollzugriff auf die gefilterten Daten. Entweder
-  ebenfalls filtern oder — einfacher und ehrlicher — auf Admin/Owner beschränken.
+Wichtig dabei: Der heutige Default `getTrackingEventId()` in `tournaments.ts:276`,
+`matchmaking.ts:407` und `export.ts:371, 385` ist ein **globaler** Griff ohne Gruppenprüfung. Er
+wird durch `resolveGroupEventScope(...)` ersetzt, das den Trackingstand innerhalb der eigenen
+Gruppe auflöst — das repariert nebenbei eine bestehende Unsauberkeit.
 
-Aufwand: mittel-groß. Der Löwenanteil des Projekts.
+**(b) Eventbenennende Ausgaben filtern.** Drei Stellen geben einzelne Events preis und brauchen
+die Sichtbarkeits-Allowlist:
+
+- **Hall of Fame** (`hallOfFame.ts:29-95`): Die Abschnitte pro Event (`eventSummaries` — Name,
+  Zeitraum, Gesamtsieger, Endstand, Turniersieger) werden auf sichtbare Events gefiltert. Der
+  All-Time-Block (`mostOverallWins`, `mostTournamentWins`) bleibt **vollständig** — er ist eine
+  Summe ohne Eventbezug und fällt damit unter die Regel „Gesamtrangliste enthält alle Daten".
+- **`GET /api/matches`** (`matches.ts:57`) und **`GET /api/tournaments`**: Jede Zeile trägt eine
+  `eventId`. Ohne Filter würden fremde Event-IDs mitgeliefert. Beide Listen laufen deshalb ohne
+  explizites `?eventId=` über die sichtbaren Events.
+
+Aufwand: klein-mittel. (a) ist reine Fleißarbeit ohne Denkanteil, (b) betrifft drei Endpunkte.
 
 ### 3.4 Phase 4 — Realtime, Push, Kiosk
 
@@ -234,9 +258,10 @@ Aufwand: klein.
 - Alle Event-Auswahlfelder (Statistiken, Analytics, Seating, Hall of Fame) und die Suchpalette
   (`server/public/js/searchPalette.js:85`) speisen sich aus `state.events`, also aus der dann
   bereits gefilterten Liste — hier ist nichts zusätzlich zu tun, sobald Phase 2 steht.
-- Hinweiszeile zur Auswertungsbasis, wo Aggregate personalisiert sind.
+- **Kein** Hinweis auf eine „Auswertungsbasis" — die Gesamtzahlen sind vollständig und für alle
+  identisch. Nur das Eventauswahlfeld ist personalisiert, und das erklärt sich selbst.
 
-Aufwand: klein-mittel.
+Aufwand: klein.
 
 ### 3.6 Phase 6 — Tests und Dokumentation
 
@@ -258,10 +283,19 @@ Aufwand: mittel. Nicht optional — ohne die Negativsuite verrottet die Regel.
 
 ## 4. Risiken und Entscheidungen vor der Umsetzung
 
-### 4.1 Personalisierte Statistiken (Entscheidung nötig)
+### 4.1 Auswertungen — entschieden, keine offene Frage mehr
 
-Siehe 2.3. Ohne Festlegung auf V1 oder V2 ist Phase 3 nicht startbar. Alles andere hängt nicht
-daran und könnte auch vorher laufen.
+Siehe 2.3: Gesamtzahlen vollständig, Eventbezüge gefiltert. Damit gibt es keine blockierende
+Vorentscheidung mehr; alle Phasen sind startbar.
+
+Zwei Punkte, die aus dieser Entscheidung folgen und im Review bewusst bestätigt werden sollten:
+
+- **Die Hall of Fame wird zweigeteilt** (3.3 b): Eventabschnitte gefiltert, All-Time-Zähler
+  vollständig. Ein Mitglied sieht dort also möglicherweise, dass jemand „4 Gesamtsiege" hat,
+  ohne alle vier Events benennen zu können. Das ist gewollt und konsistent, wirkt beim ersten
+  Hinsehen aber wie ein Fehler — ein kurzer erklärender Satz in der UI ist sinnvoll.
+- **Der Restschluss per Subtraktion** (2.3) ist akzeptiert und wird nicht nachträglich als Bug
+  behandelt.
 
 ### 4.2 „Abgelehnt" ist heute eine Sackgasse
 
@@ -325,27 +359,32 @@ Performance. Bei ~15 Personen und einer Handvoll Events kostet ein zusätzliches
 |---|---|---|---|
 | 1 | Sichtbarkeits-Resolver + Stufenmodell | S | — |
 | 2 | Eventliste, Detail, Teaser-Serialisierung | S–M | 1 |
-| 3 | ~20 Auswertungsendpunkte auf Allowlist umstellen | **L** | 1, Entscheidung 4.1 |
+| 3a | `?eventId=` an ~15 Endpunkten validieren | S | 1 |
+| 3b | Hall of Fame, Matches- und Turnierliste filtern | S | 1 |
 | 4 | Realtime/Push/Kiosk angleichen | S | 1 |
-| 5 | Frontend: Auswahl, Teaser, Auswertungsbasis | S–M | 2, 3 |
+| 5 | Frontend: Sichtbarkeitsauswahl, Teaser | S | 2 |
 | 6 | Negativ-Testsuite, E2E, Doku | M | alle |
 | — | `setParticipants` bereinigen, `public` → `group` (4.3) | XS | — |
 
-Die frühere Zeile „Migration Bestandsdaten" entfällt ersatzlos — ohne echte Daten gibt es
-nichts zu erhalten (4.3).
+Zwei Posten sind gegenüber der ersten Fassung entfallen: die Migration der Bestandsdaten (es
+gibt keine, 4.3) und der Umbau aller Aggregate auf eine Allowlist (nicht gewollt, 2.3). Übrig
+bleibt fast nur noch mechanische Arbeit.
 
-Ohne Phase 3 (also Variante V2): **klein**, gut in einem PR machbar. Mit Phase 3 (Variante V1,
-Auftrag wörtlich erfüllt): **mittel bis groß**, sinnvoll auf drei PRs verteilt —
-(1+2+4), (3), (5+6) — damit jeder PR für sich reviewbar und grün bleibt. Der erste PR liefert
-bereits den sichtbaren Nutzen: Events tauchen nur noch bei Eingeladenen auf.
+Gesamtgröße: **klein bis mittel**, sinnvoll auf zwei PRs verteilt — **(1+2+4+5)** liefert die
+eigentliche Funktion und ist für sich vollständig nutzbar, **(3+6)** zieht die Validierung über
+die Auswertungsendpunkte und sichert sie mit der Negativsuite ab. Die Aufteilung ist eine
+Reviewgrenze, keine fachliche: nach PR 1 sind Events bereits nur noch für Eingeladene sichtbar,
+nach PR 2 lässt sich das auch nicht mehr über einen geratenen `?eventId=`-Parameter umgehen.
 
 ---
 
 ## 6. Definition of Done
 
-- Ein nicht eingeladenes Mitglied findet ein `participants`-Event in **keiner** Ansicht: nicht in
-  der Eventliste, keinem Filter, keiner Statistik, keiner Rangliste, keinem Export, keiner
-  Suchpalette und über kein Realtime-Signal.
+- Ein nicht eingeladenes Mitglied findet ein `participants`-Event **nirgends benannt**: nicht in
+  der Eventliste, keinem Auswahlfeld, keinem Hall-of-Fame-Abschnitt, keiner Match- oder
+  Turnierzeile, keinem Export, keiner Suchpalette und über kein Realtime-Signal.
+- Die Gesamtrangliste und alle Summen ohne Eventbezug sind **vollständig und für jedes Mitglied
+  identisch** — sie werden nicht gefiltert.
 - Direktzugriff auf eine bekannte Event-ID liefert `404`, nicht `403`.
 - Ein eingeladenes, noch nicht beigetretenes Mitglied sieht genau den Teaser und kann annehmen
   oder ablehnen — nicht mehr.
