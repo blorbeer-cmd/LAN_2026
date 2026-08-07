@@ -235,16 +235,14 @@ Completed for this repository:
    review per current head SHA.
 3. The GitHub username for notifications is stored in repository variable `AGENT_PIPELINE_OWNER`.
 4. `providerAuthorAllowlist` lists the verified actors for both providers.
-5. Pipeline labels from `config.json` exist in the repository.
+5. Pipeline labels from `config.json` exist in the repository, including the three review-mode
+   labels `review:cross`, `review:self` and `review:human`.
 
 Still required before enabling agent mutations:
 
-1. Create the three review-mode labels from `reviewModeLabels` in `config.json`
-   (`review:cross`, `review:self`, `review:human`). Without them the choice cannot be expressed and
-   every participating pull request stops at `awaiting-review-decision`.
-2. Verify in a pilot pull request that both app identities can update their own feature branches
+1. Verify in a pilot pull request that both app identities can update their own feature branches
    but cannot push or merge to `main`.
-3. Add `Agent pipeline / ready for human merge` to branch protection only after the reconciler has
+2. Add `Agent pipeline / ready for human merge` to branch protection only after the reconciler has
    written it on `main` at least once and a pilot pull request has shown both verdicts. Until then
    the context exists in no branch-protection rule, and a required check that nothing reports
    blocks every pull request for everyone without administrator rights.
