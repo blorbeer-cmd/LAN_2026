@@ -66,12 +66,14 @@ export function renderReviewPrompt({
   // appended only after the worktree check passed, so a violating session never leaves one behind.
   publisher = "session",
 }) {
+  // The level is printed right before this, so these read as its explanation and must not repeat it
+  // with another ja/nein of their own.
   const enforcement =
     readOnlyLevel === "true"
-      ? "ja — Editierwerkzeuge sind der Session entzogen, schreibende git- und gh-Befehle sind per Deny-Regel gesperrt, die Credentials haben kein Code-Schreibrecht, und der Arbeitsbaum wird nach der Session von außen geprüft"
+      ? "Editierwerkzeuge sind der Session entzogen, schreibende git- und gh-Befehle sind per Deny-Regel gesperrt, die Credentials haben kein Code-Schreibrecht, und der Arbeitsbaum wird nach der Session von außen geprüft"
       : readOnlyLevel === "verified"
-        ? "teilweise — Editierwerkzeuge sind entzogen, schreibende git-/gh-Befehle gesperrt, das Review läuft in einem eigenen, auf den Head-SHA detachten Arbeitsbaum, und der Launcher prüft nach der Session von außen, dass darin nichts verändert wurde. Die Credentials könnten jedoch schreiben; die Prüfung erkennt eine Verletzung, sie verhindert sie nicht"
-        : "nein — Editierwerkzeuge sind zwar entzogen und schreibende git-/gh-Befehle gesperrt, aber ohne eingeschränkte Credentials und ohne äußere Prüfung bleibt eine Shell eine breite Oberfläche";
+        ? "Editierwerkzeuge sind entzogen, schreibende git-/gh-Befehle gesperrt, das Review läuft in einem eigenen, auf den Head-SHA detachten Arbeitsbaum, und der Launcher prüft nach der Session von außen, dass darin nichts verändert wurde. Die Credentials könnten jedoch schreiben; die Prüfung erkennt eine Verletzung, sie verhindert sie nicht"
+        : "Editierwerkzeuge sind zwar entzogen und schreibende git-/gh-Befehle gesperrt, aber ohne eingeschränkte Credentials und ohne äußere Prüfung bleibt eine Shell eine breite Oberfläche";
 
   const marker =
     publisher === "launcher"
