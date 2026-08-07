@@ -204,9 +204,18 @@ export const DEFAULT_FOCUS = `- Korrektheit, Regressionen, Zustandskonflikte, Ne
   Design-Tokens, Lade-/Fehler-/Leerzustände und ob die Prüfanleitung die sichtbare Änderung
   abdeckt.`;
 
-/** `claude` invocation that makes the session read-only from the outside. */
-export function claudeCommand({ settingsPath = SETTINGS_PATH } = {}) {
-  return ["claude", "--tools", REVIEW_TOOLS, "--settings", settingsPath];
+/**
+ * `claude` invocation that makes the session read-only from the outside.
+ *
+ * `headless` adds `--print`, which is what turns this from "the operator pastes the prompt into an
+ * interactive session" into something that can actually run unattended. Without it the launcher
+ * starts a bare session and waits for a human — fine at a workstation, useless in the automation
+ * this script exists for.
+ */
+export function claudeCommand({ settingsPath = SETTINGS_PATH, headless = false } = {}) {
+  const command = ["claude", "--tools", REVIEW_TOOLS, "--settings", settingsPath];
+  if (headless) command.push("--print");
+  return command;
 }
 
 /**
@@ -219,8 +228,11 @@ export function usage() {
   return (
     `\nUsage: node ./scripts/agent-review-session.mjs --pr <number> [--mode ${[...REVIEW_MODES].join("|")}]\n` +
     "       [--enforced] [--implementer codex|claude] [--worktree <path>]\n" +
-    "       [--focus-file <file>] [--goal-file <file>] [--print-only]\n" +
+    "       [--focus-file <file>] [--goal-file <file>] [--print-only] [--headless]\n" +
     "       [--pr-json <file>] [--repository <owner/repo>]\n" +
+    "\n--headless feeds the prompt to the session on stdin instead of asking someone to paste it,\n" +
+    "which is what makes an unattended run possible. Without it the launch is interactive and\n" +
+    "requires a TTY.\n" +
     "\n--enforced states that this shell cannot write to the repository (restricted credentials),\n" +
     "which publishes the marker as read-only=true. A launched run without it publishes\n" +
     "read-only=verified: the launcher checks afterwards that the review worktree is untouched.\n" +
@@ -288,6 +300,8 @@ export function parseOptions(argv) {
     goalFile: null,
     prJsonFile: null,
     repository: null,
+    // Feed the prompt to the session instead of asking a human to paste it.
+    headless: false,
     // Opt-in and never inferred: only the operator knows whether the credentials in this shell can
     // push. Claiming it by default would put the strongest level beyond anyone's control.
     enforced: false,
@@ -304,6 +318,7 @@ export function parseOptions(argv) {
     else if (arg === "--pr-json") options.prJsonFile = next();
     else if (arg === "--repository") options.repository = next();
     else if (arg === "--print-only") options.launch = false;
+    else if (arg === "--headless") options.headless = true;
     else if (arg === "--enforced") options.enforced = true;
     else throw new Error(`Unknown option: ${arg}`);
   }
@@ -333,6 +348,22 @@ export function reviewerFor(implementer, mode) {
   return implementer === "codex" ? "claude" : "codex";
 }
 
+/**
+ * The read-only check itself, as a decision over the two facts the launcher gathers.
+ *
+ * Extracted so the most safety-relevant step in this script can be tested without a live session:
+ * it is what `read-only=verified` actually stands for, and it used to be an untested `if` buried in
+ * the launch path.
+ */
+export function detectWorktreeViolation({ dirty, head, expectedSha }) {
+  const reasons = [];
+  if (dirty) reasons.push(`working tree is dirty:\n${dirty}`);
+  // A moved HEAD matters even with a clean tree: a committed change leaves nothing in `git status`,
+  // and the verdict is bound to the SHA that was supposed to be reviewed.
+  if (head !== expectedSha) reasons.push(`HEAD moved to ${head}.`);
+  return { violated: reasons.length > 0, reasons };
+}
+
 /** Guesses the implementer from the head branch prefix; `--implementer` overrides it. */
 export function implementerFromBranch(headBranch) {
   if (headBranch?.startsWith("codex/")) return "codex";
@@ -344,11 +375,13 @@ export function implementerFromBranch(headBranch) {
 // I/O
 // ---------------------------------------------------------------------------
 
-function run(command, args, { capture = true, cwd } = {}) {
+function run(command, args, { capture = true, cwd, input } = {}) {
   const result = spawnSync(command, args, {
     cwd,
     encoding: "utf8",
-    stdio: capture ? "pipe" : "inherit",
+    input,
+    // With `input` the child still needs its output on the terminal, so only stdin is a pipe.
+    stdio: capture ? "pipe" : [input === undefined ? "inherit" : "pipe", "inherit", "inherit"],
     shell: process.platform === "win32",
   });
   if (result.error) throw result.error;
@@ -433,6 +466,14 @@ export function goalFromBody(body, title) {
 
 function main(argv) {
   const options = parseOptions(argv);
+  // Before any side effect: an interactive launch waits for a keyboard that is not there, and would
+  // otherwise hang after already creating a worktree the operator then has to clean up.
+  if (options.launch && !options.headless && !process.stdin.isTTY) {
+    throw new Error(
+      "Interactive launch needs a terminal, and this shell has no TTY.\n" +
+        "Use --headless to feed the prompt to the session, or --print-only to get it as a file.",
+    );
+  }
   const pr = readPullRequest(options);
   const repository = resolveRepository(options);
   const readOnlyLevel = readOnlyLevelFor(options);
@@ -496,7 +537,7 @@ function main(argv) {
   const promptPath = join(mkdtempSync(join(tmpdir(), "agent-review-")), `pr-${pr.number}.md`);
   writeFileSync(promptPath, prompt, "utf8");
 
-  const command = claudeCommand();
+  const command = claudeCommand({ headless: options.headless });
   console.log(`Pull request : #${pr.number} ${pr.title}`);
   console.log(`Head SHA     : ${pr.headRefOid}`);
   console.log(`Mode         : ${options.mode} (${implementer} → ${reviewerFor(implementer, options.mode)})`);
@@ -520,8 +561,13 @@ function main(argv) {
     return;
   }
 
-  console.log("Starting the review session. Paste the prompt above into it.\n");
-  run(command[0], command.slice(1), { capture: false, cwd: worktree });
+  if (options.headless) {
+    console.log("Running the review session headless; the prompt is fed in on stdin.\n");
+    run(command[0], command.slice(1), { capture: false, cwd: worktree, input: prompt });
+  } else {
+    console.log("Starting the review session. Paste the prompt above into it.\n");
+    run(command[0], command.slice(1), { capture: false, cwd: worktree });
+  }
 
   // A detector, not a preventer: it runs after the session ended, so a violating session has
   // already done whatever it did. It also only sees this worktree — writes elsewhere are invisible.
@@ -530,10 +576,10 @@ function main(argv) {
   const dirty = run("git", ["status", "--porcelain"], { cwd: worktree });
   const head = run("git", ["rev-parse", "HEAD"], { cwd: worktree });
   console.log("");
-  if (dirty || head !== pr.headRefOid) {
+  const violation = detectWorktreeViolation({ dirty, head, expectedSha: pr.headRefOid });
+  if (violation.violated) {
     console.error("READ-ONLY VIOLATED: the review session changed its worktree.");
-    if (dirty) console.error(dirty);
-    if (head !== pr.headRefOid) console.error(`HEAD moved to ${head}.`);
+    for (const reason of violation.reasons) console.error(reason);
     console.error("Treat the review as invalid.");
     // Both marker-publishing levels need this: the session posts its comment before this check runs,
     // so a violating review has already left evidence the gate would otherwise honour.

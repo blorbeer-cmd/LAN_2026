@@ -216,6 +216,17 @@ node ./scripts/agent-review-session.mjs --pr 363 --mode self
 `--focus-file` and `--goal-file` to override the defaults, `--print-only` to just get the prompt and
 the command without launching anything.
 
+By default the launch is **interactive**: the script starts a bare session and the operator pastes
+the prompt in. That needs a TTY, and the script now says so instead of hanging when there is none.
+Add `--headless` to feed the prompt in on stdin and let the whole thing run unattended:
+
+```bash
+node ./scripts/agent-review-session.mjs --pr 364 --mode self --headless
+```
+
+The read-only flags are unchanged by this — `--headless` only adds `--print`; it never trades away
+the removed tools or the settings file.
+
 ### Without the GitHub CLI
 
 The script reads the pull request through `gh` by default. Where that binary does not exist — a

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   claudeCommand,
   DEFAULT_FOCUS,
+  detectWorktreeViolation,
   goalFromBody,
   implementerFromBranch,
   parseOptions,
@@ -103,6 +104,18 @@ test("the session is launched without the editing tools", () => {
     assert.ok(!REVIEW_TOOLS.includes(tool), `${tool} must not be available to a reviewer`);
   }
   assert.ok(command.includes("--settings"));
+  // The read-only flags must survive the headless switch, not be traded for it.
+  const headless = claudeCommand({ headless: true });
+  assert.ok(headless.includes("--print"));
+  assert.deepEqual(headless.slice(0, 3), ["claude", "--tools", REVIEW_TOOLS]);
+  assert.ok(headless.includes("--settings"));
+  // Interactive stays the default: --print changes what the session is, so it is never implied.
+  assert.ok(!command.includes("--print"));
+});
+
+test("an unattended run can be requested explicitly", () => {
+  assert.equal(parseOptions(["--pr", "364"]).headless, false);
+  assert.equal(parseOptions(["--pr", "364", "--headless"]).headless, true);
 });
 
 test("only the cross mode switches the provider", () => {
@@ -271,6 +284,25 @@ test("every read-only level the launcher emits is one the gate ranks", () => {
     const filled = marker.replace("<pass|changes-required|blocked>", "pass");
     assert.ok(new RegExp(REVIEW_RESULT_SOURCE).test(filled), `gate cannot read: ${filled}`);
   }
+});
+
+test("the check behind read-only=verified catches both ways a session can write", () => {
+  const clean = { dirty: "", head: HEAD, expectedSha: HEAD };
+  assert.equal(detectWorktreeViolation(clean).violated, false);
+
+  // An uncommitted write shows up in git status.
+  const dirty = detectWorktreeViolation({ ...clean, dirty: "?? VERLETZUNG.txt" });
+  assert.equal(dirty.violated, true);
+  assert.match(dirty.reasons.join("\n"), /VERLETZUNG\.txt/);
+
+  // A committed one does not — the tree is clean again and only the SHA betrays it. Checking only
+  // `git status` would have called this review untouched.
+  const moved = detectWorktreeViolation({ ...clean, head: "b".repeat(40) });
+  assert.equal(moved.violated, true);
+  assert.match(moved.reasons.join("\n"), /HEAD moved to b{40}/);
+
+  const both = detectWorktreeViolation({ dirty: "?? x", head: "b".repeat(40), expectedSha: HEAD });
+  assert.equal(both.reasons.length, 2, "both findings must be reported, not just the first");
 });
 
 test("the default minimum accepts a verified launcher run but not an unbacked one", () => {
