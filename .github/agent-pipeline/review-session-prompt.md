@@ -19,7 +19,7 @@ Replace every `<PLACEHOLDER>` before starting the review:
 | `<REVIEWER_PROVIDER>`    | Provider running this review: `codex` or `claude`                                                  |
 | `<REVIEW_MODE>`          | `cross` or `self` — a fallback review runs as `self`, see "Review modes" below                      |
 | `<REVIEW_SESSION_ID>`    | Unique identifier for this fresh, isolated review session                                          |
-| `<READ_ONLY_ENFORCED>`   | Must be `true`; otherwise the reviewer is unavailable and the review is blocked                    |
+| `<READ_ONLY_ENFORCED>`   | `true` only with all three layers below. `false` is allowed and honest — the review then informs a human and must publish no marker |
 | `<TASK_GOAL>`            | Original objective and acceptance criteria, without the implementation session's private reasoning |
 
 ## Review modes
@@ -31,12 +31,15 @@ a decision this session makes:
 | ---------- | ------------------------------------------------------------------------ | ------------------------------ |
 | `cross`    | user chose `review:cross`                                                | the other provider             |
 | `self`     | user chose `review:self`, usually to spare the other provider's quota    | implementation provider, fresh |
-| `fallback` | the chosen provider turned out to be unavailable and the user re-chose it | implementation provider, fresh |
+| _fallback_ | the chosen provider turned out to be unavailable and the user re-chose it | implementation provider, fresh |
 
-`self` and `fallback` run identically and are equally strict; they differ only in why they were
-used. A fallback is marked on the pull request by `agent:review-fallback`, and its verdict is
-published as a `mode=self` marker — the gate knows the three modes the user can choose and would
-silently ignore a fourth. That marker exists because GitHub carries no native evidence for a
+`fallback` is a reason, not a value. It runs as `review_mode: self`, is held to exactly the same bar,
+and is marked on the pull request with `agent:review-fallback`. Neither the merge gate nor
+`agent-review-session.mjs` accepts a third mode — a `mode=fallback` marker would be published, cost
+quota and then be ignored in silence.
+
+A `self` review publishes its verdict as the `agent-pipeline:review-result` marker described in
+[`review-decision.md`](review-decision.md), because GitHub carries no native evidence for a
 same-provider review. A `cross` review needs none: its evidence is the counter provider's approval
 of the exact head SHA.
 
@@ -224,7 +227,7 @@ The manual route below stays valid, and explains what the script sets up.
 ## Enforcing read-only for a Claude review session
 
 `<READ_ONLY_ENFORCED>` must be `true`, and a review session that cannot confirm it has to stop with
-`blocked`. That is not a formality: at `self` and `fallback` the same provider judges its own work,
+`blocked`. That is not a formality: in `self` mode the same provider judges its own work,
 so a session able to write could quietly repair what it found and then report `pass` — the finding
 and the fix would both be invisible. Enforcement is what separates "reviewed and judged" from
 "tidied up and declared fine".
@@ -251,8 +254,10 @@ settings file is the reproducible form and additionally covers the Bash paths.
 **3. Make writing fail even if something slips through.** This is the layer that makes the claim
 hold, because layers 1 and 2 are pattern-based and a shell is a wide surface:
 
-- Review in a separate worktree and take write permission off it for the duration
-  (`git worktree add ../review-<pr> <head-branch>`, then make the tree read-only for your user).
+- Review in a separate worktree, detached at the reviewed SHA — never at the branch, which a push
+  during the review would move out from under the verdict:
+  `git worktree add --detach ../review-<pr> <EXPECTED_HEAD_SHA>`. Then take write permission off
+  the tree for the duration.
 - Use credentials without code write access. A fine-grained token with `Contents: Read-only` and
   `Pull requests: Read and write` can post the findings comment but cannot push, so a push attempt
   fails server-side rather than being talked out of.
@@ -266,7 +271,7 @@ exactly this flag.
 1. Fetch the PR metadata and fill every placeholder.
 2. Open a new Claude Code process or a new Claude task. Do not use `--continue`, `--resume`, or the
    implementation conversation.
-3. Prefer a clean, dedicated worktree checked out at `<EXPECTED_HEAD_BRANCH>`. Start Claude only
+3. Prefer a clean, dedicated worktree detached at `<EXPECTED_HEAD_SHA>`, not at the branch. Start Claude only
    with a technically enforced non-editing permission mode and credentials without repository
    write access. If that cannot be guaranteed, treat Claude as unavailable.
    A review subagent restricted to read-only tools satisfies the enforcement requirement, because
@@ -288,9 +293,9 @@ the chosen `review:*` label says.
 If the chosen provider turns out to be unavailable, do not quietly review with the other one: that
 would spend exactly the quota the user was steering around. Report the observed reason — a known
 quota message, an error, a timeout — and put the choice back to the user. If they then choose the
-implementation provider, the mode is `fallback`.
+implementation provider, run it as `self` and label the pull request `agent:review-fallback`.
 
-`self` and `fallback` are held to the same bar as `cross`: a fresh session, no implementation
+A same-provider review is held to the same bar as `cross`: a fresh session, no implementation
 conversation, no reasoning carried over, and technically enforced read-only permissions. Never rely
 on prompt-only write restrictions, and never change `verdict` to `pass` merely because the
 preferred reviewer ran out of quota.

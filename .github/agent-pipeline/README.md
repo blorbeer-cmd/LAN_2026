@@ -90,6 +90,15 @@ label binds only when a record for the *current* head already exists — the run
 any label standing at the time, so a label next to it must have arrived afterwards. Without a record
 for the current head the label cannot be vouched for, is removed, and the question is asked again.
 
+The record counts only from an identity in `statusCommentAuthors`. Adopting a comment to update
+uses the wide trusted-author check, which accepts every `[bot]` login; the binding may not, or a
+decoy comment carrying the marker could bind an old label whenever the real status comment is
+missing.
+
+A run that changes no labels records no head either — with two review-mode labels standing, or with
+a broken task contract, the previous record is carried through unchanged. Recording a head asserts
+"any label standing now arrived after me", and that is only true of a run that cleared them.
+
 That `none` state is what closes the hole: with it, "no record" is distinguishable from "chosen for
 this head". Without it, a deleted status comment, a paused pipeline or a skipped bootstrap run was
 enough for a choice made at head A to apply at head D — the ambiguity resolved towards accepting an

@@ -193,6 +193,24 @@ export function claudeCommand({ settingsPath = SETTINGS_PATH } = {}) {
   return ["claude", "--tools", REVIEW_TOOLS, "--settings", settingsPath];
 }
 
+/**
+ * The usage text, built from `REVIEW_MODES` rather than repeating it.
+ *
+ * A hand-written copy went stale the moment `fallback` was dropped, and advertised a value the
+ * parser rejects one line above.
+ */
+export function usage() {
+  return (
+    `\nUsage: node ./scripts/agent-review-session.mjs --pr <number> [--mode ${[...REVIEW_MODES].join("|")}]\n` +
+    "       [--enforced] [--implementer codex|claude] [--worktree <path>]\n" +
+    "       [--focus-file <file>] [--goal-file <file>] [--print-only]\n" +
+    "\n--enforced states that this shell cannot write to the repository (restricted credentials).\n" +
+    "Only then may the review publish the marker the merge gate reads.\n" +
+    "A fallback review — the chosen provider was unavailable — runs as --mode self and is marked\n" +
+    "on the pull request with agent:review-fallback."
+  );
+}
+
 export function parseOptions(argv) {
   const options = {
     pr: null,
@@ -285,7 +303,12 @@ function readPullRequest(pr) {
  * would measure the diff against something nobody asked for.
  */
 export function goalFromBody(body, title) {
-  const match = body?.match(/^##\s*Ziel\s*$([\s\S]*?)(?=^##\s|\Z)/m);
+  // `(?![\s\S])` is the end-of-input anchor. JavaScript has no `\Z`: written there it is an
+  // identity escape matching a literal "Z", so with a lazy body the section ended at the first
+  // capital Z in the text — which German goal descriptions almost always contain ("Ziel",
+  // "Zustand", "Zugriff"). The reviewer then measured the diff against half its acceptance
+  // criteria, or against the bare title, and nothing said so.
+  const match = body?.match(/^##\s*Ziel\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/m);
   const section = match?.[1]
     ?.replace(/<!--[\s\S]*?-->/g, "")
     .trim();
@@ -299,6 +322,17 @@ function main(argv) {
 
   const implementer =
     options.implementer ?? implementerFromBranch(pr.headRefName) ?? "claude";
+  // Nothing so far guarantees the head exists locally, and a review session is meant to start from
+  // a clean clone. Without this, `merge-base` below fails with "not a valid commit name" — before
+  // any error path that could explain what to do about it.
+  try {
+    run("git", ["fetch", "origin", pr.headRefName, pr.baseRefName]);
+  } catch (error) {
+    throw new Error(
+      `Could not fetch ${pr.headRefName} and ${pr.baseRefName} from origin.\n${error.message}`,
+    );
+  }
+
   const baseSha = run("git", ["merge-base", `origin/${pr.baseRefName}`, pr.headRefOid]);
   const sessionId = `${implementer}-review-${pr.headRefOid.slice(0, 7)}-${Date.now().toString(36)}`;
 
@@ -402,10 +436,7 @@ if (isMainModule) {
     main(process.argv.slice(2));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
-    console.error(
-      "\nUsage: node ./scripts/agent-review-session.mjs --pr <number> [--mode cross|self|fallback]\n" +
-        "       [--implementer codex|claude] [--worktree <path>] [--focus-file <file>] [--goal-file <file>] [--print-only]",
-    );
+    console.error(usage());
     process.exitCode = 1;
   }
 }

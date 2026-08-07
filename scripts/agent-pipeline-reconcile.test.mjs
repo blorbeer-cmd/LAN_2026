@@ -5,6 +5,7 @@ import { loadConfig } from "./agent-pipeline.mjs";
 import {
   dedupeCheckRunsByName,
   deriveReadiness,
+  evaluateReviewDecision,
   evaluateChecks,
   evaluateReviews,
   GATE_DESCRIPTION_LIMIT,
@@ -22,6 +23,7 @@ import {
   renderStatusComment,
   reviewerProviderFor,
   STATUS_COMMENT_MARKER,
+  statusCommentBody,
   UI_NOTICE_MARKER,
 } from "./agent-pipeline-reconcile.mjs";
 
@@ -93,6 +95,7 @@ function readySnapshot(overrides = {}) {
     // The reconciler has already seen this head, so the label above belongs to it. Without that
     // record a label could just as well predate the head, and the answer would not bind.
     statusCommentBody: decisionRecord(HEAD, "cross"),
+    statusCommentAuthor: config.statusCommentAuthors[0],
     changedFiles: ["scripts/agent-pipeline-reconcile.mjs"],
     checkRunsHeadSha: HEAD,
     checkRuns: [
@@ -1605,4 +1608,76 @@ test("an unusable self-review waits on a review, not on the implementer", () => 
     config,
   );
   assert.equal(changes.phase, "implementing");
+});
+
+// ---------------------------------------------------------------------------
+// From the review of 07f515b
+// ---------------------------------------------------------------------------
+
+test("two labels do not record the head they were not cleared at", () => {
+  // Recording a head asserts "any label standing now arrived after me". With two untouched labels
+  // that is false, and the survivor of a later removal would bind to a head nobody chose it for.
+  const ambiguousAtNewHead = evaluateReviewDecision(
+    {
+      headSha: HEAD,
+      labels: [CROSS_LABEL, SELF_LABEL],
+      statusCommentBody: decisionRecord(OLD_HEAD, "none"),
+      statusCommentAuthor: config.statusCommentAuthors[0],
+    },
+    config,
+  );
+  assert.equal(ambiguousAtNewHead.ambiguous, true);
+  assert.deepEqual(ambiguousAtNewHead.record, { headSha: OLD_HEAD, mode: "none" });
+
+  // So once the user removes one, the survivor is still recognised as predating this head.
+  const survivor = evaluateReviewDecision(
+    {
+      headSha: HEAD,
+      labels: [CROSS_LABEL],
+      statusCommentBody: decisionRecord(OLD_HEAD, "none"),
+      statusCommentAuthor: config.statusCommentAuthors[0],
+    },
+    config,
+  );
+  assert.equal(survivor.mode, null);
+  assert.deepEqual(survivor.staleLabels, [CROSS_LABEL]);
+});
+
+test("a broken task contract does not cost the user their answer", () => {
+  const bound = readySnapshot();
+  assert.equal(deriveReadiness(bound, config).details.reviewMode, "cross");
+
+  // Same head, same code, only a field in the pull-request body is temporarily wrong.
+  const broken = reconcile(
+    { ...bound, body: contractBody({ scope: "not-a-scope" }) },
+    config,
+  );
+  assert.equal(broken.readiness.phase, "contract-invalid");
+  assert.deepEqual(broken.labels.remove, [], "a contract error must not consume the choice");
+  assert.deepEqual(parseReviewDecision(broken.comment.body), { headSha: HEAD, mode: "cross" });
+
+  // And after the body is repaired the binding is still there.
+  const repaired = reconcile(
+    { ...bound, statusCommentBody: broken.comment.body },
+    config,
+  );
+  assert.equal(repaired.readiness.details.reviewMode, "cross");
+  assert.deepEqual(repaired.labels.remove, []);
+});
+
+test("the decision record counts only from an identity that runs this pipeline", () => {
+  // The snapshot adopts a status comment from any trusted author, which includes every installed
+  // app. That is wide enough to update a comment, too wide to decide whether an answer binds.
+  const decoy = deriveReadiness(
+    readySnapshot({ statusCommentAuthor: "dependabot[bot]" }),
+    config,
+  );
+  assert.equal(decoy.details.reviewMode, null);
+  assert.deepEqual(decoy.details.reviewDecision.staleLabels, [CROSS_LABEL]);
+
+  assert.equal(statusCommentBody(readySnapshot(), config), decisionRecord(HEAD, "cross"));
+  assert.equal(
+    statusCommentBody(readySnapshot({ statusCommentAuthor: "someone[bot]" }), config),
+    null,
+  );
 });

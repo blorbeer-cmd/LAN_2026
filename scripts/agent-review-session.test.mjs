@@ -11,6 +11,7 @@ import {
   REVIEW_MODES,
   REVIEW_TOOLS,
   reviewerFor,
+  usage,
 } from "./agent-review-session.mjs";
 import { REVIEW_RESULT_SOURCE } from "./agent-pipeline-reconcile.mjs";
 
@@ -159,4 +160,39 @@ test("the enforced prompt does not overstate what the settings file blocks", () 
   const body = prompt({ readOnlyEnforced: true });
   assert.match(body, /schreibende git- und gh-Befehle sind per Deny-Regel gesperrt/);
   assert.doesNotMatch(body, /Schreibpfade über Bash sind per Deny-Regel gesperrt/);
+});
+
+// ---------------------------------------------------------------------------
+// From the review of 07f515b
+// ---------------------------------------------------------------------------
+
+test("the goal survives a capital Z, a final section and a Z-initial sentence", () => {
+  // `\Z` is no anchor in JavaScript: written as one it matched a literal "Z", so a lazy body ended
+  // at the first capital Z — and German goals are full of them.
+  const midText =
+    "## Ziel\n\nDer Nutzer waehlt den Reviewer.\nZiel ist eine Wahl pro Head-SHA.\n\n## Änderungen\n\n- x\n";
+  assert.equal(
+    goalFromBody(midText, "Titel"),
+    "Der Nutzer waehlt den Reviewer.\nZiel ist eine Wahl pro Head-SHA.",
+    "the acceptance criterion after the capital Z must not be dropped",
+  );
+
+  // `## Ziel` as the last section: no following heading and no Z to stop at.
+  assert.equal(goalFromBody("## Ziel\n\nEin Satz ohne alles.\n", "Titel"), "Ein Satz ohne alles.");
+
+  // Starting with a Z-word used to yield an empty section and fall back to the title.
+  assert.equal(
+    goalFromBody("## Ziel\n\nZiel ist X.\n\n## Andere\n\ny", "Titel"),
+    "Ziel ist X.",
+  );
+});
+
+test("the usage text advertises exactly the modes the parser accepts", () => {
+  // A hand-written copy advertised `fallback` one line below the error rejecting it.
+  const text = usage();
+  for (const mode of REVIEW_MODES) {
+    assert.match(text, new RegExp(`\\b${mode}\\b`), `usage must mention ${mode}`);
+  }
+  assert.doesNotMatch(text.split("\n")[1], /fallback/, "the mode list must not offer fallback");
+  assert.match(text, /--enforced/, "the flag that decides gate eligibility must be documented");
 });

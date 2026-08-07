@@ -261,15 +261,31 @@ export function parseUiNoticeHeadSha(comments) {
 }
 
 /**
- * Reads the review-mode binding out of the reconciler's own status comment.
+ * Reads the review-mode binding out of a status comment body.
  *
- * Deliberately not read from any trusted comment: this record decides whether a choice still
- * belongs to the current head, so a hand-written copy carrying an older SHA must not be able to
- * keep an expired choice alive. Only the comment the reconciler itself maintains counts.
+ * The caller decides whose comment this is — see `statusCommentBody`, which is what actually
+ * enforces "the reconciler's own".
  */
-export function parseReviewDecision(statusCommentBody) {
-  const match = statusCommentBody?.match(REVIEW_DECISION_PATTERN);
+export function parseReviewDecision(body) {
+  const match = body?.match(REVIEW_DECISION_PATTERN);
   return match ? { headSha: match[1], mode: match[2] } : null;
+}
+
+/**
+ * The status comment body, but only from an identity that may write the pipeline's own comment.
+ *
+ * The snapshot picks the status comment by marker prefix and `isTrustedCommentAuthor`, which is
+ * deliberately wide — it accepts every `[bot]` login so that installed apps can be read at all.
+ * That is fine for adopting a comment to update, and too wide for the decision record: since this
+ * record became gate-relevant, a decoy comment carrying the marker could otherwise bind an old
+ * label to the current head whenever the real status comment is missing. `statusCommentAuthors`
+ * narrows that to the identities that actually run this reconciler.
+ */
+export function statusCommentBody(snapshot, config = loadConfig()) {
+  const allowed = config.statusCommentAuthors ?? [];
+  return allowed.includes(snapshot.statusCommentAuthor)
+    ? (snapshot.statusCommentBody ?? null)
+    : null;
 }
 
 /**
@@ -356,17 +372,21 @@ export function evaluateReviewDecision(snapshot, config = loadConfig()) {
 
   // Written on every run, so the next one can tell "this head was already seen" from "no idea".
   const observed = { headSha: snapshot.headSha, mode: "none" };
-  const record = parseReviewDecision(snapshot.statusCommentBody);
+  const record = parseReviewDecision(statusCommentBody(snapshot, config));
   const seenThisHead = record?.headSha === snapshot.headSha;
 
   if (chosen.length > 1) {
-    // Two answers are no answer. Removing one would be picking for the user.
+    // Two answers are no answer. Removing one would be picking for the user — and because nothing
+    // is removed here, this run must not record the head either: a record says "any label standing
+    // now arrived after me", which would be false while two untouched labels remain. Writing it
+    // would let one of them bind to a head it was never chosen for once the other is removed. The
+    // previous record is carried through unchanged instead.
     return {
       mode: null,
       ambiguous: true,
       chosenLabels: chosen.map((mode) => modeLabels[mode]),
       staleLabels: [],
-      record: observed,
+      record,
     };
   }
 
@@ -574,7 +594,13 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
       blockers: contractErrors.map((error) => `Invalid task contract: ${error}`),
       contract: validation.normalized,
       // Keep reporting a UI change here; dropping it would strip a still-correct `ui:changed`.
-      details: { uiChanged: uiPathChanged },
+      // The decision record is carried through for the same reason: this branch still rewrites the
+      // status comment, so omitting it would erase the binding of an unchanged head, and repairing
+      // the pull-request body would cost the user a second answer about code they already judged.
+      details: {
+        uiChanged: uiPathChanged,
+        reviewDecision: { record: parseReviewDecision(statusCommentBody(snapshot, config)) },
+      },
     };
   }
 
@@ -1271,6 +1297,9 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       // A discussion that could not be read completely must block, and must say why.
       reviewThreadsReadable: graph?.readable === true,
       uiNoticeHeadSha: parseUiNoticeHeadSha(trustedComments),
+      // Kept separate from the body: the body drives the idempotence comparison for every adopted
+      // comment, the author decides whether its decision record may be believed.
+      statusCommentAuthor: statusComment?.author ?? null,
       // Published review verdicts for the `self` mode, which GitHub itself cannot represent.
       reviewResults: parseReviewResults(trustedComments),
       statusCommentBody: statusComment?.body ?? null,
