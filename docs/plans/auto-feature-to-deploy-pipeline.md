@@ -122,9 +122,16 @@ dem der zuerst gewählte Anbieter ausgefallen ist.
 - Als Kontext nur Task-Vertrag, Repository-Regeln, Diff gegen `main`, CI-Ergebnisse und bereits
   veröffentlichte PR-Diskussion.
 - Frischer Checkout oder Worktree auf dem geprüften Head-SHA.
-- Read-only muss technisch durch Sandbox, Berechtigungsmodus und schreibgeschützte Credentials
-  erzwungen sein. Eine reine Prompt-Anweisung genügt nicht. Kann die gewählte Oberfläche das nicht
-  garantieren, gilt der Reviewer als nicht verfügbar.
+- Read-only muss technisch abgesichert sein; eine reine Prompt-Anweisung genügt nie. Es gibt zwei
+  ausreichende Stufen: `true` — Sandbox, Berechtigungsmodus **und** schreibgeschützte Credentials —
+  sowie `verified` — Werkzeugentzug, gesperrte schreibende git-/gh-Befehle, eigener auf den Head-SHA
+  detachter Worktree und eine Prüfung von außen nach der Session, dass darin nichts verändert wurde.
+  Welche Stufe genügt, legt `selfReviewMinimumEnforcement` fest (Standard `verified`). Erreicht die
+  gewählte Oberfläche nicht einmal `verified`, gilt der Reviewer als nicht verfügbar.
+- `verified` ist bewusst schwächer als `true`: die Prüfung erkennt eine Verletzung, sie verhindert
+  sie nicht. Sie existiert, weil `true` in Umgebungen, deren einzige Credentials pushen können, gar
+  nicht erreichbar ist — dort war `self` vorher schlicht unbenutzbar, was kein Sicherheitsgewinn ist,
+  sondern ein Verfahren, das unbemerkt aufhört zu funktionieren.
 - Gleiches strukturiertes Reviewformat und dieselben Qualitätsregeln wie beim Cross-Review.
 - Das Ergebnis muss Anbieter, Sessiontyp und geprüften Head-SHA nennen.
 
@@ -285,7 +292,7 @@ Fallback-Review verwendet denselben Marker mit `mode=self` und wird durch
 <!-- agent-pipeline:review-result <head-sha> mode=self verdict=pass session=<id> read-only=true -->
 ```
 
-Nur ein Marker mit `read-only=true`, passendem Head-SHA und `verdict=pass` von einer Identität des
+Nur ein Marker mit einer ausreichenden `read-only`-Stufe, passendem Head-SHA und `verdict=pass` von einer Identität des
 Implementierungs-Anbieters erfüllt das Gate in diesem Modus. Die Autorenprüfung ist bewusst enger
 als „vertrauenswürdiger Kommentarautor", der jedes `[bot]`-Konto einschließt. Für `cross` und `human` ist die Approval des
 jeweiligen Reviewers zum exakten Head-SHA der Nachweis; dort ist kein Marker nötig.
@@ -351,8 +358,9 @@ erfolgreich, wenn:
 - für den aktuellen Head-SHA genau ein Review-Modus gewählt ist,
 - das Review exakt den aktuellen Head-SHA geprüft hat,
 - das Review im gewählten Modus `pass` meldet: bei `cross` als Approval des Gegen-Anbieters, bei
-  `self` als vertrauenswürdiger Ergebnis-Marker mit erzwungenem Read-only, bei `human` als Approval
-  eines Menschen mit Schreibzugriff,
+  `self` als vertrauenswürdiger Ergebnis-Marker, dessen `read-only`-Stufe
+  `selfReviewMinimumEnforcement` erreicht, bei `human` als Approval eines Menschen mit
+  Schreibzugriff,
 - alle blockierenden Review-Findings erledigt und jeder zugehörige auflösbare Inline-Review-Thread
   als gelöst markiert ist,
 - Thread-Snapshots für den aktuellen Head monoton versioniert sind und kein älterer Snapshot einen
@@ -364,7 +372,8 @@ erfolgreich, wenn:
 
 In den Modi `self` und `human` ist das Gate bewusst schwächer als beim Cross-Review: bei `self`
 kann es nur prüfen, dass ein head-gebundener, vollständiger Ergebnis-Marker von einer
-vertrauenswürdigen Identität stammt, nicht aber die tatsächliche Unabhängigkeit der Session; bei
+vertrauenswürdigen Identität stammt und welche Read-only-Stufe er nennt, nicht aber die tatsächliche
+Unabhängigkeit der Session — die erreichte Stufe steht deshalb im Statuskommentar neben dem Modus; bei
 `human` fallen Review und Merge auf dieselbe Person. Beides ist zulässig, weil es eine ausdrückliche
 Wahl für genau diesen Head-SHA ist, als Label sichtbar bleibt und im Statuskommentar samt Hinweis
 auf die reduzierte Unabhängigkeit protokolliert wird. Alle übrigen Gate-Bedingungen gelten in jedem
@@ -524,8 +533,8 @@ Pipeline heraus fehlt weiterhin.
 5. Mit simulierten Limitantworten testen; echte Limits nicht absichtlich verbrauchen.
 
 Abnahme: kein Review wird übersprungen, kein Modus wechselt ohne Nutzerentscheidung, das Review des
-Implementierungs-Anbieters erhält keinen Schreibzugriff und Wartezyklen verbrauchen keine
-Reviewrunde.
+Implementierungs-Anbieters erreicht mindestens die konfigurierte Read-only-Stufe und Wartezyklen
+verbrauchen keine Reviewrunde.
 
 ### Phase 6 – UI/UX-Erkennung und Benachrichtigung
 
