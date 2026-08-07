@@ -197,6 +197,46 @@ Bei `anchor: none` müssen `file` und `line` stattdessen als JSON-`null` ausgege
 8. After fixes are pushed, close this review context and start another detached review for the new
    SHA.
 
+## Enforcing read-only for a Claude review session
+
+`<READ_ONLY_ENFORCED>` must be `true`, and a review session that cannot confirm it has to stop with
+`blocked`. That is not a formality: at `self` and `fallback` the same provider judges its own work,
+so a session able to write could quietly repair what it found and then report `pass` — the finding
+and the fix would both be invisible. Enforcement is what separates "reviewed and judged" from
+"tidied up and declared fine".
+
+Three layers, in increasing strength. Use at least the first two; only with the third is
+`read_only_enforced: true` fully truthful.
+
+**1. Remove the editing tools from the session.** They then do not exist and cannot be called:
+
+```powershell
+claude --tools "Read,Grep,Glob,Bash" `
+       --settings .github/agent-pipeline/review-readonly.settings.json
+```
+
+**2. Block the writing paths that remain through Bash.**
+`review-readonly.settings.json` denies committing, pushing, checkout, reset, merge, `gh pr
+merge|review|edit` and `gh api`, and allows exactly what a review needs — including `gh pr comment`,
+because publishing findings writes to the conversation, not to the code. A deny rule cannot be
+granted by the model or by an approval prompt.
+
+For a quick review without any file, `claude --permission-mode plan` also blocks edits; the
+settings file is the reproducible form and additionally covers the Bash paths.
+
+**3. Make writing fail even if something slips through.** This is the layer that makes the claim
+hold, because layers 1 and 2 are pattern-based and a shell is a wide surface:
+
+- Review in a separate worktree and take write permission off it for the duration
+  (`git worktree add ../review-<pr> <head-branch>`, then make the tree read-only for your user).
+- Use credentials without code write access. A fine-grained token with `Contents: Read-only` and
+  `Pull requests: Read and write` can post the findings comment but cannot push, so a push attempt
+  fails server-side rather than being talked out of.
+
+Without layer 3, report the review honestly as `read_only_enforced: false`. It is then still a
+useful review for a human, but it does not satisfy the `self` merge-gate condition — the gate checks
+exactly this flag.
+
 ## Step-by-step: Claude separate session
 
 1. Fetch the PR metadata and fill every placeholder.
