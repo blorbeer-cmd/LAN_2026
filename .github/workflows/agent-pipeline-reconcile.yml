@@ -44,16 +44,15 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      checks: read
       pull-requests: read
     outputs:
       pull_requests: ${{ steps.select.outputs.pull_requests }}
     steps:
-      - name: Select pull requests to reconcile
-        id: select
+      - name: Determine reconciliation scope
+        id: scope
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
           EVENT_PR: ${{ github.event.pull_request.number }}
           # workflow_run carries the pull requests its run belonged to, but the list is empty for
           # fork runs and for runs GitHub could not associate; the sweep below covers those.
@@ -62,13 +61,47 @@ jobs:
           set -euo pipefail
           if [[ -n "${EVENT_PR}" ]]; then
             # A pull-request scoped event reconciles exactly that pull request.
-            selected="[${EVENT_PR}]"
+            echo "direct=[${EVENT_PR}]" >> "$GITHUB_OUTPUT"
+            echo "sweep=false" >> "$GITHUB_OUTPUT"
           elif [[ -n "${RUN_PR}" ]]; then
-            selected="[${RUN_PR}]"
+            echo "direct=[${RUN_PR}]" >> "$GITHUB_OUTPUT"
+            echo "sweep=false" >> "$GITHUB_OUTPUT"
           else
-            # Scheduled sweeps and unattributed workflow runs reconcile every open pull request;
-            # the reconciler decides per pull request whether it participates at all.
-            selected=$(gh pr list --state open --limit 100 --json number --jq '[.[].number]')
+            echo "direct=[]" >> "$GITHUB_OUTPUT"
+            echo "sweep=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The selector always comes from the trusted default branch. Event-scoped runs skip these
+      # setup steps and retain their existing fast path.
+      - name: Check out trusted sweep selector
+        if: steps.scope.outputs.sweep == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        if: steps.scope.outputs.sweep == 'true'
+        with:
+          node-version: 24
+
+      - name: Select pull requests to reconcile
+        id: select
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DIRECT_PRS: ${{ steps.scope.outputs.direct }}
+          SWEEP: ${{ steps.scope.outputs.sweep }}
+        run: |
+          set -euo pipefail
+          if [[ "${SWEEP}" == "true" ]]; then
+            candidates="${RUNNER_TEMP}/agent-pipeline-open-prs.json"
+            gh pr list --state open --limit 1000 \
+              --json number,body,statusCheckRollup > "${candidates}"
+            selected=$(node scripts/agent-pipeline-select-prs.mjs < "${candidates}")
+          else
+            selected="${DIRECT_PRS}"
           fi
           echo "pull_requests=${selected}" >> "$GITHUB_OUTPUT"
           echo "Selected pull requests: ${selected}"

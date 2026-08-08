@@ -1197,9 +1197,72 @@ export function reconcile(snapshot, config = loadConfig()) {
 // ---------------------------------------------------------------------------
 
 const API_ROOT = process.env.GITHUB_API_URL ?? "https://api.github.com";
+const READ_RETRY_ATTEMPTS = 3;
+const READ_RETRY_DELAY_MS = 250;
+const MAX_READ_RETRY_DELAY_MS = 5_000;
+const RETRIABLE_READ_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+function retryAfterMs(response, attempt) {
+  const value = response?.headers?.get?.("retry-after");
+  if (value) {
+    const seconds = Number(value);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.min(seconds * 1_000, MAX_READ_RETRY_DELAY_MS);
+    }
+
+    const date = Date.parse(value);
+    if (Number.isFinite(date)) {
+      return Math.min(
+        Math.max(0, date - Date.now()),
+        MAX_READ_RETRY_DELAY_MS,
+      );
+    }
+  }
+  return Math.min(
+    READ_RETRY_DELAY_MS * 2 ** (attempt - 1),
+    MAX_READ_RETRY_DELAY_MS,
+  );
+}
+
+function isRetriableReadResponse(response) {
+  return (
+    RETRIABLE_READ_STATUSES.has(response.status) ||
+    (response.status === 403 && Boolean(response.headers?.get?.("retry-after")))
+  );
+}
+
+async function fetchReadWithRetry(url, options, description) {
+  for (let attempt = 1; attempt <= READ_RETRY_ATTEMPTS; attempt += 1) {
+    let response;
+    try {
+      response = await fetch(url, options);
+    } catch (error) {
+      if (attempt === READ_RETRY_ATTEMPTS) throw error;
+      const delay = retryAfterMs(null, attempt);
+      console.warn(
+        `${description} failed before receiving a response; retrying in ${delay} ms (attempt ${attempt + 1}/${READ_RETRY_ATTEMPTS}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      continue;
+    }
+
+    if (!isRetriableReadResponse(response) || attempt === READ_RETRY_ATTEMPTS) {
+      return response;
+    }
+
+    const delay = retryAfterMs(response, attempt);
+    console.warn(
+      `${description} returned ${response.status}; retrying in ${delay} ms (attempt ${attempt + 1}/${READ_RETRY_ATTEMPTS}).`,
+    );
+    await response.body?.cancel?.();
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+
+  throw new Error(`${description} exhausted its retry attempts.`);
+}
 
 async function api(path, { method = "GET", body, token } = {}) {
-  const response = await fetch(`${API_ROOT}${path}`, {
+  const request = {
     method,
     headers: {
       accept: "application/vnd.github+json",
@@ -1208,7 +1271,15 @@ async function api(path, { method = "GET", body, token } = {}) {
       ...(body ? { "content-type": "application/json" } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
-  });
+  };
+  const response =
+    method === "GET"
+      ? await fetchReadWithRetry(
+          `${API_ROOT}${path}`,
+          request,
+          `GitHub API GET ${path}`,
+        )
+      : await fetch(`${API_ROOT}${path}`, request);
   if (!response.ok) {
     throw new Error(
       `GitHub API ${method} ${path} failed with ${response.status}: ${await response.text()}`,
@@ -1218,15 +1289,19 @@ async function api(path, { method = "GET", body, token } = {}) {
 }
 
 async function graphql(query, variables, token) {
-  const response = await fetch(`${API_ROOT.replace(/\/$/, "")}/graphql`, {
-    method: "POST",
-    headers: {
-      accept: "application/vnd.github+json",
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
+  const response = await fetchReadWithRetry(
+    `${API_ROOT.replace(/\/$/, "")}/graphql`,
+    {
+      method: "POST",
+      headers: {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ query, variables }),
     },
-    body: JSON.stringify({ query, variables }),
-  });
+    "GitHub GraphQL read",
+  );
   const payload = await response.json();
   if (!response.ok || payload.errors) {
     throw new Error(`GitHub GraphQL failed: ${JSON.stringify(payload.errors ?? payload)}`);
