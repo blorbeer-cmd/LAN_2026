@@ -1201,9 +1201,89 @@ export function reconcile(snapshot, config = loadConfig()) {
 // ---------------------------------------------------------------------------
 
 const API_ROOT = process.env.GITHUB_API_URL ?? "https://api.github.com";
+const READ_RETRY_ATTEMPTS = 3;
+const READ_RETRY_DELAY_MS = 250;
+const MAX_READ_RETRY_DELAY_MS = 5_000;
+const RETRIABLE_READ_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+function retryAfterMs(response, attempt) {
+  const value = response?.headers?.get?.("retry-after");
+  if (value) {
+    const seconds = Number(value);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.min(seconds * 1_000, MAX_READ_RETRY_DELAY_MS);
+    }
+
+    const date = Date.parse(value);
+    if (Number.isFinite(date)) {
+      return Math.min(
+        Math.max(0, date - Date.now()),
+        MAX_READ_RETRY_DELAY_MS,
+      );
+    }
+  }
+  return Math.min(
+    READ_RETRY_DELAY_MS * 2 ** (attempt - 1),
+    MAX_READ_RETRY_DELAY_MS,
+  );
+}
+
+function isRetriableReadResponse(response) {
+  return (
+    RETRIABLE_READ_STATUSES.has(response.status) ||
+    (response.status === 403 && Boolean(response.headers?.get?.("retry-after")))
+  );
+}
+
+async function fetchReadWithRetry(
+  url,
+  options,
+  description,
+  inspectResponse = null,
+) {
+  let attempt = 1;
+  while (true) {
+    let response;
+    try {
+      response = await fetch(url, options);
+    } catch (error) {
+      if (attempt === READ_RETRY_ATTEMPTS) throw error;
+      const delay = retryAfterMs(null, attempt);
+      console.warn(
+        `${description} failed before receiving a response; retrying in ${delay} ms (attempt ${attempt + 1}/${READ_RETRY_ATTEMPTS}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      attempt += 1;
+      continue;
+    }
+
+    // Successful GraphQL responses can still carry a retriable API error in their JSON body.
+    // Inspect only successful HTTP responses so a transient non-JSON 5xx body remains retryable.
+    const inspection =
+      response.ok && inspectResponse ? await inspectResponse(response) : null;
+    const retryReason = isRetriableReadResponse(response)
+      ? `returned ${response.status}`
+      : inspection?.retryReason;
+
+    if (!retryReason || attempt === READ_RETRY_ATTEMPTS) {
+      return inspectResponse
+        ? { response, value: inspection?.value }
+        : response;
+    }
+
+    const delay = retryAfterMs(response, attempt);
+    console.warn(
+      `${description} ${retryReason}; retrying in ${delay} ms (attempt ${attempt + 1}/${READ_RETRY_ATTEMPTS}).`,
+    );
+    // Payload inspection already consumed the body; otherwise release it before retrying.
+    if (!inspection) await response.body?.cancel?.();
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    attempt += 1;
+  }
+}
 
 async function api(path, { method = "GET", body, token } = {}) {
-  const response = await fetch(`${API_ROOT}${path}`, {
+  const request = {
     method,
     headers: {
       accept: "application/vnd.github+json",
@@ -1212,7 +1292,15 @@ async function api(path, { method = "GET", body, token } = {}) {
       ...(body ? { "content-type": "application/json" } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
-  });
+  };
+  const response =
+    method === "GET"
+      ? await fetchReadWithRetry(
+          `${API_ROOT}${path}`,
+          request,
+          `GitHub API GET ${path}`,
+        )
+      : await fetch(`${API_ROOT}${path}`, request);
   if (!response.ok) {
     throw new Error(
       `GitHub API ${method} ${path} failed with ${response.status}: ${await response.text()}`,
@@ -1222,16 +1310,31 @@ async function api(path, { method = "GET", body, token } = {}) {
 }
 
 async function graphql(query, variables, token) {
-  const response = await fetch(`${API_ROOT.replace(/\/$/, "")}/graphql`, {
-    method: "POST",
-    headers: {
-      accept: "application/vnd.github+json",
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
+  const { response, value } = await fetchReadWithRetry(
+    `${API_ROOT.replace(/\/$/, "")}/graphql`,
+    {
+      method: "POST",
+      headers: {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ query, variables }),
     },
-    body: JSON.stringify({ query, variables }),
-  });
-  const payload = await response.json();
+    "GitHub GraphQL read",
+    async (successfulResponse) => {
+      const payload = await successfulResponse.json();
+      return {
+        value: payload,
+        retryReason: payload.errors?.some(
+          (error) => error?.type === "RATE_LIMITED",
+        )
+          ? "returned a RATE_LIMITED error"
+          : null,
+      };
+    },
+  );
+  const payload = value ?? (await response.json());
   if (!response.ok || payload.errors) {
     throw new Error(`GitHub GraphQL failed: ${JSON.stringify(payload.errors ?? payload)}`);
   }
@@ -1286,7 +1389,7 @@ const REVIEW_THREADS_QUERY = `
  * exist. Failures are logged: a systematically failing query would otherwise hold every pull
  * request without leaving a trace in the job log.
  */
-async function fetchReviewThreads({ owner, repo, pullNumber, token }) {
+export async function fetchReviewThreads({ owner, repo, pullNumber, token }) {
   const nodes = [];
   let after = null;
   let mergeStateStatus = null;
