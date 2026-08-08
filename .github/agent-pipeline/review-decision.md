@@ -97,8 +97,19 @@ das Kontingent verbrauchen, das diese Frage schützen soll.
 4. Bei b) das Ergebnis als Kommentar veröffentlichen, damit das Gate es sehen kann:
 
    ```text
-   <!-- agent-pipeline:review-result <head-sha> mode=self verdict=pass session=<review-session-id> read-only=true -->
+   <!-- agent-pipeline:review-result <head-sha> mode=self verdict=pass session=<review-session-id> read-only=true|verified -->
    ```
+
+   `read-only` nennt, wie stark die Session vom Code ferngehalten wurde: `true` bei Credentials ohne
+   Schreibrecht, `verified` wenn der Launcher Werkzeuge entzogen, in einem eigenen Worktree
+   gearbeitet und danach von außen geprüft hat, dass darin nichts verändert wurde. Das Gate
+   vergleicht den Wert mit `selfReviewMinimumEnforcement` aus `config.json` (Standard `verified`);
+   Details in [`review-session-prompt.md`](review-session-prompt.md).
+
+   Bei einem Lauf mit `--headless` schreibt nicht die Session, sondern der Launcher: Er nimmt das
+   Review entgegen, prüft den Arbeitsbaum und hängt den Marker erst danach an. Eine Verletzung führt
+   dann dazu, dass gar nichts veröffentlicht wird — statt dass ein bereits gesetzter Marker gegen den
+   Reconciler-Zeitplan gelöscht werden muss.
 
    `verdict=changes-required` oder `verdict=blocked` blockieren das Gate; `read-only=false` zählt
    nicht als Review. Alle Felder sind Pflicht — ein unvollständiger Marker wird nicht erkannt und

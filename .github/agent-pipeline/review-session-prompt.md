@@ -19,7 +19,7 @@ Replace every `<PLACEHOLDER>` before starting the review:
 | `<REVIEWER_PROVIDER>`    | Provider running this review: `codex` or `claude`                                                  |
 | `<REVIEW_MODE>`          | `cross` or `self` — a fallback review runs as `self`, see "Review modes" below                      |
 | `<REVIEW_SESSION_ID>`    | Unique identifier for this fresh, isolated review session                                          |
-| `<READ_ONLY_ENFORCED>`   | `true` only with all three layers below. `false` is allowed and honest — the review then informs a human and must publish no marker |
+| `<READ_ONLY_ENFORCED>`   | `true`, `verified` or `false` — see "Read-only levels" below. `false` is allowed and honest; the review then informs a human and must publish no marker |
 | `<TASK_GOAL>`            | Original objective and acceptance criteria, without the implementation session's private reasoning |
 
 ## Review modes
@@ -151,7 +151,7 @@ Beende die Antwort mit genau einem JSON-Block und danach keinem weiteren Text:
   "review_mode": "cross|self",
   "review_session_id": "<REVIEW_SESSION_ID>",
   "isolated_session": true,
-  "read_only_enforced": true,
+  "read_only_enforced": "true|verified|false",
   "implementer": "<IMPLEMENTER>",
   "base_branch": "<BASE_BRANCH>",
   "head_branch": "<EXPECTED_HEAD_BRANCH>",
@@ -209,18 +209,90 @@ without the editing tools and with the read-only settings — and after the sess
 from the outside whether that worktree is still untouched.
 
 ```powershell
-node ./scripts/agent-review-session.mjs --pr 363 --mode self
+node ./scripts/agent-review-session.mjs --pr 363 --mode self --headless
 ```
+
+`--headless` is part of the default example on purpose: without it the run is interactive, stays at
+`read-only=false` and writes no marker, so it informs a human but cannot satisfy the gate.
+
+**The launcher only ever runs `claude`, and only for `--mode self`.** Every other combination is
+rejected before anything is created, and `--print-only` is the route for them:
+
+- Whenever `reviewerFor()` resolves to codex — a Claude implementation in `cross` mode, a Codex
+  implementation in `self` mode — launching would run Claude while prompt, session id and marker all
+  say codex. In an unattended run nobody notices.
+- A `cross` review is evidenced by the counter provider's **native** approval of the head SHA. The
+  reconciler's `cross` branch reads `snapshot.reviews` and never an `agent-pipeline:review-result`
+  comment, so a launched cross run would publish a marker nothing consumes — and report success
+  while doing it. Trigger a real cross review with `@codex review` on the pull request instead.
 
 `--mode cross|self`, `--enforced`, `--implementer codex|claude` (otherwise read from the branch prefix),
 `--focus-file` and `--goal-file` to override the defaults, `--print-only` to just get the prompt and
 the command without launching anything.
 
+By default the launch is **interactive**: the script starts a bare session and the operator pastes
+the prompt in. That needs a TTY, and the script now says so instead of hanging when there is none.
+Add `--headless` to feed the prompt in on stdin and let the whole thing run unattended:
+
+```bash
+node ./scripts/agent-review-session.mjs --pr 364 --mode self --headless
+```
+
+The read-only flags are unchanged by this — `--headless` only adds `--print`; it never trades away
+the removed tools or the settings file.
+
+### Who publishes the result
+
+A headless run inverts the old order, and that matters more than the convenience:
+
+| | interactive | headless |
+| --- | --- | --- |
+| writes the comment | the review session | the launcher |
+| read-only level | `false` (or `true` with `--enforced`) | `verified` (or `true` with `--enforced`) |
+| marker written | none, unless `--enforced` | only after the check passed |
+| on a violation | with `--enforced`: a passing marker already exists; delete it before the reconciler reads it | nothing was published, the result is discarded |
+
+The session in a headless run is told to write nothing at all and simply to output its review. The
+launcher captures that, runs the worktree check, extracts the `Verdikt:` line and only then appends
+the marker. An absent or ambiguous verdict — including the untouched
+`pass | changes-required | blocked` template — produces **no** marker and a non-zero exit, because a
+guessed verdict would go straight into the merge gate.
+
+This also removes the reviewer's need for any GitHub access, which is what made the headless path
+work at all where neither `gh` nor MCP tools exist: the session runs with `Read,Grep,Glob,Bash` and
+nothing else. Where `gh` is present the launcher posts the comment itself; where it is not, the
+result is written to `--result-file` with the marker already in place, to be posted verbatim.
+
+The trade-off, stated plainly: the launcher runs in the implementation context, so it — not the
+isolated session — is what puts the verdict on the pull request. The author allowlist already
+assumed that identity, but the relay is a step the interactive route did not have.
+
+### Without the GitHub CLI
+
+The script reads the pull request through `gh` by default. Where that binary does not exist — a
+Claude Code remote container reaches GitHub through MCP tools instead — pass the metadata directly:
+
+```bash
+node ./scripts/agent-review-session.mjs --pr-json pr.json --repository blorbeer-cmd/LAN_2026 --mode self
+```
+
+`pr.json` holds what `gh pr view --json` would have returned; `number`, `url`, `headRefName`,
+`headRefOid` and `baseRefName` are required and validated, `title` and `body` feed the goal section.
+Without `--repository` the name is derived from the `origin` remote. The head SHA must be the full
+40 characters — a short one would otherwise surface as an obscure `git worktree add` failure.
+
+Nothing in the file proves its fields belong together, so where `gh` *is* available the launcher
+cross-checks head SHA, head branch and base branch against GitHub and refuses a mismatch: a review
+bound to the wrong pull request is worse than none, because its marker looks entirely valid. Where
+`gh` is missing that check cannot run, and the launcher says so rather than implying the metadata
+was verified.
+
 That final check is why the script exists at all. A prompt cannot enforce read-only on the session
 it is addressed to — it can only ask. The launcher removes the capability beforehand and verifies
-the outcome afterwards, so `read_only_enforced: true` stops being a claim the reviewer makes about
-itself. If the worktree did change, the script says so and tells you to treat the review as invalid
-before the merge gate reads any marker it posted.
+the outcome afterwards, so the read-only claim stops being something the reviewer says about itself:
+that verification *is* the `verified` level. If the worktree did change, the script says so and tells
+you to treat the review as invalid before the merge gate reads any marker it posted — which is also
+why the check reports a violation for `verified` runs, not just for `--enforced` ones.
 
 The manual route below stays valid, and explains what the script sets up.
 
@@ -232,8 +304,37 @@ so a session able to write could quietly repair what it found and then report `p
 and the fix would both be invisible. Enforcement is what separates "reviewed and judged" from
 "tidied up and declared fine".
 
-Three layers, in increasing strength. Use at least the first two; only with the third is
-`read_only_enforced: true` fully truthful.
+## Read-only levels
+
+The marker carries one of three values, and the merge gate compares it against
+`selfReviewMinimumEnforcement` in `config.json` (default `verified`):
+
+| Level      | What backs it                                                                                                                   | Who can claim it |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| `true`     | everything under `verified`, plus credentials without code write access, so a write fails server-side                            | the operator, via `--enforced` |
+| `verified` | editing tools removed, writing git/gh denied, review in a throwaway worktree detached at the reviewed SHA, and the launcher checked afterwards that the worktree was untouched | `agent-review-session.mjs --headless` only |
+| `false`    | nothing outside the prompt                                                                                                      | anything else, including an interactive launch and `--print-only` |
+
+`verified` requires `--headless` because only a headless run publishes from the launcher, i.e.
+*after* the check. An interactive session posts its own comment while it is still running, so the
+verification the level names has not happened yet at that moment — claiming it there would describe
+an ordering that does not exist. An interactive run therefore stays at `false` and writes no marker,
+and the launcher says so before it starts.
+
+`verified` exists because `true` is not reachable everywhere. A session whose only credentials can
+push cannot honestly assert it — and demanding it anyway left `self` unusable in exactly those
+environments, which is not a security win but a process that quietly stops working. `verified` is
+weaker on purpose and says so: it detects a violation after the fact rather than preventing it, and
+the status comment records which level a verdict was reached under.
+
+Lowering the repository minimum to `false` is possible and means accepting a verdict nothing outside
+the prompt backed up. At that point the self-review gate is a formality — a deliberate choice, not
+an oversight, and one worth revisiting rather than leaving set.
+
+## Enforcing read-only in layers
+
+Three layers, in increasing strength. Layers 1 and 2 plus the launcher's after-the-fact check are
+what `verified` stands for; only with the third is `true` truthful.
 
 **1. Remove the editing tools from the session.** They then do not exist and cannot be called:
 
@@ -262,23 +363,26 @@ hold, because layers 1 and 2 are pattern-based and a shell is a wide surface:
   `Pull requests: Read and write` can post the findings comment but cannot push, so a push attempt
   fails server-side rather than being talked out of.
 
-Without layer 3, report the review honestly as `read_only_enforced: false`. It is then still a
-useful review for a human, but it does not satisfy the `self` merge-gate condition — the gate checks
-exactly this flag.
+Without layer 3 but with the launcher's check, report `verified`. Without both, report `false`: the
+review is then still useful input for a human, but it does not satisfy the `self` merge-gate
+condition at the default minimum.
 
 ## Step-by-step: Claude separate session
 
 1. Fetch the PR metadata and fill every placeholder.
 2. Open a new Claude Code process or a new Claude task. Do not use `--continue`, `--resume`, or the
    implementation conversation.
-3. Prefer a clean, dedicated worktree detached at `<EXPECTED_HEAD_SHA>`, not at the branch. Start Claude only
-   with a technically enforced non-editing permission mode and credentials without repository
-   write access. If that cannot be guaranteed, treat Claude as unavailable.
-   A review subagent restricted to read-only tools satisfies the enforcement requirement, because
-   the restriction lives in the tool surface rather than in the prompt. Its task description must
-   then be built solely from the task contract, the diff and the published pull-request discussion —
-   passing along the implementation session's reasoning would reintroduce exactly the dependency
-   the separate session exists to avoid.
+3. Prefer a clean, dedicated worktree detached at `<EXPECTED_HEAD_SHA>`, not at the branch. Start
+   Claude with a technically enforced non-editing permission mode; with credentials without
+   repository write access on top, the review reaches `true` instead of `verified`.
+   A review subagent does **not** by itself satisfy the enforcement requirement. Removing the
+   editing tools is layer 1, and a subagent that still has `Bash` can run `git push` — the tool
+   surface alone enforces nothing, which is why `review-readonly.settings.json` exists and says so
+   in its own `//scope` note. A subagent counts only when its tool set excludes `Bash` as well, or
+   when the launcher's worktree check backs it up. Either way its task description must be built
+   solely from the task contract, the diff and the published pull-request discussion — passing along
+   the implementation session's reasoning would reintroduce exactly the dependency the separate
+   session exists to avoid.
 4. Do not use `--from-pr` if it would resume a session previously linked to the implementation PR;
    session separation is more important than convenience.
 5. Confirm that no files changed and that the final `reviewed_head_sha` matches GitHub.

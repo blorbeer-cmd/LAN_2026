@@ -9,9 +9,18 @@
 // What this script does *not* do is the layer that would make the claim airtight: restricted
 // credentials and a genuinely unwritable tree. A shell stays a wide surface, and the check below
 // runs after the session ended — it detects a violation, it does not prevent one, and by then a
-// review-result marker may already be posted. So `read_only_enforced: true` is not asserted here.
-// `--enforced` is how the operator states they put that layer in place; without it the generated
-// prompt forbids the marker, and the review counts as input for a human rather than for the gate.
+// review-result marker may already be posted. So `read-only=true` is not asserted here.
+// `--enforced` is how the operator states they put that layer in place.
+//
+// Without it the review is not worthless, though, which is what `read-only=verified` records: this
+// script removed the editing tools, denied the writing git/gh commands, detached a throwaway
+// worktree at the reviewed SHA and checked afterwards that nothing in it moved. That is real,
+// externally checked evidence — weaker than restricted credentials, stronger than a promise. It
+// exists because `true` is unreachable wherever the only available credentials can push, which used
+// to leave self-review unusable in exactly those environments.
+//
+// `--print-only` hands the prompt to a session this script never observes, so it can claim neither
+// and stays at `read-only=false`.
 
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -50,29 +59,51 @@ export function renderReviewPrompt({
   reviewerProvider,
   reviewMode,
   sessionId,
-  readOnlyEnforced,
+  readOnlyLevel,
   taskGoal,
   focus,
+  // Who turns the review into a pull-request comment. `launcher` is the safer order: the marker is
+  // appended only after the worktree check passed, so a violating session never leaves one behind.
+  publisher = "session",
 }) {
-  const enforcement = readOnlyEnforced
-    ? "ja — Editierwerkzeuge sind der Session entzogen, schreibende git- und gh-Befehle sind per Deny-Regel gesperrt, die Credentials haben kein Code-Schreibrecht, und der Arbeitsbaum wird nach der Session von außen geprüft"
-    : "nein — Editierwerkzeuge sind zwar entzogen und schreibende git-/gh-Befehle gesperrt, aber ohne eingeschränkte Credentials bleibt eine Shell eine breite Oberfläche";
+  // The level is printed right before this, so these read as its explanation and must not repeat it
+  // with another ja/nein of their own.
+  const enforcement =
+    readOnlyLevel === "true"
+      ? "Editierwerkzeuge sind der Session entzogen, schreibende git- und gh-Befehle sind per Deny-Regel gesperrt, die Credentials haben kein Code-Schreibrecht, und der Arbeitsbaum wird nach der Session von außen geprüft"
+      : readOnlyLevel === "verified"
+        ? "Editierwerkzeuge sind entzogen, schreibende git-/gh-Befehle gesperrt, das Review läuft in einem eigenen, auf den Head-SHA detachten Arbeitsbaum, und der Launcher prüft nach der Session von außen, dass darin nichts verändert wurde. Die Credentials könnten jedoch schreiben; die Prüfung erkennt eine Verletzung, sie verhindert sie nicht"
+        : "Editierwerkzeuge sind zwar entzogen und schreibende git-/gh-Befehle gesperrt, aber ohne eingeschränkte Credentials und ohne äußere Prüfung bleibt eine Shell eine breite Oberfläche";
 
-  const marker = readOnlyEnforced
-    ? [
-        "Schreibe als letzte Zeile des Kommentars zusätzlich diesen Marker, damit das Merge-Gate das",
-        "Review sehen kann:",
-        "",
-        `<!-- agent-pipeline:review-result ${headSha} mode=${reviewMode} verdict=<pass|changes-required|blocked> session=${sessionId} read-only=true -->`,
-        "",
-        "Setze `verdict` auf denselben Wert wie oben. Schreibe den Marker nicht, wenn du oben mit",
-        "`blocked` abgebrochen hast, weil Identität oder Head-SHA nicht stimmten.",
-      ].join("\n")
-    : [
-        "Schreibe KEINEN `<!-- agent-pipeline:review-result ... -->`-Marker. Read-only ist hier nicht",
-        "erzwungen; der Marker würde dem Merge-Gate ein Review vortäuschen, dessen Voraussetzung",
-        "fehlt. Dieses Review dient dann als inhaltliche Prüfung für den Nutzer.",
-      ].join("\n");
+  const marker =
+    publisher === "launcher"
+      ? [
+          "Poste NICHTS an GitHub und schreibe KEINEN",
+          "`<!-- agent-pipeline:review-result ... -->`-Marker. Gib das vollständige Review oben als",
+          "deine Antwort aus — mehr nicht.",
+          "",
+          "Der Launcher nimmt diese Ausgabe entgegen, prüft danach von außen, dass du den Arbeitsbaum",
+          "nicht verändert hast, und veröffentlicht erst dann Ergebnis und Marker. Ein Marker, den du",
+          "selbst schriebest, existierte bereits, bevor diese Prüfung gelaufen ist.",
+        ].join("\n")
+      : readOnlyLevel === "false"
+      ? [
+          "Schreibe KEINEN `<!-- agent-pipeline:review-result ... -->`-Marker. Read-only ist hier",
+          "weder erzwungen noch von außen geprüft; der Marker würde dem Merge-Gate ein Review",
+          "vortäuschen, dessen Voraussetzung fehlt. Dieses Review dient dann als inhaltliche Prüfung",
+          "für den Nutzer.",
+        ].join("\n")
+      : [
+          "Schreibe als letzte Zeile des Kommentars zusätzlich diesen Marker, damit das Merge-Gate das",
+          "Review sehen kann:",
+          "",
+          `<!-- agent-pipeline:review-result ${headSha} mode=${reviewMode} verdict=<pass|changes-required|blocked> session=${sessionId} read-only=${readOnlyLevel} -->`,
+          "",
+          "Setze `verdict` auf denselben Wert wie oben. Schreibe den Marker nicht, wenn du oben mit",
+          "`blocked` abgebrochen hast, weil Identität oder Head-SHA nicht stimmten.",
+          "Verändere den `read-only`-Wert nicht: er beschreibt, wie diese Session gestartet wurde,",
+          "nicht wie sie sich verhalten hat.",
+        ].join("\n");
 
   return `Du bist der unabhängige, ausschließlich lesende Reviewer für einen Pull Request. Du hast
 diesen Code nicht geschrieben und keinen Zugriff auf die Implementierungs-Session. Leite alles
@@ -87,7 +118,7 @@ Implementierungs-Agent: ${implementer}
 Review-Anbieter: ${reviewerProvider}
 Review-Modus: ${reviewMode}
 Review-Session-ID: ${sessionId}
-Read-only technisch erzwungen: ${enforcement}
+Read-only-Stufe: ${readOnlyLevel} — ${enforcement}
 
 Ziel und Abnahmekriterien des geprüften Auftrags:
 ${taskGoal}
@@ -96,9 +127,12 @@ Regeln für diese Session:
 
 1. Dies ist ausschließlich ein Review. Ändere keine Datei, erstelle keinen Commit, pushe nichts,
    approviere und merge den PR nicht, löse keine Review-Threads auf und setze oder entferne kein
-   Label. Die einzige erlaubte Schreiboperation ist genau ein Kommentar am Pull Request mit deinem
-   Ergebnis.
-   Prüfe zu Beginn und am Ende \`git status --porcelain\` und nenne beide Ergebnisse im Kommentar.
+   Label. ${
+     publisher === "launcher"
+       ? "Diese Session schreibt überhaupt nichts nach außen; dein Ergebnis ist deine Antwort."
+       : "Die einzige erlaubte Schreiboperation ist genau ein Kommentar am Pull Request mit deinem\n   Ergebnis."
+   }
+   Prüfe zu Beginn und am Ende \`git status --porcelain\` und nenne beide Ergebnisse im Ergebnistext.
    Weicht das zweite vom ersten ab, melde das ausdrücklich als Verletzung.
 2. Verwende keinen Implementierungs-Chatverlauf und übernimm keine dortige Begründung.
 3. Lies zuerst AGENTS.md und DEVELOPMENT_GUIDELINES.md vollständig. Lade danach nur die für die
@@ -135,15 +169,19 @@ Bewertungsregeln:
 - Findest du keine Findings, sage das ausdrücklich. Ein positives Urteil gilt nur für den exakt
   geprüften Head-SHA.
 
-Ergebnis veröffentlichen:
+Ergebnis ausgeben:
 
-Poste genau einen Kommentar an Pull Request #${pullNumber} mit diesem Aufbau:
+${
+  publisher === "launcher"
+    ? `Gib genau diesen Aufbau als deine Antwort aus (der Launcher veröffentlicht ihn an Pull Request #${pullNumber}):`
+    : `Poste genau einen Kommentar an Pull Request #${pullNumber} mit diesem Aufbau:`
+}
 
 ## Review-Ergebnis (${reviewerProvider}, separate Session, Modus ${reviewMode})
 
 - Geprüfter Head-SHA: ${headSha}
 - Review-Session-ID: ${sessionId}
-- Read-only technisch erzwungen: ${readOnlyEnforced ? "ja" : "nein"}
+- Read-only-Stufe: ${readOnlyLevel}
 - Arbeitsbaum vor/nach dem Review: <Ausgabe von git status --porcelain, oder "sauber">
 - Verdikt: pass | changes-required | blocked
 
@@ -188,9 +226,18 @@ export const DEFAULT_FOCUS = `- Korrektheit, Regressionen, Zustandskonflikte, Ne
   Design-Tokens, Lade-/Fehler-/Leerzustände und ob die Prüfanleitung die sichtbare Änderung
   abdeckt.`;
 
-/** `claude` invocation that makes the session read-only from the outside. */
-export function claudeCommand({ settingsPath = SETTINGS_PATH } = {}) {
-  return ["claude", "--tools", REVIEW_TOOLS, "--settings", settingsPath];
+/**
+ * `claude` invocation that makes the session read-only from the outside.
+ *
+ * `headless` adds `--print`, which is what turns this from "the operator pastes the prompt into an
+ * interactive session" into something that can actually run unattended. Without it the launcher
+ * starts a bare session and waits for a human — fine at a workstation, useless in the automation
+ * this script exists for.
+ */
+export function claudeCommand({ settingsPath = SETTINGS_PATH, headless = false } = {}) {
+  const command = ["claude", "--tools", REVIEW_TOOLS, "--settings", settingsPath];
+  if (headless) command.push("--print");
+  return command;
 }
 
 /**
@@ -203,12 +250,76 @@ export function usage() {
   return (
     `\nUsage: node ./scripts/agent-review-session.mjs --pr <number> [--mode ${[...REVIEW_MODES].join("|")}]\n` +
     "       [--enforced] [--implementer codex|claude] [--worktree <path>]\n" +
-    "       [--focus-file <file>] [--goal-file <file>] [--print-only]\n" +
-    "\n--enforced states that this shell cannot write to the repository (restricted credentials).\n" +
-    "Only then may the review publish the marker the merge gate reads.\n" +
-    "A fallback review — the chosen provider was unavailable — runs as --mode self and is marked\n" +
+    "       [--focus-file <file>] [--goal-file <file>] [--print-only] [--headless]\n" +
+    "       [--pr-json <file>] [--repository <owner/repo>]\n" +
+    "\n--headless feeds the prompt to the session on stdin instead of asking someone to paste it,\n" +
+    "which is what makes an unattended run possible. Without it the launch is interactive and\n" +
+    "requires a TTY. A headless run also publishes the result itself: the session writes nothing,\n" +
+    "and the marker is appended only after the worktree check passed. --result-file <path> keeps\n" +
+    "that text where you want it; without gh the file is all that is produced.\n" +
+    "\n--enforced states that this shell cannot write to the repository (restricted credentials),\n" +
+    "which publishes the marker as read-only=true. A launched run without it publishes\n" +
+    "read-only=verified: the launcher checks afterwards that the review worktree is untouched.\n" +
+    "--print-only hands the prompt to a session this script never observes and stays at\n" +
+    "read-only=false, which no merge gate accepts.\n" +
+    "\n--pr-json reads the pull-request metadata from a file instead of calling gh, for environments\n" +
+    "without the GitHub CLI. Expected keys: number, url, title, body, headRefName, headRefOid,\n" +
+    "baseRefName. --repository skips the gh lookup for the repository name.\n" +
+    "\nA fallback review — the chosen provider was unavailable — runs as --mode self and is marked\n" +
     "on the pull request with agent:review-fallback."
   );
+}
+
+/**
+ * The read-only level this invocation can honestly claim.
+ *
+ * Derived rather than passed, so the marker cannot end up stronger than what the launcher actually
+ * does: `--print-only` never sees the session it hands the prompt to, and only `--enforced` says
+ * anything about credentials.
+ *
+ * `verified` additionally requires `headless`, and that condition is the whole point of the level.
+ * Only a headless run publishes from the launcher, i.e. *after* the worktree check. An interactive
+ * run lets the session post its own comment while it is still running, so the check it would be
+ * claiming has not happened yet at publication time — the level would describe an ordering that
+ * does not exist. Such a run stays at `false` and writes no marker, exactly as before this level
+ * was introduced.
+ */
+export function readOnlyLevelFor({ enforced, launch, headless }) {
+  // `true` is an assertion about credentials, not about ordering: with a token that cannot write,
+  // a violating session cannot reach the repository whatever it publishes and whenever.
+  if (enforced) return "true";
+  return launch && headless ? "verified" : "false";
+}
+
+/** Derives `owner/repo` from an origin URL, so the repository name needs no gh call. */
+export function repositoryFromRemote(url) {
+  const match = String(url ?? "")
+    .trim()
+    .match(/(?:[:/])([^/:]+)\/([^/]+?)(?:\.git)?\/?$/);
+  return match ? `${match[1]}/${match[2]}` : null;
+}
+
+/** Fields the launcher needs from the pull request, whatever produced them. */
+export const REQUIRED_PR_FIELDS = ["number", "url", "headRefName", "headRefOid", "baseRefName"];
+
+/**
+ * Validates externally supplied pull-request metadata.
+ *
+ * `--pr-json` replaces the one call that used to make the GitHub CLI mandatory, so it has to reject
+ * a half-filled file rather than let a missing head SHA reach `git worktree add` as `undefined`.
+ */
+export function validatePullRequest(pr, source) {
+  if (!pr || typeof pr !== "object") {
+    throw new Error(`${source} did not contain a pull-request object.`);
+  }
+  const missing = REQUIRED_PR_FIELDS.filter((field) => !pr[field]);
+  if (missing.length > 0) {
+    throw new Error(`${source} is missing required field(s): ${missing.join(", ")}.`);
+  }
+  if (!/^[0-9a-f]{40}$/.test(pr.headRefOid)) {
+    throw new Error(`${source} has headRefOid "${pr.headRefOid}", which is not a full 40-char SHA.`);
+  }
+  return pr;
 }
 
 export function parseOptions(argv) {
@@ -220,8 +331,13 @@ export function parseOptions(argv) {
     worktree: null,
     focusFile: null,
     goalFile: null,
+    prJsonFile: null,
+    repository: null,
+    // Feed the prompt to the session instead of asking a human to paste it.
+    headless: false,
+    resultFile: null,
     // Opt-in and never inferred: only the operator knows whether the credentials in this shell can
-    // push. Claiming it by default would put the one flag the gate checks beyond anyone's control.
+    // push. Claiming it by default would put the strongest level beyond anyone's control.
     enforced: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -233,12 +349,21 @@ export function parseOptions(argv) {
     else if (arg === "--worktree") options.worktree = next();
     else if (arg === "--focus-file") options.focusFile = next();
     else if (arg === "--goal-file") options.goalFile = next();
+    else if (arg === "--pr-json") options.prJsonFile = next();
+    else if (arg === "--repository") options.repository = next();
     else if (arg === "--print-only") options.launch = false;
+    else if (arg === "--headless") options.headless = true;
+    else if (arg === "--result-file") options.resultFile = next();
     else if (arg === "--enforced") options.enforced = true;
     else throw new Error(`Unknown option: ${arg}`);
   }
 
-  if (!options.pr || !/^\d+$/.test(options.pr)) {
+  // With `--pr-json` the number is in the file, so demanding it twice would only create a way for
+  // the two to disagree.
+  if (options.pr !== null && !/^\d+$/.test(options.pr)) {
+    throw new Error("--pr <number> is required.");
+  }
+  if (options.pr === null && !options.prJsonFile) {
     throw new Error("--pr <number> is required.");
   }
   if (!REVIEW_MODES.has(options.mode)) {
@@ -258,6 +383,85 @@ export function reviewerFor(implementer, mode) {
   return implementer === "codex" ? "claude" : "codex";
 }
 
+/**
+ * The read-only check itself, as a decision over the two facts the launcher gathers.
+ *
+ * Extracted so the most safety-relevant step in this script can be tested without a live session:
+ * it is what `read-only=verified` actually stands for, and it used to be an untested `if` buried in
+ * the launch path.
+ */
+export function detectWorktreeViolation({ dirty, head, expectedSha }) {
+  const reasons = [];
+  if (dirty) reasons.push(`working tree is dirty:\n${dirty}`);
+  // A moved HEAD matters even with a clean tree: a committed change leaves nothing in `git status`,
+  // and the verdict is bound to the SHA that was supposed to be reviewed.
+  if (head !== expectedSha) reasons.push(`HEAD moved to ${head}.`);
+  return { violated: reasons.length > 0, reasons };
+}
+
+/**
+ * Reads the verdict out of the review text.
+ *
+ * The launcher needs it to build the marker, and guessing would be worse than refusing: an
+ * unreadable verdict must not become a `pass`. Returns null when the line is missing or ambiguous.
+ */
+export function parseVerdict(output) {
+  const found = [
+    ...String(output ?? "").matchAll(/^[-*]?\s*Verdikt:\s*`?(pass|changes-required|blocked)`?\s*$/gim),
+  ].map((match) => match[1].toLowerCase());
+  const distinct = [...new Set(found)];
+  // The prompt's own template lists all three as options; a review that left it unedited, or that
+  // contradicts itself, is not a verdict the gate should act on.
+  return distinct.length === 1 ? distinct[0] : null;
+}
+
+/** The marker the launcher appends once the worktree check has passed. */
+export function buildResultMarker({ headSha, reviewMode, verdict, sessionId, readOnlyLevel }) {
+  return (
+    `<!-- agent-pipeline:review-result ${headSha} mode=${reviewMode} ` +
+    `verdict=${verdict} session=${sessionId} read-only=${readOnlyLevel} -->`
+  );
+}
+
+/**
+ * Whether this launcher may actually run the review itself, as opposed to only printing its prompt.
+ *
+ * Two independent reasons it may not, both from the cross-review of 00186da:
+ *
+ * 1. It starts `claude` unconditionally. Whenever `reviewerFor()` resolves to codex — a Claude
+ *    implementation in `cross` mode, or a Codex implementation in `self` mode — launching would run
+ *    Claude while the prompt, the session id and the marker all say codex. Nobody is watching an
+ *    unattended run to notice.
+ * 2. Cross evidence is the counter provider's *native* review approval, which the reconciler reads
+ *    from `snapshot.reviews`. Its `cross` branch never looks at an `agent-pipeline:review-result`
+ *    comment, so a launched cross run would publish a marker nothing consumes while reporting
+ *    success — unusable evidence that looks valid.
+ *
+ * `--print-only` stays available for every combination: handing the prompt to the right provider's
+ * own surface is exactly how a cross review is prepared.
+ */
+export function launchSupport({ mode, implementer }) {
+  const reviewer = reviewerFor(implementer, mode);
+  if (reviewer !== "claude") {
+    return {
+      ok: false,
+      reason:
+        `this launcher only runs claude, but ${implementer} in ${mode} mode needs ${reviewer}. ` +
+        `Launching would label a claude session as a ${reviewer} review.`,
+    };
+  }
+  if (mode !== "self") {
+    return {
+      ok: false,
+      reason:
+        `a ${mode} review is evidenced by the counter provider's native approval of the head SHA, ` +
+        "not by a review-result marker. The reconciler never reads a marker for this mode, so a " +
+        "launched run would publish evidence that cannot satisfy the gate.",
+    };
+  }
+  return { ok: true, reason: null };
+}
+
 /** Guesses the implementer from the head branch prefix; `--implementer` overrides it. */
 export function implementerFromBranch(headBranch) {
   if (headBranch?.startsWith("codex/")) return "codex";
@@ -269,11 +473,13 @@ export function implementerFromBranch(headBranch) {
 // I/O
 // ---------------------------------------------------------------------------
 
-function run(command, args, { capture = true, cwd } = {}) {
+function run(command, args, { capture = true, cwd, input } = {}) {
   const result = spawnSync(command, args, {
     cwd,
     encoding: "utf8",
-    stdio: capture ? "pipe" : "inherit",
+    input,
+    // With `input` the child still needs its output on the terminal, so only stdin is a pipe.
+    stdio: capture ? "pipe" : [input === undefined ? "inherit" : "pipe", "inherit", "inherit"],
     shell: process.platform === "win32",
   });
   if (result.error) throw result.error;
@@ -285,13 +491,81 @@ function run(command, args, { capture = true, cwd } = {}) {
   return capture ? result.stdout.trim() : result.status;
 }
 
-function readPullRequest(pr) {
+function readPullRequest(options) {
+  // The offline path exists because the GitHub CLI is not available everywhere this review needs to
+  // run — a Claude Code remote container reaches GitHub through MCP tools and has no `gh` binary at
+  // all. Without it the launcher failed before producing even the prompt.
+  if (options.prJsonFile) {
+    let parsed;
+    try {
+      parsed = JSON.parse(readFileSync(options.prJsonFile, "utf8"));
+    } catch (error) {
+      throw new Error(`Could not read --pr-json ${options.prJsonFile}.\n${error.message}`);
+    }
+    const pr = validatePullRequest(parsed, `--pr-json ${options.prJsonFile}`);
+
+    // The file says which pull request this is; nothing in it proves the fields belong together.
+    // Where gh exists, ask GitHub and refuse a mismatch — a review bound to the wrong number or SHA
+    // is worse than no review, because its marker looks exactly like a valid one.
+    let authoritative = null;
+    try {
+      authoritative = JSON.parse(
+        run("gh", ["pr", "view", String(pr.number), "--json", "headRefOid,headRefName,baseRefName"]),
+      );
+    } catch {
+      console.warn(
+        "Note: gh is unavailable, so the --pr-json metadata could not be checked against GitHub.\n" +
+          "      Head SHA, branch and pull-request number are taken on trust from the file.",
+      );
+    }
+    if (authoritative) {
+      const mismatches = ["headRefOid", "headRefName", "baseRefName"].filter(
+        (field) => authoritative[field] && authoritative[field] !== pr[field],
+      );
+      if (mismatches.length > 0) {
+        throw new Error(
+          `--pr-json disagrees with GitHub for pull request #${pr.number} on: ` +
+            `${mismatches.map((f) => `${f} (file ${pr[f]}, GitHub ${authoritative[f]})`).join("; ")}.`,
+        );
+      }
+    }
+    return pr;
+  }
+
   const fields = "number,url,title,body,headRefName,headRefOid,baseRefName,isDraft";
   try {
-    return JSON.parse(run("gh", ["pr", "view", pr, "--json", fields]));
+    return validatePullRequest(
+      JSON.parse(run("gh", ["pr", "view", options.pr, "--json", fields])),
+      `gh pr view ${options.pr}`,
+    );
   } catch (error) {
     throw new Error(
-      `Could not read pull request #${pr} via gh. Is the GitHub CLI installed and authenticated?\n${error.message}`,
+      `Could not read pull request #${options.pr} via gh. Is the GitHub CLI installed and ` +
+        `authenticated? Without it, pass the metadata directly with --pr-json <file>.\n${error.message}`,
+    );
+  }
+}
+
+/** Repository name from `--repository`, else gh, else the origin remote. */
+function resolveRepository(options) {
+  if (options.repository) return options.repository;
+  try {
+    return run("gh", ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]);
+  } catch {
+    // No gh here. The origin URL carries the same information and needs no network call.
+    const fromRemote = repositoryFromRemote(
+      (() => {
+        try {
+          return run("git", ["remote", "get-url", "origin"]);
+        } catch {
+          return null;
+        }
+      })(),
+    );
+    if (fromRemote) return fromRemote;
+    throw new Error(
+      "Could not determine the repository. Pass --repository <owner/repo>, or run where gh or an " +
+        "origin remote is available.",
     );
   }
 }
@@ -317,11 +591,36 @@ export function goalFromBody(body, title) {
 
 function main(argv) {
   const options = parseOptions(argv);
-  const pr = readPullRequest(options.pr);
-  const repository = run("gh", ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]);
+  // Before any side effect: an interactive launch waits for a keyboard that is not there, and would
+  // otherwise hang after already creating a worktree the operator then has to clean up.
+  if (options.launch && !options.headless && !process.stdin.isTTY) {
+    throw new Error(
+      "Interactive launch needs a terminal, and this shell has no TTY.\n" +
+        "Use --headless to feed the prompt to the session, or --print-only to get it as a file.",
+    );
+  }
+  const pr = readPullRequest(options);
+  const repository = resolveRepository(options);
+  const readOnlyLevel = readOnlyLevelFor(options);
+  if (options.launch && !options.headless && !options.enforced) {
+    // Say it before the run rather than leaving the operator to notice a missing marker afterwards.
+    console.warn(
+      "Note: an interactive run publishes from the session itself, before the worktree check.\n" +
+        "      It therefore stays at read-only=false and writes no marker. Use --headless for a\n" +
+        "      gate-eligible review, or --enforced if credentials cannot write.",
+    );
+  }
 
   const implementer =
     options.implementer ?? implementerFromBranch(pr.headRefName) ?? "claude";
+  // Before the worktree exists, so a rejected combination leaves nothing to clean up.
+  const support = launchSupport({ mode: options.mode, implementer });
+  if (options.launch && !support.ok) {
+    throw new Error(
+      `Cannot launch this review: ${support.reason}\n` +
+        "Use --print-only and hand the prompt to that provider's own surface instead.",
+    );
+  }
   // Nothing so far guarantees the head exists locally, and a review session is meant to start from
   // a clean clone. Without this, `merge-base` below fails with "not a valid commit name" — before
   // any error path that could explain what to do about it.
@@ -365,7 +664,8 @@ function main(argv) {
     reviewerProvider: reviewerFor(implementer, options.mode),
     reviewMode: options.mode,
     sessionId,
-    readOnlyEnforced: options.enforced,
+    readOnlyLevel,
+    publisher: options.headless ? "launcher" : "session",
     taskGoal: options.goalFile
       ? readFileSync(options.goalFile, "utf8").trim()
       : goalFromBody(pr.body, pr.title),
@@ -379,18 +679,26 @@ function main(argv) {
   const promptPath = join(mkdtempSync(join(tmpdir(), "agent-review-")), `pr-${pr.number}.md`);
   writeFileSync(promptPath, prompt, "utf8");
 
-  const command = claudeCommand();
+  const command = claudeCommand({ headless: options.headless });
   console.log(`Pull request : #${pr.number} ${pr.title}`);
   console.log(`Head SHA     : ${pr.headRefOid}`);
   console.log(`Mode         : ${options.mode} (${implementer} → ${reviewerFor(implementer, options.mode)})`);
   console.log(`Worktree     : ${worktree}`);
   console.log(`Prompt       : ${promptPath}`);
-  console.log(`Command      : ${command.join(" ")}`);
+  // Printing a `claude …` line for a review that codex has to run would be the same mislabeling in
+  // the console that the launch guard prevents in the session.
+  console.log(
+    support.ok
+      ? `Command      : ${command.join(" ")}`
+      : `Command      : none — ${support.reason}`,
+  );
   console.log(
     `Read-only    : ${
-      options.enforced
-        ? "asserted via --enforced; the prompt permits the merge-gate marker"
-        : "tools removed and writing git/gh denied, but not asserted — the prompt forbids the marker (pass --enforced once credentials cannot push)"
+      readOnlyLevel === "true"
+        ? "true — asserted via --enforced; credentials cannot write to the code"
+        : readOnlyLevel === "verified"
+          ? "verified — tools removed, writing git/gh denied, worktree checked after the session (pass --enforced once credentials cannot push)"
+          : "false — this run hands the prompt to a session it never observes; the prompt forbids the marker"
     }`,
   );
   console.log("");
@@ -401,8 +709,17 @@ function main(argv) {
     return;
   }
 
-  console.log("Starting the review session. Paste the prompt above into it.\n");
-  run(command[0], command.slice(1), { capture: false, cwd: worktree });
+  let reviewText = null;
+  if (options.headless) {
+    console.log("Running the review session headless; the prompt is fed in on stdin.\n");
+    // Captured rather than inherited: the launcher publishes the result itself, which is the only
+    // way the marker can be written *after* the worktree check instead of before it.
+    reviewText = run(command[0], command.slice(1), { cwd: worktree, input: prompt });
+    console.log(reviewText);
+  } else {
+    console.log("Starting the review session. Paste the prompt above into it.\n");
+    run(command[0], command.slice(1), { capture: false, cwd: worktree });
+  }
 
   // A detector, not a preventer: it runs after the session ended, so a violating session has
   // already done whatever it did. It also only sees this worktree — writes elsewhere are invisible.
@@ -411,12 +728,16 @@ function main(argv) {
   const dirty = run("git", ["status", "--porcelain"], { cwd: worktree });
   const head = run("git", ["rev-parse", "HEAD"], { cwd: worktree });
   console.log("");
-  if (dirty || head !== pr.headRefOid) {
+  const violation = detectWorktreeViolation({ dirty, head, expectedSha: pr.headRefOid });
+  if (violation.violated) {
     console.error("READ-ONLY VIOLATED: the review session changed its worktree.");
-    if (dirty) console.error(dirty);
-    if (head !== pr.headRefOid) console.error(`HEAD moved to ${head}.`);
+    for (const reason of violation.reasons) console.error(reason);
     console.error("Treat the review as invalid.");
-    if (options.enforced) {
+    if (reviewText !== null) {
+      // The whole point of publishing from here: nothing was written to the pull request, so there
+      // is no marker to race the reconciler for.
+      console.error("Nothing was published; the result is discarded.");
+    } else {
       console.error(
         `Delete any agent-pipeline:review-result marker for ${pr.headRefOid} from pull request #${pr.number} now:\n` +
           "the reconciler runs on a schedule and would read it as a passing review.",
@@ -426,7 +747,62 @@ function main(argv) {
     return;
   }
   console.log(`Worktree unchanged at ${pr.headRefOid}; no write reached the reviewed code.`);
+  if (readOnlyLevel === "verified") {
+    console.log("This check is what read-only=verified stands for; the marker is now backed by it.");
+  }
+
+  if (reviewText !== null) {
+    publishResult({ pr, options, reviewText, readOnlyLevel, sessionId });
+  }
   console.log(`Clean up with: git worktree remove ${worktree}`);
+}
+
+/**
+ * Writes the review out and posts it, now that the worktree check has passed.
+ *
+ * Publishing is best-effort by design: where `gh` is missing the result is still written to a file
+ * with the marker already appended, so the operator — or the session driving this script — can post
+ * it verbatim. Failing to post must not lose the review.
+ */
+function publishResult({ pr, options, reviewText, readOnlyLevel, sessionId }) {
+  const verdict = parseVerdict(reviewText);
+  const body =
+    verdict === null
+      ? reviewText
+      : `${reviewText.trimEnd()}\n\n${buildResultMarker({
+          headSha: pr.headRefOid,
+          reviewMode: options.mode,
+          verdict,
+          sessionId,
+          readOnlyLevel,
+        })}\n`;
+
+  const resultPath =
+    options.resultFile ??
+    join(mkdtempSync(join(tmpdir(), "agent-review-result-")), `pr-${pr.number}-result.md`);
+  writeFileSync(resultPath, body, "utf8");
+  console.log(`\nResult       : ${resultPath}`);
+
+  if (verdict === null) {
+    console.error(
+      "No unambiguous `Verdikt:` line in the review output — no marker was appended.\n" +
+        "Read the result and decide manually; a guessed verdict must never reach the gate.",
+    );
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`Verdict      : ${verdict}`);
+
+  try {
+    run("gh", ["pr", "comment", String(pr.number), "--body-file", resultPath]);
+    console.log(`Published    : comment posted to pull request #${pr.number}.`);
+  } catch {
+    console.log(
+      `Published    : not posted — gh is unavailable here.\n` +
+        `               Post the file above verbatim as a comment on pull request #${pr.number};\n` +
+        `               it already carries the marker the merge gate reads.`,
+    );
+  }
 }
 
 const isMainModule =

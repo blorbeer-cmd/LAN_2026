@@ -75,7 +75,7 @@ the audit trail.
 | Label          | Mode     | What satisfies the gate for the current head SHA                                                   |
 | -------------- | -------- | ---------------------------------------------------------------------------------------------------- |
 | `review:cross` | `cross`  | an approval from the counter provider's `providerReviewerAllowlist`                                  |
-| `review:self`  | `self`   | a published `agent-pipeline:review-result` marker: same head, `verdict=pass`, `read-only=true`, from one of the implementation provider's own identities |
+| `review:self`  | `self`   | a published `agent-pipeline:review-result` marker: same head, `verdict=pass`, a `read-only` level meeting `selfReviewMinimumEnforcement` (default `verified`), from one of the implementation provider's own identities |
 | `review:human` | `human`  | an approving review from an account with write access, covering exactly this head                     |
 
 With no label set and everything mechanical green, the pull request sits in the
