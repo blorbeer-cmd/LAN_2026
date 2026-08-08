@@ -19,6 +19,8 @@
 // DESIGN_SYSTEM.md instead of silently bypassing the check.
 
 const { execFileSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 const BASE_REF_FLAG = '--base-ref';
 const baseRefFlagIndex = process.argv.indexOf(BASE_REF_FLAG);
@@ -30,6 +32,8 @@ if (baseRefFlagIndex !== -1 && (!baseRef || baseRef.startsWith('--'))) {
 }
 
 const SCOPE = 'server/public';
+const PUBLIC_ROOT = path.join(__dirname, '..', 'public');
+const FRONTEND_EXTENSIONS = new Set(['.css', '.html', '.js']);
 const EXEMPT_FILES = new Set([
   // Single source of truth for the avatar swatch palette — hex values here
   // ARE the token definitions, not a bypass of them.
@@ -100,9 +104,59 @@ function addedLines(file) {
   return diff.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++'));
 }
 
+function frontendSources(root = PUBLIC_ROOT) {
+  const files = [];
+
+  function visit(directory) {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const absolutePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(absolutePath);
+      } else if (entry.isFile() && FRONTEND_EXTENSIONS.has(path.extname(entry.name))) {
+        files.push(absolutePath);
+      }
+    }
+  }
+
+  visit(root);
+  return files.sort().map((absolutePath) => ({
+    file: `${SCOPE}/${path.relative(root, absolutePath).replaceAll('\\', '/')}`,
+    source: fs.readFileSync(absolutePath, 'utf8'),
+  }));
+}
+
+function findUndefinedCustomProperties(sources) {
+  const definitions = new Set();
+
+  for (const { source } of sources) {
+    for (const match of source.matchAll(/(--[\w-]+)\s*:/g)) {
+      definitions.add(match[1]);
+    }
+    for (const match of source.matchAll(/\.setProperty\(\s*(['"`])(--[\w-]+)\1/g)) {
+      definitions.add(match[2]);
+    }
+  }
+
+  const undefinedReferences = [];
+  for (const { file, source } of sources) {
+    for (const match of source.matchAll(/var\(\s*(--[\w-]+)\s*(,)?/g)) {
+      const [, name, fallbackMarker] = match;
+      if (definitions.has(name) || fallbackMarker) continue;
+      undefinedReferences.push({
+        file,
+        line: source.slice(0, match.index).split('\n').length,
+        name,
+      });
+    }
+  }
+
+  return undefinedReferences;
+}
+
 function main() {
   const files = changedFiles();
   const violations = [];
+  const undefinedCustomProperties = findUndefinedCustomProperties(frontendSources());
 
   for (const file of files) {
     for (const line of addedLines(file)) {
@@ -115,24 +169,42 @@ function main() {
     }
   }
 
-  if (violations.length === 0) {
-    process.exit(0);
+  if (undefinedCustomProperties.length === 0 && violations.length === 0) {
+    return 0;
   }
 
-  const checkedScope = baseRef ? `changes since ${baseRef}` : 'staged changes';
-  console.error(`\n✗ Design-token check failed — hardcoded value(s) found in ${checkedScope}:\n`);
-  for (const v of violations) {
-    console.error(`  ${v.file} [${v.rule}]`);
-    console.error(`    ${v.line}`);
+  if (undefinedCustomProperties.length > 0) {
+    console.error('\n✗ Design-token check failed — undefined CSS custom property reference(s):\n');
+    for (const reference of undefinedCustomProperties) {
+      console.error(`  ${reference.file}:${reference.line} [${reference.name}]`);
+    }
+    console.error(
+      '\nDefine each property in the design-system tokens, set it dynamically with style.setProperty(...), ' +
+        'or provide an intentional var(--name, fallback) value.\n'
+    );
   }
-  console.error(
-    '\nUse an existing token from server/DESIGN_SYSTEM.md instead (var(--space-N), var(--font-size-*), ...).'
-  );
-  console.error(
-    'If this is a genuine, deliberate exception, add a same-line comment containing "design-token-ok"\n' +
-      'plus a short reason (see "When a value genuinely doesn\'t fit" in DESIGN_SYSTEM.md).\n'
-  );
-  process.exit(1);
+
+  if (violations.length > 0) {
+    const checkedScope = baseRef ? `changes since ${baseRef}` : 'staged changes';
+    console.error(`\n✗ Design-token check failed — hardcoded value(s) found in ${checkedScope}:\n`);
+    for (const v of violations) {
+      console.error(`  ${v.file} [${v.rule}]`);
+      console.error(`    ${v.line}`);
+    }
+    console.error(
+      '\nUse an existing token from server/DESIGN_SYSTEM.md instead (var(--space-N), var(--font-size-*), ...).'
+    );
+    console.error(
+      'If this is a genuine, deliberate exception, add a same-line comment containing "design-token-ok"\n' +
+        'plus a short reason (see "When a value genuinely doesn\'t fit" in DESIGN_SYSTEM.md).\n'
+    );
+  }
+
+  return 1;
 }
 
-main();
+if (require.main === module) {
+  process.exitCode = main();
+}
+
+module.exports = { findUndefinedCustomProperties, main };
