@@ -541,6 +541,33 @@ test("a draft pull request is never ready", () => {
   assert.match(readiness.blockers.join("\n"), /still a draft/);
 });
 
+test("a green draft pull request asks for the review mode", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({
+      isDraft: true,
+      labels: [],
+      statusCommentBody: decisionRecord(HEAD, "none"),
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, false);
+  assert.equal(readiness.phase, "awaiting-review-decision");
+  assert.match(readiness.blockers.join("\n"), /still a draft/);
+  assert.match(readiness.blockers.join("\n"), /No review mode has been chosen/);
+  assert.match(renderStatusComment(readiness, { headSha: HEAD }), /Who reviews this head/);
+});
+
+test("a selected review runs while the pull request is still a draft", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({ isDraft: true, reviews: [] }),
+    config,
+  );
+  assert.equal(readiness.ready, false);
+  assert.equal(readiness.phase, "review");
+  assert.match(readiness.blockers.join("\n"), /still a draft/);
+  assert.match(readiness.blockers.join("\n"), /No codex review covers/);
+});
+
 test("protected path changes require an explicit human approval", () => {
   const withBotOnly = deriveReadiness(
     readySnapshot({
