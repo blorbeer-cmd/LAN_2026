@@ -20,6 +20,12 @@ import { GAME_GENRES, MAX_GENRES_PER_GAME } from '../gameGenres.js';
 import { wireSelectionSearch } from '../selectionSearch.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import {
+  isOnboardingRatingActive,
+  onboardingRatingIds,
+  onboardingRatingProgress,
+  refreshOnboardingRatingProgress,
+} from '../onboarding.js';
 
 // 'catalog' = the accepted games (everything that is not a suggestion, the
 // only ones Vote/Turnier/Auslosung offer), 'suggestions' = the pool waiting
@@ -293,7 +299,7 @@ function gameRowIconsHtml(game) {
   return `<span class="game-row-links">${trackIndicator}${detailBtn}${linkIcons}</span>`;
 }
 
-function gameRowHtml(game, myId, showSuggestionBadge) {
+function gameRowHtml(game, myId, showSuggestionBadge, onboardingRequired = false) {
   const bockStats = ratingStats(state.preferences, game.id);
   const skillStats = ratingStats(state.skills, game.id);
   const myBock = myId ? myRating(state.preferences, myId, game.id) : null;
@@ -339,7 +345,7 @@ function gameRowHtml(game, myId, showSuggestionBadge) {
     : '';
 
   return `
-    <div class="card game-table-row${isMarkedSuggestion ? ' is-suggestion' : ''}" data-search-game="${game.id}" data-game-catalog-search-item data-selection-search="${escapeHtml(game.name)}">
+    <div class="card game-table-row${isMarkedSuggestion ? ' is-suggestion' : ''}${onboardingRequired ? ' onboarding-required' : ''}" data-search-game="${game.id}" data-game-catalog-search-item data-selection-search="${escapeHtml(game.name)}">
       <div class="game-row-name">
                 <strong class="game-row-title">${escapeHtml(game.name)}</strong>
         ${suggestionBadge}
@@ -677,22 +683,28 @@ export function renderGameCatalog(container, ctx) {
   if (suggestionsCache === null && !suggestionsLoading) loadSuggestions(ctx);
 
   const myId = getMyId();
+  const ratingMode = isOnboardingRatingActive();
+  const ratingIds = onboardingRatingIds();
+  const requiredRatingIds = new Set(ratingIds.slice(0, 10));
   const tabGames = state.games.filter((g) => {
+    if (ratingMode) return !g.isSuggestion;
     if (activeTab === 'suggestions') return g.isSuggestion;
     if (activeTab === 'catalog') return !g.isSuggestion;
     return true;
   });
   const games = tabGames
-    .filter((g) => genreFilter.size === 0 || (g.genres ?? []).some((genre) => genreFilter.has(genre)))
+    .filter((g) => ratingMode || genreFilter.size === 0 || (g.genres ?? []).some((genre) => genreFilter.has(genre)))
     .filter((g) => {
-      if (!myId || ratingFilter.size === 0) return true;
+      if (ratingMode || !myId || ratingFilter.size === 0) return true;
       if (ratingFilter.has('bock') && myRating(state.preferences, myId, g.id) !== null) return false;
       if (ratingFilter.has('skill') && myRating(state.skills, myId, g.id) !== null) return false;
       return true;
     });
-  const rows = sortedGames(games, myId);
+  const rows = ratingMode
+    ? ratingIds.map((id) => games.find((game) => game.id === id)).filter(Boolean)
+    : sortedGames(games, myId);
   const sectionTitle =
-    activeTab === 'catalog' ? 'Spielekatalog' : activeTab === 'suggestions' ? 'Vorschläge' : 'Alle Spiele';
+    ratingMode ? 'Bewertungen' : activeTab === 'catalog' ? 'Spielekatalog' : activeTab === 'suggestions' ? 'Vorschläge' : 'Alle Spiele';
   const usedGenres = GAME_GENRES.filter((g) => state.games.some((game) => (game.genres ?? []).includes(g)));
   // Distinguishes a genuinely empty catalog/suggestion pool from "filtered
   // down to nothing" - the rating filter case gets a positive framing since
@@ -718,12 +730,19 @@ export function renderGameCatalog(container, ctx) {
     <div class="grouped-page-sections" style="margin-top:var(--space-3);">
       <section class="card stack grouped-page-section" aria-labelledby="game-catalog-list-title">
         <div class="grouped-page-section-title"><h2 id="game-catalog-list-title">${sectionTitle}</h2></div>
-        <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
+        ${ratingMode ? `
+          <div class="onboarding-rating-banner" aria-live="polite">
+            <div class="onboarding-rating-banner-copy">
+              <strong>Pflichtbewertung</strong>
+              <span>${onboardingRatingProgress().completed} von ${onboardingRatingProgress().required} Spielen vollständig bewertet. Für jedes Spiel werden Bock und Skill benötigt.</span>
+            </div>
+          </div>` : ''}
+        ${ratingMode ? '' : `<div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
           <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Katalog</button>
           <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
           <button type="button" class="btn btn-sm ${activeTab === 'all' ? 'btn-primary' : ''}" data-tab="all">Alle</button>
-        </div>
-        <section class="tournament-section-panel stack" aria-label="Sortieren und Filtern">
+        </div>`}
+        ${ratingMode ? '' : `<section class="tournament-section-panel stack" aria-label="Sortieren und Filtern">
           <div class="row" role="group" aria-label="Sortieren" style="gap:var(--space-2);flex-wrap:wrap;">
             ${SORT_OPTIONS.map((o) => sortButton(o.key, o.label)).join('')}
           </div>
@@ -751,12 +770,12 @@ export function renderGameCatalog(container, ctx) {
               .map((html, i) => (i === 0 ? html : `<div class="game-catalog-filter-divider">${html}</div>`))
               .join('')}
           </div>
-        </section>
+        </section>`}
         <div class="game-table">
           ${
             rows.length === 0
               ? emptyStateHtml(emptyMessage, { icon: icon(domainIcon('gameCatalog')) })
-              : rows.map((g) => gameRowHtml(g, myId, activeTab === 'all')).join('')
+              : rows.map((g) => gameRowHtml(g, myId, activeTab === 'all', requiredRatingIds.has(g.id))).join('')
           }
         </div>
         <p class="muted" data-game-catalog-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>
@@ -811,7 +830,7 @@ export function renderGameCatalog(container, ctx) {
     });
   });
 
-  container.querySelector('#suggest-new').addEventListener('click', () => openSuggestForm(ctx));
+  container.querySelector('#suggest-new')?.addEventListener('click', () => openSuggestForm(ctx));
 
   container.querySelectorAll('[data-detail]').forEach((btn) => {
     btn.addEventListener('click', () => openGameDetail(btn.dataset.detail, ctx));
@@ -842,7 +861,10 @@ export function renderGameCatalog(container, ctx) {
             // No ctx.refresh(): the 'preferences:changed' broadcast this
             // triggers (see app.js) already patches state for every
             // connected client, including this one.
-            await api.preferences.set(myId, gameId, parseInt(slider.value, 10));
+            const saved = await api.preferences.set(myId, gameId, parseInt(slider.value, 10));
+            const existing = state.preferences.find((p) => p.player_id === saved.playerId && p.game_id === saved.gameId);
+            if (existing) existing.rating = saved.rating;
+            else state.preferences.push({ player_id: saved.playerId, game_id: saved.gameId, rating: saved.rating });
           } else {
             // Still no ctx.refresh() (a full loadAll() + render): PUT
             // /api/skills broadcasts 'skills:changed', which app.js's
@@ -869,6 +891,7 @@ export function renderGameCatalog(container, ctx) {
           showToast(err.message, { error: true });
         } finally {
           sliderSaving = false;
+          refreshOnboardingRatingProgress();
           if (!sliderDragActive) lastCtx?.rerender();
         }
       }, 250);

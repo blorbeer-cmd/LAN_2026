@@ -50,6 +50,7 @@ import { initNumberStepper } from './numberStepper.js';
 import { initGlobalSearch } from './searchPalette.js';
 import { installDomainIcons } from './domainIcons.js';
 import { initGroupContext, refreshGroupContext } from './groupContext.js';
+import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -567,6 +568,7 @@ async function main() {
   initNotificationBanner();
   await wireSocket();
   appReady = true;
+  await initOnboarding({ navigate: (view) => switchView(view, { replace: true }), rerender: renderCurrent, getCurrentView: () => currentView });
   lastVoteRound = state.votes ? state.votes.round : null;
   // A push notification's deep link (e.g. /#votes, opened by sw.js when no
   // app window existed yet) overrides that default so the tap actually lands
@@ -585,6 +587,7 @@ async function main() {
   // before any tab switch starts pushing entries on top of it.
   history.replaceState({ view: initialView }, '');
   switchView(initialView, { fromHistory: true });
+  maybeStartOnboarding();
 }
 
 main().catch((err) => {
