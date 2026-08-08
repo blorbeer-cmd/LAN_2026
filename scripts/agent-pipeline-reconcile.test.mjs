@@ -8,6 +8,7 @@ import {
   evaluateReviewDecision,
   evaluateChecks,
   evaluateReviews,
+  fetchReviewThreads,
   GATE_DESCRIPTION_LIMIT,
   hasEarlierPassingReview,
   isOwnCheckRun,
@@ -1008,6 +1009,122 @@ test("paginate returns everything when the last page is short", async () => {
     assert.equal(requests, 2);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("paginate retries transient GitHub read failures", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  let requests = 0;
+  let warnings = 0;
+  console.warn = () => {
+    warnings += 1;
+  };
+  globalThis.fetch = async () => {
+    requests += 1;
+    if (requests < 3) {
+      return {
+        ok: false,
+        status: 500,
+        headers: { get: () => "0" },
+        body: { cancel: async () => {} },
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => [{ id: 1 }],
+    };
+  };
+
+  try {
+    const items = await paginate("/repos/o/r/pulls/1/files", "token");
+    assert.deepEqual(items, [{ id: 1 }]);
+    assert.equal(requests, 3);
+    assert.equal(warnings, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+  }
+});
+
+test("paginate does not retry permanent GitHub read failures", async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    return {
+      ok: false,
+      status: 404,
+      text: async () => "not found",
+    };
+  };
+
+  try {
+    await assert.rejects(
+      () => paginate("/repos/o/r/pulls/1/files", "token"),
+      /failed with 404: not found/,
+    );
+    assert.equal(requests, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("GraphQL reads retry RATE_LIMITED errors returned with HTTP 200", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  let requests = 0;
+  let warnings = 0;
+  console.warn = () => {
+    warnings += 1;
+  };
+  globalThis.fetch = async () => {
+    requests += 1;
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => "0" },
+      json: async () =>
+        requests === 1
+          ? {
+              errors: [
+                { type: "RATE_LIMITED", message: "API rate limit exceeded" },
+              ],
+            }
+          : {
+              data: {
+                repository: {
+                  pullRequest: {
+                    mergeStateStatus: "CLEAN",
+                    reviewThreads: {
+                      nodes: [],
+                      pageInfo: { hasNextPage: false, endCursor: null },
+                    },
+                  },
+                },
+              },
+            },
+    };
+  };
+
+  try {
+    const result = await fetchReviewThreads({
+      owner: "o",
+      repo: "r",
+      pullNumber: 1,
+      token: "token",
+    });
+    assert.deepEqual(result, {
+      mergeStateStatus: "CLEAN",
+      reviewThreads: [],
+      readable: true,
+    });
+    assert.equal(requests, 2);
+    assert.equal(warnings, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
   }
 });
 
