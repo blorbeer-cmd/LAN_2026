@@ -174,13 +174,13 @@ export function evaluateReviews(reviews, headSha, allowedReviewerLogins) {
     }
   }
 
+  const isCounterProvider = (review) =>
+    (allowedReviewerLogins ?? []).includes(review.author) &&
+    // A human is never the counter provider, even if their login were listed by mistake.
+    isBotLogin(review.author);
+
   const decisive = [...latestByAuthor.values()];
-  const fromReviewer = decisive.filter(
-    (review) =>
-      (allowedReviewerLogins ?? []).includes(review.author) &&
-      // A human is never the counter provider, even if their login were listed by mistake.
-      isBotLogin(review.author),
-  );
+  const fromReviewer = decisive.filter(isCounterProvider);
 
   let verdict = "none";
   if (fromReviewer.some((review) => review.state === "CHANGES_REQUESTED")) {
@@ -188,6 +188,30 @@ export function evaluateReviews(reviews, headSha, allowedReviewerLogins) {
   } else if (fromReviewer.some((review) => review.state === "APPROVED")) {
     verdict = "pass";
   }
+
+  // Did the counter provider look at *this* head at all? Deliberately counts `COMMENTED`, which
+  // the loop above skips because it decides nothing on its own.
+  //
+  // This exists because the Codex integration never submits an approving review. Requiring
+  // `APPROVED` therefore left `cross` permanently unsatisfiable — the review ran, found real
+  // defects, confirmed the fixes, and the gate still reported that nothing had reviewed the head.
+  //
+  // What it does submit depends on how the review came about, and the difference matters:
+  //
+  // - An **automatic** pass with nothing to say may only leave a thumbs-up reaction. That is no
+  //   evidence here and cannot become any: a reaction carries no commit SHA, so it could never be
+  //   bound to the head it supposedly judged.
+  // - An **explicitly requested** review — how this pipeline always asks — is submitted as
+  //   `COMMENTED`, including when it reports no findings.
+  //
+  // Stating only the first half of that once cost a review round: it reads as "a clean pass leaves
+  // nothing to read", which would make this whole function pointless, and it was filed as a defect
+  // on exactly those grounds.
+  //
+  // `DISMISSED` stays excluded: a withdrawn review is not a review.
+  const reviewedByProvider = currentHead.some(
+    (review) => review.state !== "DISMISSED" && isCounterProvider(review),
+  );
 
   // The repository is public, so anyone with a GitHub account can approve a pull request here.
   // Only an approval from someone who could write to the repository anyway may satisfy the
@@ -199,8 +223,21 @@ export function evaluateReviews(reviews, headSha, allowedReviewerLogins) {
       WRITE_ASSOCIATIONS.has(review.authorAssociation),
   );
 
-  return { verdict, humanApproval };
+  return { verdict, humanApproval, reviewedByProvider };
 }
+
+// What counts as evidence that the counter provider reviewed the current head.
+//
+// - `approval`             an approving review, the strongest signal GitHub offers.
+// - `reviewed-and-resolved` the counter provider reviewed this exact head and none of the findings
+//                           it raised are still open.
+//
+// The second is weaker and says so: it infers "nothing left to object to" from an absence rather
+// than reading a statement. It is the default because the first is not reachable with the current
+// Codex integration, and a gate condition nothing can ever satisfy is not a stricter gate — it is a
+// broken one that pushes everyone towards `human` or towards not using the pipeline at all.
+export const CROSS_REVIEW_EVIDENCE_MODES = ["approval", "reviewed-and-resolved"];
+export const DEFAULT_CROSS_REVIEW_EVIDENCE = "reviewed-and-resolved";
 
 /**
  * True for check runs the pipeline produces itself.
@@ -725,6 +762,14 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
   // accept a verdict nothing outside the prompt backed up.
   const selfReviewMinimum =
     config.selfReviewMinimumEnforcement ?? DEFAULT_SELF_REVIEW_MINIMUM;
+  const crossEvidence = config.crossReviewEvidence ?? DEFAULT_CROSS_REVIEW_EVIDENCE;
+  if (!CROSS_REVIEW_EVIDENCE_MODES.includes(crossEvidence)) {
+    // Same reasoning as the self-review minimum: a misconfigured gate is loud, never lenient.
+    throw new Error(
+      `crossReviewEvidence must be one of ${CROSS_REVIEW_EVIDENCE_MODES.join(", ")}; got ` +
+        `${JSON.stringify(crossEvidence)}.`,
+    );
+  }
 
   // Whether the chosen mode is still waiting for its verdict, as opposed to having one already.
   let evidenceOutstanding = false;
@@ -746,12 +791,31 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
       );
     }
   } else if (decision.mode === "cross") {
+    // An explicit rejection always blocks, whatever the configured evidence mode is.
     if (reviews.verdict === "changes-required") {
       blockers.push("The cross-review requested changes for the current head SHA.");
-    } else if (reviews.verdict !== "pass") {
+    } else if (reviews.verdict === "pass") {
+      // An approving review is accepted under every mode.
+    } else if (crossEvidence !== "reviewed-and-resolved") {
       evidenceOutstanding = true;
       blockers.push(
         `No ${reviewerProvider ?? "cross"} review has approved the current head SHA yet.`,
+      );
+    } else if (!reviews.reviewedByProvider) {
+      evidenceOutstanding = true;
+      // Naming the remedy matters here: the evidence is a *submitted review* bound to this head, and
+      // the counter provider only submits one when a review is requested for it. A provider that
+      // merely reacted — Codex answers a clean automatic pass with a thumbs-up — leaves nothing this
+      // gate can read, because a reaction carries no commit SHA and could never be head-bound.
+      blockers.push(
+        `No ${reviewerProvider ?? "cross"} review covers the current head SHA yet; request one for ` +
+          "this head (a reaction is not evidence, only a submitted review is).",
+      );
+    } else if (!threadsReadable || threads.blockingCount > 0) {
+      // The findings are the verdict here: a provider that never approves says "no objection" by
+      // leaving nothing open. Unreadable threads must block rather than read as "nothing open".
+      blockers.push(
+        `The ${reviewerProvider ?? "cross"} review of the current head SHA has unresolved findings.`,
       );
     }
   } else if (decision.mode === "self") {

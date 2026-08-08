@@ -119,7 +119,10 @@ das Kontingent verbrauchen, das diese Frage schützen soll.
    menschenlesbaren Reviewergebnis, nicht an dessen Stelle.
    Ein Fallback-Review — der zuerst gewählte Anbieter war nicht verfügbar — verwendet denselben
    Marker mit `mode=self` und wird zusätzlich mit `agent:review-fallback` gekennzeichnet.
-5. Bei a) genügt die Approval des Gegen-Anbieters, bei c) die Approval des Menschen — beide für
+5. Bei a) zählt, was `crossReviewEvidence` verlangt: eine Approval des Gegen-Anbieters oder —
+   Standard `reviewed-and-resolved` — dessen Review genau dieses Heads mit aufgelösten Findings.
+   Der Standard existiert, weil die Codex-Integration nie approvt: Sie kommentiert bei Findings und
+   reagiert sonst mit einem Daumen. Bei c) die Approval des Menschen — jeweils für
    exakt den aktuellen Head-SHA. Ein Ergebnis-Marker ist dort nicht nötig.
 6. Nach einem Fix-Commit beginnt der Ablauf von vorn: Der Reconciler entfernt das an den alten
    Head gebundene Wahl-Label, und die Frage wird erneut gestellt. Das neue Label erst setzen, wenn
