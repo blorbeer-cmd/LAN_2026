@@ -6,7 +6,7 @@
 
 import { api } from '../api.js';
 import { confirmDialog } from '../modal.js';
-import { state, gameById, catalogGames } from '../state.js';
+import { state, catalogGames } from '../state.js';
 import { escapeHtml, avatarHtml, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
@@ -1010,7 +1010,7 @@ function renderRoundRobinBoard(t, teamsById, matches, standings, { accentRounds 
   `;
 }
 
-function renderRoundRobin(t, ctx) {
+function renderRoundRobin(t) {
   const teamsById = new Map(t.teams.map((team) => [team.id, team]));
   return renderRoundRobinBoard(t, teamsById, t.matches, t.standings, { accentRounds: true });
 }
@@ -1104,7 +1104,7 @@ function renderDetail(container, ctx) {
       ? renderBracket(t, ctx)
       : t.format === 'group_knockout'
         ? renderGroupKnockout(t, ctx)
-        : renderRoundRobin(t, ctx);
+        : renderRoundRobin(t);
   const board =
     t.format === 'single_elimination'
       ? `<div class="section-title">Turnierbaum</div><div class="card tournament-board-panel">${boardContent}</div>`

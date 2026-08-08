@@ -6,7 +6,6 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, disconnectPlayerSockets, Events } from '../realtime';
 import { isNonEmptyString, isHexColor, isValidAvatar } from '../validation';
-import { getTrackingEventId } from '../events';
 import { formatDurationMs, computePlaytime, type PlaySession } from '../playtime';
 import { sessionDurations, computeSimultaneousGameTime, type SessionDuration } from '../sessionStats';
 import { computeAwards } from '../awards';

@@ -46,7 +46,6 @@ async function makePlayers(baseUrl: string, names: string[]): Promise<string[]> 
 // first drawing phase (host draws). Returns the matchId and the token for
 // the drawing currently in progress.
 async function startMatchAndBeginDrawing(
-  baseUrl: string,
   hostSocket: ClientSocket,
   guestSocket: ClientSocket,
   hostId: string,
@@ -87,7 +86,7 @@ test('Scribble live thumbs-up: toggles, rejects the artist and stale tokens, nev
   const guestSocket = await connect(baseUrl);
   try {
     const [hostId, guestId] = await makePlayers(baseUrl, ['Thumb Host', 'Thumb Guest']);
-    const { matchId, token } = await startMatchAndBeginDrawing(baseUrl, hostSocket, guestSocket, hostId, guestId);
+    const { matchId, token } = await startMatchAndBeginDrawing(hostSocket, guestSocket, hostId, guestId);
     assert.ok(token, 'a drawing phase opens a live thumbs token');
 
     // The drawer can't thumb their own (in-progress) drawing.

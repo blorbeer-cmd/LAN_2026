@@ -442,7 +442,7 @@ function renderHistory() {
 
 // ---------- captain draft: live board ----------
 
-function renderDraftBoard(draft, ctx) {
+function renderDraftBoard(draft) {
   // Captains pick by turn order, not by rating (routes/draft.ts): the values
   // here inform the picking captain, they never enter a calculation.
   const skillOptions = { balanced: false };
@@ -540,7 +540,7 @@ export function renderMatchmaking(container, ctx) {
   if (draft && draft.status === 'active') {
     container.innerHTML = `
       <h1 class="view-title">Teams</h1>
-      ${renderDraftBoard(draft, ctx)}`;
+      ${renderDraftBoard(draft)}`;
     wireDraftBoard(container, ctx);
     return;
   }
