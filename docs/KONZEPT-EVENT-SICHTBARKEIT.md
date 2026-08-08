@@ -54,7 +54,13 @@ Eventzugehörigkeit. Das ist heute die direkteste Offenlegung — und gleichzeit
 Voraussetzung dafür, dass die bestehende Einladungs-UI in `server/public/js/views/games.js:82`
 überhaupt funktioniert (sie filtert die offenen Einladungen clientseitig aus der Gesamtliste).
 
-**Lücke B — Auswertungen ignorieren die Sichtbarkeit vollständig.**
+**Lücke B — der Eventzugriff wird an drei verschiedenen Stellen umgangen.**
+
+Entscheidend ist, **woher** ein Endpunkt seinen Event-Scope bezieht. Nach dieser Quelle ist die
+Inventur gegliedert, nicht nach dem Query-Parameter — eine frühere Fassung dieses Dokuments
+inventarisierte nur `?eventId=` und übersah dadurch die beiden anderen Klassen vollständig.
+
+**B1 — expliziter `?eventId=`-Parameter, ungeprüft übernommen.**
 
 | Endpunkt | Verhalten heute | Ort |
 |---|---|---|
@@ -66,6 +72,46 @@ Voraussetzung dafür, dass die bestehende Einladungs-UI in `server/public/js/vie
 | `GET /api/tournaments` | `?eventId=` ungeprüft, Default `getTrackingEventId()` (global, nicht gruppengeprüft) | `routes/tournaments.ts:272-285` |
 | `GET /api/matchmaking/history`, `GET /api/draft/history` | `?eventId=` ungeprüft | `routes/matchmaking.ts:406`, `routes/draft.ts:131` |
 | `GET /api/export/*` (CSV/PDF) | `?eventId=` ungeprüft, Default `getTrackingEventId()` | `routes/export.ts:368-385` |
+
+**B2 — Scope aus dem aktuell getrackten Event, ohne jede Prüfung.**
+
+Der gesamte aktive Abstimmungsfluss arbeitet auf der gruppenweit aktuellen Runde und prüft deren
+`meta.eventId` nirgends:
+
+| Endpunkt | Verhalten heute | Ort |
+|---|---|---|
+| `GET /api/votes` | gibt `buildPayload()` direkt aus — inklusive `eventId`, Titel, Info und Auswahl | `routes/votes.ts:337-340`, Payload `:101-127` |
+| `GET /api/votes/mine` | dieselbe Runde, kein Guard | `routes/votes.ts:402-415` |
+| `POST /api/votes`, `POST /api/votes/points` | **Schreibzugriff** auf die Runde eines fremden Events | `routes/votes.ts:516-646` |
+| `POST`/`PATCH /api/matches`, Matchmaking-Erzeugung/Rematch/Move, aktueller Draft | Scope aus `trackingEventIdForGroup()`, kein Teilnehmer-Guard | `routes/matches.ts:144-178, 254-318`, `routes/matchmaking.ts:150-260, 267-335, 440-521`, `routes/draft.ts:152-155` |
+
+Nur Broadcast und Push werden beim Rundenstart mit `eventId` gescopt (`votes.ts:470-509`); der
+REST-Pfad nutzt dieses Metadatum nicht. Und `loadAll()` ruft `api.votes.get()` für **jedes**
+Mitglied automatisch auf (`server/public/js/data.js:14-27`) — die Offenlegung passiert also ohne
+jedes Zutun.
+
+**B3 — Scope aus einer geladenen Ressource, über bekannte IDs erreichbar.**
+
+| Endpunkt | Verhalten heute | Ort |
+|---|---|---|
+| `GET /api/tournaments/:id` | liefert das vollständige Board **einschließlich `lobbyPassword`**, geprüft wird nur die Gruppe | `routes/tournaments.ts:294-298`, Serialisierung `:248-263` |
+| `POST`/`PUT /api/tournaments/:id/matches/:matchId/result` | **verändert** das Board ohne Eventguard | `routes/tournaments.ts:540-550`, Registrierung `:917-918` |
+
+Diese Klasse ist die gefährlichste: Sie ist nicht nur eine Benennungslücke, sondern erlaubt einem
+Außenstehenden mit einer geratenen oder anderswo aufgeschnappten ID das **Verändern** fremder
+Eventdaten. Negativtests, die nur `?eventId=` abklopfen, können davon nichts entdecken.
+
+**Lücke B4 — der Live-Status ist gar nicht eventgefiltert.**
+
+`GET /api/live` liefert unverändert `getLiveBoard(groupId)` (`routes/live.ts:14-15`).
+`getLiveBoard` fasst `tracking_live_contexts` pro Spieler über **alle** Events zusammen und lädt
+sämtliche `tracking_live_games` der Gruppe ohne Eventfilter (`liveStatus.ts:107-122`). Die
+Realtime-Nachricht trägt nur `{ groupId }` (`routes/agent.ts:78`), weshalb die Eventprüfung in
+`broadcast()` mangels `eventId` gar nicht greift (`realtime.ts:359-412`).
+
+Ein Außenstehender sieht damit weiterhin, wer im privaten Event gerade aktiv ist und was gespielt
+wird. Das Umstellen von `activeEventAccess` in Phase 4 behebt diesen Pfad **nicht** — der Scope ist
+in den Trackingtabellen vorhanden, wird aber beim Bau des ausgelieferten Boards verworfen.
 
 **Lücke C — eventbenennende Ausgaben in Auswertungen.**
 Zu unterscheiden von den reinen Summen: Manche Auswertungen geben einzelne Events preis, nicht
@@ -218,6 +264,25 @@ Wichtig dabei: Der heutige Default `getTrackingEventId()` in `tournaments.ts:276
 wird durch `resolveGroupEventScope(...)` ersetzt, das den Trackingstand innerhalb der eigenen
 Gruppe auflöst — das repariert nebenbei eine bestehende Unsauberkeit.
 
+**(a2) Endpunkte mit Scope aus dem Tracking-Event absichern (B2).** Der aktive Abstimmungsfluss
+(`GET /api/votes`, `/mine`, `POST /api/votes`, `POST /api/votes/points`) sowie die schreibenden
+Pfade von Matches, Matchmaking und Draft lösen ihr Event serverseitig auf und prüfen es nie. Sie
+brauchen dieselbe Prüfung gegen `meta.eventId` beziehungsweise das aufgelöste Tracking-Event.
+
+Für Leseantworten gilt dabei eine Besonderheit: Ein `404` würde die Existenz einer laufenden
+Abstimmung verraten. Diese Endpunkte liefern stattdessen einen **neutralen Leerzustand** — so, als
+liefe keine Runde. Schreibzugriffe antworten weiterhin mit `404`.
+
+**(a3) Ressourcenrouten absichern (B3).** `GET /api/tournaments/:id` und die Ergebnis-Mutationen
+leiten ihr Event aus der geladenen Ressource ab. Sie erhalten nach dem Laden eine Prüfung von
+`tournament.event_id` gegen die Sichtbarkeit des Aufrufers. Das ist der einzige Pfad, über den
+heute `lobbyPassword` eines fremden Events lesbar ist.
+
+**(a4) Live-Status pro Betrachter filtern (B4).** `getLiveBoard` bekommt die sichtbare Eventmenge
+als Parameter und lässt Kontexte fremder Events weg; die Realtime-Nachricht in `agent.ts:78` muss
+ihren `eventId`-Scope mitführen, damit die Prüfung in `broadcast()` überhaupt greifen kann. Ohne
+das bleibt sichtbar, wer im privaten Event gerade spielt — unabhängig von allem anderen in Phase 4.
+
 **(b) Eventbenennende Ausgaben filtern.** Drei Stellen geben einzelne Events preis und brauchen
 die Sichtbarkeits-Allowlist:
 
@@ -245,6 +310,14 @@ Scope. Zu tun bleibt:
   seinen expliziten Event- oder Gruppenscope gebunden. Ein Gruppen-Kiosk darf danach **keine**
   `participants`-Events mehr anzeigen — das ist eine Verhaltensänderung und gehört in die
   Betriebsdokumentation.
+- **Die Kiosk-Grenze liegt im REST-Pfad, nicht im Realtime-Pfad.** `requestCanAccessGroupEvent`
+  lässt heute jede Kiosk-Anfrage pauschal passieren (`groupEventScope.ts:44`), und ein
+  Gruppen-Kiosk erhält `kioskScope.eventId = null` (`routes/index.ts:79-104`). Er lädt damit
+  `/api/votes/kiosk`, `/api/tournaments` und `/api/tournaments/:id` (`public/js/kiosk.js:583-606`)
+  im gruppenweit aktuellen Eventzustand — beim Turnier bis hin zu den Lobby-Zugangsdaten. Realtime
+  schickt dem Kiosk bewusst nur Refetch-Signale (`realtime.ts:378-405`), die eigentliche
+  Autorisierung passiert also beim Refetch. Ein Gruppen-Token muss dort einen neutralen Zustand
+  bekommen, ein exakt eventgebundenes Token weiterhin seine Daten.
 
 Aufwand: klein.
 
@@ -359,22 +432,30 @@ Performance. Bei ~15 Personen und einer Handvoll Events kostet ein zusätzliches
 |---|---|---|---|
 | 1 | Sichtbarkeits-Resolver + Stufenmodell | S | — |
 | 2 | Eventliste, Detail, Teaser-Serialisierung | S–M | 1 |
-| 3a | `?eventId=` an ~15 Endpunkten validieren | S | 1 |
+| 3a | `?eventId=` an ~15 Endpunkten validieren (B1) | S | 1 |
+| 3a2 | Aktiven Vote-Fluss und schreibende Match-/Matchmaking-/Draft-Pfade absichern (B2) | **M** | 1 |
+| 3a3 | Ressourcenrouten `tournaments/:id` und Ergebnis-Mutationen absichern (B3) | S–M | 1 |
+| 3a4 | Live-Board pro Betrachter filtern, Agent-Broadcast mit `eventId` scopen (B4) | **M** | 1 |
 | 3b | Hall of Fame, Matches- und Turnierliste filtern | S | 1 |
-| 4 | Realtime/Push/Kiosk angleichen | S | 1 |
+| 4 | Realtime/Push angleichen **plus Kiosk-REST-Matrix** | S–M | 1 |
 | 5 | Frontend: Sichtbarkeitsauswahl, Teaser | S | 2 |
-| 6 | Negativ-Testsuite, E2E, Doku | M | alle |
+| 6 | Negativ-Testsuite (Lesen **und** Schreiben, je Scope-Klasse), E2E, Doku | **M–L** | alle |
 | — | `setParticipants` bereinigen, `public` → `group` (4.3) | XS | — |
 
 Zwei Posten sind gegenüber der ersten Fassung entfallen: die Migration der Bestandsdaten (es
-gibt keine, 4.3) und der Umbau aller Aggregate auf eine Allowlist (nicht gewollt, 2.3). Übrig
-bleibt fast nur noch mechanische Arbeit.
+gibt keine, 4.3) und der Umbau aller Aggregate auf eine Allowlist (nicht gewollt, 2.3).
 
-Gesamtgröße: **klein bis mittel**, sinnvoll auf zwei PRs verteilt — **(1+2+4+5)** liefert die
-eigentliche Funktion und ist für sich vollständig nutzbar, **(3+6)** zieht die Validierung über
-die Auswertungsendpunkte und sichert sie mit der Negativsuite ab. Die Aufteilung ist eine
-Reviewgrenze, keine fachliche: nach PR 1 sind Events bereits nur noch für Eingeladene sichtbar,
-nach PR 2 lässt sich das auch nicht mehr über einen geratenen `?eventId=`-Parameter umgehen.
+Dafür sind vier hinzugekommen — 3a2, 3a3, 3a4 und die Kiosk-REST-Matrix. Sie stammen aus dem
+Cross-Review des Konzepts und korrigieren einen Strukturfehler der ersten Fassung: Diese
+inventarisierte nach Query-Parameter statt nach Scope-Quelle und übersah dadurch alles, was sein
+Event serverseitig auflöst oder aus einer Ressource liest. Das betrifft ausgerechnet die
+schreibenden Pfade, also den einzigen Teil, bei dem ein Außenstehender nicht nur mitlesen, sondern
+fremde Eventdaten **verändern** kann.
+
+Gesamtgröße damit **mittel**, nicht mehr „klein bis mittel". Weiterhin zwei PRs — **(1+2+4+5)**
+liefert die sichtbare Funktion, **(3+6)** schließt die Umgehungswege und sichert sie ab. Der zweite
+PR ist jetzt der deutlich größere; falls er zu groß wird, ist 3a4 (Live-Status) die natürliche
+Trennlinie, weil er als Einziger Trackinglogik statt Routenguards betrifft.
 
 ---
 
@@ -391,5 +472,14 @@ nach PR 2 lässt sich das auch nicht mehr über einen geratenen `?eventId=`-Para
 - Gruppen-Admin und Owner sehen und verwalten weiterhin alles.
 - Ein Event wird ausschließlich über eine Einladung betretbar; es gibt keinen Weg mehr, jemanden
   ohne Einladung auf `accepted` zu setzen.
-- Jeder Endpunkt mit `?eventId=` hat einen Negativtest gegen ein fremdes Event.
+- **Ein Außenstehender kann fremde Eventdaten nicht verändern.** Ergebnis-Mutationen,
+  Stimmabgaben, Matchkorrekturen und Draw-Moves antworten mit `404`, und der Datenbankzustand
+  bleibt danach nachweislich unverändert.
+- Der Live-Status eines privaten Events ist für Außenstehende weder per REST noch per Socket
+  sichtbar — weder das gespielte Spiel noch ein daraus abgeleiteter `playing`-Status.
+- Ein Gruppen-Kiosk zeigt keine Abstimmung und kein Turnier eines `participants`-Events; ein exakt
+  eventgebundenes Kiosk-Token sieht seine Daten weiterhin.
+- Negativtests existieren **je Scope-Klasse** (expliziter `?eventId=`, Tracking-Event, Event aus
+  der Ressource) und **für Lesen wie Schreiben** — nicht nur für den Query-Parameter. Genau diese
+  Verengung war der Fehler der ersten Konzeptfassung.
 - `npm run lint`, `npm run build`, `npm test` und `npm run test:e2e` sind grün.
