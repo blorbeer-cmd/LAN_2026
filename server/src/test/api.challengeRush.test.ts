@@ -813,9 +813,15 @@ test('Challenge Rush gives two players independent scores on the same color-word
     let hostRound = initialRound;
     let guestRound = initialRound;
     for (let index = 0; index < roundCount; index += 1) {
-      const hostResult = await emitAck(hostSocket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId: hostId, challengeIndex: playing.challengeIndex, action: 'answer', value: hostRound.textColor });
-      await sleep(35);
-      const guestResult = await emitAck(guestSocket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId: guestId, challengeIndex: playing.challengeIndex, action: 'answer', value: wrongColor(guestRound.textColor) });
+      // Both players act independently in production. Submit their answers
+      // together so this test does not spend most of the 1.2s fast-test
+      // challenge window serializing otherwise unrelated socket round trips.
+      const [hostResult, guestResult] = await Promise.all([
+        emitAck(hostSocket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId: hostId, challengeIndex: playing.challengeIndex, action: 'answer', value: hostRound.textColor }),
+        emitAck(guestSocket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId: guestId, challengeIndex: playing.challengeIndex, action: 'answer', value: wrongColor(guestRound.textColor) }),
+      ]);
+      assert.equal(hostResult.accepted, true);
+      assert.equal(guestResult.accepted, true);
       await sleep(35);
       if (index < roundCount - 1) {
         hostRound = (hostResult.next as { round: { textColor: string } }).round;

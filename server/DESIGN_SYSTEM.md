@@ -143,6 +143,16 @@ a different-sized element, and forcing them to match would either wash out a
 small icon glow or under-power a full-screen splash effect. Only exact-value
 duplicates were consolidated; deliberately distinct ones stay distinct.
 
+## Motion
+
+| Token | Value | Use |
+|---|---|---|
+| `--motion-fast` | `0.15s ease` | Short state transitions such as a tile changing shape |
+
+All animations and transitions still require the global `prefers-reduced-motion`
+override described below. The token only standardizes timing; it does not make
+motion an acceptable substitute for a visible state change.
+
 ## Avatar sizes
 
 | Token | Value |
@@ -948,7 +958,15 @@ diff under `server/public/**/*.{css,js}` — not the whole codebase — so it
 enforces the rule going forward without requiring every existing off-scale
 value to be fixed or allowlisted first.
 
-It blocks a commit that introduces:
+It checks the complete frontend snapshot for references to undefined CSS custom
+properties: the full staged Git index locally and the full committed `HEAD` tree
+with `--base-ref` in CI. It never mixes either snapshot with unrelated unstaged
+working-tree changes. A property set dynamically with `style.setProperty(...)`
+counts as defined; a `var(--name, fallback)` reference is also valid without a
+global definition because it has an explicit recovery value. This full-state
+check also catches removal of a definition that is still referenced elsewhere.
+
+For the added lines in the staged or branch diff, it additionally blocks:
 - a hardcoded hex color outside a `--token: #...` definition itself,
 - a hardcoded `font-size`/`font-weight`,
 - a hardcoded `gap`/`padding`/`margin`,
@@ -969,10 +987,11 @@ and it does not check `box-shadow` or breakpoint values — those needed either
 too much judgment (glows are legitimately different sizes for different
 elements) or too much false-positive risk to check mechanically.
 
-Because the script reads the staged diff, an unstaged change may produce no finding.
-Before relying on the result, review the complete working diff as well. Do not stage
-unrelated user changes merely to make the checker inspect them. CI or review should run
-the same command on the intended change set; the same-line `design-token-ok` escape hatch
+Because the local script reads the staged diff and full staged index, an unstaged
+change produces no finding and cannot block an unrelated commit. Before relying on
+the result, review the complete working diff as well. Do not stage unrelated user
+changes merely to make the checker inspect them. CI or review should run the same
+command on the intended change set; the same-line `design-token-ok` escape hatch
 always requires a concrete reason, never a generic suppression.
 
 GitHub Actions checks the full branch range with
