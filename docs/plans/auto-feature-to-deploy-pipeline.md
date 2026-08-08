@@ -361,7 +361,9 @@ erfolgreich, wenn:
 - der Branch aktuell und konfliktfrei ist,
 - für den aktuellen Head-SHA genau ein Review-Modus gewählt ist,
 - das Review exakt den aktuellen Head-SHA geprüft hat,
-- das Review im gewählten Modus `pass` meldet: bei `cross` als Approval des Gegen-Anbieters, bei
+- das Review im gewählten Modus `pass` meldet: bei `cross` je nach `crossReviewEvidence` als
+  Approval des Gegen-Anbieters oder — Standard — als dessen Review genau dieses Heads ohne offene
+  Findings; ein ausdrückliches `CHANGES_REQUESTED` blockiert in beiden Fällen. Weiter bei
   `self` als vertrauenswürdiger Ergebnis-Marker, dessen `read-only`-Stufe
   `selfReviewMinimumEnforcement` erreicht, bei `human` als Approval eines Menschen mit
   Schreibzugriff,

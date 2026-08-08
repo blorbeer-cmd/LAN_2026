@@ -115,6 +115,146 @@ function readySnapshot(overrides = {}) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Cross-review evidence
+//
+// The Codex integration never submits an approving review, so demanding APPROVED left `cross`
+// unsatisfiable in practice — the review ran on PR #365, found two real P1 defects, confirmed the
+// fixes, and the gate still reported that nothing had reviewed the head.
+//
+// What it submits depends on how the review was started: an automatic pass with nothing to say may
+// only leave a thumbs-up, while an explicitly requested review — the only kind this pipeline asks
+// for — is submitted as COMMENTED even when it reports no findings. Only the latter is evidence,
+// because only a submitted review carries the commit SHA that binds it to a head.
+// ---------------------------------------------------------------------------
+
+const commentedReview = (sha = HEAD) => [
+  {
+    author: CODEX_REVIEWER,
+    state: "COMMENTED",
+    commitSha: sha,
+    submittedAt: "2026-08-08T07:23:39Z",
+  },
+];
+
+test("a commented cross-review with nothing left open satisfies the gate", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({ reviews: commentedReview(), reviewThreads: [] }),
+    config,
+  );
+  assert.equal(readiness.ready, true);
+  assert.equal(readiness.phase, "ready-for-merge");
+});
+
+test("a commented cross-review with open findings does not", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({
+      reviews: commentedReview(),
+      reviewThreads: [{ isResolved: false, isOutdated: false, isCollapsed: false }],
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, false);
+  assert.match(readiness.blockers.join("\n"), /unresolved findings/);
+});
+
+test("an explicit rejection still blocks, whatever the evidence mode", () => {
+  for (const evidence of ["approval", "reviewed-and-resolved"]) {
+    const readiness = deriveReadiness(
+      readySnapshot({
+        reviews: [
+          {
+            author: CODEX_REVIEWER,
+            state: "CHANGES_REQUESTED",
+            commitSha: HEAD,
+            submittedAt: "2026-08-08T07:23:39Z",
+          },
+        ],
+      }),
+      { ...config, crossReviewEvidence: evidence },
+    );
+    assert.equal(readiness.ready, false);
+    assert.match(readiness.blockers[0], /requested changes/);
+  }
+});
+
+test("the missing-review blocker names the remedy and rules out reactions", () => {
+  // From the cross-review of 8db0d7f: Codex answers a clean automatic pass with a thumbs-up, and
+  // reactions are never fetched. They also could not be — a reaction carries no commit SHA, so it
+  // can never be head-bound. The gate therefore needs a review requested for this head, and the
+  // blocker has to say so instead of leaving the operator guessing why a "reviewed" PR is stuck.
+  const readiness = deriveReadiness(readySnapshot({ reviews: [] }), config);
+  assert.equal(readiness.ready, false);
+  const blocker = readiness.blockers.join("\n");
+  assert.match(blocker, /request one for this head/);
+  assert.match(blocker, /a reaction is not evidence/);
+});
+
+test("a comment for an earlier head is no evidence for this one", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({ reviews: commentedReview("f".repeat(40)) }),
+    config,
+  );
+  assert.equal(readiness.ready, false);
+  assert.match(readiness.blockers.join("\n"), /covers the current head SHA/);
+});
+
+test("a withdrawn review is not a review", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({
+      reviews: [
+        {
+          author: CODEX_REVIEWER,
+          state: "DISMISSED",
+          commitSha: HEAD,
+          submittedAt: "2026-08-08T07:23:39Z",
+        },
+      ],
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, false);
+  assert.match(readiness.blockers.join("\n"), /covers the current head SHA/);
+});
+
+test("a comment from anyone but the counter provider is no evidence", () => {
+  // The author allowlist contains the human maintainer; only the reviewer allowlist may count here,
+  // otherwise a maintainer comment would silently stand in for the counter provider.
+  const readiness = deriveReadiness(
+    readySnapshot({
+      reviews: [
+        {
+          author: "blorbeer-cmd",
+          state: "COMMENTED",
+          commitSha: HEAD,
+          submittedAt: "2026-08-08T07:23:39Z",
+          authorAssociation: "OWNER",
+        },
+      ],
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, false);
+  assert.match(readiness.blockers.join("\n"), /covers the current head SHA/);
+});
+
+test("the strict evidence mode still demands an approval", () => {
+  const strict = { ...config, crossReviewEvidence: "approval" };
+  const commented = deriveReadiness(readySnapshot({ reviews: commentedReview() }), strict);
+  assert.equal(commented.ready, false);
+  assert.match(commented.blockers.join("\n"), /approved the current head SHA/);
+
+  // The default snapshot carries an approving review, which passes under both modes.
+  assert.equal(deriveReadiness(readySnapshot(), strict).ready, true);
+});
+
+test("an invalid evidence mode fails loudly instead of accepting everything", () => {
+  assert.throws(
+    () => deriveReadiness(readySnapshot(), { ...config, crossReviewEvidence: "resolved" }),
+    /crossReviewEvidence must be one of/,
+  );
+});
+
 test("a fully green snapshot reaches ready-for-merge", () => {
   const readiness = deriveReadiness(readySnapshot(), config);
   assert.equal(readiness.ready, true);
@@ -144,7 +284,7 @@ test("a new commit during review invalidates the previous approval", () => {
   );
   assert.equal(readiness.ready, false);
   assert.equal(readiness.phase, "review");
-  assert.match(readiness.blockers.join("\n"), /No codex review has approved/);
+  assert.match(readiness.blockers.join("\n"), /No codex review covers the current head SHA/);
 });
 
 test("check runs reported for another SHA count as unknown, not as a pass", () => {
@@ -572,7 +712,7 @@ test("a human approval never substitutes for the cross-review", () => {
   );
   assert.equal(humanOnly.ready, false);
   assert.equal(humanOnly.details.reviews.verdict, "none");
-  assert.match(humanOnly.blockers.join("\n"), /No codex review has approved/);
+  assert.match(humanOnly.blockers.join("\n"), /No codex review covers the current head SHA/);
 
   // On a protected path the same lone approval must not open both gates either.
   const humanOnlyProtected = deriveReadiness(
@@ -592,7 +732,7 @@ test("a human approval never substitutes for the cross-review", () => {
   assert.equal(humanOnlyProtected.ready, false);
   assert.match(
     humanOnlyProtected.blockers.join("\n"),
-    /No codex review has approved/,
+    /No codex review covers the current head SHA/,
   );
 });
 
