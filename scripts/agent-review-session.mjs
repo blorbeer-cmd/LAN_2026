@@ -423,6 +423,45 @@ export function buildResultMarker({ headSha, reviewMode, verdict, sessionId, rea
   );
 }
 
+/**
+ * Whether this launcher may actually run the review itself, as opposed to only printing its prompt.
+ *
+ * Two independent reasons it may not, both from the cross-review of 00186da:
+ *
+ * 1. It starts `claude` unconditionally. Whenever `reviewerFor()` resolves to codex — a Claude
+ *    implementation in `cross` mode, or a Codex implementation in `self` mode — launching would run
+ *    Claude while the prompt, the session id and the marker all say codex. Nobody is watching an
+ *    unattended run to notice.
+ * 2. Cross evidence is the counter provider's *native* review approval, which the reconciler reads
+ *    from `snapshot.reviews`. Its `cross` branch never looks at an `agent-pipeline:review-result`
+ *    comment, so a launched cross run would publish a marker nothing consumes while reporting
+ *    success — unusable evidence that looks valid.
+ *
+ * `--print-only` stays available for every combination: handing the prompt to the right provider's
+ * own surface is exactly how a cross review is prepared.
+ */
+export function launchSupport({ mode, implementer }) {
+  const reviewer = reviewerFor(implementer, mode);
+  if (reviewer !== "claude") {
+    return {
+      ok: false,
+      reason:
+        `this launcher only runs claude, but ${implementer} in ${mode} mode needs ${reviewer}. ` +
+        `Launching would label a claude session as a ${reviewer} review.`,
+    };
+  }
+  if (mode !== "self") {
+    return {
+      ok: false,
+      reason:
+        `a ${mode} review is evidenced by the counter provider's native approval of the head SHA, ` +
+        "not by a review-result marker. The reconciler never reads a marker for this mode, so a " +
+        "launched run would publish evidence that cannot satisfy the gate.",
+    };
+  }
+  return { ok: true, reason: null };
+}
+
 /** Guesses the implementer from the head branch prefix; `--implementer` overrides it. */
 export function implementerFromBranch(headBranch) {
   if (headBranch?.startsWith("codex/")) return "codex";
@@ -574,6 +613,14 @@ function main(argv) {
 
   const implementer =
     options.implementer ?? implementerFromBranch(pr.headRefName) ?? "claude";
+  // Before the worktree exists, so a rejected combination leaves nothing to clean up.
+  const support = launchSupport({ mode: options.mode, implementer });
+  if (options.launch && !support.ok) {
+    throw new Error(
+      `Cannot launch this review: ${support.reason}\n` +
+        "Use --print-only and hand the prompt to that provider's own surface instead.",
+    );
+  }
   // Nothing so far guarantees the head exists locally, and a review session is meant to start from
   // a clean clone. Without this, `merge-base` below fails with "not a valid commit name" — before
   // any error path that could explain what to do about it.
@@ -638,7 +685,13 @@ function main(argv) {
   console.log(`Mode         : ${options.mode} (${implementer} → ${reviewerFor(implementer, options.mode)})`);
   console.log(`Worktree     : ${worktree}`);
   console.log(`Prompt       : ${promptPath}`);
-  console.log(`Command      : ${command.join(" ")}`);
+  // Printing a `claude …` line for a review that codex has to run would be the same mislabeling in
+  // the console that the launch guard prevents in the session.
+  console.log(
+    support.ok
+      ? `Command      : ${command.join(" ")}`
+      : `Command      : none — ${support.reason}`,
+  );
   console.log(
     `Read-only    : ${
       readOnlyLevel === "true"

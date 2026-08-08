@@ -215,6 +215,17 @@ node ./scripts/agent-review-session.mjs --pr 363 --mode self --headless
 `--headless` is part of the default example on purpose: without it the run is interactive, stays at
 `read-only=false` and writes no marker, so it informs a human but cannot satisfy the gate.
 
+**The launcher only ever runs `claude`, and only for `--mode self`.** Every other combination is
+rejected before anything is created, and `--print-only` is the route for them:
+
+- Whenever `reviewerFor()` resolves to codex — a Claude implementation in `cross` mode, a Codex
+  implementation in `self` mode — launching would run Claude while prompt, session id and marker all
+  say codex. In an unattended run nobody notices.
+- A `cross` review is evidenced by the counter provider's **native** approval of the head SHA. The
+  reconciler's `cross` branch reads `snapshot.reviews` and never an `agent-pipeline:review-result`
+  comment, so a launched cross run would publish a marker nothing consumes — and report success
+  while doing it. Trigger a real cross review with `@codex review` on the pull request instead.
+
 `--mode cross|self`, `--enforced`, `--implementer codex|claude` (otherwise read from the branch prefix),
 `--focus-file` and `--goal-file` to override the defaults, `--print-only` to just get the prompt and
 the command without launching anything.

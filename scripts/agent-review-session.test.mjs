@@ -7,6 +7,7 @@ import {
   DEFAULT_FOCUS,
   detectWorktreeViolation,
   goalFromBody,
+  launchSupport,
   parseVerdict,
   implementerFromBranch,
   parseOptions,
@@ -118,6 +119,38 @@ test("the session is launched without the editing tools", () => {
 test("an unattended run can be requested explicitly", () => {
   assert.equal(parseOptions(["--pr", "364"]).headless, false);
   assert.equal(parseOptions(["--pr", "364", "--headless"]).headless, true);
+});
+
+// ---------------------------------------------------------------------------
+// From the cross-review of 00186da
+// ---------------------------------------------------------------------------
+
+test("the launcher refuses to run a review it would mislabel", () => {
+  // It starts `claude` unconditionally, so any combination whose reviewer is codex would run Claude
+  // while prompt, session id and marker all claim codex — and nobody watches an unattended run.
+  const crossFromClaude = launchSupport({ mode: "cross", implementer: "claude" });
+  assert.equal(crossFromClaude.ok, false);
+  assert.match(crossFromClaude.reason, /only runs claude/);
+
+  const selfFromCodex = launchSupport({ mode: "self", implementer: "codex" });
+  assert.equal(selfFromCodex.ok, false);
+  assert.match(selfFromCodex.reason, /only runs claude/);
+});
+
+test("the launcher refuses a cross run even when it could execute it", () => {
+  // codex implementing + cross resolves to a claude reviewer, so the provider would be right — but
+  // cross evidence is the counter provider's native approval. The reconciler's cross branch reads
+  // snapshot.reviews and never a review-result marker, so this run would publish unusable evidence
+  // and report success while doing it.
+  const crossFromCodex = launchSupport({ mode: "cross", implementer: "codex" });
+  assert.equal(crossFromCodex.ok, false);
+  assert.match(crossFromCodex.reason, /native approval/);
+
+  // The one combination this launcher can honestly run.
+  assert.deepEqual(launchSupport({ mode: "self", implementer: "claude" }), {
+    ok: true,
+    reason: null,
+  });
 });
 
 test("only the cross mode switches the provider", () => {
