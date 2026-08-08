@@ -298,10 +298,13 @@ Fallback-Review verwendet denselben Marker mit `mode=self` und wird durch
 <!-- agent-pipeline:review-result <head-sha> mode=self verdict=pass session=<id> read-only=true -->
 ```
 
-Nur ein Marker mit einer ausreichenden `read-only`-Stufe, passendem Head-SHA und `verdict=pass` von einer Identität des
-Implementierungs-Anbieters erfüllt das Gate in diesem Modus. Die Autorenprüfung ist bewusst enger
-als „vertrauenswürdiger Kommentarautor", der jedes `[bot]`-Konto einschließt. Für `cross` und `human` ist die Approval des
-jeweiligen Reviewers zum exakten Head-SHA der Nachweis; dort ist kein Marker nötig.
+Nur ein Marker mit einer ausreichenden `read-only`-Stufe, passendem Head-SHA und `verdict=pass` von
+einer dafür erlaubten Identität erfüllt das Gate. Die Autorenprüfung ist bewusst enger als
+„vertrauenswürdiger Kommentarautor", der jedes `[bot]`-Konto einschließt. Im Modus `self` muss die
+Identität zum Implementierungs-Anbieter gehören. Im Modus `cross` kann eine provider-spezifische,
+vertrauenswürdige Workflow-Identität das strukturierte Ergebnis eines credential-read-only
+Review-Laufs veröffentlichen, wenn die Anbieterintegration kein natives GitHub-Review erzeugt.
+Im Modus `human` bleibt die Approval zum exakten Head-SHA der Nachweis.
 
 ## 9. Nutzungslimits und Nichtverfügbarkeit
 
@@ -365,8 +368,10 @@ erfolgreich, wenn:
 - für den aktuellen Head-SHA genau ein Review-Modus gewählt ist,
 - das Review exakt den aktuellen Head-SHA geprüft hat,
 - das Review im gewählten Modus `pass` meldet: bei `cross` je nach `crossReviewEvidence` als
-  Approval des Gegen-Anbieters oder — Standard — als dessen Review genau dieses Heads ohne offene
-  Findings; ein ausdrückliches `CHANGES_REQUESTED` blockiert in beiden Fällen. Weiter bei
+  Approval des Gegen-Anbieters oder — Standard — als dessen natives Review genau dieses Heads ohne
+  offene Findings beziehungsweise als validierter, credential-read-only Ergebnis-Marker seines
+  dedizierten Publishers; ein ausdrückliches `CHANGES_REQUESTED` oder `changes-required` blockiert.
+  Weiter bei
   `self` als vertrauenswürdiger Ergebnis-Marker, dessen `read-only`-Stufe
   `selfReviewMinimumEnforcement` erreicht, bei `human` als Approval eines Menschen mit
   Schreibzugriff,
@@ -532,8 +537,9 @@ Umsetzungsstand: Die Auswahl selbst ist umgesetzt. Der Reconciler kennt die drei
 bindet sie an den Head-SHA, wertet die modusabhängige Evidenz aus, stellt die Frage im
 Statuskommentar samt Empfehlung und blockiert das Gate mit der Phase `awaiting-review-decision`,
 solange sie unbeantwortet ist. Der Ablauf in der Session steht in
-`.github/agent-pipeline/review-decision.md`. Das automatische Starten eines Agenten aus der
-Pipeline heraus fehlt weiterhin.
+`.github/agent-pipeline/review-decision.md`. Für Codex-Implementierungen startet `review:cross`
+bereits den eng begrenzten Claude-Pilotpfad; die Gegenrichtung und die übrigen Agentenstarts fehlen
+weiterhin.
 
 ### Phase 5 – Reviewer-Fallback und Limit-Retry
 
