@@ -25,6 +25,7 @@ import {
   onboardingRatingIds,
   onboardingRatingProgress,
   refreshOnboardingRatingProgress,
+  syncOnboardingRatingCandidates,
 } from '../onboarding.js';
 
 // 'catalog' = the accepted games (everything that is not a suggestion, the
@@ -348,6 +349,7 @@ function gameRowHtml(game, myId, showSuggestionBadge, onboardingRequired = false
     <div class="card game-table-row${isMarkedSuggestion ? ' is-suggestion' : ''}${onboardingRequired ? ' onboarding-required' : ''}" data-search-game="${game.id}" data-game-catalog-search-item data-selection-search="${escapeHtml(game.name)}">
       <div class="game-row-name">
                 <strong class="game-row-title">${escapeHtml(game.name)}</strong>
+        ${onboardingRequired ? '<span class="badge badge-playing onboarding-required-badge">Pflicht</span>' : ''}
         ${suggestionBadge}
         ${game.genres?.length ? `<span class="muted game-row-genre">${escapeHtml(game.genres.join(', '))}</span>` : ''}
         ${gameRowIconsHtml(game)}
@@ -684,6 +686,7 @@ export function renderGameCatalog(container, ctx) {
 
   const myId = getMyId();
   const ratingMode = isOnboardingRatingActive();
+  if (ratingMode) void syncOnboardingRatingCandidates();
   const ratingIds = onboardingRatingIds();
   const requiredRatingIds = new Set(ratingIds.slice(0, 10));
   const tabGames = state.games.filter((g) => {

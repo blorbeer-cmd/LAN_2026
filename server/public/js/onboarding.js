@@ -5,6 +5,7 @@
 import { api } from './api.js';
 import { state } from './state.js';
 import { getMyId } from './whoami.js';
+import { escapeHtml } from './format.js';
 
 const STEPS = [
   { title: 'Willkommen', text: 'Diese kurze Einführung zeigt die wichtigsten Bereiche und Funktionen.', view: 'home' },
@@ -19,18 +20,11 @@ const STEPS = [
 ];
 
 let runtime = null;
+let candidateSyncPending = false;
+let targetPositioningInstalled = false;
 
 function root() {
   return document.getElementById('onboarding-root');
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;');
 }
 
 function isRatingActive() {
@@ -49,6 +43,21 @@ export function onboardingRatingIds() {
   return runtime?.state?.ratingCandidateIds ?? [];
 }
 
+export async function syncOnboardingRatingCandidates() {
+  if (!isRatingActive() || candidateSyncPending) return;
+  const availableIds = new Set(state.games.filter((game) => !game.isSuggestion).map((game) => game.id));
+  if (!onboardingRatingIds().some((id) => !availableIds.has(id))) return;
+  candidateSyncPending = true;
+  try {
+    const next = await api.onboarding.rating.start({ includeAll: onboardingRatingIds().length > 10 });
+    runtime.state = next;
+    if (next.ratingStatus === 'completed') closeOverlay();
+    runtime.rerender();
+  } finally {
+    candidateSyncPending = false;
+  }
+}
+
 export function onboardingRatingProgress() {
   const ids = requiredRatingIds();
   const myId = getMyId();
@@ -57,13 +66,29 @@ export function onboardingRatingProgress() {
     state.skills.some((row) => row.player_id === myId && row.game_id === gameId)
       && state.preferences.some((row) => row.player_id === myId && row.game_id === gameId),
   ).length;
-  return { completed, required: ids.length, ready: ids.length > 0 && completed >= ids.length };
+  return { completed, required: ids.length, ready: ids.length === 0 || completed >= ids.length };
 }
 
 function clearTargetHighlight() {
   document.querySelectorAll('.onboarding-target-highlight').forEach((element) => {
     element.classList.remove('onboarding-target-highlight');
   });
+  runtime?.targetRing?.remove();
+  if (runtime) {
+    runtime.targetRing = null;
+    runtime.targetElement = null;
+  }
+}
+
+function positionTargetRing() {
+  const target = runtime?.targetElement;
+  const ring = runtime?.targetRing;
+  if (!target || !ring || !document.contains(target)) return;
+  const rect = target.getBoundingClientRect();
+  ring.style.left = `${rect.left}px`;
+  ring.style.top = `${rect.top}px`;
+  ring.style.width = `${rect.width}px`;
+  ring.style.height = `${rect.height}px`;
 }
 
 function syncTarget() {
@@ -72,7 +97,13 @@ function syncTarget() {
   if (!step?.target) return;
   const target = document.querySelector(step.target);
   if (!target) return;
-  target.classList.add('onboarding-target-highlight');
+  runtime.targetElement = target;
+  const ring = document.createElement('div');
+  ring.className = 'onboarding-target-ring';
+  ring.setAttribute('aria-hidden', 'true');
+  root()?.appendChild(ring);
+  runtime.targetRing = ring;
+  positionTargetRing();
   if (runtime.step > 0) {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     target.scrollIntoView({ block: 'nearest', behavior: reducedMotion ? 'auto' : 'smooth' });
@@ -88,7 +119,11 @@ function closeOverlay({ restoreFocus = true } = {}) {
   if (runtime) {
     runtime.mode = null;
     runtime.previousFocus = null;
+    runtime.targetElement = null;
+    runtime.targetRing = null;
   }
+  const app = document.getElementById('app');
+  if (app) app.inert = false;
 }
 
 function mascotHtml() {
@@ -98,6 +133,30 @@ function mascotHtml() {
 function wireDialogFocus() {
   const dialog = root()?.querySelector('[role="dialog"]');
   if (!dialog) return;
+  dialog.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (runtime.mode === 'core') void skipTour();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = [...dialog.querySelectorAll('button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter((element) => !element.hidden && element.getClientRects().length > 0);
+    if (focusable.length === 0) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
   const focusable = dialog.querySelector('button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
   focusable?.focus();
 }
@@ -141,28 +200,39 @@ function renderRating() {
         <p class="onboarding-rating-progress" role="status">${progress.completed} von ${progress.required} Pflichtspielen vollständig bewertet.</p>
         <div class="onboarding-actions onboarding-rating-actions">
           <button type="button" class="btn" data-onboarding-all>Alle Spiele bewerten</button>
+          <button type="button" class="btn" data-onboarding-later>Später fortsetzen</button>
           <button type="button" class="btn btn-primary" data-onboarding-finish ${progress.ready ? '' : 'disabled'}>Bewertung abschließen</button>
         </div>
       </div>
     </section>`;
   root().querySelector('[data-onboarding-all]').addEventListener('click', () => void includeAllGames());
+  root().querySelector('[data-onboarding-later]').addEventListener('click', () => deferRating());
   root().querySelector('[data-onboarding-finish]').addEventListener('click', () => void completeRating());
   wireDialogFocus();
 }
 
 function renderOverlay() {
   if (!runtime?.mode) return;
+  const app = document.getElementById('app');
+  if (app) app.inert = runtime.mode === 'core';
   if (runtime.mode === 'core') renderCore();
   else renderRating();
 }
 
 async function saveCore(patch) {
-  runtime.state = await api.onboarding.update(patch);
+  const seenViews = Array.from(new Set([...runtime.state.seenViews, STEPS[runtime.step].view])).slice(-20);
+  runtime.state = await api.onboarding.update({ ...patch, seenViews });
 }
 
 async function nextCoreStep() {
   if (runtime.step === STEPS.length - 1) {
     runtime.state = await api.onboarding.rating.start({ includeAll: false });
+    clearTargetHighlight();
+    if (runtime.state.ratingStatus === 'completed') {
+      closeOverlay();
+      runtime.rerender();
+      return;
+    }
     runtime.mode = 'rating';
     runtime.navigate('gameCatalog');
     renderOverlay();
@@ -184,6 +254,12 @@ async function previousCoreStep() {
 
 async function skipTour() {
   runtime.state = await api.onboarding.rating.start({ includeAll: false });
+  clearTargetHighlight();
+  if (runtime.state.ratingStatus === 'completed') {
+    closeOverlay();
+    runtime.rerender();
+    return;
+  }
   runtime.mode = 'rating';
   runtime.navigate('gameCatalog');
   renderOverlay();
@@ -199,6 +275,11 @@ async function completeRating() {
   const progress = onboardingRatingProgress();
   if (!progress.ready) return;
   runtime.state = await api.onboarding.rating.complete();
+  closeOverlay();
+  runtime.rerender();
+}
+
+function deferRating() {
   closeOverlay();
   runtime.rerender();
 }
@@ -225,6 +306,11 @@ export async function initOnboarding({ navigate, rerender, getCurrentView }) {
       rerender,
       getCurrentView,
     };
+    if (!targetPositioningInstalled) {
+      targetPositioningInstalled = true;
+      window.addEventListener('resize', positionTargetRing);
+      window.addEventListener('scroll', positionTargetRing, true);
+    }
   } catch {
     runtime = null;
   }

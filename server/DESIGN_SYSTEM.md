@@ -438,6 +438,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   filters, „Bock offen“ and „Skill offen“, narrow the list to games the current identity hasn't
   rated yet on that facet; both active at once is an AND, unlike the genre chips'
   OR-within-one-facet semantics.
+  The first-login onboarding uses the same catalog rows in a temporary rating mode. The first ten
+  required games are marked with the textual `Pflicht` badge and an accent rail; the list can be
+  expanded to all catalog games, but completion still requires both sliders for the required set.
+  If a required game is demoted or removed while the round is open, the server reconciles the
+  candidate list against the current catalog and fills the vacancy from the next ranked game.
 - **Player profiles** — The roster is available to signed-in members and opens read-only details for other participants.
   The session account is marked as „Mein Profil“ and opens the dedicated self-service
   profile editor. Foreign profiles expose neither edit/delete actions nor the private agent key;
@@ -830,9 +835,10 @@ space pattern rather than content-dependent card heights.
   balancing, the activity pulse means Skill, the hamburger means a Sammelbestellung, and the trophy
   is reserved for rankings, results and wins.
 - Do not use emoji, Unicode pictograms or external icon CDNs in navigation, headings,
-  buttons, status badges, chips, empty states or toasts. The Respawn logo and the mascot
-  illustration (`img/mascot.svg`, Home's no-players empty state) are the intentional brand
-  exceptions; user-authored content such as game names may contain emoji.
+  buttons, status badges, chips, empty states or toasts. The Respawn logo, the mascot
+  illustration (`img/mascot.svg`, Home's no-players empty state) and the onboarding guide
+  asset (`img/guide-head.jpg`, first-login tour) are the intentional brand exceptions;
+  user-authored content such as game names may contain emoji.
 - Colorful buttons (`.btn-primary`, `.btn-danger`, `.btn-ready`) carry text only — no leading
   icon; the color treatment already marks them as the significant action.
 - Decorative icons are hidden from assistive technology. Icon-only controls require
@@ -860,6 +866,11 @@ space pattern rather than content-dependent card heights.
   a state change.
 - Dynamic announcements such as errors or completed background actions use the
   established toast/live-region mechanism without repeatedly interrupting screen readers.
+- The first-login core tour is a true modal: `#app` is inert, focus cycles inside the dialog,
+  Escape skips the explanatory steps into the required rating mode, and focus returns to the
+  previous control after completion. The rating panel is intentionally non-modal so its sliders
+  remain usable; it stays below the shared modal layer so game details and other forms remain
+  operable.
 - Layouts must tolerate longer German text, user-provided names and browser zoom without
   clipping essential controls or creating horizontal page scrolling. Intentional
   horizontal content such as the tournament bracket remains locally scrollable.

@@ -136,7 +136,6 @@ export const api = {
     rating: {
       start: (options = {}) => apiFetch('/api/me/onboarding/rating/start', { method: 'POST', body: JSON.stringify(options) }),
       complete: () => apiFetch('/api/me/onboarding/rating/complete', { method: 'POST' }),
-      defer: () => apiFetch('/api/me/onboarding/rating/defer', { method: 'POST' }),
     },
   },
 

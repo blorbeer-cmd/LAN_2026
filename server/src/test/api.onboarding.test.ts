@@ -31,6 +31,9 @@ test('new accounts receive onboarding and must complete the first ten catalog ra
   const adminClaim = await request(app).post('/api/auth/claim').send({ code: adminInvite.code, password: 'admin password' });
   assert.equal(adminClaim.status, 200, JSON.stringify(adminClaim.body));
   const adminCookie = sessionCookie(adminClaim);
+  const adminOnboarding = await request(app).get('/api/me/onboarding').set('Cookie', adminCookie);
+  assert.equal(adminOnboarding.status, 200, JSON.stringify(adminOnboarding.body));
+  assert.equal(adminOnboarding.body.status, 'pending');
 
   const memberInvite = createInvite({ purpose: 'register', createdBy: adminId });
   const memberRegister = await request(app).post('/api/auth/register').send({
@@ -45,6 +48,12 @@ test('new accounts receive onboarding and must complete the first ten catalog ra
   assert.equal(initial.status, 200, JSON.stringify(initial.body));
   assert.equal(initial.body.status, 'pending');
   assert.equal(initial.body.ratingStatus, 'pending');
+
+  const tooManyViews = await request(app)
+    .put('/api/me/onboarding')
+    .set('Cookie', memberCookie)
+    .send({ seenViews: Array.from({ length: 21 }, (_, index) => `view-${index}`) });
+  assert.equal(tooManyViews.status, 400);
 
   const games: Array<{ id: string; name: string }> = [];
   for (let index = 0; index < 12; index += 1) {
@@ -77,7 +86,13 @@ test('new accounts receive onboarding and must complete the first ten catalog ra
   assert.equal(incomplete.body.code, 'onboarding_ratings_incomplete');
   assert.equal(incomplete.body.missingGameIds.length, 10);
 
-  for (const game of games.slice(0, 10)) {
+  const demoted = await request(app)
+    .post(`/api/games/${games[0].id}/demote`)
+    .set('Cookie', adminCookie)
+    .send();
+  assert.equal(demoted.status, 200, JSON.stringify(demoted.body));
+
+  for (const game of games.slice(1, 10)) {
     const bock = await request(app)
       .put('/api/preferences')
       .set('Cookie', memberCookie)
@@ -88,6 +103,21 @@ test('new accounts receive onboarding and must complete the first ten catalog ra
       .set('Cookie', memberCookie)
       .send({ playerId: memberRegister.body.id, gameId: game.id, rating: 5 });
     assert.equal(skill.status, 200, JSON.stringify(skill.body));
+  }
+
+  const replacementRequired = await request(app)
+    .post('/api/me/onboarding/rating/complete')
+    .set('Cookie', memberCookie)
+    .send();
+  assert.equal(replacementRequired.status, 409, JSON.stringify(replacementRequired.body));
+  assert.deepEqual(replacementRequired.body.missingGameIds, [games[10].id]);
+
+  for (const kind of ['preferences', 'skills']) {
+    const rating = await request(app)
+      .put(`/api/${kind}`)
+      .set('Cookie', memberCookie)
+      .send({ playerId: memberRegister.body.id, gameId: games[10].id, rating: 5 });
+    assert.equal(rating.status, 200, JSON.stringify(rating.body));
   }
 
   const completed = await request(app)
@@ -105,6 +135,6 @@ test('new accounts receive onboarding and must complete the first ten catalog ra
   assert.equal(all.status, 200, JSON.stringify(all.body));
   const catalog = await request(app).get('/api/games').set('Cookie', memberCookie);
   assert.equal(catalog.status, 200, JSON.stringify(catalog.body));
-  assert.equal(all.body.ratingCandidateIds.length, catalog.body.length);
-  assert.deepEqual(all.body.ratingCandidateIds.slice(0, 10), games.slice(0, 10).map((game) => game.id));
+  assert.equal(all.body.ratingCandidateIds.length, catalog.body.filter((game: { isSuggestion: boolean }) => !game.isSuggestion).length);
+  assert.deepEqual(all.body.ratingCandidateIds.slice(0, 10), games.slice(1, 11).map((game) => game.id));
 });

@@ -51,6 +51,12 @@ async function mintRegisterInviteCode(): Promise<string> {
   const setCookie = bootstrap.headers.get('set-cookie');
   assert.ok(setCookie, 'bootstrap register should set a session cookie');
   adminCookie = setCookie!.split(';')[0];
+  const onboarding = await fetch(`${BASE_URL}/api/me/onboarding`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ status: 'completed', lastCoreStep: 9, ratingStatus: 'completed' }),
+  });
+  assert.equal(onboarding.status, 200, await onboarding.text());
 
   const reauth = await fetch(`${BASE_URL}/api/auth/reauth`, {
     method: 'POST',
@@ -137,6 +143,29 @@ test('an invite link registers a new account and logs it straight in', async () 
   // fallback instead of the real profile (with its Logout button). A brief
   // settle avoids racing that unrelated, pre-existing boot-order timing.
   await page.waitForTimeout(500);
+
+  await page.waitForSelector('#onboarding-root [role="dialog"]');
+  for (let step = 0; step < 9; step += 1) {
+    await page.click('[data-onboarding-next]');
+    await page.waitForSelector('#onboarding-root [role="dialog"]');
+  }
+  await page.waitForSelector('[data-onboarding-finish][disabled]');
+  const requiredRows = page.locator('.game-table-row.onboarding-required');
+  assert.equal(await requiredRows.count(), 10);
+  for (let rowIndex = 0; rowIndex < await requiredRows.count(); rowIndex += 1) {
+    const sliders = requiredRows.nth(rowIndex).locator('input[type="range"]');
+    for (let sliderIndex = 0; sliderIndex < await sliders.count(); sliderIndex += 1) {
+      await sliders.nth(sliderIndex).evaluate((element) => {
+        const slider = element as HTMLInputElement;
+        slider.value = '5';
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      await page.waitForTimeout(350);
+    }
+  }
+  await page.waitForSelector('[data-onboarding-finish]:not([disabled])');
+  await page.click('[data-onboarding-finish]');
+  await page.waitForSelector('#onboarding-root [role="dialog"]', { state: 'detached' });
 });
 
 test('logging out drops back to the login gate, and logging back in works', async () => {

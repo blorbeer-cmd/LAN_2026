@@ -6,6 +6,7 @@ export const onboardingRouter = Router();
 
 export const ONBOARDING_VERSION = 1;
 export const CORE_STEP_COUNT = 9;
+const MAX_SEEN_VIEWS = 20;
 
 type OnboardingStatus = 'pending' | 'active' | 'completed' | 'skipped';
 type RatingStatus = 'pending' | 'active' | 'completed' | 'deferred';
@@ -147,11 +148,27 @@ function rankedCatalogGameIds(groupId: string): string[] {
   return rows.map((row) => row.id);
 }
 
+function reconcileCandidateIds(candidateIds: string[], rankedIds: string[]): string[] {
+  if (rankedIds.length === 0) return [];
+  const targetCount = candidateIds.length > 10 ? rankedIds.length : Math.min(10, rankedIds.length);
+  const rankedSet = new Set(rankedIds);
+  const retained = candidateIds.filter((id) => rankedSet.has(id));
+  return Array.from(new Set([...retained, ...rankedIds])).slice(0, targetCount);
+}
+
 function startRating(playerId: string, groupId: string, includeAll: boolean): OnboardingState {
   const current = toState(rowFor(playerId));
   const rankedIds = rankedCatalogGameIds(groupId);
+  if (rankedIds.length === 0) {
+    return updateState(playerId, {
+      status: 'completed',
+      ratingStatus: 'completed',
+      ratingCandidateIds: [],
+      completedAt: Date.now(),
+    });
+  }
   const candidateIds = current.ratingCandidateIds.length > 0
-    ? (includeAll ? Array.from(new Set([...current.ratingCandidateIds, ...rankedIds])) : current.ratingCandidateIds)
+    ? reconcileCandidateIds(includeAll ? rankedIds : current.ratingCandidateIds, rankedIds)
     : (includeAll ? rankedIds : rankedIds.slice(0, 10));
   return updateState(playerId, {
     status: 'active',
@@ -168,11 +185,6 @@ function missingRatings(playerId: string, candidateIds: string[]): string[] {
 }
 
 onboardingRouter.get('/', requireUser, (req, res) => {
-  // Browser E2E accounts are created and claimed repeatedly during the suite.
-  // They must be able to exercise the underlying views without being stopped
-  // by the first-login flow; production and API integration tests still use
-  // the real persisted onboarding state.
-  if (process.env.NODE_ENV === 'test') return res.json({ ...DEFAULT_COMPLETED_STATE });
   res.json(toState(rowFor(req.player!.id)));
 });
 
@@ -200,7 +212,11 @@ onboardingRouter.put('/', requireUser, (req, res) => {
     patch.ratingStatus = body.ratingStatus;
   }
   if (body.seenViews !== undefined) {
-    if (!Array.isArray(body.seenViews) || body.seenViews.some((view: unknown) => typeof view !== 'string' || view.length > 60)) {
+    if (
+      !Array.isArray(body.seenViews)
+      || body.seenViews.length > MAX_SEEN_VIEWS
+      || body.seenViews.some((view: unknown) => typeof view !== 'string' || view.length > 60)
+    ) {
       return res.status(400).json({ error: 'Ungültige Seitenhinweise.' });
     }
     patch.seenViews = Array.from(new Set(body.seenViews));
@@ -222,10 +238,22 @@ onboardingRouter.post('/rating/start', requireUser, (req, res) => {
 
 onboardingRouter.post('/rating/complete', requireUser, (req, res) => {
   const current = toState(rowFor(req.player!.id));
-  if (current.ratingCandidateIds.length === 0) {
+  if (current.ratingStatus !== 'active') {
     return res.status(409).json({ error: 'Bewertungsrunde wurde noch nicht gestartet.' });
   }
-  const missing = missingRatings(req.player!.id, current.ratingCandidateIds);
+  const rankedIds = rankedCatalogGameIds(req.group!.id);
+  const candidateIds = reconcileCandidateIds(current.ratingCandidateIds.length > 0 ? current.ratingCandidateIds : rankedIds.slice(0, 10), rankedIds);
+  if (candidateIds.join('\u0000') !== current.ratingCandidateIds.join('\u0000')) {
+    updateState(req.player!.id, { ratingCandidateIds: candidateIds });
+  }
+  if (candidateIds.length === 0) {
+    return res.json(updateState(req.player!.id, {
+      status: 'completed',
+      ratingStatus: 'completed',
+      completedAt: Date.now(),
+    }));
+  }
+  const missing = missingRatings(req.player!.id, candidateIds);
   if (missing.length > 0) {
     return res.status(409).json({ error: 'Bewerte die ersten zehn Spiele vollständig.', code: 'onboarding_ratings_incomplete', missingGameIds: missing });
   }
@@ -233,13 +261,5 @@ onboardingRouter.post('/rating/complete', requireUser, (req, res) => {
     status: 'completed',
     ratingStatus: 'completed',
     completedAt: Date.now(),
-  }));
-});
-
-onboardingRouter.post('/rating/defer', requireUser, (req, res) => {
-  return res.json(updateState(req.player!.id, {
-    status: 'completed',
-    ratingStatus: 'deferred',
-    completedAt: null,
   }));
 });

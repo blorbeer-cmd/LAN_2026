@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { chromium, Browser, Page } from 'playwright';
+import { finishE2EOnboarding } from './authHelpers';
 
 const PORT = 3914; // 3901 flows, 3902 access, 3903 arcade, 3904 authGate, 3910 agent integration, 3911 phase5eIsolation, 3912 checklist, 3913 flowsArcade
 const BASE_URL = `http://localhost:${PORT}`;
@@ -68,6 +69,7 @@ before(async () => {
   });
   assert.equal(ownerRegistration.status, 201);
   const ownerCookie = sessionCookie(ownerRegistration);
+  await finishE2EOnboarding(BASE_URL, ownerCookie);
   assert.equal(
     (
       await fetch(`${BASE_URL}/api/auth/reauth`, {
@@ -92,6 +94,8 @@ before(async () => {
   });
   assert.equal(memberRegistration.status, 201);
   memberId = ((await memberRegistration.json()) as { id: string }).id;
+  const memberCookie = sessionCookie(memberRegistration);
+  await finishE2EOnboarding(BASE_URL, memberCookie);
 
   const now = Date.now();
   const event = await fetch(`${BASE_URL}/api/events`, {
