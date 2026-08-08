@@ -47,6 +47,8 @@
   ],
   "uiPathPrefixes": ["server/public/"],
   "protectedPathPrefixes": [".github/workflows/", "infra/"],
+  "//selfReviewMinimumEnforcement": "How strongly a self-review session must have been kept away from the code before its verdict opens the gate. `true` requires credentials without code write access — the strongest, but unreachable in environments whose only credentials can push. `verified` accepts a session the launcher ran with the editing tools removed in a throwaway worktree and checked afterwards to be untouched. `false` accepts a verdict nothing outside the prompt backed up and effectively turns the self-review gate into a formality.",
+  "selfReviewMinimumEnforcement": "verified",
   "reviewPromptPath": ".github/agent-pipeline/review-session-prompt.md",
   "statusContext": "Agent pipeline / ready for human merge",
   "selfCheckNames": ["Collect pull requests", "Reconcile pull request"],

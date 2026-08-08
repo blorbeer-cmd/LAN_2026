@@ -40,7 +40,47 @@ const REVIEW_DECISION_PATTERN =
 // `<!-- agent-pipeline:review-result <sha> mode=self verdict=pass session=<id> read-only=true -->`
 export const REVIEW_RESULT_MARKER = "<!-- agent-pipeline:review-result";
 export const REVIEW_RESULT_SOURCE =
-  "<!--\\s*agent-pipeline:review-result\\s+([0-9a-f]{40})\\s+mode=(cross|self|human)\\s+verdict=(pass|changes-required|blocked)\\s+session=(\\S+)\\s+read-only=(true|false)\\s*-->";
+  "<!--\\s*agent-pipeline:review-result\\s+([0-9a-f]{40})\\s+mode=(cross|self|human)\\s+verdict=(pass|changes-required|blocked)\\s+session=(\\S+)\\s+read-only=(true|verified|false)\\s*-->";
+
+// How strongly the reviewing session was kept away from the code, weakest first. The order is the
+// comparison: a level satisfies a minimum when its index is at least the minimum's.
+//
+// - `false`    nothing outside the prompt stopped a write.
+// - `verified` the launcher removed the editing tools, denied the writing git/gh commands, ran the
+//              review in a throwaway worktree detached at the reviewed SHA, and checked afterwards
+//              that the worktree was untouched. Credentials could still have written elsewhere, so
+//              this detects a violation rather than preventing one.
+// - `true`     additionally credentials without code write access, so a write fails server-side.
+//
+// `verified` exists because `true` is not reachable everywhere: a session whose only credentials
+// can push cannot honestly claim it, which used to leave self-review unusable in exactly those
+// environments. It is deliberately weaker, and the status comment says which level was reached.
+export const REVIEW_READ_ONLY_LEVELS = ["false", "verified", "true"];
+export const DEFAULT_SELF_REVIEW_MINIMUM = "verified";
+
+/**
+ * Whether `level` is at least as strong as `minimum`.
+ *
+ * The two arguments fail in opposite directions on purpose. An unknown `level` is read as the
+ * weakest possible claim, so an unparseable marker never comes out stronger than an honest `false`.
+ * An unknown `minimum` throws instead: it is repository policy, and silently ranking it at zero
+ * would let a typo in `selfReviewMinimumEnforcement` — `"verifed"` for `"verified"` — accept every
+ * marker including `read-only=false`, disabling the whole check without a failing test or a log
+ * line. A misconfigured gate has to be loud.
+ */
+export function meetsReadOnlyMinimum(level, minimum = DEFAULT_SELF_REVIEW_MINIMUM) {
+  if (!REVIEW_READ_ONLY_LEVELS.includes(minimum)) {
+    throw new Error(
+      `selfReviewMinimumEnforcement must be one of ${REVIEW_READ_ONLY_LEVELS.join(", ")}; got ` +
+        `${JSON.stringify(minimum)}.`,
+    );
+  }
+  const rank = (value) => {
+    const index = REVIEW_READ_ONLY_LEVELS.indexOf(value);
+    return index === -1 ? 0 : index;
+  };
+  return rank(level) >= rank(minimum);
+}
 
 export const REVIEW_MODES = ["cross", "self", "human"];
 
@@ -305,7 +345,9 @@ export function parseReviewResults(comments) {
         mode: match[2],
         verdict: match[3],
         sessionId: match[4],
-        readOnlyEnforced: match[5] === "true",
+        // The level as published. Whether it satisfies the gate is a separate question, answered by
+        // `meetsReadOnlyMinimum` against repository policy rather than by a boolean here.
+        readOnly: match[5],
         author: comment.author ?? null,
       });
     }
@@ -678,6 +720,11 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     "self",
     resultAuthorsFor(contract.implementer, config),
   );
+  // Repository policy, not a per-run choice: how strongly a self-review session must have been kept
+  // away from the code before its verdict counts. Lowering it to `false` is a deliberate decision to
+  // accept a verdict nothing outside the prompt backed up.
+  const selfReviewMinimum =
+    config.selfReviewMinimumEnforcement ?? DEFAULT_SELF_REVIEW_MINIMUM;
 
   // Whether the chosen mode is still waiting for its verdict, as opposed to having one already.
   let evidenceOutstanding = false;
@@ -715,12 +762,13 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     if (!selfResult) {
       evidenceOutstanding = true;
       blockers.push("No self-review result has been published for the current head SHA.");
-    } else if (!selfResult.readOnlyEnforced) {
-      // A review round is still owed: only a new, actually enforced session can clear this, so the
-      // pull request waits on a review rather than on the implementer.
+    } else if (!meetsReadOnlyMinimum(selfResult.readOnly, selfReviewMinimum)) {
+      // A review round is still owed: only a new session that actually reaches the configured level
+      // can clear this, so the pull request waits on a review rather than on the implementer.
       evidenceOutstanding = true;
       blockers.push(
-        "The self-review result does not confirm a technically enforced read-only session.",
+        `The self-review reports read-only level \`${selfResult.readOnly}\`, below the required ` +
+          `\`${selfReviewMinimum}\` for this repository.`,
       );
     } else if (selfResult.verdict === "changes-required") {
       blockers.push("The self-review requested changes for the current head SHA.");
@@ -836,6 +884,7 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
       reviewMode: decision.mode,
       reviewDecision: decision,
       selfResult,
+      selfReviewMinimum,
       recommendation,
     },
   };
@@ -893,11 +942,24 @@ function reviewModeLine(readiness, config) {
   const mode = details.reviewMode;
   if (!mode) return "- Review mode: `not chosen for this head`";
 
+  // For `self` the read-only level is part of how much the verdict is worth, so it belongs in the
+  // permanent record next to the mode rather than only in a blocker that disappears once it passes.
+  const selfIndependence = () => {
+    const level = details.selfResult?.readOnly;
+    const base = "same provider, reduced independence — chosen deliberately";
+    if (!level) return base;
+    return level === "true"
+      ? `${base}; read-only enforced by restricted credentials`
+      : level === "verified"
+        ? `${base}; read-only verified by the launcher, not by credentials`
+        : `${base}; read-only not enforced`;
+  };
+
   const independence =
     mode === "cross"
       ? "independent counter provider"
       : mode === "self"
-        ? "same provider, reduced independence — chosen deliberately"
+        ? selfIndependence()
         : "human review, chosen deliberately; review and merge are the same person";
   const label = config.reviewModeLabels?.[mode] ?? mode;
   return `- Review mode: \`${mode}\` via \`${label}\` (${independence})`;

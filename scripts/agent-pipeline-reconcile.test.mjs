@@ -12,6 +12,7 @@ import {
   hasEarlierPassingReview,
   isOwnCheckRun,
   isTrustedCommentAuthor,
+  meetsReadOnlyMinimum,
   paginate,
   parseReviewDecision,
   parseReviewResults,
@@ -1225,7 +1226,7 @@ test("a passing self-review opens the gate for the head it names", () => {
   assert.equal(readiness.details.selfResult.sessionId, "claude-review-7f3");
 });
 
-test("a self-review without an enforced read-only session does not count", () => {
+test("a self-review with no read-only backing at all does not count", () => {
   const readiness = deriveReadiness(
     readySnapshot({
       labels: [SELF_LABEL],
@@ -1237,7 +1238,103 @@ test("a self-review without an enforced read-only session does not count", () =>
     config,
   );
   assert.equal(readiness.ready, false);
-  assert.match(readiness.blockers[0], /enforced read-only session/);
+  assert.match(readiness.blockers[0], /read-only level `false`, below the required `verified`/);
+});
+
+test("a launcher-verified self-review satisfies the default minimum", () => {
+  // `true` requires credentials that cannot write, which is unreachable wherever the only available
+  // credentials can push. Without `verified` the self mode was simply unusable there.
+  const readiness = deriveReadiness(
+    readySnapshot({
+      labels: [SELF_LABEL],
+      reviews: [],
+      reviewResults: parseReviewResults([
+        selfResultComment(HEAD, { "read-only": "verified" }),
+      ]),
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, true);
+  assert.equal(readiness.phase, "ready-for-merge");
+  assert.equal(readiness.details.selfResult.readOnly, "verified");
+});
+
+test("a repository may still demand credential-level read-only", () => {
+  const strict = { ...config, selfReviewMinimumEnforcement: "true" };
+  const verified = deriveReadiness(
+    readySnapshot({
+      labels: [SELF_LABEL],
+      reviews: [],
+      reviewResults: parseReviewResults([selfResultComment(HEAD, { "read-only": "verified" })]),
+    }),
+    strict,
+  );
+  assert.equal(verified.ready, false);
+  assert.match(verified.blockers[0], /below the required `true`/);
+
+  const enforced = deriveReadiness(
+    readySnapshot({
+      labels: [SELF_LABEL],
+      reviews: [],
+      reviewResults: parseReviewResults([selfResultComment(HEAD, { "read-only": "true" })]),
+    }),
+    strict,
+  );
+  assert.equal(enforced.ready, true);
+});
+
+test("the read-only level reached is recorded next to the mode, not only while it blocks", () => {
+  // Once the gate passes, the blocker is gone — but how independent the verdict actually was stays
+  // relevant to whoever merges.
+  const readiness = deriveReadiness(
+    readySnapshot({
+      labels: [SELF_LABEL],
+      reviews: [],
+      reviewResults: parseReviewResults([selfResultComment(HEAD, { "read-only": "verified" })]),
+    }),
+    config,
+  );
+  const comment = renderStatusComment(readiness, readySnapshot({ labels: [SELF_LABEL] }), config);
+  assert.match(comment, /read-only verified by the launcher, not by credentials/);
+});
+
+test("an unknown read-only value is ranked as the weakest, never as a pass", () => {
+  // A marker the parser cannot classify must not come out stronger than an honest `false`.
+  assert.ok(!meetsReadOnlyMinimum("sort-of", "verified"));
+  assert.ok(!meetsReadOnlyMinimum(undefined, "verified"));
+  assert.ok(meetsReadOnlyMinimum("true", "false"));
+});
+
+test("an invalid configured minimum fails loudly instead of accepting everything", () => {
+  // From the self-review of c16dd00: ranking an unknown minimum at zero made a typo in
+  // selfReviewMinimumEnforcement accept every marker, `read-only=false` included — the entire
+  // check disabled with no error, no log line and no failing test.
+  for (const broken of ["verifed", "", "TRUE", null, 1]) {
+    assert.throws(
+      () => meetsReadOnlyMinimum("false", broken),
+      /selfReviewMinimumEnforcement must be one of/,
+      `a minimum of ${JSON.stringify(broken)} must not silently pass`,
+    );
+  }
+  // The valid ones keep working, including the deliberate opt-out.
+  assert.ok(meetsReadOnlyMinimum("false", "false"));
+  assert.ok(!meetsReadOnlyMinimum("verified", "true"));
+});
+
+test("a broken minimum blocks the gate rather than opening it", () => {
+  // The throw has to surface where the gate is computed, not be swallowed into a pass.
+  assert.throws(
+    () =>
+      deriveReadiness(
+        readySnapshot({
+          labels: [SELF_LABEL],
+          reviews: [],
+          reviewResults: parseReviewResults([selfResultComment(HEAD, { "read-only": "false" })]),
+        }),
+        { ...config, selfReviewMinimumEnforcement: "verifed" },
+      ),
+    /selfReviewMinimumEnforcement must be one of/,
+  );
 });
 
 test("a self-review reporting changes or blocked keeps the gate closed", () => {
