@@ -7,6 +7,8 @@ name: Agent pipeline reconcile
 on:
   # These events always load the workflow definition from the trusted default branch.
   # Never execute or check out code from the pull-request head in this workflow.
+  # Draft pull requests are reconciled on `opened`/`synchronize`; draft status blocks only the
+  # final merge gate, not the review decision or review phase.
   pull_request_target:
     types:
       - opened

@@ -730,8 +730,10 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     snapshot.changedFiles,
     config.protectedPathPrefixes,
   );
+  // Draft status blocks the final merge gate, but deliberately does not block choosing or
+  // running the review. This lets the implementation stay non-mergeable while review feedback
+  // is already processed.
   const mechanicallyGreen =
-    !snapshot.isDraft &&
     !escalated &&
     !waiting &&
     threadsReadable &&
@@ -780,7 +782,8 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
   } else if (!decision.mode) {
     // Before that, the pull request is not ready to be reviewed at all and the gate is already
     // blocked by the mechanical condition; asking then would only burn quota on a head that is
-    // about to change.
+    // about to change. Draft status is intentionally excluded from that condition: it blocks
+    // merging, not the review round.
     if (mechanicallyGreen) {
       blockers.push(
         decision.unboundReason === "earlier-head"
@@ -1058,8 +1061,9 @@ export function renderStatusComment(readiness, snapshot, config = loadConfig()) 
   const contract = readiness.contract ?? {};
   const details = readiness.details ?? {};
   const record = details.reviewDecision?.record;
-  // Asked exactly when the blocker is raised: while anything mechanical is still open the pull
-  // request is not ready to be reviewed, and the head it would bind to is about to change anyway.
+  // Asked exactly when the blocker is raised: while anything required before a review is still
+  // open the head may still change. Draft status is not such a blocker; it only keeps the merge
+  // gate closed.
   const awaitingDecision =
     Boolean(details.reviewDecision) &&
     !details.reviewMode &&

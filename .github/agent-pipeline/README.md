@@ -42,8 +42,8 @@ What it does:
   `agent:needs-human` or the human-approval wait gets no phase label, because those states are
   already named by their own label or by the status comment,
 - maintains one sticky status comment marked with `<!-- agent-pipeline:status -->`,
-- reports every open blocker in that comment, asks for the review mode while it is missing and
-  records the answer,
+- reports every open blocker in that comment, asks for the review mode while it is missing (also on
+  draft pull requests) and records the answer,
 - removes a `review:*` label that was bound to an earlier head, so the choice is asked again,
 - writes the `Agent pipeline / ready for human merge` commit status for the current head SHA.
 
@@ -85,6 +85,10 @@ With no label set and everything mechanical green, the pull request sits in the
 derived from the changed paths and whether an earlier head already passed. Nothing starts on a
 timeout: an automatic fallback would spend exactly the quota this decision exists to steer. Two
 labels at once block rather than picking a winner.
+
+Draft status does not prevent this question or the selected review from starting. It remains a
+merge blocker, so the final readiness status stays pending until the pull request is marked ready
+for review.
 
 The choice expires with its head. Every run records the head it saw in the reconciler's own status
 comment (`agent-pipeline:review-decision`), including as `mode=none` while nothing is chosen. A
