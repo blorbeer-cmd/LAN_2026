@@ -118,10 +118,14 @@ function readySnapshot(overrides = {}) {
 // ---------------------------------------------------------------------------
 // Cross-review evidence
 //
-// The Codex integration never submits an approving review: it comments when it has suggestions and
-// reacts with a thumbs-up when it has none. Demanding APPROVED left `cross` unsatisfiable in
-// practice — the review ran on PR #365, found two real P1 defects, confirmed the fixes, and the
-// gate still reported that nothing had reviewed the head.
+// The Codex integration never submits an approving review, so demanding APPROVED left `cross`
+// unsatisfiable in practice — the review ran on PR #365, found two real P1 defects, confirmed the
+// fixes, and the gate still reported that nothing had reviewed the head.
+//
+// What it submits depends on how the review was started: an automatic pass with nothing to say may
+// only leave a thumbs-up, while an explicitly requested review — the only kind this pipeline asks
+// for — is submitted as COMMENTED even when it reports no findings. Only the latter is evidence,
+// because only a submitted review carries the commit SHA that binds it to a head.
 // ---------------------------------------------------------------------------
 
 const commentedReview = (sha = HEAD) => [

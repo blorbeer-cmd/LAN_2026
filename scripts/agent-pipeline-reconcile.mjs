@@ -192,11 +192,23 @@ export function evaluateReviews(reviews, headSha, allowedReviewerLogins) {
   // Did the counter provider look at *this* head at all? Deliberately counts `COMMENTED`, which
   // the loop above skips because it decides nothing on its own.
   //
-  // This exists because the Codex integration never submits an approving review: it comments when
-  // it has suggestions and reacts with a thumbs-up when it does not. Requiring `APPROVED` therefore
-  // left `cross` permanently unsatisfiable — the review ran, found real defects, confirmed the
-  // fixes, and the gate still reported that nothing had reviewed the head. `DISMISSED` stays
-  // excluded: a withdrawn review is not a review.
+  // This exists because the Codex integration never submits an approving review. Requiring
+  // `APPROVED` therefore left `cross` permanently unsatisfiable — the review ran, found real
+  // defects, confirmed the fixes, and the gate still reported that nothing had reviewed the head.
+  //
+  // What it does submit depends on how the review came about, and the difference matters:
+  //
+  // - An **automatic** pass with nothing to say may only leave a thumbs-up reaction. That is no
+  //   evidence here and cannot become any: a reaction carries no commit SHA, so it could never be
+  //   bound to the head it supposedly judged.
+  // - An **explicitly requested** review — how this pipeline always asks — is submitted as
+  //   `COMMENTED`, including when it reports no findings.
+  //
+  // Stating only the first half of that once cost a review round: it reads as "a clean pass leaves
+  // nothing to read", which would make this whole function pointless, and it was filed as a defect
+  // on exactly those grounds.
+  //
+  // `DISMISSED` stays excluded: a withdrawn review is not a review.
   const reviewedByProvider = currentHead.some(
     (review) => review.state !== "DISMISSED" && isCounterProvider(review),
   );
