@@ -1231,8 +1231,14 @@ function isRetriableReadResponse(response) {
   );
 }
 
-async function fetchReadWithRetry(url, options, description) {
-  for (let attempt = 1; attempt <= READ_RETRY_ATTEMPTS; attempt += 1) {
+async function fetchReadWithRetry(
+  url,
+  options,
+  description,
+  inspectResponse = null,
+) {
+  let attempt = 1;
+  while (true) {
     let response;
     try {
       response = await fetch(url, options);
@@ -1243,22 +1249,33 @@ async function fetchReadWithRetry(url, options, description) {
         `${description} failed before receiving a response; retrying in ${delay} ms (attempt ${attempt + 1}/${READ_RETRY_ATTEMPTS}): ${error instanceof Error ? error.message : String(error)}`,
       );
       await new Promise((resolve) => setTimeout(resolve, delay));
+      attempt += 1;
       continue;
     }
 
-    if (!isRetriableReadResponse(response) || attempt === READ_RETRY_ATTEMPTS) {
-      return response;
+    // Successful GraphQL responses can still carry a retriable API error in their JSON body.
+    // Inspect only successful HTTP responses so a transient non-JSON 5xx body remains retryable.
+    const inspection =
+      response.ok && inspectResponse ? await inspectResponse(response) : null;
+    const retryReason = isRetriableReadResponse(response)
+      ? `returned ${response.status}`
+      : inspection?.retryReason;
+
+    if (!retryReason || attempt === READ_RETRY_ATTEMPTS) {
+      return inspectResponse
+        ? { response, value: inspection?.value }
+        : response;
     }
 
     const delay = retryAfterMs(response, attempt);
     console.warn(
-      `${description} returned ${response.status}; retrying in ${delay} ms (attempt ${attempt + 1}/${READ_RETRY_ATTEMPTS}).`,
+      `${description} ${retryReason}; retrying in ${delay} ms (attempt ${attempt + 1}/${READ_RETRY_ATTEMPTS}).`,
     );
-    await response.body?.cancel?.();
+    // Payload inspection already consumed the body; otherwise release it before retrying.
+    if (!inspection) await response.body?.cancel?.();
     await new Promise((resolve) => setTimeout(resolve, delay));
+    attempt += 1;
   }
-
-  throw new Error(`${description} exhausted its retry attempts.`);
 }
 
 async function api(path, { method = "GET", body, token } = {}) {
@@ -1289,7 +1306,7 @@ async function api(path, { method = "GET", body, token } = {}) {
 }
 
 async function graphql(query, variables, token) {
-  const response = await fetchReadWithRetry(
+  const { response, value } = await fetchReadWithRetry(
     `${API_ROOT.replace(/\/$/, "")}/graphql`,
     {
       method: "POST",
@@ -1301,8 +1318,19 @@ async function graphql(query, variables, token) {
       body: JSON.stringify({ query, variables }),
     },
     "GitHub GraphQL read",
+    async (successfulResponse) => {
+      const payload = await successfulResponse.json();
+      return {
+        value: payload,
+        retryReason: payload.errors?.some(
+          (error) => error?.type === "RATE_LIMITED",
+        )
+          ? "returned a RATE_LIMITED error"
+          : null,
+      };
+    },
   );
-  const payload = await response.json();
+  const payload = value ?? (await response.json());
   if (!response.ok || payload.errors) {
     throw new Error(`GitHub GraphQL failed: ${JSON.stringify(payload.errors ?? payload)}`);
   }
@@ -1357,7 +1385,7 @@ const REVIEW_THREADS_QUERY = `
  * exist. Failures are logged: a systematically failing query would otherwise hold every pull
  * request without leaving a trace in the job log.
  */
-async function fetchReviewThreads({ owner, repo, pullNumber, token }) {
+export async function fetchReviewThreads({ owner, repo, pullNumber, token }) {
   const nodes = [];
   let after = null;
   let mergeStateStatus = null;

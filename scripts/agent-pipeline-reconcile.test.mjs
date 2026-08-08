@@ -8,6 +8,7 @@ import {
   evaluateReviewDecision,
   evaluateChecks,
   evaluateReviews,
+  fetchReviewThreads,
   GATE_DESCRIPTION_LIMIT,
   hasEarlierPassingReview,
   isOwnCheckRun,
@@ -1040,6 +1041,63 @@ test("paginate does not retry permanent GitHub read failures", async () => {
     assert.equal(requests, 1);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("GraphQL reads retry RATE_LIMITED errors returned with HTTP 200", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  let requests = 0;
+  let warnings = 0;
+  console.warn = () => {
+    warnings += 1;
+  };
+  globalThis.fetch = async () => {
+    requests += 1;
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => "0" },
+      json: async () =>
+        requests === 1
+          ? {
+              errors: [
+                { type: "RATE_LIMITED", message: "API rate limit exceeded" },
+              ],
+            }
+          : {
+              data: {
+                repository: {
+                  pullRequest: {
+                    mergeStateStatus: "CLEAN",
+                    reviewThreads: {
+                      nodes: [],
+                      pageInfo: { hasNextPage: false, endCursor: null },
+                    },
+                  },
+                },
+              },
+            },
+    };
+  };
+
+  try {
+    const result = await fetchReviewThreads({
+      owner: "o",
+      repo: "r",
+      pullNumber: 1,
+      token: "token",
+    });
+    assert.deepEqual(result, {
+      mergeStateStatus: "CLEAN",
+      reviewThreads: [],
+      readable: true,
+    });
+    assert.equal(requests, 2);
+    assert.equal(warnings, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
   }
 });
 
