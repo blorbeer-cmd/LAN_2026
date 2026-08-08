@@ -984,6 +984,65 @@ test("paginate returns everything when the last page is short", async () => {
   }
 });
 
+test("paginate retries transient GitHub read failures", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  let requests = 0;
+  let warnings = 0;
+  console.warn = () => {
+    warnings += 1;
+  };
+  globalThis.fetch = async () => {
+    requests += 1;
+    if (requests < 3) {
+      return {
+        ok: false,
+        status: 500,
+        headers: { get: () => "0" },
+        body: { cancel: async () => {} },
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => [{ id: 1 }],
+    };
+  };
+
+  try {
+    const items = await paginate("/repos/o/r/pulls/1/files", "token");
+    assert.deepEqual(items, [{ id: 1 }]);
+    assert.equal(requests, 3);
+    assert.equal(warnings, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+  }
+});
+
+test("paginate does not retry permanent GitHub read failures", async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    return {
+      ok: false,
+      status: 404,
+      text: async () => "not found",
+    };
+  };
+
+  try {
+    await assert.rejects(
+      () => paginate("/repos/o/r/pulls/1/files", "token"),
+      /failed with 404: not found/,
+    );
+    assert.equal(requests, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("the status comment is deterministic and carries its marker", () => {
   const snapshot = readySnapshot();
   const readiness = deriveReadiness(snapshot, config);

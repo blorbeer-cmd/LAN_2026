@@ -11,6 +11,8 @@ The pipeline reports state; it does not act on it yet:
 - `scripts/agent-pipeline.mjs` parses and validates task contracts.
 - `scripts/agent-pipeline-reconcile.mjs` derives the readiness state and keeps the pipeline labels,
   the sticky status comment and the merge-gate commit status in sync (phases 2 and 7 of the plan).
+- `scripts/agent-pipeline-select-prs.mjs` limits scheduled safety sweeps to pull requests with an
+  activated task contract or a missing merge-gate status.
 - `.github/workflows/agent-pipeline-reconcile.yml` runs that reconciler per pull request.
 - `.github/workflows/agent-pipeline-tests.yml` runs the unit tests for both.
 - `review-session-prompt.md` contains the copy-paste prompt and operating instructions for an
@@ -141,6 +143,19 @@ Idempotence: labels already in the desired state produce no API call, an unchang
 body is not rewritten, and an unchanged gate verdict is not posted again. Re-running the
 reconciler on an unchanged pull request performs no writes at all.
 
+Transient GitHub read failures are retried up to three times with bounded exponential backoff.
+This covers network errors, rate limits and temporary `5xx` responses for REST `GET` requests and
+the read-only GraphQL query. Mutating requests are deliberately never retried automatically,
+because a lost response must not duplicate a comment or another write.
+
+Event-scoped runs still reconcile exactly their pull request. The 30-minute safety sweep first
+selects only open pull requests with an activated task contract or without the
+`Agent pipeline / ready for human merge` status on their current head. The second case lets a
+future required status self-heal for ordinary and Dependabot pull requests as well. Old pipeline
+labels alone do not select a pull request: without an activated contract the reconciler
+intentionally owns no labels and therefore could not repair them. The matrix and its per-pull-
+request concurrency remain in place, so scheduled and event-driven writes cannot race.
+
 ## Merge gate
 
 The `Agent pipeline / ready for human merge` commit status is the required check from section 11
@@ -237,6 +252,7 @@ owner can approve them normally.
 ```powershell
 node --test scripts/agent-pipeline.test.mjs
 node --test scripts/agent-pipeline-reconcile.test.mjs
+node --test scripts/agent-pipeline-select-prs.test.mjs
 node --test scripts/agent-preflight.test.mjs
 git diff --check
 ```
@@ -267,10 +283,10 @@ Still required before enabling agent mutations:
 
 1. Verify in a pilot pull request that both app identities can update their own feature branches
    but cannot push or merge to `main`.
-2. Add `Agent pipeline / ready for human merge` to branch protection only after the reconciler has
-   written it on `main` at least once and a pilot pull request has shown both verdicts. Until then
-   the context exists in no branch-protection rule, and a required check that nothing reports
-   blocks every pull request for everyone without administrator rights.
+2. Add `Agent pipeline / ready for human merge` to branch protection. The prerequisite pilot is
+   complete: on 2026-08-08 every open pull request had the context on its current head, and both
+   `success` and `pending` verdicts were observed. Enabling the requirement remains a deliberate
+   operator action and is not performed by the workflow or an implementation agent.
 
 If that context is already required while no run has written it, every open pull request sits at
 "Expected — waiting for status to be reported". Removing it from branch protection or letting the
