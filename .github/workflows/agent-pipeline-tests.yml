@@ -54,3 +54,6 @@ jobs:
 
       - name: Test review session launcher
         run: node --test scripts/agent-review-session.test.mjs
+
+      - name: Test Claude cross-review adapter
+        run: node --test scripts/agent-claude-review.test.mjs

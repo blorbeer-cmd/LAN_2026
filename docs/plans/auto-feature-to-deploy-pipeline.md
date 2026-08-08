@@ -2,9 +2,10 @@
 
 Status: beschlossenes Zielkonzept; Phasen 0 bis 2 umgesetzt (Task-Vertrag, Labels, stateless
 Readiness-Reconciler) sowie Phase 7 (Commit-Status `Agent pipeline / ready for human merge`;
-Eintrag als Required Check bleibt eine manuelle Nutzerentscheidung). Ab Phase 3 startet die
-Automatik noch keine Agenten.
-Stand: 2026-08-07
+Eintrag als Required Check bleibt eine manuelle Nutzerentscheidung). Aus Phase 4 ist der bewusst
+enge Pilotpfad Codex-Implementierung → Claude-Cross-Review umgesetzt; CI-/Konflikt-Fixes,
+Gegenrichtung, automatische Retries, Rundenzähler und Findings-Fix-Schleife fehlen noch.
+Stand: 2026-08-08
 
 Der Reviewer wird nicht mehr automatisch bestimmt, sondern vom Nutzer pro Head-SHA gewählt. Die
 Herleitung dieser Änderung steht in [`review-mode-selection.md`](review-mode-selection.md), der
@@ -509,6 +510,11 @@ Abnahme: je ein absichtlich erzeugter Codefehler, transienter CI-Fehler und einf
 Mergekonflikt werden korrekt behandelt; ein riskanter Konflikt stoppt.
 
 ### Phase 4 – Cross-Review und strukturierte Ergebnisse
+
+Teilstand: Die Auswahl `review:cross` startet für eine mechanisch review-bereite
+Codex-Implementierung genau einen credential-read-only Claude-Lauf. Dessen strukturiertes Ergebnis
+wird validiert, an den aktuellen Head gebunden und vom vertrauenswürdigen Workflow veröffentlicht.
+Die übrigen Punkte dieser Phase bleiben offen.
 
 1. Auswahl des Review-Modus mit Empfehlung vorlegen und das Review an den gewählten Reviewer
    routen: `cross` an den Gegen-Anbieter, `self` an eine frische, schreibgeschützte Session des

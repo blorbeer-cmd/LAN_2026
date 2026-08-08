@@ -78,6 +78,21 @@ function selfResultComment(headSha, overrides = {}) {
   };
 }
 
+/** A structured Claude result published by the trusted Actions adapter. */
+function claudeCrossResultComment(headSha, overrides = {}) {
+  const values = {
+    verdict: "pass",
+    session: "claude-action-123-1",
+    "read-only": "true",
+    ...overrides,
+  };
+  return {
+    author: "github-actions[bot]",
+    authorAssociation: "NONE",
+    body: `Claude review done.\n\n<!-- agent-pipeline:review-result ${headSha} mode=cross verdict=${values.verdict} session=${values.session} read-only=${values["read-only"]} -->`,
+  };
+}
+
 /** A snapshot that satisfies every gate, so each test can break exactly one thing. */
 function readySnapshot(overrides = {}) {
   return {
@@ -116,6 +131,18 @@ function readySnapshot(overrides = {}) {
   };
 }
 
+function codexImplementationSnapshot(overrides = {}) {
+  return readySnapshot({
+    body: contractBody({
+      implementer: "codex",
+      "head-branch": "codex/agent-pipeline-reconciler",
+    }),
+    headBranch: "codex/agent-pipeline-reconciler",
+    reviews: [],
+    ...overrides,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Cross-review evidence
 //
@@ -145,6 +172,47 @@ test("a commented cross-review with nothing left open satisfies the gate", () =>
   );
   assert.equal(readiness.ready, true);
   assert.equal(readiness.phase, "ready-for-merge");
+});
+
+test("a trusted structured Claude result satisfies a Codex implementation cross-review", () => {
+  const readiness = deriveReadiness(
+    codexImplementationSnapshot({
+      reviewResults: parseReviewResults([claudeCrossResultComment(HEAD)]),
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, true);
+  assert.equal(readiness.phase, "ready-for-merge");
+  assert.equal(readiness.details.crossResult.sessionId, "claude-action-123-1");
+});
+
+test("a Claude result is head-bound, publisher-bound and credential-read-only", () => {
+  for (const comment of [
+    claudeCrossResultComment(OLD_HEAD),
+    { ...claudeCrossResultComment(HEAD), author: "claude[bot]" },
+    claudeCrossResultComment(HEAD, { "read-only": "verified" }),
+  ]) {
+    const readiness = deriveReadiness(
+      codexImplementationSnapshot({ reviewResults: parseReviewResults([comment]) }),
+      config,
+    );
+    assert.equal(readiness.ready, false);
+    assert.equal(readiness.phase, "review");
+  }
+});
+
+test("a structured Claude rejection hands control back to the implementer", () => {
+  const readiness = deriveReadiness(
+    codexImplementationSnapshot({
+      reviewResults: parseReviewResults([
+        claudeCrossResultComment(HEAD, { verdict: "changes-required" }),
+      ]),
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, false);
+  assert.equal(readiness.phase, "implementing");
+  assert.match(readiness.blockers.join("\n"), /cross-review requested changes/);
 });
 
 test("a commented cross-review with open findings does not", () => {

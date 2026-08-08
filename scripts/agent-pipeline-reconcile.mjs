@@ -36,7 +36,8 @@ export const REVIEW_DECISION_MARKER = "<!-- agent-pipeline:review-decision";
 const REVIEW_DECISION_PATTERN =
   /<!--\s*agent-pipeline:review-decision\s+([0-9a-f]{40})\s+mode=(cross|self|human|none)\s*-->/;
 
-// Published by the review session for the `self` mode, where GitHub carries no native evidence:
+// Published by a review session or by a trusted provider adapter when GitHub carries no native
+// evidence for its result:
 // `<!-- agent-pipeline:review-result <sha> mode=self verdict=pass session=<id> read-only=true -->`
 export const REVIEW_RESULT_MARKER = "<!-- agent-pipeline:review-result";
 export const REVIEW_RESULT_SOURCE =
@@ -394,7 +395,8 @@ export function parseReviewResults(comments) {
 
 /**
  * The newest published result for exactly this head and mode, from an identity allowed to produce
- * one, or null.
+ * one, or null. Callers supply either the implementation provider's self-review identities or a
+ * counter-provider adapter's dedicated publisher identities.
  *
  * `isTrustedCommentAuthor` alone is too wide here: it accepts every `[bot]` login, so any app
  * installed on the repository could post a passing self-review. The cross-review path checks its
@@ -748,6 +750,16 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     snapshot.headSha,
     allowedReviewers,
   );
+  // Some provider integrations return structured output instead of submitting a native GitHub
+  // review. Only the dedicated publisher identities configured for that provider may bridge such
+  // an output into the same head-bound result marker used by self reviews. Keeping this allowlist
+  // separate avoids treating every github-actions[bot] review as if it came from Claude.
+  const crossResult = latestReviewResult(
+    snapshot.reviewResults,
+    snapshot.headSha,
+    "cross",
+    config.crossReviewResultAuthors?.[reviewerProvider] ?? [],
+  );
 
   // Who reviews this head is the user's decision, not the pipeline's. Everything after the
   // decision — starting the review, handing over the findings, fixing them — stays automatic.
@@ -795,10 +807,28 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     }
   } else if (decision.mode === "cross") {
     // An explicit rejection always blocks, whatever the configured evidence mode is.
-    if (reviews.verdict === "changes-required") {
+    if (reviews.verdict === "changes-required" || crossResult?.verdict === "changes-required") {
       blockers.push("The cross-review requested changes for the current head SHA.");
     } else if (reviews.verdict === "pass") {
       // An approving review is accepted under every mode.
+    } else if (
+      crossEvidence === "reviewed-and-resolved" &&
+      crossResult?.verdict === "pass" &&
+      crossResult.readOnly === "true"
+    ) {
+      // The trusted publisher, not the model, appends `read-only=true` after a workflow that has
+      // no code-write credentials and exposes no editing or shell tool to the review session.
+    } else if (crossResult?.verdict === "blocked") {
+      evidenceOutstanding = true;
+      blockers.push(
+        `The ${reviewerProvider ?? "cross"} review reported \`blocked\` for the current head SHA.`,
+      );
+    } else if (crossResult && crossResult.readOnly !== "true") {
+      evidenceOutstanding = true;
+      blockers.push(
+        `The ${reviewerProvider ?? "cross"} review reports read-only level ` +
+          `\`${crossResult.readOnly}\`; an automated cross-review requires \`true\`.`,
+      );
     } else if (crossEvidence !== "reviewed-and-resolved") {
       evidenceOutstanding = true;
       blockers.push(
@@ -951,6 +981,7 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
       reviewMode: decision.mode,
       reviewDecision: decision,
       selfResult,
+      crossResult,
       selfReviewMinimum,
       recommendation,
     },
@@ -1506,6 +1537,7 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       headRepository: pr.head.repo?.full_name ?? null,
       authorLogin: pr.user?.login ?? null,
       baseBranch: pr.base.ref,
+      baseSha: pr.base.sha,
       headBranch: pr.head.ref,
       headSha,
       mergeable: pr.mergeable,
