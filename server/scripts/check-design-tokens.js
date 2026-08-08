@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // Pre-commit guard for the design system (see server/DESIGN_SYSTEM.md).
 //
-// By default, only looks at the ADDED lines of the staged diff under
-// server/public — not the whole file, and not the whole repo. CI passes
-// `--base-ref <sha-or-ref>` to inspect the complete pull-request/push diff
-// instead. That's deliberate: the codebase
+// By default, the hardcoded-value rules only look at the ADDED lines of the
+// staged diff under server/public. The undefined-custom-property rule needs a
+// complete, internally consistent frontend snapshot, so it reads the full Git
+// index locally and the full HEAD tree when CI passes `--base-ref`. Neither
+// mode reads unrelated unstaged working-tree changes. That's deliberate: the
+// codebase
 // still has a known, documented set of off-scale spacing values and other
 // intentional exceptions (see DESIGN_SYSTEM.md, "When a value genuinely
 // doesn't fit"); re-checking every existing line on every commit would mean
@@ -20,6 +22,7 @@
 
 const { execFileSync } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const BASE_REF_FLAG = '--base-ref';
@@ -32,7 +35,6 @@ if (baseRefFlagIndex !== -1 && (!baseRef || baseRef.startsWith('--'))) {
 }
 
 const SCOPE = 'server/public';
-const PUBLIC_ROOT = path.join(__dirname, '..', 'public');
 const FRONTEND_EXTENSIONS = new Set(['.css', '.html', '.js']);
 const EXEMPT_FILES = new Set([
   // Single source of truth for the avatar swatch palette — hex values here
@@ -104,7 +106,7 @@ function addedLines(file) {
   return diff.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++'));
 }
 
-function frontendSources(root = PUBLIC_ROOT) {
+function sourcesFromDirectory(root) {
   const files = [];
 
   function visit(directory) {
@@ -123,6 +125,44 @@ function frontendSources(root = PUBLIC_ROOT) {
     file: `${SCOPE}/${path.relative(root, absolutePath).replaceAll('\\', '/')}`,
     source: fs.readFileSync(absolutePath, 'utf8'),
   }));
+}
+
+function frontendSources() {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'design-token-check-'));
+  const snapshotRoot = path.join(temporaryRoot, 'snapshot');
+  const gitEnvironment = { ...process.env };
+  const repositoryRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+    encoding: 'utf8',
+  }).trim();
+
+  try {
+    fs.mkdirSync(snapshotRoot, { recursive: true });
+
+    if (baseRef) {
+      // CI checks the committed PR head, even if a caller happens to have
+      // unrelated working-tree or index changes in its checkout.
+      gitEnvironment.GIT_INDEX_FILE = path.join(temporaryRoot, 'head-index');
+      execFileSync('git', ['read-tree', 'HEAD'], {
+        cwd: repositoryRoot,
+        env: gitEnvironment,
+      });
+    }
+
+    const frontendFiles = execFileSync('git', ['ls-files', '-z', '--', SCOPE], {
+      cwd: repositoryRoot,
+      env: gitEnvironment,
+    });
+    const checkoutPrefix = `${snapshotRoot.replaceAll('\\', '/')}/`;
+    execFileSync('git', ['checkout-index', '-z', '--stdin', `--prefix=${checkoutPrefix}`], {
+      cwd: repositoryRoot,
+      env: gitEnvironment,
+      input: frontendFiles,
+    });
+
+    return sourcesFromDirectory(path.join(snapshotRoot, SCOPE));
+  } finally {
+    fs.rmSync(temporaryRoot, { recursive: true, force: true });
+  }
 }
 
 function findUndefinedCustomProperties(sources) {
@@ -180,7 +220,7 @@ function main() {
     }
     console.error(
       '\nDefine each property in the design-system tokens, set it dynamically with style.setProperty(...), ' +
-        'or provide an intentional var(--name, fallback) value.\n'
+        'or provide an intentional var(--name, fallback) value.\n',
     );
   }
 
@@ -192,11 +232,11 @@ function main() {
       console.error(`    ${v.line}`);
     }
     console.error(
-      '\nUse an existing token from server/DESIGN_SYSTEM.md instead (var(--space-N), var(--font-size-*), ...).'
+      '\nUse an existing token from server/DESIGN_SYSTEM.md instead (var(--space-N), var(--font-size-*), ...).',
     );
     console.error(
       'If this is a genuine, deliberate exception, add a same-line comment containing "design-token-ok"\n' +
-        'plus a short reason (see "When a value genuinely doesn\'t fit" in DESIGN_SYSTEM.md).\n'
+        'plus a short reason (see "When a value genuinely doesn\'t fit" in DESIGN_SYSTEM.md).\n',
     );
   }
 
@@ -207,4 +247,4 @@ if (require.main === module) {
   process.exitCode = main();
 }
 
-module.exports = { findUndefinedCustomProperties, main };
+module.exports = { findUndefinedCustomProperties, frontendSources, main };
