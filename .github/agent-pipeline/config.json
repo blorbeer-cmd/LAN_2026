@@ -47,6 +47,8 @@
   ],
   "uiPathPrefixes": ["server/public/"],
   "protectedPathPrefixes": [".github/workflows/", "infra/"],
+  "//crossReviewEvidence": "What proves the counter provider reviewed the current head. `approval` demands an approving review — the strongest signal, but the Codex integration never submits one: it comments when it has suggestions and reacts with a thumbs-up when it has none, so this value leaves `cross` permanently unsatisfiable. `reviewed-and-resolved` accepts a review of this exact head with none of its findings left open; weaker, because it infers agreement from an absence instead of reading a statement. An explicit CHANGES_REQUESTED blocks under both.",
+  "crossReviewEvidence": "reviewed-and-resolved",
   "//selfReviewMinimumEnforcement": "How strongly a self-review session must have been kept away from the code before its verdict opens the gate. `true` requires credentials without code write access — the strongest, but unreachable in environments whose only credentials can push. `verified` accepts a session the launcher ran with the editing tools removed in a throwaway worktree and checked afterwards to be untouched. `false` accepts a verdict nothing outside the prompt backed up and effectively turns the self-review gate into a formality.",
   "selfReviewMinimumEnforcement": "verified",
   "reviewPromptPath": ".github/agent-pipeline/review-session-prompt.md",
