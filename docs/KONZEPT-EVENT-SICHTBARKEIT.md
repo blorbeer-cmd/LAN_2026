@@ -14,11 +14,12 @@ Zwei Umstände machen das Vorhaben deutlich kleiner, als es zunächst aussah:
    entfällt der Umbau von rund 20 Auswertungsendpunkten auf eine Sichtbarkeits-Allowlist —
    ursprünglich der größte Arbeitsblock (Abschnitt 2.3).
 
-Kurzantwort auf „wäre das aufwändig?“: **Nein.** Der Zugriffsmechanismus existiert bereits fast
-vollständig — `visibility_scope`, Einladungsstatus, REST-Guard und Realtime-Prüfung sind da und
-getestet. Es fehlt die flächendeckende Anwendung, und die ist überwiegend mechanisch.
-Realistische Gesamtgröße: **klein bis mittel, sinnvoll in zwei PRs.** Jetzt umgesetzt ist es
-deutlich billiger als nach der ersten echten LAN.
+Kurzantwort auf „wäre das aufwändig?“: **Überschaubar, aber nicht nur mechanisch.** Der
+Zugriffsmechanismus existiert bereits fast vollständig — `visibility_scope`, Einladungsstatus,
+REST-Guard und Realtime-Prüfung sind da und getestet. Neben den Routenguards braucht vor allem das
+gemischt eventübergreifende Live-Board eine betrachterabhängige Auslieferung. Realistische
+Gesamtgröße: **mittel, sinnvoll in zwei bis drei PRs.** Jetzt umgesetzt ist es deutlich billiger
+als nach der ersten echten LAN.
 
 ---
 
@@ -39,9 +40,10 @@ flächendeckende Anwendung.
 | Tracking respektiert Sichtbarkeit bereits | `activeTrackingContexts` filtert nach `visibility_scope` und Einwilligung | `server/src/trackingContexts.ts:26-46` |
 | Kiosk-Token mit Event-Scope | `kioskTokens.ts`, Zustellmatrix in `realtime.ts` | vorhanden |
 
-Der Guard wird heute in zehn Routendateien konsequent verwendet: `push`, `seating`,
-`infoBoard`, `arrivals`, `votes`, `pings`, `arcade`, `broadcasts`, `foodOrders`, `checklist`
-und in Teilen `players` und `analytics`. Dort funktioniert das gewünschte Verhalten bereits.
+Der Guard wird heute in neun Routendateien konsequent verwendet: `push`, `seating`,
+`infoBoard`, `arrivals`, `pings`, `arcade`, `broadcasts`, `foodOrders`, `checklist` und in Teilen
+`players`, `analytics` und `votes`. Nur auf diesen tatsächlich geguardeten Pfaden funktioniert
+das gewünschte Verhalten bereits.
 
 ### 1.2 Die Lücken
 
@@ -54,20 +56,18 @@ Eventzugehörigkeit. Das ist heute die direkteste Offenlegung — und gleichzeit
 Voraussetzung dafür, dass die bestehende Einladungs-UI in `server/public/js/views/games.js:82`
 überhaupt funktioniert (sie filtert die offenen Einladungen clientseitig aus der Gesamtliste).
 
-**Lücke B — der Eventzugriff wird an drei verschiedenen Stellen umgangen.**
+**Lücke B — der Eventzugriff wird in vier verschiedenen Scope-Klassen umgangen.**
 
 Entscheidend ist, **woher** ein Endpunkt seinen Event-Scope bezieht. Nach dieser Quelle ist die
 Inventur gegliedert, nicht nach dem Query-Parameter — eine frühere Fassung dieses Dokuments
-inventarisierte nur `?eventId=` und übersah dadurch die beiden anderen Klassen vollständig.
+inventarisierte nur `?eventId=` und übersah dadurch die übrigen Klassen vollständig.
 
 **B1 — expliziter `?eventId=`-Parameter, ungeprüft übernommen.**
 
 | Endpunkt | Verhalten heute | Ort |
 |---|---|---|
-| `GET /api/hall-of-fame` | listet **alle** Events der Gruppe namentlich, mit Endstand und Turniersiegern | `routes/hallOfFame.ts:29-95` |
-| `GET /api/leaderboard` | aggregiert **alle** `matches` der Gruppe über alle Events hinweg, ohne Eventfilter | `routes/leaderboard.ts:16-24` |
 | `GET /api/stats/playtime` | `?eventId=` wird ungeprüft übernommen; ohne Filter Summe über alle Events | `routes/stats.ts:32-48` |
-| `GET /api/analytics/{overview,sessions,concurrency,awards,games,games-tournaments}` | `?eventId=` ungeprüft; nur `/analytics/arcade` guardet korrekt | `routes/analytics.ts:111-373` vs. `:479-490` |
+| `GET /api/analytics/{overview,sessions,awards,games,games-tournaments}` | `?eventId=` ungeprüft; `/analytics/concurrency` nimmt keinen Eventfilter an, nur `/analytics/arcade` guardet korrekt | `routes/analytics.ts:111-193, 230-373` vs. `:479-490` |
 | `GET /api/matches` | `?eventId=` ungeprüft, ohne Filter alle Events | `routes/matches.ts:121-133` |
 | `GET /api/tournaments` | `?eventId=` ungeprüft, Default `getTrackingEventId()` (global, nicht gruppengeprüft) | `routes/tournaments.ts:272-285` |
 | `GET /api/matchmaking/history`, `GET /api/draft/history` | `?eventId=` ungeprüft | `routes/matchmaking.ts:406`, `routes/draft.ts:131` |
@@ -83,7 +83,7 @@ Der gesamte aktive Abstimmungsfluss arbeitet auf der gruppenweit aktuellen Runde
 | `GET /api/votes` | gibt `buildPayload()` direkt aus — inklusive `eventId`, Titel, Info und Auswahl | `routes/votes.ts:337-340`, Payload `:101-127` |
 | `GET /api/votes/mine` | dieselbe Runde, kein Guard | `routes/votes.ts:402-415` |
 | `POST /api/votes`, `POST /api/votes/points` | **Schreibzugriff** auf die Runde eines fremden Events | `routes/votes.ts:516-646` |
-| `POST`/`PATCH /api/matches`, Matchmaking-Erzeugung/Rematch/Move, aktueller Draft | Scope aus `trackingEventIdForGroup()`, kein Teilnehmer-Guard | `routes/matches.ts:144-178, 254-318`, `routes/matchmaking.ts:150-260, 267-335, 440-521`, `routes/draft.ts:152-155` |
+| `POST /api/matches`, Matchmaking-Erzeugung/Rematch, aktueller Draft | Scope aus `trackingEventIdForGroup()` oder dem gruppenweit neuesten Zustand, kein Teilnehmer-Guard | `routes/matches.ts:144-178`, `routes/matchmaking.ts:150-335`, `routes/draft.ts:152-155` |
 
 Nur Broadcast und Push werden beim Rundenstart mit `eventId` gescopt (`votes.ts:470-509`); der
 REST-Pfad nutzt dieses Metadatum nicht. Und `loadAll()` ruft `api.votes.get()` für **jedes**
@@ -96,18 +96,22 @@ jedes Zutun.
 |---|---|---|
 | `GET /api/tournaments/:id` | liefert das vollständige Board **einschließlich `lobbyPassword`**, geprüft wird nur die Gruppe | `routes/tournaments.ts:294-298`, Serialisierung `:248-263` |
 | `POST`/`PUT /api/tournaments/:id/matches/:matchId/result` | **verändert** das Board ohne Eventguard | `routes/tournaments.ts:540-550`, Registrierung `:917-918` |
+| `PATCH /api/matches/:id`, `PATCH /api/matchmaking/draws/:id/move` | verändert die über ihre ID geladene Ressource ohne Prüfung ihres Events | `routes/matches.ts:254-318`, `routes/matchmaking.ts:440-521` |
+| `POST /api/draft/pick` | lädt den aktiven Draft und prüft die Identität des Captains, aber nicht dessen aktuellen Eventzugriff | `routes/draft.ts:275-365` |
+| `GET /api/votes/history/:round` | guardet den optionalen Query-Scope, lädt die Antwort aber allein über die Rundennummer und gibt `eventId`/`eventName` der Zeile aus | `routes/votes.ts:796-835` |
 
 Diese Klasse ist die gefährlichste: Sie ist nicht nur eine Benennungslücke, sondern erlaubt einem
 Außenstehenden mit einer geratenen oder anderswo aufgeschnappten ID das **Verändern** fremder
 Eventdaten. Negativtests, die nur `?eventId=` abklopfen, können davon nichts entdecken.
 
-**Lücke B4 — der Live-Status ist gar nicht eventgefiltert.**
+**B4 — der Live-Status ist gar nicht eventgefiltert.**
 
 `GET /api/live` liefert unverändert `getLiveBoard(groupId)` (`routes/live.ts:14-15`).
 `getLiveBoard` fasst `tracking_live_contexts` pro Spieler über **alle** Events zusammen und lädt
-sämtliche `tracking_live_games` der Gruppe ohne Eventfilter (`liveStatus.ts:107-122`). Die
-Realtime-Nachricht trägt nur `{ groupId }` (`routes/agent.ts:78`), weshalb die Eventprüfung in
-`broadcast()` mangels `eventId` gar nicht greift (`realtime.ts:359-412`).
+sämtliche `tracking_live_games` der Gruppe ohne Eventfilter (`liveStatus.ts:107-122`). Auch der
+Realtime-Payload enthält dieses vollständige Board; die Zustellmetadaten tragen nur `{ groupId }`
+und kein `eventId` (`routes/agent.ts:78`), weshalb die Eventprüfung in `broadcast()` nicht greift
+(`realtime.ts:359-412`).
 
 Ein Außenstehender sieht damit weiterhin, wer im privaten Event gerade aktiv ist und was gespielt
 wird. Das Umstellen von `activeEventAccess` in Phase 4 behebt diesen Pfad **nicht** — der Scope ist
@@ -117,8 +121,9 @@ in den Trackingtabellen vorhanden, wird aber beim Bau des ausgelieferten Boards 
 Zu unterscheiden von den reinen Summen: Manche Auswertungen geben einzelne Events preis, nicht
 nur Zahlen. Die Hall of Fame listet jedes Event namentlich mit Zeitraum, Gesamtsieger und
 Endstand (`routes/hallOfFame.ts:29-95`); `GET /api/matches` und `GET /api/tournaments` liefern
-pro Zeile eine `eventId` mit (`routes/matches.ts:57`). Diese drei sind echte Lücken und werden
-geschlossen.
+pro Zeile eine `eventId` mit (`routes/matches.ts:57`), und
+`GET /api/votes/history/:round` gibt `eventId` und `eventName` der über die Rundennummer geladenen
+Zeile aus (`routes/votes.ts:832-835`). Diese vier sind echte Lücken und werden geschlossen.
 
 Die *Summen* dagegen — Gesamt-Rangliste, Gesamt-Spielzeit, Profilstatistiken,
 All-Time-Zähler — bleiben bewusst vollständig. Das ist keine Lücke, sondern die
@@ -216,13 +221,14 @@ export type EventVisibilityLevel = 'none' | 'teaser' | 'full';
 
 eventVisibilityLevel(groupId, eventId, playerId, role): EventVisibilityLevel
 visibleEventIds(groupId, playerId, role, level = 'full'): string[]
-VISIBLE_EVENT_IDS_SQL  // wiederverwendbares EXISTS-Fragment für Aggregat-Queries
+VISIBLE_EVENT_IDS_SQL  // wiederverwendbares EXISTS-Fragment für eventbenennende Queries
 ```
 
 Analog zu `ACCEPTED_EVENT_PARTICIPANT_SQL` wird ein einziges SQL-Fragment exportiert, das alle
-Aggregat-Queries einbinden — damit kann die Regel nicht an 20 Stellen leicht unterschiedlich
-implementiert werden. Bestehende Aufrufer (`requestCanAccessGroupEvent`, `activeEventAccess`)
-werden auf den Resolver umgestellt, ihre öffentliche Signatur bleibt.
+Queries mit einzelnen Eventbezügen einbinden — damit kann die Regel nicht an vielen Stellen
+leicht unterschiedlich implementiert werden. Gruppenweite Summen ohne Eventbezug verwenden es
+gemäß Abschnitt 2.3 ausdrücklich nicht. Bestehende Aufrufer (`requestCanAccessGroupEvent`,
+`activeEventAccess`) werden auf den Resolver umgestellt, ihre öffentliche Signatur bleibt.
 
 Aufwand: klein. 1 neue Datei, 2 angepasste, Unit-Tests für die Stufenmatrix.
 
@@ -230,7 +236,11 @@ Aufwand: klein. 1 neue Datei, 2 angepasste, Unit-Tests für die Stufenmatrix.
 
 - `GET /api/events`: nur sichtbare Events; Stufe-1-Events werden als Teaser serialisiert
   (`participants`/`participantIds` weggelassen, neues Feld `visibilityLevel`).
-- `GET /api/events/:id`, `GET /api/events/active`: Stufenprüfung, `404` bei Stufe 0.
+- `GET /api/events/:id`: Stufenprüfung, `404` bei Stufe 0.
+- `GET /api/events/active`: Ist das tatsächlich getrackte Event für den Betrachter unsichtbar,
+  liefert der Endpunkt den neutralen Gruppenraum statt eines verräterischen `404`. In der
+  gefilterten Eventliste wird derselbe Gruppenraum für diesen Betrachter als aktiv markiert; sonst
+  wäre das versteckte Event über das fehlende `isActive` weiterhin ableitbar.
 - `serializeEvent()` bekommt einen Stufenparameter — die Teaser-Variante ist damit die einzige
   Stelle, an der entschieden wird, welche Felder eine Stufe-1-Person sieht.
 - `resolveEvent` (`resolveGroupResource`) bleibt für die Adminrouten unverändert; die
@@ -241,49 +251,65 @@ Aufwand: klein-mittel. Eine Datei, klar abgegrenzt.
 
 ### 3.3 Phase 3 — Auswertungsflächen
 
-Durch die Entscheidung aus 2.3 schrumpft diese Phase erheblich: **die Aggregate bleiben, wie sie
-sind.** `leaderboard.ts` und die unfilterten Pfade von `stats.ts`, `analytics.ts` und
-`players.ts` werden gar nicht angefasst — sie sollen weiterhin alles zusammenfassen. Zu tun
-bleiben zwei mechanische Dinge.
+Durch die Entscheidung aus 2.3 bleiben die Aggregate, wie sie sind: `leaderboard.ts` und die
+unfilterten Pfade von `stats.ts`, `analytics.ts` und `players.ts` sollen weiterhin alles
+zusammenfassen. Die Zugriffslücken teilen sich aber in fünf klar abgegrenzte Blöcke; nur die
+expliziten Query-Guards sind rein mechanisch.
 
-**(a) Jedes `?eventId=` validieren.** Rund 15 Endpunkte übernehmen den Parameter heute ungeprüft
-(Tabelle in 1.2). Sie bekommen alle dieselben zwei Zeilen:
+**(a) Jedes explizit übergebene `?eventId=` validieren.** Zwölf Endpunkte übernehmen den Parameter
+heute ungeprüft (Tabelle in 1.2). Nur wenn der Parameter tatsächlich gesetzt ist, bekommen sie
+dasselbe Guard-Muster:
 
 ```
-const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
-if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
-if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+if (req.query.eventId !== undefined) {
+  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+}
 ```
 
 Das Muster existiert bereits und ist in `analytics.ts:484-487` vorgemacht — es wird nur auf die
-übrigen Endpunkte gezogen. Betroffen: `stats.ts`, `analytics.ts` (6 Endpunkte), `matches.ts`,
+übrigen Endpunkte gezogen. Betroffen: `stats.ts`, `analytics.ts` (5 Endpunkte), `matches.ts`,
 `tournaments.ts`, `matchmaking.ts`, `draft.ts`, `export.ts`.
+
+Bei **fehlendem** Parameter darf dieser Guard nicht stillschweigend das gruppenweit getrackte,
+für den Betrachter aber unsichtbare Event auflösen und mit `404` verraten. Endpunkte mit einer
+echten Gesamtansicht liefern dann weiterhin die vollständige Summe; Endpunkte, deren Default der
+aktuelle Eventzustand ist, liefern bei einem unsichtbaren Tracking-Event einen neutralen
+Leerzustand. Nur ein ausdrücklich angefragtes fremdes Event beantwortet der Server mit `404`.
 
 Wichtig dabei: Der heutige Default `getTrackingEventId()` in `tournaments.ts:276`,
 `matchmaking.ts:407` und `export.ts:371, 385` ist ein **globaler** Griff ohne Gruppenprüfung. Er
 wird durch `resolveGroupEventScope(...)` ersetzt, das den Trackingstand innerhalb der eigenen
 Gruppe auflöst — das repariert nebenbei eine bestehende Unsauberkeit.
 
-**(a2) Endpunkte mit Scope aus dem Tracking-Event absichern (B2).** Der aktive Abstimmungsfluss
-(`GET /api/votes`, `/mine`, `POST /api/votes`, `POST /api/votes/points`) sowie die schreibenden
-Pfade von Matches, Matchmaking und Draft lösen ihr Event serverseitig auf und prüfen es nie. Sie
-brauchen dieselbe Prüfung gegen `meta.eventId` beziehungsweise das aufgelöste Tracking-Event.
+**(a2) Endpunkte mit serverseitig aufgelöstem aktuellem Scope absichern (B2).** Der aktive
+Abstimmungsfluss (`GET /api/votes`, `/mine`, `POST /api/votes`, `POST /api/votes/points`),
+Match-Erstellung, Matchmaking-Erzeugung/Rematch und `GET /api/draft` lösen ihr Event oder ihren
+aktuellen Zustand serverseitig auf und prüfen ihn nie. Sie brauchen dieselbe Prüfung gegen
+`meta.eventId`, das aufgelöste Tracking-Event beziehungsweise `draft.event_id`.
 
-Für Leseantworten gilt dabei eine Besonderheit: Ein `404` würde die Existenz einer laufenden
-Abstimmung verraten. Diese Endpunkte liefern stattdessen einen **neutralen Leerzustand** — so, als
-liefe keine Runde. Schreibzugriffe antworten weiterhin mit `404`.
+Für Leseendpunkte, die einen aktuellen Zustand ausliefern — insbesondere Vote-Reads und
+`GET /api/draft` — gilt dabei eine Besonderheit: Ein `404` würde dessen Existenz verraten. Sie
+liefern stattdessen einen **neutralen Leerzustand**; Schreibzugriffe antworten weiterhin mit
+`404`.
 
-**(a3) Ressourcenrouten absichern (B3).** `GET /api/tournaments/:id` und die Ergebnis-Mutationen
-leiten ihr Event aus der geladenen Ressource ab. Sie erhalten nach dem Laden eine Prüfung von
-`tournament.event_id` gegen die Sichtbarkeit des Aufrufers. Das ist der einzige Pfad, über den
-heute `lobbyPassword` eines fremden Events lesbar ist.
+**(a3) Ressourcenrouten absichern (B3).** Turnierdetail und -ergebnisse, Matchkorrektur,
+Draw-Move, Draft-Pick und `GET /api/votes/history/:round` leiten ihr Event aus der geladenen Zeile
+ab. Sie erhalten nach dem Laden eine Prüfung genau dieser `event_id` gegen die Sichtbarkeit des
+Aufrufers — nie nur gegen einen optionalen Query-Parameter. Beim Turnierdetail schützt das auch
+das `lobbyPassword`; bei der Abstimmungshistorie verhindert es das Durchzählen der globalen
+Rundennummern.
 
-**(a4) Live-Status pro Betrachter filtern (B4).** `getLiveBoard` bekommt die sichtbare Eventmenge
-als Parameter und lässt Kontexte fremder Events weg; die Realtime-Nachricht in `agent.ts:78` muss
-ihren `eventId`-Scope mitführen, damit die Prüfung in `broadcast()` überhaupt greifen kann. Ohne
-das bleibt sichtbar, wer im privaten Event gerade spielt — unabhängig von allem anderen in Phase 4.
+**(a4) Live-Status pro Betrachter filtern (B4).** `getLiveBoard` bekommt den Betrachterkontext und
+lässt Kontexte fremder Events weg. Ein einzelnes `eventId` am heutigen Broadcast reicht dafür
+nicht: Ein Board kann Gruppenraum- und Eventkontexte mehrerer Personen mischen und dieselbe
+Person kann mehr als einen erlaubten Kontext haben. `live:changed` wird deshalb zum payloadlosen
+Invalidierungssignal; Browser und Kiosk laden danach ihr jeweils autorisiertes Board über
+`GET /api/live` neu. Wegen der häufigen Agent-Updates bündelt der Client dicht aufeinanderfolgende
+Invalidierungen, damit nicht jeder Report sofort einen eigenen Refetch pro Browser auslöst.
 
-**(b) Eventbenennende Ausgaben filtern.** Drei Stellen geben einzelne Events preis und brauchen
+**(b) Eventbenennende Ausgaben filtern.** Vier Stellen geben einzelne Events preis und brauchen
 die Sichtbarkeits-Allowlist:
 
 - **Hall of Fame** (`hallOfFame.ts:29-95`): Die Abschnitte pro Event (`eventSummaries` — Name,
@@ -293,8 +319,12 @@ die Sichtbarkeits-Allowlist:
 - **`GET /api/matches`** (`matches.ts:57`) und **`GET /api/tournaments`**: Jede Zeile trägt eine
   `eventId`. Ohne Filter würden fremde Event-IDs mitgeliefert. Beide Listen laufen deshalb ohne
   explizites `?eventId=` über die sichtbaren Events.
+- **`GET /api/votes/history/:round`**: Die über die Rundennummer geladene Zeile wird gegen ihre
+  eigene `event_id` geprüft; ein beliebiger oder fehlender `?eventId=`-Parameter ist dafür kein
+  Berechtigungsnachweis.
 
-Aufwand: klein-mittel. (a) ist reine Fleißarbeit ohne Denkanteil, (b) betrifft drei Endpunkte.
+Aufwand: mittel. Die Query-Guards sind Fleißarbeit; Ressourcenrouten, neutrale Defaultzustände und
+das betrachterabhängige Live-Board brauchen eigene Datenfluss- und Regressionstests.
 
 ### 3.4 Phase 4 — Realtime, Push, Kiosk
 
@@ -319,12 +349,13 @@ Scope. Zu tun bleibt:
   Autorisierung passiert also beim Refetch. Ein Gruppen-Token muss dort einen neutralen Zustand
   bekommen, ein exakt eventgebundenes Token weiterhin seine Daten.
 
-Aufwand: klein.
+Aufwand: klein-mittel.
 
 ### 3.5 Phase 5 — Frontend
 
-- Sichtbarkeitsauswahl im Event-Formular (`server/public/js/views/games.js:224-229`), zwei
-  Optionen: „Nur Eingeladene" (Default) / „Alle Mitglieder".
+- Sichtbarkeitsauswahl im Event-Formular: Markup bei `server/public/js/views/games.js:180-183`,
+  Feldwert bei `:207-212` auslesen und bei `:214-220` in das Payload übernehmen; zwei Optionen:
+  „Nur Eingeladene" (Default) / „Alle Mitglieder".
 - Teaser-Darstellung für Stufe-1-Events: eigene Karte mit Annehmen/Ablehnen, ohne
   Teilnehmerliste. Die vorhandene Logik in `games.js:82` filtert dann nicht mehr clientseitig,
   sondern rendert, was der Server liefert.
@@ -341,12 +372,18 @@ Aufwand: klein.
 - Erweiterung von `src/test/api.eventInvitations.required.test.ts` um die vollständige
   Stufenmatrix (nicht eingeladen / eingeladen / angenommen / abgelehnt / entfernt × Admin,
   Member) gegen Liste, Detail und je einen Vertreter pro Auswertungsfläche.
-- Neue Required-Suite `api.eventVisibility.required.test.ts`: für **jeden** Endpunkt mit
-  `?eventId=` ein Negativtest auf `404` bei fremdem Event. Das ist die Regression, die verhindert,
-  dass ein später ergänzter Endpunkt die Regel wieder unterläuft.
+- Neue Required-Suite `api.eventVisibility.required.test.ts`: Negativtests je Scope-Quelle und
+  sowohl für Reads als auch Writes. Dazu gehören explizite `?eventId=`-Filter, implizite
+  Tracking-Defaults, IDs geladener Ressourcen und insbesondere
+  `GET /api/votes/history/:round` ohne passenden Query-Parameter. Abgewiesene Mutationen müssen
+  zusätzlich einen unveränderten Datenbankzustand nachweisen.
+- Neutrale Defaultzustände separat testen: Ein unsichtbares aktives Event darf weder durch
+  `GET /api/events/active`, ein fehlendes `isActive`, Vote-Reads noch andere implizite
+  Tracking-Defaults ableitbar sein.
 - E2E: zwei Clients, einer eingeladen, einer nicht — das Event ist beim zweiten in keiner Ansicht
   auffindbar, auch nicht über die Suchpalette.
-- `realtime.delivery.required.test.ts` um die Teaser-Stufe ergänzen.
+- `realtime.delivery.required.test.ts` um die Teaser-Stufe und das payloadlose, anschließend per
+  REST personalisierte `live:changed` ergänzen; die Client-Bündelung erhält einen eigenen Test.
 - Dokumentation: dieses Konzept auf „umgesetzt" setzen, `server/OPERATIONS.md` um das geänderte
   Kiosk-Verhalten ergänzen.
 
@@ -432,11 +469,11 @@ Performance. Bei ~15 Personen und einer Handvoll Events kostet ein zusätzliches
 |---|---|---|---|
 | 1 | Sichtbarkeits-Resolver + Stufenmodell | S | — |
 | 2 | Eventliste, Detail, Teaser-Serialisierung | S–M | 1 |
-| 3a | `?eventId=` an ~15 Endpunkten validieren (B1) | S | 1 |
-| 3a2 | Aktiven Vote-Fluss und schreibende Match-/Matchmaking-/Draft-Pfade absichern (B2) | **M** | 1 |
-| 3a3 | Ressourcenrouten `tournaments/:id` und Ergebnis-Mutationen absichern (B3) | S–M | 1 |
-| 3a4 | Live-Board pro Betrachter filtern, Agent-Broadcast mit `eventId` scopen (B4) | **M** | 1 |
-| 3b | Hall of Fame, Matches- und Turnierliste filtern | S | 1 |
+| 3a | `?eventId=` an 12 Endpunkten validieren, implizite Defaults neutralisieren (B1) | S–M | 1 |
+| 3a2 | Aktuellen Vote-/Match-/Matchmaking-/Draft-Scope bei Reads und Writes absichern (B2) | **M** | 1 |
+| 3a3 | Ressourcenrouten und `votes/history/:round` gegen die geladene Zeile prüfen (B3) | M | 1 |
+| 3a4 | Live-Board pro Betrachter filtern, Realtime auf gebündelten Refetch umstellen (B4) | **M** | 1 |
+| 3b | Hall of Fame, Matches, Turnierliste und Abstimmungsrunde filtern | S–M | 1 |
 | 4 | Realtime/Push angleichen **plus Kiosk-REST-Matrix** | S–M | 1 |
 | 5 | Frontend: Sichtbarkeitsauswahl, Teaser | S | 2 |
 | 6 | Negativ-Testsuite (Lesen **und** Schreiben, je Scope-Klasse), E2E, Doku | **M–L** | alle |
@@ -446,16 +483,16 @@ Zwei Posten sind gegenüber der ersten Fassung entfallen: die Migration der Best
 gibt keine, 4.3) und der Umbau aller Aggregate auf eine Allowlist (nicht gewollt, 2.3).
 
 Dafür sind vier hinzugekommen — 3a2, 3a3, 3a4 und die Kiosk-REST-Matrix. Sie stammen aus dem
-Cross-Review des Konzepts und korrigieren einen Strukturfehler der ersten Fassung: Diese
+Review des Konzepts und korrigieren einen Strukturfehler der ersten Fassung: Diese
 inventarisierte nach Query-Parameter statt nach Scope-Quelle und übersah dadurch alles, was sein
 Event serverseitig auflöst oder aus einer Ressource liest. Das betrifft ausgerechnet die
 schreibenden Pfade, also den einzigen Teil, bei dem ein Außenstehender nicht nur mitlesen, sondern
 fremde Eventdaten **verändern** kann.
 
-Gesamtgröße damit **mittel**, nicht mehr „klein bis mittel". Weiterhin zwei PRs — **(1+2+4+5)**
-liefert die sichtbare Funktion, **(3+6)** schließt die Umgehungswege und sichert sie ab. Der zweite
-PR ist jetzt der deutlich größere; falls er zu groß wird, ist 3a4 (Live-Status) die natürliche
-Trennlinie, weil er als Einziger Trackinglogik statt Routenguards betrifft.
+Gesamtgröße damit **mittel**, nicht mehr „klein bis mittel". Sinnvoll sind zwei bis drei PRs:
+**(1+2+4+5)** liefert die sichtbare Funktion, **(3a+3a2+3a3+3b+6)** schließt die REST-Umgehungen
+und sichert sie ab. **3a4** kann wegen seines abweichenden Realtime-/Tracking-Datenflusses in einen
+dritten PR ausgelagert werden; bleibt der zweite PR gut reviewbar, kann es dort mitlaufen.
 
 ---
 
@@ -467,6 +504,9 @@ Trennlinie, weil er als Einziger Trackinglogik statt Routenguards betrifft.
 - Die Gesamtrangliste und alle Summen ohne Eventbezug sind **vollständig und für jedes Mitglied
   identisch** — sie werden nicht gefiltert.
 - Direktzugriff auf eine bekannte Event-ID liefert `404`, nicht `403`.
+- Implizite „aktuelles Event"-Reads liefern bei einem unsichtbaren Tracking-Event einen neutralen
+  Zustand; insbesondere verraten weder `GET /api/events/active` noch die `isActive`-Markierung,
+  dass ein fremdes Event läuft.
 - Ein eingeladenes, noch nicht beigetretenes Mitglied sieht genau den Teaser und kann annehmen
   oder ablehnen — nicht mehr.
 - Gruppen-Admin und Owner sehen und verwalten weiterhin alles.
@@ -475,11 +515,14 @@ Trennlinie, weil er als Einziger Trackinglogik statt Routenguards betrifft.
 - **Ein Außenstehender kann fremde Eventdaten nicht verändern.** Ergebnis-Mutationen,
   Stimmabgaben, Matchkorrekturen und Draw-Moves antworten mit `404`, und der Datenbankzustand
   bleibt danach nachweislich unverändert.
+- `GET /api/votes/history/:round` prüft den Eventzugriff gegen die geladene Abstimmungsrunde und
+  gibt für eine fremde Runde weder Eventname noch Ergebnis aus — unabhängig davon, ob ein
+  `?eventId=` fehlt oder auf einen anderen erlaubten Scope zeigt.
 - Der Live-Status eines privaten Events ist für Außenstehende weder per REST noch per Socket
   sichtbar — weder das gespielte Spiel noch ein daraus abgeleiteter `playing`-Status.
 - Ein Gruppen-Kiosk zeigt keine Abstimmung und kein Turnier eines `participants`-Events; ein exakt
   eventgebundenes Kiosk-Token sieht seine Daten weiterhin.
 - Negativtests existieren **je Scope-Klasse** (expliziter `?eventId=`, Tracking-Event, Event aus
-  der Ressource) und **für Lesen wie Schreiben** — nicht nur für den Query-Parameter. Genau diese
-  Verengung war der Fehler der ersten Konzeptfassung.
+  der Ressource, gemischtes Live-Board) und **für Lesen wie Schreiben** — nicht nur für den
+  Query-Parameter. Genau diese Verengung war der Fehler der ersten Konzeptfassung.
 - `npm run lint`, `npm run build`, `npm test` und `npm run test:e2e` sind grün.
