@@ -27,7 +27,8 @@ Ein Nutzer stellt einem Coding-Agent eine Aufgabe. Danach läuft alles automatis
 wiederkehrenden Entscheidung des Nutzers — wer das Review durchführt:
 
 1. Implementierung auf einem eigenen Branch und Eröffnung eines Draft-PRs.
-2. Ausführung der bestehenden Pflichtprüfungen.
+2. Ausführung der bestehenden Pflichtprüfungen; ein Draft blockiert dabei weder die
+   Review-Auswahl noch den Review-Start.
 3. Automatische Behebung von CI-Fehlern und Mergekonflikten durch den Implementierungs-Agent.
 4. Auswahl des Review-Modus durch den Nutzer für den aktuellen Head-SHA, mit Empfehlung:
    - `cross`: Review durch den jeweils anderen Anbieter.
@@ -78,7 +79,7 @@ Aufgabe an Codex oder Claude
        └─ Draft-PR + Task-Vertrag
             ├─ CI rot ───────────────→ Implementierungs-Agent korrigiert ─┐
             ├─ Mergekonflikt ─────────→ Implementierungs-Agent löst ihn ──┤
-            └─ CI grün + konfliktfrei                                      │
+            └─ CI grün + konfliktfrei (auch im Draft)                      │
                  └─ Auswahl an den Nutzer: Empfehlung + a/b/c              │
                       ├─ keine Antwort → `awaiting-review-decision`, nichts startet
                       ├─ a) `review:cross`  → Gegen-Anbieter reviewt        │
@@ -359,6 +360,7 @@ erfolgreich, wenn:
 - der Task-Vertrag gültig ist,
 - alle einschlägigen CI-Checks grün sind,
 - der Branch aktuell und konfliktfrei ist,
+- der PR nicht mehr als Draft markiert ist,
 - für den aktuellen Head-SHA genau ein Review-Modus gewählt ist,
 - das Review exakt den aktuellen Head-SHA geprüft hat,
 - das Review im gewählten Modus `pass` meldet: bei `cross` je nach `crossReviewEvidence` als
@@ -592,6 +594,8 @@ Freigabe endet am menschlichen Merge-Gate.
 - Die Auswahl des Review-Modus wird pro Head-SHA gestellt, von keinem Agenten beantwortet und
   öffnet das Gate nur mit der zum Modus passenden Evidenz.
 - Review und Gate sind immer an den aktuellen Head-SHA gebunden.
+- Draft-PRs können bereits die Review-Auswahl und das Review durchlaufen; Draft blockiert nur das
+  menschliche Merge-Gate.
 - Kritische Fälle halten an; normale Korrekturen laufen ohne Rückfrage weiter.
 - UI/UX-Änderungen erzeugen die vereinbarte prüfbare Benachrichtigung.
 - Kein Agent kann `main` ändern, mergen, Branch-Schutz verändern oder Deploy-Secrets lesen.
