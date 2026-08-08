@@ -9,11 +9,15 @@ automatisch weiter.
 ## Wann fragen
 
 - Nach abgeschlossener Implementierung, sobald der Branch gepusht und die einschlägigen Prüfungen
-  grün sind.
+  grün sind. Das gilt auch, wenn der PR noch ein Draft ist.
 - Nach jedem Fix-Commit erneut, denn jeder neue Commit entwertet das vorherige Verdikt.
-- Nicht fragen, solange CI rot ist, ein Mergekonflikt offen ist oder der PR ein Draft ist. Diese
-  Punkte behebt der Implementierungs-Agent zuerst ohne Rückfrage.
+- Nicht fragen, solange CI rot oder ein Mergekonflikt offen ist. Diese Punkte behebt der
+  Implementierungs-Agent zuerst ohne Rückfrage.
 - Nicht fragen, wenn `agent:no-auto`, `agent:needs-human` oder `agent:waiting` gesetzt sind.
+
+Ein Draft blockiert nur das menschliche Merge-Gate. Die Review-Auswahl und das anschließende Review
+werden bereits auf dem Draft-PR gestartet; erst nach bestandenem Review darf der PR auf „Ready for
+review“ wechseln.
 
 ## Die drei Optionen
 

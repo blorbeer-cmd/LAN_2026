@@ -3,6 +3,8 @@ name: Agent pipeline contract
 on:
   # This event always loads the workflow definition from the trusted default branch.
   # Never execute or check out code from the pull-request head in this workflow.
+  # `opened` and `synchronize` intentionally validate draft pull requests too; `ready_for_review`
+  # is not a prerequisite for pipeline participation.
   pull_request_target:
     types: [opened, edited, synchronize, reopened, ready_for_review]
 
