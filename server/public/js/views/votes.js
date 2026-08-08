@@ -118,6 +118,7 @@ let voteUnratedOnly = false;
 let limitGamesChecked = true;
 let excludedGameIds = new Set();
 let voteSelectionInitialized = false;
+let voteSelectionDirty = false;
 let voteGameSearchQuery = '';
 let lastRenderedRoundOpen = false;
 
@@ -144,7 +145,7 @@ function sortVoteGames(games, results = state.votes?.catalogResults ?? []) {
 }
 
 function initializeVoteGameSelection(votes) {
-  if (voteSelectionInitialized) return;
+  if (voteSelectionInitialized && voteSelectionDirty) return;
   const catalog = catalogGames();
   const selectedGameIds = new Set(sortVoteGames(catalog, votes.catalogResults).slice(0, 10).map((game) => game.id));
   excludedGameIds = new Set(catalog.filter((game) => !selectedGameIds.has(game.id)).map((game) => game.id));
@@ -155,6 +156,7 @@ function resetVoteGameSelection() {
   limitGamesChecked = true;
   excludedGameIds = new Set();
   voteSelectionInitialized = false;
+  voteSelectionDirty = false;
 }
 
 // Games currently visible under the genre filter above — the single source
@@ -755,12 +757,14 @@ export function renderVotes(container, ctx) {
   if (limitGamesCheckbox && gameSelectWrap) {
     limitGamesCheckbox.addEventListener('change', () => {
       limitGamesChecked = limitGamesCheckbox.checked;
+      voteSelectionDirty = true;
       gameSelectWrap.hidden = !limitGamesChecked;
     });
   }
 
   container.querySelectorAll('[data-vote-game-checkbox]').forEach((checkbox) => {
     checkbox.addEventListener('change', () => {
+      voteSelectionDirty = true;
       if (checkbox.checked) excludedGameIds.delete(checkbox.value);
       else excludedGameIds.add(checkbox.value);
     });
@@ -776,10 +780,12 @@ export function renderVotes(container, ctx) {
   });
 
   container.querySelector('#votes-select-all')?.addEventListener('click', () => {
+    voteSelectionDirty = true;
     for (const g of voteSearchVisibleGames()) excludedGameIds.delete(g.id);
     ctx.rerender();
   });
   container.querySelector('#votes-select-none')?.addEventListener('click', () => {
+    voteSelectionDirty = true;
     for (const g of voteSearchVisibleGames()) excludedGameIds.add(g.id);
     ctx.rerender();
   });
