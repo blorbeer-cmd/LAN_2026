@@ -174,6 +174,18 @@ test("an explicit rejection still blocks, whatever the evidence mode", () => {
   }
 });
 
+test("the missing-review blocker names the remedy and rules out reactions", () => {
+  // From the cross-review of 8db0d7f: Codex answers a clean automatic pass with a thumbs-up, and
+  // reactions are never fetched. They also could not be — a reaction carries no commit SHA, so it
+  // can never be head-bound. The gate therefore needs a review requested for this head, and the
+  // blocker has to say so instead of leaving the operator guessing why a "reviewed" PR is stuck.
+  const readiness = deriveReadiness(readySnapshot({ reviews: [] }), config);
+  assert.equal(readiness.ready, false);
+  const blocker = readiness.blockers.join("\n");
+  assert.match(blocker, /request one for this head/);
+  assert.match(blocker, /a reaction is not evidence/);
+});
+
 test("a comment for an earlier head is no evidence for this one", () => {
   const readiness = deriveReadiness(
     readySnapshot({ reviews: commentedReview("f".repeat(40)) }),

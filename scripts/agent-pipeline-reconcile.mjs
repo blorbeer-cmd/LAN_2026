@@ -791,8 +791,13 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
       );
     } else if (!reviews.reviewedByProvider) {
       evidenceOutstanding = true;
+      // Naming the remedy matters here: the evidence is a *submitted review* bound to this head, and
+      // the counter provider only submits one when a review is requested for it. A provider that
+      // merely reacted — Codex answers a clean automatic pass with a thumbs-up — leaves nothing this
+      // gate can read, because a reaction carries no commit SHA and could never be head-bound.
       blockers.push(
-        `No ${reviewerProvider ?? "cross"} review covers the current head SHA yet.`,
+        `No ${reviewerProvider ?? "cross"} review covers the current head SHA yet; request one for ` +
+          "this head (a reaction is not evidence, only a submitted review is).",
       );
     } else if (!threadsReadable || threads.blockingCount > 0) {
       // The findings are the verdict here: a provider that never approves says "no objection" by
