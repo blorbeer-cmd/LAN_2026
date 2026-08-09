@@ -46,6 +46,14 @@ async function openMatchmakingHistory(): Promise<void> {
   if (!(await details.getAttribute('open'))) await details.locator('summary').click();
 }
 
+async function waitForArcadeStylesheet(targetPage: Page): Promise<void> {
+  await targetPage.waitForSelector('#arcade-stylesheet[href="/css/arcade.css?v=1"]', { state: 'attached' });
+  await targetPage.waitForFunction(() => {
+    const link = document.querySelector('#arcade-stylesheet');
+    return link instanceof HTMLLinkElement && link.sheet !== null;
+  });
+}
+
 async function switchIdentityAndOpenArrivals(label: string): Promise<void> {
   const account = accountsByName.get(label);
   assert.ok(account, `missing E2E account for ${label}`);
@@ -134,7 +142,7 @@ test('Arcade: open a quiz lobby, see it on Home, then close it again', async (t)
 
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="arcade"]');
-  await page.waitForSelector('#arcade-stylesheet[href="/css/arcade.css?v=1"]', { state: 'attached' });
+  await waitForArcadeStylesheet(page);
   // Arcade is a launcher; select the quiz tile before its lobby controls
   // become visible (module state is intentionally reset on a fresh run).
   await page.click('[data-game="quiz"]');
@@ -186,6 +194,7 @@ test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', as
     await guestPage.waitForSelector('.nav-btn[data-view="more"]');
     await guestPage.click('.nav-btn[data-view="more"]');
     await guestPage.click('[data-navigate="arcade"]');
+    await waitForArcadeStylesheet(guestPage);
 
     for (const game of ['pong', 'blobby'] as const) {
       if ((await page.locator('#quiz-create-lobby').count()) === 0) await page.click('[data-game="quiz"]');

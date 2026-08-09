@@ -5,6 +5,7 @@ import {
   acknowledgedRevealSeq,
   challengeSelectionForPlayer,
   freshInteraction,
+  memoryRevealSchedule,
   nextInteractionState,
   orderedChallengeSelection,
   pairHideStillApplies,
@@ -63,6 +64,14 @@ test('memory reveal acknowledgements use the authoritative server sequence', () 
   assert.equal(acknowledgedRevealSeq(3, 3), 3);
   assert.equal(acknowledgedRevealSeq(3, 4), 4);
   assert.equal(acknowledgedRevealSeq(3, undefined), 4);
+});
+
+test('memory reveal schedule follows the server timing and preserves production defaults', () => {
+  assert.deepEqual(memoryRevealSchedule(undefined, 7), { stepMs: 700, showMs: 500, totalMs: 4_900 });
+  const fast = memoryRevealSchedule(50, 7);
+  assert.equal(fast.totalMs, 50);
+  assert.equal(fast.stepMs * 7, 50);
+  assert.equal(fast.showMs / fast.stepMs, 5 / 7);
 });
 
 test('admin challenge selection keeps checkbox insertion order and is omitted for non-admins', () => {
