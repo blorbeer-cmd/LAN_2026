@@ -3,9 +3,10 @@
 Status: beschlossenes Zielkonzept; Phasen 0 bis 2 umgesetzt (Task-Vertrag, Labels, stateless
 Readiness-Reconciler) sowie Phase 7 (Commit-Status `Agent pipeline / ready for human merge`;
 Eintrag als Required Check bleibt eine manuelle Nutzerentscheidung). Aus Phase 4 ist der bewusst
-enge Pilotpfad Codex-Implementierung → Claude-Cross-Review umgesetzt; CI-/Konflikt-Fixes,
+enge Pilotpfad Codex-Implementierung → Claude-Cross-Review samt sicherer Rückkehr zur
+Review-Auswahl nach einem vertrauenswürdigen Providerstartfehler umgesetzt; CI-/Konflikt-Fixes,
 Gegenrichtung, automatische Retries, Rundenzähler und Findings-Fix-Schleife fehlen noch.
-Stand: 2026-08-08
+Stand: 2026-08-10
 
 Der Reviewer wird nicht mehr automatisch bestimmt, sondern vom Nutzer pro Head-SHA gewählt. Die
 Herleitung dieser Änderung steht in [`review-mode-selection.md`](review-mode-selection.md), der
@@ -235,8 +236,10 @@ Lauf grün zu bekommen.
 Die CI misst Unit-/Integration-, Core-E2E-, Arcade-Smoke- und Arcade-E2E-Laufzeit getrennt von
 Setup und Build.
 Mehr als 20 Prozent und mindestens 30 Sekunden gegenüber dem Median der letzten fünf erfolgreichen
-`main`-Läufe lösen zunächst einen automatischen Wiederholungslauf der auffälligen Suite aus. Nur
-ein bestätigter Rückschritt wird zum CI-Fehler und durchläuft die normale CI-Fix-Schleife. Der
+`main`-Läufe lösen zunächst einen automatischen Wiederholungslauf der auffälligen Suite aus. Der
+stabile Required Check `Test performance` aggregiert Detektor und Wiederholung fail closed. Ein
+bestätigter Rückschritt oder ein technischer Fehler wird zum CI-Fehler und durchläuft die normale
+CI-Fix-Schleife. Der
 Implementierungs-Agent untersucht dann Ursache und langsamste Tests und reduziert die Laufzeit,
 ohne Abdeckung oder Assertions zu schwächen. Ist zusätzliche Laufzeit wegen notwendiger neuer
 Abdeckung unvermeidbar, wird sie im PR nachvollziehbar begründet und im Review bewertet.
@@ -344,6 +347,9 @@ Im Modus `human` bleibt die Approval zum exakten Head-SHA der Nachweis.
    die Kontingentlage ist der Grund, aus dem der Nutzer diese Entscheidung selbst trifft. Wählt er
    daraufhin den Implementierungs-Anbieter, läuft dessen isoliertes Review als
    `agent:review-fallback`.
+   Ein vertrauenswürdig publizierter terminaler Startfehler für den exakten Head wird dabei pro
+   Workflow-Attempt genau einmal verarbeitet: Nur die fehlgeschlagene Auswahl wird gelöscht, der
+   Zustand wird `awaiting-review-decision`, und keine Alternative wird automatisch gesetzt.
 4. Ist kein Anbieter verfügbar und will der Nutzer nicht selbst reviewen, `agent:waiting` setzen
    und zeitgesteuert erneut versuchen.
 5. Warteversuche und unbeantwortete Auswahlfragen zählen nicht als Reviewrunde.
@@ -606,9 +612,12 @@ Finding oder fehlende UI-Nachricht schließt das Gate wieder.
 
 Umsetzungsstand: Schritte 1, 2, 4 und 5 sind im Reconciler umgesetzt; der Status kennt `success`
 und `pending` und trägt den ersten offenen Blocker in seiner Beschreibung. PRs ohne aktivierten
-Task-Vertrag und Fork-PRs erhalten bewusst `success` mit dem Hinweis, dass das Gate für sie nicht
-gilt — sonst würde ein Required Check, den niemand schreibt, jeden fremden PR dauerhaft blockieren.
-Schritt 3 bleibt manuell und wird erst nach dem Piloten ausgeführt.
+Task-Vertrag erhalten nur dann bewusst `success`, wenn sie echte manuelle PRs außerhalb der
+Agenten-Namespaces/-Labels sind; Agenten-PRs ohne gültigen Vertrag bleiben `pending`. Fork-PRs
+bleiben ausgenommen. Schritt 3 bleibt manuell und wird erst nach Merge dieses Stands und einem
+erneuten Pilot ausgeführt. Am 2026-08-10 enthielt der Schutz von `main` weiterhin nur die sechs
+bisherigen Required Checks; die exakte additive Post-Merge-Anweisung und Rücknahme stehen in
+`.github/agent-pipeline/README.md`.
 
 ### Phase 8 – Pilot und schrittweise Aktivierung
 

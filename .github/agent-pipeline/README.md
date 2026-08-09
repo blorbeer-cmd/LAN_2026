@@ -12,7 +12,7 @@ The pipeline reports state and has one deliberately narrow provider action:
 - `scripts/agent-pipeline-reconcile.mjs` derives the readiness state and keeps the pipeline labels,
   the sticky status comment and the merge-gate commit status in sync (phases 2 and 7 of the plan).
 - `scripts/agent-pipeline-select-prs.mjs` limits scheduled safety sweeps to pull requests with an
-  activated task contract or a missing merge-gate status.
+  activated task contract, an agent branch/label, or a missing merge-gate status.
 - `.github/workflows/agent-pipeline-reconcile.yml` runs that reconciler per pull request.
 - `.github/workflows/agent-pipeline-claude-review.yml` starts one read-only Claude cross-review
   after the user chooses `review:cross` for a Codex implementation.
@@ -30,9 +30,9 @@ The pipeline reports state and has one deliberately narrow provider action:
   exposed. Claude receives the diff but no PR-owned `CLAUDE.md`, `AGENTS.md` or `.claude` settings;
   no pull-request code, tests, hooks or package-manager commands are executed.
 - Only the Claude cross-review adapter invokes an agent. It has no automatic retry, round counter,
-  fix loop, approval, merge or branch-protection mutation. A user may manually retry a `blocked`
-  result. The merge-gate status is written but is not a required check until someone adds it by
-  hand.
+  fix loop, approval, merge or branch-protection mutation. A trusted terminal start failure is
+  reconciled back to the user's review choice; the user may select the same provider again. The
+  merge-gate status is written but is not a required check until the post-merge operator step.
 
 ## Readiness reconciler
 
@@ -161,11 +161,15 @@ rejects malformed or inconsistent verdicts, bounds the final comment size and ne
 Markdown and HTML. The gate accepts its marker only when the comment begins with the publisher's
 exact heading, not when another `github-actions[bot]` comment merely echoes a marker.
 
-This is intentionally not the complete provider loop. A failed action or `blocked` result is
-retried by removing and reapplying the review label or by a manual workflow dispatch. A new commit
-invalidates the result and the existing decision logic asks for the review mode again. Automatic
-provider retries, review-round counting, fallback selection and findings-to-fix orchestration
-remain later phases.
+A trusted publisher records terminal start failures with the exact head SHA and a unique workflow
+attempt. The serialized recovery job consumes each attempt once, removes only the failed
+head-bound `review:cross` choice and returns the PR to `awaiting-review-decision`. The status names
+the observed reason and offers `cross`, `self` and `human` again; provider failures recommend a
+fresh same-provider review, while declined preconditions may recommend retrying cross. It never
+chooses or starts a fallback. Repeated notices are idempotent, stale-head notices are ignored, and
+the same provider remains manually retryable after the handled-attempt marker is recorded. A new
+commit likewise invalidates the result and asks again. Automatic provider retries, review-round
+counting and findings-to-fix orchestration remain later phases.
 
 Escalations the reconciler cannot derive from GitHub state — an exhausted round limit, a critical
 decision, the 24-hour waiting escalation — stay with `agent:needs-human`, exactly as the plan
@@ -182,11 +186,13 @@ without that exclusion the reconciler would read its own job as a running — or
 `cancel-in-progress`, a cancelled and therefore failing — CI check. `selfCheckNames` must stay in
 sync with the job names in both workflow files.
 
-The CI/CD workflow also reports `Test performance` and, only after a preliminary runtime warning,
-`Confirm test performance (<suite>)`. The latter reruns the affected suite and fails only for a
-confirmed regression. These are ordinary head-bound CI checks: an unresolved confirmed slowdown
-therefore keeps readiness closed and later belongs to the same CI-fix phase as a reproducible test
-failure. The thresholds and suite-to-step mapping live in `.github/test-performance.json`.
+The CI/CD workflow reports the stable aggregate `Test performance`. `Detect test performance`
+compares the measured suites and, only after a preliminary warning, starts
+`Confirm test performance (<suite>)`. The aggregate consumes their artifacts and fails closed for
+a confirmed regression or any detector/confirmation failure; it succeeds when no confirmation is
+needed or the fresh rerun is below the threshold. Its summary reports suite, baseline, current
+duration, deviation and verdict. Only the stable aggregate is the branch-protection context. The
+thresholds and suite-to-step mapping live in `.github/test-performance.json`.
 
 Idempotence: labels already in the desired state produce no API call, an unchanged status comment
 body is not rewritten, and an unchanged gate verdict is not posted again. Re-running the
@@ -198,12 +204,11 @@ the read-only GraphQL query. Mutating requests are deliberately never retried au
 because a lost response must not duplicate a comment or another write.
 
 Event-scoped runs still reconcile exactly their pull request. The 30-minute safety sweep first
-selects only open pull requests with an activated task contract or without the
-`Agent pipeline / ready for human merge` status on their current head. The second case lets a
-future required status self-heal for ordinary and Dependabot pull requests as well. Old pipeline
-labels alone do not select a pull request: without an activated contract the reconciler
-intentionally owns no labels and therefore could not repair them. The matrix and its per-pull-
-request concurrency remain in place, so scheduled and event-driven writes cannot race.
+selects only open pull requests with an activated task contract, an agent-looking branch/label, or
+without the `Agent pipeline / ready for human merge` status on their current head. The
+missing-status case lets a future required context self-heal for ordinary and Dependabot pull
+requests as well. The matrix and its per-pull-request concurrency remain in place, so scheduled
+and event-driven writes cannot race.
 
 ## Merge gate
 
@@ -220,15 +225,15 @@ description, so the merge box shows it without opening the status comment.
 
 Two cases deliberately get `success` even though the pipeline does not manage them at all:
 
-- a pull request without an activated task contract — a human one, a Dependabot bump,
+- a genuinely manual same-repository pull request outside `codex/*`, `claude/*` and
+  `agent:pipeline`, with no activated task contract,
 - a fork pull request.
 
 Both report "the agent-pipeline gate does not apply". Once this context is a required check, a
 status that is never written leaves the pull request unmergeable forever, so staying silent would
-deadlock every pull request the gate was never meant to cover. This is not the control that keeps
-an agent pull request honest: such a pull request also gets no pipeline label and no status
-comment, so the gap is visible, and the branch-protection review requirement still applies to
-everyone.
+deadlock every pull request the gate was never meant to cover. In contrast, an agent-looking branch
+or `agent:pipeline` label without an activated valid contract is explicitly `pending` with an
+invalid-contract blocker; omitting the contract cannot bypass the gate.
 
 The kill switch is the one case where nothing else is written but the gate still is.
 `agent:no-auto` suppresses every mutation, yet section 11 counts it as a gate condition of its
@@ -337,10 +342,14 @@ Still required before expanding agent mutations:
    the result names the exact head SHA and no repository file or branch changes.
 2. Verify in a pilot pull request that both app identities can update their own feature branches
    but cannot push or merge to `main`.
-3. Add `Agent pipeline / ready for human merge` to branch protection. The prerequisite pilot is
-   complete: on 2026-08-08 every open pull request had the context on its current head, and both
-   `success` and `pending` verdicts were observed. Enabling the requirement remains a deliberate
-   operator action and is not performed by the workflow or an implementation agent.
+3. After the recovery/readiness implementation is merged and a post-merge pilot has observed the
+   context on every relevant current head, add `Agent pipeline / ready for human merge` to branch
+   protection. As verified on 2026-08-10, `main` currently requires `Server lint, build and tests`,
+   `Browser E2E`, `Agent lint and tests`, `Build runtime image`, `Classify changed paths` and
+   `Test performance`; it does not yet include readiness. Add it without replacing that list:
+   `gh api --method POST repos/blorbeer-cmd/LAN_2026/branches/main/protection/required_status_checks/contexts -f "contexts[]=Agent pipeline / ready for human merge"`.
+   Verify the returned array contains all seven contexts. Roll back only this addition with:
+   `gh api --method DELETE repos/blorbeer-cmd/LAN_2026/branches/main/protection/required_status_checks/contexts -f "contexts[]=Agent pipeline / ready for human merge"`.
 
 If that context is already required while no run has written it, every open pull request sits at
 "Expected — waiting for status to be reported". Removing it from branch protection or letting the

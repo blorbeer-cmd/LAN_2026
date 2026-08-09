@@ -11,6 +11,13 @@ stylesheet only for Arcade views, while `kiosk.html` loads it statically for its
 Keep new Arcade selectors there so shared-view changes do not expand the Arcade browser-test
 trigger.
 
+Arcade browser code lives under `server/public/js/arcade/`; route renderers live in its `views/`
+subdirectory and are declared directly in `viewManifest.js` with `area: 'arcade'`. The Core app
+loads those renderers with native `import()` and waits for `arcade.css` before rendering. New
+Arcade code stays inside this subtree. Move a helper to shared Core code only when Core genuinely
+uses it. The kiosk is the deliberate exception: it loads Arcade CSS statically and may import only
+the small spectator helpers under `arcade/shared/`.
+
 If you're adding or changing UI, the rule is simple: **never write a raw color,
 pixel value, or font-size — always reference a token below.** If the token you
 need doesn't exist yet, add it to the `:root` block first (with a short comment
