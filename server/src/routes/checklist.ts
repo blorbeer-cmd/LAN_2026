@@ -40,7 +40,7 @@ import { isNonEmptyString } from '../validation';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
-import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
+import { requestCanAccessGroupEvent, resolveGroupEventScope } from '../groupEventScope';
 import { communicationRecipientIds } from '../communicationRecipients';
 import { activeGroupPlayers } from '../groupPlayers';
 import { DEFAULT_CHECKLIST_ITEMS } from '../checklistDefaults';
@@ -225,8 +225,15 @@ function currentEventScope(req: Request, res: Response): { eventId: string | nul
     res.status(scope.status).json({ error: scope.error });
     return null;
   }
-  if (!requireGroupEventAccess(req, res, scope.eventId)) return null;
-  return scope;
+  // The checklist is a group collaboration surface. A new member can be
+  // active in the group before an organizer has accepted them for the
+  // currently tracking participant-private event. Keep that event's private
+  // rows isolated and use the durable group room instead of surfacing a
+  // misleading "Event nicht gefunden" error when the checklist is opened.
+  if (scope.eventId !== null && !requestCanAccessGroupEvent(req, scope.eventId)) {
+    return { eventId: null };
+  }
+  return { eventId: scope.eventId };
 }
 
 // GET /api/checklist/items?playerId=... - materializes the Grundstock (if not
@@ -240,9 +247,8 @@ checklistRouter.get('/items', ...withQueryPlayerIdentity, (req, res) => {
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const groupId = req.group!.id;
-  const scope = resolveGroupEventScope(groupId, undefined);
-  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
-  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
   ensureDefaultItems(groupId, scope.eventId, playerId);
   res.json({ items: listItems(groupId, scope.eventId, playerId).map(serializeItem) });
 });
@@ -260,9 +266,8 @@ checklistRouter.post('/items', ...withBodyPlayerIdentity, (req, res) => {
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const groupId = req.group!.id;
-  const scope = resolveGroupEventScope(groupId, undefined);
-  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
-  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
   const row: ItemRow = {
     id: nanoid(),
     group_id: groupId,
@@ -323,9 +328,8 @@ checklistRouter.delete('/items/:id', resolveChecklistItem, ...withBodyPlayerIden
 // current event, open and taken/done alike; the frontend splits them up.
 checklistRouter.get('/tasks', (req, res) => {
   const groupId = req.group!.id;
-  const scope = resolveGroupEventScope(groupId, undefined);
-  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
-  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
   res.json({ tasks: listTasks(groupId, scope.eventId).map(serializeTask) });
 });
 
@@ -371,9 +375,8 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
     return res.status(404).json({ error: 'Mindestens eine zugewiesene Person wurde nicht gefunden.' });
   }
 
-  const scope = resolveGroupEventScope(groupId, undefined);
-  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
-  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
   const eventId = scope.eventId;
   const now = Date.now();
   const trimmedTitle = title.trim();
@@ -502,9 +505,8 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
     return res.status(404).json({ error: 'Mindestens eine zugewiesene Person wurde nicht gefunden.' });
   }
 
-  const scope = resolveGroupEventScope(groupId, undefined);
-  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
-  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const scope = currentEventScope(req, res);
+  if (!scope) return;
   const eventId = scope.eventId;
   const now = Date.now();
   const trimmedTitle = title.trim();

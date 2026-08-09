@@ -35,13 +35,16 @@ export function connectSocket({ kiosk = false, reportConnectionState = false } =
           detail: {
             generation,
             complete: () => {
-              if (!socket.connected || generation !== connectionGeneration) return false;
-              publishConnectionState('connected');
-              return true;
+              return socket.connected && generation === connectionGeneration;
             },
           },
         }),
       );
+      // Transport connectivity is authoritative as soon as Socket.IO has
+      // completed its handshake. The REST refresh above is a separate cache
+      // recovery concern and must not keep the global banner stuck on
+      // "connecting" when one of its endpoints is temporarily unavailable.
+      publishConnectionState('connected');
     });
     socket.on('connect_error', (error) => {
       if (isPermanentConnectionFailure({ error })) {

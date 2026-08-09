@@ -76,6 +76,18 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
       const listA = await scoped(app, 'get', '/api/checklist/tasks', alice, groupId);
       assert.deepEqual(listA.body.tasks.map((t) => t.id), [taskA.body.tasks[0].id]);
 
+      // A freshly registered group member may not yet be on the private
+      // tracking event's roster. Opening the group checklist must use the
+      // durable group room instead of returning the generic event 404.
+      const newcomer = await register('Checklist Newcomer', 'checklist newcomer secure passphrase');
+      const newcomerItems = await scoped(app, 'get', '/api/checklist/items', newcomer, groupId)
+        .query({ playerId: newcomer.account.id });
+      assert.equal(newcomerItems.status, 200, JSON.stringify(newcomerItems.body));
+      assert.ok(Array.isArray(newcomerItems.body.items));
+      const newcomerTasks = await scoped(app, 'get', '/api/checklist/tasks', newcomer, groupId);
+      assert.equal(newcomerTasks.status, 200, JSON.stringify(newcomerTasks.body));
+      assert.deepEqual(newcomerTasks.body.tasks, []);
+
       // --- id-based mutations must 404 for an unknown id ---
       assert.equal((await scoped(app, 'patch', '/api/checklist/items/does-not-exist', bob, groupId).send({ checked: true })).status, 404);
       assert.equal((await scoped(app, 'delete', '/api/checklist/items/does-not-exist', bob, groupId).send({})).status, 404);
