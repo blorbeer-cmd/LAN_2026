@@ -2,10 +2,11 @@
 
 Status: beschlossenes Zielkonzept; Phasen 0 bis 2 umgesetzt (Task-Vertrag, Labels, stateless
 Readiness-Reconciler) sowie Phase 7 (Commit-Status `Agent pipeline / ready for human merge`;
-Eintrag als Required Check bleibt eine manuelle Nutzerentscheidung). Aus Phase 4 ist der bewusst
-enge Pilotpfad Codex-Implementierung → Claude-Cross-Review umgesetzt; CI-/Konflikt-Fixes,
-Gegenrichtung, automatische Retries, Rundenzähler und Findings-Fix-Schleife fehlen noch.
-Stand: 2026-08-08
+Eintrag als Required Check bleibt eine manuelle Nutzerentscheidung). Aus Phase 4 sind die bewusst
+engen Pilotpfade Codex-Implementierung → Claude-Cross-Review und Claude-Implementierung →
+Codex-Cross-Review umgesetzt; CI-/Konflikt-Fixes, automatische Retries, Rundenzähler und
+Findings-Fix-Schleife fehlen noch.
+Stand: 2026-08-09
 
 Der Reviewer wird nicht mehr automatisch bestimmt, sondern vom Nutzer pro Head-SHA gewählt. Die
 Herleitung dieser Änderung steht in [`review-mode-selection.md`](review-mode-selection.md), der
