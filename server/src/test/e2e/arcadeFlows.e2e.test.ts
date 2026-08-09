@@ -134,7 +134,7 @@ test('Arcade: open a quiz lobby, see it on Home, then close it again', async (t)
 
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="arcade"]');
-  await page.waitForSelector('#arcade-stylesheet[href="/css/arcade.css?v=1"]');
+  await page.waitForSelector('#arcade-stylesheet[href="/css/arcade.css?v=1"]', { state: 'attached' });
   // Arcade is a launcher; select the quiz tile before its lobby controls
   // become visible (module state is intentionally reset on a fresh run).
   await page.click('[data-game="quiz"]');
