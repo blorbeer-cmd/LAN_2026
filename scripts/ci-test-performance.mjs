@@ -9,6 +9,7 @@ const defaultConfigPath = path.resolve(
   ".github",
   "test-performance.json",
 );
+const MAX_HISTORY_FETCH_BATCH_SIZE = 6;
 
 export function median(values) {
   if (!values.length) return null;
@@ -79,8 +80,14 @@ export async function collectHistoricalSuiteDurations({
   loadJobs,
   batchSize = 6,
 }) {
-  if (!Number.isInteger(batchSize) || batchSize < 1)
-    throw new Error("historyFetchBatchSize muss eine positive Ganzzahl sein.");
+  if (
+    !Number.isInteger(batchSize) ||
+    batchSize < 1 ||
+    batchSize > MAX_HISTORY_FETCH_BATCH_SIZE
+  )
+    throw new Error(
+      `historyFetchBatchSize muss eine Ganzzahl zwischen 1 und ${MAX_HISTORY_FETCH_BATCH_SIZE} sein.`,
+    );
   const history = Object.fromEntries(
     Object.keys(suites).map((suite) => [suite, []]),
   );

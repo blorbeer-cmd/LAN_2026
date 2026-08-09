@@ -124,15 +124,17 @@ test("history is fetched in bounded batches while retaining newest-run order", a
 });
 
 test("history fetch rejects invalid batch sizes", async () => {
-  await assert.rejects(
-    collectHistoricalSuiteDurations({
-      runs: [],
-      currentRunId: "current",
-      suites: {},
-      baselineSamples: 1,
-      batchSize: 0,
-      loadJobs: async () => [],
-    }),
-    /positive Ganzzahl/,
-  );
+  for (const batchSize of [0, 7]) {
+    await assert.rejects(
+      collectHistoricalSuiteDurations({
+        runs: [],
+        currentRunId: "current",
+        suites: {},
+        baselineSamples: 1,
+        batchSize,
+        loadJobs: async () => [],
+      }),
+      /Ganzzahl zwischen 1 und 6/,
+    );
+  }
 });
