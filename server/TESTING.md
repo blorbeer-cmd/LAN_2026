@@ -103,8 +103,8 @@ Wiederholungsfall ab.
   Cross-View-Flows und die Socket-Isolation. Arcade enthält die Arcade-, Stream-Renderer-,
   Battleship- und Challenge-Rush-Suiten sowie den eigenständig authentifizierten Arcade-Auth-Pfad
   und die Arcade-Partition der Cross-View-Flows. `authGateArcade.e2e.test.ts` besitzt eine eigene
-  Member-Fixture; `flowsArcade.e2e.test.ts` aktiviert nur die Arcade-Szenarien der gemeinsamen
-  Cross-View-Fixture. `arcade-smoke` führt nur den Arcade-Grundfluss und den isolierten Auth-Pfad
+  Member-Fixture; `arcadeFlows.e2e.test.ts` besitzt eine eigene Cross-View-Fixture und einen
+  eigenen Prozess. `arcade-smoke` führt nur den Arcade-Grundfluss und den isolierten Auth-Pfad
   aus; beide Dateien bleiben regulärer Bestandteil der vollständigen Arcade-Partition.
 - Die E2E-Dateien laufen parallel (eine pro Prozess) und starten je einen eigenen Server. Der
   gemeinsame Helfer `src/test/e2e/e2eServer.ts` startet ihn mit `PORT=0`, liest den tatsächlich

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import { loadConfig } from "./agent-pipeline.mjs";
@@ -36,6 +37,18 @@ const OLD_HEAD = "b".repeat(40);
 const BASE = "c".repeat(40);
 
 const CODEX_REVIEWER = "chatgpt-codex-connector[bot]";
+
+test("reconcile reacts to provider review-result comments without cancelling active runs", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/agent-pipeline-reconcile.yml", import.meta.url),
+    "utf8",
+  ).replaceAll("\r\n", "\n");
+  assert.match(workflow, /issue_comment:\n\s+types: \[created, edited\]/);
+  assert.match(workflow, /contains\(github\.event\.comment\.body, 'agent-pipeline:review-result'\)/);
+  assert.match(workflow, /github\.event\.comment\.user\.login/);
+  assert.match(workflow, /github\.event\.comment\.author_association/);
+  assert.match(workflow, /cancel-in-progress: false/);
+});
 
 function contractBody(overrides = {}) {
   const values = {
@@ -689,11 +702,11 @@ test("a selected review runs while the pull request is still a draft", () => {
   assert.match(readiness.blockers.join("\n"), /No codex review covers/);
 });
 
-test("protected path changes require an explicit human approval", () => {
+test("infrastructure changes require an explicit human approval", () => {
   const withBotOnly = deriveReadiness(
     readySnapshot({
       body: contractBody({ scope: "infra" }),
-      changedFiles: [".github/workflows/agent-pipeline-reconcile.yml"],
+      changedFiles: ["infra/provisioning.yml"],
     }),
     config,
   );
@@ -708,7 +721,7 @@ test("protected path changes require an explicit human approval", () => {
 
   const withHuman = deriveReadiness(
     readySnapshot({
-      changedFiles: [".github/workflows/agent-pipeline-reconcile.yml"],
+      changedFiles: ["infra/provisioning.yml"],
       reviews: [
         {
           author: CODEX_REVIEWER,
@@ -730,13 +743,13 @@ test("protected path changes require an explicit human approval", () => {
   assert.equal(withHuman.ready, true);
 });
 
-test("an outsider approval cannot satisfy the protected-path gate", () => {
+test("an outsider approval cannot satisfy the infrastructure gate", () => {
   // The repository is public, so anyone may approve. Only someone who could write to it anyway
   // may clear a workflow or infrastructure change.
   for (const association of ["NONE", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR"]) {
     const readiness = deriveReadiness(
       readySnapshot({
-        changedFiles: [".github/workflows/deploy.yml"],
+        changedFiles: ["infra/provisioning.yml"],
         reviews: [
           {
             author: CODEX_REVIEWER,
@@ -762,10 +775,10 @@ test("an outsider approval cannot satisfy the protected-path gate", () => {
   }
 });
 
-test("a collaborator approval does satisfy the protected-path gate", () => {
+test("a collaborator approval does satisfy the infrastructure gate", () => {
   const readiness = deriveReadiness(
     readySnapshot({
-      changedFiles: [".github/workflows/deploy.yml"],
+      changedFiles: ["infra/provisioning.yml"],
       reviews: [
         {
           author: CODEX_REVIEWER,
@@ -786,6 +799,19 @@ test("a collaborator approval does satisfy the protected-path gate", () => {
     config,
   );
   assert.equal(readiness.ready, true);
+});
+
+test("workflow changes remain eligible for cross-review without a second human gate", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({
+      changedFiles: [".github/workflows/agent-pipeline-reconcile.yml"],
+      reviews: commentedReview(),
+    }),
+    config,
+  );
+  assert.equal(readiness.details.protectedPaths.length, 0);
+  assert.equal(readiness.ready, true);
+  assert.doesNotMatch(readiness.blockers.join("\n"), /explicit human approval/);
 });
 
 test("a fork pull request gets no writing automation at all", () => {
@@ -865,7 +891,7 @@ test("a human approval never substitutes for the cross-review", () => {
   // On a protected path the same lone approval must not open both gates either.
   const humanOnlyProtected = deriveReadiness(
     readySnapshot({
-      changedFiles: [".github/workflows/agent-pipeline-reconcile.yml"],
+      changedFiles: ["infra/provisioning.yml"],
       reviews: [
         {
           author: "blorbeer-cmd",
@@ -886,7 +912,7 @@ test("a human approval never substitutes for the cross-review", () => {
 
 test("an automatable state outranks the human-approval wait", () => {
   const protectedPath = {
-    changedFiles: [".github/workflows/agent-pipeline-reconcile.yml"],
+    changedFiles: ["infra/provisioning.yml"],
   };
 
   const failing = deriveReadiness(
