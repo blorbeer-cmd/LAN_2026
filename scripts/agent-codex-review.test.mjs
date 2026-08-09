@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   deriveCodexReviewDispatch,
   hasCodexReviewRequest,
+  requestCommand,
   renderCodexReviewRequest,
 } from "./agent-codex-review.mjs";
 
@@ -71,6 +72,62 @@ test("request rendering rejects non-full SHAs", () => {
   assert.throws(() => renderCodexReviewRequest("short"), /full lowercase SHA/);
 });
 
+test("repeated request dispatches post exactly once for the same head", async () => {
+  const comments = [];
+  const postedBodies = [];
+  const previousToken = process.env.GITHUB_TOKEN;
+  process.env.GITHUB_TOKEN = "test-token";
+
+  const githubApiFn = async (path, { method = "GET", body } = {}) => {
+    if (path.includes("/issues/381/comments?")) return comments;
+    if (path.endsWith("/pulls/381")) return { head: { sha: HEAD } };
+    if (path.endsWith("/issues/381/comments") && method === "POST") {
+      postedBodies.push(body.body);
+      const comment = {
+        user: { login: "github-actions[bot]" },
+        body: body.body,
+        html_url: `https://github.test/comment/${postedBodies.length}`,
+      };
+      comments.push(comment);
+      return comment;
+    }
+    throw new Error(`Unexpected GitHub API call: ${method} ${path}`);
+  };
+  const dependencies = {
+    loadConfigFn: () => ({}),
+    fetchSnapshotFn: async () => ({
+      snapshot: {
+        headSha: HEAD,
+        headBranch: "claude/example",
+        baseSha: OTHER_HEAD,
+        baseBranch: "main",
+      },
+    }),
+    deriveReadinessFn: () => ({
+      phase: "review",
+      reviewerProvider: "codex",
+      contract: { implementer: "claude" },
+      details: {
+        reviewMode: "cross",
+        reviews: { reviewedByProvider: false },
+      },
+    }),
+    githubApiFn,
+  };
+
+  try {
+    const args = ["--repository", "owner/repo", "--pr", "381"];
+    await requestCommand(args, dependencies);
+    await requestCommand(args, dependencies);
+  } finally {
+    if (previousToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = previousToken;
+  }
+
+  assert.equal(postedBodies.length, 1);
+  assert.equal(hasCodexReviewRequest(comments, HEAD), true);
+});
+
 test("the workflow requests Codex through the trusted default branch", () => {
   const workflowPath = fileURLToPath(
     new URL("../.github/workflows/agent-pipeline-codex-review.yml", import.meta.url),
@@ -83,5 +140,10 @@ test("the workflow requests Codex through the trusted default branch", () => {
   assert.match(workflow, /persist-credentials: false/);
   assert.match(workflow, /name: Request Codex cross-review/);
   assert.match(workflow, /node scripts\/agent-codex-review\.mjs request/);
+  assert.match(
+    workflow,
+    /group: agent-pipeline-codex-review-\$\{\{ github\.event\.pull_request\.number \|\| inputs\.pull_request \}\}/,
+  );
+  assert.match(workflow, /cancel-in-progress: false/);
   assert.doesNotMatch(workflow, /CLAUDE_CODE_OAUTH_TOKEN/);
 });

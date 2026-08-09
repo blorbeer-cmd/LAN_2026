@@ -101,10 +101,10 @@ async function githubApi(path, { token, method = "GET", body } = {}) {
   return response.status === 204 ? null : response.json();
 }
 
-async function pullComments({ owner, repo, pullNumber, token }) {
+async function pullComments({ owner, repo, pullNumber, token }, githubApiFn = githubApi) {
   const comments = [];
   for (let page = 1; ; page += 1) {
-    const batch = await githubApi(
+    const batch = await githubApiFn(
       `/repos/${owner}/${repo}/issues/${pullNumber}/comments?per_page=100&page=${page}`,
       { token },
     );
@@ -113,7 +113,15 @@ async function pullComments({ owner, repo, pullNumber, token }) {
   }
 }
 
-async function requestCommand(args) {
+export async function requestCommand(
+  args,
+  {
+    loadConfigFn = loadConfig,
+    fetchSnapshotFn = fetchSnapshot,
+    deriveReadinessFn = deriveReadiness,
+    githubApiFn = githubApi,
+  } = {},
+) {
   const token = process.env.GITHUB_TOKEN;
   if (!token) throw new Error("request requires GITHUB_TOKEN.");
   const repository = option(args, "--repository") ?? process.env.GITHUB_REPOSITORY;
@@ -130,9 +138,9 @@ async function requestCommand(args) {
     return;
   }
 
-  const config = loadConfig();
-  const { snapshot } = await fetchSnapshot({ owner, repo, pullNumber, token });
-  const readiness = deriveReadiness(snapshot, config);
+  const config = loadConfigFn();
+  const { snapshot } = await fetchSnapshotFn({ owner, repo, pullNumber, token });
+  const readiness = deriveReadinessFn(snapshot, config);
   const decision = deriveCodexReviewDispatch(readiness);
   const values = {
     should_run: decision.shouldRun,
@@ -153,7 +161,7 @@ async function requestCommand(args) {
     return;
   }
 
-  const comments = await pullComments({ owner, repo, pullNumber, token });
+  const comments = await pullComments({ owner, repo, pullNumber, token }, githubApiFn);
   if (hasCodexReviewRequest(comments, snapshot.headSha)) {
     output("requested", "false");
     output("reason", "this head already has a Codex review request");
@@ -162,7 +170,7 @@ async function requestCommand(args) {
   }
 
   // Avoid posting a request for a stale head if a push raced the snapshot above.
-  const currentPull = await githubApi(`/repos/${owner}/${repo}/pulls/${pullNumber}`, { token });
+  const currentPull = await githubApiFn(`/repos/${owner}/${repo}/pulls/${pullNumber}`, { token });
   if (currentPull.head?.sha !== snapshot.headSha) {
     throw new Error(
       `Pull request #${pullNumber} moved from ${snapshot.headSha} to ${currentPull.head?.sha}; ` +
@@ -170,7 +178,7 @@ async function requestCommand(args) {
     );
   }
 
-  const comment = await githubApi(`/repos/${owner}/${repo}/issues/${pullNumber}/comments`, {
+  const comment = await githubApiFn(`/repos/${owner}/${repo}/issues/${pullNumber}/comments`, {
     token,
     method: "POST",
     body: { body: renderCodexReviewRequest(snapshot.headSha) },

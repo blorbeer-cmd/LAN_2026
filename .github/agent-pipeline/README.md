@@ -186,11 +186,11 @@ approving the head clears it without label bookkeeping and no genuine escalation
 a sweep. To stop automation by hand, use `agent:no-auto`.
 
 The pipeline's own check runs are excluded from the CI evaluation via `selfCheckNames`. The
-reconcile and Claude-review workflows run on `pull_request_target`, whose check runs attach to the
-pull request's head SHA, so
+reconcile, Claude-review, and Codex-review workflows run on `pull_request_target`, whose check runs
+attach to the pull request's head SHA, so
 without that exclusion the reconciler would read its own job as a running — or, after
 `cancel-in-progress`, a cancelled and therefore failing — CI check. `selfCheckNames` must stay in
-sync with the job names in both workflow files.
+sync with the job names in all three workflow files.
 
 The CI/CD workflow also reports `Test performance` and, only after a preliminary runtime warning,
 `Confirm test performance (<suite>)`. The latter reruns the affected suite and fails only for a
