@@ -250,6 +250,34 @@ jobs:
       - name: Run measured Arcade E2E
         run: npm run test:e2e:run:arcade
 
+  # Keep the established branch-protection context while the actual browser
+  # coverage runs as independently selected Core, Arcade smoke and Arcade jobs.
+  browser-e2e:
+    name: Browser E2E
+    if: always()
+    needs: [changes, e2e-core, e2e-arcade-smoke, e2e-arcade]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify selected browser E2E partitions
+        shell: bash
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CORE_RESULT: ${{ needs['e2e-core'].result }}
+          ARCADE_SMOKE_RESULT: ${{ needs['e2e-arcade-smoke'].result }}
+          ARCADE_RESULT: ${{ needs['e2e-arcade'].result }}
+        run: |
+          set -euo pipefail
+          if [[ "$CHANGES_RESULT" != "success" ]]; then
+            echo "Path classification ended with: $CHANGES_RESULT" >&2
+            exit 1
+          fi
+          for result in "$CORE_RESULT" "$ARCADE_SMOKE_RESULT" "$ARCADE_RESULT"; do
+            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
+              echo "A browser E2E partition ended with: $result" >&2
+              exit 1
+            fi
+          done
+
   test-performance:
     name: Test performance
     if: >-

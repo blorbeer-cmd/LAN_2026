@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { classifyChangedPaths } from "./ci-path-classifier.mjs";
 
@@ -123,4 +124,22 @@ test("agent-only changes keep browser suites disabled", () => {
   assert.equal(result.e2eCore, false);
   assert.equal(result.e2eArcade, false);
   assert.equal(result.e2eArcadeSmoke, false);
+});
+
+test("the workflow preserves the required aggregate Browser E2E check", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/deploy.yml", import.meta.url),
+    "utf8",
+  );
+  const block = workflow.match(
+    /\n  browser-e2e:\n([\s\S]*?)\n  test-performance:/,
+  )?.[1];
+
+  assert.ok(block, "the Browser E2E aggregate job is missing");
+  assert.match(block, /^    name: Browser E2E$/m);
+  assert.match(block, /^    if: always\(\)$/m);
+  assert.match(
+    block,
+    /^    needs: \[changes, e2e-core, e2e-arcade-smoke, e2e-arcade\]$/m,
+  );
 });
