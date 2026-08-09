@@ -63,6 +63,7 @@
     "Reconcile pull request",
     "Select Claude review target",
     "Run Claude cross-review",
+    "Announce missing Claude cross-review",
     "Publish Claude cross-review",
     "Reconcile Claude review result"
   ],

@@ -13,7 +13,8 @@ import {
   shouldAnnounceReviewStartFailure,
   validateClaudeReviewOutput,
 } from "./agent-claude-review.mjs";
-import { parseReviewResults } from "./agent-pipeline-reconcile.mjs";
+import { isOwnCheckRun, parseReviewResults } from "./agent-pipeline-reconcile.mjs";
+import { loadConfig } from "./agent-pipeline.mjs";
 
 const HEAD = "a".repeat(40);
 
@@ -365,4 +366,25 @@ test("the workflow announces every stalled cross-review from a write-scoped job"
   assert.doesNotMatch(reviewSection, /pull-requests: write/);
   assert.match(reviewSection, /Report Claude failure details/);
   assert.match(reviewSection, /steps\.claude\.outcome == 'failure'/);
+});
+
+test("every job of this workflow is recognised as the pipeline's own check", () => {
+  const workflow = readFileSync(
+    fileURLToPath(new URL("../.github/workflows/agent-pipeline-claude-review.yml", import.meta.url)),
+    "utf8",
+  );
+  // Job-level names sit at four spaces; step names carry a `- ` and are indented deeper.
+  const jobNames = [...workflow.matchAll(/^ {4}name: (.+)$/gm)].map((match) => match[1].trim());
+  assert.ok(jobNames.length >= 5, "expected every job in this workflow to carry a name");
+
+  const config = loadConfig();
+  for (const name of jobNames) {
+    // A job of this workflow that the reconciler does not know as its own counts twice over: a
+    // failed or cancelled run flips the pull request to `ci-fix` for a code fix that cannot repair
+    // a pipeline job, and a successful one pushes the review-stall anchor forward, which would
+    // quietly disable the escalation this workflow exists to raise.
+    assert.equal(isOwnCheckRun(name, config), true, `${name} is missing from selfCheckNames`);
+    // GitHub appends a matrix or reused-workflow suffix in parentheses; the check must survive it.
+    assert.equal(isOwnCheckRun(`${name} (379)`, config), true);
+  }
 });
