@@ -1297,7 +1297,7 @@ export function renderReviewDecisionNotification(
     `- Head SHA: \`${snapshot.headSha}\``,
     `- Implementer: \`${implementer}\``,
     `- Counter provider: \`${reviewer}\``,
-    `- Recommendation: \`${modeLabels[recommendation?.mode] ?? modeLabels.cross}\` â€” ${reason}.`,
+    `- Recommendation: \`${modeLabels[recommendation?.mode] ?? modeLabels.cross}\` — ${reason}.`,
     "",
     `a) Cross-review by \`${reviewer}\` (\`${modeLabels.cross}\`)`,
     `b) Self-review by \`${implementer}\` in a fresh, technically read-only session (\`${modeLabels.self}\`)`,

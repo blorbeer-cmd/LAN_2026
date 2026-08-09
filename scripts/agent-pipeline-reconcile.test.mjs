@@ -1986,6 +1986,8 @@ test("an eligible undecided head plans one active review-choice notification", (
   assert.match(plan.notification.body, /Implementer: `claude`/);
   assert.match(plan.notification.body, /Counter provider: `codex`/);
   assert.match(plan.notification.body, /Recommendation: `review:cross`/);
+  assert.match(plan.notification.body, /Recommendation: `review:cross` — no review has passed/);
+  assert.doesNotMatch(plan.notification.body, /â€”/);
   assert.match(plan.notification.body, /no review has passed/);
   assert.match(plan.notification.body, /a\) Cross-review/);
   assert.match(plan.notification.body, /b\) Self-review/);
