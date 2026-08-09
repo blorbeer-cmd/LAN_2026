@@ -199,6 +199,6 @@ test('group and public event tracking retain the group-consent contract', () => 
 test('accepted participants still require explicit event consent', () => {
   const now = Date.now();
   const playerId = createPlayer(now);
-  const eventId = createTrackingEvent(playerId, now);
+  createTrackingEvent(playerId, now);
   assert.deepEqual(activeTrackingContexts(playerId, now), []);
 });

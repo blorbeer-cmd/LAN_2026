@@ -1,4 +1,4 @@
-import { escapeHtml, avatarHtml } from '../format.js';
+import { escapeHtml } from '../format.js';
 import { connectSocket } from '../socket.js';
 import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
@@ -464,7 +464,7 @@ export function renderOddOneOut(data, playing = true) {
   const tiles = Array.from({ length: tileCount }, (_, index) => `<button type="button" class="challenge-rush-tile" data-cr-tile="${index}" ${playing ? '' : 'disabled'} aria-label="Feld ${index + 1}, Form ${shapeLabel(index === oddPosition)}"></button>`).join('');
   return `<div class="challenge-rush-tile-grid challenge-rush-odd-grid" data-cr-subtlety="${subtlety}" style="grid-template-columns:repeat(${columnCount},minmax(0,1fr));">${tiles}</div>`;
 }
-function challengeView(container) {
+function challengeView() {
   const challenge = match?.challenge;
   // The match itself stays 'playing' until every player finishes this
   // challenge, so a player who's already done must stop being offered live
@@ -579,7 +579,7 @@ function finalSummaryHtml(scores) {
   }).join('');
   return `<section class="card stack"><h2>${match?.draw ? 'Unentschieden' : 'Gesamtergebnis'}</h2><div class="challenge-rush-scoreboard">${rows}</div><button type="button" class="btn btn-primary" id="cr-back">Zur Arcade</button></section>`;
 }
-export function renderChallengeRush(container, ctx) {
+export function renderChallengeRush(container, _ctx) {
   ensureChallengeRushSocket();
   clearOddOneOutPresentation();
   const scores = match?.scores ?? [];
@@ -587,7 +587,7 @@ export function renderChallengeRush(container, ctx) {
     ? finalSummaryHtml(scores)
     : match?.phase === 'result'
       ? `${resultView()}${matchControlsHtml()}`
-      : `${challengeView(container)}${matchControlsHtml()}<section class="card stack"><h2>Zwischenstand</h2><div class="challenge-rush-scoreboard">${scoreText(scores)}</div></section>`;
+      : `${challengeView()}${matchControlsHtml()}<section class="card stack"><h2>Zwischenstand</h2><div class="challenge-rush-scoreboard">${scoreText(scores)}</div></section>`;
   container.innerHTML = `<div class="arcade-game-shell"><button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><h1 class="view-title">Challenge Rush</h1><div class="arcade-toolbar">${arcadeMuteControlHtml()}</div>${body}</div>`;
   if (match?.phase === 'countdown' && !match?.paused) updateReadingCountdown();
   if (match?.challenge?.key === 'odd-one-out' && match.phase === 'playing' && !match.paused && !iCompleted) {

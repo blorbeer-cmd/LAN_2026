@@ -2,7 +2,6 @@ import { Router, type RequestHandler } from 'express';
 import {
   changeGroupMemberRole,
   getGroup,
-  getGroupMembership,
   listGroupMembers,
   listGroupsForPlayer,
   removeGroupMember,

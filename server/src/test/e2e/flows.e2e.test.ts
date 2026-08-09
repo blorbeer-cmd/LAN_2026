@@ -8,8 +8,6 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
-import { normalizeAnswer } from '../../arcade/quizLogic';
-import { laidOutRect } from './canvasHelpers';
 import {
   addSessionCookie,
   authenticatedServerEnv,
@@ -1098,10 +1096,6 @@ test('Auswertungen (via Mehr) shows a real award and keeps detail logs collapsed
     data: { name: 'Analytics E2E Player' },
   });
   const player = await playerRes.json();
-  const gamesRes = await page.request.get(`${BASE_URL}/api/games`);
-  const games = (await gamesRes.json()) as Array<{ id: string; name: string; icon: string }>;
-  const cs2 = games.find((g) => g.name === 'Counter-Strike 2')!;
-
   await page.request.post(`${BASE_URL}/api/agent/report`, {
     headers: { 'x-api-key': player.api_key },
     data: { processNames: ['cs2.exe'] },

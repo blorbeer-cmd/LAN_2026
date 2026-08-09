@@ -153,7 +153,6 @@ function firstAcceptedAnswer(question: QuizQuestion): string {
 
 function markSeen(match: MatchState, winnerId: string | null) {
   if (!match.currentQuestion) return;
-  const players = realPlayerIds(match.players);
   const now = Date.now();
   const stmt = db.prepare(
     `INSERT INTO quiz_seen
