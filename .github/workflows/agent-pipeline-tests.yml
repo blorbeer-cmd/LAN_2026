@@ -46,6 +46,9 @@ jobs:
       - name: Test readiness reconciler
         run: node --test scripts/agent-pipeline-reconcile.test.mjs
 
+      - name: Test scheduled sweep selector
+        run: node --test scripts/agent-pipeline-select-prs.test.mjs
+
       - name: Test agent preflight
         run: node --test scripts/agent-preflight.test.mjs
 

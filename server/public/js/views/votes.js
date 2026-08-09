@@ -111,11 +111,16 @@ let voteUnratedOnly = false;
 // games:changed socket event re-renders this whole view from scratch
 // whenever anyone else interacts with voting — without this, that re-render
 // silently collapsed the panel and cleared any manual deselection mid-edit.
-// excludedGameIds tracks games manually unchecked; anything not listed
-// (including a newly added game) defaults to selected.
-let limitGamesChecked = false;
+// The first selection of every fresh round is the current Top 10 by Bock;
+// excludedGameIds then tracks games manually unchecked from that starting
+// point. Anything not listed after initialization (including a newly added
+// game) defaults to selected.
+let limitGamesChecked = true;
 let excludedGameIds = new Set();
+let voteSelectionInitialized = false;
+let voteSelectionDirty = false;
 let voteGameSearchQuery = '';
+let lastRenderedRoundOpen = false;
 
 // Genre chip filter narrowing which games are *visible* in the game-limit
 // checkbox grid above (OR semantics, same as the Spiele view's list filter).
@@ -130,12 +135,36 @@ function usedVoteGenres() {
   return GAME_GENRES.filter((g) => catalogGames().some((game) => (game.genres ?? []).includes(g)));
 }
 
+function sortVoteGames(games, results = state.votes?.catalogResults ?? []) {
+  const preferences = new Map(results.map((result) => [result.gameId, result.avgPreference ?? -1]));
+  return [...games].sort((a, b) => {
+    const preferenceDiff = (preferences.get(b.id) ?? -1) - (preferences.get(a.id) ?? -1);
+    if (preferenceDiff !== 0) return preferenceDiff;
+    return a.name.localeCompare(b.name, 'de');
+  });
+}
+
+function initializeVoteGameSelection(votes) {
+  if (voteSelectionInitialized && voteSelectionDirty) return;
+  const catalog = catalogGames();
+  const selectedGameIds = new Set(sortVoteGames(catalog, votes.catalogResults).slice(0, 10).map((game) => game.id));
+  excludedGameIds = new Set(catalog.filter((game) => !selectedGameIds.has(game.id)).map((game) => game.id));
+  voteSelectionInitialized = true;
+}
+
+function resetVoteGameSelection() {
+  limitGamesChecked = true;
+  excludedGameIds = new Set();
+  voteSelectionInitialized = false;
+  voteSelectionDirty = false;
+}
+
 // Games currently visible under the genre filter above — the single source
 // of truth for what "Alle markieren"/"Auswahl aufheben" and the start action
 // itself are allowed to touch, so a narrowed filter never affects games it
 // doesn't show.
 function voteFilterVisibleGames() {
-  if (voteGenreFilter.size === 0) return catalogGames();
+  if (voteGenreFilter.size === 0) return sortVoteGames(catalogGames());
   // A game that lost its last genre (retagged/deleted elsewhere in the SPA
   // session) leaves voteGenreFilter holding a genre no chip still offers —
   // silently prune it here instead of matching against a filter the user
@@ -145,8 +174,8 @@ function voteFilterVisibleGames() {
   for (const genre of voteGenreFilter) {
     if (!active.includes(genre)) voteGenreFilter.delete(genre);
   }
-  if (voteGenreFilter.size === 0) return catalogGames();
-  return catalogGames().filter((g) => (g.genres ?? []).some((genre) => voteGenreFilter.has(genre)));
+  if (voteGenreFilter.size === 0) return sortVoteGames(catalogGames());
+  return sortVoteGames(catalogGames().filter((g) => (g.genres ?? []).some((genre) => voteGenreFilter.has(genre))));
 }
 
 function voteSearchVisibleGames() {
@@ -465,6 +494,9 @@ export function renderVotes(container, ctx) {
     return;
   }
 
+  if (!votes.open && lastRenderedRoundOpen) resetVoteGameSelection();
+  lastRenderedRoundOpen = votes.open;
+
   if (historyCache === null && !historyLoading) {
     loadHistory(ctx);
   }
@@ -541,6 +573,7 @@ export function renderVotes(container, ctx) {
         </div>
       </section>`;
   } else {
+    initializeVoteGameSelection(votes);
     const genreFilteredGames = voteFilterVisibleGames();
     const activeVoteGenres = usedVoteGenres();
     const voteGenreFilterHtml = activeVoteGenres.length
@@ -585,7 +618,7 @@ export function renderVotes(container, ctx) {
         <div class="stack vote-game-filter">
           <label class="check-row">
             <input type="checkbox" id="votes-limit-games" ${limitGamesChecked ? 'checked' : ''} />
-            <span style="flex:1;">Nur bestimmte Spiele zur Wahl stellen</span>
+            <span style="flex:1;">Spieleauswahl einschränken</span>
           </label>
           <div id="votes-game-select-wrap" class="stack vote-game-select-wrap" ${limitGamesChecked ? '' : 'hidden'}>
             <div class="selection-toolbar">
@@ -724,12 +757,14 @@ export function renderVotes(container, ctx) {
   if (limitGamesCheckbox && gameSelectWrap) {
     limitGamesCheckbox.addEventListener('change', () => {
       limitGamesChecked = limitGamesCheckbox.checked;
+      voteSelectionDirty = true;
       gameSelectWrap.hidden = !limitGamesChecked;
     });
   }
 
   container.querySelectorAll('[data-vote-game-checkbox]').forEach((checkbox) => {
     checkbox.addEventListener('change', () => {
+      voteSelectionDirty = true;
       if (checkbox.checked) excludedGameIds.delete(checkbox.value);
       else excludedGameIds.add(checkbox.value);
     });
@@ -745,10 +780,12 @@ export function renderVotes(container, ctx) {
   });
 
   container.querySelector('#votes-select-all')?.addEventListener('click', () => {
+    voteSelectionDirty = true;
     for (const g of voteSearchVisibleGames()) excludedGameIds.delete(g.id);
     ctx.rerender();
   });
   container.querySelector('#votes-select-none')?.addEventListener('click', () => {
+    voteSelectionDirty = true;
     for (const g of voteSearchVisibleGames()) excludedGameIds.add(g.id);
     ctx.rerender();
   });
@@ -784,6 +821,7 @@ export function renderVotes(container, ctx) {
         // than depending solely on the 'votes:changed' broadcast this call
         // also triggers for every other client.
         state.votes = await api.votes.start({ mode: 'points', title, info, gameIds });
+        resetVoteGameSelection();
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });
@@ -803,6 +841,7 @@ export function renderVotes(container, ctx) {
           title: lastClosed.title ? `Stichwahl: ${lastClosed.title}` : 'Stichwahl',
           gameIds: lastClosed.winners.map((w) => w.gameId),
         });
+        resetVoteGameSelection();
         ctx.rerender();
         showToast('Stichwahl gestartet.');
       } catch (err) {
@@ -837,6 +876,7 @@ export function renderVotes(container, ctx) {
       try {
         // No ctx.refresh(): see the start button above.
         state.votes = await api.votes.cancel();
+        resetVoteGameSelection();
         ctx.rerender();
         showToast('Abstimmung abgebrochen.');
       } catch (err) {
