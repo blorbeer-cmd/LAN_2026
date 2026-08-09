@@ -269,16 +269,12 @@ function wireNav() {
 }
 
 function wireSocket() {
-  let resolveInitialRefresh;
-  const initialRefresh = new Promise((resolve) => {
-    resolveInitialRefresh = resolve;
-  });
   let reconnectFailureNotified = false;
   const refreshCoordinator = createConnectionRefreshCoordinator({
     refresh: async () => {
       // Socket.IO does not replay arbitrary application events. Invalidate
-      // every secondary cache and reload the central REST state before the
-      // connection banner can be treated as authoritative again.
+      // every secondary cache and reload the central REST state after the
+      // transport reconnects.
       invalidateMissingSkills();
       invalidateAktuellStatus();
       invalidateSkillSuggestions();
@@ -302,7 +298,6 @@ function wireSocket() {
     },
     onRecovered: () => {
       reconnectFailureNotified = false;
-      resolveInitialRefresh();
     },
     onFailure: () => {
       if (reconnectFailureNotified) return;
@@ -548,7 +543,6 @@ function wireSocket() {
     invalidateAdminMemberships();
     if (currentView === 'admin') renderCurrent();
   });
-  return initialRefresh;
 }
 
 async function main() {
@@ -566,7 +560,20 @@ async function main() {
   wireAdminMode();
   initConnectionStatus();
   initNotificationBanner();
-  await wireSocket();
+  // Socket connection and REST cache recovery are background concerns. The
+  // app shell and onboarding must still become usable when a single refresh
+  // request fails temporarily (or keeps retrying in the background).
+  void loadAll()
+    .then(() => {
+      if (appReady) renderCurrent();
+    })
+    .catch((error) => {
+      if (error?.status !== 401) showToast('Daten konnten noch nicht geladen werden – neuer Versuch läuft.', { error: true });
+    });
+  // Start the initial snapshot before opening the socket. This gives it the
+  // oldest generation, so any reconnect refresh that starts afterwards wins
+  // the state commit even when the initial requests resolve late.
+  wireSocket();
   appReady = true;
   await initOnboarding({ navigate: (view) => switchView(view, { replace: true }), rerender: renderCurrent, getCurrentView: () => currentView });
   lastVoteRound = state.votes ? state.votes.round : null;
