@@ -303,7 +303,7 @@ export function evaluateChecks(snapshot, config) {
  */
 // Matches the configured value on purpose: a deleted or broken key should behave like the intended
 // setting, not silently switch the escalation to a different, quieter one.
-export const DEFAULT_WAITING_ESCALATION_HOURS = 1;
+export const DEFAULT_WAITING_ESCALATION_HOURS = 2;
 
 /** A missing or nonsensical setting must not disable the escalation, so it falls back. */
 export function waitingEscalationHours(config = loadConfig()) {
