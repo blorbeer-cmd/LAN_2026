@@ -23,7 +23,7 @@ test("Arcade-only implementation and E2E changes select only Arcade browser cove
     "server/src/arcade/tetris.ts",
     "server/src/routes/arcade.ts",
     "server/public/js/views/challengeRush.js",
-    "server/src/test/e2e/flowsArcade.e2e.test.ts",
+    "server/src/test/e2e/arcadeFlows.e2e.test.ts",
   ]) {
     const result = selected([file]);
     assert.equal(result.server, true, file);
@@ -31,6 +31,15 @@ test("Arcade-only implementation and E2E changes select only Arcade browser cove
     assert.equal(result.e2eArcade, true, file);
     assert.equal(result.e2eArcadeSmoke, false, file);
   }
+  const arcadeStyles = selected(["server/public/css/arcade.css"]);
+  assert.deepEqual(
+    {
+      core: arcadeStyles.e2eCore,
+      arcade: arcadeStyles.e2eArcade,
+      smoke: arcadeStyles.e2eArcadeSmoke,
+    },
+    { core: false, arcade: true, smoke: false },
+  );
 });
 
 test("known non-Arcade domains skip Arcade E2E", () => {
@@ -130,7 +139,7 @@ test("the workflow preserves the required aggregate Browser E2E check", () => {
   const workflow = readFileSync(
     new URL("../.github/workflows/deploy.yml", import.meta.url),
     "utf8",
-  );
+  ).replaceAll("\r\n", "\n");
   const block = workflow.match(
     /\n  browser-e2e:\n([\s\S]*?)\n  test-performance:/,
   )?.[1];

@@ -23,7 +23,7 @@ export const E2E_PARTITIONS = Object.freeze({
     'authGateArcade.e2e.test.ts',
     'battleship.e2e.test.ts',
     'challengeRush.e2e.test.ts',
-    'flowsArcade.e2e.test.ts',
+    'arcadeFlows.e2e.test.ts',
   ]),
 });
 
