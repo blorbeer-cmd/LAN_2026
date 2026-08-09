@@ -67,7 +67,7 @@
     "Reconcile Claude review result"
   ],
   "reviewTimeoutMinutes": 45,
-  "waitingEscalationHours": 24,
+  "waitingEscalationHours": 4,
   "labels": {
     "pipeline": "agent:pipeline",
     "implementing": "agent:implementing",

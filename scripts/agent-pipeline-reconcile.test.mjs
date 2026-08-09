@@ -2281,6 +2281,22 @@ test("a chosen review that never lands is escalated instead of waiting forever",
   );
   assert.equal(answered.details.reviewStalled, false);
 
+  // Pin the boundary against the configured threshold rather than a copied number, so lowering or
+  // raising it in config.json cannot silently leave this covering the wrong window.
+  const threshold = waitingEscalationHours(config);
+  const at = new Date(Date.parse(anchor) + threshold * 3_600_000).toISOString();
+  const below = new Date(Date.parse(anchor) + threshold * 3_600_000 - 60_000).toISOString();
+  for (const [observedAt, expected] of [
+    [at, true],
+    [below, false],
+  ]) {
+    const readiness = deriveReadiness(
+      readySnapshot({ observedAt, checkRuns, reviews: [], reviewThreads: [] }),
+      config,
+    );
+    assert.equal(readiness.details.reviewStalled, expected);
+  }
+
   // The escalation is a blocker and a status line only; the review-mode labels stay the user's.
   const plan = planLabels(readySnapshot().labels, stalled, config);
   assert.equal(plan.add.includes(config.labels.waiting), false);

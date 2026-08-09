@@ -301,7 +301,9 @@ export function evaluateChecks(snapshot, config) {
  * An unresolved, non-outdated review thread blocks the gate. An outdated thread points at code
  * that no longer exists on the current head and is therefore not actionable.
  */
-export const DEFAULT_WAITING_ESCALATION_HOURS = 24;
+// Matches the configured value on purpose: a deleted or broken key should behave like the intended
+// setting, not silently switch the escalation to a different, quieter one.
+export const DEFAULT_WAITING_ESCALATION_HOURS = 4;
 
 /** A missing or nonsensical setting must not disable the escalation, so it falls back. */
 export function waitingEscalationHours(config = loadConfig()) {
