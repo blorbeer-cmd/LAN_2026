@@ -142,7 +142,7 @@ function e2eImpactForServerPath(file) {
   if (file === "server/src/routes/arcade.ts")
     return { core: false, arcade: true, arcadeSmoke: false };
   if (file === "server/src/realtime.ts")
-    return { core: true, arcade: false, arcadeSmoke: false };
+    return { core: true, arcade: false, arcadeSmoke: true };
 
   if (file.startsWith("server/public/js/views/")) {
     return ARCADE_VIEW_FILES.has(path.posix.basename(file))

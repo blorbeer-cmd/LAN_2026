@@ -42,14 +42,14 @@ test("known non-Arcade domains skip Arcade E2E", () => {
   assert.equal(result.e2eArcade, false);
 });
 
-test("Arcade realtime remains isolated from the Core socket transport", () => {
+test("the shared socket auth guard selects Arcade smoke without the full Arcade suite", () => {
   assert.deepEqual(
     {
       core: selected(["server/src/realtime.ts"]).e2eCore,
       arcade: selected(["server/src/realtime.ts"]).e2eArcade,
       smoke: selected(["server/src/realtime.ts"]).e2eArcadeSmoke,
     },
-    { core: true, arcade: false, smoke: false },
+    { core: true, arcade: false, smoke: true },
   );
   assert.deepEqual(
     {
