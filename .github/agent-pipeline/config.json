@@ -26,6 +26,8 @@
   },
   "//statusCommentAuthors": "Identities whose status comment may carry the review-mode binding. Narrower than the trusted-author check used to adopt a comment, because that one accepts every [bot] login and the binding decides whether an answer counts for this head.",
   "statusCommentAuthors": ["github-actions[bot]", "claude[bot]", "blorbeer-cmd"],
+  "//reviewDecisionNotificationAuthors": "Only these identities may suppress the once-per-head active review-choice notification by publishing its machine-readable marker.",
+  "reviewDecisionNotificationAuthors": ["github-actions[bot]"],
   "//sensitivePathPrefixes": "Paths that always make the recommendation fall back to the independent cross-review, regardless of how small the diff looks.",
   "sensitivePathPrefixes": [
     ".github/",
