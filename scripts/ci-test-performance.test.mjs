@@ -73,6 +73,32 @@ test("only successful named jobs and steps contribute durations", () => {
   );
 });
 
+test("partial Core selections never share the full-suite performance baseline", () => {
+  const suites = {
+    "e2e-core": {
+      job: "Browser E2E Core",
+      step: "Run measured Core E2E (all)",
+    },
+  };
+  const job = {
+    name: "Browser E2E Core",
+    conclusion: "success",
+    steps: [
+      {
+        name: "Run measured Core E2E (auth,checklist)",
+        conclusion: "success",
+        started_at: "2026-08-09T00:00:00Z",
+        completed_at: "2026-08-09T00:00:20Z",
+      },
+    ],
+  };
+  assert.deepEqual(extractSuiteDurations([job], suites), {});
+  job.steps[0].name = "Run measured Core E2E (all)";
+  assert.deepEqual(extractSuiteDurations([job], suites), {
+    "e2e-core": 20_000,
+  });
+});
+
 test("history is fetched in bounded batches while retaining newest-run order", async () => {
   const suites = { core: { job: "Core", step: "Measured" } };
   const runs = [
