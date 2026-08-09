@@ -52,11 +52,12 @@ und 71 Browser-E2E-Tests.
 
 Paket 2A wurde anschließend gegen den aktuellen Stand von `origin/main` auf `18a6305` umgesetzt:
 
-- die verschärften Ausgangsläufe meldeten 21 Funde (12 TypeScript, davon 5 nur in Tests, und
-  9 Frontend-JavaScript);
-- tatsächlich wurden 23 Symbole entfernt oder als absichtlich ungenutzte Signaturparameter mit
+- die verschärften Ausgangsläufe meldeten 27 Funde (12 TypeScript, davon 5 nur in Tests, und
+  15 Frontend-JavaScript);
+- tatsächlich wurden 30 Symbole entfernt oder als absichtlich ungenutzte Signaturparameter mit
   `_` gekennzeichnet. Die Differenz entsteht durch zwei E2E-Zwischenvariablen, die ausschließlich
-  den gemeldeten toten `cs2`-Wert speisten und zusammen mit ihm entfernt wurden;
+  den gemeldeten toten `cs2`-Wert speisten, sowie einen internen Turnierparameter, der nur an einen
+  ebenfalls entfernten Parameter weitergereicht wurde;
 - `noUnusedLocals` ist in der gemeinsamen TypeScript-Konfiguration aktiv und gilt durch Vererbung
   auch für die Testkompilierung;
 - ESLints `no-unused-vars` ist eng für produktives Frontend-JavaScript aktiv und erlaubt bewusst
@@ -120,7 +121,7 @@ Paket-Skripte, Workflows oder Betriebsdokumentation angebunden.
 | P2 | Nicht definierte CSS-Tokens `--radius-md` und `--motion-fast` | Auf vorhandene Tokens abbilden oder bewusst definieren; Checker ergänzen |
 | P2 | Mehrere Konzepte enthalten historische Ist-Zustände ohne eindeutigen Status | Statuskopf und Verweis auf heutigen Endstand ergänzen |
 | P2 | Projekthistorie endet bei PR #352, aktuelle Basis ist PR #365 | Changelog #353–#365 nachziehen und Basis aktualisieren |
-| P2 | Ungenutzte Symbole und fehlende automatische Schutzregeln | Paket 2A abgeschlossen: 23 Symbole bereinigt, TypeScript-/ESLint-Schutz aktiv |
+| P2 | Ungenutzte Symbole und fehlende automatische Schutzregeln | Paket 2A abgeschlossen: 30 Symbole bereinigt, TypeScript-/ESLint-Schutz aktiv |
 | P2 | Backup-/Push-/Readiness-HTTP-Pfade haben vergleichsweise geringe Coverage | Gezielte Fehlerpfadtests ergänzen |
 | P3 | Mehrere CSS-Blöcke sind mit hoher Sicherheit verwaist | In kleinem UI-PR entfernen und visuell/E2E prüfen |
 | P3 | `style.css` ist Größen- und Änderungs-Hotspot | Fachbereichsweise extrahieren, ohne Framework- oder Bundlerwechsel |
@@ -167,7 +168,7 @@ erkennen.
 
 Die regulären ESLint-/TypeScript-Einstellungen meldeten ungenutzte Symbole ursprünglich nicht.
 Die erneute Bestandsaufnahme auf `18a6305` fand sieben TypeScript-Funde im Produktionscode, fünf
-weitere in TypeScript-Tests und neun in produktivem Frontend-JavaScript. Im Agent gab es weiterhin
+weitere in TypeScript-Tests und 15 in produktivem Frontend-JavaScript. Im Agent gab es weiterhin
 keinen Fund.
 
 Server:
@@ -188,8 +189,9 @@ Umsetzung: Alle bestätigten Funde wurden mechanisch und verhaltensneutral entfe
 Render-Signaturen und der Express-Handler behalten ihre Parameterpositionen; absichtlich ungenutzte
 Parameter heißen dort jetzt `_ctx` beziehungsweise `_req`. Rein interne, überflüssige Parameter
 wurden samt Argumenten entfernt. `noUnusedLocals` verhindert neue ungenutzte TypeScript-Imports und
-lokale Symbole in Produktion und Tests. ESLints `no-unused-vars` schützt produktives Frontend-JS und
-ignoriert ausschließlich mit `_` beginnende Parameter. `noUnusedParameters` ist nicht global aktiv.
+lokale Symbole in Produktion und Tests. ESLints `no-unused-vars` prüft mit `args: 'all'` auch
+Parameter vor später verwendeten Parametern und ignoriert ausschließlich mit `_` beginnende
+Parameter. `noUnusedParameters` ist nicht global aktiv.
 
 ### P2/P3 – Testlücken nach Risiko statt Prozentzahl schließen
 
@@ -309,7 +311,7 @@ Vollständigkeit anzunehmen.
 
 ### Paket 2 – Mechanische Hygiene
 
-1. Paket 2A abgeschlossen: 23 bestätigte Symbole bereinigt.
+1. Paket 2A abgeschlossen: 30 bestätigte Symbole bereinigt.
 2. Paket 2A abgeschlossen: Schutzregeln in TypeScript/ESLint aktiviert.
 3. Verwaiste CSS-Blöcke separat entfernen.
 4. Gezielt Tests für Backup-, Push- und Readiness-Fehlerpfade ergänzen.

@@ -921,7 +921,7 @@ function buildBracketNode(matchesByKey, round, slot, t, teamsById) {
 // matches defaults to the tournament's full match list (single_elimination),
 // but group_knockout passes just its knockout-stage rows so this can be
 // reused for that sub-bracket once it's been generated.
-function renderBracket(t, ctx, matches = t.matches) {
+function renderBracket(t, matches = t.matches) {
   const teamsById = new Map(t.teams.map((team) => [team.id, team]));
   const totalRounds = Math.max(...matches.map((m) => m.round));
   const matchesByKey = new Map(matches.map((m) => [`${m.round}:${m.slot}`, m]));
@@ -1017,7 +1017,7 @@ function renderRoundRobin(t) {
 
 // ---------- detail: group stage + knockout ----------
 
-function renderGroupKnockout(t, ctx) {
+function renderGroupKnockout(t) {
   const teamsById = new Map(t.teams.map((team) => [team.id, team]));
 
   const groupBlocks = (t.groups || [])
@@ -1043,7 +1043,7 @@ function renderGroupKnockout(t, ctx) {
          </section>`
       : `<section class="tournament-section-panel tournament-group-panel stack">
            <div class="tournament-create-step-title"><h3>K.O.-Runde</h3><span class="muted">Entscheidungsphase</span></div>
-           ${renderBracket(t, ctx, knockoutMatches)}
+           ${renderBracket(t, knockoutMatches)}
          </section>`;
 
   return `<div class="tournament-group-stage">${groupBlocks}${knockoutHtml}</div>`;
@@ -1101,9 +1101,9 @@ function renderDetail(container, ctx) {
   const t = detailCache;
   const boardContent =
     t.format === 'single_elimination'
-      ? renderBracket(t, ctx)
+      ? renderBracket(t)
       : t.format === 'group_knockout'
-        ? renderGroupKnockout(t, ctx)
+        ? renderGroupKnockout(t)
         : renderRoundRobin(t);
   const board =
     t.format === 'single_elimination'

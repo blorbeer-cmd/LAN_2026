@@ -50,7 +50,7 @@ export default tseslint.config(
   {
     files: ['public/js/**/*.js'],
     rules: {
-      'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      'no-unused-vars': ['error', { args: 'all', argsIgnorePattern: '^_' }],
     },
   },
 );
