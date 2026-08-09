@@ -4,7 +4,6 @@ import fs from 'fs';
 import path from 'path';
 import archiver from 'archiver';
 import { nanoid } from 'nanoid';
-import { config } from '../config';
 import { db } from '../db';
 import { activeGroupPlayers } from '../groupPlayers';
 import {

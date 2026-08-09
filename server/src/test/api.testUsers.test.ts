@@ -125,7 +125,6 @@ test('DELETE /api/admin/test-users removes every marked player and historical te
   const layout = await request(app).get('/api/seating/layout');
   const seated = new Set(layout.body.layout.assignments.map((a: { playerId: string }) => a.playerId));
   assert.ok(ids.every((id) => !seated.has(id)), 'no test user should stay seated');
-  const eventId = getTrackingEventId();
   for (const id of ids) {
     assert.equal((db.prepare('SELECT COUNT(*) AS n FROM play_sessions WHERE player_id = ?').get(id) as { n: number }).n, 0);
     assert.equal((db.prepare('SELECT COUNT(*) AS n FROM seat_neighbors WHERE group_id = ? AND (player_id = ? OR neighbor_id = ?)').get('default-group', id, id) as { n: number }).n, 0);

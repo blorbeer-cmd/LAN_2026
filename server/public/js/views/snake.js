@@ -277,8 +277,8 @@ function updateRosterDisplay() {
   if (!roster || !match || !world) return;
   roster.innerHTML = matchRosterHtml(match.players, {
     winnerId: match.winner?.id ?? null,
-    scoreFor: (player, index) => `${world.snakes?.[index]?.score ?? 0} Punkte`,
-    detailFor: (player, index) => match.mode === 'arena' ? `Schlange ${index + 1} · ${world.snakes?.[index]?.alive ? 'Im Rennen' : 'Ausgeschieden'}` : '',
+    scoreFor: (_player, index) => `${world.snakes?.[index]?.score ?? 0} Punkte`,
+    detailFor: (_player, index) => match.mode === 'arena' ? `Schlange ${index + 1} · ${world.snakes?.[index]?.alive ? 'Im Rennen' : 'Ausgeschieden'}` : '',
   });
 }
 
@@ -293,8 +293,8 @@ export function renderSnake(container) {
   const endedText = match.ended ? (match.winner ? `${escapeHtml(match.winner.name)} gewinnt!` : 'Unentschieden') : '';
   const roster = matchRosterHtml(match.players, {
     winnerId: match.winner?.id ?? null,
-    scoreFor: (player, index) => `${world?.snakes?.[index]?.score ?? 0} Punkte`,
-    detailFor: (player, index) => match.mode === 'arena' && world ? `Schlange ${index + 1} · ${world.snakes?.[index]?.alive ? 'Im Rennen' : 'Ausgeschieden'}` : '',
+    scoreFor: (_player, index) => `${world?.snakes?.[index]?.score ?? 0} Punkte`,
+    detailFor: (_player, index) => match.mode === 'arena' && world ? `Schlange ${index + 1} · ${world.snakes?.[index]?.alive ? 'Im Rennen' : 'Ausgeschieden'}` : '',
   });
   const result = match.ended ? `<div class="card arcade-winner-card"><strong>${endedText}</strong><button type="button" class="btn btn-primary" id="snake-back">Zur Arcade</button></div>` : '';
   const isPlayer = match.players.some((p) => p.id === myId());

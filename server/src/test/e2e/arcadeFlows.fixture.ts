@@ -15,7 +15,6 @@ import {
   authenticatedServerEnv,
   createE2EAccount,
   E2E_ADMIN_PASSWORD,
-  E2E_KIOSK_TOKEN,
   loginE2EAdmin,
   type E2EAccount,
 } from './authHelpers';
@@ -50,49 +49,12 @@ function arcadeFlowTest(
   if (arcadeFlowShard === shard) test(name, fn);
 }
 
-async function setDateTimeField(id: string, value: string): Promise<void> {
-  await page.locator(`#${id}`).evaluate((element, nextValue) => {
-    (element as HTMLInputElement).value = nextValue;
-  }, value);
-}
-
-async function openMatchmakingHistory(): Promise<void> {
-  const details = page.locator('details.history-details:has(summary:has-text("Historie"))');
-  if (!(await details.getAttribute('open'))) await details.locator('summary').click();
-}
-
 async function waitForArcadeStylesheet(targetPage: Page): Promise<void> {
   await targetPage.waitForSelector('#arcade-stylesheet[href="/css/arcade.css?v=1"]', { state: 'attached' });
   await targetPage.waitForFunction(() => {
     const link = document.querySelector('#arcade-stylesheet');
     return link instanceof HTMLLinkElement && link.sheet !== null;
   });
-}
-
-async function switchIdentityAndOpenArrivals(label: string): Promise<void> {
-  const account = accountsByName.get(label);
-  assert.ok(account, `missing E2E account for ${label}`);
-  await addSessionCookie(page.context(), BASE_URL, account.cookie);
-  await page.reload();
-  await page.waitForSelector('#app:not([hidden])');
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="arrivals"]');
-  await page.waitForSelector('[data-new-carpool="arrival"]');
-}
-
-async function createAccountForFlow(name: string): Promise<E2EAccount> {
-  const reauthenticated = await fetch(`${BASE_URL}/api/auth/reauth`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', cookie: alice.cookie },
-    body: JSON.stringify({ password: alice.password }),
-  });
-  assert.equal(reauthenticated.status, 204, await reauthenticated.text());
-  adminCookie = alice.cookie;
-  const account = await createE2EAccount(BASE_URL, adminCookie, name);
-  accountsByName.set(name, account);
-  await page.reload();
-  await page.waitForSelector(`[data-player]:has-text("${name}")`);
-  return account;
 }
 
 async function bootstrapAdminAccount(name: string): Promise<E2EAccount> {
@@ -216,6 +178,7 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby warns and closes the owne
       if ((await page.locator('#quiz-create-lobby').count()) === 0) await page.click('[data-game="quiz"]');
       await page.waitForSelector('#quiz-create-lobby:not([disabled])');
       await page.click('#quiz-create-lobby');
+      await page.waitForSelector('[data-close-lobby]');
 
       // Opening another lobby uses the same guarded switch flow.
       await page.click('[data-game="tetris"]');

@@ -225,8 +225,9 @@ rejected before anything is created, and `--print-only` is the route for them:
 - A Codex `cross` review is evidenced by the counter provider's native review. A Claude `cross`
   review is launched only by `.github/workflows/agent-pipeline-claude-review.yml`, which enforces
   the restricted tool and credential boundary before its trusted publisher appends a marker.
-  This local launcher still handles only `self`; use `@codex review` for Codex cross-review and the
-  `review:cross` label for automated Claude cross-review.
+  This local launcher still handles only `self`; use the `review:cross` label for either automated
+  provider direction. The Codex adapter posts `@codex review` for a Claude implementation, while
+  the Claude adapter runs the restricted workflow for a Codex implementation.
 
 `--mode cross|self`, `--enforced`, `--implementer codex|claude` (otherwise read from the branch prefix),
 `--focus-file` and `--goal-file` to override the defaults, `--print-only` to just get the prompt and
