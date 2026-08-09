@@ -99,6 +99,8 @@ function runtimeChallengePayload(key: ChallengeKey, seed: number): ChallengePayl
   const timing = challengeRushTiming();
   const data = key === 'traffic-light' && timing.trafficLightGreenMs !== null
     ? { ...payload.data, greenAtMs: timing.trafficLightGreenMs }
+    : key === 'memory-sequence'
+      ? { ...payload.data, memoryRevealMs: timing.memoryRevealMs }
     : payload.data;
   if (timing.challengeDurationMs === null && data === payload.data) return payload;
   return {
