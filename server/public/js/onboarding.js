@@ -6,6 +6,7 @@ import { api } from './api.js';
 import { state } from './state.js';
 import { getMyId } from './whoami.js';
 import { escapeHtml } from './format.js';
+import { showToast } from './toast.js';
 
 const STEPS = [
   { title: 'Willkommen', text: 'Diese kurze Einführung zeigt die wichtigsten Bereiche und Funktionen.', view: 'home' },
@@ -21,6 +22,7 @@ const STEPS = [
 
 let runtime = null;
 let candidateSyncPending = false;
+let ratingResumePending = false;
 let targetPositioningInstalled = false;
 
 function root() {
@@ -43,6 +45,11 @@ export function onboardingRatingIds() {
   return runtime?.state?.ratingCandidateIds ?? [];
 }
 
+export function focusOnboardingRatingSlider() {
+  if (runtime?.mode !== 'rating') return;
+  document.querySelector('.game-table-row.onboarding-required input[type="range"]')?.focus();
+}
+
 export async function syncOnboardingRatingCandidates() {
   if (!isRatingActive() || candidateSyncPending) return;
   const availableIds = new Set(state.games.filter((game) => !game.isSuggestion).map((game) => game.id));
@@ -53,6 +60,8 @@ export async function syncOnboardingRatingCandidates() {
     runtime.state = next;
     if (next.ratingStatus === 'completed') closeOverlay();
     runtime.rerender();
+  } catch (error) {
+    await handleOnboardingError(error);
   } finally {
     candidateSyncPending = false;
   }
@@ -126,39 +135,67 @@ function closeOverlay({ restoreFocus = true } = {}) {
   if (app) app.inert = false;
 }
 
+async function handleOnboardingError(error) {
+  showToast(error?.message || 'Onboarding konnte nicht gespeichert werden.', { error: true });
+  if (error?.status !== 409 || !runtime?.mode) return;
+  try {
+    const latest = await api.onboarding.get();
+    runtime.state = latest;
+    if (latest.ratingStatus === 'completed') {
+      closeOverlay();
+      runtime.rerender();
+      return;
+    }
+    runtime.rerender();
+    renderOverlay();
+  } catch {
+    // The original error toast is still actionable when the recovery request fails.
+  }
+}
+
 function mascotHtml() {
   return `<div class="onboarding-mascot" aria-hidden="true"><img src="/img/guide-head.jpg" alt="" /></div>`;
+}
+
+function focusableElements(container) {
+  return [...container.querySelectorAll('button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter((element) => !element.hidden && element.getClientRects().length > 0);
 }
 
 function wireDialogFocus() {
   const dialog = root()?.querySelector('[role="dialog"]');
   if (!dialog) return;
-  dialog.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      if (runtime.mode === 'core') void skipTour();
-      return;
-    }
-    if (event.key !== 'Tab') return;
-    const focusable = [...dialog.querySelectorAll('button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
-      .filter((element) => !element.hidden && element.getClientRects().length > 0);
-    if (focusable.length === 0) {
-      event.preventDefault();
-      dialog.focus();
-      return;
-    }
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  });
-  const focusable = dialog.querySelector('button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-  focusable?.focus();
+  if (runtime?.mode === 'core') {
+    dialog.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        void skipTour().catch(handleOnboardingError);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = focusableElements(dialog);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+  }
+  const initialFocus = runtime?.mode === 'rating'
+    ? document.querySelector('.game-table-row.onboarding-required input[type="range"]')
+      ?? dialog.querySelector('button:not([disabled])')
+    : focusableElements(dialog)[0];
+  initialFocus?.focus();
+  if (runtime?.mode === 'rating') window.setTimeout(focusOnboardingRatingSlider, 0);
 }
 
 function renderCore() {
@@ -166,7 +203,7 @@ function renderCore() {
   const step = STEPS[runtime.step];
   element.innerHTML = `
     <div class="onboarding-backdrop" aria-hidden="true"></div>
-    <section class="onboarding-dialog" role="dialog" aria-modal="true" aria-labelledby="onboarding-title" aria-describedby="onboarding-copy">
+    <section class="onboarding-dialog" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="onboarding-title" aria-describedby="onboarding-copy">
       ${mascotHtml()}
       <div class="onboarding-dialog-body">
         <p class="onboarding-progress">Schritt ${runtime.step + 1} von ${STEPS.length}</p>
@@ -180,9 +217,9 @@ function renderCore() {
         </div>
       </div>
     </section>`;
-  root().querySelector('[data-onboarding-next]').addEventListener('click', () => void nextCoreStep());
-  root().querySelector('[data-onboarding-back]').addEventListener('click', () => void previousCoreStep());
-  root().querySelector('[data-onboarding-skip]').addEventListener('click', () => void skipTour());
+  root().querySelector('[data-onboarding-next]').addEventListener('click', () => void nextCoreStep().catch(handleOnboardingError));
+  root().querySelector('[data-onboarding-back]').addEventListener('click', () => void previousCoreStep().catch(handleOnboardingError));
+  root().querySelector('[data-onboarding-skip]').addEventListener('click', () => void skipTour().catch(handleOnboardingError));
   syncTarget();
   wireDialogFocus();
 }
@@ -191,7 +228,7 @@ function renderRating() {
   const element = root();
   const progress = onboardingRatingProgress();
   element.innerHTML = `
-    <section class="onboarding-dialog onboarding-rating-dialog" role="dialog" aria-modal="false" aria-labelledby="onboarding-rating-title" aria-describedby="onboarding-rating-copy">
+    <section class="onboarding-dialog onboarding-rating-dialog" role="dialog" tabindex="-1" aria-modal="false" aria-labelledby="onboarding-rating-title" aria-describedby="onboarding-rating-copy">
       ${mascotHtml()}
       <div class="onboarding-dialog-body">
         <p class="onboarding-progress">Bewertung</p>
@@ -199,15 +236,15 @@ function renderRating() {
         <p id="onboarding-rating-copy">Bewerte Bock und Skill für die ersten zehn Spiele. Bock unterstützt die Spielauswahl, Skill die Teamaufteilung.</p>
         <p class="onboarding-rating-progress" role="status">${progress.completed} von ${progress.required} Pflichtspielen vollständig bewertet.</p>
         <div class="onboarding-actions onboarding-rating-actions">
-          <button type="button" class="btn" data-onboarding-all>Alle Spiele bewerten</button>
-          <button type="button" class="btn" data-onboarding-later>Später fortsetzen</button>
-          <button type="button" class="btn btn-primary" data-onboarding-finish ${progress.ready ? '' : 'disabled'}>Bewertung abschließen</button>
+          <button type="button" class="btn" data-onboarding-all>Alle bewerten</button>
+          <button type="button" class="btn" data-onboarding-later>Später</button>
+          <button type="button" class="btn btn-primary" data-onboarding-finish ${progress.ready ? '' : 'disabled'}>Abschließen</button>
         </div>
       </div>
     </section>`;
-  root().querySelector('[data-onboarding-all]').addEventListener('click', () => void includeAllGames());
-  root().querySelector('[data-onboarding-later]').addEventListener('click', () => deferRating());
-  root().querySelector('[data-onboarding-finish]').addEventListener('click', () => void completeRating());
+  root().querySelector('[data-onboarding-all]').addEventListener('click', () => void includeAllGames().catch(handleOnboardingError));
+  root().querySelector('[data-onboarding-later]').addEventListener('click', () => void deferRating().catch(handleOnboardingError));
+  root().querySelector('[data-onboarding-finish]').addEventListener('click', () => void completeRating().catch(handleOnboardingError));
   wireDialogFocus();
 }
 
@@ -279,9 +316,29 @@ async function completeRating() {
   runtime.rerender();
 }
 
-function deferRating() {
+async function deferRating() {
+  runtime.state = await api.onboarding.rating.defer();
+  runtime.deferredThisSession = true;
   closeOverlay();
   runtime.rerender();
+}
+
+async function resumeDeferredRating() {
+  if (ratingResumePending || !runtime) return;
+  ratingResumePending = true;
+  try {
+    runtime.state = await api.onboarding.rating.start({ includeAll: runtime.state.ratingCandidateIds.length > 10 });
+    if (runtime.state.ratingStatus === 'completed') {
+      closeOverlay();
+      runtime.rerender();
+      return;
+    }
+    runtime.mode = 'rating';
+    runtime.navigate('gameCatalog');
+    renderOverlay();
+  } finally {
+    ratingResumePending = false;
+  }
 }
 
 export function refreshOnboardingRatingProgress() {
@@ -300,6 +357,7 @@ export async function initOnboarding({ navigate, rerender, getCurrentView }) {
     runtime = {
       state: onboardingState,
       mode: null,
+      deferredThisSession: false,
       step: Math.min(Math.max(onboardingState.lastCoreStep, 0), STEPS.length - 1),
       previousFocus: null,
       navigate,
@@ -317,13 +375,18 @@ export async function initOnboarding({ navigate, rerender, getCurrentView }) {
 }
 
 export function maybeStartOnboarding() {
-  if (!runtime || runtime.mode) return;
+  if (!runtime || runtime.mode || runtime.deferredThisSession) return;
   const shouldResumeCore = (runtime.state.status === 'pending' || runtime.state.status === 'active')
     && runtime.state.ratingStatus !== 'deferred'
     && runtime.state.ratingStatus !== 'completed';
-  const shouldResumeRating = runtime.state.ratingStatus === 'active' && runtime.state.ratingCandidateIds.length > 0;
+  const shouldResumeRating = ['active', 'deferred'].includes(runtime.state.ratingStatus)
+    && runtime.state.ratingCandidateIds.length > 0;
   if (!shouldResumeCore && !shouldResumeRating) return;
   runtime.previousFocus = document.activeElement;
+  if (runtime.state.ratingStatus === 'deferred') {
+    void resumeDeferredRating().catch(handleOnboardingError);
+    return;
+  }
   if (shouldResumeRating) {
     runtime.mode = 'rating';
     runtime.navigate('gameCatalog');

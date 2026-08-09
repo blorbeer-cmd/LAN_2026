@@ -5444,6 +5444,31 @@ input.food-order-price-input {
   }
 }
 
+@media (max-width: 639px) { /* --bp-md */
+  .onboarding-rating-dialog {
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+
+  .onboarding-rating-dialog .onboarding-mascot {
+    display: none;
+  }
+
+  .onboarding-rating-dialog .onboarding-rating-actions {
+    flex-wrap: nowrap;
+    gap: var(--space-1);
+    margin-top: var(--space-3);
+  }
+
+  .onboarding-rating-dialog .onboarding-rating-actions .btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: var(--space-2);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+  }
+}
+
 @media (min-width: 640px) { /* --bp-md */
   .modal {
     border-radius: var(--radius-lg);

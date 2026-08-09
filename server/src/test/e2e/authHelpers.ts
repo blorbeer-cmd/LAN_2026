@@ -48,10 +48,9 @@ export interface E2EAccount {
 }
 
 export async function finishE2EOnboarding(baseUrl: string, cookie: string): Promise<void> {
-  const response = await fetch(`${baseUrl}/api/me/onboarding`, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json', cookie },
-    body: JSON.stringify({ status: 'completed', lastCoreStep: 9, ratingStatus: 'completed' }),
+  const response = await fetch(`${baseUrl}/api/me/onboarding/test-complete`, {
+    method: 'POST',
+    headers: { cookie },
   });
   assert.equal(response.status, 200, await response.text());
 }

@@ -135,11 +135,12 @@ function rankedCatalogGameIds(groupId: string): string[] {
   const rows = db
     .prepare(
       `SELECT g.id,
-              COALESCE(AVG(p.rating), -1) AS average_bock,
-              COUNT(p.rating) AS rating_count,
+              COALESCE(AVG(CASE WHEN pl.id IS NOT NULL THEN p.rating END), -1) AS average_bock,
+              COUNT(CASE WHEN pl.id IS NOT NULL THEN p.rating END) AS rating_count,
               g.name
        FROM games g
        LEFT JOIN preferences p ON p.game_id = g.id AND p.group_id = g.group_id
+       LEFT JOIN players pl ON pl.id = p.player_id AND pl.is_test = 0
        WHERE g.group_id = ? AND g.status = 'catalog' AND g.arcade_key IS NULL
        GROUP BY g.id
        ORDER BY average_bock DESC, rating_count DESC, g.name COLLATE NOCASE ASC, g.id ASC`,
@@ -190,11 +191,10 @@ onboardingRouter.get('/', requireUser, (req, res) => {
 
 onboardingRouter.put('/', requireUser, (req, res) => {
   const body = req.body ?? {};
-  const current = toState(rowFor(req.player!.id));
   const patch: Parameters<typeof updateState>[1] = {};
 
   if (body.status !== undefined) {
-    if (!['pending', 'active', 'completed', 'skipped'].includes(body.status)) {
+    if (!['pending', 'active'].includes(body.status)) {
       return res.status(400).json({ error: 'Ungültiger Onboarding-Status.' });
     }
     patch.status = body.status;
@@ -206,7 +206,7 @@ onboardingRouter.put('/', requireUser, (req, res) => {
     patch.lastCoreStep = body.lastCoreStep;
   }
   if (body.ratingStatus !== undefined) {
-    if (!['pending', 'active', 'completed', 'deferred'].includes(body.ratingStatus)) {
+    if (!['pending', 'active', 'deferred'].includes(body.ratingStatus)) {
       return res.status(400).json({ error: 'Ungültiger Bewertungsstatus.' });
     }
     patch.ratingStatus = body.ratingStatus;
@@ -223,17 +223,38 @@ onboardingRouter.put('/', requireUser, (req, res) => {
   }
 
   if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'Keine gültige Änderung.' });
-  const next = updateState(req.player!.id, patch);
-  // A completed core tour without a rating decision must remain resumable.
-  if (next.status === 'completed' && next.ratingStatus === 'pending') {
-    return res.json(updateState(req.player!.id, { ratingStatus: 'deferred' }));
-  }
-  return res.json(next);
+  return res.json(updateState(req.player!.id, patch));
+});
+
+// Test fixtures need a deterministic way to keep unrelated browser flows out
+// of the first-login tour. This route is deliberately unavailable outside the
+// test process; production clients must use rating/complete instead.
+onboardingRouter.post('/test-complete', requireUser, (req, res) => {
+  if (process.env.NODE_ENV !== 'test') return res.sendStatus(404);
+  return res.json(updateState(req.player!.id, {
+    status: 'completed',
+    lastCoreStep: CORE_STEP_COUNT,
+    ratingStatus: 'completed',
+    completedAt: Date.now(),
+  }));
 });
 
 onboardingRouter.post('/rating/start', requireUser, (req, res) => {
   const includeAll = req.body?.includeAll === true;
   return res.json(startRating(req.player!.id, req.group!.id, includeAll));
+});
+
+onboardingRouter.post('/rating/defer', requireUser, (req, res) => {
+  const current = toState(rowFor(req.player!.id));
+  if (current.ratingStatus !== 'active' || current.ratingCandidateIds.length === 0) {
+    return res.status(409).json({ error: 'Keine aktive Bewertungsrunde vorhanden.' });
+  }
+  return res.json(updateState(req.player!.id, {
+    status: 'completed',
+    lastCoreStep: CORE_STEP_COUNT,
+    ratingStatus: 'deferred',
+    completedAt: null,
+  }));
 });
 
 onboardingRouter.post('/rating/complete', requireUser, (req, res) => {

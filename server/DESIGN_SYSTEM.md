@@ -443,6 +443,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   expanded to all catalog games, but completion still requires both sliders for the required set.
   If a required game is demoted or removed while the round is open, the server reconciles the
   candidate list against the current catalog and fills the vacancy from the next ranked game.
+  Test-player ratings are excluded from this ranking because those players are hidden in normal
+  member views. `Später` persists a deferred round, restores the normal catalog for the current
+  session and resumes the rating panel on the next login.
 - **Player profiles** — The roster is available to signed-in members and opens read-only details for other participants.
   The session account is marked as „Mein Profil“ and opens the dedicated self-service
   profile editor. Foreign profiles expose neither edit/delete actions nor the private agent key;

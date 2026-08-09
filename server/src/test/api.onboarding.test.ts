@@ -55,6 +55,12 @@ test('new accounts receive onboarding and must complete the first ten catalog ra
     .send({ seenViews: Array.from({ length: 21 }, (_, index) => `view-${index}`) });
   assert.equal(tooManyViews.status, 400);
 
+  const bypassAttempt = await request(app)
+    .put('/api/me/onboarding')
+    .set('Cookie', memberCookie)
+    .send({ status: 'completed', ratingStatus: 'completed' });
+  assert.equal(bypassAttempt.status, 400);
+
   const games: Array<{ id: string; name: string }> = [];
   for (let index = 0; index < 12; index += 1) {
     const created = await request(app)
@@ -70,6 +76,21 @@ test('new accounts receive onboarding and must complete the first ten catalog ra
     assert.equal(preference.status, 200, JSON.stringify(preference.body));
   }
 
+  const testPlayerId = nanoid();
+  const defaultGroupId = (db.prepare('SELECT id FROM groups ORDER BY id LIMIT 1').get() as { id: string }).id;
+  db.prepare('INSERT INTO players (id, name, api_key, is_test, created_at) VALUES (?, ?, ?, 1, ?)').run(
+    testPlayerId,
+    'Onboarding Test Player',
+    nanoid(24),
+    Date.now(),
+  );
+  db.prepare('INSERT INTO preferences (player_id, game_id, group_id, rating) VALUES (?, ?, ?, ?)').run(
+    testPlayerId,
+    games[11].id,
+    defaultGroupId,
+    10,
+  );
+
   const started = await request(app)
     .post('/api/me/onboarding/rating/start')
     .set('Cookie', memberCookie)
@@ -77,6 +98,20 @@ test('new accounts receive onboarding and must complete the first ten catalog ra
   assert.equal(started.status, 200, JSON.stringify(started.body));
   assert.equal(started.body.ratingStatus, 'active');
   assert.deepEqual(started.body.ratingCandidateIds, games.slice(0, 10).map((game) => game.id));
+
+  const deferred = await request(app)
+    .post('/api/me/onboarding/rating/defer')
+    .set('Cookie', memberCookie)
+    .send();
+  assert.equal(deferred.status, 200, JSON.stringify(deferred.body));
+  assert.equal(deferred.body.ratingStatus, 'deferred');
+
+  const resumed = await request(app)
+    .post('/api/me/onboarding/rating/start')
+    .set('Cookie', memberCookie)
+    .send({ includeAll: false });
+  assert.equal(resumed.status, 200, JSON.stringify(resumed.body));
+  assert.equal(resumed.body.ratingStatus, 'active');
 
   const incomplete = await request(app)
     .post('/api/me/onboarding/rating/complete')

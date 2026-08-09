@@ -51,10 +51,9 @@ async function mintRegisterInviteCode(): Promise<string> {
   const setCookie = bootstrap.headers.get('set-cookie');
   assert.ok(setCookie, 'bootstrap register should set a session cookie');
   adminCookie = setCookie!.split(';')[0];
-  const onboarding = await fetch(`${BASE_URL}/api/me/onboarding`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
-    body: JSON.stringify({ status: 'completed', lastCoreStep: 9, ratingStatus: 'completed' }),
+  const onboarding = await fetch(`${BASE_URL}/api/me/onboarding/test-complete`, {
+    method: 'POST',
+    headers: { Cookie: adminCookie },
   });
   assert.equal(onboarding.status, 200, await onboarding.text());
 
@@ -149,6 +148,17 @@ test('an invite link registers a new account and logs it straight in', async () 
     await page.click('[data-onboarding-next]');
     await page.waitForSelector('#onboarding-root [role="dialog"]');
   }
+  await page.waitForSelector('.game-table-row.onboarding-required input[type="range"]');
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.matches('.game-table-row.onboarding-required input[type="range"]')),
+    true,
+    'rating mode should place initial focus on a required slider',
+  );
+  await page.click('[data-onboarding-later]');
+  await page.waitForFunction(() => !document.querySelector('#onboarding-root [role="dialog"]'));
+  await page.waitForSelector('[data-tab="catalog"]');
+  await page.reload();
+  await page.waitForSelector('#onboarding-root [role="dialog"]');
   await page.waitForSelector('[data-onboarding-finish][disabled]');
   const requiredRows = page.locator('.game-table-row.onboarding-required');
   assert.equal(await requiredRows.count(), 10);

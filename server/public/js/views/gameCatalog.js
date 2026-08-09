@@ -24,6 +24,7 @@ import {
   isOnboardingRatingActive,
   onboardingRatingIds,
   onboardingRatingProgress,
+  focusOnboardingRatingSlider,
   refreshOnboardingRatingProgress,
   syncOnboardingRatingCandidates,
 } from '../onboarding.js';
@@ -914,4 +915,6 @@ export function renderGameCatalog(container, ctx) {
       }
     });
   });
+
+  if (ratingMode) focusOnboardingRatingSlider();
 }
