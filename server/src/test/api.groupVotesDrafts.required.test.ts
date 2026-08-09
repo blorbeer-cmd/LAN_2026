@@ -58,6 +58,8 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
 
       // Starting a vote is a group activity, so every active member may do it.
       // Moderation actions such as closing/cancelling remain admin-only.
+      const memberRunoff = await scoped(app, 'post', '/api/votes/start', bob).send({ mode: 'single', gameIds: [gameA.body.id] });
+      assert.equal(memberRunoff.status, 403);
       const memberVote = await scoped(app, 'post', '/api/votes/start', bob).send({});
       assert.equal(memberVote.status, 201, JSON.stringify(memberVote.body));
       assert.equal((await scoped(app, 'post', '/api/votes/close', alice).send({})).status, 200);

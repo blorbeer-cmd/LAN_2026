@@ -563,8 +563,6 @@ async function main() {
   // Socket connection and REST cache recovery are background concerns. The
   // app shell and onboarding must still become usable when a single refresh
   // request fails temporarily (or keeps retrying in the background).
-  wireSocket();
-  appReady = true;
   void loadAll()
     .then(() => {
       if (appReady) renderCurrent();
@@ -572,6 +570,11 @@ async function main() {
     .catch((error) => {
       if (error?.status !== 401) showToast('Daten konnten noch nicht geladen werden – neuer Versuch läuft.', { error: true });
     });
+  // Start the initial snapshot before opening the socket. This gives it the
+  // oldest generation, so any reconnect refresh that starts afterwards wins
+  // the state commit even when the initial requests resolve late.
+  wireSocket();
+  appReady = true;
   await initOnboarding({ navigate: (view) => switchView(view, { replace: true }), rerender: renderCurrent, getCurrentView: () => currentView });
   lastVoteRound = state.votes ? state.votes.round : null;
   // A push notification's deep link (e.g. /#votes, opened by sw.js when no
