@@ -56,8 +56,11 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
       assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice)
         .send({ playerIds: [alice.account.id, bob.account.id, eve.account.id] })).status, 200);
 
-      // Vertical role checks: Bob is only a member.
-      assert.equal((await scoped(app, 'post', '/api/votes/start', bob).send({})).status, 403);
+      // Starting a vote is a group activity, so every active member may do it.
+      // Moderation actions such as closing/cancelling remain admin-only.
+      const memberVote = await scoped(app, 'post', '/api/votes/start', bob).send({});
+      assert.equal(memberVote.status, 201, JSON.stringify(memberVote.body));
+      assert.equal((await scoped(app, 'post', '/api/votes/close', alice).send({})).status, 200);
       assert.equal((await scoped(app, 'post', '/api/draft/start', bob).send({
         gameId: gameA.body.id, captainIds: [alice.account.id, bob.account.id], poolPlayerIds: [eve.account.id],
       })).status, 403);
@@ -66,7 +69,7 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
       const voteA = await scoped(app, 'post', '/api/votes/start', alice).send({ mode: 'single', title: 'A vote' });
       assert.equal(voteA.status, 201, JSON.stringify(voteA.body));
       assert.equal(voteA.body.eventId, eventA.body.id);
-      assert.equal(voteA.body.round, 1);
+      assert.equal(voteA.body.round, 2);
 
       // A nonexistent player id can never be smuggled into a draft pool.
       const foreignDraft = await scoped(app, 'post', '/api/draft/start', alice).send({
@@ -116,7 +119,7 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
 
       const voteB = await scoped(app, 'post', '/api/votes/start', alice).send({ mode: 'single', title: 'B vote' });
       assert.equal(voteB.status, 201, JSON.stringify(voteB.body));
-      assert.equal(voteB.body.round, 2, 'round counters are group-local, not event-local');
+      assert.equal(voteB.body.round, 3, 'round counters are group-local, not event-local');
       assert.equal(voteB.body.eventId, eventB.body.id);
       assert.equal((await scoped(app, 'post', '/api/votes/cancel', alice).send({})).status, 200);
 

@@ -423,7 +423,7 @@ votesRouter.get('/mine', ...withQueryPlayerIdentity, (req, res) => {
 // - title/info: optional free text shown to voters.
 // - gameIds: optional preselection of which games this round covers; omit
 //   for "every game in the catalog".
-votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
+votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
   const groupId = req.group!.id;
   const state = readRoundState(groupId);
   if (state.open) {

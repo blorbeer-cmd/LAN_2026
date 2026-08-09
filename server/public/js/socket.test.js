@@ -57,7 +57,7 @@ test('only an explicitly designated socket reports global connection state', () 
   }
 });
 
-test('the reporting socket confirms initial and reconnect generations only after refresh', () => {
+test('the reporting socket marks transport connectivity before cache refresh completes', () => {
   const globalNames = ['io', 'localStorage', 'sessionStorage', 'window', 'CustomEvent', 'navigator'];
   const originalDescriptors = new Map(
     globalNames.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]),
@@ -107,8 +107,8 @@ test('the reporting socket confirms initial and reconnect generations only after
     emit('connect');
     assert.deepEqual(
       events.filter((event) => event.type === 'respawn:connection-state').map((event) => event.state),
-      ['connecting'],
-      'the initial transport connect stays pending until authoritative state has loaded',
+      ['connecting', 'connected'],
+      'the transport is connected even while the authoritative refresh runs',
     );
     const initialRefresh = events.find((event) => event.type === 'respawn:connection-restored');
     assert.equal(initialRefresh.generation, 1);
@@ -116,8 +116,8 @@ test('the reporting socket confirms initial and reconnect generations only after
     emit('connect');
     assert.deepEqual(
       events.filter((event) => event.type === 'respawn:connection-state').map((event) => event.state),
-      ['connecting', 'connected', 'reconnecting'],
-      'a reconnect stays pending until the authoritative refresh acknowledges it',
+      ['connecting', 'connected', 'reconnecting', 'connected'],
+      'a reconnect does not wait for the authoritative refresh to clear the banner',
     );
     const reconnectRefresh = events.filter((event) => event.type === 'respawn:connection-restored').at(-1);
     assert.equal(reconnectRefresh.generation, 2);
