@@ -159,9 +159,9 @@ function e2eImpactForServerPath(file) {
     return { core: true, arcade: false, arcadeSmoke: false };
   }
 
-  // Arcade presentation rules are loaded on demand and have no shared-view
-  // consumers. Keep their full browser coverage scoped to direct Arcade CSS
-  // changes instead of treating the stylesheet as shared frontend state.
+  // Arcade presentation rules are loaded on demand by app.js. The kiosk loads
+  // the same stylesheet statically, but its Arcade scenarios stay in the
+  // dedicated Arcade partition. Keep direct CSS changes out of Core coverage.
   if (file === "server/public/css/arcade.css")
     return { core: false, arcade: true, arcadeSmoke: false };
 

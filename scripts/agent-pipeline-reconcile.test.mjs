@@ -42,9 +42,11 @@ test("reconcile reacts to provider review-result comments without cancelling act
   const workflow = readFileSync(
     new URL("../.github/workflows/agent-pipeline-reconcile.yml", import.meta.url),
     "utf8",
-  );
+  ).replaceAll("\r\n", "\n");
   assert.match(workflow, /issue_comment:\n\s+types: \[created, edited\]/);
   assert.match(workflow, /contains\(github\.event\.comment\.body, 'agent-pipeline:review-result'\)/);
+  assert.match(workflow, /github\.event\.comment\.user\.login/);
+  assert.match(workflow, /github\.event\.comment\.author_association/);
   assert.match(workflow, /cancel-in-progress: false/);
 });
 

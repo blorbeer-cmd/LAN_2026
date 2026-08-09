@@ -4,7 +4,7 @@
 // unit/integration suite (`npm test`) — run via `npm run test:e2e` since it
 // spawns a server process and a browser, which is much slower.
 
-import { test as nodeTest, before, after, TestContext } from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
@@ -21,23 +21,17 @@ import {
 } from './authHelpers';
 import { startE2EServer } from './e2eServer';
 
-const RUN_ARCADE_FLOWS = process.env.E2E_FLOW_PARTITION === 'arcade';
 let BASE_URL: string;
 
 // The Core cross-view scenarios live in this process only. Arcade cross-view
 // scenarios are kept in arcadeFlows.e2e.test.ts so changing them cannot select
 // the Core browser partition.
-const test = (name: string, fn: (context: TestContext) => void | Promise<void>): void => {
-  if (name.startsWith('Arcade:') === RUN_ARCADE_FLOWS) nodeTest(name, fn);
-};
-
 let serverProcess: ChildProcess;
 let browser: Browser;
 let page: Page;
 let adminCookie: string;
 let alice: E2EAccount;
 let bob: E2EAccount;
-let analyticsPlayer: E2EAccount | undefined;
 const accountsByName = new Map<string, E2EAccount>();
 
 async function setDateTimeField(id: string, value: string): Promise<void> {
@@ -95,15 +89,10 @@ before(async () => {
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   adminCookie = await loginE2EAdmin(BASE_URL);
-  alice = await bootstrapAdminAccount(RUN_ARCADE_FLOWS ? 'E2E Alice Pro' : 'E2E Alice');
+  alice = await bootstrapAdminAccount('E2E Alice');
   bob = await createE2EAccount(BASE_URL, adminCookie, 'E2E Bob');
   accountsByName.set(alice.name, alice);
-  accountsByName.set('E2E Alice Pro', alice);
   accountsByName.set(bob.name, bob);
-  if (RUN_ARCADE_FLOWS) {
-    analyticsPlayer = await createE2EAccount(BASE_URL, adminCookie, 'Analytics E2E Player');
-    accountsByName.set(analyticsPlayer.name, analyticsPlayer);
-  }
   // Let Playwright resolve its own installed browser (via `npx playwright
   // install chromium`, run before `npm run test:e2e`) instead of a fixed
   // path — a hardcoded path only worked in one specific pre-provisioned
@@ -1208,6 +1197,7 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
     return el?.value === 'E2E Alice Pro';
   });
   alice.name = 'E2E Alice Pro';
+  accountsByName.set(alice.name, alice);
 
   // Bock/Skill-Ratings live in the Spiele view now, reachable from here via
   // the onboarding nudge; the personal stats dashboard is one tap away too

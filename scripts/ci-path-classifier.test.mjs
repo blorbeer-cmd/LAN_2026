@@ -42,6 +42,27 @@ test("Arcade-only implementation and E2E changes select only Arcade browser cove
   );
 });
 
+test("the kiosk remains a Core consumer and Arcade stylesheet versions stay synchronized", () => {
+  const kiosk = readFileSync(new URL("../server/public/kiosk.html", import.meta.url), "utf8");
+  const index = readFileSync(new URL("../server/public/index.html", import.meta.url), "utf8");
+  const app = readFileSync(new URL("../server/public/js/app.js", import.meta.url), "utf8");
+  const kioskSelection = selected(["server/public/kiosk.html"]);
+  assert.equal(kioskSelection.e2eCore, true);
+  assert.equal(kioskSelection.e2eArcade, false);
+  assert.match(kiosk, /\/css\/arcade\.css\?v=(\d+)/);
+  assert.doesNotMatch(index, /\/css\/arcade\.css/);
+  const appVersion = app.match(/arcade\.css\?v=(\d+)/)?.[1];
+  const kioskVersion = kiosk.match(/arcade\.css\?v=(\d+)/)?.[1];
+  assert.ok(appVersion, "app.js must version the dynamic Arcade stylesheet");
+  assert.equal(kioskVersion, appVersion);
+  const views = app.match(/const VIEWS = \{([\s\S]*?)\n\};/)?.[1];
+  const arcadeViews = app.match(/const ARCADE_VIEWS = new Set\(\[([\s\S]*?)\n\]\);/)?.[1];
+  assert.ok(views && arcadeViews, "view registries must remain statically discoverable");
+  for (const name of [...arcadeViews.matchAll(/'([^']+)'/g)].map((match) => match[1])) {
+    assert.match(views, new RegExp(`\\b${name}: render`), name);
+  }
+});
+
 test("known non-Arcade domains skip Arcade E2E", () => {
   const result = selected([
     "server/src/routes/votes.ts",

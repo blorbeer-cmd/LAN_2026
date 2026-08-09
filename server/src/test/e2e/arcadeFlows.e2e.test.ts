@@ -4,7 +4,7 @@
 // unit/integration suite (`npm test`) — run via `npm run test:e2e` since it
 // spawns a server process and a browser, which is much slower.
 
-import { test as nodeTest, before, after, TestContext } from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
@@ -21,16 +21,11 @@ import {
 } from './authHelpers';
 import { startE2EServer } from './e2eServer';
 
-const RUN_ARCADE_FLOWS = true;
 let BASE_URL: string;
 
 // Arcade cross-view scenarios use a dedicated stateful fixture and process.
 // Core changes therefore do not start this suite, and Arcade changes never
 // need to execute the unrelated Core cross-view scenarios.
-const test = (name: string, fn: (context: TestContext) => void | Promise<void>): void => {
-  if (name.startsWith('Arcade:') === RUN_ARCADE_FLOWS) nodeTest(name, fn);
-};
-
 let serverProcess: ChildProcess;
 let browser: Browser;
 let page: Page;
@@ -95,15 +90,13 @@ before(async () => {
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   adminCookie = await loginE2EAdmin(BASE_URL);
-  alice = await bootstrapAdminAccount(RUN_ARCADE_FLOWS ? 'E2E Alice Pro' : 'E2E Alice');
+  alice = await bootstrapAdminAccount('E2E Alice Pro');
   bob = await createE2EAccount(BASE_URL, adminCookie, 'E2E Bob');
   accountsByName.set(alice.name, alice);
   accountsByName.set('E2E Alice Pro', alice);
   accountsByName.set(bob.name, bob);
-  if (RUN_ARCADE_FLOWS) {
-    analyticsPlayer = await createE2EAccount(BASE_URL, adminCookie, 'Analytics E2E Player');
-    accountsByName.set(analyticsPlayer.name, analyticsPlayer);
-  }
+  analyticsPlayer = await createE2EAccount(BASE_URL, adminCookie, 'Analytics E2E Player');
+  accountsByName.set(analyticsPlayer.name, analyticsPlayer);
   // Let Playwright resolve its own installed browser (via `npx playwright
   // install chromium`, run before `npm run test:e2e`) instead of a fixed
   // path — a hardcoded path only worked in one specific pre-provisioned
@@ -123,6 +116,7 @@ before(async () => {
 
   await page.goto(BASE_URL);
   await page.waitForSelector('.nav-btn[data-view="home"]');
+  assert.equal(await page.locator('#arcade-stylesheet').count(), 0);
 });
 
 after(async () => {
@@ -140,6 +134,7 @@ test('Arcade: open a quiz lobby, see it on Home, then close it again', async (t)
 
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="arcade"]');
+  await page.waitForSelector('#arcade-stylesheet[href="/css/arcade.css?v=1"]');
   // Arcade is a launcher; select the quiz tile before its lobby controls
   // become visible (module state is intentionally reset on a fresh run).
   await page.click('[data-game="quiz"]');
@@ -155,6 +150,7 @@ test('Arcade: open a quiz lobby, see it on Home, then close it again', async (t)
   // separate labeled button — see statusRowHtml in home.js). No tile click
   // needed there: the launcher force-expands the game whose lobby you're in.
   await page.click('.nav-btn[data-view="home"]');
+  await page.waitForSelector('#arcade-stylesheet', { state: 'detached' });
   await page.click('button:has-text("Gaming-Quiz-Lobby offen")');
   await page.waitForSelector('#arcade-active-game-title:has-text("Gaming-Quiz")');
 

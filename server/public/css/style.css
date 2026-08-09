@@ -3612,6 +3612,16 @@ input[type='number'].tournament-score-input {
   padding-left: var(--space-2);
   font-size: var(--font-size-xs);
 }
+.agent-diagnostic-row {
+  display: grid;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.agent-diagnostic-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
 .admin-test-controls input,
 .admin-test-controls .btn {
   height: calc(var(--tap-target-size) - var(--space-2));
