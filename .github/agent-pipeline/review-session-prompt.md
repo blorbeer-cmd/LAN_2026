@@ -40,8 +40,9 @@ quota and then be ignored in silence.
 
 A `self` review publishes its verdict as the `agent-pipeline:review-result` marker described in
 [`review-decision.md`](review-decision.md), because GitHub carries no native evidence for a
-same-provider review. A `cross` review needs none: its evidence is the counter provider's approval
-of the exact head SHA.
+same-provider review. A Codex cross-review uses its native head-bound review. An automated Claude
+cross-review returns structured JSON to the trusted workflow, which validates and publishes the
+same kind of exact-head marker without giving the review session code-write access.
 
 Resolve the current head immediately before the review. For example:
 
@@ -221,10 +222,11 @@ rejected before anything is created, and `--print-only` is the route for them:
 - Whenever `reviewerFor()` resolves to codex — a Claude implementation in `cross` mode, a Codex
   implementation in `self` mode — launching would run Claude while prompt, session id and marker all
   say codex. In an unattended run nobody notices.
-- A `cross` review is evidenced by the counter provider's **native** approval of the head SHA. The
-  reconciler's `cross` branch reads `snapshot.reviews` and never an `agent-pipeline:review-result`
-  comment, so a launched cross run would publish a marker nothing consumes — and report success
-  while doing it. Trigger a real cross review with `@codex review` on the pull request instead.
+- A Codex `cross` review is evidenced by the counter provider's native review. A Claude `cross`
+  review is launched only by `.github/workflows/agent-pipeline-claude-review.yml`, which enforces
+  the restricted tool and credential boundary before its trusted publisher appends a marker.
+  This local launcher still handles only `self`; use `@codex review` for Codex cross-review and the
+  `review:cross` label for automated Claude cross-review.
 
 `--mode cross|self`, `--enforced`, `--implementer codex|claude` (otherwise read from the branch prefix),
 `--focus-file` and `--goal-file` to override the defaults, `--print-only` to just get the prompt and

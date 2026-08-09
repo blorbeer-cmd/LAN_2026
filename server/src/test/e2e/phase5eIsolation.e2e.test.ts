@@ -1,30 +1,16 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
+import type { ChildProcess } from 'child_process';
 import { io as ioClient, Socket } from 'socket.io-client';
+import { startE2EServer } from './e2eServer';
 
-const PORT = 3911;
-const BASE_URL = `http://127.0.0.1:${PORT}`;
+let BASE_URL: string;
 const RECOVERY_CODE = 'phase5e-isolation-recovery';
 
 let serverProcess: ChildProcess;
 let adminId = '';
 let adminCookie = '';
 let groupId = '';
-
-async function waitForServer(): Promise<void> {
-  const started = Date.now();
-  while (Date.now() - started < 10_000) {
-    try {
-      if ((await fetch(`${BASE_URL}/api/health`)).ok) return;
-    } catch {
-      // keep polling
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error('Phase-5e test server did not become ready');
-}
 
 async function api(pathname: string, init: RequestInit = {}, requestGroupId?: string, includeCookie = true): Promise<Response> {
   const headers = new Headers(init.headers);
@@ -54,18 +40,15 @@ async function subscribe(socket: Socket, subscribeGroupId: string): Promise<void
 }
 
 before(async () => {
-  serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      DB_FILE: ':memory:',
-      ADMIN_RECOVERY_CODE: RECOVERY_CODE,
-      COOKIE_SECURE: '0',
-      KIOSK_TOKEN: 'e2e-phase5e-token',
-    },
-    stdio: 'ignore',
+  const server = await startE2EServer({
+    ...process.env,
+    DB_FILE: ':memory:',
+    ADMIN_RECOVERY_CODE: RECOVERY_CODE,
+    COOKIE_SECURE: '0',
+    KIOSK_TOKEN: 'e2e-phase5e-token',
   });
-  await waitForServer();
+  serverProcess = server.process;
+  BASE_URL = server.baseUrl;
 
   const registered = await fetch(`${BASE_URL}/api/auth/register`, {
     method: 'POST',

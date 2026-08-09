@@ -48,14 +48,7 @@ function start(): void {
     console.error(`FATAL: ${accessError}`);
     process.exit(1);
   }
-  if (!claimedAdminExists && process.env.LOCAL_GENERATED_RECOVERY_CODE === '1') {
-    // eslint-disable-next-line no-console
-    console.log('Frische lokale Datenbank: Für diesen Start wurde ein temporärer Erstzugang erzeugt.');
-    // eslint-disable-next-line no-console
-    console.log(`Öffne http://localhost:${config.port}/?claim=${config.adminRecoveryCode}`);
-    // eslint-disable-next-line no-console
-    console.log('Für einen dauerhaften Zugang ADMIN_RECOVERY_CODE oder BOOTSTRAP_ADMIN_1_NAME/PASSWORD setzen.');
-  }
+  const showLocalRecoveryInfo = !claimedAdminExists && process.env.LOCAL_GENERATED_RECOVERY_CODE === '1';
 
   const app = createApp();
   const server = http.createServer(app);
@@ -98,8 +91,18 @@ function start(): void {
   });
 
   server.listen(config.port, () => {
+    const address = server.address();
+    const port = address && typeof address === 'object' ? address.port : config.port;
+    if (showLocalRecoveryInfo) {
+      // eslint-disable-next-line no-console
+      console.log('Frische lokale Datenbank: Für diesen Start wurde ein temporärer Erstzugang erzeugt.');
+      // eslint-disable-next-line no-console
+      console.log(`Öffne http://localhost:${port}/?claim=${config.adminRecoveryCode}`);
+      // eslint-disable-next-line no-console
+      console.log('Für einen dauerhaften Zugang ADMIN_RECOVERY_CODE oder BOOTSTRAP_ADMIN_1_NAME/PASSWORD setzen.');
+    }
     // eslint-disable-next-line no-console
-    console.log(`Respawn server läuft auf http://localhost:${config.port}`);
+    console.log(`Respawn server läuft auf http://localhost:${port}`);
   });
 }
 

@@ -9,12 +9,11 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
+import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
+import { startE2EServer } from './e2eServer';
 
-const PORT = 3904; // 3901 = flows, 3902 = access, 3903 = arcade, 3910 = agent integration
-const BASE_URL = `http://localhost:${PORT}`;
+let BASE_URL: string;
 const RECOVERY_CODE = 'e2e-admin-recovery-code';
 const NAME = 'E2E New Person';
 const PASSWORD = 'e2e new person password';
@@ -24,20 +23,6 @@ let serverProcess: ChildProcess;
 let browser: Browser;
 let page: Page;
 let adminCookie: string;
-
-async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // not up yet, keep polling
-    }
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  throw new Error(`Server at ${url} did not become ready in time`);
-}
 
 // Mints a fresh 'register' invite code by bootstrapping one admin account
 // via the recovery code (plain HTTP, no browser involved) and having it
@@ -93,17 +78,14 @@ async function mintResetInviteCode(): Promise<string> {
 }
 
 before(async () => {
-  serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      DB_FILE: ':memory:',
-      ADMIN_RECOVERY_CODE: RECOVERY_CODE,
-      KIOSK_TOKEN: 'e2e-kiosk-token',
-    },
-    stdio: 'ignore',
+  const server = await startE2EServer({
+    ...process.env,
+    DB_FILE: ':memory:',
+    ADMIN_RECOVERY_CODE: RECOVERY_CODE,
+    KIOSK_TOKEN: 'e2e-kiosk-token',
   });
-  await waitForServer(`${BASE_URL}/api/health`);
+  serverProcess = server.process;
+  BASE_URL = server.baseUrl;
   browser = await chromium.launch();
   page = await browser.newPage({ viewport: { width: 390, height: 844 } });
 });

@@ -5,7 +5,7 @@ This directory contains configuration for the agent PR pipeline described in
 
 ## Current rollout state
 
-The pipeline reports state; it does not act on it yet:
+The pipeline reports state and has one deliberately narrow provider action:
 
 - `.github/workflows/agent-pipeline-contract.yml` validates an activated task contract.
 - `scripts/agent-pipeline.mjs` parses and validates task contracts.
@@ -14,6 +14,10 @@ The pipeline reports state; it does not act on it yet:
 - `scripts/agent-pipeline-select-prs.mjs` limits scheduled safety sweeps to pull requests with an
   activated task contract or a missing merge-gate status.
 - `.github/workflows/agent-pipeline-reconcile.yml` runs that reconciler per pull request.
+- `.github/workflows/agent-pipeline-claude-review.yml` starts one read-only Claude cross-review
+  after the user chooses `review:cross` for a Codex implementation.
+- `scripts/agent-claude-review.mjs` reuses the readiness snapshot, validates Claude's structured
+  result and publishes its head-bound marker.
 - `.github/workflows/agent-pipeline-tests.yml` runs the unit tests for both.
 - `review-session-prompt.md` contains the copy-paste prompt and operating instructions for an
   isolated Codex or Claude review session.
@@ -21,10 +25,14 @@ The pipeline reports state; it does not act on it yet:
   head.
 - The `pull_request_target` workflow definitions are loaded from the trusted default branch and run
   the validator, reconciler and configuration from that same trusted branch. The declared PR base
-  must equal the configured default branch. The pull-request head is fetched only as diff data and
-  is never executed by those workflows.
-- No agent is invoked and no branch-protection setting is changed yet. The merge-gate status is
-  written but is not a required check until someone adds it by hand.
+  must equal the configured default branch. The Claude workflow checks the pull-request head out
+  only long enough to render an inert diff, then removes the checkout before the provider secret is
+  exposed. Claude receives the diff but no PR-owned `CLAUDE.md`, `AGENTS.md` or `.claude` settings;
+  no pull-request code, tests, hooks or package-manager commands are executed.
+- Only the Claude cross-review adapter invokes an agent. It has no automatic retry, round counter,
+  fix loop, approval, merge or branch-protection mutation. A user may manually retry a `blocked`
+  result. The merge-gate status is written but is not a required check until someone adds it by
+  hand.
 
 ## Readiness reconciler
 
@@ -47,9 +55,9 @@ What it does:
 - removes a `review:*` label that was bound to an earlier head, so the choice is asked again,
 - writes the `Agent pipeline / ready for human merge` commit status for the current head SHA.
 
-What it deliberately does not do:
+What the reconciler deliberately does not do:
 
-- start an agent, request a review, or push a fix,
+- start an agent, request a review, or push a fix; the separate Claude adapter owns its one launch,
 - approve or merge anything,
 - set or clear `agent:waiting` and `agent:review-fallback`, which belong to the provider phases,
 - choose the review mode, or set any `review:*` label.
@@ -76,7 +84,7 @@ the audit trail.
 
 | Label          | Mode    | What satisfies the gate for the current head SHA                                                                                                                                                                        |
 | -------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `review:cross` | `cross` | per `crossReviewEvidence`: an approval from the counter provider's `providerReviewerAllowlist`, or (default) a review of this exact head by that provider with none of its findings left open                           |
+| `review:cross` | `cross` | per `crossReviewEvidence`: a native counter-provider review, or for Claude a credential-read-only structured result published by the dedicated trusted workflow for this exact head                                     |
 | `review:self`  | `self`  | a published `agent-pipeline:review-result` marker: same head, `verdict=pass`, a `read-only` level meeting `selfReviewMinimumEnforcement` (default `verified`), from one of the implementation provider's own identities |
 | `review:human` | `human` | an approving review from an account with write access, covering exactly this head                                                                                                                                       |
 
@@ -129,6 +137,36 @@ history is the audit trail for who chose what and when. Every other gate conditi
 no conflict, resolved threads, the UI/UX notice, human approval of protected paths — applies
 unchanged in all three modes, and the merge stays with the user in all of them.
 
+## Automated Claude cross-review
+
+For a Codex implementation, applying `review:cross` starts the Claude adapter only when the shared
+`deriveReadiness` result is actually in phase `review` and names Claude as the counter provider.
+The label should therefore be applied only after the status comment asks for the review decision;
+if a mechanical or protected-path blocker is still open, clear it and reapply the label afterwards.
+Concurrency serializes the recoverable reconcile transition per pull request. The publisher stays
+outside that lock so a regular reconcile run cannot cancel the only copy of a completed model
+result. After a terminal `pass` or `changes-required` result is published, the current head-bound
+marker makes later duplicate or manual events no-ops. A `blocked` result remains explicitly
+retryable by reapplying the label or manually dispatching the workflow.
+
+The read-only review job checks out trusted `main` at the workspace root and the exact pull-request
+head in a temporary subdirectory. It generates the diff with external diff drivers and text
+conversion disabled, deletes that subdirectory, and only then invokes Claude. The action is pinned
+to a commit, receives a short-lived `GITHUB_TOKEN` whose repository permissions are all read-only,
+and disables shell, editing and web tools. The action's base GitHub tools remain present, but the
+job token makes every repository operation available to them read-only. The model returns only
+schema-validated JSON whose length limits match the publisher. A separate publisher job has no PR
+checkout; trusted repository code there verifies that the PR still points at the reviewed SHA,
+rejects malformed or inconsistent verdicts, bounds the final comment size and neutralizes injected
+Markdown and HTML. The gate accepts its marker only when the comment begins with the publisher's
+exact heading, not when another `github-actions[bot]` comment merely echoes a marker.
+
+This is intentionally not the complete provider loop. A failed action or `blocked` result is
+retried by removing and reapplying the review label or by a manual workflow dispatch. A new commit
+invalidates the result and the existing decision logic asks for the review mode again. Automatic
+provider retries, review-round counting, fallback selection and findings-to-fix orchestration
+remain later phases.
+
 Escalations the reconciler cannot derive from GitHub state — an exhausted round limit, a critical
 decision, the 24-hour waiting escalation — stay with `agent:needs-human`, exactly as the plan
 describes: raised by a human or by a later provider phase, blocking while set, and never written
@@ -137,11 +175,12 @@ approval, uses its own `awaiting-human-approval` phase instead of borrowing that
 approving the head clears it without label bookkeeping and no genuine escalation is ever wiped by
 a sweep. To stop automation by hand, use `agent:no-auto`.
 
-Its own check runs are excluded from the CI evaluation via `selfCheckNames`. The reconcile
-workflow runs on `pull_request_target`, whose check runs attach to the pull request's head SHA, so
+The pipeline's own check runs are excluded from the CI evaluation via `selfCheckNames`. The
+reconcile and Claude-review workflows run on `pull_request_target`, whose check runs attach to the
+pull request's head SHA, so
 without that exclusion the reconciler would read its own job as a running — or, after
 `cancel-in-progress`, a cancelled and therefore failing — CI check. `selfCheckNames` must stay in
-sync with the job names in `.github/workflows/agent-pipeline-reconcile.yml`.
+sync with the job names in both workflow files.
 
 The CI/CD workflow also reports `Test performance` and, only after a preliminary runtime warning,
 `Confirm test performance (<suite>)`. The latter reruns the affected suite and fails only for a
@@ -263,17 +302,18 @@ owner can approve them normally.
 node --test scripts/agent-pipeline.test.mjs
 node --test scripts/agent-pipeline-reconcile.test.mjs
 node --test scripts/agent-pipeline-select-prs.test.mjs
+node --test scripts/agent-claude-review.test.mjs
 node --test scripts/agent-preflight.test.mjs
 git diff --check
 ```
 
 The validator and the test suites write nothing to GitHub. The reconciler writes only pipeline
 labels, its own sticky status comment and the `Agent pipeline / ready for human merge` status, and
-only when invoked with `--apply`. Later phases add the agent adapters. `config.json` already
-declares the labels and timeouts those phases will use; the ones this phase does not own are inert
-until then.
+only when invoked with `--apply`. The Claude adapter writes one validated review result comment and
+then invokes that same reconciler. `config.json` already declares the labels and timeouts later
+phases will use; the ones this rollout does not own are inert until then.
 
-For a manual cross- or fallback-review during the rollout, follow
+For a manual Codex cross-review or fallback review during the rollout, follow
 [`review-session-prompt.md`](review-session-prompt.md). A new commit invalidates the previous
 verdict and requires a fresh session for the new head SHA.
 
@@ -289,11 +329,14 @@ Completed for this repository:
 5. Pipeline labels from `config.json` exist in the repository, including the three review-mode
    labels `review:cross`, `review:self` and `review:human`.
 
-Still required before enabling agent mutations:
+Still required before expanding agent mutations:
 
-1. Verify in a pilot pull request that both app identities can update their own feature branches
+1. After the Claude workflow has reached the default branch, verify in a pilot pull request that
+   applying `review:cross` to a ready Codex head produces one `github-actions[bot]` result comment,
+   the result names the exact head SHA and no repository file or branch changes.
+2. Verify in a pilot pull request that both app identities can update their own feature branches
    but cannot push or merge to `main`.
-2. Add `Agent pipeline / ready for human merge` to branch protection. The prerequisite pilot is
+3. Add `Agent pipeline / ready for human merge` to branch protection. The prerequisite pilot is
    complete: on 2026-08-08 every open pull request had the context on its current head, and both
    `success` and `pending` verdicts were observed. Enabling the requirement remains a deliberate
    operator action and is not performed by the workflow or an implementation agent.

@@ -1,37 +1,21 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
+import type { ChildProcess } from 'child_process';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { addSessionCookie, authenticatedServerEnv, createE2EAccount, loginE2EAdmin } from './authHelpers';
+import { startE2EServer } from './e2eServer';
 
-const PORT = 3918;
-const BASE_URL = `http://localhost:${PORT}`;
+let BASE_URL: string;
 
 let serverProcess: ChildProcess;
 let browser: Browser;
 let context: BrowserContext;
 let page: Page;
 
-async function waitForServer(timeoutMs = 10_000): Promise<void> {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    try {
-      if ((await fetch(`${BASE_URL}/api/health`)).ok) return;
-    } catch {
-      // startup
-    }
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-  throw new Error('Arcade-Auth-E2E-Server wurde nicht bereit.');
-}
-
 before(async () => {
-  serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: authenticatedServerEnv(PORT),
-    stdio: 'ignore',
-  });
-  await waitForServer();
+  const server = await startE2EServer(authenticatedServerEnv());
+  serverProcess = server.process;
+  BASE_URL = server.baseUrl;
   const adminCookie = await loginE2EAdmin(BASE_URL);
   const member = await createE2EAccount(BASE_URL, adminCookie, 'E2E Arcade Auth Member');
 

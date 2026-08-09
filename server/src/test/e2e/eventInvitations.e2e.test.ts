@@ -1,11 +1,10 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
+import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
+import { startE2EServer } from './e2eServer';
 
-const PORT = 3914; // 3901 flows, 3902 access, 3903 arcade, 3904 authGate, 3910 agent integration, 3911 phase5eIsolation, 3912 checklist, 3913 flowsArcade
-const BASE_URL = `http://localhost:${PORT}`;
+let BASE_URL: string;
 const RECOVERY_CODE = 'event-invitations-e2e-recovery';
 const OWNER_NAME = 'E2E Event Owner';
 const OWNER_PASSWORD = 'e2e event owner secure passphrase';
@@ -19,19 +18,6 @@ let ownerPage: Page;
 let memberPage: Page;
 let eventId: string;
 let memberId: string;
-
-async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    try {
-      if ((await fetch(url)).ok) return;
-    } catch {
-      // The child process is still starting.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-  throw new Error(`Server at ${url} did not become ready in time`);
-}
 
 function sessionCookie(response: Response): string {
   const value = response.headers.get('set-cookie');
@@ -50,16 +36,13 @@ async function login(page: Page, name: string, password: string): Promise<void> 
 }
 
 before(async () => {
-  serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      DB_FILE: ':memory:',
-      ADMIN_RECOVERY_CODE: RECOVERY_CODE,
-    },
-    stdio: 'ignore',
+  const server = await startE2EServer({
+    ...process.env,
+    DB_FILE: ':memory:',
+    ADMIN_RECOVERY_CODE: RECOVERY_CODE,
   });
-  await waitForServer(`${BASE_URL}/api/health`);
+  serverProcess = server.process;
+  BASE_URL = server.baseUrl;
 
   const ownerRegistration = await fetch(`${BASE_URL}/api/auth/register`, {
     method: 'POST',
