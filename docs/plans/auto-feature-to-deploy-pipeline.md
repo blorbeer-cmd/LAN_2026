@@ -347,9 +347,11 @@ Im Modus `human` bleibt die Approval zum exakten Head-SHA der Nachweis.
 4. Ist kein Anbieter verfügbar und will der Nutzer nicht selbst reviewen, `agent:waiting` setzen
    und zeitgesteuert erneut versuchen.
 5. Warteversuche und unbeantwortete Auswahlfragen zählen nicht als Reviewrunde.
-6. Nach 24 Stunden ohne Fortschritt den Nutzer informieren; nur bei einer tatsächlich nötigen
-   Entscheidung zusätzlich `agent:needs-human` setzen. Eine ausstehende Modus-Auswahl allein ist
-   keine Eskalation, sondern der Normalzustand `awaiting-review-decision`.
+6. Liefert ein gewähltes Review nach `waitingEscalationHours` aus `.github/agent-pipeline/config.json`
+   (derzeit 2 Stunden) kein Ergebnis, meldet der Reconciler die Überfälligkeit als Blocker und als
+   eigene Zeile im Statuskommentar; nur bei einer tatsächlich nötigen Entscheidung zusätzlich
+   `agent:needs-human` setzen. Eine ausstehende Modus-Auswahl allein ist keine Eskalation, sondern
+   der Normalzustand `awaiting-review-decision`.
 
 Der lokale Plan `docs/plans/auto-resume-after-token-reset.md` kann unterbrochene lokale Sessions
 ergänzend fortsetzen. Für parallele Arbeiten muss er konkrete Session-IDs statt `--last`
