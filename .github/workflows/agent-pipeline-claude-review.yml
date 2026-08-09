@@ -72,6 +72,8 @@ jobs:
       statuses: read
     outputs:
       should_run: ${{ steps.dispatch.outputs.should_run }}
+      code: ${{ steps.dispatch.outputs.code }}
+      reason: ${{ steps.dispatch.outputs.reason }}
       repository: ${{ steps.dispatch.outputs.repository }}
       pull_number: ${{ steps.dispatch.outputs.pull_number }}
       head_sha: ${{ steps.dispatch.outputs.head_sha }}
@@ -171,6 +173,90 @@ jobs:
             --allowedTools "Glob,Grep,Read"
             --disallowedTools "Bash,Edit,MultiEdit,Write,NotebookEdit,WebFetch,WebSearch"
             --json-schema '{"type":"object","additionalProperties":false,"properties":{"verdict":{"type":"string","enum":["pass","changes-required","blocked"]},"findings":{"type":"array","maxItems":20,"items":{"type":"object","additionalProperties":false,"properties":{"severity":{"type":"string","enum":["critical","high","medium","low"]},"disposition":{"type":"string","enum":["actionable","needs-human"]},"title":{"type":"string","maxLength":200},"file":{"type":["string","null"],"maxLength":500},"line":{"type":["integer","null"],"minimum":1},"problem":{"type":"string","maxLength":4000},"impact":{"type":"string","maxLength":4000},"evidence":{"type":"string","maxLength":4000},"verification":{"type":"string","maxLength":4000}},"required":["severity","disposition","title","file","line","problem","impact","evidence","verification"]}},"residual_risks":{"type":"array","maxItems":20,"items":{"type":"string","maxLength":4000}}},"required":["verdict","findings","residual_risks"]}'
+
+      # `show_full_output: false` keeps the transcript out of this public log, which also hides why
+      # a run aborted. This step reads the SDK's own execution log and prints only its diagnostic
+      # fields plus a hard-capped excerpt of the result string. It runs solely when no validated
+      # result was produced, so the excerpt carries the SDK's error text, not review content.
+      - name: Report Claude failure details
+        if: always() && steps.claude.outcome == 'failure'
+        shell: bash
+        env:
+          EXECUTION_FILE: ${{ runner.temp }}/claude-execution-output.json
+        run: |
+          set -euo pipefail
+          if [[ ! -f "${EXECUTION_FILE}" ]]; then
+            echo "No Claude execution log at ${EXECUTION_FILE}."
+            exit 0
+          fi
+          node -e '
+            const messages = JSON.parse(require("fs").readFileSync(process.env.EXECUTION_FILE, "utf8"));
+            const result = (Array.isArray(messages) ? messages : []).find((m) => m && m.type === "result");
+            if (!result) {
+              console.log("Claude execution log holds no result message.");
+              process.exit(0);
+            }
+            const text = typeof result.result === "string" ? result.result : "";
+            const limit = 300;
+            console.log(JSON.stringify({
+              subtype: result.subtype ?? null,
+              is_error: result.is_error ?? null,
+              num_turns: result.num_turns ?? null,
+              duration_ms: result.duration_ms ?? null,
+              error_excerpt: text.slice(0, limit),
+              error_truncated: text.length > limit,
+            }, null, 2));
+          '
+
+  notice:
+    name: Announce missing Claude cross-review
+    needs: [select, review, publish]
+    # Runs whenever a chosen cross-review produced no published result: the dispatch declined, the
+    # model job failed, or the model answered but the publisher rejected the result. That last case
+    # also skips `reconcile`, so without it the pull request keeps waiting on a review that already
+    # happened and can never arrive.
+    if: >-
+      always() && needs.select.outputs.pull_request != '' &&
+      (needs.review.result == 'failure' || needs.publish.result == 'failure' ||
+       needs.review.outputs.should_run == 'false')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check out trusted notice code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Announce that no review result was produced
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PULL_NUMBER: ${{ needs.select.outputs.pull_request }}
+          HEAD_SHA: ${{ needs.review.outputs.head_sha }}
+          OUTCOME: ${{ (needs.review.result == 'failure' || needs.publish.result == 'failure') && 'failed' || 'declined' }}
+          # A failed job may never have reached the dispatch, so its code and reason can be empty.
+          DISPATCH_CODE: ${{ needs.review.result == 'failure' && 'failed' || needs.publish.result == 'failure' && 'publish-failed' || needs.review.outputs.code }}
+          DISPATCH_REASON: ${{ needs.review.result == 'failure' && 'the review job failed before a validated result existed' || needs.publish.result == 'failure' && 'the review produced a result but publishing it was rejected' || needs.review.outputs.reason }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node scripts/agent-claude-review.mjs notice \
+            --repository "${REPOSITORY}" \
+            --pr "${PULL_NUMBER}" \
+            --head-sha "${HEAD_SHA}" \
+            --outcome "${OUTCOME}" \
+            --code "${DISPATCH_CODE}" \
+            --reason "${DISPATCH_REASON}" \
+            --run-url "${RUN_URL}"
 
   publish:
     name: Publish Claude cross-review
