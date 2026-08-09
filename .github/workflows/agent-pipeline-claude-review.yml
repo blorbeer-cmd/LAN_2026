@@ -172,6 +172,40 @@ jobs:
             --disallowedTools "Bash,Edit,MultiEdit,Write,NotebookEdit,WebFetch,WebSearch"
             --json-schema '{"type":"object","additionalProperties":false,"properties":{"verdict":{"type":"string","enum":["pass","changes-required","blocked"]},"findings":{"type":"array","maxItems":20,"items":{"type":"object","additionalProperties":false,"properties":{"severity":{"type":"string","enum":["critical","high","medium","low"]},"disposition":{"type":"string","enum":["actionable","needs-human"]},"title":{"type":"string","maxLength":200},"file":{"type":["string","null"],"maxLength":500},"line":{"type":["integer","null"],"minimum":1},"problem":{"type":"string","maxLength":4000},"impact":{"type":"string","maxLength":4000},"evidence":{"type":"string","maxLength":4000},"verification":{"type":"string","maxLength":4000}},"required":["severity","disposition","title","file","line","problem","impact","evidence","verification"]}},"residual_risks":{"type":"array","maxItems":20,"items":{"type":"string","maxLength":4000}}},"required":["verdict","findings","residual_risks"]}'
 
+      # `show_full_output: false` keeps the transcript out of this public log, which also hides why
+      # a run aborted. This step reads the SDK's own execution log and prints only its diagnostic
+      # fields plus a hard-capped excerpt of the result string. It runs solely when no validated
+      # result was produced, so the excerpt carries the SDK's error text, not review content.
+      - name: Report Claude failure details
+        if: always() && steps.claude.outcome == 'failure'
+        shell: bash
+        env:
+          EXECUTION_FILE: ${{ runner.temp }}/claude-execution-output.json
+        run: |
+          set -euo pipefail
+          if [[ ! -f "${EXECUTION_FILE}" ]]; then
+            echo "No Claude execution log at ${EXECUTION_FILE}."
+            exit 0
+          fi
+          node -e '
+            const messages = JSON.parse(require("fs").readFileSync(process.env.EXECUTION_FILE, "utf8"));
+            const result = (Array.isArray(messages) ? messages : []).find((m) => m && m.type === "result");
+            if (!result) {
+              console.log("Claude execution log holds no result message.");
+              process.exit(0);
+            }
+            const text = typeof result.result === "string" ? result.result : "";
+            const limit = 300;
+            console.log(JSON.stringify({
+              subtype: result.subtype ?? null,
+              is_error: result.is_error ?? null,
+              num_turns: result.num_turns ?? null,
+              duration_ms: result.duration_ms ?? null,
+              error_excerpt: text.slice(0, limit),
+              error_truncated: text.length > limit,
+            }, null, 2));
+          '
+
   publish:
     name: Publish Claude cross-review
     needs: [select, review]
