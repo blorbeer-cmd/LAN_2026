@@ -49,6 +49,13 @@ test("the request is bound to the exact head and deduplicates trusted adapter co
   );
   assert.equal(
     hasCodexReviewRequest(
+      [{ user: { login: "github-actions[bot]" }, body }],
+      HEAD,
+    ),
+    true,
+  );
+  assert.equal(
+    hasCodexReviewRequest(
       [{ author: "github-actions[bot]", body }],
       OTHER_HEAD,
     ),
@@ -70,8 +77,8 @@ test("the workflow requests Codex through the trusted default branch", () => {
   );
   const workflow = readFileSync(workflowPath, "utf8");
   assert.match(workflow, /pull_request_target:\s*\n\s+types: \[labeled\]/);
-  assert.match(workflow, /issues: write/);
-  assert.match(workflow, /pull-requests: read/);
+  assert.match(workflow, /pull-requests: write/);
+  assert.doesNotMatch(workflow, /issues: write/);
   assert.match(workflow, /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/);
   assert.match(workflow, /persist-credentials: false/);
   assert.match(workflow, /name: Request Codex cross-review/);

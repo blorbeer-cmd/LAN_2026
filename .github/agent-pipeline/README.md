@@ -22,7 +22,7 @@ The pipeline reports state and has narrow provider actions for both regular cros
   the user chooses `review:cross` for a Claude implementation.
 - `scripts/agent-codex-review.mjs` reuses the readiness snapshot and posts one exact-head-bound
   `@codex review` request; Codex submits the native GitHub review and the reconciler evaluates it.
-- `.github/workflows/agent-pipeline-tests.yml` runs the unit tests for both.
+- `.github/workflows/agent-pipeline-tests.yml` runs the pipeline and provider-adapter unit tests.
 - `review-session-prompt.md` contains the copy-paste prompt and operating instructions for an
   isolated Codex or Claude review session.
 - `review-decision.md` describes the one decision that is not automated: who reviews the current

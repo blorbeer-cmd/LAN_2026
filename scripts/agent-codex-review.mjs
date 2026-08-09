@@ -77,7 +77,7 @@ export function hasCodexReviewRequest(comments, headSha) {
   const currentHeadSha = requireHeadSha(headSha);
   return (comments ?? []).some(
     (comment) =>
-      comment?.author === REQUEST_AUTHOR &&
+      (comment?.author ?? comment?.user?.login) === REQUEST_AUTHOR &&
       comment?.body?.match(CODEX_REVIEW_REQUEST_PATTERN)?.[1] === currentHeadSha,
   );
 }
