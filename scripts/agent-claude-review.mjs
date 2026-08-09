@@ -14,6 +14,7 @@ import {
   CLAUDE_CROSS_REVIEW_SOURCE,
   deriveReadiness,
   fetchSnapshot,
+  isTrustedCommentAuthor,
   latestReviewResult,
   parseReviewResults,
 } from "./agent-pipeline-reconcile.mjs";
@@ -25,6 +26,13 @@ const MAX_FINDINGS = 20;
 const MAX_TEXT = 4_000;
 const MAX_RENDERED_DETAIL = 400;
 export const MAX_REVIEW_COMMENT_LENGTH = 60_000;
+
+// Announces that a chosen cross-review never produced a result for this head. Deliberately its own
+// marker: the reconciler owns the status comment and the result marker, and neither may be
+// impersonated by a notice. One notice per head, rewritten in place, so a retry does not spam.
+export const REVIEW_START_NOTICE_MARKER = "<!-- agent-pipeline:review-start-notice";
+const REVIEW_START_NOTICE_PATTERN =
+  /<!--\s*agent-pipeline:review-start-notice\s+([0-9a-f]{40})\s+mode=cross\s+outcome=(declined|failed)\s*-->/;
 
 function option(args, name) {
   const index = args.indexOf(name);
@@ -96,30 +104,63 @@ export function isTerminalClaudeReviewResult(result) {
   return Boolean(result && result.verdict !== "blocked");
 }
 
+// Stable identifiers for why a dispatch declined. The reason string stays human-facing; the code is
+// what the notice renders from, so its wording can change without breaking the announcement.
+export const DISPATCH_CODES = {
+  run: "run",
+  phase: "phase",
+  mode: "mode",
+  provider: "provider",
+  resultExists: "result-exists",
+  disabled: "disabled",
+  failed: "failed",
+  publishFailed: "publish-failed",
+};
+
 /** Pure eligibility check; the workflow calls it only after deriving current readiness. */
 export function deriveClaudeReviewDispatch(readiness) {
   if (readiness.phase !== "review") {
-    return { shouldRun: false, reason: `phase is ${readiness.phase}` };
+    return {
+      shouldRun: false,
+      code: DISPATCH_CODES.phase,
+      reason: `phase is ${readiness.phase}`,
+    };
   }
   if (readiness.details?.reviewMode !== "cross") {
-    return { shouldRun: false, reason: "review mode is not cross" };
+    return {
+      shouldRun: false,
+      code: DISPATCH_CODES.mode,
+      reason: "review mode is not cross",
+    };
   }
   if (readiness.reviewerProvider !== "claude") {
     return {
       shouldRun: false,
+      code: DISPATCH_CODES.provider,
       reason: `counter provider is ${readiness.reviewerProvider ?? "unknown"}`,
     };
   }
   if (isTerminalClaudeReviewResult(readiness.details?.crossResult)) {
-    return { shouldRun: false, reason: "this head already has a Claude result" };
+    return {
+      shouldRun: false,
+      code: DISPATCH_CODES.resultExists,
+      reason: "this head already has a Claude result",
+    };
   }
   return {
     shouldRun: true,
+    code: DISPATCH_CODES.run,
     reason:
       readiness.details?.crossResult?.verdict === "blocked"
         ? "the previous Claude review was blocked and may be retried"
         : "current head is ready for one Claude cross-review",
   };
+}
+
+// A head that already carries a Claude result is the one decline that answers the label instead of
+// swallowing it, so announcing it would be noise on every reconcile sweep.
+export function shouldAnnounceReviewStartFailure(code) {
+  return code !== DISPATCH_CODES.resultExists && code !== DISPATCH_CODES.run;
 }
 
 /** Validates and normalizes the only model-controlled value that the publisher accepts. */
@@ -277,6 +318,118 @@ export function renderClaudeReviewComment({
   return body;
 }
 
+// What the reader has to do next, per decline code. Kept beside the codes so a new decline reason
+// cannot silently fall back to a message that does not fit it.
+function reviewStartGuidance(code, reason) {
+  switch (code) {
+    case DISPATCH_CODES.phase:
+      return [
+        `Die Pipeline stand beim Auslösen noch in Phase \`${markdownText(String(reason).replace(/^phase is /, ""))}\`,`,
+        "nicht in `review`. Der Workflow startet ausschließlich beim Setzen des Labels und versucht es",
+        "danach nicht erneut — das Label allein bewirkt jetzt nichts mehr.",
+        "",
+        "Abhilfe: warten, bis dieser Statuskommentar Phase `review` meldet, dann `review:cross`",
+        "abnehmen und erneut setzen.",
+      ].join("\n");
+    case DISPATCH_CODES.mode:
+      return [
+        "Für diesen Head-SHA ist nicht `cross` als Reviewmodus gebunden. Ein Label, das zu einem",
+        "früheren Head gehörte, zählt nicht mehr.",
+        "",
+        "Abhilfe: den Reviewmodus für den aktuellen Head wählen.",
+      ].join("\n");
+    case DISPATCH_CODES.provider:
+      return [
+        "Der Gegen-Anbieter für diesen Pull Request ist nicht `claude`, deshalb ist dieser Workflow",
+        "nicht zuständig.",
+        "",
+        "Abhilfe: den Implementierungs-Anbieter im Task-Vertrag prüfen.",
+      ].join("\n");
+    case DISPATCH_CODES.disabled:
+      return [
+        "Die Agenten-Pipeline ist über die Repository-Variable `AGENT_PIPELINE_DISABLED` global",
+        "abgeschaltet. Bis sie wieder aktiv ist, startet kein automatisches Review.",
+      ].join("\n");
+    case DISPATCH_CODES.publishFailed:
+      return [
+        "Das Review lief und lieferte ein Ergebnis, aber die Veröffentlichung wurde abgelehnt —",
+        "etwa durch die Schemaprüfung des Ergebnisses, den Secret-Scan oder die GitHub-API. Damit",
+        "ist kein Verdikt im Pull Request angekommen und die Pipeline wartet unverändert weiter.",
+        "",
+        "Abhilfe: den verlinkten Workflow-Lauf öffnen; der Publish-Schritt nennt den",
+        "Ablehnungsgrund. Nach der Behebung `review:cross` abnehmen und erneut setzen.",
+      ].join("\n");
+    case DISPATCH_CODES.failed:
+      return [
+        "Der Reviewlauf wurde gestartet, hat aber kein gültiges strukturiertes Ergebnis geliefert.",
+        "Damit ist nichts veröffentlicht worden und die Pipeline wartet unverändert auf ein Review",
+        "für diesen Head.",
+        "",
+        "Abhilfe: den verlinkten Workflow-Lauf öffnen. Der Schritt `Report Claude failure details`",
+        "nennt Fehlerart und Fehlertext. Nach der Behebung `review:cross` abnehmen und erneut setzen.",
+      ].join("\n");
+    default:
+      return [
+        "Es wurde kein Review gestartet und kein Ergebnis veröffentlicht. Die Pipeline wartet",
+        "unverändert auf ein Review für diesen Head.",
+      ].join("\n");
+  }
+}
+
+/** Pure renderer for the PR-facing notice; the caller decides whether it is warranted. */
+export function renderReviewStartNotice({
+  repository,
+  pullNumber,
+  headSha,
+  outcome,
+  code,
+  reason,
+  runUrl,
+}) {
+  if (!/^[0-9a-f]{40}$/.test(headSha ?? "")) throw new Error("headSha must be a full SHA.");
+  if (outcome !== "declined" && outcome !== "failed") {
+    throw new Error("outcome must be declined or failed.");
+  }
+  const lines = [
+    "## Claude Cross-Review nicht gestartet",
+    "",
+    `- Repository: \`${markdownText(repository)}\``,
+    `- Pull Request: \`#${Number(pullNumber)}\``,
+    `- Head-SHA: \`${headSha}\``,
+    `- Ergebnis: \`${outcome}\``,
+    `- Grund: \`${boundedMarkdownText(reason ?? "unknown", 200)}\``,
+    ...(runUrl ? [`- Workflow-Lauf: ${markdownText(runUrl)}`] : []),
+    "",
+    reviewStartGuidance(code, reason),
+    "",
+    `${REVIEW_START_NOTICE_MARKER} ${headSha} mode=cross outcome=${outcome} -->`,
+    "",
+    "---",
+    "_Maintained by the trusted agent-pipeline workflow. It reports state only; it does not approve or merge._",
+  ];
+  const body = `${lines.join("\n")}\n`;
+  if (body.length > MAX_REVIEW_COMMENT_LENGTH) {
+    throw new Error(`Rendered notice exceeds ${MAX_REVIEW_COMMENT_LENGTH} characters.`);
+  }
+  return body;
+}
+
+/**
+ * Finds this head's existing notice so a repeat rewrites it instead of adding another comment.
+ *
+ * Only trusted authors count: anyone able to comment could otherwise plant the marker and have the
+ * workflow keep editing a comment it never wrote.
+ */
+export function findReviewStartNotice(comments, headSha) {
+  let found = null;
+  for (const comment of comments ?? []) {
+    if (!isTrustedCommentAuthor(comment)) continue;
+    const match = comment?.body?.match(REVIEW_START_NOTICE_PATTERN);
+    if (match && match[1] === headSha) found = comment;
+  }
+  return found;
+}
+
 async function githubApi(path, { token, method = "GET", body } = {}) {
   const base = process.env.GITHUB_API_URL ?? "https://api.github.com";
   const response = await fetch(`${base}${path}`, {
@@ -320,6 +473,7 @@ async function dispatchCommand(args) {
 
   if ((process.env.AGENT_PIPELINE_DISABLED ?? "").toLowerCase() === "true") {
     output("should_run", "false");
+    output("code", DISPATCH_CODES.disabled);
     output("reason", "agent pipeline is globally disabled");
     console.log("Claude cross-review skipped: agent pipeline is globally disabled.");
     return;
@@ -330,6 +484,7 @@ async function dispatchCommand(args) {
   const decision = deriveClaudeReviewDispatch(readiness);
   const values = {
     should_run: decision.shouldRun,
+    code: decision.code,
     reason: decision.reason,
     repository,
     pull_number: Number(pullNumber),
@@ -404,6 +559,72 @@ async function publishCommand(args) {
   console.log(`Published Claude cross-review result: ${comment.html_url ?? "comment created"}`);
 }
 
+async function noticeCommand(args) {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) throw new Error("notice requires GITHUB_TOKEN.");
+  const repository = option(args, "--repository") ?? process.env.GITHUB_REPOSITORY;
+  const pullNumber = option(args, "--pr");
+  if (!/^[1-9][0-9]*$/.test(pullNumber ?? "")) {
+    throw new Error("notice requires --pr <positive number>.");
+  }
+  const outcome = option(args, "--outcome");
+  const code = option(args, "--code") || DISPATCH_CODES.failed;
+  const reason = option(args, "--reason") || "unknown";
+  const runUrl = option(args, "--run-url") || "";
+  const { owner, repo } = repositoryParts(repository);
+
+  if (!shouldAnnounceReviewStartFailure(code)) {
+    console.log(`No notice needed for dispatch code ${code}.`);
+    return;
+  }
+
+  const pull = await githubApi(`/repos/${owner}/${repo}/pulls/${pullNumber}`, { token });
+  if (pull.state !== "open") {
+    console.log(`Pull request #${pullNumber} is no longer open; no notice was posted.`);
+    return;
+  }
+  // The dispatch reports the head it judged. When it never got that far, the pull request's current
+  // head is the only truthful anchor for a notice about "no review covers this head".
+  const declared = option(args, "--head-sha");
+  const headSha = /^[0-9a-f]{40}$/.test(declared ?? "") ? declared : pull.head?.sha;
+
+  const body = renderReviewStartNotice({
+    repository,
+    pullNumber,
+    headSha,
+    outcome,
+    code,
+    reason,
+    runUrl,
+  });
+  const comments = await pullComments({ owner, repo, pullNumber, token });
+  const existing = findReviewStartNotice(
+    comments.map((comment) => ({
+      id: comment.id,
+      author: comment.user?.login ?? null,
+      authorAssociation: comment.author_association,
+      body: comment.body,
+    })),
+    headSha,
+  );
+
+  const posted = existing
+    ? await githubApi(`/repos/${owner}/${repo}/issues/comments/${existing.id}`, {
+        token,
+        method: "PATCH",
+        body: { body },
+      })
+    : await githubApi(`/repos/${owner}/${repo}/issues/${pullNumber}/comments`, {
+        token,
+        method: "POST",
+        body: { body },
+      });
+  output("notice_url", posted.html_url ?? "");
+  console.log(
+    `${existing ? "Updated" : "Posted"} review-start notice: ${posted.html_url ?? "comment written"}`,
+  );
+}
+
 const isMainModule =
   process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMainModule) {
@@ -411,9 +632,10 @@ if (isMainModule) {
   try {
     if (command === "dispatch") await dispatchCommand(args);
     else if (command === "publish") await publishCommand(args);
+    else if (command === "notice") await noticeCommand(args);
     else {
       throw new Error(
-        "Usage: agent-claude-review.mjs dispatch|publish --repository <owner/repo> --pr <number>",
+        "Usage: agent-claude-review.mjs dispatch|publish|notice --repository <owner/repo> --pr <number>",
       );
     }
   } catch (error) {
