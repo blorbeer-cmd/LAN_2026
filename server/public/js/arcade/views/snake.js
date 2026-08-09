@@ -1,16 +1,16 @@
-import { connectSocket } from '../socket.js';
-import { escapeHtml } from '../format.js';
-import { icon } from '../icons.js';
-import { showToast } from '../toast.js';
-import { confirmDialog } from '../modal.js';
-import { getMyId } from '../whoami.js';
-import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
+import { connectSocket } from '../../socket.js';
+import { escapeHtml } from '../../format.js';
+import { icon } from '../../icons.js';
+import { showToast } from '../../toast.js';
+import { confirmDialog } from '../../modal.js';
+import { getMyId } from '../../whoami.js';
+import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
+import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
-import { infoTooltipHtml } from '../infoTooltip.js';
-import { emptyStateHtml } from '../emptyState.js';
+import { infoTooltipHtml } from '../../infoTooltip.js';
+import { emptyStateHtml } from '../../emptyState.js';
 
 const COLS = 32;
 const ROWS = 20;

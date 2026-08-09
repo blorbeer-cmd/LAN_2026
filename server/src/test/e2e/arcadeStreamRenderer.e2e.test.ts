@@ -21,7 +21,7 @@ const probeHtml = `<!doctype html>
   <body>
     <main id="probe"></main>
     <script type="module">
-      import { drawArcadeStreamCanvas } from '/js/arcadeStreamRenderer.js';
+      import { drawArcadeStreamCanvas } from '/js/arcade/shared/arcadeStreamRenderer.js';
 
       const emptyBoard = () => Array.from({ length: 20 }, () => Array(10).fill(0));
       const leftBoard = emptyBoard();

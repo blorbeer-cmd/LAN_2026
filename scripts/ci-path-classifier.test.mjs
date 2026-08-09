@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { classifyChangedPaths } from "./ci-path-classifier.mjs";
+import { VIEW_MANIFEST } from "../server/public/js/viewManifest.js";
 
 const selected = (files, eventName) =>
   classifyChangedPaths(files, { eventName });
@@ -22,7 +23,7 @@ test("Arcade-only implementation and E2E changes select only Arcade browser cove
   for (const file of [
     "server/src/arcade/tetris.ts",
     "server/src/routes/arcade.ts",
-    "server/public/js/views/challengeRush.js",
+    "server/public/js/arcade/views/challengeRush.js",
     "server/src/test/e2e/arcadeFlows.e2e.test.ts",
   ]) {
     const result = selected([file]);
@@ -42,6 +43,12 @@ test("Arcade-only implementation and E2E changes select only Arcade browser cove
   );
 });
 
+test("unknown E2E files fail closed into both partitions until the manifest is updated", () => {
+  const result = selected(["server/src/test/e2e/newScenario.e2e.test.ts"]);
+  assert.equal(result.e2eCore, true);
+  assert.equal(result.e2eArcade, true);
+});
+
 test("the kiosk remains a Core consumer and Arcade stylesheet versions stay synchronized", () => {
   const kiosk = readFileSync(new URL("../server/public/kiosk.html", import.meta.url), "utf8");
   const index = readFileSync(new URL("../server/public/index.html", import.meta.url), "utf8");
@@ -55,11 +62,11 @@ test("the kiosk remains a Core consumer and Arcade stylesheet versions stay sync
   const kioskVersion = kiosk.match(/arcade\.css\?v=(\d+)/)?.[1];
   assert.ok(appVersion, "app.js must version the dynamic Arcade stylesheet");
   assert.equal(kioskVersion, appVersion);
-  const views = app.match(/const VIEWS = \{([\s\S]*?)\n\};/)?.[1];
-  const arcadeViews = app.match(/const ARCADE_VIEWS = new Set\(\[([\s\S]*?)\n\]\);/)?.[1];
-  assert.ok(views && arcadeViews, "view registries must remain statically discoverable");
-  for (const name of [...arcadeViews.matchAll(/'([^']+)'/g)].map((match) => match[1])) {
-    assert.match(views, new RegExp(`\\b${name}: render`), name);
+  const arcadeViews = Object.entries(VIEW_MANIFEST).filter(([, entry]) => entry.area === "arcade");
+  assert.ok(arcadeViews.length > 0, "the manifest must classify Arcade views");
+  for (const [name, entry] of arcadeViews) {
+    assert.match(entry.module, /^\.\/arcade\/views\//, name);
+    assert.match(entry.exportName, /^render/, name);
   }
 });
 
@@ -96,6 +103,7 @@ test("shared and unknown production paths use Core plus the bounded Arcade smoke
   for (const file of [
     "server/src/db.ts",
     "server/public/js/app.js",
+    "server/public/js/viewManifest.js",
     "server/public/css/style.css",
     "server/src/newSharedThing.ts",
   ]) {
@@ -162,7 +170,7 @@ test("the workflow preserves the required aggregate Browser E2E check", () => {
     "utf8",
   ).replaceAll("\r\n", "\n");
   const block = workflow.match(
-    /\n  browser-e2e:\n([\s\S]*?)\n  test-performance:/,
+    /\n  browser-e2e:\n([\s\S]*?)\n  test-performance-detect:/,
   )?.[1];
 
   assert.ok(block, "the Browser E2E aggregate job is missing");

@@ -13,18 +13,18 @@
 // match takes over the dedicated full-screen `tetris` view; the app switches to
 // it automatically when the match starts and back to Arcade when it ends.
 
-import { connectSocket } from '../socket.js';
-import { escapeHtml } from '../format.js';
-import { showToast } from '../toast.js';
-import { getMyId } from '../whoami.js';
-import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
+import { connectSocket } from '../../socket.js';
+import { escapeHtml } from '../../format.js';
+import { showToast } from '../../toast.js';
+import { getMyId } from '../../whoami.js';
+import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { confirmDialog } from '../modal.js';
+import { confirmDialog } from '../../modal.js';
 import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
+import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
-import { infoTooltipHtml } from '../infoTooltip.js';
-import { emptyStateHtml } from '../emptyState.js';
+import { infoTooltipHtml } from '../../infoTooltip.js';
+import { emptyStateHtml } from '../../emptyState.js';
 
 const COLS = 10;
 const ROWS = 20;

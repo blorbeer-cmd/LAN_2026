@@ -7,7 +7,7 @@
 // continuous music loop — games re-render their surrounding UI on every
 // socket update, and restarting a music loop on every re-render would just
 // produce audio glitches instead of atmosphere.
-import { icon } from './icons.js';
+import { icon } from '../icons.js';
 
 const MUTE_KEY = 'lan-arcade-sound-muted';
 

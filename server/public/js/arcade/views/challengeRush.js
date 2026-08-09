@@ -1,14 +1,14 @@
-import { escapeHtml, avatarHtml } from '../format.js';
-import { connectSocket } from '../socket.js';
-import { getMyId } from '../whoami.js';
-import { showToast } from '../toast.js';
+import { escapeHtml, avatarHtml } from '../../format.js';
+import { connectSocket } from '../../socket.js';
+import { getMyId } from '../../whoami.js';
+import { showToast } from '../../toast.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeMuteControlHtml, wireArcadeMuteControl, playArcadeSound } from '../arcadeSound.js';
-import { infoTooltipHtml } from '../infoTooltip.js';
+import { infoTooltipHtml } from '../../infoTooltip.js';
 import { cancelCountdown } from '../countdown.js';
-import { confirmDialog } from '../modal.js';
-import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
-import { emptyStateHtml } from '../emptyState.js';
+import { confirmDialog } from '../../modal.js';
+import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
+import { emptyStateHtml } from '../../emptyState.js';
 
 const COLOR_WORD_LABELS = { red: 'Rot', blue: 'Blau', green: 'Grün', yellow: 'Gelb' };
 const COLOR_WORD_VARS = { red: 'var(--danger)', blue: 'var(--accent)', green: 'var(--state-playing)', yellow: 'var(--state-paused)' };

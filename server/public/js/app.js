@@ -13,104 +13,69 @@ import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
 import { isAdmin, setAdmin } from './admin.js';
 import { filterTestUsers } from './testFilter.js';
-import { renderHome, invalidateHomeSeating } from './views/home.js';
+import { invalidateHomeSeating } from './views/home.js';
 import { initNotificationBanner, refreshNotificationBanner } from './notificationBanner.js';
 import { invalidateMissingSkills, invalidateAktuellStatus } from './aktuellStatus.js';
-import { renderPlayers } from './views/players.js';
-import { renderSettings } from './views/games.js';
-import { renderMatchmaking, invalidateMatchmakingHistory, setDraftState } from './views/matchmaking.js';
-import { renderBroadcast, invalidateBroadcasts } from './views/broadcast.js';
-import { renderInfoBoard, invalidateInfoBoard } from './views/infoBoard.js';
-import { renderFoodOrders, invalidateFoodOrders } from './views/foodOrders.js';
-import { renderChecklist, invalidateChecklist } from './views/checklist.js';
-import { renderArcade, renderQuizRoom } from './views/arcade.js';
-import { renderArcadeWatch } from './views/arcadeWatch.js';
-import { renderTetris } from './views/tetris.js';
-import { renderScribbleRoom } from './views/arcadeScribble.js';
-import { renderBlobby } from './views/blobby.js';
-import { renderPong } from './views/pong.js';
-import { renderSnake } from './views/snake.js';
-import { renderBattleship } from './views/battleship.js';
-import { renderChallengeRush } from './views/challengeRush.js';
-import { renderGameCatalog, invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
-import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
-import { renderVotes, invalidateVoteHistory } from './views/votes.js';
-import { renderLeaderboard } from './views/leaderboard.js';
-import { renderAnalytics } from './views/analytics.js';
-import { renderProfile } from './views/profile.js';
-import { renderTournaments, invalidateTournaments, focusTournament, showTournamentLanding } from './views/tournament.js';
-import { invalidateHallOfFame, renderHallOfFame } from './views/hallOfFame.js';
-import { renderSeating, invalidateSeating } from './views/seating.js';
-import { renderMyStats } from './views/myStats.js';
-import { renderMore } from './views/more.js';
-import { invalidateAdminMemberships, invalidateAdminReadiness, renderAdmin } from './views/admin.js';
-import { invalidateMusic, renderMusic } from './views/music.js';
+import { invalidateMatchmakingHistory, setDraftState } from './views/matchmaking.js';
+import { invalidateBroadcasts } from './views/broadcast.js';
+import { invalidateInfoBoard } from './views/infoBoard.js';
+import { invalidateFoodOrders } from './views/foodOrders.js';
+import { invalidateChecklist } from './views/checklist.js';
+import { invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
+import { invalidateArrivals } from './views/arrivals.js';
+import { invalidateVoteHistory } from './views/votes.js';
+import { invalidateTournaments, focusTournament, showTournamentLanding } from './views/tournament.js';
+import { invalidateHallOfFame } from './views/hallOfFame.js';
+import { invalidateSeating } from './views/seating.js';
+import { invalidateAdminMemberships, invalidateAdminReadiness } from './views/admin.js';
+import { invalidateMusic } from './views/music.js';
 import { icon, installIconReplacement } from './icons.js';
 import { initNumberStepper } from './numberStepper.js';
 import { initGlobalSearch } from './searchPalette.js';
 import { installDomainIcons } from './domainIcons.js';
 import { initGroupContext, refreshGroupContext } from './groupContext.js';
+import { isKnownView, VIEW_REGISTRY } from './viewRegistry.js';
 
 installIconReplacement();
 installDomainIcons();
 initNumberStepper();
 
-const VIEWS = {
-  home: renderHome,
-  players: renderPlayers,
-  matchmaking: renderMatchmaking,
-  votes: renderVotes,
-  leaderboard: renderLeaderboard,
-  settings: renderSettings,
-  analytics: renderAnalytics,
-  profile: renderProfile,
-  tournaments: renderTournaments,
-  hallOfFame: renderHallOfFame,
-  seating: renderSeating,
-  myStats: renderMyStats,
-  more: renderMore,
-  broadcast: renderBroadcast,
-  infoBoard: renderInfoBoard,
-  foodOrders: renderFoodOrders,
-  checklist: renderChecklist,
-  arcade: renderArcade,
-  arcadeWatch: renderArcadeWatch,
-  quizRoom: renderQuizRoom,
-  tetris: renderTetris,
-  scribbleRoom: renderScribbleRoom,
-  blobby: renderBlobby,
-  pong: renderPong,
-  snake: renderSnake,
-  battleship: renderBattleship,
-  challengeRush: renderChallengeRush,
-  gameCatalog: renderGameCatalog,
-  arrivals: renderArrivals,
-  admin: renderAdmin,
-  music: renderMusic,
-};
-
 let currentView = 'home';
 let appReady = false;
 const viewContainer = document.getElementById('view-container');
 let pendingSearchTarget = null;
-const ARCADE_VIEWS = new Set([
-  'arcade', 'arcadeWatch', 'quizRoom', 'tetris', 'scribbleRoom', 'blobby',
-  'pong', 'snake', 'battleship', 'challengeRush',
-]);
+let renderRevision = 0;
 
-function syncArcadeStylesheet(view) {
+function syncArcadeStylesheet(entry) {
   const linkId = 'arcade-stylesheet';
   const existing = document.getElementById(linkId);
-  if (ARCADE_VIEWS.has(view)) {
-    if (existing) return;
+  if (entry?.area === 'arcade') {
+    if (existing?.dataset.loaded === 'true') return Promise.resolve();
+    if (existing) {
+      return new Promise((resolve, reject) => {
+        existing.addEventListener('load', resolve, { once: true });
+        existing.addEventListener('error', reject, { once: true });
+      });
+    }
     const link = document.createElement('link');
     link.id = linkId;
     link.rel = 'stylesheet';
     link.href = '/css/arcade.css?v=1';
+    const loaded = new Promise((resolve, reject) => {
+      link.addEventListener('load', () => {
+        link.dataset.loaded = 'true';
+        resolve();
+      }, { once: true });
+      link.addEventListener('error', () => {
+        link.remove();
+        reject(new Error('Arcade-Stylesheet konnte nicht geladen werden.'));
+      }, { once: true });
+    });
     document.head.append(link);
-    return;
+    return loaded;
   }
   existing?.remove();
+  return Promise.resolve();
 }
 
 // Tracks the last vote round we've seen, so the socket handler can tell a
@@ -133,10 +98,32 @@ const ctx = {
 };
 
 function renderCurrent() {
-  syncArcadeStylesheet(currentView);
-  const renderFn = VIEWS[currentView];
-  if (renderFn) renderFn(viewContainer, ctx);
-  focusPendingSearchTarget();
+  const revision = ++renderRevision;
+  const view = currentView;
+  const entry = VIEW_REGISTRY[view];
+  if (!entry) return;
+  const stylesheetReady = syncArcadeStylesheet(entry);
+  if (entry.render) {
+    entry.render(viewContainer, ctx);
+    focusPendingSearchTarget();
+    return;
+  }
+
+  viewContainer.innerHTML = '<section class="card grouped-page-section"><p class="muted">Arcade wird geladen…</p></section>';
+  Promise.all([entry.resolveRenderer(), stylesheetReady])
+    .then(([renderFn]) => {
+      if (revision !== renderRevision || view !== currentView) return;
+      renderFn(viewContainer, ctx);
+      focusPendingSearchTarget();
+    })
+    .catch((error) => {
+      if (revision !== renderRevision || view !== currentView) return;
+      // A failed Arcade chunk never poisons the Core registry. The explicit retry also resets the
+      // registry's rejected promise, while navigating Home works immediately.
+      console.error(error);
+      viewContainer.innerHTML = '<section class="card grouped-page-section"><p class="muted">Arcade konnte nicht geladen werden.</p><button class="btn" data-retry-arcade>Erneut versuchen</button></section>';
+      showToast('Arcade konnte nicht geladen werden.', { error: true });
+    });
 }
 
 function focusPendingSearchTarget() {
@@ -252,6 +239,10 @@ function wireNav() {
   // analytics) by rendering a button with data-navigate="<view>", without
   // needing to import app.js themselves (would risk circular imports).
   viewContainer.addEventListener('click', (e) => {
+    if (e.target.closest('[data-retry-arcade]')) {
+      renderCurrent();
+      return;
+    }
     const btn = e.target.closest('[data-navigate]');
     if (btn) switchView(btn.dataset.navigate);
   });
@@ -263,7 +254,7 @@ function wireNav() {
   // detail is either the view name or { view, replace } (see switchView).
   window.addEventListener('respawn:navigate', (e) => {
     const detail = typeof e.detail === 'string' ? { view: e.detail } : e.detail ?? {};
-    if (VIEWS[detail.view]) switchView(detail.view, { replace: detail.replace === true });
+    if (isKnownView(detail.view)) switchView(detail.view, { replace: detail.replace === true });
   });
   window.addEventListener('respawn:rerender', () => renderCurrent());
   window.addEventListener('respawn:group-changed', () => ctx.refresh());
@@ -282,7 +273,7 @@ function wireNav() {
   // of reloading the whole SPA just to change tabs.
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (e) => {
-      if (e.data?.type === 'navigate' && VIEWS[e.data.view]) switchView(e.data.view);
+      if (e.data?.type === 'navigate' && isKnownView(e.data.view)) switchView(e.data.view);
     });
   }
 }
@@ -595,9 +586,9 @@ async function main() {
   // A reload keeps the view the browser was on (stored on the history entry
   // by switchView) instead of bouncing back to Home mid-workflow.
   const restoredView = history.state?.view;
-  const initialView = VIEWS[hashView]
+  const initialView = isKnownView(hashView)
     ? hashView
-    : VIEWS[restoredView]
+    : isKnownView(restoredView)
       ? restoredView
       : 'home';
   // Establishes the base history entry the very first popstate can land on
