@@ -162,6 +162,7 @@ test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', as
       if ((await page.locator('#quiz-create-lobby').count()) === 0) await page.click('[data-game="quiz"]');
       await page.waitForSelector('#quiz-create-lobby:not([disabled])');
       await page.click('#quiz-create-lobby');
+      await page.waitForSelector('[data-close-lobby]');
 
       // Opening another lobby uses the same guarded switch flow.
       await page.click('[data-game="tetris"]');
