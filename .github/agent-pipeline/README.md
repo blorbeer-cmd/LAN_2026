@@ -268,11 +268,13 @@ declared implementer, and its verified PR author must appear in that provider's
 merge-base diff; use `root` for intentional multi-area changes. `ui-change: unknown` remains
 blocking until a later classification resolves it.
 
-Changes below `.github/workflows/` and `infra/` are reported as protected paths. The reconciler
-holds such a pull request in the `awaiting-human-approval` phase until an approval review covers
-the exact current head SHA, because no agent can clear that condition itself. A merge conflict or
-a failing check still takes precedence, since an agent can resolve those; the approval blocker
-stays listed and readiness remains closed either way.
+Changes below `infra/` are reported as protected paths. The reconciler holds such a pull request
+in the `awaiting-human-approval` phase until an approval review covers the exact current head SHA,
+because no agent can clear that condition itself. Workflow changes below `.github/workflows/` remain
+sensitive and therefore select the independent cross-review, but no longer require a second human
+account solely because the workflow file changed. A merge conflict or a failing check still takes
+precedence, since an agent can resolve those; the approval blocker stays listed and readiness
+remains closed either way.
 
 That approval only counts from an account with write access — `author_association` of `OWNER`,
 `MEMBER` or `COLLABORATOR`. This repository is public and allows forking, so any GitHub account
@@ -290,11 +292,10 @@ agent-pipeline:ui-notice <head sha> -->` could otherwise declare a UI change rev
 looked at. The sticky status comment is matched the same way, so a decoy comment carrying the
 marker is never adopted and overwritten — the reconciler posts its own alongside it instead.
 
-Note for the current transitional setup: GitHub forbids approving your own pull request. While
-agent pull requests are authored by the repository owner's own account rather than by
-`claude[bot]`, that approval cannot be given, and a protected-path pull request stays escalated
-until it is merged by hand. Once the pipeline opens pull requests under the app identity, the
-owner can approve them normally.
+Note for the current transitional setup: GitHub forbids approving your own pull request. The
+remaining `infra/` protection therefore still needs a collaborating account or an explicit
+administrator bypass. Workflow-only changes use the automated cross-review and do not hit this
+solo-developer limitation.
 
 ## Local verification
 
