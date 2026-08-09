@@ -97,7 +97,8 @@ Wiederholungsfall ab.
   gemeinsame Helfer `src/test/e2e/e2eServer.ts` startet ihn mit `PORT=0`, liest den tatsächlich
   gebundenen Port aus der Startmeldung und liefert die passende Basis-URL. Dadurch kollidieren
   parallele Läufe und andere Worktrees nicht mehr auf statisch reservierten Ports. Das gilt auch
-  für zusätzliche Server innerhalb einer Testdatei, etwa den Forfait-Reconnect-Test.
+  für zusätzliche Server innerhalb einer Testdatei, etwa den Forfait-Reconnect-Test. Der
+  Agent-Server-Integrationstest unter `agent/` verwendet denselben `PORT=0`-Ablauf.
 - `npm run test:e2e` setzt `E2E_FAST_TIMERS=1`. Der Schnellmodus verkürzt Arcade-Countdowns nur
   zusammen mit `NODE_ENV=test`; in Produktion und bei allen anderen Aufrufen bleiben für die
   gemeinsamen Arcade-Countdowns drei Sekunden aktiv. Challenge Rush verwendet abweichend fünf

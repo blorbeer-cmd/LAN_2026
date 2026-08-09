@@ -101,7 +101,7 @@ function waitForSocketEvent<T>(socket: ClientSocket, event: string, predicate: (
 
 before(async () => {
   const server = await startE2EServer({
-    ...authenticatedServerEnv(0),
+    ...authenticatedServerEnv(),
     NODE_ENV: 'test',
     E2E_FAST_TIMERS: '1',
   });

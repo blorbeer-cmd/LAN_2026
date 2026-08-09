@@ -38,7 +38,7 @@ async function switchAccount(account: E2EAccount): Promise<void> {
 }
 
 before(async () => {
-  const server = await startE2EServer(authenticatedServerEnv(0));
+  const server = await startE2EServer(authenticatedServerEnv());
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   const adminCookie = await loginE2EAdmin(BASE_URL);

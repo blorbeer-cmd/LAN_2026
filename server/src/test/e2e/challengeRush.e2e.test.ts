@@ -52,7 +52,7 @@ async function openArcade(playerId: string, baseUrl: string = BASE_URL): Promise
 }
 
 before(async () => {
-  const server = await startE2EServer(authenticatedServerEnv(0));
+  const server = await startE2EServer(authenticatedServerEnv());
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   adminCookies.set(BASE_URL, await loginE2EAdmin(BASE_URL));
@@ -435,7 +435,7 @@ test('Challenge Rush unlocks a new lobby immediately after a reconnect rejected 
   // A short, dedicated server instance keeps this test fast without lowering
   // the shared server's default reconnect grace period out from under the
   // other tests in this file, which rely on it staying reconnect-friendly.
-  const forfeitServer = await startE2EServer({ ...authenticatedServerEnv(0), CHALLENGE_RUSH_RECONNECT_GRACE_MS: '800' });
+  const forfeitServer = await startE2EServer({ ...authenticatedServerEnv(), CHALLENGE_RUSH_RECONNECT_GRACE_MS: '800' });
   const forfeitBaseUrl = forfeitServer.baseUrl;
   try {
     adminCookies.set(forfeitBaseUrl, await loginE2EAdmin(forfeitBaseUrl));

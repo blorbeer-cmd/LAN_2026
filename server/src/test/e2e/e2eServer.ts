@@ -37,11 +37,12 @@ export function startE2EServer(env: NodeJS.ProcessEnv, timeoutMs = 10_000): Prom
       const port = Number(match[1]);
       finish(undefined, { process: child, baseUrl: `http://localhost:${port}`, port });
     };
-    const onExit = (code: number | null): void => finish(new Error(`E2E server exited before binding a port (code ${code})${output ? `\n${output}` : ''}`));
+    const onExit = (code: number | null, signal: NodeJS.Signals | null): void =>
+      finish(new Error(`E2E server exited before binding a port (code ${code}, signal ${signal ?? 'none'})${output ? `\n${output}` : ''}`));
 
     child.stdout?.on('data', inspectOutput);
     child.stderr?.on('data', inspectOutput);
-    child.once('error', (error) => finish(error));
+    child.once('error', (error) => finish(new Error(`E2E server failed to spawn: ${error.message}${output ? `\n${output}` : ''}`)));
     child.once('exit', onExit);
   });
 }

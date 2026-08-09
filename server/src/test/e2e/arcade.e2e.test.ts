@@ -133,7 +133,7 @@ const countPaintedPixels = (page: Page, selector: string) =>
   }, selector);
 
 before(async () => {
-  const server = await startE2EServer(authenticatedServerEnv(0));
+  const server = await startE2EServer(authenticatedServerEnv());
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   adminCookie = await loginE2EAdmin(BASE_URL);
