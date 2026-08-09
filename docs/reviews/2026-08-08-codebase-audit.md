@@ -54,10 +54,14 @@ Paket 2A wurde anschließend gegen den aktuellen Stand von `origin/main` auf `18
 
 - die verschärften Ausgangsläufe meldeten 27 Funde (12 TypeScript, davon 5 nur in Tests, und
   15 Frontend-JavaScript);
-- tatsächlich wurden 30 Symbole entfernt oder als absichtlich ungenutzte Signaturparameter mit
+- tatsächlich wurden zunächst 30 Symbole entfernt oder als absichtlich ungenutzte
+  Signaturparameter mit
   `_` gekennzeichnet. Die Differenz entsteht durch zwei E2E-Zwischenvariablen, die ausschließlich
   den gemeldeten toten `cs2`-Wert speisten, sowie einen internen Turnierparameter, der nur an einen
   ebenfalls entfernten Parameter weitergereicht wurde;
+- nach dem späteren Update des PR-Branches auf `origin/main` meldete die aktivierte Regel sieben
+  weitere, durch die zwischenzeitliche E2E-Dateiaufteilung verwaiste Testimporte und -helfer. Damit
+  umfasst Paket 2A insgesamt 34 direkte Funde und 37 tatsächlich bereinigte oder markierte Symbole;
 - `noUnusedLocals` ist in der gemeinsamen TypeScript-Konfiguration aktiv und gilt durch Vererbung
   auch für die Testkompilierung;
 - ESLints `no-unused-vars` ist eng für produktives Frontend-JavaScript aktiv und erlaubt bewusst
@@ -66,7 +70,7 @@ Paket 2A wurde anschließend gegen den aktuellen Stand von `origin/main` auf `18
   und Test-TypeScript ist nach der Bereinigung dennoch sauber.
 
 Die Verifikation von Paket 2A ist grün: reproduzierbare Neuinstallation, Lint, Build,
-Formatprüfung, Design-Token-Prüfung, 965 Server-Tests, 166 Frontend-/Skript-Tests und
+Formatprüfung, Design-Token-Prüfung, 965 Server-Tests, 173 Frontend-/Skript-Tests und
 71 Browser-E2E-Tests. Auch die explizit verschärften TypeScript- und ESLint-Läufe melden keinen
 verbleibenden Fund.
 
@@ -121,7 +125,7 @@ Paket-Skripte, Workflows oder Betriebsdokumentation angebunden.
 | P2 | Nicht definierte CSS-Tokens `--radius-md` und `--motion-fast` | Auf vorhandene Tokens abbilden oder bewusst definieren; Checker ergänzen |
 | P2 | Mehrere Konzepte enthalten historische Ist-Zustände ohne eindeutigen Status | Statuskopf und Verweis auf heutigen Endstand ergänzen |
 | P2 | Projekthistorie endet bei PR #352, aktuelle Basis ist PR #365 | Changelog #353–#365 nachziehen und Basis aktualisieren |
-| P2 | Ungenutzte Symbole und fehlende automatische Schutzregeln | Paket 2A abgeschlossen: 30 Symbole bereinigt, TypeScript-/ESLint-Schutz aktiv |
+| P2 | Ungenutzte Symbole und fehlende automatische Schutzregeln | Paket 2A abgeschlossen: 37 Symbole bereinigt, TypeScript-/ESLint-Schutz aktiv |
 | P2 | Backup-/Push-/Readiness-HTTP-Pfade haben vergleichsweise geringe Coverage | Gezielte Fehlerpfadtests ergänzen |
 | P3 | Mehrere CSS-Blöcke sind mit hoher Sicherheit verwaist | In kleinem UI-PR entfernen und visuell/E2E prüfen |
 | P3 | `style.css` ist Größen- und Änderungs-Hotspot | Fachbereichsweise extrahieren, ohne Framework- oder Bundlerwechsel |
@@ -184,6 +188,11 @@ Frontend:
 - ungenutzte Imports in `challengeRush.js`, `games.js` und `tournament.js`;
 - ungenutzte Variablen oder Parameter in `arcadeScribble.js`, `challengeRush.js`,
   `matchmaking.js`, `tetris.js` und `tournament.js`.
+
+Beim späteren Update auf den inzwischen aufgeteilten E2E-Stand kamen sieben weitere
+TypeScript-Testfunde in `arcadeFlows.e2e.test.ts` und `flows.e2e.test.ts` hinzu. Die Schutzregel
+meldete sie bereits bei der Testkompilierung; die verwaisten Imports und Hilfsfunktionen wurden ohne
+Änderung an Testfällen oder Assertions entfernt.
 
 Umsetzung: Alle bestätigten Funde wurden mechanisch und verhaltensneutral entfernt. Exportierte
 Render-Signaturen und der Express-Handler behalten ihre Parameterpositionen; absichtlich ungenutzte
@@ -311,7 +320,7 @@ Vollständigkeit anzunehmen.
 
 ### Paket 2 – Mechanische Hygiene
 
-1. Paket 2A abgeschlossen: 30 bestätigte Symbole bereinigt.
+1. Paket 2A abgeschlossen: 37 bestätigte Symbole bereinigt.
 2. Paket 2A abgeschlossen: Schutzregeln in TypeScript/ESLint aktiviert.
 3. Verwaiste CSS-Blöcke separat entfernen.
 4. Gezielt Tests für Backup-, Push- und Readiness-Fehlerpfade ergänzen.

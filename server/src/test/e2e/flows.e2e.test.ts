@@ -8,8 +8,6 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
-import { normalizeAnswer } from '../../arcade/quizLogic';
-import { laidOutRect } from './canvasHelpers';
 import {
   addSessionCookie,
   authenticatedServerEnv,
