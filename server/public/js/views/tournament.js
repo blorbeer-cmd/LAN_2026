@@ -17,7 +17,7 @@ import { selectActiveLobbyMatches } from '../tournamentLobbies.js';
 import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
 import { withStepUp } from '../reauth.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
-import { matchesSelectionSearch, wireSelectionSearch } from '../selectionSearch.js';
+import { matchesSelectionSearch, selectionSearchHtml, wireSelectionSearch } from '../selectionSearch.js';
 import { emptyStateHtml } from '../emptyState.js';
 
 const FORMAT_LABELS = {
@@ -359,10 +359,10 @@ function renderCreateForm(el, ctx) {
             <label class="field-label" for="tourn-teamcount">Anzahl Teams</label>
             <input type="number" id="tourn-teamcount" min="2" value="${escapeHtml(createTeamCount)}" />
           </div>
-          <button type="button" class="btn btn-sm" id="tourn-select-all">Sichtbare markieren</button>
-          <button type="button" class="btn btn-sm" id="tourn-select-none">Sichtbare abwählen</button>
+          <button type="button" class="icon-btn selection-toolbar-icon" id="tourn-select-all" aria-label="Sichtbare Spieler markieren" data-tooltip="Sichtbare markieren">${icon('check')}</button>
+          <button type="button" class="icon-btn selection-toolbar-icon" id="tourn-select-none" aria-label="Sichtbare Spieler abwählen" data-tooltip="Sichtbare abwählen">${icon('x')}</button>
+          ${selectionSearchHtml('tourn-player-search', createPlayerSearchQuery)}
         </div>
-        <input type="search" id="tourn-player-search" value="${escapeHtml(createPlayerSearchQuery)}" placeholder="Spieler suchen…" aria-label="Spieler suchen" autocomplete="off" />
         <div class="player-selection-grid tournament-player-grid">${playerRows}</div>
         <p class="muted" data-tourn-player-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spieler gefunden.</p>
         <div class="check-row">

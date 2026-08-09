@@ -427,6 +427,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   // Matchmaking: draw teams for both players.
   await page.click('.nav-btn[data-view="matchmaking"]');
   assert.equal(await page.inputValue('#mm-teamcount'), '2');
+  await page.click('[data-selection-search-trigger][aria-controls="mm-player-search"]');
   await page.fill('#mm-player-search', 'E2E Bob');
   await page.waitForFunction(() => document.querySelectorAll('[data-mm-draw-search-item]:not([hidden])').length === 1);
   assert.equal(await page.locator('[data-mm-draw-search-item]:not([hidden])').getByText('E2E Bob', { exact: true }).count(), 1);
@@ -437,7 +438,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
     1,
     'filtering must not clear a hidden player selection',
   );
-  await page.fill('#mm-player-search', '');
+  await page.click('[data-selection-search]:has(#mm-player-search) [data-selection-search-close]');
   await page.click('#mm-select-none');
   assert.equal(await page.locator('[data-player]:checked').count(), 0);
   await page.click('#mm-select-all');
@@ -462,10 +463,11 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   // reach its tooltip, then back to Auslosung to reach "Teams auslosen".
   await page.click('[data-mm-mode="draft"]');
   assert.equal(await page.locator('#draft-player-search').count(), 1);
+  await page.click('[data-selection-search-trigger][aria-controls="captain-player-search"]');
   await page.fill('#captain-player-search', 'E2E Alice');
   await page.waitForFunction(() => document.querySelectorAll('[data-mm-captain-search-item]:not([hidden])').length === 1);
   assert.equal(await page.locator('[data-mm-captain-search-item]:not([hidden])').getByText('E2E Alice', { exact: true }).count(), 1);
-  await page.fill('#captain-player-search', '');
+  await page.click('[data-selection-search]:has(#captain-player-search) [data-selection-search-close]');
   const draftHelp = page.locator('[aria-controls="captain-draft-help"]');
   await draftHelp.waitFor();
   await draftHelp.click();
@@ -1447,8 +1449,8 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
     'Tab should leave the combobox instead of moving through every listbox option',
   );
   assert.ok(
-    await page.locator('#tourn-player-search').evaluate((search) => {
-      return search.nextElementSibling?.matches('.tournament-player-grid') === true;
+    await page.locator('[data-selection-search]:has(#tourn-player-search)').evaluate((search) => {
+      return search.closest('.selection-toolbar')?.nextElementSibling?.matches('.tournament-player-grid') === true;
     }),
     'the player search should be directly before the player list after the filters',
   );
@@ -1519,6 +1521,7 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   const scoreHelp = page.locator('[aria-controls="tournament-score-help"]');
   const lobbyHelp = page.locator('[aria-controls="tournament-lobby-help"]');
   assert.ok((await page.locator('[data-create-player]').count()) >= 2);
+  await page.click('[data-selection-search-trigger][aria-controls="tourn-player-search"]');
   await page.fill('#tourn-player-search', 'E2E Alice');
   await page.waitForFunction(() => document.querySelectorAll('[data-tourn-player-search-item]:not([hidden])').length === 1);
   assert.equal(await page.locator('[data-tourn-player-search-item]:not([hidden])').getByText('E2E Alice Pro', { exact: true }).count(), 1);
@@ -1531,7 +1534,7 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
     'filtering must preserve hidden tournament participants',
   );
   await page.click('#tourn-select-all');
-  await page.fill('#tourn-player-search', '');
+  await page.click('[data-selection-search]:has(#tourn-player-search) [data-selection-search-close]');
   // Single column on the phone viewport; the two-column cap applies from
   // --bp-md where the cards have room for avatar, name and skill value.
   assert.equal(
