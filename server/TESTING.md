@@ -112,14 +112,15 @@ Wiederholungsfall ab.
   parallele Läufe und andere Worktrees nicht mehr auf statisch reservierten Ports. Das gilt auch
   für zusätzliche Server innerhalb einer Testdatei, etwa den Forfait-Reconnect-Test. Der
   Agent-Server-Integrationstest unter `agent/` verwendet denselben `PORT=0`-Ablauf.
-- `npm run test:e2e` setzt `E2E_FAST_TIMERS=1`. Der Schnellmodus verkürzt Arcade-Countdowns nur
-  zusammen mit `NODE_ENV=test`; in Produktion und bei allen anderen Aufrufen bleiben für die
-  gemeinsamen Arcade-Countdowns drei Sekunden aktiv. Challenge Rush verwendet abweichend fünf
-  Sekunden Lesezeit vor jeder Aufgabe und 30 Sekunden Bereitschaftsfrist nach einem Ergebnis.
+- `npm run test:e2e` setzt `E2E_FAST_TIMERS=1`. Der Schnellmodus verkürzt Arcade- und
+  Challenge-Rush-Countdowns nur zusammen mit `NODE_ENV=test`; in Produktion und bei allen anderen
+  Aufrufen bleiben die regulären Zeiten aktiv. Challenge Rush verkürzt im E2E-Schnellmodus seine
+  wiederholten Lese- und Reveal-Übergänge, behält aber die echte Challenge-Deadline, damit Fokus-
+  und Vorschauphasen im Browser nicht vorzeitig abgeschnitten werden.
 - Die Socket-Integrationssuite `src/test/api.challengeRush.test.ts` setzt zusätzlich
-  `CHALLENGE_RUSH_FAST_TIMERS=1` zusammen mit `NODE_ENV=test`. Dieses separate Profil verkürzt nur
-  Challenge-Rush-Countdowns, -Deadlines, Memory-Reveal und Ampelverzögerung in dieser Testdatei;
-  `test:e2e`, andere Testprozesse und Produktion behalten ihre regulären Spielzeiten.
+  `CHALLENGE_RUSH_FAST_TIMERS=1` zusammen mit `NODE_ENV=test`. Dieses Profil verkürzt zusätzlich die
+  Challenge-Deadline für protokollnahe Zustandsprüfungen. Außerhalb von `NODE_ENV=test` werden
+  beide Flags ignoriert.
 - Zielgerichtete Challenge-Rush-Integrationstests wählen über den admin-geschützten
   `challengeKeys`-Pfad genau ihre relevante Challenge. Nur der vollständige Lifecycle-Test spielt
   weiterhin einmal den gesamten 40-Challenge-Katalog durch.

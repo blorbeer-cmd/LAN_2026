@@ -71,6 +71,42 @@ export function extractSuiteDurations(jobs, suites) {
   return durations;
 }
 
+export async function collectHistoricalSuiteDurations({
+  runs,
+  currentRunId,
+  suites,
+  baselineSamples,
+  loadJobs,
+  batchSize = 6,
+}) {
+  if (!Number.isInteger(batchSize) || batchSize < 1)
+    throw new Error("historyFetchBatchSize muss eine positive Ganzzahl sein.");
+  const history = Object.fromEntries(
+    Object.keys(suites).map((suite) => [suite, []]),
+  );
+  const candidates = runs.filter(
+    (run) => String(run.id) !== String(currentRunId),
+  );
+
+  for (let index = 0; index < candidates.length; index += batchSize) {
+    if (
+      Object.values(history).every((values) => values.length >= baselineSamples)
+    )
+      break;
+    const batch = candidates.slice(index, index + batchSize);
+    const jobSets = await Promise.all(batch.map((run) => loadJobs(run.id)));
+    for (const jobs of jobSets) {
+      const durations = extractSuiteDurations(jobs, suites);
+      for (const [suite, duration] of Object.entries(durations)) {
+        if (history[suite].length < baselineSamples)
+          history[suite].push(duration);
+      }
+    }
+  }
+
+  return history;
+}
+
 function loadConfig(configPath = defaultConfigPath) {
   return JSON.parse(readFileSync(configPath, "utf8"));
 }
@@ -129,32 +165,20 @@ export async function evaluateGithubRun({
 }) {
   const currentJobs = await jobsForRun(repository, runId, token, apiUrl);
   const current = extractSuiteDurations(currentJobs, config.suites);
-  const history = Object.fromEntries(
-    Object.keys(config.suites).map((suite) => [suite, []]),
-  );
   const runsPayload = await githubRequest(
     `/repos/${repository}/actions/workflows/${encodeURIComponent(workflow)}/runs?branch=${encodeURIComponent(branch)}&status=success&per_page=${config.historyRuns}`,
     token,
     apiUrl,
   );
-
-  for (const run of runsPayload.workflow_runs ?? []) {
-    if (String(run.id) === String(runId)) continue;
-    if (
-      Object.values(history).every(
-        (values) => values.length >= config.baselineSamples,
-      )
-    )
-      break;
-    const durations = extractSuiteDurations(
-      await jobsForRun(repository, run.id, token, apiUrl),
-      config.suites,
-    );
-    for (const [suite, duration] of Object.entries(durations)) {
-      if (history[suite].length < config.baselineSamples)
-        history[suite].push(duration);
-    }
-  }
+  const history = await collectHistoricalSuiteDurations({
+    runs: runsPayload.workflow_runs ?? [],
+    currentRunId: runId,
+    suites: config.suites,
+    baselineSamples: config.baselineSamples,
+    batchSize: config.historyFetchBatchSize ?? 6,
+    loadJobs: (historicalRunId) =>
+      jobsForRun(repository, historicalRunId, token, apiUrl),
+  });
 
   const results = {};
   for (const [suite, currentMs] of Object.entries(current)) {

@@ -97,11 +97,15 @@ function lobbyPayload(groupId: string, eventId: string | null) {
 function runtimeChallengePayload(key: ChallengeKey, seed: number): ChallengePayload {
   const payload = challengePayload(key, seed);
   const timing = challengeRushTiming();
-  if (timing.challengeDurationMs === null) return payload;
-  const data = key === 'traffic-light'
+  const data = key === 'traffic-light' && timing.trafficLightGreenMs !== null
     ? { ...payload.data, greenAtMs: timing.trafficLightGreenMs }
     : payload.data;
-  return { ...payload, durationMs: timing.challengeDurationMs, data };
+  if (timing.challengeDurationMs === null && data === payload.data) return payload;
+  return {
+    ...payload,
+    ...(timing.challengeDurationMs === null ? {} : { durationMs: timing.challengeDurationMs }),
+    data,
+  };
 }
 
 function freshProgress(completed = false): Progress {

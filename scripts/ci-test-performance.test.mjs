@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   assessDuration,
+  collectHistoricalSuiteDurations,
   evaluateSuite,
   extractSuiteDurations,
   median,
@@ -69,5 +70,69 @@ test("only successful named jobs and steps contribute durations", () => {
   assert.deepEqual(
     extractSuiteDurations([{ ...jobs[0], conclusion: "failure" }], suites),
     {},
+  );
+});
+
+test("history is fetched in bounded batches while retaining newest-run order", async () => {
+  const suites = { core: { job: "Core", step: "Measured" } };
+  const runs = [
+    { id: "current" },
+    { id: "newest" },
+    { id: "middle" },
+    { id: "oldest" },
+  ];
+  const durations = { newest: 90_000, middle: 80_000, oldest: 70_000 };
+  const calls = [];
+  let active = 0;
+  let maximumActive = 0;
+  const history = await collectHistoricalSuiteDurations({
+    runs,
+    currentRunId: "current",
+    suites,
+    baselineSamples: 2,
+    batchSize: 2,
+    loadJobs: async (runId) => {
+      calls.push(runId);
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      await new Promise((resolve) =>
+        setTimeout(resolve, runId === "newest" ? 10 : 0),
+      );
+      active -= 1;
+      return [
+        {
+          name: "Core",
+          conclusion: "success",
+          steps: [
+            {
+              name: "Measured",
+              conclusion: "success",
+              started_at: "2026-08-09T00:00:00.000Z",
+              completed_at: new Date(
+                Date.parse("2026-08-09T00:00:00.000Z") + durations[runId],
+              ).toISOString(),
+            },
+          ],
+        },
+      ];
+    },
+  });
+
+  assert.deepEqual(calls, ["newest", "middle"]);
+  assert.equal(maximumActive, 2);
+  assert.deepEqual(history, { core: [90_000, 80_000] });
+});
+
+test("history fetch rejects invalid batch sizes", async () => {
+  await assert.rejects(
+    collectHistoricalSuiteDurations({
+      runs: [],
+      currentRunId: "current",
+      suites: {},
+      baselineSamples: 1,
+      batchSize: 0,
+      loadJobs: async () => [],
+    }),
+    /positive Ganzzahl/,
   );
 });
