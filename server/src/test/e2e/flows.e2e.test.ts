@@ -799,8 +799,100 @@ test('Vote: game-limit selection survives an unrelated re-render and select-all/
   // needing a second browser context.
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-start');
-  await page.click('#votes-limit-games');
   await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
+  const initialVoteState = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
+  const catalogGames = (await (await page.request.get(`${BASE_URL}/api/games`)).json()) as Array<{
+    id: string;
+    name: string;
+    isSuggestion?: boolean;
+  }>;
+  const counterStrike = catalogGames.find((game) => game.name === 'Counter-Strike 2')!;
+  const catalogGameIds = new Set(catalogGames.filter((game) => !game.isSuggestion).map((game) => game.id));
+  const preferenceByGameId = new Map<string, number>(
+    initialVoteState.catalogResults.map(
+      (result: { gameId: string; avgPreference: number | null }): [string, number] => [
+        result.gameId,
+        result.avgPreference ?? -1,
+      ],
+    ),
+  );
+  const expectedVoteOrder = catalogGames
+    .filter((game) => catalogGameIds.has(game.id))
+    .sort((a, b) => {
+      const preferenceDiff = (preferenceByGameId.get(b.id) ?? -1) - (preferenceByGameId.get(a.id) ?? -1);
+      return preferenceDiff !== 0 ? preferenceDiff : a.name.localeCompare(b.name, 'de');
+    })
+    .map((game) => game.id);
+  const renderedVoteOrder = await page.locator('[data-vote-game-checkbox]').evaluateAll((els) =>
+    els.map((el) => (el as HTMLInputElement).value),
+  );
+  assert.deepEqual(renderedVoteOrder, expectedVoteOrder, 'the vote game list should be sorted by Bock level');
+  let initiallySelected = await page.locator('[data-vote-game-checkbox]:checked').evaluateAll((els) =>
+    els.map((el) => (el as HTMLInputElement).value),
+  );
+  assert.deepEqual(
+    initiallySelected,
+    expectedVoteOrder.slice(0, 10),
+    'the initial vote selection should contain the current Top 10 by Bock level',
+  );
+
+  // A live Bock update while the idle form is still untouched must refresh
+  // the automatic Top-10 selection together with the visible sort order.
+  // Preserve the fixture's previous rating so later scenarios stay isolated.
+  if (expectedVoteOrder.length > 10) {
+    const liveBockTarget = expectedVoteOrder[expectedVoteOrder.length - 1];
+    const previousPreferenceResponse = await page.request.get(
+      `${BASE_URL}/api/preferences?playerId=${alice.id}&gameId=${liveBockTarget}`,
+    );
+    const previousPreferences = (await previousPreferenceResponse.json()) as Array<{ rating: number }>;
+    const previousRating = previousPreferences[0]?.rating;
+    const updatedPreference = await page.request.put(`${BASE_URL}/api/preferences`, {
+      data: { playerId: alice.id, gameId: liveBockTarget, rating: 10 },
+    });
+    assert.equal(updatedPreference.status(), 200, await updatedPreference.text());
+    await page.waitForFunction((targetId) => {
+      const checkbox = document.querySelector(`[data-vote-game-checkbox][value="${targetId}"]`) as HTMLInputElement | null;
+      return checkbox?.checked === true;
+    }, liveBockTarget);
+
+    const liveVoteState = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
+    const livePreferenceByGameId = new Map<string, number>(
+      liveVoteState.catalogResults.map(
+        (result: { gameId: string; avgPreference: number | null }): [string, number] => [
+          result.gameId,
+          result.avgPreference ?? -1,
+        ],
+      ),
+    );
+    const liveExpectedVoteOrder = catalogGames
+      .filter((game) => catalogGameIds.has(game.id))
+      .sort((a, b) => {
+        const preferenceDiff = (livePreferenceByGameId.get(b.id) ?? -1) - (livePreferenceByGameId.get(a.id) ?? -1);
+        return preferenceDiff !== 0 ? preferenceDiff : a.name.localeCompare(b.name, 'de');
+      })
+      .map((game) => game.id);
+    const liveSelected = await page.locator('[data-vote-game-checkbox]:checked').evaluateAll((els) =>
+      els.map((el) => (el as HTMLInputElement).value),
+    );
+    assert.deepEqual(
+      liveSelected,
+      liveExpectedVoteOrder.slice(0, 10),
+      'a live Bock update should refresh the untouched Top-10 selection',
+    );
+
+    if (previousRating === undefined) {
+      await page.request.delete(`${BASE_URL}/api/preferences/${alice.id}/${liveBockTarget}`);
+    } else {
+      await page.request.put(`${BASE_URL}/api/preferences`, {
+        data: { playerId: alice.id, gameId: liveBockTarget, rating: previousRating },
+      });
+    }
+    await page.waitForTimeout(250);
+    initiallySelected = await page.locator('[data-vote-game-checkbox]:checked').evaluateAll((els) =>
+      els.map((el) => (el as HTMLInputElement).value),
+    );
+  }
+
   const voteGameCheckboxes = page.locator('[data-vote-game-checkbox]');
   const voteGameCount = await voteGameCheckboxes.count();
   assert.ok(voteGameCount >= 2, 'test fixture must ship at least two games');
@@ -810,7 +902,7 @@ test('Vote: game-limit selection survives an unrelated re-render and select-all/
   assert.equal(await page.locator('[data-vote-game-search-item]:not([hidden]) [data-vote-game-checkbox]:checked').count(), 0);
   assert.equal(
     await page.locator('[data-vote-game-search-item][hidden] [data-vote-game-checkbox]:checked').count(),
-    voteGameCount - 1,
+    initiallySelected.filter((gameId) => gameId !== counterStrike.id).length,
     'filtering must preserve checked games outside the visible result',
   );
   await page.fill('#votes-game-search', 'Kein Treffer XYZ');
@@ -1240,7 +1332,6 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
   }
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-start');
-  await page.click('#votes-limit-games');
   await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
   await page.locator('#votes-game-select label.check-row', { hasText: 'Counter-Strike 2' }).waitFor();
   assert.equal(
