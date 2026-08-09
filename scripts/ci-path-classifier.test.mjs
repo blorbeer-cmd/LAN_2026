@@ -23,13 +23,43 @@ test("Arcade-only implementation and E2E changes select only Arcade browser cove
     "server/src/arcade/tetris.ts",
     "server/src/routes/arcade.ts",
     "server/public/js/views/challengeRush.js",
-    "server/src/test/e2e/flowsArcade.e2e.test.ts",
+    "server/src/test/e2e/arcadeFlows.e2e.test.ts",
   ]) {
     const result = selected([file]);
     assert.equal(result.server, true, file);
     assert.equal(result.e2eCore, false, file);
     assert.equal(result.e2eArcade, true, file);
     assert.equal(result.e2eArcadeSmoke, false, file);
+  }
+  const arcadeStyles = selected(["server/public/css/arcade.css"]);
+  assert.deepEqual(
+    {
+      core: arcadeStyles.e2eCore,
+      arcade: arcadeStyles.e2eArcade,
+      smoke: arcadeStyles.e2eArcadeSmoke,
+    },
+    { core: false, arcade: true, smoke: false },
+  );
+});
+
+test("the kiosk remains a Core consumer and Arcade stylesheet versions stay synchronized", () => {
+  const kiosk = readFileSync(new URL("../server/public/kiosk.html", import.meta.url), "utf8");
+  const index = readFileSync(new URL("../server/public/index.html", import.meta.url), "utf8");
+  const app = readFileSync(new URL("../server/public/js/app.js", import.meta.url), "utf8");
+  const kioskSelection = selected(["server/public/kiosk.html"]);
+  assert.equal(kioskSelection.e2eCore, true);
+  assert.equal(kioskSelection.e2eArcade, false);
+  assert.match(kiosk, /\/css\/arcade\.css\?v=(\d+)/);
+  assert.doesNotMatch(index, /\/css\/arcade\.css/);
+  const appVersion = app.match(/arcade\.css\?v=(\d+)/)?.[1];
+  const kioskVersion = kiosk.match(/arcade\.css\?v=(\d+)/)?.[1];
+  assert.ok(appVersion, "app.js must version the dynamic Arcade stylesheet");
+  assert.equal(kioskVersion, appVersion);
+  const views = app.match(/const VIEWS = \{([\s\S]*?)\n\};/)?.[1];
+  const arcadeViews = app.match(/const ARCADE_VIEWS = new Set\(\[([\s\S]*?)\n\]\);/)?.[1];
+  assert.ok(views && arcadeViews, "view registries must remain statically discoverable");
+  for (const name of [...arcadeViews.matchAll(/'([^']+)'/g)].map((match) => match[1])) {
+    assert.match(views, new RegExp(`\\b${name}: render`), name);
   }
 });
 
@@ -130,7 +160,7 @@ test("the workflow preserves the required aggregate Browser E2E check", () => {
   const workflow = readFileSync(
     new URL("../.github/workflows/deploy.yml", import.meta.url),
     "utf8",
-  );
+  ).replaceAll("\r\n", "\n");
   const block = workflow.match(
     /\n  browser-e2e:\n([\s\S]*?)\n  test-performance:/,
   )?.[1];

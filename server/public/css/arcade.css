@@ -1,0 +1,1037 @@
+/* Arcade presentation styles. Loaded only while an Arcade view is active so
+   shared views never carry the game's layout and interaction rules. */
+
+/* Arcade launcher: game choices follow the shared one-/two-column card
+   rhythm instead of shrinking every game into one narrow desktop row. */
+.arcade-tiles {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+}
+@media (min-width: 640px) { /* --bp-md */
+  .arcade-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.arcade-tile {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-3);
+  min-height: var(--row-min-h);
+  padding: var(--space-3);
+  cursor: pointer;
+  text-align: left;
+}
+.arcade-tile-icon {
+  width: var(--row-icon-size);
+  height: var(--row-icon-size);
+  display: inline-flex;
+  flex: 0 0 var(--row-icon-size);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  font-size: var(--font-size-xl);
+  line-height: var(--line-height-tight);
+}
+.arcade-tile-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+}
+.arcade-tile.is-active {
+  border-color: var(--accent);
+  background: var(--bg-elevated-2);
+}
+.arcade-tile.is-soon {
+  opacity: 0.5;
+}
+.arcade-tile-state,
+.arcade-tile-count {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.challenge-rush-stage { max-width: var(--challenge-rush-stage-max-width); margin-inline: auto; }
+.challenge-rush-playfield { position: relative; min-height: var(--challenge-rush-playfield-min-height); display: grid; place-items: center; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+.challenge-rush-playfield.is-concealed { background: var(--bg-elevated-2); }
+.challenge-rush-concealed { max-width: var(--challenge-rush-button-min-width); padding: var(--space-4); text-align: center; }
+.challenge-rush-concealed strong { font-size: var(--font-size-xl); }
+.challenge-rush-circle { position: absolute; width: var(--space-8); height: var(--space-8); transform: translate(-50%, -50%); border: 0; border-radius: var(--radius-full); background: var(--accent-gradient); box-shadow: var(--shadow-glow-accent); cursor: pointer; }
+.challenge-rush-big-button { min-width: var(--challenge-rush-button-min-width); min-height: var(--challenge-rush-button-min-height); border: 0; border-radius: var(--radius); color: var(--accent-text); background: var(--accent-gradient); font-size: var(--font-size-xl); font-weight: var(--font-weight-black); cursor: pointer; }
+.challenge-rush-number-grid { display: grid; grid-template-columns: repeat(4, minmax(var(--challenge-rush-number-min-width), 1fr)); gap: var(--space-2); width: min(100%, var(--challenge-rush-number-grid-width)); }
+.challenge-rush-number { min-height: var(--space-8); font-size: var(--font-size-lg); }
+.challenge-rush-scoreboard { display: grid; gap: var(--space-1); }
+.challenge-rush-score-row { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--bg-elevated-2); }
+.challenge-rush-result { max-width: var(--challenge-rush-stage-max-width); margin-inline: auto; text-align: center; }
+.challenge-rush-ready-count { text-align: center; }
+.challenge-rush-final-row { flex-direction: column; align-items: stretch; gap: var(--space-1); text-align: left; }
+.challenge-rush-final-row-main { display: flex; justify-content: space-between; gap: var(--space-3); }
+.challenge-rush-final-breakdown { font-size: var(--font-size-xs); }
+.challenge-rush-target-progress { text-align: center; }
+.challenge-rush-playfield-badge { position: absolute; top: var(--space-2); left: var(--space-2); margin: 0; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--bg-elevated-2); }
+/* Columns use minmax(0, 1fr) rather than a plain 1fr (equivalent to
+   minmax(auto, 1fr)): auto would floor each track at .challenge-rush-tile's
+   content size, which together with a fixed per-tile min-width/min-height
+   made the grid unable to shrink below tileCount/cols * min-size at narrow
+   effective widths (e.g. a zoomed-in phone) — the outer playfield's
+   `overflow: hidden` then clipped the outer tiles instead of letting the
+   grid reflow. Tiles now scale down together with the container instead. */
+.challenge-rush-tile-grid { display: grid; gap: var(--space-2); width: min(100%, var(--challenge-rush-tile-grid-width)); }
+.challenge-rush-tile { aspect-ratio: 1; width: 100%; min-width: 0; min-height: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated-2); cursor: pointer; }
+.challenge-rush-tile.is-active { background: var(--accent-gradient); border-color: transparent; box-shadow: var(--shadow-glow-accent); }
+.challenge-rush-tile.is-odd { background: var(--accent-gradient); border-style: dashed; border-color: var(--accent-text); }
+.challenge-rush-tile:disabled { cursor: default; opacity: 0.7; }
+.challenge-rush-memory-grid,
+.challenge-rush-pairs-grid { display: grid; grid-template-columns: repeat(var(--cr-grid-columns, 3), minmax(0, 1fr)); gap: var(--space-2); width: min(100%, var(--challenge-rush-trial-grid-max-width)); margin-inline: auto; }
+.challenge-rush-memory-cell,
+.challenge-rush-memory-card { min-width: var(--tap-target-size); min-height: var(--tap-target-size); padding: var(--space-2); font-size: var(--font-size-lg); }
+.challenge-rush-memory-cell.is-selected,
+.challenge-rush-memory-card.is-selected { color: var(--accent-text); background: var(--accent-gradient); }
+.challenge-rush-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); width: min(100%, var(--challenge-rush-trial-grid-max-width)); margin-inline: auto; }
+.challenge-rush-choice { min-height: var(--space-8); }
+.challenge-rush-logic-prompt { margin: 0; text-align: center; white-space: pre-line; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); }
+.challenge-rush-logic-matrix { display: grid; grid-template-columns: repeat(2, minmax(var(--space-8), 1fr)); gap: var(--space-2); width: min(100%, var(--challenge-rush-button-min-width)); text-align: center; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); }
+.challenge-rush-logic-matrix > span { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated-2); }
+.challenge-rush-letter-row { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-3); margin-block: var(--space-3); }
+.challenge-rush-letter-row > span { display: grid; place-items: center; min-width: var(--space-8); min-height: var(--space-8); padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated-2); font-size: var(--font-size-2xl); font-weight: var(--font-weight-black); }
+.challenge-rush-symbol { display: grid; place-items: center; min-height: var(--challenge-rush-button-min-height); font-size: var(--font-size-3xl); }
+.challenge-rush-item-list { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--space-2); min-height: var(--space-8); }
+/* The differing field never receives a distinguishing class, attribute or
+   accessible label. The parent selects it visually, with a shape difference
+   at every difficulty level so color perception is not required. */
+.challenge-rush-tile-grid[data-cr-subtlety='1'] { --cr-odd-radius: var(--radius-full); }
+.challenge-rush-tile-grid[data-cr-subtlety='2'] { --cr-odd-radius: var(--radius-lg); }
+.challenge-rush-tile-grid[data-cr-subtlety='3'] { --cr-odd-radius: 40% 10%; }
+.challenge-rush-tile-grid[data-cr-subtlety='4'] { --cr-odd-radius: 0; }
+.challenge-rush-tile-grid[data-cr-subtlety='5'] { --cr-odd-radius: 50% 0; }
+.challenge-rush-odd-grid > .challenge-rush-tile { transition: border-radius var(--motion-fast); }
+.challenge-rush-traffic-light { width: var(--challenge-rush-traffic-light-size); height: var(--challenge-rush-traffic-light-size); margin-inline: auto; border: 0; border-radius: var(--radius-full); color: var(--accent-text); font-size: var(--font-size-lg); font-weight: var(--font-weight-black); cursor: pointer; }
+.challenge-rush-traffic-light.is-red { background: var(--danger); }
+.challenge-rush-traffic-light.is-green { background: var(--state-playing); }
+.challenge-rush-traffic-light:disabled { cursor: default; opacity: 0.7; }
+.challenge-rush-color-word { text-align: center; font-size: var(--font-size-3xl); font-weight: var(--font-weight-black); }
+.challenge-rush-color-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2); width: 100%; }
+.challenge-rush-color-option { display: flex; align-items: center; justify-content: center; gap: var(--space-2); border-width: 2px; }
+.challenge-rush-color-dot { width: var(--challenge-rush-color-dot-size); height: var(--challenge-rush-color-dot-size); border-radius: var(--radius-full); }
+.arcade-tile-count {
+  background: var(--state-playing-bg);
+  color: var(--state-playing);
+}
+
+.arcade-stat-game {
+  min-width: 0;
+  margin-top: var(--space-3);
+}
+.arcade-lobby-card {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: var(--arcade-lobby-card-min-height);
+  gap: var(--space-3);
+}
+.arcade-active-game-title {
+  gap: var(--space-2);
+}
+.arcade-lobby-create-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-right: var(--space-3);
+  margin-left: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.arcade-lobby-create-actions .btn {
+  width: 100%;
+}
+.challenge-rush-test-selector {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated-2);
+}
+.challenge-rush-test-selector > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--tap-target-size);
+  cursor: pointer;
+}
+.challenge-rush-test-selector[open] > summary { margin-bottom: var(--space-3); }
+.challenge-rush-test-actions { gap: var(--space-2); }
+.challenge-rush-test-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--challenge-rush-button-min-width), 1fr));
+  gap: var(--space-2);
+  max-height: calc(var(--space-8) * 6);
+  overflow-y: auto;
+}
+.challenge-rush-test-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  cursor: pointer;
+}
+.challenge-rush-test-option input { margin-top: var(--space-1); }
+.challenge-rush-test-option span { display: grid; gap: var(--space-1); }
+.challenge-rush-test-option small { line-height: var(--line-height-tight); }
+.challenge-rush-lobby-selection { margin: 0; }
+.arcade-lobby-create-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* Compact segmented switch: a bordered pill housing both mode segments so
+   they read as one grouped control rather than two more buttons the size of
+   "Lobby öffnen". Only the primary create action keeps the accent-gradient
+   treatment; the active segment uses flat --accent so it never competes with
+   that one primary action for attention. */
+.arcade-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated-2);
+}
+.arcade-mode-toggle-btn {
+  border: none;
+  border-radius: var(--radius-full);
+  padding: var(--space-2) var(--space-3);
+  /* Fixed to fit the longest label across every game ("Doppel") so both
+     segments stay the same size regardless of which pair of labels a given
+     game uses (Duell/Arena vs. Duell/Doppel) instead of hugging their own
+     shorter text. */
+  min-width: calc(var(--space-8) + var(--space-6));
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-muted);
+  background: transparent;
+  text-align: center;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.arcade-mode-toggle-btn.is-active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.arcade-mode-toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+@media (hover: hover) {
+  .arcade-mode-toggle-btn:hover:not(:disabled):not(.is-active) {
+    color: var(--text);
+  }
+}
+.arcade-lobby-create-row > .btn {
+  width: auto;
+  flex: 1 1 0;
+  min-width: var(--arcade-lobby-mode-width);
+}
+.arcade-lobby-ai-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.arcade-lobby-ai-row .btn {
+  width: auto;
+  flex: 1 1 var(--arcade-lobby-mode-width);
+  min-width: var(--arcade-lobby-mode-width);
+}
+.arcade-lobby-entry {
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-elevated-2);
+}
+.arcade-lobby-entry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.arcade-lobby-entry-head > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.arcade-lobby-member-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+}
+.arcade-lobby-member-row {
+  display: grid;
+  grid-template-columns: var(--avatar-size-sm) minmax(0, 1fr) calc(var(--space-8) + var(--space-8));
+  align-items: center;
+  column-gap: var(--space-2);
+  min-height: var(--row-icon-size);
+  min-width: 0;
+}
+.arcade-lobby-member-row + .arcade-lobby-member-row {
+  border-top: 1px solid var(--border);
+}
+.arcade-lobby-member-row .player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arcade-lobby-member-role {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.arcade-lobby-avatar-slot {
+  width: var(--avatar-size-sm);
+  height: var(--avatar-size-sm);
+}
+.arcade-lobby-free-label {
+  align-self: center;
+}
+.arcade-lobby-free-row .btn {
+  width: 100%;
+  align-self: center;
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+.arcade-lobby-control-bar {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+.arcade-lobby-settings {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.arcade-lobby-target-score {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) calc(var(--space-8) + var(--space-6));
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.arcade-lobby-target-score select,
+.arcade-lobby-target-score input {
+  height: var(--space-7);
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+  text-align: center;
+}
+.arcade-lobby-setting-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.arcade-lobby-setting-options .check-row {
+  justify-content: center;
+  padding: var(--space-2) var(--space-3);
+}
+.arcade-lobby-entry-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.arcade-lobby-entry-actions .btn {
+  flex: 1 1 0;
+  min-width: 0;
+}
+@media (min-width: 640px) { /* --bp-md */
+  .arcade-lobby-control-bar:has(.arcade-lobby-settings):has(.arcade-lobby-entry-actions) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: end;
+  }
+  .arcade-lobby-setting-options {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.arcade-winner-card {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+/* ---------- Scribble (skribbl.io-style draw & guess arcade game) ---------- */
+
+/* Fixed logical aspect ratio so every phone/laptop draws onto the same
+   normalized canvas — coordinates are streamed as 0-1 fractions (see
+   arcadeScribble.js), so the actual pixel size here doesn't matter. Always a
+   light drawing surface (like paper), regardless of the app's dark theme —
+   that's the norm for drawing tools and matches skribbl.io itself. */
+.scribble-canvas-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 8 / 5;
+  background: #ffffff; /* design-token-ok: paper-white drawing surface regardless of app theme, like skribbl.io */
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  touch-action: none;
+}
+.scribble-canvas-wrap canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+.arcade-game-shell .scribble-stage-card {
+  width: min(100%, 820px);
+  margin-inline: auto;
+}
+.scribble-canvas-locked {
+  cursor: default;
+}
+.scribble-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+.scribble-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+.scribble-swatch-active {
+  border-color: var(--accent);
+}
+.scribble-size-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.scribble-size-btn span {
+  display: block;
+  border-radius: 50%;
+  background: currentColor;
+}
+.scribble-word-mask {
+  font-family: 'Courier New', monospace;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 2px; /* design-token-ok: spreads the monospace underscore blanks so single letters stay countable */
+  text-align: center;
+}
+.scribble-chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: var(--font-size-sm);
+}
+.scribble-chat-correct {
+  color: var(--state-playing);
+  font-weight: var(--font-weight-medium);
+}
+.scribble-word-choice-btn {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  padding: var(--space-3);
+}
+
+.scribble-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-3);
+}
+
+.scribble-drawing-card {
+  min-width: 0;
+}
+
+.scribble-drawing-card.is-winner {
+  border-color: var(--rank-1-gold);
+}
+
+.scribble-stored-canvas-wrap {
+  width: 100%;
+  aspect-ratio: 8 / 5;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-text);
+}
+
+.scribble-stored-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.scribble-art-stat-row {
+  align-items: flex-start;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* ---------- Tetris Battle (views/tetris.js) ---------- */
+/* Both boards are equal-sized: each column takes half the row and the canvas
+   scales to fill it (its 1:2 pixel resolution is fixed in JS), capped on wide
+   screens so they don't become giant. A soft pulsing glow sits behind them. */
+.tetris-boards {
+  position: relative;
+  display: flex;
+  gap: var(--space-3);
+  justify-content: center;
+  align-items: flex-start;
+  max-width: 540px;
+  margin: var(--space-2) auto 0;
+}
+.tetris-boards::before {
+  content: '';
+  position: absolute;
+  inset: -24px;
+  background: radial-gradient(58% 60% at 50% 42%, rgba(91, 140, 255, 0.14), transparent 70%);
+  animation: tetris-bg-pulse 4s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+.tetris-board-col {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+.tetris-board-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+}
+.tetris-boards.is-arena {
+  width: 100%;
+  max-width: none;
+}
+.tetris-primary-board {
+  flex: 1 1 50%;
+  min-width: 0;
+}
+.tetris-primary-board > .tetris-board-col {
+  width: 100%;
+}
+.tetris-opponent-grid {
+  flex: 1 1 50%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--space-2);
+}
+.tetris-opponent-grid.is-spectator {
+  flex-basis: 100%;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.tetris-board-col.is-target .tetris-canvas {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-glow-accent);
+}
+.tetris-board-col.is-target .tetris-board-name::after {
+  content: ' · Ziel';
+  color: var(--accent);
+}
+.tetris-board-col.is-eliminated {
+  opacity: 0.52;
+}
+.tetris-canvas-wrap {
+  position: relative;
+  width: 100%;
+  line-height: 0;
+}
+.tetris-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(15, 20, 32, 0.9);
+  touch-action: none; /* drag/tap gestures drive the piece, don't scroll */
+}
+/* Particle overlay for line-clear bursts; never intercepts touches. */
+.tetris-fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+.tetris-stats-line {
+  font-size: var(--font-size-2xs);
+  font-variant-numeric: tabular-nums;
+}
+/* Incoming-garbage warning, pinned to the top-right of a board. */
+.tetris-incoming {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 3;
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-bold);
+  color: var(--state-paused);
+}
+.tetris-incoming-hot {
+  color: var(--danger);
+}
+/* Countdown / pause overlay centred over the player's own board. */
+.tetris-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 9, 18, 0.55);
+  border-radius: var(--radius-sm);
+}
+.tetris-overlay-text {
+  padding: 0 var(--space-3);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-black);
+  line-height: 1.3; /* design-token-ok: overrides the canvas-wrap's line-height:0 (an inline-canvas gap fix) so wrapped overlay text (e.g. "Ausgeschieden · Platz 2") doesn't collapse its lines onto each other */
+  text-align: center;
+  color: var(--text);
+}
+@keyframes tetris-bg-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+/* Line-clear juice: a white flash (gold for a Tetris) plus a quick shake. */
+.tetris-canvas-wrap.tetris-flash::after,
+.tetris-canvas-wrap.tetris-flash-big::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  z-index: 3;
+  animation: tetris-flash-fade 0.5s ease-out forwards;
+}
+.tetris-canvas-wrap.tetris-flash::after {
+  background: rgba(255, 255, 255, 0.55);
+}
+.tetris-canvas-wrap.tetris-flash-big::after {
+  background: rgba(255, 209, 102, 0.65);
+}
+@keyframes tetris-flash-fade {
+  to {
+    opacity: 0;
+  }
+}
+.tetris-board-col.tetris-shake {
+  animation: tetris-shake 0.35s ease-in-out;
+}
+@keyframes tetris-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-4px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+}
+/* ---------- Blobby Volley ---------- */
+
+.arcade-game-shell {
+  width: min(100%, 960px);
+  margin-inline: auto;
+}
+.arcade-expand-control {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-3);
+}
+.arcade-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.arcade-toolbar .arcade-expand-control {
+  margin-bottom: 0;
+}
+.arcade-mute-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
+  padding: 0;
+}
+.arcade-game-shell.is-expanded {
+  width: min(100%, calc(100vw - var(--space-4) - var(--space-4)));
+  max-width: none;
+  box-sizing: border-box;
+}
+.arcade-game-shell.is-expanded .quiz-stage-card,
+.arcade-game-shell.is-expanded .scribble-stage-card,
+.arcade-game-shell.is-expanded .blobby-court,
+.arcade-game-shell.is-expanded .pong-arena,
+.arcade-game-shell.is-expanded .snake-game {
+  width: 100%;
+  max-width: none;
+}
+.arcade-game-shell.is-expanded .quiz-stage-card {
+  height: auto;
+  min-height: 220px;
+  max-height: none;
+}
+.arcade-game-shell.is-expanded .tetris-boards {
+  max-width: none;
+}
+/* The height budget every expanded-playfield width formula below is derived
+   from. The default is a fixed guess (fits the least-chrome game); JS
+   (arcadeUi.js's syncExpandedPlayfieldHeight) overrides it with a measured,
+   precise value on the shell's inline style whenever the guess would
+   overflow the scrollable view and clip score/chat/controls below the fold. */
+.arcade-game-shell.is-expanded {
+  --arcade-h-budget: calc(100dvh - 18rem);
+}
+/* Expanded playfields are bounded by the viewport through their width. Their
+   native aspect ratios remain in charge of the height so canvas coordinates,
+   hit testing and overlays keep the same geometry at every scale. */
+.arcade-game-shell.is-expanded .scribble-canvas-wrap,
+.arcade-game-shell.is-expanded .blobby-court,
+.arcade-game-shell.is-expanded .pong-arena,
+.arcade-game-shell.is-expanded .snake-game {
+  width: min(100%, calc(var(--arcade-h-budget) * 1.6));
+  max-width: 100%;
+  height: auto;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.arcade-game-shell.is-expanded .scribble-canvas-wrap {
+  aspect-ratio: 8 / 5;
+}
+.arcade-game-shell.is-expanded .blobby-court {
+  width: min(100%, calc(var(--arcade-h-budget) * 5 / 3));
+}
+.arcade-game-shell.is-expanded .pong-arena {
+  width: min(100%, calc(var(--arcade-h-budget) * 16 / 9));
+}
+.arcade-game-shell.is-expanded .snake-game {
+  width: min(100%, calc((var(--arcade-h-budget) - var(--space-4)) * 1.6 + var(--space-4)));
+}
+.arcade-game-shell.is-expanded .blobby-court canvas,
+.arcade-game-shell.is-expanded .pong-arena canvas,
+.arcade-game-shell.is-expanded #snake-canvas {
+  width: 100%;
+  height: auto;
+}
+/* The Scribble canvas carries no width/height attributes when the saved
+   expand preference applies before setupCanvas() runs — height:auto would
+   fall back to the canvas default 300×150 (2:1) inside the 8:5 wrapper and
+   distort every replayed stroke. The wrapper's aspect-ratio is the geometry
+   authority, so the canvas must always fill it completely. */
+.arcade-game-shell.is-expanded .scribble-canvas-wrap canvas {
+  width: 100%;
+  height: 100%;
+}
+.arcade-game-shell.is-expanded .tetris-boards {
+  width: min(100%, calc(100vw - var(--space-3)));
+  height: auto;
+  max-width: none;
+  box-sizing: border-box;
+  /* Contains the decorative ::before glow (inset -24px): at near-viewport
+     width it would otherwise protrude past .view-container and create
+     horizontal page scrolling. */
+  overflow: hidden;
+}
+.arcade-game-shell.is-expanded .tetris-board-col {
+  height: auto;
+  align-items: center;
+}
+.arcade-game-shell.is-expanded .tetris-canvas-wrap {
+  width: min(100%, calc(var(--arcade-h-budget) / 2));
+  height: auto;
+  display: flex;
+  justify-content: center;
+}
+.arcade-game-shell.is-expanded .tetris-canvas {
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+.arcade-game-shell.is-expanded .tetris-opponent-grid .tetris-canvas-wrap {
+  width: 100%;
+}
+@media (max-width: 639px) { /* --bp-md */
+  .tetris-boards.is-arena {
+    flex-direction: column;
+    align-items: center;
+  }
+  .tetris-primary-board {
+    width: min(100%, calc(var(--space-8) * 6));
+  }
+  .tetris-opponent-grid,
+  .tetris-opponent-grid.is-spectator {
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.arcade-game-shell > .view-title {
+  text-align: center;
+}
+.arcade-watch-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+.arcade-watch-shell {
+  width: min(100%, 1080px);
+}
+.arcade-watch-header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+  font-weight: var(--font-weight-bold);
+}
+.arcade-watch-roster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.arcade-watch-player {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+}
+.arcade-watch-player strong {
+  color: var(--accent);
+}
+.snake-arena-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.snake-arena-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+.snake-arena-legend-item strong {
+  color: var(--text);
+}
+.arcade-watch-shell canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}
+.arcade-watch-safe-note {
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  text-align: center;
+}
+.arcade-match-controls {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+}
+.arcade-roster {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+.arcade-player-tile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 72px;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--bg-elevated), var(--bg-elevated-2));
+  box-shadow: var(--shadow);
+}
+.arcade-player-tile.is-winner {
+  border-color: rgba(91, 140, 255, 0.82);
+  background: linear-gradient(135deg, rgba(91, 140, 255, 0.18), rgba(239, 93, 168, 0.14));
+  box-shadow: 0 0 0 1px rgba(145, 99, 245, 0.22), 0 0 28px rgba(145, 99, 245, 0.24);
+}
+.arcade-player-tile-body {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+.arcade-player-tile-score,
+.arcade-player-tile-detail {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+.arcade-game-shell .quiz-stage-card {
+  width: min(100%, 680px);
+  height: 174px;
+  min-height: 174px;
+  max-height: 174px;
+  margin-inline: auto;
+  box-sizing: border-box;
+  display: flex;
+}
+.arcade-game-shell .quiz-stage-content {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.arcade-game-shell .quiz-round-result {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.arcade-game-shell .quiz-round-result h2 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.blobby-court {
+  position: relative;
+  width: min(100%, 960px);
+  margin: 0 auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  background: var(--bg-elevated);
+}
+.blobby-court canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 5 / 3;
+  touch-action: none;
+}
+.blobby-point {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-full);
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+  font-weight: var(--font-weight-black);
+  box-shadow: var(--shadow);
+}
+.blobby-pause-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  color: var(--text);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-black);
+}
+
+.pong-arena {
+  position: relative;
+  width: min(100%, 960px);
+  margin: 0 auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow), 0 0 36px rgba(145, 99, 245, 0.12);
+}
+.pong-arena canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  touch-action: none;
+}
+.pong-point {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-full);
+  background: var(--accent-gradient);
+  color: var(--accent-text);
+  font-weight: var(--font-weight-bold);
+  box-shadow: var(--shadow);
+}
+.pong-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  color: var(--text);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.snake-game { position:relative; width:min(100%, 720px); margin:0 auto; padding:var(--space-2); overflow:hidden; background:linear-gradient(135deg,rgba(91,140,255,.12),rgba(239,93,168,.1)); }
+#snake-canvas { display:block; width:100%; aspect-ratio:8/5; border-radius:var(--radius); box-shadow:0 0 30px rgba(145,99,245,.18); touch-action:none; }
+.snake-overlay { position:absolute; inset:0; display:grid; place-items:center; font-size:var(--font-size-xl); font-weight:var(--font-weight-bold); color:var(--text); background:rgba(10,13,27,.62); }

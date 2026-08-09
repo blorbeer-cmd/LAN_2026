@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import { loadConfig } from "./agent-pipeline.mjs";
@@ -36,6 +37,18 @@ const OLD_HEAD = "b".repeat(40);
 const BASE = "c".repeat(40);
 
 const CODEX_REVIEWER = "chatgpt-codex-connector[bot]";
+
+test("reconcile reacts to provider review-result comments without cancelling active runs", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/agent-pipeline-reconcile.yml", import.meta.url),
+    "utf8",
+  ).replaceAll("\r\n", "\n");
+  assert.match(workflow, /issue_comment:\n\s+types: \[created, edited\]/);
+  assert.match(workflow, /contains\(github\.event\.comment\.body, 'agent-pipeline:review-result'\)/);
+  assert.match(workflow, /github\.event\.comment\.user\.login/);
+  assert.match(workflow, /github\.event\.comment\.author_association/);
+  assert.match(workflow, /cancel-in-progress: false/);
+});
 
 function contractBody(overrides = {}) {
   const values = {
