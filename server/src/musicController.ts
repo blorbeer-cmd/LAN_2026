@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'crypto';
-import { NextFunction, Request, RequestHandler, Response, Router } from 'express';
+import { NextFunction, Request, Response, Router } from 'express';
 import { db } from './db';
 import { broadcast, Events } from './realtime';
 
@@ -194,7 +194,7 @@ musicControllerRouter.post('/heartbeat', controllerAuth, (req, res) => {
   res.json({ ok: true, serverTime: now });
 });
 
-musicControllerRouter.get('/commands', controllerAuth, (req, res) => {
+musicControllerRouter.get('/commands', controllerAuth, (_req, res) => {
   const controller = res.locals.musicController as ControllerRow;
   const queue = commandQueues.get(controller.group_id) ?? [];
   const command = queue.shift();

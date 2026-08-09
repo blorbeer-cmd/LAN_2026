@@ -12,7 +12,6 @@ import { nanoid } from 'nanoid';
 import { db, DEFAULT_GROUP_ID } from './db';
 import { setIo } from './realtime';
 import { sweepOnce } from './liveStatus';
-import { config } from './config';
 
 test('sweepOnce broadcasts the live board to an authenticated group socket', () => {
   const emitted: Array<{ event: string; payload: unknown }> = [];

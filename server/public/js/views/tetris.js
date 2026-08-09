@@ -621,7 +621,7 @@ function matchControls() {
     </div>`;
 }
 
-export function renderTetris(container, ctx) {
+export function renderTetris(container, _ctx) {
   ensureTetrisSocket();
   if (!match) {
     // The play view is only for live matches; anything else belongs in Arcade.

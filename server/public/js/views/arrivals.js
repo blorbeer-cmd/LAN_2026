@@ -76,7 +76,7 @@ function renderMyForm(myId) {
 // server/src/routes/arrivals.ts) - otherwise, which carpool would their own
 // Ankunft/Abreise above sync with? `elsewhere` marks that they're already
 // committed to a *different* carpool of this direction.
-function renderCarpool(c, direction, myId, elsewhere) {
+function renderCarpool(c, myId, elsewhere) {
   const isDriver = c.driverId === myId;
   const amIn = Boolean(myId && c.members.some((m) => m.id === myId));
   const canJoin = Boolean(myId && !isDriver && !amIn && !elsewhere);
@@ -171,7 +171,7 @@ function renderCarpoolSection(direction, title, myId) {
       </div>
       ${
         rows.length
-          ? `<div class="two-column-card-grid arrivals-carpool-grid">${rows.map((c) => renderCarpool(c, direction, myId, committed && c.driverId !== myId && !c.members.some((m) => m.id === myId))).join('')}</div>`
+          ? `<div class="two-column-card-grid arrivals-carpool-grid">${rows.map((c) => renderCarpool(c, myId, committed && c.driverId !== myId && !c.members.some((m) => m.id === myId))).join('')}</div>`
           : `<div class="muted arrivals-carpool-empty">Noch keine Fahrgemeinschaft.</div>`
       }
     </section>`;
