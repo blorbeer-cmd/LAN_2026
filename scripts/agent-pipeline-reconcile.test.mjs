@@ -5,9 +5,10 @@ import { loadConfig } from "./agent-pipeline.mjs";
 import {
   CLAUDE_CROSS_REVIEW_HEADING,
   dedupeCheckRunsByName,
+  DEFAULT_WAITING_ESCALATION_HOURS,
   deriveReadiness,
-  evaluateReviewDecision,
   evaluateChecks,
+  evaluateReviewDecision,
   evaluateReviews,
   fetchReviewThreads,
   GATE_DESCRIPTION_LIMIT,
@@ -25,9 +26,11 @@ import {
   reconcile,
   renderStatusComment,
   reviewerProviderFor,
+  reviewWaitingHours,
   STATUS_COMMENT_MARKER,
   statusCommentBody,
   UI_NOTICE_MARKER,
+  waitingEscalationHours,
 } from "./agent-pipeline-reconcile.mjs";
 
 const config = loadConfig();
@@ -2194,4 +2197,92 @@ test("the decision record counts only from an identity that runs this pipeline",
     statusCommentBody(readySnapshot({ statusCommentAuthor: "someone[bot]" }), config),
     null,
   );
+});
+
+test("the review-stall clock ignores the pipeline's own checks", () => {
+  const base = {
+    observedAt: "2026-08-09T12:00:00Z",
+    checkRuns: [
+      { name: "Core", status: "completed", conclusion: "success", completedAt: "2026-08-08T06:00:00Z" },
+      // Own checks re-run on every sweep; if they counted, a stalled review would never age.
+      {
+        name: config.selfCheckNames[0],
+        status: "completed",
+        conclusion: "success",
+        completedAt: "2026-08-09T11:59:00Z",
+      },
+    ],
+  };
+  assert.equal(reviewWaitingHours(base, config), 30);
+
+  // Without an anchor the age is unknown, and unknown must never escalate.
+  assert.equal(reviewWaitingHours({ ...base, checkRuns: [] }, config), null);
+  assert.equal(
+    reviewWaitingHours({ ...base, checkRuns: [{ name: "Core", completedAt: null }] }, config),
+    null,
+  );
+  assert.equal(reviewWaitingHours({ ...base, observedAt: undefined }, config), null);
+  // A check completing after the snapshot was read is clock skew, not negative waiting time.
+  assert.equal(
+    reviewWaitingHours(
+      { ...base, checkRuns: [{ name: "Core", completedAt: "2026-08-09T13:00:00Z" }] },
+      config,
+    ),
+    0,
+  );
+
+  assert.equal(waitingEscalationHours(config), config.waitingEscalationHours);
+  for (const broken of [{}, { waitingEscalationHours: 0 }, { waitingEscalationHours: "soon" }]) {
+    assert.equal(waitingEscalationHours(broken), DEFAULT_WAITING_ESCALATION_HOURS);
+  }
+});
+
+test("a chosen review that never lands is escalated instead of waiting forever", () => {
+  const anchor = "2026-08-08T06:00:00Z";
+  const checkRuns = [
+    { name: "Core", status: "completed", conclusion: "success", completedAt: anchor },
+  ];
+  // Cross-review chosen, nothing published for this head: exactly the silent stall.
+  const stalled = deriveReadiness(
+    readySnapshot({
+      observedAt: "2026-08-09T12:00:00Z",
+      checkRuns,
+      reviews: [],
+      reviewThreads: [],
+    }),
+    config,
+  );
+  assert.equal(stalled.phase, "review");
+  assert.equal(stalled.details.reviewStalled, true);
+  assert.equal(Math.floor(stalled.details.reviewWaitingHours), 30);
+  assert.equal(
+    stalled.blockers.some((blocker) => /produced no result for 30 hours/.test(blocker)),
+    true,
+  );
+  assert.match(renderStatusComment(stalled, readySnapshot(), config), /- Review overdue: `30h`/);
+
+  // Below the threshold the pull request is simply still waiting, and says nothing extra.
+  const fresh = deriveReadiness(
+    readySnapshot({
+      observedAt: "2026-08-08T07:00:00Z",
+      checkRuns,
+      reviews: [],
+      reviewThreads: [],
+    }),
+    config,
+  );
+  assert.equal(fresh.details.reviewStalled, false);
+  assert.doesNotMatch(renderStatusComment(fresh, readySnapshot(), config), /Review overdue/);
+
+  // With the verdict in, nobody is waiting — an overdue note would contradict the result.
+  const answered = deriveReadiness(
+    readySnapshot({ observedAt: "2026-08-09T12:00:00Z", checkRuns }),
+    config,
+  );
+  assert.equal(answered.details.reviewStalled, false);
+
+  // The escalation is a blocker and a status line only; the review-mode labels stay the user's.
+  const plan = planLabels(readySnapshot().labels, stalled, config);
+  assert.equal(plan.add.includes(config.labels.waiting), false);
+  assert.equal(plan.remove.includes(CROSS_LABEL), false);
 });

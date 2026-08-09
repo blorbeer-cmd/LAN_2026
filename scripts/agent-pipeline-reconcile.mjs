@@ -301,6 +301,37 @@ export function evaluateChecks(snapshot, config) {
  * An unresolved, non-outdated review thread blocks the gate. An outdated thread points at code
  * that no longer exists on the current head and is therefore not actionable.
  */
+export const DEFAULT_WAITING_ESCALATION_HOURS = 24;
+
+/** A missing or nonsensical setting must not disable the escalation, so it falls back. */
+export function waitingEscalationHours(config = loadConfig()) {
+  const configured = Number(config?.waitingEscalationHours);
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_WAITING_ESCALATION_HOURS;
+}
+
+/**
+ * How long the current head has been waiting for a review it was already cleared for.
+ *
+ * Anchored on the newest completion among the head's *foreign* checks — the pipeline's own check
+ * runs complete on every sweep and would push the anchor forward forever, so a stalled review would
+ * never age. Returns null while no anchor exists, so an unknown age never escalates on its own.
+ */
+export function reviewWaitingHours(snapshot, config = loadConfig()) {
+  const observed = Date.parse(snapshot?.observedAt ?? "");
+  if (!Number.isFinite(observed)) return null;
+  let newest = null;
+  for (const run of snapshot?.checkRuns ?? []) {
+    if (isOwnCheckRun(run?.name, config)) continue;
+    const completed = Date.parse(run?.completedAt ?? "");
+    if (!Number.isFinite(completed)) continue;
+    if (newest === null || completed > newest) newest = completed;
+  }
+  if (newest === null) return null;
+  return Math.max(0, (observed - newest) / 3_600_000);
+}
+
 export function evaluateReviewThreads(threads) {
   const blocking = (threads ?? []).filter(
     (thread) => !thread.isResolved && !thread.isOutdated,
@@ -902,6 +933,20 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     }
   }
 
+  // A chosen review that never produces a result is the pipeline's quietest failure: every gate
+  // reads "waiting for the review", which is indistinguishable from a review that is simply still
+  // running. Only an outstanding round is timed — with a verdict in, nobody is waiting.
+  const waitingHours = evidenceOutstanding ? reviewWaitingHours(snapshot, config) : null;
+  const escalationHours = waitingEscalationHours(config);
+  const reviewStalled = waitingHours !== null && waitingHours >= escalationHours;
+  if (reviewStalled) {
+    blockers.push(
+      `The chosen \`${decision.mode}\` review has produced no result for ${Math.floor(waitingHours)} ` +
+        `hours (escalation threshold ${escalationHours}h); start it again for the current head or ` +
+        "choose another review mode.",
+    );
+  }
+
   // An unreadable discussion blocks, but it must say so rather than invent an open thread the
   // maintainer would go looking for.
   if (!threadsReadable) {
@@ -1003,6 +1048,8 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
       crossResult,
       selfReviewMinimum,
       recommendation,
+      reviewWaitingHours: waitingHours,
+      reviewStalled,
     },
   };
 }
@@ -1147,6 +1194,12 @@ export function renderStatusComment(readiness, snapshot, config = loadConfig()) 
       : []),
     `- Unresolved review threads: \`${details.threads?.blockingCount ?? "unknown"}\``,
     `- Mergeability: \`${details.mergeability ?? "unknown"}\``,
+    ...(details.reviewStalled
+      ? [
+          `- Review overdue: \`${Math.floor(details.reviewWaitingHours)}h\` without a result ` +
+            `(threshold \`${waitingEscalationHours(config)}h\`)`,
+        ]
+      : []),
     "",
     ...(awaitingDecision ? [reviewDecisionSection(readiness, config), ""] : []),
     "### Blockers",
@@ -1559,6 +1612,8 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
 
   return {
     snapshot: {
+      // Read once per snapshot so every derived age uses the same instant, and tests can pin it.
+      observedAt: new Date().toISOString(),
       state: pr.state,
       isDraft: pr.draft === true,
       body: pr.body ?? "",
@@ -1575,10 +1630,12 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       labels: (pr.labels ?? []).map((label) => label.name),
       changedFiles: files.map((file) => file.filename),
       checkRunsHeadSha: headSha,
+      // Completion times anchor the review-stall clock; see `reviewWaitingHours`.
       checkRuns: dedupeCheckRunsByName(checkRuns).map((run) => ({
         name: run.name,
         status: run.status,
         conclusion: run.conclusion,
+        completedAt: run.completed_at ?? null,
       })),
       reviews: reviews.map((review) => ({
         author: review.user?.login ?? null,
