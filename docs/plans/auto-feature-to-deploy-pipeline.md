@@ -348,7 +348,7 @@ Im Modus `human` bleibt die Approval zum exakten Head-SHA der Nachweis.
    und zeitgesteuert erneut versuchen.
 5. Warteversuche und unbeantwortete Auswahlfragen zählen nicht als Reviewrunde.
 6. Liefert ein gewähltes Review nach `waitingEscalationHours` aus `.github/agent-pipeline/config.json`
-   (derzeit 4 Stunden) kein Ergebnis, meldet der Reconciler die Überfälligkeit als Blocker und als
+   (derzeit 1 Stunde) kein Ergebnis, meldet der Reconciler die Überfälligkeit als Blocker und als
    eigene Zeile im Statuskommentar; nur bei einer tatsächlich nötigen Entscheidung zusätzlich
    `agent:needs-human` setzen. Eine ausstehende Modus-Auswahl allein ist keine Eskalation, sondern
    der Normalzustand `awaiting-review-decision`.

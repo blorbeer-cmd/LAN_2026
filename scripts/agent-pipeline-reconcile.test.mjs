@@ -2261,10 +2261,12 @@ test("a chosen review that never lands is escalated instead of waiting forever",
   );
   assert.match(renderStatusComment(stalled, readySnapshot(), config), /- Review overdue: `30h`/);
 
-  // Below the threshold the pull request is simply still waiting, and says nothing extra.
+  // Below the threshold the pull request is simply still waiting, and says nothing extra. Derived
+  // from the anchor rather than a fixed hour, so lowering the threshold cannot turn this case into
+  // the escalated one it is meant to contrast with.
   const fresh = deriveReadiness(
     readySnapshot({
-      observedAt: "2026-08-08T07:00:00Z",
+      observedAt: new Date(Date.parse(anchor) + 60_000).toISOString(),
       checkRuns,
       reviews: [],
       reviewThreads: [],
