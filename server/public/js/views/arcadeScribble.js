@@ -861,7 +861,6 @@ function renderLobbyList() {
 
 // The Arcade view embeds this whole card in place of a separate sub-view.
 export function renderScribbleLobbyCard() {
-  const lobby = myScribbleLobby();
   const noMe = !myId();
   const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
   return `
