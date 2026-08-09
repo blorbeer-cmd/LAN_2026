@@ -1,0 +1,95 @@
+name: Agent pipeline Codex cross-review
+
+# Requests exactly one native Codex review after the user chooses `review:cross` for a Claude
+# implementation. The trusted default branch decides eligibility and posts only the review request;
+# Codex owns the actual head-bound GitHub review and the reconciler owns the merge gate.
+
+on:
+  pull_request_target:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number to re-evaluate
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize request decisions per pull request. The exact-head marker makes a duplicate no-op
+  # even when a label event and a manual dispatch overlap.
+  group: agent-pipeline-codex-review-${{ github.event.pull_request.number || inputs.pull_request }}
+  cancel-in-progress: false
+
+jobs:
+  select:
+    name: Select Codex review target
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      pull_request: ${{ steps.select.outputs.pull_request }}
+    steps:
+      - name: Select pull request
+        id: select
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_LABEL: ${{ github.event.label.name }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          MANUAL_PR: ${{ inputs.pull_request }}
+        run: |
+          set -euo pipefail
+          selected=""
+          if [[ "${EVENT_NAME}" == "pull_request_target" ]]; then
+            if [[ "${EVENT_LABEL}" == "review:cross" ]]; then
+              selected="${EVENT_PR}"
+            fi
+          else
+            selected="${MANUAL_PR}"
+          fi
+          if [[ -n "${selected}" && ! "${selected}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Pull request must be a positive integer." >&2
+            exit 1
+          fi
+          echo "pull_request=${selected}" >> "$GITHUB_OUTPUT"
+          echo "Selected pull request: ${selected:-none}"
+
+  request:
+    name: Request Codex cross-review
+    needs: select
+    if: needs.select.outputs.pull_request != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: write
+      statuses: read
+    steps:
+      - name: Check out trusted pipeline code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Request native Codex review
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AGENT_PIPELINE_DISABLED: ${{ vars.AGENT_PIPELINE_DISABLED }}
+          REPOSITORY: ${{ github.repository }}
+          SELECTED_PR: ${{ needs.select.outputs.pull_request }}
+        run: |
+          node scripts/agent-codex-review.mjs request \
+            --repository "${REPOSITORY}" \
+            --pr "${SELECTED_PR}"
