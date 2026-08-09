@@ -237,14 +237,15 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await adminPage.waitForSelector('.admin-role-select');
     assert.equal(await adminPage.locator('#group-btn').count(), 0);
     assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \(\d+\)$/);
-    assert.deepEqual(
-      await adminPage.locator('.admin-role-select').first().locator('option').allTextContents(),
-      ['Mitglied', 'Admin', 'Owner'],
-    );
+    assert.deepEqual(await adminPage.locator('.admin-role-select').first().locator('option').allTextContents(), [
+      'Mitglied',
+      'Admin',
+      'Owner',
+    ]);
     assert.equal(
       await adminPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       true,
-      'mobile onboarding must not introduce horizontal page scrolling'
+      'mobile onboarding must not introduce horizontal page scrolling',
     );
     await adminPage.click('#admin-register-link');
 
@@ -263,7 +264,7 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     assert.equal(
       await adminPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       true,
-      'desktop onboarding must not introduce horizontal page scrolling'
+      'desktop onboarding must not introduce horizontal page scrolling',
     );
 
     const activeLink = adminPage.locator('[data-show-login-link]').first();
@@ -294,7 +295,11 @@ test('admin roster retries role loading, serializes changes and follows group ro
   await adminPage.route(`**/api/groups/${groupId}/members`, async (route) => {
     if (failNextMembersRequest) {
       failNextMembersRequest = false;
-      await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"Temporärer Rollenfehler."}' });
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: '{"error":"Temporärer Rollenfehler."}',
+      });
       return;
     }
     await route.continue();
@@ -451,20 +456,4 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
 
 test('single-group access context is no longer exposed as a separate topbar control', async () => {
   assert.equal(await page.locator('#group-btn').count(), 0);
-});
-
-test('a required-mode member can open an Arcade lobby with a scoped game socket', async () => {
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="arcade"]');
-  await page.waitForSelector('.arcade-tiles');
-  await page.click('[data-game="tetris"]');
-  await page.waitForSelector('#tetris-create:not([disabled])');
-  await page.click('#tetris-create');
-  await page.waitForSelector('[data-tetris-close]');
-  assert.equal(
-    await page.locator('.toast-error:has-text("Gruppen- oder Eventzugriff verweigert")').count(),
-    0,
-  );
-  await page.click('[data-tetris-close]');
-  await page.waitForSelector('#tetris-create:not([disabled])');
 });

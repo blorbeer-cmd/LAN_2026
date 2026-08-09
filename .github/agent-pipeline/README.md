@@ -74,11 +74,11 @@ own review mode would be helping itself past the merge gate. The gate cannot ver
 provenance — it only sees a label — so the rule is binding and the pull request's label history is
 the audit trail.
 
-| Label          | Mode     | What satisfies the gate for the current head SHA                                                   |
-| -------------- | -------- | ---------------------------------------------------------------------------------------------------- |
-| `review:cross` | `cross`  | per `crossReviewEvidence`: an approval from the counter provider's `providerReviewerAllowlist`, or (default) a review of this exact head by that provider with none of its findings left open |
-| `review:self`  | `self`   | a published `agent-pipeline:review-result` marker: same head, `verdict=pass`, a `read-only` level meeting `selfReviewMinimumEnforcement` (default `verified`), from one of the implementation provider's own identities |
-| `review:human` | `human`  | an approving review from an account with write access, covering exactly this head                     |
+| Label          | Mode    | What satisfies the gate for the current head SHA                                                                                                                                                                        |
+| -------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `review:cross` | `cross` | per `crossReviewEvidence`: an approval from the counter provider's `providerReviewerAllowlist`, or (default) a review of this exact head by that provider with none of its findings left open                           |
+| `review:self`  | `self`  | a published `agent-pipeline:review-result` marker: same head, `verdict=pass`, a `read-only` level meeting `selfReviewMinimumEnforcement` (default `verified`), from one of the implementation provider's own identities |
+| `review:human` | `human` | an approving review from an account with write access, covering exactly this head                                                                                                                                       |
 
 With no label set and everything mechanical green, the pull request sits in the
 `awaiting-review-decision` phase and the status comment asks the question, with a recommendation
@@ -92,7 +92,7 @@ for review.
 
 The choice expires with its head. Every run records the head it saw in the reconciler's own status
 comment (`agent-pipeline:review-decision`), including as `mode=none` while nothing is chosen. A
-label binds only when a record for the *current* head already exists — the run that wrote it removed
+label binds only when a record for the _current_ head already exists — the run that wrote it removed
 any label standing at the time, so a label next to it must have arrived afterwards. Without a record
 for the current head the label cannot be vouched for, is removed, and the question is asked again.
 
@@ -142,6 +142,12 @@ workflow runs on `pull_request_target`, whose check runs attach to the pull requ
 without that exclusion the reconciler would read its own job as a running — or, after
 `cancel-in-progress`, a cancelled and therefore failing — CI check. `selfCheckNames` must stay in
 sync with the job names in `.github/workflows/agent-pipeline-reconcile.yml`.
+
+The CI/CD workflow also reports `Test performance` and, only after a preliminary runtime warning,
+`Confirm test performance (<suite>)`. The latter reruns the affected suite and fails only for a
+confirmed regression. These are ordinary head-bound CI checks: an unresolved confirmed slowdown
+therefore keeps readiness closed and later belongs to the same CI-fix phase as a reproducible test
+failure. The thresholds and suite-to-step mapping live in `.github/test-performance.json`.
 
 Idempotence: labels already in the desired state produce no API call, an unchanged status comment
 body is not rewritten, and an unchanged gate verdict is not posted again. Re-running the

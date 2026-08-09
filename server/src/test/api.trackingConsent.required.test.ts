@@ -8,7 +8,8 @@ import { Server } from 'socket.io';
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import { createApp } from '../app';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from '../db';
-import { createSocketAuthGuard, Events, registerArcadeKioskSockets, setIo } from '../realtime';
+import { createSocketAuthGuard, Events, registerScopedSockets, setIo } from '../realtime';
+import { registerArcadeSockets } from '../arcade/realtime';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
 
 function connect(baseUrl: string, sessionToken: string): Promise<ClientSocket> {
@@ -47,7 +48,8 @@ test('tracking consent is self-only, idempotent and revokes agent fan-out immedi
   const httpServer = http.createServer(app);
   const io = new Server(httpServer);
   io.use(createSocketAuthGuard());
-  registerArcadeKioskSockets(io);
+  registerScopedSockets(io);
+  registerArcadeSockets(io);
   setIo(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;

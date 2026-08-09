@@ -16,14 +16,13 @@ import { createApp } from '../app';
 import { db, DEFAULT_GROUP_ID } from '../db';
 import {
   broadcast,
-  broadcastArcadeKiosk,
   broadcastInstanceSignal,
-  arcadeWatcherPlayerIds,
   createSocketAuthGuard,
   Events,
-  registerArcadeKioskSockets,
+  registerScopedSockets,
   setIo,
 } from '../realtime';
+import { arcadeWatcherPlayerIds, broadcastArcadeKiosk, registerArcadeSockets } from '../arcade/realtime';
 import { issueKioskToken, revokeKioskToken } from '../kioskTokens';
 import { notifyPlayers, setPushMute } from '../push';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
@@ -67,7 +66,8 @@ async function withRequiredServer(
   const httpServer = http.createServer();
   const io = new Server(httpServer);
   io.use(createSocketAuthGuard(envKioskToken));
-  registerArcadeKioskSockets(io);
+  registerScopedSockets(io);
+  registerArcadeSockets(io);
   registerAdditionalSockets?.(io);
   setIo(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
