@@ -72,6 +72,8 @@ jobs:
       statuses: read
     outputs:
       should_run: ${{ steps.dispatch.outputs.should_run }}
+      code: ${{ steps.dispatch.outputs.code }}
+      reason: ${{ steps.dispatch.outputs.reason }}
       repository: ${{ steps.dispatch.outputs.repository }}
       pull_number: ${{ steps.dispatch.outputs.pull_number }}
       head_sha: ${{ steps.dispatch.outputs.head_sha }}
@@ -205,6 +207,54 @@ jobs:
               error_truncated: text.length > limit,
             }, null, 2));
           '
+
+  notice:
+    name: Announce missing Claude cross-review
+    needs: [select, review]
+    # Runs whenever a chosen cross-review produced no result: the dispatch declined, or the model
+    # job failed. Without it both cases stay green-or-buried in Actions while the pull request keeps
+    # waiting for a review nobody is going to start.
+    if: >-
+      always() && needs.select.outputs.pull_request != '' &&
+      (needs.review.result == 'failure' || needs.review.outputs.should_run == 'false')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check out trusted notice code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Announce that no review result was produced
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PULL_NUMBER: ${{ needs.select.outputs.pull_request }}
+          HEAD_SHA: ${{ needs.review.outputs.head_sha }}
+          OUTCOME: ${{ needs.review.result == 'failure' && 'failed' || 'declined' }}
+          # A failed job may never have reached the dispatch, so its code and reason can be empty.
+          DISPATCH_CODE: ${{ needs.review.result == 'failure' && 'failed' || needs.review.outputs.code }}
+          DISPATCH_REASON: ${{ needs.review.result == 'failure' && 'the review job failed before a validated result existed' || needs.review.outputs.reason }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node scripts/agent-claude-review.mjs notice \
+            --repository "${REPOSITORY}" \
+            --pr "${PULL_NUMBER}" \
+            --head-sha "${HEAD_SHA}" \
+            --outcome "${OUTCOME}" \
+            --code "${DISPATCH_CODE}" \
+            --reason "${DISPATCH_REASON}" \
+            --run-url "${RUN_URL}"
 
   publish:
     name: Publish Claude cross-review
