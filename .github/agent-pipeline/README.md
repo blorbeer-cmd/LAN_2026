@@ -279,7 +279,7 @@ remains closed either way.
 That approval only counts from an account with write access — `author_association` of `OWNER`,
 `MEMBER` or `COLLABORATOR`. This repository is public and allows forking, so any GitHub account
 can submit an approving review; without that restriction a drive-by approval from an outsider
-would satisfy the one control the plan defines for workflow and infrastructure changes.
+would satisfy the one control the plan defines for infrastructure changes.
 
 Fork pull requests are dropped before the task contract is even parsed, and receive no label and
 no comment. The pull-request body is under the fork author's control, so any later decision point

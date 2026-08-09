@@ -9,7 +9,7 @@ const ARCADE_E2E_FILES = new Set([
   "authGateArcade.e2e.test.ts",
   "battleship.e2e.test.ts",
   "challengeRush.e2e.test.ts",
-  "flowsArcade.e2e.test.ts",
+  "arcadeFlows.e2e.test.ts",
 ]);
 
 const CORE_E2E_FILES = new Set([
@@ -158,6 +158,12 @@ function e2eImpactForServerPath(file) {
       return { core: true, arcade: false, arcadeSmoke: true };
     return { core: true, arcade: false, arcadeSmoke: false };
   }
+
+  // Arcade presentation rules are loaded on demand by app.js. The kiosk loads
+  // the same stylesheet statically, but its Arcade scenarios stay in the
+  // dedicated Arcade partition. Keep direct CSS changes out of Core coverage.
+  if (file === "server/public/css/arcade.css")
+    return { core: false, arcade: true, arcadeSmoke: false };
 
   if (file.startsWith("server/public/"))
     return { core: true, arcade: false, arcadeSmoke: true };

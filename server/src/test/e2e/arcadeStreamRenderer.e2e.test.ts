@@ -11,6 +11,7 @@ const probeHtml = `<!doctype html>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/css/style.css" />
+    <link rel="stylesheet" href="/css/arcade.css" />
     <style>
       body { margin: 0; }
       #probe { width: 100%; }
