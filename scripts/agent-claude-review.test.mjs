@@ -80,6 +80,16 @@ test("structured output enforces verdict and finding consistency", () => {
     () => validateClaudeReviewOutput(reviewOutput({ verdict: "changes-required" })),
     /must contain at least one finding/i,
   );
+  assert.throws(
+    () =>
+      validateClaudeReviewOutput(
+        reviewOutput({
+          verdict: "changes-required",
+          findings: [finding({ title: "t".repeat(201) })],
+        }),
+      ),
+    /title exceeds 200 characters/i,
+  );
   assert.throws(() => validateClaudeReviewOutput("not json"), /not valid JSON/);
 });
 
@@ -173,9 +183,20 @@ test("the workflow keeps the PR head inert and Claude tool access read-only", ()
   );
   assert.match(
     workflow,
-    /publish:\s*\n\s+name: Publish Claude cross-review[\s\S]*?group: agent-pipeline-reconcile-\$\{\{ needs\.review\.outputs\.pull_number \}\}[\s\S]*?pull-requests: write/,
+    /publish:\s*\n\s+name: Publish Claude cross-review[\s\S]*?pull-requests: write/,
+  );
+  const publishSection = workflow.match(/\n  publish:[\s\S]*?(?=\n  reconcile:)/)?.[0] ?? "";
+  assert.doesNotMatch(publishSection, /\n\s+concurrency:/);
+  assert.match(
+    workflow,
+    /reconcile:\s*\n\s+name: Reconcile Claude review result[\s\S]*?group: agent-pipeline-reconcile-\$\{\{ needs\.review\.outputs\.pull_number \}\}/,
   );
   assert.match(workflow, /CLAUDE_REVIEW_OUTPUT: \$\{\{ needs\.review\.outputs\.review_output \}\}/);
+  assert.match(workflow, /"title":\{"type":"string","maxLength":200\}/);
+  assert.match(workflow, /"file":\{"type":\["string","null"\],"maxLength":500\}/);
+  assert.match(workflow, /"problem":\{"type":"string","maxLength":4000\}/);
+  assert.match(workflow, /"items":\{"type":"string","maxLength":4000\}/);
+  assert.doesNotMatch(workflow, /ausschließlich Glob, Grep und Read/);
   assert.match(workflow, /--allowedTools "Glob,Grep,Read"/);
   assert.match(workflow, /--disallowedTools "Bash,Edit,MultiEdit,Write/);
   assert.doesNotMatch(workflow, /track_progress:/);

@@ -347,7 +347,11 @@ export function parseUiNoticeHeadSha(comments) {
  * enforces "the reconciler's own".
  */
 export function parseReviewDecision(body) {
-  const match = body?.match(REVIEW_DECISION_PATTERN);
+  // The reconciler writes this record as the final line of its own status comment. Requiring that
+  // position prevents a PR-controlled value interpolated earlier in the body from impersonating
+  // the observation record, even if a future field misses output escaping.
+  const finalRecordPattern = new RegExp(`${REVIEW_DECISION_PATTERN.source}\\s*$`);
+  const match = body?.match(finalRecordPattern);
   return match ? { headSha: match[1], mode: match[2] } : null;
 }
 
@@ -1104,7 +1108,7 @@ function reviewDecisionSection(readiness, config) {
       (recommendation?.reason ? ` — ${recommendation.reason}.` : "."),
     "",
     `- \`${modeLabels.cross}\` — cross-review by ${readiness.reviewerProvider ?? "the other provider"}; most independent.`,
-    `- \`${modeLabels.self}\` — fresh, read-only session of ${readiness.contract?.implementer ?? "the implementer"}; spares the other provider's quota, less independent.`,
+    `- \`${modeLabels.self}\` — fresh, read-only session of ${statusText(readiness.contract?.implementer ?? "the implementer")}; spares the other provider's quota, less independent.`,
     `- \`${modeLabels.human}\` — you review it yourself; approve this exact head to satisfy the gate.`,
     "",
     "The chosen review starts automatically, its findings are fixed automatically, and the",
@@ -1133,7 +1137,7 @@ export function renderStatusComment(readiness, snapshot, config = loadConfig()) 
     `- Ready for human merge: \`${readiness.ready}\``,
     `- Head SHA: \`${snapshot.headSha ?? "unknown"}\``,
     `- Task: \`${statusText(contract.taskId ?? "unknown")}\``,
-    `- Implementer: \`${contract.implementer ?? "unknown"}\``,
+    `- Implementer: \`${statusText(contract.implementer ?? "unknown")}\``,
     `- Reviewer: \`${readiness.reviewerProvider ?? "unknown"}\``,
     reviewModeLine(readiness, config),
     `- Checks: \`${details.checks?.state ?? "unknown"}\``,

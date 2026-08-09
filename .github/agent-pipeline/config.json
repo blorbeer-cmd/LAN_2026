@@ -63,7 +63,8 @@
     "Reconcile pull request",
     "Select Claude review target",
     "Run Claude cross-review",
-    "Publish Claude cross-review"
+    "Publish Claude cross-review",
+    "Reconcile Claude review result"
   ],
   "reviewTimeoutMinutes": 45,
   "waitingEscalationHours": 24,

@@ -143,21 +143,23 @@ For a Codex implementation, applying `review:cross` starts the Claude adapter on
 `deriveReadiness` result is actually in phase `review` and names Claude as the counter provider.
 The label should therefore be applied only after the status comment asks for the review decision;
 if a mechanical or protected-path blocker is still open, clear it and reapply the label afterwards.
-Concurrency serializes runs per pull request; after a terminal `pass` or `changes-required` result
-is published, the current head-bound marker makes later duplicate or manual events no-ops. A
-`blocked` result remains explicitly retryable by reapplying the label or manually dispatching the
-workflow.
+Concurrency serializes the recoverable reconcile transition per pull request. The publisher stays
+outside that lock so a regular reconcile run cannot cancel the only copy of a completed model
+result. After a terminal `pass` or `changes-required` result is published, the current head-bound
+marker makes later duplicate or manual events no-ops. A `blocked` result remains explicitly
+retryable by reapplying the label or manually dispatching the workflow.
 
 The read-only review job checks out trusted `main` at the workspace root and the exact pull-request
 head in a temporary subdirectory. It generates the diff with external diff drivers and text
 conversion disabled, deletes that subdirectory, and only then invokes Claude. The action is pinned
 to a commit, receives a short-lived `GITHUB_TOKEN` whose repository permissions are all read-only,
-and exposes no shell, editing, web or GitHub-writing tool. The model returns only schema-validated
-JSON. A separate publisher job has no PR checkout; trusted repository code there verifies that the
-PR still points at the reviewed SHA, rejects malformed or inconsistent verdicts, bounds the final
-comment size and neutralizes injected Markdown and HTML. The gate accepts its marker only when the
-comment begins with the publisher's exact heading, not when another `github-actions[bot]` comment
-merely echoes a marker.
+and disables shell, editing and web tools. The action's base GitHub tools remain present, but the
+job token makes every repository operation available to them read-only. The model returns only
+schema-validated JSON whose length limits match the publisher. A separate publisher job has no PR
+checkout; trusted repository code there verifies that the PR still points at the reviewed SHA,
+rejects malformed or inconsistent verdicts, bounds the final comment size and neutralizes injected
+Markdown and HTML. The gate accepts its marker only when the comment begins with the publisher's
+exact heading, not when another `github-actions[bot]` comment merely echoes a marker.
 
 This is intentionally not the complete provider loop. A failed action or `blocked` result is
 retried by removing and reapplying the review label or by a manual workflow dispatch. A new commit
