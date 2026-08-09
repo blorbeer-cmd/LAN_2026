@@ -63,13 +63,14 @@
     "Reconcile pull request",
     "Select Claude review target",
     "Run Claude cross-review",
+    "Announce missing Claude cross-review",
     "Publish Claude cross-review",
     "Reconcile Claude review result",
     "Select Codex review target",
     "Request Codex cross-review"
   ],
   "reviewTimeoutMinutes": 45,
-  "waitingEscalationHours": 24,
+  "waitingEscalationHours": 2,
   "labels": {
     "pipeline": "agent:pipeline",
     "implementing": "agent:implementing",
