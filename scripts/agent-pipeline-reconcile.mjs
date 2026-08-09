@@ -42,6 +42,8 @@ const REVIEW_DECISION_PATTERN =
 export const REVIEW_RESULT_MARKER = "<!-- agent-pipeline:review-result";
 export const REVIEW_RESULT_SOURCE =
   "<!--\\s*agent-pipeline:review-result\\s+([0-9a-f]{40})\\s+mode=(cross|self|human)\\s+verdict=(pass|changes-required|blocked)\\s+session=(\\S+)\\s+read-only=(true|verified|false)\\s*-->";
+export const CLAUDE_CROSS_REVIEW_HEADING = "## Claude Cross-Review";
+export const CLAUDE_CROSS_REVIEW_SOURCE = "claude-cross-review";
 
 // How strongly the reviewing session was kept away from the code, weakest first. The order is the
 // comparison: a level satisfies a minimum when its index is at least the minimum's.
@@ -387,6 +389,12 @@ export function parseReviewResults(comments) {
         // `meetsReadOnlyMinimum` against repository policy rather than by a boolean here.
         readOnly: match[5],
         author: comment.author ?? null,
+        // The Actions publisher has to share github-actions[bot] with the reconciler and possibly
+        // other workflows. Its exact leading heading therefore forms an additional provenance
+        // boundary: a marker merely echoed inside another bot comment is not Claude evidence.
+        source: String(comment.body).startsWith(`${CLAUDE_CROSS_REVIEW_HEADING}\n`)
+          ? CLAUDE_CROSS_REVIEW_SOURCE
+          : null,
       });
     }
   }
@@ -399,17 +407,23 @@ export function parseReviewResults(comments) {
  * counter-provider adapter's dedicated publisher identities.
  *
  * `isTrustedCommentAuthor` alone is too wide here: it accepts every `[bot]` login, so any app
- * installed on the repository could post a passing self-review. The cross-review path checks its
- * verdict against `providerReviewerAllowlist` for exactly that reason, and this evidence opens the
- * same gate. Only the implementation provider's own identities — the ones that could have run the
- * review — count.
+ * installed on the repository could post a passing result. Native cross-reviews use
+ * `providerReviewerAllowlist`; structured cross-results use their separate publisher allowlist and
+ * source discriminator. Self-review callers pass only the implementation provider's identities.
  */
-export function latestReviewResult(results, headSha, mode, allowedAuthors) {
+export function latestReviewResult(
+  results,
+  headSha,
+  mode,
+  allowedAuthors,
+  requiredSource = null,
+) {
   const allowed = allowedAuthors ?? [];
   let found = null;
   for (const result of results ?? []) {
     if (result.headSha !== headSha || result.mode !== mode) continue;
     if (!allowed.includes(result.author)) continue;
+    if (requiredSource && result.source !== requiredSource) continue;
     found = result;
   }
   return found;
@@ -759,6 +773,7 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     snapshot.headSha,
     "cross",
     config.crossReviewResultAuthors?.[reviewerProvider] ?? [],
+    reviewerProvider === "claude" ? CLAUDE_CROSS_REVIEW_SOURCE : null,
   );
 
   // Who reviews this head is the user's decision, not the pipeline's. Everything after the
@@ -1024,9 +1039,19 @@ export function planLabels(currentLabels, readiness, config = loadConfig()) {
   };
 }
 
+function statusText(value) {
+  return String(value)
+    .replace(/<!--/g, "&lt;!--")
+    .replace(/-->/g, "--&gt;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/`/g, "\\`")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
+}
+
 function formatList(items) {
   if (!items.length) return "_none_";
-  return items.map((item) => `- ${item}`).join("\n");
+  return items.map((item) => `- ${statusText(item)}`).join("\n");
 }
 
 /**
@@ -1107,7 +1132,7 @@ export function renderStatusComment(readiness, snapshot, config = loadConfig()) 
     `- Phase: \`${readiness.phase}\``,
     `- Ready for human merge: \`${readiness.ready}\``,
     `- Head SHA: \`${snapshot.headSha ?? "unknown"}\``,
-    `- Task: \`${contract.taskId ?? "unknown"}\``,
+    `- Task: \`${statusText(contract.taskId ?? "unknown")}\``,
     `- Implementer: \`${contract.implementer ?? "unknown"}\``,
     `- Reviewer: \`${readiness.reviewerProvider ?? "unknown"}\``,
     reviewModeLine(readiness, config),

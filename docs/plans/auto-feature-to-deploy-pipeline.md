@@ -519,6 +519,8 @@ Mergekonflikt werden korrekt behandelt; ein riskanter Konflikt stoppt.
 Teilstand: Die Auswahl `review:cross` startet für eine mechanisch review-bereite
 Codex-Implementierung genau einen credential-read-only Claude-Lauf. Dessen strukturiertes Ergebnis
 wird validiert, an den aktuellen Head gebunden und vom vertrauenswürdigen Workflow veröffentlicht.
+Der PR-Checkout wird nach der Diff-Erzeugung und vor Übergabe des Provider-Secrets vollständig
+entfernt; damit können Gedächtnisdateien des Heads nicht als Claude-Code-Anweisungen geladen werden.
 Die übrigen Punkte dieser Phase bleiben offen.
 
 1. Auswahl des Review-Modus mit Empfehlung vorlegen und das Review an den gewählten Reviewer

@@ -26,11 +26,13 @@ The pipeline reports state and has one deliberately narrow provider action:
 - The `pull_request_target` workflow definitions are loaded from the trusted default branch and run
   the validator, reconciler and configuration from that same trusted branch. The declared PR base
   must equal the configured default branch. The Claude workflow checks the pull-request head out
-  into `pr-head`, renders an inert diff and exposes only `Glob`, `Grep` and `Read`; no pull-request
-  code, tests, hooks or package-manager commands are executed.
-- Only the Claude cross-review adapter invokes an agent. It does not retry, count rounds, start
-  fixes, approve, merge or change branch protection. The merge-gate status is written but is not a
-  required check until someone adds it by hand.
+  only long enough to render an inert diff, then removes the checkout before the provider secret is
+  exposed. Claude receives the diff but no PR-owned `CLAUDE.md`, `AGENTS.md` or `.claude` settings;
+  no pull-request code, tests, hooks or package-manager commands are executed.
+- Only the Claude cross-review adapter invokes an agent. It has no automatic retry, round counter,
+  fix loop, approval, merge or branch-protection mutation. A user may manually retry a `blocked`
+  result. The merge-gate status is written but is not a required check until someone adds it by
+  hand.
 
 ## Readiness reconciler
 
@@ -141,22 +143,27 @@ For a Codex implementation, applying `review:cross` starts the Claude adapter on
 `deriveReadiness` result is actually in phase `review` and names Claude as the counter provider.
 The label should therefore be applied only after the status comment asks for the review decision;
 if a mechanical or protected-path blocker is still open, clear it and reapply the label afterwards.
-Concurrency serializes runs per pull request; after the first result is published, the current
-head-bound marker makes later duplicate or manual events no-ops.
+Concurrency serializes runs per pull request; after a terminal `pass` or `changes-required` result
+is published, the current head-bound marker makes later duplicate or manual events no-ops. A
+`blocked` result remains explicitly retryable by reapplying the label or manually dispatching the
+workflow.
 
 The read-only review job checks out trusted `main` at the workspace root and the exact pull-request
-head in a subdirectory. It generates the diff with external diff drivers and text conversion
-disabled. The Claude action is pinned to a commit, receives a short-lived `GITHUB_TOKEN` whose
-repository permissions are all read-only, and exposes no shell, editing, web or GitHub-writing
-tool. The model returns only schema-validated JSON. A separate publisher job has no PR checkout;
-trusted repository code there verifies that the PR still points at the reviewed SHA, rejects
-malformed or inconsistent verdicts, neutralizes injected HTML comments and publishes exactly one
-`agent-pipeline:review-result` marker as `github-actions[bot]`.
+head in a temporary subdirectory. It generates the diff with external diff drivers and text
+conversion disabled, deletes that subdirectory, and only then invokes Claude. The action is pinned
+to a commit, receives a short-lived `GITHUB_TOKEN` whose repository permissions are all read-only,
+and exposes no shell, editing, web or GitHub-writing tool. The model returns only schema-validated
+JSON. A separate publisher job has no PR checkout; trusted repository code there verifies that the
+PR still points at the reviewed SHA, rejects malformed or inconsistent verdicts, bounds the final
+comment size and neutralizes injected Markdown and HTML. The gate accepts its marker only when the
+comment begins with the publisher's exact heading, not when another `github-actions[bot]` comment
+merely echoes a marker.
 
-This is intentionally not the complete provider loop. A failed action is retried by removing and
-reapplying the review label or by a manual workflow dispatch. A new commit invalidates the result
-and the existing decision logic asks for the review mode again. Automatic provider retries,
-review-round counting, fallback selection and findings-to-fix orchestration remain later phases.
+This is intentionally not the complete provider loop. A failed action or `blocked` result is
+retried by removing and reapplying the review label or by a manual workflow dispatch. A new commit
+invalidates the result and the existing decision logic asks for the review mode again. Automatic
+provider retries, review-round counting, fallback selection and findings-to-fix orchestration
+remain later phases.
 
 Escalations the reconciler cannot derive from GitHub state — an exhausted round limit, a critical
 decision, the 24-hour waiting escalation — stay with `agent:needs-human`, exactly as the plan
