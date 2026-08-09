@@ -1,7 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
+import type { ChildProcess } from 'child_process';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import {
@@ -11,9 +10,9 @@ import {
   loginE2EAdmin,
   promoteE2EAdmin,
 } from './authHelpers';
+import { startE2EServer } from './e2eServer';
 
-const PORT = 3915;
-const BASE_URL = `http://localhost:${PORT}`;
+let BASE_URL: string;
 
 let serverProcess: ChildProcess;
 let browser: Browser;
@@ -23,19 +22,6 @@ const playerCookies = new Map<string, string>();
 interface Actor {
   context: BrowserContext;
   page: Page;
-}
-
-async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    try {
-      if ((await fetch(url)).ok) return;
-    } catch {
-      // Server process is still starting.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error(`Server at ${url} did not become ready`);
 }
 
 async function createPlayer(name: string): Promise<{ id: string }> {
@@ -114,15 +100,13 @@ function waitForSocketEvent<T>(socket: ClientSocket, event: string, predicate: (
 }
 
 before(async () => {
-  serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: {
-      ...authenticatedServerEnv(PORT),
-      NODE_ENV: 'test',
-      E2E_FAST_TIMERS: '1',
-    },
-    stdio: 'ignore',
+  const server = await startE2EServer({
+    ...authenticatedServerEnv(0),
+    NODE_ENV: 'test',
+    E2E_FAST_TIMERS: '1',
   });
-  await waitForServer(`${BASE_URL}/api/health`);
+  serverProcess = server.process;
+  BASE_URL = server.baseUrl;
   adminCookie = await loginE2EAdmin(BASE_URL);
   browser = await chromium.launch();
 });

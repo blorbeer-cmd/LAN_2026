@@ -37,7 +37,8 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
 
 - Unit/Integration laufen gegen eine **In-Memory-SQLite** (`DB_FILE=:memory:`), berühren also nie
   echte Daten.
-- E2E startet den gebauten Server (`dist/index.js`) als eigenen Kindprozess auf einem Test-Port,
+- E2E startet den gebauten Server (`dist/index.js`) als eigenen Kindprozess auf einem vom
+  Betriebssystem vergebenen freien Test-Port,
   ebenfalls mit `DB_FILE=:memory:`, und schließt ihn danach automatisch wieder.
 - Jede Test-Datei läuft in einem eigenen Prozess (Isolation durch den Node-Runner).
 - Eine Instanz bedient genau eine Gruppe (`docs/plans/reset-single-group.md`); Events sind die
@@ -92,13 +93,11 @@ Wiederholungsfall ab.
 - Integrationstests liegen unter `src/test/*.test.ts`.
 - E2E-Tests liegen unter `src/test/e2e/*.e2e.test.ts` und laufen **nicht** in `npm test` mit (eigenes
   Script `test:e2e`), da sie einen Server + Browser brauchen und entsprechend langsamer sind.
-- Die E2E-Dateien laufen parallel (eine pro Prozess) und starten je einen eigenen Server — jede
-  Datei braucht deshalb einen **eigenen Test-Port** (aktuell: 3901 `flows`, 3902 `access`,
-  3903 `arcade`, 3904 `authGate`, 3910 Agent-Integration in `agent/`, 3911 `phase5eIsolation`,
-  3912 `checklist`, 3913 `flowsArcade`, 3914 `eventInvitations`, 3915 `battleship`,
-  3916 `challengeRush`, 3917 ein zweiter, dediziert kurz konfigurierter Challenge-Rush-Server in
-  derselben Datei für den Forfait-Reconnect-Test). Ein doppelt vergebener Port lässt alle Tests der betroffenen Datei mit
-  „Server did not become ready“ scheitern.
+- Die E2E-Dateien laufen parallel (eine pro Prozess) und starten je einen eigenen Server. Der
+  gemeinsame Helfer `src/test/e2e/e2eServer.ts` startet ihn mit `PORT=0`, liest den tatsächlich
+  gebundenen Port aus der Startmeldung und liefert die passende Basis-URL. Dadurch kollidieren
+  parallele Läufe und andere Worktrees nicht mehr auf statisch reservierten Ports. Das gilt auch
+  für zusätzliche Server innerhalb einer Testdatei, etwa den Forfait-Reconnect-Test.
 - `npm run test:e2e` setzt `E2E_FAST_TIMERS=1`. Der Schnellmodus verkürzt Arcade-Countdowns nur
   zusammen mit `NODE_ENV=test`; in Produktion und bei allen anderen Aufrufen bleiben für die
   gemeinsamen Arcade-Countdowns drei Sekunden aktiv. Challenge Rush verwendet abweichend fünf
@@ -107,6 +106,9 @@ Wiederholungsfall ab.
   `CHALLENGE_RUSH_FAST_TIMERS=1` zusammen mit `NODE_ENV=test`. Dieses separate Profil verkürzt nur
   Challenge-Rush-Countdowns, -Deadlines, Memory-Reveal und Ampelverzögerung in dieser Testdatei;
   `test:e2e`, andere Testprozesse und Produktion behalten ihre regulären Spielzeiten.
+- Zielgerichtete Challenge-Rush-Integrationstests wählen über den admin-geschützten
+  `challengeKeys`-Pfad genau ihre relevante Challenge. Nur der vollständige Lifecycle-Test spielt
+  weiterhin einmal den gesamten 40-Challenge-Katalog durch.
 - Der Produktions-Build (`npm run build`) schließt alle Testdateien aus – sie landen nie in `dist/`.
 - `index.ts` startet den Server nur, wenn es direkt ausgeführt wird (`require.main === module`),
   damit Tests die App importieren können, ohne einen Port zu belegen.

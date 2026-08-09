@@ -6,8 +6,7 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
+import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
 import {
   addSessionCookie,
@@ -16,29 +15,15 @@ import {
   E2EAccount,
   loginE2EAdmin,
 } from './authHelpers';
+import { startE2EServer } from './e2eServer';
 
-const PORT = 3912; // 3901 flows, 3902 access, 3903 arcade, 3904 authGate, 3910 agent integration, 3911 phase5e isolation
-const BASE_URL = `http://localhost:${PORT}`;
+let BASE_URL: string;
 
 let serverProcess: ChildProcess;
 let browser: Browser;
 let page: Page;
 let alice: E2EAccount;
 let bob: E2EAccount;
-
-async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // not up yet, keep polling
-    }
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  throw new Error(`Server at ${url} did not become ready in time`);
-}
 
 async function openChecklist(): Promise<void> {
   await page.click('.nav-btn[data-view="more"]');
@@ -53,11 +38,9 @@ async function switchAccount(account: E2EAccount): Promise<void> {
 }
 
 before(async () => {
-  serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: authenticatedServerEnv(PORT),
-    stdio: 'ignore',
-  });
-  await waitForServer(`${BASE_URL}/api/health`);
+  const server = await startE2EServer(authenticatedServerEnv(0));
+  serverProcess = server.process;
+  BASE_URL = server.baseUrl;
   const adminCookie = await loginE2EAdmin(BASE_URL);
   alice = await createE2EAccount(BASE_URL, adminCookie, 'E2E Checklist Alice');
   bob = await createE2EAccount(BASE_URL, adminCookie, 'E2E Checklist Bob');

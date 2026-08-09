@@ -96,8 +96,10 @@ function start(): void {
   });
 
   server.listen(config.port, () => {
+    const address = server.address();
+    const port = address && typeof address === 'object' ? address.port : config.port;
     // eslint-disable-next-line no-console
-    console.log(`Respawn server läuft auf http://localhost:${config.port}`);
+    console.log(`Respawn server läuft auf http://localhost:${port}`);
   });
 }
 
