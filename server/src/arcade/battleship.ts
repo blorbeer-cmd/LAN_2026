@@ -1,7 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
-import { broadcastArcadeKiosk } from '../realtime';
+import { broadcastArcadeKiosk } from './realtime';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { playerMayUseArcadeAi } from './adminAccess';
 import { arcadeTiming } from './timing';

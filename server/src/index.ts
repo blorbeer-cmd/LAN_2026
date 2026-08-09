@@ -9,7 +9,7 @@ import './db'; // side-effect: open DB, create schema, seed defaults
 import { hasClaimedAdmin } from './accounts';
 import { runBootstrapAdmins } from './bootstrapAdmins';
 import { createApp } from './app';
-import { setIo, createSocketAuthGuard, registerArcadeKioskSockets } from './realtime';
+import { setIo, createSocketAuthGuard, registerScopedSockets } from './realtime';
 import { startOfflineSweeper } from './liveStatus';
 import { startArcadeHeartbeat } from './arcade/arcadeTracking';
 import { registerArcadeSockets } from './arcade/arcade';
@@ -20,6 +20,7 @@ import { registerPongSockets } from './arcade/pong';
 import { registerSnakeSockets } from './arcade/snake';
 import { registerBattleshipSockets } from './arcade/battleship';
 import { registerChallengeRushSockets } from './arcade/challengeRush';
+import { registerArcadeSockets as registerArcadeRealtimeSockets } from './arcade/realtime';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -47,14 +48,7 @@ function start(): void {
     console.error(`FATAL: ${accessError}`);
     process.exit(1);
   }
-  if (!claimedAdminExists && process.env.LOCAL_GENERATED_RECOVERY_CODE === '1') {
-    // eslint-disable-next-line no-console
-    console.log('Frische lokale Datenbank: Für diesen Start wurde ein temporärer Erstzugang erzeugt.');
-    // eslint-disable-next-line no-console
-    console.log(`Öffne http://localhost:${config.port}/?claim=${config.adminRecoveryCode}`);
-    // eslint-disable-next-line no-console
-    console.log('Für einen dauerhaften Zugang ADMIN_RECOVERY_CODE oder BOOTSTRAP_ADMIN_1_NAME/PASSWORD setzen.');
-  }
+  const showLocalRecoveryInfo = !claimedAdminExists && process.env.LOCAL_GENERATED_RECOVERY_CODE === '1';
 
   const app = createApp();
   const server = http.createServer(app);
@@ -62,7 +56,8 @@ function start(): void {
   setIo(io);
 
   io.use(createSocketAuthGuard());
-  registerArcadeKioskSockets(io);
+  registerScopedSockets(io);
+  registerArcadeRealtimeSockets(io);
 
   registerArcadeSockets(io);
   registerTetrisSockets(io);
@@ -96,8 +91,18 @@ function start(): void {
   });
 
   server.listen(config.port, () => {
+    const address = server.address();
+    const port = address && typeof address === 'object' ? address.port : config.port;
+    if (showLocalRecoveryInfo) {
+      // eslint-disable-next-line no-console
+      console.log('Frische lokale Datenbank: Für diesen Start wurde ein temporärer Erstzugang erzeugt.');
+      // eslint-disable-next-line no-console
+      console.log(`Öffne http://localhost:${port}/?claim=${config.adminRecoveryCode}`);
+      // eslint-disable-next-line no-console
+      console.log('Für einen dauerhaften Zugang ADMIN_RECOVERY_CODE oder BOOTSTRAP_ADMIN_1_NAME/PASSWORD setzen.');
+    }
     // eslint-disable-next-line no-console
-    console.log(`Respawn server läuft auf http://localhost:${config.port}`);
+    console.log(`Respawn server läuft auf http://localhost:${port}`);
   });
 }
 

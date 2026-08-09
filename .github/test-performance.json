@@ -1,0 +1,25 @@
+{
+  "thresholdPercent": 20,
+  "minimumAbsoluteIncreaseSeconds": 30,
+  "baselineSamples": 5,
+  "historyRuns": 40,
+  "historyFetchBatchSize": 6,
+  "suites": {
+    "unit-integration": {
+      "job": "Server lint, build and tests",
+      "step": "Run measured unit and integration tests"
+    },
+    "e2e-core": {
+      "job": "Browser E2E Core",
+      "step": "Run measured Core E2E"
+    },
+    "e2e-arcade": {
+      "job": "Browser E2E Arcade",
+      "step": "Run measured Arcade E2E"
+    },
+    "e2e-arcade-smoke": {
+      "job": "Browser E2E Arcade smoke",
+      "step": "Run measured Arcade smoke E2E"
+    }
+  }
+}

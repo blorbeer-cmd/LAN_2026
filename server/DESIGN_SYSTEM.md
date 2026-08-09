@@ -6,6 +6,11 @@ tokens are plain CSS custom properties defined once in `server/public/css/style.
 (`:root` block, top of the file) and consumed everywhere else via `var(--token-name)`,
 including inline `style="..."` attributes built by the JS views.
 
+Arcade-only presentation rules live in `server/public/css/arcade.css`. The app loads that
+stylesheet only for Arcade views, while `kiosk.html` loads it statically for its Arcade dashboard.
+Keep new Arcade selectors there so shared-view changes do not expand the Arcade browser-test
+trigger.
+
 If you're adding or changing UI, the rule is simple: **never write a raw color,
 pixel value, or font-size — always reference a token below.** If the token you
 need doesn't exist yet, add it to the `:root` block first (with a short comment

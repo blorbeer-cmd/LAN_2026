@@ -2,9 +2,10 @@
 
 Status: beschlossenes Zielkonzept; Phasen 0 bis 2 umgesetzt (Task-Vertrag, Labels, stateless
 Readiness-Reconciler) sowie Phase 7 (Commit-Status `Agent pipeline / ready for human merge`;
-Eintrag als Required Check bleibt eine manuelle Nutzerentscheidung). Ab Phase 3 startet die
-Automatik noch keine Agenten.
-Stand: 2026-08-07
+Eintrag als Required Check bleibt eine manuelle Nutzerentscheidung). Aus Phase 4 ist der bewusst
+enge Pilotpfad Codex-Implementierung → Claude-Cross-Review umgesetzt; CI-/Konflikt-Fixes,
+Gegenrichtung, automatische Retries, Rundenzähler und Findings-Fix-Schleife fehlen noch.
+Stand: 2026-08-08
 
 Der Reviewer wird nicht mehr automatisch bestimmt, sondern vom Nutzer pro Head-SHA gewählt. Die
 Herleitung dieser Änderung steht in [`review-mode-selection.md`](review-mode-selection.md), der
@@ -103,11 +104,11 @@ früheren Head gebundenes Wahl-Label verfällt.
 
 ## 4. Rollen und Review-Unabhängigkeit
 
-| Modus            | Reviewer                                         | Findings/Fixes           | Unabhängigkeit                                  |
-| ---------------- | ------------------------------------------------ | ------------------------ | ----------------------------------------------- |
-| `cross` (Normal) | Gegen-Anbieter (Claude ↔ Codex)                  | Implementierungs-Agent   | höchste                                         |
-| `self`           | frische, isolierte Session desselben Anbieters   | Implementierungs-Agent   | reduziert, bewusst gewählt                      |
-| `human`          | Nutzer                                           | Implementierungs-Agent   | Review und Merge liegen bei derselben Person    |
+| Modus            | Reviewer                                       | Findings/Fixes         | Unabhängigkeit                               |
+| ---------------- | ---------------------------------------------- | ---------------------- | -------------------------------------------- |
+| `cross` (Normal) | Gegen-Anbieter (Claude ↔ Codex)                | Implementierungs-Agent | höchste                                      |
+| `self`           | frische, isolierte Session desselben Anbieters | Implementierungs-Agent | reduziert, bewusst gewählt                   |
+| `human`          | Nutzer                                         | Implementierungs-Agent | Review und Merge liegen bei derselben Person |
 
 Der Cross-Review bleibt der empfohlene Normalfall. `self` und `human` sind kein Überspringen des
 Reviews, sondern ein Review mit geringerer Unabhängigkeit; sie gelten nur, wenn der Nutzer sie für
@@ -169,22 +170,22 @@ Fork-PRs nehmen nicht an der schreibenden Automatik teil.
 
 ### Sichtbare Labels
 
-| Label                   | Bedeutung                                                                 |
-| ----------------------- | ------------------------------------------------------------------------- |
-| `agent:pipeline`        | PR nimmt an der Automatik teil                                            |
-| `agent:implementing`    | Implementierungs-Agent arbeitet                                           |
-| `agent:ci-fix`          | CI-Fehler wird bearbeitet                                                 |
-| `agent:conflict-fix`    | Mergekonflikt wird bearbeitet                                             |
-| `agent:review`          | gewähltes Review läuft oder steht aus                                     |
-| `agent:review-fallback` | Ausweichreview, weil der zuerst gewählte Anbieter ausgefallen ist         |
-| `review:cross`          | Nutzerwahl: Review durch den Gegen-Anbieter                               |
-| `review:self`           | Nutzerwahl: isoliertes Review des Implementierungs-Anbieters              |
-| `review:human`          | Nutzerwahl: menschliches Review                                           |
-| `agent:waiting`         | benötigter Anbieter oder Dienst ist vorübergehend nicht verfügbar         |
-| `agent:needs-human`     | kritische Entscheidung oder Rundenlimit erreicht                          |
-| `agent:ready-for-merge` | alle maschinellen Gates für den aktuellen Head-SHA erfüllt                |
-| `ui:changed`            | PR enthält eine sichtbare UI/UX-Änderung                                  |
-| `agent:no-auto`         | manueller Kill-Switch für diesen PR                                       |
+| Label                   | Bedeutung                                                         |
+| ----------------------- | ----------------------------------------------------------------- |
+| `agent:pipeline`        | PR nimmt an der Automatik teil                                    |
+| `agent:implementing`    | Implementierungs-Agent arbeitet                                   |
+| `agent:ci-fix`          | CI-Fehler wird bearbeitet                                         |
+| `agent:conflict-fix`    | Mergekonflikt wird bearbeitet                                     |
+| `agent:review`          | gewähltes Review läuft oder steht aus                             |
+| `agent:review-fallback` | Ausweichreview, weil der zuerst gewählte Anbieter ausgefallen ist |
+| `review:cross`          | Nutzerwahl: Review durch den Gegen-Anbieter                       |
+| `review:self`           | Nutzerwahl: isoliertes Review des Implementierungs-Anbieters      |
+| `review:human`          | Nutzerwahl: menschliches Review                                   |
+| `agent:waiting`         | benötigter Anbieter oder Dienst ist vorübergehend nicht verfügbar |
+| `agent:needs-human`     | kritische Entscheidung oder Rundenlimit erreicht                  |
+| `agent:ready-for-merge` | alle maschinellen Gates für den aktuellen Head-SHA erfüllt        |
+| `ui:changed`            | PR enthält eine sichtbare UI/UX-Änderung                          |
+| `agent:no-auto`         | manueller Kill-Switch für diesen PR                               |
 
 ### Maschinenzustand
 
@@ -228,6 +229,25 @@ PRs, falls Webhooks, Kommentare oder Anbieterreaktionen verloren gehen.
 
 Tests dürfen nicht gelöscht, gelockert oder mit pauschalen Timeouts überdeckt werden, um einen
 Lauf grün zu bekommen.
+
+### Testlauf-Regressionen
+
+Die CI misst Unit-/Integration-, Core-E2E-, Arcade-Smoke- und Arcade-E2E-Laufzeit getrennt von
+Setup und Build.
+Mehr als 20 Prozent und mindestens 30 Sekunden gegenüber dem Median der letzten fünf erfolgreichen
+`main`-Läufe lösen zunächst einen automatischen Wiederholungslauf der auffälligen Suite aus. Nur
+ein bestätigter Rückschritt wird zum CI-Fehler und durchläuft die normale CI-Fix-Schleife. Der
+Implementierungs-Agent untersucht dann Ursache und langsamste Tests und reduziert die Laufzeit,
+ohne Abdeckung oder Assertions zu schwächen. Ist zusätzliche Laufzeit wegen notwendiger neuer
+Abdeckung unvermeidbar, wird sie im PR nachvollziehbar begründet und im Review bewertet.
+
+Core- und Arcade-E2E sind getrennte Checks. Eine getestete Pfadklassifikation startet den
+vollständigen Arcade-Lauf nur für Arcade-spezifische Bereiche. Gemeinsame Dateien und unbekannte
+Produktionspfade fallen sicher auf Core-E2E plus einen begrenzten Arcade-Smoke-Test zurück.
+Allgemeiner Socket-Transport und Arcade-Watcher-/Kiosk-Streaming sind in getrennten Modulen
+gekapselt, sodass Änderungen am allgemeinen Realtime-Modul keinen Arcade-Test benötigen. Die
+gemeinsamen Unit-/Integrationstests bleiben dabei verpflichtend. Ein täglicher Volltest bleibt als
+Sicherheitsnetz bestehen.
 
 ### Mergekonflikte
 
@@ -297,10 +317,13 @@ Fallback-Review verwendet denselben Marker mit `mode=self` und wird durch
 <!-- agent-pipeline:review-result <head-sha> mode=self verdict=pass session=<id> read-only=true -->
 ```
 
-Nur ein Marker mit einer ausreichenden `read-only`-Stufe, passendem Head-SHA und `verdict=pass` von einer Identität des
-Implementierungs-Anbieters erfüllt das Gate in diesem Modus. Die Autorenprüfung ist bewusst enger
-als „vertrauenswürdiger Kommentarautor", der jedes `[bot]`-Konto einschließt. Für `cross` und `human` ist die Approval des
-jeweiligen Reviewers zum exakten Head-SHA der Nachweis; dort ist kein Marker nötig.
+Nur ein Marker mit einer ausreichenden `read-only`-Stufe, passendem Head-SHA und `verdict=pass` von
+einer dafür erlaubten Identität erfüllt das Gate. Die Autorenprüfung ist bewusst enger als
+„vertrauenswürdiger Kommentarautor", der jedes `[bot]`-Konto einschließt. Im Modus `self` muss die
+Identität zum Implementierungs-Anbieter gehören. Im Modus `cross` kann eine provider-spezifische,
+vertrauenswürdige Workflow-Identität das strukturierte Ergebnis eines credential-read-only
+Review-Laufs veröffentlichen, wenn die Anbieterintegration kein natives GitHub-Review erzeugt.
+Im Modus `human` bleibt die Approval zum exakten Head-SHA der Nachweis.
 
 ## 9. Nutzungslimits und Nichtverfügbarkeit
 
@@ -324,9 +347,11 @@ jeweiligen Reviewers zum exakten Head-SHA der Nachweis; dort ist kein Marker nö
 4. Ist kein Anbieter verfügbar und will der Nutzer nicht selbst reviewen, `agent:waiting` setzen
    und zeitgesteuert erneut versuchen.
 5. Warteversuche und unbeantwortete Auswahlfragen zählen nicht als Reviewrunde.
-6. Nach 24 Stunden ohne Fortschritt den Nutzer informieren; nur bei einer tatsächlich nötigen
-   Entscheidung zusätzlich `agent:needs-human` setzen. Eine ausstehende Modus-Auswahl allein ist
-   keine Eskalation, sondern der Normalzustand `awaiting-review-decision`.
+6. Liefert ein gewähltes Review nach `waitingEscalationHours` aus `.github/agent-pipeline/config.json`
+   (derzeit 2 Stunden) kein Ergebnis, meldet der Reconciler die Überfälligkeit als Blocker und als
+   eigene Zeile im Statuskommentar; nur bei einer tatsächlich nötigen Entscheidung zusätzlich
+   `agent:needs-human` setzen. Eine ausstehende Modus-Auswahl allein ist keine Eskalation, sondern
+   der Normalzustand `awaiting-review-decision`.
 
 Der lokale Plan `docs/plans/auto-resume-after-token-reset.md` kann unterbrochene lokale Sessions
 ergänzend fortsetzen. Für parallele Arbeiten muss er konkrete Session-IDs statt `--last`
@@ -359,13 +384,16 @@ erfolgreich, wenn:
 
 - der Task-Vertrag gültig ist,
 - alle einschlägigen CI-Checks grün sind,
+- kein bestätigter ungeklärter Testlauf-Rückschritt für den aktuellen Head offen ist,
 - der Branch aktuell und konfliktfrei ist,
 - der PR nicht mehr als Draft markiert ist,
 - für den aktuellen Head-SHA genau ein Review-Modus gewählt ist,
 - das Review exakt den aktuellen Head-SHA geprüft hat,
 - das Review im gewählten Modus `pass` meldet: bei `cross` je nach `crossReviewEvidence` als
-  Approval des Gegen-Anbieters oder — Standard — als dessen Review genau dieses Heads ohne offene
-  Findings; ein ausdrückliches `CHANGES_REQUESTED` blockiert in beiden Fällen. Weiter bei
+  Approval des Gegen-Anbieters oder — Standard — als dessen natives Review genau dieses Heads ohne
+  offene Findings beziehungsweise als validierter, credential-read-only Ergebnis-Marker seines
+  dedizierten Publishers; ein ausdrückliches `CHANGES_REQUESTED` oder `changes-required` blockiert.
+  Weiter bei
   `self` als vertrauenswürdiger Ergebnis-Marker, dessen `read-only`-Stufe
   `selfReviewMinimumEnforcement` erreicht, bei `human` als Approval eines Menschen mit
   Schreibzugriff,
@@ -504,11 +532,20 @@ Abnahme: Ein Event kann gefahrlos mehrfach eintreffen; nur ein Agent arbeitet gl
 3. Mergekonflikte nach Push auf `main` und im Reconciler erkennen.
 4. Konfliktlösung, Tests, Push und erneute Gate-Auswertung automatisieren.
 5. Rundenlimits und kritische Eskalationen durchsetzen.
+6. Bestätigte Testlauf-Regressionen wie andere reproduzierbare CI-Fehler an den Implementierungs-
+   Agenten geben; unvermeidbare Laufzeit durch neue Abdeckung sichtbar begründen.
 
 Abnahme: je ein absichtlich erzeugter Codefehler, transienter CI-Fehler und einfacher
 Mergekonflikt werden korrekt behandelt; ein riskanter Konflikt stoppt.
 
 ### Phase 4 – Cross-Review und strukturierte Ergebnisse
+
+Teilstand: Die Auswahl `review:cross` startet für eine mechanisch review-bereite
+Codex-Implementierung genau einen credential-read-only Claude-Lauf. Dessen strukturiertes Ergebnis
+wird validiert, an den aktuellen Head gebunden und vom vertrauenswürdigen Workflow veröffentlicht.
+Der PR-Checkout wird nach der Diff-Erzeugung und vor Übergabe des Provider-Secrets vollständig
+entfernt; damit können Gedächtnisdateien des Heads nicht als Claude-Code-Anweisungen geladen werden.
+Die übrigen Punkte dieser Phase bleiben offen.
 
 1. Auswahl des Review-Modus mit Empfehlung vorlegen und das Review an den gewählten Reviewer
    routen: `cross` an den Gegen-Anbieter, `self` an eine frische, schreibgeschützte Session des
@@ -526,8 +563,9 @@ Umsetzungsstand: Die Auswahl selbst ist umgesetzt. Der Reconciler kennt die drei
 bindet sie an den Head-SHA, wertet die modusabhängige Evidenz aus, stellt die Frage im
 Statuskommentar samt Empfehlung und blockiert das Gate mit der Phase `awaiting-review-decision`,
 solange sie unbeantwortet ist. Der Ablauf in der Session steht in
-`.github/agent-pipeline/review-decision.md`. Das automatische Starten eines Agenten aus der
-Pipeline heraus fehlt weiterhin.
+`.github/agent-pipeline/review-decision.md`. Für Codex-Implementierungen startet `review:cross`
+bereits den eng begrenzten Claude-Pilotpfad; die Gegenrichtung und die übrigen Agentenstarts fehlen
+weiterhin.
 
 ### Phase 5 – Reviewer-Fallback und Limit-Retry
 

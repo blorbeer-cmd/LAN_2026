@@ -17,31 +17,81 @@ const os = require('os');
 const path = require('path');
 const { getRunningProcessNames } = require('../../processList');
 
-const PORT = 3910;
-const BASE_URL = `http://localhost:${PORT}`;
+let BASE_URL;
 const ADMIN_NAME = 'Agent E2E Admin';
 const ADMIN_PASSWORD = 'agent-e2e-admin-password';
 
 let serverProcess;
 let stopAgent;
+let tempDir;
 let configFile;
 let stateFilePath;
 let player;
 let adminCookie;
 let playerCookie;
 
-async function waitForServer(url, timeoutMs = 10_000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // not up yet
-    }
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  throw new Error(`Server at ${url} did not become ready in time`);
+function startServer(serverEntry, timeoutMs = 10_000) {
+  const child = spawn('node', [serverEntry], {
+    env: {
+      ...process.env,
+      PORT: '0',
+      DB_FILE: ':memory:',
+      COOKIE_SECURE: '0',
+      BOOTSTRAP_ADMIN_1_NAME: ADMIN_NAME,
+      BOOTSTRAP_ADMIN_1_PASSWORD: ADMIN_PASSWORD,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  return new Promise((resolve, reject) => {
+    let output = '';
+    let settled = false;
+    const finish = (error, server) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      child.removeListener('exit', onExit);
+      if (error) {
+        child.kill();
+        reject(error);
+      } else {
+        resolve(server);
+      }
+    };
+    const inspectOutput = (chunk) => {
+      output = `${output}${chunk.toString()}`.slice(-8_000);
+      const match = output.match(/Respawn server .* http:\/\/localhost:(\d+)/);
+      if (!match) return;
+      const port = Number(match[1]);
+      finish(undefined, { process: child, baseUrl: `http://localhost:${port}` });
+    };
+    const onExit = (code, signal) =>
+      finish(
+        new Error(
+          `Agent E2E server exited before binding a port (code ${code}, signal ${signal ?? 'none'})${output ? `\n${output}` : ''}`
+        )
+      );
+    const timeout = setTimeout(
+      () =>
+        finish(
+          new Error(
+            `Agent E2E server did not bind a port within ${timeoutMs}ms${output ? `\n${output}` : ''}`
+          )
+        ),
+      timeoutMs
+    );
+
+    child.stdout.on('data', inspectOutput);
+    child.stderr.on('data', inspectOutput);
+    child.once('error', (error) =>
+      finish(
+        new Error(
+          `Agent E2E server failed to spawn: ${error.message}${output ? `\n${output}` : ''}`
+        )
+      )
+    );
+    child.once('exit', onExit);
+  });
 }
 
 before(async () => {
@@ -49,18 +99,9 @@ before(async () => {
   if (!fs.existsSync(serverEntry)) {
     throw new Error(`Server build not found at ${serverEntry} — run "npm run build" in server/ first.`);
   }
-  serverProcess = spawn('node', [serverEntry], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      DB_FILE: ':memory:',
-      COOKIE_SECURE: '0',
-      BOOTSTRAP_ADMIN_1_NAME: ADMIN_NAME,
-      BOOTSTRAP_ADMIN_1_PASSWORD: ADMIN_PASSWORD,
-    },
-    stdio: 'ignore',
-  });
-  await waitForServer(`${BASE_URL}/api/health`);
+  const server = await startServer(serverEntry);
+  serverProcess = server.process;
+  BASE_URL = server.baseUrl;
   const login = await fetch(`${BASE_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -79,8 +120,7 @@ before(async () => {
 after(async () => {
   if (stopAgent) stopAgent();
   serverProcess?.kill();
-  if (configFile && fs.existsSync(configFile)) fs.unlinkSync(configFile);
-  if (stateFilePath && fs.existsSync(stateFilePath)) fs.unlinkSync(stateFilePath);
+  if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
 test('agent reports the running node process and the server reflects it as "playing"', async () => {
@@ -124,7 +164,8 @@ test('agent reports the running node process and the server reflects it as "play
   playerCookie = claimRes.headers.get('set-cookie').split(';')[0];
 
   // Write a real agent config file and start the real agent loop.
-  configFile = path.join(os.tmpdir(), `agent-e2e-config-${Date.now()}.json`);
+  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-e2e-'));
+  configFile = path.join(tempDir, 'agent.config.json');
   stateFilePath = path.join(path.dirname(configFile), 'agent.state.json');
   fs.writeFileSync(
     configFile,

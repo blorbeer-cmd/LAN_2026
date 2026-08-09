@@ -7,8 +7,7 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
+import type { ChildProcess } from 'child_process';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { laidOutRect } from './canvasHelpers';
 import {
@@ -18,9 +17,9 @@ import {
   E2E_KIOSK_TOKEN,
   loginE2EAdmin,
 } from './authHelpers';
+import { startE2EServer } from './e2eServer';
 
-const PORT = 3903; // 3901 = flows, 3902 = access, 3910 = agent integration
-const BASE_URL = `http://localhost:${PORT}`;
+let BASE_URL: string;
 
 let serverProcess: ChildProcess;
 let browser: Browser;
@@ -30,20 +29,6 @@ const playerCookies = new Map<string, string>();
 interface Actor {
   context: BrowserContext;
   page: Page;
-}
-
-async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // not up yet, keep polling
-    }
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  throw new Error(`Server at ${url} did not become ready in time`);
 }
 
 async function createPlayer(name: string): Promise<{ id: string; name: string }> {
@@ -148,11 +133,9 @@ const countPaintedPixels = (page: Page, selector: string) =>
   }, selector);
 
 before(async () => {
-  serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: authenticatedServerEnv(PORT),
-    stdio: 'ignore',
-  });
-  await waitForServer(`${BASE_URL}/api/health`);
+  const server = await startE2EServer(authenticatedServerEnv());
+  serverProcess = server.process;
+  BASE_URL = server.baseUrl;
   adminCookie = await loginE2EAdmin(BASE_URL);
   browser = await chromium.launch();
 });
