@@ -210,13 +210,15 @@ jobs:
 
   notice:
     name: Announce missing Claude cross-review
-    needs: [select, review]
-    # Runs whenever a chosen cross-review produced no result: the dispatch declined, or the model
-    # job failed. Without it both cases stay green-or-buried in Actions while the pull request keeps
-    # waiting for a review nobody is going to start.
+    needs: [select, review, publish]
+    # Runs whenever a chosen cross-review produced no published result: the dispatch declined, the
+    # model job failed, or the model answered but the publisher rejected the result. That last case
+    # also skips `reconcile`, so without it the pull request keeps waiting on a review that already
+    # happened and can never arrive.
     if: >-
       always() && needs.select.outputs.pull_request != '' &&
-      (needs.review.result == 'failure' || needs.review.outputs.should_run == 'false')
+      (needs.review.result == 'failure' || needs.publish.result == 'failure' ||
+       needs.review.outputs.should_run == 'false')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -241,10 +243,10 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           PULL_NUMBER: ${{ needs.select.outputs.pull_request }}
           HEAD_SHA: ${{ needs.review.outputs.head_sha }}
-          OUTCOME: ${{ needs.review.result == 'failure' && 'failed' || 'declined' }}
+          OUTCOME: ${{ (needs.review.result == 'failure' || needs.publish.result == 'failure') && 'failed' || 'declined' }}
           # A failed job may never have reached the dispatch, so its code and reason can be empty.
-          DISPATCH_CODE: ${{ needs.review.result == 'failure' && 'failed' || needs.review.outputs.code }}
-          DISPATCH_REASON: ${{ needs.review.result == 'failure' && 'the review job failed before a validated result existed' || needs.review.outputs.reason }}
+          DISPATCH_CODE: ${{ needs.review.result == 'failure' && 'failed' || needs.publish.result == 'failure' && 'publish-failed' || needs.review.outputs.code }}
+          DISPATCH_REASON: ${{ needs.review.result == 'failure' && 'the review job failed before a validated result existed' || needs.publish.result == 'failure' && 'the review produced a result but publishing it was rejected' || needs.review.outputs.reason }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           node scripts/agent-claude-review.mjs notice \

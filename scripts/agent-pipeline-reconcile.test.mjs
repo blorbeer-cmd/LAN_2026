@@ -76,8 +76,9 @@ const SELF_LABEL = config.reviewModeLabels.self;
 const HUMAN_LABEL = config.reviewModeLabels.human;
 
 /** Binds a review-mode label to a head, the way the reconciler's own status comment does. */
-function decisionRecord(headSha, mode) {
-  return `${STATUS_COMMENT_MARKER}\n<!-- agent-pipeline:review-decision ${headSha} mode=${mode} -->`;
+function decisionRecord(headSha, mode, since = null) {
+  const stamp = since ? ` since=${since}` : "";
+  return `${STATUS_COMMENT_MARKER}\n<!-- agent-pipeline:review-decision ${headSha} mode=${mode}${stamp} -->`;
 }
 
 /** A published `self` review result, the only evidence GitHub cannot represent natively. */
@@ -1944,14 +1945,14 @@ test("the status comment asks the question and records the answer", () => {
   assert.match(asking, /Recommended: /);
   // Nothing is bound yet, but the head is recorded as seen — that is what lets the next run tell a
   // fresh answer from one that predates this head.
-  assert.deepEqual(parseReviewDecision(asking), { headSha: HEAD, mode: "none" });
+  assert.deepEqual(parseReviewDecision(asking), { headSha: HEAD, mode: "none", since: null });
 
   const decided = readySnapshot();
   const answered = renderStatusComment(deriveReadiness(decided, config), decided, config);
   assert.doesNotMatch(answered, /### Who reviews this head\?/);
   // The protocol: which mode, and that it is bound to this head.
   assert.match(answered, /Review mode: `cross`/);
-  assert.deepEqual(parseReviewDecision(answered), { headSha: HEAD, mode: "cross" });
+  assert.deepEqual(parseReviewDecision(answered), { headSha: HEAD, mode: "cross", since: null });
 });
 
 test("the status comment names the reduced independence of self and human mode", () => {
@@ -2040,7 +2041,7 @@ test("a self-review cannot open the gate for a head nobody was asked about", () 
 test("the run that sees a new head records it even with nothing chosen", () => {
   const snapshot = readySnapshot({ labels: [], statusCommentBody: null });
   const plan = reconcile(snapshot, config);
-  assert.deepEqual(parseReviewDecision(plan.comment.body), { headSha: HEAD, mode: "none" });
+  assert.deepEqual(parseReviewDecision(plan.comment.body), { headSha: HEAD, mode: "none", since: null });
 });
 
 test("an answer given after the head was seen binds without another round", () => {
@@ -2072,6 +2073,7 @@ test("a fix commit invalidates the binding and the question returns", () => {
   assert.deepEqual(parseReviewDecision(afterFix.comment.body), {
     headSha: OLD_HEAD,
     mode: "none",
+    since: null,
   });
 });
 
@@ -2157,7 +2159,7 @@ test("two labels do not record the head they were not cleared at", () => {
     config,
   );
   assert.equal(ambiguousAtNewHead.ambiguous, true);
-  assert.deepEqual(ambiguousAtNewHead.record, { headSha: OLD_HEAD, mode: "none" });
+  assert.deepEqual(ambiguousAtNewHead.record, { headSha: OLD_HEAD, mode: "none", since: null });
 
   // So once the user removes one, the survivor is still recognised as predating this head.
   const survivor = evaluateReviewDecision(
@@ -2184,7 +2186,7 @@ test("a broken task contract does not cost the user their answer", () => {
   );
   assert.equal(broken.readiness.phase, "contract-invalid");
   assert.deepEqual(broken.labels.remove, [], "a contract error must not consume the choice");
-  assert.deepEqual(parseReviewDecision(broken.comment.body), { headSha: HEAD, mode: "cross" });
+  assert.deepEqual(parseReviewDecision(broken.comment.body), { headSha: HEAD, mode: "cross", since: null });
 
   // And after the body is repaired the binding is still there.
   const repaired = reconcile(
@@ -2262,6 +2264,8 @@ test("a chosen review that never lands is escalated instead of waiting forever",
       checkRuns,
       reviews: [],
       reviewThreads: [],
+      // Chosen when CI went green, so the check completion is what the clock runs from here.
+      statusCommentBody: decisionRecord(HEAD, "cross", anchor),
     }),
     config,
   );
@@ -2283,6 +2287,7 @@ test("a chosen review that never lands is escalated instead of waiting forever",
       checkRuns,
       reviews: [],
       reviewThreads: [],
+      statusCommentBody: decisionRecord(HEAD, "cross", anchor),
     }),
     config,
   );
@@ -2291,7 +2296,11 @@ test("a chosen review that never lands is escalated instead of waiting forever",
 
   // With the verdict in, nobody is waiting — an overdue note would contradict the result.
   const answered = deriveReadiness(
-    readySnapshot({ observedAt: "2026-08-09T12:00:00Z", checkRuns }),
+    readySnapshot({
+      observedAt: "2026-08-09T12:00:00Z",
+      checkRuns,
+      statusCommentBody: decisionRecord(HEAD, "cross", anchor),
+    }),
     config,
   );
   assert.equal(answered.details.reviewStalled, false);
@@ -2306,7 +2315,13 @@ test("a chosen review that never lands is escalated instead of waiting forever",
     [below, false],
   ]) {
     const readiness = deriveReadiness(
-      readySnapshot({ observedAt, checkRuns, reviews: [], reviewThreads: [] }),
+      readySnapshot({
+        observedAt,
+        checkRuns,
+        reviews: [],
+        reviewThreads: [],
+        statusCommentBody: decisionRecord(HEAD, "cross", anchor),
+      }),
       config,
     );
     assert.equal(readiness.details.reviewStalled, expected);
@@ -2316,4 +2331,87 @@ test("a chosen review that never lands is escalated instead of waiting forever",
   const plan = planLabels(readySnapshot().labels, stalled, config);
   assert.equal(plan.add.includes(config.labels.waiting), false);
   assert.equal(plan.remove.includes(CROSS_LABEL), false);
+});
+
+test("the stall clock starts when the review was chosen, not when CI went green", () => {
+  const green = "2026-08-08T06:00:00Z";
+  const chosen = "2026-08-09T10:00:00Z";
+  const checkRuns = [
+    { name: "Core", status: "completed", conclusion: "success", completedAt: green },
+  ];
+  const withSince = (sha, mode, since) =>
+    `${STATUS_COMMENT_MARKER}\n<!-- agent-pipeline:review-decision ${sha} mode=${mode} since=${since} -->`;
+
+  // Chosen long after CI: counted from the choice, so a fresh decision is not instantly overdue.
+  const justChosen = deriveReadiness(
+    readySnapshot({
+      observedAt: "2026-08-09T10:30:00Z",
+      checkRuns,
+      reviews: [],
+      reviewThreads: [],
+      statusCommentBody: withSince(HEAD, "cross", chosen),
+    }),
+    config,
+  );
+  assert.equal(justChosen.details.reviewStalled, false);
+  assert.equal(Math.round(justChosen.details.reviewWaitingHours * 60), 30);
+
+  // Far enough past the choice it is a genuine stall again.
+  const stalled = deriveReadiness(
+    readySnapshot({
+      observedAt: "2026-08-09T20:00:00Z",
+      checkRuns,
+      reviews: [],
+      reviewThreads: [],
+      statusCommentBody: withSince(HEAD, "cross", chosen),
+    }),
+    config,
+  );
+  assert.equal(stalled.details.reviewStalled, true);
+  assert.equal(Math.floor(stalled.details.reviewWaitingHours), 10);
+
+  // The stamp is carried through untouched while head and mode hold, or a sweep would keep the
+  // clock permanently at zero.
+  assert.equal(justChosen.details.reviewDecision.record.since, chosen);
+  // A different mode for the same head is a new decision and restarts the clock.
+  const switched = deriveReadiness(
+    readySnapshot({
+      observedAt: "2026-08-09T20:00:00Z",
+      checkRuns,
+      labels: [config.reviewModeLabels.human],
+      statusCommentBody: withSince(HEAD, "cross", chosen),
+      reviews: [],
+      reviewThreads: [],
+    }),
+    config,
+  );
+  assert.equal(switched.details.reviewDecision.record.since, "2026-08-09T20:00:00Z");
+
+  // A record written before `since` existed keeps parsing; the reconciler stamps it on the sweep
+  // that first sees it. The choice's age is genuinely unknown at that point, so the clock starts
+  // then rather than inventing one — existing pull requests get one grace period, not a false
+  // stall on the first run after this shipped.
+  const legacy = deriveReadiness(
+    readySnapshot({
+      observedAt: "2026-08-09T12:00:00Z",
+      checkRuns,
+      reviews: [],
+      reviewThreads: [],
+    }),
+    config,
+  );
+  assert.equal(legacy.details.reviewDecision.record.since, "2026-08-09T12:00:00Z");
+  assert.equal(legacy.details.reviewWaitingHours, 0);
+  assert.equal(legacy.details.reviewStalled, false);
+
+  // A malformed stamp must not be trusted into the record; it simply does not parse.
+  assert.equal(
+    parseReviewDecision(withSince(HEAD, "cross", "gestern")),
+    null,
+  );
+  assert.equal(parseReviewDecision(withSince(HEAD, "cross", chosen))?.since, chosen);
+  assert.match(
+    renderStatusComment(justChosen, readySnapshot(), config),
+    new RegExp(`review-decision ${HEAD} mode=cross since=${chosen} -->$`),
+  );
 });

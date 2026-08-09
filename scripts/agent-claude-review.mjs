@@ -114,6 +114,7 @@ export const DISPATCH_CODES = {
   resultExists: "result-exists",
   disabled: "disabled",
   failed: "failed",
+  publishFailed: "publish-failed",
 };
 
 /** Pure eligibility check; the workflow calls it only after deriving current readiness. */
@@ -348,6 +349,15 @@ function reviewStartGuidance(code, reason) {
       return [
         "Die Agenten-Pipeline ist über die Repository-Variable `AGENT_PIPELINE_DISABLED` global",
         "abgeschaltet. Bis sie wieder aktiv ist, startet kein automatisches Review.",
+      ].join("\n");
+    case DISPATCH_CODES.publishFailed:
+      return [
+        "Das Review lief und lieferte ein Ergebnis, aber die Veröffentlichung wurde abgelehnt —",
+        "etwa durch die Schemaprüfung des Ergebnisses, den Secret-Scan oder die GitHub-API. Damit",
+        "ist kein Verdikt im Pull Request angekommen und die Pipeline wartet unverändert weiter.",
+        "",
+        "Abhilfe: den verlinkten Workflow-Lauf öffnen; der Publish-Schritt nennt den",
+        "Ablehnungsgrund. Nach der Behebung `review:cross` abnehmen und erneut setzen.",
       ].join("\n");
     case DISPATCH_CODES.failed:
       return [

@@ -27,14 +27,18 @@ export const UI_NOTICE_MARKER = "<!-- agent-pipeline:ui-notice";
 const UI_NOTICE_PATTERN = /<!--\s*agent-pipeline:ui-notice\s+([0-9a-f]{40})\s*-->/;
 
 // The head SHA a review-mode label was first observed at, written by the reconciler into its own
-// status comment: `<!-- agent-pipeline:review-decision <40-char head sha> mode=cross -->`. It is
-// what makes a choice expire with its head, so the next head asks again instead of silently
+// status comment: `<!-- agent-pipeline:review-decision <40-char head sha> mode=cross since=<ts> -->`.
+// It is what makes a choice expire with its head, so the next head asks again instead of silently
 // inheriting the previous answer.
 export const REVIEW_DECISION_MARKER = "<!-- agent-pipeline:review-decision";
 // `mode=none` records that the reconciler saw this head while nothing was chosen. That state is
 // what lets the next run tell a fresh answer from one that predates the head entirely.
+//
+// `since` is when this head's choice was first seen and is carried through unchanged while head and
+// mode hold. It is optional so records written before it existed keep parsing, and its format is
+// pinned here rather than parsed loosely: the value re-enters the reconciler from a comment body.
 const REVIEW_DECISION_PATTERN =
-  /<!--\s*agent-pipeline:review-decision\s+([0-9a-f]{40})\s+mode=(cross|self|human|none)\s*-->/;
+  /<!--\s*agent-pipeline:review-decision\s+([0-9a-f]{40})\s+mode=(cross|self|human|none)(?:\s+since=(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z))?\s*-->/;
 
 // Published by a review session or by a trusted provider adapter when GitHub carries no native
 // evidence for its result:
@@ -316,22 +320,29 @@ export function waitingEscalationHours(config = loadConfig()) {
 /**
  * How long the current head has been waiting for a review it was already cleared for.
  *
- * Anchored on the newest completion among the head's *foreign* checks — the pipeline's own check
- * runs complete on every sweep and would push the anchor forward forever, so a stalled review would
- * never age. Returns null while no anchor exists, so an unknown age never escalates on its own.
+ * The clock starts at the later of two moments, because a review can only stall once both have
+ * passed: the newest completion among the head's *foreign* checks, and the moment its review mode
+ * was chosen. Own check runs are excluded — they complete on every sweep and would push the anchor
+ * forward forever, so a stalled review would never age. Counting from the checks alone would do the
+ * opposite: a mode picked hours after CI went green would be reported overdue the instant it was
+ * chosen, before its reviewer had a moment to start.
+ *
+ * Returns null while no anchor exists, so an unknown age never escalates on its own.
  */
-export function reviewWaitingHours(snapshot, config = loadConfig()) {
+export function reviewWaitingHours(snapshot, config = loadConfig(), chosenAt = null) {
   const observed = Date.parse(snapshot?.observedAt ?? "");
   if (!Number.isFinite(observed)) return null;
-  let newest = null;
+  let anchor = null;
   for (const run of snapshot?.checkRuns ?? []) {
     if (isOwnCheckRun(run?.name, config)) continue;
     const completed = Date.parse(run?.completedAt ?? "");
     if (!Number.isFinite(completed)) continue;
-    if (newest === null || completed > newest) newest = completed;
+    if (anchor === null || completed > anchor) anchor = completed;
   }
-  if (newest === null) return null;
-  return Math.max(0, (observed - newest) / 3_600_000);
+  const chosen = Date.parse(chosenAt ?? "");
+  if (Number.isFinite(chosen) && (anchor === null || chosen > anchor)) anchor = chosen;
+  if (anchor === null) return null;
+  return Math.max(0, (observed - anchor) / 3_600_000);
 }
 
 export function evaluateReviewThreads(threads) {
@@ -385,7 +396,7 @@ export function parseReviewDecision(body) {
   // the observation record, even if a future field misses output escaping.
   const finalRecordPattern = new RegExp(`${REVIEW_DECISION_PATTERN.source}\\s*$`);
   const match = body?.match(finalRecordPattern);
-  return match ? { headSha: match[1], mode: match[2] } : null;
+  return match ? { headSha: match[1], mode: match[2], since: match[3] ?? null } : null;
 }
 
 /**
@@ -503,7 +514,7 @@ export function evaluateReviewDecision(snapshot, config = loadConfig()) {
   const chosen = REVIEW_MODES.filter((mode) => labels.has(modeLabels[mode]));
 
   // Written on every run, so the next one can tell "this head was already seen" from "no idea".
-  const observed = { headSha: snapshot.headSha, mode: "none" };
+  const observed = { headSha: snapshot.headSha, mode: "none", since: null };
   const record = parseReviewDecision(statusCommentBody(snapshot, config));
   const seenThisHead = record?.headSha === snapshot.headSha;
 
@@ -544,12 +555,19 @@ export function evaluateReviewDecision(snapshot, config = loadConfig()) {
     };
   }
 
+  // The choice's own clock starts when this head's mode was first observed and is carried through
+  // untouched while head and mode hold. Re-stamping on every sweep would keep a stalled review
+  // permanently young; taking the head's check completion instead would age a choice the user had
+  // not yet made.
+  const since =
+    record?.mode === mode && record.since ? record.since : (snapshot.observedAt ?? null);
+
   return {
     mode,
     ambiguous: false,
     chosenLabels: [modeLabels[mode]],
     staleLabels: [],
-    record: { headSha: snapshot.headSha, mode },
+    record: { headSha: snapshot.headSha, mode, since },
   };
 }
 
@@ -938,7 +956,9 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
   // A chosen review that never produces a result is the pipeline's quietest failure: every gate
   // reads "waiting for the review", which is indistinguishable from a review that is simply still
   // running. Only an outstanding round is timed — with a verdict in, nobody is waiting.
-  const waitingHours = evidenceOutstanding ? reviewWaitingHours(snapshot, config) : null;
+  const waitingHours = evidenceOutstanding
+    ? reviewWaitingHours(snapshot, config, decision.record?.since ?? null)
+    : null;
   const escalationHours = waitingEscalationHours(config);
   const reviewStalled = waitingHours !== null && waitingHours >= escalationHours;
   if (reviewStalled) {
@@ -1213,7 +1233,10 @@ export function renderStatusComment(readiness, snapshot, config = loadConfig()) 
     // Binds the review-mode label to the head it was chosen for. Written by the reconciler and read
     // back on the next run; a new head expires the binding and the question above returns.
     ...(record
-      ? [`${REVIEW_DECISION_MARKER} ${record.headSha} mode=${record.mode} -->`]
+      ? [
+          `${REVIEW_DECISION_MARKER} ${record.headSha} mode=${record.mode}` +
+            `${record.since ? ` since=${record.since}` : ""} -->`,
+        ]
       : []),
   ].join("\n");
 }

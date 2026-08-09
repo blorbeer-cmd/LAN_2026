@@ -240,6 +240,7 @@ test("dispatch decisions carry a stable code and only real stalls are announced"
     DISPATCH_CODES.provider,
     DISPATCH_CODES.disabled,
     DISPATCH_CODES.failed,
+    DISPATCH_CODES.publishFailed,
   ]) {
     assert.equal(shouldAnnounceReviewStartFailure(code), true);
   }
@@ -281,6 +282,21 @@ test("the review-start notice names the cause and the way out", () => {
   assert.match(failed, /- Ergebnis: `failed`/);
   assert.match(failed, /Report Claude failure details/);
   assert.match(failed, /actions\/runs\/2/);
+
+  // A rejected publish is a different story from a failed model run and must not borrow its text:
+  // the review happened, only its result never reached the pull request.
+  const rejected = renderReviewStartNotice({
+    repository: "owner/repo",
+    pullNumber: 378,
+    headSha: HEAD,
+    outcome: "failed",
+    code: DISPATCH_CODES.publishFailed,
+    reason: "the review produced a result but publishing it was rejected",
+    runUrl: "https://github.com/owner/repo/actions/runs/3",
+  });
+  assert.match(rejected, /Veröffentlichung wurde abgelehnt/);
+  assert.match(rejected, /Publish-Schritt nennt den/);
+  assert.doesNotMatch(rejected, /Report Claude failure details/);
 
   assert.throws(
     () => renderReviewStartNotice({ repository: "o/r", pullNumber: 1, headSha: "abc", outcome: "failed" }),
@@ -336,10 +352,12 @@ test("the workflow announces every stalled cross-review from a write-scoped job"
     workflow,
     /notice:\s*\n\s+name: Announce missing Claude cross-review[\s\S]*?pull-requests: write/,
   );
-  assert.match(
-    workflow,
-    /needs\.review\.result == 'failure' \|\| needs\.review\.outputs\.should_run == 'false'/,
-  );
+  // A successful model run whose publish is rejected also skips `reconcile`, so the notice job has
+  // to observe the publisher too or that case stays as silent as the ones this PR fixes.
+  assert.match(workflow, /needs: \[select, review, publish\]/);
+  assert.match(workflow, /needs\.review\.result == 'failure' \|\| needs\.publish\.result == 'failure'/);
+  assert.match(workflow, /needs\.review\.outputs\.should_run == 'false'/);
+  assert.match(workflow, /needs\.publish\.result == 'failure' && 'publish-failed'/);
   assert.match(workflow, /agent-claude-review\.mjs notice/);
   assert.match(workflow, /code: \$\{\{ steps\.dispatch\.outputs\.code \}\}/);
   // The credential-holding job stays read-only; only this separate job may write to the PR.
