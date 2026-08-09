@@ -3,6 +3,7 @@
   "minimumAbsoluteIncreaseSeconds": 30,
   "baselineSamples": 5,
   "historyRuns": 40,
+  "historyFetchBatchSize": 6,
   "suites": {
     "unit-integration": {
       "job": "Server lint, build and tests",

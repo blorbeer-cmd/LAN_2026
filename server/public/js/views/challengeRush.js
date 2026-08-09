@@ -52,6 +52,16 @@ function startReadingCountdown(remainingMs) {
 }
 function scheduleAt(delayMs, callback) { revealTimers.push(setTimeout(callback, Math.max(0, delayMs))); }
 function rerenderIfVisible() { if (currentView() === 'challengeRush') rerender(); }
+export function memoryRevealSchedule(memoryRevealMs, sequenceLength) {
+  const count = Number.isInteger(sequenceLength) && sequenceLength > 0 ? sequenceLength : 0;
+  const configuredTotal = Number(memoryRevealMs);
+  const totalMs = Number.isFinite(configuredTotal) && configuredTotal >= 0
+    ? configuredTotal
+    : count * MEMORY_REVEAL_STEP_MS;
+  const stepMs = count > 0 ? totalMs / count : 0;
+  const showMs = stepMs * (MEMORY_REVEAL_SHOW_MS / MEMORY_REVEAL_STEP_MS);
+  return { stepMs, showMs, totalMs };
+}
 function focusTimedChallengeTarget(state) {
   const selector = timedChallengeFocusSelector(state);
   if (!selector) return;
@@ -149,10 +159,11 @@ function scheduleTrialPhase() {
 function scheduleMemoryReveal(state) {
   clearRevealTimers();
   const sequence = state.challenge?.data?.sequence ?? [];
+  const timing = memoryRevealSchedule(state.challenge?.data?.memoryRevealMs, sequence.length);
   const elapsed = elapsedInChallenge(state);
   memoryRevealIndex = -1;
   sequence.forEach((tile, index) => {
-    const showAt = index * MEMORY_REVEAL_STEP_MS; const hideAt = showAt + MEMORY_REVEAL_SHOW_MS;
+    const showAt = index * timing.stepMs; const hideAt = showAt + timing.showMs;
     // The first tile's showAt is exactly 0, so "elapsed < showAt" never fires
     // for it (elapsed is never negative) — a tile already inside its show
     // window (covers both that boundary case and a mid-reveal reconnect)
@@ -161,7 +172,7 @@ function scheduleMemoryReveal(state) {
     else if (elapsed < showAt) scheduleAt(showAt - elapsed, () => { memoryRevealIndex = tile; rerenderIfVisible(); });
     if (elapsed < hideAt) scheduleAt(hideAt - elapsed, () => { memoryRevealIndex = -1; rerenderIfVisible(); });
   });
-  const doneAt = sequence.length * MEMORY_REVEAL_STEP_MS;
+  const doneAt = timing.totalMs;
   if (elapsed < doneAt) scheduleAt(doneAt - elapsed, () => { memoryRevealDone = true; memoryRevealIndex = -1; rerenderIfVisible(); });
   else memoryRevealDone = true;
 }

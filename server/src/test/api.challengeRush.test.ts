@@ -653,6 +653,7 @@ test('Challenge Rush ends memory-sequence on the first wrong tile with partial c
   try {
     const { playerId, match, playing } = await startSelectedChallenge(socket, server.baseUrl, 'Challenge Rush Memory Wrong', 'memory-sequence');
     const sequence = playing.challenge.data.sequence as number[];
+    assert.equal(playing.challenge.data.memoryRevealMs, challengeRushTiming().memoryRevealMs);
     // Two correct tiles first, then a deliberately wrong third one: verifies
     // the round ends with genuine partial credit, not just the
     // degenerate all-wrong case where scoreMemorySequence(0) is always 0
