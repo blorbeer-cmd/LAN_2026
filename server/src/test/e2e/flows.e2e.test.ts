@@ -6,8 +6,7 @@
 
 import { test as nodeTest, before, after, TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
+import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
 import { normalizeAnswer } from '../../arcade/quizLogic';
 import { laidOutRect } from './canvasHelpers';
@@ -20,10 +19,10 @@ import {
   loginE2EAdmin,
   type E2EAccount,
 } from './authHelpers';
+import { startE2EServer } from './e2eServer';
 
 const RUN_ARCADE_FLOWS = process.env.E2E_FLOW_PARTITION === 'arcade';
-const PORT = RUN_ARCADE_FLOWS ? 3913 : 3901;
-const BASE_URL = `http://localhost:${PORT}`;
+let BASE_URL: string;
 
 // The broad flow suite used to put every scenario into one stateful file,
 // making its ~120 second serial runtime the lower bound for the whole E2E
@@ -43,20 +42,6 @@ let alice: E2EAccount;
 let bob: E2EAccount;
 let analyticsPlayer: E2EAccount | undefined;
 const accountsByName = new Map<string, E2EAccount>();
-
-async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // not up yet, keep polling
-    }
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  throw new Error(`Server at ${url} did not become ready in time`);
-}
 
 async function setDateTimeField(id: string, value: string): Promise<void> {
   await page.locator(`#${id}`).evaluate((element, nextValue) => {
@@ -109,11 +94,9 @@ async function bootstrapAdminAccount(name: string): Promise<E2EAccount> {
 }
 
 before(async () => {
-  serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: authenticatedServerEnv(PORT),
-    stdio: 'ignore',
-  });
-  await waitForServer(`${BASE_URL}/api/health`);
+  const server = await startE2EServer(authenticatedServerEnv());
+  serverProcess = server.process;
+  BASE_URL = server.baseUrl;
   adminCookie = await loginE2EAdmin(BASE_URL);
   alice = await bootstrapAdminAccount(RUN_ARCADE_FLOWS ? 'E2E Alice Pro' : 'E2E Alice');
   bob = await createE2EAccount(BASE_URL, adminCookie, 'E2E Bob');

@@ -4,12 +4,11 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
+import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
+import { startE2EServer } from './e2eServer';
 
-const PORT = 3902;
-const BASE_URL = `http://localhost:${PORT}`;
+let BASE_URL: string;
 const ADMIN_NAME = 'Access E2E Admin';
 const ADMIN_PASSWORD = 'access-e2e-admin-password';
 
@@ -17,32 +16,16 @@ let serverProcess: ChildProcess;
 let browser: Browser;
 let page: Page;
 
-async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      if ((await fetch(url)).ok) return;
-    } catch {
-      // not up yet, keep polling
-    }
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-  throw new Error(`Server at ${url} did not become ready in time`);
-}
-
 before(async () => {
-  serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      DB_FILE: ':memory:',
-      COOKIE_SECURE: '0',
-      BOOTSTRAP_ADMIN_1_NAME: ADMIN_NAME,
-      BOOTSTRAP_ADMIN_1_PASSWORD: ADMIN_PASSWORD,
-    },
-    stdio: 'ignore',
+  const server = await startE2EServer({
+    ...process.env,
+    DB_FILE: ':memory:',
+    COOKIE_SECURE: '0',
+    BOOTSTRAP_ADMIN_1_NAME: ADMIN_NAME,
+    BOOTSTRAP_ADMIN_1_PASSWORD: ADMIN_PASSWORD,
   });
-  await waitForServer(`${BASE_URL}/api/health`);
+  serverProcess = server.process;
+  BASE_URL = server.baseUrl;
   browser = await chromium.launch();
   page = await browser.newPage({ viewport: { width: 390, height: 844 } });
 });

@@ -1,7 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
+import type { ChildProcess } from 'child_process';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import {
   addSessionCookie,
@@ -10,22 +9,13 @@ import {
   loginE2EAdmin,
   promoteE2EAdmin,
 } from './authHelpers';
+import { startE2EServer } from './e2eServer';
 
-const PORT = 3916; // 3915 = battleship
-const BASE_URL = `http://localhost:${PORT}`;
+let BASE_URL: string;
 let serverProcess: ChildProcess;
 let browser: Browser;
 const adminCookies = new Map<string, string>();
 const playerCookies = new Map<string, string>();
-
-async function waitForServer(baseUrl: string = BASE_URL): Promise<void> {
-  const started = Date.now();
-  while (Date.now() - started < 10_000) {
-    try { if ((await fetch(`${baseUrl}/api/health`)).ok) return; } catch { /* startup */ }
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-  throw new Error('Challenge-Rush-E2E-Server wurde nicht bereit.');
-}
 
 async function createPlayer(baseUrl: string = BASE_URL): Promise<string> {
   const name = `Challenge Rush E2E ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -62,8 +52,9 @@ async function openArcade(playerId: string, baseUrl: string = BASE_URL): Promise
 }
 
 before(async () => {
-  serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], { env: authenticatedServerEnv(PORT), stdio: 'ignore' });
-  await waitForServer();
+  const server = await startE2EServer(authenticatedServerEnv());
+  serverProcess = server.process;
+  BASE_URL = server.baseUrl;
   adminCookies.set(BASE_URL, await loginE2EAdmin(BASE_URL));
   browser = await chromium.launch();
 });
@@ -444,14 +435,9 @@ test('Challenge Rush unlocks a new lobby immediately after a reconnect rejected 
   // A short, dedicated server instance keeps this test fast without lowering
   // the shared server's default reconnect grace period out from under the
   // other tests in this file, which rely on it staying reconnect-friendly.
-  const forfeitPort = 3917;
-  const forfeitBaseUrl = `http://localhost:${forfeitPort}`;
-  const forfeitProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: { ...authenticatedServerEnv(forfeitPort), CHALLENGE_RUSH_RECONNECT_GRACE_MS: '800' },
-    stdio: 'ignore',
-  });
+  const forfeitServer = await startE2EServer({ ...authenticatedServerEnv(), CHALLENGE_RUSH_RECONNECT_GRACE_MS: '800' });
+  const forfeitBaseUrl = forfeitServer.baseUrl;
   try {
-    await waitForServer(forfeitBaseUrl);
     adminCookies.set(forfeitBaseUrl, await loginE2EAdmin(forfeitBaseUrl));
     const hostId = await createPlayer(forfeitBaseUrl);
     const guestId = await createPlayer(forfeitBaseUrl);
@@ -487,6 +473,6 @@ test('Challenge Rush unlocks a new lobby immediately after a reconnect rejected 
       await guest.context.close();
     }
   } finally {
-    forfeitProcess.kill();
+    forfeitServer.process.kill();
   }
 });
