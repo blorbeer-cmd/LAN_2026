@@ -1269,6 +1269,57 @@ input[type='number']::-webkit-inner-spin-button {
 .selection-toolbar .btn {
   height: var(--tap-target-size);
 }
+.selection-toolbar-icon {
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+}
+.selection-search {
+  display: flex;
+  align-items: center;
+  flex: 1 1 calc(var(--tap-target-size) * 4);
+  min-width: calc(var(--tap-target-size) * 4);
+}
+.selection-search:not(.is-open) {
+  flex: 0 0 var(--tap-target-size);
+  min-width: var(--tap-target-size);
+}
+.selection-search-trigger,
+.selection-search-close {
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+}
+.selection-search-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-width: 0;
+}
+.selection-search-field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+}
+@media (hover: hover) {
+  .selection-toolbar-icon:hover,
+  .selection-search-trigger:hover,
+  .selection-search-close:hover {
+    background: var(--bg-elevated-2);
+  }
+}
+@media (max-width: 639px) { /* --bp-md */
+  .selection-search {
+    flex-basis: 100%;
+  }
+}
 .tournament-team-count-field {
   flex: 0 0 calc(var(--space-8) * 2);
 }
