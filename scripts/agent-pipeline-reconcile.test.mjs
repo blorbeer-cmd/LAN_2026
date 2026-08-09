@@ -19,13 +19,16 @@ import {
   meetsReadOnlyMinimum,
   paginate,
   parseReviewDecision,
+  parseHandledReviewStartFailure,
   parseReviewResults,
+  parseReviewStartFailures,
   parseUiNoticeHeadSha,
   planGateStatus,
   planLabels,
   recommendReviewMode,
   reconcile,
   renderStatusComment,
+  REVIEW_START_NOTICE_MARKER,
   reviewerProviderFor,
   reviewWaitingHours,
   STATUS_COMMENT_MARKER,
@@ -977,12 +980,35 @@ test("the kill-switch label suppresses every mutation", () => {
 
 test("a pull request without a task contract is left alone", () => {
   const plan = reconcile(
-    readySnapshot({ body: "A regular human pull request." }),
+    readySnapshot({
+      body: "A regular human pull request.",
+      headBranch: "feature/manual-maintenance",
+      labels: [],
+    }),
     config,
   );
   assert.equal(plan.readiness.participating, false);
   assert.deepEqual(plan.labels, { add: [], remove: [] });
   assert.equal(plan.comment, null);
+});
+
+test("agent-looking pull requests cannot bypass readiness by omitting the contract", () => {
+  for (const overrides of [
+    { headBranch: "codex/missing-contract", labels: [] },
+    {
+      headBranch: "feature/labeled-agent",
+      labels: [config.labels.pipeline],
+    },
+  ]) {
+    const plan = reconcile(
+      readySnapshot({ body: "No activated contract.", ...overrides }),
+      config,
+    );
+    assert.equal(plan.readiness.participating, true);
+    assert.equal(plan.readiness.phase, "contract-invalid");
+    assert.equal(plan.status.state, "pending");
+    assert.match(plan.readiness.blockers[0], /requires an activated task contract/);
+  }
 });
 
 test("a closed pull request is left alone", () => {
@@ -1461,7 +1487,11 @@ test("a pull request outside the pipeline is told the gate does not apply", () =
   // Without this the required check would never be written for a human or Dependabot pull request,
   // and it could never be merged by anyone without administrator rights.
   const plan = reconcile(
-    readySnapshot({ body: "A regular human pull request." }),
+    readySnapshot({
+      body: "A regular human pull request.",
+      headBranch: "feature/manual-maintenance",
+      labels: [],
+    }),
     config,
   );
   assert.equal(plan.readiness.participating, false);
@@ -1612,6 +1642,137 @@ test("switching the mode at the same head simply rebinds", () => {
   assert.equal(readiness.details.reviewMode, "human");
   assert.deepEqual(readiness.details.reviewDecision.staleLabels, []);
   assert.equal(readiness.ready, true);
+});
+
+function reviewStartFailure(headSha = HEAD, overrides = {}) {
+  return {
+    headSha,
+    outcome: "failed",
+    code: "failed",
+    attempt: "900-1",
+    reason: "provider quota exhausted",
+    ...overrides,
+  };
+}
+
+test("a trusted provider-start failure returns only its exact-head choice to the user", () => {
+  const snapshot = codexImplementationSnapshot({
+    labels: [CROSS_LABEL],
+    statusCommentBody: decisionRecord(HEAD, "cross", "2026-08-09T10:00:00Z"),
+    reviewStartFailures: [reviewStartFailure()],
+  });
+  const plan = reconcile(snapshot, config);
+  assert.equal(plan.readiness.phase, "awaiting-review-decision");
+  assert.equal(plan.readiness.details.reviewMode, null);
+  assert.ok(plan.labels.remove.includes(CROSS_LABEL));
+  assert.equal(plan.readiness.details.recommendation.mode, "self");
+  assert.match(plan.comment.body, /provider quota exhausted/);
+  assert.match(plan.comment.body, /review:cross.*remains available/);
+  assert.deepEqual(parseHandledReviewStartFailure(plan.comment.body), {
+    headSha: HEAD,
+    attempt: "900-1",
+  });
+});
+
+test("provider failure recovery ignores stale heads and duplicate events", () => {
+  const stale = deriveReadiness(
+    codexImplementationSnapshot({
+      reviewStartFailures: [reviewStartFailure(OLD_HEAD)],
+    }),
+    config,
+  );
+  assert.equal(stale.details.reviewMode, "cross");
+
+  const first = reconcile(
+    codexImplementationSnapshot({ reviewStartFailures: [reviewStartFailure()] }),
+    config,
+  );
+  const settled = reconcile(
+    codexImplementationSnapshot({
+      labels: [],
+      reviews: [],
+      reviewStartFailures: [reviewStartFailure(), reviewStartFailure()],
+      statusCommentBody: first.comment.body,
+    }),
+    config,
+  );
+  assert.equal(settled.readiness.phase, "awaiting-review-decision");
+  assert.equal(settled.labels.remove.includes(CROSS_LABEL), false);
+  const duplicate = reconcile(
+    codexImplementationSnapshot({
+      labels: [],
+      reviews: [],
+      reviewStartFailures: [reviewStartFailure(), reviewStartFailure()],
+      statusCommentBody: settled.comment.body,
+    }),
+    config,
+  );
+  assert.equal(duplicate.comment, null, "the same notice must settle without repeated rewrites");
+});
+
+test("a manual retry can rebind cross after the failed attempt was handled", () => {
+  const failure = reviewStartFailure();
+  const handled =
+    `${STATUS_COMMENT_MARKER}\n` +
+    `<!-- agent-pipeline:review-start-failure ${HEAD} attempt=${failure.attempt} -->\n` +
+    `<!-- agent-pipeline:review-decision ${HEAD} mode=none -->`;
+  const retried = deriveReadiness(
+    codexImplementationSnapshot({
+      labels: [CROSS_LABEL],
+      statusCommentBody: handled,
+      reviewStartFailures: [failure],
+    }),
+    config,
+  );
+  assert.equal(retried.details.reviewMode, "cross");
+  assert.equal(retried.phase, "review");
+
+  const failedAgain = deriveReadiness(
+    codexImplementationSnapshot({
+      labels: [CROSS_LABEL],
+      statusCommentBody: renderStatusComment(retried, readySnapshot(), config),
+      reviewStartFailures: [failure, reviewStartFailure(HEAD, { attempt: "901-1" })],
+    }),
+    config,
+  );
+  assert.equal(failedAgain.phase, "awaiting-review-decision");
+  assert.equal(failedAgain.details.reviewMode, null);
+});
+
+test("a completed cross-review wins over an older start-failure notice", () => {
+  const passed = deriveReadiness(
+    codexImplementationSnapshot({
+      reviewStartFailures: [reviewStartFailure()],
+      reviewResults: parseReviewResults([claudeCrossResultComment(HEAD)]),
+    }),
+    config,
+  );
+  assert.equal(passed.ready, true);
+  assert.equal(passed.phase, "ready-for-merge");
+  assert.equal(passed.details.reviewMode, "cross");
+});
+
+test("review-start notices are trusted, head-bound and keep a stable attempt", () => {
+  const marker = `${REVIEW_START_NOTICE_MARKER} ${HEAD} mode=cross outcome=failed code=failed attempt=77-2 -->`;
+  const failures = parseReviewStartFailures([
+    { id: 1, author: "outsider", authorAssociation: "NONE", body: marker },
+    { id: 3, author: "unrelated-app[bot]", authorAssociation: "NONE", body: marker },
+    {
+      id: 2,
+      author: "github-actions[bot]",
+      authorAssociation: "NONE",
+      body: `- Grund: \`quota exhausted\`\n${marker}`,
+    },
+  ]);
+  assert.deepEqual(failures, [
+    {
+      headSha: HEAD,
+      outcome: "failed",
+      code: "failed",
+      attempt: "77-2",
+      reason: "quota exhausted",
+    },
+  ]);
 });
 
 test("the pipeline never sets a review-mode label itself", () => {

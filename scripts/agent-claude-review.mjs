@@ -32,7 +32,7 @@ export const MAX_REVIEW_COMMENT_LENGTH = 60_000;
 // impersonated by a notice. One notice per head, rewritten in place, so a retry does not spam.
 export const REVIEW_START_NOTICE_MARKER = "<!-- agent-pipeline:review-start-notice";
 const REVIEW_START_NOTICE_PATTERN =
-  /<!--\s*agent-pipeline:review-start-notice\s+([0-9a-f]{40})\s+mode=cross\s+outcome=(declined|failed)\s*-->/;
+  /<!--\s*agent-pipeline:review-start-notice\s+([0-9a-f]{40})\s+mode=cross\s+outcome=(declined|failed)(?:\s+code=([a-z-]+))?(?:\s+attempt=([A-Za-z0-9._-]+))?\s*-->/;
 
 function option(args, name) {
   const index = args.indexOf(name);
@@ -385,11 +385,16 @@ export function renderReviewStartNotice({
   code,
   reason,
   runUrl,
+  attempt,
 }) {
   if (!/^[0-9a-f]{40}$/.test(headSha ?? "")) throw new Error("headSha must be a full SHA.");
   if (outcome !== "declined" && outcome !== "failed") {
     throw new Error("outcome must be declined or failed.");
   }
+  if (!/^[A-Za-z0-9._-]+$/.test(attempt ?? "")) {
+    throw new Error("attempt must be a stable workflow-attempt identifier.");
+  }
+  if (!/^[a-z-]+$/.test(code ?? "")) throw new Error("code is invalid.");
   const lines = [
     "## Claude Cross-Review nicht gestartet",
     "",
@@ -402,7 +407,7 @@ export function renderReviewStartNotice({
     "",
     reviewStartGuidance(code, reason),
     "",
-    `${REVIEW_START_NOTICE_MARKER} ${headSha} mode=cross outcome=${outcome} -->`,
+    `${REVIEW_START_NOTICE_MARKER} ${headSha} mode=cross outcome=${outcome} code=${code} attempt=${attempt} -->`,
     "",
     "---",
     "_Maintained by the trusted agent-pipeline workflow. It reports state only; it does not approve or merge._",
@@ -571,6 +576,7 @@ async function noticeCommand(args) {
   const code = option(args, "--code") || DISPATCH_CODES.failed;
   const reason = option(args, "--reason") || "unknown";
   const runUrl = option(args, "--run-url") || "";
+  const attempt = option(args, "--attempt");
   const { owner, repo } = repositoryParts(repository);
 
   if (!shouldAnnounceReviewStartFailure(code)) {
@@ -596,6 +602,7 @@ async function noticeCommand(args) {
     code,
     reason,
     runUrl,
+    attempt,
   });
   const comments = await pullComments({ owner, repo, pullNumber, token });
   const existing = findReviewStartNotice(

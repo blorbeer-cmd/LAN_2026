@@ -64,6 +64,7 @@
     "Select Claude review target",
     "Run Claude cross-review",
     "Announce missing Claude cross-review",
+    "Reconcile failed Claude review",
     "Publish Claude cross-review",
     "Reconcile Claude review result"
   ],

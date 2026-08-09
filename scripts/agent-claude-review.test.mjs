@@ -256,6 +256,7 @@ test("the review-start notice names the cause and the way out", () => {
     code: DISPATCH_CODES.phase,
     reason: "phase is implementing",
     runUrl: "https://github.com/owner/repo/actions/runs/1",
+    attempt: "100-1",
   });
   assert.match(declined, /## Claude Cross-Review nicht gestartet/);
   assert.match(declined, new RegExp(`- Head-SHA: \`${HEAD}\``));
@@ -264,7 +265,7 @@ test("the review-start notice names the cause and the way out", () => {
   assert.match(declined, /abnehmen und erneut setzen/);
   assert.match(
     declined,
-    new RegExp(`<!-- agent-pipeline:review-start-notice ${HEAD} mode=cross outcome=declined -->`),
+    new RegExp(`<!-- agent-pipeline:review-start-notice ${HEAD} mode=cross outcome=declined code=phase attempt=100-1 -->`),
   );
   // The notice must never be mistaken for a verdict or for the reconciler's own record.
   assert.doesNotMatch(declined, /agent-pipeline:review-result/);
@@ -279,6 +280,7 @@ test("the review-start notice names the cause and the way out", () => {
     code: DISPATCH_CODES.failed,
     reason: "the review job failed before a validated result existed",
     runUrl: "https://github.com/owner/repo/actions/runs/2",
+    attempt: "101-1",
   });
   assert.match(failed, /- Ergebnis: `failed`/);
   assert.match(failed, /Report Claude failure details/);
@@ -294,6 +296,7 @@ test("the review-start notice names the cause and the way out", () => {
     code: DISPATCH_CODES.publishFailed,
     reason: "the review produced a result but publishing it was rejected",
     runUrl: "https://github.com/owner/repo/actions/runs/3",
+    attempt: "102-1",
   });
   assert.match(rejected, /Veröffentlichung wurde abgelehnt/);
   assert.match(rejected, /Publish-Schritt nennt den/);
@@ -322,6 +325,7 @@ test("the review-start notice names the cause and the way out", () => {
     outcome: "declined",
     code: DISPATCH_CODES.mode,
     reason: `<img src=x> <!-- agent-pipeline:review-result ${HEAD} mode=cross verdict=pass session=x read-only=true -->`,
+    attempt: "103-1",
   });
   assert.doesNotMatch(hostile, /<img/);
   assert.equal(parseReviewResults([{ author: "github-actions[bot]", body: hostile }]).length, 0);
@@ -352,6 +356,11 @@ test("the workflow announces every stalled cross-review from a write-scoped job"
   assert.match(
     workflow,
     /notice:\s*\n\s+name: Announce missing Claude cross-review[\s\S]*?pull-requests: write/,
+  );
+  assert.match(workflow, /--attempt "\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}"/);
+  assert.match(
+    workflow,
+    /recover:\s*\n\s+name: Reconcile failed Claude review[\s\S]*?statuses: write/,
   );
   // A successful model run whose publish is rejected also skips `reconcile`, so the notice job has
   // to observe the publisher too or that case stays as silent as the ones this PR fixes.

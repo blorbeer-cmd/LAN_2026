@@ -256,7 +256,44 @@ jobs:
             --outcome "${OUTCOME}" \
             --code "${DISPATCH_CODE}" \
             --reason "${DISPATCH_REASON}" \
-            --run-url "${RUN_URL}"
+            --run-url "${RUN_URL}" \
+            --attempt "${{ github.run_id }}-${{ github.run_attempt }}"
+
+  recover:
+    name: Reconcile failed Claude review
+    needs: [select, review, publish, notice]
+    if: always() && needs.notice.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: agent-pipeline-reconcile-${{ needs.select.outputs.pull_request }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: write
+      statuses: write
+    steps:
+      - name: Check out trusted reconciler code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Return failed review to user decision
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          node scripts/agent-pipeline-reconcile.mjs reconcile
+          --repository "${{ github.repository }}"
+          --pr "${{ needs.select.outputs.pull_request }}"
+          --target-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          --apply
 
   publish:
     name: Publish Claude cross-review

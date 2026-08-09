@@ -110,7 +110,7 @@ jobs:
           if [[ "${SWEEP}" == "true" ]]; then
             candidates="${RUNNER_TEMP}/agent-pipeline-open-prs.json"
             gh pr list --state open --limit 1000 \
-              --json number,body,statusCheckRollup > "${candidates}"
+              --json number,body,headRefName,labels,statusCheckRollup > "${candidates}"
             selected=$(node scripts/agent-pipeline-select-prs.mjs < "${candidates}")
           else
             selected="${DIRECT_PRS}"
