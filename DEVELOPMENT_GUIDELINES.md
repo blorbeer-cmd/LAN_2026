@@ -83,6 +83,12 @@ Bei Zielkonflikten gewinnt die weiter oben stehende Priorität.
   Paketierung dürfen nicht stillschweigend auf eine andere Hauptversion wechseln.
 - Architekturwechsel, neue Frameworks oder größere Produktionsabhängigkeiten nicht nebenbei
   einführen. Sie brauchen klaren Nutzen, Folgenabschätzung und Zustimmung des Nutzers.
+- Arcade-Code nach Möglichkeit innerhalb der bestehenden Arcade-Grenzen kapseln
+  (`server/src/arcade/`, `server/src/routes/arcade.ts` und die ausgewiesenen Arcade-Frontendmodule).
+  Neue Arcade-Logik nicht in DB-, Realtime-, App-Shell-, Basis-CSS- oder andere Shared-Module
+  einbetten, wenn eine schmale Schnittstelle möglich ist. Eine unvermeidbare neue Shared-Kopplung
+  begründen und mit Vertrags- sowie Pfadklassifikationstests absichern, damit Core-, Arcade-Smoke-
+  und vollständige Arcade-E2E-Läufe weiterhin gezielt auswählbar bleiben.
 - Externe Eingaben nach Typ, Format, Länge, erlaubten Werten und referenzierten Entitäten
   validieren. Erwartbare Fehler dürfen keine ungefangenen Exceptions auslösen.
 - Keine Secrets, API-Keys, produktiven Datenbanken oder personalisierten Konfigurationen committen.
@@ -95,6 +101,13 @@ Bei Zielkonflikten gewinnt die weiter oben stehende Priorität.
   Nutzerkonfigurationen.
 - Tests nicht löschen, lockern oder mit pauschalen Timeouts kaschieren, nur damit ein Lauf grün wird.
 - Flaky Tests ursächlich stabilisieren.
+- Nach jeder Umsetzung erfasst CI die reine Laufzeit der einschlägigen Testsuiten getrennt von
+  Installation, Build und Browser-Setup. Mehr als 20 Prozent und zugleich mindestens 30 Sekunden
+  gegenüber dem Median der letzten fünf erfolgreichen `main`-Läufe gelten als Verdacht auf eine
+  Testlauf-Regression. Ein automatischer Wiederholungslauf muss den Verdacht bestätigen, bevor der
+  Check fehlschlägt. Bestätigte Regressionen ursächlich untersuchen und reduzieren; notwendige,
+  nicht weiter vermeidbare Laufzeit durch zusätzliche belastbare Abdeckung im PR begründen. Dabei
+  niemals Tests löschen, lockern oder mit größeren Timeouts kaschieren.
 
 ## 5. Arbeitsbaum und Git
 
@@ -118,6 +131,7 @@ Eine Änderung ist fertig, wenn:
 - das gewünschte Verhalten vollständig umgesetzt und ohne Erklärung auffindbar ist,
 - Eingaben, Fehlerpfade und gegebenenfalls konkurrierende Zugriffe abgesichert sind,
 - die einschlägigen Tests und statischen Prüfungen erfolgreich gelaufen sind,
+- der Testlauf-Performance-Check keinen bestätigten ungeklärten Rückschritt meldet,
 - Dokumentation und tatsächliches Verhalten übereinstimmen,
 - keine Secrets, produktiven Daten oder sachfremden Änderungen enthalten sind,
 - der Abschluss geänderte Bereiche, ausgeführte Prüfungen und verbleibende Einschränkungen nennt.

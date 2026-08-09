@@ -104,11 +104,11 @@ früheren Head gebundenes Wahl-Label verfällt.
 
 ## 4. Rollen und Review-Unabhängigkeit
 
-| Modus            | Reviewer                                         | Findings/Fixes           | Unabhängigkeit                                  |
-| ---------------- | ------------------------------------------------ | ------------------------ | ----------------------------------------------- |
-| `cross` (Normal) | Gegen-Anbieter (Claude ↔ Codex)                  | Implementierungs-Agent   | höchste                                         |
-| `self`           | frische, isolierte Session desselben Anbieters   | Implementierungs-Agent   | reduziert, bewusst gewählt                      |
-| `human`          | Nutzer                                           | Implementierungs-Agent   | Review und Merge liegen bei derselben Person    |
+| Modus            | Reviewer                                       | Findings/Fixes         | Unabhängigkeit                               |
+| ---------------- | ---------------------------------------------- | ---------------------- | -------------------------------------------- |
+| `cross` (Normal) | Gegen-Anbieter (Claude ↔ Codex)                | Implementierungs-Agent | höchste                                      |
+| `self`           | frische, isolierte Session desselben Anbieters | Implementierungs-Agent | reduziert, bewusst gewählt                   |
+| `human`          | Nutzer                                         | Implementierungs-Agent | Review und Merge liegen bei derselben Person |
 
 Der Cross-Review bleibt der empfohlene Normalfall. `self` und `human` sind kein Überspringen des
 Reviews, sondern ein Review mit geringerer Unabhängigkeit; sie gelten nur, wenn der Nutzer sie für
@@ -170,22 +170,22 @@ Fork-PRs nehmen nicht an der schreibenden Automatik teil.
 
 ### Sichtbare Labels
 
-| Label                   | Bedeutung                                                                 |
-| ----------------------- | ------------------------------------------------------------------------- |
-| `agent:pipeline`        | PR nimmt an der Automatik teil                                            |
-| `agent:implementing`    | Implementierungs-Agent arbeitet                                           |
-| `agent:ci-fix`          | CI-Fehler wird bearbeitet                                                 |
-| `agent:conflict-fix`    | Mergekonflikt wird bearbeitet                                             |
-| `agent:review`          | gewähltes Review läuft oder steht aus                                     |
-| `agent:review-fallback` | Ausweichreview, weil der zuerst gewählte Anbieter ausgefallen ist         |
-| `review:cross`          | Nutzerwahl: Review durch den Gegen-Anbieter                               |
-| `review:self`           | Nutzerwahl: isoliertes Review des Implementierungs-Anbieters              |
-| `review:human`          | Nutzerwahl: menschliches Review                                           |
-| `agent:waiting`         | benötigter Anbieter oder Dienst ist vorübergehend nicht verfügbar         |
-| `agent:needs-human`     | kritische Entscheidung oder Rundenlimit erreicht                          |
-| `agent:ready-for-merge` | alle maschinellen Gates für den aktuellen Head-SHA erfüllt                |
-| `ui:changed`            | PR enthält eine sichtbare UI/UX-Änderung                                  |
-| `agent:no-auto`         | manueller Kill-Switch für diesen PR                                       |
+| Label                   | Bedeutung                                                         |
+| ----------------------- | ----------------------------------------------------------------- |
+| `agent:pipeline`        | PR nimmt an der Automatik teil                                    |
+| `agent:implementing`    | Implementierungs-Agent arbeitet                                   |
+| `agent:ci-fix`          | CI-Fehler wird bearbeitet                                         |
+| `agent:conflict-fix`    | Mergekonflikt wird bearbeitet                                     |
+| `agent:review`          | gewähltes Review läuft oder steht aus                             |
+| `agent:review-fallback` | Ausweichreview, weil der zuerst gewählte Anbieter ausgefallen ist |
+| `review:cross`          | Nutzerwahl: Review durch den Gegen-Anbieter                       |
+| `review:self`           | Nutzerwahl: isoliertes Review des Implementierungs-Anbieters      |
+| `review:human`          | Nutzerwahl: menschliches Review                                   |
+| `agent:waiting`         | benötigter Anbieter oder Dienst ist vorübergehend nicht verfügbar |
+| `agent:needs-human`     | kritische Entscheidung oder Rundenlimit erreicht                  |
+| `agent:ready-for-merge` | alle maschinellen Gates für den aktuellen Head-SHA erfüllt        |
+| `ui:changed`            | PR enthält eine sichtbare UI/UX-Änderung                          |
+| `agent:no-auto`         | manueller Kill-Switch für diesen PR                               |
 
 ### Maschinenzustand
 
@@ -229,6 +229,25 @@ PRs, falls Webhooks, Kommentare oder Anbieterreaktionen verloren gehen.
 
 Tests dürfen nicht gelöscht, gelockert oder mit pauschalen Timeouts überdeckt werden, um einen
 Lauf grün zu bekommen.
+
+### Testlauf-Regressionen
+
+Die CI misst Unit-/Integration-, Core-E2E-, Arcade-Smoke- und Arcade-E2E-Laufzeit getrennt von
+Setup und Build.
+Mehr als 20 Prozent und mindestens 30 Sekunden gegenüber dem Median der letzten fünf erfolgreichen
+`main`-Läufe lösen zunächst einen automatischen Wiederholungslauf der auffälligen Suite aus. Nur
+ein bestätigter Rückschritt wird zum CI-Fehler und durchläuft die normale CI-Fix-Schleife. Der
+Implementierungs-Agent untersucht dann Ursache und langsamste Tests und reduziert die Laufzeit,
+ohne Abdeckung oder Assertions zu schwächen. Ist zusätzliche Laufzeit wegen notwendiger neuer
+Abdeckung unvermeidbar, wird sie im PR nachvollziehbar begründet und im Review bewertet.
+
+Core- und Arcade-E2E sind getrennte Checks. Eine getestete Pfadklassifikation startet den
+vollständigen Arcade-Lauf nur für Arcade-spezifische Bereiche. Gemeinsame Dateien und unbekannte
+Produktionspfade fallen sicher auf Core-E2E plus einen begrenzten Arcade-Smoke-Test zurück.
+Allgemeiner Socket-Transport und Arcade-Watcher-/Kiosk-Streaming sind in getrennten Modulen
+gekapselt, sodass Änderungen am allgemeinen Realtime-Modul keinen Arcade-Test benötigen. Die
+gemeinsamen Unit-/Integrationstests bleiben dabei verpflichtend. Ein täglicher Volltest bleibt als
+Sicherheitsnetz bestehen.
 
 ### Mergekonflikte
 
@@ -363,6 +382,7 @@ erfolgreich, wenn:
 
 - der Task-Vertrag gültig ist,
 - alle einschlägigen CI-Checks grün sind,
+- kein bestätigter ungeklärter Testlauf-Rückschritt für den aktuellen Head offen ist,
 - der Branch aktuell und konfliktfrei ist,
 - der PR nicht mehr als Draft markiert ist,
 - für den aktuellen Head-SHA genau ein Review-Modus gewählt ist,
@@ -510,6 +530,8 @@ Abnahme: Ein Event kann gefahrlos mehrfach eintreffen; nur ein Agent arbeitet gl
 3. Mergekonflikte nach Push auf `main` und im Reconciler erkennen.
 4. Konfliktlösung, Tests, Push und erneute Gate-Auswertung automatisieren.
 5. Rundenlimits und kritische Eskalationen durchsetzen.
+6. Bestätigte Testlauf-Regressionen wie andere reproduzierbare CI-Fehler an den Implementierungs-
+   Agenten geben; unvermeidbare Laufzeit durch neue Abdeckung sichtbar begründen.
 
 Abnahme: je ein absichtlich erzeugter Codefehler, transienter CI-Fehler und einfacher
 Mergekonflikt werden korrekt behandelt; ein riskanter Konflikt stoppt.

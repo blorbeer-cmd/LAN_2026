@@ -10,7 +10,7 @@ und **Playwright** für echte Browser-Klickpfade.
 | ----------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Unit**          | `node:test` + `assert`                                  | Reine Logik ohne I/O: Zugangs-Guard, Live-Status-Ableitung, Matchmaking-Balancing, Leaderboard-Scoring (`src/*.test.ts`). Ebenso die DOM-freien Frontend-Helfer (Formatierung, Avatar-Palette, Prozessnamen-Vorschläge, State-Lookups, `dateTimeFieldHtml`) direkt unter `public/js/*.test.js` — läuft ohne Build-Step als ESM (`public/package.json` setzt `"type": "module"` nur für den Node-Testlauf, ohne Auswirkung auf die im Browser statisch ausgelieferten Dateien). |
 | **Integration**   | `node:test` + `supertest`                               | Echte HTTP-Requests gegen die Express-App (`src/test/*.test.ts`), gegen eine **In-Memory-DB**.                                                                                                                                                                                                                                                                                                                                                                                 |
-| **E2E (Browser)** | `node:test` + Playwright (`src/test/e2e/*.e2e.test.ts`) | Startet den echten gebauten Server + einen echten Chromium und klickt durch die Web-UI: Spieler anlegen, Teams auslosen, abstimmen, Ergebnis eintragen, Zugangs-Token-Login und Event-Einladungen mit zwei offenen Clients.                                                                                                                                                                                                                                                        |
+| **E2E (Browser)** | `node:test` + Playwright (`src/test/e2e/*.e2e.test.ts`) | Startet den echten gebauten Server + einen echten Chromium und klickt durch die Web-UI: Spieler anlegen, Teams auslosen, abstimmen, Ergebnis eintragen, Zugangs-Token-Login und Event-Einladungen mit zwei offenen Clients.                                                                                                                                                                                                                                                    |
 
 ## Ausführen
 
@@ -19,6 +19,9 @@ cd server
 npm test              # schnell: Unit + Integration (In-Memory-DB, kein Server/Browser nötig)
 npm run test:coverage # wie npm test, zusätzlich mit Zeilen-/Branch-/Funktions-Coverage-Report
 npm run test:e2e      # langsamer: startet Server-Prozess(e) + Chromium, klickt durch die UI
+npm run test:e2e:core   # nur allgemeine Browserpfade
+npm run test:e2e:arcade # nur Arcade-, Spiel- und Arcade-Cross-View-Pfade
+npm run test:e2e:arcade-smoke # kurzer Arcade-Vertragstest für Shared-Änderungen
 ```
 
 Falls Playwright noch keinen Chromium-Browser installiert hat, einmalig aus `server/` ausführen:
@@ -43,7 +46,7 @@ eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur d
 - Jede Test-Datei läuft in einem eigenen Prozess (Isolation durch den Node-Runner).
 - Eine Instanz bedient genau eine Gruppe (`docs/plans/reset-single-group.md`); Events sind die
   einzige verbleibende Scoping-Dimension. Die required-mode-Suiten unter `src/test/api.group*.
-  required.test.ts` prüfen deshalb Rollen (`403` für unzureichende Rechte, sofortige Rollenwirkung),
+required.test.ts` prüfen deshalb Rollen (`403` für unzureichende Rechte, sofortige Rollenwirkung),
   unbekannte Ressourcen-IDs (`404`), Datenbank-Trigger/Foreign-Keys sowie — wo die jeweilige Domäne
   event-gebundene Daten hält — die Isolation zwischen zwei nacheinander getrackten Events derselben
   Gruppe:
@@ -93,6 +96,16 @@ Wiederholungsfall ab.
 - Integrationstests liegen unter `src/test/*.test.ts`.
 - E2E-Tests liegen unter `src/test/e2e/*.e2e.test.ts` und laufen **nicht** in `npm test` mit (eigenes
   Script `test:e2e`), da sie einen Server + Browser brauchen und entsprechend langsamer sind.
+- `scripts/run-e2e-partition.mjs` ordnet jede E2E-Datei genau einer Partition zu. Eine neue Datei
+  ohne Zuordnung oder eine doppelte Zuordnung lässt den Lauf bewusst fehlschlagen. `test:e2e`
+  führt beide Partitionen gemeinsam aus; CI kann `core` und `arcade` unabhängig starten.
+- Core enthält Access, den allgemeinen Auth-Gate, Checkliste, Event-Einladungen, die allgemeinen
+  Cross-View-Flows und die Socket-Isolation. Arcade enthält die Arcade-, Stream-Renderer-,
+  Battleship- und Challenge-Rush-Suiten sowie den eigenständig authentifizierten Arcade-Auth-Pfad
+  und die Arcade-Partition der Cross-View-Flows. `authGateArcade.e2e.test.ts` besitzt eine eigene
+  Member-Fixture; `flowsArcade.e2e.test.ts` aktiviert nur die Arcade-Szenarien der gemeinsamen
+  Cross-View-Fixture. `arcade-smoke` führt nur den Arcade-Grundfluss und den isolierten Auth-Pfad
+  aus; beide Dateien bleiben regulärer Bestandteil der vollständigen Arcade-Partition.
 - Die E2E-Dateien laufen parallel (eine pro Prozess) und starten je einen eigenen Server. Der
   gemeinsame Helfer `src/test/e2e/e2eServer.ts` startet ihn mit `PORT=0`, liest den tatsächlich
   gebundenen Port aus der Startmeldung und liefert die passende Basis-URL. Dadurch kollidieren
@@ -113,6 +126,32 @@ Wiederholungsfall ab.
 - Der Produktions-Build (`npm run build`) schließt alle Testdateien aus – sie landen nie in `dist/`.
 - `index.ts` startet den Server nur, wenn es direkt ausgeführt wird (`require.main === module`),
   damit Tests die App importieren können, ohne einen Port zu belegen.
+
+## Laufzeitregressionen
+
+CI misst nur die benannten Testschritte; Checkout, Abhängigkeitsinstallation, TypeScript-Build und
+Chromium-Setup gehören nicht in den Vergleich. `.github/test-performance.json` definiert die vier
+Suites `unit-integration`, `e2e-core`, `e2e-arcade-smoke` und `e2e-arcade`, die Schwelle von mehr als
+20 Prozent plus mindestens 30 Sekunden sowie fünf erfolgreiche `main`-Läufe als rollende
+Median-Basis.
+
+Ein erster Ausschlag ist nur ein Verdacht, weil GitHub-Runner schwanken. CI wiederholt genau die
+auffällige Suite auf einem frischen Runner. Erst wenn auch diese Wiederholung oberhalb beider
+Schwellen liegt, schlägt `Confirm test performance (<suite>)` fehl. Dann sind die langsamsten
+Testdateien beziehungsweise Testfälle und die verursachende Änderung zu untersuchen. Zusätzliche
+sinnvolle Abdeckung darf eine begründete Laufzeiterhöhung verursachen; Optimierung darf niemals
+Abdeckung entfernen, Assertions lockern oder Wartezeiten pauschal erhöhen.
+
+Die Pfadklassifikation liegt testbar in `scripts/ci-path-classifier.mjs`. Reine Arcade-Änderungen
+starten nur Arcade-E2E, bekannte Nicht-Arcade-Bereiche nur Core-E2E. Allgemeines Socket-Scope,
+Authentifizierung und Broadcasts liegen in `src/realtime.ts`; Arcade-Watcher, Kiosk-Replay und
+Game-Streaming sind in `src/arcade/realtime.ts` gekapselt. Deshalb startet eine Änderung am
+allgemeinen Realtime-Transport nur Core-E2E, eine Änderung am Arcade-Modul nur Arcade-E2E. Die
+vollständigen Unit-/Integrationstests prüfen beide Module in jedem Server-Lauf. Tatsächlich
+gemeinsame Dateien wie `src/db.ts`, `public/js/app.js`, CSS und unbekannte neue
+Produktionsmodule starten Core-E2E plus den kurzen Arcade-Smoke-Test, nicht den vollständigen
+Arcade-Lauf. Direkte Arcade-Änderungen starten die vollständige Arcade-Partition; ein täglicher
+geplanter Volltest hält alle Partitionen und ihre Laufzeitbaselines aktuell.
 
 ## Vor jedem Commit
 

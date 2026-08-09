@@ -10,6 +10,10 @@ on:
       - "docs/**"
       - "**/*.md"
   pull_request:
+  schedule:
+    # A daily full run keeps both E2E partitions exercised and builds the
+    # rolling performance baseline even when normal changes touch one side.
+    - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       deploy:
@@ -37,7 +41,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       server: ${{ steps.filter.outputs.server }}
-      e2e: ${{ steps.filter.outputs.e2e }}
+      e2e_core: ${{ steps.filter.outputs.e2e_core }}
+      e2e_arcade: ${{ steps.filter.outputs.e2e_arcade }}
+      e2e_arcade_smoke: ${{ steps.filter.outputs.e2e_arcade_smoke }}
       agent: ${{ steps.filter.outputs.agent }}
       image: ${{ steps.filter.outputs.image }}
       deploy: ${{ steps.filter.outputs.deploy }}
@@ -47,82 +53,16 @@ jobs:
           fetch-depth: 0
       - name: Select required work
         id: filter
-        shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          server=false
-          e2e=false
-          agent=false
-          image=false
-          deploy=false
-
-          select_all() {
-            server=true
-            e2e=true
-            agent=true
-            image=true
-            deploy=true
-          }
-
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            select_all
-          else
-            base="$BASE_SHA"
-            if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
-              base="$(git rev-parse "$HEAD_SHA^" 2>/dev/null || true)"
-            fi
-
-            if [[ -z "$base" ]] ||
-              ! git cat-file -e "$base^{commit}" 2>/dev/null ||
-              ! git cat-file -e "$HEAD_SHA^{commit}" 2>/dev/null; then
-              echo "Unable to resolve diff range; selecting all work." >&2
-              select_all
-            else
-              changed_files="$(mktemp)"
-              if git diff --no-renames --name-only -z "$base" "$HEAD_SHA" > "$changed_files"; then
-                while IFS= read -r -d '' file; do
-                  case "$file" in
-                    server/*)
-                      select_all
-                      ;;
-                    agent/*)
-                      agent=true
-                      ;;
-                    docker-compose.yml)
-                      image=true
-                      deploy=true
-                      ;;
-                    .nvmrc | .github/workflows/*)
-                      select_all
-                      ;;
-                    docs/* | *.md)
-                      # Known documentation-only paths need no runtime checks.
-                      ;;
-                    *)
-                      # New root or infrastructure paths are safety-sensitive
-                      # until they are explicitly classified above.
-                      select_all
-                      ;;
-                  esac
-                done < "$changed_files"
-              else
-                echo "Unable to calculate changed paths; selecting all work." >&2
-                select_all
-              fi
-              rm -f "$changed_files"
-            fi
-          fi
-
-          echo "server=$server" >> "$GITHUB_OUTPUT"
-          echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
-          echo "agent=$agent" >> "$GITHUB_OUTPUT"
-          echo "image=$image" >> "$GITHUB_OUTPUT"
-          echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
-          printf 'Selected work: server=%s e2e=%s agent=%s image=%s deploy=%s\n' \
-            "$server" "$e2e" "$agent" "$image" "$deploy"
+        run: >-
+          node scripts/ci-path-classifier.mjs
+          --event "$EVENT_NAME"
+          --base "$BASE_SHA"
+          --head "$HEAD_SHA"
+          --github-output "$GITHUB_OUTPUT"
 
   server-checks:
     name: Server lint, build and tests
@@ -175,13 +115,19 @@ jobs:
         run: npm run lint
       - name: Check tool configuration formatting
         run: npm run format:check
+      - name: Test CI selection and performance logic
+        working-directory: ${{ github.workspace }}
+        run: node --test scripts/ci-path-classifier.test.mjs scripts/ci-test-performance.test.mjs
       - run: npm run build
-      - run: npm test
+      - name: Compile unit and integration tests
+        run: npm run test:compile
+      - name: Run measured unit and integration tests
+        run: npm run test:run
 
-  e2e:
-    name: Browser E2E
+  e2e-core:
+    name: Browser E2E Core
     needs: changes
-    if: needs.changes.outputs.e2e == 'true'
+    if: needs.changes.outputs.e2e_core == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -217,8 +163,226 @@ jobs:
       - name: Install Chromium system dependencies
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
-      # test:e2e builds the server itself before starting it.
-      - run: npm run test:e2e
+      - name: Prepare Core E2E build
+        run: npm run test:e2e:prepare
+      - name: Run measured Core E2E
+        run: npm run test:e2e:run:core
+
+  e2e-arcade-smoke:
+    name: Browser E2E Arcade smoke
+    needs: changes
+    if: needs.changes.outputs.e2e_arcade_smoke == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Cache installed server dependencies
+        id: server-node-modules
+        uses: actions/cache@v4
+        with:
+          path: server/node_modules
+          key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
+      - run: npm ci
+        if: steps.server-node-modules.outputs.cache-hit != 'true'
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Chromium system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Prepare Arcade smoke E2E build
+        run: npm run test:e2e:prepare
+      - name: Run measured Arcade smoke E2E
+        run: npm run test:e2e:run:arcade-smoke
+
+  e2e-arcade:
+    name: Browser E2E Arcade
+    needs: changes
+    if: needs.changes.outputs.e2e_arcade == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Cache installed server dependencies
+        id: server-node-modules
+        uses: actions/cache@v4
+        with:
+          path: server/node_modules
+          key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
+      - run: npm ci
+        if: steps.server-node-modules.outputs.cache-hit != 'true'
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Chromium system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Prepare Arcade E2E build
+        run: npm run test:e2e:prepare
+      - name: Run measured Arcade E2E
+        run: npm run test:e2e:run:arcade
+
+  # Keep the established branch-protection context while the actual browser
+  # coverage runs as independently selected Core, Arcade smoke and Arcade jobs.
+  browser-e2e:
+    name: Browser E2E
+    if: always()
+    needs: [changes, e2e-core, e2e-arcade-smoke, e2e-arcade]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify selected browser E2E partitions
+        shell: bash
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CORE_RESULT: ${{ needs['e2e-core'].result }}
+          ARCADE_SMOKE_RESULT: ${{ needs['e2e-arcade-smoke'].result }}
+          ARCADE_RESULT: ${{ needs['e2e-arcade'].result }}
+        run: |
+          set -euo pipefail
+          if [[ "$CHANGES_RESULT" != "success" ]]; then
+            echo "Path classification ended with: $CHANGES_RESULT" >&2
+            exit 1
+          fi
+          for result in "$CORE_RESULT" "$ARCADE_SMOKE_RESULT" "$ARCADE_RESULT"; do
+            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
+              echo "A browser E2E partition ended with: $result" >&2
+              exit 1
+            fi
+          done
+
+  test-performance:
+    name: Test performance
+    if: >-
+      always() &&
+      needs.changes.result == 'success' &&
+      (needs.changes.outputs.server == 'true' ||
+       needs.changes.outputs.e2e_core == 'true' ||
+       needs.changes.outputs.e2e_arcade == 'true' ||
+       needs.changes.outputs.e2e_arcade_smoke == 'true')
+    needs: [changes, server-checks, e2e-core, e2e-arcade, e2e-arcade-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      has_suspicions: ${{ steps.evaluate.outputs.has_suspicions }}
+      suspicions: ${{ steps.evaluate.outputs.suspicions }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compare test runtimes with main baseline
+        id: evaluate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          node scripts/ci-test-performance.mjs evaluate-github
+          --repository "${{ github.repository }}"
+          --workflow "deploy.yml"
+          --run-id "${{ github.run_id }}"
+          --branch "${{ github.event.repository.default_branch }}"
+          --github-output "$GITHUB_OUTPUT"
+          --summary "$GITHUB_STEP_SUMMARY"
+
+  test-performance-confirm:
+    name: Confirm test performance (${{ matrix.suite }})
+    if: needs['test-performance'].outputs.has_suspicions == 'true'
+    needs: test-performance
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs['test-performance'].outputs.suspicions) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Cache installed server dependencies
+        id: server-node-modules
+        uses: actions/cache@v4
+        with:
+          path: server/node_modules
+          key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
+      - run: npm ci
+        if: steps.server-node-modules.outputs.cache-hit != 'true'
+      - name: Cache Playwright browsers
+        if: matrix.suite != 'unit-integration'
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
+      - name: Install Chromium
+        if: matrix.suite != 'unit-integration' && steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Chromium system dependencies
+        if: matrix.suite != 'unit-integration' && steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Prepare repeated suite
+        env:
+          SUITE: ${{ matrix.suite }}
+        shell: bash
+        run: |
+          if [[ "$SUITE" == "unit-integration" ]]; then
+            npm run test:compile
+          else
+            npm run test:e2e:prepare
+          fi
+      - name: Repeat and confirm suspected regression
+        env:
+          SUITE: ${{ matrix.suite }}
+          BASELINE_MS: ${{ matrix.baselineMs }}
+        shell: bash
+        run: |
+          case "$SUITE" in
+            unit-integration) command="test:run" ;;
+            e2e-core) command="test:e2e:run:core" ;;
+            e2e-arcade) command="test:e2e:run:arcade" ;;
+            e2e-arcade-smoke) command="test:e2e:run:arcade-smoke" ;;
+            *) echo "Unknown suite: $SUITE" >&2; exit 1 ;;
+          esac
+          started_ms="$(date +%s%3N)"
+          npm run "$command"
+          completed_ms="$(date +%s%3N)"
+          current_ms="$((completed_ms - started_ms))"
+          node ../scripts/ci-test-performance.mjs confirm \
+            --suite "$SUITE" \
+            --baseline-ms "$BASELINE_MS" \
+            --current-ms "$current_ms"
 
   agent:
     name: Agent lint and tests
@@ -297,11 +461,26 @@ jobs:
       needs.changes.outputs.deploy == 'true' &&
       needs.changes.result == 'success' &&
       (needs.server-checks.result == 'success' || needs.server-checks.result == 'skipped') &&
-      (needs.e2e.result == 'success' || needs.e2e.result == 'skipped') &&
+      (needs['e2e-core'].result == 'success' || needs['e2e-core'].result == 'skipped') &&
+      (needs['e2e-arcade'].result == 'success' || needs['e2e-arcade'].result == 'skipped') &&
+      (needs['e2e-arcade-smoke'].result == 'success' || needs['e2e-arcade-smoke'].result == 'skipped') &&
+      (needs['test-performance'].result == 'success' || needs['test-performance'].result == 'skipped') &&
+      (needs['test-performance-confirm'].result == 'success' || needs['test-performance-confirm'].result == 'skipped') &&
       (needs.agent.result == 'success' || needs.agent.result == 'skipped') &&
       needs.image.result == 'success' &&
       (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy))
-    needs: [changes, server-checks, e2e, agent, image]
+    needs:
+      [
+        changes,
+        server-checks,
+        e2e-core,
+        e2e-arcade,
+        e2e-arcade-smoke,
+        test-performance,
+        test-performance-confirm,
+        agent,
+        image,
+      ]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

@@ -1835,13 +1835,14 @@ test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', as
       await guestPage.click(`[data-game="${game}"]`);
       await guestPage.waitForSelector(`#${game}-create:not([disabled])`);
       await guestPage.click(`#${game}-create`);
-      await guestPage.waitForSelector(`.arcade-lobby-control-bar select[name="${game}-target"]`);
+      const targetSelect = guestPage.locator(`.arcade-lobby-control-bar select[name="${game}-target"]:visible`);
+      await targetSelect.waitFor();
       assert.equal(
-        await guestPage.locator(`.arcade-lobby-control-bar select[name="${game}-target"]`).inputValue(),
+        await targetSelect.inputValue(),
         game === 'pong' ? '21' : '7',
       );
       // Rounded: see the #admin-count assertion above for why.
-      assert.equal(await guestPage.locator(`.arcade-lobby-control-bar select[name="${game}-target"]`).evaluate((select) => Math.round(select.getBoundingClientRect().height)), 32);
+      assert.equal(await targetSelect.evaluate((select) => Math.round(select.getBoundingClientRect().height)), 32);
 
       await page.click(`[data-game="${game}"]`);
       await page.waitForSelector(`[data-${game}-join]`);
@@ -1871,6 +1872,17 @@ test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', as
       await page.waitForSelector(`text=Keine offene ${game === 'pong' ? 'Pong' : 'Blobby-Volley'}-Lobby.`);
     }
   } finally {
+    // Keep the shared host page usable after a failed assertion instead of
+    // letting a switch confirmation intercept every later scenario.
+    await page.keyboard.press('Escape');
+    if ((await page.locator('[data-game="quiz"]').count()) > 0) {
+      if ((await page.locator('#quiz-create-lobby').count()) === 0) await page.click('[data-game="quiz"]');
+      const closeOwnedLobby = page.locator('[data-close-lobby]:visible');
+      if ((await closeOwnedLobby.count()) > 0) {
+        await closeOwnedLobby.click();
+        await page.waitForSelector('text=Keine offene Quiz-Lobby.');
+      }
+    }
     await guestContext.close();
   }
 });

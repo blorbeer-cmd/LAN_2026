@@ -9,7 +9,7 @@ import './db'; // side-effect: open DB, create schema, seed defaults
 import { hasClaimedAdmin } from './accounts';
 import { runBootstrapAdmins } from './bootstrapAdmins';
 import { createApp } from './app';
-import { setIo, createSocketAuthGuard, registerArcadeKioskSockets } from './realtime';
+import { setIo, createSocketAuthGuard, registerScopedSockets } from './realtime';
 import { startOfflineSweeper } from './liveStatus';
 import { startArcadeHeartbeat } from './arcade/arcadeTracking';
 import { registerArcadeSockets } from './arcade/arcade';
@@ -20,6 +20,7 @@ import { registerPongSockets } from './arcade/pong';
 import { registerSnakeSockets } from './arcade/snake';
 import { registerBattleshipSockets } from './arcade/battleship';
 import { registerChallengeRushSockets } from './arcade/challengeRush';
+import { registerArcadeSockets as registerArcadeRealtimeSockets } from './arcade/realtime';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -55,7 +56,8 @@ function start(): void {
   setIo(io);
 
   io.use(createSocketAuthGuard());
-  registerArcadeKioskSockets(io);
+  registerScopedSockets(io);
+  registerArcadeRealtimeSockets(io);
 
   registerArcadeSockets(io);
   registerTetrisSockets(io);

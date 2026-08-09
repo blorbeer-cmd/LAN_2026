@@ -9,7 +9,8 @@ import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import request from 'supertest';
 import { createTestApp } from './testApp';
-import { setIo, Events, createSocketAuthGuard, registerArcadeKioskSockets, broadcastArcadeKiosk, arcadeWatcherPlayerIds } from '../realtime';
+import { setIo, Events, createSocketAuthGuard, registerScopedSockets } from '../realtime';
+import { arcadeWatcherPlayerIds, broadcastArcadeKiosk, registerArcadeSockets } from '../arcade/realtime';
 import { db, DEFAULT_GROUP_ID } from '../db';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
 import { nanoid } from 'nanoid';
@@ -19,7 +20,8 @@ async function withServer(fn: (baseUrl: string, io: Server) => Promise<void>): P
   const httpServer = http.createServer(app);
   const io = new Server(httpServer);
   io.use(createSocketAuthGuard(''));
-  registerArcadeKioskSockets(io);
+  registerScopedSockets(io);
+  registerArcadeSockets(io);
   setIo(io);
 
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));

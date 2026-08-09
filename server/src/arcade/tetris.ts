@@ -20,7 +20,7 @@ import { db } from '../db';
 import { playerMayUseArcadeAi } from './adminAccess';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
-import { broadcastArcadeKiosk } from '../realtime';
+import { broadcastArcadeKiosk } from './realtime';
 import { recordArcadeResult } from './arcadeData';
 import { arcadeTiming } from './timing';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
