@@ -12,13 +12,21 @@ test('Challenge Rush keeps real timings unless tests explicitly opt into fast ti
   };
   assert.deepEqual(resolveChallengeRushTiming({}), expected);
   assert.deepEqual(resolveChallengeRushTiming({ NODE_ENV: 'production', CHALLENGE_RUSH_FAST_TIMERS: '1' }), expected);
+  assert.deepEqual(resolveChallengeRushTiming({ NODE_ENV: 'production', E2E_FAST_TIMERS: '1' }), expected);
   assert.deepEqual(resolveChallengeRushTiming({ NODE_ENV: 'test', CHALLENGE_RUSH_FAST_TIMERS: 'true' }), expected);
+  assert.deepEqual(resolveChallengeRushTiming({ NODE_ENV: 'test', E2E_FAST_TIMERS: 'true' }), expected);
 });
 
-test('Challenge Rush exposes one consistent fast timing profile to opted-in tests', () => {
+test('Challenge Rush exposes bounded fast timing profiles to opted-in tests', () => {
   assert.deepEqual(resolveChallengeRushTiming({ NODE_ENV: 'test', CHALLENGE_RUSH_FAST_TIMERS: '1' }), {
     countdownMs: 50,
     challengeDurationMs: 1_200,
+    memoryRevealMs: 50,
+    trafficLightGreenMs: 100,
+  });
+  assert.deepEqual(resolveChallengeRushTiming({ NODE_ENV: 'test', E2E_FAST_TIMERS: '1' }), {
+    countdownMs: 50,
+    challengeDurationMs: null,
     memoryRevealMs: 50,
     trafficLightGreenMs: 100,
   });
