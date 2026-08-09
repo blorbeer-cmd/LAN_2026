@@ -57,3 +57,6 @@ jobs:
 
       - name: Test Claude cross-review adapter
         run: node --test scripts/agent-claude-review.test.mjs
+
+      - name: Test Codex cross-review adapter
+        run: node --test scripts/agent-codex-review.test.mjs

@@ -538,12 +538,15 @@ Mergekonflikt werden korrekt behandelt; ein riskanter Konflikt stoppt.
 
 ### Phase 4 – Cross-Review und strukturierte Ergebnisse
 
-Teilstand: Die Auswahl `review:cross` startet für eine mechanisch review-bereite
-Codex-Implementierung genau einen credential-read-only Claude-Lauf. Dessen strukturiertes Ergebnis
-wird validiert, an den aktuellen Head gebunden und vom vertrauenswürdigen Workflow veröffentlicht.
-Der PR-Checkout wird nach der Diff-Erzeugung und vor Übergabe des Provider-Secrets vollständig
-entfernt; damit können Gedächtnisdateien des Heads nicht als Claude-Code-Anweisungen geladen werden.
-Die übrigen Punkte dieser Phase bleiben offen.
+Teilstand: Die Auswahl `review:cross` startet für mechanisch review-bereite Heads beide regulären
+Richtungen: für eine Codex-Implementierung genau einen credential-read-only Claude-Lauf und für eine
+Claude-Implementierung genau eine native Codex-Review-Anforderung. Das Claude-Ergebnis wird
+validiert, an den aktuellen Head gebunden und vom vertrauenswürdigen Workflow veröffentlicht; der
+Codex-Adapter bindet seine `@codex review`-Anforderung über einen exact-head Marker und überlässt
+die Review-Evidenz dem nativen GitHub-Review. Der PR-Checkout wird nach der Diff-Erzeugung und vor
+Übergabe des Provider-Secrets vollständig entfernt; damit können Gedächtnisdateien des Heads nicht
+als Claude-Code-Anweisungen geladen werden. Findings-Schleife, Fallback und Rundenlimits bleiben
+offen.
 
 1. Auswahl des Review-Modus mit Empfehlung vorlegen und das Review an den gewählten Reviewer
    routen: `cross` an den Gegen-Anbieter, `self` an eine frische, schreibgeschützte Session des
@@ -557,13 +560,13 @@ Die übrigen Punkte dieser Phase bleiben offen.
 Abnahme: alle drei Modi liefern reproduzierbare `pass`-/`changes-required`-Ergebnisse; ein
 veraltetes Review und eine an einen früheren Head gebundene Wahl können das Gate nicht öffnen.
 
-Umsetzungsstand: Die Auswahl selbst ist umgesetzt. Der Reconciler kennt die drei `review:*`-Labels,
+Umsetzungsstand: Die Auswahl selbst und beide regulären Provider-Adapter sind umgesetzt. Der Reconciler kennt die drei `review:*`-Labels,
 bindet sie an den Head-SHA, wertet die modusabhängige Evidenz aus, stellt die Frage im
 Statuskommentar samt Empfehlung und blockiert das Gate mit der Phase `awaiting-review-decision`,
 solange sie unbeantwortet ist. Der Ablauf in der Session steht in
 `.github/agent-pipeline/review-decision.md`. Für Codex-Implementierungen startet `review:cross`
-bereits den eng begrenzten Claude-Pilotpfad; die Gegenrichtung und die übrigen Agentenstarts fehlen
-weiterhin.
+den eng begrenzten Claude-Pilotpfad; für Claude-Implementierungen fordert der Codex-Adapter die
+native Review an. Die Findings-Schleife und die übrigen Agentenstarts fehlen weiterhin.
 
 ### Phase 5 – Reviewer-Fallback und Limit-Retry
 

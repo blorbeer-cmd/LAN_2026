@@ -5,7 +5,7 @@ This directory contains configuration for the agent PR pipeline described in
 
 ## Current rollout state
 
-The pipeline reports state and has one deliberately narrow provider action:
+The pipeline reports state and has narrow provider actions for both regular cross-review directions:
 
 - `.github/workflows/agent-pipeline-contract.yml` validates an activated task contract.
 - `scripts/agent-pipeline.mjs` parses and validates task contracts.
@@ -18,6 +18,10 @@ The pipeline reports state and has one deliberately narrow provider action:
   after the user chooses `review:cross` for a Codex implementation.
 - `scripts/agent-claude-review.mjs` reuses the readiness snapshot, validates Claude's structured
   result and publishes its head-bound marker.
+- `.github/workflows/agent-pipeline-codex-review.yml` requests one native Codex cross-review after
+  the user chooses `review:cross` for a Claude implementation.
+- `scripts/agent-codex-review.mjs` reuses the readiness snapshot and posts one exact-head-bound
+  `@codex review` request; Codex submits the native GitHub review and the reconciler evaluates it.
 - `.github/workflows/agent-pipeline-tests.yml` runs the unit tests for both.
 - `review-session-prompt.md` contains the copy-paste prompt and operating instructions for an
   isolated Codex or Claude review session.
@@ -29,10 +33,9 @@ The pipeline reports state and has one deliberately narrow provider action:
   only long enough to render an inert diff, then removes the checkout before the provider secret is
   exposed. Claude receives the diff but no PR-owned `CLAUDE.md`, `AGENTS.md` or `.claude` settings;
   no pull-request code, tests, hooks or package-manager commands are executed.
-- Only the Claude cross-review adapter invokes an agent. It has no automatic retry, round counter,
-  fix loop, approval, merge or branch-protection mutation. A user may manually retry a `blocked`
-  result. The merge-gate status is written but is not a required check until someone adds it by
-  hand.
+- The provider adapters have no automatic retry, round counter, fix loop, approval, merge or
+  branch-protection mutation. A user may manually retry a blocked or missing review. The merge-gate
+  status is written but is not a required check until someone adds it by hand.
 
 ## Readiness reconciler
 
@@ -57,7 +60,7 @@ What it does:
 
 What the reconciler deliberately does not do:
 
-- start an agent, request a review, or push a fix; the separate Claude adapter owns its one launch,
+- start an agent, request a review, or push a fix; the separate provider adapters own their launches,
 - approve or merge anything,
 - set or clear `agent:waiting` and `agent:review-fallback`, which belong to the provider phases,
 - choose the review mode, or set any `review:*` label.
@@ -137,7 +140,7 @@ history is the audit trail for who chose what and when. Every other gate conditi
 no conflict, resolved threads, the UI/UX notice, human approval of protected paths — applies
 unchanged in all three modes, and the merge stays with the user in all of them.
 
-## Automated Claude cross-review
+## Automated provider cross-review
 
 For a Codex implementation, applying `review:cross` starts the Claude adapter only when the shared
 `deriveReadiness` result is actually in phase `review` and names Claude as the counter provider.
@@ -166,6 +169,13 @@ retried by removing and reapplying the review label or by a manual workflow disp
 invalidates the result and the existing decision logic asks for the review mode again. Automatic
 provider retries, review-round counting, fallback selection and findings-to-fix orchestration
 remain later phases.
+
+For a Claude implementation, applying `review:cross` starts the Codex adapter under the same
+readiness and concurrency rules. The adapter checks that Codex is the configured counter provider,
+confirms that the current head has no submitted Codex review, and posts exactly one
+`@codex review` comment with an exact-head marker. The marker is only a request and never counts as
+review evidence. Codex must submit its native GitHub review; the reconciler then evaluates that
+review for the current head and unresolved threads.
 
 Escalations the reconciler cannot derive from GitHub state — an exhausted round limit, a critical
 decision, the 24-hour waiting escalation — stay with `agent:needs-human`, exactly as the plan
@@ -304,15 +314,16 @@ node --test scripts/agent-pipeline.test.mjs
 node --test scripts/agent-pipeline-reconcile.test.mjs
 node --test scripts/agent-pipeline-select-prs.test.mjs
 node --test scripts/agent-claude-review.test.mjs
+node --test scripts/agent-codex-review.test.mjs
 node --test scripts/agent-preflight.test.mjs
 git diff --check
 ```
 
 The validator and the test suites write nothing to GitHub. The reconciler writes only pipeline
 labels, its own sticky status comment and the `Agent pipeline / ready for human merge` status, and
-only when invoked with `--apply`. The Claude adapter writes one validated review result comment and
-then invokes that same reconciler. `config.json` already declares the labels and timeouts later
-phases will use; the ones this rollout does not own are inert until then.
+only when invoked with `--apply`. The Claude adapter writes one validated review result comment;
+the Codex adapter writes one `@codex review` request. Codex then submits the native review that the
+reconciler evaluates. `config.json` already declares the labels and timeouts later phases will use.
 
 For a manual Codex cross-review or fallback review during the rollout, follow
 [`review-session-prompt.md`](review-session-prompt.md). A new commit invalidates the previous
@@ -332,9 +343,10 @@ Completed for this repository:
 
 Still required before expanding agent mutations:
 
-1. After the Claude workflow has reached the default branch, verify in a pilot pull request that
+1. After both provider workflows have reached the default branch, verify in pilot pull requests that
    applying `review:cross` to a ready Codex head produces one `github-actions[bot]` result comment,
-   the result names the exact head SHA and no repository file or branch changes.
+   applying it to a ready Claude head produces one native Codex review, and both results name or
+   cover the exact head SHA without repository file or branch changes.
 2. Verify in a pilot pull request that both app identities can update their own feature branches
    but cannot push or merge to `main`.
 3. Add `Agent pipeline / ready for human merge` to branch protection. The prerequisite pilot is
