@@ -5,10 +5,9 @@ export const E2E_ADMIN_NAME = 'E2E Bootstrap Admin';
 export const E2E_ADMIN_PASSWORD = 'e2e-bootstrap-admin-password';
 export const E2E_KIOSK_TOKEN = 'e2e-kiosk-token';
 
-export function authenticatedServerEnv(port: number): NodeJS.ProcessEnv {
+export function authenticatedServerEnv(): NodeJS.ProcessEnv {
   return {
     ...process.env,
-    PORT: String(port),
     DB_FILE: ':memory:',
     COOKIE_SECURE: '0',
     KIOSK_TOKEN: E2E_KIOSK_TOKEN,

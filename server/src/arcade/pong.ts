@@ -4,7 +4,7 @@ import { db } from '../db';
 import { playerMayUseArcadeAi } from './adminAccess';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { BALL_RADIUS, PADDLE_HEIGHT, PADDLE_WIDTH, PONG_HEIGHT, PONG_WIDTH, PongInput, PongMode, PongTeam, PongWorld, createWorld, pongPointScorerName, stepWorld } from './pongLogic';
-import { broadcastArcadeKiosk } from '../realtime';
+import { broadcastArcadeKiosk } from './realtime';
 import { recordArcadeResult } from './arcadeData';
 import { arcadeTiming } from './timing';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';

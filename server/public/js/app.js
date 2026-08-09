@@ -93,6 +93,25 @@ let currentView = 'home';
 let appReady = false;
 const viewContainer = document.getElementById('view-container');
 let pendingSearchTarget = null;
+const ARCADE_VIEWS = new Set([
+  'arcade', 'arcadeWatch', 'quizRoom', 'tetris', 'scribbleRoom', 'blobby',
+  'pong', 'snake', 'battleship', 'challengeRush',
+]);
+
+function syncArcadeStylesheet(view) {
+  const linkId = 'arcade-stylesheet';
+  const existing = document.getElementById(linkId);
+  if (ARCADE_VIEWS.has(view)) {
+    if (existing) return;
+    const link = document.createElement('link');
+    link.id = linkId;
+    link.rel = 'stylesheet';
+    link.href = '/css/arcade.css?v=1';
+    document.head.append(link);
+    return;
+  }
+  existing?.remove();
+}
 
 // Tracks the last vote round we've seen, so the socket handler can tell a
 // genuinely new round (round number just changed while open) apart from a
@@ -114,6 +133,7 @@ const ctx = {
 };
 
 function renderCurrent() {
+  syncArcadeStylesheet(currentView);
   const renderFn = VIEWS[currentView];
   if (renderFn) renderFn(viewContainer, ctx);
   focusPendingSearchTarget();

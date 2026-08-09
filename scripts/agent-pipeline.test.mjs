@@ -211,13 +211,13 @@ test("UI paths override an incorrect no declaration and protected paths are repo
   const parsed = parseTaskContract(body({ scope: "root" }));
   const result = validateTaskContract(
     parsed.contract,
-    context(["server/public/app.js", ".github/workflows/deploy.yml"]),
+    context(["server/public/app.js", "infra/provisioning.yml"]),
     config,
   );
   assert.equal(result.valid, true);
   assert.equal(result.normalized.uiChanged, true);
   assert.deepEqual(result.normalized.protectedPaths, [
-    ".github/workflows/deploy.yml",
+    "infra/provisioning.yml",
   ]);
   assert.equal(result.warnings.length, 1);
 });

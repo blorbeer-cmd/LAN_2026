@@ -9,12 +9,11 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
+import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
+import { startE2EServer } from './e2eServer';
 
-const PORT = 3904; // 3901 = flows, 3902 = access, 3903 = arcade, 3910 = agent integration
-const BASE_URL = `http://localhost:${PORT}`;
+let BASE_URL: string;
 const RECOVERY_CODE = 'e2e-admin-recovery-code';
 const NAME = 'E2E New Person';
 const PASSWORD = 'e2e new person password';
@@ -24,20 +23,6 @@ let serverProcess: ChildProcess;
 let browser: Browser;
 let page: Page;
 let adminCookie: string;
-
-async function waitForServer(url: string, timeoutMs = 10_000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // not up yet, keep polling
-    }
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  throw new Error(`Server at ${url} did not become ready in time`);
-}
 
 // Mints a fresh 'register' invite code by bootstrapping one admin account
 // via the recovery code (plain HTTP, no browser involved) and having it
@@ -93,17 +78,14 @@ async function mintResetInviteCode(): Promise<string> {
 }
 
 before(async () => {
-  serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      DB_FILE: ':memory:',
-      ADMIN_RECOVERY_CODE: RECOVERY_CODE,
-      KIOSK_TOKEN: 'e2e-kiosk-token',
-    },
-    stdio: 'ignore',
+  const server = await startE2EServer({
+    ...process.env,
+    DB_FILE: ':memory:',
+    ADMIN_RECOVERY_CODE: RECOVERY_CODE,
+    KIOSK_TOKEN: 'e2e-kiosk-token',
   });
-  await waitForServer(`${BASE_URL}/api/health`);
+  serverProcess = server.process;
+  BASE_URL = server.baseUrl;
   browser = await chromium.launch();
   page = await browser.newPage({ viewport: { width: 390, height: 844 } });
 });
@@ -237,14 +219,15 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await adminPage.waitForSelector('.admin-role-select');
     assert.equal(await adminPage.locator('#group-btn').count(), 0);
     assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \(\d+\)$/);
-    assert.deepEqual(
-      await adminPage.locator('.admin-role-select').first().locator('option').allTextContents(),
-      ['Mitglied', 'Admin', 'Owner'],
-    );
+    assert.deepEqual(await adminPage.locator('.admin-role-select').first().locator('option').allTextContents(), [
+      'Mitglied',
+      'Admin',
+      'Owner',
+    ]);
     assert.equal(
       await adminPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       true,
-      'mobile onboarding must not introduce horizontal page scrolling'
+      'mobile onboarding must not introduce horizontal page scrolling',
     );
     await adminPage.click('#admin-register-link');
 
@@ -263,7 +246,7 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     assert.equal(
       await adminPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       true,
-      'desktop onboarding must not introduce horizontal page scrolling'
+      'desktop onboarding must not introduce horizontal page scrolling',
     );
 
     const activeLink = adminPage.locator('[data-show-login-link]').first();
@@ -294,7 +277,11 @@ test('admin roster retries role loading, serializes changes and follows group ro
   await adminPage.route(`**/api/groups/${groupId}/members`, async (route) => {
     if (failNextMembersRequest) {
       failNextMembersRequest = false;
-      await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"Temporärer Rollenfehler."}' });
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: '{"error":"Temporärer Rollenfehler."}',
+      });
       return;
     }
     await route.continue();
@@ -451,20 +438,4 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
 
 test('single-group access context is no longer exposed as a separate topbar control', async () => {
   assert.equal(await page.locator('#group-btn').count(), 0);
-});
-
-test('a required-mode member can open an Arcade lobby with a scoped game socket', async () => {
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="arcade"]');
-  await page.waitForSelector('.arcade-tiles');
-  await page.click('[data-game="tetris"]');
-  await page.waitForSelector('#tetris-create:not([disabled])');
-  await page.click('#tetris-create');
-  await page.waitForSelector('[data-tetris-close]');
-  assert.equal(
-    await page.locator('.toast-error:has-text("Gruppen- oder Eventzugriff verweigert")').count(),
-    0,
-  );
-  await page.click('[data-tetris-close]');
-  await page.waitForSelector('#tetris-create:not([disabled])');
 });

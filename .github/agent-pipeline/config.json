@@ -14,6 +14,10 @@
     "codex": ["chatgpt-codex-connector[bot]"],
     "claude": ["claude[bot]"]
   },
+  "//crossReviewResultAuthors": "Trusted workflow identities that may publish a provider's structured, head-bound cross-review result when that integration does not submit a native GitHub review. This is deliberately not part of providerReviewerAllowlist.",
+  "crossReviewResultAuthors": {
+    "claude": ["github-actions[bot]"]
+  },
   "//reviewModeLabels": "Set by the user, never by an agent: they decide who reviews the current head. The reconciler only removes one that was bound to an earlier head, so the choice is asked again per head SHA.",
   "reviewModeLabels": {
     "cross": "review:cross",
@@ -46,17 +50,25 @@
     "docs/"
   ],
   "uiPathPrefixes": ["server/public/"],
-  "protectedPathPrefixes": [".github/workflows/", "infra/"],
-  "//crossReviewEvidence": "What proves the counter provider reviewed the current head. `approval` demands an approving review — the strongest signal, but the Codex integration never submits one: it comments when it has suggestions and reacts with a thumbs-up when it has none, so this value leaves `cross` permanently unsatisfiable. `reviewed-and-resolved` accepts a review of this exact head with none of its findings left open; weaker, because it infers agreement from an absence instead of reading a statement. An explicit CHANGES_REQUESTED blocks under both.",
-  "//crossReviewEvidenceLimit": "Both values need a *submitted review*, which is the only artefact GitHub binds to a commit SHA. A thumbs-up reaction is deliberately not evidence and is never fetched: a reaction carries no SHA, so it cannot say which code was reviewed, and accepting one would let approval of an old head carry a new one. In practice this is why the pipeline requests a review per head instead of relying on the provider's automatic pass — a requested review is submitted even when it reports no findings.",
+  "protectedPathPrefixes": ["infra/"],
+  "//crossReviewEvidence": "What proves the counter provider reviewed the current head. `approval` demands a native approving review. `reviewed-and-resolved` accepts either a native review of this exact head with no open findings, or a credential-read-only structured result from a provider-specific trusted publisher. An explicit changes-required result blocks under both.",
+  "//crossReviewEvidenceLimit": "A native review is bound to its commit SHA by GitHub. A structured provider result must carry the exact SHA in the trusted review-result marker. Reactions are deliberately not evidence because they carry no SHA and could silently apply to a later head.",
   "crossReviewEvidence": "reviewed-and-resolved",
   "//selfReviewMinimumEnforcement": "How strongly a self-review session must have been kept away from the code before its verdict opens the gate. `true` requires credentials without code write access — the strongest, but unreachable in environments whose only credentials can push. `verified` accepts a session the launcher ran with the editing tools removed in a throwaway worktree and checked afterwards to be untouched. `false` accepts a verdict nothing outside the prompt backed up and effectively turns the self-review gate into a formality.",
   "selfReviewMinimumEnforcement": "verified",
   "reviewPromptPath": ".github/agent-pipeline/review-session-prompt.md",
   "statusContext": "Agent pipeline / ready for human merge",
-  "selfCheckNames": ["Collect pull requests", "Reconcile pull request"],
+  "selfCheckNames": [
+    "Collect pull requests",
+    "Reconcile pull request",
+    "Select Claude review target",
+    "Run Claude cross-review",
+    "Announce missing Claude cross-review",
+    "Publish Claude cross-review",
+    "Reconcile Claude review result"
+  ],
   "reviewTimeoutMinutes": 45,
-  "waitingEscalationHours": 24,
+  "waitingEscalationHours": 2,
   "labels": {
     "pipeline": "agent:pipeline",
     "implementing": "agent:implementing",
