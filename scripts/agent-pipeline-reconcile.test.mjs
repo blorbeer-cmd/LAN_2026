@@ -54,9 +54,12 @@ test("reconcile reacts to provider review-result comments without cancelling act
   ).replaceAll("\r\n", "\n");
   assert.match(workflow, /issue_comment:\n\s+types: \[created, edited\]/);
   assert.match(workflow, /contains\(github\.event\.comment\.body, 'agent-pipeline:review-result'\)/);
-  // The failure notice has to reach the status comment now, not at the next half-hourly sweep:
-  // until it does, an agent reading the machine-readable state still sees "review pending".
-  assert.match(
+  // The failure notice is deliberately absent here. It is written with the repository
+  // GITHUB_TOKEN, and GitHub starts no workflow run from an event created with that token, so a
+  // trigger on its marker would read like a working path while never firing. The cross-review
+  // workflow reconciles right after posting the notice instead; `agent-claude-review.test.mjs`
+  // pins that job.
+  assert.doesNotMatch(
     workflow,
     /contains\(github\.event\.comment\.body, 'agent-pipeline:review-start-notice'\)/,
   );
