@@ -468,6 +468,17 @@ export function launchSupport({ mode, implementer }) {
   return { ok: true, reason: null };
 }
 
+/**
+ * The implementer this run reviews for.
+ *
+ * One definition, because the launcher and the publisher have to agree: a second, hand-repeated
+ * derivation dropped the default and turned a valid publish into a warning that the marker would
+ * not be read.
+ */
+export function implementerFor(options, pr) {
+  return options?.implementer ?? implementerFromBranch(pr?.headRefName) ?? "claude";
+}
+
 /** Guesses the implementer from the head branch prefix; `--implementer` overrides it. */
 export function implementerFromBranch(headBranch) {
   if (headBranch?.startsWith("codex/")) return "codex";
@@ -617,8 +628,7 @@ async function main(argv) {
     );
   }
 
-  const implementer =
-    options.implementer ?? implementerFromBranch(pr.headRefName) ?? "claude";
+  const implementer = implementerFor(options, pr);
   // Before the worktree exists, so a rejected combination leaves nothing to clean up.
   const support = launchSupport({ mode: options.mode, implementer });
   if (options.launch && !support.ok) {
@@ -758,7 +768,7 @@ async function main(argv) {
   }
 
   if (reviewText !== null) {
-    await publishResult({ pr, options, repository, reviewText, readOnlyLevel, sessionId });
+    await publishResult({ pr, options, repository, implementer, reviewText, readOnlyLevel, sessionId });
   }
   console.log(`Clean up with: git worktree remove ${worktree}`);
 }
@@ -858,7 +868,7 @@ export function markerAuthorAccepted(author, reviewer, config = loadConfig()) {
  * with the marker already appended, so the operator — or the session driving this script — can post
  * it verbatim. Failing to post must not lose the review.
  */
-async function publishResult({ pr, options, repository, reviewText, readOnlyLevel, sessionId }) {
+async function publishResult({ pr, options, repository, implementer, reviewText, readOnlyLevel, sessionId }) {
   const verdict = parseVerdict(reviewText);
   const body =
     verdict === null
@@ -914,7 +924,7 @@ async function publishResult({ pr, options, repository, reviewText, readOnlyLeve
   }
   // Only the API path reports who GitHub recorded as the author; gh posts as whoever it is logged
   // in as, which this script cannot see.
-  const reviewer = reviewerFor(options.implementer ?? implementerFromBranch(pr.headRefName), options.mode);
+  const reviewer = reviewerFor(implementer, options.mode);
   if (outcome.author && !markerAuthorAccepted(outcome.author, reviewer)) {
     console.error(
       `WARNING: the comment was posted as ${outcome.author}, which is not in ` +

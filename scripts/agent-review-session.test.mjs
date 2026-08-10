@@ -11,6 +11,7 @@ import {
   markerAuthorAccepted,
   parseVerdict,
   publishComment,
+  implementerFor,
   implementerFromBranch,
   parseOptions,
   readOnlyLevelFor,
@@ -527,4 +528,26 @@ test("a marker posted by an identity the gate ignores is called out", () => {
   assert.equal(markerAuthorAccepted("blorbeer-cmd", "codex", config), false);
   // gh does not report the author, so an unknown one must not be treated as a violation.
   assert.equal(markerAuthorAccepted(null, "claude", config), true);
+});
+
+test("the publisher reviews for the same implementer the launcher decided on", () => {
+  // The publisher used to repeat this derivation by hand and dropped the default. On a branch that
+  // carries neither prefix it then produced null, and the author check warned that a perfectly
+  // valid marker would not be read — on a run that had just published successfully.
+  const odd = { headRefName: "hotfix/manual-branch" };
+  assert.equal(implementerFor({ implementer: null }, odd), "claude");
+  assert.equal(reviewerFor(implementerFor({ implementer: null }, odd), "self"), "claude");
+  assert.equal(
+    markerAuthorAccepted("blorbeer-cmd", reviewerFor(implementerFor({ implementer: null }, odd), "self"), {
+      providerAuthorAllowlist: { claude: ["blorbeer-cmd"] },
+    }),
+    true,
+    "a valid author must not be reported as one the gate ignores",
+  );
+
+  // The explicit option still wins, and a prefixed branch is still read.
+  assert.equal(implementerFor({ implementer: "codex" }, odd), "codex");
+  assert.equal(implementerFor({ implementer: null }, { headRefName: "codex/x" }), "codex");
+  assert.equal(implementerFor({ implementer: null }, { headRefName: "claude/x" }), "claude");
+  assert.equal(implementerFor(undefined, undefined), "claude");
 });
