@@ -1,8 +1,9 @@
 // Stateless readiness reconciler for the agent pipeline.
 //
 // Readiness is derived from the current GitHub state on every run instead of from an own event
-// stream. Nothing here keeps history, so the same snapshot always produces the same plan and a
-// duplicated, delayed or out-of-order event cannot corrupt the result. Every head-bound
+// stream. It keeps no private history: durable delivery and decision records live in marked GitHub
+// comments and are part of the snapshot. The same snapshot therefore always produces the same
+// plan, and a duplicated, delayed or out-of-order event cannot corrupt the result. Every head-bound
 // classification falls back to "unknown", and therefore to blocking, when it does not belong to
 // the current head SHA.
 //
@@ -31,6 +32,21 @@ const UI_NOTICE_PATTERN = /<!--\s*agent-pipeline:ui-notice\s+([0-9a-f]{40})\s*--
 // It is what makes a choice expire with its head, so the next head asks again instead of silently
 // inheriting the previous answer.
 export const REVIEW_DECISION_MARKER = "<!-- agent-pipeline:review-decision";
+// A separate, mention-bearing comment is the durable GitHub fallback for actively delivering the
+// choice. Unlike the sticky status comment it creates a new notification, and the head-bound
+// marker makes scheduled and repeated reconciliations idempotent.
+export const REVIEW_DECISION_NOTIFICATION_MARKER =
+  "<!-- agent-pipeline:review-decision-notification";
+const REVIEW_DECISION_NOTIFICATION_PATTERN =
+  /<!--\s*agent-pipeline:review-decision-notification\s+([0-9a-f]{40})\s*-->/;
+
+// Written only into the sticky status comment after the notification POST failed. It survives
+// until a later retry succeeds, making delivery failure a visible gate blocker rather than a log
+// line that disappears with the workflow run.
+export const REVIEW_DECISION_DELIVERY_FAILURE_MARKER =
+  "<!-- agent-pipeline:review-decision-delivery-failure";
+const REVIEW_DECISION_DELIVERY_FAILURE_PATTERN =
+  /<!--\s*agent-pipeline:review-decision-delivery-failure\s+([0-9a-f]{40})\s*-->/;
 // `mode=none` records that the reconciler saw this head while nothing was chosen. That state is
 // what lets the next run tell a fresh answer from one that predates the head entirely.
 //
@@ -407,6 +423,32 @@ export function parseUiNoticeHeadSha(comments) {
     if (match) found = match[1];
   }
   return found;
+}
+
+/**
+ * Head SHAs whose review choice was actively delivered in a separate GitHub comment.
+ *
+ * Only the configured reconciler identity counts. Trusting every installed bot here would let an
+ * unrelated app suppress the one notification the maintainer is supposed to receive.
+ */
+export function parseReviewDecisionNotificationHeadShas(
+  comments,
+  config = loadConfig(),
+) {
+  const allowed = config.reviewDecisionNotificationAuthors ?? [];
+  const found = new Set();
+  for (const comment of comments ?? []) {
+    if (!allowed.includes(comment?.author)) continue;
+    const match = comment?.body?.match(REVIEW_DECISION_NOTIFICATION_PATTERN);
+    if (match) found.add(match[1]);
+  }
+  return [...found];
+}
+
+/** The current head whose last delivery attempt failed, as recorded in the sticky comment. */
+export function parseReviewDecisionDeliveryFailure(body) {
+  const match = body?.match(REVIEW_DECISION_DELIVERY_FAILURE_PATTERN);
+  return match?.[1] ?? null;
 }
 
 /**
@@ -859,6 +901,9 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
   // Who reviews this head is the user's decision, not the pipeline's. Everything after the
   // decision — starting the review, handing over the findings, fixing them — stays automatic.
   const decision = evaluateReviewDecision(snapshot, config);
+  const reviewDecisionNotificationDelivered = (
+    snapshot.reviewDecisionNotificationHeadShas ?? []
+  ).includes(snapshot.headSha);
   // A self-review is run by the implementation provider, so only its identities may report one.
   const selfResult = latestReviewResult(
     snapshot.reviewResults,
@@ -1050,6 +1095,25 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     config,
   );
 
+  // Delivery is a separate state from rendering the question in the sticky comment. It becomes
+  // eligible only after every prerequisite that can invalidate the head is closed. Draft status
+  // remains intentionally absent: a draft may be reviewed, it merely cannot be merged yet.
+  const reviewDecisionNotificationRequired =
+    !decision.ambiguous &&
+    !decision.mode &&
+    mechanicallyGreen &&
+    threads.blockingCount === 0 &&
+    !needsHumanApproval;
+  const reviewDecisionDeliveryFailed =
+    reviewDecisionNotificationRequired &&
+    !reviewDecisionNotificationDelivered &&
+    snapshot.reviewDecisionDeliveryFailureHeadSha === snapshot.headSha;
+  if (reviewDecisionDeliveryFailed) {
+    blockers.unshift(
+      "The review-choice notification could not be delivered for the current head SHA; the reconciler will retry and no review mode was selected.",
+    );
+  }
+
   let phase;
   if (escalated) {
     // Set from outside and cleared from outside; nothing here may override it.
@@ -1068,6 +1132,8 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
   } else if (needsHumanApproval) {
     // Nothing an agent does can clear this one, so it must outrank review and ready-for-merge.
     phase = "awaiting-human-approval";
+  } else if (reviewDecisionDeliveryFailed) {
+    phase = "review-decision-delivery-failed";
   } else if (decision.ambiguous || (!decision.mode && mechanicallyGreen)) {
     // Waiting on the user to say who reviews this head. No agent may answer this, so it outranks
     // the review phase, and deliberately nothing starts meanwhile: an automatic fallback would
@@ -1113,6 +1179,11 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
       reviewWaitingHours: waitingHours,
       reviewStalled,
       reviewStartNotice: startNotice,
+      reviewDecisionDelivery: {
+        required: reviewDecisionNotificationRequired,
+        delivered: reviewDecisionNotificationDelivered,
+        failed: reviewDecisionDeliveryFailed,
+      },
     },
   };
 }
@@ -1225,6 +1296,90 @@ function reviewDecisionSection(readiness, config) {
     "question returns for the next head SHA. Nothing starts until a label is set.",
   ];
   return lines.join("\n");
+}
+
+export function normalizeNotificationRecipient(value) {
+  const login = String(value ?? "").trim().replace(/^@/, "");
+  if (
+    login.length < 1 ||
+    login.length > 39 ||
+    !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(login)
+  ) {
+    throw new Error(
+      "AGENT_PIPELINE_OWNER must contain one valid GitHub login so the review choice can notify a maintainer.",
+    );
+  }
+  return login;
+}
+
+/** Renders the separate, mention-bearing delivery comment for exactly one head SHA. */
+export function renderReviewDecisionNotification(
+  readiness,
+  snapshot,
+  recipient,
+  config = loadConfig(),
+) {
+  const login = normalizeNotificationRecipient(recipient);
+  const recommendation = readiness.details?.recommendation;
+  const modeLabels = config.reviewModeLabels ?? {};
+  const implementer = statusText(readiness.contract?.implementer ?? "unknown");
+  const reviewer = statusText(readiness.reviewerProvider ?? "unknown");
+  // Recommendation reasons can contain PR-controlled filenames. Neutralise mentions so the one
+  // deliberate @recipient above cannot be expanded into notifications for arbitrary accounts.
+  const reason = statusText(
+    recommendation?.reason ?? "the independent review is the safe default",
+  ).replace(/@/g, "&#64;");
+
+  return [
+    `@${login} review choice required for this pull request.`,
+    "",
+    "## Choose who reviews this head",
+    "",
+    `- Head SHA: \`${snapshot.headSha}\``,
+    `- Implementer: \`${implementer}\``,
+    `- Counter provider: \`${reviewer}\``,
+    `- Recommendation: \`${modeLabels[recommendation?.mode] ?? modeLabels.cross}\` — ${reason}.`,
+    "",
+    `a) Cross-review by \`${reviewer}\` (\`${modeLabels.cross}\`)`,
+    `b) Self-review by \`${implementer}\` in a fresh, technically read-only session (\`${modeLabels.self}\`)`,
+    `c) Human review (\`${modeLabels.human}\`)`,
+    "",
+    "Nothing starts automatically and there is no timeout fallback. Give an explicit a/b/c answer",
+    "in the originating Codex task, or set exactly one of the labels above in GitHub. This choice",
+    "is valid only for the full head SHA shown here.",
+    "",
+    `${REVIEW_DECISION_NOTIFICATION_MARKER} ${snapshot.headSha} -->`,
+  ].join("\n");
+}
+
+function planReviewDecisionNotification(
+  readiness,
+  snapshot,
+  recipient,
+  config,
+) {
+  const delivery = readiness.details?.reviewDecisionDelivery;
+  if (!delivery?.required || delivery.delivered) return null;
+
+  const failureStatus = {
+    context: config.statusContext,
+    state: "pending",
+    description: trimDescription(
+      "review-decision-delivery-failed: review-choice notification was not delivered; retry required.",
+    ),
+  };
+  try {
+    return {
+      body: renderReviewDecisionNotification(readiness, snapshot, recipient, config),
+      failureStatus,
+    };
+  } catch (error) {
+    return {
+      body: null,
+      error: error instanceof Error ? error.message : String(error),
+      failureStatus,
+    };
+  }
 }
 
 export function renderStatusComment(readiness, snapshot, config = loadConfig()) {
@@ -1349,9 +1504,33 @@ export function planGateStatus(readiness, config = loadConfig()) {
  * a mergeable one. The same holds for pull requests the pipeline does not manage, which need the
  * "does not apply" verdict precisely because nothing else will ever write it.
  */
-export function reconcile(snapshot, config = loadConfig()) {
+export function reconcile(
+  snapshot,
+  config = loadConfig(),
+  { notificationRecipient = null } = {},
+) {
   const readiness = deriveReadiness(snapshot, config);
-  const gate = planGateStatus(readiness, config);
+  const delivery = readiness.details?.reviewDecisionDelivery;
+  // A retry plan describes the state that should exist *after* its notification POST succeeds.
+  // If that POST fails, applyPlan replaces these optimistic writes with the explicit failure
+  // comment and status instead. Without this projection a successful retry would keep publishing
+  // the old delivery-failed blocker until a later schedule happened to run.
+  const plannedReadiness = delivery?.failed
+    ? {
+        ...readiness,
+        phase: "awaiting-review-decision",
+        blockers: readiness.blockers.slice(1),
+        details: {
+          ...readiness.details,
+          reviewDecisionDelivery: {
+            ...delivery,
+            delivered: true,
+            failed: false,
+          },
+        },
+      }
+    : readiness;
+  const gate = planGateStatus(plannedReadiness, config);
   // An unchanged verdict needs no API call. Statuses are append-only, so rewriting one on every
   // sweep would bury the commit's status history under identical entries.
   const current = snapshot.gateStatus;
@@ -1362,15 +1541,27 @@ export function reconcile(snapshot, config = loadConfig()) {
       : null;
 
   if (!readiness.mutate) {
-    return { readiness, labels: { add: [], remove: [] }, comment: null, status };
+    return {
+      readiness,
+      labels: { add: [], remove: [] },
+      comment: null,
+      notification: null,
+      status,
+    };
   }
 
-  const body = renderStatusComment(readiness, snapshot, config);
+  const body = renderStatusComment(plannedReadiness, snapshot, config);
   return {
     readiness,
-    labels: planLabels(snapshot.labels, readiness, config),
+    labels: planLabels(snapshot.labels, plannedReadiness, config),
     // An unchanged body needs no API call at all.
     comment: snapshot.statusCommentBody === body ? null : { body },
+    notification: planReviewDecisionNotification(
+      readiness,
+      snapshot,
+      notificationRecipient,
+      config,
+    ),
     status,
   };
 }
@@ -1675,6 +1866,11 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
   );
 
   const config = loadConfig();
+  const ownStatusCommentBody = (config.statusCommentAuthors ?? []).includes(
+    statusComment?.author,
+  )
+    ? (statusComment?.body ?? null)
+    : null;
   const gateStatus = (combinedStatus?.statuses ?? []).find(
     (status) => status.context === config.statusContext,
   );
@@ -1724,6 +1920,10 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       statusCommentAuthor: statusComment?.author ?? null,
       // Published review verdicts for the `self` mode, which GitHub itself cannot represent.
       reviewResults: parseReviewResults(trustedComments),
+      reviewDecisionNotificationHeadShas:
+        parseReviewDecisionNotificationHeadShas(trustedComments, config),
+      reviewDecisionDeliveryFailureHeadSha:
+        parseReviewDecisionDeliveryFailure(ownStatusCommentBody),
       statusCommentBody: statusComment?.body ?? null,
       gateStatus: gateStatus
         ? { state: gateStatus.state, description: gateStatus.description ?? null }
@@ -1733,13 +1933,99 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
   };
 }
 
-async function applyPlan({
+function renderDeliveryFailureComment(body, headSha, error) {
+  const base = body ?? `${STATUS_COMMENT_MARKER}\n## Agent pipeline status`;
+  if (parseReviewDecisionDeliveryFailure(base) === headSha) return base;
+
+  const message = statusText(
+    (error instanceof Error ? error.message : String(error)).slice(0, 500),
+  );
+  const section = [
+    "### Review-choice notification delivery failed",
+    "",
+    `The active notification for head \`${headSha}\` was not delivered. No review mode was`,
+    "selected. The reconciler will retry; inspect the linked workflow run for details.",
+    "",
+    `Error: \`${message}\``,
+    "",
+    `${REVIEW_DECISION_DELIVERY_FAILURE_MARKER} ${headSha} -->`,
+  ].join("\n");
+  const decisionRecordIndex = base.lastIndexOf(`\n${REVIEW_DECISION_MARKER}`);
+  if (decisionRecordIndex === -1) return `${base}\n\n${section}`;
+  return `${base.slice(0, decisionRecordIndex)}\n\n${section}${base.slice(decisionRecordIndex)}`;
+}
+
+async function recordDeliveryFailure({
+  owner,
+  repo,
+  pullNumber,
+  token,
+  notification,
+  statusCommentId,
+  statusCommentBody,
+  headSha,
+  targetUrl,
+  error,
+  plannedCommentBody,
+}) {
+  const failures = [];
+  const failureBody = renderDeliveryFailureComment(
+    plannedCommentBody ?? statusCommentBody,
+    headSha,
+    error,
+  );
+  try {
+    if (statusCommentId) {
+      await api(`/repos/${owner}/${repo}/issues/comments/${statusCommentId}`, {
+        method: "PATCH",
+        body: { body: failureBody },
+        token,
+      });
+    } else {
+      await api(`/repos/${owner}/${repo}/issues/${pullNumber}/comments`, {
+        method: "POST",
+        body: { body: failureBody },
+        token,
+      });
+    }
+  } catch (reportError) {
+    failures.push(
+      `sticky comment: ${reportError instanceof Error ? reportError.message : String(reportError)}`,
+    );
+  }
+
+  try {
+    await api(`/repos/${owner}/${repo}/statuses/${headSha}`, {
+      method: "POST",
+      body: {
+        ...notification.failureStatus,
+        ...(targetUrl ? { target_url: targetUrl } : {}),
+      },
+      token,
+    });
+  } catch (reportError) {
+    failures.push(
+      `merge-gate status: ${reportError instanceof Error ? reportError.message : String(reportError)}`,
+    );
+  }
+
+  if (failures.length) {
+    throw new Error(
+      "Review-choice notification delivery failed and its blocker could not be fully reported " +
+        `(${failures.join("; ")}). Original error: ` +
+        `${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+export async function applyPlan({
   owner,
   repo,
   pullNumber,
   token,
   plan,
   statusCommentId,
+  statusCommentBody,
   headSha,
   targetUrl,
 }) {
@@ -1765,6 +2051,39 @@ async function applyPlan({
       // so this must not fail the run.
       if (!String(error.message).includes("failed with 404")) throw error;
       applied.push(`label already absent: ${label}`);
+    }
+  }
+
+  // A successful POST is the delivery boundary. It runs before the sticky comment is cleared or
+  // the gate is refreshed, so a failure can replace both with an explicit blocker. Mutating
+  // requests are never retried blindly: if GitHub accepted the comment but the response was lost,
+  // the next reconciliation sees its marker and deduplicates it.
+  if (plan.notification) {
+    try {
+      if (plan.notification.error) throw new Error(plan.notification.error);
+      await api(`/repos/${owner}/${repo}/issues/${pullNumber}/comments`, {
+        method: "POST",
+        body: { body: plan.notification.body },
+        token,
+      });
+      applied.push(`delivered review choice for ${headSha}`);
+    } catch (error) {
+      await recordDeliveryFailure({
+        owner,
+        repo,
+        pullNumber,
+        token,
+        notification: plan.notification,
+        statusCommentId,
+        statusCommentBody,
+        headSha,
+        targetUrl,
+        error,
+        plannedCommentBody: plan.comment?.body ?? null,
+      });
+      throw new Error(
+        `Review-choice notification delivery failed for ${headSha}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -1860,7 +2179,9 @@ async function reconcileCommand(args) {
     pullNumber,
     token,
   });
-  const plan = reconcile(snapshot, loadConfig());
+  const plan = reconcile(snapshot, loadConfig(), {
+    notificationRecipient: process.env.AGENT_PIPELINE_OWNER,
+  });
 
   console.log(
     JSON.stringify(
@@ -1872,6 +2193,11 @@ async function reconcileCommand(args) {
         blockers: plan.readiness.blockers,
         labels: plan.labels,
         commentChanged: Boolean(plan.comment),
+        reviewChoiceNotification: plan.notification
+          ? plan.notification.error
+            ? `blocked: ${plan.notification.error}`
+            : "delivery planned"
+          : "no delivery needed",
         gateStatus: plan.status
           ? { state: plan.status.state, description: plan.status.description }
           : "no write needed",
@@ -1893,6 +2219,7 @@ async function reconcileCommand(args) {
     token,
     plan,
     statusCommentId,
+    statusCommentBody: snapshot.statusCommentBody,
     headSha: snapshot.headSha,
     targetUrl: option(args, "--target-url") ?? currentRunUrl(),
   });

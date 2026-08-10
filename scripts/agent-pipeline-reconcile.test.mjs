@@ -4,6 +4,7 @@ import { test } from "node:test";
 
 import { loadConfig } from "./agent-pipeline.mjs";
 import {
+  applyPlan,
   CLAUDE_CROSS_REVIEW_HEADING,
   dedupeCheckRunsByName,
   DEFAULT_WAITING_ESCALATION_HOURS,
@@ -19,6 +20,8 @@ import {
   meetsReadOnlyMinimum,
   paginate,
   parseReviewDecision,
+  parseReviewDecisionDeliveryFailure,
+  parseReviewDecisionNotificationHeadShas,
   parseReviewResults,
   parseReviewStartNotice,
   parseUiNoticeHeadSha,
@@ -27,6 +30,8 @@ import {
   recommendReviewMode,
   reconcile,
   renderStatusComment,
+  REVIEW_DECISION_DELIVERY_FAILURE_MARKER,
+  REVIEW_DECISION_NOTIFICATION_MARKER,
   reviewerProviderFor,
   reviewWaitingHours,
   STATUS_COMMENT_MARKER,
@@ -52,6 +57,7 @@ test("reconcile reacts to provider review-result comments without cancelling act
   assert.match(workflow, /github\.event\.comment\.user\.login/);
   assert.match(workflow, /github\.event\.comment\.author_association/);
   assert.match(workflow, /cancel-in-progress: false/);
+  assert.match(workflow, /AGENT_PIPELINE_OWNER: \$\{\{ vars\.AGENT_PIPELINE_OWNER \}\}/);
 });
 
 function contractBody(overrides = {}) {
@@ -80,6 +86,15 @@ const HUMAN_LABEL = config.reviewModeLabels.human;
 function decisionRecord(headSha, mode, since = null) {
   const stamp = since ? ` since=${since}` : "";
   return `${STATUS_COMMENT_MARKER}\n<!-- agent-pipeline:review-decision ${headSha} mode=${mode}${stamp} -->`;
+}
+
+function decisionNotification(headSha, overrides = {}) {
+  return {
+    author: "github-actions[bot]",
+    authorAssociation: "NONE",
+    body: `Review choice.\n\n${REVIEW_DECISION_NOTIFICATION_MARKER} ${headSha} -->`,
+    ...overrides,
+  };
 }
 
 /** A published `self` review result, the only evidence GitHub cannot represent natively. */
@@ -1957,6 +1972,183 @@ test("the status comment asks the question and records the answer", () => {
   // The protocol: which mode, and that it is bound to this head.
   assert.match(answered, /Review mode: `cross`/);
   assert.deepEqual(parseReviewDecision(answered), { headSha: HEAD, mode: "cross", since: null });
+});
+
+test("an eligible undecided head plans one active review-choice notification", () => {
+  const snapshot = readySnapshot({ labels: [], reviews: [] });
+  const plan = reconcile(snapshot, config, {
+    notificationRecipient: "blorbeer-cmd",
+  });
+
+  assert.equal(plan.readiness.phase, "awaiting-review-decision");
+  assert.ok(plan.notification);
+  assert.match(plan.notification.body, /@blorbeer-cmd review choice required/);
+  assert.match(plan.notification.body, new RegExp("Head SHA: `" + HEAD + "`"));
+  assert.match(plan.notification.body, /Implementer: `claude`/);
+  assert.match(plan.notification.body, /Counter provider: `codex`/);
+  assert.match(plan.notification.body, /Recommendation: `review:cross`/);
+  assert.match(plan.notification.body, /Recommendation: `review:cross` — no review has passed/);
+  assert.doesNotMatch(plan.notification.body, /â€”/);
+  assert.match(plan.notification.body, /no review has passed/);
+  assert.match(plan.notification.body, /a\) Cross-review/);
+  assert.match(plan.notification.body, /b\) Self-review/);
+  assert.match(plan.notification.body, /c\) Human review/);
+  assert.match(
+    plan.notification.body,
+    new RegExp(`${REVIEW_DECISION_NOTIFICATION_MARKER} ${HEAD} -->$`),
+  );
+});
+
+test("a delivered notification is trusted, head-bound and deduplicated", () => {
+  const delivered = parseReviewDecisionNotificationHeadShas(
+    [
+      decisionNotification(HEAD),
+      decisionNotification(OLD_HEAD),
+      decisionNotification(HEAD, {
+        author: "drive-by-stranger",
+        authorAssociation: "NONE",
+      }),
+    ],
+    config,
+  );
+  assert.deepEqual(delivered, [HEAD, OLD_HEAD]);
+
+  const snapshot = readySnapshot({
+    labels: [],
+    reviews: [],
+    reviewDecisionNotificationHeadShas: delivered,
+  });
+  const firstRepeat = reconcile(snapshot, config, {
+    notificationRecipient: "blorbeer-cmd",
+  });
+  const secondRepeat = reconcile(snapshot, config, {
+    notificationRecipient: "blorbeer-cmd",
+  });
+  assert.equal(firstRepeat.notification, null);
+  assert.equal(secondRepeat.notification, null);
+});
+
+test("a new head invalidates the old choice and gets a new notification", () => {
+  const snapshot = readySnapshot({
+    labels: [CROSS_LABEL],
+    statusCommentBody: decisionRecord(OLD_HEAD, "cross"),
+    reviewDecisionNotificationHeadShas: [OLD_HEAD],
+    reviews: [],
+  });
+  const plan = reconcile(snapshot, config, {
+    notificationRecipient: "blorbeer-cmd",
+  });
+
+  assert.equal(plan.readiness.phase, "awaiting-review-decision");
+  assert.deepEqual(plan.labels.remove, [CROSS_LABEL]);
+  assert.ok(plan.notification);
+  assert.match(
+    plan.notification.body,
+    new RegExp(`${REVIEW_DECISION_NOTIFICATION_MARKER} ${HEAD} -->$`),
+  );
+  assert.doesNotMatch(
+    plan.notification.body,
+    new RegExp(`${REVIEW_DECISION_NOTIFICATION_MARKER} ${OLD_HEAD} -->$`),
+  );
+});
+
+test("failing CI suppresses review-choice delivery", () => {
+  const snapshot = readySnapshot({
+    labels: [],
+    reviews: [],
+    checkRuns: [
+      { name: "Unit tests", status: "completed", conclusion: "failure" },
+    ],
+  });
+  const plan = reconcile(snapshot, config, {
+    notificationRecipient: "blorbeer-cmd",
+  });
+  assert.equal(plan.readiness.phase, "ci-fix");
+  assert.equal(plan.notification, null);
+});
+
+test("notification delivery failure is recorded as a visible blocker", async () => {
+  const snapshot = readySnapshot({ labels: [], reviews: [] });
+  const planned = reconcile(snapshot, config, {
+    notificationRecipient: "blorbeer-cmd",
+  });
+  const plan = { ...planned, labels: { add: [], remove: [] } };
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url: String(url), options });
+    if (requests.length === 1) {
+      return {
+        ok: false,
+        status: 503,
+        text: async () => "notification service unavailable",
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+      text: async () => "",
+    };
+  };
+
+  try {
+    await assert.rejects(
+      () =>
+        applyPlan({
+          owner: "blorbeer-cmd",
+          repo: "LAN_2026",
+          pullNumber: 381,
+          token: "test-token",
+          plan,
+          statusCommentId: 77,
+          statusCommentBody: snapshot.statusCommentBody,
+          headSha: HEAD,
+          targetUrl: "https://example.test/run/1",
+        }),
+      /notification delivery failed/i,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requests.length, 3, "the failed POST is not retried blindly");
+  assert.match(requests[0].url, /issues\/381\/comments$/);
+  const failureComment = JSON.parse(requests[1].options.body).body;
+  assert.match(failureComment, /Review-choice notification delivery failed/);
+  assert.equal(parseReviewDecisionDeliveryFailure(failureComment), HEAD);
+  assert.match(failureComment, new RegExp(REVIEW_DECISION_DELIVERY_FAILURE_MARKER));
+  const failureStatus = JSON.parse(requests[2].options.body);
+  assert.equal(failureStatus.state, "pending");
+  assert.match(failureStatus.description, /^review-decision-delivery-failed:/);
+
+  const next = deriveReadiness(
+    {
+      ...snapshot,
+      reviewDecisionDeliveryFailureHeadSha: HEAD,
+    },
+    config,
+  );
+  assert.equal(next.phase, "review-decision-delivery-failed");
+  assert.match(next.blockers[0], /could not be delivered/);
+
+  const retry = reconcile(
+    {
+      ...snapshot,
+      statusCommentBody: failureComment,
+      reviewDecisionDeliveryFailureHeadSha: HEAD,
+      gateStatus: {
+        state: failureStatus.state,
+        description: failureStatus.description,
+      },
+    },
+    config,
+    { notificationRecipient: "blorbeer-cmd" },
+  );
+  assert.ok(retry.notification);
+  assert.match(retry.comment.body, /Phase: `awaiting-review-decision`/);
+  assert.doesNotMatch(retry.comment.body, /delivery-failure/);
+  assert.match(retry.status.description, /^awaiting-review-decision:/);
 });
 
 test("the status comment names the reduced independence of self and human mode", () => {
