@@ -157,7 +157,9 @@ export function deriveClaudeReviewDispatch(readiness) {
 // Only a decline that leaves the pull request waiting is worth announcing. A head that already
 // carries a Claude result has its answer, and this workflow reacting to a `review:cross` meant for
 // the other provider is the normal case on every Claude-implemented pull request — announcing
-// either would put a "review did not start" notice on pull requests where none was ever due.
+// either would put a "review did not start" notice on pull requests where none was ever due. That
+// last one is also what keeps the two cross-review workflows apart: both write the head's single
+// notice comment, so only the provider that owns the review may announce for it.
 const SILENT_DISPATCH_CODES = new Set([
   DISPATCH_CODES.run,
   DISPATCH_CODES.resultExists,
@@ -381,8 +383,14 @@ function reviewStartGuidance(code, reason) {
   }
 }
 
+// Both cross-review workflows write the same marker, so they share one notice shape. Only the
+// named provider and the way-out text differ; the reviewing provider owns the wording for its own
+// failures and passes it in.
+const PROVIDER_LABELS = { claude: "Claude", codex: "Codex" };
+
 /** Pure renderer for the PR-facing notice; the caller decides whether it is warranted. */
 export function renderReviewStartNotice({
+  provider = "claude",
   repository,
   pullNumber,
   headSha,
@@ -390,13 +398,16 @@ export function renderReviewStartNotice({
   code,
   reason,
   runUrl,
+  guidance,
 }) {
+  const providerLabel = PROVIDER_LABELS[provider];
+  if (!providerLabel) throw new Error("provider must be claude or codex.");
   if (!/^[0-9a-f]{40}$/.test(headSha ?? "")) throw new Error("headSha must be a full SHA.");
   if (outcome !== "declined" && outcome !== "failed") {
     throw new Error("outcome must be declined or failed.");
   }
   const lines = [
-    "## Claude Cross-Review nicht gestartet",
+    `## ${providerLabel} Cross-Review nicht gestartet`,
     "",
     `- Repository: \`${markdownText(repository)}\``,
     `- Pull Request: \`#${Number(pullNumber)}\``,
@@ -405,7 +416,7 @@ export function renderReviewStartNotice({
     `- Grund: \`${boundedMarkdownText(reason ?? "unknown", 200)}\``,
     ...(runUrl ? [`- Workflow-Lauf: ${markdownText(runUrl)}`] : []),
     "",
-    reviewStartGuidance(code, reason),
+    guidance ?? reviewStartGuidance(code, reason),
     "",
     `${REVIEW_START_NOTICE_MARKER} ${headSha} mode=cross outcome=${outcome} -->`,
     "",
