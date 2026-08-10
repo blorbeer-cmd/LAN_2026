@@ -130,6 +130,16 @@ export const api = {
   meta: () => apiFetch('/api/meta'),
   me: () => apiFetch('/api/me'),
 
+  onboarding: {
+    get: () => apiFetch('/api/me/onboarding'),
+    update: (data) => apiFetch('/api/me/onboarding', { method: 'PUT', body: JSON.stringify(data) }),
+    rating: {
+      start: (options = {}) => apiFetch('/api/me/onboarding/rating/start', { method: 'POST', body: JSON.stringify(options) }),
+      complete: () => apiFetch('/api/me/onboarding/rating/complete', { method: 'POST' }),
+      defer: () => apiFetch('/api/me/onboarding/rating/defer', { method: 'POST' }),
+    },
+  },
+
   groups: {
     list: () => apiFetch('/api/groups'),
     members: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/members`),

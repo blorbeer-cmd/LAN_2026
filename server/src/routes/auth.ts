@@ -40,6 +40,7 @@ import {
   recordLoginSuccess,
 } from '../loginRateLimit';
 import { writeAdminAudit } from '../adminAudit';
+import { resetOnboardingForNewAccount } from './onboarding';
 
 export const authRouter = Router();
 
@@ -173,6 +174,7 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
 
       if (invite && !markInviteUsed(invite.code, player.id, 'register')) throw new InvalidInviteError();
       ensureDefaultGroupMembership(player.id, { bootstrapAdmin: isBootstrap });
+      resetOnboardingForNewAccount(player.id);
     })();
   } catch (error) {
     if (error instanceof InvalidInviteError) {
@@ -242,6 +244,7 @@ authRouter.post('/claim', limitAnonymousAuthAttempts, (req, res) => {
       if (result.changes !== 1) throw new InvalidInviteError();
       voidOutstandingInvites(existing.id, 'claim');
       ensureDefaultGroupMembership(existing.id, { bootstrapAdmin: isBootstrap });
+      resetOnboardingForNewAccount(existing.id);
     })();
   } catch (error) {
     if (error instanceof InvalidInviteError) {

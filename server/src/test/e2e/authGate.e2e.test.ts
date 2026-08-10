@@ -36,6 +36,11 @@ async function mintRegisterInviteCode(): Promise<string> {
   const setCookie = bootstrap.headers.get('set-cookie');
   assert.ok(setCookie, 'bootstrap register should set a session cookie');
   adminCookie = setCookie!.split(';')[0];
+  const onboarding = await fetch(`${BASE_URL}/api/me/onboarding/test-complete`, {
+    method: 'POST',
+    headers: { Cookie: adminCookie },
+  });
+  assert.equal(onboarding.status, 200, await onboarding.text());
 
   const reauth = await fetch(`${BASE_URL}/api/auth/reauth`, {
     method: 'POST',
@@ -119,6 +124,55 @@ test('an invite link registers a new account and logs it straight in', async () 
   // fallback instead of the real profile (with its Logout button). A brief
   // settle avoids racing that unrelated, pre-existing boot-order timing.
   await page.waitForTimeout(500);
+
+  await page.waitForSelector('#onboarding-root [role="dialog"]');
+  for (let step = 0; step < 9; step += 1) {
+    await page.click('[data-onboarding-next]');
+    await page.waitForSelector('#onboarding-root [role="dialog"]');
+  }
+  await page.waitForSelector('.game-table-row.onboarding-required input[type="range"]');
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.matches('.game-table-row.onboarding-required input[type="range"]')),
+    true,
+    'rating mode should place initial focus on a required slider',
+  );
+  await page.click('[data-onboarding-later]');
+  await page.waitForFunction(() => !document.querySelector('#onboarding-root [role="dialog"]'));
+  await page.waitForSelector('[data-tab="catalog"]');
+  await page.reload();
+  await page.waitForSelector('#onboarding-root [role="dialog"]');
+  await page.waitForSelector('[data-onboarding-finish][disabled]');
+  const requiredRows = page.locator('.game-table-row.onboarding-required');
+  assert.equal(await requiredRows.count(), 10);
+
+  // Regression coverage: a rerender triggered by a required slider's own
+  // debounced save must not steal focus (and the page scroll with it) back
+  // to the very first required row - it only used to happen for a row other
+  // than the first, so rate a later one via real keyboard input.
+  const midSlider = requiredRows.nth(5).locator('input[type="range"]').first();
+  await midSlider.focus();
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(350);
+  assert.equal(
+    await midSlider.evaluate((element) => element === document.activeElement),
+    true,
+    'saving a later required row must keep focus on that row instead of jumping back to the first one',
+  );
+
+  for (let rowIndex = 0; rowIndex < await requiredRows.count(); rowIndex += 1) {
+    const sliders = requiredRows.nth(rowIndex).locator('input[type="range"]');
+    for (let sliderIndex = 0; sliderIndex < await sliders.count(); sliderIndex += 1) {
+      await sliders.nth(sliderIndex).evaluate((element) => {
+        const slider = element as HTMLInputElement;
+        slider.value = '5';
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      await page.waitForTimeout(350);
+    }
+  }
+  await page.waitForSelector('[data-onboarding-finish]:not([disabled])');
+  await page.click('[data-onboarding-finish]');
+  await page.waitForSelector('#onboarding-root [role="dialog"]', { state: 'detached' });
 });
 
 test('logging out drops back to the login gate, and logging back in works', async () => {
