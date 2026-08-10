@@ -8,7 +8,9 @@ import {
   detectWorktreeViolation,
   goalFromBody,
   launchSupport,
+  markerAuthorAccepted,
   parseVerdict,
+  publishComment,
   implementerFromBranch,
   parseOptions,
   readOnlyLevelFor,
@@ -448,4 +450,81 @@ test("the usage text advertises exactly the modes the parser accepts", () => {
   }
   assert.doesNotMatch(text.split("\n")[1], /fallback/, "the mode list must not offer fallback");
   assert.match(text, /--enforced/, "the flag that decides gate eligibility must be documented");
+});
+
+test("the result is posted through whatever channel this environment has", async () => {
+  const posted = [];
+  const gh = () => posted.push("gh");
+  const api = async () => {
+    posted.push("api");
+    return { html_url: "https://github.test/c/1", user: { login: "blorbeer-cmd" } };
+  };
+  const target = { repository: "owner/repo", pullNumber: 390, resultPath: "/tmp/r.md", body: "x" };
+
+  // An operator's authenticated shell keeps working exactly as before, and never reaches the API.
+  const viaGh = await publishComment({ ...target, token: "t" }, { gh, api });
+  assert.deepEqual(posted, ["gh"]);
+  assert.equal(viaGh.posted, true);
+  assert.equal(viaGh.channel, "gh");
+
+  // A Claude Code remote container has no gh binary at all — the same environment --pr-json exists
+  // for on the reading side. Without the API the write side was the one step that could not finish.
+  posted.length = 0;
+  const missingGh = () => {
+    const error = new Error("spawnSync gh ENOENT");
+    error.code = "ENOENT";
+    throw error;
+  };
+  const viaApi = await publishComment({ ...target, token: "t" }, { gh: missingGh, api });
+  assert.deepEqual(posted, ["api"]);
+  assert.equal(viaApi.posted, true);
+  assert.equal(viaApi.channel, "api");
+  assert.equal(viaApi.author, "blorbeer-cmd");
+  assert.equal(viaApi.url, "https://github.test/c/1");
+  assert.match(viaApi.attempts[0].reason, /not installed/);
+});
+
+test("a failed publish reports every real reason instead of blaming gh", async () => {
+  const target = { repository: "owner/repo", pullNumber: 390, resultPath: "/tmp/r.md", body: "x" };
+  // gh existed and was refused: reporting that as "gh is unavailable" hid the actual cause.
+  const refusingGh = () => {
+    throw new Error("gh pr comment failed: HTTP 403: Resource not accessible");
+  };
+  const failingApi = async () => {
+    throw new Error("GitHub API responded 401: Bad credentials");
+  };
+
+  const both = await publishComment({ ...target, token: "t" }, { gh: refusingGh, api: failingApi });
+  assert.equal(both.posted, false);
+  assert.deepEqual(
+    both.attempts.map((a) => a.channel),
+    ["gh", "api"],
+  );
+  assert.match(both.attempts[0].reason, /403/);
+  assert.match(both.attempts[1].reason, /Bad credentials/);
+
+  // Without a token the API cannot even be tried, and that is its own honest reason.
+  const noToken = await publishComment(
+    { ...target, token: undefined },
+    { gh: refusingGh, api: failingApi },
+  );
+  assert.equal(noToken.posted, false);
+  assert.match(noToken.attempts[1].reason, /GITHUB_TOKEN is not set/);
+
+  // A produced review must never be lost because posting it failed.
+  await assert.doesNotReject(() =>
+    publishComment({ ...target, token: "t" }, { gh: refusingGh, api: failingApi }),
+  );
+});
+
+test("a marker posted by an identity the gate ignores is called out", () => {
+  const config = { providerAuthorAllowlist: { claude: ["blorbeer-cmd", "claude[bot]"] } };
+  assert.equal(markerAuthorAccepted("blorbeer-cmd", "claude", config), true);
+  assert.equal(markerAuthorAccepted("claude[bot]", "claude", config), true);
+  // The reconciler does not reject such a marker loudly — it simply never reads it, which looks
+  // exactly like a review that never happened. Publication time is the only moment anyone watches.
+  assert.equal(markerAuthorAccepted("someone-else", "claude", config), false);
+  assert.equal(markerAuthorAccepted("blorbeer-cmd", "codex", config), false);
+  // gh does not report the author, so an unknown one must not be treated as a violation.
+  assert.equal(markerAuthorAccepted(null, "claude", config), true);
 });
