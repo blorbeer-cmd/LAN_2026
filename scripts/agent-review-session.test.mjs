@@ -135,6 +135,9 @@ test("the launcher refuses to run a review it would mislabel", () => {
   const selfFromCodex = launchSupport({ mode: "self", implementer: "codex" });
   assert.equal(selfFromCodex.ok, false);
   assert.match(selfFromCodex.reason, /only runs claude/);
+  assert.match(selfFromCodex.reason, /Codex self-review is still supported/);
+  assert.match(selfFromCodex.reason, /Detached/);
+  assert.match(selfFromCodex.reason, /\/review/);
 });
 
 test("the launcher refuses a cross run even when it could execute it", () => {

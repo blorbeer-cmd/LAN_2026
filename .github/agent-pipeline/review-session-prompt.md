@@ -182,16 +182,22 @@ Bei `anchor: none` müssen `file` und `line` stattdessen als JSON-`null` ausgege
 ## Step-by-step: Codex separate session
 
 1. Fetch the PR metadata with the command above and fill every placeholder.
-2. In the Codex app, set **Settings → General → Code review → Detached** when using `/review`, or
-   open a completely new task for the repository. Do not continue or fork the implementation
-   conversation.
-3. Use a clean worktree for the PR branch when reviewing local code. Do not reuse a dirty
-   implementation worktree.
-4. Start `/review` against `<BASE_BRANCH>` with custom review instructions, or paste the complete
-   prompt above into the new task and name the PR explicitly.
-5. Require an enforced read-only sandbox/tool mode and credentials without repository write
-   permissions. If the selected surface cannot guarantee both, treat Codex as unavailable and do
-   not perform the review. A prompt restriction and a later `git status` check are insufficient.
+2. In the Codex app, set **Settings → General → Code review → Detached**, open a completely new task
+   for the repository, and use the dedicated `/review` flow. Do not continue or fork the
+   implementation conversation. A normal editable Codex chat with a review prompt is not an
+   equivalent substitute.
+3. Give the detached task a clean, dedicated worktree at the exact PR head SHA. Do not reuse the
+   implementation worktree or check out the moving PR branch.
+4. Have the coordinating implementation session record the dedicated worktree's head and clean
+   status before the review. Start `/review` against `<BASE_BRANCH>` with the complete custom review
+   instructions above, then have the coordinator independently confirm the same head and untouched
+   worktree after the review.
+5. The dedicated Codex `/review` surface is documented to report findings without changing the
+   working tree. Together with **Detached**, an exact-head worktree, and the external before/after
+   verification, that supports `read-only=verified`. Credentials without repository write
+   permission raise the result to `read-only=true`; they are not required for the default
+   `verified` gate. If `/review` is unavailable, falls back to a normal editable task, or the
+   external verification cannot be completed, treat Codex as unavailable for this self-review.
 6. Confirm that the final `reviewed_head_sha` equals the current GitHub head SHA. Treat a mismatch,
    missing JSON block or `blocked` verdict as no completed review.
 7. Hand the complete result to the implementation session. Actionable findings must be published
@@ -216,8 +222,11 @@ node ./scripts/agent-review-session.mjs --pr 363 --mode self --headless
 `--headless` is part of the default example on purpose: without it the run is interactive, stays at
 `read-only=false` and writes no marker, so it informs a human but cannot satisfy the gate.
 
-**The launcher only ever runs `claude`, and only for `--mode self`.** Every other combination is
-rejected before anything is created, and `--print-only` is the route for them:
+**The local launcher only ever runs `claude`, and only for `--mode self`.** Every other combination
+is rejected before anything is created, and `--print-only` prepares its prompt. This limitation is
+not a statement that Codex self-review is unavailable: for a Codex implementation in `self` mode,
+use the detached Codex `/review` route above and publish its marker only after the independent
+before/after verification succeeds.
 
 - Whenever `reviewerFor()` resolves to codex — a Claude implementation in `cross` mode, a Codex
   implementation in `self` mode — launching would run Claude while prompt, session id and marker all
@@ -315,14 +324,15 @@ The marker carries one of three values, and the merge gate compares it against
 | Level      | What backs it                                                                                                                   | Who can claim it |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | `true`     | everything under `verified`, plus credentials without code write access, so a write fails server-side                            | the operator, via `--enforced` |
-| `verified` | editing tools removed, writing git/gh denied, review in a throwaway worktree detached at the reviewed SHA, and the launcher checked afterwards that the worktree was untouched | `agent-review-session.mjs --headless` only |
+| `verified` | either the restricted Claude launcher checks an exact-head throwaway worktree afterwards, or Codex runs the dedicated detached `/review` flow and the coordinator independently confirms the exact head and untouched worktree afterwards | the Claude launcher, or the coordinator of a detached Codex `/review` |
 | `false`    | nothing outside the prompt                                                                                                      | anything else, including an interactive launch and `--print-only` |
 
-`verified` requires `--headless` because only a headless run publishes from the launcher, i.e.
-*after* the check. An interactive session posts its own comment while it is still running, so the
-verification the level names has not happened yet at that moment — claiming it there would describe
-an ordering that does not exist. An interactive run therefore stays at `false` and writes no marker,
-and the launcher says so before it starts.
+For launcher-produced markers, `verified` requires `--headless` because only a headless run publishes
+from the launcher, i.e. *after* the check. An interactive launcher session posts its own comment
+while it is still running, so it stays at `false` and writes no marker. A detached Codex `/review`
+reaches `verified` by a different route: its dedicated no-working-tree-change review surface is
+combined with the coordinator's exact-head before/after check, and the coordinator publishes the
+result marker only after that check succeeds. A normal editable Codex chat remains `false`.
 
 `verified` exists because `true` is not reachable everywhere. A session whose only credentials can
 push cannot honestly assert it — and demanding it anyway left `self` unusable in exactly those
@@ -366,8 +376,9 @@ hold, because layers 1 and 2 are pattern-based and a shell is a wide surface:
   `Pull requests: Read and write` can post the findings comment but cannot push, so a push attempt
   fails server-side rather than being talked out of.
 
-Without layer 3 but with the launcher's check, report `verified`. Without both, report `false`: the
-review is then still useful input for a human, but it does not satisfy the `self` merge-gate
+Without layer 3 but with either the launcher's check or the detached Codex `/review` plus the
+coordinator's external before/after check, report `verified`. Without those checks, report `false`:
+the review is then still useful input for a human, but it does not satisfy the `self` merge-gate
 condition at the default minimum.
 
 ## Step-by-step: Claude separate session

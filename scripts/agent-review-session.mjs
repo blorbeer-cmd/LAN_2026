@@ -443,11 +443,17 @@ export function buildResultMarker({ headSha, reviewMode, verdict, sessionId, rea
 export function launchSupport({ mode, implementer }) {
   const reviewer = reviewerFor(implementer, mode);
   if (reviewer !== "claude") {
+    const manualRoute =
+      reviewer === "codex" && mode === "self"
+        ? "Codex self-review is still supported: use a fresh Codex app task with Settings > " +
+          "General > Code review > Detached, start /review for the exact base/head, and complete " +
+          "the external worktree verification described in review-session-prompt.md."
+        : "Use the provider-specific native review route described in review-session-prompt.md.";
     return {
       ok: false,
       reason:
         `this launcher only runs claude, but ${implementer} in ${mode} mode needs ${reviewer}. ` +
-        `Launching would label a claude session as a ${reviewer} review.`,
+        `Launching would label a claude session as a ${reviewer} review. ${manualRoute}`,
     };
   }
   if (mode !== "self") {
@@ -618,7 +624,7 @@ function main(argv) {
   if (options.launch && !support.ok) {
     throw new Error(
       `Cannot launch this review: ${support.reason}\n` +
-        "Use --print-only and hand the prompt to that provider's own surface instead.",
+        "Use --print-only to prepare the provider-specific manual route without launching Claude.",
     );
   }
   // Nothing so far guarantees the head exists locally, and a review session is meant to start from
