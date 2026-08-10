@@ -2,7 +2,8 @@ name: Agent pipeline reconcile
 
 # Derives the pipeline state of an agent pull request from the current GitHub state and keeps the
 # pipeline labels, the sticky status comment and the `Agent pipeline / ready for human merge`
-# commit status in sync. It starts no agent and never approves or merges.
+# commit status in sync. For each eligible head it also creates one mention-bearing review-choice
+# notification. It starts no agent, chooses no review mode and never approves or merges.
 
 on:
   # These events always load the workflow definition from the trusted default branch.
@@ -175,6 +176,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           # Repository-wide kill switch; `agent:no-auto` remains the per-pull-request one.
           AGENT_PIPELINE_DISABLED: ${{ vars.AGENT_PIPELINE_DISABLED }}
+          # Mentioned in the once-per-head fallback comment so GitHub emits a visible notification.
+          AGENT_PIPELINE_OWNER: ${{ vars.AGENT_PIPELINE_OWNER }}
         run: >-
           node scripts/agent-pipeline-reconcile.mjs reconcile
           --repository "${{ github.repository }}"

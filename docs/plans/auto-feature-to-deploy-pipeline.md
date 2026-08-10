@@ -33,7 +33,8 @@ wiederkehrenden Entscheidung des Nutzers — wer das Review durchführt:
 2. Ausführung der bestehenden Pflichtprüfungen; ein Draft blockiert dabei weder die
    Review-Auswahl noch den Review-Start.
 3. Automatische Behebung von CI-Fehlern und Mergekonflikten durch den Implementierungs-Agent.
-4. Auswahl des Review-Modus durch den Nutzer für den aktuellen Head-SHA, mit Empfehlung:
+4. Aktive, genau einmalige Zustellung der Review-Auswahl für den aktuellen Head-SHA und Auswahl des
+   Modus durch den Nutzer, mit Empfehlung:
    - `cross`: Review durch den jeweils anderen Anbieter.
    - `self`: Review durch den Implementierungs-Anbieter in einer frischen, isolierten und
      schreibgeschützten Session.
@@ -191,11 +192,13 @@ Fork-PRs nehmen nicht an der schreibenden Automatik teil.
 
 ### Maschinenzustand
 
-Die drei `review:*`-Labels gehören dem Nutzer. Kein Agent setzt sie. Die Pipeline entfernt genau
-eines davon: das an einen früheren Head gebundene, damit die Auswahl für den neuen Head erneut
-gestellt wird statt eine alte Antwort auf ungesehenen Code anzuwenden. Welcher Head zu einer Wahl
-gehört, hält die Pipeline in ihrem eigenen Statuskommentar fest; die Label-Historie des Pull
-Requests bleibt der eigentliche Prüfpfad, wer wann welchen Modus gewählt hat.
+Die drei `review:*`-Labels gehören dem Nutzer. Unbeaufsichtigte Automatik setzt sie nie. Eine
+interaktive Agenten-Session darf genau eines ausschließlich als Übertragung einer ausdrücklichen,
+zum aktuellen Head-SHA gehörenden Nutzerantwort setzen. Die Pipeline entfernt genau eines davon:
+das an einen früheren Head gebundene, damit die Auswahl für den neuen Head erneut gestellt wird
+statt eine alte Antwort auf ungesehenen Code anzuwenden. Welcher Head zu einer Wahl gehört, hält
+die Pipeline in ihrem eigenen Statuskommentar fest; die Label-Historie des Pull Requests bleibt
+der eigentliche Prüfpfad, wer wann welchen Modus gewählt hat.
 
 Labels sind nicht der alleinige Zustandsspeicher. Ein einzelner, von der Pipeline aktualisierter
 Status enthält mindestens:
@@ -208,6 +211,7 @@ Status enthält mindestens:
 - reguläres oder Fallback-Review,
 - letzte Aktion und Zeitstempel,
 - UI/UX-Benachrichtigungsstatus,
+- SHA-gebundener Zustellungsstatus der Review-Auswahl und gegebenenfalls Zustellungsfehler,
 - gegebenenfalls Warte- oder Eskalationsgrund.
 
 Die Umsetzung kann dafür einen eindeutig markierten, aktualisierbaren PR-Kommentar plus einen
@@ -216,6 +220,22 @@ idempotent: derselbe Event darf weder eine zweite Agenten-Session noch einen zwe
 
 `concurrency` serialisiert Mutationen pro PR. Ein regelmäßiger Reconciler prüft zusätzlich offene
 PRs, falls Webhooks, Kommentare oder Anbieterreaktionen verloren gehen.
+
+Die Review-Auswahl wird nicht nur in diesem Sticky-Status gerendert. Sobald alle Vorbedingungen
+erfüllt sind, erzeugt der Reconciler einen neuen, `AGENT_PIPELINE_OWNER` erwähnenden PR-Kommentar
+mit Head-SHA, Implementierer, Gegenanbieter, Empfehlung, Begründung und a/b/c. Der Marker
+`agent-pipeline:review-decision-notification <head-sha>` dedupliziert alle Wiederholungsläufe. Ein
+neuer Head erhält nach erneut grünen Vorbedingungen eine neue Nachricht; die alte Wahl verfällt.
+Scheitert die Zustellung, werden Sticky-Kommentar und Commit-Status sichtbar auf
+`review-decision-delivery-failed` gesetzt und der Workflow schlägt fehl.
+
+Eine direkte Codex-Task-Zustellung ist aus dem Repository derzeit nicht verfügbar: Die in der
+Desktop-App vorhandenen Thread-Werkzeuge sind keine aus GitHub Actions aufrufbare API. Der noch
+fehlende externe Codex-App-/Task-Adapter muss den Zustellmarker beobachten, PR und `task-id` der
+ursprünglichen Task zuordnen, diese wecken, die Auswahl dort präsentieren und nur eine
+ausdrückliche Antwort für denselben Head-SHA als genau eines der drei Labels übertragen. Bis dahin
+ist die neue GitHub-Erwähnung der aktive und belastbare Zustellungsweg; alternativ kann der Nutzer
+das gewählte Label direkt in GitHub setzen.
 
 ## 7. CI-Fehler und Mergekonflikte
 
@@ -515,7 +535,8 @@ erhalten keine schreibende Automatik.
 ### Phase 2 – Readiness-Modell und Reconciler
 
 1. Kleine, testbare Zustandslogik implementieren, getrennt von den Workflow-YAML-Dateien.
-2. Sticky-Status, Labels, SHA-Bindung und Rundenzähler idempotent aktualisieren.
+2. Sticky-Status, Labels, SHA-Bindung, genau einmalige aktive Review-Auswahl-Zustellung und
+   Rundenzähler idempotent aktualisieren.
 3. `concurrency` pro PR und einen regelmäßigen Reconciler einrichten.
 4. Doppelzustellung, verspätete Events und einen neuen Commit während eines Reviews testen.
 
@@ -530,7 +551,9 @@ genau eine zentrale Vorprüfung vor der Fallunterscheidung, genau eine Stelle, d
 Blocker schreibt, und jede kopfbezogene Klassifizierung fällt bei einem neuen Head einheitlich
 auf „unbekannt“ und damit blockierend zurück.
 
-Abnahme: Ein Event kann gefahrlos mehrfach eintreffen; nur ein Agent arbeitet gleichzeitig am PR.
+Abnahme: Ein Event kann gefahrlos mehrfach eintreffen; nur ein Agent arbeitet gleichzeitig am PR;
+pro Head entsteht höchstens eine aktive Auswahlbenachrichtigung und ein Zustellungsfehler bleibt als
+Pipeline-Blocker sichtbar.
 
 ### Phase 3 – Automatische CI- und Konfliktkorrektur
 
@@ -569,10 +592,14 @@ offen.
 Abnahme: alle drei Modi liefern reproduzierbare `pass`-/`changes-required`-Ergebnisse; ein
 veraltetes Review und eine an einen früheren Head gebundene Wahl können das Gate nicht öffnen.
 
-Umsetzungsstand: Die Auswahl selbst und beide regulären Provider-Adapter sind umgesetzt. Der Reconciler kennt die drei `review:*`-Labels,
-bindet sie an den Head-SHA, wertet die modusabhängige Evidenz aus, stellt die Frage im
-Statuskommentar samt Empfehlung und blockiert das Gate mit der Phase `awaiting-review-decision`,
-solange sie unbeantwortet ist. Der Ablauf in der Session steht in
+Umsetzungsstand: Die Auswahl selbst, ihre GitHub-Fallback-Zustellung und beide regulären
+Provider-Adapter sind umgesetzt. Der Reconciler kennt die drei `review:*`-Labels, bindet sie an den
+Head-SHA, wertet die modusabhängige Evidenz aus, stellt die Frage im Statuskommentar samt Empfehlung
+und erzeugt pro bereitem Head genau einen neuen, maschinenlesbar markierten und den Maintainer
+erwähnenden Kommentar. Solange die Auswahl unbeantwortet ist, blockiert das Gate mit
+`awaiting-review-decision`; ein Zustellungsfehler blockiert sichtbar mit
+`review-decision-delivery-failed` und wird erneut versucht. Der Ablauf in der Session und die
+verbleibende Grenze zum externen Codex-Task-Adapter stehen in
 `.github/agent-pipeline/review-decision.md`. Für Codex-Implementierungen startet `review:cross`
 den eng begrenzten Claude-Pilotpfad; für Claude-Implementierungen fordert der Codex-Adapter die
 native Review an. Die Findings-Schleife und die übrigen Agentenstarts fehlen weiterhin.
@@ -642,8 +669,9 @@ Freigabe endet am menschlichen Merge-Gate.
 - Beide Implementierungsrichtungen funktionieren Ende-zu-Ende.
 - Cross-Review, Selbst-Review, menschliches Review, Findings-Schleife, CI-Fix und Konfliktlösung
   sind getestet.
-- Die Auswahl des Review-Modus wird pro Head-SHA gestellt, von keinem Agenten beantwortet und
-  öffnet das Gate nur mit der zum Modus passenden Evidenz.
+- Die Auswahl des Review-Modus wird pro Head-SHA aktiv und höchstens einmal zugestellt, von keiner
+  unbeaufsichtigten Automatik beantwortet und öffnet das Gate nur mit der zum Modus passenden
+  Evidenz.
 - Review und Gate sind immer an den aktuellen Head-SHA gebunden.
 - Draft-PRs können bereits die Review-Auswahl und das Review durchlaufen; Draft blockiert nur das
   menschliche Merge-Gate.

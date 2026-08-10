@@ -9,8 +9,9 @@ The pipeline reports state and has narrow provider actions for both regular cros
 
 - `.github/workflows/agent-pipeline-contract.yml` validates an activated task contract.
 - `scripts/agent-pipeline.mjs` parses and validates task contracts.
-- `scripts/agent-pipeline-reconcile.mjs` derives the readiness state and keeps the pipeline labels,
-  the sticky status comment and the merge-gate commit status in sync (phases 2 and 7 of the plan).
+- `scripts/agent-pipeline-reconcile.mjs` derives the readiness state, keeps the pipeline labels,
+  sticky status comment and merge-gate commit status in sync, and actively delivers one
+  mention-bearing review choice per eligible head (phases 2 and 7 of the plan).
 - `scripts/agent-pipeline-select-prs.mjs` limits scheduled safety sweeps to pull requests with an
   activated task contract, an agent branch/label, or a missing merge-gate status.
 - `.github/workflows/agent-pipeline-reconcile.yml` runs that reconciler per pull request.
@@ -56,6 +57,8 @@ What it does:
 - maintains one sticky status comment marked with `<!-- agent-pipeline:status -->`,
 - reports every open blocker in that comment, asks for the review mode while it is missing (also on
   draft pull requests) and records the answer,
+- creates one separate, machine-marked `@AGENT_PIPELINE_OWNER` notification per eligible head and
+  records delivery failure as a visible blocker,
 - removes a `review:*` label that was bound to an earlier head, so the choice is asked again,
 - writes the `Agent pipeline / ready for human merge` commit status for the current head SHA.
 
@@ -93,10 +96,26 @@ the audit trail.
 | `review:human` | `human` | an approving review from an account with write access, covering exactly this head                                                                                                                                       |
 
 With no label set and everything mechanical green, the pull request sits in the
-`awaiting-review-decision` phase and the status comment asks the question, with a recommendation
-derived from the changed paths and whether an earlier head already passed. Nothing starts on a
-timeout: an automatic fallback would spend exactly the quota this decision exists to steer. Two
-labels at once block rather than picking a winner.
+`awaiting-review-decision` phase. The sticky status comment keeps showing the full state, but it is
+not delivery. The reconciler also creates one new, mention-bearing comment for that head SHA,
+marked `agent-pipeline:review-decision-notification`; it names the implementer, counter provider,
+recommendation, reason and all three choices. `AGENT_PIPELINE_OWNER` supplies the mentioned GitHub
+login. Existing markers deduplicate event, schedule and workflow reruns, while a new head gets a
+new notification only after CI, mergeability, review-thread and protected-path prerequisites are
+clear. Nothing starts on a timeout: an automatic fallback would spend exactly the quota this
+decision exists to steer. Two labels at once block rather than picking a winner.
+
+The repository has no callable Codex App or task-wakeup API. Its durable active delivery is
+therefore the GitHub mention above. The remaining external adapter must observe the marker, map the
+PR/task contract to the originating Codex task, wake that task, present the question there and
+transcribe only an explicit answer whose head SHA still matches. Codex App thread tools available
+inside an already running desktop session are not reachable from GitHub Actions.
+
+A failed notification POST is not folded into the sticky update. The reconciler writes an
+`agent-pipeline:review-decision-delivery-failure` record into the sticky comment, posts a pending
+`review-decision-delivery-failed` merge-gate status, and fails the workflow. A later run retries.
+Mutating requests are not blindly retried, so a lost HTTP response cannot create a duplicate: if
+GitHub accepted the comment, its marker is read before the next attempt.
 
 Draft status does not prevent this question or the selected review from starting. It remains a
 merge blocker, so the final readiness status stays pending until the pull request is marked ready
@@ -206,8 +225,9 @@ duration, deviation and verdict. Only the stable aggregate is the branch-protect
 thresholds and suite-to-step mapping live in `.github/test-performance.json`.
 
 Idempotence: labels already in the desired state produce no API call, an unchanged status comment
-body is not rewritten, and an unchanged gate verdict is not posted again. Re-running the
-reconciler on an unchanged pull request performs no writes at all.
+body is not rewritten, an unchanged gate verdict is not posted again, and a head with an existing
+review-choice notification marker is never notified again. Re-running the reconciler on an
+unchanged pull request performs no writes at all.
 
 Transient GitHub read failures are retried up to three times with bounded exponential backoff.
 This covers network errors, rate limits and temporary `5xx` responses for REST `GET` requests and
@@ -325,11 +345,13 @@ node --test scripts/agent-preflight.test.mjs
 git diff --check
 ```
 
-The validator and the test suites write nothing to GitHub. The reconciler writes only pipeline
-labels, its own sticky status comment and the `Agent pipeline / ready for human merge` status, and
-only when invoked with `--apply`. The Claude adapter writes one validated review result comment;
+The validator and the test suites write nothing to GitHub. With `--apply`, the reconciler writes
+only pipeline labels, its own sticky status comment, the once-per-head review-choice notification
+and the `Agent pipeline / ready for human merge` status. It never sets a review-mode label. The
+Claude adapter writes one validated review result comment and then invokes that same reconciler;
 the Codex adapter writes one `@codex review` request. Codex then submits the native review that the
-reconciler evaluates. `config.json` already declares the labels and timeouts later phases will use.
+reconciler evaluates. `config.json` already declares the labels and timeouts later phases will use;
+the ones this rollout does not own are inert until then.
 
 For a manual Codex cross-review or fallback review during the rollout, follow
 [`review-session-prompt.md`](review-session-prompt.md). A new commit invalidates the previous
