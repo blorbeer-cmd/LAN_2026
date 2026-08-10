@@ -205,11 +205,14 @@ test("agent-only changes keep browser suites disabled", () => {
   assert.equal(result.e2eArcadeSmoke, false);
 });
 
-test("the workflow preserves the required aggregate Browser E2E check", () => {
-  const workflow = readFileSync(
+const readDeployWorkflow = () =>
+  readFileSync(
     new URL("../.github/workflows/deploy.yml", import.meta.url),
     "utf8",
   ).replaceAll("\r\n", "\n");
+
+test("the workflow preserves the required aggregate Browser E2E check", () => {
+  const workflow = readDeployWorkflow();
   const block = workflow.match(
     /\n  browser-e2e:\n([\s\S]*?)\n  test-performance:/,
   )?.[1];
@@ -226,4 +229,33 @@ test("the workflow preserves the required aggregate Browser E2E check", () => {
     workflow,
     /name: Run measured Core E2E \(\$\{\{ needs\.changes\.outputs\.e2e_core_scope \}\}\)/,
   );
+});
+
+// Regression guard: without a status check function GitHub adds an implicit
+// success() that also trips on a *transitively* skipped dependency. That
+// silently skipped deploy on every merge whose test-performance-confirm was
+// skipped (the normal case), so images were published but never rolled out.
+test("the deploy gate survives skipped upstream jobs", () => {
+  const workflow = readDeployWorkflow();
+  const block = workflow.match(/\n  deploy:\n([\s\S]*?)\n    steps:/)?.[1];
+
+  assert.ok(block, "the deploy job is missing");
+  const condition = block.match(/^    if: >-\n((?:      .*\n)+)/m)?.[1];
+  assert.ok(condition, "the deploy job must gate itself with a folded if");
+  assert.match(
+    condition,
+    /always\(\)/,
+    "deploy must opt out of the implicit success() over its needs",
+  );
+  assert.match(
+    condition,
+    /needs\.publish\.result == 'success'/,
+    "always() disables the implicit gate, so publish must be checked explicitly",
+  );
+  assert.match(
+    condition,
+    /github\.event_name == 'push' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.deploy\)/,
+    "deploy stays limited to main pushes and explicit manual runs",
+  );
+  assert.match(block, /^    needs: publish$/m);
 });
