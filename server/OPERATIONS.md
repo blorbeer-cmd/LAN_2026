@@ -108,8 +108,13 @@ diese Kompatibilitätswerte.
 
 Die Pflichtchecks laufen als parallele Jobs (Server-Checks, Browser-E2E, Agent, Runtime-Image-Build)
 statt als eine serielle Kette; der `publish`-Job veröffentlicht das Image nach grünen Checks aus dem
-geteilten Buildx-Layer-Cache, erst danach startet der Deploy. Playwright-Browser werden zwischen
-Läufen gecacht, und überholte Läufe auf Nicht-`main`-Refs werden per Concurrency abgebrochen.
+geteilten Buildx-Layer-Cache, erst danach startet der Deploy. Weil einzelne Vorbedingungen wie die
+Bestätigung eines Testlauf-Verdachts im Normalfall übersprungen werden, verwenden `publish` und
+`deploy` `always()` und prüfen ihre Vorbedingungen ausdrücklich über `needs.<job>.result`. Ohne
+`always()` ergänzt GitHub ein implizites `success()`, das auch bei einer nur mittelbar
+übersprungenen Abhängigkeit greift und den Deploy stillschweigend überspringt. Playwright-Browser
+werden zwischen Läufen gecacht, und überholte Läufe auf Nicht-`main`-Refs werden per Concurrency
+abgebrochen.
 Der Docker-Build nutzt den GitHub-Actions-Cache. Alle Jobs haben eigene Timeouts; der
 Deploy bleibt über die Concurrency-Gruppe `production-deploy` für den einzelnen Produktionsserver
 serialisiert. Die veröffentlichte Environment-URL ist `https://lan.dbehnke.dev`. Referenziert eine

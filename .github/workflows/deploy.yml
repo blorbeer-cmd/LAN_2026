@@ -513,8 +513,18 @@ jobs:
             ${{ steps.meta.outputs.image }}:${{ github.sha }}
             ${{ steps.meta.outputs.image }}:latest
 
+  # `always()` is required, not cosmetic: without a status check function
+  # GitHub adds an implicit `success()` that also fails when an *indirect*
+  # dependency was skipped. `publish` tolerates the routinely skipped
+  # `test-performance-confirm` via its own `always()` and succeeds, but that
+  # skip propagated through the graph and silently skipped `deploy` — the image
+  # was published and never rolled out. The explicit result check below is what
+  # actually gates the deploy now, so it must stay in sync with `needs`.
   deploy:
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
+    if: >-
+      always() &&
+      needs.publish.result == 'success' &&
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy))
     needs: publish
     runs-on: ubuntu-latest
     timeout-minutes: 10
