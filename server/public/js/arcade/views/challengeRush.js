@@ -65,7 +65,9 @@ export function memoryRevealSchedule(memoryRevealMs, sequenceLength) {
 function focusTimedChallengeTarget(state) {
   const selector = timedChallengeFocusSelector(state);
   if (!selector) return;
-  queueMicrotask(() => {
+  // Arcade rerenders resolve their cached dynamic import asynchronously. Wait for the next frame
+  // so app.js has replaced the DOM before restoring keyboard focus to the timed target.
+  requestAnimationFrame(() => {
     if (currentView() !== 'challengeRush') return;
     document.querySelector(selector)?.focus();
   });
