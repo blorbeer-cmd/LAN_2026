@@ -173,7 +173,7 @@ function e2eImpactForServerPath(file) {
     file === "server/src/routes/auth.ts" ||
     file === "server/src/invites.ts"
   )
-    return { coreScope: "auth", arcade: false, arcadeSmoke: false };
+    return { coreScope: "auth", arcade: false, arcadeSmoke: true };
 
   if (
     file === "server/src/routes/checklist.ts" ||
@@ -184,6 +184,11 @@ function e2eImpactForServerPath(file) {
     return { coreScope: "checklist", arcade: false, arcadeSmoke: false };
 
   if (file.startsWith("server/public/js/views/")) {
+    if (
+      file === "server/public/js/views/admin.js" ||
+      file === "server/public/js/views/profile.js"
+    )
+      return { coreScope: "auth,flows", arcade: false, arcadeSmoke: false };
     if (file === "server/public/js/views/games.js")
       return { coreScope: "all", arcade: false, arcadeSmoke: false };
     return ARCADE_VIEW_FILES.has(path.posix.basename(file))

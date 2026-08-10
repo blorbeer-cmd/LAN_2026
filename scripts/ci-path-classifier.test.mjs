@@ -98,6 +98,29 @@ test("isolated Core domains select only their owned browser fixtures", () => {
   );
 });
 
+test("auth changes retain Arcade auth smoke and auth-owned views merge Core coverage", () => {
+  for (const file of [
+    "server/public/js/authGate.js",
+    "server/src/routes/auth.ts",
+    "server/src/invites.ts",
+  ]) {
+    const result = selected([file]);
+    assert.equal(result.e2eCoreScope, "auth", file);
+    assert.equal(result.e2eArcade, false, file);
+    assert.equal(result.e2eArcadeSmoke, true, file);
+  }
+
+  for (const file of [
+    "server/public/js/views/admin.js",
+    "server/public/js/views/profile.js",
+  ]) {
+    const result = selected([file]);
+    assert.equal(result.e2eCoreScope, "auth,flows", file);
+    assert.equal(result.e2eArcade, false, file);
+    assert.equal(result.e2eArcadeSmoke, false, file);
+  }
+});
+
 test("the shared socket auth guard selects Arcade smoke without the full Arcade suite", () => {
   assert.deepEqual(
     {
