@@ -157,10 +157,19 @@ export function deriveClaudeReviewDispatch(readiness) {
   };
 }
 
-// A head that already carries a Claude result is the one decline that answers the label instead of
-// swallowing it, so announcing it would be noise on every reconcile sweep.
+// Only a decline that leaves the pull request waiting is worth announcing. A head that already
+// carries a Claude result has its answer, and reacting to a `review:cross` that belongs to the
+// other provider is the normal case on every Claude-implemented pull request: that provider's
+// workflow owns the announcement there. Announcing it here too would put a second, contradicting
+// notice on the same head — both workflows rewrite the head's single notice comment.
+const SILENT_DISPATCH_CODES = new Set([
+  DISPATCH_CODES.run,
+  DISPATCH_CODES.resultExists,
+  DISPATCH_CODES.provider,
+]);
+
 export function shouldAnnounceReviewStartFailure(code) {
-  return code !== DISPATCH_CODES.resultExists && code !== DISPATCH_CODES.run;
+  return !SILENT_DISPATCH_CODES.has(code);
 }
 
 /** Validates and normalizes the only model-controlled value that the publisher accepts. */
@@ -376,8 +385,14 @@ function reviewStartGuidance(code, reason) {
   }
 }
 
+// Both cross-review workflows write the same marker, so they share one notice shape. Only the
+// named provider and the way-out text differ; the reviewing provider owns the wording for its own
+// failures and passes it in.
+const PROVIDER_LABELS = { claude: "Claude", codex: "Codex" };
+
 /** Pure renderer for the PR-facing notice; the caller decides whether it is warranted. */
 export function renderReviewStartNotice({
+  provider = "claude",
   repository,
   pullNumber,
   headSha,
@@ -385,13 +400,16 @@ export function renderReviewStartNotice({
   code,
   reason,
   runUrl,
+  guidance,
 }) {
+  const providerLabel = PROVIDER_LABELS[provider];
+  if (!providerLabel) throw new Error("provider must be claude or codex.");
   if (!/^[0-9a-f]{40}$/.test(headSha ?? "")) throw new Error("headSha must be a full SHA.");
   if (outcome !== "declined" && outcome !== "failed") {
     throw new Error("outcome must be declined or failed.");
   }
   const lines = [
-    "## Claude Cross-Review nicht gestartet",
+    `## ${providerLabel} Cross-Review nicht gestartet`,
     "",
     `- Repository: \`${markdownText(repository)}\``,
     `- Pull Request: \`#${Number(pullNumber)}\``,
@@ -400,7 +418,7 @@ export function renderReviewStartNotice({
     `- Grund: \`${boundedMarkdownText(reason ?? "unknown", 200)}\``,
     ...(runUrl ? [`- Workflow-Lauf: ${markdownText(runUrl)}`] : []),
     "",
-    reviewStartGuidance(code, reason),
+    guidance ?? reviewStartGuidance(code, reason),
     "",
     `${REVIEW_START_NOTICE_MARKER} ${headSha} mode=cross outcome=${outcome} -->`,
     "",

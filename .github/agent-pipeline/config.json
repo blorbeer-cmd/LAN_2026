@@ -69,7 +69,8 @@
     "Publish Claude cross-review",
     "Reconcile Claude review result",
     "Select Codex review target",
-    "Request Codex cross-review"
+    "Request Codex cross-review",
+    "Announce missing Codex cross-review"
   ],
   "reviewTimeoutMinutes": 45,
   "waitingEscalationHours": 2,

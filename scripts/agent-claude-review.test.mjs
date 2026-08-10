@@ -232,13 +232,16 @@ test("dispatch decisions carry a stable code and only real stalls are announced"
     assert.equal(deriveClaudeReviewDispatch({ ...readiness, ...changed }).code, code);
   }
 
-  // A started review and an already answered head are the two outcomes that need no announcement.
+  // A started review, an already answered head and a `review:cross` bound to the other provider
+  // are the outcomes that need no announcement here. The last one is the normal case on every
+  // Claude-implemented pull request, and the Codex workflow owns the notice for those heads —
+  // announcing it here too would make both workflows rewrite the head's single notice comment.
   assert.equal(shouldAnnounceReviewStartFailure(DISPATCH_CODES.run), false);
   assert.equal(shouldAnnounceReviewStartFailure(DISPATCH_CODES.resultExists), false);
+  assert.equal(shouldAnnounceReviewStartFailure(DISPATCH_CODES.provider), false);
   for (const code of [
     DISPATCH_CODES.phase,
     DISPATCH_CODES.mode,
-    DISPATCH_CODES.provider,
     DISPATCH_CODES.disabled,
     DISPATCH_CODES.failed,
     DISPATCH_CODES.publishFailed,
