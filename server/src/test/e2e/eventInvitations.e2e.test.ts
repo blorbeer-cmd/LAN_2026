@@ -2,6 +2,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
+import { finishE2EOnboarding } from './authHelpers';
 import { startE2EServer } from './e2eServer';
 
 let BASE_URL: string;
@@ -51,6 +52,7 @@ before(async () => {
   });
   assert.equal(ownerRegistration.status, 201);
   const ownerCookie = sessionCookie(ownerRegistration);
+  await finishE2EOnboarding(BASE_URL, ownerCookie);
   assert.equal(
     (
       await fetch(`${BASE_URL}/api/auth/reauth`, {
@@ -75,6 +77,8 @@ before(async () => {
   });
   assert.equal(memberRegistration.status, 201);
   memberId = ((await memberRegistration.json()) as { id: string }).id;
+  const memberCookie = sessionCookie(memberRegistration);
+  await finishE2EOnboarding(BASE_URL, memberCookie);
 
   const now = Date.now();
   const event = await fetch(`${BASE_URL}/api/events`, {
