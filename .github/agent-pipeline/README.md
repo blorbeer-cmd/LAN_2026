@@ -388,23 +388,24 @@ Completed for this repository:
 4. `providerAuthorAllowlist` lists the verified actors for both providers.
 5. Pipeline labels from `config.json` exist in the repository, including the three review-mode
    labels `review:cross`, `review:self` and `review:human`.
+6. `AGENT_PIPELINE_REVIEW_REQUEST_TOKEN` is stored as an Actions secret. It holds a token of a
+   GitHub account connected to Codex, because the integration refuses a review request from
+   `github-actions[bot]`. A fine-grained token scoped to this repository with `Contents: read`,
+   `Issues: read and write` and `Pull requests: read and write` covers what the workflow does:
+   read the pull-request state and post one comment. Review requests therefore appear under that
+   account. When the secret is missing or its token expires, no request is posted at all — the
+   attempt is reported as failed instead, and the review can be requested by commenting
+   `@codex review` by hand as the connected account.
 
 Still required before expanding agent mutations:
 
-1. Store `AGENT_PIPELINE_REVIEW_REQUEST_TOKEN` as an Actions secret. It must be a token of a GitHub
-   account that is connected to Codex; the Codex integration refuses a review request from
-   `github-actions[bot]`. A fine-grained personal access token scoped to this repository with
-   `Contents: read`, `Issues: read and write` and `Pull requests: read and write` is enough. Until
-   the secret exists, every `review:cross` on a Claude implementation reports a failed review
-   attempt on the pull request instead of silently waiting, and the review has to be requested by
-   commenting `@codex review` manually as the connected account.
-2. After both provider workflows have reached the default branch, verify in pilot pull requests that
+1. After both provider workflows have reached the default branch, verify in pilot pull requests that
    applying `review:cross` to a ready Codex head produces one `github-actions[bot]` result comment,
    applying it to a ready Claude head produces one native Codex review, and both results name or
    cover the exact head SHA without repository file or branch changes.
-3. Verify in a pilot pull request that both app identities can update their own feature branches
+2. Verify in a pilot pull request that both app identities can update their own feature branches
    but cannot push or merge to `main`.
-4. Add `Agent pipeline / ready for human merge` to branch protection. The prerequisite pilot is
+3. Add `Agent pipeline / ready for human merge` to branch protection. The prerequisite pilot is
    complete: on 2026-08-08 every open pull request had the context on its current head, and both
    `success` and `pending` verdicts were observed. Enabling the requirement remains a deliberate
    operator action and is not performed by the workflow or an implementation agent.
