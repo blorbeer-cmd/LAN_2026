@@ -22,7 +22,8 @@ The pipeline reports state and has narrow provider actions for both regular cros
 - `.github/workflows/agent-pipeline-codex-review.yml` requests one native Codex cross-review after
   the user chooses `review:cross` for a Claude implementation.
 - `scripts/agent-codex-review.mjs` reuses the readiness snapshot and posts one exact-head-bound
-  `@codex review` request; Codex submits the native GitHub review and the reconciler evaluates it.
+  `@codex review` request under the identity in `AGENT_PIPELINE_REVIEW_REQUEST_TOKEN`; Codex submits
+  the native GitHub review and the reconciler evaluates it.
 - `.github/workflows/agent-pipeline-tests.yml` runs the pipeline and provider-adapter unit tests.
 - `review-session-prompt.md` contains the copy-paste prompt and operating instructions for an
   isolated Codex or Claude review session.
@@ -201,6 +202,31 @@ confirms that the current head has no submitted Codex review, and posts exactly 
 review evidence. Codex must submit its native GitHub review; the reconciler then evaluates that
 review for the current head and unresolved threads.
 
+The identity of that comment decides whether Codex acts on it. A request posted with the job token
+arrives as `github-actions[bot]`, which the integration answers with "To use Codex here, create a
+Codex account and connect to github" instead of a review — the pull request then waits forever on a
+review that was never accepted. The adapter therefore posts only with the separate Actions secret
+`AGENT_PIPELINE_REVIEW_REQUEST_TOKEN`, which must hold a token of a GitHub account connected to
+Codex, and it never falls back to the job token. Three cases are treated as a failed review attempt
+rather than as a request: a missing or empty secret, a token whose identity cannot be resolved, and
+a request the integration refuses. A refusal is recognised at the comment — a
+`chatgpt-codex-connector[bot]` comment that names the connector settings, follows this head's own
+request and precedes any later `@codex review` — so the adapter waits a short bounded time after
+posting instead of inferring the failure from a review that never arrives, and somebody else's
+refused request is never blamed on this one. A past refusal does not block the head: it describes
+the account's state at the time, and the way out the notice names is to connect that account and
+set `review:cross` again. Such a retry retires the earlier notice by rewriting it without the
+marker, so the reconciler stops reporting a failed attempt while a request is outstanding. An
+unanswered request is different and is never repeated.
+
+Each failed attempt fails the request job and writes the `agent-pipeline:review-start-notice`
+comment for the head, the same marker the Claude adapter uses, so the pull request names the cause
+and the way out. The workflow then runs the reconciler itself, because that comment is written with
+the job token and GitHub starts no workflow run from such an event — without it the announced
+failure would stay out of the sticky status until the half-hourly sweep. Only one workflow ever
+writes the notice for a head: the adapter whose provider is not the counter provider stays silent,
+and a job that died before deriving anything re-checks current eligibility before writing at all.
+
 Escalations the reconciler cannot derive from GitHub state — an exhausted round limit, a critical
 decision, the 24-hour waiting escalation — stay with `agent:needs-human`, exactly as the plan
 describes: raised by a human or by a later provider phase, blocking while set, and never written
@@ -368,6 +394,14 @@ Completed for this repository:
 4. `providerAuthorAllowlist` lists the verified actors for both providers.
 5. Pipeline labels from `config.json` exist in the repository, including the three review-mode
    labels `review:cross`, `review:self` and `review:human`.
+6. `AGENT_PIPELINE_REVIEW_REQUEST_TOKEN` is stored as an Actions secret. It holds a token of a
+   GitHub account connected to Codex, because the integration refuses a review request from
+   `github-actions[bot]`. A fine-grained token scoped to this repository with `Contents: read`,
+   `Issues: read and write` and `Pull requests: read and write` covers what the workflow does:
+   read the pull-request state and post one comment. Review requests therefore appear under that
+   account. When the secret is missing or its token expires, no request is posted at all — the
+   attempt is reported as failed instead, and the review can be requested by commenting
+   `@codex review` by hand as the connected account.
 
 Still required before expanding agent mutations:
 

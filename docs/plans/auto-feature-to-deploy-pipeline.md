@@ -512,12 +512,16 @@ Produktionsdeployment.
 1. Claude GitHub App installieren beziehungsweise Zugriff auf das Repository prüfen.
 2. `ANTHROPIC_API_KEY` oder `CLAUDE_CODE_OAUTH_TOKEN` als Actions-Secret konfigurieren.
 3. Codex Cloud und Codex Code Review für das Repository aktivieren.
-4. Mit zwei Test-PRs prüfen:
+4. `AGENT_PIPELINE_REVIEW_REQUEST_TOKEN` als Actions-Secret hinterlegen: ein Token eines mit Codex
+   verbundenen GitHub-Kontos. Die Codex-Integration weist ein `@codex review` von
+   `github-actions[bot]` ab, deshalb setzt der Workflow ohne dieses Secret bewusst keine Anfrage ab
+   und meldet den Fehlversuch am Pull Request.
+5. Mit zwei Test-PRs prüfen:
    - `@codex review` reagiert und nennt den geprüften SHA,
    - Claude Code Action kann strukturiert reviewen,
    - beide Anbieter dürfen auf eigene Feature-Branches pushen,
    - keiner darf `main` pushen oder mergen.
-5. GitHub-Benutzername für Pipeline-Benachrichtigungen als Repository-Variable hinterlegen.
+6. GitHub-Benutzername für Pipeline-Benachrichtigungen als Repository-Variable hinterlegen.
 
 Abnahme: dokumentierte Identitäten, Berechtigungen, Timeouts und tatsächlich beobachtete
 Limitmeldungen beider Anbieter.
