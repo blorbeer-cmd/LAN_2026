@@ -53,7 +53,7 @@ jobs:
       contents: read
       checks: read
       pull-requests: read
-    if: ${{ github.event_name != 'issue_comment' || (github.event.issue.pull_request != null && contains(github.event.comment.body, 'agent-pipeline:review-result') && (endsWith(github.event.comment.user.login, '[bot]') || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) }}
+    if: ${{ github.event_name != 'issue_comment' || (github.event.issue.pull_request != null && (contains(github.event.comment.body, 'agent-pipeline:review-result') || contains(github.event.comment.body, 'agent-pipeline:review-start-notice')) && (endsWith(github.event.comment.user.login, '[bot]') || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) }}
     outputs:
       pull_requests: ${{ steps.select.outputs.pull_requests }}
     steps:

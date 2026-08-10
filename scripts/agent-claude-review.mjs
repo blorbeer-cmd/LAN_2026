@@ -154,10 +154,18 @@ export function deriveClaudeReviewDispatch(readiness) {
   };
 }
 
-// A head that already carries a Claude result is the one decline that answers the label instead of
-// swallowing it, so announcing it would be noise on every reconcile sweep.
+// Only a decline that leaves the pull request waiting is worth announcing. A head that already
+// carries a Claude result has its answer, and this workflow reacting to a `review:cross` meant for
+// the other provider is the normal case on every Claude-implemented pull request — announcing
+// either would put a "review did not start" notice on pull requests where none was ever due.
+const SILENT_DISPATCH_CODES = new Set([
+  DISPATCH_CODES.run,
+  DISPATCH_CODES.resultExists,
+  DISPATCH_CODES.provider,
+]);
+
 export function shouldAnnounceReviewStartFailure(code) {
-  return code !== DISPATCH_CODES.resultExists && code !== DISPATCH_CODES.run;
+  return !SILENT_DISPATCH_CODES.has(code);
 }
 
 /** Validates and normalizes the only model-controlled value that the publisher accepts. */

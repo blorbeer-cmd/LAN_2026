@@ -54,6 +54,12 @@ test("reconcile reacts to provider review-result comments without cancelling act
   ).replaceAll("\r\n", "\n");
   assert.match(workflow, /issue_comment:\n\s+types: \[created, edited\]/);
   assert.match(workflow, /contains\(github\.event\.comment\.body, 'agent-pipeline:review-result'\)/);
+  // The failure notice has to reach the status comment now, not at the next half-hourly sweep:
+  // until it does, an agent reading the machine-readable state still sees "review pending".
+  assert.match(
+    workflow,
+    /contains\(github\.event\.comment\.body, 'agent-pipeline:review-start-notice'\)/,
+  );
   assert.match(workflow, /github\.event\.comment\.user\.login/);
   assert.match(workflow, /github\.event\.comment\.author_association/);
   assert.match(workflow, /cancel-in-progress: false/);
