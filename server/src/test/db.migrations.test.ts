@@ -643,10 +643,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 61);
+  assert.equal(migrations.length, 62);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 61 }, (_, index) => index + 1),
+    Array.from({ length: 62 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1166,9 +1166,33 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 61 }, (_, index) => index + 1),
-    'every version 1..61 runs exactly once',
+    Array.from({ length: 62 }, (_, index) => index + 1),
+    'every version 1..62 runs exactly once',
   );
+});
+
+test('migration 62 backfills existing players as completed and is restart-safe', () => {
+  const dbFile = makeTempDbPath('player-onboarding-backfill');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 62').run();
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('legacy-onboarding-player', 'Legacy Onboarding Player', 'legacy-onboarding-key', Date.now());
+  fixture.prepare('DELETE FROM player_onboarding WHERE player_id = ?').run('legacy-onboarding-player');
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated.prepare('SELECT status, last_core_step, rating_status FROM player_onboarding WHERE player_id = ?').get('legacy-onboarding-player'),
+    { status: 'completed', last_core_step: 9, rating_status: 'completed' },
+  );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
 test('migration 53 preserves legacy event participants as accepted and is restart-safe', () => {
