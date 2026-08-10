@@ -213,6 +213,35 @@ function isChecklistModerator(req: Request): boolean {
   return role === 'owner' || role === 'admin';
 }
 
+// Reparents a player's own fallback-bucket rows (created through the
+// null-eventId courtesy room below, while they could not yet access the
+// group's real tracking event) into that event once they do gain access -
+// materializations move alongside their items so ensureDefaultItems() does
+// not re-insert a second Grundstock under the now-resolved real event id.
+// Only the player's own items and the tasks *they* created are moved: tasks
+// merely assigned to them were created (and scoped) by someone who already
+// had access, so those already live under the real event and need no repair.
+const reconcilePendingChecklistScope = db.transaction(
+  (groupId: string, eventId: string, playerId: string): { itemsMoved: number; tasksMoved: number } => {
+    const itemsMoved = db
+      .prepare('UPDATE checklist_items SET event_id = ? WHERE group_id = ? AND event_id IS NULL AND player_id = ?')
+      .run(eventId, groupId, playerId).changes;
+    db.prepare(
+      `INSERT OR IGNORE INTO checklist_materializations (group_id, event_id, player_id, materialized_at)
+       SELECT group_id, ?, player_id, materialized_at
+       FROM checklist_materializations WHERE group_id = ? AND event_id IS NULL AND player_id = ?`,
+    ).run(eventId, groupId, playerId);
+    db.prepare('DELETE FROM checklist_materializations WHERE group_id = ? AND event_id IS NULL AND player_id = ?').run(
+      groupId,
+      playerId,
+    );
+    const tasksMoved = db
+      .prepare('UPDATE checklist_tasks SET event_id = ? WHERE group_id = ? AND event_id IS NULL AND created_by = ?')
+      .run(eventId, groupId, playerId).changes;
+    return { itemsMoved, tasksMoved };
+  },
+);
+
 // resolveGroupResource only re-verifies group membership - a task/item id
 // from a *past* event in the very same group (e.g. right after an organizer
 // switches which event is tracked) would otherwise stay mutable forever,
@@ -232,6 +261,13 @@ function currentEventScope(req: Request, res: Response): { eventId: string | nul
   // misleading "Event nicht gefunden" error when the checklist is opened.
   if (scope.eventId !== null && !requestCanAccessGroupEvent(req, scope.eventId)) {
     return { eventId: null };
+  }
+  if (scope.eventId !== null && req.player) {
+    const groupId = req.group!.id;
+    const eventId = scope.eventId;
+    const { itemsMoved, tasksMoved } = reconcilePendingChecklistScope(groupId, eventId, req.player.id);
+    if (itemsMoved > 0) broadcast(Events.checklistChanged, { scope: 'items', playerId: req.player.id }, { groupId, eventId });
+    if (tasksMoved > 0) broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId, eventId });
   }
   return { eventId: scope.eventId };
 }

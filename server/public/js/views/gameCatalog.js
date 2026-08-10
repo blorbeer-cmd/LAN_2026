@@ -687,6 +687,16 @@ export function renderGameCatalog(container, ctx) {
 
   const myId = getMyId();
   const ratingMode = isOnboardingRatingActive();
+  // Remembers which required slider (if any) currently holds focus so a
+  // rerender triggered by that same slider's own debounced save (see the
+  // 'input' listener below) can restore focus there instead of yanking it
+  // - and the page scroll with it - back to the first required row every
+  // time. focusOnboardingRatingSlider() below stays the fallback for the
+  // cases that actually need it: entering rating mode fresh, or the
+  // previously focused row no longer being part of the required set.
+  const focusedSkillRow = ratingMode ? document.activeElement?.closest?.('.skill-row') : null;
+  const focusedGameId = focusedSkillRow?.dataset.game;
+  const focusedKind = focusedSkillRow?.dataset.kind;
   if (ratingMode) void syncOnboardingRatingCandidates();
   const ratingIds = onboardingRatingIds();
   const requiredRatingIds = new Set(ratingIds.slice(0, 10));
@@ -916,5 +926,13 @@ export function renderGameCatalog(container, ctx) {
     });
   });
 
-  if (ratingMode) focusOnboardingRatingSlider();
+  if (ratingMode) {
+    const restored = focusedGameId
+      ? [...container.querySelectorAll('.skill-row')]
+          .find((row) => row.dataset.game === focusedGameId && row.dataset.kind === focusedKind)
+          ?.querySelector('input[type="range"]')
+      : null;
+    if (restored) restored.focus({ preventScroll: true });
+    else focusOnboardingRatingSlider();
+  }
 }

@@ -144,6 +144,21 @@ test('an invite link registers a new account and logs it straight in', async () 
   await page.waitForSelector('[data-onboarding-finish][disabled]');
   const requiredRows = page.locator('.game-table-row.onboarding-required');
   assert.equal(await requiredRows.count(), 10);
+
+  // Regression coverage: a rerender triggered by a required slider's own
+  // debounced save must not steal focus (and the page scroll with it) back
+  // to the very first required row - it only used to happen for a row other
+  // than the first, so rate a later one via real keyboard input.
+  const midSlider = requiredRows.nth(5).locator('input[type="range"]').first();
+  await midSlider.focus();
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(350);
+  assert.equal(
+    await midSlider.evaluate((element) => element === document.activeElement),
+    true,
+    'saving a later required row must keep focus on that row instead of jumping back to the first one',
+  );
+
   for (let rowIndex = 0; rowIndex < await requiredRows.count(); rowIndex += 1) {
     const sliders = requiredRows.nth(rowIndex).locator('input[type="range"]');
     for (let sliderIndex = 0; sliderIndex < await sliders.count(); sliderIndex += 1) {

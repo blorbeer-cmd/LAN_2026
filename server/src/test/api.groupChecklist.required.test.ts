@@ -88,6 +88,38 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
       assert.equal(newcomerTasks.status, 200, JSON.stringify(newcomerTasks.body));
       assert.deepEqual(newcomerTasks.body.tasks, []);
 
+      // The pending newcomer packs a personal item and posts an open to-do
+      // while still stuck in the null-eventId fallback room from above -
+      // both land under event_id=NULL, not eventA.
+      const newcomerItem = await scoped(app, 'post', '/api/checklist/items', newcomer, groupId).send({ label: 'Ladekabel' });
+      assert.equal(newcomerItem.status, 201, JSON.stringify(newcomerItem.body));
+      const newcomerTask = await scoped(app, 'post', '/api/checklist/tasks', newcomer, groupId).send({ title: 'Kann mir jemand Eis mitbringen?' });
+      assert.equal(newcomerTask.status, 201, JSON.stringify(newcomerTask.body));
+      const newcomerItemRowBefore = db.prepare('SELECT event_id FROM checklist_items WHERE id = ?').get(newcomerItem.body.id);
+      assert.equal(newcomerItemRowBefore.event_id, null);
+      const newcomerTaskRowBefore = db.prepare('SELECT event_id FROM checklist_tasks WHERE id = ?').get(newcomerTask.body.tasks[0].id);
+      assert.equal(newcomerTaskRowBefore.event_id, null);
+
+      // Once an organizer accepts the newcomer onto eventA's roster, opening
+      // the checklist must not silently drop what was already created while
+      // pending: both rows move into eventA and stay visible/mutable there.
+      assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice, groupId)
+        .send({ playerIds: [alice.account.id, bob.account.id, dave.account.id, newcomer.account.id] })).status, 200);
+      const newcomerItemsAfterAccept = await scoped(app, 'get', '/api/checklist/items', newcomer, groupId)
+        .query({ playerId: newcomer.account.id });
+      assert.equal(newcomerItemsAfterAccept.status, 200, JSON.stringify(newcomerItemsAfterAccept.body));
+      assert.ok(newcomerItemsAfterAccept.body.items.some((item) => item.id === newcomerItem.body.id), 'reparented item stays visible');
+      const newcomerTasksAfterAccept = await scoped(app, 'get', '/api/checklist/tasks', newcomer, groupId);
+      assert.equal(newcomerTasksAfterAccept.status, 200, JSON.stringify(newcomerTasksAfterAccept.body));
+      assert.ok(newcomerTasksAfterAccept.body.tasks.some((t) => t.id === newcomerTask.body.tasks[0].id), 'reparented task stays visible');
+      const newcomerItemRowAfter = db.prepare('SELECT event_id FROM checklist_items WHERE id = ?').get(newcomerItem.body.id);
+      assert.equal(newcomerItemRowAfter.event_id, eventA.body.id);
+      const newcomerTaskRowAfter = db.prepare('SELECT event_id FROM checklist_tasks WHERE id = ?').get(newcomerTask.body.tasks[0].id);
+      assert.equal(newcomerTaskRowAfter.event_id, eventA.body.id);
+      const toggledNewcomerItem = await scoped(app, 'patch', '/api/checklist/items/' + newcomerItem.body.id, newcomer, groupId)
+        .send({ checked: true });
+      assert.equal(toggledNewcomerItem.status, 200, JSON.stringify(toggledNewcomerItem.body));
+
       // --- id-based mutations must 404 for an unknown id ---
       assert.equal((await scoped(app, 'patch', '/api/checklist/items/does-not-exist', bob, groupId).send({ checked: true })).status, 404);
       assert.equal((await scoped(app, 'delete', '/api/checklist/items/does-not-exist', bob, groupId).send({})).status, 404);
