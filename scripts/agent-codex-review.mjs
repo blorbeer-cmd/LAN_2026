@@ -81,14 +81,14 @@ export function shouldAnnounceCodexRequestFailure(code) {
  * Whether a failure without a decision may still be announced.
  *
  * A job that died before the dispatch — during checkout, Node setup or the first snapshot read —
- * reports no code, and the fallback says nothing about who was supposed to review. Both
- * cross-review workflows share one notice comment per head, so announcing blind could overwrite
- * the owning provider's notice or invent a failed Codex review on a head Claude reviewed. The
- * counter provider is re-derived from current state instead.
+ * reports no code, and the fallback says nothing about the head it died on or who was supposed to
+ * review it. The notice would then be anchored to whatever the current head is, so nothing short
+ * of full current eligibility justifies writing it: a head whose review mode was withdrawn, whose
+ * label now names another mode, or that has moved on is not waiting for a Codex review, and the
+ * notice comment is shared with the workflow that may genuinely own that head.
  */
 export function mayAnnounceUndecidedFailure(readiness) {
-  const { code } = deriveCodexReviewDispatch(readiness);
-  return code !== REQUEST_CODES.provider && code !== REQUEST_CODES.reviewExists;
+  return deriveCodexReviewDispatch(readiness).shouldRun;
 }
 
 function option(args, name) {
@@ -460,19 +460,18 @@ export async function requestCommand(
   output("request_author", author);
 
   const comments = await pullComments({ owner, repo, pullNumber, token }, githubApiFn);
-  const refusal = findCodexRequestRefusal(comments, snapshot.headSha, author);
-  if (refusal) {
-    decline(
-      REQUEST_CODES.refused,
-      `Codex refused this head's review request from ${author}`,
-    );
-    output("refusal_url", refusal.html_url ?? "");
-    return;
-  }
-  // An unanswered request from the authorized identity is an outstanding request, not a failed
-  // attempt: a label reapplied, a manual dispatch or a duplicate event must find the run green and
-  // must not repeat the request while Codex is still working on it.
-  if (hasCodexReviewRequest(comments, snapshot.headSha, author)) {
+  // A refusal for this head is deliberately not a permanent block. The notice tells the operator to
+  // connect the account and set `review:cross` again, and that retry only works if the same
+  // identity may ask once more — the refusal describes the account's state at the time, not a
+  // property of the head. Re-asking costs one comment per deliberate retry.
+  //
+  // An unanswered request from the authorized identity is different: it is an outstanding request,
+  // not a failed attempt, so a reapplied label, a manual dispatch or a duplicate event must find
+  // the run green and must not repeat the request while Codex is still working on it.
+  if (
+    !findCodexRequestRefusal(comments, snapshot.headSha, author) &&
+    hasCodexReviewRequest(comments, snapshot.headSha, author)
+  ) {
     output("requested", "true");
     output("code", REQUEST_CODES.requestExists);
     output("reason", "this head already has an outstanding Codex review request");

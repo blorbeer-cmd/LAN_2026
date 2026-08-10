@@ -275,21 +275,19 @@ test("a failure without a decision only announces for heads Codex owns", () => {
     details: { reviewMode: "cross", reviews: { reviewedByProvider: false } },
   };
   assert.equal(mayAnnounceUndecidedFailure(codexHead), true);
-  // A job that died before the dispatch knows nothing about the provider, and both cross-review
-  // workflows rewrite the same notice comment for a head.
-  assert.equal(
-    mayAnnounceUndecidedFailure({ ...codexHead, reviewerProvider: "claude" }),
-    false,
-  );
-  assert.equal(
-    mayAnnounceUndecidedFailure({
-      ...codexHead,
-      details: { reviewMode: "cross", reviews: { reviewedByProvider: true } },
-    }),
-    false,
-  );
-  // A head that moved on still gets its notice: nothing else reports the attempt that died.
-  assert.equal(mayAnnounceUndecidedFailure({ ...codexHead, phase: "implementing" }), true);
+  // Such a job knows neither the head it died on nor who was supposed to review it, and the notice
+  // would be anchored to whatever the current head is. Nothing short of a currently outstanding
+  // Codex cross-review justifies writing into the notice comment both workflows share.
+  for (const changed of [
+    { reviewerProvider: "claude" },
+    { details: { reviewMode: "cross", reviews: { reviewedByProvider: true } } },
+    // The label was withdrawn, so no mode is bound and nobody is waiting for Codex.
+    { phase: "awaiting-review-decision" },
+    { phase: "implementing" },
+    { details: { reviewMode: "self", reviews: { reviewedByProvider: false } } },
+  ]) {
+    assert.equal(mayAnnounceUndecidedFailure({ ...codexHead, ...changed }), false);
+  }
 });
 
 test("a missing request credential posts nothing and reports a failed attempt", async () => {
@@ -323,14 +321,16 @@ test("repeated request dispatches post exactly once for the same head", async ()
   assert.equal(posted.length, 1);
 });
 
-test("a refused request is reported instead of repeated", async () => {
+test("a refused request is reported and may be retried by the same identity", async () => {
   const refused = harness({ refuseAfterPost: true });
   await runRequest(refused.dependencies);
   assert.equal(refused.posted.length, 1);
 
-  // The refusal is durable evidence for this head: a rerun must not ask the same identity again.
+  // The notice tells the operator to connect the account and set `review:cross` again. That path
+  // only works if the same identity may ask once more, so a past refusal must not block the head:
+  // it described the account's state at the time, not a property of the head.
   await runRequest(refused.dependencies);
-  assert.equal(refused.posted.length, 1);
+  assert.equal(refused.posted.length, 2);
 });
 
 test("an unusable request credential is a failed attempt, not a fallback to the job token", async () => {
@@ -574,6 +574,17 @@ test("the review request carries its own credential and reports when it cannot",
     workflow,
     /needs\.request\.result == 'failure' \|\| needs\.request\.outputs\.requested != 'true'/,
   );
+  // The notice is written with the job token, whose events start no workflow run, so the sticky
+  // status would not show the failure until the half-hourly sweep without this reconcile.
+  assert.match(
+    workflow,
+    /reconcile:\s*\n\s+name: Reconcile missing Codex cross-review[\s\S]*?needs\.notice\.result == 'success'/,
+  );
+  assert.match(
+    workflow,
+    /group: agent-pipeline-reconcile-\$\{\{ needs\.select\.outputs\.pull_request \}\}/,
+  );
+  assert.match(workflow, /node scripts\/agent-pipeline-reconcile\.mjs reconcile/);
 });
 
 test("every job of this workflow is recognised as the pipeline's own check", () => {

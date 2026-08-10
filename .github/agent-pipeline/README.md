@@ -205,12 +205,20 @@ review that was never accepted. The adapter therefore posts only with the separa
 Codex, and it never falls back to the job token. Three cases are treated as a failed review attempt
 rather than as a request: a missing or empty secret, a token whose identity cannot be resolved, and
 a request the integration refuses. A refusal is recognised at the comment — a
-`chatgpt-codex-connector[bot]` comment that names the connector settings and follows this head's
-request — so the adapter waits a short bounded time after posting instead of inferring the failure
-from a review that never arrives. Each of these cases fails the request job and writes the
-`agent-pipeline:review-start-notice` comment for the head, the same marker the Claude adapter uses,
-so the pull request names the cause and the way out. Only one workflow ever writes that notice for a
-head: the adapter whose provider is not the counter provider stays silent.
+`chatgpt-codex-connector[bot]` comment that names the connector settings, follows this head's own
+request and precedes any later `@codex review` — so the adapter waits a short bounded time after
+posting instead of inferring the failure from a review that never arrives, and somebody else's
+refused request is never blamed on this one. A past refusal does not block the head: it describes
+the account's state at the time, and the way out the notice names is to connect that account and
+set `review:cross` again. An unanswered request is different and is never repeated.
+
+Each failed attempt fails the request job and writes the `agent-pipeline:review-start-notice`
+comment for the head, the same marker the Claude adapter uses, so the pull request names the cause
+and the way out. The workflow then runs the reconciler itself, because that comment is written with
+the job token and GitHub starts no workflow run from such an event — without it the announced
+failure would stay out of the sticky status until the half-hourly sweep. Only one workflow ever
+writes the notice for a head: the adapter whose provider is not the counter provider stays silent,
+and a job that died before deriving anything re-checks current eligibility before writing at all.
 
 Escalations the reconciler cannot derive from GitHub state — an exhausted round limit, a critical
 decision, the 24-hour waiting escalation — stay with `agent:needs-human`, exactly as the plan
