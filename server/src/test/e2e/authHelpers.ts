@@ -46,6 +46,14 @@ export interface E2EAccount {
   password: string;
 }
 
+export async function finishE2EOnboarding(baseUrl: string, cookie: string): Promise<void> {
+  const response = await fetch(`${baseUrl}/api/me/onboarding/test-complete`, {
+    method: 'POST',
+    headers: { cookie },
+  });
+  assert.equal(response.status, 200, await response.text());
+}
+
 export async function createE2EAccount(baseUrl: string, adminCookie: string, name: string): Promise<E2EAccount> {
   const created = await fetch(`${baseUrl}/api/players`, {
     method: 'POST',
@@ -68,7 +76,9 @@ export async function createE2EAccount(baseUrl: string, adminCookie: string, nam
     body: JSON.stringify({ code: invite.code, password }),
   });
   assert.equal(claimed.status, 200, await claimed.text());
-  return { ...player, cookie: sessionCookie(claimed), password };
+  const cookie = sessionCookie(claimed);
+  await finishE2EOnboarding(baseUrl, cookie);
+  return { ...player, cookie, password };
 }
 
 export async function promoteE2EAdmin(baseUrl: string, adminCookie: string, playerId: string): Promise<void> {

@@ -40,6 +40,7 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { GAME_GENRES } from '../gameGenres.js';
 import { matchesSelectionSearch, wireSelectionSearch } from '../selectionSearch.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { isGroupAdmin } from '../groupContext.js';
 
 // Cached separately from `state` (like analytics.js does) since it's fetched
 // from its own endpoint, not part of the main loadAll() round-trip.
@@ -649,7 +650,7 @@ export function renderVotes(container, ctx) {
 
     <section class="card vote-page-section stack" aria-labelledby="vote-current-result-title">
       <div class="tournament-create-step-title"><h2 id="vote-current-result-title">Letzter Vote</h2></div>
-      ${renderCurrentVote({ allowRunoff: !votes.open })}
+      ${renderCurrentVote({ allowRunoff: !votes.open && isGroupAdmin() })}
     </section>
 
     <section class="card vote-page-section stack" aria-labelledby="vote-top-games-title">
