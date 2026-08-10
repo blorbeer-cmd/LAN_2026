@@ -70,6 +70,12 @@ jobs:
       checks: read
       pull-requests: write
       statuses: read
+    outputs:
+      should_run: ${{ steps.request.outputs.should_run }}
+      code: ${{ steps.request.outputs.code }}
+      reason: ${{ steps.request.outputs.reason }}
+      head_sha: ${{ steps.request.outputs.head_sha }}
+      requested: ${{ steps.request.outputs.requested }}
     steps:
       - name: Check out trusted pipeline code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -83,9 +89,17 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Request native Codex review
+        id: request
         shell: bash
         env:
+          # Reads only. Every write this workflow performs is a review request, and the job token
+          # cannot perform it: the Codex integration refuses `@codex review` from
+          # `github-actions[bot]` and answers with a connector hint instead of a review.
           GITHUB_TOKEN: ${{ github.token }}
+          # The only credential that posts the request, and deliberately without a fallback to
+          # `github.token`. Without this secret the adapter posts nothing and reports a failed
+          # review attempt, so the pull request says so instead of waiting for a refused request.
+          AGENT_PIPELINE_REVIEW_REQUEST_TOKEN: ${{ secrets.AGENT_PIPELINE_REVIEW_REQUEST_TOKEN }}
           AGENT_PIPELINE_DISABLED: ${{ vars.AGENT_PIPELINE_DISABLED }}
           REPOSITORY: ${{ github.repository }}
           SELECTED_PR: ${{ needs.select.outputs.pull_request }}
@@ -93,3 +107,114 @@ jobs:
           node scripts/agent-codex-review.mjs request \
             --repository "${REPOSITORY}" \
             --pr "${SELECTED_PR}"
+
+      # The adapter exits cleanly so its outputs stay readable for the notice job. A chosen review
+      # that never reached Codex is still a failed run and must be red in the checks list.
+      - name: Fail when the chosen review was not requested
+        if: steps.request.outputs.should_run == 'true' && steps.request.outputs.requested != 'true'
+        shell: bash
+        env:
+          REQUEST_CODE: ${{ steps.request.outputs.code }}
+          REQUEST_REASON: ${{ steps.request.outputs.reason }}
+        run: |
+          echo "No Codex review request is outstanding for this head (${REQUEST_CODE}): ${REQUEST_REASON}" >&2
+          exit 1
+
+  notice:
+    name: Announce missing Codex cross-review
+    needs: [select, request]
+    # Runs whenever a chosen cross-review never reached Codex: the missing request credential, a
+    # refused request, a decline, or a job that failed before any request existed. Without it the
+    # pull request keeps waiting on a review that will never start, and the reconciler can only
+    # report the symptom.
+    if: >-
+      always() && needs.select.outputs.pull_request != '' &&
+      (needs.request.result == 'failure' || needs.request.outputs.requested != 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check out trusted notice code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Announce that no review request reached Codex
+        id: notice
+        shell: bash
+        env:
+          # The notice only reports state, so the job token is the right identity for it.
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PULL_NUMBER: ${{ needs.select.outputs.pull_request }}
+          HEAD_SHA: ${{ needs.request.outputs.head_sha }}
+          OUTCOME: ${{ needs.request.outputs.should_run == 'false' && 'declined' || 'failed' }}
+          # A failed job may never have reached the dispatch, so its code and reason can be empty.
+          CODE: ${{ needs.request.outputs.code || 'failed' }}
+          REASON: ${{ needs.request.outputs.reason || 'the review-request job failed before a request existed' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node scripts/agent-codex-review.mjs notice \
+            --repository "${REPOSITORY}" \
+            --pr "${PULL_NUMBER}" \
+            --head-sha "${HEAD_SHA}" \
+            --outcome "${OUTCOME}" \
+            --code "${CODE}" \
+            --reason "${REASON}" \
+            --run-url "${RUN_URL}"
+
+  reconcile:
+    name: Reconcile missing Codex cross-review
+    needs: [select, notice]
+    # The notice is written with the repository `GITHUB_TOKEN`, and GitHub starts no workflow run
+    # from an event created with that token, so the `issue_comment` trigger of
+    # `agent-pipeline-reconcile.yml` never sees it. Without this job the announced failure would
+    # sit unread in the sticky status until the half-hourly sweep — exactly the wait the notice
+    # exists to end.
+    if: always() && needs.select.outputs.pull_request != '' && needs.notice.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Only the recoverable, stateless transition shares the reconciler lock. The notice comment is
+    # durable before this job can be cancelled or replaced by a newer reconcile run.
+    concurrency:
+      group: agent-pipeline-reconcile-${{ needs.select.outputs.pull_request }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: write
+      statuses: write
+    steps:
+      - name: Check out trusted reconciler code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Reconcile the announced failure
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AGENT_PIPELINE_DISABLED: ${{ vars.AGENT_PIPELINE_DISABLED }}
+          # The request outputs are empty when the job died before deriving them, so both values
+          # come from the event itself and stay set on the notice path.
+          REPOSITORY: ${{ github.repository }}
+          PULL_NUMBER: ${{ needs.select.outputs.pull_request }}
+        run: |
+          node scripts/agent-pipeline-reconcile.mjs reconcile \
+            --repository "${REPOSITORY}" \
+            --pr "${PULL_NUMBER}" \
+            --apply
