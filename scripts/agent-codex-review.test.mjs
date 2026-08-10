@@ -333,6 +333,68 @@ test("a refused request is reported and may be retried by the same identity", as
   assert.equal(refused.posted.length, 2);
 });
 
+test("a successful retry retires the earlier failure notice", async () => {
+  const notice = {
+    id: 4711,
+    user: { login: "github-actions[bot]" },
+    body: renderCodexRequestNotice({
+      repository: "owner/repo",
+      pullNumber: 381,
+      headSha: HEAD,
+      outcome: "failed",
+      code: REQUEST_CODES.refused,
+      reason: "Codex refused the review request posted as owner-account",
+    }),
+  };
+  const patched = [];
+  const retry = harness({ comments: [notice] });
+  const inner = retry.dependencies.githubApiFn;
+  retry.dependencies.githubApiFn = async (path, options = {}) => {
+    if (options.method === "PATCH") {
+      patched.push({ path, token: options.token, body: options.body.body });
+      return { html_url: "https://github.test/notice" };
+    }
+    return inner(path, options);
+  };
+
+  await runRequest(retry.dependencies);
+  assert.equal(retry.posted.length, 1);
+  assert.equal(patched.length, 1);
+  assert.match(patched[0].path, /\/issues\/comments\/4711$/);
+  // The job token wrote that notice; the request credential stays reserved for the request itself.
+  assert.equal(patched[0].token, "read-token");
+  // The reconciler must stop reading a failed attempt out of it while a request is outstanding.
+  assert.equal(
+    parseReviewStartNotice([{ author: "github-actions[bot]", body: patched[0].body }]),
+    null,
+  );
+  assert.match(patched[0].body, new RegExp(`- Head-SHA: \`${HEAD}\``));
+
+  // A refused retry must keep the notice: the notice job rewrites the head's notice instead.
+  const refusedRetry = harness({ comments: [{ ...notice }], refuseAfterPost: true });
+  const refusedInner = refusedRetry.dependencies.githubApiFn;
+  const refusedPatches = [];
+  refusedRetry.dependencies.githubApiFn = async (path, options = {}) => {
+    if (options.method === "PATCH") {
+      refusedPatches.push(path);
+      return { html_url: "https://github.test/notice" };
+    }
+    return refusedInner(path, options);
+  };
+  await runRequest(refusedRetry.dependencies);
+  assert.deepEqual(refusedPatches, []);
+
+  // Without an earlier notice there is nothing to retire.
+  const fresh = harness();
+  const freshInner = fresh.dependencies.githubApiFn;
+  fresh.dependencies.githubApiFn = async (path, options = {}) => {
+    if (options.method === "PATCH") throw new Error(`Unexpected PATCH: ${path}`);
+    return freshInner(path, options);
+  };
+  await runRequest(fresh.dependencies);
+  assert.equal(fresh.posted.length, 1);
+});
+
 test("an unusable request credential is a failed attempt, not a fallback to the job token", async () => {
   const { posted, dependencies } = harness({ identity: null });
   await runRequest(dependencies);

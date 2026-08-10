@@ -210,7 +210,9 @@ request and precedes any later `@codex review` — so the adapter waits a short 
 posting instead of inferring the failure from a review that never arrives, and somebody else's
 refused request is never blamed on this one. A past refusal does not block the head: it describes
 the account's state at the time, and the way out the notice names is to connect that account and
-set `review:cross` again. An unanswered request is different and is never repeated.
+set `review:cross` again. Such a retry retires the earlier notice by rewriting it without the
+marker, so the reconciler stops reporting a failed attempt while a request is outstanding. An
+unanswered request is different and is never repeated.
 
 Each failed attempt fails the request job and writes the `agent-pipeline:review-start-notice`
 comment for the head, the same marker the Claude adapter uses, so the pull request names the cause

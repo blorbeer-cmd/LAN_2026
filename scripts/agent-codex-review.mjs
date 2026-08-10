@@ -288,6 +288,34 @@ function codexRequestGuidance(code, reason) {
   }
 }
 
+/**
+ * Replacement body for a failure notice that a later request has answered.
+ *
+ * The reconciler reads the notice marker into its status comment, so a stale one would keep
+ * reporting a failed attempt while a request is genuinely outstanding — and would invite another
+ * recovery that is not needed. Dropping the marker retires the machine-readable claim while the
+ * pull request keeps the record that the attempt happened.
+ */
+export function renderSupersededRequestNotice({ repository, pullNumber, headSha, commentUrl }) {
+  if (!/^[0-9a-f]{40}$/.test(headSha ?? "")) throw new Error("headSha must be a full SHA.");
+  const lines = [
+    "## Codex Cross-Review angefragt (früherer Fehlversuch)",
+    "",
+    `- Repository: \`${repository}\``,
+    `- Pull Request: \`#${Number(pullNumber)}\``,
+    `- Head-SHA: \`${headSha}\``,
+    ...(commentUrl ? [`- Neue Anfrage: ${commentUrl}`] : []),
+    "",
+    "Für diesen Head wurde eine neue Review-Anfrage abgesetzt, nachdem ein früherer Versuch",
+    "gescheitert war. Der ursprüngliche Hinweis gilt nicht mehr; die Pipeline wartet jetzt auf das",
+    "Review zu diesem Head.",
+    "",
+    "---",
+    "_Maintained by the trusted agent-pipeline workflow. It reports state only; it does not approve or merge._",
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
 /** Pure renderer for the PR-facing notice; the caller decides whether it is warranted. */
 export function renderCodexRequestNotice({
   repository,
@@ -496,6 +524,7 @@ export async function requestCommand(
   output("comment_url", comment.html_url ?? "");
   console.log(`Requested Codex cross-review: ${comment.html_url ?? "comment created"}`);
 
+
   const answer = await waitForRequestRefusal(
     {
       owner,
@@ -517,6 +546,37 @@ export async function requestCommand(
     );
     output("refusal_url", answer.html_url ?? "");
     return;
+  }
+
+  // A retry after a refusal leaves that refusal's notice on the head, and the reconciler reads its
+  // marker into the status comment. Left alone it would report a failed attempt while this request
+  // is outstanding and invite a recovery nobody needs. Retired only now, with positive evidence
+  // that the request stands: had it been refused too, the notice job rewrites the head's notice.
+  const stale = findReviewStartNotice(
+    comments.map((entry) => ({
+      id: entry.id,
+      author: entry.user?.login ?? entry.author ?? null,
+      authorAssociation: entry.author_association,
+      body: entry.body,
+    })),
+    snapshot.headSha,
+  );
+  if (stale) {
+    // The job token wrote that notice and rewrites it; the request credential stays reserved for
+    // the one comment whose identity has to be the one Codex authorizes.
+    await githubApiFn(`/repos/${owner}/${repo}/issues/comments/${stale.id}`, {
+      token,
+      method: "PATCH",
+      body: {
+        body: renderSupersededRequestNotice({
+          repository,
+          pullNumber: Number(pullNumber),
+          headSha: snapshot.headSha,
+          commentUrl: comment.html_url ?? "",
+        }),
+      },
+    });
+    console.log(`Superseded the earlier failure notice for ${snapshot.headSha}.`);
   }
 
   output("requested", "true");
