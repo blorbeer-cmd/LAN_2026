@@ -758,14 +758,13 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
 });
 
 test('Vote: game-limit selection survives an unrelated re-render and select-all/none ignore prior manual state', async () => {
-  // Regression test: the "Nur bestimmte Spiele zur Wahl stellen" panel and
-  // its checkboxes used to live only in the DOM with no persisted JS state.
-  // A votes:changed/preferences:changed socket event re-renders this whole
-  // view from scratch whenever *anyone* interacts with voting elsewhere —
-  // that silently collapsed the panel and cleared manual deselections.
-  // `respawn:rerender` is the same generic re-render signal the app itself
-  // dispatches; firing it here simulates that unrelated event without
-  // needing a second browser context.
+  // Regression test: the game-selection checkboxes used to live only in the
+  // DOM with no persisted JS state. A votes:changed/preferences:changed
+  // socket event re-renders this whole view from scratch whenever *anyone*
+  // interacts with voting elsewhere — that silently cleared manual
+  // deselections. `respawn:rerender` is the same generic re-render signal
+  // the app itself dispatches; firing it here simulates that unrelated
+  // event without needing a second browser context.
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-start');
   await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
@@ -865,6 +864,7 @@ test('Vote: game-limit selection survives an unrelated re-render and select-all/
   const voteGameCheckboxes = page.locator('[data-vote-game-checkbox]');
   const voteGameCount = await voteGameCheckboxes.count();
   assert.ok(voteGameCount >= 2, 'test fixture must ship at least two games');
+  await page.click('[data-selection-search-trigger][aria-controls="votes-game-search"]');
   await page.fill('#votes-game-search', 'Counter-Strike 2');
   await page.waitForFunction(() => document.querySelectorAll('[data-vote-game-search-item]:not([hidden])').length === 1);
   await page.click('#votes-select-none');
@@ -877,6 +877,7 @@ test('Vote: game-limit selection survives an unrelated re-render and select-all/
   await page.fill('#votes-game-search', 'Kein Treffer XYZ');
   await page.waitForSelector('[data-vote-game-search-empty]:not([hidden])');
   await page.fill('#votes-game-search', '');
+  await page.click('[data-selection-search]:has(#votes-game-search) [data-selection-search-close]');
   await page.click('#votes-select-all');
   await voteGameCheckboxes.nth(0).uncheck();
   await voteGameCheckboxes.nth(1).uncheck();
@@ -884,7 +885,6 @@ test('Vote: game-limit selection survives an unrelated re-render and select-all/
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:rerender')));
 
   await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
-  assert.equal(await page.locator('#votes-limit-games').isChecked(), true, 'the filter checkbox itself must stay checked');
   assert.equal(await voteGameCheckboxes.nth(0).isChecked(), false, 'a manual deselection must survive an unrelated re-render');
   assert.equal(await voteGameCheckboxes.nth(1).isChecked(), false);
 
@@ -902,10 +902,6 @@ test('Vote: game-limit selection survives an unrelated re-render and select-all/
     await voteGameCheckboxes.evaluateAll((els) => els.map((el) => (el as HTMLInputElement).checked)),
     Array(voteGameCount).fill(true)
   );
-
-  // Restore the idle default so later tests in this file start clean.
-  await page.click('#votes-limit-games');
-  await page.waitForSelector('#votes-game-select-wrap[hidden]', { state: 'attached' });
 });
 
 test('Vote: genre filter scopes the game-limit list, select-all/none and the started round to visible games', async (t) => {
@@ -930,8 +926,8 @@ test('Vote: genre filter scopes the game-limit list, select-all/none and the sta
       const cancelled = await page.request.post(`${BASE_URL}/api/votes/cancel`);
       assert.ok(cancelled.ok(), `vote cleanup failed (${cancelled.status()}): ${await cancelled.text()}`);
     }
-    // This test also mutates votes.js's own module state (limitGamesChecked,
-    // voteGenreFilter, excludedGameIds) — a lingering "Shooter"-only filter
+    // This test also mutates votes.js's own module state (voteGenreFilter,
+    // excludedGameIds) — a lingering "Shooter"-only filter
     // or excluded game would silently break a later test's default all-games
     // "Abstimmung starten" (an empty/limited selection either starts the
     // wrong round or, worse, gets silently rejected with nothing checked).
@@ -955,7 +951,6 @@ test('Vote: genre filter scopes the game-limit list, select-all/none and the sta
 
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-start');
-  await page.click('#votes-limit-games');
   await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
   // Manually deselect a game that the upcoming "Shooter" filter will hide -
   // its excluded state must survive untouched by the filtered select-all/none.
@@ -1305,8 +1300,6 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
     0,
     'a suggestion must not be offered as a votable game',
   );
-  // Leave the panel closed again for whatever runs next on this shared page.
-  await page.click('#votes-limit-games');
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="gameCatalog"]');
   await suggestionRow.waitFor();
