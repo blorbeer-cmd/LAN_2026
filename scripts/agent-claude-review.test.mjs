@@ -194,7 +194,7 @@ test("the workflow keeps the PR head inert and Claude tool access read-only", ()
   assert.doesNotMatch(publishSection, /\n\s+concurrency:/);
   assert.match(
     workflow,
-    /reconcile:\s*\n\s+name: Reconcile Claude review result[\s\S]*?group: agent-pipeline-reconcile-\$\{\{ needs\.review\.outputs\.pull_number \}\}/,
+    /reconcile:\s*\n\s+name: Reconcile Claude review result[\s\S]*?group: agent-pipeline-reconcile-\$\{\{ needs\.select\.outputs\.pull_request \}\}/,
   );
   assert.match(workflow, /CLAUDE_REVIEW_OUTPUT: \$\{\{ needs\.review\.outputs\.review_output \}\}/);
   assert.match(workflow, /"title":\{"type":"string","maxLength":200\}/);
@@ -203,6 +203,9 @@ test("the workflow keeps the PR head inert and Claude tool access read-only", ()
   assert.match(workflow, /"items":\{"type":"string","maxLength":4000\}/);
   assert.doesNotMatch(workflow, /ausschließlich Glob, Grep und Read/);
   assert.match(workflow, /--allowedTools "Glob,Grep,Read"/);
+  // 25 turns aborted a real review of a 26-file pull request with `error_max_turns` before it could
+  // emit its result. The 45-minute job timeout stays the hard ceiling.
+  assert.match(workflow, /--max-turns 60/);
   assert.match(workflow, /--disallowedTools "Bash,Edit,MultiEdit,Write/);
   assert.doesNotMatch(workflow, /track_progress:/);
   assert.match(
@@ -232,13 +235,19 @@ test("dispatch decisions carry a stable code and only real stalls are announced"
     assert.equal(deriveClaudeReviewDispatch({ ...readiness, ...changed }).code, code);
   }
 
-  // A started review and an already answered head are the two outcomes that need no announcement.
-  assert.equal(shouldAnnounceReviewStartFailure(DISPATCH_CODES.run), false);
-  assert.equal(shouldAnnounceReviewStartFailure(DISPATCH_CODES.resultExists), false);
+  // Three outcomes leave nobody waiting and must stay silent: a started review, a head that already
+  // has its answer, and this workflow seeing a `review:cross` meant for the other provider — the
+  // normal case on every Claude-implemented pull request.
+  for (const code of [
+    DISPATCH_CODES.run,
+    DISPATCH_CODES.resultExists,
+    DISPATCH_CODES.provider,
+  ]) {
+    assert.equal(shouldAnnounceReviewStartFailure(code), false, `${code} must not announce`);
+  }
   for (const code of [
     DISPATCH_CODES.phase,
     DISPATCH_CODES.mode,
-    DISPATCH_CODES.provider,
     DISPATCH_CODES.disabled,
     DISPATCH_CODES.failed,
     DISPATCH_CODES.publishFailed,
@@ -375,6 +384,31 @@ test("the workflow announces every stalled cross-review from a write-scoped job"
   assert.doesNotMatch(reviewSection, /pull-requests: write/);
   assert.match(reviewSection, /Report Claude failure details/);
   assert.match(reviewSection, /steps\.claude\.outcome == 'failure'/);
+});
+
+test("the failure notice is reconciled by this workflow, not by a comment event", () => {
+  const workflow = readFileSync(
+    fileURLToPath(new URL("../.github/workflows/agent-pipeline-claude-review.yml", import.meta.url)),
+    "utf8",
+  ).replaceAll("\r\n", "\n");
+  const reconcileSection = workflow.match(/\n  reconcile:[\s\S]*$/)?.[0] ?? "";
+  assert.ok(reconcileSection !== "", "expected a reconcile job in this workflow");
+  // The notice is written with the repository GITHUB_TOKEN, and GitHub starts no workflow run from
+  // an event created with it. Reconciling here is therefore the only path that reaches the status
+  // comment before the half-hourly sweep — the wait the notice exists to end.
+  assert.match(reconcileSection, /needs: \[select, review, publish, notice\]/);
+  assert.match(reconcileSection, /needs\.notice\.result == 'success'/);
+  assert.match(reconcileSection, /needs\.publish\.result == 'success'/);
+  assert.match(reconcileSection, /always\(\)/);
+  // The declined path leaves the dispatch outputs empty, so the target comes from the event.
+  assert.match(reconcileSection, /PULL_NUMBER: \$\{\{ needs\.select\.outputs\.pull_request \}\}/);
+  assert.match(reconcileSection, /REPOSITORY: \$\{\{ github\.repository \}\}/);
+  assert.doesNotMatch(reconcileSection, /needs\.review\.outputs\.pull_number/);
+  // The reconciler writes the commit status and reads checks; the notice job's narrower grants
+  // are why this stays a separate job instead of one more step over there.
+  assert.match(reconcileSection, /statuses: write/);
+  assert.match(reconcileSection, /checks: read/);
+  assert.match(reconcileSection, /cancel-in-progress: false/);
 });
 
 test("every job of this workflow is recognised as the pipeline's own check", () => {

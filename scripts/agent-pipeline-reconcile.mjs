@@ -62,11 +62,33 @@ const REVIEW_DECISION_PATTERN =
 export const REVIEW_RESULT_MARKER = "<!-- agent-pipeline:review-result";
 export const REVIEW_RESULT_SOURCE =
   "<!--\\s*agent-pipeline:review-result\\s+([0-9a-f]{40})\\s+mode=(cross|self|human)\\s+verdict=(pass|changes-required|blocked)\\s+session=(\\S+)\\s+read-only=(true|verified|false)\\s*-->";
+// Written by the cross-review workflow when a chosen review produced no published result:
+// `<!-- agent-pipeline:review-start-notice <sha> mode=cross outcome=failed -->`. It lives here
+// rather than beside the workflow adapter so the reconciler can report the failed attempt in its
+// own status comment: that comment is what agents read, and without this they cannot tell a review
+// that died from one still running.
+export const REVIEW_START_NOTICE_MARKER = "<!-- agent-pipeline:review-start-notice";
+export const REVIEW_START_NOTICE_PATTERN =
+  /<!--\s*agent-pipeline:review-start-notice\s+([0-9a-f]{40})\s+mode=cross\s+outcome=(declined|failed)(?:\s+code=([a-z-]+))?(?:\s+attempt=([A-Za-z0-9._-]+))?\s*-->/;
+
+/**
+ * Reads the newest review-start notice, so the status comment can name a failed attempt.
+ *
+ * Only trusted authors count: the notice explains why a gate is still closed, and anyone able to
+ * comment could otherwise fake an outcome for a head.
+ */
+export function parseReviewStartNotice(comments) {
+  let found = null;
+  for (const comment of comments ?? []) {
+    if (!isTrustedCommentAuthor(comment)) continue;
+    const match = comment?.body?.match(REVIEW_START_NOTICE_PATTERN);
+    if (match) found = { headSha: match[1], outcome: match[2] };
+  }
+  return found;
+}
+
 export const CLAUDE_CROSS_REVIEW_HEADING = "## Claude Cross-Review";
 export const CLAUDE_CROSS_REVIEW_SOURCE = "claude-cross-review";
-export const REVIEW_START_NOTICE_MARKER = "<!-- agent-pipeline:review-start-notice";
-const REVIEW_START_NOTICE_PATTERN =
-  /<!--\s*agent-pipeline:review-start-notice\s+([0-9a-f]{40})\s+mode=cross\s+outcome=(declined|failed)(?:\s+code=([a-z-]+))?(?:\s+attempt=([A-Za-z0-9._-]+))?\s*-->/;
 export const REVIEW_START_FAILURE_MARKER = "<!-- agent-pipeline:review-start-failure";
 const REVIEW_START_FAILURE_PATTERN =
   /<!--\s*agent-pipeline:review-start-failure\s+([0-9a-f]{40})\s+attempt=([A-Za-z0-9._-]+)\s*-->/;
@@ -1119,6 +1141,21 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     );
   }
 
+  // The workflow already announced a failed attempt in its own comment. Repeating it here is the
+  // point: the status comment is the machine-readable surface, and an agent reading only "no review
+  // covers this head" cannot tell a review that died from one still running.
+  const startNotice =
+    evidenceOutstanding && snapshot.reviewStartNotice?.headSha === snapshot.headSha
+      ? snapshot.reviewStartNotice
+      : null;
+  if (startNotice) {
+    blockers.push(
+      `The last ${decision.mode} review attempt for the current head SHA produced no result ` +
+        `(\`${startNotice.outcome}\`); see the review-start notice comment for the cause and the ` +
+        "way out.",
+    );
+  }
+
   // An unreadable discussion blocks, but it must say so rather than invent an open thread the
   // maintainer would go looking for.
   if (!threadsReadable) {
@@ -1258,6 +1295,7 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
       reviewStartFailure,
       handledStartFailure:
         invalidatedStartFailure || failureHandled ? reviewStartFailure : null,
+      reviewStartNotice: startNotice,
       reviewDecisionDelivery: {
         required: reviewDecisionNotificationRequired,
         delivered: reviewDecisionNotificationDelivered,
@@ -1498,6 +1536,9 @@ export function renderStatusComment(readiness, snapshot, config = loadConfig()) 
       : []),
     `- Unresolved review threads: \`${details.threads?.blockingCount ?? "unknown"}\``,
     `- Mergeability: \`${details.mergeability ?? "unknown"}\``,
+    ...(details.reviewStartNotice
+      ? [`- Last review attempt: \`${details.reviewStartNotice.outcome}\` without a result`]
+      : []),
     ...(details.reviewStalled
       ? [
           `- Review overdue: \`${Math.floor(details.reviewWaitingHours)}h\` without a result ` +
@@ -2008,6 +2049,8 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       // A discussion that could not be read completely must block, and must say why.
       reviewThreadsReadable: graph?.readable === true,
       uiNoticeHeadSha: parseUiNoticeHeadSha(trustedComments),
+      // Why the last chosen review produced nothing, so the status comment can say so.
+      reviewStartNotice: parseReviewStartNotice(trustedComments),
       // Kept separate from the body: the body drives the idempotence comparison for every adopted
       // comment, the author decides whether its decision record may be believed.
       statusCommentAuthor: statusComment?.author ?? null,

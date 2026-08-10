@@ -22,8 +22,13 @@ on:
       - unlabeled
   pull_request_review:
     types: [submitted, edited, dismissed]
-  # Provider self-review results are posted as PR comments. Reconcile those
-  # markers immediately instead of waiting for the 30-minute sweep.
+  # Provider self-review results are posted as PR comments by a session or launcher, so they carry
+  # a user or app identity and do start this workflow. Reconcile those markers immediately instead
+  # of waiting for the 30-minute sweep.
+  # Deliberately not listed here: the failure notice of the cross-review workflow. That comment is
+  # written with the repository `GITHUB_TOKEN`, and GitHub starts no workflow run from an event
+  # created with it. The notice reaches the status comment because its own workflow reconciles
+  # right after posting it — see the `reconcile` job in `agent-pipeline-claude-review.yml`.
   issue_comment:
     types: [created, edited]
   # GitHub does not deliver check_suite events for suites created by GitHub Actions, and every
