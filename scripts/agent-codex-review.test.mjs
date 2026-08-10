@@ -379,6 +379,16 @@ test("the outputs the workflow branches on are written exactly once", async () =
     assert.equal(requested.get("requested"), "true");
     assert.equal(requested.get("code"), REQUEST_CODES.run);
 
+    // A rerun that finds its own outstanding request must stay green and must not repeat it: the
+    // workflow fails the job on `requested != 'true'`, and Codex may still be working on the head.
+    const repeated = harness();
+    await outputsOf(repeated.dependencies);
+    const again = await outputsOf(repeated.dependencies);
+    assert.equal(repeated.posted.length, 1);
+    assert.equal(again.get("should_run"), "true");
+    assert.equal(again.get("requested"), "true");
+    assert.equal(again.get("code"), REQUEST_CODES.requestExists);
+
     const refused = await outputsOf(harness({ refuseAfterPost: true }).dependencies);
     assert.equal(refused.get("requested"), "false");
     assert.equal(refused.get("code"), REQUEST_CODES.refused);

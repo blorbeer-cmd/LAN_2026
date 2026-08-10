@@ -448,11 +448,14 @@ export async function requestCommand(
     output("refusal_url", refusal.html_url ?? "");
     return;
   }
+  // An unanswered request from the authorized identity is an outstanding request, not a failed
+  // attempt: a label reapplied, a manual dispatch or a duplicate event must find the run green and
+  // must not repeat the request while Codex is still working on it.
   if (hasCodexReviewRequest(comments, snapshot.headSha, author)) {
-    decline(
-      REQUEST_CODES.requestExists,
-      "this head already has an outstanding Codex review request",
-    );
+    output("requested", "true");
+    output("code", REQUEST_CODES.requestExists);
+    output("reason", "this head already has an outstanding Codex review request");
+    console.log(`Codex review request for ${snapshot.headSha} already exists.`);
     return;
   }
 
