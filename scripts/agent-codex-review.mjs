@@ -39,6 +39,9 @@ export const CODEX_CONNECTOR_AUTHOR = "chatgpt-codex-connector[bot]";
 // the review side, and only this comment says which one happened.
 const CODEX_REQUEST_REFUSAL_PATTERN =
   /to use codex here|codex\/cloud\/settings\/connectors/i;
+// Any `@codex review`, not just this adapter's marked one. A later request opens its own
+// request-and-answer window, and the integration answers requests in order.
+const CODEX_REVIEW_MENTION_PATTERN = /(^|[^\w`])@codex\s+review\b/i;
 
 const REQUEST_TOKEN_VARIABLE = "AGENT_PIPELINE_REVIEW_REQUEST_TOKEN";
 const REFUSAL_POLL_ATTEMPTS = 6;
@@ -72,6 +75,20 @@ const SILENT_REQUEST_CODES = new Set([
 
 export function shouldAnnounceCodexRequestFailure(code) {
   return !SILENT_REQUEST_CODES.has(code);
+}
+
+/**
+ * Whether a failure without a decision may still be announced.
+ *
+ * A job that died before the dispatch — during checkout, Node setup or the first snapshot read —
+ * reports no code, and the fallback says nothing about who was supposed to review. Both
+ * cross-review workflows share one notice comment per head, so announcing blind could overwrite
+ * the owning provider's notice or invent a failed Codex review on a head Claude reviewed. The
+ * counter provider is re-derived from current state instead.
+ */
+export function mayAnnounceUndecidedFailure(readiness) {
+  const { code } = deriveCodexReviewDispatch(readiness);
+  return code !== REQUEST_CODES.provider && code !== REQUEST_CODES.reviewExists;
 }
 
 function option(args, name) {
@@ -185,15 +202,19 @@ export function isCodexRequestRefusal(comment) {
  * Position decides, not wording: only a refusal posted after the request can belong to it, so a
  * refusal left over from an earlier head or an earlier requesting identity never marks the current
  * attempt as failed. GitHub returns issue comments in creation order.
+ *
+ * The window ends at the next `@codex review` from anyone. Somebody else's request — a maintainer
+ * asking by hand is the normal case — is answered on its own, and blaming its refusal on this
+ * adapter would report a working credential as refused and suppress every rerun for the head.
  */
 export function findCodexRequestRefusal(comments, headSha, author) {
   const request = findCodexReviewRequest(comments, headSha, author);
   if (!request) return null;
-  return (
-    (comments ?? [])
-      .slice(request.index + 1)
-      .find((comment) => isCodexRequestRefusal(comment)) ?? null
-  );
+  for (const comment of (comments ?? []).slice(request.index + 1)) {
+    if (CODEX_REVIEW_MENTION_PATTERN.test(comment?.body ?? "")) return null;
+    if (isCodexRequestRefusal(comment)) return comment;
+  }
+  return null;
 }
 
 // What the reader has to do next, per request code. Kept beside the codes so a new reason cannot
@@ -503,7 +524,15 @@ export async function requestCommand(
   output("code", REQUEST_CODES.run);
 }
 
-export async function noticeCommand(args, { githubApiFn = githubApi } = {}) {
+export async function noticeCommand(
+  args,
+  {
+    githubApiFn = githubApi,
+    loadConfigFn = loadConfig,
+    fetchSnapshotFn = fetchSnapshot,
+    deriveReadinessFn = deriveReadiness,
+  } = {},
+) {
   const token = process.env.GITHUB_TOKEN;
   if (!token) throw new Error("notice requires GITHUB_TOKEN.");
   const repository = option(args, "--repository") ?? process.env.GITHUB_REPOSITORY;
@@ -527,6 +556,16 @@ export async function noticeCommand(args, { githubApiFn = githubApi } = {}) {
     console.log(`Pull request #${pullNumber} is no longer open; no notice was posted.`);
     return;
   }
+  // `failed` is also the fallback for a job that never reached the dispatch, so it carries no
+  // decision about the provider. Re-derive eligibility before touching the head's shared notice.
+  if (code === REQUEST_CODES.failed) {
+    const { snapshot } = await fetchSnapshotFn({ owner, repo, pullNumber, token });
+    if (!mayAnnounceUndecidedFailure(deriveReadinessFn(snapshot, loadConfigFn()))) {
+      console.log("No notice needed: this head's cross-review does not belong to Codex.");
+      return;
+    }
+  }
+
   // The request reports the head it judged. When it never got that far, the pull request's current
   // head is the only truthful anchor for a notice about "no review covers this head".
   const declared = option(args, "--head-sha");

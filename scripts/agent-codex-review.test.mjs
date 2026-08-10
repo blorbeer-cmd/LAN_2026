@@ -11,6 +11,7 @@ import {
   findCodexRequestRefusal,
   hasCodexReviewRequest,
   isCodexRequestRefusal,
+  mayAnnounceUndecidedFailure,
   noticeCommand,
   REQUEST_CODES,
   renderCodexRequestNotice,
@@ -229,6 +230,68 @@ test("a refusal is only recognised from the connector and only after the request
   assert.equal(findCodexRequestRefusal([], HEAD, REQUEST_AUTHOR), null);
 });
 
+test("a later review request ends this request's refusal window", () => {
+  // A maintainer asking by hand is the normal case. If their account is the refused one, blaming
+  // that refusal on this adapter would report a working credential as refused and suppress every
+  // rerun for the head.
+  const foreignRequest = {
+    user: { login: "someone-else" },
+    body: "@codex review\n\nBitte nochmal drübersehen.",
+  };
+  assert.equal(
+    findCodexRequestRefusal(
+      [requestComment(HEAD), foreignRequest, refusal()],
+      HEAD,
+      REQUEST_AUTHOR,
+    ),
+    null,
+  );
+  // A refusal that arrives before that later request still answers ours.
+  assert.ok(
+    findCodexRequestRefusal(
+      [requestComment(HEAD), refusal(), foreignRequest],
+      HEAD,
+      REQUEST_AUTHOR,
+    ),
+  );
+  // Our own request must not close its own window, and a quoted mention must not either.
+  assert.ok(
+    findCodexRequestRefusal(
+      [
+        requestComment(HEAD),
+        { user: { login: "someone-else" }, body: "Der Adapter postet `@codex review` selbst." },
+        refusal(),
+      ],
+      HEAD,
+      REQUEST_AUTHOR,
+    ),
+  );
+});
+
+test("a failure without a decision only announces for heads Codex owns", () => {
+  const codexHead = {
+    phase: "review",
+    reviewerProvider: "codex",
+    details: { reviewMode: "cross", reviews: { reviewedByProvider: false } },
+  };
+  assert.equal(mayAnnounceUndecidedFailure(codexHead), true);
+  // A job that died before the dispatch knows nothing about the provider, and both cross-review
+  // workflows rewrite the same notice comment for a head.
+  assert.equal(
+    mayAnnounceUndecidedFailure({ ...codexHead, reviewerProvider: "claude" }),
+    false,
+  );
+  assert.equal(
+    mayAnnounceUndecidedFailure({
+      ...codexHead,
+      details: { reviewMode: "cross", reviews: { reviewedByProvider: true } },
+    }),
+    false,
+  );
+  // A head that moved on still gets its notice: nothing else reports the attempt that died.
+  assert.equal(mayAnnounceUndecidedFailure({ ...codexHead, phase: "implementing" }), true);
+});
+
 test("a missing request credential posts nothing and reports a failed attempt", async () => {
   const { posted, dependencies } = harness();
   await runRequest(dependencies, { AGENT_PIPELINE_REVIEW_REQUEST_TOKEN: null });
@@ -353,6 +416,52 @@ test("no notice is written for a request that is outstanding or not ours", async
       }),
     );
   }
+});
+
+test("an undecided failure re-derives the provider before touching the shared notice", async () => {
+  function noticeHarness(reviewerProvider) {
+    const written = [];
+    return {
+      written,
+      dependencies: {
+        githubApiFn: async (path, { method = "GET", body } = {}) => {
+          if (path.endsWith("/pulls/381")) return { state: "open", head: { sha: HEAD } };
+          if (path.includes("/issues/381/comments?")) return [];
+          if (method === "POST" || method === "PATCH") {
+            written.push(body.body);
+            return { html_url: "https://github.test/notice" };
+          }
+          throw new Error(`Unexpected GitHub API call: ${method} ${path}`);
+        },
+        loadConfigFn: () => ({}),
+        fetchSnapshotFn: async () => ({ snapshot: { headSha: HEAD } }),
+        deriveReadinessFn: () => ({
+          phase: "review",
+          reviewerProvider,
+          details: { reviewMode: "cross", reviews: { reviewedByProvider: false } },
+        }),
+      },
+    };
+  }
+
+  const run = (harnessed) =>
+    withEnv({ GITHUB_TOKEN: "read-token", GITHUB_OUTPUT: null }, () =>
+      noticeCommand(
+        [...REQUEST_ARGS, "--outcome", "failed", "--code", REQUEST_CODES.failed],
+        harnessed.dependencies,
+      ),
+    );
+
+  // The job may have died during checkout or the first snapshot read, long before it knew who was
+  // supposed to review. Claude's workflow owns that head and its notice comment.
+  const claudeHead = noticeHarness("claude");
+  await run(claudeHead);
+  assert.deepEqual(claudeHead.written, []);
+
+  const codexHead = noticeHarness("codex");
+  await run(codexHead);
+  assert.equal(codexHead.written.length, 1);
+  assert.match(codexHead.written[0], /## Codex Cross-Review nicht gestartet/);
 });
 
 test("the outputs the workflow branches on are written exactly once", async () => {
