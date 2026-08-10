@@ -237,7 +237,8 @@ test("dispatch decisions carry a stable code and only real stalls are announced"
 
   // Three outcomes leave nobody waiting and must stay silent: a started review, a head that already
   // has its answer, and this workflow seeing a `review:cross` meant for the other provider — the
-  // normal case on every Claude-implemented pull request.
+  // normal case on every Claude-implemented pull request, where the Codex workflow owns the notice.
+  // Both workflows rewrite the head's single notice comment, so only one of them may announce.
   for (const code of [
     DISPATCH_CODES.run,
     DISPATCH_CODES.resultExists,
