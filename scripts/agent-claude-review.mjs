@@ -17,6 +17,10 @@ import {
   isTrustedCommentAuthor,
   latestReviewResult,
   parseReviewResults,
+  // The notice marker lives with the reconciler: it reads the notice back into its status comment,
+  // and this module only writes it. One definition, one shape.
+  REVIEW_START_NOTICE_MARKER,
+  REVIEW_START_NOTICE_PATTERN,
 } from "./agent-pipeline-reconcile.mjs";
 
 const VERDICTS = new Set(["pass", "changes-required", "blocked"]);
@@ -26,13 +30,6 @@ const MAX_FINDINGS = 20;
 const MAX_TEXT = 4_000;
 const MAX_RENDERED_DETAIL = 400;
 export const MAX_REVIEW_COMMENT_LENGTH = 60_000;
-
-// Announces that a chosen cross-review never produced a result for this head. Deliberately its own
-// marker: the reconciler owns the status comment and the result marker, and neither may be
-// impersonated by a notice. One notice per head, rewritten in place, so a retry does not spam.
-export const REVIEW_START_NOTICE_MARKER = "<!-- agent-pipeline:review-start-notice";
-const REVIEW_START_NOTICE_PATTERN =
-  /<!--\s*agent-pipeline:review-start-notice\s+([0-9a-f]{40})\s+mode=cross\s+outcome=(declined|failed)\s*-->/;
 
 function option(args, name) {
   const index = args.indexOf(name);

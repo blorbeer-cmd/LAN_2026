@@ -169,7 +169,7 @@ jobs:
             Titel dürfen höchstens 200, Dateipfade 500 und alle ausführlichen Textfelder sowie
             einzelne Restrisiken höchstens 4000 Zeichen lang sein.
           claude_args: >-
-            --max-turns 25
+            --max-turns 60
             --allowedTools "Glob,Grep,Read"
             --disallowedTools "Bash,Edit,MultiEdit,Write,NotebookEdit,WebFetch,WebSearch"
             --json-schema '{"type":"object","additionalProperties":false,"properties":{"verdict":{"type":"string","enum":["pass","changes-required","blocked"]},"findings":{"type":"array","maxItems":20,"items":{"type":"object","additionalProperties":false,"properties":{"severity":{"type":"string","enum":["critical","high","medium","low"]},"disposition":{"type":"string","enum":["actionable","needs-human"]},"title":{"type":"string","maxLength":200},"file":{"type":["string","null"],"maxLength":500},"line":{"type":["integer","null"],"minimum":1},"problem":{"type":"string","maxLength":4000},"impact":{"type":"string","maxLength":4000},"evidence":{"type":"string","maxLength":4000},"verification":{"type":"string","maxLength":4000}},"required":["severity","disposition","title","file","line","problem","impact","evidence","verification"]}},"residual_risks":{"type":"array","maxItems":20,"items":{"type":"string","maxLength":4000}}},"required":["verdict","findings","residual_risks"]}'

@@ -20,6 +20,7 @@ import {
   paginate,
   parseReviewDecision,
   parseReviewResults,
+  parseReviewStartNotice,
   parseUiNoticeHeadSha,
   planGateStatus,
   planLabels,
@@ -2416,5 +2417,65 @@ test("the stall clock starts when the review was chosen, not when CI went green"
   assert.match(
     renderStatusComment(justChosen, readySnapshot(), config),
     new RegExp(`review-decision ${HEAD} mode=cross since=${chosen} -->$`),
+  );
+});
+
+test("a failed review attempt is named in the status comment, not just in its own notice", () => {
+  const notice = (sha, outcome) =>
+    `<!-- agent-pipeline:review-start-notice ${sha} mode=cross outcome=${outcome} -->`;
+  const withNotice = (comments) => parseReviewStartNotice(comments);
+
+  // Only trusted authors, newest wins — the notice explains why a gate is closed.
+  assert.deepEqual(
+    withNotice([
+      { author: "github-actions[bot]", body: notice(HEAD, "declined") },
+      { author: "github-actions[bot]", body: notice(HEAD, "failed") },
+    ]),
+    { headSha: HEAD, outcome: "failed" },
+  );
+  assert.equal(
+    withNotice([{ author: "outsider", authorAssociation: "NONE", body: notice(HEAD, "failed") }]),
+    null,
+  );
+  assert.equal(withNotice([{ author: "github-actions[bot]", body: "no marker" }]), null);
+
+  const failing = deriveReadiness(
+    readySnapshot({
+      reviews: [],
+      reviewThreads: [],
+      reviewStartNotice: { headSha: HEAD, outcome: "failed" },
+    }),
+    config,
+  );
+  assert.equal(failing.details.reviewStartNotice.outcome, "failed");
+  assert.equal(
+    failing.blockers.some((blocker) => /produced no result \(`failed`\)/.test(blocker)),
+    true,
+  );
+  assert.match(
+    renderStatusComment(failing, readySnapshot(), config),
+    /- Last review attempt: `failed` without a result/,
+  );
+
+  // A notice bound to an earlier head says nothing about this one.
+  const otherHead = deriveReadiness(
+    readySnapshot({
+      reviews: [],
+      reviewThreads: [],
+      reviewStartNotice: { headSha: "d".repeat(40), outcome: "failed" },
+    }),
+    config,
+  );
+  assert.equal(otherHead.details.reviewStartNotice, null);
+
+  // Once a verdict exists nobody is waiting, so a stale notice must not contradict the result.
+  const answered = deriveReadiness(
+    readySnapshot({ reviewStartNotice: { headSha: HEAD, outcome: "failed" } }),
+    config,
+  );
+  assert.equal(answered.details.reviewStartNotice, null);
+  assert.doesNotMatch(
+    renderStatusComment(answered, readySnapshot(), config),
+    /Last review attempt/,
   );
 });
