@@ -608,6 +608,7 @@ test("the reconciler's own check runs never gate readiness", () => {
         { name: "Collect pull requests", status: "completed", conclusion: "cancelled" },
         { name: "Reconcile pull request (351)", status: "in_progress", conclusion: null },
         { name: "Reconcile Claude review result", status: "completed", conclusion: "cancelled" },
+        { name: "Request Codex cross-review", status: "in_progress", conclusion: null },
         { name: "server tests", status: "completed", conclusion: "success" },
       ],
     },
@@ -622,6 +623,8 @@ test("own check runs are recognised including matrix suffixes", () => {
   assert.equal(isOwnCheckRun("Collect pull requests", config), true);
   assert.equal(isOwnCheckRun("Reconcile pull request (7)", config), true);
   assert.equal(isOwnCheckRun("Reconcile Claude review result", config), true);
+  assert.equal(isOwnCheckRun("Select Codex review target", config), true);
+  assert.equal(isOwnCheckRun("Request Codex cross-review", config), true);
   assert.equal(isOwnCheckRun(config.statusContext, config), true);
   // A foreign check that merely starts similarly must still count.
   assert.equal(isOwnCheckRun("Reconcile pull requests upstream", config), false);

@@ -82,17 +82,6 @@ function isValidTipPercent(value: unknown): boolean {
   return value === null || isIntInRange(value, 0, 100);
 }
 
-interface ItemRow {
-  id: string;
-  order_id: string;
-  player_id: string;
-  description: string;
-  quantity: number;
-  price_cents: number | null;
-  paid: number;
-  created_at: number;
-}
-
 function serializeOrder(row: OrderRow) {
   const items = (
     db
