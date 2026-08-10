@@ -169,7 +169,7 @@ jobs:
             Titel dürfen höchstens 200, Dateipfade 500 und alle ausführlichen Textfelder sowie
             einzelne Restrisiken höchstens 4000 Zeichen lang sein.
           claude_args: >-
-            --max-turns 25
+            --max-turns 60
             --allowedTools "Glob,Grep,Read"
             --disallowedTools "Bash,Edit,MultiEdit,Write,NotebookEdit,WebFetch,WebSearch"
             --json-schema '{"type":"object","additionalProperties":false,"properties":{"verdict":{"type":"string","enum":["pass","changes-required","blocked"]},"findings":{"type":"array","maxItems":20,"items":{"type":"object","additionalProperties":false,"properties":{"severity":{"type":"string","enum":["critical","high","medium","low"]},"disposition":{"type":"string","enum":["actionable","needs-human"]},"title":{"type":"string","maxLength":200},"file":{"type":["string","null"],"maxLength":500},"line":{"type":["integer","null"],"minimum":1},"problem":{"type":"string","maxLength":4000},"impact":{"type":"string","maxLength":4000},"evidence":{"type":"string","maxLength":4000},"verification":{"type":"string","maxLength":4000}},"required":["severity","disposition","title","file","line","problem","impact","evidence","verification"]}},"residual_risks":{"type":"array","maxItems":20,"items":{"type":"string","maxLength":4000}}},"required":["verdict","findings","residual_risks"]}'
@@ -302,14 +302,23 @@ jobs:
 
   reconcile:
     name: Reconcile Claude review result
-    needs: [review, publish]
-    if: needs.review.outputs.should_run == 'true' && needs.publish.result == 'success'
+    needs: [select, review, publish, notice]
+    # Runs after either durable outcome: a published review result, or the failure notice. The
+    # notice needs this just as much as the result. It is written with the repository
+    # `GITHUB_TOKEN`, and GitHub starts no workflow run from an event created with that token, so
+    # the `issue_comment` trigger of `agent-pipeline-reconcile.yml` never sees it. Without this
+    # job the announced failure would sit unread until the half-hourly sweep — exactly the wait
+    # the notice exists to end.
+    if: >-
+      always() && needs.select.outputs.pull_request != '' &&
+      (needs.publish.result == 'success' || needs.notice.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Only the recoverable, stateless transition shares the reconciler lock. The preceding result
-    # comment is durable before this job can be cancelled or replaced by a newer reconcile run.
+    # or notice comment is durable before this job can be cancelled or replaced by a newer
+    # reconcile run.
     concurrency:
-      group: agent-pipeline-reconcile-${{ needs.review.outputs.pull_number }}
+      group: agent-pipeline-reconcile-${{ needs.select.outputs.pull_request }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -333,8 +342,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           AGENT_PIPELINE_DISABLED: ${{ vars.AGENT_PIPELINE_DISABLED }}
-          REPOSITORY: ${{ needs.review.outputs.repository }}
-          PULL_NUMBER: ${{ needs.review.outputs.pull_number }}
+          # The dispatch outputs are empty when the review declined before deriving them, so both
+          # values come from the event itself and stay set on the notice path.
+          REPOSITORY: ${{ github.repository }}
+          PULL_NUMBER: ${{ needs.select.outputs.pull_request }}
         run: |
           node scripts/agent-pipeline-reconcile.mjs reconcile \
             --repository "${REPOSITORY}" \

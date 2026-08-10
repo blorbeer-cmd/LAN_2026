@@ -18,7 +18,11 @@ import {
   requestCommand,
   shouldAnnounceCodexRequestFailure,
 } from "./agent-codex-review.mjs";
-import { isOwnCheckRun, parseReviewResults } from "./agent-pipeline-reconcile.mjs";
+import {
+  isOwnCheckRun,
+  parseReviewResults,
+  parseReviewStartNotice,
+} from "./agent-pipeline-reconcile.mjs";
 import { loadConfig } from "./agent-pipeline.mjs";
 
 const HEAD = "a".repeat(40);
@@ -292,6 +296,12 @@ test("the notice names the missing secret and the way out", () => {
     missing,
     new RegExp(`<!-- agent-pipeline:review-start-notice ${HEAD} mode=cross outcome=failed -->`),
   );
+  // Sharing the shape is what puts a failed Codex request into the reconciler's status comment
+  // instead of leaving it in a comment only a human would read.
+  assert.deepEqual(parseReviewStartNotice([{ author: "github-actions[bot]", body: missing }]), {
+    headSha: HEAD,
+    outcome: "failed",
+  });
   // A notice must never be mistaken for a verdict or for the reconciler's own record.
   assert.doesNotMatch(missing, /agent-pipeline:review-result/);
   assert.doesNotMatch(missing, /agent-pipeline:review-decision/);

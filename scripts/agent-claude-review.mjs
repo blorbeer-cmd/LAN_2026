@@ -17,6 +17,10 @@ import {
   isTrustedCommentAuthor,
   latestReviewResult,
   parseReviewResults,
+  // The notice marker lives with the reconciler: it reads the notice back into its status comment,
+  // and this module only writes it. One definition, one shape.
+  REVIEW_START_NOTICE_MARKER,
+  REVIEW_START_NOTICE_PATTERN,
 } from "./agent-pipeline-reconcile.mjs";
 
 const VERDICTS = new Set(["pass", "changes-required", "blocked"]);
@@ -26,13 +30,6 @@ const MAX_FINDINGS = 20;
 const MAX_TEXT = 4_000;
 const MAX_RENDERED_DETAIL = 400;
 export const MAX_REVIEW_COMMENT_LENGTH = 60_000;
-
-// Announces that a chosen cross-review never produced a result for this head. Deliberately its own
-// marker: the reconciler owns the status comment and the result marker, and neither may be
-// impersonated by a notice. One notice per head, rewritten in place, so a retry does not spam.
-export const REVIEW_START_NOTICE_MARKER = "<!-- agent-pipeline:review-start-notice";
-const REVIEW_START_NOTICE_PATTERN =
-  /<!--\s*agent-pipeline:review-start-notice\s+([0-9a-f]{40})\s+mode=cross\s+outcome=(declined|failed)\s*-->/;
 
 function option(args, name) {
   const index = args.indexOf(name);
@@ -158,10 +155,11 @@ export function deriveClaudeReviewDispatch(readiness) {
 }
 
 // Only a decline that leaves the pull request waiting is worth announcing. A head that already
-// carries a Claude result has its answer, and reacting to a `review:cross` that belongs to the
-// other provider is the normal case on every Claude-implemented pull request: that provider's
-// workflow owns the announcement there. Announcing it here too would put a second, contradicting
-// notice on the same head — both workflows rewrite the head's single notice comment.
+// carries a Claude result has its answer, and this workflow reacting to a `review:cross` meant for
+// the other provider is the normal case on every Claude-implemented pull request — announcing
+// either would put a "review did not start" notice on pull requests where none was ever due. That
+// last one is also what keeps the two cross-review workflows apart: both write the head's single
+// notice comment, so only the provider that owns the review may announce for it.
 const SILENT_DISPATCH_CODES = new Set([
   DISPATCH_CODES.run,
   DISPATCH_CODES.resultExists,
