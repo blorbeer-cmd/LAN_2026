@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { loadConfig } from "./agent-pipeline.mjs";
 import {
   applyPlan,
+  buildReviewDecisionPayload,
   CLAUDE_CROSS_REVIEW_HEADING,
   dedupeCheckRunsByName,
   DEFAULT_WAITING_ESCALATION_HOURS,
@@ -24,6 +25,7 @@ import {
   parseReviewDecisionDeliveryFailure,
   parseReviewDecisionNotificationHeadShas,
   parseReviewResults,
+  previousReviewedHead,
   parseReviewRetriggerHeadShas,
   parseReviewStartFailures,
   parseReviewStartNotice,
@@ -34,6 +36,7 @@ import {
   recommendReviewMode,
   reconcile,
   renderReviewRetriggerComment,
+  renderReviewDecisionFacts,
   renderStatusComment,
   REVIEW_START_NOTICE_MARKER,
   REVIEW_DECISION_DELIVERY_FAILURE_MARKER,
@@ -43,6 +46,7 @@ import {
   reviewWaitingHours,
   STATUS_COMMENT_MARKER,
   statusCommentBody,
+  summarizeReviewFindings,
   UI_NOTICE_MARKER,
   waitingEscalationHours,
   parseProviderCleanPass,
@@ -2164,7 +2168,7 @@ test("the status comment asks the question and records the answer", () => {
   assert.match(asking, new RegExp(CROSS_LABEL));
   assert.match(asking, new RegExp(SELF_LABEL));
   assert.match(asking, new RegExp(HUMAN_LABEL));
-  assert.match(asking, /Recommended: /);
+  assert.match(asking, /Recommendation: /);
   // Nothing is bound yet, but the head is recorded as seen — that is what lets the next run tell a
   // fresh answer from one that predates this head.
   assert.deepEqual(parseReviewDecision(asking), { headSha: HEAD, mode: "none", since: null });
@@ -2178,7 +2182,24 @@ test("the status comment asks the question and records the answer", () => {
 });
 
 test("an eligible undecided head plans one active review-choice notification", () => {
-  const snapshot = readySnapshot({ labels: [], reviews: [] });
+  const snapshot = readySnapshot({
+    labels: [],
+    reviews: [],
+    reviewDecisionContext: {
+      round: "follow-up",
+      priorHeadSha: OLD_HEAD,
+      priorFindings: { known: true, high: 2, medium: 0, low: 1, total: 3 },
+      delta: {
+        baseSha: OLD_HEAD,
+        headSha: HEAD,
+        commits: 4,
+        filesChanged: 2,
+        additions: 19,
+        deletions: 3,
+        files: ["scripts/agent-pipeline-reconcile.mjs", "docs/review.md"],
+      },
+    },
+  });
   const plan = reconcile(snapshot, config, {
     notificationRecipient: "blorbeer-cmd",
   });
@@ -2193,6 +2214,11 @@ test("an eligible undecided head plans one active review-choice notification", (
   assert.match(plan.notification.body, /Recommendation: `review:cross` — no review has passed/);
   assert.doesNotMatch(plan.notification.body, /â€”/);
   assert.match(plan.notification.body, /no review has passed/);
+  assert.match(plan.notification.body, /Review round: `follow-up`/);
+  assert.match(plan.notification.body, /2 file\(s\), \+19, -3, 4 commit\(s\)/);
+  assert.match(plan.notification.body, /Previous findings: 2 high, 0 medium, 1 low/);
+  assert.match(plan.notification.body, /Open review threads: `0`/);
+  assert.match(plan.notification.body, /45m job timeout/);
   assert.match(plan.notification.body, /a\) Cross-review/);
   assert.match(plan.notification.body, /b\) Self-review/);
   assert.match(plan.notification.body, /c\) Human review/);
@@ -2200,6 +2226,49 @@ test("an eligible undecided head plans one active review-choice notification", (
     plan.notification.body,
     new RegExp(`${REVIEW_DECISION_NOTIFICATION_MARKER} ${HEAD} -->$`),
   );
+});
+
+test("the sticky choice and active notification share one canonical fact block", () => {
+  const snapshot = readySnapshot({ labels: [], reviews: [] });
+  const readiness = deriveReadiness(snapshot, config);
+  const payload = buildReviewDecisionPayload(readiness, snapshot, config);
+  const facts = renderReviewDecisionFacts(payload, config);
+  const sticky = renderStatusComment(readiness, snapshot, config);
+  const notification = reconcile(snapshot, config, {
+    notificationRecipient: "blorbeer-cmd",
+  }).notification.body;
+  for (const fact of facts) {
+    assert.ok(sticky.includes(fact));
+    assert.ok(notification.includes(fact));
+  }
+});
+
+test("review history identifies the previous head and summarizes structured severities", () => {
+  const comments = [
+    {
+      ...claudeCrossResultComment(OLD_HEAD, { verdict: "changes-required" }),
+      createdAt: "2026-08-11T09:00:00Z",
+      body:
+        `${CLAUDE_CROSS_REVIEW_HEADING}\n\n#### [high] First\n#### [low] Second\n\n` +
+        `<!-- agent-pipeline:review-result ${OLD_HEAD} mode=cross verdict=changes-required session=old read-only=true -->`,
+    },
+  ];
+  const results = parseReviewResults(comments);
+  assert.equal(previousReviewedHead(results, [], HEAD), OLD_HEAD);
+  assert.deepEqual(summarizeReviewFindings(comments, [], OLD_HEAD), {
+    known: true,
+    high: 1,
+    medium: 0,
+    low: 1,
+    total: 2,
+  });
+
+  const outsider = comments.map((comment) => ({
+    ...comment,
+    author: "untrusted-review-app[bot]",
+  }));
+  assert.equal(previousReviewedHead(parseReviewResults(outsider), [], HEAD), null);
+  assert.equal(summarizeReviewFindings(outsider, [], OLD_HEAD).known, false);
 });
 
 test("a delivered notification is trusted, head-bound and deduplicated", () => {

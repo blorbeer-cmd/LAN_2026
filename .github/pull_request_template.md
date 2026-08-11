@@ -27,6 +27,7 @@ Bei menschlichen PRs kann der gesamte Block unverändert bleiben.
 
 agent-pipeline:task
 task-id: agent-YYYYMMDD-NNN
+codex-thread-id: none
 implementer: codex|claude
 base-branch: main
 base-sha: 0000000000000000000000000000000000000000

@@ -15,7 +15,7 @@ export function loadConfig(path = configPath) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
-const contractKeys = new Set([
+const requiredContractKeys = new Set([
   "task-id",
   "implementer",
   "base-branch",
@@ -26,6 +26,9 @@ const contractKeys = new Set([
   "max-ci-fix-rounds",
   "max-review-rounds",
 ]);
+
+const optionalContractKeys = new Set(["codex-thread-id"]);
+const contractKeys = new Set([...requiredContractKeys, ...optionalContractKeys]);
 
 export function parseTaskContract(body) {
   const text = typeof body === "string" ? body : "";
@@ -93,7 +96,7 @@ function scopeCoversPath(scope, path, config) {
 export function validateTaskContract(contract, context, config = loadConfig()) {
   const errors = [];
   const warnings = [];
-  const missing = [...contractKeys].filter(
+  const missing = [...requiredContractKeys].filter(
     (key) => !Object.hasOwn(contract ?? {}, key) || contract[key] === "",
   );
   if (missing.length)
@@ -162,6 +165,17 @@ export function validateTaskContract(contract, context, config = loadConfig()) {
     errors.push("ui-change must be yes, no, or unknown.");
   }
 
+  const codexThreadId = contract?.["codex-thread-id"];
+  if (
+    codexThreadId &&
+    codexThreadId !== "none" &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      codexThreadId,
+    )
+  ) {
+    errors.push("codex-thread-id must be a UUID or none.");
+  }
+
   const maxCiFixRounds = parseRoundLimit(
     contract?.["max-ci-fix-rounds"],
     "max-ci-fix-rounds",
@@ -217,6 +231,8 @@ export function validateTaskContract(contract, context, config = loadConfig()) {
       uiChanged,
       maxCiFixRounds,
       maxReviewRounds,
+      codexThreadId:
+        codexThreadId && codexThreadId !== "none" ? codexThreadId : null,
       protectedPaths,
     },
   };

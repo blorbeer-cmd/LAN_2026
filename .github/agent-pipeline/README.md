@@ -24,6 +24,10 @@ The pipeline reports state and has narrow provider actions for both regular cros
 - `scripts/agent-codex-review.mjs` reuses the readiness snapshot and posts one exact-head-bound
   `@codex review` request under the identity in `AGENT_PIPELINE_REVIEW_REQUEST_TOKEN`; Codex submits
   the native GitHub review and the reconciler evaluates it.
+- `scripts/agent-pipeline-codex-adapter.mjs` exposes the trusted GitHub outbox to a Codex scheduled
+  monitor. It emits undelivered review choices, completed reviews and provider-start failures,
+  maps them to an explicit `codex-thread-id` or the unique head branch, and records a durable
+  GitHub acknowledgement only after the task message was sent successfully.
 - `.github/workflows/agent-pipeline-tests.yml` runs the pipeline and provider-adapter unit tests.
 - `review-session-prompt.md` contains the copy-paste prompt and operating instructions for an
   isolated Codex or Claude review session.
@@ -35,10 +39,12 @@ The pipeline reports state and has narrow provider actions for both regular cros
   only long enough to render an inert diff, then removes the checkout before the provider secret is
   exposed. Claude receives the diff but no PR-owned `CLAUDE.md`, `AGENTS.md` or `.claude` settings;
   no pull-request code, tests, hooks or package-manager commands are executed.
-- The provider adapters have no automatic retry, round counter, fix loop, approval, merge or
-  branch-protection mutation. A trusted terminal start failure is reconciled back to the user's
+- The provider adapters have no automatic retry, round counter, approval or merge. The Codex task
+  delivery adapter now wakes the implementation task with completed findings and tells it to run
+  the normal fix/re-review procedure; the pipeline still has no independent fix worker. A trusted
+  terminal start failure is reconciled back to the user's
   review choice, where the user may select the same provider again. The merge-gate status is written
-  but is not a required check until the post-merge operator step.
+  and becomes a required check on `main` in the controlled activation described below.
 
 ## Readiness reconciler
 
@@ -100,17 +106,21 @@ With no label set and everything mechanical green, the pull request sits in the
 `awaiting-review-decision` phase. The sticky status comment keeps showing the full state, but it is
 not delivery. The reconciler also creates one new, mention-bearing comment for that head SHA,
 marked `agent-pipeline:review-decision-notification`; it names the implementer, counter provider,
+head-bound change delta, prior finding severities, open threads, provider/timeout state,
 recommendation, reason and all three choices. `AGENT_PIPELINE_OWNER` supplies the mentioned GitHub
 login. Existing markers deduplicate event, schedule and workflow reruns, while a new head gets a
 new notification only after CI, mergeability, review-thread and protected-path prerequisites are
 clear. Nothing starts on a timeout: an automatic fallback would spend exactly the quota this
 decision exists to steer. Two labels at once block rather than picking a winner.
 
-The repository has no callable Codex App or task-wakeup API. Its durable active delivery is
-therefore the GitHub mention above. The remaining external adapter must observe the marker, map the
-PR/task contract to the originating Codex task, wake that task, present the question there and
-transcribe only an explicit answer whose head SHA still matches. Codex App thread tools available
-inside an already running desktop session are not reachable from GitHub Actions.
+GitHub Actions has no callable Codex App or task-wakeup API. GitHub is therefore the durable outbox,
+while a Codex scheduled monitor is the external adapter: it runs `scan`, resolves the task from the
+optional `codex-thread-id` contract field or from a unique local task whose checked-out branch
+equals the PR head, sends the canonical message with the Codex thread tool, and runs `ack` only
+after the send succeeds. The acknowledgement marker
+`agent-pipeline:codex-delivery <event-id> thread=<thread-id>` deduplicates later runs across
+machines. Unresolved mappings and failed sends remain unacknowledged and are retried; the monitor
+never sets a `review:*` label itself.
 
 A failed notification POST is not folded into the sticky update. The reconciler writes an
 `agent-pipeline:review-decision-delivery-failure` record into the sticky comment, posts a pending
@@ -341,6 +351,11 @@ declared implementer, and its verified PR author must appear in that provider's
 merge-base diff; use `root` for intentional multi-area changes. `ui-change: unknown` remains
 blocking until a later classification resolves it.
 
+Codex implementations should also populate the optional `codex-thread-id` with the originating
+desktop task UUID. `none` remains valid for Claude implementations and older tasks. When it is
+absent, the delivery monitor falls back to a unique local Codex task whose checked-out branch
+matches `head-branch`; an ambiguous fallback is deliberately left unacknowledged and retried.
+
 Changes below `infra/` are reported as protected paths. The reconciler holds such a pull request
 in the `awaiting-human-approval` phase until an approval review covers the exact current head SHA,
 because no agent can clear that condition itself. Workflow changes below `.github/workflows/` remain
@@ -422,11 +437,11 @@ Still required before expanding agent mutations:
    cover the exact head SHA without repository file or branch changes.
 2. Verify in a pilot pull request that both app identities can update their own feature branches
    but cannot push or merge to `main`.
-3. After the recovery/readiness implementation is merged and a post-merge pilot has observed the
-   context on every relevant current head, add `Agent pipeline / ready for human merge` to branch
-   protection. As verified on 2026-08-10, `main` currently requires `Server lint, build and tests`,
+3. `Agent pipeline / ready for human merge` is added to branch protection after a controlled pilot
+   has observed the context on every relevant current head. Before activation, `main` required
+   `Server lint, build and tests`,
    `Browser E2E`, `Agent lint and tests`, `Build runtime image`, `Classify changed paths` and
-   `Test performance`; it does not yet include readiness. Add it without replacing that list:
+   `Test performance`. Add readiness without replacing that list:
    `gh api --method POST repos/blorbeer-cmd/LAN_2026/branches/main/protection/required_status_checks/contexts -f "contexts[]=Agent pipeline / ready for human merge"`.
    Verify the returned array contains all seven contexts. Roll back only this addition with:
    `gh api --method DELETE repos/blorbeer-cmd/LAN_2026/branches/main/protection/required_status_checks/contexts -f "contexts[]=Agent pipeline / ready for human merge"`.
@@ -437,3 +452,10 @@ reconciler run once on the merged default branch both clear that state.
 
 Repository workflow defaults may remain read-only. Future jobs must request only the granular
 permissions they need.
+
+The repository-local `.codex/rules/agent-pipeline.rules` additionally forbids the common Codex
+shell paths for `gh pr merge`, direct `main` pushes and option-first GitHub API merge requests.
+Codex loads project rules only from a trusted project layer and after restart. This complements the
+binding `AGENTS.md` prohibition; it cannot make GitHub distinguish a human from an app connector
+that deliberately uses the same maintainer identity, so unattended environments should still use
+a dedicated credential without merge or `main` write permission where one is available.

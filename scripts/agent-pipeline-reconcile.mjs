@@ -37,6 +37,7 @@ export const REVIEW_DECISION_MARKER = "<!-- agent-pipeline:review-decision";
 // marker makes scheduled and repeated reconciliations idempotent.
 export const REVIEW_DECISION_NOTIFICATION_MARKER =
   "<!-- agent-pipeline:review-decision-notification";
+export const CODEX_EVENT_MARKER = "<!-- agent-pipeline:codex-event";
 const REVIEW_DECISION_NOTIFICATION_PATTERN =
   /<!--\s*agent-pipeline:review-decision-notification\s+([0-9a-f]{40})\s*-->/;
 
@@ -579,10 +580,121 @@ export function parseReviewResults(comments) {
         source: String(comment.body).startsWith(`${CLAUDE_CROSS_REVIEW_HEADING}\n`)
           ? CLAUDE_CROSS_REVIEW_SOURCE
           : null,
+        createdAt: comment.createdAt ?? null,
       });
     }
   }
   return results;
+}
+
+const FINDING_SEVERITIES = ["high", "medium", "low"];
+
+function reviewEvidenceAuthors(config) {
+  return new Set([
+    ...Object.values(config.providerAuthorAllowlist ?? {}).flat(),
+    ...Object.values(config.providerReviewerAllowlist ?? {}).flat(),
+    ...Object.values(config.crossReviewResultAuthors ?? {}).flat(),
+  ]);
+}
+
+/** Counts structured finding severities for one reviewed head without trusting unrelated text. */
+export function summarizeReviewFindings(
+  comments,
+  reviews,
+  headSha,
+  config = loadConfig(),
+) {
+  const counts = { high: 0, medium: 0, low: 0 };
+  let known = false;
+  const bodies = [];
+  const allowedAuthors = reviewEvidenceAuthors(config);
+
+  for (const comment of comments ?? []) {
+    if (!isTrustedCommentAuthor(comment) || !allowedAuthors.has(comment.author)) continue;
+    const body = String(comment.body ?? "");
+    const markers = [...body.matchAll(new RegExp(REVIEW_RESULT_SOURCE, "g"))];
+    if (!markers.some((match) => match[1] === headSha)) continue;
+    bodies.push(body);
+  }
+  for (const review of reviews ?? []) {
+    if (
+      review.commitSha !== headSha ||
+      review.state === "DISMISSED" ||
+      !allowedAuthors.has(review.author)
+    ) {
+      continue;
+    }
+    if (review.body) bodies.push(String(review.body));
+  }
+
+  for (const body of bodies) {
+    for (const line of body.split(/\r?\n/)) {
+      const named = line.match(/\[(high|medium|low)\]/i)?.[1]?.toLowerCase();
+      if (named && FINDING_SEVERITIES.includes(named)) {
+        counts[named] += 1;
+        known = true;
+        continue;
+      }
+      const priority = line.match(/\[P([0-3])\]/i)?.[1];
+      if (priority !== undefined) {
+        counts[priority === "0" || priority === "1" ? "high" : priority === "2" ? "medium" : "low"] += 1;
+        known = true;
+      }
+    }
+  }
+
+  return { known, ...counts, total: counts.high + counts.medium + counts.low };
+}
+
+/** Most recently completed review head before the current one, or null for the first round. */
+export function previousReviewedHead(
+  reviewResults,
+  reviews,
+  currentHeadSha,
+  config = loadConfig(),
+) {
+  const candidates = [];
+  const allowedAuthors = reviewEvidenceAuthors(config);
+  for (const result of reviewResults ?? []) {
+    if (result.headSha === currentHeadSha || !allowedAuthors.has(result.author)) continue;
+    candidates.push({
+      headSha: result.headSha,
+      at: result.createdAt ?? "",
+      order: candidates.length,
+    });
+  }
+  for (const review of reviews ?? []) {
+    if (
+      !/^[0-9a-f]{40}$/i.test(review.commitSha ?? "") ||
+      review.commitSha === currentHeadSha ||
+      review.state === "DISMISSED" ||
+      !allowedAuthors.has(review.author)
+    ) {
+      continue;
+    }
+    candidates.push({
+      headSha: review.commitSha,
+      at: review.submittedAt ?? "",
+      order: candidates.length,
+    });
+  }
+  candidates.sort((left, right) =>
+    left.at === right.at ? left.order - right.order : left.at.localeCompare(right.at),
+  );
+  return candidates.at(-1)?.headSha ?? null;
+}
+
+function summarizeChangedFiles(files, baseSha, headSha, commits = null) {
+  const list = files ?? [];
+  return {
+    baseSha,
+    headSha,
+    commits,
+    filesChanged: list.length,
+    additions: list.reduce((sum, file) => sum + (Number(file.additions) || 0), 0),
+    deletions: list.reduce((sum, file) => sum + (Number(file.deletions) || 0), 0),
+    files: list.map((file) => file.filename).filter(Boolean),
+  };
 }
 
 /** Trusted provider-start failures, newest last. A legacy notice uses its comment id as attempt. */
@@ -1466,10 +1578,111 @@ function reviewModeLine(readiness, config) {
  *
  * Only rendered while the answer is missing, so a decided pull request does not keep asking.
  */
-function reviewDecisionSection(readiness, config) {
+function shortSha(value) {
+  return /^[0-9a-f]{40}$/i.test(value ?? "") ? value.slice(0, 12) : "unknown";
+}
+
+function safeInline(value) {
+  return statusText(value).replace(/@/g, "&#64;");
+}
+
+/** Canonical data shown on every surface that asks the user to choose a review mode. */
+export function buildReviewDecisionPayload(readiness, snapshot, config = loadConfig()) {
+  const context = snapshot.reviewDecisionContext ?? {};
+  const delta = context.delta ?? {
+    baseSha: snapshot.baseSha ?? null,
+    headSha: snapshot.headSha ?? null,
+    commits: null,
+    filesChanged: (snapshot.changedFiles ?? []).length,
+    additions: null,
+    deletions: null,
+    files: snapshot.changedFiles ?? [],
+  };
+  const recommendation = readiness.details?.recommendation ?? {
+    mode: "cross",
+    reason: "the independent review is the safe default",
+  };
+  const startFailure = readiness.details?.reviewStartFailure;
+  const providerState = (snapshot.labels ?? []).includes(labelName(config, "waiting"))
+    ? "temporarily unavailable"
+    : startFailure
+      ? `${startFailure.outcome}: ${startFailure.reason}`
+      : "available";
+
+  return {
+    eventId: `review-choice-${snapshot.headSha}`,
+    headSha: snapshot.headSha,
+    taskId: readiness.contract?.taskId ?? null,
+    codexThreadId: readiness.contract?.codexThreadId ?? null,
+    headBranch: snapshot.headBranch ?? null,
+    implementer: readiness.contract?.implementer ?? "unknown",
+    reviewer: readiness.reviewerProvider ?? "unknown",
+    recommendation,
+    round: context.round ?? "first",
+    priorHeadSha: context.priorHeadSha ?? null,
+    priorFindings: context.priorFindings ?? null,
+    delta,
+    openThreads: readiness.details?.threads?.blockingCount ?? null,
+    providerState,
+    reviewTimeoutMinutes: config.reviewTimeoutMinutes ?? null,
+    waitingEscalationHours: waitingEscalationHours(config),
+  };
+}
+
+/** Shared fact block for the sticky status, active GitHub notification and Codex prompt. */
+export function renderReviewDecisionFacts(payload, config = loadConfig()) {
+  const modeLabels = config.reviewModeLabels ?? {};
+  const delta = payload.delta ?? {};
+  const stats = [
+    `${delta.filesChanged ?? "unknown"} file(s)`,
+    delta.additions === null || delta.additions === undefined
+      ? null
+      : `+${delta.additions}`,
+    delta.deletions === null || delta.deletions === undefined
+      ? null
+      : `-${delta.deletions}`,
+    delta.commits === null || delta.commits === undefined
+      ? null
+      : `${delta.commits} commit(s)`,
+  ].filter(Boolean);
+  const visibleFiles = (delta.files ?? []).slice(0, 8).map(safeInline);
+  const remainingFiles = Math.max(0, (delta.files ?? []).length - visibleFiles.length);
+  const findings = payload.priorFindings;
+  const previousFindingText =
+    payload.round === "first"
+      ? "first review round"
+      : findings?.known
+        ? `${findings.high} high, ${findings.medium} medium, ${findings.low} low`
+        : "no structured severity summary available";
+  const timeout = payload.reviewTimeoutMinutes
+    ? `${payload.reviewTimeoutMinutes}m job timeout`
+    : "no configured job timeout";
+
+  return [
+    `- Head SHA: \`${safeInline(payload.headSha)}\``,
+    `- Task: \`${safeInline(payload.taskId ?? "unknown")}\``,
+    `- Codex task: ${payload.codexThreadId ? `\`${safeInline(payload.codexThreadId)}\`` : "resolve uniquely from the head branch"}`,
+    `- Implementer: \`${safeInline(payload.implementer)}\``,
+    `- Counter provider: \`${safeInline(payload.reviewer)}\``,
+    `- Review round: \`${safeInline(payload.round)}\`` +
+      (payload.priorHeadSha ? ` after \`${shortSha(payload.priorHeadSha)}\`` : ""),
+    `- Changes since ${payload.priorHeadSha ? "last completed review" : "PR base"}: ${stats.join(", ")}` +
+      (delta.unavailable ? " (exact comparison unavailable; showing current PR scope)" : ""),
+    `- Files: ${visibleFiles.length ? visibleFiles.map((file) => `\`${file}\``).join(", ") : "_none_"}` +
+      (remainingFiles ? `, and ${remainingFiles} more` : ""),
+    `- Previous findings: ${previousFindingText}`,
+    `- Open review threads: \`${payload.openThreads ?? "unknown"}\``,
+    `- Provider/limits: \`${safeInline(payload.reviewer)}\` is ${safeInline(payload.providerState)}; ${timeout}; ` +
+      `escalation after ${payload.waitingEscalationHours}h; no silent fallback`,
+    `- Recommendation: \`${modeLabels[payload.recommendation?.mode] ?? modeLabels.cross}\` — ` +
+      `${safeInline(payload.recommendation?.reason ?? "the independent review is the safe default")}.`,
+  ];
+}
+
+function reviewDecisionSection(readiness, snapshot, config) {
   const details = readiness.details ?? {};
   const modeLabels = config.reviewModeLabels ?? {};
-  const recommendation = details.recommendation;
+  const payload = buildReviewDecisionPayload(readiness, snapshot, config);
   const lines = [
     "### Who reviews this head?",
     "",
@@ -1480,8 +1693,9 @@ function reviewDecisionSection(readiness, config) {
           "",
         ]
       : []),
-    `Set exactly one label. Recommended: \`${modeLabels[recommendation?.mode] ?? "review:cross"}\`` +
-      (recommendation?.reason ? ` — ${recommendation.reason}.` : "."),
+    ...renderReviewDecisionFacts(payload, config),
+    "",
+    "Set exactly one label:",
     "",
     `- \`${modeLabels.cross}\` — cross-review by ${readiness.reviewerProvider ?? "the other provider"}; most independent.`,
     `- \`${modeLabels.self}\` — fresh, read-only session of ${statusText(readiness.contract?.implementer ?? "the implementer")}; spares the other provider's quota, less independent.`,
@@ -1515,34 +1729,27 @@ export function renderReviewDecisionNotification(
   config = loadConfig(),
 ) {
   const login = normalizeNotificationRecipient(recipient);
-  const recommendation = readiness.details?.recommendation;
+  const payload = buildReviewDecisionPayload(readiness, snapshot, config);
   const modeLabels = config.reviewModeLabels ?? {};
-  const implementer = statusText(readiness.contract?.implementer ?? "unknown");
-  const reviewer = statusText(readiness.reviewerProvider ?? "unknown");
-  // Recommendation reasons can contain PR-controlled filenames. Neutralise mentions so the one
-  // deliberate @recipient above cannot be expanded into notifications for arbitrary accounts.
-  const reason = statusText(
-    recommendation?.reason ?? "the independent review is the safe default",
-  ).replace(/@/g, "&#64;");
+  const implementer = safeInline(payload.implementer);
+  const reviewer = safeInline(payload.reviewer);
 
   return [
     `@${login} review choice required for this pull request.`,
     "",
     "## Choose who reviews this head",
     "",
-    `- Head SHA: \`${snapshot.headSha}\``,
-    `- Implementer: \`${implementer}\``,
-    `- Counter provider: \`${reviewer}\``,
-    `- Recommendation: \`${modeLabels[recommendation?.mode] ?? modeLabels.cross}\` — ${reason}.`,
+    ...renderReviewDecisionFacts(payload, config),
     "",
     `a) Cross-review by \`${reviewer}\` (\`${modeLabels.cross}\`)`,
     `b) Self-review by \`${implementer}\` in a fresh, technically read-only session (\`${modeLabels.self}\`)`,
     `c) Human review (\`${modeLabels.human}\`)`,
     "",
-    "Nothing starts automatically and there is no timeout fallback. Give an explicit a/b/c answer",
-    "in the originating Codex task, or set exactly one of the labels above in GitHub. This choice",
-    "is valid only for the full head SHA shown here.",
+    "Give an explicit a/b/c answer in the originating Codex task, or set exactly one of the labels",
+    "above in GitHub. The selected review starts automatically. This choice is valid only for the",
+    "full head SHA shown here; no timeout or provider failure silently changes it.",
     "",
+    `${CODEX_EVENT_MARKER} type=review-choice-required id=${payload.eventId} -->`,
     `${REVIEW_DECISION_NOTIFICATION_MARKER} ${snapshot.headSha} -->`,
   ].join("\n");
 }
@@ -1683,7 +1890,7 @@ export function renderStatusComment(readiness, snapshot, config = loadConfig()) 
         ]
       : []),
     "",
-    ...(awaitingDecision ? [reviewDecisionSection(readiness, config), ""] : []),
+    ...(awaitingDecision ? [reviewDecisionSection(readiness, snapshot, config), ""] : []),
     "### Blockers",
     "",
     formatList(readiness.blockers ?? []),
@@ -2118,13 +2325,70 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       token,
     }),
   ]);
+  const config = loadConfig();
 
   const trustedComments = comments.map((comment) => ({
     id: comment.id,
     body: comment.body,
     author: comment.user?.login ?? null,
     authorAssociation: comment.author_association,
+    createdAt: comment.created_at ?? null,
   }));
+
+  const normalizedReviews = reviews.map((review) => ({
+    id: review.id,
+    author: review.user?.login ?? null,
+    authorAssociation: review.author_association,
+    state: review.state,
+    commitSha: review.commit_id,
+    submittedAt: review.submitted_at,
+    body: review.body ?? "",
+  }));
+  const reviewResults = parseReviewResults(trustedComments);
+  const priorHeadSha = previousReviewedHead(
+    reviewResults,
+    normalizedReviews,
+    headSha,
+    config,
+  );
+  let reviewDelta = summarizeChangedFiles(
+    files,
+    pr.base.sha,
+    headSha,
+    null,
+  );
+  if (priorHeadSha) {
+    try {
+      const comparison = await api(
+        `/repos/${owner}/${repo}/compare/${priorHeadSha}...${headSha}`,
+        { token },
+      );
+      reviewDelta = summarizeChangedFiles(
+        comparison.files ?? [],
+        priorHeadSha,
+        headSha,
+        comparison.ahead_by ?? comparison.total_commits ?? null,
+      );
+    } catch (error) {
+      console.error(
+        `Could not compare prior review ${priorHeadSha} with ${headSha}: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+      reviewDelta = {
+        ...reviewDelta,
+        baseSha: priorHeadSha,
+        unavailable: true,
+      };
+    }
+  }
+  const priorFindings = priorHeadSha
+    ? summarizeReviewFindings(
+        trustedComments,
+        normalizedReviews,
+        priorHeadSha,
+        config,
+      )
+    : null;
 
   // A decoy comment carrying the marker must not become the comment the pipeline overwrites; when
   // one exists, the reconciler simply posts its own alongside it.
@@ -2134,7 +2398,6 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       isTrustedCommentAuthor(comment),
   );
 
-  const config = loadConfig();
   const ownStatusCommentBody = (config.statusCommentAuthors ?? []).includes(
     statusComment?.author,
   )
@@ -2171,13 +2434,7 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
         conclusion: run.conclusion,
         completedAt: run.completed_at ?? null,
       })),
-      reviews: reviews.map((review) => ({
-        author: review.user?.login ?? null,
-        authorAssociation: review.author_association,
-        state: review.state,
-        commitSha: review.commit_id,
-        submittedAt: review.submitted_at,
-      })),
+      reviews: normalizedReviews,
       reviewThreads: graph?.reviewThreads ?? [],
       // A discussion that could not be read completely must block, and must say why.
       reviewThreadsReadable: graph?.readable === true,
@@ -2191,7 +2448,13 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       // comment, the author decides whether its decision record may be believed.
       statusCommentAuthor: statusComment?.author ?? null,
       // Published review verdicts for the `self` mode, which GitHub itself cannot represent.
-      reviewResults: parseReviewResults(trustedComments),
+      reviewResults,
+      reviewDecisionContext: {
+        round: priorHeadSha ? "follow-up" : "first",
+        priorHeadSha,
+        priorFindings,
+        delta: reviewDelta,
+      },
       reviewStartFailures: parseReviewStartFailures(trustedComments),
       reviewDecisionNotificationHeadShas:
         parseReviewDecisionNotificationHeadShas(trustedComments, config),

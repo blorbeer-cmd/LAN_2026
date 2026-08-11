@@ -27,7 +27,8 @@ Der Sticky-Statuskommentar bleibt die vollständige Zustandsansicht, zählt aber
 als Zustellung. Sobald der aktuelle Head mechanisch grün, konfliktfrei und sonst reviewbereit ist,
 erstellt der Reconciler zusätzlich genau einen neuen PR-Kommentar für diesen Head. Er erwähnt den in
 `AGENT_PIPELINE_OWNER` konfigurierten GitHub-Nutzer und enthält Head-SHA, Implementierer,
-Gegenanbieter, Empfehlung samt Begründung sowie a/b/c. Der Marker
+Gegenanbieter, Änderungsumfang seit der letzten Review-Runde, vorherige Finding-Schweregrade,
+offene Threads, Provider-/Timeout-Zustand, Empfehlung samt Begründung sowie a/b/c. Der Marker
 
 ```text
 <!-- agent-pipeline:review-decision-notification <head-sha> -->
@@ -38,14 +39,13 @@ Läufe lesen alle vorhandenen Kommentare und erzeugen für denselben SHA keinen 
 Head macht die alte Frage und Antwort ungültig und erhält nach erneut erfüllten Vorbedingungen eine
 neue Nachricht.
 
-GitHub Actions besitzt derzeit keinen erreichbaren Codex-App-Endpunkt, der eine bestimmte lokale
-Codex-Task anhand von Repository und PR wecken oder ihr eine Nachricht senden kann. Die neue,
-mention-tragende GitHub-Nachricht ist deshalb der belastbare aktive Fallback. Der noch fehlende
-externe Adapter muss den Marker beobachten, `task-id`/PR der ursprünglichen Codex-Task zuordnen,
-diese Task wecken, die Nachricht dort zustellen und eine ausdrückliche, SHA-gleiche Nutzerantwort
-als genau eines der drei Labels übertragen. App-interne Thread-Werkzeuge einer bereits laufenden
-Codex-Sitzung sind keine aus einem Repository-Workflow aufrufbare API und dürfen nicht als solche
-dokumentiert werden.
+GitHub Actions besitzt keinen erreichbaren Codex-App-Endpunkt. Deshalb bleibt die GitHub-Nachricht
+die dauerhafte Outbox. Ein Codex-seitiger Monitor ruft
+`scripts/agent-pipeline-codex-adapter.mjs scan` auf, ordnet das Ereignis über `codex-thread-id` oder
+den eindeutig ausgecheckten Head-Branch der ursprünglichen Task zu und sendet es mit dem
+App-internen Thread-Werkzeug. Erst nach erfolgreichem Versand schreibt `ack` den GitHub-Marker
+`agent-pipeline:codex-delivery`; andernfalls wird erneut versucht. Der Adapter stellt nur zu und
+überträgt weiterhin ausschließlich eine ausdrückliche, SHA-gleiche Nutzerantwort als Label.
 
 Scheitert der Kommentar-POST oder fehlt `AGENT_PIPELINE_OWNER`, schreibt der Reconciler den Marker
 `agent-pipeline:review-decision-delivery-failure` in den Sticky-Kommentar, setzt den Merge-Gate-
@@ -126,8 +126,8 @@ das Kontingent verbrauchen, das diese Frage schützen soll.
    der ausdrücklichen, zum aktuellen Head-SHA gehörenden Antwort und ohne
    weitere Rückfrage. Der Nutzer muss dafür nicht auf GitHub wechseln. Genau ein Wahl-Label
    gleichzeitig: ein zuvor gesetztes anderes wird dabei entfernt. Erst das Label bringt die Wahl
-   ins Merge-Gate und macht sie außerhalb der Session sichtbar. Solange der externe Codex-Task-
-   Adapter fehlt, kann der Nutzer alternativ genau eines der drei Labels direkt in GitHub setzen;
+   ins Merge-Gate und macht sie außerhalb der Session sichtbar. Falls die Codex-Zustellung sichtbar
+   fehlschlägt, kann der Nutzer alternativ genau eines der drei Labels direkt in GitHub setzen;
    auch diese Handlung ist eine ausdrückliche Antwort. Eine Antwort auf den SHA einer älteren
    Benachrichtigung darf nie auf den aktuellen Head übertragen werden.
 2. Bei a) und b) das Review nach

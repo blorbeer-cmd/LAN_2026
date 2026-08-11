@@ -223,19 +223,22 @@ PRs, falls Webhooks, Kommentare oder Anbieterreaktionen verloren gehen.
 
 Die Review-Auswahl wird nicht nur in diesem Sticky-Status gerendert. Sobald alle Vorbedingungen
 erfüllt sind, erzeugt der Reconciler einen neuen, `AGENT_PIPELINE_OWNER` erwähnenden PR-Kommentar
-mit Head-SHA, Implementierer, Gegenanbieter, Empfehlung, Begründung und a/b/c. Der Marker
+mit Head-SHA, Implementierer, Gegenanbieter, Änderungsumfang seit der letzten Review-Runde,
+vorherigen Finding-Schweregraden, offenen Threads, Provider-/Timeout-Zustand, Empfehlung,
+Begründung und a/b/c. Der Marker
 `agent-pipeline:review-decision-notification <head-sha>` dedupliziert alle Wiederholungsläufe. Ein
 neuer Head erhält nach erneut grünen Vorbedingungen eine neue Nachricht; die alte Wahl verfällt.
 Scheitert die Zustellung, werden Sticky-Kommentar und Commit-Status sichtbar auf
 `review-decision-delivery-failed` gesetzt und der Workflow schlägt fehl.
 
-Eine direkte Codex-Task-Zustellung ist aus dem Repository derzeit nicht verfügbar: Die in der
-Desktop-App vorhandenen Thread-Werkzeuge sind keine aus GitHub Actions aufrufbare API. Der noch
-fehlende externe Codex-App-/Task-Adapter muss den Zustellmarker beobachten, PR und `task-id` der
-ursprünglichen Task zuordnen, diese wecken, die Auswahl dort präsentieren und nur eine
-ausdrückliche Antwort für denselben Head-SHA als genau eines der drei Labels übertragen. Bis dahin
-ist die neue GitHub-Erwähnung der aktive und belastbare Zustellungsweg; alternativ kann der Nutzer
-das gewählte Label direkt in GitHub setzen.
+Eine direkte Codex-Task-Zustellung bleibt aus GitHub Actions nicht verfügbar: Die in der
+Desktop-App vorhandenen Thread-Werkzeuge sind keine aus einem Repository-Workflow aufrufbare API.
+Der externe Adapter läuft deshalb als Codex-seitiger Monitor. GitHub bildet seine dauerhafte
+Outbox; der Monitor beobachtet die Zustellmarker, ordnet PR und `task-id` über das optionale
+`codex-thread-id` oder den eindeutigen Head-Branch der ursprünglichen Task zu, weckt diese und
+quittiert erst nach erfolgreichem Versand mit `agent-pipeline:codex-delivery`. Die interaktive Task
+überträgt weiterhin nur eine ausdrückliche Antwort für denselben Head-SHA als genau eines der drei
+Labels. Bei sichtbarem Adapterausfall kann der Nutzer das gewählte Label direkt in GitHub setzen.
 
 ## 7. CI-Fehler und Mergekonflikte
 
@@ -596,15 +599,15 @@ offen.
 Abnahme: alle drei Modi liefern reproduzierbare `pass`-/`changes-required`-Ergebnisse; ein
 veraltetes Review und eine an einen früheren Head gebundene Wahl können das Gate nicht öffnen.
 
-Umsetzungsstand: Die Auswahl selbst, ihre GitHub-Fallback-Zustellung und beide regulären
-Provider-Adapter sind umgesetzt. Der Reconciler kennt die drei `review:*`-Labels, bindet sie an den
+Umsetzungsstand: Die Auswahl selbst, ihre GitHub-Outbox-Zustellung, der externe Codex-Task-Monitor
+und beide regulären Provider-Adapter sind umgesetzt. Der Reconciler kennt die drei `review:*`-Labels, bindet sie an den
 Head-SHA, wertet die modusabhängige Evidenz aus, stellt die Frage im Statuskommentar samt Empfehlung
 und erzeugt pro bereitem Head genau einen neuen, maschinenlesbar markierten und den Maintainer
 erwähnenden Kommentar. Solange die Auswahl unbeantwortet ist, blockiert das Gate mit
 `awaiting-review-decision`; ein Zustellungsfehler blockiert sichtbar mit
 `review-decision-delivery-failed` und wird erneut versucht. Der Ablauf in der Session und die
-verbleibende Grenze zum externen Codex-Task-Adapter stehen in
-`.github/agent-pipeline/review-decision.md`. Für Codex-Implementierungen startet `review:cross`
+GitHub-Outbox-/Codex-Monitor-Grenze stehen in `.github/agent-pipeline/review-decision.md`.
+Für Codex-Implementierungen startet `review:cross`
 den eng begrenzten Claude-Pilotpfad; für Claude-Implementierungen fordert der Codex-Adapter die
 native Review an. Die Findings-Schleife und die übrigen Agentenstarts fehlen weiterhin.
 
