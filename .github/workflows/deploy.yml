@@ -42,6 +42,7 @@ jobs:
     outputs:
       server: ${{ steps.filter.outputs.server }}
       e2e_core: ${{ steps.filter.outputs.e2e_core }}
+      e2e_core_scope: ${{ steps.filter.outputs.e2e_core_scope }}
       e2e_arcade: ${{ steps.filter.outputs.e2e_arcade }}
       e2e_arcade_smoke: ${{ steps.filter.outputs.e2e_arcade_smoke }}
       agent: ${{ steps.filter.outputs.agent }}
@@ -165,8 +166,8 @@ jobs:
         run: npx playwright install-deps chromium
       - name: Prepare Core E2E build
         run: npm run test:e2e:prepare
-      - name: Run measured Core E2E
-        run: npm run test:e2e:run:core
+      - name: Run measured Core E2E (${{ needs.changes.outputs.e2e_core_scope }})
+        run: npm run test:e2e:run:core -- "${{ needs.changes.outputs.e2e_core_scope }}"
 
   e2e-arcade-smoke:
     name: Browser E2E Arcade smoke
