@@ -2,7 +2,11 @@ import { appendFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { mainPartitionForE2EPath } from "./e2e-partitions.mjs";
+import {
+  CORE_E2E_DOMAIN_ORDER,
+  coreDomainForE2EPath,
+  mainPartitionForE2EPath,
+} from "./e2e-partitions.mjs";
 
 const SHARED_FRONTEND_FILES = new Set([
   "admin.js",
@@ -64,6 +68,7 @@ function allSelected() {
   return {
     server: true,
     e2eCore: true,
+    e2eCoreScope: "all",
     e2eArcade: true,
     e2eArcadeSmoke: false,
     agent: true,
@@ -76,6 +81,7 @@ function emptySelection() {
   return {
     server: false,
     e2eCore: false,
+    e2eCoreScope: "none",
     e2eArcade: false,
     e2eArcadeSmoke: false,
     agent: false,
@@ -84,70 +90,106 @@ function emptySelection() {
   };
 }
 
+function mergeCoreScope(current, next) {
+  if (!next || next === "none") return current;
+  if (current === "all" || next === "all") return "all";
+  const domains = new Set(
+    [...(current === "none" ? [] : current.split(",")), ...next.split(",")],
+  );
+  return CORE_E2E_DOMAIN_ORDER.filter((domain) => domains.has(domain)).join(",");
+}
+
 function e2eImpactForServerPath(file) {
   if (file.startsWith("server/src/test/e2e/")) {
     const partition = mainPartitionForE2EPath(file);
     if (partition === "arcade")
-      return { core: false, arcade: true, arcadeSmoke: false };
+      return { coreScope: "none", arcade: true, arcadeSmoke: false };
     if (partition === "core")
-      return { core: true, arcade: false, arcadeSmoke: false };
+      return {
+        coreScope: coreDomainForE2EPath(file) ?? "all",
+        arcade: false,
+        arcadeSmoke: false,
+      };
     // The manifest validator will name the missing file. Until then, never guess one partition.
-    return { core: true, arcade: true, arcadeSmoke: false };
+    return { coreScope: "all", arcade: true, arcadeSmoke: false };
   }
 
   if (file.startsWith("server/src/arcade/"))
-    return { core: false, arcade: true, arcadeSmoke: false };
+    return { coreScope: "none", arcade: true, arcadeSmoke: false };
   if (file === "server/src/routes/arcade.ts")
-    return { core: false, arcade: true, arcadeSmoke: false };
+    return { coreScope: "none", arcade: true, arcadeSmoke: false };
   if (file === "server/src/realtime.ts")
-    return { core: true, arcade: false, arcadeSmoke: true };
+    return { coreScope: "all", arcade: false, arcadeSmoke: true };
+
+  if (
+    file === "server/public/js/authGate.js" ||
+    file === "server/src/routes/auth.ts" ||
+    file === "server/src/invites.ts"
+  )
+    return { coreScope: "auth", arcade: false, arcadeSmoke: true };
+
+  if (
+    file === "server/src/routes/checklist.ts" ||
+    file === "server/public/js/views/checklist.js" ||
+    file === "server/public/js/checklistDue.js" ||
+    file === "server/src/checklistDefaults.ts"
+  )
+    return { coreScope: "checklist", arcade: false, arcadeSmoke: false };
 
   if (file.startsWith("server/public/js/arcade/"))
-    return { core: false, arcade: true, arcadeSmoke: false };
+    return { coreScope: "none", arcade: true, arcadeSmoke: false };
 
-  if (file.startsWith("server/public/js/views/"))
-    return { core: true, arcade: false, arcadeSmoke: false };
+  if (file.startsWith("server/public/js/views/")) {
+    if (
+      file === "server/public/js/views/admin.js" ||
+      file === "server/public/js/views/profile.js"
+    )
+      return { coreScope: "auth,flows", arcade: false, arcadeSmoke: false };
+    if (file === "server/public/js/views/games.js")
+      return { coreScope: "all", arcade: false, arcadeSmoke: false };
+    return { coreScope: "flows", arcade: false, arcadeSmoke: false };
+  }
 
   if (file.startsWith("server/public/js/")) {
     const name = path.posix.basename(file);
     if (SHARED_FRONTEND_FILES.has(name))
-      return { core: true, arcade: false, arcadeSmoke: true };
-    return { core: true, arcade: false, arcadeSmoke: false };
+      return { coreScope: "all", arcade: false, arcadeSmoke: true };
+    return { coreScope: "flows", arcade: false, arcadeSmoke: false };
   }
 
   // Arcade presentation rules are loaded on demand by app.js. The kiosk loads
   // the same stylesheet statically, but its Arcade scenarios stay in the
   // dedicated Arcade partition. Keep direct CSS changes out of Core coverage.
   if (file === "server/public/css/arcade.css")
-    return { core: false, arcade: true, arcadeSmoke: false };
+    return { coreScope: "none", arcade: true, arcadeSmoke: false };
 
   if (file.startsWith("server/public/"))
-    return { core: true, arcade: false, arcadeSmoke: true };
+    return { coreScope: "all", arcade: false, arcadeSmoke: true };
 
   if (file.startsWith("server/src/routes/")) {
     return SHARED_ROUTE_FILES.has(path.posix.basename(file))
-      ? { core: true, arcade: false, arcadeSmoke: true }
-      : { core: true, arcade: false, arcadeSmoke: false };
+      ? { coreScope: "all", arcade: false, arcadeSmoke: true }
+      : { coreScope: "flows", arcade: false, arcadeSmoke: false };
   }
 
   if (file.startsWith("server/src/test/") || file.endsWith(".test.ts")) {
     return ARCADE_TEST_PATTERN.test(path.posix.basename(file))
-      ? { core: false, arcade: true, arcadeSmoke: false }
-      : { core: true, arcade: false, arcadeSmoke: false };
+      ? { coreScope: "none", arcade: true, arcadeSmoke: false }
+      : { coreScope: "all", arcade: false, arcadeSmoke: false };
   }
 
   if (file.startsWith("server/src/")) {
     const name = path.posix.basename(file);
     if (SHARED_SERVER_FILES.has(name))
-      return { core: true, arcade: false, arcadeSmoke: true };
+      return { coreScope: "all", arcade: false, arcadeSmoke: true };
     // New or unclassified production modules fail closed until their impact
     // is deliberately added above.
-    return { core: true, arcade: false, arcadeSmoke: true };
+    return { coreScope: "all", arcade: false, arcadeSmoke: true };
   }
 
   // Package, compiler, lint, Docker and test-infrastructure changes can alter
   // either suite and therefore deliberately select both.
-  return { core: true, arcade: true, arcadeSmoke: false };
+  return { coreScope: "all", arcade: true, arcadeSmoke: false };
 }
 
 export function classifyChangedPaths(
@@ -168,7 +210,8 @@ export function classifyChangedPaths(
       selected.image = true;
       selected.deploy = true;
       const impact = e2eImpactForServerPath(file);
-      selected.e2eCore ||= impact.core;
+      selected.e2eCoreScope = mergeCoreScope(selected.e2eCoreScope, impact.coreScope);
+      selected.e2eCore = selected.e2eCoreScope !== "none";
       selected.e2eArcade ||= impact.arcade;
       selected.e2eArcadeSmoke ||= impact.arcadeSmoke;
       continue;
@@ -250,6 +293,7 @@ function main() {
   const lines = [
     `server=${selected.server}`,
     `e2e_core=${selected.e2eCore}`,
+    `e2e_core_scope=${selected.e2eCoreScope}`,
     `e2e_arcade=${selected.e2eArcade}`,
     `e2e_arcade_smoke=${selected.e2eArcadeSmoke}`,
     `agent=${selected.agent}`,
