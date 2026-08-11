@@ -293,7 +293,15 @@ arcadeTest('navigation', 'classic Snake guest returns to the Arcade immediately 
     await guest.page.click('[data-snake-join]');
     await host.page.waitForSelector('#snake-start:not([disabled])');
     await host.page.click('#snake-start');
-    await guest.page.waitForSelector('#snake-canvas');
+    await Promise.all([
+      guest.page.waitForSelector('#snake-canvas'),
+      host.page.waitForSelector('#snake-pause'),
+    ]);
+    // Keep the match alive while the guest handles the confirmation dialog.
+    // Under loaded CI runners an unpaused classic round can end first and
+    // replace the view, turning this navigation assertion into a timing race.
+    await host.page.click('#snake-pause');
+    await guest.page.waitForSelector('.snake-overlay');
 
     await guest.page.click('#snake-leave-match');
     await guest.page.click('[data-confirm]');

@@ -124,6 +124,17 @@ test("a complete task contract is parsed and normalized", () => {
   assert.equal(contract.implementer, "codex");
   assert.equal(contract.maxCiFixRounds, 3);
   assert.equal(contract.uiChanged, false);
+  assert.equal(contract.codexThreadId, null);
+});
+
+test("an optional Codex thread id is normalized and validated", () => {
+  const threadId = "019ff043-2b15-7923-bd6d-dfaac7d41c81";
+  assert.equal(validContract({ "codex-thread-id": threadId }).codexThreadId, threadId);
+
+  const parsed = parseTaskContract(body({ "codex-thread-id": "not-a-thread" }));
+  const validation = validateTaskContract(parsed.contract, context(), config);
+  assert.equal(validation.valid, false);
+  assert.match(validation.errors.join("\n"), /codex-thread-id must be a UUID or none/);
 });
 
 test("the CLI exposes validated contract metadata as GitHub outputs", () => {

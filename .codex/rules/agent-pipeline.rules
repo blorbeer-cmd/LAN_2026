@@ -1,0 +1,59 @@
+# Repository-local guardrail for the human-only merge boundary.
+#
+# GitHub sees local Codex sessions as the signed-in maintainer, so branch protection cannot tell a
+# human click from these common shell commands. Block the direct command paths while keeping
+# feature-branch pushes and the read/write PR operations used by the pipeline available.
+
+prefix_rule(
+    pattern = ["node", "scripts/agent-pipeline-codex-adapter.mjs", ["scan", "ack"]],
+    decision = "allow",
+    justification = "Allow only the reviewed adapter entry points used by the scheduled Codex delivery monitor.",
+    match = [
+        "node scripts/agent-pipeline-codex-adapter.mjs scan --repo blorbeer-cmd/LAN_2026",
+        "node scripts/agent-pipeline-codex-adapter.mjs ack --repo blorbeer-cmd/LAN_2026 --pull 401 --event-id review-choice-abc --thread-id 019ff043-2b15-7923-bd6d-dfaac7d41c81",
+    ],
+)
+
+prefix_rule(
+    pattern = ["gh", "pr", "merge"],
+    decision = "forbidden",
+    justification = "The final merge belongs to the user in the GitHub UI; inspect readiness with gh pr view instead.",
+    match = [
+        "gh pr merge 401",
+        "gh pr merge 401 --squash",
+    ],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "origin", ["main", "HEAD:main", "HEAD:refs/heads/main"]],
+    decision = "forbidden",
+    justification = "Push only the feature branch; main changes must pass the pull-request gate and human merge.",
+    match = [
+        "git push origin main",
+        "git push origin HEAD:main",
+        "git push origin HEAD:refs/heads/main",
+    ],
+    not_match = [
+        "git push origin codex/review-adapter",
+    ],
+)
+
+prefix_rule(
+    pattern = ["git", "push", ["--force", "--force-with-lease"], "origin", ["main", "HEAD:main", "HEAD:refs/heads/main"]],
+    decision = "forbidden",
+    justification = "Never force-push main; update only the feature branch.",
+    match = [
+        "git push --force origin main",
+        "git push --force-with-lease origin HEAD:main",
+    ],
+)
+
+prefix_rule(
+    pattern = ["gh", "api", ["--method", "-X"], "PUT"],
+    decision = "forbidden",
+    justification = "Do not bypass the human merge boundary through a direct GitHub API PUT; use read-only inspection instead.",
+    match = [
+        "gh api --method PUT repos/blorbeer-cmd/LAN_2026/pulls/401/merge",
+        "gh api -X PUT repos/blorbeer-cmd/LAN_2026/pulls/401/merge",
+    ],
+)
