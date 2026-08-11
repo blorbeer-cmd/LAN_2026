@@ -40,7 +40,7 @@ import { isNonEmptyString } from '../validation';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
-import { requestCanAccessGroupEvent, resolveGroupEventScope } from '../groupEventScope';
+import { resolveRequestGroupEventScope } from '../groupEventScope';
 import { communicationRecipientIds } from '../communicationRecipients';
 import { activeGroupPlayers } from '../groupPlayers';
 import { DEFAULT_CHECKLIST_ITEMS } from '../checklistDefaults';
@@ -249,7 +249,7 @@ const reconcilePendingChecklistScope = db.transaction(
 // mutation calls this right after loading its row and 404s on a mismatch,
 // same wording as "not found" since a stale id has no other legitimate use.
 function currentEventScope(req: Request, res: Response): { eventId: string | null } | null {
-  const scope = resolveGroupEventScope(req.group!.id, undefined);
+  const scope = resolveRequestGroupEventScope(req, undefined);
   if (!scope.ok) {
     res.status(scope.status).json({ error: scope.error });
     return null;
@@ -259,9 +259,6 @@ function currentEventScope(req: Request, res: Response): { eventId: string | nul
   // currently tracking participant-private event. Keep that event's private
   // rows isolated and use the durable group room instead of surfacing a
   // misleading "Event nicht gefunden" error when the checklist is opened.
-  if (scope.eventId !== null && !requestCanAccessGroupEvent(req, scope.eventId)) {
-    return { eventId: null };
-  }
   if (scope.eventId !== null && req.player) {
     const groupId = req.group!.id;
     const eventId = scope.eventId;

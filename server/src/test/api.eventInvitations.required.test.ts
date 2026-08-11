@@ -140,9 +140,15 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'invited')").run(scopeEvent.body.id, bob.account.id);
       db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'declined')").run(scopeEvent.body.id, carol.account.id);
 
-      const scopedRoutes = (actor) => [
-        ['/api/arrivals', 'get'],
-        ['/api/food-orders', 'get'],
+      const bobEvents = (await call(app, 'get', '/api/events', bob)).body;
+      const carolEvents = (await call(app, 'get', '/api/events', carol)).body;
+      const ownerEvents = (await call(app, 'get', '/api/events', owner)).body;
+      assert.equal(bobEvents.find((event) => event.id === scopeEvent.body.id).canAccess, false);
+      assert.equal(carolEvents.find((event) => event.id === scopeEvent.body.id).canAccess, false);
+      assert.equal(ownerEvents.find((event) => event.id === scopeEvent.body.id).canAccess, true);
+      assert.equal(bobEvents.find((event) => event.isOutsideEvents).canAccess, true);
+
+      const explicitScopedRoutes = (actor) => [
         ['/api/broadcasts?eventId=' + scopeEvent.body.id, 'get'],
         ['/api/info?eventId=' + scopeEvent.body.id, 'get'],
         ['/api/players/' + actor.account.id + '/neighbors?eventId=' + scopeEvent.body.id, 'get'],
@@ -154,15 +160,43 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
         ['/api/votes/history?eventId=' + scopeEvent.body.id, 'get'],
       ];
       for (const actor of [bob, carol]) {
-        for (const [path, method] of scopedRoutes(actor)) {
+        for (const [path, method] of explicitScopedRoutes(actor)) {
           assert.equal((await call(app, method, path, actor)).status, 404, method.toUpperCase() + ' ' + path + ' must reject ' + actor.account.name);
         }
       }
+
+      const implicitGroupRoomRoutes = (actor) => [
+        '/api/arrivals',
+        '/api/food-orders',
+        '/api/broadcasts',
+        '/api/info',
+        '/api/players/' + actor.account.id + '/neighbors',
+        '/api/players/' + actor.account.id + '/stats',
+        '/api/push/last',
+        '/api/push/current?playerId=' + actor.account.id,
+        '/api/push/log?playerId=' + actor.account.id,
+        '/api/seating',
+        '/api/seating/layout',
+        '/api/pings',
+        '/api/votes/history',
+        '/api/checklist/items?playerId=' + actor.account.id,
+        '/api/checklist/tasks',
+        '/api/arcade/lobbies',
+      ];
+      for (const actor of [bob, carol]) {
+        for (const path of implicitGroupRoomRoutes(actor)) {
+          const response = await call(app, 'get', path, actor);
+          assert.equal(response.status, 200, 'GET ' + path + ' must use the group room for ' + actor.account.name + ': ' + JSON.stringify(response.body));
+        }
+      }
+
       db.prepare("UPDATE event_participants SET status = 'accepted' WHERE event_id = ? AND player_id = ?").run(scopeEvent.body.id, bob.account.id);
-      for (const [path, method] of scopedRoutes(bob)) {
+      const acceptedEvents = (await call(app, 'get', '/api/events', bob)).body;
+      assert.equal(acceptedEvents.find((event) => event.id === scopeEvent.body.id).canAccess, true);
+      for (const [path, method] of explicitScopedRoutes(bob)) {
         assert.equal((await call(app, method, path, bob)).status, 200, method.toUpperCase() + ' ' + path + ' must admit accepted participants');
       }
-      for (const [path, method] of scopedRoutes(owner)) {
+      for (const [path, method] of explicitScopedRoutes(owner)) {
         assert.equal((await call(app, method, path, owner)).status, 200, method.toUpperCase() + ' ' + path + ' must admit event admins');
       }
     })().catch((error) => {
