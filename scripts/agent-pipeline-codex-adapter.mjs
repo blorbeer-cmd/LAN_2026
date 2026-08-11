@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig, parseTaskContract } from "./agent-pipeline.mjs";
 import {
   CLAUDE_CROSS_REVIEW_HEADING,
+  parseProviderCleanPass,
   REVIEW_DECISION_NOTIFICATION_MARKER,
   REVIEW_RESULT_SOURCE,
   REVIEW_START_NOTICE_PATTERN,
@@ -25,7 +26,6 @@ const CODEX_EVENT_PATTERN =
   /<!--\s*agent-pipeline:codex-event\s+type=([a-z-]+)\s+id=([A-Za-z0-9._:-]+)\s*-->/i;
 const REVIEW_DECISION_HEAD_PATTERN =
   /<!--\s*agent-pipeline:review-decision-notification\s+([0-9a-f]{40})\s*-->/i;
-const PROVIDER_REVIEWED_COMMIT_PATTERN = /\*\*Reviewed commit:\*\*\s*`?([0-9a-f]{7,40})`?/i;
 
 function isBotLogin(login) {
   return typeof login === "string" && login.endsWith("[bot]");
@@ -33,6 +33,18 @@ function isBotLogin(login) {
 
 function reviewerProviderFor(implementer) {
   return implementer === "codex" ? "claude" : implementer === "claude" ? "codex" : null;
+}
+
+function eventTime(value) {
+  const parsed = Date.parse(value ?? "");
+  return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+}
+
+function latestCandidate(candidates, type) {
+  return candidates
+    .filter((candidate) => candidate.event.type === type)
+    .sort((left, right) => left.time - right.time || left.sequence - right.sequence)
+    .at(-1);
 }
 
 function labelNames(pullRequest) {
@@ -126,7 +138,12 @@ export function collectCodexDeliveryEvents(
   if (!parsed.participating || parsed.errors.length) return [];
   const contract = parsed.contract;
   const delivered = trustedDeliveryIds(comments, config);
-  const events = [];
+  const candidates = [];
+  let sequence = 0;
+  const addCandidate = (event, occurredAt) => {
+    candidates.push({ event, time: eventTime(occurredAt), sequence });
+    sequence += 1;
+  };
   const labels = labelNames(pullRequest);
   const reviewLabels = Object.values(config.reviewModeLabels ?? {});
   const hasReviewChoice = reviewLabels.some((label) => labels.includes(label));
@@ -155,9 +172,8 @@ export function collectCodexDeliveryEvents(
       const eventId = marker?.[1] === "review-choice-required"
         ? marker[2]
         : `review-choice-${headSha}`;
-      if (delivered.has(eventId)) continue;
       const event = eventBase(pullRequest, contract, "review-choice-required", eventId);
-      events.push({ ...event, message: renderTaskPrompt(event, body) });
+      addCandidate({ ...event, message: renderTaskPrompt(event, body) }, comment.createdAt);
     }
   }
 
@@ -172,10 +188,11 @@ export function collectCodexDeliveryEvents(
         String(comment.createdAt ?? "") > latestCurrentChoiceAt)
     ) {
       const eventId = `review-start-failed-${pullRequest.headSha}-${start[4] ?? comment.id}`;
-      if (!delivered.has(eventId)) {
-        const event = eventBase(pullRequest, contract, "review-start-failed", eventId);
-        events.push({ ...event, outcome: start[2], message: renderTaskPrompt(event, body) });
-      }
+      const event = eventBase(pullRequest, contract, "review-start-failed", eventId);
+      addCandidate(
+        { ...event, outcome: start[2], message: renderTaskPrompt(event, body) },
+        comment.createdAt,
+      );
     }
 
     for (const result of body.matchAll(new RegExp(REVIEW_RESULT_SOURCE, "g"))) {
@@ -188,32 +205,35 @@ export function collectCodexDeliveryEvents(
         continue;
       }
       const eventId = `review-completed-${pullRequest.headSha}-${result[4]}`;
-      if (delivered.has(eventId)) continue;
       const event = eventBase(pullRequest, contract, "review-completed", eventId);
-      events.push({
-        ...event,
-        verdict: result[3],
-        sessionId: result[4],
-        message: renderTaskPrompt({ ...event, verdict: result[3] }, body),
-      });
+      addCandidate(
+        {
+          ...event,
+          verdict: result[3],
+          sessionId: result[4],
+          message: renderTaskPrompt({ ...event, verdict: result[3] }, body),
+        },
+        comment.createdAt,
+      );
     }
 
-    const reviewedPrefix = body.match(PROVIDER_REVIEWED_COMMIT_PATTERN)?.[1]?.toLowerCase();
     if (
-      reviewedPrefix &&
-      pullRequest.headSha.startsWith(reviewedPrefix) &&
-      (config.providerReviewerAllowlist?.[reviewer] ?? []).includes(comment.author) &&
-      isBotLogin(comment.author)
+      parseProviderCleanPass(
+        [comment],
+        pullRequest.headSha,
+        config.providerReviewerAllowlist?.[reviewer] ?? [],
+      )
     ) {
       const eventId = `review-completed-${pullRequest.headSha}-comment-${comment.id}`;
-      if (!delivered.has(eventId)) {
-        const event = eventBase(pullRequest, contract, "review-completed", eventId);
-        events.push({
+      const event = eventBase(pullRequest, contract, "review-completed", eventId);
+      addCandidate(
+        {
           ...event,
           verdict: "pass",
           message: renderTaskPrompt({ ...event, verdict: "pass" }, body),
-        });
-      }
+        },
+        comment.createdAt,
+      );
     }
   }
 
@@ -227,7 +247,6 @@ export function collectCodexDeliveryEvents(
       continue;
     }
     const eventId = `review-completed-${pullRequest.headSha}-review-${review.id}`;
-    if (delivered.has(eventId)) continue;
     const verdict =
       review.state === "CHANGES_REQUESTED"
         ? "changes-required"
@@ -236,22 +255,33 @@ export function collectCodexDeliveryEvents(
           : "completed";
     const event = eventBase(pullRequest, contract, "review-completed", eventId);
     const evidence = review.body || `Native GitHub review state: ${review.state}`;
-    events.push({
-      ...event,
-      verdict,
-      message: renderTaskPrompt({ ...event, verdict }, evidence),
-    });
+    addCandidate(
+      {
+        ...event,
+        verdict,
+        message: renderTaskPrompt({ ...event, verdict }, evidence),
+      },
+      review.submittedAt,
+    );
   }
 
-  const unique = events.filter(
-    (event, index) => events.findIndex((candidate) => candidate.eventId === event.eventId) === index,
-  );
-  const completed = unique.filter((event) => event.type === "review-completed");
-  if (completed.length) return [completed.at(-1)];
-  const choice = unique.filter((event) => event.type === "review-choice-required");
-  if (choice.length) return [choice.at(-1)];
-  const failure = unique.filter((event) => event.type === "review-start-failed");
-  return failure.length ? [failure.at(-1)] : [];
+  const uniqueById = new Map();
+  for (const candidate of candidates) {
+    const previous = uniqueById.get(candidate.event.eventId);
+    if (
+      !previous ||
+      candidate.time > previous.time ||
+      (candidate.time === previous.time && candidate.sequence > previous.sequence)
+    ) {
+      uniqueById.set(candidate.event.eventId, candidate);
+    }
+  }
+  const unique = [...uniqueById.values()];
+  const selected =
+    latestCandidate(unique, "review-completed") ??
+    latestCandidate(unique, "review-choice-required") ??
+    latestCandidate(unique, "review-start-failed");
+  return selected && !delivered.has(selected.event.eventId) ? [selected.event] : [];
 }
 
 function option(args, name) {

@@ -198,6 +198,79 @@ test("a completed review supersedes an older start failure for the same head", (
   assert.equal(events[0].verdict, "pass");
 });
 
+test("a provider findings comment is never treated as a clean pass", () => {
+  const reviewer = config.providerReviewerAllowlist.codex[0];
+  const reviewedCommit = `**Reviewed commit:** \`${HEAD.slice(0, 10)}\``;
+  const selected = pull({
+    body: body({ implementer: "claude" }),
+    labels: [{ name: "agent:pipeline" }, { name: "review:cross" }],
+  });
+  const finding = {
+    id: 13,
+    author: reviewer,
+    body: `### Codex Review\n\n#### [high] SQL injection\n\n${reviewedCommit}`,
+  };
+  assert.deepEqual(collectCodexDeliveryEvents(selected, [finding], [], config), []);
+
+  const cleanPass = {
+    ...finding,
+    id: 14,
+    body: `Codex Review: Didn't find any major issues.\n\n${reviewedCommit}`,
+  };
+  const events = collectCodexDeliveryEvents(selected, [cleanPass], [], config);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].verdict, "pass");
+  assert.equal(events[0].eventId, `review-completed-${HEAD}-comment-14`);
+});
+
+test("the newest current-head review evidence wins and older evidence never leaks after ack", () => {
+  const reviewer = config.providerReviewerAllowlist.codex[0];
+  const selected = pull({
+    body: body({ implementer: "claude" }),
+    labels: [{ name: "agent:pipeline" }, { name: "review:cross" }],
+  });
+  const cleanPass = {
+    id: 15,
+    author: reviewer,
+    createdAt: "2026-08-11T09:02:00Z",
+    body: `Codex Review: Didn't find any major issues.\n\n**Reviewed commit:** \`${HEAD.slice(0, 10)}\``,
+  };
+  const olderFinding = {
+    id: 16,
+    author: reviewer,
+    state: "CHANGES_REQUESTED",
+    commitSha: HEAD,
+    submittedAt: "2026-08-11T09:01:00Z",
+    body: "Please fix the current-head finding.",
+  };
+
+  const newest = collectCodexDeliveryEvents(selected, [cleanPass], [olderFinding], config);
+  assert.equal(newest.length, 1);
+  assert.equal(newest[0].verdict, "pass");
+  assert.equal(newest[0].eventId, `review-completed-${HEAD}-comment-15`);
+
+  const acknowledged = {
+    id: 17,
+    author: "blorbeer-cmd",
+    createdAt: "2026-08-11T09:03:00Z",
+    body: `${CODEX_DELIVERY_MARKER} ${newest[0].eventId} thread=${THREAD} -->`,
+  };
+  assert.deepEqual(
+    collectCodexDeliveryEvents(selected, [cleanPass, acknowledged], [olderFinding], config),
+    [],
+  );
+
+  const newerFinding = {
+    ...olderFinding,
+    id: 18,
+    submittedAt: "2026-08-11T09:04:00Z",
+  };
+  const changed = collectCodexDeliveryEvents(selected, [cleanPass], [newerFinding], config);
+  assert.equal(changed.length, 1);
+  assert.equal(changed[0].verdict, "changes-required");
+  assert.equal(changed[0].eventId, `review-completed-${HEAD}-review-18`);
+});
+
 test("a newer review choice supersedes an older start failure even after delivery", () => {
   const eventId = `review-choice-${HEAD}`;
   const comments = [
