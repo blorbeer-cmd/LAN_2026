@@ -4,7 +4,7 @@
 // come back to browse repeatedly). Reached via a button on Profil.
 
 import { api } from '../api.js';
-import { state } from '../state.js';
+import { accessibleEvents, state } from '../state.js';
 import { escapeHtml, formatDateTime } from '../format.js';
 import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
@@ -39,7 +39,7 @@ async function loadStats(playerId, eventId, ctx) {
 }
 
 function renderEventOptions() {
-  const sorted = [...state.events].sort((a, b) => b.starts_at - a.starts_at);
+  const sorted = [...accessibleEvents()].sort((a, b) => b.starts_at - a.starts_at);
   const options = sorted
     .map((e) => `<option value="${e.id}" ${e.id === statsEventId ? 'selected' : ''}>${escapeHtml(e.name)}</option>`)
     .join('');
