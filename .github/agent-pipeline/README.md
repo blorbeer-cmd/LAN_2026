@@ -207,6 +207,9 @@ native GitHub review whose commit SHA GitHub itself binds. Without findings it s
 answers in a comment — `Codex Review: Didn't find any major issues.` followed by the reviewed
 commit. That comment is the only head-bound record such a review leaves, so the reconciler reads it
 as evidence when the configured reviewer identity wrote it and the named commit is the current head.
+An `issue_comment` event from the exact Codex connector identity reconciles that clean pass
+immediately; quoted wording from users or unrelated bots cannot start this path. A valid clean pass
+also supersedes an older start-failure notice for the same head, just like a submitted review does.
 The comment that accompanies findings prints the same commit line and is deliberately not accepted:
 only the clean-pass wording distinguishes them, and its findings block through their open threads.
 

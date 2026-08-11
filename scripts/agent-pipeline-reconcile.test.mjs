@@ -55,13 +55,19 @@ const BASE = "c".repeat(40);
 
 const CODEX_REVIEWER = "chatgpt-codex-connector[bot]";
 
-test("reconcile reacts to provider review-result comments without cancelling active runs", () => {
+test("reconcile reacts to provider comment evidence without cancelling active runs", () => {
   const workflow = readFileSync(
     new URL("../.github/workflows/agent-pipeline-reconcile.yml", import.meta.url),
     "utf8",
   ).replaceAll("\r\n", "\n");
   assert.match(workflow, /issue_comment:\n\s+types: \[created, edited\]/);
   assert.match(workflow, /contains\(github\.event\.comment\.body, 'agent-pipeline:review-result'\)/);
+  assert.match(
+    workflow,
+    /github\.event\.comment\.user\.login == 'chatgpt-codex-connector\[bot\]'/,
+  );
+  assert.match(workflow, /contains\(github\.event\.comment\.body, 'Codex Review:'\)/);
+  assert.match(workflow, /contains\(github\.event\.comment\.body, '\*\*Reviewed commit:\*\*'\)/);
   // The failure notice is deliberately absent here. It is written with the repository
   // GITHUB_TOKEN, and GitHub starts no workflow run from an event created with that token, so a
   // trigger on its marker would read like a working path while never firing. The cross-review
@@ -1783,6 +1789,28 @@ test("a completed cross-review wins over an older start-failure notice", () => {
   assert.equal(passed.ready, true);
   assert.equal(passed.phase, "ready-for-merge");
   assert.equal(passed.details.reviewMode, "cross");
+});
+
+test("a finding-free provider review wins over an older start-failure notice", () => {
+  const passed = deriveReadiness(
+    readySnapshot({
+      reviews: [],
+      comments: [
+        {
+          author: CODEX_REVIEWER,
+          authorAssociation: "NONE",
+          body:
+            "Codex Review: Didn't find any major issues. Delightful!\n\n" +
+            `**Reviewed commit:** \`${HEAD.slice(0, 10)}\`\n`,
+        },
+      ],
+      reviewStartFailures: [reviewStartFailure()],
+    }),
+    config,
+  );
+  assert.equal(passed.details.reviewMode, "cross");
+  assert.equal(passed.ready, true);
+  assert.equal(passed.phase, "ready-for-merge");
 });
 
 test("review-start notices are trusted, head-bound and keep a stable attempt", () => {

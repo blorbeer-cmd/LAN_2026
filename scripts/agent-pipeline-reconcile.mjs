@@ -1071,6 +1071,7 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     handledStartFailure?.headSha === snapshot.headSha &&
     handledStartFailure?.attempt === reviewStartFailure?.attempt;
   const completedCrossReview =
+    providerCleanPass ||
     reviews.verdict === "pass" ||
     reviews.verdict === "changes-required" ||
     crossResult?.verdict === "pass" ||
