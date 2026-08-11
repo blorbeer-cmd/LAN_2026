@@ -39,8 +39,11 @@ function pull(overrides = {}) {
     state: "open",
     body: body(),
     labels: [{ name: "agent:pipeline" }],
+    authorLogin: "blorbeer-cmd",
+    baseBranch: "main",
     headBranch: "codex/adapter",
     headSha: HEAD,
+    changedFiles: ["scripts/agent-pipeline-codex-adapter.mjs"],
     ...overrides,
   };
 }
@@ -89,6 +92,60 @@ test("a choice is suppressed after a label or a trusted delivery acknowledgement
       [],
       config,
     ),
+    [],
+  );
+});
+
+test("an acknowledged choice does not starve a later provider-start failure", () => {
+  const comments = [
+    {
+      id: 20,
+      author: "github-actions[bot]",
+      createdAt: "2026-08-11T09:00:00Z",
+      body: `Choice\n<!-- agent-pipeline:review-decision-notification ${HEAD} -->`,
+    },
+    {
+      id: 21,
+      author: "blorbeer-cmd",
+      createdAt: "2026-08-11T09:01:00Z",
+      body: `${CODEX_DELIVERY_MARKER} review-choice-${HEAD} thread=${THREAD} -->`,
+    },
+    {
+      id: 22,
+      author: "github-actions[bot]",
+      createdAt: "2026-08-11T09:02:00Z",
+      body: `Review failed.\n<!-- agent-pipeline:review-start-notice ${HEAD} mode=cross outcome=failed code=provider attempt=run-22 -->`,
+    },
+  ];
+
+  const events = collectCodexDeliveryEvents(pull(), comments, [], config);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "review-start-failed");
+  assert.equal(events[0].eventId, `review-start-failed-${HEAD}-run-22`);
+});
+
+test("delivery events require the centrally validated task contract", () => {
+  const choice = {
+    id: 23,
+    author: "github-actions[bot]",
+    body: `Choice\n<!-- agent-pipeline:review-decision-notification ${HEAD} -->`,
+  };
+
+  assert.deepEqual(
+    collectCodexDeliveryEvents(pull({ authorLogin: "drive-by" }), [choice], [], config),
+    [],
+  );
+  assert.deepEqual(
+    collectCodexDeliveryEvents(
+      pull({ body: body({ "codex-thread-id": "not-a-uuid" }) }),
+      [choice],
+      [],
+      config,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    collectCodexDeliveryEvents(pull({ headBranch: "claude/wrong-provider" }), [choice], [], config),
     [],
   );
 });
@@ -202,8 +259,9 @@ test("a provider findings comment is never treated as a clean pass", () => {
   const reviewer = config.providerReviewerAllowlist.codex[0];
   const reviewedCommit = `**Reviewed commit:** \`${HEAD.slice(0, 10)}\``;
   const selected = pull({
-    body: body({ implementer: "claude" }),
+    body: body({ implementer: "claude", "head-branch": "claude/adapter" }),
     labels: [{ name: "agent:pipeline" }, { name: "review:cross" }],
+    headBranch: "claude/adapter",
   });
   const finding = {
     id: 13,
@@ -226,8 +284,9 @@ test("a provider findings comment is never treated as a clean pass", () => {
 test("the newest current-head review evidence wins and older evidence never leaks after ack", () => {
   const reviewer = config.providerReviewerAllowlist.codex[0];
   const selected = pull({
-    body: body({ implementer: "claude" }),
+    body: body({ implementer: "claude", "head-branch": "claude/adapter" }),
     labels: [{ name: "agent:pipeline" }, { name: "review:cross" }],
+    headBranch: "claude/adapter",
   });
   const cleanPass = {
     id: 15,

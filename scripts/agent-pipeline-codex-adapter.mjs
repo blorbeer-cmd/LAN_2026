@@ -10,7 +10,11 @@ import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { loadConfig, parseTaskContract } from "./agent-pipeline.mjs";
+import {
+  loadConfig,
+  parseTaskContract,
+  validateTaskContract,
+} from "./agent-pipeline.mjs";
 import {
   CLAUDE_CROSS_REVIEW_HEADING,
   parseProviderCleanPass,
@@ -136,6 +140,19 @@ export function collectCodexDeliveryEvents(
   }
   const parsed = parseTaskContract(pullRequest.body);
   if (!parsed.participating || parsed.errors.length) return [];
+  const validation = validateTaskContract(
+    parsed.contract,
+    {
+      authorLogin: pullRequest.authorLogin,
+      baseBranch: pullRequest.baseBranch,
+      headBranch: pullRequest.headBranch,
+      headRepository: pullRequest.headRepository,
+      repository: pullRequest.repository,
+      changedFiles: pullRequest.changedFiles ?? [],
+    },
+    config,
+  );
+  if (!validation.valid) return [];
   const contract = parsed.contract;
   const delivered = trustedDeliveryIds(comments, config);
   const candidates = [];
@@ -277,11 +294,15 @@ export function collectCodexDeliveryEvents(
     }
   }
   const unique = [...uniqueById.values()];
+  const pendingLatest = (type) => {
+    const candidate = latestCandidate(unique, type);
+    return candidate && !delivered.has(candidate.event.eventId) ? candidate : null;
+  };
   const selected =
-    latestCandidate(unique, "review-completed") ??
-    latestCandidate(unique, "review-choice-required") ??
-    latestCandidate(unique, "review-start-failed");
-  return selected && !delivered.has(selected.event.eventId) ? [selected.event] : [];
+    pendingLatest("review-completed") ??
+    pendingLatest("review-choice-required") ??
+    pendingLatest("review-start-failed");
+  return selected ? [selected.event] : [];
 }
 
 function option(args, name) {
@@ -317,6 +338,8 @@ function normalizeGithubPull(repository, pr) {
     state: pr.state,
     body: pr.body ?? "",
     labels: pr.labels ?? [],
+    authorLogin: pr.user?.login ?? null,
+    baseBranch: pr.base?.ref ?? null,
     headBranch: pr.head?.ref ?? null,
     headSha: pr.head?.sha ?? null,
     headRepository: pr.head?.repo?.full_name ?? null,
@@ -329,6 +352,9 @@ function scan(repository, config = loadConfig()) {
   for (const rawPull of pulls) {
     const pull = normalizeGithubPull(repository, rawPull);
     if (!labelNames(pull).includes(config.labels.pipeline)) continue;
+    pull.changedFiles = ghApiPages(
+      `/repos/${repository}/pulls/${pull.number}/files`,
+    ).map((file) => file.filename);
     const comments = ghApiPages(`/repos/${repository}/issues/${pull.number}/comments`).map(
       (comment) => ({
         id: comment.id,
