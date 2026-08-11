@@ -24,7 +24,7 @@ import {
   type UpdateEventFields,
   type EventRow,
 } from '../events';
-import { db } from '../db';
+import { BASE_EVENT_ID, db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { isNonEmptyString } from '../validation';
@@ -171,6 +171,9 @@ eventsRouter.post('/:id/tracking-consent', resolveEvent, (req, res) => {
 eventsRouter.post('/:id/invitations', resolveEvent, requireGroupRole('admin'), (req, res) => {
   const event = req.groupResource as EventRow;
   if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
+  if (event.id === BASE_EVENT_ID) {
+    return res.status(409).json({ error: 'Das Basis-Event umfasst automatisch alle aktiven Konten.' });
+  }
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId || playerId.length > 200) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -196,6 +199,9 @@ function answerEventInvitation(response: 'accepted' | 'declined') {
   return (req: Request, res: Response): Response => {
     const event = req.groupResource as EventRow;
     if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
+    if (event.id === BASE_EVENT_ID) {
+      return res.status(409).json({ error: 'Die Teilnahme am Basis-Event kann nicht geändert werden.' });
+    }
     const playerId = requestPlayerId(req);
     if (!playerId) return res.status(400).json({ error: 'Spieleridentität ist erforderlich.' });
 
@@ -230,6 +236,9 @@ eventsRouter.post('/:id/invitation/decline', resolveEvent, answerEventInvitation
 eventsRouter.delete('/:id/participants/:playerId', resolveEvent, requireGroupRole('admin'), (req, res) => {
   const event = req.groupResource as EventRow;
   if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
+  if (event.id === BASE_EVENT_ID) {
+    return res.status(409).json({ error: 'Teilnehmer des Basis-Events können nicht entfernt werden.' });
+  }
   const previousStatus = removeEventParticipant(event.id, req.params.playerId);
   if (previousStatus === null) return res.status(404).json({ error: 'Event-Teilnehmer nicht gefunden.' });
 
@@ -340,6 +349,9 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
   const existing = req.groupResource as EventRow;
   if (!existing || existing.id === OUTSIDE_EVENTS_ID) {
     return res.status(404).json({ error: 'Event nicht gefunden.' });
+  }
+  if (existing.id === BASE_EVENT_ID) {
+    return res.status(409).json({ error: 'Das dauerhaft offene Basis-Event kann nicht bearbeitet werden.' });
   }
 
   const { name, startsAt, endsAt, location, description, visibilityScope } = req.body ?? {};
@@ -454,6 +466,9 @@ eventsRouter.post('/:id/tracking/stop', resolveEvent, requireGroupRole('admin'),
 // POST /api/events/:id/end - closes the event for good (stops tracking
 // first if it was on).
 eventsRouter.post('/:id/end', resolveEvent, requireGroupRole('admin'), (req, res) => {
+  if (req.params.id === BASE_EVENT_ID) {
+    return res.status(409).json({ error: 'Das dauerhaft offene Basis-Event kann nicht beendet werden.' });
+  }
   const updated = endEvent(req.params.id);
   if (!updated) return res.status(404).json({ error: 'Event nicht gefunden.' });
   writeAdminAudit({
@@ -473,6 +488,9 @@ eventsRouter.post('/:id/end', resolveEvent, requireGroupRole('admin'), (req, res
 eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (req, res) => {
   const event = req.groupResource as EventRow;
   if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
+  if (event.id === BASE_EVENT_ID) {
+    return res.status(409).json({ error: 'Die Teilnehmerliste des Basis-Events wird automatisch gepflegt.' });
+  }
 
   const { playerIds } = req.body ?? {};
   if (!Array.isArray(playerIds) || !playerIds.every((p) => typeof p === 'string')) {
@@ -529,6 +547,9 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
 });
 
 eventsRouter.delete('/:id', resolveEvent, requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
+  if (req.params.id === BASE_EVENT_ID) {
+    return res.status(409).json({ error: 'Das dauerhaft offene Basis-Event kann nicht abgesagt werden.' });
+  }
   const cancelled = cancelEvent(req.params.id);
   if (!cancelled) return res.status(409).json({ error: 'Laufende oder beendete Events können nicht abgesagt werden.' });
   writeAdminAudit({

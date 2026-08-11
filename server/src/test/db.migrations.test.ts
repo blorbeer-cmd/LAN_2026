@@ -643,10 +643,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 62);
+  assert.equal(migrations.length, 63);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 62 }, (_, index) => index + 1),
+    Array.from({ length: 63 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1166,8 +1166,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 62 }, (_, index) => index + 1),
-    'every version 1..62 runs exactly once',
+    Array.from({ length: 63 }, (_, index) => index + 1),
+    'every version 1..63 runs exactly once',
   );
 });
 
@@ -1190,6 +1190,65 @@ test('migration 62 backfills existing players as completed and is restart-safe',
   assert.deepEqual(
     migrated.prepare('SELECT status, last_core_step, rating_status FROM player_onboarding WHERE player_id = ?').get('legacy-onboarding-player'),
     { status: 'completed', last_core_step: 9, rating_status: 'completed' },
+  );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 63 creates the base event and repairs missing account event contexts', () => {
+  const dbFile = makeTempDbPath('player-event-context-backfill');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 63').run();
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('legacy-context-player', 'Legacy Context Player', 'legacy-context-key', now);
+  fixture
+    .prepare(
+      `INSERT INTO invites (code, purpose, player_id, created_by, created_at, expires_at)
+       VALUES (?, 'register', NULL, NULL, ?, ?)`,
+    )
+    .run('legacy-context-invite', now, now + 60_000);
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'a second start must not duplicate the base event or context');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT name, starts_at, ends_at, status, visibility_scope FROM events WHERE id = ?')
+      .get('instance-base-event'),
+    {
+      name: 'Allgemein',
+      starts_at: 0,
+      ends_at: null,
+      status: 'published',
+      visibility_scope: 'participants',
+    },
+  );
+  assert.deepEqual(migrated.prepare("SELECT value FROM app_state WHERE key = 'base_event_id'").get(), {
+    value: 'instance-base-event',
+  });
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
+      .get('instance-base-event', 'legacy-context-player'),
+    { status: 'accepted' },
+  );
+  assert.deepEqual(
+    migrated.prepare('SELECT active_event_id FROM player_event_contexts WHERE player_id = ?').get('legacy-context-player'),
+    { active_event_id: 'instance-base-event' },
+  );
+  assert.deepEqual(migrated.prepare('SELECT event_id FROM invites WHERE code = ?').get('legacy-context-invite'), {
+    event_id: 'instance-base-event',
+  });
+  assert.equal(
+    (migrated.prepare('SELECT COUNT(*) AS count FROM events WHERE id = ?').get('instance-base-event') as { count: number })
+      .count,
+    1,
   );
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });

@@ -17,6 +17,7 @@ import { voidOutstandingInvites } from '../invites';
 import { activeGroupPlayers } from '../groupPlayers';
 import { activePlayerGroupIds, ensureDefaultGroupMembership, syncInstanceAdminForRole } from '../groups';
 import { resolveAccessibleGroupEventScope } from '../groupEventScope';
+import { getOrRepairActiveEvent } from '../eventContext';
 
 export const playersRouter = Router();
 
@@ -366,6 +367,7 @@ playersRouter.post('/:id/reactivate', requireAdmin, (req, res) => {
       .prepare("SELECT role FROM group_memberships WHERE group_id = ? AND player_id = ? AND status = 'active'")
       .get(req.group!.id, req.params.id) as { role: 'owner' | 'admin' | 'member' } | undefined;
     syncInstanceAdminForRole(req.group!.id, req.params.id, membership?.role ?? 'member', req.player?.id);
+    getOrRepairActiveEvent(req.params.id);
     writeAdminAudit({
       actorPlayerId: req.player?.id,
       action: 'player_reactivated',

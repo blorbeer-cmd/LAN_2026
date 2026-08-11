@@ -16,6 +16,7 @@ import { db, DEFAULT_GROUP_ID } from './db';
 import { getTrackingEventId } from './events';
 import { addPlayersToLayout, removePlayersFromLayouts } from './seatingLayout';
 import { resolveGroupEventScope } from './groupEventScope';
+import { ensureAccountEventContext } from './eventContext';
 
 // Avatar color palette for generated players (single source of truth since
 // the profile editor moved to a free color picker without presets). Six of
@@ -133,6 +134,7 @@ export function createTestUsers(count: number, ownerGroupId = DEFAULT_GROUP_ID):
       const color = COLORS[(existingTestCount + i) % COLORS.length];
       insertPlayer.run(id, name, color, null, nanoid(24), ownerGroupId, now);
       insertMembership.run(ownerGroupId, id, now);
+      ensureAccountEventContext(id);
       created.push({ id, name });
 
       // Bock loosely follows skill (people usually feel like playing what

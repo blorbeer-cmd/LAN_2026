@@ -15,9 +15,10 @@
 // is a pure reader and never creates anything itself.
 
 import { nanoid } from 'nanoid';
-import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL, type EventParticipationStatus } from './eventParticipation';
 import { closeEventContexts } from './trackingContexts';
+import { fallbackEventContexts, fallbackPlayerEventContext } from './eventContext';
 
 export { OUTSIDE_EVENTS_ID };
 
@@ -66,13 +67,13 @@ export function getEvent(id: string): EventRow | undefined {
   return db.prepare('SELECT * FROM events WHERE id = ?').get(id) as EventRow | undefined;
 }
 
-// Real events only — excludes the "außerhalb von Events" sentinel, which
-// isn't something you create/edit/end like a normal event (it's always
-// listed separately wherever that's relevant, e.g. as a filter option).
+// User-managed events only. The permanent base event gets its own workspace
+// contract and remains hidden from existing event administration until the
+// visible event switcher lands in the next block.
 export function listEvents(groupId = DEFAULT_GROUP_ID): EventRow[] {
   return db
-    .prepare('SELECT * FROM events WHERE id != ? AND group_id = ? ORDER BY starts_at DESC')
-    .all(OUTSIDE_EVENTS_ID, groupId) as EventRow[];
+    .prepare('SELECT * FROM events WHERE id NOT IN (?, ?) AND group_id = ? ORDER BY starts_at DESC')
+    .all(OUTSIDE_EVENTS_ID, BASE_EVENT_ID, groupId) as EventRow[];
 }
 
 export interface CreateEventOptions {
@@ -204,18 +205,27 @@ export function stopTracking(id: string): EventRow | undefined {
 // (e.g. formally closing an event that was never actually tracked).
 export function endEvent(id: string): EventRow | undefined {
   const event = getEvent(id);
-  if (!event || event.id === OUTSIDE_EVENTS_ID) return undefined;
+  if (!event || event.id === OUTSIDE_EVENTS_ID || event.id === BASE_EVENT_ID) return undefined;
 
   const wasTracking = Boolean(event.tracking_enabled);
   db.prepare("UPDATE events SET tracking_enabled = 0, ended_at = ?, status = 'ended' WHERE id = ?").run(Date.now(), id);
   if (wasTracking) closeEventContexts(id);
+  fallbackEventContexts(id);
   return getEvent(id);
 }
 
 export function cancelEvent(id: string): EventRow | undefined {
   const event = getEvent(id);
-  if (!event || event.id === OUTSIDE_EVENTS_ID || event.tracking_enabled || event.status === 'ended') return undefined;
+  if (
+    !event ||
+    event.id === OUTSIDE_EVENTS_ID ||
+    event.id === BASE_EVENT_ID ||
+    event.tracking_enabled ||
+    event.status === 'ended'
+  )
+    return undefined;
   db.prepare("UPDATE events SET status = 'cancelled' WHERE id = ?").run(id);
+  fallbackEventContexts(id);
   return getEvent(id);
 }
 
@@ -327,12 +337,14 @@ export function respondToEventInvitation(
 }
 
 export function removeEventParticipant(eventId: string, playerId: string): EventParticipationStatus | null {
+  if (eventId === BASE_EVENT_ID) return null;
   return db.transaction(() => {
     const existing = db
       .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
       .get(eventId, playerId) as { status: EventParticipationStatus } | undefined;
     if (!existing) return null;
     db.prepare('DELETE FROM event_participants WHERE event_id = ? AND player_id = ?').run(eventId, playerId);
+    fallbackPlayerEventContext(playerId, eventId);
     return existing.status;
   })();
 }
@@ -340,12 +352,18 @@ export function removeEventParticipant(eventId: string, playerId: string): Event
 // Replaces the whole roster in one go — simpler for the UI than incremental
 // add/remove calls, mirroring how a tournament's team roster is set.
 export function setParticipants(eventId: string, playerIds: string[]): void {
+  if (eventId === BASE_EVENT_ID) throw new Error('The base event roster cannot be replaced.');
   const tx = db.transaction(() => {
+    const previousIds = getParticipantIds(eventId);
     db.prepare('DELETE FROM event_participants WHERE event_id = ?').run(eventId);
     const insert = db.prepare(
       "INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')",
     );
     for (const playerId of new Set(playerIds)) insert.run(eventId, playerId);
+    const retained = new Set(playerIds);
+    for (const playerId of previousIds) {
+      if (!retained.has(playerId)) fallbackPlayerEventContext(playerId, eventId);
+    }
   });
   tx();
 }

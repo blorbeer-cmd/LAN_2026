@@ -1047,6 +1047,9 @@ registerMigration({ version: 17, name: 'add event location and description', up:
 // can recognize/exclude it without duplicating the constant.
 export const OUTSIDE_EVENTS_ID = 'outside-events';
 export const DEFAULT_GROUP_ID = 'default-group';
+// Stable id for the permanently available workspace every account belongs to.
+// Unlike OUTSIDE_EVENTS_ID this is a real, user-selectable event.
+export const BASE_EVENT_ID = 'instance-base-event';
 
 // Migration: older databases predate the tracking_enabled/ended_at event
 // columns, event_participants, and players.tracking_paused (all added
@@ -3191,6 +3194,67 @@ registerMigration({
 // Every migration is registered by now — run them all in ascending version
 // order (see registerMigration/runRegisteredMigrations above). This is the
 // single place migrations actually execute.
+// Establishes the account-wide event workspace invariant: every active
+// account participates in one permanently open base event and has exactly one
+// persisted active event. Registration/claim invites may additionally select
+// the event that becomes active when the code is redeemed.
+function createPlayerEventContext(): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO events
+       (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at,
+        is_test, group_id, status, visibility_scope)
+     VALUES (?, 'Allgemein', 0, NULL, NULL, 'Dauerhaft geöffneter gemeinsamer Bereich',
+             0, NULL, 0, ?, 'published', 'participants')`,
+  ).run(BASE_EVENT_ID, DEFAULT_GROUP_ID);
+
+  db.prepare(
+    `INSERT INTO app_state (key, value) VALUES ('base_event_id', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  ).run(BASE_EVENT_ID);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS player_event_contexts (
+      player_id       TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+      active_event_id TEXT NOT NULL REFERENCES events(id) ON DELETE RESTRICT,
+      updated_at      INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_player_event_contexts_active_event
+      ON player_event_contexts(active_event_id);
+  `);
+
+  const inviteColumns = db.prepare('PRAGMA table_info(invites)').all() as Array<{ name: string }>;
+  if (!inviteColumns.some((column) => column.name === 'event_id')) {
+    db.exec('ALTER TABLE invites ADD COLUMN event_id TEXT REFERENCES events(id) ON DELETE RESTRICT');
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_invites_event ON invites(event_id)');
+
+  db.prepare(
+    `INSERT INTO event_participants (event_id, player_id, status)
+     SELECT ?, p.id, 'accepted'
+     FROM players p
+     WHERE p.deactivated_at IS NULL
+     ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted'`,
+  ).run(BASE_EVENT_ID);
+
+  db.prepare(
+    `INSERT OR IGNORE INTO player_event_contexts (player_id, active_event_id, updated_at)
+     SELECT p.id, ?, ?
+     FROM players p
+     WHERE p.deactivated_at IS NULL`,
+  ).run(BASE_EVENT_ID, Date.now());
+
+  db.prepare(
+    `UPDATE invites
+     SET event_id = ?
+     WHERE purpose IN ('register', 'claim') AND event_id IS NULL`,
+  ).run(BASE_EVENT_ID);
+}
+registerMigration({
+  version: 63,
+  name: 'add base event and player event context',
+  up: createPlayerEventContext,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
