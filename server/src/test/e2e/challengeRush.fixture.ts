@@ -325,23 +325,46 @@ challengeRushTest('scenarios', 'Challenge Rush hides the reaction target until p
     await actor.page.waitForSelector('[data-cr-start]');
 
     // Install the observer before starting the match. The 50 ms E2E countdown
-    // is intentionally too short for polling under CI contention, but DOM
-    // mutation delivery still records both the countdown and any target that
-    // would become visible too early.
+    // is intentionally too short for polling under CI contention. Inspect the
+    // mutation records themselves because their added nodes retain the rendered
+    // countdown snapshot even if a later render replaces it before delivery.
     await actor.page.evaluate(() => {
       (window as unknown as { __crViolation: boolean }).__crViolation = false;
       (window as unknown as { __crSawCountdown: boolean }).__crSawCountdown = false;
-      const observer = new MutationObserver(() => {
-        const node = document.querySelector('.challenge-rush-stage');
-        const phase = node?.getAttribute('data-phase');
-        if (phase === 'countdown') {
-          (window as unknown as { __crSawCountdown: boolean }).__crSawCountdown = true;
+      const inspectTree = (node: Node) => {
+        if (!(node instanceof Element)) return;
+        const stages = node.matches('.challenge-rush-stage')
+          ? [node]
+          : Array.from(node.querySelectorAll('.challenge-rush-stage'));
+        for (const stage of stages) {
+          const phase = stage.getAttribute('data-phase');
+          if (phase === 'countdown') {
+            (window as unknown as { __crSawCountdown: boolean }).__crSawCountdown = true;
+          }
+          if (phase !== 'playing' && stage.querySelector('.challenge-rush-circle')) {
+            (window as unknown as { __crViolation: boolean }).__crViolation = true;
+          }
         }
-        if (phase !== 'playing' && document.querySelector('.challenge-rush-circle')) {
-          (window as unknown as { __crViolation: boolean }).__crViolation = true;
+      };
+      const observer = new MutationObserver((records) => {
+        for (const record of records) {
+          if (record.type === 'attributes') {
+            if (record.oldValue === 'countdown') {
+              (window as unknown as { __crSawCountdown: boolean }).__crSawCountdown = true;
+            }
+            inspectTree(record.target);
+          } else {
+            record.addedNodes.forEach(inspectTree);
+          }
         }
       });
-      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeOldValue: true,
+        attributeFilter: ['data-phase'],
+      });
       (window as unknown as { __crObserver: MutationObserver }).__crObserver = observer;
     });
 
