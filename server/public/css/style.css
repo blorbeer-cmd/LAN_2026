@@ -4156,7 +4156,7 @@ input.food-order-price-input {
 
 /* ---------- Toasts ---------- */
 
-/* ---------- Countdown overlay (public/js/countdown.js) ----------
+/* ---------- Countdown overlay (public/js/arcade/countdown.js) ----------
    Shared "3 · 2 · 1 · Los!" intro for every arcade game. Full-screen, with a
    dim blurred backdrop so the board behind stays faintly visible, and a big
    gradient number in the brand style that pops in per second. */
@@ -4328,6 +4328,7 @@ input.food-order-price-input {
 
 .onboarding-dialog {
   position: fixed;
+  z-index: 42;
   left: var(--space-4);
   right: var(--space-4);
   bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + var(--space-4));
@@ -4565,6 +4566,10 @@ input.food-order-price-input {
 @media (min-width: 640px) { /* --bp-md */
   .onboarding-dialog {
     bottom: var(--space-6);
+  }
+
+  .onboarding-dialog--top {
+    bottom: auto;
   }
 }
 

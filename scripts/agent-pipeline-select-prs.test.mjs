@@ -24,6 +24,7 @@ function pullRequest(overrides = {}) {
     number: 1,
     body: "A normal pull request.",
     labels: [],
+    headRefName: "feature/manual",
     statusCheckRollup: [readinessStatus()],
     ...overrides,
   };
@@ -50,7 +51,7 @@ test("the untouched task-contract template does not activate the sweep", () => {
   assert.deepEqual(selectSweepPullRequests([template], config), []);
 });
 
-test("labels alone do not select a pull request outside the pipeline", () => {
+test("unrelated pipeline labels do not select a pull request outside the pipeline", () => {
   const stale = pullRequest({
     labels: [
       { name: config.labels.waiting },
@@ -58,6 +59,17 @@ test("labels alone do not select a pull request outside the pipeline", () => {
     ],
   });
   assert.deepEqual(selectSweepPullRequests([stale], config), []);
+});
+
+test("agent namespaces and agent:pipeline cannot disappear from the sweep", () => {
+  const namespaced = pullRequest({ number: 3, headRefName: "codex/missing-contract" });
+  const labelled = pullRequest({
+    number: 4,
+    labels: [{ name: config.labels.pipeline }],
+  });
+  assert.deepEqual(sweepReasons(namespaced, config), ["agent branch namespace"]);
+  assert.deepEqual(sweepReasons(labelled, config), ["agent pipeline label"]);
+  assert.deepEqual(selectSweepPullRequests([labelled, namespaced], config), [3, 4]);
 });
 
 test("a missing readiness status selects even a non-pipeline pull request", () => {

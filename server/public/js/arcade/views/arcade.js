@@ -1,10 +1,10 @@
-import { api } from '../api.js';
-import { connectSocket } from '../socket.js';
-import { escapeHtml } from '../format.js';
-import { showToast } from '../toast.js';
-import { icon } from '../icons.js';
-import { getMyId } from '../whoami.js';
-import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
+import { api } from '../../api.js';
+import { connectSocket } from '../../socket.js';
+import { escapeHtml } from '../../format.js';
+import { showToast } from '../../toast.js';
+import { icon } from '../../icons.js';
+import { getMyId } from '../../whoami.js';
+import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard, myTetrisLobby, tetrisLobbies, leaveMyTetrisLobby } from './tetris.js';
 import {
   ensureScribbleSocket,
@@ -21,17 +21,17 @@ import { ensurePongSocket, renderPongLobbyCard, wirePongLobbyCard, myPongLobby, 
 import { ensureSnakeSocket, renderSnakeLobbyCard, wireSnakeLobbyCard, mySnakeLobby, hasSnakeMatch, snakeLobbies, leaveMySnakeLobby } from './snake.js';
 import { ensureBattleshipSocket, renderBattleshipLobbyCard, wireBattleshipLobbyCard, myBattleshipLobby, hasBattleshipMatch, battleshipLobbies } from './battleship.js';
 import { ensureChallengeRushSocket, renderChallengeRushLobbyCard, wireChallengeRushLobbyCard, myChallengeRushLobby, hasChallengeRushMatch, challengeRushLobbies, leaveMyChallengeRushLobby } from './challengeRush.js';
-import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
+import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { startArcadeWatch } from './arcadeWatch.js';
-import { confirmDialog } from '../modal.js';
+import { confirmDialog } from '../../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../../infoTooltip.js';
 import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
-import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
-import { emptyStateHtml } from '../emptyState.js';
-import { onboardingHintHtml, wireOnboardingHint } from '../onboarding.js';
+import { searchSelectHtml, wireSearchSelect } from '../../searchSelect.js';
+import { emptyStateHtml } from '../../emptyState.js';
+import { onboardingHintHtml, wireOnboardingHint } from '../../onboarding.js';
 
 // The Arcade opens as a launcher: a compact grid of playable game tiles.
 // Picking one reveals that game's lobby below.

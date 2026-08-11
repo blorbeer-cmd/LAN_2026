@@ -12,19 +12,19 @@
 // or a redraw broadcast arriving while no canvas is mounted — restores the
 // drawing via setupCanvas() instead of leaving a blank canvas behind.
 
-import { escapeHtml } from '../format.js';
-import { showToast } from '../toast.js';
-import { getMyId } from '../whoami.js';
-import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
+import { escapeHtml } from '../../format.js';
+import { showToast } from '../../toast.js';
+import { getMyId } from '../../whoami.js';
+import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { confirmDialog } from '../modal.js';
-import { connectSocket } from '../socket.js';
-import { icon } from '../icons.js';
+import { confirmDialog } from '../../modal.js';
+import { connectSocket } from '../../socket.js';
+import { icon } from '../../icons.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
-import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from './arcadeUi.js';
+import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
-import { infoTooltipHtml } from '../infoTooltip.js';
-import { emptyStateHtml } from '../emptyState.js';
+import { infoTooltipHtml } from '../../infoTooltip.js';
+import { emptyStateHtml } from '../../emptyState.js';
 
 const SWATCHES = [
   '#1a1a1a',

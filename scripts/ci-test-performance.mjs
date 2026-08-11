@@ -1,4 +1,11 @@
-import { appendFileSync, readFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -137,6 +144,191 @@ function formatPercent(value) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)} %`;
 }
 
+function reportForAssessment(suite, assessment) {
+  return {
+    suite,
+    baselineMs: assessment.baselineMs,
+    currentMs: assessment.currentMs,
+    deltaMs: assessment.deltaMs,
+    percent: assessment.percent,
+    regressed: assessment.regressed,
+  };
+}
+
+function readJson(pathname) {
+  return JSON.parse(readFileSync(pathname, "utf8"));
+}
+
+function confirmationReports(directory) {
+  if (!directory || !existsSync(directory)) return [];
+  const reports = [];
+  const visit = (pathname) => {
+    for (const entry of readdirSync(pathname, { withFileTypes: true })) {
+      const child = path.join(pathname, entry.name);
+      if (entry.isDirectory()) visit(child);
+      else if (entry.isFile() && entry.name.endsWith(".json")) reports.push(readJson(child));
+    }
+  };
+  if (statSync(directory).isDirectory()) visit(directory);
+  return reports;
+}
+
+/**
+ * Produces the stable required-check verdict from detector and confirmation state.
+ * Every missing, failed or inconsistent input fails closed when performance measurement applies.
+ */
+export function aggregatePerformance({
+  applicable,
+  changesResult,
+  detectorResult,
+  confirmationResult,
+  detection,
+  confirmations = [],
+}) {
+  const fail = (reason, outcome = "infrastructure-failure") => ({
+    passed: false,
+    outcome,
+    reason,
+    rows: [],
+  });
+
+  if (changesResult !== "success") {
+    return fail(`Path classification ended with ${changesResult}.`);
+  }
+  if (!applicable) {
+    return {
+      passed: true,
+      outcome: "not-applicable",
+      reason: "No measured test suite was selected for this change.",
+      rows: [],
+    };
+  }
+  if (detectorResult !== "success") {
+    return fail(`The performance detector ended with ${detectorResult}.`);
+  }
+  if (!detection || typeof detection !== "object" || Array.isArray(detection)) {
+    return fail("The performance detector produced no readable report.");
+  }
+
+  const results = detection.results;
+  if (!results || typeof results !== "object" || Array.isArray(results)) {
+    return fail("The performance detector report has no results object.");
+  }
+  const suspected = Object.entries(results).filter(
+    ([, result]) => result?.status === "suspected",
+  );
+  const rows = Object.entries(results).map(([suite, result]) => ({
+    suite,
+    baselineMs: result.baselineMs,
+    currentMs: result.currentMs,
+    percent: result.percent,
+    repeatMs: null,
+    repeatPercent: null,
+    result:
+      result.status === "collecting"
+        ? "baseline-collecting"
+        : result.status === "suspected"
+          ? "confirmation-missing"
+          : "clear",
+  }));
+
+  if (suspected.length === 0) {
+    if (!new Set(["success", "skipped"]).has(confirmationResult)) {
+      return fail(`The confirmation job ended unexpectedly with ${confirmationResult}.`);
+    }
+    return {
+      passed: true,
+      outcome: "clear",
+      reason: "No runtime regression was suspected.",
+      rows,
+    };
+  }
+
+  const expected = new Set(suspected.map(([suite]) => suite));
+  const reports = new Map();
+  for (const report of confirmations) {
+    if (!report || typeof report !== "object" || !expected.has(report.suite)) {
+      return fail("A confirmation report names an unexpected suite.");
+    }
+    if (reports.has(report.suite)) {
+      return fail(`More than one confirmation report exists for ${report.suite}.`);
+    }
+    reports.set(report.suite, report);
+  }
+  const missing = [...expected].filter((suite) => !reports.has(suite));
+  if (missing.length) {
+    return fail(`Confirmation reports are missing for: ${missing.join(", ")}.`);
+  }
+
+  let confirmed = false;
+  for (const row of rows) {
+    const report = reports.get(row.suite);
+    if (!report) continue;
+    if (
+      !Number.isFinite(report.baselineMs) ||
+      !Number.isFinite(report.currentMs) ||
+      !Number.isFinite(report.percent) ||
+      typeof report.regressed !== "boolean"
+    ) {
+      return fail(`The confirmation report for ${row.suite} is invalid.`);
+    }
+    row.repeatMs = report.currentMs;
+    row.repeatPercent = report.percent;
+    row.result = report.regressed ? "confirmed-regression" : "cleared-by-repeat";
+    confirmed ||= report.regressed;
+  }
+
+  if (confirmed) {
+    return {
+      passed: false,
+      outcome: "confirmed-regression",
+      reason: "At least one suspected runtime regression was confirmed.",
+      rows,
+    };
+  }
+  if (confirmationResult !== "success") {
+    return fail(`The confirmation job ended with ${confirmationResult} despite clear reports.`);
+  }
+  return {
+    passed: true,
+    outcome: "cleared-by-repeat",
+    reason: "Every suspected runtime regression was clear on repetition.",
+    rows,
+  };
+}
+
+export function aggregateSummary(aggregate) {
+  const labels = {
+    "baseline-collecting": "Basis wird aufgebaut",
+    clear: "Unauffällig",
+    "confirmation-missing": "Bestätigung fehlt",
+    "cleared-by-repeat": "Im Wiederholungslauf unauffällig",
+    "confirmed-regression": "Verlangsamung bestätigt",
+  };
+  const lines = [
+    "## Testlauf-Performance — finales Ergebnis",
+    "",
+    `**${aggregate.passed ? "Bestanden" : "Fehlgeschlagen"}:** ${aggregate.reason}`,
+    "",
+    "| Suite | Basis | Aktuell | Abweichung | Wiederholung | Ergebnis |",
+    "| --- | ---: | ---: | ---: | ---: | --- |",
+  ];
+  if (!aggregate.rows.length) {
+    lines.push("| – | – | – | – | – | Keine gemessene Suite |", "");
+    return `${lines.join("\n")}\n`;
+  }
+  for (const row of aggregate.rows) {
+    lines.push(
+      `| ${row.suite} | ${Number.isFinite(row.baselineMs) ? formatDuration(row.baselineMs) : "–"} | ` +
+        `${Number.isFinite(row.currentMs) ? formatDuration(row.currentMs) : "–"} | ` +
+        `${Number.isFinite(row.percent) ? formatPercent(row.percent) : "–"} | ` +
+        `${Number.isFinite(row.repeatMs) ? `${formatDuration(row.repeatMs)} (${formatPercent(row.repeatPercent)})` : "–"} | ` +
+        `${labels[row.result] ?? row.result} |`,
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 async function githubRequest(pathname, token, apiUrl) {
   const response = await fetch(`${apiUrl}${pathname}`, {
     headers: {
@@ -245,6 +437,7 @@ async function evaluateGithubCommand(args) {
     }));
 
   if (args.summary) appendFileSync(args.summary, summaryFor(results, config));
+  if (args.report) writeFileSync(args.report, `${JSON.stringify({ results }, null, 2)}\n`, "utf8");
   if (args["github-output"]) {
     appendFileSync(
       args["github-output"],
@@ -271,6 +464,13 @@ function confirmCommand(args) {
     throw new Error("Bestätigungs-Laufzeiten sind ungültig.");
   }
   const result = assessDuration(currentMs, baselineMs, config);
+  if (args.report) {
+    writeFileSync(
+      args.report,
+      `${JSON.stringify(reportForAssessment(args.suite, result), null, 2)}\n`,
+      "utf8",
+    );
+  }
   const message = `${args.suite}: Wiederholung ${formatDuration(currentMs)}, Basis ${formatDuration(baselineMs)}, Änderung ${formatPercent(result.percent)}`;
   if (result.regressed) {
     console.error(
@@ -282,11 +482,30 @@ function confirmCommand(args) {
   }
 }
 
+function aggregateCommand(args) {
+  const aggregate = aggregatePerformance({
+    applicable: args.applicable === "true",
+    changesResult: args["changes-result"],
+    detectorResult: args["detector-result"],
+    confirmationResult: args["confirmation-result"],
+    detection:
+      args.detection && existsSync(args.detection) ? readJson(args.detection) : null,
+    confirmations: args["confirmations-dir"]
+      ? confirmationReports(args["confirmations-dir"])
+      : [],
+  });
+  const summary = aggregateSummary(aggregate);
+  if (args.summary) appendFileSync(args.summary, summary);
+  console.log(summary);
+  if (!aggregate.passed) process.exitCode = 1;
+}
+
 async function main() {
   const command = process.argv[2];
   const args = parseArgs(process.argv.slice(3));
   if (command === "evaluate-github") await evaluateGithubCommand(args);
   else if (command === "confirm") confirmCommand(args);
+  else if (command === "aggregate") aggregateCommand(args);
   else throw new Error(`Unbekannter Befehl: ${command ?? ""}`);
 }
 
