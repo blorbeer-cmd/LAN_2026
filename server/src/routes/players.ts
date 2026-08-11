@@ -16,7 +16,7 @@ import { writeAdminAudit } from '../adminAudit';
 import { voidOutstandingInvites } from '../invites';
 import { activeGroupPlayers } from '../groupPlayers';
 import { activePlayerGroupIds, ensureDefaultGroupMembership, syncInstanceAdminForRole } from '../groups';
-import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
+import { resolveAccessibleGroupEventScope } from '../groupEventScope';
 
 export const playersRouter = Router();
 
@@ -479,9 +479,8 @@ playersRouter.get('/:id/neighbors', ...withParamPlayerIdentity('id'), (req, res)
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
 
-  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
-  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
-  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const scope = resolveAccessibleGroupEventScope(req, res, req.query.eventId);
+  if (!scope) return;
 
   const rows = db
     .prepare('SELECT neighbor_id FROM seat_neighbors WHERE group_id = ? AND event_id IS ? AND player_id = ?')
@@ -505,9 +504,8 @@ playersRouter.put('/:id/neighbors', ...withParamPlayerIdentity('id'), (req, res)
   if (!Array.isArray(neighborIds) || !neighborIds.every((n) => typeof n === 'string')) {
     return res.status(400).json({ error: 'neighborIds muss ein String-Array sein.' });
   }
-  const scope = resolveGroupEventScope(req.group!.id, eventId);
-  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
-  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const scope = resolveAccessibleGroupEventScope(req, res, eventId);
+  if (!scope) return;
 
   // Silently drop yourself and anything that isn't actually a player, rather
   // than erroring — a stale id from a checkbox list a moment after someone
@@ -575,9 +573,8 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const { eventId } = req.query;
-  const scope = resolveGroupEventScope(req.group!.id, eventId);
-  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
-  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const scope = resolveAccessibleGroupEventScope(req, res, eventId);
+  if (!scope) return;
   const filterEventId = scope.eventId;
   const now = Date.now();
 

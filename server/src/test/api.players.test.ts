@@ -229,6 +229,34 @@ test('PUT /api/players/:id/neighbors rejects unknown ids', async () => {
   assert.equal(res.status, 404);
 });
 
+test('GET /api/players/:id/neighbors falls back to the group room instead of 404ing when the currently tracked event is participant-private and the viewer is not yet accepted', async () => {
+  const event = await request(app)
+    .post('/api/events')
+    .send({ name: 'Private Profile Event', startsAt: Date.now(), endsAt: Date.now() + 60_000, visibilityScope: 'participants' });
+  assert.equal(event.status, 201, JSON.stringify(event.body));
+  db.prepare('UPDATE events SET tracking_enabled = 1 WHERE id = ?').run(event.body.id);
+  try {
+    // createdId is a plain group member here - never invited to this event -
+    // so opening their own profile (implicit/default event resolution, no
+    // ?eventId=) must not surface the private event's "Event nicht gefunden"
+    // the way it would for someone who explicitly asked for that event id.
+    // Same status - and same eventId: null group-room data an unscoped
+    // request already resolved to before this event existed - not a 404.
+    const neighbors = await request(app).get(`/api/players/${createdId}/neighbors`);
+    assert.equal(neighbors.status, 200);
+    assert.equal(neighbors.body.eventId, null);
+
+    const stats = await request(app).get(`/api/players/${createdId}/stats`);
+    assert.equal(stats.status, 200);
+    assert.equal(stats.body.playerId, createdId);
+
+    const explicit = await request(app).get(`/api/players/${createdId}/neighbors?eventId=${event.body.id}`);
+    assert.equal(explicit.status, 404, 'an explicitly requested inaccessible event id still 404s');
+  } finally {
+    db.prepare('UPDATE events SET tracking_enabled = 0 WHERE id = ?').run(event.body.id);
+  }
+});
+
 test('PUT /api/players/:id/neighbors binds the URL identity to the session', async () => {
   const res = await request(app)
     .put('/api/players/ghost/neighbors')
