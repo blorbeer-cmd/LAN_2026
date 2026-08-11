@@ -188,16 +188,20 @@ Bei `anchor: none` müssen `file` und `line` stattdessen als JSON-`null` ausgege
    equivalent substitute.
 3. Give the detached task a clean, dedicated worktree at the exact PR head SHA. Do not reuse the
    implementation worktree or check out the moving PR branch.
-4. Have the coordinating implementation session record the dedicated worktree's head and clean
-   status before the review. Start `/review` against `<BASE_BRANCH>` with the complete custom review
-   instructions above, then have the coordinator independently confirm the same head and untouched
-   worktree after the review.
+4. Before/after confirmation must come from a party independent of the implementation/coordination
+   session — a human operator, or an automated check outside that session's control (analogous to
+   the Claude launcher's after-the-fact worktree check). The implementation/coordination session may
+   set up the worktree and start `/review` against `<BASE_BRANCH>` with the complete custom review
+   instructions above, but recording the head/clean status beforehand and confirming the same head
+   and untouched worktree afterward is the independent party's job, not the implementation session's
+   own say-so — the same session judging its own work cannot also be the check that catches it.
 5. The dedicated Codex `/review` surface is documented to report findings without changing the
-   working tree. Together with **Detached**, an exact-head worktree, and the external before/after
-   verification, that supports `read-only=verified`. Credentials without repository write
-   permission raise the result to `read-only=true`; they are not required for the default
+   working tree. Together with **Detached**, an exact-head worktree, and the independent external
+   before/after verification, that supports `read-only=verified`. Credentials without repository
+   write permission raise the result to `read-only=true`; they are not required for the default
    `verified` gate. If `/review` is unavailable, falls back to a normal editable task, or the
-   external verification cannot be completed, treat Codex as unavailable for this self-review.
+   independent external verification cannot be completed, treat Codex as unavailable for this
+   self-review.
 6. Confirm that the final `reviewed_head_sha` equals the current GitHub head SHA. Treat a mismatch,
    missing JSON block or `blocked` verdict as no completed review.
 7. Hand the complete result to the implementation session. Actionable findings must be published
@@ -324,15 +328,17 @@ The marker carries one of three values, and the merge gate compares it against
 | Level      | What backs it                                                                                                                   | Who can claim it |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | `true`     | everything under `verified`, plus credentials without code write access, so a write fails server-side                            | the operator, via `--enforced` |
-| `verified` | either the restricted Claude launcher checks an exact-head throwaway worktree afterwards, or Codex runs the dedicated detached `/review` flow and the coordinator independently confirms the exact head and untouched worktree afterwards | the Claude launcher, or the coordinator of a detached Codex `/review` |
+| `verified` | either the restricted Claude launcher checks an exact-head throwaway worktree afterwards, or Codex runs the dedicated detached `/review` flow and an operator independent of the implementation/coordination session confirms the exact head and untouched worktree afterwards | the Claude launcher, or an independent operator of a detached Codex `/review` |
 | `false`    | nothing outside the prompt                                                                                                      | anything else, including an interactive launch and `--print-only` |
 
 For launcher-produced markers, `verified` requires `--headless` because only a headless run publishes
 from the launcher, i.e. *after* the check. An interactive launcher session posts its own comment
 while it is still running, so it stays at `false` and writes no marker. A detached Codex `/review`
 reaches `verified` by a different route: its dedicated no-working-tree-change review surface is
-combined with the coordinator's exact-head before/after check, and the coordinator publishes the
-result marker only after that check succeeds. A normal editable Codex chat remains `false`.
+combined with an independent operator's exact-head before/after check — independent of the
+implementation/coordination session, not that session confirming its own setup — and that operator
+publishes the result marker only after the check succeeds. A normal editable Codex chat remains
+`false`.
 
 `verified` exists because `true` is not reachable everywhere. A session whose only credentials can
 push cannot honestly assert it — and demanding it anyway left `self` unusable in exactly those
@@ -376,8 +382,9 @@ hold, because layers 1 and 2 are pattern-based and a shell is a wide surface:
   `Pull requests: Read and write` can post the findings comment but cannot push, so a push attempt
   fails server-side rather than being talked out of.
 
-Without layer 3 but with either the launcher's check or the detached Codex `/review` plus the
-coordinator's external before/after check, report `verified`. Without those checks, report `false`:
+Without layer 3 but with either the launcher's check or the detached Codex `/review` plus an
+independent operator's external before/after check, report `verified`. Without those checks, report
+`false`:
 the review is then still useful input for a human, but it does not satisfy the `self` merge-gate
 condition at the default minimum.
 
