@@ -225,6 +225,41 @@ function isBotLogin(login) {
   return typeof login === "string" && login.endsWith("[bot]");
 }
 
+// How the Codex integration reports a review that found nothing.
+//
+// It submits a native GitHub review only when it has findings; a clean pass arrives as a plain
+// comment, so the head it reviewed was invisible to a gate that reads submitted reviews only. That
+// left the pull request blocked on a review which demonstrably happened — observed on #392, where
+// the requested review answered with exactly this and `get_reviews` stayed empty.
+//
+// The comment does name its head, which is what makes it usable: `**Reviewed commit:** `836976f3ff``.
+// Both halves are required, because the same integration prints that line on the comment that
+// accompanies *findings* too, and only the clean-pass wording separates the two.
+const PROVIDER_REVIEWED_COMMIT_PATTERN = /reviewed commit:?\**\s*`?([0-9a-f]{7,40})`?/i;
+const PROVIDER_CLEAN_PASS_PATTERN = /did\s?n[o']t find any (?:major )?issues/i;
+
+/**
+ * Whether the counter provider reported a finding-free review of this exact head in a comment.
+ *
+ * Deliberately narrow. The author must be the configured reviewer identity, so no one else can
+ * declare a review; the comment must name a SHA that is a prefix of the current head, so it cannot
+ * be inherited by a later commit; and it must carry the clean-pass wording, so the comment that
+ * accompanies findings is not mistaken for one. A wording change on the provider's side makes this
+ * return false again — the gate becomes stricter, never looser, which is the safe direction.
+ */
+export function parseProviderCleanPass(comments, headSha, allowedReviewerLogins) {
+  if (!/^[0-9a-f]{40}$/.test(headSha ?? "")) return false;
+  const allowed = allowedReviewerLogins ?? [];
+  return (comments ?? []).some((comment) => {
+    const author = comment?.author ?? null;
+    if (!allowed.includes(author) || !isBotLogin(author)) return false;
+    const body = comment?.body ?? "";
+    if (!PROVIDER_CLEAN_PASS_PATTERN.test(body)) return false;
+    const reviewed = body.match(PROVIDER_REVIEWED_COMMIT_PATTERN)?.[1];
+    return Boolean(reviewed) && headSha.startsWith(reviewed.toLowerCase());
+  });
+}
+
 /**
  * Reduces the reviews that belong to the current head SHA to a single verdict.
  *
@@ -977,6 +1012,15 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     snapshot.headSha,
     allowedReviewers,
   );
+  // A provider that submits a review only when it has findings would otherwise leave a clean pass
+  // unreadable, blocking a head it demonstrably reviewed. The comment names the head it checked, so
+  // it is evidence for that head and no other.
+  const providerCleanPass = parseProviderCleanPass(
+    snapshot.comments,
+    snapshot.headSha,
+    allowedReviewers,
+  );
+  if (providerCleanPass) reviews.reviewedByProvider = true;
   // Some provider integrations return structured output instead of submitting a native GitHub
   // review. Only the dedicated publisher identities configured for that provider may bridge such
   // an output into the same head-bound result marker used by self reviews. Keeping this allowlist
@@ -1027,6 +1071,7 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     handledStartFailure?.headSha === snapshot.headSha &&
     handledStartFailure?.attempt === reviewStartFailure?.attempt;
   const completedCrossReview =
+    providerCleanPass ||
     reviews.verdict === "pass" ||
     reviews.verdict === "changes-required" ||
     crossResult?.verdict === "pass" ||
@@ -2137,6 +2182,9 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       // A discussion that could not be read completely must block, and must say why.
       reviewThreadsReadable: graph?.readable === true,
       uiNoticeHeadSha: parseUiNoticeHeadSha(trustedComments),
+      // The counter provider's own comments. A clean pass never becomes a submitted review, so the
+      // only head-bound record of it lives here.
+      comments: trustedComments,
       // Why the last chosen review produced nothing, so the status comment can say so.
       reviewStartNotice: parseReviewStartNotice(trustedComments),
       // Kept separate from the body: the body drives the idempotence comparison for every adopted

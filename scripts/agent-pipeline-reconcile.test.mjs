@@ -45,6 +45,7 @@ import {
   statusCommentBody,
   UI_NOTICE_MARKER,
   waitingEscalationHours,
+  parseProviderCleanPass,
 } from "./agent-pipeline-reconcile.mjs";
 
 const config = loadConfig();
@@ -54,13 +55,19 @@ const BASE = "c".repeat(40);
 
 const CODEX_REVIEWER = "chatgpt-codex-connector[bot]";
 
-test("reconcile reacts to provider review-result comments without cancelling active runs", () => {
+test("reconcile reacts to provider comment evidence without cancelling active runs", () => {
   const workflow = readFileSync(
     new URL("../.github/workflows/agent-pipeline-reconcile.yml", import.meta.url),
     "utf8",
   ).replaceAll("\r\n", "\n");
   assert.match(workflow, /issue_comment:\n\s+types: \[created, edited\]/);
   assert.match(workflow, /contains\(github\.event\.comment\.body, 'agent-pipeline:review-result'\)/);
+  assert.match(
+    workflow,
+    /github\.event\.comment\.user\.login == 'chatgpt-codex-connector\[bot\]'/,
+  );
+  assert.match(workflow, /contains\(github\.event\.comment\.body, 'Codex Review:'\)/);
+  assert.match(workflow, /contains\(github\.event\.comment\.body, '\*\*Reviewed commit:\*\*'\)/);
   // The failure notice is deliberately absent here. It is written with the repository
   // GITHUB_TOKEN, and GitHub starts no workflow run from an event created with that token, so a
   // trigger on its marker would read like a working path while never firing. The cross-review
@@ -1784,6 +1791,28 @@ test("a completed cross-review wins over an older start-failure notice", () => {
   assert.equal(passed.details.reviewMode, "cross");
 });
 
+test("a finding-free provider review wins over an older start-failure notice", () => {
+  const passed = deriveReadiness(
+    readySnapshot({
+      reviews: [],
+      comments: [
+        {
+          author: CODEX_REVIEWER,
+          authorAssociation: "NONE",
+          body:
+            "Codex Review: Didn't find any major issues. Delightful!\n\n" +
+            `**Reviewed commit:** \`${HEAD.slice(0, 10)}\`\n`,
+        },
+      ],
+      reviewStartFailures: [reviewStartFailure()],
+    }),
+    config,
+  );
+  assert.equal(passed.details.reviewMode, "cross");
+  assert.equal(passed.ready, true);
+  assert.equal(passed.phase, "ready-for-merge");
+});
+
 test("review-start notices are trusted, head-bound and keep a stable attempt", () => {
   const marker = `${REVIEW_START_NOTICE_MARKER} ${HEAD} mode=cross outcome=failed code=failed attempt=77-2 -->`;
   const failures = parseReviewStartFailures([
@@ -2862,7 +2891,7 @@ test("the reconcile job may dispatch the two trusted cross-review workflows", ()
     new URL("../.github/workflows/agent-pipeline-reconcile.yml", import.meta.url),
     "utf8",
   );
-  const reconcileSection = workflow.match(/\n  reconcile:\n[\s\S]*$/)?.[0] ?? "";
+  const reconcileSection = workflow.match(/\r?\n  reconcile:\r?\n[\s\S]*$/)?.[0] ?? "";
   assert.match(reconcileSection, /actions: write/);
 });
 
@@ -3102,4 +3131,79 @@ test("a failed workflow dispatch does not block labels, the comment or the gate 
   );
   assert.ok(applied.includes("created status comment"));
   assert.ok(applied.some((line) => line.startsWith("set ")));
+});
+
+test("a finding-free provider review counts only for the head it names", () => {
+  const head = "8".repeat(40);
+  const codex = "chatgpt-codex-connector[bot]";
+  const allowed = [codex];
+  // Verbatim from #392: the integration submits no review when it finds nothing, so this comment is
+  // the only head-bound record that the review happened at all.
+  const cleanPass = (sha) =>
+    `Codex Review: Didn't find any major issues. Delightful!\n\n**Reviewed commit:** \`${sha.slice(0, 10)}\`\n`;
+
+  assert.equal(
+    parseProviderCleanPass([{ author: codex, body: cleanPass(head) }], head, allowed),
+    true,
+  );
+  // A pass for an earlier head must never be inherited by the current one.
+  assert.equal(
+    parseProviderCleanPass([{ author: codex, body: cleanPass("7".repeat(40)) }], head, allowed),
+    false,
+  );
+  // Anyone may quote the wording; only the configured reviewer identity may declare a review.
+  assert.equal(
+    parseProviderCleanPass([{ author: "blorbeer-cmd", body: cleanPass(head) }], head, allowed),
+    false,
+  );
+  // The same integration prints "Reviewed commit" on the comment that accompanies findings, and
+  // that one must keep blocking until its threads are resolved.
+  assert.equal(
+    parseProviderCleanPass(
+      [
+        {
+          author: codex,
+          body: `### 💡 Codex Review\n\nHere are some automated review suggestions.\n\n**Reviewed commit:** \`${head.slice(0, 10)}\`\n`,
+        },
+      ],
+      head,
+      allowed,
+    ),
+    false,
+  );
+  // Neither the refusal nor the usage-limit notice names a reviewed commit.
+  assert.equal(
+    parseProviderCleanPass(
+      [{ author: codex, body: "You have reached your Codex usage limits." }],
+      head,
+      allowed,
+    ),
+    false,
+  );
+  assert.equal(parseProviderCleanPass([], head, allowed), false);
+  assert.equal(parseProviderCleanPass([{ author: codex, body: cleanPass(head) }], "nope", allowed), false);
+});
+
+test("a finding-free provider review opens the cross gate for its own head", () => {
+  const cleanPass = (sha) => ({
+    author: CODEX_REVIEWER,
+    authorAssociation: "NONE",
+    body: `Codex Review: Didn't find any major issues. Delightful!\n\n**Reviewed commit:** \`${sha.slice(0, 10)}\`\n`,
+  });
+
+  // Without this the pull request stayed blocked on a review that had demonstrably run: the
+  // integration submits a review only when it has findings, so a clean pass left `get_reviews` empty.
+  const passed = deriveReadiness(
+    // No submitted review at all: the clean-pass comment is the only evidence there is.
+    readySnapshot({ reviews: [], comments: [cleanPass(HEAD)] }),
+    config,
+  );
+  assert.doesNotMatch(passed.blockers.join("\n"), /No codex review covers the current head SHA/);
+
+  // A pass naming an earlier head must keep blocking, exactly like a stale approval does.
+  const stale = deriveReadiness(
+    readySnapshot({ reviews: [], comments: [cleanPass(OLD_HEAD)] }),
+    config,
+  );
+  assert.match(stale.blockers.join("\n"), /No codex review covers the current head SHA/);
 });
