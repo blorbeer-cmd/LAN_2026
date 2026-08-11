@@ -618,8 +618,8 @@ export function renderVotes(container, ctx) {
         </label>
         <div id="votes-game-select-wrap" class="stack vote-game-select-wrap">
           <div class="selection-toolbar">
-            <button type="button" class="icon-btn selection-toolbar-icon" id="votes-select-all" aria-label="Sichtbare Spiele markieren" data-tooltip="Sichtbare markieren">${icon('check')}</button>
-            <button type="button" class="icon-btn selection-toolbar-icon" id="votes-select-none" aria-label="Sichtbare Spiele abwählen" data-tooltip="Sichtbare abwählen">${icon('x')}</button>
+            <button type="button" class="icon-btn selection-toolbar-icon" id="votes-select-all" aria-label="Sichtbare Spiele markieren" data-tooltip="Sichtbare markieren">${icon('listChecks')}</button>
+            <button type="button" class="icon-btn selection-toolbar-icon selection-toolbar-icon--clear" id="votes-select-none" aria-label="Sichtbare Spiele abwählen" data-tooltip="Sichtbare abwählen">${icon('listX')}</button>
             ${selectionSearchHtml('votes-game-search', voteGameSearchQuery, { placeholder: 'Spiele suchen…', label: 'Spiele suchen' })}
           </div>
           ${voteGenreFilterHtml}
