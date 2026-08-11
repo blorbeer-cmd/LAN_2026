@@ -12,6 +12,7 @@ import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { onboardingHintHtml, wireOnboardingHint } from '../onboarding.js';
 
 let cache = null;
 let loading = false;
@@ -383,6 +384,7 @@ export function renderArrivals(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">An- & Abreise</h1>
+    ${onboardingHintHtml('arrivals')}
     ${
       loaded
         ? `<div class="arrivals-layout grouped-page-sections">
@@ -488,4 +490,5 @@ export function renderArrivals(container, ctx) {
       }
     });
   });
+  wireOnboardingHint(container, ctx.rerender);
 }

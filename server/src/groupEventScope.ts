@@ -57,6 +57,41 @@ export function requireGroupEventAccess(req: Request, res: Response, eventId: Gr
   return false;
 }
 
+// Resolves an optional event selector to a scope this request can actually
+// see. When the caller left the event unspecified (the implicit default -
+// "this group's currently tracked event"), a participant-private result the
+// requester isn't an accepted participant of falls back to the group's
+// durable room (null) instead of 404ing: a new member can be active in the
+// group before an organizer has accepted them for that event, and
+// self-service endpoints over a player's own data (visible monitors, own
+// stats) should not surface a misleading "Event nicht gefunden" for that
+// player's own profile just because one event's private scope isn't visible
+// to them yet (see routes/checklist.ts's currentEventScope for the original
+// instance of this pattern). An *explicitly* requested eventId the caller
+// cannot access stays a hard 404, same as requireGroupEventAccess, since the
+// caller asked for that specific scope. Writes the response and returns
+// null when the selector itself is invalid, points at an event outside this
+// group, or is an explicit id without access.
+export function resolveAccessibleGroupEventScope(
+  req: Request,
+  res: Response,
+  requestedEventId: unknown,
+): { eventId: GroupEventScope; usedGroupRoomFallback: boolean } | null {
+  const scope = resolveGroupEventScope(req.group!.id, requestedEventId);
+  if (!scope.ok) {
+    res.status(scope.status).json({ error: scope.error });
+    return null;
+  }
+  if (scope.eventId !== null && !requestCanAccessGroupEvent(req, scope.eventId)) {
+    if (requestedEventId !== undefined) {
+      res.status(404).json({ error: 'Event nicht gefunden.' });
+      return null;
+    }
+    return { eventId: null, usedGroupRoomFallback: true };
+  }
+  return { eventId: scope.eventId, usedGroupRoomFallback: false };
+}
+
 // Arrivals and food orders still use the legacy event-owned schema with a
 // non-null event_id and no denormalized group_id. Resolve that storage key
 // from the already-authorized group instead of using the instance-wide

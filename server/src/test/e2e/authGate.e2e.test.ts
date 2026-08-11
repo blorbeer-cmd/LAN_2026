@@ -126,7 +126,40 @@ test('an invite link registers a new account and logs it straight in', async () 
   await page.waitForTimeout(500);
 
   await page.waitForSelector('#onboarding-root [role="dialog"]');
-  for (let step = 0; step < 9; step += 1) {
+
+  // Regression coverage: highlighted bottom-navigation steps move the dialog
+  // to the top. At laptop widths, the later media rule must not restore a
+  // bottom anchor (which would stretch the panel), and the spotlight shadow
+  // must remain below the dialog instead of dimming its copy and controls.
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.click('[data-onboarding-next]');
+  await page.waitForSelector('.onboarding-dialog--top');
+  await page.waitForSelector('.onboarding-target-ring');
+  const onboardingLayers = await page.evaluate(() => {
+    const dialog = document.querySelector('.onboarding-dialog');
+    const ring = document.querySelector('.onboarding-target-ring');
+    if (!dialog || !ring) throw new Error('onboarding layers are missing');
+    const dialogStyle = getComputedStyle(dialog);
+    const ringStyle = getComputedStyle(ring);
+    const laptopBottomAnchor = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-6'));
+    return {
+      dialogBottom: Number.parseFloat(dialogStyle.bottom),
+      dialogHeight: dialog.getBoundingClientRect().height,
+      dialogZIndex: Number(dialogStyle.zIndex),
+      ringZIndex: Number(ringStyle.zIndex),
+      laptopBottomAnchor,
+      viewportHeight: window.innerHeight,
+    };
+  });
+  assert.ok(
+    onboardingLayers.dialogBottom > onboardingLayers.laptopBottomAnchor,
+    'the top dialog must not retain the laptop bottom anchor',
+  );
+  assert.ok(onboardingLayers.dialogHeight < onboardingLayers.viewportHeight / 2, 'the top dialog must stay compact');
+  assert.ok(onboardingLayers.dialogZIndex > onboardingLayers.ringZIndex, 'the dialog must stay above the spotlight shadow');
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  for (let step = 1; step < 9; step += 1) {
     await page.click('[data-onboarding-next]');
     await page.waitForSelector('#onboarding-root [role="dialog"]');
   }
@@ -173,6 +206,12 @@ test('an invite link registers a new account and logs it straight in', async () 
   await page.waitForSelector('[data-onboarding-finish]:not([disabled])');
   await page.click('[data-onboarding-finish]');
   await page.waitForSelector('#onboarding-root [role="dialog"]', { state: 'detached' });
+  // Regression: the "Pflicht" badge/blue outline is a rating-mode-only
+  // marker and must disappear once the round is done, not linger on the
+  // catalog forever just because the server still remembers which ten
+  // games were the required set.
+  await page.waitForSelector('[data-tab="catalog"]');
+  assert.equal(await page.locator('.game-table-row.onboarding-required').count(), 0);
 });
 
 test('logging out drops back to the login gate, and logging back in works', async () => {
