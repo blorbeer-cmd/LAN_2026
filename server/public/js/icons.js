@@ -46,6 +46,8 @@ const ICONS = {
   calendar: '<rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/>',
   link: '<path d="M10 13a5 5 0 0 0 7.07.07l2-2a5 5 0 0 0-7.07-7.07l-1.15 1.15"/><path d="M14 11a5 5 0 0 0-7.07-.07l-2 2A5 5 0 0 0 12 20l1.15-1.15"/>',
   check: '<path d="m20 6-11 11-5-5"/>',
+  listChecks: '<path d="M16 6H3"/><path d="M16 12H3"/><path d="M11 18H3"/><path d="m15 18 2 2 4-4"/>',
+  listX: '<path d="M11 6H3"/><path d="M11 12H3"/><path d="M11 18H3"/><path d="m16 16 5 5"/><path d="m21 16-5 5"/>',
   crown: '<path d="m2 4 3 12h14l3-12-6 7-4-7-4 7Z"/><path d="M5 20h14"/>',
   monitor: '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>',

@@ -359,8 +359,8 @@ function renderCreateForm(el, ctx) {
             <label class="field-label" for="tourn-teamcount">Anzahl Teams</label>
             <input type="number" id="tourn-teamcount" min="2" value="${escapeHtml(createTeamCount)}" />
           </div>
-          <button type="button" class="icon-btn selection-toolbar-icon" id="tourn-select-all" aria-label="Sichtbare Spieler markieren" data-tooltip="Sichtbare markieren">${icon('check')}</button>
-          <button type="button" class="icon-btn selection-toolbar-icon" id="tourn-select-none" aria-label="Sichtbare Spieler abwählen" data-tooltip="Sichtbare abwählen">${icon('x')}</button>
+          <button type="button" class="icon-btn selection-toolbar-icon" id="tourn-select-all" aria-label="Sichtbare Spieler markieren" data-tooltip="Sichtbare markieren">${icon('listChecks')}</button>
+          <button type="button" class="icon-btn selection-toolbar-icon selection-toolbar-icon--clear" id="tourn-select-none" aria-label="Sichtbare Spieler abwählen" data-tooltip="Sichtbare abwählen">${icon('listX')}</button>
           ${selectionSearchHtml('tourn-player-search', createPlayerSearchQuery)}
         </div>
         <div class="player-selection-grid tournament-player-grid">${playerRows}</div>
