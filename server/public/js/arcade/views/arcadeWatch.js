@@ -1,11 +1,11 @@
-import { escapeHtml, avatarHtml } from '../format.js';
-import { connectSocket } from '../socket.js';
-import { arcadeStreamCanvasSize, drawArcadeStreamCanvas } from '../arcadeStreamRenderer.js';
-import { getMyId } from '../whoami.js';
-import { icon } from '../icons.js';
-import { showToast } from '../toast.js';
-import { snakeArenaLegendHtml } from '../snakeArenaLegend.js';
-import { emptyStateHtml } from '../emptyState.js';
+import { escapeHtml, avatarHtml } from '../../format.js';
+import { connectSocket } from '../../socket.js';
+import { arcadeStreamCanvasSize, drawArcadeStreamCanvas } from '../shared/arcadeStreamRenderer.js';
+import { getMyId } from '../../whoami.js';
+import { icon } from '../../icons.js';
+import { showToast } from '../../toast.js';
+import { snakeArenaLegendHtml } from '../shared/snakeArenaLegend.js';
+import { emptyStateHtml } from '../../emptyState.js';
 
 const GAME_NAMES = {
   quiz: 'Gaming-Quiz',
