@@ -3551,7 +3551,6 @@ input[type='number'].tournament-score-input {
   height: var(--tap-target-size);
   min-height: var(--tap-target-size);
 }
-.vote-game-filter,
 .vote-game-select-wrap {
   gap: var(--space-2);
 }
