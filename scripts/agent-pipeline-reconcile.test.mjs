@@ -23,15 +23,19 @@ import {
   parseReviewDecisionDeliveryFailure,
   parseReviewDecisionNotificationHeadShas,
   parseReviewResults,
+  parseReviewRetriggerHeadShas,
   parseReviewStartNotice,
   parseUiNoticeHeadSha,
   planGateStatus,
   planLabels,
+  planReviewRetrigger,
   recommendReviewMode,
   reconcile,
+  renderReviewRetriggerComment,
   renderStatusComment,
   REVIEW_DECISION_DELIVERY_FAILURE_MARKER,
   REVIEW_DECISION_NOTIFICATION_MARKER,
+  REVIEW_RETRIGGER_MARKER,
   reviewerProviderFor,
   reviewWaitingHours,
   STATUS_COMMENT_MARKER,
@@ -2679,4 +2683,262 @@ test("a failed review attempt is named in the status comment, not just in its ow
     renderStatusComment(answered, readySnapshot(), config),
     /Last review attempt/,
   );
+});
+
+// ---------------------------------------------------------------------------
+// Automatic retrigger
+//
+// The label-triggered cross-review workflow runs exactly once, when `review:cross` is set, and
+// never retries on its own. A pull request labeled while still a draft or behind `main` declines
+// and is then stuck until a human removes and resets the label — the very state the review-start
+// notice above already reports as a blocker. This closes that gap without changing what counts as
+// evidence: the reconciler re-dispatches the same workflow once the head it already declined on
+// becomes genuinely eligible.
+// ---------------------------------------------------------------------------
+
+test("the reconcile job may dispatch the two trusted cross-review workflows", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/agent-pipeline-reconcile.yml", import.meta.url),
+    "utf8",
+  );
+  const reconcileSection = workflow.match(/\n  reconcile:\n[\s\S]*$/)?.[0] ?? "";
+  assert.match(reconcileSection, /actions: write/);
+});
+
+test("parseReviewRetriggerHeadShas trusts only the reconciler's own identity", () => {
+  const marker = (sha, provider = "claude") =>
+    `Retriggered.\n\n${REVIEW_RETRIGGER_MARKER} ${sha} provider=${provider} -->`;
+  assert.deepEqual(
+    parseReviewRetriggerHeadShas(
+      [
+        { author: "github-actions[bot]", body: marker(HEAD) },
+        { author: "github-actions[bot]", body: marker(HEAD) },
+        { author: "github-actions[bot]", body: marker(OLD_HEAD, "codex") },
+        { author: "outsider", body: marker("d".repeat(40)) },
+      ],
+      config,
+    ).sort(),
+    [HEAD, OLD_HEAD].sort(),
+  );
+  assert.deepEqual(
+    parseReviewRetriggerHeadShas(
+      [{ author: "github-actions[bot]", body: "no marker" }],
+      config,
+    ),
+    [],
+  );
+});
+
+test("renderReviewRetriggerComment names the provider and binds the marker to the head", () => {
+  const body = renderReviewRetriggerComment(codexImplementationSnapshot(), "claude", config);
+  assert.match(body, /Claude cross-review workflow/);
+  assert.match(body, new RegExp(`${REVIEW_RETRIGGER_MARKER} ${HEAD} provider=claude -->$`, "m"));
+});
+
+test("planReviewRetrigger dispatches once a declined head becomes ready", () => {
+  const snapshot = codexImplementationSnapshot({
+    reviewStartNotice: { headSha: HEAD, outcome: "declined" },
+  });
+  const readiness = deriveReadiness(snapshot, config);
+  assert.equal(readiness.phase, "review");
+
+  const plan = planReviewRetrigger(readiness, snapshot, config);
+  assert.ok(plan);
+  assert.equal(plan.provider, "claude");
+  assert.equal(plan.workflowFile, "agent-pipeline-claude-review.yml");
+  assert.equal(plan.ref, "main");
+  assert.match(
+    plan.commentBody,
+    new RegExp(`${REVIEW_RETRIGGER_MARKER} ${HEAD} provider=claude -->`),
+  );
+});
+
+test("planReviewRetrigger stays silent without a declined notice for this head", () => {
+  const snapshot = codexImplementationSnapshot();
+  assert.equal(
+    planReviewRetrigger(deriveReadiness(snapshot, config), snapshot, config),
+    null,
+  );
+});
+
+test("planReviewRetrigger never retries a failed (crashed) attempt automatically", () => {
+  const snapshot = codexImplementationSnapshot({
+    reviewStartNotice: { headSha: HEAD, outcome: "failed" },
+  });
+  const readiness = deriveReadiness(snapshot, config);
+  assert.equal(readiness.phase, "review");
+  assert.equal(planReviewRetrigger(readiness, snapshot, config), null);
+});
+
+test("planReviewRetrigger stays silent for self and human review modes", () => {
+  for (const [label, mode] of [
+    [SELF_LABEL, "self"],
+    [HUMAN_LABEL, "human"],
+  ]) {
+    const snapshot = codexImplementationSnapshot({
+      labels: [label],
+      statusCommentBody: decisionRecord(HEAD, mode),
+      reviewStartNotice: { headSha: HEAD, outcome: "declined" },
+    });
+    const readiness = deriveReadiness(snapshot, config);
+    assert.equal(readiness.phase, "review");
+    assert.equal(planReviewRetrigger(readiness, snapshot, config), null);
+  }
+});
+
+test("planReviewRetrigger does not fire again once its own marker covers the head", () => {
+  const snapshot = codexImplementationSnapshot({
+    reviewStartNotice: { headSha: HEAD, outcome: "declined" },
+    reviewRetriggerHeadShas: [HEAD],
+  });
+  const readiness = deriveReadiness(snapshot, config);
+  assert.equal(planReviewRetrigger(readiness, snapshot, config), null);
+});
+
+test("planReviewRetrigger checks eligibility fresh, not the stale notice", () => {
+  // Declined earlier; checks are failing right now for an unrelated reason. Nothing to retry.
+  const snapshot = codexImplementationSnapshot({
+    reviewStartNotice: { headSha: HEAD, outcome: "declined" },
+    checkRuns: [{ name: "Unit tests", status: "completed", conclusion: "failure" }],
+  });
+  const readiness = deriveReadiness(snapshot, config);
+  assert.equal(readiness.phase, "ci-fix");
+  assert.equal(planReviewRetrigger(readiness, snapshot, config), null);
+});
+
+test("planReviewRetrigger never dispatches a provider without a known workflow file", () => {
+  const readiness = {
+    phase: "review",
+    reviewerProvider: null,
+    details: {
+      reviewMode: "cross",
+      reviewStartNotice: { headSha: HEAD, outcome: "declined" },
+    },
+  };
+  assert.equal(planReviewRetrigger(readiness, { headSha: HEAD }, config), null);
+});
+
+test("reconcile carries the retrigger plan through to the caller", () => {
+  const snapshot = codexImplementationSnapshot({
+    reviewStartNotice: { headSha: HEAD, outcome: "declined" },
+  });
+  const plan = reconcile(snapshot, config);
+  assert.ok(plan.retrigger);
+  assert.equal(plan.retrigger.workflowFile, "agent-pipeline-claude-review.yml");
+});
+
+test("reconcile plans no retrigger when mutation is suppressed", () => {
+  const snapshot = codexImplementationSnapshot({
+    labels: [CROSS_LABEL, config.labels.noAuto],
+    reviewStartNotice: { headSha: HEAD, outcome: "declined" },
+  });
+  const plan = reconcile(snapshot, config);
+  assert.equal(plan.readiness.phase, "no-auto");
+  assert.equal(plan.retrigger, null);
+});
+
+test("applyPlan dispatches the workflow and records the retrigger marker", async () => {
+  const snapshot = codexImplementationSnapshot({
+    reviewStartNotice: { headSha: HEAD, outcome: "declined" },
+  });
+  const planned = reconcile(snapshot, config);
+  assert.ok(planned.retrigger);
+  const plan = { ...planned, labels: { add: [], remove: [] }, comment: null, status: null };
+
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url: String(url), options });
+    return { ok: true, status: 204, json: async () => null, text: async () => "" };
+  };
+
+  let applied;
+  try {
+    applied = await applyPlan({
+      owner: "blorbeer-cmd",
+      repo: "LAN_2026",
+      pullNumber: 371,
+      token: "test-token",
+      plan,
+      statusCommentId: null,
+      statusCommentBody: null,
+      headSha: HEAD,
+      targetUrl: "https://example.test/run/1",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requests.length, 2);
+  assert.match(
+    requests[0].url,
+    /\/actions\/workflows\/agent-pipeline-claude-review\.yml\/dispatches$/,
+  );
+  const dispatchBody = JSON.parse(requests[0].options.body);
+  assert.equal(dispatchBody.ref, "main");
+  assert.equal(dispatchBody.inputs.pull_request, "371");
+  assert.match(requests[1].url, /\/issues\/371\/comments$/);
+  assert.match(
+    JSON.parse(requests[1].options.body).body,
+    new RegExp(`${REVIEW_RETRIGGER_MARKER} ${HEAD} provider=claude -->`),
+  );
+  assert.ok(
+    applied.some((line) => line.includes("retriggered agent-pipeline-claude-review.yml")),
+  );
+});
+
+test("a failed workflow dispatch does not block labels, the comment or the gate status", async () => {
+  const snapshot = codexImplementationSnapshot({
+    reviewStartNotice: { headSha: HEAD, outcome: "declined" },
+  });
+  const planned = reconcile(snapshot, config);
+  assert.ok(planned.retrigger);
+  const plan = {
+    ...planned,
+    labels: { add: [], remove: [] },
+    notification: null,
+    comment: { body: "status comment body" },
+    status: { context: config.statusContext, state: "pending", description: "waiting" },
+  };
+
+  const originalFetch = globalThis.fetch;
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url: String(url), options });
+    if (requests.length === 1) {
+      return { ok: false, status: 500, text: async () => "internal error" };
+    }
+    return { ok: true, status: 200, json: async () => ({}), text: async () => "" };
+  };
+
+  let applied;
+  try {
+    applied = await applyPlan({
+      owner: "blorbeer-cmd",
+      repo: "LAN_2026",
+      pullNumber: 371,
+      token: "test-token",
+      plan,
+      statusCommentId: null,
+      statusCommentBody: null,
+      headSha: HEAD,
+      targetUrl: "https://example.test/run/1",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.error = originalConsoleError;
+  }
+
+  // The workflow_dispatch failed, so no marker comment was posted for it; the sticky comment and
+  // the gate status still went out because a nice-to-have retry must never block them.
+  assert.equal(requests.length, 3);
+  assert.ok(
+    applied.some((line) =>
+      line.includes("retrigger of agent-pipeline-claude-review.yml failed"),
+    ),
+  );
+  assert.ok(applied.includes("created status comment"));
+  assert.ok(applied.some((line) => line.startsWith("set ")));
 });
