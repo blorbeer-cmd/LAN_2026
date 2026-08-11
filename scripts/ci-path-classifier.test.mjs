@@ -11,6 +11,7 @@ test("documentation-only changes select no runtime work", () => {
   assert.deepEqual(selected(["docs/testing.md", "README.md"]), {
     server: false,
     e2eCore: false,
+    e2eCoreScope: "none",
     e2eArcade: false,
     e2eArcadeSmoke: false,
     agent: false,
@@ -25,6 +26,7 @@ test("Arcade-only implementation and E2E changes select only Arcade browser cove
     "server/src/routes/arcade.ts",
     "server/public/js/arcade/views/challengeRush.js",
     "server/src/test/e2e/arcadeFlows.e2e.test.ts",
+    "server/src/test/e2e/challengeRush.fixture.ts",
   ]) {
     const result = selected([file]);
     assert.equal(result.server, true, file);
@@ -78,6 +80,52 @@ test("known non-Arcade domains skip Arcade E2E", () => {
   ]);
   assert.equal(result.e2eCore, true);
   assert.equal(result.e2eArcade, false);
+  assert.equal(result.e2eCoreScope, "all");
+});
+
+test("isolated Core domains select only their owned browser fixtures", () => {
+  const cases = [
+    ["server/public/js/authGate.js", "auth"],
+    ["server/src/routes/checklist.ts", "checklist"],
+    ["server/src/test/e2e/eventInvitations.e2e.test.ts", "invitations"],
+    ["server/src/routes/votes.ts", "flows"],
+    ["server/src/test/e2e/flows.fixture.ts", "flows"],
+  ];
+  for (const [file, scope] of cases) {
+    const result = selected([file]);
+    assert.equal(result.e2eCore, true, file);
+    assert.equal(result.e2eCoreScope, scope, file);
+    assert.equal(result.e2eArcade, false, file);
+  }
+
+  assert.equal(
+    selected(["server/public/js/authGate.js", "server/src/routes/checklist.ts"])
+      .e2eCoreScope,
+    "auth,checklist",
+  );
+});
+
+test("auth changes retain Arcade auth smoke and auth-owned views merge Core coverage", () => {
+  for (const file of [
+    "server/public/js/authGate.js",
+    "server/src/routes/auth.ts",
+    "server/src/invites.ts",
+  ]) {
+    const result = selected([file]);
+    assert.equal(result.e2eCoreScope, "auth", file);
+    assert.equal(result.e2eArcade, false, file);
+    assert.equal(result.e2eArcadeSmoke, true, file);
+  }
+
+  for (const file of [
+    "server/public/js/views/admin.js",
+    "server/public/js/views/profile.js",
+  ]) {
+    const result = selected([file]);
+    assert.equal(result.e2eCoreScope, "auth,flows", file);
+    assert.equal(result.e2eArcade, false, file);
+    assert.equal(result.e2eArcadeSmoke, false, file);
+  }
 });
 
 test("the shared socket auth guard selects Arcade smoke without the full Arcade suite", () => {
@@ -147,6 +195,7 @@ test("manual, scheduled, workflow and unknown root changes select all work", () 
     assert.deepEqual(selected(files, eventName), {
       server: true,
       e2eCore: true,
+      e2eCoreScope: "all",
       e2eArcade: true,
       e2eArcadeSmoke: false,
       agent: true,
@@ -182,6 +231,11 @@ test("the workflow preserves the required aggregate Browser E2E check", () => {
   assert.match(
     block,
     /^    needs: \[changes, e2e-core, e2e-arcade-smoke, e2e-arcade\]$/m,
+  );
+  assert.match(workflow, /^      e2e_core_scope: \$\{\{ steps\.filter\.outputs\.e2e_core_scope \}\}$/m);
+  assert.match(
+    workflow,
+    /name: Run measured Core E2E \(\$\{\{ needs\.changes\.outputs\.e2e_core_scope \}\}\)/,
   );
 });
 

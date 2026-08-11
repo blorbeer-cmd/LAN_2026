@@ -20,6 +20,7 @@ npm test              # schnell: Unit + Integration (In-Memory-DB, kein Server/B
 npm run test:coverage # wie npm test, zusätzlich mit Zeilen-/Branch-/Funktions-Coverage-Report
 npm run test:e2e      # langsamer: startet Server-Prozess(e) + Chromium, klickt durch die UI
 npm run test:e2e:core   # nur allgemeine Browserpfade
+npm run test:e2e:run:core -- auth # nach vorbereitetem Build nur Auth-Fixtures; ebenso checklist, invitations, flows
 npm run test:e2e:arcade # nur Arcade-, Spiel- und Arcade-Cross-View-Pfade
 npm run test:e2e:arcade-smoke # kurzer Arcade-Vertragstest für Shared-Änderungen
 ```
@@ -101,14 +102,20 @@ Wiederholungsfall ab.
   Manifest. Eine neue, gelöschte oder doppelt zugeordnete Datei lässt den Lauf mit einer
   namentlichen Fehlermeldung bewusst fehlschlagen. `test:e2e` führt beide Hauptpartitionen aus;
   CI kann `core` und `arcade` unabhängig starten.
-- Core enthält Access, den allgemeinen Auth-Gate, Checkliste, Event-Einladungen, die allgemeinen
-  Cross-View-Flows und die Socket-Isolation. Arcade enthält die Arcade-, Stream-Renderer-,
+- Core enthält die gezielt auswählbaren Domänen `auth`, `checklist`, `invitations` und `flows`.
+  Gemeinsame oder unbekannte Änderungen verwenden `all`; manuelle und tägliche Läufe führen immer
+  alle vier Domänen aus. Die ehemals monolithischen Cross-View-Flows registrieren ihre Tests in drei
+  unabhängigen, laufzeitbalancierten Prozessen für Shell, Wettbewerb und Community. Arcade enthält
+  die Arcade-, Stream-Renderer-,
   Battleship- und Challenge-Rush-Suiten sowie den eigenständig authentifizierten Arcade-Auth-Pfad
-  und die Arcade-Partition der Cross-View-Flows. `authGateArcade.e2e.test.ts` besitzt eine eigene
-  Member-Fixture; `arcadeFlows.e2e.test.ts` besitzt eine eigene Cross-View-Fixture und einen
-  eigenen Prozess. `arcade-smoke` führt nur den Arcade-Grundfluss und den isolierten Auth-Pfad
-  aus; beide Dateien bleiben regulärer Bestandteil der vollständigen Arcade-Partition.
+  und die Arcade-Partition der Cross-View-Flows. Der vollständige Challenge-Rush-Lifecycle, die
+  Snake-Arena-Legenden sowie Navigation, Multiplayer-Layouts und Scribble laufen in getrennten
+  Fixtures. `arcade-smoke` führt ausschließlich den dedizierten Lobby/Home-Grundfluss und den
+  isolierten Auth-Pfad aus; beide Dateien bleiben regulärer Bestandteil der vollständigen
+  Arcade-Partition.
 - Die E2E-Dateien laufen parallel (eine pro Prozess) und starten je einen eigenen Server. Der
+  Runner begrenzt die Dateiparallelität auf sechs, damit zusätzliche Shards nicht unbegrenzt viele
+  Chromium-Prozesse starten. Die längsten Arcade-Fixtures stehen zuerst in der Partition. Der
   gemeinsame Helfer `src/test/e2e/e2eServer.ts` startet ihn mit `PORT=0`, liest den tatsächlich
   gebundenen Port aus der Startmeldung und liefert die passende Basis-URL. Dadurch kollidieren
   parallele Läufe und andere Worktrees nicht mehr auf statisch reservierten Ports. Das gilt auch
@@ -138,6 +145,11 @@ Suites `unit-integration`, `e2e-core`, `e2e-arcade-smoke` und `e2e-arcade`, die 
 20 Prozent plus mindestens 30 Sekunden sowie fünf erfolgreiche `main`-Läufe als rollende
 Median-Basis.
 
+Partielle Core-Läufe tragen ihren Scope im Schrittnamen, zum Beispiel
+`Run measured Core E2E (auth,checklist)`. Nur `Run measured Core E2E (all)` wird mit der
+Vollsuite-Baseline verglichen und kann einen Bestätigungslauf auslösen; dadurch werden kurze
+Teilmengen nie fälschlich gegen vollständige Core-Läufe bewertet.
+
 Ein erster Ausschlag ist nur ein Verdacht, weil GitHub-Runner schwanken. `Detect test performance`
 startet dann für genau die auffällige Suite `Confirm test performance (<suite>)` auf einem frischen
 Runner. Der stabile Aggregationsjob `Test performance` wertet Detektor und alle erforderlichen
@@ -150,7 +162,10 @@ verursachen; Optimierung darf niemals Abdeckung entfernen, Assertions lockern od
 pauschal erhöhen.
 
 Die Pfadklassifikation liegt testbar in `scripts/ci-path-classifier.mjs`. Reine Arcade-Änderungen
-starten nur Arcade-E2E, bekannte Nicht-Arcade-Bereiche nur Core-E2E. Allgemeines Socket-Scope,
+starten nur Arcade-E2E. Gekapselte Auth-, Checklisten- und allgemeine Flow-Pfade wählen nur ihre
+Core-Domäne; direkte Änderungen am Einladungs-Browsertest wählen `invitations`. Mehrdeutige
+Event-/Einladungspfade, gemischte Domänen und Shared-Dateien bleiben fail-closed bei `all`.
+Allgemeines Socket-Scope,
 Authentifizierung und Broadcasts liegen in `src/realtime.ts`; Arcade-Watcher, Kiosk-Replay und
 Game-Streaming sind in `src/arcade/realtime.ts` gekapselt. Deshalb startet eine Änderung am
 allgemeinen Realtime-Transport nur Core-E2E, eine Änderung am Arcade-Modul nur Arcade-E2E. Die

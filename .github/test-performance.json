@@ -11,7 +11,7 @@
     },
     "e2e-core": {
       "job": "Browser E2E Core",
-      "step": "Run measured Core E2E"
+      "step": "Run measured Core E2E (all)"
     },
     "e2e-arcade": {
       "job": "Browser E2E Arcade",
