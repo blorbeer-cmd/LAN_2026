@@ -4,7 +4,7 @@
 // unit/integration suite (`npm test`) — run via `npm run test:e2e` since it
 // spawns a server process and a browser, which is much slower.
 
-import { test, before, after } from 'node:test';
+import { test, before, after, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
@@ -31,6 +31,21 @@ let adminCookie: string;
 let alice: E2EAccount;
 let bob: E2EAccount;
 const accountsByName = new Map<string, E2EAccount>();
+
+type FlowShard = 'shell' | 'competition' | 'community';
+
+const flowShard = process.env.E2E_FLOW_SHARD as FlowShard | undefined;
+if (!flowShard || !['shell', 'competition', 'community'].includes(flowShard)) {
+  throw new Error(`Unbekannter Core-Flow-Shard: ${flowShard ?? '(fehlt)'}`);
+}
+
+function flowTest(
+  shard: FlowShard,
+  name: string,
+  fn: (context: TestContext) => void | Promise<void>,
+): void {
+  if (flowShard === shard) test(name, fn);
+}
 
 async function setDateTimeField(id: string, value: string): Promise<void> {
   await page.locator(`#${id}`).evaluate((element, nextValue) => {
@@ -87,7 +102,7 @@ before(async () => {
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   adminCookie = await loginE2EAdmin(BASE_URL);
-  alice = await bootstrapAdminAccount('E2E Alice');
+  alice = await bootstrapAdminAccount(flowShard === 'community' ? 'E2E Alice Pro' : 'E2E Alice');
   bob = await createE2EAccount(BASE_URL, adminCookie, 'E2E Bob');
   accountsByName.set(alice.name, alice);
   accountsByName.set(bob.name, bob);
@@ -117,7 +132,7 @@ after(async () => {
   serverProcess?.kill();
 });
 
-test('fresh device uses the personal login and reaches the app with its verified account', async (t) => {
+flowTest('shell', 'fresh device uses the personal login and reaches the app with its verified account', async (t) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const loginPage = await context.newPage();
   t.after(async () => context.close());
@@ -143,7 +158,7 @@ test('fresh device uses the personal login and reaches the app with its verified
   assert.equal(await loginPage.inputValue('#profile-name'), alice.name);
 });
 
-test('Einstellungen und Profil use grouped help while admin tools stay out of regular settings', async (t) => {
+flowTest('shell', 'Einstellungen und Profil use grouped help while admin tools stay out of regular settings', async (t) => {
   // Switches to a desktop viewport partway through (for the desktop-only
   // profile layout checks below) and never switches back on its own —
   // relying on a later test happening to reset it first. If this test
@@ -247,7 +262,7 @@ test('Einstellungen und Profil use grouped help while admin tools stay out of re
   assert.equal(await page.getByText('Auf diesem Gerät aktiv.', { exact: true }).count(), 0);
 });
 
-test('the authenticated admin role owns the seating editor and backup tools', async (t) => {
+flowTest('shell', 'the authenticated admin role owns the seating editor and backup tools', async (t) => {
   t.after(async () => {
     // This test switches to a desktop viewport for the pool-column check;
     // always restore the shared page's mobile default regardless of how the
@@ -338,7 +353,7 @@ test('the authenticated admin role owns the seating editor and backup tools', as
   await page.waitForSelector('#seating-save-help:not([hidden])');
 });
 
-test('global search filters areas, supports keyboard navigation and restores focus', async (t) => {
+flowTest('shell', 'global search filters areas, supports keyboard navigation and restores focus', async (t) => {
   // Also switches viewport size mid-test (see the note on the same pattern
   // in "Einstellungen und Profil..." above) and only restores the shared
   // page's default at the very end — guarantee it regardless of where this
@@ -395,7 +410,7 @@ test('global search filters areas, supports keyboard navigation and restores foc
   await page.setViewportSize({ width: 390, height: 844 });
 });
 
-test('full click-through: players, matchmaking, voting, leaderboard, live pause', async (t) => {
+flowTest('competition', 'full click-through: players, matchmaking, voting, leaderboard, live pause', async (t) => {
   // This test starts a vote round partway through and only cancels it via UI
   // clicks much later, once its own assertions along the way all pass. If
   // one of those throws first, the round is left open for the rest of the
@@ -757,7 +772,7 @@ test('full click-through: players, matchmaking, voting, leaderboard, live pause'
   await page.waitForFunction(() => !document.querySelector('.badge-paused'));
 });
 
-test('Vote: game-limit selection survives an unrelated re-render and select-all/none ignore prior manual state', async () => {
+flowTest('competition', 'Vote: game-limit selection survives an unrelated re-render and select-all/none ignore prior manual state', async () => {
   // Regression test: the game-selection checkboxes used to live only in the
   // DOM with no persisted JS state. A votes:changed/preferences:changed
   // socket event re-renders this whole view from scratch whenever *anyone*
@@ -904,7 +919,7 @@ test('Vote: game-limit selection survives an unrelated re-render and select-all/
   );
 });
 
-test('Vote: genre filter scopes the game-limit list, select-all/none and the started round to visible games', async (t) => {
+flowTest('competition', 'Vote: genre filter scopes the game-limit list, select-all/none and the started round to visible games', async (t) => {
   // Regression test: the genre chip filter only ever narrowed which games
   // were *displayed* in the "Nur bestimmte Spiele" checkbox grid. "Alle
   // markieren"/"Auswahl aufheben" and the actual start action still touched
@@ -1009,7 +1024,7 @@ test('Vote: genre filter scopes the game-limit list, select-all/none and the sta
   await page.waitForSelector('#votes-start');
 });
 
-test('matchmaking Historie marks a recorded draw as Unentschieden', async () => {
+flowTest('competition', 'matchmaking Historie marks a recorded draw as Unentschieden', async () => {
   await page.click('.nav-btn[data-view="matchmaking"]');
   await page.click('#mm-generate');
   await openMatchmakingHistory();
@@ -1026,7 +1041,7 @@ test('matchmaking Historie marks a recorded draw as Unentschieden', async () => 
   await page.waitForSelector('[data-draw-card] .badge:has-text("Unentschieden")');
 });
 
-test('matchmaking Historie shows the winner after switching to Frei-für-alle for a drawn lineup', async () => {
+flowTest('competition', 'matchmaking Historie shows the winner after switching to Frei-für-alle for a drawn lineup', async () => {
   // Regression test: teams were drawn, but the result was entered as
   // "Frei-für-alle" instead of the drawn team shape — the draw must still
   // remain in Historie with the winner shown instead of retaining the open
@@ -1049,7 +1064,7 @@ test('matchmaking Historie shows the winner after switching to Frei-für-alle fo
   await page.waitForSelector('[data-draw-card] .matchmaking-draw-team.is-winner');
 });
 
-test('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl Teams"', async () => {
+flowTest('competition', 'Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl Teams"', async () => {
   // Regression test: reassigning a player to a different team in the entry
   // form, then changing "Anzahl Teams", must not silently revert that player
   // back to the original drawn team.
@@ -1084,7 +1099,7 @@ test('Ergebnis eintragen keeps a manual team reassignment after changing "Anzahl
   assert.equal(await reselected.inputValue(), otherValue);
 });
 
-test('Auswertungen (via Mehr) shows a real award and keeps detail logs collapsed', async () => {
+flowTest('competition', 'Auswertungen (via Mehr) shows a real award and keeps detail logs collapsed', async () => {
   // Create a player + a session via the real agent-report endpoint (not the
   // UI) so there's an actual play_sessions row to render.
   const playerRes = await page.request.post(`${BASE_URL}/api/players`, {
@@ -1143,7 +1158,7 @@ test('Auswertungen (via Mehr) shows a real award and keeps detail logs collapsed
   assert.equal(await page.getByText('Matches pro Tag', { exact: true }).count(), 0);
 });
 
-test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statistiken reachable', async () => {
+flowTest('shell', 'Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statistiken reachable', async () => {
   // Keep this test deterministic even if the preceding click-through test
   // changes its setup data or a future test order is introduced.
   const playersRes = await page.request.get(`${BASE_URL}/api/players`);
@@ -1205,7 +1220,7 @@ test('Mein Profil: rename with a uniqueness conflict, then succeed; Meine Statis
   assert.equal(await page.inputValue('#profile-name'), 'E2E Alice Pro');
 });
 
-test('Sitzplan: the real name set in Mein Profil shows in small everywhere the seating plan renders', async () => {
+flowTest('shell', 'Sitzplan: the real name set in Mein Profil shows in small everywhere the seating plan renders', async () => {
   await page.click('#profile-btn');
   await page.waitForSelector('#profile-real-name');
   await page.fill('#profile-real-name', 'Alice Musterfrau');
@@ -1240,7 +1255,7 @@ test('Sitzplan: the real name set in Mein Profil shows in small everywhere the s
   await page.setViewportSize({ width: 390, height: 844 });
 });
 
-test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bock/Skill inline', async () => {
+flowTest('shell', 'Spiele: suggest a game (duplicate name rejected), promote it, then rate Bock/Skill inline', async () => {
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="gameCatalog"]');
   await page.waitForSelector('#suggest-new');
@@ -1355,7 +1370,7 @@ test('Spiele: suggest a game (duplicate name rejected), promote it, then rate Bo
   await partyspielRow.waitFor();
 });
 
-test('Spiele: a skill suggestion chip appears after enough recorded results and can be applied', async () => {
+flowTest('shell', 'Spiele: a skill suggestion chip appears after enough recorded results and can be applied', async () => {
   const playersRes = await page.request.get(`${BASE_URL}/api/players`);
   const players = (await playersRes.json()) as Array<{ id: string; name: string }>;
   const alice = players.find((p) => p.name === 'E2E Alice Pro')!;
@@ -1387,7 +1402,7 @@ test('Spiele: a skill suggestion chip appears after enough recorded results and 
   });
 });
 
-test('Turnier: create a K.O. bracket from proposed teams and play it to a champion', async () => {
+flowTest('shell', 'Turnier: create a K.O. bracket from proposed teams and play it to a champion', async () => {
   // Tournaments earned their own bottom-nav slot.
   await page.click('.nav-btn[data-view="tournaments"]');
   await page.waitForSelector('#tourn-new-btn');
@@ -1564,7 +1579,7 @@ test('Turnier: create a K.O. bracket from proposed teams and play it to a champi
   await page.waitForSelector('text=Beendet', { timeout: 5000 });
 });
 
-test('Info: create an entry, see it rendered', async () => {
+flowTest('community', 'Info: create an entry, see it rendered', async () => {
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="infoBoard"]');
   await page.waitForSelector('#info-new-btn');
@@ -1575,7 +1590,7 @@ test('Info: create an entry, see it rendered', async () => {
   await page.waitForSelector('text=kartoffel');
 });
 
-test('Essensbestellung: open an order with a send time/notes/link, edit them, add a priced item, close it', async () => {
+flowTest('community', 'Essensbestellung: open an order with a send time/notes/link, edit them, add a priced item, close it', async () => {
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="foodOrders"]');
   await page.waitForSelector('#order-new-btn');
@@ -1735,7 +1750,7 @@ test('Essensbestellung: open an order with a send time/notes/link, edit them, ad
   assert.equal(await page.locator('[data-toggle-paid]').first().isDisabled(), true);
 });
 
-test('An- & Abreise: carpool marks the driver, enforces seats, driver can only delete', async () => {
+flowTest('community', 'An- & Abreise: carpool marks the driver, enforces seats, driver can only delete', async () => {
   // A third player to later demonstrate a full carpool.
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="players"]');
@@ -1809,7 +1824,7 @@ test('An- & Abreise: carpool marks the driver, enforces seats, driver can only d
   await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
 });
 
-test('Durchsage: notification center can navigate, mark read and remove without duplicating Home', async () => {
+flowTest('community', 'Durchsage: notification center can navigate, mark read and remove without duplicating Home', async () => {
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="broadcast"]');
   await page.waitForSelector('#broadcast-message');
@@ -1908,7 +1923,7 @@ test('Durchsage: notification center can navigate, mark read and remove without 
   await page.waitForSelector('#notification-highlight', { state: 'hidden', timeout: 5000 });
 });
 
-test('Captain-Draft: pick captains, run the live draft to completion', async () => {
+flowTest('community', 'Captain-Draft: pick captains, run the live draft to completion', async () => {
   await page.click('.nav-btn[data-view="matchmaking"]');
   await page.click('[data-mm-mode="draft"]');
   await page.waitForSelector('[data-captain-toggle]');
@@ -1955,7 +1970,7 @@ test('Captain-Draft: pick captains, run the live draft to completion', async () 
   await page.waitForSelector('[data-record-draw]');
 });
 
-test('the device back button steps back through in-app views instead of leaving the tool', async () => {
+flowTest('community', 'the device back button steps back through in-app views instead of leaving the tool', async () => {
   // Land on a known view, then navigate through two more — each deliberate
   // tab switch should push a history entry (see switchView in app.js).
   await page.click('.nav-btn[data-view="home"]');
@@ -1980,12 +1995,20 @@ test('the device back button steps back through in-app views instead of leaving 
   await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Vote');
 });
 
-test('Aktuell: an open vote\'s title (if set) shows on Home\'s status card', async () => {
+flowTest('community', 'Aktuell: an open vote\'s title (if set) shows on Home\'s status card', async () => {
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-title');
   await page.fill('#votes-title', 'Freitagabend-Runde');
   await page.click('#votes-start');
   await page.waitForSelector('#votes-close'); // only rendered once ctx.refresh() shows the round as open
+
+  // This shard deliberately has no earlier vote lifecycle that happens to
+  // warm the shared app state. Rehydrate once from the server so the Home
+  // assertion proves persisted state instead of relying on test order.
+  const openedVote = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
+  assert.equal(openedVote.title, 'Freitagabend-Runde');
+  await page.reload();
+  await page.waitForSelector('#app:not([hidden])');
 
   await page.click('.nav-btn[data-view="home"]');
   await page.waitForSelector('section.grouped-page-section:has(h2:text-is("Aktuell"))');
@@ -1997,7 +2020,7 @@ test('Aktuell: an open vote\'s title (if set) shows on Home\'s status card', asy
   await page.waitForSelector('#votes-start');
 });
 
-test('Kiosk: centers tournament content and shows only the latest feature push across the full width', async () => {
+flowTest('community', 'Kiosk: centers tournament content and shows only the latest feature push across the full width', async () => {
   const playerId = alice.id;
 
   // Send a Durchsage first, then trigger a different feature's push (opening
@@ -2180,7 +2203,7 @@ test('Kiosk: centers tournament content and shows only the latest feature push a
   await page.setViewportSize({ width: 390, height: 844 });
 });
 
-test('Admin: the verified role exposes tools and can temporarily hide seeded test users', async () => {
+flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hide seeded test users', async () => {
   await page.goto(BASE_URL);
   await page.waitForSelector('#app:not([hidden])');
 
