@@ -7,7 +7,7 @@ import { db } from '../db';
 import { isNonEmptyString } from '../validation';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { withBodyPlayerIdentity } from '../sessions';
-import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
+import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 import { communicationRecipientIds } from '../communicationRecipients';
 import { activeGroupPlayers } from '../groupPlayers';
 import { broadcast, Events } from '../realtime';
@@ -63,7 +63,7 @@ function buildList(groupId: string, eventId: string | null) {
 }
 
 broadcastsRouter.get('/', (req, res) => {
-  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  const scope = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json(buildList(req.group!.id, scope.eventId));
@@ -77,7 +77,7 @@ broadcastsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   if (!isNonEmptyString(message, MAX_MESSAGE_LENGTH)) {
     return res.status(400).json({ error: `Nachricht ist erforderlich (1-${MAX_MESSAGE_LENGTH} Zeichen).` });
   }
-  const scope = resolveGroupEventScope(req.group!.id, eventId);
+  const scope = resolveRequestGroupEventScope(req, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {

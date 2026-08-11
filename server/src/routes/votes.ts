@@ -32,7 +32,7 @@ import { requireGroupRole } from '../groupAuthorization';
 import { activeGroupPlayers } from '../groupPlayers';
 import { trackingEventIdForGroup } from '../competitionScope';
 import { communicationRecipientIds } from '../communicationRecipients';
-import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
+import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 
 export const votesRouter = Router();
 
@@ -709,12 +709,6 @@ interface VoteRoundRow {
   selectedGameIdsJson: string | null;
 }
 
-function voteEventFilter(groupId: string, requested: unknown): string | null {
-  if (typeof requested === 'string' && requested) return requested === OUTSIDE_EVENTS_ID ? null : requested;
-  const trackingEventId = trackingEventIdForGroup(groupId);
-  return trackingEventId && trackingEventId !== OUTSIDE_EVENTS_ID ? trackingEventId : null;
-}
-
 // GET /api/votes/history - past (closed) rounds for the active event, newest
 // first: when it happened, how many players submitted, the compact per-game
 // ranking, and who won. Rounds nobody voted in still show up (with an empty
@@ -722,10 +716,10 @@ function voteEventFilter(groupId: string, requested: unknown): string | null {
 votesRouter.get('/history', (req, res) => {
   const { eventId, limit } = req.query;
   const groupId = req.group!.id;
-  const scope = resolveGroupEventScope(groupId, eventId);
+  const scope = resolveRequestGroupEventScope(req, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
-  const filterEventId = voteEventFilter(groupId, eventId);
+  const filterEventId = scope.eventId;
   const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
   const eventClause = filterEventId === null ? 'vr.event_id IS NULL' : 'vr.event_id = ?';
   const params: Array<string | number> = [groupId];
@@ -796,7 +790,7 @@ votesRouter.get('/history/:round', (req, res) => {
     return res.status(400).json({ error: 'round muss eine positive Ganzzahl sein.' });
   }
 
-  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  const scope = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
 
@@ -808,9 +802,9 @@ votesRouter.get('/history/:round', (req, res) => {
               vr.selected_game_ids AS selectedGameIdsJson
        FROM vote_rounds vr
        LEFT JOIN events e ON e.group_id = vr.group_id AND e.id = vr.event_id
-       WHERE vr.group_id = ? AND vr.round = ?`,
+       WHERE vr.group_id = ? AND vr.round = ? AND vr.event_id IS ?`,
     )
-    .get(req.group!.id, round) as VoteRoundRow | undefined;
+    .get(req.group!.id, round, scope.eventId) as VoteRoundRow | undefined;
   if (!row || row.closedAt === null) {
     return res.status(404).json({ error: 'Abgeschlossene Abstimmungsrunde nicht gefunden.' });
   }

@@ -14,7 +14,7 @@ import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db, OUTSIDE_EVENTS_ID } from '../db';
 import { broadcast, Events } from '../realtime';
-import { requireGroupEventAccess, resolveGroupEventStorageId } from '../groupEventScope';
+import { requireGroupEventAccess, resolveRequestGroupEventScope, resolveRequestGroupEventStorageId } from '../groupEventScope';
 import { isIntInRange, isNonEmptyString, isValidUrl } from '../validation';
 import { notifyPlayers, resolvePushTopic, updatePushTopicExpiry } from '../push';
 import { requireUser, withBodyPlayerIdentity } from '../sessions';
@@ -23,9 +23,10 @@ import { communicationRecipientIds } from '../communicationRecipients';
 export const foodOrdersRouter = Router();
 
 foodOrdersRouter.use((req, res, next) => {
-  const storageEventId = resolveGroupEventStorageId(req.group!.id);
-  const eventId = storageEventId && storageEventId !== OUTSIDE_EVENTS_ID ? storageEventId : null;
-  if (!requireGroupEventAccess(req, res, eventId)) return;
+  const scope = resolveRequestGroupEventScope(req, undefined);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  res.locals.storageEventId = resolveRequestGroupEventStorageId(req);
   next();
 });
 
@@ -119,8 +120,7 @@ function serializeOrder(row: OrderRow) {
   };
 }
 
-function buildList(groupId: string) {
-  const eventId = resolveGroupEventStorageId(groupId);
+function buildList(groupId: string, eventId: string | null) {
   if (!eventId) return { orders: [] };
   const rows = db
     .prepare(
@@ -133,14 +133,15 @@ function buildList(groupId: string) {
   return { orders: rows.map(serializeOrder) };
 }
 
-function getOrder(id: string, groupId: string): OrderRow | undefined {
+function getOrder(id: string, groupId: string, eventId: string | null): OrderRow | undefined {
+  if (!eventId) return undefined;
   return db
     .prepare(
       `SELECT fo.*, e.group_id
        FROM food_orders fo JOIN events e ON e.id = fo.event_id
-       WHERE fo.id = ? AND e.group_id = ?`,
+       WHERE fo.id = ? AND e.group_id = ? AND fo.event_id = ?`,
     )
-    .get(id, groupId) as OrderRow | undefined;
+    .get(id, groupId, eventId) as OrderRow | undefined;
 }
 
 function orderDeliveryScope(order: OrderRow): { groupId: string; eventId: string | null } {
@@ -150,7 +151,7 @@ function orderDeliveryScope(order: OrderRow): { groupId: string; eventId: string
 // GET /api/food-orders - current event's orders, newest first (open ones on
 // top by recency; the frontend splits open vs closed).
 foodOrdersRouter.get('/', (req, res) => {
-  res.json(buildList(req.group!.id));
+  res.json(buildList(req.group!.id, res.locals.storageEventId as string | null));
 });
 
 // POST /api/food-orders - body: { playerId, title, sendAt?, notes?, link?, paypalLink?, tipPercent? }.
@@ -189,7 +190,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     | undefined;
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
-  const eventId = resolveGroupEventStorageId(req.group!.id);
+  const eventId = res.locals.storageEventId as string | null;
   if (!eventId) return res.status(409).json({ error: 'Für diese Gruppe läuft derzeit kein Event.' });
   const row: OrderRow = {
     id: nanoid(),
@@ -259,7 +260,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
 // leave it as-is, pass null to clear it. A finalized order is fully locked,
 // though: no more edits of any kind.
 foodOrdersRouter.patch('/:id', requireUser, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung bearbeiten.' });
@@ -316,7 +317,7 @@ foodOrdersRouter.patch('/:id', requireUser, (req, res) => {
 // order opened by mistake, or one nobody wants to keep around after the LAN,
 // must stay possible at every stage, not just while it's still open.
 foodOrdersRouter.delete('/:id', requireUser, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung löschen.' });
@@ -333,7 +334,7 @@ foodOrdersRouter.delete('/:id', requireUser, (req, res) => {
 
 // POST /api/food-orders/:id/items - body: { playerId, description, quantity, priceCents? }
 foodOrdersRouter.post('/:id/items', ...withBodyPlayerIdentity, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   // The race guard: the order may have been closed between this device
   // rendering the form and the submit arriving.
@@ -372,7 +373,7 @@ foodOrdersRouter.post('/:id/items', ...withBodyPlayerIdentity, (req, res) => {
 // DELETE /api/food-orders/:id/items/:itemId - body: { playerId }. Players
 // may only remove their own items (mis-taps happen), and only while open.
 foodOrdersRouter.delete('/:id/items/:itemId', ...withBodyPlayerIdentity, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (order.closed_at !== null) {
     return res.status(409).json({ error: 'Diese Bestellung wurde bereits abgeschickt.' });
@@ -398,7 +399,7 @@ foodOrdersRouter.delete('/:id/items/:itemId', ...withBodyPlayerIdentity, (req, r
 // settling up normally happens after the order is already closed. A
 // finalized order is fully locked, though.
 foodOrdersRouter.patch('/:id/items/:itemId', requireUser, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann Positionen als bezahlt markieren.' });
@@ -425,7 +426,7 @@ foodOrdersRouter.patch('/:id/items/:itemId', requireUser, (req, res) => {
 // the UI). Exactly one closer wins; the second tap gets a 409 instead of
 // double-notifying everyone.
 foodOrdersRouter.post('/:id/close', requireUser, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung abschicken.' });
@@ -448,7 +449,7 @@ foodOrdersRouter.post('/:id/close', requireUser, (req, res) => {
 // corrected or added and paid status keeps changing. Only from the (non-
 // final) closed state; a finalized order can never be reopened.
 foodOrdersRouter.post('/:id/reopen', requireUser, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung wieder öffnen.' });
@@ -470,7 +471,7 @@ foodOrdersRouter.post('/:id/reopen', requireUser, (req, res) => {
 // metadata edits. Only from the closed/"abgeschickt" state (close first,
 // then finalize once everyone has settled up).
 foodOrdersRouter.post('/:id/finalize', requireUser, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung schließen.' });

@@ -35,6 +35,20 @@ export function resolveGroupEventScope(groupId: string, requestedEventId: unknow
   return { ok: true, eventId: tracking?.id ?? null };
 }
 
+// Resolves a request's effective event scope without turning a private
+// tracking event into an error for ordinary group-room requests. An omitted
+// selector means "use my current context": accepted participants and group
+// moderators enter the tracking event, while everyone else stays in the
+// durable group room. A non-empty eventId is an explicit lookup and keeps the
+// existing not-found/access-denied behavior at the calling route.
+export function resolveRequestGroupEventScope(req: Request, requestedEventId: unknown): GroupEventResolution {
+  const scope = resolveGroupEventScope(req.group!.id, requestedEventId);
+  if (!scope.ok || scope.eventId === null || requestCanAccessGroupEvent(req, scope.eventId)) return scope;
+
+  const hasExplicitSelector = typeof requestedEventId === 'string' && requestedEventId.length > 0;
+  return hasExplicitSelector ? scope : { ok: true, eventId: null };
+}
+
 // Applies the existing visibility/role contracts after an event id has been
 // resolved inside the request's group. Participant-private events admit only
 // accepted participants plus admins/owners. Kiosk requests keep their own
@@ -67,6 +81,12 @@ export function resolveGroupEventStorageId(groupId: string): string | null {
   const scope = resolveGroupEventScope(groupId, undefined);
   if (!scope.ok) return null;
   return scope.eventId ?? (groupId === DEFAULT_GROUP_ID ? OUTSIDE_EVENTS_ID : null);
+}
+
+export function resolveRequestGroupEventStorageId(req: Request): string | null {
+  const scope = resolveRequestGroupEventScope(req, undefined);
+  if (!scope.ok) return null;
+  return scope.eventId ?? (req.group!.id === DEFAULT_GROUP_ID ? OUTSIDE_EVENTS_ID : null);
 }
 
 export function groupPlayerRows<T>(groupId: string, columns: string): T[] {
