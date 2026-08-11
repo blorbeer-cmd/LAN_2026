@@ -789,6 +789,33 @@ test("infrastructure changes require an explicit human review", () => {
   assert.equal(withHuman.ready, true);
 });
 
+test("the pull-request author's current-head comment review satisfies the infrastructure gate", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({
+      changedFiles: ["infra/provisioning.yml"],
+      reviews: [
+        {
+          author: CODEX_REVIEWER,
+          state: "APPROVED",
+          commitSha: HEAD,
+          submittedAt: "2026-08-04T10:00:00Z",
+        },
+        {
+          author: "blorbeer-cmd",
+          authorAssociation: "OWNER",
+          state: "COMMENTED",
+          commitSha: HEAD,
+          submittedAt: "2026-08-04T11:00:00Z",
+        },
+      ],
+    }),
+    config,
+  );
+
+  assert.deepEqual(readiness.details.protectedPaths, ["infra/provisioning.yml"]);
+  assert.equal(readiness.ready, true);
+});
+
 test("an outsider approval cannot satisfy the infrastructure gate", () => {
   // The repository is public, so anyone may approve. Only someone who could write to it anyway
   // may clear a workflow or infrastructure change.
