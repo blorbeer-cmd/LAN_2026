@@ -748,7 +748,7 @@ test("a selected review runs while the pull request is still a draft", () => {
   assert.match(readiness.blockers.join("\n"), /No codex review covers/);
 });
 
-test("infrastructure changes require an explicit human review", () => {
+test("infrastructure changes require an explicit human approval", () => {
   const withBotOnly = deriveReadiness(
     readySnapshot({
       body: contractBody({ scope: "infra" }),
@@ -757,7 +757,7 @@ test("infrastructure changes require an explicit human review", () => {
     config,
   );
   assert.equal(withBotOnly.ready, false);
-  assert.match(withBotOnly.blockers.join("\n"), /explicit human review/);
+  assert.match(withBotOnly.blockers.join("\n"), /explicit human approval/);
   // No agent can clear this, so it must not park under "review" as if one were running. It also
   // must not borrow agent:needs-human, which belongs to escalations this phase cannot derive.
   assert.equal(withBotOnly.phase, "awaiting-human-approval");
@@ -789,7 +789,7 @@ test("infrastructure changes require an explicit human review", () => {
   assert.equal(withHuman.ready, true);
 });
 
-test("the pull-request author's current-head comment review satisfies the infrastructure gate", () => {
+test("the pull-request author's current-head comment review cannot satisfy the infrastructure gate", () => {
   const readiness = deriveReadiness(
     readySnapshot({
       changedFiles: ["infra/provisioning.yml"],
@@ -813,7 +813,9 @@ test("the pull-request author's current-head comment review satisfies the infras
   );
 
   assert.deepEqual(readiness.details.protectedPaths, ["infra/provisioning.yml"]);
-  assert.equal(readiness.ready, true);
+  assert.equal(readiness.ready, false);
+  assert.equal(readiness.phase, "awaiting-human-approval");
+  assert.match(readiness.blockers.join("\n"), /explicit human approval/);
 });
 
 test("an outsider approval cannot satisfy the infrastructure gate", () => {
@@ -844,7 +846,7 @@ test("an outsider approval cannot satisfy the infrastructure gate", () => {
     );
     assert.equal(readiness.ready, false, association);
     assert.equal(readiness.phase, "awaiting-human-approval", association);
-    assert.match(readiness.blockers.join("\n"), /explicit human review/);
+    assert.match(readiness.blockers.join("\n"), /explicit human approval/);
   }
 });
 
@@ -884,7 +886,7 @@ test("workflow changes remain eligible for cross-review without a second human g
   );
   assert.equal(readiness.details.protectedPaths.length, 0);
   assert.equal(readiness.ready, true);
-  assert.doesNotMatch(readiness.blockers.join("\n"), /explicit human review/);
+  assert.doesNotMatch(readiness.blockers.join("\n"), /explicit human approval/);
 });
 
 test("a fork pull request gets no writing automation at all", () => {
@@ -999,14 +1001,14 @@ test("an automatable state outranks the human-approval wait", () => {
   );
   assert.equal(failing.phase, "ci-fix");
   assert.equal(failing.ready, false);
-  assert.match(failing.blockers.join("\n"), /explicit human review/);
+  assert.match(failing.blockers.join("\n"), /explicit human approval/);
 
   const conflicted = deriveReadiness(
     readySnapshot({ ...protectedPath, mergeable: false }),
     config,
   );
   assert.equal(conflicted.phase, "conflict-fix");
-  assert.match(conflicted.blockers.join("\n"), /explicit human review/);
+  assert.match(conflicted.blockers.join("\n"), /explicit human approval/);
 });
 
 test("a UI change blocks until its notice covers the current head", () => {

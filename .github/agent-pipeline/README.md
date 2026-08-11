@@ -342,19 +342,19 @@ merge-base diff; use `root` for intentional multi-area changes. `ui-change: unkn
 blocking until a later classification resolves it.
 
 Changes below `infra/` are reported as protected paths. The reconciler holds such a pull request
-in the `awaiting-human-approval` phase until a human review covers the exact current head SHA,
+in the `awaiting-human-approval` phase until an independent human approval covers the exact current head SHA,
 because no agent can clear that condition itself. Workflow changes below `.github/workflows/` remain
 sensitive and therefore select the independent cross-review, but no longer require a second human
 account solely because the workflow file changed. A merge conflict or a failing check still takes
 precedence, since an agent can resolve those; the approval blocker stays listed and readiness
 remains closed either way.
 
-That review only counts from an account with write access — `author_association` of `OWNER`,
-`MEMBER` or `COLLABORATOR`. A non-author must submit an approving review. Because GitHub forbids
-PR authors from approving their own PRs, the author may submit a native `COMMENTED` review instead;
-its `commit_id` must match the current head. This repository is public and allows forking, so any
-GitHub account can submit reviews; without the write-access and exact-head checks, a drive-by
-review from an outsider or an old review could satisfy the control.
+That approval only counts from an account with write access — `author_association` of `OWNER`,
+`MEMBER` or `COLLABORATOR` — and its `commit_id` must match the current head. GitHub does not let
+PR authors approve their own PRs, so protected-path changes require a collaborating account or an
+administrator's manual bypass. This repository is public and allows forking, so any GitHub account
+can submit reviews; without the write-access and exact-head checks, a drive-by review from an
+outsider or an old review could satisfy the control.
 
 Fork pull requests are dropped before the task contract is even parsed, and receive no label and
 no comment. The pull-request body is under the fork author's control, so any later decision point
@@ -370,7 +370,9 @@ marker is never adopted and overwritten — the reconciler posts its own alongsi
 GitHub forbids approving your own pull request. To keep the solo-maintainer path usable, the
 reconciler accepts the PR author's native `COMMENTED` review as human evidence only when it is
 bound to the exact current head and the author has write access. A collaborating account still
-uses a normal approval. Workflow-only changes continue to use the automated cross-review.
+uses a normal approval. This exception applies only to an explicitly selected `review:human` mode;
+it does not satisfy the independent approval required for protected `infra/` paths. Workflow-only
+changes continue to use the automated cross-review.
 
 ## Local verification
 

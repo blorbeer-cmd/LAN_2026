@@ -432,8 +432,9 @@ erfolgreich, wenn:
   neueren Diskussionsstand überschreiben kann,
 - kein `agent:waiting`, `agent:needs-human` oder `agent:no-auto` aktiv ist,
 - bei UI/UX-Änderungen die Prüfinformation versendet wurde,
-- Änderungen an Workflow oder Infrastruktur für den aktuellen Head ausdrücklich von einem Menschen
-  freigegeben wurden und keine Secrets automatisiert verändert werden.
+- Änderungen an Workflow oder Infrastruktur für den aktuellen Head ausdrücklich durch eine
+  unabhängige menschliche Approval freigegeben wurden und keine Secrets automatisiert verändert
+  werden. Die Autoren-`COMMENTED`-Ausnahme des Modus `human` erfüllt dieses Schutzgate nicht.
 
 In den Modi `self` und `human` ist das Gate bewusst schwächer als beim Cross-Review: bei `self`
 kann es nur prüfen, dass ein head-gebundener, vollständiger Ergebnis-Marker von einer

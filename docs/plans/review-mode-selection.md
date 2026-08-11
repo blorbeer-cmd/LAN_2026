@@ -110,7 +110,8 @@ Fallback-Review wird von der Notlösung zur regulären, wählbaren Option b).
 | `human` (c) | `review:human`   | Approval eines Menschen mit Schreibzugriff oder `COMMENTED`-Review des PR-Autors für exakt diesen Head-SHA, alle Threads gelöst |
 
 Für alle drei Modi gilt unverändert: CI grün, konfliktfrei, kein `agent:waiting`/`agent:needs-human`/
-`agent:no-auto`, UI/UX-Nachricht vorhanden, geschützte Pfade menschlich freigegeben.
+`agent:no-auto`, UI/UX-Nachricht vorhanden, geschützte Pfade unabhängig menschlich freigegeben.
+Die Autoren-`COMMENTED`-Ausnahme des Modus `human` ersetzt diese separate Freigabe nicht.
 
 Ehrliche Grenze von b): Das Gate kann hier keine unabhängige Identität prüfen — es glaubt dem
 Ergebnis-Record des Anbieters, der auch implementiert hat. Die Kontrollen sind Prozess-, keine

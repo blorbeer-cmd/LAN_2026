@@ -334,11 +334,12 @@ export function evaluateReviews(
   // Only an approval from someone who could write to the repository anyway may satisfy the
   // protected-path gate; a drive-by approval from an outsider must not.
   //
-  // GitHub never lets a pull-request author approve their own pull request. For a human gate —
-  // either the explicitly chosen human mode or a protected path — the author's native `COMMENTED`
-  // review is therefore the only review signal they can submit themselves. It still carries the
-  // exact commit SHA, and the author plus write-association checks below keep it from becoming an
-  // arbitrary issue comment or outsider signal.
+  // GitHub never lets a pull-request author approve their own pull request. In the explicitly
+  // chosen human-review mode, the author's native `COMMENTED` review is therefore the only review
+  // signal they can submit themselves. It still carries the exact commit SHA, and the author plus
+  // write-association checks below keep it from becoming an arbitrary issue comment or outsider
+  // signal. Protected paths deliberately do not use this exception: they still need an independent
+  // approval.
   const authorReview = currentHead.some(
     (review) =>
       review.state === "COMMENTED" &&
@@ -346,15 +347,15 @@ export function evaluateReviews(
       !isBotLogin(review.author) &&
       WRITE_ASSOCIATIONS.has(review.authorAssociation),
   );
-  const humanApproval =
-    decisive.some(
-      (review) =>
-        review.state === "APPROVED" &&
-        !isBotLogin(review.author) &&
-        WRITE_ASSOCIATIONS.has(review.authorAssociation),
-    ) || authorReview;
+  const humanApproval = decisive.some(
+    (review) =>
+      review.state === "APPROVED" &&
+      !isBotLogin(review.author) &&
+      WRITE_ASSOCIATIONS.has(review.authorAssociation),
+  );
+  const humanReview = humanApproval || authorReview;
 
-  return { verdict, humanApproval, reviewedByProvider };
+  return { verdict, humanApproval, humanReview, reviewedByProvider };
 }
 
 // What counts as evidence that the counter provider reviewed the current head.
@@ -1210,7 +1211,7 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
   } else if (decision.mode === "human") {
     // Review and merge collapse into the same person here. That is only acceptable because it was
     // deliberately chosen for this head, is visible as a label, and is recorded below.
-    if (!reviews.humanApproval) {
+    if (!reviews.humanReview) {
       evidenceOutstanding = true;
       blockers.push(
         "No human review covers the current head SHA yet. A PR author can submit a Comment " +
@@ -1269,7 +1270,7 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     protectedPaths.length > 0 && !reviews.humanApproval;
   if (needsHumanApproval) {
     blockers.push(
-      `Workflow or infrastructure paths changed and need an explicit human review of the current head: ${protectedPaths.join(", ")}.`,
+      `Workflow or infrastructure paths changed and need an explicit human approval of the current head: ${protectedPaths.join(", ")}.`,
     );
   }
 
