@@ -76,7 +76,7 @@ export function resolveAccessibleGroupEventScope(
   req: Request,
   res: Response,
   requestedEventId: unknown,
-): { eventId: GroupEventScope } | null {
+): { eventId: GroupEventScope; usedGroupRoomFallback: boolean } | null {
   const scope = resolveGroupEventScope(req.group!.id, requestedEventId);
   if (!scope.ok) {
     res.status(scope.status).json({ error: scope.error });
@@ -87,9 +87,9 @@ export function resolveAccessibleGroupEventScope(
       res.status(404).json({ error: 'Event nicht gefunden.' });
       return null;
     }
-    return { eventId: null };
+    return { eventId: null, usedGroupRoomFallback: true };
   }
-  return { eventId: scope.eventId };
+  return { eventId: scope.eventId, usedGroupRoomFallback: false };
 }
 
 // Arrivals and food orders still use the legacy event-owned schema with a

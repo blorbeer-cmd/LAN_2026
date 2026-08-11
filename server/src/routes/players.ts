@@ -3,7 +3,7 @@
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { db } from '../db';
+import { db, OUTSIDE_EVENTS_ID } from '../db';
 import { broadcast, disconnectPlayerSockets, Events } from '../realtime';
 import { isNonEmptyString, isHexColor, isValidAvatar } from '../validation';
 import { formatDurationMs, computePlaytime, type PlaySession } from '../playtime';
@@ -583,6 +583,9 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
   if (filterEventId) {
     ownClauses.push('event_id = ?');
     ownParams.push(filterEventId);
+  } else if (scope.usedGroupRoomFallback) {
+    ownClauses.push('event_id = ?');
+    ownParams.push(OUTSIDE_EVENTS_ID);
   }
   const ownRows = db
     .prepare(
@@ -680,6 +683,9 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
   if (filterEventId) {
     allClauses.push('event_id = ?');
     allParams.push(filterEventId);
+  } else if (scope.usedGroupRoomFallback) {
+    allClauses.push('event_id = ?');
+    allParams.push(OUTSIDE_EVENTS_ID);
   }
   const allRows = db
     .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${allClauses.join(' AND ')}`)
