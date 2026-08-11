@@ -1,13 +1,13 @@
 # Konzept: Automatisierte Agenten-Pipeline bis zum menschlich freigegebenen Merge
 
 Status: beschlossenes Zielkonzept; Phasen 0 bis 2 umgesetzt (Task-Vertrag, Labels, stateless
-Readiness-Reconciler) sowie Phase 7 (Commit-Status `Agent pipeline / ready for human merge`;
-Eintrag als Required Check bleibt eine manuelle Nutzerentscheidung). Aus Phase 4 sind die bewusst
-engen Pilotpfade Codex-Implementierung → Claude-Cross-Review und Claude-Implementierung →
-Codex-Cross-Review samt sicherer Rückkehr zur Review-Auswahl nach einem vertrauenswürdigen
-Providerstartfehler umgesetzt; CI-/Konflikt-Fixes, automatische Retries, Rundenzähler und
-Findings-Fix-Schleife fehlen noch.
-Stand: 2026-08-10
+Readiness-Reconciler) sowie Phase 7 (Commit-Status `Agent pipeline / ready for human merge`, aktiv
+als Required Check auf `main`). Aus Phase 4 sind die Pilotpfade Codex-Implementierung →
+Claude-Cross-Review und Claude-Implementierung → Codex-Cross-Review umgesetzt; Self-Review ist
+in beiden Provider-Richtungen pilotiert. Die Sechs-Felder-Matrix ist table-driven abgesichert.
+Die post-#396 Human-Pilotfälle in beiden Implementierer-Richtungen sind noch nicht abgenommen.
+CI-/Konflikt-Fixes, automatische Retries, Rundenzähler und Findings-Fix-Schleife fehlen weiterhin.
+Stand: 2026-08-11
 
 Der Reviewer wird nicht mehr automatisch bestimmt, sondern vom Nutzer pro Head-SHA gewählt. Die
 Herleitung dieser Änderung steht in [`review-mode-selection.md`](review-mode-selection.md), der
@@ -233,12 +233,15 @@ Scheitert die Zustellung, werden Sticky-Kommentar und Commit-Status sichtbar auf
 
 Eine direkte Codex-Task-Zustellung bleibt aus GitHub Actions nicht verfügbar: Die in der
 Desktop-App vorhandenen Thread-Werkzeuge sind keine aus einem Repository-Workflow aufrufbare API.
-Der externe Adapter läuft deshalb als Codex-seitiger Monitor. GitHub bildet seine dauerhafte
-Outbox; der Monitor beobachtet die Zustellmarker, ordnet PR und `task-id` über das optionale
-`codex-thread-id` oder den eindeutigen Head-Branch der ursprünglichen Task zu, weckt diese und
-quittiert erst nach erfolgreichem Versand mit `agent-pipeline:codex-delivery`. Die interaktive Task
-überträgt weiterhin nur eine ausdrückliche Antwort für denselben Head-SHA als genau eines der drei
-Labels. Bei sichtbarem Adapterausfall kann der Nutzer das gewählte Label direkt in GitHub setzen.
+Der externe Adapter läuft deshalb als einzelner Codex-seitiger Fünf-Minuten-Heartbeat-Monitor.
+GitHub bildet seine dauerhafte Outbox; der Monitor beobachtet die Zustellmarker, ordnet PR und
+`task-id` über das optionale `codex-thread-id` oder den eindeutigen Head-Branch der ursprünglichen
+Codex-Task zu, weckt diese und quittiert erst nach erfolgreichem Versand mit
+`agent-pipeline:codex-delivery`. Leere Scans bleiben bei `failed_runs_only` still. Für
+Claude-Implementierungen existiert keine belastbare Claude-Session-Wakeup-Schnittstelle; der
+Adapter erzeugt für sie deshalb keine Codex-Zustellereignisse und erfindet keine Task-ID. GitHub
+bleibt deren dokumentierte Outbox. Die interaktive Task überträgt weiterhin nur eine ausdrückliche
+Antwort für denselben Head-SHA als genau eines der drei Labels.
 
 ## 7. CI-Fehler und Mergekonflikte
 
@@ -603,7 +606,9 @@ Abnahme: alle drei Modi liefern reproduzierbare `pass`-/`changes-required`-Ergeb
 veraltetes Review und eine an einen früheren Head gebundene Wahl können das Gate nicht öffnen.
 
 Umsetzungsstand: Die Auswahl selbst, ihre GitHub-Outbox-Zustellung, der externe Codex-Task-Monitor
-und beide regulären Provider-Adapter sind umgesetzt. Der Reconciler kennt die drei `review:*`-Labels, bindet sie an den
+und beide regulären Provider-Adapter sind umgesetzt. Cross- und Self-Reviews wurden in beiden
+Implementierer-Richtungen pilotiert; die Human-Piloten nach #396 sind in beiden Richtungen noch
+nicht abgenommen. Der Reconciler kennt die drei `review:*`-Labels, bindet sie an den
 Head-SHA, wertet die modusabhängige Evidenz aus, stellt die Frage im Statuskommentar samt Empfehlung
 und erzeugt pro bereitem Head genau einen neuen, maschinenlesbar markierten und den Maintainer
 erwähnenden Kommentar. Solange die Auswahl unbeantwortet ist, blockiert das Gate mit
@@ -612,7 +617,9 @@ erwähnenden Kommentar. Solange die Auswahl unbeantwortet ist, blockiert das Gat
 GitHub-Outbox-/Codex-Monitor-Grenze stehen in `.github/agent-pipeline/review-decision.md`.
 Für Codex-Implementierungen startet `review:cross`
 den eng begrenzten Claude-Pilotpfad; für Claude-Implementierungen fordert der Codex-Adapter die
-native Review an. Die Findings-Schleife und die übrigen Agentenstarts fehlen weiterhin.
+native Review an. Die Sechs-Felder-Matrix ist als table-driven Akzeptanzstandard getestet. Die
+Findings-Fix-Schleife, automatische CI-/Konfliktkorrektur und Rundenzähler bleiben außerhalb
+dieses Auftrags.
 
 ### Phase 5 – Reviewer-Fallback und Limit-Retry
 

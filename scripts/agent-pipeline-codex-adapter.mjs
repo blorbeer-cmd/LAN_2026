@@ -24,6 +24,8 @@ import {
 } from "./agent-pipeline-reconcile.mjs";
 
 export const CODEX_DELIVERY_MARKER = "<!-- agent-pipeline:codex-delivery";
+export const CODEX_THREAD_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CODEX_DELIVERY_PATTERN =
   /<!--\s*agent-pipeline:codex-delivery\s+([A-Za-z0-9._:-]+)\s+thread=([0-9a-f-]{36})\s*-->/i;
 const CODEX_EVENT_PATTERN =
@@ -42,13 +44,6 @@ function reviewerProviderFor(implementer) {
 function eventTime(value) {
   const parsed = Date.parse(value ?? "");
   return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
-}
-
-function latestCandidate(candidates, type) {
-  return candidates
-    .filter((candidate) => candidate.event.type === type)
-    .sort((left, right) => left.time - right.time || left.sequence - right.sequence)
-    .at(-1);
 }
 
 function labelNames(pullRequest) {
@@ -77,6 +72,7 @@ function eventBase(pullRequest, contract, type, eventId) {
     pullNumber: pullRequest.number,
     pullUrl: pullRequest.url,
     taskId: contract?.["task-id"] ?? null,
+    implementer: contract?.implementer ?? null,
     codexThreadId:
       contract?.["codex-thread-id"] && contract["codex-thread-id"] !== "none"
         ? contract["codex-thread-id"]
@@ -84,6 +80,44 @@ function eventBase(pullRequest, contract, type, eventId) {
     headBranch: pullRequest.headBranch,
     headSha: pullRequest.headSha,
   };
+}
+
+/**
+ * Resolve a delivery event to the Codex task that owns the implementation.
+ *
+ * A contract thread id is authoritative. Without one, the monitor may use a local task whose
+ * checked-out branch is the event's exact head branch, but only when that match is unique. Claude
+ * implementations intentionally have no Codex target: this adapter is not a Claude wake-up
+ * channel and must leave their GitHub outbox untouched.
+ */
+export function resolveCodexTaskTarget(event, tasks = []) {
+  if (event?.implementer !== "codex") {
+    return { kind: "unsupported-provider", reason: "only codex implementations have Codex targets" };
+  }
+
+  if (event?.codexThreadId) {
+    if (!CODEX_THREAD_ID_PATTERN.test(event.codexThreadId)) {
+      return { kind: "invalid", reason: "codex-thread-id is not a UUID" };
+    }
+    return { kind: "thread-id", threadId: event.codexThreadId };
+  }
+
+  const matches = (tasks ?? []).filter((task) => {
+    const branch = task?.checkedOutBranch ?? task?.headBranch ?? task?.branch;
+    return branch === event?.headBranch;
+  });
+  if (matches.length === 0) {
+    return { kind: "unresolved", reason: "no local Codex task is checked out on the head branch" };
+  }
+  if (matches.length > 1) {
+    return { kind: "ambiguous", reason: "more than one local Codex task is checked out on the head branch" };
+  }
+
+  const threadId = matches[0]?.threadId ?? matches[0]?.id;
+  if (!CODEX_THREAD_ID_PATTERN.test(threadId ?? "")) {
+    return { kind: "unresolved", reason: "the unique branch match has no valid task id" };
+  }
+  return { kind: "branch", threadId };
 }
 
 function renderTaskPrompt(event, evidence) {
@@ -154,6 +188,10 @@ export function collectCodexDeliveryEvents(
   );
   if (!validation.valid) return [];
   const contract = parsed.contract;
+  // There is no callable Claude-session wake-up interface in the Codex desktop tools. Claude
+  // implementations therefore keep GitHub as their durable outbox; treating their review events
+  // as Codex events would create permanently undeliverable work and could wake the wrong task.
+  if (contract.implementer !== "codex") return [];
   const delivered = trustedDeliveryIds(comments, config);
   const candidates = [];
   let sequence = 0;
@@ -294,14 +332,10 @@ export function collectCodexDeliveryEvents(
     }
   }
   const unique = [...uniqueById.values()];
-  const pendingLatest = (type) => {
-    const candidate = latestCandidate(unique, type);
-    return candidate && !delivered.has(candidate.event.eventId) ? candidate : null;
-  };
-  const selected =
-    pendingLatest("review-completed") ??
-    pendingLatest("review-choice-required") ??
-    pendingLatest("review-start-failed");
+  const newest = [...unique]
+    .sort((left, right) => left.time - right.time || left.sequence - right.sequence)
+    .at(-1);
+  const selected = newest && !delivered.has(newest.event.eventId) ? newest : null;
   return selected ? [selected.event] : [];
 }
 
