@@ -138,6 +138,12 @@ jobs:
       # Covers the `Agent pipeline / ready for human merge` commit status on the head SHA. It
       # grants no access to code, branches or the merge itself.
       statuses: write
+      # Lets the reconciler dispatch `workflow_dispatch` on the two trusted cross-review workflows
+      # in this same repository when a labeled attempt already declined only because the head was
+      # not ready yet. GitHub explicitly exempts `workflow_dispatch` from the restriction that
+      # otherwise stops a `GITHUB_TOKEN`-authored event from starting another workflow run. Grants
+      # no access to code, branches, secrets or any other repository's workflows.
+      actions: write
     strategy:
       fail-fast: false
       matrix:

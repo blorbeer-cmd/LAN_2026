@@ -28,6 +28,13 @@
   "statusCommentAuthors": ["github-actions[bot]", "claude[bot]", "blorbeer-cmd"],
   "//reviewDecisionNotificationAuthors": "Only these identities may suppress the once-per-head active review-choice notification by publishing its machine-readable marker.",
   "reviewDecisionNotificationAuthors": ["github-actions[bot]"],
+  "//reviewWorkflowFiles": "The trusted workflow file that runs a given reviewer provider's cross-review, keyed by `reviewerProvider` — never assembled from pull-request-controlled text. The reconciler dispatches it directly when a labeled attempt already declined for the current head only because the head was not ready yet, and the head has since become eligible.",
+  "reviewWorkflowFiles": {
+    "claude": "agent-pipeline-claude-review.yml",
+    "codex": "agent-pipeline-codex-review.yml"
+  },
+  "//reviewRetriggerAuthors": "Only these identities may suppress a further automatic re-dispatch by publishing its machine-readable marker.",
+  "reviewRetriggerAuthors": ["github-actions[bot]"],
   "//sensitivePathPrefixes": "Paths that always make the recommendation fall back to the independent cross-review, regardless of how small the diff looks.",
   "sensitivePathPrefixes": [
     ".github/",
