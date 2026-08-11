@@ -22,9 +22,11 @@ on:
       - unlabeled
   pull_request_review:
     types: [submitted, edited, dismissed]
-  # Provider self-review results are posted as PR comments by a session or launcher, so they carry
-  # a user or app identity and do start this workflow. Reconcile those markers immediately instead
-  # of waiting for the 30-minute sweep.
+  # Provider self-review results and finding-free Codex reviews are posted as PR comments, so they
+  # carry a user or app identity and do start this workflow. Reconcile that evidence immediately
+  # instead of waiting for the 30-minute sweep. A clean-pass candidate is restricted to the exact
+  # Codex connector identity; the reconciler still validates its wording and head before accepting
+  # it as evidence.
   # Deliberately not listed here: the failure notice of the cross-review workflow. That comment is
   # written with the repository `GITHUB_TOKEN`, and GitHub starts no workflow run from an event
   # created with it. The notice reaches the status comment because its own workflow reconciles
@@ -58,7 +60,27 @@ jobs:
       contents: read
       checks: read
       pull-requests: read
-    if: ${{ github.event_name != 'issue_comment' || (github.event.issue.pull_request != null && contains(github.event.comment.body, 'agent-pipeline:review-result') && (endsWith(github.event.comment.user.login, '[bot]') || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) }}
+    if: >-
+      ${{
+        github.event_name != 'issue_comment' ||
+        (
+          github.event.issue.pull_request != null &&
+          (
+            (
+              contains(github.event.comment.body, 'agent-pipeline:review-result') &&
+              (
+                endsWith(github.event.comment.user.login, '[bot]') ||
+                contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+              )
+            ) ||
+            (
+              github.event.comment.user.login == 'chatgpt-codex-connector[bot]' &&
+              contains(github.event.comment.body, 'Codex Review:') &&
+              contains(github.event.comment.body, '**Reviewed commit:**')
+            )
+          )
+        )
+      }}
     outputs:
       pull_requests: ${{ steps.select.outputs.pull_requests }}
     steps:

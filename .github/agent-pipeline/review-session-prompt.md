@@ -276,8 +276,11 @@ guessed verdict would go straight into the merge gate.
 
 This also removes the reviewer's need for any GitHub access, which is what made the headless path
 work at all where neither `gh` nor MCP tools exist: the session runs with `Read,Grep,Glob,Bash` and
-nothing else. Where `gh` is present the launcher posts the comment itself; where it is not, the
-result is written to `--result-file` with the marker already in place, to be posted verbatim.
+nothing else. The launcher posts the comment itself, through `gh` where that exists and otherwise
+through the REST API with `GITHUB_TOKEN` — the channel the rest of the pipeline already uses. Only
+when no channel works is the result left in `--result-file` with the marker already in place, to be
+posted verbatim; the output then names every attempted channel with its own reason, so a refused
+`gh` is not reported as a missing one.
 
 The trade-off, stated plainly: the launcher runs in the implementation context, so it — not the
 isolated session — is what puts the verdict on the pull request. The author allowlist already
@@ -285,8 +288,10 @@ assumed that identity, but the relay is a step the interactive route did not hav
 
 ### Without the GitHub CLI
 
-The script reads the pull request through `gh` by default. Where that binary does not exist — a
-Claude Code remote container reaches GitHub through MCP tools instead — pass the metadata directly:
+The script reads the pull request through `gh` by default and posts the result the same way. Where
+that binary does not exist — a Claude Code remote container reaches GitHub through MCP tools
+instead — reading needs the metadata passed in, while posting falls back to the REST API on its own
+as long as `GITHUB_TOKEN` is set:
 
 ```bash
 node ./scripts/agent-review-session.mjs --pr-json pr.json --repository blorbeer-cmd/LAN_2026 --mode self
