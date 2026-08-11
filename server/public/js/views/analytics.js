@@ -18,7 +18,7 @@
 // fetch, then trigger a re-render.
 
 import { api } from '../api.js';
-import { state } from '../state.js';
+import { accessibleEvents, state } from '../state.js';
 import { escapeHtml, formatDateTime, avatarHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
@@ -44,14 +44,14 @@ let filters = defaultFilters();
 // available, so the view opens pre-filtered to the current LAN by default.
 function resolveEventSelection() {
   if (filters.eventId !== 'active') return;
-  const active = state.events.find((e) => e.isActive);
+  const active = accessibleEvents().find((e) => e.isActive);
   filters.eventId = active?.id ?? '';
 }
 
 // Arcade results do not carry an event id. For that tab only, translate the
 // selected event into its date bounds before querying the shared endpoint.
 function selectedEventRange() {
-  const ev = state.events.find((e) => e.id === filters.eventId);
+  const ev = accessibleEvents().find((e) => e.id === filters.eventId);
   if (ev) return { from: ev.starts_at, to: ev.ends_at ?? Date.now() };
   return null;
 }
@@ -130,7 +130,7 @@ async function loadArcadeData(ctx) {
 }
 
 function renderEventOptions() {
-  const sorted = [...state.events].sort((a, b) => b.starts_at - a.starts_at);
+  const sorted = [...accessibleEvents()].sort((a, b) => b.starts_at - a.starts_at);
   const options = sorted
     .map((e) => {
       const range = `${new Date(e.starts_at).toLocaleDateString('de-DE')}${e.ends_at ? '–' + new Date(e.ends_at).toLocaleDateString('de-DE') : ' (läuft)'}`;
