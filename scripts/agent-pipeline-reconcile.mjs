@@ -340,13 +340,22 @@ export function evaluateReviews(
   // write-association checks below keep it from becoming an arbitrary issue comment or outsider
   // signal. Protected paths deliberately do not use this exception: they still need an independent
   // approval.
-  const authorReview = currentHead.some(
-    (review) =>
-      review.state === "COMMENTED" &&
-      review.author === pullRequestAuthorLogin &&
-      !isBotLogin(review.author) &&
-      WRITE_ASSOCIATIONS.has(review.authorAssociation),
-  );
+  const latestAuthorReview = currentHead
+    .filter(
+      (review) =>
+        review.author === pullRequestAuthorLogin &&
+        !isBotLogin(review.author),
+    )
+    .reduce(
+      (latest, review) =>
+        !latest || (review.submittedAt ?? "") >= (latest.submittedAt ?? "")
+          ? review
+          : latest,
+      null,
+    );
+  const authorReview =
+    latestAuthorReview?.state === "COMMENTED" &&
+    WRITE_ASSOCIATIONS.has(latestAuthorReview.authorAssociation);
   const humanApproval = decisive.some(
     (review) =>
       review.state === "APPROVED" &&

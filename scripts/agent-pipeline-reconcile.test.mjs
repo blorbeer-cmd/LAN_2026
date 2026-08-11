@@ -2118,6 +2118,33 @@ test("the pull-request author can complete human mode with a current-head commen
   assert.equal(readiness.ready, true);
 });
 
+test("a later author change request supersedes an earlier comment review", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({
+      labels: [HUMAN_LABEL],
+      reviews: [
+        {
+          author: "blorbeer-cmd",
+          authorAssociation: "OWNER",
+          state: "COMMENTED",
+          commitSha: HEAD,
+          submittedAt: "2026-08-07T10:00:00Z",
+        },
+        {
+          author: "blorbeer-cmd",
+          authorAssociation: "OWNER",
+          state: "CHANGES_REQUESTED",
+          commitSha: HEAD,
+          submittedAt: "2026-08-07T10:01:00Z",
+        },
+      ],
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, false);
+  assert.match(readiness.blockers.join("\n"), /No human review covers the current head SHA/);
+});
+
 test("an author comment review from an older head does not complete human mode", () => {
   const readiness = deriveReadiness(
     readySnapshot({
