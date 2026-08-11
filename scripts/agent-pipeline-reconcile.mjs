@@ -87,6 +87,32 @@ export function parseReviewStartNotice(comments) {
   return found;
 }
 
+// Written by the reconciler itself, once, after it re-dispatches a cross-review workflow that
+// declined only because the head was not ready yet at label time:
+// `<!-- agent-pipeline:review-retrigger <sha> provider=claude -->`. The label-triggered workflow
+// never retries on its own, so without this record every later reconciliation of the same head
+// would see the identical "review declined, now ready" state and dispatch the workflow again.
+export const REVIEW_RETRIGGER_MARKER = "<!-- agent-pipeline:review-retrigger";
+const REVIEW_RETRIGGER_PATTERN =
+  /<!--\s*agent-pipeline:review-retrigger\s+([0-9a-f]{40})\s+provider=(claude|codex)\s*-->/;
+
+/**
+ * Head SHAs the reconciler has already re-dispatched a cross-review workflow for.
+ *
+ * Only the reconciler's own identity counts: an untrusted comment claiming this marker could
+ * otherwise suppress the one automatic retry a stuck head is waiting for.
+ */
+export function parseReviewRetriggerHeadShas(comments, config = loadConfig()) {
+  const allowed = config.reviewRetriggerAuthors ?? [];
+  const found = new Set();
+  for (const comment of comments ?? []) {
+    if (!allowed.includes(comment?.author)) continue;
+    const match = comment?.body?.match(REVIEW_RETRIGGER_PATTERN);
+    if (match) found.add(match[1]);
+  }
+  return [...found];
+}
+
 export const CLAUDE_CROSS_REVIEW_HEADING = "## Claude Cross-Review";
 export const CLAUDE_CROSS_REVIEW_SOURCE = "claude-cross-review";
 
@@ -1382,6 +1408,66 @@ function planReviewDecisionNotification(
   }
 }
 
+const PROVIDER_LABELS_FOR_RETRIGGER = { claude: "Claude", codex: "Codex" };
+
+/** Renders the reconciler's own record that it re-dispatched a cross-review workflow. */
+export function renderReviewRetriggerComment(snapshot, provider, config = loadConfig()) {
+  const providerLabel = PROVIDER_LABELS_FOR_RETRIGGER[provider] ?? provider;
+  const modeLabel = config.reviewModeLabels?.cross ?? "review:cross";
+  return [
+    "## Cross-review retriggered",
+    "",
+    `The chosen \`${modeLabel}\` review did not run when the label was set for this head — the pull`,
+    "request was not ready yet (see the review-start notice above). It is ready now, so the",
+    `reconciler re-dispatched the ${providerLabel} cross-review workflow for the current head SHA,`,
+    "without waiting for a human to remove and reset the label.",
+    "",
+    `${REVIEW_RETRIGGER_MARKER} ${snapshot.headSha} provider=${provider} -->`,
+    "",
+    "---",
+    "_Maintained by the agent pipeline reconciler. It reports state only; it does not approve or merge._",
+  ].join("\n");
+}
+
+/** The trusted workflow file a given reviewer provider's cross-review runs in, from a closed set. */
+function reviewWorkflowFileFor(provider, config) {
+  return config.reviewWorkflowFiles?.[provider] ?? null;
+}
+
+/**
+ * Whether the reconciler should re-dispatch the cross-review workflow for the current head.
+ *
+ * The label-triggered workflow runs exactly once, at the moment `review:cross` is set, and never
+ * retries on its own — see `deriveClaudeReviewDispatch` / `deriveCodexReviewDispatch`. When the head
+ * is not yet ready at that moment (still a draft, behind `main`, checks still running, or the
+ * pipeline briefly disabled) it declines and leaves a `review-start-notice` for that exact head.
+ * Nothing then asks it to try again unless a human removes and resets the label. This closes that
+ * gap: once the reconciler observes the same head is genuinely eligible for the review the notice
+ * describes, it dispatches the workflow itself.
+ *
+ * Deliberately narrow. A `failed` notice — the review actually ran and errored — is never retried
+ * here: the remedy is diagnosing that workflow run, not spending another attempt blindly on a head
+ * nothing here proved would behave differently. Eligibility is decided by what is true right now,
+ * not by the notice: the notice is only the trigger to look again, never the reason to act.
+ */
+export function planReviewRetrigger(readiness, snapshot, config = loadConfig()) {
+  if (readiness.phase !== "review") return null;
+  if (readiness.details?.reviewMode !== "cross") return null;
+  const notice = readiness.details?.reviewStartNotice;
+  if (!notice || notice.outcome !== "declined") return null;
+  const provider = readiness.reviewerProvider;
+  const workflowFile = reviewWorkflowFileFor(provider, config);
+  if (!workflowFile) return null;
+  if ((snapshot.reviewRetriggerHeadShas ?? []).includes(snapshot.headSha)) return null;
+
+  return {
+    provider,
+    workflowFile,
+    ref: config.defaultBaseBranch,
+    commentBody: renderReviewRetriggerComment(snapshot, provider, config),
+  };
+}
+
 export function renderStatusComment(readiness, snapshot, config = loadConfig()) {
   const contract = readiness.contract ?? {};
   const details = readiness.details ?? {};
@@ -1546,6 +1632,7 @@ export function reconcile(
       labels: { add: [], remove: [] },
       comment: null,
       notification: null,
+      retrigger: null,
       status,
     };
   }
@@ -1562,6 +1649,7 @@ export function reconcile(
       notificationRecipient,
       config,
     ),
+    retrigger: planReviewRetrigger(readiness, snapshot, config),
     status,
   };
 }
@@ -1924,6 +2012,9 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
         parseReviewDecisionNotificationHeadShas(trustedComments, config),
       reviewDecisionDeliveryFailureHeadSha:
         parseReviewDecisionDeliveryFailure(ownStatusCommentBody),
+      // Heads the reconciler already re-dispatched a cross-review workflow for; see
+      // `planReviewRetrigger`.
+      reviewRetriggerHeadShas: parseReviewRetriggerHeadShas(trustedComments, config),
       statusCommentBody: statusComment?.body ?? null,
       gateStatus: gateStatus
         ? { state: gateStatus.state, description: gateStatus.description ?? null }
@@ -2087,6 +2178,40 @@ export async function applyPlan({
     }
   }
 
+  // Best-effort on purpose. The blocker text already documents the manual remedy — remove and
+  // reset the review-mode label — so a failed dispatch here must never abort the labels, the
+  // sticky comment or the merge-gate status the rest of this run would otherwise apply. A dispatch
+  // that succeeds but whose marker comment fails to post is not retried within this run either: the
+  // next reconciliation sees no marker and simply tries again, which the target workflow's own
+  // per-pull-request concurrency group and head-bound result check make safe to repeat.
+  if (plan.retrigger) {
+    try {
+      await api(
+        `/repos/${owner}/${repo}/actions/workflows/${plan.retrigger.workflowFile}/dispatches`,
+        {
+          method: "POST",
+          body: {
+            ref: plan.retrigger.ref,
+            inputs: { pull_request: String(pullNumber) },
+          },
+          token,
+        },
+      );
+      await api(`/repos/${owner}/${repo}/issues/${pullNumber}/comments`, {
+        method: "POST",
+        body: { body: plan.retrigger.commentBody },
+        token,
+      });
+      applied.push(`retriggered ${plan.retrigger.workflowFile} for ${headSha}`);
+    } catch (error) {
+      console.error(
+        `Could not retrigger ${plan.retrigger.workflowFile} for ${headSha}: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+      applied.push(`retrigger of ${plan.retrigger.workflowFile} failed for ${headSha}`);
+    }
+  }
+
   if (plan.comment) {
     if (statusCommentId) {
       await api(`/repos/${owner}/${repo}/issues/comments/${statusCommentId}`, {
@@ -2198,6 +2323,9 @@ async function reconcileCommand(args) {
             ? `blocked: ${plan.notification.error}`
             : "delivery planned"
           : "no delivery needed",
+        reviewRetrigger: plan.retrigger
+          ? `dispatch planned: ${plan.retrigger.workflowFile}`
+          : "no retrigger needed",
         gateStatus: plan.status
           ? { state: plan.status.state, description: plan.status.description }
           : "no write needed",

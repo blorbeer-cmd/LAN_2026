@@ -423,7 +423,7 @@ votesRouter.get('/mine', ...withQueryPlayerIdentity, (req, res) => {
 // - title/info: optional free text shown to voters.
 // - gameIds: optional preselection of which games this round covers; omit
 //   for "every game in the catalog".
-votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
+votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
   const groupId = req.group!.id;
   const state = readRoundState(groupId);
   if (state.open) {
@@ -433,6 +433,9 @@ votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   const { mode, title, info, gameIds } = req.body ?? {};
   if (mode !== undefined && mode !== 'single' && mode !== 'points') {
     return res.status(400).json({ error: 'mode muss "single" oder "points" sein.' });
+  }
+  if (mode === 'single' && req.groupMembership?.role === 'member') {
+    return res.status(403).json({ error: 'Stichwahlen können nur von Gruppenadmins gestartet werden.' });
   }
   const nextMode: VoteMode = mode === 'single' ? 'single' : 'points';
 

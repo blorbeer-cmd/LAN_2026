@@ -4298,6 +4298,196 @@ input.food-order-price-input {
   /* Bottom sheet slides up on phones… */
   animation: sheet-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
+
+/* ---------- First-login onboarding ---------- */
+
+#onboarding-root {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.onboarding-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  opacity: 0.78;
+  pointer-events: auto;
+}
+
+.onboarding-dialog {
+  position: fixed;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + var(--space-4));
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+  max-width: var(--search-panel-width);
+  margin: 0 auto;
+  padding: var(--space-4);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+}
+
+.onboarding-dialog-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.onboarding-mascot {
+  flex: 0 0 96px; /* design-token-ok: guide illustration has its own fixed asset size */
+  width: 96px; /* design-token-ok: guide illustration has its own fixed asset size */
+  height: 96px; /* design-token-ok: guide illustration has its own fixed asset size */
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.onboarding-mascot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  mix-blend-mode: screen;
+  animation: onboarding-speak 0.22s steps(2, end) infinite alternate;
+}
+
+.onboarding-progress {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.onboarding-dialog h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-lg);
+}
+
+.onboarding-dialog p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.onboarding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.onboarding-actions-spacer {
+  flex: 1 1 auto;
+}
+
+.onboarding-rating-dialog {
+  pointer-events: auto;
+}
+
+.onboarding-rating-progress {
+  margin-top: var(--space-3) !important;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.onboarding-rating-actions {
+  justify-content: flex-end;
+}
+
+.onboarding-target-highlight {
+  border-radius: var(--radius-sm);
+}
+
+.onboarding-target-ring {
+  position: fixed;
+  z-index: 41;
+  pointer-events: none;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 var(--space-1) var(--accent), var(--shadow-glow-accent);
+}
+
+.game-table-row.onboarding-required {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.onboarding-required-badge {
+  flex: 0 0 auto;
+}
+
+.onboarding-rating-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+}
+
+.onboarding-rating-banner-copy {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.onboarding-rating-banner-copy strong,
+.onboarding-rating-banner-copy span {
+  display: block;
+}
+
+.onboarding-rating-banner-copy span {
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+@keyframes onboarding-speak {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(-1 * var(--space-1)));
+  }
+}
+
+@media (min-width: 640px) { /* --bp-md */
+  .onboarding-dialog {
+    bottom: var(--space-6);
+  }
+}
+
+@media (max-width: 639px) { /* --bp-md */
+  .onboarding-rating-dialog {
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+
+  .onboarding-rating-dialog .onboarding-mascot {
+    display: none;
+  }
+
+  .onboarding-rating-dialog .onboarding-rating-actions {
+    flex-wrap: nowrap;
+    gap: var(--space-1);
+    margin-top: var(--space-3);
+  }
+
+  .onboarding-rating-dialog .onboarding-rating-actions .btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: var(--space-2);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+  }
+}
+
 @media (min-width: 640px) { /* --bp-md */
   .modal {
     border-radius: var(--radius-lg);

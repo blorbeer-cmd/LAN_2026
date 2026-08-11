@@ -3156,6 +3156,38 @@ registerMigration({
   up: addMusicControllerConnectionStatus,
 });
 
+// Stores the versioned first-login tour and the catalog-rating checkpoint per
+// account. Existing accounts are marked completed so enabling the feature does
+// not interrupt current users; registration and claim explicitly reset their
+// own row to pending in routes/auth.ts.
+function createPlayerOnboardingState(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS player_onboarding (
+      player_id                 TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+      version                   INTEGER NOT NULL DEFAULT 1,
+      status                    TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (status IN ('pending', 'active', 'completed', 'skipped')),
+      last_core_step            INTEGER NOT NULL DEFAULT 9 CHECK (last_core_step BETWEEN 0 AND 9),
+      rating_status             TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (rating_status IN ('pending', 'active', 'completed', 'deferred')),
+      rating_candidate_ids_json TEXT NOT NULL DEFAULT '[]',
+      seen_views_json           TEXT NOT NULL DEFAULT '[]',
+      completed_at              INTEGER,
+      updated_at                INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_player_onboarding_status ON player_onboarding(status, rating_status);
+    INSERT OR IGNORE INTO player_onboarding
+      (player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at)
+    SELECT id, 1, 'completed', 9, 'completed', '[]', '[]', NULL, created_at
+    FROM players;
+  `);
+}
+registerMigration({
+  version: 62,
+  name: 'add player onboarding state',
+  up: createPlayerOnboardingState,
+});
+
 // Every migration is registered by now — run them all in ascending version
 // order (see registerMigration/runRegisteredMigrations above). This is the
 // single place migrations actually execute.

@@ -37,6 +37,7 @@ import { groupsRouter } from './groups';
 import { pingsRouter } from './pings';
 import { musicRouter } from './music';
 import { musicControllerRouter } from '../musicController';
+import { onboardingRouter } from './onboarding';
 import { requireUser } from '../sessions';
 import { config } from '../config';
 import { extractToken } from '../auth';
@@ -127,6 +128,8 @@ apiRouter.get('/me', requireUser, (req, res) => {
     isTest: Boolean(p.is_test),
   });
 });
+
+apiRouter.use('/me/onboarding', onboardingRouter);
 
 apiRouter.use('/groups', groupsRouter);
 
