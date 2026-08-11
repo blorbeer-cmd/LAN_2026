@@ -787,8 +787,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   column on phones and two from `--bp-md`, with the same bordered card treatment at both sizes.
   Explanations sit in info tooltips immediately beside their titles. Title and info fields start at
   the same control height. The participant action spans the full width, with equal-width „Abbrechen“ and „Beenden“ actions below.
-  Starting a round always shows its game selection grid — there is no separate checkbox gating it,
-  and every game starts selected; a round covering everything simply leaves all games checked. The
+  Starting a round always shows its game selection grid — there is no separate checkbox gating it.
+  It preselects the current Top 10 by Bock as a starting point, same as before; a round covering
+  everything simply uses „Alle markieren“ or clears the remaining exclusions by hand. The
   grid reuses the same icon select-all/deselect-all buttons (`.selection-toolbar-icon`) and
   collapsible text search (`selectionSearchHtml`) as Team formation's and Tournament creation's
   player pickers, alongside its own genre chips. All three controls filter the visible rows while

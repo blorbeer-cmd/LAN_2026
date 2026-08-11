@@ -115,9 +115,9 @@ let voteUnratedOnly = false;
 // The first selection of every fresh round is the current Top 10 by Bock;
 // excludedGameIds then tracks games manually unchecked from that starting
 // point. Anything not listed after initialization (including a newly added
-// game) defaults to selected. All games are votable by default — everyone
-// stays selected unless manually excluded, so voting for "all games" is
-// just leaving (or marking) everything checked.
+// game) defaults to selected — so a round covering every game is just the
+// Top-10 starting point with "Alle markieren" applied, or every remaining
+// exclusion cleared by hand.
 let excludedGameIds = new Set();
 let voteSelectionInitialized = false;
 let voteSelectionDirty = false;
