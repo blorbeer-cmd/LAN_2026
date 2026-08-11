@@ -520,3 +520,44 @@ test('POST /api/push/unsubscribe removes a subscription', async (t) => {
   await request(app).post('/api/votes/cancel');
   assert.equal(sendMock.mock.calls.length, 0);
 });
+
+test('new group members can load the notification center before accepting a private event invitation', async () => {
+  const member = await request(app).post('/api/players').send({ name: 'Push Private Event Member' });
+  assert.equal(member.status, 201, JSON.stringify(member.body));
+
+  const event = await request(app)
+    .post('/api/events')
+    .send({
+      name: 'Push Private Event',
+      startsAt: Date.now(),
+      endsAt: Date.now() + 60_000,
+      visibilityScope: 'participants',
+    });
+  assert.equal(event.status, 201, JSON.stringify(event.body));
+
+  const started = await request(app).post(`/api/events/${event.body.id}/tracking/start`).send();
+  assert.equal(started.status, 200, JSON.stringify(started.body));
+  try {
+    const current = await request(app).get(`/api/push/current?playerId=${member.body.id}`);
+    assert.equal(current.status, 200, JSON.stringify(current.body));
+    assert.equal(current.body.entry, null);
+
+    const history = await request(app).get(`/api/push/log?playerId=${member.body.id}`);
+    assert.equal(history.status, 200, JSON.stringify(history.body));
+    assert.deepEqual(history.body.entries, []);
+
+    const explicitCurrent = await request(app).get(`/api/push/current?playerId=${member.body.id}&eventId=${event.body.id}`);
+    assert.equal(explicitCurrent.status, 404);
+    const explicitHistory = await request(app).get(`/api/push/log?playerId=${member.body.id}&eventId=${event.body.id}`);
+    assert.equal(explicitHistory.status, 404);
+
+    const seenAll = await request(app).post('/api/push/seen-all').send({ playerId: member.body.id });
+    assert.equal(seenAll.status, 200, JSON.stringify(seenAll.body));
+
+    const hiddenAll = await request(app).delete('/api/push').send({ playerId: member.body.id });
+    assert.equal(hiddenAll.status, 200, JSON.stringify(hiddenAll.body));
+  } finally {
+    const stopped = await request(app).post(`/api/events/${event.body.id}/tracking/stop`).send();
+    assert.equal(stopped.status, 200, JSON.stringify(stopped.body));
+  }
+});
