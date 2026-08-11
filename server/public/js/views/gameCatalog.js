@@ -785,11 +785,11 @@ export function renderGameCatalog(container, ctx) {
               .join('')}
           </div>
         </section>`}
-        <div class="game-table">
+        <div class="game-table${ratingMode ? ' onboarding-rating-list' : ''}">
           ${
             rows.length === 0
               ? emptyStateHtml(emptyMessage, { icon: icon(domainIcon('gameCatalog')) })
-              : rows.map((g) => gameRowHtml(g, myId, activeTab === 'all', requiredRatingIds.has(g.id))).join('')
+              : rows.map((g) => gameRowHtml(g, myId, activeTab === 'all', ratingMode && requiredRatingIds.has(g.id))).join('')
           }
         </div>
         <p class="muted" data-game-catalog-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>

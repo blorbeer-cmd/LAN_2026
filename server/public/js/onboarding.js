@@ -10,15 +10,26 @@ import { showToast } from './toast.js';
 
 const STEPS = [
   { title: 'Willkommen', text: 'Diese kurze Einführung zeigt die wichtigsten Bereiche und Funktionen.', view: 'home' },
-  { title: 'Home', text: 'Home zeigt aktuelle Aktivitäten, Live-Status, Rangliste und Sitzplan.', view: 'home', target: '.nav-btn[data-view="home"]' },
-  { title: 'Turniere', text: 'Hier werden Turniere angelegt, gespielt und ausgewertet.', view: 'tournaments', target: '.nav-btn[data-view="tournaments"]' },
-  { title: 'Teams', text: 'Hier werden Teams ausgelost oder per Captain Draft zusammengestellt.', view: 'matchmaking', target: '.nav-btn[data-view="matchmaking"]' },
-  { title: 'Vote', text: 'Hier bewertet ihr Spiele und stimmt über die nächste Spielauswahl ab.', view: 'votes', target: '.nav-btn[data-view="votes"]' },
-  { title: 'Rang', text: 'Hier findest du Ergebnisse, Punkte, Platzierungen und Spielzeiten.', view: 'leaderboard', target: '.nav-btn[data-view="leaderboard"]' },
-  { title: 'Mehr', text: 'Hier erreichst du alle weiteren Bereiche wie Anreise, Essen, Arcade und Checkliste.', view: 'more', target: '.nav-btn[data-view="more"]' },
-  { title: 'Profil und Suche', text: 'Im Profil verwaltest du deine persönlichen Angaben und Tracking-Einstellungen. Über die Suche erreichst du Bereiche und Inhalte direkt.', view: 'profile', target: '#profile-btn' },
-  { title: 'Spielekatalog', text: 'Bewerte jetzt die ersten zehn Spiele. Bock verbessert die gemeinsame Spielauswahl. Skill ermöglicht eine ausgewogenere Teamaufteilung.', view: 'gameCatalog', target: '#view-container' },
+  { title: 'Home', text: 'Home zeigt aktuelle Aktivitäten, den Live-Status aller Spielenden, die Rangliste und den Sitzplan auf einen Blick.', view: 'home', target: '.nav-btn[data-view="home"]' },
+  { title: 'Turniere', text: 'Hier legst du Turniere an, verfolgst Turnierbaum oder Gruppenphase live und trägst Ergebnisse ein.', view: 'tournaments', target: '.nav-btn[data-view="tournaments"]' },
+  { title: 'Teams', text: 'Hier werden Teams nach Skill-Level ausgelost oder per Captain Draft zusammengestellt.', view: 'matchmaking', target: '.nav-btn[data-view="matchmaking"]' },
+  { title: 'Vote', text: 'Hier startet und beantwortet ihr Abstimmungen zur nächsten Spielauswahl und seht die Top 10 nach Bock-Level.', view: 'votes', target: '.nav-btn[data-view="votes"]' },
+  { title: 'Rang', text: 'Hier findest du Ergebnisse, Punkte, Platzierungen und die Spielzeit pro Spiel.', view: 'leaderboard', target: '.nav-btn[data-view="leaderboard"]' },
+  { title: 'Mehr', text: 'Hier erreichst du alle weiteren Bereiche: Checkliste, An- & Abreise, Essen, Arcade, Durchsagen und mehr. Jeder dieser Bereiche erklärt sich beim ersten Öffnen kurz selbst.', view: 'more', target: '.nav-btn[data-view="more"]' },
+  { title: 'Profil und Suche', text: 'Im Profil verwaltest du deine persönlichen Angaben, deinen Tracking-Agent und Push-Benachrichtigungen. Über die Suche erreichst du Bereiche und Inhalte direkt.', view: 'profile', target: '#profile-btn' },
+  { title: 'Spielekatalog', text: 'Bewerte jetzt die ersten zehn Spiele. Bock verbessert die gemeinsame Spielauswahl. Skill ermöglicht eine ausgewogenere Teamaufteilung.', view: 'gameCatalog' },
 ];
+
+// Views reachable under "Mehr" that get their own short, one-time
+// explanation on first visit instead of being crammed into the "Mehr" tour
+// step's text (see onboardingHintHtml/wireOnboardingHint below).
+const VIEW_HINTS = {
+  checklist: 'Packliste und To-Dos: Häkchen setzen, eigene Punkte ergänzen oder Aufgaben und Mitbring-Anfragen für die Gruppe anlegen.',
+  arrivals: 'Fahrgemeinschaften für An- und Abreise: Fahrten anlegen oder als Mitfahrer:in eintragen.',
+  foodOrders: 'Sammelbestellungen: Positionen hinzufügen, eigenen Anteil markieren und die Bestellung gemeinsam abrechnen.',
+  arcade: 'Kleine Zwischendurch-Spiele für 1 bis 8 Personen: Lobby öffnen oder einer offenen Lobby beitreten.',
+  broadcast: 'Durchsagen an die ganze Gruppe senden, inklusive Verlauf der letzten Nachrichten.',
+};
 
 let runtime = null;
 let candidateSyncPending = false;
@@ -78,6 +89,41 @@ export function onboardingRatingProgress() {
   return { completed, required: ids.length, ready: ids.length === 0 || completed >= ids.length };
 }
 
+// A short, dismissible one-time explanation for a view reached under "Mehr"
+// (see VIEW_HINTS above). Renders nothing once the view is already in
+// seenViews, before the onboarding state has loaded, or for a view with no
+// registered hint - safe to call unconditionally from any view's render
+// function.
+export function onboardingHintHtml(view) {
+  const text = VIEW_HINTS[view];
+  if (!text || !runtime || runtime.state.seenViews.includes(view)) return '';
+  return `<div class="onboarding-view-hint" data-onboarding-hint="${view}" role="note">
+    <p>${escapeHtml(text)}</p>
+    <button type="button" class="btn btn-sm" data-onboarding-hint-dismiss>Verstanden</button>
+  </div>`;
+}
+
+// Call once after rendering a view that used onboardingHintHtml, passing the
+// same rerender callback the view's own controls use.
+export function wireOnboardingHint(container, rerenderView) {
+  const hint = container.querySelector('[data-onboarding-hint]');
+  hint?.querySelector('[data-onboarding-hint-dismiss]')?.addEventListener('click', () => {
+    void dismissOnboardingHint(hint.dataset.onboardingHint, rerenderView);
+  });
+}
+
+async function dismissOnboardingHint(view, rerenderView) {
+  if (!runtime || runtime.state.seenViews.includes(view)) return;
+  const seenViews = Array.from(new Set([...runtime.state.seenViews, view])).slice(-20);
+  try {
+    runtime.state = await api.onboarding.update({ seenViews });
+  } catch (error) {
+    showToast(error?.message || 'Hinweis konnte nicht gespeichert werden.', { error: true });
+    return;
+  }
+  rerenderView();
+}
+
 function clearTargetHighlight() {
   document.querySelectorAll('.onboarding-target-highlight').forEach((element) => {
     element.classList.remove('onboarding-target-highlight');
@@ -98,12 +144,22 @@ function positionTargetRing() {
   ring.style.top = `${rect.top}px`;
   ring.style.width = `${rect.width}px`;
   ring.style.height = `${rect.height}px`;
+  // The dialog defaults to a bottom anchor, which sits directly above a
+  // target in the bottom nav - too close on short viewports for the ring
+  // and the explanation text to stay visually separate. Flip the dialog to
+  // the top for any target in the lower half of the viewport (currently:
+  // every bottom-nav step) so the highlighted icon and the text never
+  // compete for the same screen area.
+  root()?.querySelector('.onboarding-dialog')?.classList.toggle('onboarding-dialog--top', rect.top > window.innerHeight / 2);
 }
 
 function syncTarget() {
   clearTargetHighlight();
   const step = runtime?.mode === 'core' ? STEPS[runtime.step] : null;
-  if (!step?.target) return;
+  if (!step?.target) {
+    root()?.querySelector('.onboarding-dialog')?.classList.remove('onboarding-dialog--top');
+    return;
+  }
   const target = document.querySelector(step.target);
   if (!target) return;
   runtime.targetElement = target;
@@ -119,9 +175,26 @@ function syncTarget() {
   }
 }
 
+// Keeps the required game rows scrollable clear of the fixed rating dialog
+// (see .onboarding-rating-list in style.css) by mirroring the dialog's own
+// rendered height into a CSS custom property. Re-measured on resize and
+// whenever the dialog's content can change height (progress text digits,
+// "Alle bewerten" widening the list).
+function syncRatingSpacer() {
+  const dialog = runtime?.mode === 'rating' ? root()?.querySelector('.onboarding-rating-dialog') : null;
+  const height = dialog ? Math.ceil(dialog.getBoundingClientRect().height) : 0;
+  document.documentElement.style.setProperty('--onboarding-rating-spacer', height ? `${height + 24}px` : '0px');
+}
+
+function syncOverlayGeometry() {
+  if (runtime?.mode === 'core') positionTargetRing();
+  else if (runtime?.mode === 'rating') syncRatingSpacer();
+}
+
 function closeOverlay({ restoreFocus = true } = {}) {
   const previousFocus = runtime?.previousFocus;
   clearTargetHighlight();
+  document.documentElement.style.setProperty('--onboarding-rating-spacer', '0px');
   const element = root();
   if (element) element.innerHTML = '';
   if (restoreFocus && previousFocus instanceof HTMLElement && document.contains(previousFocus)) previousFocus.focus();
@@ -153,8 +226,15 @@ async function handleOnboardingError(error) {
   }
 }
 
+// Two full copies of the same portrait, each clipped to one side of the
+// mouth line and nudged apart on their own animation - the classic
+// paper-cutout "talking head" look (upper head and lower jaw sliding apart
+// with the mouth in between), rather than the whole head just bobbing.
 function mascotHtml() {
-  return `<div class="onboarding-mascot" aria-hidden="true"><img src="/img/guide-head.jpg" alt="" /></div>`;
+  return `<div class="onboarding-mascot" aria-hidden="true">
+    <div class="onboarding-mascot-half onboarding-mascot-half-top"><img src="/img/guide-head.jpg" alt="" /></div>
+    <div class="onboarding-mascot-half onboarding-mascot-half-bottom"><img src="/img/guide-head.jpg" alt="" /></div>
+  </div>`;
 }
 
 function focusableElements(container) {
@@ -201,8 +281,13 @@ function wireDialogFocus() {
 function renderCore() {
   const element = root();
   const step = STEPS[runtime.step];
+  // A step with a target relies on the ring's own spotlight shadow (see
+  // style.css) to dim the page while keeping the highlighted element at
+  // full brightness. Adding the plain full-screen backdrop on top of that
+  // would darken the highlighted element again, so it's only rendered for
+  // steps with nothing to highlight.
   element.innerHTML = `
-    <div class="onboarding-backdrop" aria-hidden="true"></div>
+    ${step.target ? '' : '<div class="onboarding-backdrop" aria-hidden="true"></div>'}
     <section class="onboarding-dialog" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="onboarding-title" aria-describedby="onboarding-copy">
       ${mascotHtml()}
       <div class="onboarding-dialog-body">
@@ -246,6 +331,7 @@ function renderRating() {
   root().querySelector('[data-onboarding-later]').addEventListener('click', () => void deferRating().catch(handleOnboardingError));
   root().querySelector('[data-onboarding-finish]').addEventListener('click', () => void completeRating().catch(handleOnboardingError));
   wireDialogFocus();
+  syncRatingSpacer();
 }
 
 function renderOverlay() {
@@ -348,6 +434,7 @@ export function refreshOnboardingRatingProgress() {
   if (progressEl) progressEl.textContent = `${progress.completed} von ${progress.required} Pflichtspielen vollständig bewertet.`;
   const finish = root()?.querySelector('[data-onboarding-finish]');
   if (finish) finish.disabled = !progress.ready;
+  syncRatingSpacer();
 }
 
 export async function initOnboarding({ navigate, rerender, getCurrentView }) {
@@ -366,8 +453,8 @@ export async function initOnboarding({ navigate, rerender, getCurrentView }) {
     };
     if (!targetPositioningInstalled) {
       targetPositioningInstalled = true;
-      window.addEventListener('resize', positionTargetRing);
-      window.addEventListener('scroll', positionTargetRing, true);
+      window.addEventListener('resize', syncOverlayGeometry);
+      window.addEventListener('scroll', syncOverlayGeometry, true);
     }
   } catch {
     runtime = null;
