@@ -91,7 +91,7 @@ the audit trail.
 
 | Label          | Mode    | What satisfies the gate for the current head SHA                                                                                                                                                                        |
 | -------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `review:cross` | `cross` | per `crossReviewEvidence`: a native counter-provider review, or for Claude a credential-read-only structured result published by the dedicated trusted workflow for this exact head                                     |
+| `review:cross` | `cross` | per `crossReviewEvidence`: a native counter-provider review, a finding-free review the counter provider reported in a comment naming this exact head, or for Claude a credential-read-only structured result published by the dedicated trusted workflow for this exact head |
 | `review:self`  | `self`  | a published `agent-pipeline:review-result` marker: same head, `verdict=pass`, a `read-only` level meeting `selfReviewMinimumEnforcement` (default `verified`), from one of the implementation provider's own identities |
 | `review:human` | `human` | an approving review from an account with write access, covering exactly this head                                                                                                                                       |
 
@@ -196,6 +196,14 @@ confirms that the current head has no submitted Codex review, and posts exactly 
 `@codex review` comment with an exact-head marker. The marker is only a request and never counts as
 review evidence. Codex must submit its native GitHub review; the reconciler then evaluates that
 review for the current head and unresolved threads.
+
+What comes back is asymmetric, and the gate has to know both shapes. With findings, Codex submits a
+native GitHub review whose commit SHA GitHub itself binds. Without findings it submits nothing and
+answers in a comment — `Codex Review: Didn't find any major issues.` followed by the reviewed
+commit. That comment is the only head-bound record such a review leaves, so the reconciler reads it
+as evidence when the configured reviewer identity wrote it and the named commit is the current head.
+The comment that accompanies findings prints the same commit line and is deliberately not accepted:
+only the clean-pass wording distinguishes them, and its findings block through their open threads.
 
 The identity of that comment decides whether Codex acts on it. A request posted with the job token
 arrives as `github-actions[bot]`, which the integration answers with "To use Codex here, create a
