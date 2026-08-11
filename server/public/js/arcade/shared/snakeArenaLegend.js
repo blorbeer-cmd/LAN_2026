@@ -1,4 +1,5 @@
-import { escapeHtml } from './format.js';
+// Static kiosk and lazy Arcade views intentionally share this pure legend renderer.
+import { escapeHtml } from '../../format.js';
 
 export function snakeArenaLegendHtml(game) {
   if (game?.gameType !== 'snake' || game.world?.mode !== 'arena') return '';

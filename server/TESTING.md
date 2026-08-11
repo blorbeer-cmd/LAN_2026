@@ -97,13 +97,16 @@ Wiederholungsfall ab.
 - Integrationstests liegen unter `src/test/*.test.ts`.
 - E2E-Tests liegen unter `src/test/e2e/*.e2e.test.ts` und laufen **nicht** in `npm test` mit (eigenes
   Script `test:e2e`), da sie einen Server + Browser brauchen und entsprechend langsamer sind.
-- `scripts/run-e2e-partition.mjs` ordnet jede E2E-Datei genau einer Partition zu. Eine neue Datei
-  ohne Zuordnung oder eine doppelte Zuordnung lässt den Lauf bewusst fehlschlagen. `test:e2e`
-  führt beide Partitionen gemeinsam aus; CI kann `core` und `arcade` unabhängig starten.
+- `../scripts/e2e-partitions.mjs` ist die einzige maschinenlesbare Zuordnung von E2E-Dateien zu
+  `core`, `arcade` und dem Arcade-Smoke-Subset. Runner und Pfadklassifizierer importieren dasselbe
+  Manifest. Eine neue, gelöschte oder doppelt zugeordnete Datei lässt den Lauf mit einer
+  namentlichen Fehlermeldung bewusst fehlschlagen. `test:e2e` führt beide Hauptpartitionen aus;
+  CI kann `core` und `arcade` unabhängig starten.
 - Core enthält die gezielt auswählbaren Domänen `auth`, `checklist`, `invitations` und `flows`.
   Gemeinsame oder unbekannte Änderungen verwenden `all`; manuelle und tägliche Läufe führen immer
   alle vier Domänen aus. Die ehemals monolithischen Cross-View-Flows registrieren ihre Tests in drei
-  unabhängigen, laufzeitbalancierten Prozessen für Shell, Wettbewerb und Community. Arcade enthält die Arcade-, Stream-Renderer-,
+  unabhängigen, laufzeitbalancierten Prozessen für Shell, Wettbewerb und Community. Arcade enthält
+  die Arcade-, Stream-Renderer-,
   Battleship- und Challenge-Rush-Suiten sowie den eigenständig authentifizierten Arcade-Auth-Pfad
   und die Arcade-Partition der Cross-View-Flows. Der vollständige Challenge-Rush-Lifecycle, die
   Snake-Arena-Legenden sowie Navigation, Multiplayer-Layouts und Scribble laufen in getrennten
@@ -112,7 +115,7 @@ Wiederholungsfall ab.
   Arcade-Partition.
 - Die E2E-Dateien laufen parallel (eine pro Prozess) und starten je einen eigenen Server. Der
   Runner begrenzt die Dateiparallelität auf sechs, damit zusätzliche Shards nicht unbegrenzt viele
-  Chromium-Prozesse starten. Die längsten Arcade-Fixtures stehen zuerst in der Partition.
+  Chromium-Prozesse starten. Die längsten Arcade-Fixtures stehen zuerst in der Partition. Der
   gemeinsame Helfer `src/test/e2e/e2eServer.ts` startet ihn mit `PORT=0`, liest den tatsächlich
   gebundenen Port aus der Startmeldung und liefert die passende Basis-URL. Dadurch kollidieren
   parallele Läufe und andere Worktrees nicht mehr auf statisch reservierten Ports. Das gilt auch
@@ -147,12 +150,16 @@ Partielle Core-Läufe tragen ihren Scope im Schrittnamen, zum Beispiel
 Vollsuite-Baseline verglichen und kann einen Bestätigungslauf auslösen; dadurch werden kurze
 Teilmengen nie fälschlich gegen vollständige Core-Läufe bewertet.
 
-Ein erster Ausschlag ist nur ein Verdacht, weil GitHub-Runner schwanken. CI wiederholt genau die
-auffällige Suite auf einem frischen Runner. Erst wenn auch diese Wiederholung oberhalb beider
-Schwellen liegt, schlägt `Confirm test performance (<suite>)` fehl. Dann sind die langsamsten
-Testdateien beziehungsweise Testfälle und die verursachende Änderung zu untersuchen. Zusätzliche
-sinnvolle Abdeckung darf eine begründete Laufzeiterhöhung verursachen; Optimierung darf niemals
-Abdeckung entfernen, Assertions lockern oder Wartezeiten pauschal erhöhen.
+Ein erster Ausschlag ist nur ein Verdacht, weil GitHub-Runner schwanken. `Detect test performance`
+startet dann für genau die auffällige Suite `Confirm test performance (<suite>)` auf einem frischen
+Runner. Der stabile Aggregationsjob `Test performance` wertet Detektor und alle erforderlichen
+Wiederholungen fail closed aus: kein Verdacht oder eine unauffällige Wiederholung wird grün, ein
+bestätigter Rückschritt oder ein technischer Fehler wird rot. Nur dieser stabile Name gehört in den
+Branch-Schutz. Seine Zusammenfassung nennt Suite, Median-Basis, aktuelle Dauer, Abweichung und
+Ergebnis. Bei Rot sind die langsamsten Testdateien beziehungsweise Testfälle und die verursachende
+Änderung zu untersuchen. Zusätzliche sinnvolle Abdeckung darf eine begründete Laufzeiterhöhung
+verursachen; Optimierung darf niemals Abdeckung entfernen, Assertions lockern oder Wartezeiten
+pauschal erhöhen.
 
 Die Pfadklassifikation liegt testbar in `scripts/ci-path-classifier.mjs`. Reine Arcade-Änderungen
 starten nur Arcade-E2E. Gekapselte Auth-, Checklisten- und allgemeine Flow-Pfade wählen nur ihre
@@ -165,7 +172,8 @@ allgemeinen Realtime-Transport nur Core-E2E, eine Änderung am Arcade-Modul nur 
 vollständigen Unit-/Integrationstests prüfen beide Module in jedem Server-Lauf. Tatsächlich
 gemeinsame Dateien wie `src/db.ts`, `public/js/app.js`, CSS und unbekannte neue
 Produktionsmodule starten Core-E2E plus den kurzen Arcade-Smoke-Test, nicht den vollständigen
-Arcade-Lauf. Direkte Arcade-Änderungen starten die vollständige Arcade-Partition; ein täglicher
+Arcade-Lauf. Der stabile Präfix `public/js/arcade/` klassifiziert neue Arcade-Browsermodule ohne
+Dateinamenliste. Direkte Arcade-Änderungen starten die vollständige Arcade-Partition; ein täglicher
 geplanter Volltest hält alle Partitionen und ihre Laufzeitbaselines aktuell.
 
 ## Vor jedem Commit

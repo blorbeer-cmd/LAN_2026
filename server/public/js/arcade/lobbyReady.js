@@ -1,5 +1,5 @@
-import { avatarHtml, escapeHtml } from './format.js';
-import { icon } from './icons.js';
+import { avatarHtml, escapeHtml } from '../format.js';
+import { icon } from '../icons.js';
 
 // Shared lobby UI for every arcade game: stable player rows, the lobby card
 // shell and the guest's own ready toggle. The server

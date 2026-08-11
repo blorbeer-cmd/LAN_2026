@@ -373,7 +373,7 @@ Voraussichtlich neu:
 - `server/src/arcade/curveFeverLogic.ts`
 - `server/src/arcade/curveFeverLogic.test.ts`
 - `server/src/arcade/curveFever.ts`
-- `server/public/js/views/curveFever.js`
+- `server/public/js/arcade/views/curveFever.js`
 
 Gezielt zu erweitern:
 
@@ -381,12 +381,12 @@ Gezielt zu erweitern:
 - `server/src/db.ts`: eingebautes Arcade-Spiel in `ARCADE_GAME_DEFS` ergänzen.
 - `server/src/routes/arcade.ts`: Titel und offene Lobbys aggregieren.
 - `server/public/js/app.js`: Matchview und Lobby-Refresh registrieren.
-- `server/public/js/views/arcade.js`: Spielkarte, Lobbyrenderer, Wechsel zwischen Spielen und
+- `server/public/js/arcade/views/arcade.js`: Spielkarte, Lobbyrenderer, Wechsel zwischen Spielen und
   Engaged-Game-Erkennung ergänzen.
-- `server/public/js/arcadeStreamRenderer.js`: Curve-Trails für Watch darstellen.
-- `server/public/js/views/arcadeWatch.js` und `server/public/js/kiosk.js`: Anzeigename und
+- `server/public/js/arcade/shared/arcadeStreamRenderer.js`: Curve-Trails für Watch darstellen.
+- `server/public/js/arcade/views/arcadeWatch.js` und `server/public/js/kiosk.js`: Anzeigename und
   Curve-State berücksichtigen.
-- `server/public/css/style.css`: tokenisierte Arena-, Steuerflächen-, Score- und
+- `server/public/css/arcade.css`: tokenisierte Arena-, Steuerflächen-, Score- und
   Responsive-Regeln; vorhandene `.arcade-game-shell`- und Expand-Regeln wiederverwenden.
 - vorhandene Arcade-API-, Realtime-, Leave-, Tracking-, Renderer- und E2E-Tests.
 

@@ -9,9 +9,9 @@ import { connectSocket } from './socket.js';
 import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml, formatDateTime } from './format.js';
 import { installIconReplacement, icon } from './icons.js';
 import { bannerContentHtml } from './pushFeed.js';
-import { drawArcadeStreamCanvas } from './arcadeStreamRenderer.js';
+import { drawArcadeStreamCanvas } from './arcade/shared/arcadeStreamRenderer.js';
 import { domainIcon, installDomainIcons } from './domainIcons.js';
-import { snakeArenaLegendHtml } from './snakeArenaLegend.js';
+import { snakeArenaLegendHtml } from './arcade/shared/snakeArenaLegend.js';
 import { emptyStateHtml } from './emptyState.js';
 
 installIconReplacement();

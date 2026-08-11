@@ -1,14 +1,14 @@
-import { escapeHtml } from '../format.js';
-import { connectSocket } from '../socket.js';
-import { getMyId } from '../whoami.js';
-import { showToast } from '../toast.js';
+import { escapeHtml } from '../../format.js';
+import { connectSocket } from '../../socket.js';
+import { getMyId } from '../../whoami.js';
+import { showToast } from '../../toast.js';
 import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeMuteControlHtml, wireArcadeMuteControl, playArcadeSound } from '../arcadeSound.js';
-import { infoTooltipHtml } from '../infoTooltip.js';
+import { infoTooltipHtml } from '../../infoTooltip.js';
 import { cancelCountdown } from '../countdown.js';
-import { confirmDialog } from '../modal.js';
-import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
-import { emptyStateHtml } from '../emptyState.js';
+import { confirmDialog } from '../../modal.js';
+import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
+import { emptyStateHtml } from '../../emptyState.js';
 
 const COLOR_WORD_LABELS = { red: 'Rot', blue: 'Blau', green: 'Grün', yellow: 'Gelb' };
 const COLOR_WORD_VARS = { red: 'var(--danger)', blue: 'var(--accent)', green: 'var(--state-playing)', yellow: 'var(--state-paused)' };
@@ -18,6 +18,7 @@ let socket = null; let lobbies = []; let challengeCatalog = []; let match = null
 let countdownKey = null; let startedKey = null; let presentationKey = null;
 let countdownDeadline = null; let countdownTimer = null;
 const selectedChallengeKeys = new Set();
+let challengeSelectorOpen = false;
 let currentTrial = null; let trialTimer = null; let interaction = freshInteraction(null);
 // Shared "how far into the current sequence" pointer for aim-trainer,
 // whack-a-mole, memory-sequence and color-word — only one of them is ever
@@ -65,7 +66,9 @@ export function memoryRevealSchedule(memoryRevealMs, sequenceLength) {
 function focusTimedChallengeTarget(state) {
   const selector = timedChallengeFocusSelector(state);
   if (!selector) return;
-  queueMicrotask(() => {
+  // Arcade rerenders resolve their cached dynamic import asynchronously. Wait for the next frame
+  // so app.js has replaced the DOM before restoring keyboard focus to the timed target.
+  requestAnimationFrame(() => {
     if (currentView() !== 'challengeRush') return;
     document.querySelector(selector)?.focus();
   });
@@ -323,7 +326,7 @@ function adminChallengeSelectorHtml(disabled) {
   if (!currentPlayerMayUseArcadeAi()) return '';
   const count = selectedChallenges().length;
   const choices = challengeCatalog.map((challenge) => `<label class="challenge-rush-test-option"><input type="checkbox" data-cr-challenge-key="${escapeHtml(challenge.key)}" ${selectedChallengeKeys.has(challenge.key) ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><strong>${escapeHtml(challenge.title)}</strong><small class="muted">${escapeHtml(challenge.description)}</small></span></label>`).join('');
-  return `<details class="challenge-rush-test-selector"><summary><strong>Testauswahl</strong><span class="muted" data-cr-selection-count>${count ? `${count} Aufgaben` : '10 zufällige Aufgaben'}</span></summary><div class="stack"><p class="muted" data-cr-selection-hint>${count ? 'Die markierten Aufgaben laufen einmal in dieser Reihenfolge.' : 'Ohne Auswahl startet das normale Spiel mit 10 zufälligen Aufgaben.'}</p><div class="row challenge-rush-test-actions"><button type="button" class="btn btn-sm" data-cr-select-all ${disabled ? 'disabled' : ''}>Alle auswählen</button><button type="button" class="btn btn-sm" data-cr-select-none ${disabled ? 'disabled' : ''}>Auswahl leeren</button></div><div class="challenge-rush-test-grid">${choices || '<p class="muted">Aufgaben werden geladen …</p>'}</div></div></details>`;
+  return `<details class="challenge-rush-test-selector" ${challengeSelectorOpen ? 'open' : ''}><summary><strong>Testauswahl</strong><span class="muted" data-cr-selection-count>${count ? `${count} Aufgaben` : '10 zufällige Aufgaben'}</span></summary><div class="stack"><p class="muted" data-cr-selection-hint>${count ? 'Die markierten Aufgaben laufen einmal in dieser Reihenfolge.' : 'Ohne Auswahl startet das normale Spiel mit 10 zufälligen Aufgaben.'}</p><div class="row challenge-rush-test-actions"><button type="button" class="btn btn-sm" data-cr-select-all ${disabled ? 'disabled' : ''}>Alle auswählen</button><button type="button" class="btn btn-sm" data-cr-select-none ${disabled ? 'disabled' : ''}>Auswahl leeren</button></div><div class="challenge-rush-test-grid">${choices || '<p class="muted">Aufgaben werden geladen …</p>'}</div></div></details>`;
 }
 function syncChallengeSelectionControls(container) {
   const count = selectedChallenges().length;
@@ -363,6 +366,7 @@ export function renderChallengeRushLobbyCard() {
 }
 export function wireChallengeRushLobbyCard(container, { beforeCreate = async () => true, beforeJoin = async () => true } = {}) {
   const createPayload = () => { const keys = challengeSelectionPayload(); return keys.length ? { playerId: myId(), challengeKeys: keys } : { playerId: myId() }; };
+  container.querySelector('.challenge-rush-test-selector')?.addEventListener('toggle', (event) => { challengeSelectorOpen = event.currentTarget.open; });
   container.querySelector('#cr-create')?.addEventListener('click', async () => { if (!(await beforeCreate())) return; const result = await emit('challenge-rush:lobby:create', createPayload()); if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true }); });
   container.querySelector('#cr-bot')?.addEventListener('click', async () => { if (!(await beforeCreate())) return; const result = await emit('challenge-rush:lobby:bot', createPayload()); if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true }); });
   container.querySelectorAll('[data-cr-challenge-key]').forEach((checkbox) => checkbox.addEventListener('change', () => { if (checkbox.checked) selectedChallengeKeys.add(checkbox.dataset.crChallengeKey); else selectedChallengeKeys.delete(checkbox.dataset.crChallengeKey); syncChallengeSelectionControls(container); }));

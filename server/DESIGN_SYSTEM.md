@@ -11,6 +11,13 @@ stylesheet only for Arcade views, while `kiosk.html` loads it statically for its
 Keep new Arcade selectors there so shared-view changes do not expand the Arcade browser-test
 trigger.
 
+Arcade browser code lives under `server/public/js/arcade/`; route renderers live in its `views/`
+subdirectory and are declared directly in `viewManifest.js` with `area: 'arcade'`. The Core app
+loads those renderers with native `import()` and waits for `arcade.css` before rendering. New
+Arcade code stays inside this subtree. Move a helper to shared Core code only when Core genuinely
+uses it. The kiosk is the deliberate exception: it loads Arcade CSS statically and may import only
+the small spectator helpers under `arcade/shared/`.
+
 If you're adding or changing UI, the rule is simple: **never write a raw color,
 pixel value, or font-size — always reference a token below.** If the token you
 need doesn't exist yet, add it to the `:root` block first (with a short comment
@@ -273,7 +280,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Auslosung/Captain Draft, Checkliste's tabs, the To-Do dialog's Art/Zuweisen-an); the Arcade
   section's `.arcade-mode-toggle` segmented pill only when the toggle sits directly beside a primary
   gradient CTA it must not visually compete with; a plain checkbox only for an independent on/off
-  flag (Hin-/Rückspiel, Punktestand tracken, Spielauswahl einschränken), never for a named exclusive
+  flag (Hin-/Rückspiel, Punktestand tracken, Sitznachbarn), never for a named exclusive
   choice among alternatives.
 - **Input** — plain `<input>`/`<select>`/`<textarea>` are styled globally by
   type selector; no class needed.
@@ -786,11 +793,15 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   list. Game rows remain one
   column on phones and two from `--bp-md`, with the same bordered card treatment at both sizes.
   Explanations sit in info tooltips immediately beside their titles. Title and info fields start at
-  the same control height; the optional game filter uses an aligned toolbar and consistent gaps.
-  The participant action spans the full width, with equal-width „Abbrechen“ and „Beenden“ actions below.
-  The optional game checkbox grid has a directly labeled text search in addition to its genre chips.
-  Both controls filter the visible rows, while text-search-hidden checkbox selections remain intact;
-  bulk selection actions apply only to the currently visible intersection. That grid, an
+  the same control height. The participant action spans the full width, with equal-width „Abbrechen“ and „Beenden“ actions below.
+  Starting a round always shows its game selection grid — there is no separate checkbox gating it.
+  It preselects the current Top 10 by Bock as a starting point, same as before; a round covering
+  everything simply uses „Alle markieren“ or clears the remaining exclusions by hand. The
+  grid reuses the same icon select-all/deselect-all buttons (`.selection-toolbar-icon`) and
+  collapsible text search (`selectionSearchHtml`) as Team formation's and Tournament creation's
+  player pickers, alongside its own genre chips. All three controls filter the visible rows while
+  hidden checkbox selections remain intact; bulk selection actions apply only to the currently
+  visible intersection. That grid, an
   unrestricted round's ballot and „Top 10 nach Bock-Level“ all cover the accepted games only;
   suggestions are not votable (see „Game catalog“). A suggestion's own Bock ranking stays visible
   in the Spiele view, which sorts by Ø Bock on every tab. A round keeps the exact games it was

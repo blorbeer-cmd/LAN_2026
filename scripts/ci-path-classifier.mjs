@@ -2,71 +2,17 @@ import { appendFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-const ARCADE_E2E_FILES = new Set([
-  "arcade.e2e.test.ts",
-  "arcade.fixture.ts",
-  "arcadeMultiplayer.e2e.test.ts",
-  "arcadeScribbleViews.e2e.test.ts",
-  "arcadeSmoke.e2e.test.ts",
-  "arcadeStreamRenderer.e2e.test.ts",
-  "authGateArcade.e2e.test.ts",
-  "battleship.e2e.test.ts",
-  "challengeRush.e2e.test.ts",
-  "challengeRush.fixture.ts",
-  "challengeRushLifecycle.e2e.test.ts",
-  "arcadeFlows.e2e.test.ts",
-  "arcadeFlows.fixture.ts",
-  "snakeArenaViews.e2e.test.ts",
-]);
-
-const CORE_DOMAIN_ORDER = ["auth", "checklist", "invitations", "flows"];
-
-const CORE_E2E_FILE_DOMAINS = new Map([
-  ["access.e2e.test.ts", "auth"],
-  ["authGate.e2e.test.ts", "auth"],
-  ["checklist.e2e.test.ts", "checklist"],
-  ["eventInvitations.e2e.test.ts", "invitations"],
-  ["flows.fixture.ts", "flows"],
-  ["flowsCompetition.e2e.test.ts", "flows"],
-  ["flowsCommunity.e2e.test.ts", "flows"],
-  ["flowsShell.e2e.test.ts", "flows"],
-  ["phase5eIsolation.e2e.test.ts", "flows"],
-]);
-
-const ARCADE_VIEW_FILES = new Set([
-  "arcade.js",
-  "arcadeAdmin.js",
-  "arcadeScribble.js",
-  "arcadeUi.js",
-  "arcadeWatch.js",
-  "battleship.js",
-  "blobby.js",
-  "challengeRush.js",
-  "pong.js",
-  "snake.js",
-  "tetris.js",
-]);
-
-const ARCADE_FRONTEND_FILES = new Set([
-  "arcadeSound.js",
-  "arcadeSound.test.js",
-  "arcadeStreamRenderer.js",
-  "arcadeStreamRenderer.test.js",
-  "arcadeWatchFilter.js",
-  "arcadeWatchFilter.test.js",
-  "lobbyReady.js",
-  "lobbyReady.test.js",
-  "snakeArenaLegend.js",
-  "snakeArenaLegend.test.js",
-]);
+import {
+  CORE_E2E_DOMAIN_ORDER,
+  coreDomainForE2EPath,
+  mainPartitionForE2EPath,
+} from "./e2e-partitions.mjs";
 
 const SHARED_FRONTEND_FILES = new Set([
   "admin.js",
   "api.js",
   "app.js",
   "authGate.js",
-  "countdown.js",
   "data.js",
   "emptyState.js",
   "format.js",
@@ -77,6 +23,8 @@ const SHARED_FRONTEND_FILES = new Set([
   "socket.js",
   "state.js",
   "toast.js",
+  "viewManifest.js",
+  "viewRegistry.js",
   "whoami.js",
 ]);
 
@@ -148,16 +96,21 @@ function mergeCoreScope(current, next) {
   const domains = new Set(
     [...(current === "none" ? [] : current.split(",")), ...next.split(",")],
   );
-  return CORE_DOMAIN_ORDER.filter((domain) => domains.has(domain)).join(",");
+  return CORE_E2E_DOMAIN_ORDER.filter((domain) => domains.has(domain)).join(",");
 }
 
 function e2eImpactForServerPath(file) {
   if (file.startsWith("server/src/test/e2e/")) {
-    const name = path.posix.basename(file);
-    if (ARCADE_E2E_FILES.has(name))
+    const partition = mainPartitionForE2EPath(file);
+    if (partition === "arcade")
       return { coreScope: "none", arcade: true, arcadeSmoke: false };
-    if (CORE_E2E_FILE_DOMAINS.has(name))
-      return { coreScope: CORE_E2E_FILE_DOMAINS.get(name), arcade: false, arcadeSmoke: false };
+    if (partition === "core")
+      return {
+        coreScope: coreDomainForE2EPath(file) ?? "all",
+        arcade: false,
+        arcadeSmoke: false,
+      };
+    // The manifest validator will name the missing file. Until then, never guess one partition.
     return { coreScope: "all", arcade: true, arcadeSmoke: false };
   }
 
@@ -183,6 +136,9 @@ function e2eImpactForServerPath(file) {
   )
     return { coreScope: "checklist", arcade: false, arcadeSmoke: false };
 
+  if (file.startsWith("server/public/js/arcade/"))
+    return { coreScope: "none", arcade: true, arcadeSmoke: false };
+
   if (file.startsWith("server/public/js/views/")) {
     if (
       file === "server/public/js/views/admin.js" ||
@@ -191,15 +147,11 @@ function e2eImpactForServerPath(file) {
       return { coreScope: "auth,flows", arcade: false, arcadeSmoke: false };
     if (file === "server/public/js/views/games.js")
       return { coreScope: "all", arcade: false, arcadeSmoke: false };
-    return ARCADE_VIEW_FILES.has(path.posix.basename(file))
-      ? { coreScope: "none", arcade: true, arcadeSmoke: false }
-      : { coreScope: "flows", arcade: false, arcadeSmoke: false };
+    return { coreScope: "flows", arcade: false, arcadeSmoke: false };
   }
 
   if (file.startsWith("server/public/js/")) {
     const name = path.posix.basename(file);
-    if (ARCADE_FRONTEND_FILES.has(name))
-      return { coreScope: "none", arcade: true, arcadeSmoke: false };
     if (SHARED_FRONTEND_FILES.has(name))
       return { coreScope: "all", arcade: false, arcadeSmoke: true };
     return { coreScope: "flows", arcade: false, arcadeSmoke: false };

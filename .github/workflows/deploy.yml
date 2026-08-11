@@ -279,8 +279,8 @@ jobs:
             fi
           done
 
-  test-performance:
-    name: Test performance
+  test-performance-detect:
+    name: Detect test performance
     if: >-
       always() &&
       needs.changes.result == 'success' &&
@@ -310,16 +310,26 @@ jobs:
           --run-id "${{ github.run_id }}"
           --branch "${{ github.event.repository.default_branch }}"
           --github-output "$GITHUB_OUTPUT"
+          --report "${{ runner.temp }}/test-performance-detection.json"
           --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve detector report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-performance-detection
+          path: ${{ runner.temp }}/test-performance-detection.json
+          if-no-files-found: ignore
+          retention-days: 1
 
   test-performance-confirm:
     name: Confirm test performance (${{ matrix.suite }})
-    if: needs['test-performance'].outputs.has_suspicions == 'true'
-    needs: test-performance
+    if: needs['test-performance-detect'].outputs.has_suspicions == 'true'
+    needs: test-performance-detect
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs['test-performance'].outputs.suspicions) }}
+        include: ${{ fromJSON(needs['test-performance-detect'].outputs.suspicions) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -383,7 +393,64 @@ jobs:
           node ../scripts/ci-test-performance.mjs confirm \
             --suite "$SUITE" \
             --baseline-ms "$BASELINE_MS" \
-            --current-ms "$current_ms"
+            --current-ms "$current_ms" \
+            --report "${RUNNER_TEMP}/test-performance-${SUITE}.json"
+
+      - name: Preserve confirmation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-performance-confirm-${{ matrix.suite }}
+          path: ${{ runner.temp }}/test-performance-${{ matrix.suite }}.json
+          if-no-files-found: ignore
+          retention-days: 1
+
+  # Stable branch-protection context. The detector and dynamic confirmation jobs may change or be
+  # skipped, but this aggregate always reports exactly `Test performance` and fails closed.
+  test-performance:
+    name: Test performance
+    if: always()
+    needs: [changes, test-performance-detect, test-performance-confirm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download detector report
+        if: needs['test-performance-detect'].result == 'success'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: test-performance-detection
+          path: ${{ runner.temp }}/test-performance/detection
+
+      - name: Download confirmation reports
+        if: needs['test-performance-confirm'].result != 'skipped'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-performance-confirm-*
+          path: ${{ runner.temp }}/test-performance/confirmations
+          merge-multiple: true
+
+      - name: Aggregate final performance verdict
+        env:
+          APPLICABLE: ${{ needs.changes.outputs.server == 'true' || needs.changes.outputs.e2e_core == 'true' || needs.changes.outputs.e2e_arcade == 'true' || needs.changes.outputs.e2e_arcade_smoke == 'true' }}
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          DETECTOR_RESULT: ${{ needs['test-performance-detect'].result }}
+          CONFIRMATION_RESULT: ${{ needs['test-performance-confirm'].result }}
+        shell: bash
+        run: >-
+          node scripts/ci-test-performance.mjs aggregate
+          --applicable "$APPLICABLE"
+          --changes-result "$CHANGES_RESULT"
+          --detector-result "$DETECTOR_RESULT"
+          --confirmation-result "$CONFIRMATION_RESULT"
+          --detection "${RUNNER_TEMP}/test-performance/detection/test-performance-detection.json"
+          --confirmations-dir "${RUNNER_TEMP}/test-performance/confirmations"
+          --summary "$GITHUB_STEP_SUMMARY"
 
   agent:
     name: Agent lint and tests
@@ -465,8 +532,7 @@ jobs:
       (needs['e2e-core'].result == 'success' || needs['e2e-core'].result == 'skipped') &&
       (needs['e2e-arcade'].result == 'success' || needs['e2e-arcade'].result == 'skipped') &&
       (needs['e2e-arcade-smoke'].result == 'success' || needs['e2e-arcade-smoke'].result == 'skipped') &&
-      (needs['test-performance'].result == 'success' || needs['test-performance'].result == 'skipped') &&
-      (needs['test-performance-confirm'].result == 'success' || needs['test-performance-confirm'].result == 'skipped') &&
+      needs['test-performance'].result == 'success' &&
       (needs.agent.result == 'success' || needs.agent.result == 'skipped') &&
       needs.image.result == 'success' &&
       (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy))
@@ -478,7 +544,6 @@ jobs:
         e2e-arcade,
         e2e-arcade-smoke,
         test-performance,
-        test-performance-confirm,
         agent,
         image,
       ]

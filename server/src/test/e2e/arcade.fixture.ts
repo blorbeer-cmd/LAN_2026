@@ -91,6 +91,34 @@ async function openArcadeAs(
   throw new Error('could not open the Arcade view');
 }
 
+async function openHomeAs(playerId: string): Promise<Actor> {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const cookie = playerCookies.get(playerId);
+  assert.ok(cookie, `missing personal session for ${playerId}`);
+  await addSessionCookie(context, BASE_URL, cookie);
+  const page = await context.newPage();
+  page.on('pageerror', (err) => console.error('[pageerror]', err.message));
+  await page.goto(BASE_URL);
+  await page.waitForSelector('.nav-btn[data-view="more"]');
+  await page.waitForFunction(() =>
+    (document.getElementById('view-container') as HTMLElement | null)?.dataset.view === 'home');
+  return { context, page };
+}
+
+async function navigateToArcade(page: Page): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.click('.nav-btn[data-view="more"]');
+    await page.click('[data-navigate="arcade"]');
+    try {
+      await page.waitForSelector('.arcade-tiles', { timeout: 4_000 });
+      return;
+    } catch {
+      // A player refresh can replace More while the transition is in flight.
+    }
+  }
+  throw new Error('could not navigate to Arcade');
+}
+
 function activeView(page: Page): Promise<string | undefined> {
   return page.evaluate(() => (document.getElementById('view-container') as HTMLElement | null)?.dataset.view);
 }
@@ -158,6 +186,96 @@ before(async () => {
 after(async () => {
   await browser?.close();
   serverProcess?.kill();
+});
+
+arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and support a direct hash route', async () => {
+  const player = await createPlayer('Arcade Lazy Assets');
+  const actor = await openHomeAs(player.id);
+  const requests: string[] = [];
+  actor.page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith('/js/arcade/') || url.pathname === '/css/arcade.css') {
+      requests.push(`${url.pathname}${url.search}`);
+    }
+  });
+
+  try {
+    const bootAssets = await actor.page.evaluate(() => performance.getEntriesByType('resource')
+      .map((entry) => new URL(entry.name).pathname)
+      .filter((pathname) => pathname.startsWith('/js/arcade/') || pathname === '/css/arcade.css'));
+    assert.equal(await actor.page.locator('#arcade-stylesheet').count(), 0);
+    assert.deepEqual(bootAssets, []);
+    assert.equal(requests.length, 0);
+
+    await navigateToArcade(actor.page);
+    await actor.page.waitForSelector('#arcade-stylesheet[data-loaded="true"]', { state: 'attached' });
+    const firstLoad = [...requests];
+    assert.equal(firstLoad.filter((request) => request.startsWith('/css/arcade.css?')).length, 1);
+    assert.ok(firstLoad.some((request) => request === '/js/arcade/views/arcade.js'));
+    assert.equal(new Set(firstLoad).size, firstLoad.length, 'each Arcade asset should load once');
+
+    await actor.page.click('.nav-btn[data-view="home"]');
+    await actor.page.waitForFunction(() => !document.getElementById('arcade-stylesheet'));
+    await navigateToArcade(actor.page);
+    await actor.page.waitForSelector('#arcade-stylesheet[data-loaded="true"]', { state: 'attached' });
+    const secondLoadJavaScript = requests.filter((request) => request.startsWith('/js/arcade/'));
+    assert.deepEqual(
+      secondLoadJavaScript,
+      firstLoad.filter((request) => request.startsWith('/js/arcade/')),
+      'native module caching must prevent a second Arcade JavaScript fetch',
+    );
+
+    const direct = await actor.context.newPage();
+    await direct.goto(`${BASE_URL}/#arcade`);
+    await direct.waitForSelector('.arcade-tiles');
+    await direct.waitForSelector('#arcade-stylesheet[data-loaded="true"]', { state: 'attached' });
+    assert.equal(await activeView(direct), 'arcade');
+    await direct.close();
+  } finally {
+    await actor.context.close();
+  }
+});
+
+arcadeTest('navigation', 'an obsolete or failed Arcade import cannot replace or damage a Core view', async () => {
+  const player = await createPlayer('Arcade Import Recovery');
+  const stale = await openHomeAs(player.id);
+  let releaseImport!: () => void;
+  const importReleased = new Promise<void>((resolve) => { releaseImport = resolve; });
+  const delayArcade = async (route: import('playwright').Route) => {
+    await importReleased;
+    await route.continue();
+  };
+  await stale.page.route('**/js/arcade/views/arcade.js', delayArcade);
+
+  try {
+    await stale.page.click('.nav-btn[data-view="more"]');
+    await stale.page.click('[data-navigate="arcade"]');
+    await stale.page.waitForSelector('text=Arcade wird geladen');
+    await stale.page.click('.nav-btn[data-view="home"]');
+    releaseImport();
+    await stale.page.waitForTimeout(250);
+    assert.equal(await activeView(stale.page), 'home');
+    assert.equal(await stale.page.locator('.arcade-tiles').count(), 0);
+  } finally {
+    releaseImport();
+    await stale.context.close();
+  }
+
+  const failed = await openHomeAs(player.id);
+  const failArcade = (route: import('playwright').Route) => route.abort('failed');
+  await failed.page.route('**/js/arcade/views/arcade.js', failArcade);
+  try {
+    await failed.page.click('.nav-btn[data-view="more"]');
+    await failed.page.click('[data-navigate="arcade"]');
+    await failed.page.waitForSelector('text=Arcade konnte nicht geladen werden.');
+    await failed.page.click('.nav-btn[data-view="home"]');
+    assert.equal(await activeView(failed.page), 'home');
+    await failed.page.unroute('**/js/arcade/views/arcade.js', failArcade);
+    await navigateToArcade(failed.page);
+    assert.equal(await activeView(failed.page), 'arcade');
+  } finally {
+    await failed.context.close();
+  }
 });
 
 arcadeTest('navigation', 'classic Snake guest returns to the Arcade immediately after leaving', async () => {
