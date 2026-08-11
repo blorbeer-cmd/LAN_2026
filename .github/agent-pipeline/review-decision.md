@@ -53,6 +53,14 @@ Status auf `review-decision-delivery-failed` und lässt den Workflow fehlschlage
 versucht erneut; ein möglicherweise trotz verlorener HTTP-Antwort angelegter Kommentar wird über
 seinen Zustellmarker erkannt und nicht dupliziert.
 
+Der lokale Codex-Monitor ist ein einzelner, an einen dedizierten Task gebundener Fünf-Minuten-
+Heartbeat. Er verarbeitet ausschließlich Events mit einem Codex-Implementierer, löst das Ziel über
+die gültige `codex-thread-id` oder einen eindeutig passenden Branch auf und quittiert erst nach
+erfolgreichem Versand. Für Claude-Implementierungen gibt es in der Codex-App keine belastbare
+Schnittstelle zum Wecken der ursprünglichen Claude-Session; dafür werden keine Codex-Events erzeugt
+und kein Claude-Task erfunden. GitHub bleibt in diesem Fall die Outbox. Leere Scans bleiben still,
+und der Monitor verändert keine `review:*`-Labels.
+
 ## Die drei Optionen
 
 | Option              | Modus    | Label          | Unabhängigkeit                                                     |

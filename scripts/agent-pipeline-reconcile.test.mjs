@@ -204,6 +204,85 @@ function codexImplementationSnapshot(overrides = {}) {
   });
 }
 
+function matrixEvidence(implementer, mode, headSha, verdict = "pass") {
+  if (mode === "cross") {
+    if (implementer === "codex") {
+      return {
+        reviews: [],
+        reviewResults: parseReviewResults([
+          claudeCrossResultComment(headSha, { verdict }),
+        ]),
+      };
+    }
+    return {
+      reviewResults: [],
+      reviews: [
+        {
+          author: CODEX_REVIEWER,
+          state: verdict === "changes-required" ? "CHANGES_REQUESTED" : "COMMENTED",
+          commitSha: headSha,
+          submittedAt: "2026-08-11T10:00:00Z",
+        },
+      ],
+    };
+  }
+
+  if (mode === "self") {
+    return {
+      reviews: [],
+      reviewResults: parseReviewResults([
+        selfResultComment(headSha, {
+          verdict,
+          "read-only": "verified",
+        }),
+      ]),
+    };
+  }
+
+  return {
+    reviewResults: [],
+    reviews: [
+      {
+        author: "blorbeer-cmd",
+        authorAssociation: "OWNER",
+        state: verdict === "changes-required" ? "CHANGES_REQUESTED" : "COMMENTED",
+        commitSha: headSha,
+        submittedAt: "2026-08-11T10:00:00Z",
+      },
+    ],
+  };
+}
+
+function matrixSnapshot({ implementer, mode, headSha = HEAD, evidenceVerdict = "pass" }) {
+  const base = implementer === "codex" ? codexImplementationSnapshot() : readySnapshot();
+  return {
+    ...base,
+    headSha,
+    labels: [config.reviewModeLabels[mode]],
+    statusCommentBody: decisionRecord(headSha, mode),
+    ...matrixEvidence(implementer, mode, headSha, evidenceVerdict),
+  };
+}
+
+function otherModeEvidence(implementer, mode, headSha) {
+  if (mode === "cross") {
+    return {
+      reviews: [],
+      reviewResults: parseReviewResults([
+        selfResultComment(headSha, { "read-only": "verified" }),
+      ]),
+    };
+  }
+  if (mode === "self") {
+    return implementer === "codex"
+      ? { reviews: [], reviewResults: parseReviewResults([claudeCrossResultComment(headSha)]) }
+      : { reviews: commentedReview(headSha), reviewResults: [] };
+  }
+  return implementer === "codex"
+    ? { reviews: [], reviewResults: parseReviewResults([claudeCrossResultComment(headSha)]) }
+    : { reviews: commentedReview(headSha), reviewResults: [] };
+}
+
 // ---------------------------------------------------------------------------
 // Cross-review evidence
 //
@@ -2213,6 +2292,83 @@ test("the chosen mode decides which evidence counts", () => {
   const readiness = deriveReadiness(readySnapshot({ labels: [SELF_LABEL] }), config);
   assert.equal(readiness.ready, false);
   assert.match(readiness.blockers[0], /No self-review result/);
+});
+
+test("the six-field implementer/review matrix is head-bound and fail-closed", () => {
+  const matrix = [
+    ["codex", "cross", "claude"],
+    ["codex", "self", "codex"],
+    ["codex", "human", "human"],
+    ["claude", "cross", "codex"],
+    ["claude", "self", "claude"],
+    ["claude", "human", "human"],
+  ];
+  const NEW_HEAD = "d".repeat(40);
+
+  for (const [implementer, mode, expectedReviewer] of matrix) {
+    const label = config.reviewModeLabels[mode];
+    const passing = matrixSnapshot({ implementer, mode });
+    const passed = deriveReadiness(passing, config);
+    assert.equal(passed.ready, true, `${implementer}/${mode} pass must open the gate`);
+    assert.equal(passed.details.reviewMode, mode);
+    if (mode === "human") {
+      assert.equal(passed.details.reviews.humanReview, true, `${implementer}/${mode} must use human evidence`);
+    } else if (mode === "self") {
+      assert.equal(passed.contract.implementer, expectedReviewer, `${implementer}/${mode} must use the implementation provider`);
+    } else {
+      assert.equal(passed.reviewerProvider, expectedReviewer, `${implementer}/${mode} must use the correct provider`);
+    }
+    if (mode === "cross") {
+      assert.equal(
+        implementer === "codex"
+          ? passed.details.crossResult?.verdict
+          : passed.details.reviews.reviewedByProvider,
+        implementer === "codex" ? "pass" : true,
+      );
+    } else if (mode === "self") {
+      assert.equal(passed.details.selfResult?.verdict, "pass");
+    } else {
+      assert.equal(passed.details.reviews.humanReview, true);
+    }
+
+    const changes = deriveReadiness(
+      matrixSnapshot({ implementer, mode, evidenceVerdict: "changes-required" }),
+      config,
+    );
+    assert.equal(changes.ready, false, `${implementer}/${mode} changes-required must block`);
+
+    const stale = deriveReadiness(
+      {
+        ...passing,
+        ...matrixEvidence(implementer, mode, OLD_HEAD),
+      },
+      config,
+    );
+    assert.equal(stale.ready, false, `${implementer}/${mode} stale evidence must block`);
+    const newCommit = deriveReadiness({
+      ...passing,
+      headSha: NEW_HEAD,
+      statusCommentBody: decisionRecord(HEAD, mode),
+    }, config);
+    assert.equal(newCommit.ready, false, `${implementer}/${mode} new commits must invalidate the choice`);
+    assert.equal(newCommit.details.reviewMode, null);
+
+    const wrongMode = deriveReadiness({
+      ...passing,
+      ...otherModeEvidence(implementer, mode, HEAD),
+    }, config);
+    assert.equal(wrongMode.ready, false, `${implementer}/${mode} must ignore other-mode evidence`);
+
+    const openThread = deriveReadiness({
+      ...passing,
+      reviewThreads: [{ isResolved: false, isOutdated: false, isCollapsed: false }],
+    }, config);
+    assert.equal(openThread.ready, false, `${implementer}/${mode} open threads must block`);
+
+    const labels = planLabels([label], changes, config);
+    assert.equal(labels.add.includes(label), false, `${implementer}/${mode} must not add a mode label`);
+    assert.equal(labels.remove.includes(label), false, `${implementer}/${mode} must not replace a mode label`);
+  }
 });
 
 test("human mode does not remove any other gate condition", () => {

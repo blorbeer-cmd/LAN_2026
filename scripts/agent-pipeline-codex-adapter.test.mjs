@@ -5,6 +5,7 @@ import { loadConfig } from "./agent-pipeline.mjs";
 import {
   CODEX_DELIVERY_MARKER,
   collectCodexDeliveryEvents,
+  resolveCodexTaskTarget,
 } from "./agent-pipeline-codex-adapter.mjs";
 
 const config = loadConfig();
@@ -60,7 +61,54 @@ test("an undecided current-head choice is delivered with the explicit task id", 
   assert.equal(events.length, 1);
   assert.equal(events[0].type, "review-choice-required");
   assert.equal(events[0].codexThreadId, THREAD);
+  assert.equal(events[0].implementer, "codex");
   assert.match(events[0].message, /official, SHA-bound review choice/);
+});
+
+test("Codex routing prefers an explicit task id and otherwise requires one unique branch match", () => {
+  const explicit = resolveCodexTaskTarget(
+    { implementer: "codex", codexThreadId: THREAD, headBranch: "codex/adapter" },
+    [],
+  );
+  assert.deepEqual(explicit, { kind: "thread-id", threadId: THREAD });
+
+  const fallback = resolveCodexTaskTarget(
+    { implementer: "codex", codexThreadId: null, headBranch: "codex/adapter" },
+    [{ id: THREAD, checkedOutBranch: "codex/adapter" }],
+  );
+  assert.deepEqual(fallback, { kind: "branch", threadId: THREAD });
+
+  assert.equal(
+    resolveCodexTaskTarget(
+      { implementer: "codex", codexThreadId: null, headBranch: "codex/adapter" },
+      [],
+    ).kind,
+    "unresolved",
+  );
+  assert.equal(
+    resolveCodexTaskTarget(
+      { implementer: "codex", codexThreadId: null, headBranch: "codex/adapter" },
+      [
+        { id: THREAD, checkedOutBranch: "codex/adapter" },
+        { id: "019ff043-2b15-7923-bd6d-dfaac7d41c82", checkedOutBranch: "codex/adapter" },
+      ],
+    ).kind,
+    "ambiguous",
+  );
+});
+
+test("Claude implementations have no Codex target or Codex delivery event", () => {
+  const claude = pull({
+    body: body({ implementer: "claude", "head-branch": "claude/adapter" }),
+    headBranch: "claude/adapter",
+  });
+  const event = {
+    id: 1,
+    author: "github-actions[bot]",
+    body: `Choice\n<!-- agent-pipeline:review-decision-notification ${HEAD} -->`,
+  };
+  assert.equal(resolveCodexTaskTarget({ implementer: "claude", headBranch: "claude/adapter" }).kind, "unsupported-provider");
+  assert.deepEqual(collectCodexDeliveryEvents(claude, [event], [], config), []);
 });
 
 test("a choice is suppressed after a label or a trusted delivery acknowledgement", () => {
@@ -255,58 +303,46 @@ test("a completed review supersedes an older start failure for the same head", (
   assert.equal(events[0].verdict, "pass");
 });
 
-test("a provider findings comment is never treated as a clean pass", () => {
-  const reviewer = config.providerReviewerAllowlist.codex[0];
-  const reviewedCommit = `**Reviewed commit:** \`${HEAD.slice(0, 10)}\``;
-  const selected = pull({
-    body: body({ implementer: "claude", "head-branch": "claude/adapter" }),
-    labels: [{ name: "agent:pipeline" }, { name: "review:cross" }],
-    headBranch: "claude/adapter",
-  });
+test("findings are never treated as a clean pass, while a clean Claude pass is delivered", () => {
   const finding = {
     id: 13,
-    author: reviewer,
-    body: `### Codex Review\n\n#### [high] SQL injection\n\n${reviewedCommit}`,
+    author: "github-actions[bot]",
+    createdAt: "2026-08-11T09:01:00Z",
+    body: `## Claude Cross-Review\n\n#### [high] SQL injection\n\n<!-- agent-pipeline:review-result ${HEAD} mode=cross verdict=changes-required session=claude-findings read-only=true -->`,
   };
-  assert.deepEqual(collectCodexDeliveryEvents(selected, [finding], [], config), []);
-
   const cleanPass = {
     ...finding,
     id: 14,
-    body: `Codex Review: Didn't find any major issues.\n\n${reviewedCommit}`,
+    createdAt: "2026-08-11T09:02:00Z",
+    body: `## Claude Cross-Review\n\n<!-- agent-pipeline:review-result ${HEAD} mode=cross verdict=pass session=claude-clean read-only=true -->`,
   };
-  const events = collectCodexDeliveryEvents(selected, [cleanPass], [], config);
+  const selected = pull({ labels: [{ name: "agent:pipeline" }, { name: "review:cross" }] });
+  const events = collectCodexDeliveryEvents(selected, [finding, cleanPass], [], config);
   assert.equal(events.length, 1);
   assert.equal(events[0].verdict, "pass");
-  assert.equal(events[0].eventId, `review-completed-${HEAD}-comment-14`);
+  assert.equal(events[0].eventId, `review-completed-${HEAD}-claude-clean`);
 });
 
 test("the newest current-head review evidence wins and older evidence never leaks after ack", () => {
   const reviewer = config.providerReviewerAllowlist.codex[0];
-  const selected = pull({
-    body: body({ implementer: "claude", "head-branch": "claude/adapter" }),
-    labels: [{ name: "agent:pipeline" }, { name: "review:cross" }],
-    headBranch: "claude/adapter",
-  });
+  const selected = pull({ labels: [{ name: "agent:pipeline" }, { name: "review:cross" }] });
   const cleanPass = {
     id: 15,
-    author: reviewer,
+    author: "github-actions[bot]",
     createdAt: "2026-08-11T09:02:00Z",
-    body: `Codex Review: Didn't find any major issues.\n\n**Reviewed commit:** \`${HEAD.slice(0, 10)}\``,
+    body: `## Claude Cross-Review\n\n<!-- agent-pipeline:review-result ${HEAD} mode=cross verdict=pass session=claude-clean read-only=true -->`,
   };
   const olderFinding = {
     id: 16,
-    author: reviewer,
-    state: "CHANGES_REQUESTED",
-    commitSha: HEAD,
-    submittedAt: "2026-08-11T09:01:00Z",
-    body: "Please fix the current-head finding.",
+    author: "github-actions[bot]",
+    createdAt: "2026-08-11T09:01:00Z",
+    body: `## Claude Cross-Review\n\n<!-- agent-pipeline:review-result ${HEAD} mode=cross verdict=changes-required session=claude-old read-only=true -->`,
   };
 
   const newest = collectCodexDeliveryEvents(selected, [cleanPass], [olderFinding], config);
   assert.equal(newest.length, 1);
   assert.equal(newest[0].verdict, "pass");
-  assert.equal(newest[0].eventId, `review-completed-${HEAD}-comment-15`);
+  assert.equal(newest[0].eventId, `review-completed-${HEAD}-claude-clean`);
 
   const acknowledged = {
     id: 17,
@@ -322,12 +358,13 @@ test("the newest current-head review evidence wins and older evidence never leak
   const newerFinding = {
     ...olderFinding,
     id: 18,
-    submittedAt: "2026-08-11T09:04:00Z",
+    createdAt: "2026-08-11T09:04:00Z",
+    body: `## Claude Cross-Review\n\n<!-- agent-pipeline:review-result ${HEAD} mode=cross verdict=changes-required session=claude-new read-only=true -->`,
   };
-  const changed = collectCodexDeliveryEvents(selected, [cleanPass], [newerFinding], config);
+  const changed = collectCodexDeliveryEvents(selected, [cleanPass, newerFinding], [], config);
   assert.equal(changed.length, 1);
   assert.equal(changed[0].verdict, "changes-required");
-  assert.equal(changed[0].eventId, `review-completed-${HEAD}-review-18`);
+  assert.equal(changed[0].eventId, `review-completed-${HEAD}-claude-new`);
 });
 
 test("a newer review choice supersedes an older start failure even after delivery", () => {
