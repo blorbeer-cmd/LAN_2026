@@ -28,6 +28,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { loadConfig } from "./agent-pipeline.mjs";
+
 export const SETTINGS_PATH = ".github/agent-pipeline/review-readonly.settings.json";
 
 // Read, search and inspect. Edit, Write and NotebookEdit are absent on purpose: a tool that is not
@@ -256,7 +258,11 @@ export function usage() {
     "which is what makes an unattended run possible. Without it the launch is interactive and\n" +
     "requires a TTY. A headless run also publishes the result itself: the session writes nothing,\n" +
     "and the marker is appended only after the worktree check passed. --result-file <path> keeps\n" +
-    "that text where you want it; without gh the file is all that is produced.\n" +
+    "that text where you want it.\n" +
+    "\nThe result is posted through gh when it is installed, otherwise through the REST API with\n" +
+    "GITHUB_TOKEN — the channel the rest of the pipeline uses, and the only one available in a\n" +
+    "container without the GitHub CLI. If no channel works, every attempt is reported with its own\n" +
+    "reason and the file is left to be posted verbatim.\n" +
     "\n--enforced states that this shell cannot write to the repository (restricted credentials),\n" +
     "which publishes the marker as read-only=true. A launched run without it publishes\n" +
     "read-only=verified: the launcher checks afterwards that the review worktree is untouched.\n" +
@@ -462,6 +468,17 @@ export function launchSupport({ mode, implementer }) {
   return { ok: true, reason: null };
 }
 
+/**
+ * The implementer this run reviews for.
+ *
+ * One definition, because the launcher and the publisher have to agree: a second, hand-repeated
+ * derivation dropped the default and turned a valid publish into a warning that the marker would
+ * not be read.
+ */
+export function implementerFor(options, pr) {
+  return options?.implementer ?? implementerFromBranch(pr?.headRefName) ?? "claude";
+}
+
 /** Guesses the implementer from the head branch prefix; `--implementer` overrides it. */
 export function implementerFromBranch(headBranch) {
   if (headBranch?.startsWith("codex/")) return "codex";
@@ -589,7 +606,7 @@ export function goalFromBody(body, title) {
   return section || title || "Im Pull Request beschrieben; siehe Titel und Beschreibung.";
 }
 
-function main(argv) {
+async function main(argv) {
   const options = parseOptions(argv);
   // Before any side effect: an interactive launch waits for a keyboard that is not there, and would
   // otherwise hang after already creating a worktree the operator then has to clean up.
@@ -611,8 +628,7 @@ function main(argv) {
     );
   }
 
-  const implementer =
-    options.implementer ?? implementerFromBranch(pr.headRefName) ?? "claude";
+  const implementer = implementerFor(options, pr);
   // Before the worktree exists, so a rejected combination leaves nothing to clean up.
   const support = launchSupport({ mode: options.mode, implementer });
   if (options.launch && !support.ok) {
@@ -752,19 +768,107 @@ function main(argv) {
   }
 
   if (reviewText !== null) {
-    publishResult({ pr, options, reviewText, readOnlyLevel, sessionId });
+    await publishResult({ pr, options, repository, implementer, reviewText, readOnlyLevel, sessionId });
   }
   console.log(`Clean up with: git worktree remove ${worktree}`);
+}
+
+/** Posts a comment through the REST API, the channel the rest of the pipeline already uses. */
+async function postCommentViaApi({ repository, pullNumber, body, token }) {
+  const base = process.env.GITHUB_API_URL ?? "https://api.github.com";
+  const response = await fetch(`${base}/repos/${repository}/issues/${pullNumber}/comments`, {
+    method: "POST",
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ body }),
+  });
+  if (!response.ok) {
+    throw new Error(`GitHub API responded ${response.status}: ${(await response.text()).trim()}`);
+  }
+  return response.json();
+}
+
+function runGhComment({ pullNumber, resultPath }) {
+  run("gh", ["pr", "comment", String(pullNumber), "--body-file", resultPath]);
+}
+
+/** Why an attempt failed, distinguishing an absent tool from one that ran and refused. */
+function publishFailureReason(error) {
+  if (error?.code === "ENOENT") return "gh is not installed here";
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Posts the review, trying every channel this environment actually has.
+ *
+ * `gh` first, so an operator's authenticated shell behaves exactly as before. The REST API second,
+ * because a Claude Code remote container has no `gh` binary at all — the same environment `--pr-json`
+ * already exists for on the reading side. Without this the write side was the one step of the whole
+ * self-review that could not complete on its own, and every failure was reported as "gh is
+ * unavailable" even when gh had run and been refused.
+ *
+ * Never throws: a review that was produced must not be lost because posting it failed. The caller
+ * reports every attempt with its real reason and points at the file.
+ */
+export async function publishComment(
+  { repository, pullNumber, resultPath, body, token },
+  { gh = runGhComment, api = postCommentViaApi } = {},
+) {
+  const attempts = [];
+  try {
+    gh({ pullNumber, resultPath });
+    return { posted: true, channel: "gh", attempts };
+  } catch (error) {
+    attempts.push({ channel: "gh", reason: publishFailureReason(error) });
+  }
+
+  if (!token) {
+    attempts.push({ channel: "api", reason: "GITHUB_TOKEN is not set" });
+    return { posted: false, attempts };
+  }
+  if (!repository) {
+    attempts.push({ channel: "api", reason: "the repository could not be resolved" });
+    return { posted: false, attempts };
+  }
+  try {
+    const comment = await api({ repository, pullNumber, body, token });
+    return {
+      posted: true,
+      channel: "api",
+      url: comment?.html_url ?? null,
+      author: comment?.user?.login ?? null,
+      attempts,
+    };
+  } catch (error) {
+    attempts.push({ channel: "api", reason: publishFailureReason(error) });
+  }
+  return { posted: false, attempts };
+}
+
+/**
+ * Whether the identity that posted the marker is one the merge gate accepts for this review.
+ *
+ * A marker from any other account is not rejected loudly by the reconciler — it is simply not read,
+ * which looks exactly like a review that never happened. Saying so at publication time is the only
+ * moment anyone is watching.
+ */
+export function markerAuthorAccepted(author, reviewer, config = loadConfig()) {
+  if (!author) return true;
+  return (config.providerAuthorAllowlist?.[reviewer] ?? []).includes(author);
 }
 
 /**
  * Writes the review out and posts it, now that the worktree check has passed.
  *
- * Publishing is best-effort by design: where `gh` is missing the result is still written to a file
+ * Publishing is best-effort by design: where no channel works the result is still written to a file
  * with the marker already appended, so the operator — or the session driving this script — can post
  * it verbatim. Failing to post must not lose the review.
  */
-function publishResult({ pr, options, reviewText, readOnlyLevel, sessionId }) {
+async function publishResult({ pr, options, repository, implementer, reviewText, readOnlyLevel, sessionId }) {
   const verdict = parseVerdict(reviewText);
   const body =
     verdict === null
@@ -793,15 +897,41 @@ function publishResult({ pr, options, reviewText, readOnlyLevel, sessionId }) {
   }
   console.log(`Verdict      : ${verdict}`);
 
-  try {
-    run("gh", ["pr", "comment", String(pr.number), "--body-file", resultPath]);
-    console.log(`Published    : comment posted to pull request #${pr.number}.`);
-  } catch {
+  const outcome = await publishComment({
+    repository,
+    pullNumber: pr.number,
+    resultPath,
+    body,
+    token: process.env.GITHUB_TOKEN,
+  });
+
+  if (!outcome.posted) {
     console.log(
-      `Published    : not posted — gh is unavailable here.\n` +
+      `Published    : not posted — no channel worked.\n` +
+        outcome.attempts.map((a) => `               ${a.channel}: ${a.reason}\n`).join("") +
         `               Post the file above verbatim as a comment on pull request #${pr.number};\n` +
         `               it already carries the marker the merge gate reads.`,
     );
+    return;
+  }
+
+  console.log(
+    `Published    : comment posted to pull request #${pr.number} via ${outcome.channel}` +
+      `${outcome.url ? ` (${outcome.url})` : ""}.`,
+  );
+  for (const attempt of outcome.attempts) {
+    console.log(`               ${attempt.channel} was tried first: ${attempt.reason}`);
+  }
+  // Only the API path reports who GitHub recorded as the author; gh posts as whoever it is logged
+  // in as, which this script cannot see.
+  const reviewer = reviewerFor(implementer, options.mode);
+  if (outcome.author && !markerAuthorAccepted(outcome.author, reviewer)) {
+    console.error(
+      `WARNING: the comment was posted as ${outcome.author}, which is not in ` +
+        `providerAuthorAllowlist.${reviewer}. The reconciler will not read this marker, and the ` +
+        "pull request will look like it was never reviewed. Post it again from an allowed identity.",
+    );
+    process.exitCode = 1;
   }
 }
 
@@ -809,7 +939,7 @@ const isMainModule =
   process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMainModule) {
   try {
-    main(process.argv.slice(2));
+    await main(process.argv.slice(2));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     console.error(usage());
