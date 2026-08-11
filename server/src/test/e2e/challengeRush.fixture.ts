@@ -324,13 +324,12 @@ challengeRushTest('scenarios', 'Challenge Rush hides the reaction target until p
     await actor.page.click('#cr-create');
     await actor.page.waitForSelector('[data-cr-start]');
 
-    // Install the observer before starting the match. The 50 ms E2E countdown
-    // is intentionally too short for polling under CI contention. Inspect the
-    // mutation records themselves because their added nodes retain the rendered
-    // countdown snapshot even if a later render replaces it before delivery.
+    // The socket suite verifies the 50 ms E2E countdown itself. Under CI load,
+    // both socket updates can arrive before the async view renderer paints that
+    // transient phase, so this browser test observes the safety property only:
+    // no rendered non-playing snapshot may contain the reaction target.
     await actor.page.evaluate(() => {
       (window as unknown as { __crViolation: boolean }).__crViolation = false;
-      (window as unknown as { __crSawCountdown: boolean }).__crSawCountdown = false;
       const inspectTree = (node: Node) => {
         if (!(node instanceof Element)) return;
         const stages = node.matches('.challenge-rush-stage')
@@ -338,9 +337,6 @@ challengeRushTest('scenarios', 'Challenge Rush hides the reaction target until p
           : Array.from(node.querySelectorAll('.challenge-rush-stage'));
         for (const stage of stages) {
           const phase = stage.getAttribute('data-phase');
-          if (phase === 'countdown') {
-            (window as unknown as { __crSawCountdown: boolean }).__crSawCountdown = true;
-          }
           if (phase !== 'playing' && stage.querySelector('.challenge-rush-circle')) {
             (window as unknown as { __crViolation: boolean }).__crViolation = true;
           }
@@ -349,9 +345,6 @@ challengeRushTest('scenarios', 'Challenge Rush hides the reaction target until p
       const observer = new MutationObserver((records) => {
         for (const record of records) {
           if (record.type === 'attributes') {
-            if (record.oldValue === 'countdown') {
-              (window as unknown as { __crSawCountdown: boolean }).__crSawCountdown = true;
-            }
             inspectTree(record.target);
           } else {
             record.addedNodes.forEach(inspectTree);
@@ -362,7 +355,6 @@ challengeRushTest('scenarios', 'Challenge Rush hides the reaction target until p
         childList: true,
         subtree: true,
         attributes: true,
-        attributeOldValue: true,
         attributeFilter: ['data-phase'],
       });
       (window as unknown as { __crObserver: MutationObserver }).__crObserver = observer;
@@ -372,7 +364,7 @@ challengeRushTest('scenarios', 'Challenge Rush hides the reaction target until p
     await actor.page.waitForSelector('.challenge-rush-circle');
     const challengeCount = Number((await actor.page.locator('.badge-playing').textContent())?.split('/')[1]?.trim());
     assert.equal(challengeCount, 1);
-    assert.equal(await actor.page.evaluate(() => (window as unknown as { __crSawCountdown: boolean }).__crSawCountdown), true);
+    assert.equal(await actor.page.locator('.challenge-rush-stage').getAttribute('data-phase'), 'playing');
     assert.equal(await actor.page.evaluate(() => (window as unknown as { __crViolation: boolean }).__crViolation), false);
     await actor.page.click('.challenge-rush-circle');
 
