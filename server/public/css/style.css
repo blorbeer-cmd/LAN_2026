@@ -1277,6 +1277,9 @@ input[type='number']::-webkit-inner-spin-button {
   background: var(--bg-elevated-2);
   color: var(--text);
 }
+.selection-toolbar-icon--clear {
+  color: var(--danger);
+}
 .selection-search {
   display: flex;
   align-items: center;

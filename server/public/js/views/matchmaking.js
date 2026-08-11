@@ -654,8 +654,8 @@ export function renderMatchmaking(container, ctx) {
             <label class="field-label" for="mm-teamcount">Anzahl Teams</label>
             <input type="number" id="mm-teamcount" min="2" value="${escapeHtml(teamCountValue)}" />
           </div>
-          <button type="button" class="icon-btn selection-toolbar-icon" id="mm-select-all" aria-label="Sichtbare Spieler markieren" data-tooltip="Sichtbare markieren">${icon('check')}</button>
-          <button type="button" class="icon-btn selection-toolbar-icon" id="mm-select-none" aria-label="Sichtbare Spieler abwählen" data-tooltip="Sichtbare abwählen">${icon('x')}</button>
+          <button type="button" class="icon-btn selection-toolbar-icon" id="mm-select-all" aria-label="Sichtbare Spieler markieren" data-tooltip="Sichtbare markieren">${icon('listChecks')}</button>
+          <button type="button" class="icon-btn selection-toolbar-icon selection-toolbar-icon--clear" id="mm-select-none" aria-label="Sichtbare Spieler abwählen" data-tooltip="Sichtbare abwählen">${icon('listX')}</button>
           ${selectionSearchHtml('mm-player-search', drawPlayerSearchQuery)}
         </div>
         <div class="player-selection-grid tournament-player-grid">${playerRows}</div>
@@ -698,8 +698,8 @@ export function renderMatchmaking(container, ctx) {
         </div>
         <div class="selection-toolbar">
           <span class="field-label">Spieler</span>
-          <button type="button" class="icon-btn selection-toolbar-icon" id="draft-select-all" aria-label="Sichtbare Spieler markieren" data-tooltip="Sichtbare markieren">${icon('check')}</button>
-          <button type="button" class="icon-btn selection-toolbar-icon" id="draft-select-none" aria-label="Sichtbare Spieler abwählen" data-tooltip="Sichtbare abwählen">${icon('x')}</button>
+          <button type="button" class="icon-btn selection-toolbar-icon" id="draft-select-all" aria-label="Sichtbare Spieler markieren" data-tooltip="Sichtbare markieren">${icon('listChecks')}</button>
+          <button type="button" class="icon-btn selection-toolbar-icon selection-toolbar-icon--clear" id="draft-select-none" aria-label="Sichtbare Spieler abwählen" data-tooltip="Sichtbare abwählen">${icon('listX')}</button>
           ${selectionSearchHtml('draft-player-search', draftPlayerSearchQuery)}
         </div>
         <div class="player-selection-grid tournament-player-grid captain-selection-grid">${draftPlayerRows}</div>
