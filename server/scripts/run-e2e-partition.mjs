@@ -2,65 +2,26 @@ import { existsSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  E2E_PARTITIONS,
+  E2E_SMOKE_FILES,
+  selectedE2EFiles,
+  validateE2EManifest,
+} from '../../scripts/e2e-partitions.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const serverDir = path.resolve(scriptDir, '..');
 const sourceDir = path.join(serverDir, 'src', 'test', 'e2e');
 const compiledDir = path.join(serverDir, 'dist-test', 'test', 'e2e');
 
-export const E2E_PARTITIONS = Object.freeze({
-  core: Object.freeze([
-    'access.e2e.test.ts',
-    'authGate.e2e.test.ts',
-    'checklist.e2e.test.ts',
-    'eventInvitations.e2e.test.ts',
-    'flows.e2e.test.ts',
-    'phase5eIsolation.e2e.test.ts',
-  ]),
-  arcade: Object.freeze([
-    'arcade.e2e.test.ts',
-    'arcadeStreamRenderer.e2e.test.ts',
-    'authGateArcade.e2e.test.ts',
-    'battleship.e2e.test.ts',
-    'challengeRush.e2e.test.ts',
-    'arcadeFlows.e2e.test.ts',
-  ]),
-});
-
-export const E2E_SMOKE_FILES = Object.freeze(['arcade.e2e.test.ts', 'authGateArcade.e2e.test.ts']);
+export { E2E_PARTITIONS, E2E_SMOKE_FILES };
 
 export function validateE2EPartitions(sourceFiles) {
-  const assignments = new Map();
-  for (const [partition, files] of Object.entries(E2E_PARTITIONS)) {
-    for (const file of files) {
-      const owners = assignments.get(file) ?? [];
-      owners.push(partition);
-      assignments.set(file, owners);
-    }
-  }
-
-  const duplicates = [...assignments.entries()]
-    .filter(([, owners]) => owners.length !== 1)
-    .map(([file, owners]) => `${file} (${owners.join(', ')})`);
-  const missing = sourceFiles.filter((file) => !assignments.has(file));
-  const absent = [...assignments.keys()].filter((file) => !sourceFiles.includes(file));
-
-  if (duplicates.length || missing.length || absent.length) {
-    const details = [
-      duplicates.length ? `mehrfach zugeordnet: ${duplicates.join(', ')}` : '',
-      missing.length ? `nicht zugeordnet: ${missing.join(', ')}` : '',
-      absent.length ? `nicht vorhanden: ${absent.join(', ')}` : '',
-    ].filter(Boolean);
-    throw new Error(`Ungültige E2E-Partitionen – ${details.join('; ')}`);
-  }
+  validateE2EManifest(sourceFiles);
 }
 
 export function selectedSourceFiles(partition) {
-  if (partition === 'all') return [...E2E_PARTITIONS.core, ...E2E_PARTITIONS.arcade];
-  if (partition === 'arcade-smoke') return [...E2E_SMOKE_FILES];
-  const files = E2E_PARTITIONS[partition];
-  if (!files) throw new Error(`Unbekannte E2E-Partition: ${partition}`);
-  return [...files];
+  return selectedE2EFiles(partition);
 }
 
 function main() {

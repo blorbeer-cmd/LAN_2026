@@ -2,58 +2,13 @@ import { appendFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-const ARCADE_E2E_FILES = new Set([
-  "arcade.e2e.test.ts",
-  "arcadeStreamRenderer.e2e.test.ts",
-  "authGateArcade.e2e.test.ts",
-  "battleship.e2e.test.ts",
-  "challengeRush.e2e.test.ts",
-  "arcadeFlows.e2e.test.ts",
-]);
-
-const CORE_E2E_FILES = new Set([
-  "access.e2e.test.ts",
-  "authGate.e2e.test.ts",
-  "checklist.e2e.test.ts",
-  "eventInvitations.e2e.test.ts",
-  "flows.e2e.test.ts",
-  "phase5eIsolation.e2e.test.ts",
-]);
-
-const ARCADE_VIEW_FILES = new Set([
-  "arcade.js",
-  "arcadeAdmin.js",
-  "arcadeScribble.js",
-  "arcadeUi.js",
-  "arcadeWatch.js",
-  "battleship.js",
-  "blobby.js",
-  "challengeRush.js",
-  "pong.js",
-  "snake.js",
-  "tetris.js",
-]);
-
-const ARCADE_FRONTEND_FILES = new Set([
-  "arcadeSound.js",
-  "arcadeSound.test.js",
-  "arcadeStreamRenderer.js",
-  "arcadeStreamRenderer.test.js",
-  "arcadeWatchFilter.js",
-  "arcadeWatchFilter.test.js",
-  "lobbyReady.js",
-  "lobbyReady.test.js",
-  "snakeArenaLegend.js",
-  "snakeArenaLegend.test.js",
-]);
+import { mainPartitionForE2EPath } from "./e2e-partitions.mjs";
 
 const SHARED_FRONTEND_FILES = new Set([
   "admin.js",
   "api.js",
   "app.js",
   "authGate.js",
-  "countdown.js",
   "data.js",
   "emptyState.js",
   "format.js",
@@ -64,6 +19,8 @@ const SHARED_FRONTEND_FILES = new Set([
   "socket.js",
   "state.js",
   "toast.js",
+  "viewManifest.js",
+  "viewRegistry.js",
   "whoami.js",
 ]);
 
@@ -129,11 +86,12 @@ function emptySelection() {
 
 function e2eImpactForServerPath(file) {
   if (file.startsWith("server/src/test/e2e/")) {
-    const name = path.posix.basename(file);
-    if (ARCADE_E2E_FILES.has(name))
+    const partition = mainPartitionForE2EPath(file);
+    if (partition === "arcade")
       return { core: false, arcade: true, arcadeSmoke: false };
-    if (CORE_E2E_FILES.has(name))
+    if (partition === "core")
       return { core: true, arcade: false, arcadeSmoke: false };
+    // The manifest validator will name the missing file. Until then, never guess one partition.
     return { core: true, arcade: true, arcadeSmoke: false };
   }
 
@@ -144,16 +102,14 @@ function e2eImpactForServerPath(file) {
   if (file === "server/src/realtime.ts")
     return { core: true, arcade: false, arcadeSmoke: true };
 
-  if (file.startsWith("server/public/js/views/")) {
-    return ARCADE_VIEW_FILES.has(path.posix.basename(file))
-      ? { core: false, arcade: true, arcadeSmoke: false }
-      : { core: true, arcade: false, arcadeSmoke: false };
-  }
+  if (file.startsWith("server/public/js/arcade/"))
+    return { core: false, arcade: true, arcadeSmoke: false };
+
+  if (file.startsWith("server/public/js/views/"))
+    return { core: true, arcade: false, arcadeSmoke: false };
 
   if (file.startsWith("server/public/js/")) {
     const name = path.posix.basename(file);
-    if (ARCADE_FRONTEND_FILES.has(name))
-      return { core: false, arcade: true, arcadeSmoke: false };
     if (SHARED_FRONTEND_FILES.has(name))
       return { core: true, arcade: false, arcadeSmoke: true };
     return { core: true, arcade: false, arcadeSmoke: false };

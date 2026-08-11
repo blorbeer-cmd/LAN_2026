@@ -113,7 +113,7 @@ function randomSequence(random: () => number, length: number, max: number): numb
 export const AIM_TRAINER_TARGET_COUNT = 8;
 export const MEMORY_SEQUENCE_TILE_COUNT = 9;
 export const MEMORY_SEQUENCE_LENGTH = 7;
-// Matches the client's reveal animation step (server/public/js/views/challengeRush.js,
+// Matches the client's reveal animation step (server/public/js/arcade/views/challengeRush.js,
 // MEMORY_REVEAL_STEP_MS) — the two aren't otherwise linked since public/ has no build
 // step to share a constant with src/. The full sequence is sent up front so the client
 // can render the reveal, so the server must independently withhold real input

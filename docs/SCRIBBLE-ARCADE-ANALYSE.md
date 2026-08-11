@@ -46,7 +46,7 @@ Quellen: [skribbl.io](https://skribbl.io/), diverse Spielanalysen
 
 ## 2. Passung in die bestehende Arcade-Architektur
 
-Der Arcade-Bereich (`server/src/arcade/arcade.ts`, `server/public/js/views/arcade.js`) ist
+Der Arcade-Bereich (`server/src/arcade/arcade.ts`, `server/public/js/arcade/views/arcade.js`) ist
 bereits generisch genug aufgebaut:
 
 | Baustein | Status | Anmerkung |
@@ -195,7 +195,7 @@ Lobby-`gameType: 'scribble'`, Rundenschleife mit Wortwahl/Hints/Timer, Canvas + 
 Rate-Chat, Punktesystem, Ergebnis in `arcade_results`, Stats-Titel, Wortliste (~200 Wörter),
 Disconnect-Handling nach §3.5. Neue Dateien: `server/src/arcade/scribble.ts`,
 `server/src/arcade/scribbleLogic.ts` (pure Logik: Punkte, Hint-Plan, Wortauswahl, Rotation –
-unit-testbar), `server/src/arcade/scribbleWords.ts`, `server/public/js/views/arcade/scribble.js`
+unit-testbar), `server/src/arcade/scribbleWords.ts`, `server/public/js/arcade/views/arcadeScribble.js`
 (bzw. Aufteilung von `arcade.js` pro Spiel). Geschätzt die mit Abstand größte Einzelfläche ist
 das Canvas-Frontend.
 

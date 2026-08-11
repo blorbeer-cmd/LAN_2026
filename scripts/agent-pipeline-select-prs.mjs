@@ -18,6 +18,17 @@ export function sweepReasons(pullRequest, config = loadConfig()) {
     reasons.push("activated task contract");
   }
 
+  const labels = (pullRequest?.labels ?? []).map((label) => label?.name ?? label);
+  if (
+    Object.values(config.branchPrefixes ?? {}).some((prefix) =>
+      pullRequest?.headRefName?.startsWith(prefix),
+    )
+  ) {
+    reasons.push("agent branch namespace");
+  } else if (labels.includes(config.labels?.pipeline)) {
+    reasons.push("agent pipeline label");
+  }
+
   if (!hasReadinessStatus(pullRequest, config.statusContext)) {
     reasons.push("missing readiness status");
   }
