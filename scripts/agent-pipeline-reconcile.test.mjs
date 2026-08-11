@@ -748,7 +748,7 @@ test("a selected review runs while the pull request is still a draft", () => {
   assert.match(readiness.blockers.join("\n"), /No codex review covers/);
 });
 
-test("infrastructure changes require an explicit human approval", () => {
+test("infrastructure changes require an explicit human review", () => {
   const withBotOnly = deriveReadiness(
     readySnapshot({
       body: contractBody({ scope: "infra" }),
@@ -757,7 +757,7 @@ test("infrastructure changes require an explicit human approval", () => {
     config,
   );
   assert.equal(withBotOnly.ready, false);
-  assert.match(withBotOnly.blockers.join("\n"), /explicit human approval/);
+  assert.match(withBotOnly.blockers.join("\n"), /explicit human review/);
   // No agent can clear this, so it must not park under "review" as if one were running. It also
   // must not borrow agent:needs-human, which belongs to escalations this phase cannot derive.
   assert.equal(withBotOnly.phase, "awaiting-human-approval");
@@ -817,7 +817,7 @@ test("an outsider approval cannot satisfy the infrastructure gate", () => {
     );
     assert.equal(readiness.ready, false, association);
     assert.equal(readiness.phase, "awaiting-human-approval", association);
-    assert.match(readiness.blockers.join("\n"), /explicit human approval/);
+    assert.match(readiness.blockers.join("\n"), /explicit human review/);
   }
 });
 
@@ -857,7 +857,7 @@ test("workflow changes remain eligible for cross-review without a second human g
   );
   assert.equal(readiness.details.protectedPaths.length, 0);
   assert.equal(readiness.ready, true);
-  assert.doesNotMatch(readiness.blockers.join("\n"), /explicit human approval/);
+  assert.doesNotMatch(readiness.blockers.join("\n"), /explicit human review/);
 });
 
 test("a fork pull request gets no writing automation at all", () => {
@@ -972,14 +972,14 @@ test("an automatable state outranks the human-approval wait", () => {
   );
   assert.equal(failing.phase, "ci-fix");
   assert.equal(failing.ready, false);
-  assert.match(failing.blockers.join("\n"), /explicit human approval/);
+  assert.match(failing.blockers.join("\n"), /explicit human review/);
 
   const conflicted = deriveReadiness(
     readySnapshot({ ...protectedPath, mergeable: false }),
     config,
   );
   assert.equal(conflicted.phase, "conflict-fix");
-  assert.match(conflicted.blockers.join("\n"), /explicit human approval/);
+  assert.match(conflicted.blockers.join("\n"), /explicit human review/);
 });
 
 test("a UI change blocks until its notice covers the current head", () => {
@@ -2023,7 +2023,7 @@ test("a review result from an outsider is ignored", () => {
   assert.deepEqual(results, []);
 });
 
-test("human mode needs a human approval with write access for this head", () => {
+test("human mode needs a human review with write access for this head", () => {
   const outstanding = deriveReadiness(
     readySnapshot({ labels: [HUMAN_LABEL] }),
     config,
@@ -2031,7 +2031,8 @@ test("human mode needs a human approval with write access for this head", () => 
   // The bot approval in the fixture is a cross-review, never the human one.
   assert.equal(outstanding.ready, false);
   assert.deepEqual(outstanding.blockers, [
-    "No human approval covers the current head SHA yet.",
+    "No human review covers the current head SHA yet. A PR author can submit a Comment review; " +
+      "another reviewer must approve.",
   ]);
 
   const outsider = deriveReadiness(
@@ -2067,6 +2068,83 @@ test("human mode needs a human approval with write access for this head", () => 
     config,
   );
   assert.equal(approved.ready, true);
+});
+
+test("the pull-request author can complete human mode with a current-head comment review", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({
+      labels: [HUMAN_LABEL],
+      reviews: [
+        {
+          author: "blorbeer-cmd",
+          authorAssociation: "OWNER",
+          state: "COMMENTED",
+          commitSha: HEAD,
+          submittedAt: "2026-08-07T10:00:00Z",
+        },
+      ],
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, true);
+});
+
+test("an author comment review from an older head does not complete human mode", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({
+      labels: [HUMAN_LABEL],
+      reviews: [
+        {
+          author: "blorbeer-cmd",
+          authorAssociation: "OWNER",
+          state: "COMMENTED",
+          commitSha: OLD_HEAD,
+          submittedAt: "2026-08-07T10:00:00Z",
+        },
+      ],
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, false);
+  assert.match(readiness.blockers.join("\n"), /No human review covers the current head SHA/);
+});
+
+test("a comment review from a different human does not complete author self-review", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({
+      labels: [HUMAN_LABEL],
+      reviews: [
+        {
+          author: "a-maintainer",
+          authorAssociation: "COLLABORATOR",
+          state: "COMMENTED",
+          commitSha: HEAD,
+          submittedAt: "2026-08-07T10:00:00Z",
+        },
+      ],
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, false);
+});
+
+test("an author comment review without write access does not complete human mode", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({
+      labels: [HUMAN_LABEL],
+      reviews: [
+        {
+          author: "blorbeer-cmd",
+          authorAssociation: "NONE",
+          state: "COMMENTED",
+          commitSha: HEAD,
+          submittedAt: "2026-08-07T10:00:00Z",
+        },
+      ],
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, false);
 });
 
 test("the chosen mode decides which evidence counts", () => {

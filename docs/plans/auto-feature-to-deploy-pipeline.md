@@ -347,7 +347,9 @@ einer dafür erlaubten Identität erfüllt das Gate. Die Autorenprüfung ist bew
 Identität zum Implementierungs-Anbieter gehören. Im Modus `cross` kann eine provider-spezifische,
 vertrauenswürdige Workflow-Identität das strukturierte Ergebnis eines credential-read-only
 Review-Laufs veröffentlichen, wenn die Anbieterintegration kein natives GitHub-Review erzeugt.
-Im Modus `human` bleibt die Approval zum exakten Head-SHA der Nachweis.
+Im Modus `human` bleibt ein natives Review zum exakten Head-SHA der Nachweis: eine Approval oder,
+wenn der Mensch selbst PR-Autor ist, dessen `COMMENTED`-Review. GitHub verbietet Autoren die
+Approval des eigenen Pull Requests.
 
 ## 9. Nutzungslimits und Nichtverfügbarkeit
 
@@ -423,7 +425,7 @@ erfolgreich, wenn:
   Weiter bei
   `self` als vertrauenswürdiger Ergebnis-Marker, dessen `read-only`-Stufe
   `selfReviewMinimumEnforcement` erreicht, bei `human` als Approval eines Menschen mit
-  Schreibzugriff,
+  Schreibzugriff oder als `COMMENTED`-Review des schreibberechtigten PR-Autors,
 - alle blockierenden Review-Findings erledigt und jeder zugehörige auflösbare Inline-Review-Thread
   als gelöst markiert ist,
 - Thread-Snapshots für den aktuellen Head monoton versioniert sind und kein älterer Snapshot einen
