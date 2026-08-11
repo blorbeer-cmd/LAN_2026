@@ -69,7 +69,7 @@ export const REVIEW_RESULT_SOURCE =
 // that died from one still running.
 export const REVIEW_START_NOTICE_MARKER = "<!-- agent-pipeline:review-start-notice";
 export const REVIEW_START_NOTICE_PATTERN =
-  /<!--\s*agent-pipeline:review-start-notice\s+([0-9a-f]{40})\s+mode=cross\s+outcome=(declined|failed)\s*-->/;
+  /<!--\s*agent-pipeline:review-start-notice\s+([0-9a-f]{40})\s+mode=cross\s+outcome=(declined|failed)(?:\s+code=([a-z-]+))?(?:\s+attempt=([A-Za-z0-9._-]+))?\s*-->/;
 
 /**
  * Reads the newest review-start notice, so the status comment can name a failed attempt.
@@ -115,6 +115,9 @@ export function parseReviewRetriggerHeadShas(comments, config = loadConfig()) {
 
 export const CLAUDE_CROSS_REVIEW_HEADING = "## Claude Cross-Review";
 export const CLAUDE_CROSS_REVIEW_SOURCE = "claude-cross-review";
+export const REVIEW_START_FAILURE_MARKER = "<!-- agent-pipeline:review-start-failure";
+const REVIEW_START_FAILURE_PATTERN =
+  /<!--\s*agent-pipeline:review-start-failure\s+([0-9a-f]{40})\s+attempt=([A-Za-z0-9._-]+)\s*-->/;
 
 // How strongly the reviewing session was kept away from the code, weakest first. The order is the
 // comparison: a level satisfies a minimum when its index is at least the minimum's.
@@ -527,6 +530,11 @@ export function parseReviewDecision(body) {
   return match ? { headSha: match[1], mode: match[2], since: match[3] ?? null } : null;
 }
 
+export function parseHandledReviewStartFailure(body) {
+  const match = String(body ?? "").match(REVIEW_START_FAILURE_PATTERN);
+  return match ? { headSha: match[1], attempt: match[2] } : null;
+}
+
 /**
  * The status comment body, but only from an identity that may write the pipeline's own comment.
  *
@@ -575,6 +583,36 @@ export function parseReviewResults(comments) {
     }
   }
   return results;
+}
+
+/** Trusted provider-start failures, newest last. A legacy notice uses its comment id as attempt. */
+export function parseReviewStartFailures(
+  comments,
+  allowedAuthors = loadConfig().crossReviewResultAuthors?.claude ?? [],
+) {
+  const failures = [];
+  for (const comment of comments ?? []) {
+    if (!isTrustedCommentAuthor(comment) || !allowedAuthors.includes(comment.author)) continue;
+    const match = String(comment.body ?? "").match(REVIEW_START_NOTICE_PATTERN);
+    if (!match) continue;
+    const reason = String(comment.body ?? "").match(/^- Grund: `([^`]+)`/m)?.[1] ?? "unknown";
+    failures.push({
+      headSha: match[1],
+      outcome: match[2],
+      code: match[3] ?? "unknown",
+      attempt: match[4] ?? `comment-${comment.id}`,
+      reason,
+    });
+  }
+  return failures;
+}
+
+function latestReviewStartFailure(failures, headSha) {
+  let found = null;
+  for (const failure of failures ?? []) {
+    if (failure.headSha === headSha) found = failure;
+  }
+  return found;
 }
 
 /**
@@ -832,13 +870,40 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
   }
 
   const parsed = parseTaskContract(snapshot.body);
-  if (!parsed.participating) {
+  const pipelineLabel = labelName(config, "pipeline");
+  const agentBranch = Object.values(config.branchPrefixes ?? {}).some((prefix) =>
+    snapshot.headBranch?.startsWith(prefix),
+  );
+  const explicitlyLabeled = (snapshot.labels ?? []).includes(pipelineLabel);
+  if (!parsed.participating && !agentBranch && !explicitlyLabeled) {
     return {
       participating: false,
       mutate: false,
       phase: "not-participating",
       ready: false,
       blockers: [],
+    };
+  }
+
+  // An agent-looking pull request may not opt out of the required readiness gate by deleting or
+  // leaving the task contract untouched. A genuinely manual branch outside the agent namespaces
+  // still receives the stable "does not apply" success verdict above.
+  if (!parsed.participating) {
+    const uiPathChanged =
+      matchingPaths(snapshot.changedFiles, config.uiPathPrefixes).length > 0;
+    return {
+      participating: true,
+      mutate: true,
+      phase: "contract-invalid",
+      ready: false,
+      blockers: [
+        "Invalid task contract: an agent branch or agent:pipeline label requires an activated task contract.",
+      ],
+      contract: null,
+      details: {
+        uiChanged: uiPathChanged,
+        reviewDecision: { record: parseReviewDecision(statusCommentBody(snapshot, config)) },
+      },
     };
   }
 
@@ -970,7 +1035,7 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
 
   // Who reviews this head is the user's decision, not the pipeline's. Everything after the
   // decision — starting the review, handing over the findings, fixing them — stays automatic.
-  const decision = evaluateReviewDecision(snapshot, config);
+  let decision = evaluateReviewDecision(snapshot, config);
   const reviewDecisionNotificationDelivered = (
     snapshot.reviewDecisionNotificationHeadShas ?? []
   ).includes(snapshot.headSha);
@@ -995,6 +1060,41 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     );
   }
 
+  const reviewStartFailure = latestReviewStartFailure(
+    snapshot.reviewStartFailures,
+    snapshot.headSha,
+  );
+  const handledStartFailure = parseHandledReviewStartFailure(
+    statusCommentBody(snapshot, config),
+  );
+  const failureHandled =
+    handledStartFailure?.headSha === snapshot.headSha &&
+    handledStartFailure?.attempt === reviewStartFailure?.attempt;
+  const completedCrossReview =
+    reviews.verdict === "pass" ||
+    reviews.verdict === "changes-required" ||
+    crossResult?.verdict === "pass" ||
+    crossResult?.verdict === "changes-required";
+  const invalidatedStartFailure =
+    decision.mode === "cross" &&
+    reviewStartFailure &&
+    !failureHandled &&
+    !completedCrossReview;
+  if (invalidatedStartFailure) {
+    decision = {
+      ...decision,
+      mode: null,
+      staleLabels: [
+        ...new Set([
+          ...(decision.staleLabels ?? []),
+          config.reviewModeLabels.cross,
+        ]),
+      ],
+      record: { headSha: snapshot.headSha, mode: "none", since: null },
+      unboundReason: "provider-start-failed",
+    };
+  }
+
   // Whether the chosen mode is still waiting for its verdict, as opposed to having one already.
   let evidenceOutstanding = false;
   if (decision.ambiguous) {
@@ -1008,7 +1108,9 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     // merging, not the review round.
     if (mechanicallyGreen) {
       blockers.push(
-        decision.unboundReason === "earlier-head"
+        decision.unboundReason === "provider-start-failed"
+          ? `The selected ${reviewerProvider ?? "cross"} review did not start (${reviewStartFailure.reason}); choose the review mode again.`
+          : decision.unboundReason === "earlier-head"
           ? "The review mode was chosen for an earlier head SHA; choose again for the current head."
           : decision.unboundReason === "never-observed"
             ? "A review-mode label was set before this head was first seen and could not be bound to it; set it again."
@@ -1156,7 +1258,7 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     );
   }
 
-  const recommendation = recommendReviewMode(
+  let recommendation = recommendReviewMode(
     {
       changedFiles: snapshot.changedFiles,
       protectedPaths,
@@ -1164,6 +1266,18 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     },
     config,
   );
+  if (!decision.mode && reviewStartFailure) {
+    const retryCross = new Set(["phase", "mode", "provider", "disabled"]);
+    recommendation = retryCross.has(reviewStartFailure.code)
+      ? {
+          mode: "cross",
+          reason: `the last cross-review was declined (${reviewStartFailure.reason}); retrying the provider remains appropriate`,
+        }
+      : {
+          mode: "self",
+          reason: `the ${reviewerProvider ?? "cross"} provider failed (${reviewStartFailure.reason}); a fresh same-provider review avoids another automatic switch`,
+        };
+  }
 
   // Delivery is a separate state from rendering the question in the sticky comment. It becomes
   // eligible only after every prerequisite that can invalidate the head is closed. Draft status
@@ -1248,6 +1362,9 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
       recommendation,
       reviewWaitingHours: waitingHours,
       reviewStalled,
+      reviewStartFailure,
+      handledStartFailure:
+        invalidatedStartFailure || failureHandled ? reviewStartFailure : null,
       reviewStartNotice: startNotice,
       reviewDecisionDelivery: {
         required: reviewDecisionNotificationRequired,
@@ -1355,6 +1472,13 @@ function reviewDecisionSection(readiness, config) {
   const lines = [
     "### Who reviews this head?",
     "",
+    ...(details.reviewStartFailure
+      ? [
+          `The last cross-review start for this head ended as \`${details.reviewStartFailure.outcome}\`: ` +
+            `${statusText(details.reviewStartFailure.reason)}. Retrying \`${modeLabels.cross}\` remains available.`,
+          "",
+        ]
+      : []),
     `Set exactly one label. Recommended: \`${modeLabels[recommendation?.mode] ?? "review:cross"}\`` +
       (recommendation?.reason ? ` — ${recommendation.reason}.` : "."),
     "",
@@ -1551,6 +1675,12 @@ export function renderStatusComment(readiness, snapshot, config = loadConfig()) 
             `(threshold \`${waitingEscalationHours(config)}h\`)`,
         ]
       : []),
+    ...(details.reviewStartFailure
+      ? [
+          `- Last cross-review start: \`${details.reviewStartFailure.outcome}\` ` +
+            `(\`${statusText(details.reviewStartFailure.code)}\`: ${statusText(details.reviewStartFailure.reason)})`,
+        ]
+      : []),
     "",
     ...(awaitingDecision ? [reviewDecisionSection(readiness, config), ""] : []),
     "### Blockers",
@@ -1559,8 +1689,14 @@ export function renderStatusComment(readiness, snapshot, config = loadConfig()) 
     "",
     "_Maintained by the agent pipeline reconciler. It reports state only; it does not approve or",
     "merge. The final merge is always a human decision._",
-    // Binds the review-mode label to the head it was chosen for. Written by the reconciler and read
-    // back on the next run; a new head expires the binding and the question above returns.
+    ...(details.handledStartFailure
+      ? [
+          `${REVIEW_START_FAILURE_MARKER} ${details.handledStartFailure.headSha} ` +
+            `attempt=${details.handledStartFailure.attempt} -->`,
+        ]
+      : []),
+    // Binds the review-mode label to the head it was chosen for. It remains the final line so no
+    // interpolated or auxiliary marker can impersonate the gate-relevant binding.
     ...(record
       ? [
           `${REVIEW_DECISION_MARKER} ${record.headSha} mode=${record.mode}` +
@@ -2055,6 +2191,7 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
       statusCommentAuthor: statusComment?.author ?? null,
       // Published review verdicts for the `self` mode, which GitHub itself cannot represent.
       reviewResults: parseReviewResults(trustedComments),
+      reviewStartFailures: parseReviewStartFailures(trustedComments),
       reviewDecisionNotificationHeadShas:
         parseReviewDecisionNotificationHeadShas(trustedComments, config),
       reviewDecisionDeliveryFailureHeadSha:

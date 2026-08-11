@@ -1,5 +1,5 @@
 import { escapeHtml, avatarHtml } from '../format.js';
-import { arcadeMuteControlHtml, wireArcadeMuteControl } from '../arcadeSound.js';
+import { arcadeMuteControlHtml, wireArcadeMuteControl } from './arcadeSound.js';
 
 const ARCADE_EXPANDED_KEY = 'lan-arcade-expanded';
 

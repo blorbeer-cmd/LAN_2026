@@ -38,7 +38,7 @@ import { getMyId } from '../whoami.js';
 import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { GAME_GENRES } from '../gameGenres.js';
-import { matchesSelectionSearch, wireSelectionSearch } from '../selectionSearch.js';
+import { matchesSelectionSearch, selectionSearchHtml, wireSelectionSearch } from '../selectionSearch.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { isGroupAdmin } from '../groupContext.js';
 
@@ -107,16 +107,17 @@ let draftKey = null; // `${round}:${playerId}` the current draft belongs to
 // long game list doesn't mean scrolling past everything already done.
 let voteUnratedOnly = false;
 
-// "Neue Abstimmung" game-limit filter. Persisted here (like matchmaking.js's
+// "Neue Abstimmung" game selection. Persisted here (like matchmaking.js's
 // checkedIds) rather than left in the DOM, because a votes:changed/
 // games:changed socket event re-renders this whole view from scratch
 // whenever anyone else interacts with voting — without this, that re-render
-// silently collapsed the panel and cleared any manual deselection mid-edit.
+// would clear any manual deselection mid-edit.
 // The first selection of every fresh round is the current Top 10 by Bock;
 // excludedGameIds then tracks games manually unchecked from that starting
 // point. Anything not listed after initialization (including a newly added
-// game) defaults to selected.
-let limitGamesChecked = true;
+// game) defaults to selected — so a round covering every game is just the
+// Top-10 starting point with "Alle markieren" applied, or every remaining
+// exclusion cleared by hand.
 let excludedGameIds = new Set();
 let voteSelectionInitialized = false;
 let voteSelectionDirty = false;
@@ -154,7 +155,6 @@ function initializeVoteGameSelection(votes) {
 }
 
 function resetVoteGameSelection() {
-  limitGamesChecked = true;
   excludedGameIds = new Set();
   voteSelectionInitialized = false;
   voteSelectionDirty = false;
@@ -616,27 +616,20 @@ export function renderVotes(container, ctx) {
           <span class="muted" style="font-size:var(--font-size-xs);">Info (optional)</span>
           <textarea class="vote-info-input" id="votes-info" maxlength="500" rows="1" placeholder="z.B. Nur Spiele für 4 Leute"></textarea>
         </label>
-        <div class="stack vote-game-filter">
-          <label class="check-row">
-            <input type="checkbox" id="votes-limit-games" ${limitGamesChecked ? 'checked' : ''} />
-            <span style="flex:1;">Spieleauswahl einschränken</span>
-          </label>
-          <div id="votes-game-select-wrap" class="stack vote-game-select-wrap" ${limitGamesChecked ? '' : 'hidden'}>
-            <div class="selection-toolbar">
-              <span class="field-label">Welche Spiele stehen zur Wahl?</span>
-              <button type="button" class="btn btn-sm" id="votes-select-all">Sichtbare markieren</button>
-              <button type="button" class="btn btn-sm" id="votes-select-none">Sichtbare abwählen</button>
-            </div>
-            ${voteGenreFilterHtml}
-            <input type="search" id="votes-game-search" value="${escapeHtml(voteGameSearchQuery)}" placeholder="Spiele suchen…" aria-label="Spiele suchen" autocomplete="off" />
-            <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
-            <p class="muted" data-vote-game-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>
-            ${
-              genreFilteredGames.length === 0
-                ? `<p class="muted" style="font-size:var(--font-size-xs);">Keine Spiele mit den gewählten Genres.</p>`
-                : ''
-            }
+        <div id="votes-game-select-wrap" class="stack vote-game-select-wrap">
+          <div class="selection-toolbar">
+            <button type="button" class="icon-btn selection-toolbar-icon" id="votes-select-all" aria-label="Sichtbare Spiele markieren" data-tooltip="Sichtbare markieren">${icon('check')}</button>
+            <button type="button" class="icon-btn selection-toolbar-icon" id="votes-select-none" aria-label="Sichtbare Spiele abwählen" data-tooltip="Sichtbare abwählen">${icon('x')}</button>
+            ${selectionSearchHtml('votes-game-search', voteGameSearchQuery, { placeholder: 'Spiele suchen…', label: 'Spiele suchen' })}
           </div>
+          ${voteGenreFilterHtml}
+          <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
+          <p class="muted" data-vote-game-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>
+          ${
+            genreFilteredGames.length === 0
+              ? `<p class="muted" style="font-size:var(--font-size-xs);">Keine Spiele mit den gewählten Genres.</p>`
+              : ''
+          }
         </div>
         <div class="sticky-actions">
           <button type="button" class="btn btn-primary btn-block" id="votes-start">Abstimmung starten</button>
@@ -753,16 +746,6 @@ export function renderVotes(container, ctx) {
     });
   }
 
-  const limitGamesCheckbox = container.querySelector('#votes-limit-games');
-  const gameSelectWrap = container.querySelector('#votes-game-select-wrap');
-  if (limitGamesCheckbox && gameSelectWrap) {
-    limitGamesCheckbox.addEventListener('change', () => {
-      limitGamesChecked = limitGamesCheckbox.checked;
-      voteSelectionDirty = true;
-      gameSelectWrap.hidden = !limitGamesChecked;
-    });
-  }
-
   container.querySelectorAll('[data-vote-game-checkbox]').forEach((checkbox) => {
     checkbox.addEventListener('change', () => {
       voteSelectionDirty = true;
@@ -805,15 +788,11 @@ export function renderVotes(container, ctx) {
     startBtn.addEventListener('click', async () => {
       const title = container.querySelector('#votes-title')?.value.trim() || undefined;
       const info = container.querySelector('#votes-info')?.value.trim() || undefined;
-      let gameIds;
-      if (limitGamesChecked) {
-        const checked = voteFilterVisibleGames()
-          .filter((g) => !excludedGameIds.has(g.id))
-          .map((g) => g.id);
-        if (checked.length === 0) {
-          return showToast('Bitte mindestens ein Spiel auswählen.', { error: true });
-        }
-        gameIds = checked;
+      const gameIds = voteFilterVisibleGames()
+        .filter((g) => !excludedGameIds.has(g.id))
+        .map((g) => g.id);
+      if (gameIds.length === 0) {
+        return showToast('Bitte mindestens ein Spiel auswählen.', { error: true });
       }
       try {
         // No ctx.refresh() (a full loadAll()): patch state.votes straight

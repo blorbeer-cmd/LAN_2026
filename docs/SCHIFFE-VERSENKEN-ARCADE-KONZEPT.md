@@ -266,7 +266,7 @@ vollständige Flotten empfangen und sie lediglich per CSS verstecken.
 | Bestehender Baustein | Nutzung |
 | --- | --- |
 | `lobbyMembership.ts` | Verhindert parallele Mitgliedschaft in mehreren Arcade-Lobbys. |
-| `lobbyReady.ts` und `public/js/lobbyReady.js` | Bereitschaft für lineares Duell und einzelne Spielerzeilen im Teammodus. |
+| `lobbyReady.ts` und `public/js/arcade/lobbyReady.js` | Bereitschaft für lineares Duell und einzelne Spielerzeilen im Teammodus. |
 | `scope.ts` | Gruppen-/Event-Isolation und Identitätsprüfung aller Socket-Aktionen. |
 | `arcadeData.ts` | Ergebnis-Snapshot und Teilnehmerpersistenz. |
 | `arcadeTracking.ts` | Sichtbarer Live-Status und Spielzeit. |
@@ -281,17 +281,17 @@ Voraussichtlich neu:
   Rundenauswertung, Teams und Siegerermittlung.
 - `server/src/arcade/battleship.ts`: Lobby-, Match-, Disconnect- und Socket-State.
 - `server/src/arcade/battleshipLogic.test.ts`: schnelle Unit-Tests der vollständigen Spiellogik.
-- `server/public/js/views/battleship.js`: Lobbykarte, Platzierung und Gefechtsansicht.
+- `server/public/js/arcade/views/battleship.js`: Lobbykarte, Platzierung und Gefechtsansicht.
 
 Gezielt zu erweitern:
 
 - `server/src/index.ts`: Socket-Modul registrieren.
 - `server/src/routes/arcade.ts`: Lobbyaggregation und Titel `battleship`.
-- `server/public/js/views/arcade.js`: Spielkarte, Lobby-Zuordnung und Engaged-Game-Handling.
+- `server/public/js/arcade/views/arcade.js`: Spielkarte, Lobby-Zuordnung und Engaged-Game-Handling.
 - `server/public/js/app.js`: eigene Matchansicht registrieren und Lobbyevents für „Aktuell“
   berücksichtigen.
 - `server/public/js/icons.js`: lokales `ship`-Icon ergänzen, sofern noch nicht vorhanden.
-- `server/public/css/style.css`: tokenisierte Raster-, Flotten- und Responsive-Regeln.
+- `server/public/css/arcade.css`: tokenisierte Raster-, Flotten- und Responsive-Regeln.
 - Watch-/Kiosk-State und Renderer: ausschließlich bereinigten öffentlichen Zustand anzeigen.
 
 Es sind keine neue Laufzeitabhängigkeit und kein Framework nötig.

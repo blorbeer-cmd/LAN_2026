@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  aggregatePerformance,
+  aggregateSummary,
   assessDuration,
   collectHistoricalSuiteDurations,
   evaluateSuite,
   extractSuiteDurations,
   median,
 } from "./ci-test-performance.mjs";
+import { readFileSync } from "node:fs";
 
 const config = {
   thresholdPercent: 20,
@@ -137,4 +140,132 @@ test("history fetch rejects invalid batch sizes", async () => {
       /Ganzzahl zwischen 1 und 6/,
     );
   }
+});
+
+function detected(status = "ok") {
+  return {
+    results: {
+      "e2e-core": {
+        status,
+        baselineMs: 100_000,
+        currentMs: status === "suspected" ? 140_000 : 110_000,
+        percent: status === "suspected" ? 40 : 10,
+      },
+    },
+  };
+}
+
+function aggregate(overrides = {}) {
+  return aggregatePerformance({
+    applicable: true,
+    changesResult: "success",
+    detectorResult: "success",
+    confirmationResult: "skipped",
+    detection: detected(),
+    confirmations: [],
+    ...overrides,
+  });
+}
+
+test("stable performance aggregate passes when measurement is not applicable", () => {
+  const result = aggregate({ applicable: false, detection: null });
+  assert.equal(result.passed, true);
+  assert.equal(result.outcome, "not-applicable");
+});
+
+test("stable performance aggregate passes without a suspicion", () => {
+  const result = aggregate();
+  assert.equal(result.passed, true);
+  assert.equal(result.outcome, "clear");
+  assert.equal(result.rows[0].result, "clear");
+});
+
+test("stable performance aggregate passes when every suspicion clears", () => {
+  const result = aggregate({
+    detection: detected("suspected"),
+    confirmationResult: "success",
+    confirmations: [
+      {
+        suite: "e2e-core",
+        baselineMs: 100_000,
+        currentMs: 115_000,
+        percent: 15,
+        regressed: false,
+      },
+    ],
+  });
+  assert.equal(result.passed, true);
+  assert.equal(result.outcome, "cleared-by-repeat");
+  assert.match(aggregateSummary(result), /e2e-core.*100\.0 s.*140\.0 s.*\+40\.0 %.*115\.0 s/);
+});
+
+test("stable performance aggregate blocks a confirmed regression", () => {
+  const result = aggregate({
+    detection: detected("suspected"),
+    confirmationResult: "failure",
+    confirmations: [
+      {
+        suite: "e2e-core",
+        baselineMs: 100_000,
+        currentMs: 145_000,
+        percent: 45,
+        regressed: true,
+      },
+    ],
+  });
+  assert.equal(result.passed, false);
+  assert.equal(result.outcome, "confirmed-regression");
+  assert.match(aggregateSummary(result), /Verlangsamung bestätigt/);
+});
+
+test("stable performance aggregate fails closed on detector and confirmation errors", () => {
+  for (const [name, overrides] of [
+    ["classification", { changesResult: "failure" }],
+    ["detector", { detectorResult: "failure", detection: null }],
+    [
+      "missing confirmation",
+      { detection: detected("suspected"), confirmationResult: "skipped" },
+    ],
+    [
+      "failed confirmation",
+      {
+        detection: detected("suspected"),
+        confirmationResult: "failure",
+        confirmations: [
+          {
+            suite: "e2e-core",
+            baselineMs: 100_000,
+            currentMs: 115_000,
+            percent: 15,
+            regressed: false,
+          },
+        ],
+      },
+    ],
+  ]) {
+    assert.equal(aggregate(overrides).passed, false, name);
+  }
+});
+
+test("workflow keeps Test performance as the stable aggregate context", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/deploy.yml", import.meta.url),
+    "utf8",
+  ).replaceAll("\r\n", "\n");
+  const detector = workflow.match(
+    /\n  test-performance-detect:\n([\s\S]*?)\n  test-performance-confirm:/,
+  )?.[1];
+  const aggregateJob = workflow.match(
+    /\n  test-performance:\n([\s\S]*?)\n  agent:/,
+  )?.[1];
+  assert.ok(detector, "performance detector job is missing");
+  assert.match(detector, /^    name: Detect test performance$/m);
+  assert.ok(aggregateJob, "stable performance aggregate job is missing");
+  assert.match(aggregateJob, /^    name: Test performance$/m);
+  assert.match(aggregateJob, /^    if: always\(\)$/m);
+  assert.match(
+    aggregateJob,
+    /^    needs: \[changes, test-performance-detect, test-performance-confirm\]$/m,
+  );
+  assert.match(aggregateJob, /ci-test-performance\.mjs aggregate/);
 });

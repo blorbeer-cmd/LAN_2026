@@ -177,6 +177,9 @@ test('Arcade: joining Pong or Blobby warns and closes the owned lobby first', as
       await guestPage.click(`#${game}-create`);
       const targetSelect = guestPage.locator(`.arcade-lobby-control-bar select[name="${game}-target"]:visible`);
       await targetSelect.waitFor();
+      await guestPage.waitForFunction((gameName) => Array.from(
+        document.querySelectorAll(`.arcade-lobby-control-bar select[name="${gameName}-target"]`),
+      ).some((select) => Math.round(select.getBoundingClientRect().height) === 32), game);
       assert.equal(
         await targetSelect.inputValue(),
         game === 'pong' ? '21' : '7',

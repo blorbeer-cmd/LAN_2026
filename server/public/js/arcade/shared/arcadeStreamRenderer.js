@@ -1,3 +1,4 @@
+// Static kiosk and lazy Arcade views intentionally share this pure canvas renderer.
 const GAME_CANVAS_SIZES = {
   scribble: [800, 500],
   tetris: [800, 450],
