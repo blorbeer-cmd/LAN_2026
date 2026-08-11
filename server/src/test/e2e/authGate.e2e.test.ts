@@ -173,6 +173,12 @@ test('an invite link registers a new account and logs it straight in', async () 
   await page.waitForSelector('[data-onboarding-finish]:not([disabled])');
   await page.click('[data-onboarding-finish]');
   await page.waitForSelector('#onboarding-root [role="dialog"]', { state: 'detached' });
+  // Regression: the "Pflicht" badge/blue outline is a rating-mode-only
+  // marker and must disappear once the round is done, not linger on the
+  // catalog forever just because the server still remembers which ten
+  // games were the required set.
+  await page.waitForSelector('[data-tab="catalog"]');
+  assert.equal(await page.locator('.game-table-row.onboarding-required').count(), 0);
 });
 
 test('logging out drops back to the login gate, and logging back in works', async () => {

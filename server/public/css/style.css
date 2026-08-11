@@ -92,6 +92,11 @@
   --notification-panel-width: 360px;
   --search-panel-width: 640px;
   --search-select-results-max-height: 320px;
+  /* Set from JS to the first-login onboarding rating dialog's own rendered
+     height so the required game rows can scroll fully clear of it instead
+     of the last rows staying pinned behind a fixed panel; 0 outside rating
+     mode. */
+  --onboarding-rating-spacer: 0px;
 
   /* Avatar sizes — the one scale every avatar/color-dot rendering (see
      avatarHtml in format.js) should size itself from, instead of each call
@@ -4313,7 +4318,12 @@ input.food-order-price-input {
   position: absolute;
   inset: 0;
   background: var(--bg);
-  opacity: 0.78;
+  /* Only used on steps with no highlighted target (see onboarding.js) - a
+     step that highlights something instead relies on the ring's own
+     spotlight shadow below, so the two never stack into a double-dark
+     overlay. Lower than the previous 0.78 so the dimmed page underneath
+     stays legible instead of nearly invisible. */
+  opacity: 0.5;
   pointer-events: auto;
 }
 
@@ -4335,12 +4345,22 @@ input.food-order-price-input {
   pointer-events: auto;
 }
 
+/* Used instead of the default bottom anchor when the step's highlighted
+   target sits in the lower half of the viewport (the bottom nav) - keeps
+   the explanation text from sitting directly over the icon it's pointing
+   at. Set by onboarding.js after measuring the target. */
+.onboarding-dialog--top {
+  top: calc(var(--topbar-height) + var(--space-4));
+  bottom: auto;
+}
+
 .onboarding-dialog-body {
   min-width: 0;
   flex: 1;
 }
 
 .onboarding-mascot {
+  position: relative;
   flex: 0 0 96px; /* design-token-ok: guide illustration has its own fixed asset size */
   width: 96px; /* design-token-ok: guide illustration has its own fixed asset size */
   height: 96px; /* design-token-ok: guide illustration has its own fixed asset size */
@@ -4349,13 +4369,31 @@ input.food-order-price-input {
   background: var(--bg);
 }
 
-.onboarding-mascot img {
+/* Two identically positioned copies of the same portrait, each clipped to
+   one side of its drawn mouth line (~58% down the face) so nudging them
+   apart on their own animation opens a "mouth" gap between them instead of
+   just bobbing the whole head - see mascotHtml() in onboarding.js. */
+.onboarding-mascot-half {
+  position: absolute;
+  inset: 0;
+}
+
+.onboarding-mascot-half img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
   mix-blend-mode: screen;
-  animation: onboarding-speak 0.22s steps(2, end) infinite alternate;
+}
+
+.onboarding-mascot-half-top {
+  clip-path: inset(0 0 42% 0);
+  animation: onboarding-speak-top 0.42s ease-in-out infinite alternate;
+}
+
+.onboarding-mascot-half-bottom {
+  clip-path: inset(58% 0 0 0);
+  animation: onboarding-speak-bottom 0.42s ease-in-out infinite alternate;
 }
 
 .onboarding-progress {
@@ -4387,7 +4425,33 @@ input.food-order-price-input {
 }
 
 .onboarding-rating-dialog {
+  /* Only the dialog's own controls stay clickable (see the button rule
+     below) - everything else, including its own background, lets clicks
+     and taps fall through to whatever required game row is scrolled behind
+     it, the same passthrough technique `.sticky-actions` already uses for
+     the same "fixed bar over a scrollable list" shape. Combined with the
+     onboarding-rating-list spacer below, every required row is reachable
+     either way; this is the fallback for the brief moments (a resize, a
+     font-size change) where the measured spacer hasn't caught up yet. */
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  pointer-events: none;
+}
+
+.onboarding-rating-dialog button,
+.onboarding-rating-dialog input,
+.onboarding-rating-dialog [tabindex] {
   pointer-events: auto;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .onboarding-rating-dialog {
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+  }
+}
+
+.onboarding-rating-list {
+  padding-bottom: var(--onboarding-rating-spacer);
 }
 
 .onboarding-rating-progress {
@@ -4409,7 +4473,16 @@ input.food-order-price-input {
   z-index: 41;
   pointer-events: none;
   border-radius: var(--radius-sm);
-  box-shadow: 0 0 0 var(--space-1) var(--accent), var(--shadow-glow-accent);
+  /* The huge fourth spread value is the actual highlighting mechanism: it
+     dims the whole viewport except this element's own box, which stays
+     fully transparent - so the highlighted icon renders at full brightness
+     instead of sitting dimmed under a separate full-screen backdrop (see
+     onboarding.js, which skips rendering .onboarding-backdrop whenever a
+     step has a target for exactly this reason). */
+  box-shadow:
+    0 0 0 var(--space-1) var(--accent),
+    var(--shadow-glow-accent),
+    0 0 0 9999px color-mix(in srgb, var(--bg) 50%, transparent);
 }
 
 .game-table-row.onboarding-required {
@@ -4419,6 +4492,29 @@ input.food-order-price-input {
 
 .onboarding-required-badge {
   flex: 0 0 auto;
+}
+
+/* First-visit explanation for a view reached under "Mehr" - see
+   onboardingHintHtml in onboarding.js. Same accent-bordered treatment as
+   .onboarding-rating-banner below, plus a dismiss action. */
+.onboarding-view-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+}
+
+.onboarding-view-hint p {
+  flex: 1 1 240px;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--font-size-sm);
 }
 
 .onboarding-rating-banner {
@@ -4449,12 +4545,21 @@ input.food-order-price-input {
   font-size: var(--font-size-xs);
 }
 
-@keyframes onboarding-speak {
+@keyframes onboarding-speak-top {
   from {
     transform: translateY(0);
   }
   to {
-    transform: translateY(calc(-1 * var(--space-1)));
+    transform: translateY(-3px); /* design-token-ok: half-pixel-scale mouth-gap nudge, smaller than --space-1 would allow at this 96px asset size */
+  }
+}
+
+@keyframes onboarding-speak-bottom {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(3px); /* design-token-ok: mirrors onboarding-speak-top's nudge on the jaw half */
   }
 }
 

@@ -17,6 +17,7 @@ import { emptyStateHtml } from '../emptyState.js';
 import { icon } from '../icons.js';
 import { dateTimeFieldHtml, wireDateTimeField, parseDatetimeLocalMs } from '../dateTimeField.js';
 import { dueBadgeInfo, isOverdue } from '../checklistDue.js';
+import { onboardingHintHtml, wireOnboardingHint } from '../onboarding.js';
 
 let tasksCache = null;
 let itemsCache = null;
@@ -434,6 +435,7 @@ export function renderChecklist(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Checkliste</h1>
+    ${onboardingHintHtml('checklist')}
     <div class="row" style="gap:var(--space-2);margin-top:var(--space-3);">
       <button type="button" class="btn${activeTab === 'packliste' ? ' btn-primary' : ''}" aria-pressed="${activeTab === 'packliste'}" data-checklist-tab="packliste" style="flex:1;">Meine Packliste</button>
       <button type="button" class="btn${activeTab === 'todos' ? ' btn-primary' : ''}" aria-pressed="${activeTab === 'todos'}" data-checklist-tab="todos" style="flex:1;">To-Dos${todosTabBadge}</button>
@@ -600,4 +602,5 @@ export function renderChecklist(container, ctx) {
       }
     });
   });
+  wireOnboardingHint(container, ctx.rerender);
 }
