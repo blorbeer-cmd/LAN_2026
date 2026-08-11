@@ -35,6 +35,7 @@ import { writeAdminAudit } from '../adminAudit';
 import { setEventTrackingConsent } from '../trackingContexts';
 import { activeGroupPlayers } from '../groupPlayers';
 import { createPersistentBackup } from '../backupService';
+import { requestCanAccessGroupEvent } from '../groupEventScope';
 
 export const eventsRouter = Router();
 
@@ -107,9 +108,16 @@ function requestPlayerId(req: Request): string | undefined {
 // the app can just iterate this one list.
 eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
   const trackingId = getTrackingEvent().id;
-  const real = listEvents(req.group!.id).map((e) => ({ ...serializeEvent(e), isActive: e.id === trackingId }));
+  const real = listEvents(req.group!.id).map((e) => ({
+    ...serializeEvent(e),
+    isActive: e.id === trackingId,
+    canAccess: requestCanAccessGroupEvent(req, e.id),
+  }));
   const outside = serializeEvent(getEvent(OUTSIDE_EVENTS_ID))!;
-  res.json([...real, { ...outside, groupId: req.group!.id, isActive: trackingId === OUTSIDE_EVENTS_ID }]);
+  res.json([
+    ...real,
+    { ...outside, groupId: req.group!.id, isActive: trackingId === OUTSIDE_EVENTS_ID, canAccess: true },
+  ]);
 });
 
 // GET /api/events/active - the event currently tracking, or the "außerhalb

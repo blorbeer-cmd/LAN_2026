@@ -27,6 +27,13 @@ export function gameById(id) {
   return state.games.find((g) => g.id === id);
 }
 
+// Event management still needs every event so invitations remain visible.
+// Data selectors, however, must not offer participant-private events that
+// would correctly reject the current account with a 404.
+export function accessibleEvents() {
+  return state.events.filter((event) => event.canAccess !== false);
+}
+
 // The accepted games: everything that made it out of the suggestion pool into
 // the catalog. Every place that picks a game to actually play — Vote, Turnier,
 // Auslosung/Draft, Ergebnis eintragen — offers only these, so a suggestion

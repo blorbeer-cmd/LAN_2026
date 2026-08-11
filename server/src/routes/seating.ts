@@ -8,7 +8,12 @@
 import { Router } from 'express';
 import { db } from '../db';
 import { activeGroupPlayers } from '../groupPlayers';
-import { groupPlayerRows, requireGroupEventAccess, resolveGroupEventScope, type GroupEventScope } from '../groupEventScope';
+import {
+  groupPlayerRows,
+  requireGroupEventAccess,
+  resolveRequestGroupEventScope,
+  type GroupEventScope,
+} from '../groupEventScope';
 import { requireGroupRole } from '../groupAuthorization';
 import {
   SIDES,
@@ -50,7 +55,7 @@ function getLayoutResponse(groupId: string, eventId: GroupEventScope) {
 
 // GET /api/seating/layout - the editable shared table plan.
 seatingRouter.get('/layout', (req, res) => {
-  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  const scope = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json(getLayoutResponse(req.group!.id, scope.eventId));
@@ -59,7 +64,7 @@ seatingRouter.get('/layout', (req, res) => {
 // PUT /api/seating/layout - replacing the shared plan is a group moderation
 // action; personal visible-monitor choices remain self-service below.
 seatingRouter.put('/layout', requireGroupRole('admin'), (req, res) => {
-  const scope = resolveGroupEventScope(req.group!.id, req.body?.eventId);
+  const scope = resolveRequestGroupEventScope(req, req.body?.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const eventId = scope.eventId;
@@ -125,7 +130,7 @@ seatingRouter.put('/layout', requireGroupRole('admin'), (req, res) => {
 // picture: deduped pairs, players grouped into connected clusters, and
 // whoever hasn't declared any neighbor at all.
 seatingRouter.get('/', (req, res) => {
-  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  const scope = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const filterEventId = scope.eventId;

@@ -19,6 +19,7 @@ let ownerPage: Page;
 let memberPage: Page;
 let eventId: string;
 let memberId: string;
+const memberEventNotFoundResponses: string[] = [];
 
 function sessionCookie(response: Response): string {
   const value = response.headers.get('set-cookie');
@@ -84,14 +85,30 @@ before(async () => {
   const event = await fetch(`${BASE_URL}/api/events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
-    body: JSON.stringify({ name: EVENT_NAME, startsAt: now, endsAt: now + 60_000 }),
+    body: JSON.stringify({
+      name: EVENT_NAME,
+      startsAt: now,
+      endsAt: now + 60_000,
+      visibilityScope: 'participants',
+    }),
   });
   assert.equal(event.status, 201);
   eventId = ((await event.json()) as { id: string }).id;
+  const tracking = await fetch(`${BASE_URL}/api/events/${eventId}/tracking/start`, {
+    method: 'POST',
+    headers: { Cookie: ownerCookie },
+  });
+  assert.equal(tracking.status, 200, await tracking.text());
 
   browser = await chromium.launch();
   ownerPage = await browser.newPage({ viewport: { width: 1024, height: 800 } });
   memberPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  memberPage.on('response', async (response) => {
+    if (response.status() !== 404 || !response.url().startsWith(`${BASE_URL}/api/`)) return;
+    if ((await response.text()).includes('Event nicht gefunden.')) {
+      memberEventNotFoundResponses.push(response.url());
+    }
+  });
   await login(ownerPage, OWNER_NAME, OWNER_PASSWORD);
   await login(memberPage, MEMBER_NAME, MEMBER_PASSWORD);
 });
@@ -102,6 +119,16 @@ after(async () => {
 });
 
 test('manager invites a member who accepts and both open clients update', async () => {
+  for (const view of ['votes', 'broadcast', 'infoBoard', 'foodOrders', 'checklist', 'arrivals', 'seating', 'myStats', 'analytics']) {
+    await memberPage.evaluate((target) => {
+      window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: target }));
+    }, view);
+    await memberPage.waitForSelector(`#view-container[data-view="${view}"]`);
+  }
+  await memberPage.waitForTimeout(300);
+  assert.deepEqual(memberEventNotFoundResponses, []);
+  assert.equal(await memberPage.locator('.toast-error', { hasText: 'Event nicht gefunden.' }).count(), 0);
+
   await ownerPage.click('#settings-btn');
   await memberPage.click('#settings-btn');
   await ownerPage.waitForSelector(`[data-participants-event="${eventId}"]`);
