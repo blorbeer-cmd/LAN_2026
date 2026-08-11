@@ -8,7 +8,12 @@ import { openLobbySummaries as pongLobbies } from '../arcade/pong';
 import { openLobbySummaries as snakeLobbies } from '../arcade/snake';
 import { openLobbySummaries as battleshipLobbies } from '../arcade/battleship';
 import { isKnownArcadeBotId } from '../arcade/botIds';
-import { requestCanAccessGroupEvent, requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
+import {
+  requestCanAccessGroupEvent,
+  requireGroupEventAccess,
+  resolveGroupEventScope,
+  resolveRequestGroupEventScope,
+} from '../groupEventScope';
 
 export const arcadeRouter = Router();
 
@@ -99,7 +104,7 @@ function resultPayload(row: ArcadeResultRow) {
 // in-memory in their socket modules (short-lived party state, not data),
 // so this just aggregates their summaries.
 arcadeRouter.get('/lobbies', (req, res) => {
-  const selectedEvent = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  const selectedEvent = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!selectedEvent.ok) return res.status(selectedEvent.status).json({ error: selectedEvent.error });
   if (!requestCanAccessGroupEvent(req, selectedEvent.eventId)) return res.json({ lobbies: [] });
   const groupId = req.group!.id;

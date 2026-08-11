@@ -8,7 +8,7 @@ import { isNonEmptyString } from '../validation';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { requireGroupRole } from '../groupAuthorization';
-import { requireGroupEventAccess, resolveGroupEventScope } from '../groupEventScope';
+import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 
 export const infoBoardRouter = Router();
 
@@ -38,7 +38,7 @@ function serialize(row: InfoRow) {
 }
 
 infoBoardRouter.get('/', (req, res) => {
-  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  const scope = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const rows = db
@@ -55,7 +55,7 @@ infoBoardRouter.post('/', requireGroupRole('admin'), (req, res) => {
   if (!isNonEmptyString(content, MAX_CONTENT_LENGTH)) {
     return res.status(400).json({ error: `Inhalt ist erforderlich (1-${MAX_CONTENT_LENGTH} Zeichen).` });
   }
-  const scope = resolveGroupEventScope(req.group!.id, eventId);
+  const scope = resolveRequestGroupEventScope(req, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const now = Date.now();

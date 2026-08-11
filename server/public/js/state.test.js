@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { state, playerById, gameById, catalogGames, gamesWithHistory } from './state.js';
+import { accessibleEvents, state, playerById, gameById, catalogGames, gamesWithHistory } from './state.js';
 
 test('state starts with the expected empty defaults', () => {
   assert.deepEqual(state.players, []);
@@ -30,6 +30,18 @@ test('gameById finds a game by id', () => {
 test('gameById returns undefined for an unknown id', () => {
   state.games = [];
   assert.equal(gameById('missing'), undefined);
+});
+
+test('accessibleEvents excludes event selectors that would reject the current account', () => {
+  state.events = [
+    { id: 'group-event', canAccess: true },
+    { id: 'private-event', canAccess: false },
+    { id: 'legacy-event' },
+  ];
+  assert.deepEqual(
+    accessibleEvents().map((event) => event.id),
+    ['group-event', 'legacy-event'],
+  );
 });
 
 test('catalogGames keeps the accepted games and drops the suggestions', () => {
