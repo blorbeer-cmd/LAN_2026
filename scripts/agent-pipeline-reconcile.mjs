@@ -267,7 +267,12 @@ export function parseProviderCleanPass(comments, headSha, allowedReviewerLogins)
  * Reviews for any other SHA are dropped entirely, so a stale approval can never open the gate.
  * Only the latest review per author counts, and a plain comment never carries a verdict.
  */
-export function evaluateReviews(reviews, headSha, allowedReviewerLogins) {
+export function evaluateReviews(
+  reviews,
+  headSha,
+  allowedReviewerLogins,
+  pullRequestAuthorLogin = null,
+) {
   // `allowedReviewerLogins` must be the reviewer allowlist, never the author allowlist: the latter
   // contains the human maintainer, whose approval would otherwise silently count as the counter
   // provider's cross-review and collapse both gates into one click.
@@ -329,14 +334,38 @@ export function evaluateReviews(reviews, headSha, allowedReviewerLogins) {
   // The repository is public, so anyone with a GitHub account can approve a pull request here.
   // Only an approval from someone who could write to the repository anyway may satisfy the
   // protected-path gate; a drive-by approval from an outsider must not.
+  //
+  // GitHub never lets a pull-request author approve their own pull request. In the explicitly
+  // chosen human-review mode, the author's native `COMMENTED` review is therefore the only review
+  // signal they can submit themselves. It still carries the exact commit SHA, and the author plus
+  // write-association checks below keep it from becoming an arbitrary issue comment or outsider
+  // signal. Protected paths deliberately do not use this exception: they still need an independent
+  // approval.
+  const latestAuthorReview = currentHead
+    .filter(
+      (review) =>
+        review.author === pullRequestAuthorLogin &&
+        !isBotLogin(review.author),
+    )
+    .reduce(
+      (latest, review) =>
+        !latest || (review.submittedAt ?? "") >= (latest.submittedAt ?? "")
+          ? review
+          : latest,
+      null,
+    );
+  const authorReview =
+    latestAuthorReview?.state === "COMMENTED" &&
+    WRITE_ASSOCIATIONS.has(latestAuthorReview.authorAssociation);
   const humanApproval = decisive.some(
     (review) =>
       review.state === "APPROVED" &&
       !isBotLogin(review.author) &&
       WRITE_ASSOCIATIONS.has(review.authorAssociation),
   );
+  const humanReview = humanApproval || authorReview;
 
-  return { verdict, humanApproval, reviewedByProvider };
+  return { verdict, humanApproval, humanReview, reviewedByProvider };
 }
 
 // What counts as evidence that the counter provider reviewed the current head.
@@ -1123,6 +1152,7 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     snapshot.reviews,
     snapshot.headSha,
     allowedReviewers,
+    snapshot.authorLogin,
   );
   // A provider that submits a review only when it has findings would otherwise leave a clean pass
   // unreadable, blocking a head it demonstrably reviewed. The comment names the head it checked, so
@@ -1302,9 +1332,12 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
   } else if (decision.mode === "human") {
     // Review and merge collapse into the same person here. That is only acceptable because it was
     // deliberately chosen for this head, is visible as a label, and is recorded below.
-    if (!reviews.humanApproval) {
+    if (!reviews.humanReview) {
       evidenceOutstanding = true;
-      blockers.push("No human approval covers the current head SHA yet.");
+      blockers.push(
+        "No human review covers the current head SHA yet. A PR author can submit a Comment " +
+          "review; another reviewer must approve.",
+      );
     }
   }
 
@@ -1699,7 +1732,7 @@ function reviewDecisionSection(readiness, snapshot, config) {
     "",
     `- \`${modeLabels.cross}\` — cross-review by ${readiness.reviewerProvider ?? "the other provider"}; most independent.`,
     `- \`${modeLabels.self}\` — fresh, read-only session of ${statusText(readiness.contract?.implementer ?? "the implementer")}; spares the other provider's quota, less independent.`,
-    `- \`${modeLabels.human}\` — you review it yourself; approve this exact head to satisfy the gate.`,
+    `- \`${modeLabels.human}\` — you review it yourself; approve this exact head, or submit a Comment review when you are the PR author.`,
     "",
     "The chosen review starts automatically, its findings are fixed automatically, and the",
     "question returns for the next head SHA. Nothing starts until a label is set.",

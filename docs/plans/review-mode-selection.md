@@ -84,7 +84,7 @@ Implementierung fertig (oder Fix-Commit gepusht)
             ├─ b) frische, isolierte Session des Implementierungs-Anbieters
             │     └─ identischer Findings-/Fix-Weg
             └─ c) Nutzer reviewt selbst
-                  ├─ Approval für den aktuellen Head-SHA → Gate offen
+                  ├─ Approval oder Autoren-`COMMENTED`-Review für den Head → Gate offen
                   └─ Findings als Review-Kommentare → Agent fixt → Auswahlpunkt
 ```
 
@@ -107,10 +107,11 @@ Fallback-Review wird von der Notlösung zur regulären, wählbaren Option b).
 | ----------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `cross` (a) | `review:cross`   | wie heute: Approval eines Accounts aus `providerReviewerAllowlist` des Gegen-Anbieters, `verdict: pass`, alle Threads gelöst  |
 | `self` (b)  | `review:self`    | Ergebnis-Marker eines Accounts des Implementierungs-Anbieters mit `mode=self`, `read-only=true`, eigener `session=`, `verdict=pass`, alle Threads gelöst |
-| `human` (c) | `review:human`   | Approval eines Menschen mit Schreibzugriff (`OWNER`/`MEMBER`/`COLLABORATOR`) für exakt diesen Head-SHA, alle Threads gelöst   |
+| `human` (c) | `review:human`   | Approval eines Menschen mit Schreibzugriff oder `COMMENTED`-Review des PR-Autors für exakt diesen Head-SHA, alle Threads gelöst |
 
 Für alle drei Modi gilt unverändert: CI grün, konfliktfrei, kein `agent:waiting`/`agent:needs-human`/
-`agent:no-auto`, UI/UX-Nachricht vorhanden, geschützte Pfade menschlich freigegeben.
+`agent:no-auto`, UI/UX-Nachricht vorhanden, geschützte Pfade unabhängig menschlich freigegeben.
+Die Autoren-`COMMENTED`-Ausnahme des Modus `human` ersetzt diese separate Freigabe nicht.
 
 Ehrliche Grenze von b): Das Gate kann hier keine unabhängige Identität prüfen — es glaubt dem
 Ergebnis-Record des Anbieters, der auch implementiert hat. Die Kontrollen sind Prozess-, keine
@@ -121,6 +122,9 @@ im PR sichtbar und der Merge bleibt menschlich.
 
 Ehrliche Grenze von c): Review und Merge sind dieselbe Person. Das ist zulässig, weil es explizit
 gewählt wurde, aber `review:human` darf nie Default sein und nie stillschweigend gesetzt werden.
+GitHub verbietet dem PR-Autor eine native Approval. Deshalb akzeptiert der Reconciler in diesem
+ausdrücklich gewählten Modus ein natives `COMMENTED`-Review des PR-Autors, sofern dessen
+`commit_id` exakt dem aktuellen Head entspricht und der Autor Schreibzugriff hat.
 
 ## 6. Wie die Wahl technisch ausgedrückt wird
 
@@ -143,8 +147,9 @@ erhalten bleibt (kein eigener Eventstrom, keine Snapshot-IDs).
   im Modus `self` zusätzlich als maschinenlesbarer Kommentar-Marker abgelegt, analog zur
   bestehenden UI-Notiz. Alle Felder sind Pflicht, ein unvollständiger Marker wird nicht erkannt:
   `<!-- agent-pipeline:review-result <head-sha> mode=self verdict=pass session=<id> read-only=true -->`.
-  Für `cross` und `human` ist die Approval zum exakten Head-SHA der Nachweis; dort gibt es keinen
-  Marker.
+  Für `cross` und `human` ist die Approval zum exakten Head-SHA der Nachweis; beim `human`-Mode
+  genügt für den PR-Autor wegen GitHubs Self-Approval-Regel ein natives `COMMENTED`-Review mit
+  demselben Head-SHA. Dort gibt es keinen Ergebnis-Marker.
 - **Ein Agent darf ein Wahl-Label nur als Übertragung einer ausdrücklichen Nutzerantwort setzen**,
   nie von sich aus und nie unbeaufsichtigt. Die einzige Label-Schreiboperation der Automatik bleibt
   das Entfernen eines veralteten Labels durch den Reconciler. Das gehört in die
@@ -255,9 +260,10 @@ Zwei Punkte wurden während der Umsetzung anders gelöst als oben skizziert:
   ein gelöschter Statuskommentar oder eine pausierte Automatik hätten genügt, damit eine Wahl aus
   Head A für Head D gilt. Das Review zu `5ebf032` hat genau das nachgewiesen; seither wird bei jedem
   Lauf ein Datensatz für den aktuellen Head geschrieben.
-- **Der Ergebnis-Marker gilt nur für `self`.** Für `cross` und `human` ist die Approval zum exakten
-  Head-SHA die stärkere und fälschungssichere Evidenz; ein zusätzlicher Marker würde dort nur eine
-  zweite, schwächere Quelle für dieselbe Aussage schaffen.
+- **Der Ergebnis-Marker gilt nur für `self`.** Für `cross` und `human` ist ein natives Review zum
+  exakten Head-SHA die stärkere und fälschungssichere Evidenz: eine Approval oder im `human`-Mode
+  ein `COMMENTED`-Review des PR-Autors. Ein zusätzlicher Marker würde dort nur eine zweite,
+  schwächere Quelle für dieselbe Aussage schaffen.
 
 Bewusst streng geblieben: Der gewählte Modus entscheidet allein, welche Evidenz zählt. Eine
 Cross-Approval erfüllt ein gewähltes `review:self` nicht, obwohl sie stärker wäre — wer sie nutzen

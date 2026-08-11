@@ -80,8 +80,8 @@ Who may satisfy the `cross` review is configured in `providerReviewerAllowlist`,
 separate from `providerAuthorAllowlist`. The author list contains the human maintainer, so reusing
 it would let a single human approval count as the counter provider's review — and in `cross` mode
 also satisfy the protected-path approval at the same time, two independent gates collapsing into
-one click. Only agent identities can produce a cross-review verdict; a human approval counts as the
-human approval, and satisfies the review itself only in the explicitly chosen `human` mode.
+one click. Only agent identities can produce a cross-review verdict; human review evidence counts
+only for the human gate and satisfies the review itself only in the explicitly chosen `human` mode.
 
 ## Review-mode selection
 
@@ -100,7 +100,7 @@ the audit trail.
 | -------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `review:cross` | `cross` | per `crossReviewEvidence`: a native counter-provider review, a finding-free review the counter provider reported in a comment naming this exact head, or for Claude a credential-read-only structured result published by the dedicated trusted workflow for this exact head |
 | `review:self`  | `self`  | a published `agent-pipeline:review-result` marker: same head, `verdict=pass`, a `read-only` level meeting `selfReviewMinimumEnforcement` (default `verified`), from one of the implementation provider's own identities |
-| `review:human` | `human` | an approving review from an account with write access, covering exactly this head                                                                                                                                       |
+| `review:human` | `human` | an approving review from an account with write access, or the PR author's `COMMENTED` review when GitHub forbids self-approval, covering exactly this head                                                       |
 
 With no label set and everything mechanical green, the pull request sits in the
 `awaiting-review-decision` phase. The sticky status comment keeps showing the full state, but it is
@@ -168,7 +168,7 @@ of quota mid-round is the case this exists for — and simply rebinds.
 Both are acceptable only because they were explicitly chosen for one specific head, stay visible as
 a label, and are named as reduced independence in the status comment. The pull request's label
 history is the audit trail for who chose what and when. Every other gate condition — green checks,
-no conflict, resolved threads, the UI/UX notice, human approval of protected paths — applies
+no conflict, resolved threads, the UI/UX notice, human review of protected paths — applies
 unchanged in all three modes, and the merge stays with the user in all of them.
 
 ## Automated provider cross-review
@@ -252,8 +252,8 @@ Escalations the reconciler cannot derive from GitHub state — an exhausted roun
 decision, the 24-hour waiting escalation — stay with `agent:needs-human`, exactly as the plan
 describes: raised by a human or by a later provider phase, blocking while set, and never written
 or cleared here. The one escalation this phase can derive, a protected path awaiting human
-approval, uses its own `awaiting-human-approval` phase instead of borrowing that label, so
-approving the head clears it without label bookkeeping and no genuine escalation is ever wiped by
+review, uses its own `awaiting-human-approval` phase instead of borrowing that label, so a native
+review of the head clears it without label bookkeeping and no genuine escalation is ever wiped by
 a sweep. To stop automation by hand, use `agent:no-auto`.
 
 The pipeline's own check runs are excluded from the CI evaluation via `selfCheckNames`. The
@@ -357,7 +357,7 @@ absent, the delivery monitor falls back to a unique local Codex task whose check
 matches `head-branch`; an ambiguous fallback is deliberately left unacknowledged and retried.
 
 Changes below `infra/` are reported as protected paths. The reconciler holds such a pull request
-in the `awaiting-human-approval` phase until an approval review covers the exact current head SHA,
+in the `awaiting-human-approval` phase until an independent human approval covers the exact current head SHA,
 because no agent can clear that condition itself. Workflow changes below `.github/workflows/` remain
 sensitive and therefore select the independent cross-review, but no longer require a second human
 account solely because the workflow file changed. A merge conflict or a failing check still takes
@@ -365,9 +365,11 @@ precedence, since an agent can resolve those; the approval blocker stays listed 
 remains closed either way.
 
 That approval only counts from an account with write access — `author_association` of `OWNER`,
-`MEMBER` or `COLLABORATOR`. This repository is public and allows forking, so any GitHub account
-can submit an approving review; without that restriction a drive-by approval from an outsider
-would satisfy the one control the plan defines for infrastructure changes.
+`MEMBER` or `COLLABORATOR` — and its `commit_id` must match the current head. GitHub does not let
+PR authors approve their own PRs, so protected-path changes require a collaborating account or an
+administrator's manual bypass. This repository is public and allows forking, so any GitHub account
+can submit reviews; without the write-access and exact-head checks, a drive-by review from an
+outsider or an old review could satisfy the control.
 
 Fork pull requests are dropped before the task contract is even parsed, and receive no label and
 no comment. The pull-request body is under the fork author's control, so any later decision point
@@ -380,10 +382,12 @@ agent-pipeline:ui-notice <head sha> -->` could otherwise declare a UI change rev
 looked at. The sticky status comment is matched the same way, so a decoy comment carrying the
 marker is never adopted and overwritten — the reconciler posts its own alongside it instead.
 
-Note for the current transitional setup: GitHub forbids approving your own pull request. The
-remaining `infra/` protection therefore still needs a collaborating account or an explicit
-administrator bypass. Workflow-only changes use the automated cross-review and do not hit this
-solo-developer limitation.
+GitHub forbids approving your own pull request. To keep the solo-maintainer path usable, the
+reconciler accepts the PR author's native `COMMENTED` review as human evidence only when it is
+bound to the exact current head and the author has write access. A collaborating account still
+uses a normal approval. This exception applies only to an explicitly selected `review:human` mode;
+it does not satisfy the independent approval required for protected `infra/` paths. Workflow-only
+changes continue to use the automated cross-review.
 
 ## Local verification
 

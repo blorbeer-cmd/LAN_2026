@@ -63,7 +63,8 @@ seinen Zustellmarker erkannt und nicht dupliziert.
 
 Es gibt bewusst keine vierte Option „kein Review". Wenn kein Agenten-Review mehr nötig erscheint,
 ist c) die richtige Wahl: das Review findet dann beim Menschen statt und wird durch seine Approval
-des exakten Head-SHAs sichtbar.
+des exakten Head-SHAs sichtbar. Ist der Mensch selbst der PR-Autor, kann GitHub keine Approval
+annehmen; in diesem Fall zählt ein natives `COMMENTED`-Review des Autors für genau diesen Head.
 
 ## Empfehlung bilden
 
@@ -164,8 +165,9 @@ das Kontingent verbrauchen, das diese Frage schützen soll.
 5. Bei a) zählt, was `crossReviewEvidence` verlangt: eine Approval des Gegen-Anbieters oder —
    Standard `reviewed-and-resolved` — dessen Review genau dieses Heads mit aufgelösten Findings.
    Der Standard existiert, weil die Codex-Integration nie approvt: Sie kommentiert bei Findings und
-   reagiert sonst mit einem Daumen. Bei c) die Approval des Menschen — jeweils für
-   exakt den aktuellen Head-SHA. Ein Ergebnis-Marker ist dort nicht nötig.
+   reagiert sonst mit einem Daumen. Bei c) die Approval des Menschen beziehungsweise bei einem
+   PR-Autor dessen natives `COMMENTED`-Review — jeweils für exakt den aktuellen Head-SHA. Ein
+   Ergebnis-Marker ist dort nicht nötig.
 6. Nach einem Fix-Commit beginnt der Ablauf von vorn: Der Reconciler entfernt das an den alten
    Head gebundene Wahl-Label, und die Frage wird erneut gestellt. Das neue Label erst setzen, wenn
    der Statuskommentar den neuen Head-SHA nennt — vorher kann der Reconciler die Antwort nicht
