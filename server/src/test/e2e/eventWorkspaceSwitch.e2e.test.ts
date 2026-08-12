@@ -188,3 +188,48 @@ test('the personal statistics event filter only offers accepted workspaces', asy
   }
   assert.deepEqual(notFound, [], 'no offered event may answer the personal stats request with 404');
 });
+
+test('the workspace switcher names and shows the state of every event it offers', async () => {
+  const started = await api(`/api/events/${eventA}/tracking/start`, { method: 'POST' });
+  assert.equal(started.status, 200, JSON.stringify(started.body));
+
+  await switchWorkspaceInBrowser(eventB);
+  const labels = await page.$$eval('#event-context-switcher option', (nodes) =>
+    nodes.map((node) => node.textContent?.trim() ?? ''),
+  );
+  assert.ok(
+    labels.includes('Allgemein'),
+    `the base workspace names itself once, got: ${JSON.stringify(labels)}`,
+  );
+  assert.ok(
+    labels.some((label) => label === 'E2E Workspace A · Trackt gerade'),
+    `a tracking event says so in the dropdown, got: ${JSON.stringify(labels)}`,
+  );
+  assert.ok(
+    labels.some((label) => label === 'E2E Workspace B · Nicht aktiv'),
+    `a created but idle event says so too, got: ${JSON.stringify(labels)}`,
+  );
+
+  // The indicator follows the active event, and the state stays readable
+  // without it: the option text spells it out and the control is described.
+  assert.equal(await page.$eval('#event-context-status', (el) => (el as HTMLElement).dataset.eventStatus), 'idle');
+  await switchWorkspaceInBrowser(eventA);
+  assert.equal(await page.$eval('#event-context-status', (el) => (el as HTMLElement).dataset.eventStatus), 'tracking');
+  assert.equal(
+    await page.$eval('#event-context-switcher', (el) => el.getAttribute('aria-label')),
+    'Aktives Event: E2E Workspace A – Trackt gerade',
+  );
+
+  // Same control shape as every other dropdown in the app, not a pill.
+  const shape = await page.$eval('#event-context-switcher', (el) => {
+    const style = getComputedStyle(el);
+    return { radius: style.borderTopLeftRadius, appearance: style.appearance };
+  });
+  assert.equal(shape.radius, '8px', 'the switcher uses the shared --radius-sm select treatment');
+  assert.equal(shape.appearance, 'none', 'and the shared custom chevron rather than the native arrow');
+
+  const overflows = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  assert.equal(overflows, false, 'the topbar control must not create horizontal page scrolling');
+});

@@ -32,6 +32,7 @@ import { invalidateMusic } from './views/music.js';
 import { invalidateAnalytics } from './views/analytics.js';
 import { invalidateMyStats } from './views/myStats.js';
 import { invalidateSeatNeighbors } from './views/profile.js';
+import { eventStatus, eventSwitcherLabel } from './eventStatus.js';
 import { icon, installIconReplacement } from './icons.js';
 import { initNumberStepper } from './numberStepper.js';
 import { initGlobalSearch } from './searchPalette.js';
@@ -137,15 +138,33 @@ function invalidateEventScopedCaches() {
 }
 
 function renderEventContextSwitcher() {
+  const container = document.getElementById('event-context');
   const select = document.getElementById('event-context-switcher');
-  if (!select) return;
+  const statusEl = document.getElementById('event-context-status');
+  if (!container || !select) return;
   const events = state.availableEvents ?? [];
   select.innerHTML = events
-    .map((event) => `<option value="${escapeHtml(event.id)}">${escapeHtml(event.isBase ? 'Allgemein' : event.name)}</option>`)
+    .map((event) => `<option value="${escapeHtml(event.id)}">${escapeHtml(eventSwitcherLabel(event))}</option>`)
     .join('');
   select.value = state.activeEvent?.id ?? '';
-  select.hidden = events.length === 0;
-  select.title = state.activeEvent ? `Aktives Event: ${state.activeEvent.name}` : 'Aktives Event';
+  container.hidden = events.length === 0;
+
+  // The icon repeats the active event's state at a glance; the option text
+  // above already carries it in words, and the select's accessible name spells
+  // it out too, so the colour never has to be read on its own.
+  const active = events.find((event) => event.id === state.activeEvent?.id) ?? state.activeEvent;
+  const status = eventStatus(active);
+  if (statusEl) {
+    statusEl.innerHTML = icon(status.icon);
+    statusEl.dataset.eventStatus = status.key;
+  }
+  // Same rule as the option label: "Allgemein – Allgemein" stutters, so the
+  // base workspace names itself once.
+  const description = active
+    ? `Aktives Event: ${eventSwitcherLabel(active).replace(' · ', ' – ')}`
+    : 'Aktives Event';
+  select.setAttribute('aria-label', description);
+  container.title = description;
 }
 
 async function activateEvent(eventId, { navigate } = {}) {

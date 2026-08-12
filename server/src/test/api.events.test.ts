@@ -180,7 +180,35 @@ test('the management shape is a strict superset of the summary shape', async () 
   assert.equal(managed.ends_at, undefined, 'the snake_case duplicate is gone for good');
   assert.ok(Array.isArray(managed.participantIds), 'only the management shape carries participants');
   assert.equal(summary.participantIds, undefined, 'a member never receives the participant roster');
-  assert.equal(summary.trackingEnabled, undefined, 'a member never receives tracking state');
+
+  // The lifecycle state itself is not management data: the workspace switcher
+  // labels every event it offers with it, and a member only ever receives the
+  // summary shape. It describes the event, never its participants — the
+  // roster above stays management-only.
+  assert.equal(typeof summary.trackingEnabled, 'boolean', 'the switcher needs the tracking state of every workspace');
+  assert.equal(typeof summary.isEnded, 'boolean', 'the switcher distinguishes an ended event from a running one');
+});
+
+test('the workspace list reports the lifecycle state it labels events with', async () => {
+  const created = await createEvent('Statusanzeige');
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  accept(created.body.id, TEST_ADMIN_ID);
+
+  const idle = await request(app).get('/api/events');
+  const beforeTracking = idle.body.availableEvents.find((event: { id: string }) => event.id === created.body.id);
+  assert.equal(beforeTracking.trackingEnabled, false);
+  assert.equal(beforeTracking.isEnded, false);
+
+  const started = await request(app).post(`/api/events/${created.body.id}/tracking/start`);
+  assert.equal(started.status, 200, JSON.stringify(started.body));
+  const tracking = await request(app).get('/api/events');
+  const whileTracking = tracking.body.availableEvents.find((event: { id: string }) => event.id === created.body.id);
+  assert.equal(whileTracking.trackingEnabled, true, 'a tracking event is distinguishable in the switcher');
+
+  // The permanent base workspace is always offered and never reports as ended.
+  const base = tracking.body.availableEvents.find((event: { isBase: boolean }) => event.isBase);
+  assert.ok(base, 'the base workspace stays selectable');
+  assert.equal(base.isEnded, false);
 });
 
 test('unknown events stay non-enumerable', async () => {

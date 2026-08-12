@@ -14,6 +14,7 @@ import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { getMyId } from '../whoami.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { eventStatusBadgeHtml } from '../eventStatus.js';
 
 const EVENT_HELP = 'Jede Aktion gehört zu deinem aktuell gewählten Event. Du kannst dein Arbeits-Event jederzeit oben in der Leiste wechseln.';
 const KIOSK_HELP = 'Für gemeinsame Bildschirme: zeigt Live-Status, Vote, Rang und Turnier automatisch. Der Kiosk benötigt seinen eigenen Token.';
@@ -30,12 +31,6 @@ function renderKioskSection() {
       <a href="/kiosk.html" target="_blank" rel="noopener" class="btn btn-block">Kiosk-Ansicht öffnen</a>
     </section>
   `;
-}
-
-function eventStatusBadge(e) {
-  if (e.isEnded) return `<span class="badge badge-offline">${icon('circleCheck')} Beendet</span>`;
-  if (e.trackingEnabled) return `<span class="badge badge-playing">${icon('radioTower')} Trackt gerade</span>`;
-  return `<span class="badge badge-paused">${icon('pause')} Nicht aktiv</span>`;
 }
 
 function eventDateRange(e) {
@@ -80,7 +75,7 @@ function renderEventCard(e) {
     <div class="card stack" style="gap:var(--space-3);">
       <div class="row-between">
         <strong>${escapeHtml(e.name)}</strong>
-        ${eventStatusBadge(e)}
+        ${eventStatusBadgeHtml(e)}
       </div>
       <div class="stack" style="gap:var(--space-1);">
         ${e.location ? `<div class="muted" style="font-size:var(--font-size-sm);">${icon('mapPin')} ${escapeHtml(e.location)}</div>` : ''}

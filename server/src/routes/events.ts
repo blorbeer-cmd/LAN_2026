@@ -82,8 +82,6 @@ function serializeEvent(event: ReturnType<typeof getEvent>) {
   if (!event) return undefined;
   return {
     ...serializeEventSummary(event as EventRow),
-    trackingEnabled: Boolean(event.tracking_enabled),
-    isEnded: Boolean(event.ended_at),
     endedAt: event.ended_at,
     groupId: event.group_id,
     visibilityScope: event.visibility_scope,
@@ -105,6 +103,10 @@ function activeContextPlayerIds(eventId: string): string[] {
   ).map((row) => row.player_id);
 }
 
+// `trackingEnabled`/`isEnded` are part of the summary rather than management
+// data: the workspace switcher shows the state of every event it offers, and
+// a member only ever receives this shape. They describe the event itself, not
+// anything about its participants, so an invitation teaser may carry them too.
 function serializeEventSummary(event: EventRow) {
   return {
     id: event.id,
@@ -115,6 +117,8 @@ function serializeEventSummary(event: EventRow) {
     description: event.description,
     status: event.status,
     isBase: event.id === BASE_EVENT_ID,
+    trackingEnabled: Boolean(event.tracking_enabled),
+    isEnded: Boolean(event.ended_at),
   };
 }
 
@@ -174,7 +178,6 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
     return res.json({
       ...serializeEventSummary(event),
       participantIds: getParticipantIds(event.id),
-      trackingEnabled: Boolean(event.tracking_enabled),
     });
   }
   return res.json(serializeEvent(event));
