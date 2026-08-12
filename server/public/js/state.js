@@ -31,11 +31,15 @@ export function gameById(id) {
   return state.games.find((g) => g.id === id);
 }
 
-// Event management still needs every event so invitations remain visible.
-// Data selectors, however, must not offer participant-private events that
-// would correctly reject the current account with a 404.
+// Event *management* needs every event of the group (state.managedEvents,
+// owner/admin only). Data selectors must not offer those: personal analytics
+// aggregate only events this account actually accepted at some point
+// (resolveAnalyticsEvents on the server), so an event an admin manages but
+// never joined would answer their own event filter with a 404.
+// state.availableEvents is exactly that accepted set — including the
+// permanent base event — and it is the same for every role.
 export function accessibleEvents() {
-  return state.events.filter((event) => event.canAccess !== false);
+  return state.availableEvents ?? [];
 }
 
 // The accepted games: everything that made it out of the suggestion pool into

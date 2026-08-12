@@ -16,19 +16,22 @@ import { filterTestUsers } from './testFilter.js';
 import { invalidateHomeSeating } from './views/home.js';
 import { initNotificationBanner, refreshNotificationBanner } from './notificationBanner.js';
 import { invalidateMissingSkills, invalidateAktuellStatus } from './aktuellStatus.js';
-import { invalidateMatchmakingHistory, setDraftState } from './views/matchmaking.js';
+import { invalidateMatchmakingHistory, invalidateMatchmakingDraft, setDraftState } from './views/matchmaking.js';
 import { invalidateBroadcasts } from './views/broadcast.js';
 import { invalidateInfoBoard } from './views/infoBoard.js';
 import { invalidateFoodOrders } from './views/foodOrders.js';
 import { invalidateChecklist } from './views/checklist.js';
 import { invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
 import { invalidateArrivals } from './views/arrivals.js';
-import { invalidateVoteHistory } from './views/votes.js';
+import { invalidateVoteEventScope, invalidateVoteHistory } from './views/votes.js';
 import { invalidateTournaments, focusTournament, showTournamentLanding } from './views/tournament.js';
 import { invalidateHallOfFame } from './views/hallOfFame.js';
 import { invalidateSeating } from './views/seating.js';
 import { invalidateAdminMemberships, invalidateAdminReadiness } from './views/admin.js';
 import { invalidateMusic } from './views/music.js';
+import { invalidateAnalytics } from './views/analytics.js';
+import { invalidateMyStats } from './views/myStats.js';
+import { invalidateSeatNeighbors } from './views/profile.js';
 import { icon, installIconReplacement } from './icons.js';
 import { initNumberStepper } from './numberStepper.js';
 import { initGlobalSearch } from './searchPalette.js';
@@ -100,10 +103,20 @@ const ctx = {
   rerender: () => renderCurrent(),
 };
 
+// Everything a view kept from the workspace it was rendered in. loadAll()
+// refreshes `state`, but every view module that fetches from its own endpoint
+// caches outside `state` — those survive the switch and would keep the
+// previous event's data on screen.
+//
+// This list is the complete set of event-scoped caches; the contract test in
+// eventScopedCaches.test.js fails when a view gains an invalidator that is
+// neither listed here nor declared event-independent, so it cannot silently
+// drift again.
 function invalidateEventScopedCaches() {
   invalidateAktuellStatus();
   invalidateMatchmakingHistory();
-  invalidateVoteHistory();
+  invalidateMatchmakingDraft();
+  invalidateVoteEventScope();
   invalidateTournaments();
   invalidateHomeSeating();
   invalidateSeating();
@@ -113,6 +126,14 @@ function invalidateEventScopedCaches() {
   invalidateChecklist();
   invalidateArrivals();
   invalidateMusic();
+  invalidateAnalytics();
+  invalidateMyStats();
+  invalidateHallOfFame();
+  invalidateAdminReadiness();
+  invalidateSeatNeighbors();
+  // Not a view cache but the same problem: a drawn lineup belongs to the
+  // event it was drawn in, and nothing in loadAll() overwrites it.
+  state.lastMatchmaking = null;
 }
 
 function renderEventContextSwitcher() {

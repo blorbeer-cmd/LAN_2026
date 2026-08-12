@@ -32,16 +32,26 @@ test('gameById returns undefined for an unknown id', () => {
   assert.equal(gameById('missing'), undefined);
 });
 
-test('accessibleEvents excludes event selectors that would reject the current account', () => {
-  state.events = [
-    { id: 'group-event', canAccess: true },
-    { id: 'private-event', canAccess: false },
-    { id: 'legacy-event' },
+test('accessibleEvents offers the accepted workspaces, not the admin management list', () => {
+  // The shapes below mirror GET /api/events: `availableEvents` is what this
+  // account accepted, `managedEvents` is the owner/admin list of every event
+  // in the group — including ones they never joined, which personal
+  // analytics answer with a 404.
+  state.availableEvents = [
+    { id: 'instance-base-event', isBase: true },
+    { id: 'joined-event' },
   ];
+  state.managedEvents = [{ id: 'joined-event' }, { id: 'never-joined-event' }];
+  state.events = state.managedEvents;
   assert.deepEqual(
     accessibleEvents().map((event) => event.id),
-    ['group-event', 'legacy-event'],
+    ['instance-base-event', 'joined-event'],
   );
+});
+
+test('accessibleEvents is empty before the first event payload arrives', () => {
+  state.availableEvents = undefined;
+  assert.deepEqual(accessibleEvents(), []);
 });
 
 test('catalogGames keeps the accepted games and drops the suggestions', () => {

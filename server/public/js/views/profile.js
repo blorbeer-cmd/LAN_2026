@@ -180,6 +180,16 @@ let neighborsCache = null;
 let neighborsLoading = false;
 let neighborsForPlayerId = null;
 
+// Seat neighbours are pre-filled from the active event's seating plan, so
+// they are event data even though the cache is keyed by player id. Switching
+// the workspace has to drop them, or the previous event's seating keeps
+// driving the checkboxes for the new one.
+export function invalidateSeatNeighbors() {
+  neighborsCache = null;
+  neighborsLoading = false;
+  neighborsForPlayerId = null;
+}
+
 // 'unsupported' | 'denied' | 'unsubscribed' | 'subscribed' | null (not yet
 // checked). Re-checked whenever the view renders fresh (cheap local
 // permission/registration lookups, no network round trip).

@@ -40,12 +40,29 @@ function defaultFilters() {
 }
 let filters = defaultFilters();
 
+// Every tab's data is filtered by this view's own event selection, so all of
+// it belongs to the event that was active when it was fetched. Switching the
+// workspace has to drop the numbers *and* the selection: the selected event
+// may not even be readable from the new workspace, and re-resolving the
+// 'active' sentinel is what re-points the view at the new event.
+export function invalidateAnalytics() {
+  cache = null;
+  matchesCache = null;
+  arcadeCache = null;
+  loading = false;
+  matchesLoading = false;
+  arcadeLoading = false;
+  filters = defaultFilters();
+}
+
 // Resolves the 'active' sentinel to a real event id once the events list is
 // available, so the view opens pre-filtered to the current LAN by default.
+// state.activeEvent is the account's persisted workspace; the per-event
+// payload carries no "is this the active one" flag of its own.
 function resolveEventSelection() {
   if (filters.eventId !== 'active') return;
-  const active = accessibleEvents().find((e) => e.isActive);
-  filters.eventId = active?.id ?? '';
+  const activeId = state.activeEvent?.id ?? null;
+  filters.eventId = activeId && accessibleEvents().some((e) => e.id === activeId) ? activeId : '';
 }
 
 // Arcade results do not carry an event id. For that tab only, translate the
