@@ -11,7 +11,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
     const assert = require('assert/strict');
     const request = require('supertest');
     const { createApp } = require(${JSON.stringify(APP_JS_PATH)});
-    const { db, DEFAULT_GROUP_ID } = require(${JSON.stringify(DB_JS_PATH)});
+    const { db, DEFAULT_GROUP_ID, BASE_EVENT_ID } = require(${JSON.stringify(DB_JS_PATH)});
 
     function cookie(response) {
       return response.headers['set-cookie'][0].split(';')[0];
@@ -81,6 +81,33 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal(repeatedInvite.status, 200);
       assert.equal(repeatedInvite.body.status, 'invited');
 
+      // The invitation must reach the invitee as a notification. It has to be
+      // recorded against the base event: the invitee is by definition not an
+      // accepted participant of the event being offered, and notifyPlayers
+      // only delivers inside its scope event's accepted set.
+      const invitationTopic = 'event-invitation:' + event.body.id + ':' + bob.account.id;
+      function invitationPushRows() {
+        return db
+          .prepare('SELECT event_id AS eventId, audience, player_ids AS playerIds, url, resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?')
+          .all(invitationTopic);
+      }
+      const invitationPushes = invitationPushRows();
+      assert.equal(invitationPushes.length, 1, 'a repeated invite must not notify a second time');
+      assert.equal(invitationPushes[0].eventId, BASE_EVENT_ID);
+      assert.equal(invitationPushes[0].audience, 'direct');
+      assert.equal(invitationPushes[0].url, '/#settings');
+      assert.deepEqual(JSON.parse(invitationPushes[0].playerIds), [bob.account.id]);
+      assert.equal(invitationPushes[0].resolvedAt, null);
+      // It is genuinely readable for the invitee, whatever workspace is
+      // active for them — that is the whole point of notifying them about an
+      // event they cannot see yet.
+      const invitationFeed = await call(app, 'get', '/api/push/log', bob);
+      assert.equal(invitationFeed.status, 200);
+      assert.ok(
+        invitationFeed.body.entries.some((entry) => entry.title === 'Event-Einladung' && entry.body.includes('Invitation Event')),
+        'the invitee must see the invitation in their notification feed',
+      );
+
       const invitedList = await call(app, 'get', '/api/events', bob);
       const invitedEvent = invitedList.body.invitations.find((entry) => entry.id === event.body.id);
       assert.equal(invitedEvent.participationStatus, 'invited');
@@ -95,6 +122,9 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal(firstAccept.status, 200, JSON.stringify(firstAccept.body));
       const repeatedAccept = await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', bob);
       assert.equal(repeatedAccept.status, 200, JSON.stringify(repeatedAccept.body));
+      // Answering the invitation retires its notification: it stays in the
+      // history, but stops being an open item in banners.
+      assert.notEqual(invitationPushRows()[0].resolvedAt, null, 'accepting must resolve the invitation notification');
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/tracking-consent', bob)).status, 200);
       assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, bob)).status, 200);
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/invitation/decline', bob)).status, 409);

@@ -14,6 +14,12 @@ export const FEED_LINK_LABELS = {
   checklist: 'Zur Checkliste',
   arcade: 'Zur Arcade',
   broadcast: 'Zu den Durchsagen',
+  // Event invitations live in the Events group of the settings view; the
+  // label names the destination the reader cares about, not the view it
+  // currently sits in. No DOMAIN_ICONS entry on purpose — 'settings' is a
+  // canonical view symbol elsewhere, and the notification's own bell
+  // fallback is the right icon for an invitation anyway.
+  settings: 'Zur Event-Übersicht',
 };
 
 // Older persisted push rows used a leading emoji as UI chrome. Keep their

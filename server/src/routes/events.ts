@@ -34,8 +34,15 @@ import { setEventTrackingConsent } from '../trackingContexts';
 import { activeGroupPlayers } from '../groupPlayers';
 import { createPersistentBackup } from '../backupService';
 import { eventAccessLevel, getOrRepairActiveEvent } from '../eventContext';
+import { notifyPlayers, resolvePushTopic } from '../push';
 
 export const eventsRouter = Router();
+
+// One key per invited account so accepting or declining retires exactly that
+// invitation's notification and never a parallel one for another event.
+function eventInvitationTopicKey(eventId: string, playerId: string): string {
+  return `event-invitation:${eventId}:${playerId}`;
+}
 
 let trackingStartQueue: Promise<void> = Promise.resolve();
 
@@ -241,6 +248,29 @@ eventsRouter.post('/:id/invitations', resolveEvent, requireGroupRole('admin'), (
     details: { eventId: event.id, playerId, status: result.participant.status },
   });
   broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  // An invitation has to reach a phone whose app isn't open — that is the
+  // whole point of a private event nobody can see yet. Only on an actual
+  // status change, so a re-invite (or a double tap) doesn't ping again.
+  //
+  // Deliberately scoped to the base event, not to `event.id`: notifyPlayers
+  // only delivers to accepted participants of its scope event, and the
+  // invitee is precisely the one who has not accepted this event yet. The
+  // base workspace covers every active account, so it is the only scope that
+  // can carry an invitation. The topic key lets accept/decline retire the
+  // banner again.
+  if (result.changed) {
+    notifyPlayers(
+      [playerId],
+      {
+        title: 'Event-Einladung',
+        body: `${event.name}: Du wurdest eingeladen.`,
+        url: '/#settings',
+      },
+      'direct',
+      { key: eventInvitationTopicKey(event.id, playerId) },
+      { groupId: req.group!.id, eventId: BASE_EVENT_ID },
+    );
+  }
   res.status(result.changed ? 201 : 200).json(result.participant);
 });
 
@@ -273,6 +303,12 @@ function answerEventInvitation(response: 'accepted' | 'declined') {
       details: { eventId: event.id, playerId, status: response, changed: result.changed },
     });
     broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+    // The invitation has been answered, so its notification stops being an
+    // open item. Same base-event scope the invitation push was recorded in.
+    resolvePushTopic(eventInvitationTopicKey(event.id, playerId), false, {
+      groupId: req.group!.id,
+      eventId: BASE_EVENT_ID,
+    });
     return res.json(result.participant);
   };
 }
