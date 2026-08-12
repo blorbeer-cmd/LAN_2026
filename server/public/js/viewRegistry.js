@@ -1,5 +1,5 @@
 import { renderHome } from './views/home.js';
-import { renderSettings } from './views/games.js';
+import { renderOrgaEvents, renderOrgaKiosk } from './views/events.js';
 import { renderMatchmaking } from './views/matchmaking.js';
 import { renderBroadcast } from './views/broadcast.js';
 import { renderFoodOrders } from './views/foodOrders.js';
@@ -35,7 +35,6 @@ export const VIEW_REGISTRY = createViewRegistry({
   matchmaking: inSection('matchmaking', renderMatchmaking),
   votes: renderVotes,
   leaderboard: inSection('leaderboard', renderLeaderboard),
-  settings: renderSettings,
   analytics: inSection('analytics', renderAnalytics),
   profile: renderProfile,
   tournaments: inSection('tournaments', renderTournaments),
@@ -49,6 +48,8 @@ export const VIEW_REGISTRY = createViewRegistry({
   checklistPacking: inSection('checklistPacking', (container, ctx) => renderChecklist(container, ctx, 'packliste')),
   gameCatalog: renderGameCatalog,
   arrivals: inSection('arrivals', renderArrivals),
+  events: inSection('events', renderOrgaEvents),
+  kiosk: inSection('kiosk', renderOrgaKiosk),
   admin: renderAdmin,
   music: renderMusic,
 });

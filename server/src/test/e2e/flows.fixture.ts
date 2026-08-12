@@ -179,7 +179,7 @@ flowTest('shell', 'fresh device uses the personal login and reaches the app with
   assert.equal(await loginPage.inputValue('#profile-name'), alice.name);
 });
 
-flowTest('shell', 'Einstellungen und Profil use grouped help while admin tools stay out of regular settings', async (t) => {
+flowTest('shell', 'Orga Events/TV-Kiosk tabs and Profil use grouped help while admin tools stay out of regular Orga', async (t) => {
   // Switches to a desktop viewport partway through (for the desktop-only
   // profile layout checks below) and never switches back on its own —
   // relying on a later test happening to reset it first. If this test
@@ -192,17 +192,22 @@ flowTest('shell', 'Einstellungen und Profil use grouped help while admin tools s
   t.after(async () => {
     await page.setViewportSize({ width: 390, height: 844 });
   });
-  await page.click('#settings-btn');
-  await page.waitForSelector('#settings-events-title');
-  assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 2);
+  await openOrgaTab('events');
+  await page.waitForSelector('#orga-events-title');
+  assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
   assert.equal(await page.locator('[data-navigate="seating"]').count(), 0);
   assert.equal(await page.locator('#download-backup').count(), 0);
   await page.click('[aria-label="Mehr Informationen zu Events"]');
-  await page.waitForSelector('#settings-events-help:not([hidden])');
+  await page.waitForSelector('#orga-events-help:not([hidden])');
   await page.click('[aria-label="Mehr Informationen zu Events"]');
   await page.click('#new-event-btn');
   assert.equal(await page.getByText('Tracking', { exact: true }).count(), 0);
   await page.click('.modal[aria-label="Neues Event"] [data-close]');
+
+  await openOrgaTab('kiosk');
+  await page.waitForSelector('#orga-kiosk-title');
+  assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
+  assert.equal(await page.locator('a[href="/kiosk.html"]').count(), 1);
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.click('#profile-btn');
@@ -287,7 +292,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   t.after(async () => {
     // This test switches to a desktop viewport for the pool-column check;
     // always restore the shared page's mobile default regardless of how the
-    // test ends (same viewport-leak safety net as the Einstellungen test).
+    // test ends (same viewport-leak safety net as the Orga Events/TV-Kiosk test).
     await page.setViewportSize({ width: 390, height: 844 });
   });
   await page.click('.nav-btn[data-view="more"]');
@@ -303,8 +308,8 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   assert.equal(await page.locator('#admin-test-count-help').count(), 1);
   assert.equal(await page.locator('#admin-test-data-help').count(), 1);
   // Global Event/Kiosk management is reachable from Admin's tool grid too,
-  // not only through the personal-looking topbar gear.
-  assert.equal(await page.locator('[data-navigate="settings"]').count(), 1);
+  // not only through Orga's own tab row.
+  assert.equal(await page.locator('[data-navigate="events"]').count(), 1);
   assert.equal(await page.locator('#admin-event-kiosk-help').count(), 1);
   assert.equal(await page.locator('.admin-tool-row').count(), 3);
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
@@ -340,7 +345,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   // The unassigned-player pool is one column on phones and two from --bp-md
   // (DESIGN_SYSTEM.md: "phones keep one column"). The old bare 2-column
   // assertion only ever passed while a desktop viewport leaked in from the
-  // Einstellungen test; check both documented layouts explicitly instead.
+  // Orga Events/TV-Kiosk test; check both documented layouts explicitly instead.
   assert.equal(await page.locator('.seating-player-pool').evaluate((pool) => getComputedStyle(pool).gridTemplateColumns.split(' ').length), 1);
   await page.setViewportSize({ width: 900, height: 844 });
   assert.equal(await page.locator('.seating-player-pool').evaluate((pool) => getComputedStyle(pool).gridTemplateColumns.split(' ').length), 2);
@@ -376,7 +381,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
 
 flowTest('shell', 'global search filters areas, supports keyboard navigation and restores focus', async (t) => {
   // Also switches viewport size mid-test (see the note on the same pattern
-  // in "Einstellungen und Profil..." above) and only restores the shared
+  // in "Orga Events/TV-Kiosk tabs and Profil..." above) and only restores the shared
   // page's default at the very end — guarantee it regardless of where this
   // test fails, so a flake here can't cascade into unrelated mobile-layout
   // assertions in whatever test runs next.

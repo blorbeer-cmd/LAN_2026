@@ -119,7 +119,7 @@ after(async () => {
 });
 
 test('manager invites a member who accepts and both open clients update', async () => {
-  for (const view of ['votes', 'broadcast', 'foodOrders', 'checklist', 'checklistPacking', 'arrivals', 'seating', 'myStats', 'analytics', 'hallOfFame']) {
+  for (const view of ['votes', 'broadcast', 'foodOrders', 'checklist', 'checklistPacking', 'arrivals', 'events', 'kiosk', 'seating', 'myStats', 'analytics', 'hallOfFame']) {
     await memberPage.evaluate((target) => {
       window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: target }));
     }, view);
@@ -134,8 +134,8 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.deepEqual(memberEventNotFoundResponses, []);
   assert.equal(await memberPage.locator('.toast-error', { hasText: 'Event nicht gefunden.' }).count(), 0);
 
-  await ownerPage.click('#settings-btn');
-  await memberPage.click('#settings-btn');
+  await ownerPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
+  await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
   await ownerPage.waitForSelector(`[data-participants-event="${eventId}"]`);
   await memberPage.waitForSelector(`[data-participants-event="${eventId}"]`);
   assert.equal(await memberPage.locator(`[data-pending-invitation="${eventId}"]`).count(), 0);

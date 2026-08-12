@@ -33,6 +33,8 @@ export const SECTIONS = Object.freeze({
       Object.freeze({ view: 'checklist', label: 'To-Dos' }),
       Object.freeze({ view: 'checklistPacking', label: 'Packliste' }),
       Object.freeze({ view: 'arrivals', label: 'An- & Abreise' }),
+      Object.freeze({ view: 'events', label: 'Events' }),
+      Object.freeze({ view: 'kiosk', label: 'TV-Kiosk' }),
     ]),
   }),
 });

@@ -23,7 +23,8 @@ export const SEARCH_ENTRIES = [
   { view: 'more', title: 'Mehr', category: 'Bereich', description: 'Alle weiteren Bereiche und Tools', aliases: 'menü tools', priority: 95 },
   { view: 'profile', title: 'Mein Profil', category: 'Bereich', description: 'Profil, Agent und Push-Benachrichtigungen', aliases: 'account ich agent benachrichtigung', priority: 90 },
   { view: 'myStats', title: 'Meine Statistiken', category: 'Bereich', description: 'Eigene Spielzeit und persönliche Werte', aliases: 'stats spielzeit auswertung', priority: 80 },
-  { view: 'settings', title: 'Einstellungen', category: 'Bereich', description: 'Events und Kiosk verwalten', aliases: 'setup konfiguration event kiosk', priority: 85 },
+  { view: 'events', title: 'Events', category: 'Orga', description: 'Events anlegen, Tracking und Teilnehmer verwalten', aliases: 'orga einstellungen setup konfiguration tracking teilnehmer einladung', priority: 85 },
+  { view: 'kiosk', title: 'TV-Kiosk', category: 'Orga', description: 'TV-/Kiosk-Ansicht öffnen', aliases: 'orga einstellungen tv bildschirm dashboard kiosk-ansicht', priority: 62 },
   { view: 'admin', title: 'Admin', category: 'Bereich', description: 'Einladungslink, Sitzplan, Backup, Test-Spieler, Rechte und Diagnose', aliases: 'moderation verwaltung diagnose einladung invite sitzplan backup', priority: 60 },
   { view: 'gameCatalog', title: 'Spiele', category: 'Bereich', description: 'Bock, Skill und Spielekatalog', aliases: 'games katalog bewertung skill bock', priority: 75 },
   { view: 'arrivals', title: 'An- & Abreise', category: 'Orga', description: 'Zeiten und Fahrgemeinschaften planen', aliases: 'orga anreise abreise ankunft abfahrt fahrt carpool', priority: 65 },
@@ -89,7 +90,7 @@ export function createContentSearchEntries(appState, content = {}) {
     target: { type: 'game', id: game.id },
   }));
   const eventEntries = (appState.events ?? []).map((event) => ({
-    view: 'settings',
+    view: 'events',
     title: event.name,
     category: 'Event',
     description: compactText(event.location || event.description || 'Event verwalten'),

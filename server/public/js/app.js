@@ -241,7 +241,6 @@ function wireNav() {
   document.getElementById('notifications-btn').insertAdjacentHTML('afterbegin', icon('bell'));
   document.getElementById('info-btn').innerHTML = icon(domainIcon('infoBoard'));
   document.getElementById('profile-btn').innerHTML = icon('circleUser');
-  document.getElementById('settings-btn').innerHTML = icon('settings');
   document.querySelector('.admin-banner-label').insertAdjacentHTML('afterbegin', icon('shield'));
 
   document.querySelectorAll('.nav-btn').forEach((btn) => {
@@ -250,7 +249,6 @@ function wireNav() {
       switchView(btn.dataset.view);
     });
   });
-  document.getElementById('settings-btn').addEventListener('click', () => switchView('settings'));
   document.getElementById('profile-btn').addEventListener('click', () => switchView('profile'));
   // Info is reference material people look up mid-conversation, so it opens
   // over whatever they were doing instead of costing them their current view.

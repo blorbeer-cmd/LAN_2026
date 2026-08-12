@@ -1,8 +1,8 @@
-// Settings view (FR-30): event management and the invite link. Reached via
-// the settings icon, not the main bottom nav — this is setup work, not something
-// people touch during actual play. Game management (including the
-// process-name mappings the agent uses) lives in the Spiele view now — see
-// server/CLAUDE.md games reorg.
+// Events (FR-30) and TV-/Kiosk-Ansicht: the "Events" and "TV-Kiosk" tabs of the
+// "Orga" area (see sectionNav.js) — this is setup work, not something people
+// touch during actual play, which is why it lives behind "Mehr" rather than
+// the main bottom nav. Game management (including the process-name mappings
+// the agent uses) lives in the Spiele view — see server/CLAUDE.md games reorg.
 
 import { api } from '../api.js';
 import { openModal, confirmDialog } from '../modal.js';
@@ -20,11 +20,11 @@ const KIOSK_HELP = 'Für gemeinsame Bildschirme: zeigt Live-Status, Vote, Rang u
 
 function renderKioskSection() {
   return `
-    <section class="card stack grouped-page-section" aria-labelledby="settings-kiosk-title">
+    <section class="card stack grouped-page-section" aria-labelledby="orga-kiosk-title">
       <div class="grouped-page-section-title">
         <span class="title-with-info">
-          <h2 id="settings-kiosk-title">TV-/Kiosk-Ansicht</h2>
-          ${infoTooltipHtml('settings-kiosk-help', 'TV-/Kiosk-Ansicht', KIOSK_HELP)}
+          <h2 id="orga-kiosk-title">TV-/Kiosk-Ansicht</h2>
+          ${infoTooltipHtml('orga-kiosk-help', 'TV-/Kiosk-Ansicht', KIOSK_HELP)}
         </span>
       </div>
       <a href="/kiosk.html" target="_blank" rel="noopener" class="btn btn-block">Kiosk-Ansicht öffnen</a>
@@ -100,18 +100,18 @@ function renderEventSection() {
     .join('');
 
   return `
-    <section class="card stack grouped-page-section" aria-labelledby="settings-events-title">
+    <section class="card stack grouped-page-section" aria-labelledby="orga-events-title">
       <div class="grouped-page-section-title">
         <span class="title-with-info">
-          <h2 id="settings-events-title">Events</h2>
-          ${infoTooltipHtml('settings-events-help', 'Events', EVENT_HELP)}
+          <h2 id="orga-events-title">Events</h2>
+          ${infoTooltipHtml('orga-events-help', 'Events', EVENT_HELP)}
         </span>
         <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>
       </div>
       ${
         pendingInvitations.length > 0
-          ? `<div class="stack" aria-labelledby="settings-invitations-title">
-               <div class="section-title" id="settings-invitations-title" tabindex="-1">Ausstehende Einladungen</div>
+          ? `<div class="stack" aria-labelledby="orga-invitations-title">
+               <div class="section-title" id="orga-invitations-title" tabindex="-1">Ausstehende Einladungen</div>
                <div class="two-column-card-grid">${invitationRows}</div>
              </div>`
           : ''
@@ -119,7 +119,7 @@ function renderEventSection() {
       ${
         realEvents.length === 0
           ? emptyStateHtml('Noch keine Events angelegt.', { icon: icon('calendar') })
-          : `<div class="two-column-card-grid settings-event-grid">${cards}</div>`
+          : `<div class="two-column-card-grid orga-event-grid">${cards}</div>`
       }
     </section>
   `;
@@ -326,13 +326,19 @@ function openParticipantsForm(ctx, event) {
   );
 }
 
-
-export function renderSettings(container, ctx) {
+export function renderOrgaKiosk(container) {
   container.innerHTML = `
-    <h1 class="view-title">Einstellungen</h1>
+    <div class="grouped-page-sections">
+      ${renderKioskSection()}
+    </div>
+  `;
+  wireInfoTooltips(container);
+}
+
+export function renderOrgaEvents(container, ctx) {
+  container.innerHTML = `
     <div class="grouped-page-sections">
       ${renderEventSection()}
-      ${renderKioskSection()}
     </div>
   `;
 
@@ -363,7 +369,7 @@ export function renderSettings(container, ctx) {
         if (accept) await api.events.acceptInvitation(eventId);
         else await api.events.declineInvitation(eventId);
         await ctx.refresh();
-        (document.querySelector('#settings-invitations-title') || document.querySelector('#settings-events-title'))?.focus();
+        (document.querySelector('#orga-invitations-title') || document.querySelector('#orga-events-title'))?.focus();
         showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
       } catch (err) {
         btn.disabled = false;
