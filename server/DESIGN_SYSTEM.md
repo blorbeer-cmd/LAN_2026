@@ -287,11 +287,16 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   toggle: the active tab carries `aria-current="page"` plus `.btn-primary`, never `aria-pressed`.
   A tab may carry a live count in parentheses (Orga's „To-Dos“ shows the current identity's own
   open items) so the number stays visible from every tab of the area; a zero count renders no
-  parentheses at all. Tabs share the full width on phones for a comfortable tap target and size to
+  parentheses at all. That count is loaded once the area is entered on any of its tabs, not only the
+  one that renders the underlying list, and is patched into all of the area's tab buttons in place. Tabs share the full width on phones for a comfortable tap target and size to
   their own label from `--bp-md`, because two tabs stretched across the wide content column would
   read as banners rather than navigation. A page-level primary action that used to share a row with the view title
   moves into a right-aligned `.row.view-actions` above the content („Turnier anlegen“,
   „Ergebnis eintragen“).
+  Re-rendering the same tab reuses its existing `.section-view` element instead of rebuilding the
+  shell, so a sub-view that reads its own previous DOM before redrawing (the Packliste's add-item
+  draft and focus, the same survives-its-own-rerender pattern the Checkliste's To-Do form uses)
+  keeps working across a background refresh triggered from outside that tab.
 - **Mode / setting choice** — pick the widget by the shape of the decision, not by habit: a native
   `<select>` for three or more mutually exclusive named options (tournament format); the
   `.btn`/`.btn-primary` two-or-three-way toggle (`aria-pressed`, usually inside `.selection-toolbar`)
@@ -491,7 +496,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   so every card there is a button that opens that participant's read-only detail dialog. The card
   of the session account is marked „(du)“ and opens the dedicated self-service profile editor
   instead. A global-search hit on a person behaves the same way — the dialog opens over the current
-  view rather than navigating away from it. Foreign profiles expose neither edit/delete actions nor the private agent key;
+  view rather than navigating away from it. The card's children stay `<span>`s carrying only display
+  styling — a `<button>`'s content model is phrasing content, and its descendants are presentational
+  to assistive technology once an `aria-label` is set — so the live state and running games are
+  spelled into that accessible name itself instead of only appearing as visible child markup.
+  Foreign profiles expose neither edit/delete actions nor the private agent key;
   the API omits the private agent key and rejects profile-field updates when the session does not
   match the target player.
   A foreign profile's detail dialog leads with identity (avatar, Gamertag, real name); the complete
@@ -657,7 +666,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   material — WLAN, Discord, server IPs, house rules — that people look up mid-conversation and must
   not cost them their current workflow. Entries remain alphabetically sorted responsive two-column
   nested cards; „Eintrag anlegen“ is the dialog's leading full-width primary action, and an open
-  dialog refreshes itself on `info:changed` instead of stacking a second copy.
+  dialog refreshes itself on `info:changed` instead of stacking a second copy. Being itself an
+  `openModal()` instance, its entry form and delete confirmation can open on top of it — `modal.js`
+  delivers Escape only to the topmost open `.modal-backdrop`, so cancelling a nested confirmation
+  never takes the dialog underneath it down too.
 - **Arrival carpools** — the „An- & Abreise“ tab of Orga. Anreise and Abreise remain separate
   full-width accented panels. Their
   carpool cards use two columns from `--bp-md`, but an odd final card deliberately keeps one-column

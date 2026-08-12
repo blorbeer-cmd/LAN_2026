@@ -66,9 +66,19 @@ function invalidateItems() {
   itemsCacheForId = null;
 }
 
-// Called from app.js on every checklist:changed socket event.
-export function invalidateChecklist() {
-  tasksCache = null;
+// Called from app.js on every checklist:changed socket event, and without a
+// payload from the group switch and the reconnect refresh — those two mean
+// "everything might be stale".
+//
+// The server already says which half changed (`scope: 'items' | 'tasks'`, plus
+// whose items). Honouring that keeps a To-Do somebody else created from
+// throwing away the personal Packliste, which would otherwise drop back to its
+// loading state and take a half-typed entry with it.
+export function invalidateChecklist(payload) {
+  const scope = payload?.scope;
+  if (scope !== 'items') tasksCache = null;
+  if (scope === 'tasks') return;
+  if (scope === 'items' && payload.playerId && payload.playerId !== getMyId()) return;
   invalidateItems();
 }
 
@@ -82,18 +92,35 @@ export function openTaskCount() {
   return tasksCache.filter((task) => task.status === 'taken' && task.assignee?.id === myId).length;
 }
 
+// The tab count has to be right on every Orga tab, not only on the one that
+// happens to render the list — entering the area through Events or a direct
+// "/#arrivals" link otherwise leaves the badge permanently blank. Loading
+// re-renders once it resolves, and a filled cache makes this a no-op.
+export function ensureTasksLoaded(ctx) {
+  if (tasksCache === null && !loadingTasks) loadTasks(ctx);
+}
+
 // These caches are keyed by player id, not by group - switching the active
 // group (see groupContext.js) must drop them too, or the previous group's
 // tasks/items keep rendering (and stay clickable) until some unrelated
 // checklist:changed socket event happens to arrive.
 window.addEventListener('respawn:group-changed', invalidateChecklist);
 
+// Kept out of the loading branch below so a refresh never unmounts the field:
+// the geometry stays stable and a half-typed entry has something to be restored
+// into (see renderChecklist's snapshot).
+const addItemFormHtml = () => `
+    <form class="row" data-add-item-form style="gap:var(--space-2);">
+      <input type="text" data-item-label placeholder="z.B. Skill" maxlength="80" required style="flex:1;" aria-label="Neuer Packlisten-Eintrag" />
+      <button type="submit" class="btn btn-sm">Hinzufügen</button>
+    </form>`;
+
 function renderItems(myId) {
   if (!myId) {
     return `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um deine Packliste zu sehen.</div>`;
   }
   if (itemsCache === null || itemsCacheForId !== myId) {
-    return emptyStateHtml('Lädt…');
+    return `${emptyStateHtml('Lädt…')}${addItemFormHtml()}`;
   }
   const rows = itemsCache
     .map(
@@ -109,10 +136,7 @@ function renderItems(myId) {
     .join('');
   return `
     <div class="checklist-item-list">${rows}</div>
-    <form class="row" data-add-item-form style="gap:var(--space-2);">
-      <input type="text" data-item-label placeholder="z.B. Skill" maxlength="80" required style="flex:1;" aria-label="Neuer Packlisten-Eintrag" />
-      <button type="submit" class="btn btn-sm">Hinzufügen</button>
-    </form>`;
+    ${addItemFormHtml()}`;
 }
 
 function taskTypeLabel(task) {

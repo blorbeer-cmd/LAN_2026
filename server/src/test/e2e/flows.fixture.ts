@@ -464,6 +464,16 @@ flowTest('competition', 'full click-through: players, matchmaking, voting, leade
   await page.click('.nav-btn[data-view="home"]');
   await page.waitForSelector('button[data-player]:has-text("E2E Bob")');
 
+  // The live state (badge text) is part of the button's accessible name, not
+  // hidden inside presentational children — role=button treats descendants as
+  // presentational, so an aria-label alone would have silently dropped it.
+  const bobCard = page.locator('button[data-player]', { hasText: 'E2E Bob' });
+  const bobBadgeText = (await bobCard.locator('.badge').innerText()).trim();
+  assert.ok(
+    (await bobCard.getAttribute('aria-label'))?.includes(bobBadgeText),
+    'the live-status badge text must be part of the card\'s accessible name',
+  );
+
   // Other profiles are read-only; the current identity opens its own editor.
   await page.click('button[data-player] >> text=E2E Bob');
   await page.waitForSelector('text=Dieses Profil kann nur von E2E Bob selbst bearbeitet werden.');
@@ -1625,7 +1635,33 @@ flowTest('community', 'Info: create an entry, see it rendered', async () => {
   await page.fill('#info-content', 'Netz: Respawn\nPasswort: kartoffel');
   await page.click('#info-form button[type="submit"]');
   await page.waitForSelector('text=kartoffel');
+
+  // Modals stack now that Info is one itself: Escape must dismiss only the
+  // topmost dialog, not the whole stack underneath it.
+  await page.click('[data-delete-entry]');
+  await page.waitForSelector('[data-confirm]');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('[data-confirm]', { state: 'detached' });
+  assert.equal(await page.locator('.info-board-modal').count(), 1, 'Escape must not close the Info dialog underneath');
+  await page.waitForSelector('text=kartoffel');
+
+  await page.click('#info-new-btn');
+  await page.fill('#info-title', 'Discord');
+  await page.keyboard.press('Escape');
+  // The entry form asks before discarding; that question is now the topmost
+  // dialog and Escape declines it without taking Info down with it.
+  await page.waitForSelector('[data-confirm]');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('[data-confirm]', { state: 'detached' });
+  assert.equal(await page.locator('#info-title').count(), 1, 'the entry form stays open after declining');
+  assert.equal(await page.locator('.info-board-modal').count(), 1);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('[data-confirm]');
+  await page.click('[data-confirm]');
+  await page.waitForSelector('#info-title', { state: 'detached' });
+
   // The dialog stays open over the current view until it is dismissed.
+  assert.equal(await page.locator('.info-board-modal').count(), 1);
   await page.click('.info-board-modal [data-close]');
   await page.waitForSelector('.info-board-modal', { state: 'detached' });
 });

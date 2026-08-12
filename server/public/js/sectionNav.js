@@ -68,19 +68,38 @@ export function navGroupForView(view) {
   return sectionKeyForView(view) ?? view;
 }
 
+function badgeText(count) {
+  return count ? ` (${count})` : '';
+}
+
 // Renders an area's title and tab row into `container` and returns the element
 // the active tab's own renderer should draw into. Sub-views keep rendering
 // exactly as before — they just no longer own the page heading.
+//
+// Re-rendering the same route keeps the existing shell and hands back the very
+// same `.section-view` element instead of a fresh empty one. Several renderers
+// read their own previous DOM before overwriting it — the Packliste carries the
+// half-typed add-item field and its focus that way — and replacing the node
+// first would silently hand them an empty container on every background
+// refresh. Only the live tab counts are patched in place.
 export function renderSectionShell(container, view, { badges = {} } = {}) {
   const section = sectionForView(view);
   if (!section) throw new Error(`Kein Bereich für Ansicht ${view}`);
 
+  const existing = container.querySelector(':scope > .section-view');
+  if (existing && container.dataset.sectionView === view) {
+    for (const tab of section.tabs) {
+      const count = container.querySelector(`[data-section-tab="${tab.view}"] [data-section-tab-count]`);
+      if (count) count.textContent = badgeText(badges[tab.view]);
+    }
+    return existing;
+  }
+
   const tabs = section.tabs
     .map((tab) => {
       const active = tab.view === view;
-      const badge = badges[tab.view];
       return `<button type="button" class="btn btn-sm section-tab${active ? ' btn-primary' : ''}"
-        data-section-tab="${tab.view}"${active ? ' aria-current="page"' : ''}>${tab.label}${badge ? ` (${badge})` : ''}</button>`;
+        data-section-tab="${tab.view}"${active ? ' aria-current="page"' : ''}>${tab.label}<span data-section-tab-count>${badgeText(badges[tab.view])}</span></button>`;
     })
     .join('');
 
@@ -89,5 +108,6 @@ export function renderSectionShell(container, view, { badges = {} } = {}) {
     <nav class="section-tabs" aria-label="Bereiche in ${section.title}">${tabs}</nav>
     <div class="section-view"></div>
   `;
-  return container.querySelector('.section-view');
+  container.dataset.sectionView = view;
+  return container.querySelector(':scope > .section-view');
 }

@@ -3,7 +3,7 @@ import { renderOrgaEvents, renderOrgaKiosk } from './views/events.js';
 import { renderMatchmaking } from './views/matchmaking.js';
 import { renderBroadcast } from './views/broadcast.js';
 import { renderFoodOrders } from './views/foodOrders.js';
-import { renderChecklist, openTaskCount } from './views/checklist.js';
+import { renderChecklist, ensureTasksLoaded, openTaskCount } from './views/checklist.js';
 import { renderGameCatalog } from './views/gameCatalog.js';
 import { renderArrivals } from './views/arrivals.js';
 import { renderVotes } from './views/votes.js';
@@ -18,13 +18,17 @@ import { renderMore } from './views/more.js';
 import { renderAdmin } from './views/admin.js';
 import { renderMusic } from './views/music.js';
 import { createViewRegistry } from './viewManifest.js';
-import { renderSectionShell } from './sectionNav.js';
+import { renderSectionShell, sectionKeyForView } from './sectionNav.js';
 
 // A route inside a merged area (see sectionNav.js) draws that area's heading
 // and tab row first and then hands the remaining surface to its own renderer,
 // which stays unchanged apart from no longer owning the page title.
 function inSection(view, render) {
+  const inOrga = sectionKeyForView(view) === 'orga';
   return (container, ctx) => {
+    // Orga's To-Dos tab carries a live count, so every tab of that area needs
+    // the underlying data — not just the one that renders the list.
+    if (inOrga) ensureTasksLoaded(ctx);
     const content = renderSectionShell(container, view, { badges: { checklist: openTaskCount() } });
     render(content, ctx);
   };

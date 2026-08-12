@@ -36,7 +36,7 @@ import { initGlobalSearch } from './searchPalette.js';
 import { domainIcon, installDomainIcons } from './domainIcons.js';
 import { initGroupContext, refreshGroupContext } from './groupContext.js';
 import { isKnownView, VIEW_REGISTRY } from './viewRegistry.js';
-import { navGroupForView } from './sectionNav.js';
+import { navGroupForView, sectionKeyForView } from './sectionNav.js';
 import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
 
 installIconReplacement();
@@ -571,11 +571,14 @@ function wireSocket() {
     invalidateArrivals();
     if (currentView === 'arrivals') renderCurrent();
   });
-  socket.on('checklist:changed', () => {
-    invalidateChecklist();
-    // Both Orga tabs read the same cache, and the To-Do tab badge is part of
-    // the area shell, so either one re-renders.
-    if (currentView === 'checklist' || currentView === 'checklistPacking') renderCurrent();
+  socket.on('checklist:changed', (payload) => {
+    // The payload says whether tasks or someone's items changed; passing it on
+    // keeps an unrelated half of the cache (and the Packliste draft it feeds)
+    // from being thrown away.
+    invalidateChecklist(payload);
+    // Every Orga tab re-renders, not just the two checklist ones: the To-Dos
+    // tab count belongs to the area shell and is visible from all of them.
+    if (sectionKeyForView(currentView) === 'orga') renderCurrent();
   });
 
   socket.on('music:changed', () => {
