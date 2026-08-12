@@ -182,11 +182,15 @@ test('manager invites a member who accepts and both open clients update', async 
     (expected) => (document.querySelector('#event-context-switcher') as HTMLSelectElement | null)?.value === expected,
     eventId,
   );
+  // The title lives on the wrapper (#event-context), not the <select> itself:
+  // the select carries only an aria-label now that it shares the app's
+  // standard select shape, and the wrapper also seats the status icon that
+  // title has to describe alongside the event name.
   await memberPage.waitForFunction(
-    (eventName) => document.querySelector('#event-context-switcher')?.getAttribute('title')?.includes(eventName),
+    (eventName) => document.querySelector('#event-context')?.getAttribute('title')?.includes(eventName),
     EVENT_NAME,
   );
-  assert.match(await memberPage.locator('#event-context-switcher').getAttribute('title') ?? '', new RegExp(EVENT_NAME));
+  assert.match(await memberPage.locator('#event-context').getAttribute('title') ?? '', new RegExp(EVENT_NAME));
   const activeEvent = await memberPage.request.get(`${BASE_URL}/api/events/active`);
   assert.equal(activeEvent.status(), 200);
   assert.equal(((await activeEvent.json()) as { id: string }).id, eventId);
