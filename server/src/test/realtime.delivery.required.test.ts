@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'http';
 import type { AddressInfo } from 'net';
-import { Server } from 'socket.io';
+import { Server, type Socket } from 'socket.io';
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import { nanoid } from 'nanoid';
 import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
@@ -19,6 +19,7 @@ import {
   switchPlayerEventScope,
 } from '../realtime';
 import { registerArcadeSockets } from '../arcade/realtime';
+import { socketArcadeScope } from '../arcade/scope';
 import { issueKioskToken, revokeKioskToken } from '../kioskTokens';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
 import { ensureAccountEventContext, fallbackPlayerEventContext, setActiveEventForPlayer } from '../eventContext';
@@ -27,7 +28,7 @@ interface TestServer {
   baseUrl: string;
 }
 
-function createPlayer(name: string): string {
+function createPlayer(name: string, role: 'owner' | 'admin' | 'member' = 'member'): string {
   const id = nanoid();
   const now = Date.now();
   db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(
@@ -39,8 +40,8 @@ function createPlayer(name: string): string {
   db.prepare(
     `INSERT INTO group_memberships
        (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
-     VALUES (?, ?, 'member', 'active', ?, 0)`,
-  ).run(DEFAULT_GROUP_ID, id, now);
+     VALUES (?, ?, ?, 'active', ?, 0)`,
+  ).run(DEFAULT_GROUP_ID, id, role, now);
   ensureAccountEventContext(id);
   return id;
 }
@@ -109,12 +110,19 @@ function connectKiosk(baseUrl: string, token: string): Promise<ClientSocket> {
 }
 
 async function subscribe(socket: ClientSocket, eventId?: string): Promise<{ eventId: string }> {
-  const result = await new Promise<{ ok: boolean; eventId?: string; error?: string }>((resolve) => {
-    socket.emit('scope:subscribe', { groupId: DEFAULT_GROUP_ID, ...(eventId ? { eventId } : {}) }, resolve);
-  });
+  const result = await subscribeResult(socket, eventId);
   assert.equal(result.ok, true, result.error);
   assert.ok(result.eventId);
   return { eventId: result.eventId };
+}
+
+function subscribeResult(
+  socket: ClientSocket,
+  eventId?: string,
+): Promise<{ ok: boolean; eventId?: string; error?: string }> {
+  return new Promise((resolve) => {
+    socket.emit('scope:subscribe', { groupId: DEFAULT_GROUP_ID, ...(eventId ? { eventId } : {}) }, resolve);
+  });
 }
 
 function payloads(socket: ClientSocket, event: string): unknown[] {
@@ -208,6 +216,27 @@ test('event participation is revalidated immediately before delivery', async () 
   });
 });
 
+test('admin and owner roles do not bypass event participation for sockets or Arcade', async () => {
+  const eventId = createEvent('Role Isolation');
+  for (const role of ['admin', 'owner'] as const) {
+    const playerId = createPlayer(`Role ${role}`, role);
+    await withServer(async ({ baseUrl }) => {
+      const socket = await connectSession(baseUrl, playerId);
+      try {
+        const result = await subscribeResult(socket, eventId);
+        assert.equal(result.ok, false, `${role} unexpectedly subscribed without participation`);
+      } finally {
+        socket.close();
+      }
+    });
+
+    const arcadeSocket = {
+      data: { groupId: DEFAULT_GROUP_ID, eventId, authPlayerId: playerId },
+    } as unknown as Socket;
+    assert.equal(socketArcadeScope(arcadeSocket), null, `${role} unexpectedly received an Arcade scope`);
+  }
+});
+
 test('event kiosks receive only their exact event and only sanitized refresh payloads', async () => {
   const owner = createPlayer('Kiosk Owner');
   const eventA = createEvent('Kiosk A');
@@ -241,6 +270,10 @@ test('revoking a kiosk token stops its already-open socket', async () => {
     const kiosk = await connectKiosk(baseUrl, issued.token);
     try {
       const changes = payloads(kiosk, Events.liveStatusChanged);
+      broadcast(Events.liveStatusChanged, { before: true }, { groupId: DEFAULT_GROUP_ID, eventId });
+      await settle();
+      assert.deepEqual(changes, [null], 'the test must prove delivery worked before revocation');
+      changes.length = 0;
       assert.equal(revokeKioskToken(DEFAULT_GROUP_ID, issued.scope.id), true);
       broadcast(Events.liveStatusChanged, { leaked: true }, { groupId: DEFAULT_GROUP_ID, eventId });
       await settle();

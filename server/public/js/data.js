@@ -21,7 +21,7 @@ export function normalizeEventContext(eventContext = {}) {
   const availableEvents = eventContext.availableEvents ?? [];
   const managedEvents = eventContext.managedEvents ?? [];
   return {
-    events: managedEvents.length > 0 ? managedEvents : availableEvents,
+    events: Array.isArray(eventContext.managedEvents) ? managedEvents : availableEvents,
     activeEvent: eventContext.activeEvent ?? null,
     availableEvents,
     eventInvitations: eventContext.invitations ?? [],

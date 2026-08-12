@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import request from 'supertest';
+import { nanoid } from 'nanoid';
 import { config } from '../config';
 import { db } from '../db';
 import { createTestApp, enableTestTracking } from './testApp';
@@ -20,6 +21,25 @@ test('GET /api/admin/readiness reports all operational checks', async () => {
     new Set(['database', 'event', 'agents', 'process-mappings', 'kiosk', 'backup']),
   );
   assert.equal(res.body.checks.find((check: { id: string }) => check.id === 'backup').status, 'warning');
+});
+
+test('readiness ignores the permanent base event when selecting the next LAN event', async () => {
+  const eventId = nanoid();
+  const eventName = `Readiness LAN ${eventId}`;
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO events
+       (id, name, starts_at, ends_at, tracking_enabled, group_id, status, visibility_scope)
+     VALUES (?, ?, ?, ?, 1, 'default-group', 'published', 'participants')`,
+  ).run(eventId, eventName, now - 1_000, now + 60_000);
+  try {
+    const res = await request(app).get('/api/admin/readiness');
+    const event = res.body.checks.find((check: { id: string }) => check.id === 'event');
+    assert.match(event.summary, new RegExp(eventName));
+    assert.equal(event.status, 'warning');
+  } finally {
+    db.prepare('DELETE FROM events WHERE id = ?').run(eventId);
+  }
 });
 
 test('readiness exposes missing process mappings and agent version drift', async () => {

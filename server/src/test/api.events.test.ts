@@ -31,6 +31,11 @@ test('every account starts in the permanent base event', async () => {
   assert.ok(list.body.availableEvents.some((event: { id: string }) => event.id === BASE_EVENT_ID));
   assert.ok(Array.isArray(list.body.invitations));
   assert.ok(Array.isArray(list.body.managedEvents));
+  assert.equal(
+    list.body.managedEvents.some((event: { id: string }) => event.id === BASE_EVENT_ID),
+    false,
+    'the immutable base workspace is not rendered as a manageable LAN event',
+  );
 });
 
 test('event creation validates name, required timestamps and ordering', async () => {

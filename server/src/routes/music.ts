@@ -322,6 +322,14 @@ function activeGroupSession(groupId: string): MusicSessionRow | undefined {
     | undefined;
 }
 
+function activeSessionConflict(groupId: string, eventId: string): string | undefined {
+  const session = activeGroupSession(groupId);
+  if (!session) return undefined;
+  return session.event_id === eventId
+    ? 'In diesem Event läuft bereits ein Jam.'
+    : 'In einem anderen Event läuft bereits ein Jam. Wechsle dorthin, um ihn zu beenden.';
+}
+
 function requestEventId(res: Response): string {
   return res.locals.eventId as string;
 }
@@ -428,7 +436,8 @@ musicRouter.post('/sessions', ...withBodyPlayerIdentity, asyncRoute(async (req, 
   const player = activePlayer(req);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   if (!controllerSummary(req.group!.id)?.online) return res.status(409).json({ error: 'Jam-Controller ist nicht erreichbar.' });
-  if (activeGroupSession(req.group!.id)) return res.status(409).json({ error: 'In dieser Gruppe läuft bereits ein Jam.' });
+  const conflict = activeSessionConflict(req.group!.id, requestEventId(res));
+  if (conflict) return res.status(409).json({ error: conflict });
   const deviceId = req.body?.deviceId;
   if (typeof deviceId !== 'string' || !deviceId) return res.status(400).json({ error: 'Spotify-Gerät auswählen.' });
   const data = await issueMusicControllerCommand<{ devices?: Array<Record<string, unknown>> }>(req.group!.id, 'devices');

@@ -643,10 +643,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 70);
+  assert.equal(migrations.length, 71);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 70 }, (_, index) => index + 1),
+    Array.from({ length: 71 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1166,8 +1166,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 70 }, (_, index) => index + 1),
-    'every version 1..70 runs exactly once',
+    Array.from({ length: 71 }, (_, index) => index + 1),
+    'every version 1..71 runs exactly once',
   );
 });
 
@@ -1217,6 +1217,184 @@ test('migration 70 removes legacy group/public event visibility', () => {
   assert.deepEqual(
     migrated.prepare('SELECT visibility_scope FROM events WHERE id = ?').get('legacy-group-event'),
     { visibility_scope: 'participants' },
+  );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migrations 64 through 69 backfill event-bound state and keep participation history working', () => {
+  const dbFile = makeTempDbPath('event-workspace-migrations-64-69');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('workspace-migration-player', 'Workspace Migration Player', 'workspace-migration-key', now);
+  fixture.prepare(
+    `INSERT INTO group_memberships
+       (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+     VALUES ('default-group', 'workspace-migration-player', 'member', 'active', ?, 0)`,
+  ).run(now);
+  fixture.prepare(
+    `INSERT INTO events (id, name, starts_at, ends_at, group_id, status, visibility_scope)
+     VALUES ('workspace-migration-event', 'Workspace Migration Event', ?, ?, 'default-group', 'published', 'participants')`,
+  ).run(now, now + 60_000);
+  fixture.prepare(
+    "INSERT INTO event_participants (event_id, player_id, status) VALUES ('workspace-migration-event', 'workspace-migration-player', 'accepted')",
+  ).run();
+  const game = fixture.prepare("SELECT id FROM games WHERE group_id = 'default-group' LIMIT 1").get() as { id: string };
+  fixture.prepare(
+    `INSERT INTO drafts
+       (id, group_id, event_id, game_id, status, captain_ids, pool_ids, picks, created_at)
+     VALUES ('legacy-null-draft', 'default-group', NULL, ?, 'active', '[]', '[]', '[]', ?)`,
+  ).run(game.id, now);
+  fixture.exec(`
+    DROP TRIGGER IF EXISTS trg_music_sessions_event_group_insert;
+    DROP TRIGGER IF EXISTS trg_music_sessions_event_group_update;
+  `);
+  fixture.prepare(
+    `INSERT INTO music_sessions
+       (id, group_id, event_id, host_player_id, device_id, device_name, status, started_at)
+     VALUES ('legacy-null-music', 'default-group', NULL, 'workspace-migration-player', 'device', 'Device', 'active', ?)`,
+  ).run(now);
+  fixture.prepare(
+    `INSERT INTO push_log
+       (id, group_id, event_id, title, body, audience, player_ids, created_at)
+     VALUES ('legacy-null-push', 'default-group', NULL, 'Legacy', 'Body', 'direct', '["workspace-migration-player"]', ?)`,
+  ).run(now);
+  fixture.prepare(
+    `INSERT INTO push_mutes (group_id, player_id, event_id, muted_at)
+     VALUES ('default-group', 'workspace-migration-player', NULL, ?)`,
+  ).run(now);
+  fixture.prepare('DELETE FROM schema_migrations WHERE version BETWEEN 64 AND 69').run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the event workspace migrations must be restart-safe');
+
+  const migrated = new Database(dbFile);
+  assert.deepEqual(migrated.prepare('SELECT event_id FROM drafts WHERE id = ?').get('legacy-null-draft'), {
+    event_id: 'instance-base-event',
+  });
+  assert.deepEqual(migrated.prepare('SELECT event_id FROM music_sessions WHERE id = ?').get('legacy-null-music'), {
+    event_id: 'instance-base-event',
+  });
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT event_id, event_name_snapshot, notification_type, target_id FROM push_log WHERE id = ?')
+      .get('legacy-null-push'),
+    {
+      event_id: 'instance-base-event',
+      event_name_snapshot: 'Allgemein',
+      notification_type: 'legacy',
+      target_id: 'legacy-null-push',
+    },
+  );
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT event_id FROM push_mutes WHERE group_id = ? AND player_id = ?')
+      .get('default-group', 'workspace-migration-player'),
+    { event_id: 'instance-base-event' },
+  );
+  migrated
+    .prepare('DELETE FROM event_participants WHERE event_id = ? AND player_id = ?')
+    .run('workspace-migration-event', 'workspace-migration-player');
+  const history = migrated
+    .prepare('SELECT accepted_at, removed_at FROM event_participation_history WHERE event_id = ? AND player_id = ?')
+    .get('workspace-migration-event', 'workspace-migration-player') as { accepted_at: number | null; removed_at: number | null };
+  assert.equal(typeof history.accepted_at, 'number');
+  assert.equal(typeof history.removed_at, 'number');
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 71 moves legacy NULL operational scopes into the permanent base event', () => {
+  const dbFile = makeTempDbPath('legacy-operational-base-event');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('legacy-operational-player', 'Legacy Operational Player', 'legacy-operational-key', now);
+  fixture.prepare(
+    `INSERT INTO group_memberships
+       (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+     VALUES ('default-group', 'legacy-operational-player', 'member', 'active', ?, 0)`,
+  ).run(now);
+  fixture.prepare(
+    `INSERT INTO broadcasts
+       (id, group_id, event_id, player_id, player_name_snapshot, message, ends_at, recipient_ids, created_at)
+     VALUES ('legacy-operational-broadcast', 'default-group', NULL, 'legacy-operational-player',
+             'Legacy Operational Player', 'Legacy broadcast', ?, '["legacy-operational-player"]', ?)`,
+  ).run(now + 60_000, now);
+  fixture.prepare(
+    `INSERT INTO info_entries (id, group_id, event_id, title, content, created_at, updated_at)
+     VALUES ('legacy-operational-info', 'default-group', NULL, 'Legacy info', 'Content', ?, ?)`,
+  ).run(now, now);
+  fixture.prepare(
+    `INSERT INTO arcade_results
+       (id, game_type, players, scores, reason, started_at, ended_at, group_id, event_id)
+     VALUES ('legacy-operational-arcade', 'quiz', '[]', '[]', 'completed', ?, ?, 'default-group', NULL)`,
+  ).run(now, now + 1);
+  fixture.prepare(
+    `INSERT INTO scribble_drawings
+       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops,
+        created_at, group_id, event_id)
+     VALUES ('legacy-operational-drawing', 'legacy-match', 1, 1, 'legacy-operational-player',
+             'Legacy Operational Player', 'LAN', '[]', ?, 'default-group', NULL)`,
+  ).run(now);
+  fixture.prepare(
+    `INSERT INTO checklist_items
+       (id, group_id, event_id, player_id, label, created_at)
+     VALUES ('legacy-operational-checklist', 'default-group', NULL, 'legacy-operational-player', 'Maus', ?)`,
+  ).run(now);
+  fixture.prepare(
+    `INSERT INTO checklist_materializations (group_id, event_id, player_id, materialized_at)
+     VALUES ('default-group', NULL, 'legacy-operational-player', ?)`,
+  ).run(now);
+  fixture.prepare(
+    `INSERT INTO tracking_live_contexts
+       (player_id, group_id, event_id, last_seen, manual_note, activity_tracked)
+     VALUES ('legacy-operational-player', 'default-group', NULL, ?, 'legacy', 1)`,
+  ).run(now);
+  fixture.prepare(
+    `INSERT INTO kiosk_tokens
+       (id, token_hash, group_id, event_id, label, created_by, created_at)
+     VALUES ('legacy-operational-kiosk', 'legacy-operational-token-hash', 'default-group', NULL,
+             'Legacy TV', 'legacy-operational-player', ?)`,
+  ).run(now);
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 71').run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the base-event backfill must be restart-safe');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  for (const [table, id] of [
+    ['broadcasts', 'legacy-operational-broadcast'],
+    ['info_entries', 'legacy-operational-info'],
+    ['arcade_results', 'legacy-operational-arcade'],
+    ['scribble_drawings', 'legacy-operational-drawing'],
+    ['checklist_items', 'legacy-operational-checklist'],
+    ['kiosk_tokens', 'legacy-operational-kiosk'],
+  ] as const) {
+    assert.deepEqual(migrated.prepare(`SELECT event_id FROM ${table} WHERE id = ?`).get(id), {
+      event_id: 'instance-base-event',
+    });
+  }
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT event_id FROM checklist_materializations WHERE group_id = ? AND player_id = ?')
+      .get('default-group', 'legacy-operational-player'),
+    { event_id: 'instance-base-event' },
+  );
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT event_id, manual_note, activity_tracked FROM tracking_live_contexts WHERE group_id = ? AND player_id = ?')
+      .get('default-group', 'legacy-operational-player'),
+    { event_id: 'instance-base-event', manual_note: 'legacy', activity_tracked: 1 },
   );
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });

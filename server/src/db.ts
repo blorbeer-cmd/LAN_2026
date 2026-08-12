@@ -3466,6 +3466,92 @@ registerMigration({
   up: enforceParticipantEventVisibility,
 });
 
+// Before the permanent base event existed, several operational tables used
+// NULL as the start group's implicit room. That room is no longer a valid
+// runtime scope: legacy records must remain reachable through "Allgemein".
+// Live tracking rows are merged (rather than merely updated) because SQLite
+// permits duplicate composite keys when one key part is NULL.
+function backfillLegacyOperationalDataToBaseEvent(): void {
+  // Some early v44 databases recorded the migration before these two tables
+  // were included in it. Ensure the compatibility tables exist before v71
+  // touches them; the helper is intentionally idempotent.
+  createPushMuteTable();
+  const updateSimpleScope = db.prepare(
+    `UPDATE broadcasts SET event_id = ? WHERE group_id = ? AND event_id IS NULL`,
+  );
+  updateSimpleScope.run(BASE_EVENT_ID, DEFAULT_GROUP_ID);
+
+  for (const table of [
+    'info_entries',
+    'push_log',
+    'quiz_seen',
+    'scribble_seen',
+    'scribble_drawings',
+    'scribble_drawing_reactions',
+    'scribble_drawing_favorites',
+    'arcade_results',
+    'checklist_items',
+    'checklist_tasks',
+    'kiosk_tokens',
+  ]) {
+    db.prepare(`UPDATE ${table} SET event_id = ? WHERE group_id = ? AND event_id IS NULL`).run(
+      BASE_EVENT_ID,
+      DEFAULT_GROUP_ID,
+    );
+  }
+
+  db.prepare(
+    `INSERT OR IGNORE INTO checklist_materializations
+       (group_id, event_id, player_id, materialized_at)
+     SELECT group_id, ?, player_id, materialized_at
+     FROM checklist_materializations
+     WHERE group_id = ? AND event_id IS NULL`,
+  ).run(BASE_EVENT_ID, DEFAULT_GROUP_ID);
+  db.prepare(
+    'DELETE FROM checklist_materializations WHERE group_id = ? AND event_id IS NULL',
+  ).run(DEFAULT_GROUP_ID);
+
+  db.prepare(
+    `INSERT INTO tracking_live_contexts
+       (player_id, group_id, event_id, last_seen, manual_note, activity_tracked)
+     SELECT player_id, group_id, ?, last_seen, manual_note, activity_tracked
+     FROM tracking_live_contexts
+     WHERE group_id = ? AND event_id IS NULL
+     ON CONFLICT(player_id, group_id, event_id) DO UPDATE SET
+       last_seen = MAX(tracking_live_contexts.last_seen, excluded.last_seen),
+       manual_note = COALESCE(excluded.manual_note, tracking_live_contexts.manual_note),
+       activity_tracked = MAX(tracking_live_contexts.activity_tracked, excluded.activity_tracked)`,
+  ).run(BASE_EVENT_ID, DEFAULT_GROUP_ID);
+  db.prepare('DELETE FROM tracking_live_contexts WHERE group_id = ? AND event_id IS NULL').run(DEFAULT_GROUP_ID);
+
+  db.prepare(
+    `INSERT INTO tracking_live_games
+       (player_id, group_id, event_id, game_id, since, is_foreground)
+     SELECT player_id, group_id, ?, game_id, since, is_foreground
+     FROM tracking_live_games
+     WHERE group_id = ? AND event_id IS NULL
+     ON CONFLICT(player_id, group_id, event_id, game_id) DO UPDATE SET
+       since = MIN(tracking_live_games.since, excluded.since),
+       is_foreground = MAX(tracking_live_games.is_foreground, excluded.is_foreground)`,
+  ).run(BASE_EVENT_ID, DEFAULT_GROUP_ID);
+  db.prepare('DELETE FROM tracking_live_games WHERE group_id = ? AND event_id IS NULL').run(DEFAULT_GROUP_ID);
+
+  db.prepare(
+    `INSERT INTO push_mutes (group_id, player_id, event_id, muted_at)
+     SELECT group_id, player_id, ?, muted_at
+     FROM push_mutes
+     WHERE group_id = ? AND event_id IS NULL
+     ON CONFLICT(group_id, player_id, event_id) DO UPDATE SET
+       muted_at = MAX(push_mutes.muted_at, excluded.muted_at)`,
+  ).run(BASE_EVENT_ID, DEFAULT_GROUP_ID);
+  db.prepare('DELETE FROM push_mutes WHERE group_id = ? AND event_id IS NULL').run(DEFAULT_GROUP_ID);
+}
+registerMigration({
+  version: 71,
+  name: 'backfill legacy operational data to base event',
+  up: backfillLegacyOperationalDataToBaseEvent,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

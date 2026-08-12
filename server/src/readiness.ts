@@ -1,5 +1,5 @@
 import { config } from './config';
-import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import { getBackupStatus } from './backupService';
 
 export type ReadinessState = 'ready' | 'warning' | 'error';
@@ -30,14 +30,14 @@ function relevantEvent(groupId: string, now: number): RelevantEvent | undefined 
     .prepare(
       `SELECT id, name, starts_at, tracking_enabled
        FROM events
-       WHERE group_id = ? AND id != ? AND ended_at IS NULL AND status != 'cancelled'
+       WHERE group_id = ? AND id NOT IN (?, ?) AND ended_at IS NULL AND status != 'cancelled'
        ORDER BY tracking_enabled DESC,
                 CASE WHEN starts_at >= ? THEN 0 ELSE 1 END,
                 CASE WHEN starts_at >= ? THEN starts_at END ASC,
                 starts_at DESC
        LIMIT 1`,
     )
-    .get(groupId, OUTSIDE_EVENTS_ID, now, now) as RelevantEvent | undefined;
+    .get(groupId, OUTSIDE_EVENTS_ID, BASE_EVENT_ID, now, now) as RelevantEvent | undefined;
 }
 
 function eventCheck(groupId: string, now: number): ReadinessCheck {

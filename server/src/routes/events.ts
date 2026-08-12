@@ -90,6 +90,7 @@ function serializeEvent(event: ReturnType<typeof getEvent>) {
     status: event.status,
     visibilityScope: event.visibility_scope,
     isOutsideEvents: event.id === OUTSIDE_EVENTS_ID,
+    isBase: event.id === BASE_EVENT_ID,
     participantIds: event.id === OUTSIDE_EVENTS_ID ? undefined : getParticipantIds(event.id),
     participants: event.id === OUTSIDE_EVENTS_ID ? undefined : getEventParticipants(event.id),
   };
@@ -146,7 +147,11 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
   const canManage = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
-  const managedEvents = canManage ? listEvents(req.group!.id).map((event) => serializeEvent(event)) : undefined;
+  const managedEvents = canManage
+    ? listEvents(req.group!.id)
+        .filter((event) => event.id !== BASE_EVENT_ID)
+        .map((event) => serializeEvent(event))
+    : undefined;
   res.json({
     activeEvent: serializeEventSummary(activeEvent as EventRow),
     availableEvents: availableEvents.map(serializeEventSummary),

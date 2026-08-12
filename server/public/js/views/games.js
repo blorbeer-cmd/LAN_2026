@@ -76,7 +76,7 @@ function renderEventCard(e) {
 }
 
 function renderEventSection() {
-  const realEvents = (state.events || []).filter((e) => !e.isOutsideEvents);
+  const realEvents = (state.events || []).filter((e) => !e.isOutsideEvents && !e.isBase);
   const cards = realEvents.map(renderEventCard).join('');
   const myId = getMyId();
   const pendingInvitations = myId ? state.eventInvitations || [] : [];

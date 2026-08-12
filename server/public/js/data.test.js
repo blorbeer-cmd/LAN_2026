@@ -40,3 +40,12 @@ test('administrative event catalog does not replace the personal available-event
   assert.deepEqual(result.availableEvents, available);
   assert.equal(result.activeEvent, null);
 });
+
+test('an explicitly empty administrative catalog stays empty', () => {
+  const available = [{ id: 'base', name: 'Allgemein' }];
+
+  const result = normalizeEventContext({ availableEvents: available, managedEvents: [] });
+
+  assert.deepEqual(result.events, []);
+  assert.deepEqual(result.availableEvents, available);
+});
