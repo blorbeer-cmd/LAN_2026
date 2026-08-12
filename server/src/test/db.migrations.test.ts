@@ -1411,6 +1411,29 @@ test('migration 63 creates the base event and repairs missing account event cont
     .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
     .run('legacy-context-player', 'Legacy Context Player', 'legacy-context-key', now);
   fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('legacy-tracked-player', 'Legacy Tracked Player', 'legacy-tracked-key', now);
+  fixture.prepare(
+    `INSERT INTO group_memberships
+       (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+     VALUES ('default-group', 'legacy-tracked-player', 'member', 'active', ?, 0)`,
+  ).run(now);
+  fixture.prepare(
+    `INSERT INTO events
+       (id, name, starts_at, ends_at, tracking_enabled, group_id, status, visibility_scope)
+     VALUES ('legacy-tracked-event', 'Legacy Tracked Event', ?, ?, 1,
+             'default-group', 'published', 'participants')`,
+  ).run(now - 60_000, now + 60_000);
+  fixture.prepare(
+    `INSERT INTO event_participants (event_id, player_id, status)
+     VALUES ('legacy-tracked-event', 'legacy-tracked-player', 'accepted')`,
+  ).run();
+  fixture.prepare(
+    `INSERT INTO tracking_live_contexts
+       (player_id, group_id, event_id, last_seen, manual_note, activity_tracked)
+     VALUES ('legacy-tracked-player', 'default-group', 'legacy-tracked-event', ?, NULL, 1)`,
+  ).run(now);
+  fixture
     .prepare(
       `INSERT INTO invites (code, purpose, player_id, created_by, created_at, expires_at)
        VALUES (?, 'register', NULL, NULL, ?, ?)`,
@@ -1446,6 +1469,11 @@ test('migration 63 creates the base event and repairs missing account event cont
   assert.deepEqual(
     migrated.prepare('SELECT active_event_id FROM player_event_contexts WHERE player_id = ?').get('legacy-context-player'),
     { active_event_id: 'instance-base-event' },
+  );
+  assert.deepEqual(
+    migrated.prepare('SELECT active_event_id FROM player_event_contexts WHERE player_id = ?').get('legacy-tracked-player'),
+    { active_event_id: 'legacy-tracked-event' },
+    'an in-progress accepted tracking context must survive the event-workspace migration',
   );
   assert.deepEqual(migrated.prepare('SELECT event_id FROM invites WHERE code = ?').get('legacy-context-invite'), {
     event_id: 'instance-base-event',

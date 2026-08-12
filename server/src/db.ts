@@ -3236,12 +3236,50 @@ function createPlayerEventContext(): void {
      ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted'`,
   ).run(BASE_EVENT_ID);
 
+  const migratedAt = Date.now();
   db.prepare(
     `INSERT OR IGNORE INTO player_event_contexts (player_id, active_event_id, updated_at)
-     SELECT p.id, ?, ?
+     SELECT p.id,
+            COALESCE((
+              SELECT e.id
+              FROM events e
+              JOIN event_participants ep
+                ON ep.event_id = e.id AND ep.player_id = p.id AND ep.status = 'accepted'
+              JOIN group_memberships gm
+                ON gm.group_id = e.group_id AND gm.player_id = p.id AND gm.status = 'active'
+              WHERE e.id NOT IN (?, ?) AND e.group_id = ?
+                AND e.tracking_enabled = 1 AND e.status = 'published' AND e.ended_at IS NULL
+                AND e.starts_at <= ? AND (e.ends_at IS NULL OR e.ends_at > ?)
+              ORDER BY
+                EXISTS (
+                  SELECT 1 FROM tracking_live_contexts tlc
+                  WHERE tlc.player_id = p.id AND tlc.group_id = e.group_id AND tlc.event_id = e.id
+                ) DESC,
+                COALESCE((
+                  SELECT MAX(tlc.last_seen) FROM tracking_live_contexts tlc
+                  WHERE tlc.player_id = p.id AND tlc.group_id = e.group_id AND tlc.event_id = e.id
+                ), 0) DESC,
+                EXISTS (
+                  SELECT 1 FROM play_sessions ps
+                  WHERE ps.player_id = p.id AND ps.group_id = e.group_id
+                    AND ps.event_id = e.id AND ps.ended_at IS NULL
+                ) DESC,
+                e.starts_at DESC,
+                e.id
+              LIMIT 1
+            ), ?),
+            ?
      FROM players p
      WHERE p.deactivated_at IS NULL`,
-  ).run(BASE_EVENT_ID, Date.now());
+  ).run(
+    OUTSIDE_EVENTS_ID,
+    BASE_EVENT_ID,
+    DEFAULT_GROUP_ID,
+    migratedAt,
+    migratedAt,
+    BASE_EVENT_ID,
+    migratedAt,
+  );
 
   db.prepare(
     `UPDATE invites
