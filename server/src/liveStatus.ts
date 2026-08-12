@@ -6,7 +6,7 @@
 // of currently detected games per player, not a single game_id.
 
 import { Server } from 'socket.io';
-import { BASE_EVENT_ID, db } from './db';
+import { db } from './db';
 import { config } from './config';
 import { broadcast, Events, isPlayerConnected } from './realtime';
 
@@ -90,7 +90,13 @@ export function deriveState(
 // heartbeat describes the physical PC, not a group), so a member seen from
 // two groups would show the same last_seen/manual_note in both — only the
 // games list and the roster are group-scoped.
-export function getLiveBoard(groupId: string, eventId = BASE_EVENT_ID): LiveBoardEntry[] {
+// `eventId` is deliberately required rather than defaulting to the base
+// event. A live board belongs to exactly one workspace, and broadcast() fans
+// a scope without an eventId out to every active event context in the group —
+// so a defaulted parameter silently shipped the base event's board into every
+// other event's room. Making it explicit is what forces each call site to
+// name the workspace it actually computed the board for.
+export function getLiveBoard(groupId: string, eventId: string): LiveBoardEntry[] {
   const now = Date.now();
   const recentSessionRows = db
     .prepare(
@@ -166,6 +172,33 @@ export function getLiveBoard(groupId: string, eventId = BASE_EVENT_ID): LiveBoar
       activity_tracked: Boolean(status?.activity_tracked),
     };
   });
+}
+
+// A group-wide change (a deactivated account, a removed member, a deleted
+// game) changes the live board of *every* workspace in the group, not just
+// one. Broadcasting a single board with an eventId-less scope is what the
+// review caught: broadcast() fans that scope out to every active event
+// context, so every workspace received whichever board happened to be
+// computed — the base event's.
+//
+// Fan out explicitly instead, so each event room receives the board that was
+// computed for exactly that event. The event list mirrors broadcast()'s own
+// fan-out source, so no room that would have received the payload is missed.
+export function broadcastLiveBoards(groupId: string): void {
+  const eventIds = db
+    .prepare(
+      `SELECT DISTINCT pec.active_event_id AS eventId
+       FROM player_event_contexts pec
+       JOIN events e ON e.id = pec.active_event_id AND e.group_id = ?
+       UNION
+       SELECT DISTINCT kt.event_id AS eventId
+       FROM kiosk_tokens kt
+       WHERE kt.group_id = ? AND kt.event_id IS NOT NULL AND kt.revoked_at IS NULL`,
+    )
+    .all(groupId, groupId) as Array<{ eventId: string }>;
+  for (const { eventId } of eventIds) {
+    broadcast(Events.liveStatusChanged, getLiveBoard(groupId, eventId), { groupId, eventId });
+  }
 }
 
 // Garbage-collects "currently playing" rows for players whose agent has gone

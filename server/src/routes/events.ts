@@ -327,6 +327,13 @@ eventsRouter.delete('/:id/participants/:playerId', resolveEvent, requireGroupRol
   const wasActiveContext = activeContextPlayerIds(event.id).includes(req.params.playerId);
   const previousStatus = removeEventParticipant(event.id, req.params.playerId);
   if (previousStatus === null) return res.status(404).json({ error: 'Event-Teilnehmer nicht gefunden.' });
+  // Withdrawing is the third way an invitation stops being open, next to
+  // accept and decline. Without this its notification keeps asking about an
+  // event the account can no longer even see.
+  resolvePushTopic(eventInvitationTopicKey(event.id, req.params.playerId), false, {
+    groupId: req.group!.id,
+    eventId: BASE_EVENT_ID,
+  });
   if (wasActiveContext) switchPlayerEventScope(req.params.playerId, req.group!.id, BASE_EVENT_ID);
 
   if (previousStatus === 'accepted' && event.tracking_enabled) {
@@ -612,6 +619,15 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
   }
   const removedIds = event.tracking_enabled ? rosterRemovedIds : [];
   for (const playerId of removedIds) clearPlayerLiveStatus(playerId, Date.now(), event.id);
+  // Replacing the roster resolves every open invitation for this event too:
+  // the named accounts are accepted outright, everyone else is gone. Either
+  // way no teaser is left for the notification to point at.
+  for (const playerId of new Set([...previousIds, ...uniqueIds])) {
+    resolvePushTopic(eventInvitationTopicKey(event.id, playerId), false, {
+      groupId: req.group!.id,
+      eventId: BASE_EVENT_ID,
+    });
+  }
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.player ? req.group!.id : undefined,

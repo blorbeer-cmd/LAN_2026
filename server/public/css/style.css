@@ -3027,6 +3027,15 @@ button.card {
   background: var(--bg-elevated-2);
   color: var(--text-muted);
 }
+/* Event identity on a notification: which workspace an entry came from. It
+   names a scope rather than a state, so it stays as quiet as .badge-neutral
+   instead of competing with the semantic colours - the notification center
+   shows it right next to the "Für dich" audience chip, which is the one that
+   should carry emphasis. */
+.badge-event {
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+}
 /* To-Do due-date badges (docs/KONZEPT-PACKLISTE-TICKETS.md): reuse the same
    danger/paused semantics as everywhere else in the app rather than
    inventing new colors - overdue is an error state, due-soon a caution one. */

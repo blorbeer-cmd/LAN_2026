@@ -137,6 +137,22 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal(removed.status, 204);
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', bob)).status, 409);
 
+      // Withdrawing an unanswered invitation is the third way it stops being
+      // open. Its notification must retire with it, or the banner keeps
+      // asking about an event the account can no longer see at all.
+      const withdrawnEvent = await call(app, 'post', '/api/events', owner).send({
+        name: 'Withdrawn Event', startsAt: now, endsAt: now + 60_000,
+      });
+      assert.equal(withdrawnEvent.status, 201);
+      assert.equal((await call(app, 'post', '/api/events/' + withdrawnEvent.body.id + '/invitations', owner).send({ playerId: bob.account.id })).status, 201);
+      const withdrawnTopic = 'event-invitation:' + withdrawnEvent.body.id + ':' + bob.account.id;
+      function withdrawnPushRow() {
+        return db.prepare('SELECT resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?').get(withdrawnTopic);
+      }
+      assert.equal(withdrawnPushRow().resolvedAt, null, 'the invitation is an open item first');
+      assert.equal((await call(app, 'delete', '/api/events/' + withdrawnEvent.body.id + '/participants/' + bob.account.id, owner)).status, 204);
+      assert.notEqual(withdrawnPushRow().resolvedAt, null, 'withdrawing must resolve the invitation notification');
+
       const declineEvent = await call(app, 'post', '/api/events', owner).send({
         name: 'Decline Event', startsAt: now, endsAt: now + 60_000,
       });

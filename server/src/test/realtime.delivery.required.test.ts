@@ -21,6 +21,7 @@ import {
 } from '../realtime';
 import { arcadeWatcherPlayerIds, broadcastArcadeKiosk, registerArcadeSockets } from '../arcade/realtime';
 import { socketArcadeScope } from '../arcade/scope';
+import { broadcastLiveBoards, getLiveBoard } from '../liveStatus';
 import { issueKioskToken, revokeKioskToken } from '../kioskTokens';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
 import { ensureAccountEventContext, fallbackPlayerEventContext, setActiveEventForPlayer } from '../eventContext';
@@ -494,6 +495,57 @@ test('arcade watcher ids are limited to watchers inside the match event scope', 
       broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: DEFAULT_GROUP_ID, eventId: eventA });
       inScope.close();
       outOfScope.close();
+    }
+  });
+});
+
+// A group-wide change has to reach every workspace with *that workspace's*
+// board. The regression this guards against is subtle and CI-invisible: the
+// live board carries its payload straight into `state.live`, and an
+// eventId-less broadcast scope is fanned out to every active event context —
+// so one board computed for the base event was delivered into every other
+// event's room, showing a client in event B the instance-wide "Allgemein"
+// roster without any user action.
+test('a group-wide live board change reaches each event with its own board', async () => {
+  const alice = createPlayer('Board Alice');
+  const bob = createPlayer('Board Bob');
+  const eventA = createEvent('Board Event A');
+  const eventB = createEvent('Board Event B');
+  activate(alice, eventA);
+  activate(bob, eventB);
+
+  await withServer(async ({ baseUrl }) => {
+    const inA = await connectSession(baseUrl, alice);
+    const inB = await connectSession(baseUrl, bob);
+    try {
+      await subscribe(inA, eventA);
+      await subscribe(inB, eventB);
+      const boardsInA = payloads(inA, Events.liveStatusChanged);
+      const boardsInB = payloads(inB, Events.liveStatusChanged);
+
+      broadcastLiveBoards(DEFAULT_GROUP_ID);
+      await settle();
+
+      assert.equal(boardsInA.length, 1, 'the workspace of A is refreshed exactly once');
+      assert.equal(boardsInB.length, 1, 'and so is the workspace of B');
+      assert.deepEqual(
+        boardsInA[0],
+        getLiveBoard(DEFAULT_GROUP_ID, eventA),
+        'event A receives the board computed for event A',
+      );
+      assert.deepEqual(
+        boardsInB[0],
+        getLiveBoard(DEFAULT_GROUP_ID, eventB),
+        'event B receives its own board, never the one of another workspace',
+      );
+      assert.notDeepEqual(
+        boardsInB[0],
+        getLiveBoard(DEFAULT_GROUP_ID, BASE_EVENT_ID),
+        'and specifically not the base workspace board every account belongs to',
+      );
+    } finally {
+      inA.close();
+      inB.close();
     }
   });
 });

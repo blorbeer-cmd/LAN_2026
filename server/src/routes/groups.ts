@@ -16,7 +16,7 @@ import { broadcast, broadcastInstanceSignal, disconnectKioskTokenSockets, Events
 import { requireGroupMembership, requireGroupRole } from '../groupAuthorization';
 import { countTestUsers, createTestUsers, deleteTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
 import { getOrRepairActiveEvent } from '../eventContext';
-import { getLiveBoard } from '../liveStatus';
+import { broadcastLiveBoards } from '../liveStatus';
 import { setGroupTrackingConsent } from '../trackingContexts';
 import { issueKioskToken, listKioskTokens, revokeKioskToken } from '../kioskTokens';
 
@@ -103,7 +103,7 @@ groupsRouter.post('/:groupId/tracking-consent', requireGroupMembership, (req, re
   db.prepare('UPDATE group_memberships SET outside_tracking_enabled = ? WHERE group_id = ? AND player_id = ?')
     .run(granted ? 1 : 0, req.group!.id, req.player!.id);
   if (!granted) {
-    broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
+    broadcastLiveBoards(req.group!.id);
   }
   broadcastInstanceSignal(Events.groupsChanged);
   res.json({ ok: true, granted });
@@ -212,7 +212,7 @@ groupsRouter.delete(
     // excludes the now-inactive membership).
     broadcastInstanceSignal(Events.groupsChanged);
     broadcast(Events.playersChanged, null, { groupId: req.group!.id });
-    broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
+    broadcastLiveBoards(req.group!.id);
     res.status(204).end();
   },
 );
@@ -251,7 +251,7 @@ groupsRouter.post('/:groupId/test-users', requireGroupMembership, requireGroupRo
   });
   broadcast(Events.playersChanged, null, { groupId: req.group!.id });
   broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
+  broadcastLiveBoards(req.group!.id);
   res.status(201).json({ created, totalTestUsers: countTestUsers(req.group!.id) });
 });
 
@@ -272,7 +272,7 @@ groupsRouter.delete(
     if (deleted > 0) {
       broadcast(Events.playersChanged, null, { groupId: req.group!.id });
       broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
-      broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
+      broadcastLiveBoards(req.group!.id);
     }
     res.json({ deleted });
   },

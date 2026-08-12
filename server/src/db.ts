@@ -3509,6 +3509,12 @@ registerMigration({
 // runtime scope: legacy records must remain reachable through "Allgemein".
 // Live tracking rows are merged (rather than merely updated) because SQLite
 // permits duplicate composite keys when one key part is NULL.
+//
+// This covers the operational and arcade tables only. The competition and
+// seating tables that could also hold a NULL event are backfilled by v72 —
+// they were missed here, and their readers were tightened to strict equality
+// in the same change, which is what made the omission unreachable data
+// rather than merely untidy.
 function backfillLegacyOperationalDataToBaseEvent(): void {
   // Some early v44 databases recorded the migration before these two tables
   // were included in it. Ensure the compatibility tables exist before v71
@@ -3588,6 +3594,34 @@ registerMigration({
   version: 71,
   name: 'backfill legacy operational data to base event',
   up: backfillLegacyOperationalDataToBaseEvent,
+});
+
+// v71 backfilled the operational tables but left the competition and seating
+// ones behind, even though they carry the same nullable event_id and the same
+// legacy NULL rows: before this PR, POST /api/votes/start stored NULL whenever
+// no event was tracking. Their readers were tightened to strict equality at
+// the same time (`JOIN events` + `vr.event_id = ?` in routes/votes.ts), so
+// those rows stopped being reachable through any route at all — a closed vote
+// round that still exists in the database but no history endpoint can return.
+//
+// None of these five tables has event_id in a primary key or unique index
+// (seating_layouts and seat_neighbors are unique per group without it), so a
+// plain UPDATE cannot collide with an already-migrated base-event row.
+function backfillLegacyCompetitionDataToBaseEvent(): void {
+  for (const table of ['vote_rounds', 'votes', 'seating_layouts', 'seat_neighbors', 'game_pings']) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'event_id')) continue;
+    if (!columns.some((column) => column.name === 'group_id')) continue;
+    db.prepare(`UPDATE ${table} SET event_id = ? WHERE group_id = ? AND event_id IS NULL`).run(
+      BASE_EVENT_ID,
+      DEFAULT_GROUP_ID,
+    );
+  }
+}
+registerMigration({
+  version: 72,
+  name: 'backfill legacy competition and seating data to base event',
+  up: backfillLegacyCompetitionDataToBaseEvent,
 });
 
 runRegisteredMigrations();

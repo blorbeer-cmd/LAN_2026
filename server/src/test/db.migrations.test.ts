@@ -643,10 +643,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 71);
+  assert.equal(migrations.length, 72);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 71 }, (_, index) => index + 1),
+    Array.from({ length: 72 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1166,8 +1166,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 71 }, (_, index) => index + 1),
-    'every version 1..71 runs exactly once',
+    Array.from({ length: 72 }, (_, index) => index + 1),
+    'every version 1..72 runs exactly once',
   );
 });
 
@@ -1890,6 +1890,91 @@ test('migration 58 preserves missing event consent from required-auth operation'
     'accepted roster membership must not be upgraded to tracking consent in required auth mode',
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 58').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 72 keeps legacy competition and seating rows reachable through the base event', () => {
+  const dbFile = makeTempDbPath('legacy-competition-backfill');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  for (const [id, name] of [
+    ['legacy-vote-player', 'Legacy Vote Player'],
+    ['legacy-seat-neighbor', 'Legacy Seat Neighbor'],
+  ]) {
+    fixture
+      .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+      .run(id, name, `${id}-key`, now);
+    fixture
+      .prepare(
+        `INSERT INTO group_memberships
+           (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+         VALUES ('default-group', ?, 'member', 'active', ?, 0)`,
+      )
+      .run(id, now);
+  }
+  const game = fixture.prepare("SELECT id FROM games WHERE group_id = 'default-group' LIMIT 1").get() as { id: string };
+
+  // Exactly what POST /api/votes/start wrote before this PR whenever no event
+  // was tracking: a real, closed round with no event of its own.
+  fixture
+    .prepare(
+      `INSERT INTO vote_rounds
+         (group_id, round, event_id, started_at, closed_at, winner_game_ids, mode, title, info, selected_game_ids)
+       VALUES ('default-group', 4711, NULL, ?, ?, NULL, 'points', 'Legacy Runde', NULL, NULL)`,
+    )
+    .run(now, now + 1_000);
+  fixture
+    .prepare(
+      `INSERT INTO votes
+         (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
+       VALUES ('legacy-vote', 'default-group', 'legacy-vote-player', 'Legacy Vote Player', ?, NULL, 4711, 7, ?)`,
+    )
+    .run(game.id, now);
+  fixture
+    .prepare(
+      `INSERT INTO seat_neighbors
+         (group_id, event_id, player_id, neighbor_id, player_name_snapshot, neighbor_name_snapshot)
+       VALUES ('default-group', NULL, 'legacy-vote-player', 'legacy-seat-neighbor',
+               'Legacy Vote Player', 'Legacy Seat Neighbor')`,
+    )
+    .run();
+
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 72').run();
+  fixture.close();
+
+  runMigrations(dbFile);
+  // Re-running must not double-write or fail.
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.equal(
+    (migrated.prepare('SELECT event_id AS eventId FROM vote_rounds WHERE round = 4711').get() as { eventId: string })
+      .eventId,
+    'instance-base-event',
+    'a closed legacy round stays readable through the base workspace',
+  );
+  assert.equal(
+    (migrated.prepare("SELECT event_id AS eventId FROM votes WHERE id = 'legacy-vote'").get() as { eventId: string })
+      .eventId,
+    'instance-base-event',
+    'and so do the votes cast in it',
+  );
+  assert.equal(
+    (
+      migrated
+        .prepare("SELECT event_id AS eventId FROM seat_neighbors WHERE player_id = 'legacy-vote-player'")
+        .get() as { eventId: string }
+    ).eventId,
+    'instance-base-event',
+  );
+  assert.equal(
+    (migrated.prepare('SELECT COUNT(*) AS n FROM vote_rounds WHERE event_id IS NULL').get() as { n: number }).n,
+    0,
+    'no competition row is left in the retired NULL room',
+  );
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

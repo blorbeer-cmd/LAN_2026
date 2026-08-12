@@ -11,7 +11,7 @@ import { sessionDurations, computeSimultaneousGameTime, type SessionDuration } f
 import { computeAwards } from '../awards';
 import { hasRecentReauthentication, requireUser, withParamPlayerIdentity } from '../sessions';
 import { requireAdmin } from '../auth';
-import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
+import { broadcastLiveBoards, clearPlayerLiveStatus } from '../liveStatus';
 import { writeAdminAudit } from '../adminAudit';
 import { voidOutstandingInvites } from '../invites';
 import { activeGroupPlayers } from '../groupPlayers';
@@ -347,7 +347,7 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
     broadcast(Events.playersChanged, null, { groupId });
     // live:changed carries the fresh board — clients assign the payload to
     // their state directly and do not treat null as a reload signal.
-    broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+    broadcastLiveBoards(groupId);
   }
   res.status(204).end();
 });
@@ -404,7 +404,7 @@ playersRouter.post('/:id/api-key/rotate', requireUser, (req, res) => {
     targetId: target.id,
   });
   for (const groupId of activePlayerGroupIds(target.id)) {
-    broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+    broadcastLiveBoards(groupId);
   }
   res.json({ apiKey });
 });
