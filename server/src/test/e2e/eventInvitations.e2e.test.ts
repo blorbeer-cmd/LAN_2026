@@ -27,6 +27,13 @@ function sessionCookie(response: Response): string {
   return value.split(';')[0];
 }
 
+async function openEventsArea(page: Page): Promise<void> {
+  await page.click('[data-view="more"]');
+  await page.waitForSelector('[data-navigate="events"]');
+  await page.click('[data-navigate="events"]');
+  await page.waitForSelector('#events-title');
+}
+
 async function login(page: Page, name: string, password: string): Promise<void> {
   await page.goto(BASE_URL);
   await page.waitForSelector('#auth-screen:not([hidden])');
@@ -129,8 +136,9 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.deepEqual(memberEventNotFoundResponses, []);
   assert.equal(await memberPage.locator('.toast-error', { hasText: 'Event nicht gefunden.' }).count(), 0);
 
-  await ownerPage.click('#settings-btn');
-  await memberPage.click('#settings-btn');
+  // Event management and the invitation teaser live in their own area now.
+  await openEventsArea(ownerPage);
+  await openEventsArea(memberPage);
   await ownerPage.waitForSelector(`[data-participants-event="${eventId}"]`);
   assert.equal(
     await memberPage.locator(`[data-participants-event="${eventId}"]`).count(),
@@ -151,6 +159,20 @@ test('manager invites a member who accepts and both open clients update', async 
 
   const pending = memberPage.locator(`[data-pending-invitation="${eventId}"]`);
   await pending.waitFor();
+
+  // The invitation also arrives as a personal notification. It is delivered in
+  // the base workspace because the member is not a participant of the target
+  // event yet, and it deep-links back into the event area.
+  const invitationNotification = memberPage.locator('[data-notification-entry]', { hasText: EVENT_NAME });
+  await memberPage.click('#notifications-btn');
+  await invitationNotification.waitFor();
+  assert.match((await invitationNotification.textContent()) ?? '', /Einladung/);
+  assert.equal(
+    await invitationNotification.locator('[data-notification-navigate="events"]').count(),
+    1,
+    'the notification offers the jump into the event area',
+  );
+  await memberPage.click('#notifications-btn');
   assert.match((await pending.textContent()) ?? '', new RegExp(EVENT_NAME));
   assert.match((await pending.textContent()) ?? '', /Eingeladen/);
   assert.equal(

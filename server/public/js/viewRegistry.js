@@ -11,6 +11,7 @@ import { renderArrivals } from './views/arrivals.js';
 import { renderVotes } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
+import { renderEvents } from './views/events.js';
 import { renderProfile } from './views/profile.js';
 import { renderTournaments } from './views/tournament.js';
 import { renderHallOfFame } from './views/hallOfFame.js';
@@ -29,6 +30,7 @@ export const VIEW_REGISTRY = createViewRegistry({
   leaderboard: renderLeaderboard,
   settings: renderSettings,
   analytics: renderAnalytics,
+  events: renderEvents,
   profile: renderProfile,
   tournaments: renderTournaments,
   hallOfFame: renderHallOfFame,

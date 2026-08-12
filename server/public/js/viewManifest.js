@@ -7,6 +7,7 @@ export const VIEW_MANIFEST = Object.freeze({
   votes: { area: 'core' },
   leaderboard: { area: 'core' },
   settings: { area: 'core' },
+  events: { area: 'core' },
   analytics: { area: 'core' },
   profile: { area: 'core' },
   tournaments: { area: 'core' },

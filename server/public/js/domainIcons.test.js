@@ -25,6 +25,7 @@ test('bottom navigation and More define every canonical view icon', () => {
     gameCatalog: 'gamepad',
     skill: 'activity',
     music: 'music',
+    events: 'calendar',
   });
 });
 

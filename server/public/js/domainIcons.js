@@ -25,6 +25,7 @@ export const DOMAIN_ICONS = Object.freeze({
   gameCatalog: 'gamepad',
   skill: 'activity',
   music: 'music',
+  events: 'calendar',
 });
 
 export function domainIcon(key, fallback = 'bell') {

@@ -14,6 +14,7 @@ const ITEMS = [
   { view: 'analytics', title: 'Auswertungen' },
   { view: 'checklist', title: 'Checkliste' },
   { view: 'broadcast', title: 'Durchsage' },
+  { view: 'events', title: 'Events' },
   { view: 'foodOrders', title: 'Essen' },
   { view: 'hallOfFame', title: 'Hall of Fame' },
   { view: 'infoBoard', title: 'Info' },

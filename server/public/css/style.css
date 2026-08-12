@@ -2854,7 +2854,7 @@ button.card {
 @media (min-width: 640px) { /* --bp-md */
   .two-column-card-grid.arrivals-carpool-grid > :only-child,
   .two-column-card-grid.arrivals-carpool-grid > :last-child:nth-child(odd),
-  .two-column-card-grid.settings-event-grid > :last-child:nth-child(odd),
+  .two-column-card-grid.events-card-grid > :last-child:nth-child(odd),
   .two-column-card-grid.home-live-grid > :last-child:nth-child(odd) {
     /* Entity cards (carpools, events, player status) keep sibling width; an
        odd final card must not stretch across the full row. */

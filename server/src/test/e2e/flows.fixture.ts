@@ -171,13 +171,20 @@ flowTest('shell', 'Einstellungen und Profil use grouped help while admin tools s
   t.after(async () => {
     await page.setViewportSize({ width: 390, height: 844 });
   });
+  // Einstellungen is the Kiosk screen only; events moved to their own area.
   await page.click('#settings-btn');
-  await page.waitForSelector('#settings-events-title');
-  assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 2);
+  await page.waitForSelector('#settings-kiosk-title');
+  assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
+  assert.equal(await page.locator('#events-title').count(), 0);
   assert.equal(await page.locator('[data-navigate="seating"]').count(), 0);
   assert.equal(await page.locator('#download-backup').count(), 0);
+
+  await page.click('[data-view="more"]');
+  await page.click('[data-navigate="events"]');
+  await page.waitForSelector('#events-title');
+  assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
   await page.click('[aria-label="Mehr Informationen zu Events"]');
-  await page.waitForSelector('#settings-events-help:not([hidden])');
+  await page.waitForSelector('#events-help:not([hidden])');
   await page.click('[aria-label="Mehr Informationen zu Events"]');
   await page.click('#new-event-btn');
   assert.equal(await page.getByText('Tracking', { exact: true }).count(), 0);
@@ -281,11 +288,14 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   assert.equal(await page.locator('#admin-backup-help').count(), 1);
   assert.equal(await page.locator('#admin-test-count-help').count(), 1);
   assert.equal(await page.locator('#admin-test-data-help').count(), 1);
-  // Global Event/Kiosk management is reachable from Admin's tool grid too,
-  // not only through the personal-looking topbar gear.
+  // Global Event and Kiosk management are reachable from Admin's tool grid
+  // too, not only through the personal-looking topbar gear. They are separate
+  // destinations since events moved into their own area.
+  assert.equal(await page.locator('[data-navigate="events"]').count(), 1);
+  assert.equal(await page.locator('#admin-event-help').count(), 1);
   assert.equal(await page.locator('[data-navigate="settings"]').count(), 1);
-  assert.equal(await page.locator('#admin-event-kiosk-help').count(), 1);
-  assert.equal(await page.locator('.admin-tool-row').count(), 3);
+  assert.equal(await page.locator('#admin-kiosk-help').count(), 1);
+  assert.equal(await page.locator('.admin-tool-row').count(), 4);
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
   assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
   // The count field's own id now sits one level down, inside the

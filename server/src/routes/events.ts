@@ -26,6 +26,7 @@ import {
 import { BASE_EVENT_ID, db } from '../db';
 import { broadcast, Events, switchPlayerEventScope } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
+import { notifyPlayers, resolvePushTopic } from '../push';
 import { isNonEmptyString } from '../validation';
 import { requireConfiguredGroupMembership, requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { requireRecentReauthentication } from '../sessions';
@@ -34,7 +35,6 @@ import { setEventTrackingConsent } from '../trackingContexts';
 import { activeGroupPlayers } from '../groupPlayers';
 import { createPersistentBackup } from '../backupService';
 import { eventAccessLevel, getOrRepairActiveEvent } from '../eventContext';
-import { notifyPlayers, resolvePushTopic } from '../push';
 
 export const eventsRouter = Router();
 
@@ -264,7 +264,7 @@ eventsRouter.post('/:id/invitations', resolveEvent, requireGroupRole('admin'), (
       {
         title: 'Event-Einladung',
         body: `${event.name}: Du wurdest eingeladen.`,
-        url: '/#settings',
+        url: '/#events',
       },
       'direct',
       { key: eventInvitationTopicKey(event.id, playerId) },
