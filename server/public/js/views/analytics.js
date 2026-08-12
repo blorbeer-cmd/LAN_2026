@@ -52,7 +52,7 @@ function resolveEventSelection() {
 // selected event into its date bounds before querying the shared endpoint.
 function selectedEventRange() {
   const ev = accessibleEvents().find((e) => e.id === filters.eventId);
-  if (ev) return { from: ev.starts_at, to: ev.ends_at ?? Date.now() };
+  if (ev) return { from: ev.startsAt, to: ev.endsAt ?? Date.now() };
   return null;
 }
 
@@ -130,10 +130,10 @@ async function loadArcadeData(ctx) {
 }
 
 function renderEventOptions() {
-  const sorted = [...accessibleEvents()].sort((a, b) => b.starts_at - a.starts_at);
+  const sorted = [...accessibleEvents()].sort((a, b) => b.startsAt - a.startsAt);
   const options = sorted
     .map((e) => {
-      const range = `${new Date(e.starts_at).toLocaleDateString('de-DE')}${e.ends_at ? '–' + new Date(e.ends_at).toLocaleDateString('de-DE') : ' (läuft)'}`;
+      const range = `${new Date(e.startsAt).toLocaleDateString('de-DE')}${e.endsAt ? '–' + new Date(e.endsAt).toLocaleDateString('de-DE') : ' (läuft)'}`;
       return `<option value="${e.id}" ${e.id === filters.eventId ? 'selected' : ''}>${escapeHtml(e.name)} (${range})</option>`;
     })
     .join('');

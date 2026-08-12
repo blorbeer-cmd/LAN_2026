@@ -33,14 +33,23 @@ export function currentArcadeDataScope(playerIds: string[] = []): ArcadeDataScop
     .all(...uniquePlayerIds) as Array<{ eventId: string; groupId: string }>;
   if (contexts.length !== 1) return null;
   const context = contexts[0];
+  // Deactivation does not purge event_participants, so a stale accepted row
+  // would otherwise let a removed player ride along with the remaining active
+  // ones: the query above simply yields no row for them, and a plain count
+  // over event_participants would still reach uniquePlayerIds.length. Every
+  // id therefore has to prove active membership and an active account here
+  // too, exactly as the context query does.
   const participantCount = (
     db
       .prepare(
         `SELECT COUNT(*) AS count FROM event_participants ep
+         JOIN group_memberships gm ON gm.group_id = ? AND gm.player_id = ep.player_id
+         JOIN players p ON p.id = ep.player_id
          WHERE ep.event_id = ? AND ep.player_id IN (${placeholders})
-           AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}`,
+           AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
+           AND gm.status = 'active' AND p.deactivated_at IS NULL`,
       )
-      .get(context.eventId, ...uniquePlayerIds) as { count: number }
+      .get(context.groupId, context.eventId, ...uniquePlayerIds) as { count: number }
   ).count;
   return participantCount === uniquePlayerIds.length ? context : null;
 }

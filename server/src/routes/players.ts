@@ -568,9 +568,17 @@ interface SessionRow {
 
 // GET /api/players/:id/stats - "my own stats": per-game and per-event
 // breakdown, multitasking/AFK ratio, longest sessions, and any awards this
-// player holds. Optionally narrowed to one ?eventId=. Read-only and not
-// ownership-gated for the same reason the rest of this API isn't (see
-// PATCH above) — it's just as visible to everyone as the roster already is.
+// account holds. Optionally narrowed to one ?eventId=.
+//
+// Despite the `:id` in the path this is a self-service endpoint, not a
+// lookup: withParamPlayerIdentity('id') rebinds req.params.id to the session
+// account (see sessions.ts), so the id in the URL is never what decides whose
+// numbers come back. That is also why scoping the events via
+// resolveAnalyticsEvents(req, ...) — which keys on req.player — is correct
+// here: reader and subject are always the same account. It aggregates only
+// events this account actually accepted at some point, so a private event it
+// never joined contributes neither playtime nor its name, and an explicit
+// ?eventId= for such an event is a 404.
 playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => {
   const player = db.prepare('SELECT * FROM players WHERE id = ? AND deactivated_at IS NULL').get(req.params.id) as PlayerRow | undefined;
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });

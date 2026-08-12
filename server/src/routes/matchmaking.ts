@@ -461,6 +461,10 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
       }
     | undefined;
   if (!row) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
+  // The group_id filter above is not the event boundary: a draw belongs to a
+  // concrete event, and only its accepted participants may reshuffle it —
+  // same rule POST /, POST /rematch and GET /history apply.
+  if (!requireGroupEventAccess(req, res, row.event_id)) return;
   if (row.match_id) {
     return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
   }

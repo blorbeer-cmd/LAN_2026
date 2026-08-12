@@ -152,8 +152,35 @@ test('event metadata remains editable without changing tracking state', async ()
   assert.equal(updated.body.location, 'Neue Halle');
   assert.equal(updated.body.trackingEnabled, before.body.trackingEnabled);
 
-  const invalid = await request(app).patch(`/api/events/${eventBId}`).send({ endsAt: updated.body.starts_at - 1 });
+  const invalid = await request(app).patch(`/api/events/${eventBId}`).send({ endsAt: updated.body.startsAt - 1 });
   assert.equal(invalid.status, 400);
+});
+
+test('the management shape is a strict superset of the summary shape', async () => {
+  // A member only ever receives the summary shape, an admin additionally the
+  // management shape — and both render through the same frontend cards. When
+  // the two disagreed on field names (`starts_at` vs. `startsAt`), every
+  // member-visible event showed "Invalid Date" and "0 Teilnehmer".
+  const created = await createEvent('Shape-Vergleich');
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  accept(created.body.id, TEST_ADMIN_ID);
+  const list = await request(app).get('/api/events');
+  assert.equal(list.status, 200);
+
+  const summary = list.body.availableEvents.find((event: { id: string }) => event.id === created.body.id);
+  const managed = list.body.managedEvents.find((event: { id: string }) => event.id === created.body.id);
+  assert.ok(summary, 'the accepted event is part of the personal workspace list');
+  assert.ok(managed, 'the same event is part of the administrative catalog');
+
+  for (const [key, value] of Object.entries(summary)) {
+    assert.deepEqual(managed[key], value, `management and summary shape disagree on "${key}"`);
+  }
+  assert.equal(typeof summary.startsAt, 'number');
+  assert.equal(managed.starts_at, undefined, 'the snake_case duplicate is gone for good');
+  assert.equal(managed.ends_at, undefined, 'the snake_case duplicate is gone for good');
+  assert.ok(Array.isArray(managed.participantIds), 'only the management shape carries participants');
+  assert.equal(summary.participantIds, undefined, 'a member never receives the participant roster');
+  assert.equal(summary.trackingEnabled, undefined, 'a member never receives tracking state');
 });
 
 test('unknown events stay non-enumerable', async () => {

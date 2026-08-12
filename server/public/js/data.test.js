@@ -23,11 +23,23 @@ test('event context keeps the personal workspace separate from invitations', () 
     }),
     {
       events: [base, lan],
+      managedEvents: null,
       activeEvent: lan,
       availableEvents: [base, lan],
       eventInvitations: [invitation],
     },
   );
+});
+
+test('a member without management rights is distinguishable from an admin without events', () => {
+  const available = [{ id: 'base', name: 'Allgemein' }];
+
+  // Settings renders the management grid only for an admin. `null` says "no
+  // rights", `[]` says "admin, nothing created yet" — an empty list alone
+  // could not tell those apart, and a member would get admin cards fed with
+  // summary data they never receive.
+  assert.equal(normalizeEventContext({ availableEvents: available }).managedEvents, null);
+  assert.deepEqual(normalizeEventContext({ availableEvents: available, managedEvents: [] }).managedEvents, []);
 });
 
 test('administrative event catalog does not replace the personal available-event list', () => {

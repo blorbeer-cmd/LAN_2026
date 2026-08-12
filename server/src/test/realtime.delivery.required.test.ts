@@ -12,13 +12,14 @@ import { nanoid } from 'nanoid';
 import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
 import {
   broadcast,
+  broadcastInstanceSignal,
   createSocketAuthGuard,
   Events,
   registerScopedSockets,
   setIo,
   switchPlayerEventScope,
 } from '../realtime';
-import { registerArcadeSockets } from '../arcade/realtime';
+import { arcadeWatcherPlayerIds, broadcastArcadeKiosk, registerArcadeSockets } from '../arcade/realtime';
 import { socketArcadeScope } from '../arcade/scope';
 import { issueKioskToken, revokeKioskToken } from '../kioskTokens';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
@@ -26,6 +27,7 @@ import { ensureAccountEventContext, fallbackPlayerEventContext, setActiveEventFo
 
 interface TestServer {
   baseUrl: string;
+  io: Server;
 }
 
 function createPlayer(name: string, role: 'owner' | 'admin' | 'member' = 'member'): string {
@@ -76,7 +78,7 @@ async function withServer(fn: (server: TestServer) => Promise<void>): Promise<vo
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
   try {
-    await fn({ baseUrl });
+    await fn({ baseUrl, io });
   } finally {
     io.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
@@ -331,6 +333,167 @@ test('the permanent base event is a concrete socket scope, not a group-room fall
       assert.deepEqual(updates, [null]);
     } finally {
       socket.close();
+    }
+  });
+});
+
+// The global instance signal deliberately sits outside the event scoping above:
+// membership-lifecycle refreshes have to reach clients that hold no deliverable
+// scope yet. That exemption is exactly why its allowlist needs its own guard —
+// without it, any fach event could be emitted instance-wide.
+test('broadcastInstanceSignal reaches every socket with a null payload, but only for allowlisted names', async () => {
+  const player = createPlayer('Signal Player');
+
+  await withServer(async ({ baseUrl }) => {
+    const subscribed = await connectSession(baseUrl, player);
+    const unsubscribed = await connectSession(baseUrl, player);
+    try {
+      await subscribe(subscribed);
+      const scopedSignals = payloads(subscribed, Events.groupsChanged);
+      const unscopedSignals = payloads(unsubscribed, Events.groupsChanged);
+
+      broadcastInstanceSignal(Events.groupsChanged);
+      await settle();
+
+      assert.deepEqual(scopedSignals, [null], 'the instance signal never carries data');
+      assert.deepEqual(
+        unscopedSignals,
+        [null],
+        'membership-lifecycle refreshes reach sockets without a subscribed scope too',
+      );
+      assert.throws(
+        () => broadcastInstanceSignal(Events.votesChanged),
+        /kein freigegebenes globales Instanz-Signal/,
+        'a fach event must never be emitted instance-wide',
+      );
+    } finally {
+      subscribed.close();
+      unsubscribed.close();
+    }
+  });
+});
+
+test('an event kiosk gets its arcade replay from an empty kiosk:subscribe', async () => {
+  const owner = createPlayer('Arcade Replay Owner', 'owner');
+  const eventId = createEvent('Arcade Replay');
+  const token = issueKioskToken(DEFAULT_GROUP_ID, eventId, owner, null).token;
+  const matchId = `arcade-replay-${nanoid()}`;
+
+  await withServer(async ({ baseUrl, io }) => {
+    const kiosk = await connectKiosk(baseUrl, token);
+    try {
+      broadcastArcadeKiosk(io, {
+        matchId,
+        gameType: 'pong',
+        groupId: DEFAULT_GROUP_ID,
+        eventId,
+        running: true,
+        players: [],
+        scores: [],
+      });
+      // kiosk.js emits kiosk:subscribe without a payload; an event kiosk must
+      // still resolve its own bound event and receive the running match.
+      const replay = await new Promise<{ matchId?: string }>((resolve) => {
+        kiosk.on('arcade:kiosk:game', (payload: { matchId?: string }) => resolve(payload));
+        kiosk.emit('kiosk:subscribe');
+      });
+      assert.equal(replay.matchId, matchId, 'the event kiosk receives the arcade replay from an empty subscribe');
+    } finally {
+      broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: DEFAULT_GROUP_ID, eventId });
+      kiosk.close();
+    }
+  });
+});
+
+test('read-only kiosks never receive arcade watch lists', async () => {
+  const owner = createPlayer('Watch List Owner', 'owner');
+  const eventId = createEvent('Watch List');
+  activate(owner, eventId);
+  const token = issueKioskToken(DEFAULT_GROUP_ID, eventId, owner, null).token;
+  const matchId = `watch-list-kiosk-${nanoid()}`;
+
+  await withServer(async ({ baseUrl, io }) => {
+    const kiosk = await connectKiosk(baseUrl, token);
+    const member = await connectSession(baseUrl, owner);
+    try {
+      await subscribe(member, eventId);
+      const kioskLists = payloads(kiosk, 'arcade:watch:list');
+      const memberLists = payloads(member, 'arcade:watch:list');
+
+      broadcastArcadeKiosk(io, {
+        matchId,
+        gameType: 'pong',
+        groupId: DEFAULT_GROUP_ID,
+        eventId,
+        running: true,
+        players: [],
+        scores: [],
+      });
+      await settle();
+
+      assert.equal(kioskLists.length, 0, 'watch summaries must never reach a read-only kiosk');
+      assert.ok(memberLists.length >= 1, 'regular sockets keep receiving the watch list');
+    } finally {
+      broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: DEFAULT_GROUP_ID, eventId });
+      kiosk.close();
+      member.close();
+    }
+  });
+});
+
+// arcadeWatcherPlayerIds decides who counts as an eligible voter in a running
+// arcade match, so a watcher outside the match's own event must not be counted.
+test('arcade watcher ids are limited to watchers inside the match event scope', async () => {
+  const alice = createPlayer('Watcher Alice');
+  const bob = createPlayer('Watcher Bob');
+  const eventA = createEvent('Watcher Event A');
+  const eventB = createEvent('Watcher Event B');
+  activate(alice, eventA);
+  activate(bob, eventB);
+  const matchId = `watchers-${nanoid()}`;
+
+  await withServer(async ({ baseUrl, io }) => {
+    const inScope = await connectSession(baseUrl, alice);
+    const outOfScope = await connectSession(baseUrl, bob);
+    try {
+      await subscribe(inScope, eventA);
+      await subscribe(outOfScope, eventB);
+      broadcastArcadeKiosk(io, {
+        matchId,
+        gameType: 'pong',
+        groupId: DEFAULT_GROUP_ID,
+        eventId: eventA,
+        running: true,
+        players: [],
+        scores: [],
+      });
+      await settle();
+
+      const joinAck = (socket: ClientSocket, playerId: string): Promise<{ ok: boolean; error?: string }> =>
+        new Promise((resolve) => socket.emit('arcade:watch:join', { matchId, playerId }, resolve));
+
+      assert.equal((await joinAck(inScope, alice)).ok, true);
+      assert.equal(
+        (await joinAck(outOfScope, bob)).ok,
+        false,
+        'a socket in another event may not even join the watch room',
+      );
+      await settle();
+
+      assert.deepEqual(
+        arcadeWatcherPlayerIds(io, matchId),
+        [alice],
+        'only a watcher inside the match event counts as an eligible voter',
+      );
+      assert.deepEqual(
+        arcadeWatcherPlayerIds(io, `unknown-${matchId}`),
+        [],
+        'an unknown match has no watchers at all',
+      );
+    } finally {
+      broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: DEFAULT_GROUP_ID, eventId: eventA });
+      inScope.close();
+      outOfScope.close();
     }
   });
 });

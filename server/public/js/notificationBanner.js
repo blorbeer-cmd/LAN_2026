@@ -57,7 +57,7 @@ function scheduleHighlightExpiry() {
   highlightExpiryTimer = window.setTimeout(refreshNotificationBanner, Math.min(delay, 2_147_483_647));
 }
 
-function entryHtml(entry) {
+export function entryHtml(entry) {
   const view = feedLinkView(entry.url);
   const directBadge = entry.audience === 'direct' ? '<span class="badge badge-paused">Für dich</span>' : '';
   const eventBadge = entry.eventName
@@ -73,7 +73,7 @@ function entryHtml(entry) {
     </div>
     <div class="muted notification-center-body">${escapeHtml(entry.body)}</div>
     <div class="notification-center-actions">
-      ${view ? `<button type="button" class="btn btn-sm" data-notification-navigate="${view}" data-notification-event-id="${entry.eventId}" data-notification-id="${entry.id}">${FEED_LINK_LABELS[view]}</button>` : ''}
+      ${view ? `<button type="button" class="btn btn-sm" data-notification-navigate="${view}" data-notification-event-id="${escapeHtml(entry.eventId ?? '')}" data-notification-id="${entry.id}">${FEED_LINK_LABELS[view]}</button>` : ''}
       <span class="notification-center-entry-tools">
         ${entry.seen ? '' : `<button type="button" class="icon-btn notification-center-seen" data-notification-seen="${entry.id}" aria-label="Als gelesen markieren" title="Als gelesen markieren">${icon('circleCheck')}</button>`}
         <button type="button" class="icon-btn notification-center-remove" data-notification-hide="${entry.id}" aria-label="Mitteilung entfernen" title="Mitteilung entfernen">${icon('trash')}</button>

@@ -74,23 +74,20 @@ const resolveEvent = resolveGroupResource<EventRow>({
   },
 });
 
+// The management shape is a strict superset of the summary shape below, so a
+// reader never has to know which of the two it got: both name the same value
+// the same way. Before that, `starts_at` here versus `startsAt` there made
+// every member-visible event render as "Invalid Date".
 function serializeEvent(event: ReturnType<typeof getEvent>) {
   if (!event) return undefined;
   return {
-    id: event.id,
-    name: event.name,
-    starts_at: event.starts_at,
-    ends_at: event.ends_at,
-    location: event.location,
-    description: event.description,
+    ...serializeEventSummary(event as EventRow),
     trackingEnabled: Boolean(event.tracking_enabled),
     isEnded: Boolean(event.ended_at),
     endedAt: event.ended_at,
     groupId: event.group_id,
-    status: event.status,
     visibilityScope: event.visibility_scope,
     isOutsideEvents: event.id === OUTSIDE_EVENTS_ID,
-    isBase: event.id === BASE_EVENT_ID,
     participantIds: event.id === OUTSIDE_EVENTS_ID ? undefined : getParticipantIds(event.id),
     participants: event.id === OUTSIDE_EVENTS_ID ? undefined : getEventParticipants(event.id),
   };

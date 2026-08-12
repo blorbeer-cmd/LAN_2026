@@ -20,8 +20,12 @@ export function isCurrentDataLoad(generation) {
 export function normalizeEventContext(eventContext = {}) {
   const availableEvents = eventContext.availableEvents ?? [];
   const managedEvents = eventContext.managedEvents ?? [];
+  const canManage = Array.isArray(eventContext.managedEvents);
   return {
-    events: Array.isArray(eventContext.managedEvents) ? managedEvents : availableEvents,
+    events: canManage ? managedEvents : availableEvents,
+    // `null` for a member, so a view can tell "no management rights" from
+    // "admin without any event" instead of guessing from an empty list.
+    managedEvents: canManage ? managedEvents : null,
     activeEvent: eventContext.activeEvent ?? null,
     availableEvents,
     eventInvitations: eventContext.invitations ?? [],

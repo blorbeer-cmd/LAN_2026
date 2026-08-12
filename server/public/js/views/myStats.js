@@ -39,7 +39,7 @@ async function loadStats(playerId, eventId, ctx) {
 }
 
 function renderEventOptions() {
-  const sorted = [...accessibleEvents()].sort((a, b) => b.starts_at - a.starts_at);
+  const sorted = [...accessibleEvents()].sort((a, b) => b.startsAt - a.startsAt);
   const options = sorted
     .map((e) => `<option value="${e.id}" ${e.id === statsEventId ? 'selected' : ''}>${escapeHtml(e.name)}</option>`)
     .join('');

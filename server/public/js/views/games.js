@@ -38,10 +38,33 @@ function eventStatusBadge(e) {
   return `<span class="badge badge-paused">${icon('pause')} Nicht aktiv</span>`;
 }
 
-function renderEventCard(e) {
-  const dateRange = e.ends_at == null
+function eventDateRange(e) {
+  return e.endsAt == null
     ? 'Dauerhaft geöffnet'
-    : `${new Date(e.starts_at).toLocaleDateString('de-DE')} – ${new Date(e.ends_at).toLocaleDateString('de-DE')}`;
+    : `${new Date(e.startsAt).toLocaleDateString('de-DE')} – ${new Date(e.endsAt).toLocaleDateString('de-DE')}`;
+}
+
+// Read-only card for a member's own accepted events: same identity and dates
+// as the management card, without the admin-only actions, participant count
+// and tracking state a member never receives.
+function renderMemberEventCard(e) {
+  return `
+    <div class="card stack" style="gap:var(--space-3);">
+      <div class="row-between">
+        <strong>${escapeHtml(e.name)}</strong>
+        ${e.isBase ? `<span class="badge badge-online">Allgemein</span>` : ''}
+      </div>
+      <div class="stack" style="gap:var(--space-1);">
+        ${e.location ? `<div class="muted" style="font-size:var(--font-size-sm);">${icon('mapPin')} ${escapeHtml(e.location)}</div>` : ''}
+        <div class="muted" style="font-size:var(--font-size-sm);">${icon('calendar')} ${eventDateRange(e)}</div>
+        ${e.description ? `<div class="muted" style="font-size:var(--font-size-sm);">${escapeHtml(e.description)}</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderEventCard(e) {
+  const dateRange = eventDateRange(e);
   const participantCount = e.participantIds?.length ?? 0;
 
   const trackingBtn = e.isEnded
@@ -76,8 +99,16 @@ function renderEventCard(e) {
 }
 
 function renderEventSection() {
-  const realEvents = (state.events || []).filter((e) => !e.isOutsideEvents && !e.isBase);
-  const cards = realEvents.map(renderEventCard).join('');
+  // Only owner/admin receive `managedEvents`; a member's own accepted events
+  // carry neither participants nor tracking state and must not be rendered
+  // through the management card, whose actions they cannot use anyway.
+  const canManage = Array.isArray(state.managedEvents);
+  const realEvents = (canManage ? state.managedEvents : []).filter((e) => !e.isOutsideEvents && !e.isBase);
+  const memberEvents = canManage ? [] : (state.availableEvents || []).filter((e) => !e.isBase);
+  const cards = canManage
+    ? realEvents.map(renderEventCard).join('')
+    : memberEvents.map(renderMemberEventCard).join('');
+  const visibleEventCount = canManage ? realEvents.length : memberEvents.length;
   const myId = getMyId();
   const pendingInvitations = myId ? state.eventInvitations || [] : [];
   const invitationRows = pendingInvitations
@@ -106,7 +137,7 @@ function renderEventSection() {
           <h2 id="settings-events-title">Events</h2>
           ${infoTooltipHtml('settings-events-help', 'Events', EVENT_HELP)}
         </span>
-        <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>
+        ${canManage ? `<button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>` : ''}
       </div>
       ${
         pendingInvitations.length > 0
@@ -117,8 +148,11 @@ function renderEventSection() {
           : ''
       }
       ${
-        realEvents.length === 0
-          ? emptyStateHtml('Noch keine Events angelegt.', { icon: icon('calendar') })
+        visibleEventCount === 0
+          ? emptyStateHtml(
+              canManage ? 'Noch keine Events angelegt.' : 'Du nimmst noch an keinem eigenen Event teil.',
+              { icon: icon('calendar') },
+            )
           : `<div class="two-column-card-grid settings-event-grid">${cards}</div>`
       }
     </section>
@@ -165,11 +199,11 @@ function openEventForm(ctx, existing) {
         <div class="field-row">
           <div>
             <label for="event-starts" class="field-label">Beginnt am</label>
-            ${dateTimeFieldHtml('event-starts', existing?.starts_at ?? now, { clearable: false, label: 'Beginnt am' })}
+            ${dateTimeFieldHtml('event-starts', existing?.startsAt ?? now, { clearable: false, label: 'Beginnt am' })}
           </div>
           <div>
             <label for="event-ends" class="field-label">Endet am</label>
-            ${dateTimeFieldHtml('event-ends', existing?.ends_at ?? defaultEnd, { clearable: isEdit, label: 'Endet am' })}
+            ${dateTimeFieldHtml('event-ends', existing?.endsAt ?? defaultEnd, { clearable: isEdit, label: 'Endet am' })}
           </div>
         </div>
         <div>
@@ -311,7 +345,7 @@ function openParticipantsForm(ctx, event) {
             if (isInvite) await api.events.inviteParticipant(event.id, playerId);
             else await api.events.removeParticipant(event.id, playerId);
             await ctx.refresh();
-            const updatedEvent = (state.events || []).find((candidate) => candidate.id === event.id);
+            const updatedEvent = (state.managedEvents || []).find((candidate) => candidate.id === event.id);
             if (!updatedEvent) return close();
             modalEl.querySelector('.modal-body').innerHTML = renderParticipantsBody(updatedEvent);
             modalEl.querySelector('[data-invite-participant], [data-remove-participant]')?.focus();
@@ -341,16 +375,17 @@ export function renderSettings(container, ctx) {
   });
   wireInfoTooltips(container);
 
-  container.querySelector('#new-event-btn').addEventListener('click', () => openEventForm(ctx, null));
+  // Absent for a member: only owner/admin get the create action.
+  container.querySelector('#new-event-btn')?.addEventListener('click', () => openEventForm(ctx, null));
   container.querySelectorAll('[data-edit-event]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const event = (state.events || []).find((e) => e.id === btn.dataset.editEvent);
+      const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.editEvent);
       if (event) openEventForm(ctx, event);
     });
   });
   container.querySelectorAll('[data-participants-event]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const event = (state.events || []).find((e) => e.id === btn.dataset.participantsEvent);
+      const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.participantsEvent);
       if (event) openParticipantsForm(ctx, event);
     });
   });
@@ -373,7 +408,7 @@ export function renderSettings(container, ctx) {
   });
   container.querySelectorAll('[data-start-tracking]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const event = (state.events || []).find((e) => e.id === btn.dataset.startTracking);
+      const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.startTracking);
       if (!event) return;
       if (!(await confirmDialog(`Tracking für „${event.name}" starten? Live-Status und Spielzeit werden ab jetzt für die Teilnehmer erfasst.`, { confirmText: 'Tracking starten' }))) return;
       try {
@@ -387,7 +422,7 @@ export function renderSettings(container, ctx) {
   });
   container.querySelectorAll('[data-stop-tracking]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const event = (state.events || []).find((e) => e.id === btn.dataset.stopTracking);
+      const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.stopTracking);
       if (!event) return;
       if (!(await confirmDialog(`Tracking für „${event.name}" stoppen? Der Event-Workspace bleibt erhalten.`, { confirmText: 'Tracking stoppen' }))) return;
       try {
@@ -401,7 +436,7 @@ export function renderSettings(container, ctx) {
   });
   container.querySelectorAll('[data-end-event]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const event = (state.events || []).find((e) => e.id === btn.dataset.endEvent);
+      const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.endEvent);
       if (!event) return;
       if (!(await confirmDialog(`Event „${event.name}" endgültig beenden? Das lässt sich nicht rückgängig machen.`, { confirmText: 'Beenden', danger: true }))) return;
       try {

@@ -180,6 +180,21 @@ test('GET /api/players/:id/stats binds the URL identity to the session', async (
   assert.equal(res.body.playerId, createdId);
 });
 
+test('GET /api/players/:id/stats ignores a foreign id and answers for the session account', async () => {
+  // The `:id` looks like a lookup parameter but is rebound to the session
+  // identity, which is what makes the reader-keyed event scoping below
+  // correct: there is no second account whose events could differ.
+  const foreign = await request(app).post('/api/players').send({ name: 'Foreign Stats Target' });
+  assert.equal(foreign.status, 201, JSON.stringify(foreign.body));
+
+  const res = await request(app)
+    .get(`/api/players/${foreign.body.id}/stats`)
+    .set('x-test-player-id', createdId);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.playerId, createdId, 'a foreign id never selects another account');
+  assert.notEqual(res.body.playerId, foreign.body.id);
+});
+
 test('GET /api/players/:id/stats returns an empty-but-shaped summary before any sessions', async () => {
   const res = await request(app).get(`/api/players/${createdId}/stats`);
   assert.equal(res.status, 200);

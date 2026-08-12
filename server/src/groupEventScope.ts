@@ -1,6 +1,6 @@
 import { BASE_EVENT_ID, db, OUTSIDE_EVENTS_ID } from './db';
 import type { Request, Response } from 'express';
-import { isParticipant } from './events';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 import { getOrRepairActiveEvent } from './eventContext';
 
 export type GroupEventScope = string | null;
@@ -49,20 +49,28 @@ export function resolveRequestGroupEventScope(req: Request, requestedEventId: un
 // Event participation is the only normal workspace visibility contract.
 // Administrative event management uses its own role-guarded routes; it never
 // turns into a read bypass for operational event data.
-export function requestCanAccessGroupEvent(req: Request, eventId: GroupEventScope): boolean {
-  if (eventId === null) return false;
-  if (req.kioskScope) return req.kioskScope.eventId === eventId;
-  const event = db.prepare('SELECT group_id FROM events WHERE id = ?').get(eventId) as
-    | { group_id: string | null }
-    | undefined;
-  if (!event || event.group_id !== req.group?.id) return false;
-  return Boolean(req.player && isParticipant(eventId, req.player.id));
-}
-
+//
+// The group boundary is checked here rather than left to the ~30 call sites:
+// most of them pre-scope their event id (via resolveRequestGroupEventScope or
+// a group_id-filtered row lookup), but a single caller forgetting that must
+// not silently turn this shared guard into a participation-only check.
 export function requestCanUseEventWorkspace(req: Request, eventId: GroupEventScope): boolean {
   if (eventId === null) return false;
   if (req.kioskScope) return req.kioskScope.eventId === eventId;
-  return Boolean(req.player && isParticipant(eventId, req.player.id));
+  if (!req.player || !req.group) return false;
+  // Group boundary and participation in one statement: this runs on every
+  // event-scoped request, so the check must not cost an extra round trip
+  // compared to the participation-only lookup it replaces.
+  return Boolean(
+    db
+      .prepare(
+        `SELECT 1 FROM event_participants ep
+         JOIN events e ON e.id = ep.event_id
+         WHERE ep.event_id = ? AND ep.player_id = ? AND e.group_id = ?
+           AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}`,
+      )
+      .get(eventId, req.player.id, req.group.id),
+  );
 }
 
 export function requireGroupEventAccess(req: Request, res: Response, eventId: GroupEventScope): boolean {

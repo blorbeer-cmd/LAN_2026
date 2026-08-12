@@ -9,7 +9,7 @@ import { openLobbySummaries as snakeLobbies } from '../arcade/snake';
 import { openLobbySummaries as battleshipLobbies } from '../arcade/battleship';
 import { isKnownArcadeBotId } from '../arcade/botIds';
 import {
-  requestCanAccessGroupEvent,
+  requestCanUseEventWorkspace,
   requireGroupEventAccess,
   resolveRequestGroupEventScope,
 } from '../groupEventScope';
@@ -107,7 +107,7 @@ function resultPayload(row: ArcadeResultRow) {
 arcadeRouter.get('/lobbies', (req, res) => {
   const selectedEvent = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!selectedEvent.ok) return res.status(selectedEvent.status).json({ error: selectedEvent.error });
-  if (!requestCanAccessGroupEvent(req, selectedEvent.eventId)) return res.json({ lobbies: [] });
+  if (!requestCanUseEventWorkspace(req, selectedEvent.eventId)) return res.json({ lobbies: [] });
   const groupId = req.group!.id;
   const eventId = selectedEvent.eventId;
   const lobbies = [
