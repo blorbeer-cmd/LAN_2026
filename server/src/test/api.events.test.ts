@@ -211,6 +211,71 @@ test('the workspace list reports the lifecycle state it labels events with', asy
   assert.equal(base.isEnded, false);
 });
 
+test('the participation history keeps a finished event available to personal analytics', async () => {
+  // Two lists with two different jobs. `availableEvents` answers "where can I
+  // work right now" and therefore drops an event the moment it ends;
+  // `historicalEvents` answers "what did I take part in" and must keep it,
+  // because a finished LAN is the main thing anyone opens an event filter
+  // for. The analytics endpoints accept exactly the second list
+  // (resolveAnalyticsEvents), so a filter built from it can never offer
+  // something they answer with a 404.
+  const created = await createEvent('Vergangene LAN');
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const eventId = created.body.id as string;
+  accept(eventId, TEST_ADMIN_ID);
+
+  const beforeEnd = await request(app).get('/api/events');
+  assert.ok(
+    beforeEnd.body.historicalEvents.some((event: { id: string }) => event.id === eventId),
+    'accepting an event records the participation immediately',
+  );
+
+  assert.equal((await request(app).post(`/api/events/${eventId}/end`)).status, 200);
+
+  const afterEnd = await request(app).get('/api/events');
+  assert.equal(
+    afterEnd.body.availableEvents.some((event: { id: string }) => event.id === eventId),
+    false,
+    'an ended event is no longer a workspace anyone can switch into',
+  );
+  const historical = afterEnd.body.historicalEvents.find((event: { id: string }) => event.id === eventId);
+  assert.ok(historical, 'but it stays in the participation history the event filters are built from');
+  assert.equal(historical.isEnded, true, 'and it carries the state the filter labels it with');
+  assert.ok(
+    afterEnd.body.historicalEvents.some((event: { isBase: boolean }) => event.isBase),
+    'the permanent base workspace is part of the history like any other accepted event',
+  );
+
+  // The contract the filter depends on: what the list offers, the analytics
+  // endpoints accept.
+  const scoped = await request(app).get(`/api/players/${TEST_ADMIN_ID}/stats?eventId=${eventId}`);
+  assert.equal(scoped.status, 200, JSON.stringify(scoped.body));
+  assert.equal(scoped.body.eventId, eventId);
+});
+
+test('the participation history never offers an event this account only manages', async () => {
+  const foreign = await createEvent('Fremdes Event');
+  assert.equal(foreign.status, 201, JSON.stringify(foreign.body));
+  const foreignId = foreign.body.id as string;
+  db.prepare('DELETE FROM event_participants WHERE event_id = ? AND player_id = ?').run(foreignId, TEST_ADMIN_ID);
+  db.prepare('DELETE FROM event_participation_history WHERE event_id = ? AND player_id = ?').run(
+    foreignId,
+    TEST_ADMIN_ID,
+  );
+
+  const list = await request(app).get('/api/events');
+  assert.ok(
+    list.body.managedEvents.some((event: { id: string }) => event.id === foreignId),
+    'an admin still manages it',
+  );
+  assert.equal(
+    list.body.historicalEvents.some((event: { id: string }) => event.id === foreignId),
+    false,
+    'managing an event is not taking part in it, so it stays out of personal analytics',
+  );
+  assert.equal((await request(app).get(`/api/players/${TEST_ADMIN_ID}/stats?eventId=${foreignId}`)).status, 404);
+});
+
 test('unknown events stay non-enumerable', async () => {
   assert.equal((await request(app).get('/api/events/does-not-exist')).status, 404);
   assert.equal((await request(app).put('/api/me/active-event').send({ eventId: 'does-not-exist' })).status, 404);

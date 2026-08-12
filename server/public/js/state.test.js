@@ -2,7 +2,15 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { accessibleEvents, state, playerById, gameById, catalogGames, gamesWithHistory } from './state.js';
+import {
+  accessibleEvents,
+  selectableEventWorkspaces,
+  state,
+  playerById,
+  gameById,
+  catalogGames,
+  gamesWithHistory,
+} from './state.js';
 
 test('state starts with the expected empty defaults', () => {
   assert.deepEqual(state.players, []);
@@ -32,26 +40,42 @@ test('gameById returns undefined for an unknown id', () => {
   assert.equal(gameById('missing'), undefined);
 });
 
-test('accessibleEvents offers the accepted workspaces, not the admin management list', () => {
-  // The shapes below mirror GET /api/events: `availableEvents` is what this
-  // account accepted, `managedEvents` is the owner/admin list of every event
-  // in the group — including ones they never joined, which personal
-  // analytics answer with a 404.
+test('accessibleEvents offers the participation history, not the admin management list', () => {
+  // The shapes below mirror GET /api/events: `historicalEvents` is every
+  // event this account accepted at some point (ended ones included, because
+  // a finished LAN is exactly what an event filter is for), `availableEvents`
+  // is the subset that can still be worked in, and `managedEvents` is the
+  // owner/admin list of every event in the group — including ones they never
+  // joined, which personal analytics answer with a 404.
   state.availableEvents = [
     { id: 'instance-base-event', isBase: true },
     { id: 'joined-event' },
   ];
+  state.historicalEvents = [...state.availableEvents, { id: 'finished-event', isEnded: true }];
   state.managedEvents = [{ id: 'joined-event' }, { id: 'never-joined-event' }];
   state.events = state.managedEvents;
   assert.deepEqual(
     accessibleEvents().map((event) => event.id),
-    ['instance-base-event', 'joined-event'],
+    ['instance-base-event', 'joined-event', 'finished-event'],
+  );
+});
+
+test('the workspace switcher stays on the events that can still be entered', () => {
+  // A finished event remains a valid analytics filter but is not a workspace
+  // anyone can switch into — PUT /api/me/active-event rejects it with a 404.
+  state.availableEvents = [{ id: 'instance-base-event', isBase: true }];
+  state.historicalEvents = [...state.availableEvents, { id: 'finished-event', isEnded: true }];
+  assert.deepEqual(
+    selectableEventWorkspaces().map((event) => event.id),
+    ['instance-base-event'],
   );
 });
 
 test('accessibleEvents is empty before the first event payload arrives', () => {
   state.availableEvents = undefined;
+  state.historicalEvents = undefined;
   assert.deepEqual(accessibleEvents(), []);
+  assert.deepEqual(selectableEventWorkspaces(), []);
 });
 
 test('catalogGames keeps the accepted games and drops the suggestions', () => {

@@ -23,7 +23,7 @@ const jsDir = dirname(fileURLToPath(import.meta.url));
 // reason, so "add it here to make the test pass" stays a deliberate claim
 // about the endpoint rather than a shortcut.
 const EVENT_INDEPENDENT = new Map([
-  ['invalidateSkillSuggestions', 'GET /api/skills/suggestions derives from the group-wide match record, not from one event.'],
+  ['invalidateSkillSuggestions', 'GET /api/skills/suggestions is scoped to the account\'s own participation history, which an event switch does not change.'],
   ['invalidateMissingSkills', 'Missing self-ratings are per account and game; no event narrows them.'],
   ['invalidateAdminMemberships', 'Group membership and roles are instance data that outlive every event.'],
 ]);

@@ -23,6 +23,7 @@ import { escapeHtml, formatDateTime, avatarHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { eventSwitcherLabel } from '../eventStatus.js';
 
 let activeTab = 'playtime'; // 'playtime' | 'matches' | 'arcade'
 
@@ -151,7 +152,10 @@ function renderEventOptions() {
   const options = sorted
     .map((e) => {
       const range = `${new Date(e.startsAt).toLocaleDateString('de-DE')}${e.endsAt ? '–' + new Date(e.endsAt).toLocaleDateString('de-DE') : ' (läuft)'}`;
-      return `<option value="${e.id}" ${e.id === filters.eventId ? 'selected' : ''}>${escapeHtml(e.name)} (${range})</option>`;
+      // The list spans finished LANs as well as the running one, so each
+      // option names its state in words through the shared event vocabulary
+      // instead of leaving the reader to infer it from the dates.
+      return `<option value="${e.id}" ${e.id === filters.eventId ? 'selected' : ''}>${escapeHtml(eventSwitcherLabel(e))} (${range})</option>`;
     })
     .join('');
   return `<option value="" ${filters.eventId === '' ? 'selected' : ''}>Gesamt (alle Events)</option>${options}`;

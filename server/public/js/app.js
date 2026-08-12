@@ -7,7 +7,7 @@ import { ensureLogin } from './authGate.js';
 import { connectSocket } from './socket.js';
 import { initConnectionStatus } from './connectionStatus.js';
 import { createConnectionRefreshCoordinator } from './connectionRefresh.js';
-import { state } from './state.js';
+import { selectableEventWorkspaces, state } from './state.js';
 import { loadAll } from './data.js';
 import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
@@ -142,7 +142,7 @@ function renderEventContextSwitcher() {
   const select = document.getElementById('event-context-switcher');
   const statusEl = document.getElementById('event-context-status');
   if (!container || !select) return;
-  const events = state.availableEvents ?? [];
+  const events = selectableEventWorkspaces();
   select.innerHTML = events
     .map((event) => `<option value="${escapeHtml(event.id)}">${escapeHtml(eventSwitcherLabel(event))}</option>`)
     .join('');
@@ -168,8 +168,10 @@ function renderEventContextSwitcher() {
 }
 
 async function activateEvent(eventId, { navigate } = {}) {
-  if (!eventId) return;
-  if (state.activeEvent?.id !== eventId) {
+  // A missing eventId is not an error: a notification stored before this
+  // release carries no event, and its destination is still the thing the
+  // reader tapped. Skip the switch, keep the navigation.
+  if (eventId && state.activeEvent?.id !== eventId) {
     await api.events.activate(eventId);
     invalidateEventScopedCaches();
     await loadAll();
@@ -178,6 +180,24 @@ async function activateEvent(eventId, { navigate } = {}) {
     renderCurrent();
   }
   if (navigate && isKnownView(navigate)) switchView(navigate);
+}
+
+// The one entry point for "a notification wants me somewhere". Its event may
+// be gone by the time it is tapped — ended, cancelled, or the participation
+// withdrawn — and PUT /api/me/active-event answers 404 for all three. That is
+// an expected outcome of a stale link, not a startup failure: say so once and
+// still take the reader to the promised view in whatever workspace is active.
+async function followEventDeepLink(eventId, view) {
+  try {
+    await activateEvent(eventId, { navigate: view });
+  } catch (error) {
+    if (error?.status === 404) {
+      showToast('Das Event dieser Mitteilung ist nicht mehr verfügbar.', { error: true });
+    } else {
+      showToast(error.message, { error: true });
+    }
+    if (view && isKnownView(view)) switchView(view);
+  }
 }
 
 function wireEventContextSwitcher() {
@@ -195,7 +215,7 @@ function wireEventContextSwitcher() {
   });
   window.addEventListener('respawn:event-navigate', (event) => {
     const { eventId, view } = event.detail ?? {};
-    void activateEvent(eventId, { navigate: view }).catch((error) => showToast(error.message, { error: true }));
+    void followEventDeepLink(eventId, view);
   });
 }
 
@@ -376,9 +396,7 @@ function wireNav() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (e) => {
       if (e.data?.type === 'navigate' && isKnownView(e.data.view)) {
-        void activateEvent(e.data.eventId, { navigate: e.data.view }).catch((error) =>
-          showToast(error.message, { error: true }),
-        );
+        void followEventDeepLink(e.data.eventId, e.data.view);
       }
     });
   }
@@ -705,7 +723,11 @@ async function main() {
   const pushedEventId = new URL(location.href).searchParams.get('eventId');
   if (pushedEventId) {
     await initialDataLoad;
-    await activateEvent(pushedEventId);
+    // Never let a stale link abort the remaining startup: the base history
+    // entry, the initial switchView() and onboarding all still have to run.
+    // The parameter is dropped either way, or a failing link would replay its
+    // failure on every reload of this tab.
+    await followEventDeepLink(pushedEventId);
     const cleanUrl = new URL(location.href);
     cleanUrl.searchParams.delete('eventId');
     history.replaceState(history.state, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);

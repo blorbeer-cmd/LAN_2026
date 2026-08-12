@@ -210,15 +210,22 @@ serverseitig gespeicherte Arbeits-Event.
 
 ### 4.3 Eventlisten
 
-`GET /api/events` liefert drei klar getrennte Mengen:
+`GET /api/events` liefert vier klar getrennte Mengen:
 
 - `activeEvent`: das persönliche Arbeits-Event,
 - `availableEvents`: angenommene und als Arbeitskontext nutzbare Events,
+- `historicalEvents`: die persönliche Teilnahmehistorie einschließlich beendeter Events,
 - `invitations`: offene Einladungsteaser.
 
 Abgelehnte, entfernte und nie eingeladene Events erscheinen nicht in der normalen Liste.
-Historische, tatsächlich besuchte Events werden nur dort ergänzt, wo ein historischer Filter oder
-die persönliche Auswertung sie benötigt.
+
+`availableEvents` und `historicalEvents` beantworten zwei verschiedene Fragen und dürfen nicht
+gegeneinander ausgetauscht werden. `availableEvents` beantwortet „worin kann ich gerade arbeiten“
+und verliert ein Event, sobald es beendet ist; nur diese Menge speist den Event-Umschalter.
+`historicalEvents` beantwortet „woran habe ich teilgenommen“, behält beendete Events und ist exakt
+die Allowlist, die die Auswertungsendpunkte serverseitig akzeptieren. Eventfilter werden deshalb
+immer aus `historicalEvents` gebaut — sonst könnte ein Filter genau die abgeschlossene LAN nicht
+mehr benennen, für die er gedacht ist.
 
 ### 4.4 Auswertungen
 
@@ -236,7 +243,9 @@ Beispiele:
 - Rangliste: Ergebnisse aller Personen, aber nur aus Events, an denen der Betrachter teilgenommen
   hat.
 - Hall of Fame: nur Abschnitte und Summen aus den Events des Betrachters.
-- Eventfilter: nur historisch oder aktuell teilgenommene Events.
+- Skill-Vorschläge: abgeleitet aus denselben Matches und deshalb aus derselben Allowlist. Sie
+  nennen Siege und Partien pro Person und wären ungescopt ein Bericht über fremde Events.
+- Eventfilter: nur historisch oder aktuell teilgenommene Events, gebaut aus `historicalEvents`.
 - Export: genau ein erlaubtes Event oder dieselbe persönliche Teilnahme-Allowlist.
 
 Damit entfallen die bisherigen bewusst akzeptierten Rückschlüsse aus vollständigen globalen

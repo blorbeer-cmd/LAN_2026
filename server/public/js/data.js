@@ -28,6 +28,11 @@ export function normalizeEventContext(eventContext = {}) {
     managedEvents: canManage ? managedEvents : null,
     activeEvent: eventContext.activeEvent ?? null,
     availableEvents,
+    // Personal participation history: the allowlist the analytics endpoints
+    // accept, so an event filter can never offer something they answer with
+    // a 404. Falls back to the switchable workspaces so an older server
+    // payload still yields a usable filter instead of an empty one.
+    historicalEvents: eventContext.historicalEvents ?? availableEvents,
     eventInvitations: eventContext.invitations ?? [],
   };
 }

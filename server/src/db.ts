@@ -3604,9 +3604,15 @@ registerMigration({
 // those rows stopped being reachable through any route at all — a closed vote
 // round that still exists in the database but no history endpoint can return.
 //
-// None of these five tables has event_id in a primary key or unique index
-// (seating_layouts and seat_neighbors are unique per group without it), so a
-// plain UPDATE cannot collide with an already-migrated base-event row.
+// seating_layouts and seat_neighbors *do* carry partial unique indexes on
+// (group_id, event_id, ...) — see idx_seating_layouts_group_event and
+// idx_seat_neighbors_group_event above — so this UPDATE could in principle
+// collide with an existing base-event row. It cannot here: the base event is
+// created by v63, and v63..v72 all land in the same release, so every
+// migration runs in one uninterrupted sequence with no application write in
+// between. A legacy database therefore holds NULL rows or base-event rows,
+// never both. A future backfill of these tables must re-establish that
+// argument rather than assume it.
 function backfillLegacyCompetitionDataToBaseEvent(): void {
   for (const table of ['vote_rounds', 'votes', 'seating_layouts', 'seat_neighbors', 'game_pings']) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;

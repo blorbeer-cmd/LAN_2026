@@ -303,9 +303,10 @@ export function broadcast(event: string, payload: unknown, scope: BroadcastScope
         // Every other allowlisted event is a null refresh signal (fachliche
         // payloads can carry member-only details, e.g. match-ready lobby
         // credentials). The kiosk refetches through its own token-scoped REST
-        // reads, so it must fire on any change in its group — including
-        // event-room changes that routes emit as a plain { groupId } signal,
-        // which an exact eventId match would otherwise drop for an event kiosk.
+        // reads, which are exact to the event in its token — so the signal is
+        // matched exactly too. A route that emits a plain { groupId } signal
+        // still reaches it: the fan-out above expands an eventId-less scope
+        // over every active event context *and* every live kiosk event.
         if (socket.data.kioskEventId !== eventId) continue;
         socket.emit(event, null);
       }

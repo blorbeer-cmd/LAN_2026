@@ -15,10 +15,13 @@ test('event context keeps the personal workspace separate from invitations', () 
   const lan = { id: 'lan', name: 'Sommer-LAN' };
   const invitation = { id: 'winter', name: 'Winter-LAN', participantStatus: 'invited' };
 
+  const past = { id: 'past', name: 'LAN 2024', isEnded: true };
+
   assert.deepEqual(
     normalizeEventContext({
       activeEvent: lan,
       availableEvents: [base, lan],
+      historicalEvents: [base, lan, past],
       invitations: [invitation],
     }),
     {
@@ -26,9 +29,18 @@ test('event context keeps the personal workspace separate from invitations', () 
       managedEvents: null,
       activeEvent: lan,
       availableEvents: [base, lan],
+      historicalEvents: [base, lan, past],
       eventInvitations: [invitation],
     },
   );
+});
+
+test('the participation history falls back to the switchable workspaces', () => {
+  // An older server payload has no historicalEvents. The event filters must
+  // still offer something instead of collapsing to "Gesamt" only.
+  const base = { id: 'base', name: 'Allgemein' };
+
+  assert.deepEqual(normalizeEventContext({ availableEvents: [base] }).historicalEvents, [base]);
 });
 
 test('a member without management rights is distinguishable from an admin without events', () => {

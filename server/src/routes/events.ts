@@ -154,6 +154,23 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        ORDER BY e.starts_at, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
+  // The personal-analytics allowlist, mirroring resolveAnalyticsEvents on the
+  // server: every event this account accepted at some point, ended ones
+  // included. `availableEvents` cannot serve that purpose because it is the
+  // set of *selectable workspaces* and therefore excludes finished events —
+  // without this list the event filters in Auswertungen and Meine Statistiken
+  // could no longer name a past LAN the account actually attended
+  // (docs/KONZEPT-EVENT-SICHTBARKEIT.md, Abschnitte 4.3 und 4.4).
+  const historicalEvents = db
+    .prepare(
+      `SELECT e.*
+       FROM events e
+       JOIN event_participation_history h ON h.event_id = e.id
+       WHERE h.player_id = ? AND h.accepted_at IS NOT NULL
+         AND e.id != ? AND e.group_id = ?
+       ORDER BY e.starts_at DESC, e.name COLLATE NOCASE`,
+    )
+    .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
   const canManage = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
   const managedEvents = canManage
     ? listEvents(req.group!.id)
@@ -163,6 +180,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
   res.json({
     activeEvent: serializeEventSummary(activeEvent as EventRow),
     availableEvents: availableEvents.map(serializeEventSummary),
+    historicalEvents: historicalEvents.map(serializeEventSummary),
     invitations: invitations.map((event) => ({ ...serializeEventSummary(event), participationStatus: 'invited' })),
     ...(managedEvents ? { managedEvents } : {}),
   });

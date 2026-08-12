@@ -10,6 +10,7 @@ import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { eventSwitcherLabel } from '../eventStatus.js';
 
 let statsCache = null;
 let statsLoading = false;
@@ -41,9 +42,24 @@ async function loadStats(playerId, eventId, ctx) {
 function renderEventOptions() {
   const sorted = [...accessibleEvents()].sort((a, b) => b.startsAt - a.startsAt);
   const options = sorted
-    .map((e) => `<option value="${e.id}" ${e.id === statsEventId ? 'selected' : ''}>${escapeHtml(e.name)}</option>`)
+    // Finished LANs are the point of this filter, so every option names its
+    // state in words through the shared event vocabulary.
+    .map((e) => `<option value="${e.id}" ${e.id === statsEventId ? 'selected' : ''}>${escapeHtml(eventSwitcherLabel(e))}</option>`)
     .join('');
   return `<option value="" ${statsEventId === '' ? 'selected' : ''}>Gesamt (alle Events)</option>${options}`;
+}
+
+// Two accounts see different totals here, because each aggregate covers only
+// the events its own account took part in. Name that basis instead of letting
+// the difference look like a bug (docs/KONZEPT-EVENT-SICHTBARKEIT.md,
+// Abschnitt 4.4). Only for the "Gesamt" selection — with one event picked the
+// dropdown already says what the numbers cover.
+function dataBasisHtml(stats) {
+  if (statsEventId !== '') return '';
+  const count = stats.eventIds?.length ?? 0;
+  if (count === 0) return '';
+  const events = count === 1 ? 'einem Event' : `deinen ${count} Events`;
+  return `<div class="muted" style="font-size:var(--font-size-xs);">Aus ${events}, an denen du teilgenommen hast.</div>`;
 }
 
 function renderStats() {
@@ -143,6 +159,7 @@ function renderStats() {
   return `
     <div class="card stack">
       <select id="my-stats-event">${renderEventOptions()}</select>
+      ${dataBasisHtml(s)}
     </div>
     ${kpis}
 
