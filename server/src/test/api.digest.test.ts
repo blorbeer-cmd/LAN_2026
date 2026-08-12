@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createTestApp } from './testApp';
+import { createTestApp, enableTestTracking } from './testApp';
 
 const app = createTestApp();
 let playerId: string;
@@ -15,6 +15,7 @@ test('setup: two players', async () => {
   const p = await request(app).post('/api/players').send({ name: 'Digest Tester' });
   playerId = p.body.id;
   apiKey = p.body.api_key;
+  enableTestTracking(playerId);
   const other = await request(app).post('/api/players').send({ name: 'Digest Other' });
   otherPlayerId = other.body.id;
   const games = await request(app).get('/api/games');

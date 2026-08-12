@@ -17,13 +17,24 @@ export function isCurrentDataLoad(generation) {
   return generation === latestLoadGeneration;
 }
 
+export function normalizeEventContext(eventContext = {}) {
+  const availableEvents = eventContext.availableEvents ?? [];
+  const managedEvents = eventContext.managedEvents ?? [];
+  return {
+    events: managedEvents.length > 0 ? managedEvents : availableEvents,
+    activeEvent: eventContext.activeEvent ?? null,
+    availableEvents,
+    eventInvitations: eventContext.invitations ?? [],
+  };
+}
+
 export async function loadAll() {
   const generation = beginDataLoad();
   const playtimeAllGamesPromise = api.stats.playtime();
   const playtimePromise = state.selectedGameId
     ? api.stats.playtime(state.selectedGameId)
     : playtimeAllGamesPromise;
-  const [players, games, skills, preferences, live, votes, matches, leaderboard, playtime, playtimeAllGames, events] =
+  const [players, games, skills, preferences, live, votes, matches, leaderboard, playtime, playtimeAllGames, eventContext] =
     await Promise.all([
       api.players.list(),
       api.games.list(),
@@ -43,9 +54,19 @@ export async function loadAll() {
   // playtime, …) may have been processed before the roster taught the
   // filter which IDs are test users — run everything through once more now
   // that the roster has definitely been seen (idempotent otherwise).
-  Object.assign(
-    state,
-    filterTestUsers({ players, games, skills, preferences, live, votes, matches, leaderboard, playtime, playtimeAllGames, events })
-  );
+  const normalizedEventContext = normalizeEventContext(eventContext);
+  Object.assign(state, filterTestUsers({
+    players,
+    games,
+    skills,
+    preferences,
+    live,
+    votes,
+    matches,
+    leaderboard,
+    playtime,
+    playtimeAllGames,
+    ...normalizedEventContext,
+  }));
   return true;
 }

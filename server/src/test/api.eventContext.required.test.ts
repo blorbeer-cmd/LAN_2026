@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { nanoid } from 'nanoid';
 import { BASE_EVENT_ID, db } from '../db';
-import { cancelEvent, createEvent, endEvent } from '../events';
+import { cancelEvent, createEvent, endEvent, removeEventParticipant } from '../events';
 import { createInvite } from '../invites';
 import { SESSION_COOKIE_NAME } from '../sessions';
 import { createTestApp, TEST_ADMIN_ID } from './testApp';
+import { historicallyParticipatedEventIds } from '../eventContext';
 
 const app = createTestApp();
 
@@ -87,8 +88,33 @@ test('event-bound registration atomically joins base and target and selects the 
   const repaired = await request(app).get('/api/me/active-event').set('Cookie', cookie);
   assert.equal(repaired.status, 200);
   assert.equal(repaired.body.id, BASE_EVENT_ID);
+  assert.ok(historicallyParticipatedEventIds(playerId).includes(target.id));
   assert.equal(endEvent(BASE_EVENT_ID), undefined);
   assert.equal(cancelEvent(BASE_EVENT_ID), undefined);
+});
+
+test('removing current participation preserves history and falls back to the base event', async () => {
+  const player = db
+    .prepare("SELECT id FROM players WHERE name = 'Event Context Member'")
+    .get() as { id: string };
+  const event = createEvent('Historisch erhaltenes Event', {
+    startsAt: Date.now(),
+    endsAt: Date.now() + 86_400_000,
+  });
+  db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')").run(
+    event.id,
+    player.id,
+  );
+  db.prepare(
+    'UPDATE player_event_contexts SET active_event_id = ?, updated_at = ? WHERE player_id = ?',
+  ).run(event.id, Date.now(), player.id);
+
+  assert.equal(removeEventParticipant(event.id, player.id), 'accepted');
+  assert.equal(participantStatus(event.id, player.id), undefined);
+  assert.ok(historicallyParticipatedEventIds(player.id).includes(event.id));
+  assert.deepEqual(db.prepare('SELECT active_event_id FROM player_event_contexts WHERE player_id = ?').get(player.id), {
+    active_event_id: BASE_EVENT_ID,
+  });
 });
 
 test('registration rolls back completely when its invited event became unavailable', async () => {

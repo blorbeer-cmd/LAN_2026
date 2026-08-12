@@ -618,6 +618,17 @@ textarea {
 .group-switcher[hidden] {
   display: none;
 }
+
+.event-context-switcher {
+  max-width: 220px;
+  font-weight: var(--font-weight-medium);
+}
+
+@media (max-width: 639px) {
+  .event-context-switcher {
+    max-width: 128px;
+  }
+}
 .group-switcher .ui-icon {
   flex: 0 0 auto;
 }
@@ -2220,6 +2231,7 @@ button.draft-pool-player {
 .info-tooltip-panel {
   position: fixed;
   z-index: 20;
+  pointer-events: none;
   width: min(var(--info-popover-max-width), calc(100vw - var(--space-4)));
   padding: var(--space-3);
   border: 1px solid var(--border);

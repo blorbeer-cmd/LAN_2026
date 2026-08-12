@@ -440,7 +440,7 @@ arcadeFlowTest('full', 'Arcade: Scribble - host draws, a second device guesses c
             reject(new Error('watch-list probe timed out'));
           }, 5_000);
           probe.once('connect', () => {
-            probe.emit('scope:subscribe', { groupId: 'default-group', eventId: null }, (result: { error?: string }) => {
+            probe.emit('scope:subscribe', { groupId: 'default-group', eventId: 'instance-base-event' }, (result: { error?: string }) => {
               if (result?.error) {
                 clearTimeout(timeout);
                 probe.close();

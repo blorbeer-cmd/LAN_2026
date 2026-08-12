@@ -46,6 +46,8 @@ import { getGroup } from '../groups';
 import { BASE_EVENT_ID, DEFAULT_GROUP_ID } from '../db';
 import { resolveKioskToken } from '../kioskTokens';
 import { getOrRepairActiveEvent, setActiveEventForPlayer, type EventContextEvent } from '../eventContext';
+import { broadcast, Events, switchPlayerEventScope } from '../realtime';
+import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 
 export const apiRouter = Router();
 
@@ -100,9 +102,10 @@ apiRouter.use((req, res, next) => {
     if (!group || group.archived_at !== null) {
       return res.status(404).json({ error: 'Kiosk-Gruppe ist nicht verfügbar.' });
     }
-    if (tokenScope?.eventId) req.query.eventId = tokenScope.eventId;
+    const kioskEventId = tokenScope?.eventId ?? BASE_EVENT_ID;
+    req.query.eventId = kioskEventId;
     req.group = group;
-    req.kioskScope = { groupId, eventId: tokenScope?.eventId ?? null };
+    req.kioskScope = { groupId, eventId: kioskEventId };
     return next();
   }
   requireUser(req, res, next);
@@ -154,8 +157,19 @@ apiRouter.put('/me/active-event', requireUser, (req, res) => {
   if (typeof eventId !== 'string' || !eventId) {
     return res.status(400).json({ error: 'eventId ist erforderlich.' });
   }
+  const previousEvent = getOrRepairActiveEvent(req.player!.id);
   const event = setActiveEventForPlayer(req.player!.id, eventId);
   if (!event) return res.status(404).json({ error: 'Event nicht gefunden oder nicht freigegeben.' });
+  if (previousEvent.id !== event.id) {
+    clearPlayerLiveStatus(req.player!.id, Date.now(), previousEvent.id);
+    if (previousEvent.group_id) {
+      broadcast(Events.liveStatusChanged, getLiveBoard(previousEvent.group_id, previousEvent.id), {
+        groupId: previousEvent.group_id,
+        eventId: previousEvent.id,
+      });
+    }
+  }
+  switchPlayerEventScope(req.player!.id, event.group_id!, event.id);
   return res.json(serializeActiveEvent(event));
 });
 

@@ -121,14 +121,14 @@ test('event broadcasts enforce recipients and mutes while preserving a kiosk-onl
   }
 });
 
-test('an event without participants still creates its kiosk banner', async () => {
+test('an event without participants rejects operational broadcasts', async () => {
   const event = await request(app)
     .post('/api/events')
     .send({
       name: 'Leeres Event',
       startsAt: Date.now(),
       endsAt: Date.now() + 60_000,
-      visibilityScope: 'group',
+      visibilityScope: 'participants',
     });
   assert.equal(event.status, 201);
   emitted.length = 0;
@@ -136,14 +136,8 @@ test('an event without participants still creates its kiosk banner', async () =>
   const sent = await request(app)
     .post('/api/broadcasts')
     .send({ playerId, eventId: event.body.id, message: 'Kiosk ohne Teilnehmer' });
-  assert.equal(sent.status, 201, JSON.stringify(sent.body));
-  assert.ok(sent.body.pushLogId);
-  assert.equal(emitted.filter((entry) => entry.event === Events.pushSent).length, 1);
-  const push = db
-    .prepare('SELECT event_id AS eventId, player_ids AS playerIds FROM push_log WHERE id = ?')
-    .get(sent.body.pushLogId) as { eventId: string; playerIds: string };
-  assert.equal(push.eventId, event.body.id);
-  assert.deepEqual(JSON.parse(push.playerIds), []);
+  assert.equal(sent.status, 404, JSON.stringify(sent.body));
+  assert.equal(emitted.filter((entry) => entry.event === Events.pushSent).length, 0);
 });
 
 test('only the creator can end an active broadcast and ending is idempotently guarded', async () => {

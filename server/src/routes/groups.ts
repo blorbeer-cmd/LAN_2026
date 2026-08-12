@@ -15,6 +15,7 @@ import { writeAdminAudit } from '../adminAudit';
 import { broadcast, broadcastInstanceSignal, disconnectKioskTokenSockets, Events } from '../realtime';
 import { requireGroupMembership, requireGroupRole } from '../groupAuthorization';
 import { countTestUsers, createTestUsers, deleteTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
+import { getOrRepairActiveEvent } from '../eventContext';
 import { getLiveBoard } from '../liveStatus';
 import { setGroupTrackingConsent } from '../trackingContexts';
 import { issueKioskToken, listKioskTokens, revokeKioskToken } from '../kioskTokens';
@@ -73,16 +74,14 @@ groupsRouter.get('/:groupId/kiosk-tokens', requireGroupMembership, requireGroupR
 
 groupsRouter.post('/:groupId/kiosk-tokens', requireGroupMembership, requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
   const { eventId, label } = req.body ?? {};
-  if (eventId !== undefined && eventId !== null && (typeof eventId !== 'string' || !eventId)) {
-    return res.status(400).json({ error: 'eventId ist ungültig.' });
-  }
+  if (typeof eventId !== 'string' || !eventId) return res.status(400).json({ error: 'eventId ist erforderlich.' });
   if (typeof label !== 'undefined' && label !== null && (typeof label !== 'string' || label.trim().length > 80)) {
     return res.status(400).json({ error: 'label darf höchstens 80 Zeichen lang sein.' });
   }
   if (eventId && !db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, req.group!.id)) {
     return res.status(404).json({ error: 'Event nicht gefunden.' });
   }
-  const issued = issueKioskToken(req.group!.id, eventId ?? null, req.player!.id, typeof label === 'string' && label.trim() ? label.trim() : null);
+  const issued = issueKioskToken(req.group!.id, eventId, req.player!.id, typeof label === 'string' && label.trim() ? label.trim() : null);
   res.status(201).json({ token: issued.token, ...issued.scope });
 });
 
@@ -242,7 +241,7 @@ groupsRouter.post('/:groupId/test-users', requireGroupMembership, requireGroupRo
       .status(400)
       .json({ error: `count muss eine ganze Zahl zwischen 1 und ${MAX_TEST_USERS_PER_CALL} sein.` });
   }
-  const created = createTestUsers(count, req.group!.id);
+  const created = createTestUsers(count, req.group!.id, getOrRepairActiveEvent(req.player!.id).id);
   writeAdminAudit({
     actorPlayerId: req.player!.id,
     groupId: req.group!.id,

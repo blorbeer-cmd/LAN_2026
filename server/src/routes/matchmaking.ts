@@ -18,8 +18,8 @@ import {
   type SeatPair,
 } from '../matchmaking';
 import { isIntInRange } from '../validation';
-import { getTrackingEventId, OUTSIDE_EVENTS_ID } from '../events';
-import { competitionPlayersBelongToGroup, trackingEventIdForGroup } from '../competitionScope';
+import { competitionPlayersBelongToGroup } from '../competitionScope';
+import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 
 export const matchmakingRouter = Router();
 
@@ -36,7 +36,7 @@ const DEFAULT_RATING = 5;
 // contributes the neutral fallback, exactly as in the balancing input.
 const totalRatingOf = (players: Array<{ rating: number | null }>): number =>
   players.reduce((sum, p) => sum + (p.rating ?? DEFAULT_RATING), 0);
-const deliveryEventId = (eventId: string): string | null => (eventId === OUTSIDE_EVENTS_ID ? null : eventId);
+const deliveryEventId = (eventId: string): string => eventId;
 
 interface GameRow {
   id: string;
@@ -122,7 +122,7 @@ function loadAvoidPairs(groupId: string, eventId: string, playerIds: string[]): 
        WHERE group_id = ? AND event_id IS ?
          AND player_id IN (${placeholders}) AND neighbor_id IN (${placeholders})`
     )
-    .all(groupId, eventId === OUTSIDE_EVENTS_ID ? null : eventId, ...playerIds, ...playerIds) as Array<{
+    .all(groupId, eventId, ...playerIds, ...playerIds) as Array<{
       player_id: string;
       neighbor_id: string;
     }>;
@@ -177,10 +177,10 @@ matchmakingRouter.post('/', (req, res) => {
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
   if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
 
-  const eventId = trackingEventIdForGroup(req.group!.id);
-  if (!eventId) {
-    return res.status(409).json({ error: 'Tracking läuft derzeit in einem anderen Gruppenkontext.' });
-  }
+  const scope = resolveRequestGroupEventScope(req, undefined);
+  if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const eventId = scope.eventId;
   if (!competitionPlayersBelongToGroup(req.group!.id, eventId, uniqueIds)) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
   }
@@ -294,10 +294,10 @@ matchmakingRouter.post('/rematch', (req, res) => {
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
   if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
 
-  const eventId = trackingEventIdForGroup(req.group!.id);
-  if (!eventId) {
-    return res.status(409).json({ error: 'Tracking läuft derzeit in einem anderen Gruppenkontext.' });
-  }
+  const scope = resolveRequestGroupEventScope(req, undefined);
+  if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const eventId = scope.eventId;
   if (!competitionPlayersBelongToGroup(req.group!.id, eventId, uniqueIds)) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
   }
@@ -404,7 +404,10 @@ function attachMatchResults(draws: ReturnType<typeof parseDrawRow>[]): void {
 // them by matchId.
 matchmakingRouter.get('/history', (req, res) => {
   const { eventId, gameId, limit } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
+  const scope = resolveRequestGroupEventScope(req, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const filterEventId = scope.eventId!;
   const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
 
   const clauses = ['md.group_id = ?', 'md.event_id = ?'];

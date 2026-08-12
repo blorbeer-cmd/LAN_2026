@@ -12,16 +12,16 @@ import {
   getLastPushLogEntry,
   getLastKioskPushLogEntry,
   getCurrentPushLogEntryFor,
-  getPushLogEntriesFor,
   markPushSeen,
   hidePushForPlayer,
-  markAllPushSeen,
-  hideAllPushForPlayer,
   setPushMute,
   isPushMuted,
+  getPushLogEntriesForPlayer,
+  markAllPushSeenForPlayer,
+  hideAllPushForPlayerAcrossEvents,
 } from '../push';
 import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
-import { requireGroupEventAccess, resolveGroupEventScope, resolveRequestGroupEventScope } from '../groupEventScope';
+import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 import { activeGroupPlayers } from '../groupPlayers';
 
 export const pushRouter = Router();
@@ -37,6 +37,7 @@ pushRouter.get('/mute', ...withQueryPlayerIdentity, (req, res) => {
   if (!playerId || !activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   const scope = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!scope.eventId) return res.status(404).json({ error: 'Event nicht gefunden.' });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json({ muted: isPushMuted(req.group!.id, playerId, scope.eventId) });
 });
@@ -56,26 +57,21 @@ pushRouter.put('/mute', ...withBodyPlayerIdentity, (req, res) => {
 // (Durchsage, neue Bestellung, Arcade-Lobby, Abstimmung, Turnier, ...),
 // for the Kiosk screen. null when no applicable push remains.
 pushRouter.get('/last', (req, res) => {
-  // A kiosk uses its bound token scope, mirroring the socket push:sent rules:
-  // an event kiosk stays exact to its event, a group kiosk unions its group
-  // room with its currently tracking event so a live banner does not flicker
-  // away on the next refresh.
+  // A kiosk uses its exact token-bound event, mirroring the socket
+  // push:sent rules. There is no group-wide or event-less kiosk scope.
   if (req.kioskScope) {
     if (req.kioskScope.eventId) {
       return res.json({
-        entry: getLastKioskPushLogEntry(req.group!.id, { includeGroupRoom: false, eventId: req.kioskScope.eventId }),
+        entry: getLastKioskPushLogEntry(req.group!.id, req.kioskScope.eventId),
       });
     }
-    const current = resolveGroupEventScope(req.group!.id, undefined);
     return res.json({
-      entry: getLastKioskPushLogEntry(req.group!.id, {
-        includeGroupRoom: true,
-        eventId: current.ok ? current.eventId : null,
-      }),
+      entry: null,
     });
   }
   const scope = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!scope.eventId) return res.status(404).json({ error: 'Event nicht gefunden.' });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json({ entry: getLastPushLogEntry(req.group!.id, scope.eventId) });
 });
@@ -93,6 +89,7 @@ pushRouter.get('/current', ...withQueryPlayerIdentity, (req, res) => {
   }
   const scope = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!scope.eventId) return res.status(404).json({ error: 'Event nicht gefunden.' });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json({ entry: getCurrentPushLogEntryFor(req.group!.id, scope.eventId, playerId) });
 });
@@ -108,10 +105,7 @@ pushRouter.get('/log', ...withQueryPlayerIdentity, (req, res) => {
   if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
-  const scope = resolveRequestGroupEventScope(req, req.query.eventId);
-  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
-  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
-  const entries = getPushLogEntriesFor(req.group!.id, scope.eventId, playerId);
+  const entries = getPushLogEntriesForPlayer(playerId);
   res.json({
     entries,
     summary: {
@@ -125,31 +119,25 @@ pushRouter.get('/log', ...withQueryPlayerIdentity, (req, res) => {
 // Bulk variants retain the same identity scoping as the single-entry
 // actions. They never mutate another recipient's history.
 pushRouter.post('/seen-all', ...withBodyPlayerIdentity, (req, res) => {
-  const { playerId, eventId } = req.body ?? {};
+  const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
   if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
-  const scope = resolveRequestGroupEventScope(req, eventId);
-  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
-  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
-  res.json({ changed: markAllPushSeen(req.group!.id, scope.eventId, playerId) });
+  res.json({ changed: markAllPushSeenForPlayer(playerId) });
 });
 
 pushRouter.delete('/', ...withBodyPlayerIdentity, (req, res) => {
-  const { playerId, eventId } = req.body ?? {};
+  const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
   if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
-  const scope = resolveRequestGroupEventScope(req, eventId);
-  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
-  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
-  res.json({ changed: hideAllPushForPlayer(req.group!.id, scope.eventId, playerId) });
+  res.json({ changed: hideAllPushForPlayerAcrossEvents(playerId) });
 });
 
 // POST /api/push/:id/seen - mark one notification read for this player. It

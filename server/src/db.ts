@@ -3255,6 +3255,217 @@ registerMigration({
   up: createPlayerEventContext,
 });
 
+// Keeps the evidence needed for personal cross-event history even after an
+// organizer removes the current roster row. Triggers cover every write path,
+// including maintenance scripts and future features that update the roster
+// without going through events.ts.
+function createEventParticipationHistory(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS event_participation_history (
+      event_id      TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id     TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      accepted_at   INTEGER,
+      declined_at   INTEGER,
+      removed_at    INTEGER,
+      updated_at    INTEGER NOT NULL,
+      PRIMARY KEY (event_id, player_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_event_participation_history_player
+      ON event_participation_history(player_id, accepted_at);
+
+    INSERT OR IGNORE INTO event_participation_history
+      (event_id, player_id, accepted_at, declined_at, removed_at, updated_at)
+    SELECT ep.event_id, ep.player_id,
+           CASE WHEN ep.status = 'accepted' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+           CASE WHEN ep.status = 'declined' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+           NULL,
+           CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    FROM event_participants ep;
+
+    CREATE TRIGGER IF NOT EXISTS trg_event_participation_history_insert
+    AFTER INSERT ON event_participants
+    BEGIN
+      INSERT INTO event_participation_history
+        (event_id, player_id, accepted_at, declined_at, removed_at, updated_at)
+      VALUES (
+        NEW.event_id,
+        NEW.player_id,
+        CASE WHEN NEW.status = 'accepted' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+        CASE WHEN NEW.status = 'declined' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+        NULL,
+        CAST(strftime('%s', 'now') AS INTEGER) * 1000
+      )
+      ON CONFLICT(event_id, player_id) DO UPDATE SET
+        accepted_at = CASE
+          WHEN NEW.status = 'accepted' THEN COALESCE(event_participation_history.accepted_at, excluded.updated_at)
+          ELSE event_participation_history.accepted_at
+        END,
+        declined_at = CASE WHEN NEW.status = 'declined' THEN excluded.updated_at ELSE event_participation_history.declined_at END,
+        updated_at = excluded.updated_at;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_event_participation_history_update
+    AFTER UPDATE OF status ON event_participants
+    BEGIN
+      INSERT INTO event_participation_history
+        (event_id, player_id, accepted_at, declined_at, removed_at, updated_at)
+      VALUES (
+        NEW.event_id,
+        NEW.player_id,
+        CASE WHEN NEW.status = 'accepted' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+        CASE WHEN NEW.status = 'declined' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+        NULL,
+        CAST(strftime('%s', 'now') AS INTEGER) * 1000
+      )
+      ON CONFLICT(event_id, player_id) DO UPDATE SET
+        accepted_at = CASE
+          WHEN NEW.status = 'accepted' THEN COALESCE(event_participation_history.accepted_at, excluded.updated_at)
+          ELSE event_participation_history.accepted_at
+        END,
+        declined_at = CASE WHEN NEW.status = 'declined' THEN excluded.updated_at ELSE event_participation_history.declined_at END,
+        updated_at = excluded.updated_at;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_event_participation_history_delete
+    AFTER DELETE ON event_participants
+    WHEN EXISTS (SELECT 1 FROM players p WHERE p.id = OLD.player_id)
+     AND EXISTS (SELECT 1 FROM events e WHERE e.id = OLD.event_id)
+    BEGIN
+      INSERT INTO event_participation_history
+        (event_id, player_id, accepted_at, declined_at, removed_at, updated_at)
+      VALUES (
+        OLD.event_id,
+        OLD.player_id,
+        CASE WHEN OLD.status = 'accepted' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+        CASE WHEN OLD.status = 'declined' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+        CAST(strftime('%s', 'now') AS INTEGER) * 1000,
+        CAST(strftime('%s', 'now') AS INTEGER) * 1000
+      )
+      ON CONFLICT(event_id, player_id) DO UPDATE SET
+        removed_at = excluded.updated_at,
+        updated_at = excluded.updated_at;
+    END;
+  `);
+}
+registerMigration({
+  version: 64,
+  name: 'add event participation history',
+  up: createEventParticipationHistory,
+});
+
+function scopeActiveDraftsPerEvent(): void {
+  db.prepare('UPDATE drafts SET event_id = ? WHERE event_id IS NULL').run(BASE_EVENT_ID);
+  db.exec(`
+    DROP INDEX IF EXISTS idx_drafts_one_active_per_group;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_one_active_per_event
+      ON drafts(group_id, event_id) WHERE status = 'active';
+  `);
+}
+registerMigration({
+  version: 65,
+  name: 'scope active drafts per event',
+  up: scopeActiveDraftsPerEvent,
+});
+
+function scopeMusicSessionsPerEvent(): void {
+  const columns = db.prepare('PRAGMA table_info(music_sessions)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'event_id')) {
+    db.exec('ALTER TABLE music_sessions ADD COLUMN event_id TEXT REFERENCES events(id) ON DELETE RESTRICT');
+  }
+  db.prepare('UPDATE music_sessions SET event_id = ? WHERE event_id IS NULL').run(BASE_EVENT_ID);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_music_sessions_event_status
+      ON music_sessions(event_id, status, started_at);
+    CREATE TRIGGER IF NOT EXISTS trg_music_sessions_event_group_insert
+    BEFORE INSERT ON music_sessions
+    WHEN NEW.event_id IS NULL OR NOT EXISTS (
+      SELECT 1 FROM events e WHERE e.id = NEW.event_id AND e.group_id = NEW.group_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'music session event/group mismatch');
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_music_sessions_event_group_update
+    BEFORE UPDATE OF event_id, group_id ON music_sessions
+    WHEN NEW.event_id IS NULL OR NOT EXISTS (
+      SELECT 1 FROM events e WHERE e.id = NEW.event_id AND e.group_id = NEW.group_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'music session event/group mismatch');
+    END;
+  `);
+}
+registerMigration({
+  version: 66,
+  name: 'scope music sessions per event',
+  up: scopeMusicSessionsPerEvent,
+});
+
+function addEventIdentityToPushLog(): void {
+  const columns = db.prepare('PRAGMA table_info(push_log)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'event_name_snapshot')) {
+    db.exec('ALTER TABLE push_log ADD COLUMN event_name_snapshot TEXT');
+  }
+  if (!columns.some((column) => column.name === 'notification_type')) {
+    db.exec('ALTER TABLE push_log ADD COLUMN notification_type TEXT');
+  }
+  if (!columns.some((column) => column.name === 'target_id')) {
+    db.exec('ALTER TABLE push_log ADD COLUMN target_id TEXT');
+  }
+  db.prepare('UPDATE push_log SET event_id = ? WHERE event_id IS NULL').run(BASE_EVENT_ID);
+  db.exec(`
+    UPDATE push_log
+    SET event_name_snapshot = COALESCE(
+          event_name_snapshot,
+          (SELECT e.name FROM events e WHERE e.id = push_log.event_id),
+          'Allgemein'
+        ),
+        notification_type = COALESCE(notification_type, 'legacy'),
+        target_id = COALESCE(target_id, topic_key, id);
+    INSERT INTO push_mutes (group_id, player_id, event_id, muted_at)
+    SELECT group_id, player_id, '${BASE_EVENT_ID}', MAX(muted_at)
+    FROM push_mutes
+    WHERE event_id IS NULL
+    GROUP BY group_id, player_id
+    ON CONFLICT(group_id, player_id, event_id) DO UPDATE SET
+      muted_at = MAX(push_mutes.muted_at, excluded.muted_at);
+    DELETE FROM push_mutes WHERE event_id IS NULL;
+  `);
+}
+registerMigration({
+  version: 67,
+  name: 'add event identity to push notifications',
+  up: addEventIdentityToPushLog,
+});
+
+function repairParticipationHistoryDeleteTrigger(): void {
+  db.exec('DROP TRIGGER IF EXISTS trg_event_participation_history_delete');
+  createEventParticipationHistory();
+}
+registerMigration({
+  version: 68,
+  name: 'repair participation history account deletion',
+  up: repairParticipationHistoryDeleteTrigger,
+});
+
+registerMigration({
+  version: 69,
+  name: 'repair participation history event deletion',
+  up: repairParticipationHistoryDeleteTrigger,
+});
+
+function enforceParticipantEventVisibility(): void {
+  db.prepare(
+    `UPDATE events
+     SET visibility_scope = 'participants'
+     WHERE id != ? AND visibility_scope != 'participants'`,
+  ).run(OUTSIDE_EVENTS_ID);
+}
+registerMigration({
+  version: 70,
+  name: 'enforce participant event visibility',
+  up: enforceParticipantEventVisibility,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
@@ -3658,11 +3869,9 @@ for (const group of db.prepare('SELECT id FROM groups').all() as Array<{ id: str
 cleanupCatalogGames();
 seedCatalogGames();
 
-// Seed the permanent "außerhalb von Events" sentinel, once. This is the ONLY
-// place that ever creates it: events.ts's getTrackingEventId() is a pure
-// reader that assumes this has already run. Never touched again after —
-// no tracking, no roster, no end date, always present as the fallback
-// event_id for anything recorded while no real event is tracking.
+// Keep the historical "außerhalb von Events" sentinel available only so old
+// databases and migrations can still be read safely. Product code rejects it
+// as a workspace and never writes new fachliche data into it.
 function seedOutsideEventsEvent(): void {
   const exists = db.prepare('SELECT 1 FROM events WHERE id = ?').get(OUTSIDE_EVENTS_ID);
   if (exists) return;

@@ -7,7 +7,7 @@
 // on an agent report that will never come.
 
 import { nanoid } from 'nanoid';
-import { db, ARCADE_GAME_DEFS, OUTSIDE_EVENTS_ID } from '../db';
+import { db, ARCADE_GAME_DEFS } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getLiveBoard } from '../liveStatus';
 import { currentArcadeDataScope } from './arcadeData';
@@ -40,24 +40,28 @@ export function startArcadeSession(playerIds: string[], key: ArcadeGameKey, immu
   const gameId = arcadeGameId(key);
   if (!gameId || playerIds.length === 0) return;
   const scope = immutableScope ?? currentArcadeDataScope(playerIds);
-  if (!scope) return;
+  if (!scope?.eventId) return;
   const now = Date.now();
-  const eventId = scope.eventId ?? OUTSIDE_EVENTS_ID;
+  const eventId = scope.eventId;
   // The Arcade titles themselves are shared system fixtures (games.group_id
   // NULL, see db.ts), but a live session still belongs to whichever group its
-  // players are actually in — same "current tracking context" resolution
-  // agent.ts uses for regular PC games (7.4 in the concept doc).
+  // players are actually in. The immutable event scope is resolved before a
+  // session is opened, just like the active workspace in agent.ts.
   const groupId = scope.groupId;
 
   const touchStatus = db.prepare(
-    `INSERT INTO live_status (player_id, last_seen, manual_note, activity_tracked) VALUES (?, ?, NULL, 0)
-     ON CONFLICT(player_id) DO UPDATE SET last_seen = excluded.last_seen`
+    `INSERT INTO tracking_live_contexts
+       (player_id, group_id, event_id, last_seen, manual_note, activity_tracked)
+     VALUES (?, ?, ?, ?, NULL, 0)
+     ON CONFLICT(player_id, group_id, event_id) DO UPDATE SET last_seen = excluded.last_seen`,
   );
   const alreadyPlaying = db.prepare(
-    'SELECT 1 FROM live_status_games WHERE player_id = ? AND game_id = ? AND group_id = ?',
+    'SELECT 1 FROM tracking_live_games WHERE player_id = ? AND game_id = ? AND group_id = ? AND event_id = ?',
   );
   const insertGame = db.prepare(
-    'INSERT OR IGNORE INTO live_status_games (player_id, game_id, group_id, since, is_foreground) VALUES (?, ?, ?, ?, 1)'
+    `INSERT OR IGNORE INTO tracking_live_games
+       (player_id, game_id, group_id, event_id, since, is_foreground)
+     VALUES (?, ?, ?, ?, ?, 1)`,
   );
   const insertSession = db.prepare(
     'INSERT INTO play_sessions (id, player_id, game_id, group_id, event_id, started_at, ended_at) VALUES (?, ?, ?, ?, ?, ?, NULL)'
@@ -65,14 +69,14 @@ export function startArcadeSession(playerIds: string[], key: ArcadeGameKey, immu
 
   const run = db.transaction(() => {
     for (const playerId of playerIds) {
-      touchStatus.run(playerId, now);
-      const already = alreadyPlaying.get(playerId, gameId, groupId);
-      insertGame.run(playerId, gameId, groupId, now);
+      touchStatus.run(playerId, groupId, eventId, now);
+      const already = alreadyPlaying.get(playerId, gameId, groupId, eventId);
+      insertGame.run(playerId, gameId, groupId, eventId, now);
       if (!already) insertSession.run(nanoid(), playerId, gameId, groupId, eventId, now);
     }
   });
   run();
-  broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+  broadcast(Events.liveStatusChanged, getLiveBoard(groupId, eventId), { groupId, eventId });
 }
 
 // Ends the arcade session for the given real players — called on every match
@@ -82,22 +86,27 @@ export function endArcadeSession(playerIds: string[], key: ArcadeGameKey, immuta
   const gameId = arcadeGameId(key);
   if (!gameId || playerIds.length === 0) return;
   const scope = immutableScope ?? currentArcadeDataScope(playerIds);
-  if (!scope) return;
+  if (!scope?.eventId) return;
   const now = Date.now();
 
-  const closeGame = db.prepare('DELETE FROM live_status_games WHERE player_id = ? AND game_id = ? AND group_id = ?');
+  const closeGame = db.prepare(
+    'DELETE FROM tracking_live_games WHERE player_id = ? AND game_id = ? AND group_id = ? AND event_id = ?',
+  );
   const closeSession = db.prepare(
     `UPDATE play_sessions SET ended_at = ?
-     WHERE player_id = ? AND game_id = ? AND group_id = ? AND ended_at IS NULL`
+     WHERE player_id = ? AND game_id = ? AND group_id = ? AND event_id = ? AND ended_at IS NULL`,
   );
   const run = db.transaction(() => {
     for (const playerId of playerIds) {
-      closeGame.run(playerId, gameId, scope.groupId);
-      closeSession.run(now, playerId, gameId, scope.groupId);
+      closeGame.run(playerId, gameId, scope.groupId, scope.eventId);
+      closeSession.run(now, playerId, gameId, scope.groupId, scope.eventId);
     }
   });
   run();
-  broadcast(Events.liveStatusChanged, getLiveBoard(scope.groupId), { groupId: scope.groupId });
+  broadcast(Events.liveStatusChanged, getLiveBoard(scope.groupId, scope.eventId), {
+    groupId: scope.groupId,
+    eventId: scope.eventId,
+  });
 }
 
 // Every player currently in an open arcade session, across all games.
@@ -106,7 +115,7 @@ function activeArcadePlayerIds(): string[] {
   if (ids.length === 0) return [];
   const placeholders = ids.map(() => '?').join(',');
   const rows = db
-    .prepare(`SELECT DISTINCT player_id FROM live_status_games WHERE game_id IN (${placeholders})`)
+    .prepare(`SELECT DISTINCT player_id FROM tracking_live_games WHERE game_id IN (${placeholders})`)
     .all(...ids) as Array<{ player_id: string }>;
   return rows.map((r) => r.player_id);
 }
@@ -120,17 +129,19 @@ export function startArcadeHeartbeat(): void {
     const ids = activeArcadePlayerIds();
     if (ids.length === 0) return;
     const now = Date.now();
-    const touch = db.prepare('UPDATE live_status SET last_seen = ? WHERE player_id = ?');
+    const touch = db.prepare('UPDATE tracking_live_contexts SET last_seen = ? WHERE player_id = ?');
     const run = db.transaction(() => {
       for (const id of ids) touch.run(now, id);
     });
     run();
-    const groups = db.prepare(
-      `SELECT DISTINCT lsg.group_id AS groupId
-       FROM live_status_games lsg WHERE lsg.game_id IN (${ids.map(() => '?').join(',')})`,
-    ).all(...ids) as Array<{ groupId: string }>;
-    for (const { groupId } of groups) {
-      broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+    const scopes = db.prepare(
+      `SELECT DISTINCT tlg.group_id AS groupId, tlg.event_id AS eventId
+       FROM tracking_live_games tlg
+       JOIN games g ON g.id = tlg.game_id
+       WHERE g.arcade_key IS NOT NULL`,
+    ).all() as Array<{ groupId: string; eventId: string }>;
+    for (const { groupId, eventId } of scopes) {
+      broadcast(Events.liveStatusChanged, getLiveBoard(groupId, eventId), { groupId, eventId });
     }
   }, 20_000).unref();
 }

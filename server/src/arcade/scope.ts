@@ -24,12 +24,6 @@ function activeGroupMember(groupId: string, playerId: unknown): boolean {
 
 function activeEventAccess(groupId: string, eventId: string, playerId: unknown): boolean {
   if (!activeGroupMember(groupId, playerId)) return false;
-  const membership = db.prepare(
-    "SELECT role FROM group_memberships WHERE group_id = ? AND player_id = ? AND status = 'active'",
-  ).get(groupId, playerId) as { role: string } | undefined;
-  if (membership?.role === 'admin' || membership?.role === 'owner') {
-    return Boolean(db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId));
-  }
   const event = db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId);
   return typeof playerId === 'string' && Boolean(event) && isParticipant(eventId, playerId);
 }
@@ -41,7 +35,7 @@ export function socketArcadeScope(socket: Socket, playerId?: unknown): ArcadeSco
   if (!groupId || !activeGroupMember(groupId, authPlayerId)) return null;
   if (playerId !== undefined && playerId !== authPlayerId) return null;
   const eventId = typeof socket.data.eventId === 'string' && socket.data.eventId ? socket.data.eventId : null;
-  if (eventId && !activeEventAccess(groupId, eventId, authPlayerId)) return null;
+  if (!eventId || !activeEventAccess(groupId, eventId, authPlayerId)) return null;
   return { groupId, eventId };
 }
 

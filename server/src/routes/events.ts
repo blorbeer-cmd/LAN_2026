@@ -1,13 +1,12 @@
 // Event management: create/edit events, manage each one's roster, and
-// control tracking (at most one event tracks at a time — see events.ts for
-// why). Ending an event is separate from just pausing its tracking.
+// control tracking independently for the requesting account's selected
+// account. Ending an event is separate from just pausing its tracking.
 
 import { Router, type Request, type Response } from 'express';
 import {
   cancelEvent,
   listEvents,
   getEvent,
-  getTrackingEvent,
   createEvent,
   updateEvent,
   startTracking,
@@ -25,17 +24,16 @@ import {
   type EventRow,
 } from '../events';
 import { BASE_EVENT_ID, db } from '../db';
-import { broadcast, Events } from '../realtime';
+import { broadcast, Events, switchPlayerEventScope } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { isNonEmptyString } from '../validation';
 import { requireConfiguredGroupMembership, requireGroupRole, resolveGroupResource } from '../groupAuthorization';
-import { activePlayerGroupIds } from '../groups';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { setEventTrackingConsent } from '../trackingContexts';
 import { activeGroupPlayers } from '../groupPlayers';
 import { createPersistentBackup } from '../backupService';
-import { requestCanAccessGroupEvent } from '../groupEventScope';
+import { eventAccessLevel, getOrRepairActiveEvent } from '../eventContext';
 
 export const eventsRouter = Router();
 
@@ -44,14 +42,12 @@ let trackingStartQueue: Promise<void> = Promise.resolve();
 async function startTrackingWithBackup(id: string) {
   const operation = async () => {
     const event = getEvent(id);
-    const current = getTrackingEvent();
     const canStart = Boolean(
       event &&
       event.id !== OUTSIDE_EVENTS_ID &&
       !event.ended_at &&
       event.status !== 'cancelled' &&
-      !event.tracking_enabled &&
-      (current.id === OUTSIDE_EVENTS_ID || current.id === event.id),
+      !event.tracking_enabled,
     );
     if (canStart) {
       try {
@@ -103,38 +99,83 @@ function requestPlayerId(req: Request): string | undefined {
   return req.player?.id;
 }
 
-// GET /api/events - every real event plus the "außerhalb von Events"
-// sentinel (flagged via isOutsideEvents) so filter dropdowns elsewhere in
-// the app can just iterate this one list.
+function activeContextPlayerIds(eventId: string): string[] {
+  return (
+    db.prepare('SELECT player_id FROM player_event_contexts WHERE active_event_id = ?').all(eventId) as Array<{
+      player_id: string;
+    }>
+  ).map((row) => row.player_id);
+}
+
+function serializeEventSummary(event: EventRow) {
+  return {
+    id: event.id,
+    name: event.name,
+    startsAt: event.starts_at,
+    endsAt: event.ends_at,
+    location: event.location,
+    description: event.description,
+    status: event.status,
+    isBase: event.id === BASE_EVENT_ID,
+  };
+}
+
+// GET /api/events - the account's active workspace, accepted workspaces and
+// invitation teasers. Admins additionally receive the full management list.
 eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
-  const trackingId = getTrackingEvent().id;
-  const real = listEvents(req.group!.id).map((e) => ({
-    ...serializeEvent(e),
-    isActive: e.id === trackingId,
-    canAccess: requestCanAccessGroupEvent(req, e.id),
-  }));
-  const outside = serializeEvent(getEvent(OUTSIDE_EVENTS_ID))!;
-  res.json([
-    ...real,
-    { ...outside, groupId: req.group!.id, isActive: trackingId === OUTSIDE_EVENTS_ID, canAccess: true },
-  ]);
+  const playerId = req.player!.id;
+  const activeEvent = getOrRepairActiveEvent(playerId);
+  const availableEvents = db
+    .prepare(
+      `SELECT e.*
+       FROM events e
+       JOIN event_participants ep ON ep.event_id = e.id
+       WHERE ep.player_id = ? AND ep.status = 'accepted'
+         AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
+       ORDER BY e.id = ? DESC, e.starts_at DESC, e.name COLLATE NOCASE`,
+    )
+    .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id, BASE_EVENT_ID) as EventRow[];
+  const invitations = db
+    .prepare(
+      `SELECT e.*
+       FROM events e
+       JOIN event_participants ep ON ep.event_id = e.id
+       WHERE ep.player_id = ? AND ep.status = 'invited'
+         AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
+       ORDER BY e.starts_at, e.name COLLATE NOCASE`,
+    )
+    .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
+  const canManage = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
+  const managedEvents = canManage ? listEvents(req.group!.id).map((event) => serializeEvent(event)) : undefined;
+  res.json({
+    activeEvent: serializeEventSummary(activeEvent as EventRow),
+    availableEvents: availableEvents.map(serializeEventSummary),
+    invitations: invitations.map((event) => ({ ...serializeEventSummary(event), participationStatus: 'invited' })),
+    ...(managedEvents ? { managedEvents } : {}),
+  });
 });
 
-// GET /api/events/active - the event currently tracking, or the "außerhalb
-// von Events" sentinel if none is.
+// GET /api/events/active - this account's persisted workspace.
 eventsRouter.get('/active', requireConfiguredGroupMembership, (req, res) => {
-  const tracking = getTrackingEvent();
-  if (tracking.id !== OUTSIDE_EVENTS_ID && tracking.group_id === req.group!.id) {
-    res.json(serializeEvent(tracking));
-    return;
-  }
-  res.json({ ...serializeEvent(getEvent(OUTSIDE_EVENTS_ID)), groupId: req.group!.id });
+  res.json(serializeEventSummary(getOrRepairActiveEvent(req.player!.id) as EventRow));
 });
 
 eventsRouter.get('/:id', resolveEvent, (req, res) => {
   const event = req.groupResource as EventRow;
   if (event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
-  res.json(serializeEvent(event));
+  const access = eventAccessLevel(event.id, req.player!.id, req.groupMembership!.role);
+  if (access === 'none') return res.status(404).json({ error: 'Event nicht gefunden.' });
+  if (access === 'teaser') {
+    return res.json({ ...serializeEventSummary(event), participationStatus: 'invited' });
+  }
+  if (access === 'participant') {
+    return res.json({
+      ...serializeEventSummary(event),
+      participantIds: getParticipantIds(event.id),
+      trackingEnabled: Boolean(event.tracking_enabled),
+    });
+  }
+  return res.json(serializeEvent(event));
 });
 
 // Event tracking is an explicit personal decision, separate from an
@@ -144,13 +185,16 @@ function updateEventTrackingConsent(req: Request, res: Response, granted: boolea
   if (!event || event.id === OUTSIDE_EVENTS_ID) { res.status(404).json({ error: 'Event nicht gefunden.' }); return; }
   const playerId = requestPlayerId(req);
   if (!playerId) { res.status(400).json({ error: 'Spieleridentität ist erforderlich.' }); return; }
-  if (granted && event.visibility_scope === 'participants' && !isParticipant(event.id, playerId)) {
+  if (granted && !isParticipant(event.id, playerId)) {
     res.status(409).json({ error: 'Tracking kann erst nach Annahme der Event-Einladung aktiviert werden.' });
     return;
   }
   setEventTrackingConsent(event.id, event.group_id!, playerId, granted);
   if (!granted) {
-    broadcast(Events.liveStatusChanged, getLiveBoard(event.group_id!), { groupId: event.group_id! });
+    broadcast(Events.liveStatusChanged, getLiveBoard(event.group_id!, event.id), {
+      groupId: event.group_id!,
+      eventId: event.id,
+    });
   }
   res.json({ ok: true, eventId: event.id, accepted: granted });
 }
@@ -239,14 +283,17 @@ eventsRouter.delete('/:id/participants/:playerId', resolveEvent, requireGroupRol
   if (event.id === BASE_EVENT_ID) {
     return res.status(409).json({ error: 'Teilnehmer des Basis-Events können nicht entfernt werden.' });
   }
+  const wasActiveContext = activeContextPlayerIds(event.id).includes(req.params.playerId);
   const previousStatus = removeEventParticipant(event.id, req.params.playerId);
   if (previousStatus === null) return res.status(404).json({ error: 'Event-Teilnehmer nicht gefunden.' });
+  if (wasActiveContext) switchPlayerEventScope(req.params.playerId, req.group!.id, BASE_EVENT_ID);
 
-  if (previousStatus === 'accepted' && getTrackingEvent().id === event.id) {
-    clearPlayerLiveStatus(req.params.playerId);
-    for (const groupId of new Set([req.group!.id, ...activePlayerGroupIds(req.params.playerId)])) {
-      broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
-    }
+  if (previousStatus === 'accepted' && event.tracking_enabled) {
+    clearPlayerLiveStatus(req.params.playerId, Date.now(), event.id);
+    broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id, event.id), {
+      groupId: req.group!.id,
+      eventId: event.id,
+    });
   }
   writeAdminAudit({
     actorPlayerId: req.player?.id,
@@ -318,8 +365,8 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
   if (!parsedLocation.ok) return res.status(400).json({ error: parsedLocation.error });
   const parsedDescription = parseOptionalText(description, 500, 'description');
   if (!parsedDescription.ok) return res.status(400).json({ error: parsedDescription.error });
-  if (visibilityScope !== undefined && !['group', 'participants', 'public'].includes(visibilityScope)) {
-    return res.status(400).json({ error: 'visibilityScope ist ungültig.' });
+  if (visibilityScope !== undefined && visibilityScope !== 'participants') {
+    return res.status(400).json({ error: 'Events sind ausschließlich für angenommene Teilnehmende sichtbar.' });
   }
 
   const event = createEvent(name.trim(), {
@@ -329,7 +376,6 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
     location: parsedLocation.value,
     description: parsedDescription.value,
   });
-  if (visibilityScope !== undefined) db.prepare('UPDATE events SET visibility_scope = ? WHERE id = ?').run(visibilityScope, event.id);
 
   writeAdminAudit({
     actorPlayerId: req.player?.id,
@@ -392,8 +438,9 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     fields.description = parsed.value;
   }
   if (visibilityScope !== undefined) {
-    if (!['group', 'participants', 'public'].includes(visibilityScope)) return res.status(400).json({ error: 'visibilityScope ist ungültig.' });
-    fields.visibilityScope = visibilityScope;
+    if (visibilityScope !== 'participants') {
+      return res.status(400).json({ error: 'Events sind ausschließlich für angenommene Teilnehmende sichtbar.' });
+    }
   }
 
   const updated = updateEvent(req.params.id, fields);
@@ -408,8 +455,8 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
   res.json(serializeEvent(updated));
 });
 
-// POST /api/events/:id/tracking/start - 409s (with the conflicting event's
-// id/name) if a different event is already tracking.
+// POST /api/events/:id/tracking/start - starts this event's independent
+// tracking window. Overlapping events may track simultaneously.
 eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin'), async (req, res) => {
   const attempt = await startTrackingWithBackup(req.params.id);
   if ('backupError' in attempt) {
@@ -421,18 +468,7 @@ eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin')
   }
   const { result } = attempt;
   if (!result.ok) {
-    const status = result.code === 'not_found' ? 404 : result.code === 'conflict' ? 409 : 400;
-    const conflict = result.conflictEventId ? getEvent(result.conflictEventId) : undefined;
-    const visibleConflict = conflict?.group_id === req.group!.id;
-    return res.status(status).json({
-      error:
-        result.code === 'conflict' && !visibleConflict
-          ? 'Tracking läuft bereits in einem anderen Gruppenkontext.'
-          : result.error,
-      ...(visibleConflict
-        ? { conflictEventId: result.conflictEventId, conflictEventName: result.conflictEventName }
-        : {}),
-    });
+    return res.status(result.code === 'not_found' ? 404 : 400).json({ error: result.error });
   }
   writeAdminAudit({
     actorPlayerId: req.player?.id,
@@ -442,7 +478,10 @@ eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin')
     targetId: req.params.id,
   });
   broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id, req.params.id), {
+    groupId: req.group!.id,
+    eventId: req.params.id,
+  });
   res.json(serializeEvent(result.event));
 });
 
@@ -459,7 +498,10 @@ eventsRouter.post('/:id/tracking/stop', resolveEvent, requireGroupRole('admin'),
     targetId: req.params.id,
   });
   broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id, req.params.id), {
+    groupId: req.group!.id,
+    eventId: req.params.id,
+  });
   res.json(serializeEvent(updated));
 });
 
@@ -469,8 +511,10 @@ eventsRouter.post('/:id/end', resolveEvent, requireGroupRole('admin'), (req, res
   if (req.params.id === BASE_EVENT_ID) {
     return res.status(409).json({ error: 'Das dauerhaft offene Basis-Event kann nicht beendet werden.' });
   }
+  const affectedPlayers = activeContextPlayerIds(req.params.id);
   const updated = endEvent(req.params.id);
   if (!updated) return res.status(404).json({ error: 'Event nicht gefunden.' });
+  for (const playerId of affectedPlayers) switchPlayerEventScope(playerId, req.group!.id, BASE_EVENT_ID);
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.player ? req.group!.id : undefined,
@@ -479,7 +523,10 @@ eventsRouter.post('/:id/end', resolveEvent, requireGroupRole('admin'), (req, res
     targetId: req.params.id,
   });
   broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id, req.params.id), {
+    groupId: req.group!.id,
+    eventId: req.params.id,
+  });
   res.json(serializeEvent(updated));
 });
 
@@ -516,19 +563,14 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
   }
 
   const previousIds = new Set(getParticipantIds(req.params.id));
+  const activeBefore = new Set(activeContextPlayerIds(req.params.id));
   setParticipants(req.params.id, uniqueIds);
-  const trackingEvent = getTrackingEvent();
-  const removedIds =
-    trackingEvent.id === req.params.id ? [...previousIds].filter((playerId) => !uniqueIds.includes(playerId)) : [];
-  // clearPlayerLiveStatus wipes the player's tracking rows across every group,
-  // not just this event's group, so every one of those groups needs a live
-  // refresh — otherwise the offline sweep will not include them again and
-  // their clients keep showing the player as live.
-  const liveRefreshGroupIds = new Set<string>([req.group!.id]);
-  for (const playerId of removedIds) {
-    for (const gid of activePlayerGroupIds(playerId)) liveRefreshGroupIds.add(gid);
-    clearPlayerLiveStatus(playerId);
+  const rosterRemovedIds = [...previousIds].filter((playerId) => !uniqueIds.includes(playerId));
+  for (const playerId of rosterRemovedIds) {
+    if (activeBefore.has(playerId)) switchPlayerEventScope(playerId, req.group!.id, BASE_EVENT_ID);
   }
+  const removedIds = event.tracking_enabled ? rosterRemovedIds : [];
+  for (const playerId of removedIds) clearPlayerLiveStatus(playerId, Date.now(), event.id);
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.player ? req.group!.id : undefined,
@@ -539,9 +581,10 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
   });
   broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
   if (removedIds.length > 0) {
-    for (const gid of liveRefreshGroupIds) {
-      broadcast(Events.liveStatusChanged, getLiveBoard(gid), { groupId: gid });
-    }
+    broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id, event.id), {
+      groupId: req.group!.id,
+      eventId: event.id,
+    });
   }
   res.json(serializeEvent(getEvent(req.params.id)));
 });
@@ -550,8 +593,10 @@ eventsRouter.delete('/:id', resolveEvent, requireGroupRole('admin'), requireRece
   if (req.params.id === BASE_EVENT_ID) {
     return res.status(409).json({ error: 'Das dauerhaft offene Basis-Event kann nicht abgesagt werden.' });
   }
+  const affectedPlayers = activeContextPlayerIds(req.params.id);
   const cancelled = cancelEvent(req.params.id);
   if (!cancelled) return res.status(409).json({ error: 'Laufende oder beendete Events können nicht abgesagt werden.' });
+  for (const playerId of affectedPlayers) switchPlayerEventScope(playerId, req.group!.id, BASE_EVENT_ID);
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.player ? req.group!.id : undefined,

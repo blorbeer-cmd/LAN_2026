@@ -3,7 +3,7 @@
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { db, OUTSIDE_EVENTS_ID } from '../db';
+import { db } from '../db';
 import { broadcast, disconnectPlayerSockets, Events } from '../realtime';
 import { isNonEmptyString, isHexColor, isValidAvatar } from '../validation';
 import { formatDurationMs, computePlaytime, type PlaySession } from '../playtime';
@@ -17,6 +17,7 @@ import { voidOutstandingInvites } from '../invites';
 import { activeGroupPlayers } from '../groupPlayers';
 import { activePlayerGroupIds, ensureDefaultGroupMembership, syncInstanceAdminForRole } from '../groups';
 import { resolveAccessibleGroupEventScope } from '../groupEventScope';
+import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
 import { getOrRepairActiveEvent } from '../eventContext';
 
 export const playersRouter = Router();
@@ -575,20 +576,16 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const { eventId } = req.query;
-  const scope = resolveAccessibleGroupEventScope(req, res, eventId);
-  if (!scope) return;
-  const filterEventId = scope.eventId;
+  const scope = resolveAnalyticsEvents(req, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  const filterEventId = scope.explicitEventId;
   const now = Date.now();
 
   const ownClauses = ['player_id = ?', 'group_id = ?'];
   const ownParams: string[] = [player.id, req.group!.id];
-  if (filterEventId) {
-    ownClauses.push('event_id = ?');
-    ownParams.push(filterEventId);
-  } else if (scope.usedGroupRoomFallback) {
-    ownClauses.push('event_id = ?');
-    ownParams.push(OUTSIDE_EVENTS_ID);
-  }
+  const ownEventFilter = eventIdSql('event_id', scope.eventIds);
+  ownClauses.push(ownEventFilter.clause);
+  ownParams.push(...ownEventFilter.params);
   const ownRows = db
     .prepare(
       `SELECT player_id, game_id, event_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${ownClauses.join(' AND ')}`,
@@ -682,13 +679,9 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
   // relative to the rest of the group), then filtered down to this player's.
   const allClauses: string[] = ['group_id = ?'];
   const allParams: string[] = [req.group!.id];
-  if (filterEventId) {
-    allClauses.push('event_id = ?');
-    allParams.push(filterEventId);
-  } else if (scope.usedGroupRoomFallback) {
-    allClauses.push('event_id = ?');
-    allParams.push(OUTSIDE_EVENTS_ID);
-  }
+  const allEventFilter = eventIdSql('event_id', scope.eventIds);
+  allClauses.push(allEventFilter.clause);
+  allParams.push(...allEventFilter.params);
   const allRows = db
     .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${allClauses.join(' AND ')}`)
     .all(...allParams) as SessionRow[];
@@ -717,6 +710,7 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
     playerId: player.id,
     playerName: player.name,
     eventId: filterEventId,
+    eventIds: scope.eventIds,
     totalMs,
     formatted: formatDurationMs(totalMs),
     activeMs,

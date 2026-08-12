@@ -643,10 +643,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 63);
+  assert.equal(migrations.length, 70);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 63 }, (_, index) => index + 1),
+    Array.from({ length: 70 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -729,9 +729,9 @@ test('music reconnect migrations preserve existing sessions and are restart-safe
     .run('music-migration-player', 'Music Migration Player', 'music-migration-key', now);
   fixture.prepare(
     `INSERT INTO music_sessions
-       (id, group_id, host_player_id, device_id, device_name, status, current_track_uri,
+       (id, group_id, event_id, host_player_id, device_id, device_name, status, current_track_uri,
         current_track_json, playback_is_playing, playback_progress_ms, playback_updated_at, started_at)
-     VALUES (?, 'default-group', ?, 'speaker-1', 'LAN Boxen', 'active', ?, ?, 1, 1234, ?, ?)`,
+     VALUES (?, 'default-group', 'instance-base-event', ?, 'speaker-1', 'LAN Boxen', 'active', ?, ?, 1, 1234, ?, ?)`,
   ).run(
     'music-migration-session',
     'music-migration-player',
@@ -1166,8 +1166,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 63 }, (_, index) => index + 1),
-    'every version 1..63 runs exactly once',
+    Array.from({ length: 70 }, (_, index) => index + 1),
+    'every version 1..70 runs exactly once',
   );
 });
 
@@ -1190,6 +1190,33 @@ test('migration 62 backfills existing players as completed and is restart-safe',
   assert.deepEqual(
     migrated.prepare('SELECT status, last_core_step, rating_status FROM player_onboarding WHERE player_id = ?').get('legacy-onboarding-player'),
     { status: 'completed', last_core_step: 9, rating_status: 'completed' },
+  );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 70 removes legacy group/public event visibility', () => {
+  const dbFile = makeTempDbPath('participant-event-visibility');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture
+    .prepare(
+      `INSERT INTO events
+         (id, name, starts_at, group_id, status, visibility_scope)
+       VALUES ('legacy-group-event', 'Legacy Group Event', 0, 'default-group', 'published', 'group')`,
+    )
+    .run();
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 70').run();
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated.prepare('SELECT visibility_scope FROM events WHERE id = ?').get('legacy-group-event'),
+    { visibility_scope: 'participants' },
   );
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });

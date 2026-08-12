@@ -6,7 +6,7 @@ import path from 'path';
 import request from 'supertest';
 import { config } from '../config';
 import { db } from '../db';
-import { createTestApp } from './testApp';
+import { createTestApp, enableTestTracking } from './testApp';
 
 const app = createTestApp();
 
@@ -24,6 +24,7 @@ test('GET /api/admin/readiness reports all operational checks', async () => {
 
 test('readiness exposes missing process mappings and agent version drift', async () => {
   const player = await request(app).post('/api/players').send({ name: 'Readiness Agent' });
+  enableTestTracking(player.body.id);
   await request(app)
     .post('/api/agent/report')
     .set('x-api-key', player.body.api_key)

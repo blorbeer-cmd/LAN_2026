@@ -8,8 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createTestApp } from './testApp';
-import { db } from '../db';
-import { getTrackingEventId } from '../events';
+import { BASE_EVENT_ID, db } from '../db';
 
 const app = createTestApp();
 
@@ -28,6 +27,7 @@ test('POST /api/admin/test-users validates count', async () => {
 });
 
 test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, and sessions', async () => {
+  assert.equal((await request(app).post(`/api/events/${BASE_EVENT_ID}/tracking/start`).send({})).status, 200);
   const res = await request(app).post('/api/admin/test-users').send({ count: 4 });
   assert.equal(res.status, 201);
   assert.equal(res.body.created.length, 4);
@@ -60,15 +60,15 @@ test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, a
   // ...and same-edge adjacency produced auto seat neighbors ("Sichtbare
   // Monitore"). With 4 players on empty default sides (2 seats each), at
   // least one adjacent pair must exist.
-  const eventId = getTrackingEventId();
+  const eventId = BASE_EVENT_ID;
   const autoRows = db
-    .prepare("SELECT player_id, neighbor_id FROM seat_neighbors WHERE group_id = 'default-group' AND event_id IS NULL AND source = 'auto'")
-    .all() as Array<{ player_id: string; neighbor_id: string }>;
+    .prepare("SELECT player_id, neighbor_id FROM seat_neighbors WHERE group_id = 'default-group' AND event_id = ? AND source = 'auto'")
+    .all(eventId) as Array<{ player_id: string; neighbor_id: string }>;
   assert.ok(autoRows.some((r) => ids.includes(r.player_id) && ids.includes(r.neighbor_id)));
   // Plus the deliberately-manual extra pair from the seeder.
   const manualRows = db
-    .prepare("SELECT player_id FROM seat_neighbors WHERE group_id = 'default-group' AND event_id IS NULL AND source = 'manual'")
-    .all() as Array<{ player_id: string }>;
+    .prepare("SELECT player_id FROM seat_neighbors WHERE group_id = 'default-group' AND event_id = ? AND source = 'manual'")
+    .all(eventId) as Array<{ player_id: string }>;
   assert.ok(manualRows.some((r) => ids.includes(r.player_id)));
 
   // Finished play sessions in the tracking event for everyone.

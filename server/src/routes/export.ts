@@ -8,12 +8,22 @@ import { db } from '../db';
 import { computeStandings, type MatchForScoring } from '../leaderboard';
 import { computePlaytime, aggregateByGame, formatDurationMs, type PlaySession } from '../playtime';
 import { computeAwards } from '../awards';
-import { getTrackingEventId } from '../events';
+import { getOrRepairActiveEvent } from '../eventContext';
 import { getCompletedTournamentSummaries } from './tournamentChampion';
 import { renderExportPdf } from '../pdfExport';
 import PDFDocument from 'pdfkit';
+import { resolveAnalyticsEvents } from '../analyticsEventScope';
 
 export const exportRouter = Router();
+
+function exportEventId(req: Parameters<typeof resolveAnalyticsEvents>[0], requested: unknown): string | null {
+  if (typeof requested === 'string' && requested) {
+    const scope = resolveAnalyticsEvents(req, requested);
+    return scope.ok ? scope.eventIds[0] ?? null : null;
+  }
+  if (req.kioskScope?.eventId) return req.kioskScope.eventId;
+  return req.player ? getOrRepairActiveEvent(req.player.id).id : null;
+}
 
 interface PlayerRow {
   id: string;
@@ -368,7 +378,8 @@ export function buildExportSnapshot(filterEventId: string, groupId: string): Exp
 // default, or an explicit ?eventId=).
 exportRouter.get('/', (req, res) => {
   const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
+  const filterEventId = exportEventId(req, eventId);
+  if (!filterEventId) return res.status(404).json({ error: 'Event nicht gefunden.' });
   const snapshot = buildExportSnapshot(filterEventId, req.group!.id);
   if (!snapshot) return res.status(404).json({ error: 'Event nicht gefunden.' });
   res.json(snapshot);
@@ -382,7 +393,8 @@ function sanitizeForFilename(name: string): string {
 // keepsake instead of raw JSON.
 exportRouter.get('/pdf', (req, res) => {
   const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
+  const filterEventId = exportEventId(req, eventId);
+  if (!filterEventId) return res.status(404).json({ error: 'Event nicht gefunden.' });
   const snapshot = buildExportSnapshot(filterEventId, req.group!.id);
   if (!snapshot) return res.status(404).json({ error: 'Event nicht gefunden.' });
 

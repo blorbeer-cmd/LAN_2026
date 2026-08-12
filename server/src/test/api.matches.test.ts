@@ -338,7 +338,8 @@ test('GET /api/matches filters by eventId', async () => {
   assert.ok(filtered.body.some((m: { id: string }) => m.id === created.body.id));
 
   const noneForFakeEvent = await request(app).get('/api/matches?eventId=nonexistent-event');
-  assert.deepEqual(noneForFakeEvent.body, []);
+  assert.equal(noneForFakeEvent.status, 404);
+  assert.deepEqual(noneForFakeEvent.body, { error: 'Event nicht gefunden.' });
 });
 
 test('PATCH /api/matches/:id rejects an invalid gameId', async () => {

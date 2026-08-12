@@ -82,23 +82,26 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal(repeatedInvite.body.status, 'invited');
 
       const invitedList = await call(app, 'get', '/api/events', bob);
-      const invitedEvent = invitedList.body.find((entry) => entry.id === event.body.id);
-      assert.deepEqual(invitedEvent.participantIds, []);
-      assert.deepEqual(invitedEvent.participants, [{ playerId: bob.account.id, status: 'invited' }]);
+      const invitedEvent = invitedList.body.invitations.find((entry) => entry.id === event.body.id);
+      assert.equal(invitedEvent.participationStatus, 'invited');
+      assert.equal('participantIds' in invitedEvent, false);
+      assert.equal('participants' in invitedEvent, false);
       assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, bob)).status, 404);
-      assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, owner)).status, 200);
+      assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, owner)).status, 404);
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/tracking-consent', bob)).status, 409);
 
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', carol)).status, 409);
-      assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', bob)).status, 200);
-      assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', bob)).status, 200);
+      const firstAccept = await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', bob);
+      assert.equal(firstAccept.status, 200, JSON.stringify(firstAccept.body));
+      const repeatedAccept = await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', bob);
+      assert.equal(repeatedAccept.status, 200, JSON.stringify(repeatedAccept.body));
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/tracking-consent', bob)).status, 200);
       assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, bob)).status, 200);
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/invitation/decline', bob)).status, 409);
 
       const acceptedEvent = (await call(app, 'get', '/api/events/' + event.body.id, bob)).body;
       assert.deepEqual(acceptedEvent.participantIds, [bob.account.id]);
-      assert.deepEqual(acceptedEvent.participants, [{ playerId: bob.account.id, status: 'accepted' }]);
+      assert.equal('participants' in acceptedEvent, false);
 
       const removed = await call(app, 'delete', '/api/events/' + event.body.id + '/participants/' + bob.account.id, owner);
       assert.equal(removed.status, 204);
@@ -112,9 +115,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal((await call(app, 'post', '/api/events/' + declineEvent.body.id + '/invitation/decline', bob)).status, 200);
       assert.equal((await call(app, 'post', '/api/events/' + declineEvent.body.id + '/invitation/decline', bob)).status, 200);
       assert.equal((await call(app, 'post', '/api/events/' + declineEvent.body.id + '/invitation/accept', bob)).status, 409);
-      const declined = (await call(app, 'get', '/api/events/' + declineEvent.body.id, bob)).body;
-      assert.deepEqual(declined.participantIds, []);
-      assert.equal(declined.participants[0].status, 'declined');
+      assert.equal((await call(app, 'get', '/api/events/' + declineEvent.body.id, bob)).status, 404);
       assert.equal((await call(app, 'get', '/api/seating?eventId=' + declineEvent.body.id, bob)).status, 404);
 
       assert.equal((await call(app, 'post', '/api/events/' + declineEvent.body.id + '/invitations', owner).send({ playerId: bob.account.id })).status, 201);
@@ -124,7 +125,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       ]);
       assert.equal(race.filter((response) => response.status === 200).length, 1, race.map((response) => response.status).join(','));
       assert.equal(race.filter((response) => response.status === 409).length, 1);
-      const finalEvent = (await call(app, 'get', '/api/events/' + declineEvent.body.id, bob)).body;
+      const finalEvent = (await call(app, 'get', '/api/events/' + declineEvent.body.id, owner)).body;
       const finalStatus = finalEvent.participants.find((entry) => entry.playerId === bob.account.id).status;
       assert.ok(['accepted', 'declined'].includes(finalStatus));
       assert.equal(finalEvent.participantIds.includes(bob.account.id), finalStatus === 'accepted');
@@ -143,10 +144,11 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       const bobEvents = (await call(app, 'get', '/api/events', bob)).body;
       const carolEvents = (await call(app, 'get', '/api/events', carol)).body;
       const ownerEvents = (await call(app, 'get', '/api/events', owner)).body;
-      assert.equal(bobEvents.find((event) => event.id === scopeEvent.body.id).canAccess, false);
-      assert.equal(carolEvents.find((event) => event.id === scopeEvent.body.id).canAccess, false);
-      assert.equal(ownerEvents.find((event) => event.id === scopeEvent.body.id).canAccess, true);
-      assert.equal(bobEvents.find((event) => event.isOutsideEvents).canAccess, true);
+      assert.ok(bobEvents.invitations.some((event) => event.id === scopeEvent.body.id));
+      assert.ok(!carolEvents.availableEvents.some((event) => event.id === scopeEvent.body.id));
+      assert.ok(!carolEvents.invitations.some((event) => event.id === scopeEvent.body.id));
+      assert.ok(ownerEvents.managedEvents.some((event) => event.id === scopeEvent.body.id));
+      assert.ok(bobEvents.availableEvents.some((event) => event.isBase));
 
       const explicitScopedRoutes = (actor) => [
         ['/api/broadcasts?eventId=' + scopeEvent.body.id, 'get'],
@@ -165,7 +167,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
         }
       }
 
-      const implicitGroupRoomRoutes = (actor) => [
+      const implicitActiveEventRoutes = (actor) => [
         '/api/arrivals',
         '/api/food-orders',
         '/api/broadcasts',
@@ -184,20 +186,20 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
         '/api/arcade/lobbies',
       ];
       for (const actor of [bob, carol]) {
-        for (const path of implicitGroupRoomRoutes(actor)) {
+        for (const path of implicitActiveEventRoutes(actor)) {
           const response = await call(app, 'get', path, actor);
-          assert.equal(response.status, 200, 'GET ' + path + ' must use the group room for ' + actor.account.name + ': ' + JSON.stringify(response.body));
+          assert.equal(response.status, 200, 'GET ' + path + ' must use the active base event for ' + actor.account.name + ': ' + JSON.stringify(response.body));
         }
       }
 
       db.prepare("UPDATE event_participants SET status = 'accepted' WHERE event_id = ? AND player_id = ?").run(scopeEvent.body.id, bob.account.id);
       const acceptedEvents = (await call(app, 'get', '/api/events', bob)).body;
-      assert.equal(acceptedEvents.find((event) => event.id === scopeEvent.body.id).canAccess, true);
+      assert.ok(acceptedEvents.availableEvents.some((event) => event.id === scopeEvent.body.id));
       for (const [path, method] of explicitScopedRoutes(bob)) {
         assert.equal((await call(app, method, path, bob)).status, 200, method.toUpperCase() + ' ' + path + ' must admit accepted participants');
       }
       for (const [path, method] of explicitScopedRoutes(owner)) {
-        assert.equal((await call(app, method, path, owner)).status, 200, method.toUpperCase() + ' ' + path + ' must admit event admins');
+        assert.equal((await call(app, method, path, owner)).status, 404, method.toUpperCase() + ' ' + path + ' must not bypass event participation');
       }
     })().catch((error) => {
       console.error(error);

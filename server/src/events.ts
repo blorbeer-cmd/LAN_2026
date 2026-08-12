@@ -1,18 +1,7 @@
-// Event lifecycle: several events can exist at once, even with overlapping
-// time frames — but tracking (live status / playtime) is exclusive. At most
-// one event has tracking_enabled at any moment, and only its roster
-// (event_participants) gets tracked. A permanent sentinel event
-// (OUTSIDE_EVENTS_ID) represents "außerhalb von Events": whatever gets
-// recorded while no real event is tracking lands there instead, so every
-// event-scoped table can keep a plain non-null event_id rather than
-// threading a nullable "no event" case through the whole codebase. Players
-// are NOT touched by any of this — accounts are global across events and
-// groups (same person, same account, every year). Games/skills/preferences
-// are scoped per *group*, not per event (see docs/KONZEPT-USER-MANAGEMENT.md
-// 7.2) — several events of the same group still share one catalog.
-//
-// The sentinel is seeded once by db.ts at startup — getTrackingEventId here
-// is a pure reader and never creates anything itself.
+// Event lifecycle: several events may coexist and track in parallel. Every
+// operational request is bound to the requesting account's persisted active
+// event; tracking adds its own time-window and consent gates. The historical
+// OUTSIDE_EVENTS_ID row remains migration-only and is never selectable.
 
 import { nanoid } from 'nanoid';
 import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
@@ -41,15 +30,8 @@ export interface EventParticipantRow {
   status: EventParticipationStatus;
 }
 
-// Whichever event currently has tracking_enabled — or the permanent
-// "außerhalb von Events" sentinel if none does. Always resolves to a real
-// row, so callers never have to special-case "no event" when tagging
-// matches/sessions/draws/etc.
-export function getTrackingEventId(): string {
-  const row = db.prepare('SELECT id FROM events WHERE tracking_enabled = 1').get() as { id: string } | undefined;
-  return row?.id ?? OUTSIDE_EVENTS_ID;
-}
-
+// All currently trackable events. Tracking is independent per event and an
+// account report is attributed only to that account's active event.
 export function getTrackingEvents(now = Date.now()): EventRow[] {
   return db.prepare(
     `SELECT * FROM events
@@ -57,10 +39,6 @@ export function getTrackingEvents(now = Date.now()): EventRow[] {
        AND starts_at <= ? AND (ends_at IS NULL OR ends_at > ?)
      ORDER BY group_id, id`,
   ).all(OUTSIDE_EVENTS_ID, now, now) as EventRow[];
-}
-
-export function getTrackingEvent(): EventRow {
-  return getEvent(getTrackingEventId())!;
 }
 
 export function getEvent(id: string): EventRow | undefined {
@@ -91,8 +69,9 @@ export function createEvent(name: string, options: CreateEventOptions): EventRow
   const id = nanoid();
   db.prepare(
     `INSERT INTO events
-       (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at, group_id, status)
-     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, 'published')`
+       (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at,
+        group_id, status, visibility_scope)
+     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, 'published', 'participants')`
   ).run(
     id,
     name,
@@ -111,7 +90,6 @@ export interface UpdateEventFields {
   endsAt?: number | null;
   location?: string | null;
   description?: string | null;
-  visibilityScope?: 'group' | 'participants' | 'public';
 }
 
 // Metadata-only correction — never touches tracking state or live status.
@@ -128,46 +106,30 @@ export function updateEvent(id: string, fields: UpdateEventFields): EventRow | u
     ends_at: fields.endsAt !== undefined ? fields.endsAt : existing.ends_at,
     location: fields.location !== undefined ? fields.location : existing.location,
     description: fields.description !== undefined ? fields.description : existing.description,
-    visibility_scope: fields.visibilityScope !== undefined ? fields.visibilityScope : existing.visibility_scope,
   };
 
   db.prepare(
-    'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ?, visibility_scope = ? WHERE id = ?'
-  ).run(next.name, next.starts_at, next.ends_at, next.location, next.description, next.visibility_scope, next.id);
+    'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ? WHERE id = ?'
+  ).run(next.name, next.starts_at, next.ends_at, next.location, next.description, next.id);
 
   return next;
 }
 
 export type StartTrackingResult =
   | { ok: true; event: EventRow }
-  | { ok: false; code: 'not_found' | 'invalid' | 'conflict'; error: string; conflictEventId?: string; conflictEventName?: string };
+  | { ok: false; code: 'not_found' | 'invalid'; error: string };
 
 // Clears the live-status board AND closes any still-open play_sessions rows
 // (FR-29) — used whenever tracking starts/stops/ends, since a switch in who
 // is being tracked means whatever "currently running" state existed before
 // is now stale and would otherwise never get an ended_at.
-function wipeLiveStatus(): void {
-  const now = Date.now();
-  db.prepare('UPDATE play_sessions SET ended_at = ? WHERE ended_at IS NULL').run(now);
-  db.prepare('DELETE FROM live_status_games').run();
-  db.prepare('DELETE FROM live_status').run();
-  db.prepare('UPDATE play_sessions SET ended_at = ? WHERE ended_at IS NULL').run(now);
-  db.prepare('DELETE FROM tracking_live_games').run();
-  db.prepare('DELETE FROM tracking_live_contexts').run();
-}
-
-// Turns tracking on for one event — clearing stale live status from
-// whatever was tracked before (a fresh tracking window shouldn't show last
-// time's "who's playing what") and giving every existing agent report a
-// clean slate. Rejects if a DIFFERENT event is already tracking (only one
-// at a time, system-wide) rather than silently switching, since that's the
-// one thing that must stay exclusive even though events themselves can
-// overlap in time.
+// Turns tracking on for this event only. Other events may continue tracking
+// in parallel; each account report still belongs to its selected event.
 export function startTracking(id: string): StartTrackingResult {
   const event = getEvent(id);
   if (!event) return { ok: false, code: 'not_found', error: 'Event nicht gefunden.' };
   if (event.id === OUTSIDE_EVENTS_ID) {
-    return { ok: false, code: 'invalid', error: '„Außerhalb von Events" kann nicht getrackt werden.' };
+    return { ok: false, code: 'invalid', error: 'Dieser technische Migrationskontext kann nicht getrackt werden.' };
   }
   if (event.ended_at) {
     return { ok: false, code: 'invalid', error: 'Ein beendetes Event kann nicht wieder getrackt werden.' };
@@ -177,9 +139,7 @@ export function startTracking(id: string): StartTrackingResult {
   }
   if (event.tracking_enabled) return { ok: true, event };
 
-  const current = db.prepare('SELECT id, name FROM events WHERE tracking_enabled = 1').get() as { id: string; name: string } | undefined;
-  if (current && current.id !== id) return { ok: false, code: 'conflict', error: `Tracking läuft bereits für „${current.name}" – dort erst stoppen.`, conflictEventId: current.id, conflictEventName: current.name };
-  wipeLiveStatus();
+  closeEventContexts(id);
 
   db.prepare('UPDATE events SET tracking_enabled = 1 WHERE id = ?').run(id);
 
@@ -355,14 +315,22 @@ export function setParticipants(eventId: string, playerIds: string[]): void {
   if (eventId === BASE_EVENT_ID) throw new Error('The base event roster cannot be replaced.');
   const tx = db.transaction(() => {
     const previousIds = getParticipantIds(eventId);
-    db.prepare('DELETE FROM event_participants WHERE event_id = ?').run(eventId);
-    const insert = db.prepare(
-      "INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')",
+    const desired = new Set(playerIds);
+    const upsert = db.prepare(
+      `INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')
+       ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted'`,
     );
-    for (const playerId of new Set(playerIds)) insert.run(eventId, playerId);
-    const retained = new Set(playerIds);
+    for (const playerId of desired) upsert.run(eventId, playerId);
+
+    const existing = db
+      .prepare('SELECT player_id FROM event_participants WHERE event_id = ?')
+      .all(eventId) as Array<{ player_id: string }>;
+    const remove = db.prepare('DELETE FROM event_participants WHERE event_id = ? AND player_id = ?');
+    for (const { player_id: playerId } of existing) {
+      if (!desired.has(playerId)) remove.run(eventId, playerId);
+    }
     for (const playerId of previousIds) {
-      if (!retained.has(playerId)) fallbackPlayerEventContext(playerId, eventId);
+      if (!desired.has(playerId)) fallbackPlayerEventContext(playerId, eventId);
     }
   });
   tx();

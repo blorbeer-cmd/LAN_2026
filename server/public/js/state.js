@@ -15,6 +15,9 @@ export const state = {
   playtime: null,
   playtimeAllGames: null,
   events: [],
+  activeEvent: null,
+  availableEvents: [],
+  eventInvitations: [],
   selectedGameId: null, // remembers the last game picked in Teams/Turniere/Rangliste
   lastMatchmaking: null, // last drawn teams, shared live across all clients
 };

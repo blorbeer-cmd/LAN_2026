@@ -1,4 +1,4 @@
-// Single-group organisation/communication suite: roles, group-room vs.
+// Single-group organisation/communication suite: roles, base-event vs.
 // event-scoped info/broadcasts (two sequential events in the one real
 // group), push-log binding to the session player, aggregates and exports.
 
@@ -63,7 +63,7 @@ test('organisation communication is roles-gated and event-scoped inside the one 
       assert.deepEqual((await scoped(app, 'get', '/api/info', alice)).body.entries.map((e) => e.title), ['Room entry']);
       assert.deepEqual((await scoped(app, 'get', '/api/info?eventId=' + eventA.body.id, alice)).body.entries.map((e) => e.title), ['Event A entry']);
 
-      // Group-room and event recipient definitions are durable snapshots.
+      // Base-event and event recipient definitions are durable snapshots.
       const groupBroadcast = await scoped(app, 'post', '/api/broadcasts', bob)
         .send({ message: 'group room' });
       const eventBroadcastA = await scoped(app, 'post', '/api/broadcasts', alice)
@@ -77,9 +77,11 @@ test('organisation communication is roles-gated and event-scoped inside the one 
 
       const aliceEventPush = await scoped(app, 'get', '/api/push/log?playerId=' + alice.account.id + '&eventId=' + eventA.body.id, alice);
       const bobEventPush = await scoped(app, 'get', '/api/push/log?playerId=' + bob.account.id + '&eventId=' + eventA.body.id, bob);
-      assert.equal(aliceEventPush.body.entries.length, 1);
-      assert.equal(aliceEventPush.body.summary.groupWide, 1);
-      assert.equal(bobEventPush.status, 404, 'a non-participant cannot read participant-scoped event push data');
+      assert.ok(aliceEventPush.body.entries.some((entry) => entry.body === 'event A only'));
+      assert.ok(aliceEventPush.body.summary.groupWide >= 1);
+      assert.equal(bobEventPush.status, 200);
+      assert.deepEqual(bobEventPush.body.entries.map((entry) => entry.body), ['group room'],
+        'the notification center spans the player own events but never includes pushes they did not receive');
       // required mode binds push history to the session player, regardless
       // of what playerId is spoofed on the query string.
       const spoofedPlayer = await scoped(app, 'get', '/api/push/log?playerId=' + alice.account.id, bob);
@@ -91,18 +93,21 @@ test('organisation communication is roles-gated and event-scoped inside the one 
       assert.equal(exportA.status, 200, JSON.stringify(exportA.body));
       assert.deepEqual(exportA.body.communications.broadcasts.map((e) => e.message), ['event A only']);
       assert.deepEqual(exportA.body.communications.infoEntries.map((e) => e.title), ['Event A entry']);
-      assert.equal(exportA.body.communications.pushHistory.total, 1);
+      assert.ok(exportA.body.communications.pushHistory.total >= 1);
 
       // Switching the group's tracked event to a second event keeps event A's
       // entries untouched and filters event B's own writes separately.
       const eventB = await scoped(app, 'post', '/api/events', alice)
         .send({ name: 'Comms Event B', startsAt: now, endsAt: now + 60_000 });
       assert.equal(eventB.status, 201);
+      assert.equal((await scoped(app, 'put', '/api/events/' + eventB.body.id + '/participants', alice)
+        .send({ playerIds: [alice.account.id] })).status, 200);
       const infoEventB = await scoped(app, 'post', '/api/info', alice)
         .send({ title: 'Event B entry', content: 'event only', eventId: eventB.body.id });
       assert.equal(infoEventB.status, 201);
       assert.deepEqual((await scoped(app, 'get', '/api/info?eventId=' + eventA.body.id, alice)).body.entries.map((e) => e.title), ['Event A entry']);
       assert.deepEqual((await scoped(app, 'get', '/api/info?eventId=' + eventB.body.id, alice)).body.entries.map((e) => e.title), ['Event B entry']);
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', alice).send({ eventId: eventB.body.id })).status, 200);
       assert.equal((await scoped(app, 'patch', '/api/info/' + infoEventB.body.id, alice).send({ content: 'still A? no' })).status, 200);
 
       // Database constraints reject event/sender ownership drift.

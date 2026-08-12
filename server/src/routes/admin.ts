@@ -11,6 +11,7 @@ import { deleteAllTestData, seedHallOfFameTestData } from '../testData';
 import { writeAdminAudit } from '../adminAudit';
 import { requireRecentReauthentication } from '../sessions';
 import { getReadiness } from '../readiness';
+import { getOrRepairActiveEvent } from '../eventContext';
 
 export const adminRouter = Router();
 
@@ -30,7 +31,7 @@ adminRouter.post('/test-users', requireAdmin, (req, res) => {
   if (!Number.isInteger(count) || count < 1 || count > MAX_TEST_USERS_PER_CALL) {
     return res.status(400).json({ error: `count muss eine ganze Zahl zwischen 1 und ${MAX_TEST_USERS_PER_CALL} sein.` });
   }
-  const created = createTestUsers(count);
+  const created = createTestUsers(count, req.group!.id, getOrRepairActiveEvent(req.player!.id).id);
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     action: 'test_users_created',

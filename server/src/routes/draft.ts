@@ -16,10 +16,10 @@ import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { broadcast, Events } from '../realtime';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { withBodyPlayerIdentity } from '../sessions';
-import { trackingEventIdForGroup } from '../competitionScope';
-import { OUTSIDE_EVENTS_ID } from '../events';
+import { competitionPlayersBelongToGroup } from '../competitionScope';
 import { requireGroupRole } from '../groupAuthorization';
 import { activeGroupPlayers, type GroupPlayerSnapshot } from '../groupPlayers';
+import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 
 export const draftRouter = Router();
 
@@ -29,7 +29,7 @@ const MAX_CAPTAINS = 4;
 interface DraftRow {
   id: string;
   group_id: string;
-  event_id: string | null;
+  event_id: string;
   game_id: string;
   status: 'active' | 'completed' | 'cancelled';
   captain_ids: string;
@@ -52,17 +52,19 @@ export function snakeCaptainIndex(pickNumber: number, captainCount: number): num
   return round % 2 === 0 ? posInRound : captainCount - 1 - posInRound;
 }
 
-function currentDraftRow(groupId: string): DraftRow | undefined {
+function currentDraftRow(groupId: string, eventId: string): DraftRow | undefined {
   return db
-    .prepare("SELECT * FROM drafts WHERE group_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1")
-    .get(groupId) as DraftRow | undefined;
+    .prepare(
+      "SELECT * FROM drafts WHERE group_id = ? AND event_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1",
+    )
+    .get(groupId, eventId) as DraftRow | undefined;
 }
 
 // The latest draft regardless of status, so a just-finished draft's teams
 // stay on everyone's screen until the next one starts (or it's dismissed by
 // simply starting something else).
-function latestDraftRow(groupId: string): DraftRow | undefined {
-  return db.prepare('SELECT * FROM drafts WHERE group_id = ? ORDER BY created_at DESC LIMIT 1').get(groupId) as
+function latestDraftRow(groupId: string, eventId: string): DraftRow | undefined {
+  return db.prepare('SELECT * FROM drafts WHERE group_id = ? AND event_id = ? ORDER BY created_at DESC LIMIT 1').get(groupId, eventId) as
     DraftRow | undefined;
 }
 
@@ -126,37 +128,35 @@ function buildState(row: DraftRow | undefined) {
 }
 
 // GET /api/draft/history - group-local draft list for the selected event or
-// group room. This is REST-only in 5c; socket delivery remains unchanged.
+// selected event. Socket delivery uses the same exact event scope.
 draftRouter.get('/history', (req, res) => {
   const { eventId, limit } = req.query;
-  const trackingEventId = trackingEventIdForGroup(req.group!.id);
-  const filterEventId =
-    typeof eventId === 'string' && eventId
-      ? eventId === OUTSIDE_EVENTS_ID
-        ? null
-        : eventId
-      : trackingEventId && trackingEventId !== OUTSIDE_EVENTS_ID
-        ? trackingEventId
-        : null;
+  const scope = resolveRequestGroupEventScope(req, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!scope.eventId || !requireGroupEventAccess(req, res, scope.eventId)) return;
+  const filterEventId = scope.eventId;
   const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
-  const eventClause = filterEventId === null ? 'event_id IS NULL' : 'event_id = ?';
-  const params: Array<string | number> = [req.group!.id];
-  if (filterEventId !== null) params.push(filterEventId);
-  params.push(limitNum);
   const rows = db
-    .prepare(`SELECT * FROM drafts WHERE group_id = ? AND ${eventClause} ORDER BY created_at DESC LIMIT ?`)
-    .all(...params) as DraftRow[];
+    .prepare('SELECT * FROM drafts WHERE group_id = ? AND event_id = ? ORDER BY created_at DESC LIMIT ?')
+    .all(req.group!.id, filterEventId, limitNum) as DraftRow[];
   res.json({ history: rows.map((row) => buildState(row).draft) });
 });
 
 // GET /api/draft - the latest draft (active or just finished), or null.
 draftRouter.get('/', (req, res) => {
-  res.json(buildState(latestDraftRow(req.group!.id)));
+  const scope = resolveRequestGroupEventScope(req, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!scope.eventId || !requireGroupEventAccess(req, res, scope.eventId)) return;
+  res.json(buildState(latestDraftRow(req.group!.id, scope.eventId)));
 });
 
 // POST /api/draft/start - body: { gameId, captainIds: [..], poolPlayerIds: [..] }
 draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   const groupId = req.group!.id;
+  const scope = resolveRequestGroupEventScope(req, undefined);
+  if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const eventId = scope.eventId;
   const { gameId, captainIds, poolPlayerIds } = req.body ?? {};
 
   if (typeof gameId !== 'string' || !gameId) {
@@ -190,20 +190,20 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   if (known.size !== allIds.length) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
   }
+  if (!competitionPlayersBelongToGroup(groupId, eventId, allIds)) {
+    return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
+  }
 
   // The shared-state guard: everyone taps "Draft starten" at the same time,
   // exactly one may win.
-  if (currentDraftRow(groupId)) {
+  if (currentDraftRow(groupId, eventId)) {
     return res.status(409).json({ error: 'Es läuft bereits ein Draft.' });
   }
 
   const row: DraftRow = {
     id: nanoid(),
     group_id: groupId,
-    event_id: (() => {
-      const trackingEventId = trackingEventIdForGroup(groupId);
-      return trackingEventId && trackingEventId !== OUTSIDE_EVENTS_ID ? trackingEventId : null;
-    })(),
+    event_id: eventId,
     game_id: gameId,
     status: 'active',
     captain_ids: JSON.stringify(captainIds),
@@ -274,6 +274,9 @@ draftRouter.post('/start', requireGroupRole('admin'), (req, res) => {
 // double-tapping) resolve to exactly one pick and a clean 409.
 draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
   const groupId = req.group!.id;
+  const scope = resolveRequestGroupEventScope(req, undefined);
+  if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const { playerId, pickPlayerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -282,7 +285,7 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
     return res.status(400).json({ error: 'pickPlayerId ist erforderlich.' });
   }
 
-  const row = currentDraftRow(groupId);
+  const row = currentDraftRow(groupId, scope.eventId);
   if (!row) return res.status(409).json({ error: 'Es läuft kein Draft.' });
 
   const captainIds = JSON.parse(row.captain_ids) as string[];
@@ -350,7 +353,7 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
   // A finished draft is a set of teams like any matchmaking draw — log it
   // into the same history so Team-Historie shows drafted teams too. Ratings
   // aren't part of a draft, so they're stored as 0/absent.
-  const historyEventId = row.event_id ?? OUTSIDE_EVENTS_ID;
+  const historyEventId = row.event_id;
   if (completed && state.draft) {
     const teamsSnapshot = state.draft.teams.map((t) => ({
       players: t.players.map((p) => ({ ...p, rating: null })),
@@ -368,7 +371,10 @@ draftRouter.post('/pick', ...withBodyPlayerIdentity, (req, res) => {
 
 // POST /api/draft/cancel - abandon the running draft (group admin/owner).
 draftRouter.post('/cancel', requireGroupRole('admin'), (req, res) => {
-  const row = currentDraftRow(req.group!.id);
+  const scope = resolveRequestGroupEventScope(req, undefined);
+  if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const row = currentDraftRow(req.group!.id, scope.eventId);
   if (!row) return res.status(409).json({ error: 'Es läuft kein Draft.' });
 
   db.prepare("UPDATE drafts SET status = 'cancelled' WHERE id = ? AND group_id = ?").run(row.id, req.group!.id);

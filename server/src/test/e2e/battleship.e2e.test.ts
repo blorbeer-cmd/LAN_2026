@@ -148,7 +148,14 @@ test('Battleship: two browsers play a complete duel and watch state reveals then
 
     const matchId = await host.page.locator('[data-battleship-match]').getAttribute('data-battleship-match');
     assert.ok(matchId);
-    await new Promise((resolve) => watcher.emit('scope:subscribe', { groupId: 'default-group', eventId: null }, resolve));
+    const activeEventResponse = await fetch(`${BASE_URL}/api/events/active`, {
+      headers: { Cookie: playerCookies.get(hostPlayer.id)! },
+    });
+    assert.equal(activeEventResponse.status, 200);
+    const activeEventId = ((await activeEventResponse.json()) as { id: string }).id;
+    await new Promise((resolve) =>
+      watcher.emit('scope:subscribe', { groupId: 'default-group', eventId: activeEventId }, resolve)
+    );
     const runningState = waitForSocketEvent<{
       matchId: string;
       phase: string;

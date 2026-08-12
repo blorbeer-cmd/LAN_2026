@@ -9,6 +9,8 @@ export interface EventContextEvent {
   group_id: string | null;
 }
 
+export type EventAccessLevel = 'none' | 'teaser' | 'participant' | 'admin';
+
 export class InvalidEventContextError extends Error {
   constructor() {
     super('Event ist nicht als aktiver Kontext verfügbar.');
@@ -116,31 +118,67 @@ export function setActiveEventForPlayer(playerId: string, eventId: string): Even
   })();
 }
 
-export function fallbackPlayerEventContext(playerId: string, unavailableEventId: string): void {
-  db.transaction(() => {
+export function fallbackPlayerEventContext(playerId: string, unavailableEventId: string): boolean {
+  return db.transaction(() => {
     const context = db
       .prepare('SELECT active_event_id FROM player_event_contexts WHERE player_id = ?')
       .get(playerId) as { active_event_id: string } | undefined;
-    if (context?.active_event_id !== unavailableEventId || !getActivePlayer(playerId)) return;
+    if (context?.active_event_id !== unavailableEventId || !getActivePlayer(playerId)) return false;
     ensureBaseParticipation(playerId);
     storeActiveEvent(playerId, BASE_EVENT_ID);
+    return true;
   })();
 }
 
-export function fallbackEventContexts(unavailableEventId: string): void {
-  if (unavailableEventId === BASE_EVENT_ID) return;
-  db.transaction(() => {
+export function fallbackEventContexts(unavailableEventId: string): string[] {
+  if (unavailableEventId === BASE_EVENT_ID) return [];
+  return db.transaction(() => {
     const players = db
       .prepare('SELECT player_id FROM player_event_contexts WHERE active_event_id = ?')
       .all(unavailableEventId) as Array<{ player_id: string }>;
+    const changed: string[] = [];
     for (const { player_id: playerId } of players) {
       if (!getActivePlayer(playerId)) continue;
       ensureBaseParticipation(playerId);
       storeActiveEvent(playerId, BASE_EVENT_ID);
+      changed.push(playerId);
     }
+    return changed;
   })();
 }
 
 export function isBaseEvent(eventId: string): boolean {
   return eventId === BASE_EVENT_ID;
+}
+
+export function historicallyParticipatedEventIds(playerId: string): string[] {
+  return (
+    db
+      .prepare(
+        `SELECT h.event_id AS eventId
+         FROM event_participation_history h
+         JOIN events e ON e.id = h.event_id
+         WHERE h.player_id = ? AND h.accepted_at IS NOT NULL AND e.id != ?
+         ORDER BY h.accepted_at, h.event_id`,
+      )
+      .all(playerId, OUTSIDE_EVENTS_ID) as Array<{ eventId: string }>
+  ).map((row) => row.eventId);
+}
+
+export function eventAccessLevel(
+  eventId: string,
+  playerId: string,
+  instanceRole: 'owner' | 'admin' | 'member' = 'member',
+): EventAccessLevel {
+  const event = db
+    .prepare('SELECT id FROM events WHERE id = ? AND id != ? AND group_id = ?')
+    .get(eventId, OUTSIDE_EVENTS_ID, DEFAULT_GROUP_ID);
+  if (!event) return 'none';
+  if (instanceRole === 'owner' || instanceRole === 'admin') return 'admin';
+  const participation = db
+    .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
+    .get(eventId, playerId) as { status: 'invited' | 'accepted' | 'declined' } | undefined;
+  if (participation?.status === 'accepted') return 'participant';
+  if (participation?.status === 'invited') return 'teaser';
+  return 'none';
 }

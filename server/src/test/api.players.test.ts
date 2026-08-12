@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createTestApp, sessionCookie, TEST_ADMIN_ID } from './testApp';
-import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from '../db';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
 
 const app = createTestApp();
 let createdId: string;
@@ -229,7 +229,7 @@ test('PUT /api/players/:id/neighbors rejects unknown ids', async () => {
   assert.equal(res.status, 404);
 });
 
-test('GET /api/players/:id/neighbors falls back to the group room instead of 404ing when the currently tracked event is participant-private and the viewer is not yet accepted', async () => {
+test('profile reads stay in the base event and personal analytics exclude unvisited private events', async () => {
   const event = await request(app)
     .post('/api/events')
     .send({ name: 'Private Profile Event', startsAt: Date.now(), endsAt: Date.now() + 60_000, visibilityScope: 'participants' });
@@ -241,27 +241,23 @@ test('GET /api/players/:id/neighbors falls back to the group room instead of 404
   db.prepare(
     `INSERT INTO play_sessions (id, player_id, game_id, event_id, group_id, started_at, ended_at, active_ms)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run('profile-group-room-session', createdId, game.id, OUTSIDE_EVENTS_ID, DEFAULT_GROUP_ID, now - 1_000, now, 500);
+  ).run('profile-group-room-session', createdId, game.id, BASE_EVENT_ID, DEFAULT_GROUP_ID, now - 1_000, now, 500);
   db.prepare(
     `INSERT INTO play_sessions (id, player_id, game_id, event_id, group_id, started_at, ended_at, active_ms)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run('profile-private-session', createdId, game.id, event.body.id, DEFAULT_GROUP_ID, now - 9_000, now, 4_500);
-  db.prepare('UPDATE events SET tracking_enabled = 1 WHERE id = ?').run(event.body.id);
   try {
-    // createdId is a plain group member here - never invited to this event -
-    // so opening their own profile (implicit/default event resolution, no
-    // ?eventId=) must not surface the private event's "Event nicht gefunden"
-    // the way it would for someone who explicitly asked for that event id.
-    // Same status - and same eventId: null group-room data an unscoped
-    // request already resolved to before this event existed - not a 404.
+    // createdId never joined the private event, so their operational profile
+    // remains in the persisted base workspace regardless of tracking flags.
     const neighbors = await request(app).get(`/api/players/${createdId}/neighbors`);
     assert.equal(neighbors.status, 200);
-    assert.equal(neighbors.body.eventId, null);
+    assert.equal(neighbors.body.eventId, BASE_EVENT_ID);
 
     const stats = await request(app).get(`/api/players/${createdId}/stats`);
     assert.equal(stats.status, 200);
     assert.equal(stats.body.playerId, createdId);
     assert.equal(stats.body.eventId, null);
+    assert.deepEqual(stats.body.eventIds, [BASE_EVENT_ID]);
     assert.equal(stats.body.sessionCount, 1, 'the inaccessible private event session must not leak into the fallback');
     assert.equal(stats.body.totalMs, 1_000);
     assert.equal(stats.body.events.some((entry: { eventId: string }) => entry.eventId === event.body.id), false);
@@ -271,7 +267,6 @@ test('GET /api/players/:id/neighbors falls back to the group room instead of 404
     const explicitStats = await request(app).get(`/api/players/${createdId}/stats?eventId=${event.body.id}`);
     assert.equal(explicitStats.status, 404, 'explicit stats for an inaccessible event still 404');
   } finally {
-    db.prepare('UPDATE events SET tracking_enabled = 0 WHERE id = ?').run(event.body.id);
     db.prepare("DELETE FROM play_sessions WHERE id IN ('profile-group-room-session', 'profile-private-session')").run();
   }
 });

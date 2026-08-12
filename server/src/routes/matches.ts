@@ -14,7 +14,8 @@ import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { broadcast, Events } from '../realtime';
 import { applySeatConflicts, buildTeamsSnapshot } from './matchmaking';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
-import { competitionPlayersBelongToGroup, trackingEventIdForGroup } from '../competitionScope';
+import { competitionPlayersBelongToGroup } from '../competitionScope';
+import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 
 export const matchesRouter = Router();
 
@@ -24,6 +25,8 @@ interface DrawLinkRow {
   event_id: string;
   seat_pairs_considered: number;
 }
+
+class DrawAlreadyClaimedError extends Error {}
 
 interface TeamInput {
   playerIds: string[];
@@ -122,15 +125,14 @@ function validateTeams(
 // event whose stored group_id does not match simply returns no matches.
 matchesRouter.get('/', (req, res) => {
   const { gameId, eventId } = req.query;
-  const clauses: string[] = ['group_id = ?'];
-  const params: string[] = [req.group!.id];
+  const scope = resolveRequestGroupEventScope(req, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const clauses: string[] = ['group_id = ?', 'event_id = ?'];
+  const params: string[] = [req.group!.id, scope.eventId!];
   if (typeof gameId === 'string') {
     clauses.push('game_id = ?');
     params.push(gameId);
-  }
-  if (typeof eventId === 'string') {
-    clauses.push('event_id = ?');
-    params.push(eventId);
   }
   const rows = db.prepare(`SELECT * FROM matches WHERE ${clauses.join(' AND ')} ORDER BY played_at DESC`).all(...params) as MatchRow[];
   res.json(rows.map(parseMatch));
@@ -169,10 +171,10 @@ matchesRouter.post('/', (req, res) => {
   const validated = validateTeams(teams, winnerTeamIndex);
   if ('error' in validated) return res.status(400).json({ error: validated.error });
 
-  const eventId = trackingEventIdForGroup(req.group!.id);
-  if (!eventId) {
-    return res.status(409).json({ error: 'Tracking läuft derzeit in einem anderen Gruppenkontext.' });
-  }
+  const scope = resolveRequestGroupEventScope(req, undefined);
+  if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const eventId = scope.eventId;
   const allIds = validated.teams.flatMap((t) => t.playerIds);
   if (!competitionPlayersBelongToGroup(req.group!.id, eventId, allIds)) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
@@ -190,6 +192,7 @@ matchesRouter.post('/', (req, res) => {
       .get(drawId, req.group!.id) as DrawLinkRow | undefined;
     if (!draw) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
     if (draw.match_id) return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
+    if (draw.event_id !== eventId) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
   }
 
   const row: MatchRow = {
@@ -200,22 +203,25 @@ matchesRouter.post('/', (req, res) => {
     result: JSON.stringify({ teams: validated.teams, winnerTeamIndex: validated.winnerTeamIndex }),
     group_id: req.group!.id,
   };
-  db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id) VALUES (?, ?, ?, ?, ?, ?)').run(
-    row.id,
-    row.game_id,
-    row.event_id,
-    row.played_at,
-    row.result,
-    row.group_id
-  );
+  try {
+    db.transaction(() => {
+      db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id) VALUES (?, ?, ?, ?, ?, ?)').run(
+        row.id,
+        row.game_id,
+        row.event_id,
+        row.played_at,
+        row.result,
+        row.group_id,
+      );
 
-  if (drawId && draw) {
-    // Race-safe: only claims the draw if it's still unrecorded, so two
-    // simultaneous submissions for the same draw can't both "win" it.
-    const claimed = db
-      .prepare('UPDATE matchmaking_draws SET match_id = ? WHERE id = ? AND match_id IS NULL')
-      .run(row.id, drawId);
-    if (claimed.changes > 0) {
+      if (drawId && draw) {
+        // Insert and claim share one transaction. If another request already
+        // claimed the draw, throwing rolls the just-inserted match back too.
+        const claimed = db
+          .prepare('UPDATE matchmaking_draws SET match_id = ? WHERE id = ? AND match_id IS NULL')
+          .run(row.id, drawId);
+        if (claimed.changes === 0) throw new DrawAlreadyClaimedError();
+
       // The submitted teams can differ from the draw's original snapshot —
       // a player was moved or dropped in the entry form, or the result was
       // entered as Frei-für-alle (each participant becomes their own team)
@@ -231,13 +237,26 @@ matchesRouter.post('/', (req, res) => {
       db.prepare('UPDATE matchmaking_draws SET teams = ?, seat_conflicts = ? WHERE id = ?').run(
         JSON.stringify(snapshotTeams),
         seatConflicts,
-        drawId
+        drawId,
       );
-      broadcast(Events.matchmakingDrawsChanged, { id: drawId, matchId: row.id }, { groupId: req.group!.id });
+      }
+    })();
+  } catch (error) {
+    if (error instanceof DrawAlreadyClaimedError) {
+      return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
     }
+    throw error;
   }
 
-  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
+  if (drawId) {
+    broadcast(
+      Events.matchmakingDrawsChanged,
+      { id: drawId, matchId: row.id },
+      { groupId: req.group!.id, eventId },
+    );
+  }
+
+  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId });
   res.status(201).json(parseMatch(row));
 });
 
@@ -253,6 +272,7 @@ const resolveMatch = resolveGroupResource<MatchRow>({
 // a match stays tagged to the LAN it was actually played at.
 matchesRouter.patch('/:id', resolveMatch, (req, res) => {
   const existing = req.groupResource as MatchRow;
+  if (!requireGroupEventAccess(req, res, existing.event_id)) return;
 
   const { gameId, teams, winnerTeamIndex, playedAt } = req.body ?? {};
   const prevResult = JSON.parse(existing.result) as MatchResult;
@@ -304,7 +324,7 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
     existing.id
   );
 
-  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
+  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: existing.event_id });
   res.json(
     parseMatch({
       id: existing.id,
@@ -320,6 +340,7 @@ matchesRouter.patch('/:id', resolveMatch, (req, res) => {
 // DELETE /api/matches/:id
 matchesRouter.delete('/:id', resolveMatch, requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
   const existing = req.groupResource as MatchRow;
+  if (!requireGroupEventAccess(req, res, existing.event_id)) return;
   db.prepare('DELETE FROM matches WHERE id = ?').run(existing.id);
   writeAdminAudit({
     actorPlayerId: req.player?.id,
@@ -328,6 +349,6 @@ matchesRouter.delete('/:id', resolveMatch, requireGroupRole('admin'), requireRec
     targetType: 'match',
     targetId: existing.id,
   });
-  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
+  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: existing.event_id });
   res.status(204).end();
 });

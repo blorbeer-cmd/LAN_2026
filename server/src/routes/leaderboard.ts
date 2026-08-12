@@ -4,6 +4,7 @@
 import { Router } from 'express';
 import { db } from '../db';
 import { computeStandings, type MatchForScoring } from '../leaderboard';
+import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
 
 export const leaderboardRouter = Router();
 
@@ -14,13 +15,23 @@ interface PlayerRow {
 }
 
 leaderboardRouter.get('/', (req, res) => {
-  const { gameId } = req.query;
+  const { gameId, eventId } = req.query;
   const filterGameId = typeof gameId === 'string' ? gameId : null;
+  const scope = resolveAnalyticsEvents(req, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  const eventFilter = eventIdSql('event_id', scope.eventIds);
 
   const rows = (
     filterGameId
-      ? db.prepare('SELECT result FROM matches WHERE group_id = ? AND game_id = ?').all(req.group!.id, filterGameId)
-      : db.prepare('SELECT result FROM matches WHERE group_id = ?').all(req.group!.id)
+      ? db.prepare(`SELECT result FROM matches WHERE group_id = ? AND game_id = ? AND ${eventFilter.clause}`).all(
+          req.group!.id,
+          filterGameId,
+          ...eventFilter.params,
+        )
+      : db.prepare(`SELECT result FROM matches WHERE group_id = ? AND ${eventFilter.clause}`).all(
+          req.group!.id,
+          ...eventFilter.params,
+        )
   ) as Array<{ result: string }>;
 
   const matches: MatchForScoring[] = rows.map((r) => JSON.parse(r.result));
@@ -42,5 +53,5 @@ leaderboardRouter.get('/', (req, res) => {
     color: playerById.get(s.playerId)?.color ?? '#999999',
   }));
 
-  res.json({ gameId: filterGameId, standings: enriched });
+  res.json({ gameId: filterGameId, eventIds: scope.eventIds, standings: enriched });
 });

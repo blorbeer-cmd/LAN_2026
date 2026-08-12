@@ -60,17 +60,20 @@ function scheduleHighlightExpiry() {
 function entryHtml(entry) {
   const view = feedLinkView(entry.url);
   const directBadge = entry.audience === 'direct' ? '<span class="badge badge-paused">Für dich</span>' : '';
+  const eventBadge = entry.eventName
+    ? `<span class="badge badge-event">${escapeHtml(entry.eventName)}</span>`
+    : '';
   return `<article class="notification-center-entry${entry.seen ? '' : ' is-unread'}" data-notification-entry="${entry.id}">
     <div class="row-between notification-center-entry-head">
       <span class="row notification-center-entry-title">
         <span class="notification-center-entry-icon">${icon(feedEntryIcon(entry))}</span>
-        <strong>${escapeHtml(feedEntryTitle(entry))}</strong>${directBadge}
+        <strong>${escapeHtml(feedEntryTitle(entry))}</strong>${eventBadge}${directBadge}
       </span>
       <time class="muted notification-center-time">${formatDateTime(entry.createdAt)}</time>
     </div>
     <div class="muted notification-center-body">${escapeHtml(entry.body)}</div>
     <div class="notification-center-actions">
-      ${view ? `<button type="button" class="btn btn-sm" data-notification-navigate="${view}" data-notification-id="${entry.id}">${FEED_LINK_LABELS[view]}</button>` : ''}
+      ${view ? `<button type="button" class="btn btn-sm" data-notification-navigate="${view}" data-notification-event-id="${entry.eventId}" data-notification-id="${entry.id}">${FEED_LINK_LABELS[view]}</button>` : ''}
       <span class="notification-center-entry-tools">
         ${entry.seen ? '' : `<button type="button" class="icon-btn notification-center-seen" data-notification-seen="${entry.id}" aria-label="Als gelesen markieren" title="Als gelesen markieren">${icon('circleCheck')}</button>`}
         <button type="button" class="icon-btn notification-center-remove" data-notification-hide="${entry.id}" aria-label="Mitteilung entfernen" title="Mitteilung entfernen">${icon('trash')}</button>
@@ -95,7 +98,7 @@ function panelContentHtml(myId) {
   return `<div class="notification-center-list">${entries.slice(0, FEED_LIMIT).map(entryHtml).join('')}</div>`;
 }
 
-async function markSeen(entryId, { navigate } = {}) {
+async function markSeen(entryId, { navigate, eventId } = {}) {
   const playerId = getMyId();
   const entry = entries.find((item) => item.id === entryId);
   if (!playerId || !entry) return;
@@ -110,7 +113,7 @@ async function markSeen(entryId, { navigate } = {}) {
     await api.push.seen(entryId, playerId);
     if (navigate) {
       setOpen(false);
-      window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: navigate }));
+      window.dispatchEvent(new CustomEvent('respawn:event-navigate', { detail: { view: navigate, eventId } }));
     }
   } catch (err) {
     entry.seen = false;
@@ -203,13 +206,14 @@ function renderHighlight() {
   container.innerHTML = `
     <button type="button" class="notification-highlight-link" ${view ? `data-notification-highlight-navigate="${view}"` : 'data-notification-highlight-open'} data-notification-id="${highlightEntry.id}">
       ${icon(feedEntryIcon(highlightEntry))}
-      <span class="notification-highlight-text"><strong>${escapeHtml(feedEntryTitle(highlightEntry))}</strong><span>${escapeHtml(highlightEntry.body)}</span></span>
+      <span class="notification-highlight-text"><strong>${escapeHtml(highlightEntry.eventName ? `${highlightEntry.eventName} · ${feedEntryTitle(highlightEntry)}` : feedEntryTitle(highlightEntry))}</strong><span>${escapeHtml(highlightEntry.body)}</span></span>
       ${view ? icon('chevronRight') : ''}
     </button>
     <button type="button" class="icon-btn notification-highlight-dismiss" data-notification-highlight-dismiss="${highlightEntry.id}" aria-label="Aktuelle Mitteilung schließen" title="Schließen">${icon('x')}</button>`;
   container.querySelector('[data-notification-highlight-navigate]')?.addEventListener('click', (event) => {
     markSeen(event.currentTarget.dataset.notificationId, {
       navigate: event.currentTarget.dataset.notificationHighlightNavigate,
+      eventId: highlightEntry.eventId,
     });
   });
   container.querySelector('[data-notification-highlight-open]')?.addEventListener('click', () => setOpen(true));
@@ -269,7 +273,10 @@ export function renderBanner() {
   });
   panel.querySelectorAll('[data-notification-navigate]').forEach((control) => {
     control.addEventListener('click', () =>
-      markSeen(control.dataset.notificationId, { navigate: control.dataset.notificationNavigate })
+      markSeen(control.dataset.notificationId, {
+        navigate: control.dataset.notificationNavigate,
+        eventId: control.dataset.notificationEventId,
+      })
     );
   });
 }

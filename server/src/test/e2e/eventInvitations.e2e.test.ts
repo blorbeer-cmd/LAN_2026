@@ -132,7 +132,11 @@ test('manager invites a member who accepts and both open clients update', async 
   await ownerPage.click('#settings-btn');
   await memberPage.click('#settings-btn');
   await ownerPage.waitForSelector(`[data-participants-event="${eventId}"]`);
-  await memberPage.waitForSelector(`[data-participants-event="${eventId}"]`);
+  assert.equal(
+    await memberPage.locator(`[data-participants-event="${eventId}"]`).count(),
+    0,
+    'a private event must stay hidden before the member is invited',
+  );
   assert.equal(await memberPage.locator(`[data-pending-invitation="${eventId}"]`).count(), 0);
 
   await ownerPage.click(`[data-participants-event="${eventId}"]`);
@@ -163,6 +167,30 @@ test('manager invites a member who accepts and both open clients update', async 
   await acceptButton.press('Enter');
   await pending.waitFor({ state: 'detached' });
   await ownerRefresh;
+
+  await memberPage.locator(`#event-context-switcher option[value="${eventId}"]`).waitFor({ state: 'attached' });
+  const mirrorPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await login(mirrorPage, MEMBER_NAME, MEMBER_PASSWORD);
+  await mirrorPage.locator(`#event-context-switcher option[value="${eventId}"]`).waitFor({ state: 'attached' });
+
+  await memberPage.selectOption('#event-context-switcher', eventId);
+  await memberPage.waitForFunction(
+    (expected) => (document.querySelector('#event-context-switcher') as HTMLSelectElement | null)?.value === expected,
+    eventId,
+  );
+  await mirrorPage.waitForFunction(
+    (expected) => (document.querySelector('#event-context-switcher') as HTMLSelectElement | null)?.value === expected,
+    eventId,
+  );
+  await memberPage.waitForFunction(
+    (eventName) => document.querySelector('#event-context-switcher')?.getAttribute('title')?.includes(eventName),
+    EVENT_NAME,
+  );
+  assert.match(await memberPage.locator('#event-context-switcher').getAttribute('title') ?? '', new RegExp(EVENT_NAME));
+  const activeEvent = await memberPage.request.get(`${BASE_URL}/api/events/active`);
+  assert.equal(activeEvent.status(), 200);
+  assert.equal(((await activeEvent.json()) as { id: string }).id, eventId);
+  await mirrorPage.close();
 
   await ownerPage.locator('.modal-backdrop [data-close]').click();
   await ownerPage.click(`[data-participants-event="${eventId}"]`);

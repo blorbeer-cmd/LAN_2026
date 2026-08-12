@@ -36,6 +36,7 @@ import { installDomainIcons } from './domainIcons.js';
 import { initGroupContext, refreshGroupContext } from './groupContext.js';
 import { isKnownView, VIEW_REGISTRY } from './viewRegistry.js';
 import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
+import { escapeHtml } from './format.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -90,6 +91,7 @@ const ctx = {
   // after mutations whose effects aren't already carried by a socket event.
   refresh: async () => {
     await loadAll();
+    renderEventContextSwitcher();
     renderCurrent();
   },
   // Re-render the active view from whatever is already in `state`, with no
@@ -97,6 +99,65 @@ const ctx = {
   // (e.g. a freshly drawn matchmaking result).
   rerender: () => renderCurrent(),
 };
+
+function invalidateEventScopedCaches() {
+  invalidateAktuellStatus();
+  invalidateMatchmakingHistory();
+  invalidateVoteHistory();
+  invalidateTournaments();
+  invalidateHomeSeating();
+  invalidateSeating();
+  invalidateBroadcasts();
+  invalidateInfoBoard();
+  invalidateFoodOrders();
+  invalidateChecklist();
+  invalidateArrivals();
+  invalidateMusic();
+}
+
+function renderEventContextSwitcher() {
+  const select = document.getElementById('event-context-switcher');
+  if (!select) return;
+  const events = state.availableEvents ?? [];
+  select.innerHTML = events
+    .map((event) => `<option value="${escapeHtml(event.id)}">${escapeHtml(event.isBase ? 'Allgemein' : event.name)}</option>`)
+    .join('');
+  select.value = state.activeEvent?.id ?? '';
+  select.hidden = events.length === 0;
+  select.title = state.activeEvent ? `Aktives Event: ${state.activeEvent.name}` : 'Aktives Event';
+}
+
+async function activateEvent(eventId, { navigate } = {}) {
+  if (!eventId) return;
+  if (state.activeEvent?.id !== eventId) {
+    await api.events.activate(eventId);
+    invalidateEventScopedCaches();
+    await loadAll();
+    renderEventContextSwitcher();
+    await refreshNotificationBanner();
+    renderCurrent();
+  }
+  if (navigate && isKnownView(navigate)) switchView(navigate);
+}
+
+function wireEventContextSwitcher() {
+  const select = document.getElementById('event-context-switcher');
+  select?.addEventListener('change', async () => {
+    select.disabled = true;
+    try {
+      await activateEvent(select.value);
+    } catch (error) {
+      renderEventContextSwitcher();
+      showToast(error.message, { error: true });
+    } finally {
+      select.disabled = false;
+    }
+  });
+  window.addEventListener('respawn:event-navigate', (event) => {
+    const { eventId, view } = event.detail ?? {};
+    void activateEvent(eventId, { navigate: view }).catch((error) => showToast(error.message, { error: true }));
+  });
+}
 
 function renderCurrent() {
   const revision = ++renderRevision;
@@ -274,7 +335,11 @@ function wireNav() {
   // of reloading the whole SPA just to change tabs.
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (e) => {
-      if (e.data?.type === 'navigate' && isKnownView(e.data.view)) switchView(e.data.view);
+      if (e.data?.type === 'navigate' && isKnownView(e.data.view)) {
+        void activateEvent(e.data.eventId, { navigate: e.data.view }).catch((error) =>
+          showToast(error.message, { error: true }),
+        );
+      }
     });
   }
 }
@@ -549,6 +614,13 @@ function wireSocket() {
     invalidateMusic();
     if (currentView === 'music') renderCurrent();
   });
+  socket.on('event-context:changed', async () => {
+    invalidateEventScopedCaches();
+    await loadAll();
+    renderEventContextSwitcher();
+    await refreshNotificationBanner();
+    renderCurrent();
+  });
   socket.on('groups:changed', async () => {
     await refreshGroupContext();
     invalidateAdminMemberships();
@@ -571,11 +643,13 @@ async function main() {
   wireAdminMode();
   initConnectionStatus();
   initNotificationBanner();
+  wireEventContextSwitcher();
   // Socket connection and REST cache recovery are background concerns. The
   // app shell and onboarding must still become usable when a single refresh
   // request fails temporarily (or keeps retrying in the background).
-  void loadAll()
+  const initialDataLoad = loadAll()
     .then(() => {
+      renderEventContextSwitcher();
       if (appReady) renderCurrent();
     })
     .catch((error) => {
@@ -588,6 +662,14 @@ async function main() {
   appReady = true;
   await initOnboarding({ navigate: (view) => switchView(view, { replace: true }), rerender: renderCurrent, getCurrentView: () => currentView });
   lastVoteRound = state.votes ? state.votes.round : null;
+  const pushedEventId = new URL(location.href).searchParams.get('eventId');
+  if (pushedEventId) {
+    await initialDataLoad;
+    await activateEvent(pushedEventId);
+    const cleanUrl = new URL(location.href);
+    cleanUrl.searchParams.delete('eventId');
+    history.replaceState(history.state, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+  }
   // A push notification's deep link (e.g. /#votes, opened by sw.js when no
   // app window existed yet) overrides that default so the tap actually lands
   // where the notification promised.

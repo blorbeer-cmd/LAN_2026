@@ -22,7 +22,7 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
     const assert = require('assert/strict');
     const request = require('supertest');
     const { createApp } = require(${JSON.stringify(APP_JS_PATH)});
-    const { db } = require(${JSON.stringify(DB_JS_PATH)});
+    const { BASE_EVENT_ID, db } = require(${JSON.stringify(DB_JS_PATH)});
 
     function cookie(response) { return response.headers['set-cookie'][0].split(';')[0]; }
     function scoped(app, method, url, user, groupId) {
@@ -60,6 +60,10 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
       assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice, groupId)
         .send({ playerIds: [alice.account.id, bob.account.id, dave.account.id] })).status, 200);
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/start', alice, groupId)).status, 200);
+      for (const participant of [alice, bob, dave]) {
+        assert.equal((await scoped(app, 'put', '/api/me/active-event', participant, groupId)
+          .send({ eventId: eventA.body.id })).status, 200);
+      }
 
       const itemA = await scoped(app, 'post', '/api/checklist/items', alice, groupId).send({ label: 'Sache A' });
       assert.equal(itemA.status, 201, JSON.stringify(itemA.body));
@@ -76,9 +80,7 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
       const listA = await scoped(app, 'get', '/api/checklist/tasks', alice, groupId);
       assert.deepEqual(listA.body.tasks.map((t) => t.id), [taskA.body.tasks[0].id]);
 
-      // A freshly registered group member may not yet be on the private
-      // tracking event's roster. Opening the group checklist must use the
-      // durable group room instead of returning the generic event 404.
+      // A freshly registered member starts in the permanent base event.
       const newcomer = await register('Checklist Newcomer', 'checklist newcomer secure passphrase');
       const newcomerItems = await scoped(app, 'get', '/api/checklist/items', newcomer, groupId)
         .query({ playerId: newcomer.account.id });
@@ -88,21 +90,19 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
       assert.equal(newcomerTasks.status, 200, JSON.stringify(newcomerTasks.body));
       assert.deepEqual(newcomerTasks.body.tasks, []);
 
-      // The pending newcomer packs a personal item and posts an open to-do
-      // while still stuck in the null-eventId fallback room from above -
-      // both land under event_id=NULL, not eventA.
+      // The newcomer packs a personal item and posts an open to-do in that
+      // real base workspace; operational rows never use NULL event ids.
       const newcomerItem = await scoped(app, 'post', '/api/checklist/items', newcomer, groupId).send({ label: 'Ladekabel' });
       assert.equal(newcomerItem.status, 201, JSON.stringify(newcomerItem.body));
       const newcomerTask = await scoped(app, 'post', '/api/checklist/tasks', newcomer, groupId).send({ title: 'Kann mir jemand Eis mitbringen?' });
       assert.equal(newcomerTask.status, 201, JSON.stringify(newcomerTask.body));
       const newcomerItemRowBefore = db.prepare('SELECT event_id FROM checklist_items WHERE id = ?').get(newcomerItem.body.id);
-      assert.equal(newcomerItemRowBefore.event_id, null);
+      assert.equal(newcomerItemRowBefore.event_id, BASE_EVENT_ID);
       const newcomerTaskRowBefore = db.prepare('SELECT event_id FROM checklist_tasks WHERE id = ?').get(newcomerTask.body.tasks[0].id);
-      assert.equal(newcomerTaskRowBefore.event_id, null);
+      assert.equal(newcomerTaskRowBefore.event_id, BASE_EVENT_ID);
 
-      // Once an organizer accepts the newcomer onto eventA's roster, opening
-      // the checklist must not silently drop what was already created while
-      // pending: both rows move into eventA and stay visible/mutable there.
+      // Joining another event does not move existing base-event data and
+      // does not change the selected workspace implicitly.
       assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice, groupId)
         .send({ playerIds: [alice.account.id, bob.account.id, dave.account.id, newcomer.account.id] })).status, 200);
       const newcomerItemsAfterAccept = await scoped(app, 'get', '/api/checklist/items', newcomer, groupId)
@@ -113,12 +113,16 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
       assert.equal(newcomerTasksAfterAccept.status, 200, JSON.stringify(newcomerTasksAfterAccept.body));
       assert.ok(newcomerTasksAfterAccept.body.tasks.some((t) => t.id === newcomerTask.body.tasks[0].id), 'reparented task stays visible');
       const newcomerItemRowAfter = db.prepare('SELECT event_id FROM checklist_items WHERE id = ?').get(newcomerItem.body.id);
-      assert.equal(newcomerItemRowAfter.event_id, eventA.body.id);
+      assert.equal(newcomerItemRowAfter.event_id, BASE_EVENT_ID);
       const newcomerTaskRowAfter = db.prepare('SELECT event_id FROM checklist_tasks WHERE id = ?').get(newcomerTask.body.tasks[0].id);
-      assert.equal(newcomerTaskRowAfter.event_id, eventA.body.id);
+      assert.equal(newcomerTaskRowAfter.event_id, BASE_EVENT_ID);
       const toggledNewcomerItem = await scoped(app, 'patch', '/api/checklist/items/' + newcomerItem.body.id, newcomer, groupId)
         .send({ checked: true });
       assert.equal(toggledNewcomerItem.status, 200, JSON.stringify(toggledNewcomerItem.body));
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', newcomer, groupId)
+        .send({ eventId: eventA.body.id })).status, 200);
+      assert.equal((await scoped(app, 'patch', '/api/checklist/items/' + newcomerItem.body.id, newcomer, groupId)
+        .send({ checked: false })).status, 404);
 
       // --- id-based mutations must 404 for an unknown id ---
       assert.equal((await scoped(app, 'patch', '/api/checklist/items/does-not-exist', bob, groupId).send({ checked: true })).status, 404);
@@ -170,6 +174,10 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
         .send({ playerIds: [alice.account.id, bob.account.id, dave.account.id] })).status, 200);
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/stop', alice, groupId)).status, 200);
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA2.body.id + '/tracking/start', alice, groupId)).status, 200);
+      for (const participant of [alice, bob, dave]) {
+        assert.equal((await scoped(app, 'put', '/api/me/active-event', participant, groupId)
+          .send({ eventId: eventA2.body.id })).status, 200);
+      }
 
       // itemA/taskA still belong to the group and Alice/Bob are still active
       // members there - only the event scope changed - so a plain group-

@@ -11,7 +11,8 @@ import request from 'supertest';
 import { createTestApp } from './testApp';
 import { setIo, Events, createSocketAuthGuard, registerScopedSockets } from '../realtime';
 import { arcadeWatcherPlayerIds, broadcastArcadeKiosk, registerArcadeSockets } from '../arcade/realtime';
-import { db, DEFAULT_GROUP_ID } from '../db';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
+import { ensureAccountEventContext } from '../eventContext';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
 import { nanoid } from 'nanoid';
 
@@ -61,8 +62,8 @@ test('a new broadcast reaches every subscribed group member with its public payl
     const clientA = await connectClient(baseUrl, sessionToken);
     const clientB = await connectClient(baseUrl, sessionToken);
     try {
-      await socketAck(clientA, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: null });
-      await socketAck(clientB, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: null });
+      await socketAck(clientA, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
+      await socketAck(clientB, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
       const received: unknown[] = [];
       clientA.on(Events.broadcastNew, (payload) => received.push(payload));
       clientB.on(Events.broadcastNew, (payload) => received.push(payload));
@@ -323,7 +324,7 @@ test('arcade watch list removes a finished match instead of re-adding a blank gh
   await withServer(async (baseUrl, io) => {
     const viewer = await request(baseUrl).post('/api/players').send({ name: 'Watch Finished Viewer' });
     const client = await connectClient(baseUrl, createSession(viewer.body.id));
-    await socketAck(client, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: null });
+    await socketAck(client, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
 
     try {
     const matchId = 'watch-finished-match';
@@ -336,7 +337,7 @@ test('arcade watch list removes a finished match instead of re-adding a blank gh
       matchId,
       gameType: 'pong',
       groupId: DEFAULT_GROUP_ID,
-      eventId: null,
+      eventId: BASE_EVENT_ID,
       running: true,
       players: [{ id: viewer.body.id, name: 'Watch Finished Viewer' }],
       scores: [{ playerId: viewer.body.id, name: 'Watch Finished Viewer', score: 0 }],
@@ -353,7 +354,7 @@ test('arcade watch list removes a finished match instead of re-adding a blank gh
       });
     });
 
-    broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: DEFAULT_GROUP_ID, eventId: null });
+    broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
 
     assert.deepEqual(await ended, { matchId });
     assert.equal((await cleared).some((match) => match.matchId === matchId || match.gameType === null), false);
@@ -374,19 +375,21 @@ test('arcade watcher voting uses the authenticated spectator identity', async ()
     .run(DEFAULT_GROUP_ID, participantId, now);
   db.prepare("INSERT INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled) VALUES (?, ?, 'member', 'active', ?, 0)")
     .run(DEFAULT_GROUP_ID, spectatorId, now);
+  ensureAccountEventContext(participantId);
+  ensureAccountEventContext(spectatorId);
 
   await withServer(async (baseUrl, io) => {
     const participant = await connectClient(baseUrl, createSession(participantId));
     const spectator = await connectClient(baseUrl, createSession(spectatorId));
-    await socketAck(participant, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: null });
-    await socketAck(spectator, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: null });
+    await socketAck(participant, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
+    await socketAck(spectator, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
     const matchId = `watch-voting-${suffix}`;
     try {
     broadcastArcadeKiosk(io, {
       matchId,
       gameType: 'scribble',
       groupId: DEFAULT_GROUP_ID,
-      eventId: null,
+      eventId: BASE_EVENT_ID,
       phase: 'drawing',
       players: [{ id: participantId, name: 'Watch Participant' }],
       strokes: [],
@@ -404,7 +407,7 @@ test('arcade watcher voting uses the authenticated spectator identity', async ()
     assert.deepEqual(spectatorJoin, { ok: true, matchId, votingPlayerId: spectatorId, canVote: true });
     assert.deepEqual(arcadeWatcherPlayerIds(io, matchId), [spectatorId]);
     } finally {
-      broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: DEFAULT_GROUP_ID, eventId: null });
+      broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
       participant.close();
       spectator.close();
     }

@@ -15,7 +15,7 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { getMyId } from '../whoami.js';
 import { emptyStateHtml } from '../emptyState.js';
 
-const EVENT_HELP = 'Mehrere Events sind möglich. Nur ein Event erfasst gleichzeitig Live-Status und Spielzeit; alles andere bleibt „Außerhalb von Events“.';
+const EVENT_HELP = 'Jede Aktion gehört zu deinem aktuell gewählten Event. Du kannst dein Arbeits-Event jederzeit oben in der Leiste wechseln.';
 const KIOSK_HELP = 'Für gemeinsame Bildschirme: zeigt Live-Status, Vote, Rang und Turnier automatisch. Der Kiosk benötigt seinen eigenen Token.';
 
 function renderKioskSection() {
@@ -39,7 +39,9 @@ function eventStatusBadge(e) {
 }
 
 function renderEventCard(e) {
-  const dateRange = `${new Date(e.starts_at).toLocaleDateString('de-DE')} – ${new Date(e.ends_at).toLocaleDateString('de-DE')}`;
+  const dateRange = e.ends_at == null
+    ? 'Dauerhaft geöffnet'
+    : `${new Date(e.starts_at).toLocaleDateString('de-DE')} – ${new Date(e.ends_at).toLocaleDateString('de-DE')}`;
   const participantCount = e.participantIds?.length ?? 0;
 
   const trackingBtn = e.isEnded
@@ -77,9 +79,7 @@ function renderEventSection() {
   const realEvents = (state.events || []).filter((e) => !e.isOutsideEvents);
   const cards = realEvents.map(renderEventCard).join('');
   const myId = getMyId();
-  const pendingInvitations = myId
-    ? realEvents.filter((event) => event.participants?.some((entry) => entry.playerId === myId && entry.status === 'invited'))
-    : [];
+  const pendingInvitations = myId ? state.eventInvitations || [] : [];
   const invitationRows = pendingInvitations
     .map(
       (event) => `
@@ -89,7 +89,7 @@ function renderEventSection() {
             <span class="badge badge-paused">Eingeladen</span>
           </div>
           <div class="muted" style="font-size:var(--font-size-sm);">
-            ${icon('calendar')} ${new Date(event.starts_at).toLocaleDateString('de-DE')} – ${new Date(event.ends_at).toLocaleDateString('de-DE')}
+            ${icon('calendar')} ${new Date(event.startsAt).toLocaleDateString('de-DE')}${event.endsAt == null ? '' : ` – ${new Date(event.endsAt).toLocaleDateString('de-DE')}`}
           </div>
           <div class="row" style="gap:var(--space-2);">
             <button type="button" class="btn btn-primary" data-accept-invitation="${event.id}">Annehmen</button>
@@ -389,7 +389,7 @@ export function renderSettings(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.events || []).find((e) => e.id === btn.dataset.stopTracking);
       if (!event) return;
-      if (!(await confirmDialog(`Tracking für „${event.name}" stoppen? Es läuft dann wieder alles unter „Außerhalb von Events".`, { confirmText: 'Tracking stoppen' }))) return;
+      if (!(await confirmDialog(`Tracking für „${event.name}" stoppen? Der Event-Workspace bleibt erhalten.`, { confirmText: 'Tracking stoppen' }))) return;
       try {
         await api.events.stopTracking(event.id);
         await ctx.refresh();

@@ -1102,10 +1102,23 @@ flowTest('competition', 'Ergebnis eintragen keeps a manual team reassignment aft
 flowTest('competition', 'Auswertungen (via Mehr) shows a real award and keeps detail logs collapsed', async () => {
   // Create a player + a session via the real agent-report endpoint (not the
   // UI) so there's an actual play_sessions row to render.
-  const playerRes = await page.request.post(`${BASE_URL}/api/players`, {
-    data: { name: 'Analytics E2E Player' },
+  const account = await createE2EAccount(BASE_URL, adminCookie, 'Analytics E2E Player');
+  const playerRes = await page.request.get(`${BASE_URL}/api/players/${account.id}`);
+  assert.equal(playerRes.status(), 200);
+  const player = await playerRes.json() as { api_key: string };
+  const activeEventResponse = await fetch(`${BASE_URL}/api/events/active`, {
+    headers: { cookie: account.cookie },
   });
-  const player = await playerRes.json();
+  assert.equal(activeEventResponse.status, 200);
+  const activeEvent = await activeEventResponse.json() as { id: string };
+  const trackingResponse = await page.request.post(`${BASE_URL}/api/events/${activeEvent.id}/tracking/start`);
+  assert.equal(trackingResponse.status(), 200, await trackingResponse.text());
+  const consentResponse = await fetch(`${BASE_URL}/api/events/${activeEvent.id}/tracking-consent`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: account.cookie },
+    body: JSON.stringify({ granted: true }),
+  });
+  assert.equal(consentResponse.status, 200, await consentResponse.text());
   await page.request.post(`${BASE_URL}/api/agent/report`, {
     headers: { 'x-api-key': player.api_key },
     data: { processNames: ['cs2.exe'] },

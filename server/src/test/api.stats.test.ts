@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createTestApp } from './testApp';
+import { createTestApp, enableTestTracking } from './testApp';
 
 const app = createTestApp();
 let apiKey: string;
@@ -15,6 +15,7 @@ test('setup: a player and the seeded CS2 game', async () => {
   const player = await request(app).post('/api/players').send({ name: 'Playtime Tester' });
   playerId = player.body.id;
   apiKey = player.body.api_key;
+  enableTestTracking(playerId);
   const games = await request(app).get('/api/games');
   cs2GameId = games.body.find((g: { name: string }) => g.name === 'Counter-Strike 2').id;
 });
@@ -77,6 +78,7 @@ test('GET /api/stats/playtime totalsByGame aggregates across all players for CS2
   // A second player also plays a CS2 session, so the per-game total should
   // exceed what any single player racked up alone.
   const other = await request(app).post('/api/players').send({ name: 'Playtime Tester 2' });
+  enableTestTracking(other.body.id);
   await request(app)
     .post('/api/agent/report')
     .set('x-api-key', other.body.api_key)

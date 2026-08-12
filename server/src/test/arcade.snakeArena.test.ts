@@ -149,12 +149,18 @@ test('Snake Arena AI quick start is admin-gated and fills all eight slots', asyn
 async function verifyArenaLeaveSecurity(): Promise<void> {
   clearLobbyMemberships();
   const groupId = nanoid();
+  const eventId = nanoid();
   db.prepare('INSERT INTO groups (id, name, created_at) VALUES (?, ?, ?)').run(groupId, 'Snake Arena Security', Date.now());
+  db.prepare(
+    `INSERT INTO events (id, name, starts_at, group_id, status, visibility_scope)
+     VALUES (?, 'Snake Arena Security Event', 0, ?, 'published', 'participants')`,
+  ).run(eventId, groupId);
   const httpServer = http.createServer(createApp());
   const io = new Server(httpServer);
   io.use((socket, next) => {
     socket.data.authPlayerId = socket.handshake.auth.playerId;
     socket.data.groupId = groupId;
+    socket.data.eventId = eventId;
     next();
   });
   registerSnakeSockets(io);
@@ -178,6 +184,10 @@ async function verifyArenaLeaveSecurity(): Promise<void> {
            (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
          VALUES (?, ?, 'member', 'active', ?, NULL, 1, NULL)`,
       ).run(groupId, playerId, Date.now());
+      db.prepare(
+        `INSERT INTO event_participants (event_id, player_id, status)
+         VALUES (?, ?, 'accepted')`,
+      ).run(eventId, playerId);
     }
     for (const playerId of playerIds) sockets.push(await connect(baseUrl, playerId));
 
@@ -194,11 +204,15 @@ async function verifyArenaLeaveSecurity(): Promise<void> {
     const trackingGroupId = groupId;
     const openTracking = (playerId: string) => ({
       live: (db.prepare(
-        'SELECT COUNT(*) AS count FROM live_status_games WHERE player_id = ? AND game_id = ? AND group_id = ?',
-      ).get(playerId, snakeGameId, trackingGroupId) as { count: number }).count,
+        `SELECT COUNT(*) AS count
+         FROM tracking_live_games
+         WHERE player_id = ? AND game_id = ? AND group_id = ? AND event_id = ?`,
+      ).get(playerId, snakeGameId, trackingGroupId, eventId) as { count: number }).count,
       sessions: (db.prepare(
-        'SELECT COUNT(*) AS count FROM play_sessions WHERE player_id = ? AND game_id = ? AND group_id = ? AND ended_at IS NULL',
-      ).get(playerId, snakeGameId, trackingGroupId) as { count: number }).count,
+        `SELECT COUNT(*) AS count
+         FROM play_sessions
+         WHERE player_id = ? AND game_id = ? AND group_id = ? AND event_id = ? AND ended_at IS NULL`,
+      ).get(playerId, snakeGameId, trackingGroupId, eventId) as { count: number }).count,
     });
     for (const playerId of playerIds.slice(0, 5)) assert.deepEqual(openTracking(playerId), { live: 1, sessions: 1 });
     assert.deepEqual(openTracking(playerIds[5]), { live: 0, sessions: 0 });
