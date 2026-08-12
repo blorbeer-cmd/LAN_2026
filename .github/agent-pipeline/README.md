@@ -24,10 +24,12 @@ The pipeline reports state and has narrow provider actions for both regular cros
 - `scripts/agent-codex-review.mjs` reuses the readiness snapshot and posts one exact-head-bound
   `@codex review` request under the identity in `AGENT_PIPELINE_REVIEW_REQUEST_TOKEN`; Codex submits
   the native GitHub review and the reconciler evaluates it.
-- `scripts/agent-pipeline-codex-adapter.mjs` exposes the trusted GitHub outbox to a Codex scheduled
-  monitor. It emits undelivered review choices, completed reviews and provider-start failures,
-  maps them to an explicit `codex-thread-id` or the unique head branch, and records a durable
-  GitHub acknowledgement only after the task message was sent successfully.
+- `scripts/agent-pipeline-codex-adapter.mjs` exposes the trusted GitHub outbox to the single
+  persistent Codex heartbeat monitor. It emits undelivered review choices, completed reviews and
+  provider-start failures only for Codex implementations, maps them to an explicit
+  `codex-thread-id` or a unique matching head branch, and records a durable GitHub acknowledgement
+  only after the task message was sent successfully. Claude implementations have no Codex target:
+  their GitHub comments remain the documented outbox until a real Claude-session connector exists.
 - `.github/workflows/agent-pipeline-tests.yml` runs the pipeline and provider-adapter unit tests.
 - `review-session-prompt.md` contains the copy-paste prompt and operating instructions for an
   isolated Codex or Claude review session.
@@ -40,11 +42,16 @@ The pipeline reports state and has narrow provider actions for both regular cros
   exposed. Claude receives the diff but no PR-owned `CLAUDE.md`, `AGENTS.md` or `.claude` settings;
   no pull-request code, tests, hooks or package-manager commands are executed.
 - The provider adapters have no automatic retry, round counter, approval or merge. The Codex task
-  delivery adapter now wakes the implementation task with completed findings and tells it to run
-  the normal fix/re-review procedure; the pipeline still has no independent fix worker. A trusted
-  terminal start failure is reconciled back to the user's
-  review choice, where the user may select the same provider again. The merge-gate status is written
-  and becomes a required check on `main` in the controlled activation described below.
+  delivery adapter wakes only the Codex implementation task with completed findings and tells it to
+  run the normal fix/re-review procedure; the pipeline still has no independent fix worker. A
+  trusted terminal start failure is reconciled back to the user's review choice, where the user may
+  select the same provider again. The merge-gate status is active as a required check on `main`.
+
+The local automation `agent-pipeline-codex-zustellung` is a five-minute heartbeat bound to exactly
+one dedicated monitor task. Empty scans use `failed_runs_only` and produce no notification. The
+monitor never changes `review:*` labels and acknowledges an event only after the thread send
+returns successfully. A second scheduled run is still required as an operational acceptance check
+after this configuration change; no new sidebar task is expected from either run.
 
 ## Readiness reconciler
 
@@ -122,6 +129,12 @@ after the send succeeds. The acknowledgement marker
 machines. Unresolved mappings and failed sends remain unacknowledged and are retried; the monitor
 never sets a `review:*` label itself.
 
+This boundary is provider-specific. The Codex desktop tools expose no reliable wake-up interface
+for an original Claude session, so the adapter emits no Codex delivery event for a Claude
+implementation, never invents a Claude task ID, and never treats a `claude/*` branch as a Codex
+task. Claude's GitHub review comments and workflow events are therefore its durable outbox until a
+real, separately authenticated Claude connector is available.
+
 A failed notification POST is not folded into the sticky update. The reconciler writes an
 `agent-pipeline:review-decision-delivery-failure` record into the sticky comment, posts a pending
 `review-decision-delivery-failed` merge-gate status, and fails the workflow. A later run retries.
@@ -170,6 +183,29 @@ a label, and are named as reduced independence in the status comment. The pull r
 history is the audit trail for who chose what and when. Every other gate condition — green checks,
 no conflict, resolved threads, the UI/UX notice, human review of protected paths — applies
 unchanged in all three modes, and the merge stays with the user in all of them.
+
+## Six-field acceptance matrix and pilot status
+
+The acceptance standard is table-driven in `scripts/agent-pipeline-reconcile.test.mjs` and covers
+every implementer/mode pair:
+
+| Implementer | `cross` | `self` | `human` |
+| --- | --- | --- | --- |
+| `codex` | Claude evidence | Codex result marker | native human review |
+| `claude` | Codex native review | Claude result marker | native human review |
+
+Each cell checks the reviewer/evidence type, exact head binding, pass and `changes-required`, stale
+evidence, new-commit invalidation, selected-mode exclusivity, absence of automatic fallback or
+label replacement, and unresolved-thread blocking. Adapter tests additionally cover explicit task
+IDs, unique and ambiguous branch fallback, missing targets, Claude's lack of a Codex target, clean
+pass versus findings, event order and acknowledgement idempotence.
+
+The live provider pilots currently documented for this repository are Codex → Claude cross-review
+(PR #399), Claude → Codex cross-review (PR #394), Codex self-review (PR #383), and Claude
+self-review (PR #391). The Required Check `Agent pipeline / ready for human merge` is active on
+`main`. A post-#396, no-bypass human pilot for both implementer directions is not yet fulfilled;
+it remains an explicit acceptance blocker until the exact current head has a native human review,
+resolved threads and a successful gate result. No administrative bypass is evidence for that pilot.
 
 ## Automated provider cross-review
 
@@ -441,18 +477,13 @@ Still required before expanding agent mutations:
    cover the exact head SHA without repository file or branch changes.
 2. Verify in a pilot pull request that both app identities can update their own feature branches
    but cannot push or merge to `main`.
-3. `Agent pipeline / ready for human merge` is added to branch protection after a controlled pilot
-   has observed the context on every relevant current head. Before activation, `main` required
-   `Server lint, build and tests`,
-   `Browser E2E`, `Agent lint and tests`, `Build runtime image`, `Classify changed paths` and
-   `Test performance`. Add readiness without replacing that list:
-   `gh api --method POST repos/blorbeer-cmd/LAN_2026/branches/main/protection/required_status_checks/contexts -f "contexts[]=Agent pipeline / ready for human merge"`.
-   Verify the returned array contains all seven contexts. Roll back only this addition with:
-   `gh api --method DELETE repos/blorbeer-cmd/LAN_2026/branches/main/protection/required_status_checks/contexts -f "contexts[]=Agent pipeline / ready for human merge"`.
+3. Complete the post-#396 human-review pilot in both implementer directions without an admin
+   bypass, and retain the PR/head/review/gate evidence. The `Agent pipeline / ready for human
+   merge` context is already active as a required check on `main`; do not replace the existing
+   required checks.
 
-If that context is already required while no run has written it, every open pull request sits at
-"Expected — waiting for status to be reported". Removing it from branch protection or letting the
-reconciler run once on the merged default branch both clear that state.
+The context is already written by the active reconciler for relevant heads. Ordinary and fork pull
+requests remain outside the agent-pipeline contract and do not use this required context.
 
 Repository workflow defaults may remain read-only. Future jobs must request only the granular
 permissions they need.
