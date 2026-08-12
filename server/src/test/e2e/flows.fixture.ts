@@ -1636,6 +1636,16 @@ flowTest('community', 'Info: create an entry, see it rendered', async () => {
   await page.click('#info-form button[type="submit"]');
   await page.waitForSelector('text=kartoffel');
 
+  // Regression: saving reloads the dialog's own data (load() -> renderOpenDialog()),
+  // which used to rebuild .modal-body without restoring focus - the entry
+  // form's close() already returned focus to "Eintrag anlegen" by this point,
+  // and the async reload's DOM rebuild must not then drop it back to <body>.
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    'info-new-btn',
+    'focus must stay on "Eintrag anlegen" after the Info dialog refreshes its data'
+  );
+
   // Modals stack now that Info is one itself: Escape must dismiss only the
   // topmost dialog, not the whole stack underneath it.
   await page.click('[data-delete-entry]');
@@ -1896,6 +1906,49 @@ flowTest('community', 'An- & Abreise: carpool marks the driver, enforces seats, 
   await page.click('[data-confirm]');
   await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
 });
+
+flowTest(
+  'community',
+  'An- & Abreise: an unrelated Orga To-Do keeps the unsaved Ankunft/Abreise draft and focus',
+  async () => {
+    // Regression for the area shell: checklist:changed now re-renders every
+    // Orga tab (see app.js), not only the Checkliste's own, so that the
+    // To-Dos tab's live count stays correct everywhere. An unrelated To-Do
+    // assigned to Alice by someone else must not throw away what she is
+    // still typing into "Meine An-/Abreise" on a different Orga tab.
+    await switchIdentityAndOpenArrivals('E2E Alice Pro');
+
+    const note = page.locator('#arrival-note');
+    await note.click();
+    await note.fill('Bringe Verlängerungskabel mit');
+
+    const badge = page.locator('[data-section-tab="checklist"] [data-section-tab-count]');
+    const before = (await badge.textContent()) ?? '';
+
+    const created = await page.request.post(`${BASE_URL}/api/checklist/tasks/todo`, {
+      headers: { cookie: bob.cookie },
+      data: { playerId: bob.id, title: 'Kabeltrommel besorgen', assigneePlayerIds: [alice.id] },
+    });
+    assert.equal(created.status(), 201, await created.text());
+    // The changed tab count is the visible proof that the unrelated event's
+    // re-render actually landed on this tab, not just that nothing happened.
+    await page.waitForFunction(
+      ({ selector, previous }) => document.querySelector(selector)?.textContent !== previous,
+      { selector: '[data-section-tab="checklist"] [data-section-tab-count]', previous: before }
+    );
+
+    assert.equal(await note.inputValue(), 'Bringe Verlängerungskabel mit');
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.id === 'arrival-note'),
+      true,
+      'focus must stay in the Notiz field across a background Orga re-render'
+    );
+
+    // Saving afterwards still works, so the surviving node is the live one.
+    await page.click('#arrival-form button[type="submit"]');
+    await page.waitForSelector('text=An-/Abreise gespeichert.');
+  }
+);
 
 flowTest('community', 'Durchsage: notification center can navigate, mark read and remove without duplicating Home', async () => {
   await page.click('.nav-btn[data-view="more"]');

@@ -184,14 +184,44 @@ function focusEntry(root, entryId) {
   element.scrollIntoView({ block: 'center', behavior: reducedMotion ? 'auto' : 'smooth' });
 }
 
+// A control inside the still-open Info dialog that currently has focus,
+// expressed as a selector that resolves to the equivalent control after a
+// refresh. "Eintrag anlegen" has a stable id; a specific entry's own
+// copy/edit/delete action is keyed by the data attribute it carries instead,
+// since individual entry rows have no id of their own.
+function focusedBodySelector(body) {
+  const active = document.activeElement;
+  if (!active || !body.contains(active)) return null;
+  if (active.id) return `#${active.id}`;
+  for (const attr of ['data-copy-entry', 'data-edit-entry', 'data-delete-entry']) {
+    if (active.hasAttribute(attr)) return `[${attr}="${CSS.escape(active.getAttribute(attr))}"]`;
+  }
+  return null;
+}
+
 function renderOpenDialog() {
   if (!openDialog) return;
   const { el, focusEntryId } = openDialog;
   const body = el.querySelector('.modal-body');
   if (!body) return;
+  // The refresh unconditionally rebuilds every row (new/edited/deleted
+  // entries all reach here through load()), so whatever had focus is removed
+  // from the DOM along with the rest of the old markup. Without restoring
+  // it, focus silently falls back to <body> - modal.js's own Tab-trap only
+  // engages while the topmost backdrop still contains document.activeElement
+  // (see isTopmostModal/onKeydown there), so Tab would then escape into
+  // whatever sits behind this dialog instead of cycling inside it. Only
+  // acts when focus was actually inside this dialog to begin with - a
+  // refresh triggered while focus sits elsewhere (e.g. the topbar trigger
+  // that reopened an already-open dialog) must not steal it.
+  const focusedSelector = focusedBodySelector(body);
   body.innerHTML = bodyHtml();
   wireBody(body);
   if (focusEntryId) focusEntry(body, focusEntryId);
+  if (!focusedSelector) return;
+  const restored = body.querySelector(focusedSelector);
+  if (restored) restored.focus();
+  else body.querySelector('button, [href], input, select, textarea, [tabindex]')?.focus();
 }
 
 export function openInfoBoard({ focusEntryId = null } = {}) {
