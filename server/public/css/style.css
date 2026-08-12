@@ -2164,6 +2164,37 @@ button.draft-pool-player {
   margin: var(--space-5) 0 var(--space-2);
 }
 
+/* Tab row of a merged top-level area (Wettkampf, Auswertung, Orga — see
+   sectionNav.js). Each tab is a real route, so this is navigation, not a
+   filter: the active tab carries aria-current="page" plus the primary button
+   treatment. It sits directly under the area title, outside any card, which is
+   what keeps it distinguishable from the in-card control rows further down. */
+.section-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+}
+/* Phones share the full width so every tab keeps a comfortable tap target. */
+.section-tab {
+  flex: 1 1 auto;
+}
+/* On a wide column, stretching two tabs across 1080px would make them read as
+   banners instead of navigation — from here they size to their own label. */
+@media (min-width: 640px) { /* --bp-md */
+  .section-tab {
+    flex: 0 0 auto;
+  }
+}
+
+/* Right-aligned page-level action next to an area's tab row (Turnier anlegen,
+   Ergebnis eintragen) — those used to share a row with the view title the
+   area shell now owns. */
+.view-actions {
+  justify-content: flex-end;
+  margin-bottom: var(--space-3);
+}
+
 .title-with-info {
   display: flex;
   align-items: center;
@@ -3072,6 +3103,16 @@ button.card {
   gap: var(--space-3);
   padding: var(--space-4);
 }
+/* Home's live board doubles as the roster since the separate "Spieler" area
+   was removed: every card opens that participant's read-only profile. The
+   kiosk keeps rendering the same card as a static div, so the interactive
+   resets stay scoped to the button form. */
+button.player-card {
+  width: 100%;
+  text-align: left;
+  font-size: var(--font-size-md);
+  cursor: pointer;
+}
 .player-card-main {
   flex: 1;
   min-width: 0;
@@ -3708,10 +3749,6 @@ input[type='number'].tournament-score-input {
   }
   .two-column-card-grid.food-order-grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .two-column-card-grid.player-roster-grid > :only-child,
-  .two-column-card-grid.player-roster-grid > :last-child:nth-child(odd) {
-    grid-column: auto;
   }
 }
 .lb-row {
@@ -4635,6 +4672,17 @@ input.food-order-price-input {
 .modal-header h2 {
   margin: 0;
   font-size: var(--font-size-lg);
+}
+
+/* Info dialog (topbar "i"): reference material — WLAN, Discord, server IPs,
+   house rules — that people look up mid-conversation, so it opens over the
+   current view instead of replacing it. Same width cap as the search palette,
+   since both hold a list of short titles plus one line of content. */
+.info-board-modal .modal {
+  max-width: var(--search-panel-width);
+}
+.info-board-dialog .two-column-card-grid {
+  margin-top: var(--space-2);
 }
 
 /* Global command palette: fast navigation across every area without adding

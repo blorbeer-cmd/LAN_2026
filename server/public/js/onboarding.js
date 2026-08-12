@@ -11,12 +11,11 @@ import { showToast } from './toast.js';
 const STEPS = [
   { title: 'Willkommen', text: 'Diese kurze Einführung zeigt die wichtigsten Bereiche und Funktionen.', view: 'home' },
   { title: 'Home', text: 'Home zeigt aktuelle Aktivitäten, den Live-Status aller Spielenden, die Rangliste und den Sitzplan auf einen Blick.', view: 'home', target: '.nav-btn[data-view="home"]' },
-  { title: 'Turniere', text: 'Hier legst du Turniere an, verfolgst Turnierbaum oder Gruppenphase live und trägst Ergebnisse ein.', view: 'tournaments', target: '.nav-btn[data-view="tournaments"]' },
-  { title: 'Teams', text: 'Hier werden Teams nach Skill-Level ausgelost oder per Captain Draft zusammengestellt.', view: 'matchmaking', target: '.nav-btn[data-view="matchmaking"]' },
+  { title: 'Wettkampf', text: 'Turniere und Teams liegen hier zusammen: Turniere anlegen und live verfolgen, Teams nach Skill-Level auslosen oder per Captain Draft zusammenstellen.', view: 'tournaments', target: '.nav-btn[data-view="tournaments"]' },
   { title: 'Vote', text: 'Hier startet und beantwortet ihr Abstimmungen zur nächsten Spielauswahl und seht die Top 10 nach Bock-Level.', view: 'votes', target: '.nav-btn[data-view="votes"]' },
-  { title: 'Rang', text: 'Hier findest du Ergebnisse, Punkte, Platzierungen und die Spielzeit pro Spiel.', view: 'leaderboard', target: '.nav-btn[data-view="leaderboard"]' },
-  { title: 'Mehr', text: 'Hier erreichst du alle weiteren Bereiche: Checkliste, An- & Abreise, Essen, Arcade, Durchsagen und mehr. Jeder dieser Bereiche erklärt sich beim ersten Öffnen kurz selbst.', view: 'more', target: '.nav-btn[data-view="more"]' },
-  { title: 'Profil und Suche', text: 'Im Profil verwaltest du deine persönlichen Angaben, deinen Tracking-Agent und Push-Benachrichtigungen. Über die Suche erreichst du Bereiche und Inhalte direkt.', view: 'profile', target: '#profile-btn' },
+  { title: 'Auswertung', text: 'Rangliste, Statistiken und Hall of Fame in einem Bereich: Punkte, Platzierungen, Spielzeit und die Champions vergangener LANs.', view: 'leaderboard', target: '.nav-btn[data-view="leaderboard"]' },
+  { title: 'Mehr', text: 'Hier erreichst du alle weiteren Bereiche: Orga mit To-Dos, Packliste und An- & Abreise, dazu Essen, Arcade, Jam, Durchsagen und Spiele. Jeder dieser Bereiche erklärt sich beim ersten Öffnen kurz selbst.', view: 'more', target: '.nav-btn[data-view="more"]' },
+  { title: 'Info, Profil und Suche', text: 'Das „i“ oben öffnet WLAN, Discord, Server-IPs und Hausregeln von jeder Ansicht aus. Im Profil verwaltest du deine persönlichen Angaben, deinen Tracking-Agent und Push-Benachrichtigungen. Über die Suche erreichst du Bereiche und Inhalte direkt.', view: 'profile', target: '#profile-btn' },
   { title: 'Spielekatalog', text: 'Bewerte jetzt die ersten zehn Spiele. Bock verbessert die gemeinsame Spielauswahl. Skill ermöglicht eine ausgewogenere Teamaufteilung.', view: 'gameCatalog' },
 ];
 
@@ -24,7 +23,7 @@ const STEPS = [
 // explanation on first visit instead of being crammed into the "Mehr" tour
 // step's text (see onboardingHintHtml/wireOnboardingHint below).
 const VIEW_HINTS = {
-  checklist: 'Packliste und To-Dos: Häkchen setzen, eigene Punkte ergänzen oder Aufgaben und Mitbring-Anfragen für die Gruppe anlegen.',
+  checklist: 'Orga bündelt die Vorbereitung: Aufgaben und Mitbring-Anfragen für die Gruppe, deine persönliche Packliste und die Fahrgemeinschaften – jeweils ein Tab oben.',
   arrivals: 'Fahrgemeinschaften für An- und Abreise: Fahrten anlegen oder als Mitfahrer:in eintragen.',
   foodOrders: 'Sammelbestellungen: Positionen hinzufügen, eigenen Anteil markieren und die Bestellung gemeinsam abrechnen.',
   arcade: 'Kleine Zwischendurch-Spiele für 1 bis 8 Personen: Lobby öffnen oder einer offenen Lobby beitreten.',

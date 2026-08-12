@@ -218,8 +218,17 @@ export function renderHome(container, ctx) {
       // was the last source of a tile being taller than its siblings, which
       // visibly resized the whole .card-grid row (that stretches every card
       // in a row to the tallest one) the moment someone paused.
+      //
+      // The card is the roster: tapping it opens that participant's read-only
+      // profile (or "Mein Profil" for the own row). The separate "Spieler"
+      // area that used to hold the same list is gone — the live board already
+      // shows everyone, so a second identical list was pure detour.
+      const action = isMe
+        ? 'data-navigate="profile"'
+        : `data-open-player-detail="${p.player_id}"`;
       return `
-        <div class="card player-card">
+        <button type="button" class="card player-card" data-player="${p.player_id}" ${action}
+          aria-label="Profil von ${escapeHtml(p.name)} ansehen">
           ${avatarHtml(p, 36)}
           <div class="player-card-main">
             <div class="row-between">
@@ -228,7 +237,7 @@ export function renderHome(container, ctx) {
             </div>
             ${games ? `<div class="player-card-games chip-list">${games}</div>` : ''}
           </div>
-        </div>`;
+        </button>`;
     })
     .join('');
 

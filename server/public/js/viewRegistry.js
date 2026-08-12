@@ -1,11 +1,9 @@
 import { renderHome } from './views/home.js';
-import { renderPlayers } from './views/players.js';
 import { renderSettings } from './views/games.js';
 import { renderMatchmaking } from './views/matchmaking.js';
 import { renderBroadcast } from './views/broadcast.js';
-import { renderInfoBoard } from './views/infoBoard.js';
 import { renderFoodOrders } from './views/foodOrders.js';
-import { renderChecklist } from './views/checklist.js';
+import { renderChecklist, openTaskCount } from './views/checklist.js';
 import { renderGameCatalog } from './views/gameCatalog.js';
 import { renderArrivals } from './views/arrivals.js';
 import { renderVotes } from './views/votes.js';
@@ -20,27 +18,37 @@ import { renderMore } from './views/more.js';
 import { renderAdmin } from './views/admin.js';
 import { renderMusic } from './views/music.js';
 import { createViewRegistry } from './viewManifest.js';
+import { renderSectionShell } from './sectionNav.js';
+
+// A route inside a merged area (see sectionNav.js) draws that area's heading
+// and tab row first and then hands the remaining surface to its own renderer,
+// which stays unchanged apart from no longer owning the page title.
+function inSection(view, render) {
+  return (container, ctx) => {
+    const content = renderSectionShell(container, view, { badges: { checklist: openTaskCount() } });
+    render(content, ctx);
+  };
+}
 
 export const VIEW_REGISTRY = createViewRegistry({
   home: renderHome,
-  players: renderPlayers,
-  matchmaking: renderMatchmaking,
+  matchmaking: inSection('matchmaking', renderMatchmaking),
   votes: renderVotes,
-  leaderboard: renderLeaderboard,
+  leaderboard: inSection('leaderboard', renderLeaderboard),
   settings: renderSettings,
-  analytics: renderAnalytics,
+  analytics: inSection('analytics', renderAnalytics),
   profile: renderProfile,
-  tournaments: renderTournaments,
-  hallOfFame: renderHallOfFame,
+  tournaments: inSection('tournaments', renderTournaments),
+  hallOfFame: inSection('hallOfFame', renderHallOfFame),
   seating: renderSeating,
   myStats: renderMyStats,
   more: renderMore,
   broadcast: renderBroadcast,
-  infoBoard: renderInfoBoard,
   foodOrders: renderFoodOrders,
-  checklist: renderChecklist,
+  checklist: inSection('checklist', (container, ctx) => renderChecklist(container, ctx, 'todos')),
+  checklistPacking: inSection('checklistPacking', (container, ctx) => renderChecklist(container, ctx, 'packliste')),
   gameCatalog: renderGameCatalog,
-  arrivals: renderArrivals,
+  arrivals: inSection('arrivals', renderArrivals),
   admin: renderAdmin,
   music: renderMusic,
 });

@@ -1,7 +1,11 @@
-// Info view: the pinned answers to the questions everyone asks five
-// times per evening — WLAN password, Discord link, game-server IPs, house
-// rules. Anyone can add/edit/delete entries (LAN trust model); values get a
-// one-tap copy button since most of them exist to be pasted somewhere.
+// Info: the pinned answers to the questions everyone asks five times per
+// evening — WLAN password, Discord link, game-server IPs, house rules. Anyone
+// can add/edit/delete entries (LAN trust model); values get a one-tap copy
+// button since most of them exist to be pasted somewhere.
+//
+// This is a topbar "i" dialog instead of an own area: it is pure reference
+// material people look up mid-conversation, so it must be reachable from
+// wherever they are without losing the view they were working in.
 
 import { api } from '../api.js';
 import { escapeHtml } from '../format.js';
@@ -13,8 +17,13 @@ import { emptyStateHtml } from '../emptyState.js';
 
 let cache = null;
 let loading = false;
+// The currently open dialog, so a socket update can refresh it in place and a
+// second trigger (topbar button, search hit) reuses it instead of stacking a
+// second copy on top.
+let openDialog = null;
 
-async function load(ctx) {
+async function load() {
+  if (loading) return;
   loading = true;
   try {
     const res = await api.info.list();
@@ -24,13 +33,14 @@ async function load(ctx) {
     cache = [];
   } finally {
     loading = false;
-    ctx.rerender();
+    renderOpenDialog();
   }
 }
 
 // Called from app.js on every info:changed socket event.
 export function invalidateInfoBoard() {
   cache = null;
+  if (openDialog) load();
 }
 
 // Turns bare URLs into clickable links — applied AFTER escapeHtml, so the
@@ -42,7 +52,7 @@ function linkify(escaped) {
   );
 }
 
-function openEntryForm(ctx, existing) {
+function openEntryForm(existing) {
   const isEdit = Boolean(existing);
   let modalEl;
   const { close } = openModal(
@@ -79,7 +89,7 @@ function openEntryForm(ctx, existing) {
             close();
             cache = null;
             showToast(isEdit ? 'Gespeichert.' : 'Eintrag angelegt.');
-            ctx.rerender();
+            load();
           } catch (err) {
             showToast(err.message, { error: true });
           }
@@ -89,59 +99,51 @@ function openEntryForm(ctx, existing) {
   );
 }
 
-export function renderInfoBoard(container, ctx) {
-  if (cache === null && !loading) load(ctx);
-
-  const entries =
-    loading || cache === null
-      ? emptyStateHtml('Lädt…')
-      : cache.length === 0
-        ? emptyStateHtml(`Noch keine Einträge.<br />
-           <span class="muted" style="font-size:var(--font-size-sm);">Gut aufgehoben hier: WLAN-Passwort, Discord-Link, Server-IPs, Hausregeln.</span>`)
-        : `<div class="two-column-card-grid">${[...cache]
-            .sort((a, b) => a.title.localeCompare(b.title, 'de', { sensitivity: 'base' }))
-            .map(
-              (e) => `
-            <div class="card stack" style="gap:var(--space-2);" data-info-entry="${e.id}">
-              <div class="row-between">
-                <strong class="info-board-title">${escapeHtml(e.title)}</strong>
-                <span class="row" style="gap:var(--space-1);">
-                  <button type="button" class="icon-btn" data-copy-entry="${e.id}" title="Inhalt kopieren" aria-label="Inhalt kopieren">${icon('copy')}</button>
-                  <button type="button" class="icon-btn" data-edit-entry="${e.id}" title="Bearbeiten" aria-label="Bearbeiten">${icon('pencil')}</button>
-                  <button type="button" class="icon-btn" data-delete-entry="${e.id}" title="Löschen" aria-label="Löschen">${icon('trash')}</button>
-                </span>
-              </div>
-              <div class="info-board-content">${linkify(escapeHtml(e.content))}</div>
-            </div>`
-            )
-            .join('')}</div>`;
-
-  container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <div class="row-between">
-      <h1 class="view-title">Info</h1>
-      <button type="button" class="btn btn-primary btn-sm" id="info-new-btn">Eintrag anlegen</button>
-    </div>
-    <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section" aria-labelledby="info-board-entries-title">
-        <div class="grouped-page-section-title">
-          <h2 id="info-board-entries-title">Einträge</h2>
+function entriesHtml() {
+  if (loading || cache === null) return emptyStateHtml('Lädt…');
+  if (cache.length === 0) {
+    return emptyStateHtml(`Noch keine Einträge.<br />
+      <span class="muted" style="font-size:var(--font-size-sm);">Gut aufgehoben hier: WLAN-Passwort, Discord-Link, Server-IPs, Hausregeln.</span>`);
+  }
+  return `<div class="two-column-card-grid">${[...cache]
+    .sort((a, b) => a.title.localeCompare(b.title, 'de', { sensitivity: 'base' }))
+    .map(
+      (e) => `
+      <div class="card stack" style="gap:var(--space-2);" data-info-entry="${e.id}">
+        <div class="row-between">
+          <strong class="info-board-title">${escapeHtml(e.title)}</strong>
+          <span class="row" style="gap:var(--space-1);">
+            <button type="button" class="icon-btn" data-copy-entry="${e.id}" title="Inhalt kopieren" aria-label="Inhalt kopieren">${icon('copy')}</button>
+            <button type="button" class="icon-btn" data-edit-entry="${e.id}" title="Bearbeiten" aria-label="Bearbeiten">${icon('pencil')}</button>
+            <button type="button" class="icon-btn" data-delete-entry="${e.id}" title="Löschen" aria-label="Löschen">${icon('trash')}</button>
+          </span>
         </div>
-        ${entries}
-      </section>
+        <div class="info-board-content">${linkify(escapeHtml(e.content))}</div>
+      </div>`
+    )
+    .join('')}</div>`;
+}
+
+function bodyHtml() {
+  return `
+    <div class="stack info-board-dialog">
+      <button type="button" class="btn btn-primary btn-sm btn-block" id="info-new-btn">Eintrag anlegen</button>
+      ${entriesHtml()}
     </div>
   `;
+}
 
-  container.querySelector('#info-new-btn').addEventListener('click', () => openEntryForm(ctx, null));
+function wireBody(root) {
+  root.querySelector('#info-new-btn').addEventListener('click', () => openEntryForm(null));
 
-  container.querySelectorAll('[data-edit-entry]').forEach((btn) => {
+  root.querySelectorAll('[data-edit-entry]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const entry = (cache || []).find((e) => e.id === btn.dataset.editEntry);
-      if (entry) openEntryForm(ctx, entry);
+      if (entry) openEntryForm(entry);
     });
   });
 
-  container.querySelectorAll('[data-copy-entry]').forEach((btn) => {
+  root.querySelectorAll('[data-copy-entry]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const entry = (cache || []).find((e) => e.id === btn.dataset.copyEntry);
       if (!entry) return;
@@ -154,7 +156,7 @@ export function renderInfoBoard(container, ctx) {
     });
   });
 
-  container.querySelectorAll('[data-delete-entry]').forEach((btn) => {
+  root.querySelectorAll('[data-delete-entry]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const entry = (cache || []).find((e) => e.id === btn.dataset.deleteEntry);
       if (!entry) return;
@@ -164,10 +166,50 @@ export function renderInfoBoard(container, ctx) {
         if (removed === undefined) return;
         cache = null;
         showToast('Eintrag gelöscht.');
-        ctx.rerender();
+        load();
       } catch (err) {
         showToast(err.message, { error: true });
       }
     });
   });
+}
+
+// Highlights and scrolls to one entry, used when the global search jumps
+// straight to a known info entry.
+function focusEntry(root, entryId) {
+  const element = root.querySelector(`[data-info-entry="${CSS.escape(entryId)}"]`);
+  if (!element) return;
+  element.classList.add('search-target-highlight');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  element.scrollIntoView({ block: 'center', behavior: reducedMotion ? 'auto' : 'smooth' });
+}
+
+function renderOpenDialog() {
+  if (!openDialog) return;
+  const { el, focusEntryId } = openDialog;
+  const body = el.querySelector('.modal-body');
+  if (!body) return;
+  body.innerHTML = bodyHtml();
+  wireBody(body);
+  if (focusEntryId) focusEntry(body, focusEntryId);
+}
+
+export function openInfoBoard({ focusEntryId = null } = {}) {
+  if (openDialog?.el.isConnected) {
+    openDialog.focusEntryId = focusEntryId;
+    renderOpenDialog();
+    return;
+  }
+  if (cache === null) load();
+  const { el } = openModal('Info', bodyHtml(), {
+    onClose: () => {
+      openDialog = null;
+    },
+    onMount: (backdrop) => {
+      backdrop.classList.add('info-board-modal');
+      wireBody(backdrop.querySelector('.modal-body'));
+    },
+  });
+  openDialog = { el, focusEntryId };
+  if (focusEntryId) focusEntry(el, focusEntryId);
 }

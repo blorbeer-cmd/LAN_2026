@@ -90,8 +90,7 @@ export function renderLeaderboard(container, ctx) {
     .join('');
 
   container.innerHTML = `
-    <div class="row-between">
-      <h1 class="view-title">Rang</h1>
+    <div class="row view-actions">
       <button type="button" class="btn btn-primary btn-sm" id="add-match-btn">Ergebnis eintragen</button>
     </div>
     <div class="grouped-page-sections">

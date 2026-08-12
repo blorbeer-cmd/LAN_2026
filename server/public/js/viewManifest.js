@@ -2,7 +2,6 @@
 // Core renderers are supplied by viewRegistry.js; Arcade renderers stay behind native import().
 export const VIEW_MANIFEST = Object.freeze({
   home: { area: 'core' },
-  players: { area: 'core' },
   matchmaking: { area: 'core' },
   votes: { area: 'core' },
   leaderboard: { area: 'core' },
@@ -15,9 +14,9 @@ export const VIEW_MANIFEST = Object.freeze({
   myStats: { area: 'core' },
   more: { area: 'core' },
   broadcast: { area: 'core' },
-  infoBoard: { area: 'core' },
   foodOrders: { area: 'core' },
   checklist: { area: 'core' },
+  checklistPacking: { area: 'core' },
   gameCatalog: { area: 'core' },
   arrivals: { area: 'core' },
   admin: { area: 'core' },

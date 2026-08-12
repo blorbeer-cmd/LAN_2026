@@ -25,7 +25,6 @@ let itemsCacheForId = null;
 let loadingTasks = false;
 let loadingItems = false;
 let historyOpen = false;
-let activeTab = 'todos'; // 'packliste' | 'todos' - To-Dos first: it's what most people open this page to check.
 let typeFilter = 'all'; // 'all' | 'todo' | 'item_request', open-pool only
 let onlyMineFilter = false; // open-pool only: "von mir erstellt"
 
@@ -71,6 +70,16 @@ function invalidateItems() {
 export function invalidateChecklist() {
   tasksCache = null;
   invalidateItems();
+}
+
+// How many To-Dos currently sit with the signed-in identity. The Orga area
+// shows this on its To-Dos tab, so the count stays visible from every tab of
+// the area instead of only from inside the list. Returns 0 while nothing is
+// loaded yet — a badge must never guess a number.
+export function openTaskCount() {
+  const myId = getMyId();
+  if (!myId || tasksCache === null) return 0;
+  return tasksCache.filter((task) => task.status === 'taken' && task.assignee?.id === myId).length;
 }
 
 // These caches are keyed by player id, not by group - switching the active
@@ -385,7 +394,10 @@ async function openCreateTodoForm(ctx, myId) {
   });
 }
 
-export function renderChecklist(container, ctx) {
+// `activeTab` comes from the route: the Orga area exposes To-Dos and Packliste
+// as two of its own tabs (see sectionNav.js), so this view no longer carries a
+// second tab row of its own.
+export function renderChecklist(container, ctx, activeTab = 'todos') {
   if (tasksCache === null && !loadingTasks) loadTasks(ctx);
   const myId = getMyId();
   if (myId && itemsCacheForId !== myId && !loadingItems) loadItems(ctx, myId);
@@ -409,8 +421,6 @@ export function renderChecklist(container, ctx) {
     .filter((t) => (typeFilter === 'all' ? true : t.type === typeFilter))
     .filter((t) => (onlyMineFilter ? t.createdBy?.id === myId : true));
 
-  const todosTabBadge = mineTasks.length ? ` (${mineTasks.length})` : '';
-
   const mineHtml =
     loadingTasks && tasksCache === null
       ? emptyStateHtml('Lädt…')
@@ -433,24 +443,15 @@ export function renderChecklist(container, ctx) {
           .join('')}</div>`;
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title">Checkliste</h1>
     ${onboardingHintHtml('checklist')}
-    <div class="row" style="gap:var(--space-2);margin-top:var(--space-3);">
-      <button type="button" class="btn${activeTab === 'packliste' ? ' btn-primary' : ''}" aria-pressed="${activeTab === 'packliste'}" data-checklist-tab="packliste" style="flex:1;">Meine Packliste</button>
-      <button type="button" class="btn${activeTab === 'todos' ? ' btn-primary' : ''}" aria-pressed="${activeTab === 'todos'}" data-checklist-tab="todos" style="flex:1;">To-Dos${todosTabBadge}</button>
-    </div>
-    <div class="grouped-page-sections" style="margin-top:var(--space-3);">
+    <div class="grouped-page-sections">
       ${
         activeTab === 'packliste'
           ? `<section class="card stack grouped-page-section" aria-labelledby="checklist-items-title">
                <div class="grouped-page-section-title"><h2 id="checklist-items-title">Meine Packliste</h2></div>
                ${renderItems(myId)}
              </section>`
-          : `<section class="card stack grouped-page-section" aria-labelledby="checklist-todos-title">
-               <div class="row-between grouped-page-section-title">
-                 <h2 id="checklist-todos-title">To-Dos</h2>
-               </div>
+          : `<section class="card stack grouped-page-section" aria-label="To-Dos">
                <button type="button" class="btn btn-primary btn-sm" id="checklist-new-todo-btn" ${myId ? '' : 'disabled'}>+ To-Do erstellen</button>
                <div class="section-title" style="margin-top:0;">Mir zugewiesen</div>
                ${mineHtml}
@@ -490,13 +491,6 @@ export function renderChecklist(container, ctx) {
     if (prevItemFocused) labelInput.focus();
   }
 
-
-  container.querySelectorAll('[data-checklist-tab]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      activeTab = btn.dataset.checklistTab;
-      ctx.rerender();
-    });
-  });
 
   container.querySelectorAll('[data-checklist-type-filter]').forEach((btn) => {
     btn.addEventListener('click', () => {

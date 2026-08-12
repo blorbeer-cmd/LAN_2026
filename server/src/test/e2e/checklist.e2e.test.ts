@@ -28,7 +28,7 @@ let bob: E2EAccount;
 async function openChecklist(): Promise<void> {
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="checklist"]');
-  await page.waitForSelector('.view-title:has-text("Checkliste")');
+  await page.waitForSelector('.view-title:has-text("Orga")');
 }
 
 async function switchAccount(account: E2EAccount): Promise<void> {
@@ -65,8 +65,9 @@ test('create a To-Do as one member, claim and complete it as another, "Mir zugew
   await openChecklist();
   await page.waitForSelector('#checklist-new-todo-btn:not([disabled])');
 
-  // Defaults to the To-Dos tab (not Meine Packliste).
-  assert.equal(await page.locator('[data-checklist-tab="todos"]').getAttribute('aria-pressed'), 'true');
+  // Orga opens on To-Dos (not Packliste), and the area's tab row marks it.
+  assert.equal(await page.locator('[data-section-tab="checklist"]').getAttribute('aria-current'), 'page');
+  assert.equal(await page.locator('[data-section-tab="checklistPacking"]').getAttribute('aria-current'), null);
 
   await page.click('#checklist-new-todo-btn');
   await page.waitForSelector('#todo-title');

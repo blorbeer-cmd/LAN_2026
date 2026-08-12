@@ -382,8 +382,6 @@ export function renderArrivals(container, ctx) {
   const loaded = cache !== null;
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title">An- & Abreise</h1>
     ${onboardingHintHtml('arrivals')}
     ${
       loaded
