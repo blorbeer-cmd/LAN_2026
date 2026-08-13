@@ -10,7 +10,6 @@ import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
-import { onboardingHintHtml, wireOnboardingHint } from '../onboarding.js';
 
 let historyCache = null;
 let historyLoading = false;
@@ -82,7 +81,6 @@ export function renderBroadcast(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Durchsage</h1>
-    ${onboardingHintHtml('broadcast')}
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="broadcast-new-title">
         <div class="grouped-page-section-title">
@@ -176,5 +174,4 @@ export function renderBroadcast(container, ctx) {
       }
     });
   });
-  wireOnboardingHint(container, ctx.rerender);
 }

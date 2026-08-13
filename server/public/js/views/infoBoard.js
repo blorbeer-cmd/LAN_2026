@@ -14,6 +14,7 @@ import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { withStepUp } from '../reauth.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let cache = null;
 let loading = false;
@@ -102,8 +103,7 @@ function openEntryForm(existing) {
 function entriesHtml() {
   if (loading || cache === null) return emptyStateHtml('Lädt…');
   if (cache.length === 0) {
-    return emptyStateHtml(`Noch keine Einträge.<br />
-      <span class="muted" style="font-size:var(--font-size-sm);">Gut aufgehoben hier: WLAN-Passwort, Discord-Link, Server-IPs, Hausregeln.</span>`);
+    return emptyStateHtml('Noch keine Einträge.');
   }
   return `<div class="two-column-card-grid">${[...cache]
     .sort((a, b) => a.title.localeCompare(b.title, 'de', { sensitivity: 'base' }))
@@ -128,12 +128,19 @@ function bodyHtml() {
   return `
     <div class="stack info-board-dialog">
       <button type="button" class="btn btn-primary btn-sm btn-block" id="info-new-btn">Eintrag anlegen</button>
+      <div class="grouped-page-section-title">
+        <strong class="title-with-info">
+          <span>Einträge</span>
+          ${infoTooltipHtml('info-board-entries-help', 'Einträge', 'Für WLAN-Passwort, Discord-Link, Server-IPs und Hausregeln.')}
+        </strong>
+      </div>
       ${entriesHtml()}
     </div>
   `;
 }
 
 function wireBody(root) {
+  wireInfoTooltips(root);
   root.querySelector('#info-new-btn').addEventListener('click', () => openEntryForm(null));
 
   root.querySelectorAll('[data-edit-entry]').forEach((btn) => {

@@ -110,6 +110,6 @@ test('music controller recovery distinguishes Spotify login from a transient out
 
   const outage = musicControllerRecoveryHtml({ spotify: 'unavailable', message: null });
   assert.match(outage, /automatisch erneut/);
-  assert.match(outage, /Kein Skript-Neustart nötig/);
+  assert.doesNotMatch(outage, /Skript-Neustart/);
   assert.equal(musicControllerRecoveryHtml({ spotify: 'connected', message: null }), '');
 });

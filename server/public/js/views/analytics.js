@@ -24,6 +24,7 @@ import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { eventSwitcherLabel } from '../eventStatus.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let activeTab = 'playtime'; // 'playtime' | 'matches' | 'arcade'
 
@@ -174,8 +175,7 @@ export function renderAnalytics(container, ctx) {
   }
   container.innerHTML = `
     <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section" aria-labelledby="analytics-controls-title">
-        <div class="grouped-page-section-title"><h2 id="analytics-controls-title">Ansicht</h2></div>
+      <section class="card stack grouped-page-section" aria-label="Ansicht">
         <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
           <button type="button" class="btn btn-sm ${activeTab === 'playtime' ? 'btn-primary' : ''}" data-an-tab="playtime">Spielzeit</button>
           <button type="button" class="btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}" data-an-tab="matches">Matches & Turniere</button>
@@ -204,6 +204,8 @@ export function renderAnalytics(container, ctx) {
       ctx.rerender();
     });
   }
+
+  wireInfoTooltips(container);
 
 }
 
@@ -423,8 +425,13 @@ function renderMatchesContent() {
   if (fun.biggestRivalry) {
     funCards.push(`
       <div class="card">
-        <div class="row-between"><div class="player-name">Größte Rivalität</div><span class="lb-points">${fun.biggestRivalry.count}×</span></div>
-        <div class="muted" style="font-size:var(--font-size-xs);">Sind sich am häufigsten als Gegner begegnet.</div>
+        <div class="row-between">
+          <div class="player-name title-with-info">
+            <span>Größte Rivalität</span>
+            ${infoTooltipHtml('analytics-rivalry-help', 'Größte Rivalität', 'Häufigste Begegnung als Gegner.')}
+          </div>
+          <span class="lb-points">${fun.biggestRivalry.count}×</span>
+        </div>
         <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           <div class="row">${playerChip(fun.biggestRivalry.playerA)}</div>
           <div class="row">${playerChip(fun.biggestRivalry.playerB)}</div>

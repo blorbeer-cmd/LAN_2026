@@ -17,7 +17,6 @@ import { emptyStateHtml } from '../emptyState.js';
 import { icon } from '../icons.js';
 import { dateTimeFieldHtml, wireDateTimeField, parseDatetimeLocalMs } from '../dateTimeField.js';
 import { dueBadgeInfo, isOverdue } from '../checklistDue.js';
-import { onboardingHintHtml, wireOnboardingHint } from '../onboarding.js';
 
 let tasksCache = null;
 let itemsCache = null;
@@ -467,12 +466,10 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
           .join('')}</div>`;
 
   container.innerHTML = `
-    ${onboardingHintHtml('checklist')}
     <div class="grouped-page-sections">
       ${
         activeTab === 'packliste'
-          ? `<section class="card stack grouped-page-section" aria-labelledby="checklist-items-title">
-               <div class="grouped-page-section-title"><h2 id="checklist-items-title">Meine Packliste</h2></div>
+          ? `<section class="card stack grouped-page-section" aria-label="Meine Packliste">
                ${renderItems(myId)}
              </section>`
           : `<section class="card stack grouped-page-section" aria-label="To-Dos">
@@ -620,5 +617,4 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
       }
     });
   });
-  wireOnboardingHint(container, ctx.rerender);
 }

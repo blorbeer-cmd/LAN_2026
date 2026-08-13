@@ -18,7 +18,6 @@ import { icon } from '../icons.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { onboardingHintHtml, wireOnboardingHint } from '../onboarding.js';
 
 let cache = null;
 let loading = false;
@@ -615,8 +614,7 @@ export function renderFoodOrders(container, ctx) {
     loading || cache === null
       ? emptyStateHtml('Lädt…')
       : openOrders.length === 0
-        ? emptyStateHtml(`Gerade keine offene Bestellung.<br />
-           <span class="muted" style="font-size:var(--font-size-sm);">Starte eine, wenn ihr was bestellen wollt – alle können sich dann selbst eintragen.</span>`)
+        ? emptyStateHtml('Gerade keine offene Bestellung.')
         : `<div class="two-column-card-grid food-order-grid">${openOrders.map((o) => renderOpenOrder(o, myId)).join('')}</div>`;
 
   container.innerHTML = `
@@ -625,7 +623,6 @@ export function renderFoodOrders(container, ctx) {
       <h1 class="view-title">Essen</h1>
       <button type="button" class="btn btn-primary btn-sm" id="order-new-btn" ${myId ? '' : 'disabled'}>Bestellung öffnen</button>
     </div>
-    ${onboardingHintHtml('foodOrders')}
     <div class="grouped-page-sections" style="margin-top:var(--space-3);">
       <section class="card stack grouped-page-section" aria-labelledby="food-open-title">
         <div class="grouped-page-section-title"><h2 id="food-open-title">Offene Bestellungen</h2></div>
@@ -827,5 +824,4 @@ export function renderFoodOrders(container, ctx) {
       }
     });
   });
-  wireOnboardingHint(container, ctx.rerender);
 }
