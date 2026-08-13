@@ -37,6 +37,13 @@
     "claude": "agent-pipeline-claude-review.yml",
     "codex": "agent-pipeline-codex-review.yml"
   },
+  "//reviewCheckNames": "The head-bound check-run name a given reviewer provider publishes, keyed by `reviewerProvider`. The delivery adapter uses it to recognise that a selected cross-review is really queued or running instead of treating a workflow trigger as proof. These names must stay in sync with the job names in `reviewWorkflowFiles` and with `selfCheckNames`.",
+  "reviewCheckNames": {
+    "claude": "Run Claude cross-review",
+    "codex": "Request Codex cross-review"
+  },
+  "//deploymentWorkflowFile": "The workflow whose completed runs on the default base branch describe the post-merge CI/CD state. The delivery adapter reads only this file, never a workflow name taken from pull-request-controlled text.",
+  "deploymentWorkflowFile": "deploy.yml",
   "//reviewRetriggerAuthors": "Only these identities may suppress a further automatic re-dispatch by publishing its machine-readable marker.",
   "reviewRetriggerAuthors": ["github-actions[bot]"],
   "//sensitivePathPrefixes": "Paths that always make the recommendation fall back to the independent cross-review, regardless of how small the diff looks.",

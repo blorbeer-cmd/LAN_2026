@@ -6,8 +6,11 @@ als Required Check auf `main`). Aus Phase 4 sind die Pilotpfade Codex-Implementi
 Claude-Cross-Review und Claude-Implementierung → Codex-Cross-Review umgesetzt; Self-Review ist
 in beiden Provider-Richtungen pilotiert. Die Sechs-Felder-Matrix ist table-driven abgesichert.
 Die post-#396 Human-Pilotfälle in beiden Implementierer-Richtungen sind noch nicht abgenommen.
-CI-/Konflikt-Fixes, automatische Retries, Rundenzähler und Findings-Fix-Schleife fehlen weiterhin.
-Stand: 2026-08-11
+Für Codex-Implementierungen liefert der externe Task-Monitor inzwischen jeden distincten
+Current-Head-CI-Fehlversuch sowie fehlgeschlagene post-merge `main`-CI/CD-Läufe zurück an die
+ursprüngliche Task; diese informiert den Nutzer und führt die sichere Fix-/Retry-Arbeit automatisch
+fort. Ein unabhängiger Fix-Worker, Claude-Session-Zustellung, Konflikt-Fixes, formale Rundenzähler
+und die vollständige Findings-Fix-Schleife fehlen weiterhin. Stand: 2026-08-13
 
 Der Reviewer wird nicht mehr automatisch bestimmt, sondern vom Nutzer pro Head-SHA gewählt. Die
 Herleitung dieser Änderung steht in [`review-mode-selection.md`](review-mode-selection.md), der
@@ -234,10 +237,13 @@ Scheitert die Zustellung, werden Sticky-Kommentar und Commit-Status sichtbar auf
 Eine direkte Codex-Task-Zustellung bleibt aus GitHub Actions nicht verfügbar: Die in der
 Desktop-App vorhandenen Thread-Werkzeuge sind keine aus einem Repository-Workflow aufrufbare API.
 Der externe Adapter läuft deshalb als einzelner Codex-seitiger Fünf-Minuten-Heartbeat-Monitor.
-GitHub bildet seine dauerhafte Outbox; der Monitor beobachtet die Zustellmarker, ordnet PR und
+GitHub bildet seine dauerhafte Outbox; der Monitor beobachtet Zustellmarker, provider-spezifische
+Review-Check-Runs, Current-Head-CI-Checks und abgeschlossene `main`-CI/CD-Läufe, ordnet PR und
 `task-id` über das optionale `codex-thread-id` oder den eindeutigen Head-Branch der ursprünglichen
 Codex-Task zu, weckt diese und quittiert erst nach erfolgreichem Versand mit
-`agent-pipeline:codex-delivery`. Leere Scans bleiben bei `failed_runs_only` still. Für
+`agent-pipeline:codex-delivery`. Ein tatsächlich laufender oder erfolgreich angenommener Review-
+Check erzeugt dabei eine positive Startmeldung; ein bloßer Workflow-Trigger nicht. Leere Scans
+bleiben bei `failed_runs_only` still. Für
 Claude-Implementierungen existiert keine belastbare Claude-Session-Wakeup-Schnittstelle; der
 Adapter erzeugt für sie deshalb keine Codex-Zustellereignisse und erfindet keine Task-ID. GitHub
 bleibt deren dokumentierte Outbox. Die interaktive Task überträgt weiterhin nur eine ausdrückliche
@@ -569,6 +575,20 @@ pro Head entsteht höchstens eine aktive Auswahlbenachrichtigung und ein Zustell
 Pipeline-Blocker sichtbar.
 
 ### Phase 3 – Automatische CI- und Konfliktkorrektur
+
+Teilstand: Der Codex-seitige Heartbeat erkennt für offene Codex-Agenten-PRs den jeweils neuesten
+Check-Run pro Namen. Jeder neue fehlgeschlagene Versuch wird mit Job-/Run-Link an die ursprüngliche
+Implementierungs-Task zugestellt und erst nach erfolgreichem Versand dauerhaft quittiert. Die Task
+informiert den Nutzer, klassifiziert transient gegen reproduzierbar und setzt den normalen
+Fix-/Retry-Ablauf automatisch fort; die Obergrenze ist das im Task-Vertrag des PR stehende
+`max-ci-fix-rounds` und wird im Prompt genannt. Nach dem Merge werden nur aktuell ungelöste
+fehlgeschlagene `CI/CD`-Runs seit dem letzten erfolgreichen `main`-Lauf über den Merge-Commit zum
+Ursprungs-PR zurückverfolgt; ist diese Erfolgsgrenze im geblätterten Fenster nicht sichtbar, wird
+gar nichts zugestellt statt eine abgeschnittene Historie nachzuspielen. Insbesondere ein
+fehlgeschlagener Deploy weckt dieselbe Task mit der Pflicht, Rollback und Produktionszustand zu
+verifizieren. Ein Code-Fix beginnt dann auf einem neuen Branch/PR, nie auf `main` oder dem gemergten
+Branch. Diese Zustellung ist noch kein unabhängiger Fix-Worker und deckt mangels
+Wake-up-Schnittstelle keine ursprünglichen Claude-Tasks ab.
 
 1. Fehlgeschlagene CI-Läufe dem PR und Head-SHA zuordnen.
 2. Implementierungs-Agent mit Logs und klar begrenztem Fix-Auftrag starten.
