@@ -15,7 +15,6 @@ const ITEMS = [
   { view: 'foodOrders', title: 'Essen' },
   { view: 'music', title: 'Jam' },
   { view: 'checklist', title: 'Orga', iconKey: 'orga' },
-  { view: 'gameCatalog', title: 'Spiele' },
 ];
 
 export function renderMore(container) {

@@ -1333,8 +1333,7 @@ flowTest('shell', 'Sitzplan: the real name set in Mein Profil shows in small eve
 });
 
 flowTest('shell', 'Spiele: suggest a game (duplicate name rejected), promote it, then rate Bock/Skill inline', async () => {
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="gameCatalog"]');
+  await page.click('.nav-btn[data-view="gameCatalog"]');
   await page.waitForSelector('#suggest-new');
 
   await page.click('#suggest-new');
@@ -1392,8 +1391,7 @@ flowTest('shell', 'Spiele: suggest a game (duplicate name rejected), promote it,
     0,
     'a suggestion must not be offered as a votable game',
   );
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="gameCatalog"]');
+  await page.click('.nav-btn[data-view="gameCatalog"]');
   await suggestionRow.waitFor();
 
   // Promote the suggestion into the catalog via its detail modal (row-level
@@ -1463,8 +1461,7 @@ flowTest('shell', 'Spiele: a skill suggestion chip appears after enough recorded
     assert.equal(res.status(), 201);
   }
 
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="gameCatalog"]');
+  await page.click('.nav-btn[data-view="gameCatalog"]');
   const cs2Row = page.locator('.game-table-row', { hasText: 'Counter-Strike 2' });
   await cs2Row.waitFor();
   const chip = cs2Row.locator('[data-apply-suggestion]');
