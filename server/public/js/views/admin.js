@@ -381,8 +381,10 @@ function renderPanel(container, ctx) {
   if (adminPlayers === null && !adminPlayersLoading) loadAdminPlayers(ctx);
   if (adminMembers === null && !adminMembersLoading && !adminMembersError) loadAdminMembers(ctx);
   if (activeInvites === null && !activeInvitesLoading) loadActiveInvites(ctx);
-  const players = adminPlayers || [];
-  const testCount = players.filter((p) => p.is_test).length;
+  const adminModeActive = isAdmin();
+  const allPlayers = adminPlayers || [];
+  const players = adminModeActive ? allPlayers : allPlayers.filter((player) => !player.is_test);
+  const testCount = allPlayers.filter((player) => player.is_test).length;
   if (agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
   if (readiness === null && !readinessLoading && !readinessError) loadReadiness(ctx);
   const rows = players
@@ -501,6 +503,11 @@ function renderPanel(container, ctx) {
       <h1 class="view-title">Admin</h1>
     </div>
     <div class="grouped-page-sections">
+      ${adminModeActive ? '' : `<section class="card stack grouped-page-section" aria-labelledby="admin-mode-title">
+        <div class="grouped-page-section-title"><h2 id="admin-mode-title">Admin-Modus</h2></div>
+        <p class="muted">Aktiviere den Admin-Modus, um Test-Spieler in der App anzuzeigen und im Arcade-Bereich gegen die KI zu spielen.</p>
+        <button type="button" class="btn btn-primary btn-block" id="admin-mode-activate">Admin-Modus aktivieren</button>
+      </section>`}
       <section class="card stack grouped-page-section" aria-labelledby="admin-readiness-title">
         <div class="grouped-page-section-title">
           <h2 id="admin-readiness-title">LAN-Bereitschaft</h2>
@@ -543,7 +550,7 @@ function renderPanel(container, ctx) {
           </div>
         </div>
       </section>
-      <section class="card stack grouped-page-section" aria-labelledby="admin-test-players-title">
+      ${adminModeActive ? `<section class="card stack grouped-page-section" aria-labelledby="admin-test-players-title">
         <div class="grouped-page-section-title">
           <span class="title-with-info">
             <h2 id="admin-test-players-title">Testdaten</h2>
@@ -559,7 +566,7 @@ function renderPanel(container, ctx) {
           <button type="button" class="btn btn-sm btn-danger" id="admin-cleanup">Test-Daten aufräumen</button>
           <button type="button" class="btn btn-primary btn-sm" id="admin-bulk" ${seedBusy ? 'disabled' : ''}>Test-Spieler anlegen</button>
         </div>
-      </section>
+      </section>` : ''}
       <section class="card stack grouped-page-section" aria-labelledby="admin-players-title">
         <div class="grouped-page-section-title">
           <span class="title-with-info">
@@ -591,6 +598,10 @@ function renderPanel(container, ctx) {
     </div>
   `;
 
+  container.querySelector('#admin-mode-activate')?.addEventListener('click', () => {
+    adminPlayers = null;
+    setAdmin(true);
+  });
   container.querySelector('#admin-register-link')?.addEventListener('click', () => createLoginInvite('register', null, ctx));
   container.querySelectorAll('[data-create-login-link]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -611,12 +622,12 @@ function renderPanel(container, ctx) {
     });
   });
 
-  container.querySelector('#admin-bulk').addEventListener('click', () => {
+  container.querySelector('#admin-bulk')?.addEventListener('click', () => {
     const count = Math.min(20, Math.max(1, parseInt(container.querySelector('#admin-count').value, 10) || 5));
     createTestUsers(count, ctx);
   });
 
-  container.querySelector('#admin-cleanup').addEventListener('click', () => cleanupTestUsers(ctx));
+  container.querySelector('#admin-cleanup')?.addEventListener('click', () => cleanupTestUsers(ctx));
 
   container.querySelector('#download-backup').addEventListener('click', () => downloadBackup(ctx));
   wireInfoTooltips(container);
@@ -673,18 +684,6 @@ export function renderAdmin(container, ctx) {
       <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
       <h1 class="view-title">${icon('shield')} Admin</h1>
       <div class="card"><p class="muted">Dieses Konto hat keine Admin-Rechte.</p></div>`;
-    return;
-  }
-  if (!isAdmin()) {
-    container.innerHTML = `
-      <button type="button" class="btn btn-sm" data-navigate="more">Zurück</button>
-      <h1 class="view-title">${icon('shield')} Admin</h1>
-      <section class="card stack grouped-page-section" aria-labelledby="admin-mode-title">
-        <div class="grouped-page-section-title"><h2 id="admin-mode-title">Admin-Modus</h2></div>
-        <p class="muted">Aktiviere den Admin-Modus, um Test-Spieler und die Admin-Werkzeuge auf diesem Gerät anzuzeigen.</p>
-        <button type="button" class="btn btn-primary btn-block" id="admin-mode-activate">Admin-Modus aktivieren</button>
-      </section>`;
-    container.querySelector('#admin-mode-activate').addEventListener('click', () => setAdmin(true));
     return;
   }
   renderPanel(container, ctx);
