@@ -527,13 +527,15 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   process mappings, Kiosk and the latest persistent backup. Every card pairs its semantic badge
   with a textual summary and actionable detail; loading and retry errors stay inside the group.
   Backup and seating-plan editing are absent from regular member views and live
-  together as nested tool cards in the active Admin mode. Two further tool cards,
+  together as nested tool cards in the role-protected Admin area. Admin settings and tools remain
+  visible to owners/admins without activating the device-local Admin mode; that mode only reveals
+  test players and test-data controls throughout the app and enables Arcade AI matches. Two further tool cards,
   „Eventverwaltung“ and „Kioskverwaltung“, link into Orga's „Events“ and „TV-Kiosk“ tabs — those
   global, non-personal management surfaces are otherwise only reachable through „Mehr“ like any
   other Orga tab. They stay two separate cards because Orga exposes them as two separate tabs; one
   combined card would leave the Kiosk tab without an Admin entry point. Each tool card keeps its
   title, adjacent help tooltip and colorful primary action on one row; the seating editor returns
-  to Admin and blocks editing outside that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and
+  to Admin and remains role-protected independently of that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and
   need no separate Admin action. The test-data fixture explanation and the existing test-player count live in adjacent
   tooltips; the compact count input, „Test-Daten aufräumen“ and create action share one control row
   in that order. Cleanup removes every marked test player and test LAN
@@ -711,7 +713,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Arena accepts three to eight players and keeps the local board large beside a responsive grid of
   opponent boards. On phones the local board sits above that grid. The current automatic attack
   target receives a textual „Ziel“ marker in addition to its accent border, while eliminated
-  players remain visibly dimmed for spectating. Admins can create a „KI-Test“ in its own full-width
+  players remain visibly dimmed for spectating. Admins with active Admin mode can create a „KI-Test“ in its own full-width
   row; Duell uses one bot and Arena always fills all seven opponent slots without a count selector.
   An empty
   lobby no longer adds
@@ -746,7 +748,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   canvas dims their snake and marks the shrinking safe zone with the shared danger treatment.
   Numbered head markers and a matching `Schlange N · Name` legend identify every participant
   without relying on color; the same legend appears in player, spectator and kiosk contexts.
-  Challenge Rush also offers an admin-gated „Gegen KI“ quick start; playing the bot solo draws
+  Challenge Rush also offers an Admin-mode-gated „Gegen KI“ quick start and test-challenge
+  selection; playing the bot solo draws
   from its ten original single-payload challenges, since the bot cannot yet play the thirty
   logic/memory trial challenges. A lobby that further humans join before it starts keeps the
   full forty-challenge catalog like any other match, and the bot then simply scores 0 on
