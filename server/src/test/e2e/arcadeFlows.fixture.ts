@@ -124,6 +124,31 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
   // become visible (module state is intentionally reset on a fresh run).
   await page.click('[data-game="quiz"]');
   await page.waitForSelector('#quiz-create-lobby');
+  const createButtonLayout = async (selector: string) => page.locator(selector).evaluate((button) => {
+    const buttonRect = button.getBoundingClientRect();
+    const cardRect = button.closest('.arcade-lobby-card')!.getBoundingClientRect();
+    return {
+      left: Math.round(buttonRect.left - cardRect.left),
+      top: Math.round(buttonRect.top - cardRect.top),
+      width: Math.round(buttonRect.width),
+      height: Math.round(buttonRect.height),
+    };
+  });
+  const fixedModeLayout = await createButtonLayout('#quiz-create-lobby');
+  const duelDefaults = [
+    ['tetris', '#tetris-create', '#tetris-mode [data-arcade-mode="duel"]'],
+    ['pong', '#pong-create', '#pong-mode [data-arcade-mode="duel"]'],
+    ['snake', '#snake-create', '#snake-mode [data-arcade-mode="classic"]'],
+    ['blobby', '#blobby-create', '#blobby-mode [data-arcade-mode="duel"]'],
+  ] as const;
+  for (const [game, createSelector, duelSelector] of duelDefaults) {
+    await page.click(`[data-game="${game}"]`);
+    await page.waitForSelector(createSelector);
+    assert.equal(await page.locator(duelSelector).getAttribute('aria-pressed'), 'true');
+    assert.deepEqual(await createButtonLayout(createSelector), fixedModeLayout);
+  }
+  await page.click('[data-game="quiz"]');
+  await page.waitForSelector('#quiz-create-lobby');
   await page.click('#quiz-create-lobby');
   await page.waitForSelector('[data-close-lobby]');
   await guestPage.click('#notifications-btn');
@@ -198,7 +223,7 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby warns and closes the owne
       ).some((select) => Math.round(select.getBoundingClientRect().height) === 32), game);
       assert.equal(
         await targetSelect.inputValue(),
-        game === 'pong' ? '21' : '7',
+        '7',
       );
       // Rounded: see the #admin-count assertion above for why.
       assert.equal(await targetSelect.evaluate((select) => Math.round(select.getBoundingClientRect().height)), 32);
