@@ -132,7 +132,6 @@ test('an invite link registers a new account and logs it straight in', async () 
   // bottom anchor (which would stretch the panel), and the spotlight shadow
   // must remain below the dialog instead of dimming its copy and controls.
   await page.setViewportSize({ width: 1024, height: 768 });
-  await page.click('[data-onboarding-next]');
   await page.waitForSelector('.onboarding-dialog--top');
   await page.waitForSelector('.onboarding-target-ring');
   const onboardingLayers = await page.evaluate(() => {
@@ -159,9 +158,9 @@ test('an invite link registers a new account and logs it straight in', async () 
   assert.ok(onboardingLayers.dialogZIndex > onboardingLayers.ringZIndex, 'the dialog must stay above the spotlight shadow');
   await page.setViewportSize({ width: 390, height: 844 });
 
-  // One click per remaining STEPS entry in onboarding.js (8 total, the first
-  // of which already happened above).
-  for (let step = 1; step < 8; step += 1) {
+  // One click per STEPS entry in onboarding.js (3 total) reaches the
+  // mandatory rating phase after the compact core tour.
+  for (let step = 0; step < 3; step += 1) {
     await page.click('[data-onboarding-next]');
     await page.waitForSelector('#onboarding-root [role="dialog"]');
   }
