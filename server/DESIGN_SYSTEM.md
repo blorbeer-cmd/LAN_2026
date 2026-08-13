@@ -266,7 +266,7 @@ view and to new views unless a documented domain constraint requires a different
     by every signed-in member, while only the session account can edit its own profile. Player
     creation, deletion, roles and foreign-profile editing remain admin-only actions.
 11. **Group related workflows into one area with tabs instead of adding nav entries.** The bottom
-    nav carries exactly the five during-party destinations (Home, Wettkampf, Vote, Auswertung,
+    nav carries exactly the five during-party destinations (Home, Match, Vote, Auswertung,
     Mehr); everything else lives under „Mehr“ or in the topbar. Where two or three closely related
     workflows would otherwise each claim their own entry, they become tabs of one area (see
     `sectionNav.js`). Every tab keeps its own route, so deep links, the back button and persisted
@@ -281,7 +281,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   (full width), `.btn-sm` (compact). Combine variant + size, e.g.
   `class="btn btn-primary btn-sm"`.
 - **Area tabs** — `.section-tabs` with `.section-tab` is the tab row of a merged top-level area
-  (Wettkampf, Auswertung, Orga; defined in `sectionNav.js`). It sits directly under the area's
+  (Match, Auswertung, Orga; defined in `sectionNav.js`). It sits directly under the area's
   `.view-title`, outside any card, which is what keeps it distinguishable from the in-card control
   rows further down. Because each tab is a real route, the row is `<nav>` navigation rather than a
   toggle: the active tab carries `aria-current="page"` plus `.btn-primary`, never `aria-pressed`.
@@ -382,7 +382,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Every `.seating-seat` uses the same width and height on all four table sides, so vertical sides
   no longer stretch into wide rows. Phones switch all four sides to one shared compact size and
   keep exceptionally narrow layouts locally scrollable instead of widening the page.
-- **Team formation** — the „Teams“ tab of the „Wettkampf“ area. The view first asks for game and mode: one shared `<select>` picks the
+- **Team formation** — the „Teams“ tab of the „Match“ area. The view first asks for game and mode: one shared `<select>` picks the
   game, followed by a `Modus` toggle (two `.btn`/`.btn-sm` buttons, `.btn-primary` marking the active
   one, `aria-pressed` conveying state beyond color) choosing between „Auslosung“ and „Captain Draft“.
   Only the chosen mode's `.tournament-section-panel` renders below — the two workflows never compete
