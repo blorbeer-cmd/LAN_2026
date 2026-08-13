@@ -11,6 +11,7 @@ let serverProcess: ChildProcess;
 let adminId = '';
 let adminCookie = '';
 let groupId = '';
+let activeEventId = '';
 
 async function api(pathname: string, init: RequestInit = {}, requestGroupId?: string, includeCookie = true): Promise<Response> {
   const headers = new Headers(init.headers);
@@ -34,9 +35,9 @@ function connect(cookie: string): Promise<Socket> {
 
 async function subscribe(socket: Socket, subscribeGroupId: string): Promise<void> {
   const result = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
-    socket.emit('scope:subscribe', { groupId: subscribeGroupId }, resolve);
+    socket.emit('scope:subscribe', { groupId: subscribeGroupId, eventId: activeEventId }, resolve);
   });
-  assert.deepEqual(result, { ok: true, groupId: subscribeGroupId, eventId: null });
+  assert.deepEqual(result, { ok: true, groupId: subscribeGroupId, eventId: activeEventId });
 }
 
 before(async () => {
@@ -66,6 +67,9 @@ before(async () => {
   const groups = await api('/api/groups');
   assert.equal(groups.status, 200);
   groupId = ((await groups.json()) as Array<{ id: string }>)[0].id;
+  const activeEvent = await api('/api/events/active');
+  assert.equal(activeEvent.status, 200);
+  activeEventId = ((await activeEvent.json()) as { id: string }).id;
 });
 
 after(() => serverProcess?.kill());

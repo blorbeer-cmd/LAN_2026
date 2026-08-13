@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { db, OUTSIDE_EVENTS_ID } from '../db';
+import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { isGameActive } from '../activity';
@@ -32,10 +32,13 @@ agentRouter.post('/report', (req, res) => {
   const previousContexts = db.prepare(
     'SELECT group_id, event_id FROM tracking_live_contexts WHERE player_id = ?',
   ).all(player.id) as Array<{ group_id: string; event_id: string | null }>;
-  const affectedGroupIds = new Set([
-    ...previousContexts.map((context) => context.group_id),
-    ...contexts.map((context) => context.groupId),
-  ]);
+  const affectedScopes = new Map<string, { groupId: string; eventId: string }>();
+  for (const context of previousContexts) {
+    if (context.event_id) affectedScopes.set(`${context.group_id}:${context.event_id}`, { groupId: context.group_id, eventId: context.event_id });
+  }
+  for (const context of contexts) {
+    affectedScopes.set(`${context.groupId}:${context.eventId}`, { groupId: context.groupId, eventId: context.eventId });
+  }
 
   const sync = db.transaction(() => {
     const wanted = new Set(contexts.map((c) => `${c.groupId}:${c.eventId ?? ''}`));
@@ -53,7 +56,7 @@ agentRouter.post('/report', (req, res) => {
       const oldGames = db.prepare('SELECT game_id FROM tracking_live_games WHERE player_id = ? AND group_id = ? AND event_id IS ?').all(player.id, context.groupId, eventId) as Array<{ game_id: string }>;
       for (const old of oldGames) if (!matched.has(old.game_id)) {
         db.prepare('DELETE FROM tracking_live_games WHERE player_id = ? AND group_id = ? AND event_id IS ? AND game_id = ?').run(player.id, context.groupId, eventId, old.game_id);
-        db.prepare('UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND group_id = ? AND event_id = ? AND game_id = ? AND ended_at IS NULL').run(now, player.id, context.groupId, eventId ?? OUTSIDE_EVENTS_ID, old.game_id);
+        db.prepare('UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND group_id = ? AND event_id = ? AND game_id = ? AND ended_at IS NULL').run(now, player.id, context.groupId, eventId, old.game_id);
       }
       let activeGame: string | null = null;
       if (foreground) {
@@ -68,14 +71,16 @@ agentRouter.post('/report', (req, res) => {
         if (existing) db.prepare('UPDATE tracking_live_games SET is_foreground = ? WHERE player_id = ? AND group_id = ? AND event_id IS ? AND game_id = ?').run(gameId === activeGame ? 1 : 0, player.id, context.groupId, eventId, gameId);
         else {
           db.prepare('INSERT INTO tracking_live_games (player_id, group_id, event_id, game_id, since, is_foreground) VALUES (?, ?, ?, ?, ?, ?)').run(player.id, context.groupId, eventId, gameId, now, gameId === activeGame ? 1 : 0);
-          db.prepare('INSERT INTO play_sessions (id, player_id, game_id, group_id, event_id, started_at, ended_at, allocation_weight) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)').run(nanoid(), player.id, gameId, context.groupId, eventId ?? OUTSIDE_EVENTS_ID, now, context.weight);
+          db.prepare('INSERT INTO play_sessions (id, player_id, game_id, group_id, event_id, started_at, ended_at, allocation_weight) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)').run(nanoid(), player.id, gameId, context.groupId, eventId, now, context.weight);
         }
       }
-      if (activeGame && elapsed > 0) db.prepare('UPDATE play_sessions SET active_ms = active_ms + ? WHERE player_id = ? AND group_id = ? AND event_id = ? AND game_id = ? AND ended_at IS NULL').run(elapsed * context.weight, player.id, context.groupId, eventId ?? OUTSIDE_EVENTS_ID, activeGame);
+      if (activeGame && elapsed > 0) db.prepare('UPDATE play_sessions SET active_ms = active_ms + ? WHERE player_id = ? AND group_id = ? AND event_id = ? AND game_id = ? AND ended_at IS NULL').run(elapsed * context.weight, player.id, context.groupId, eventId, activeGame);
     }
   });
   sync();
-  for (const groupId of affectedGroupIds) broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+  for (const { groupId, eventId } of affectedScopes.values()) {
+    broadcast(Events.liveStatusChanged, getLiveBoard(groupId, eventId), { groupId, eventId });
+  }
   const gameIds = [...new Set((db.prepare('SELECT game_id FROM tracking_live_games WHERE player_id = ?').all(player.id) as Array<{ game_id: string }>).map((row) => row.game_id))];
   res.json({ ok: true, playerId: player.id, gameIds, tracked: contexts.length > 0, trackingPaused: Boolean(player.tracking_paused) });
 });

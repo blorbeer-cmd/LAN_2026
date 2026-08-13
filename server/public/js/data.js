@@ -17,13 +17,33 @@ export function isCurrentDataLoad(generation) {
   return generation === latestLoadGeneration;
 }
 
+export function normalizeEventContext(eventContext = {}) {
+  const availableEvents = eventContext.availableEvents ?? [];
+  const managedEvents = eventContext.managedEvents ?? [];
+  const canManage = Array.isArray(eventContext.managedEvents);
+  return {
+    events: canManage ? managedEvents : availableEvents,
+    // `null` for a member, so a view can tell "no management rights" from
+    // "admin without any event" instead of guessing from an empty list.
+    managedEvents: canManage ? managedEvents : null,
+    activeEvent: eventContext.activeEvent ?? null,
+    availableEvents,
+    // Personal participation history: the allowlist the analytics endpoints
+    // accept, so an event filter can never offer something they answer with
+    // a 404. Falls back to the switchable workspaces so an older server
+    // payload still yields a usable filter instead of an empty one.
+    historicalEvents: eventContext.historicalEvents ?? availableEvents,
+    eventInvitations: eventContext.invitations ?? [],
+  };
+}
+
 export async function loadAll() {
   const generation = beginDataLoad();
   const playtimeAllGamesPromise = api.stats.playtime();
   const playtimePromise = state.selectedGameId
     ? api.stats.playtime(state.selectedGameId)
     : playtimeAllGamesPromise;
-  const [players, games, skills, preferences, live, votes, matches, leaderboard, playtime, playtimeAllGames, events] =
+  const [players, games, skills, preferences, live, votes, matches, leaderboard, playtime, playtimeAllGames, eventContext] =
     await Promise.all([
       api.players.list(),
       api.games.list(),
@@ -43,9 +63,19 @@ export async function loadAll() {
   // playtime, …) may have been processed before the roster taught the
   // filter which IDs are test users — run everything through once more now
   // that the roster has definitely been seen (idempotent otherwise).
-  Object.assign(
-    state,
-    filterTestUsers({ players, games, skills, preferences, live, votes, matches, leaderboard, playtime, playtimeAllGames, events })
-  );
+  const normalizedEventContext = normalizeEventContext(eventContext);
+  Object.assign(state, filterTestUsers({
+    players,
+    games,
+    skills,
+    preferences,
+    live,
+    votes,
+    matches,
+    leaderboard,
+    playtime,
+    playtimeAllGames,
+    ...normalizedEventContext,
+  }));
   return true;
 }

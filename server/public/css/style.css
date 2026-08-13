@@ -595,36 +595,59 @@ textarea {
   .topbar-actions {
     gap: var(--space-1);
   }
-  .group-switcher {
-    max-width: 132px;
+  .event-context {
+    max-width: 164px;
+  }
+  .event-context-switcher {
+    padding-left: 34px; /* design-token-ok: tighter status inset for the crowded phone topbar */
+  }
+  .event-context-status {
+    left: var(--space-2);
   }
 }
 
-.group-switcher {
+/* Workspace switcher. Deliberately *not* its own control shape: it inherits
+   the shared select treatment (radius, border, background, focus ring, custom
+   chevron) so it reads as the same kind of dropdown as every other one in the
+   app. The wrapper exists only to seat the status icon inside the field's own
+   left padding, which is why the select carries the extra left inset. */
+.event-context {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  max-width: 180px;
-  min-height: 40px;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  background: var(--bg-elevated-2);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--font-size-sm);
-  cursor: pointer;
+  max-width: 300px;
 }
-.group-switcher[hidden] {
+.event-context[hidden] {
   display: none;
 }
-.group-switcher .ui-icon {
+.event-context-status {
+  position: absolute;
+  left: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  line-height: var(--line-height-tight);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.event-context-status .ui-icon {
   flex: 0 0 auto;
 }
-.group-switcher span {
-  overflow: hidden;
+/* The state is never colour alone: the select's own option text spells it
+   out, and the wrapper carries a German title/description for the icon. */
+.event-context-status[data-event-status='tracking'] {
+  color: var(--state-playing);
+}
+.event-context-status[data-event-status='ended'] {
+  color: var(--state-offline);
+}
+.event-context-status[data-event-status='base'] {
+  color: var(--accent);
+}
+.event-context-switcher {
+  padding-left: 38px; /* design-token-ok: clears the status icon, mirrors the chevron's own 38px right inset */
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ---------- Battleship ---------- */
@@ -2251,6 +2274,7 @@ button.draft-pool-player {
 .info-tooltip-panel {
   position: fixed;
   z-index: 20;
+  pointer-events: none;
   width: min(var(--info-popover-max-width), calc(100vw - var(--space-4)));
   padding: var(--space-3);
   border: 1px solid var(--border);
@@ -3031,6 +3055,15 @@ button.card {
 /* Neutral label badge (e.g. a To-Do's Art, or a plain not-yet-urgent due
    date) - visually quiet, distinct from the semantic state badges above. */
 .badge-neutral {
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+}
+/* Event identity on a notification: which workspace an entry came from. It
+   names a scope rather than a state, so it stays as quiet as .badge-neutral
+   instead of competing with the semantic colours - the notification center
+   shows it right next to the "Für dich" audience chip, which is the one that
+   should carry emphasis. */
+.badge-event {
   background: var(--bg-elevated-2);
   color: var(--text-muted);
 }

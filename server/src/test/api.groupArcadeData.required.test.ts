@@ -54,6 +54,8 @@ test('arcade data and REST history stay event-scoped inside the one real group',
         .send({ playerIds: [alice.account.id, bob.account.id] })).status, 200);
 
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/start', alice, groupId).send({})).status, 200);
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', alice, groupId).send({ eventId: eventA.body.id })).status, 200);
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', bob, groupId).send({ eventId: eventA.body.id })).status, 200);
       const resultA = recordArcadeResult({
         gameType: 'quiz', winnerId: alice.account.id,
         players: [{ id: alice.account.id, name: 'Arcade Alice' }, { id: bob.account.id, name: 'Arcade Bob' }],
@@ -83,6 +85,8 @@ test('arcade data and REST history stay event-scoped inside the one real group',
       assert.equal((await scoped(app, 'put', '/api/events/' + eventB.body.id + '/participants', alice, groupId)
         .send({ playerIds: [alice.account.id, bob.account.id] })).status, 200);
       assert.equal((await scoped(app, 'post', '/api/events/' + eventB.body.id + '/tracking/start', alice, groupId).send({})).status, 200);
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', alice, groupId).send({ eventId: eventB.body.id })).status, 200);
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', bob, groupId).send({ eventId: eventB.body.id })).status, 200);
       const resultB = recordArcadeResult({
         gameType: 'pong', winnerId: bob.account.id,
         players: [{ id: bob.account.id, name: 'Arcade Bob' }, { id: alice.account.id, name: 'Arcade Alice' }],
@@ -96,9 +100,11 @@ test('arcade data and REST history stay event-scoped inside the one real group',
       assert.deepEqual(historyA.body.results.map((row) => row.id), [resultA]);
       assert.deepEqual(historyB.body.results.map((row) => row.id), [resultB]);
 
-      const statsA = await scoped(app, 'get', '/api/arcade/stats', alice, groupId);
+      const statsA = await scoped(app, 'get', '/api/arcade/stats', alice, groupId).query({ eventId: eventA.body.id });
       assert.ok(statsA.body.games.map((game) => game.gameType).includes('quiz'));
-      assert.ok(statsA.body.games.map((game) => game.gameType).includes('pong'));
+      assert.equal(statsA.body.games.map((game) => game.gameType).includes('pong'), false);
+      const statsB = await scoped(app, 'get', '/api/arcade/stats', alice, groupId).query({ eventId: eventB.body.id });
+      assert.ok(statsB.body.games.map((game) => game.gameType).includes('pong'));
 
       const exportA = await scoped(app, 'get', '/api/export', alice, groupId).query({ eventId: eventA.body.id });
       const exportB = await scoped(app, 'get', '/api/export', alice, groupId).query({ eventId: eventB.body.id });

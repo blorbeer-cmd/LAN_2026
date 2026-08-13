@@ -15,6 +15,11 @@ export const state = {
   playtime: null,
   playtimeAllGames: null,
   events: [],
+  managedEvents: null, // owner/admin only; null means "no management rights"
+  activeEvent: null,
+  availableEvents: [],
+  historicalEvents: [], // every event this account accepted at some point, ended ones included
+  eventInvitations: [],
   selectedGameId: null, // remembers the last game picked in Teams/Turniere/Rangliste
   lastMatchmaking: null, // last drawn teams, shared live across all clients
 };
@@ -27,11 +32,25 @@ export function gameById(id) {
   return state.games.find((g) => g.id === id);
 }
 
-// Event management still needs every event so invitations remain visible.
-// Data selectors, however, must not offer participant-private events that
-// would correctly reject the current account with a 404.
+// Event *management* needs every event of the group (state.managedEvents,
+// owner/admin only). Data selectors must not offer those: personal analytics
+// aggregate only events this account actually accepted at some point
+// (resolveAnalyticsEvents on the server), so an event an admin manages but
+// never joined would answer their own event filter with a 404.
+//
+// state.historicalEvents is exactly that accepted set — including the
+// permanent base event and, unlike state.availableEvents, the events that
+// have already ended. A finished LAN is the main thing anyone opens an event
+// filter for, and the workspace list deliberately drops it because it can no
+// longer be *worked in*. Same list for every role.
 export function accessibleEvents() {
-  return state.events.filter((event) => event.canAccess !== false);
+  return state.historicalEvents ?? [];
+}
+
+// The workspaces the account can actually switch into right now. The topbar
+// switcher is its only consumer; everything historical belongs above.
+export function selectableEventWorkspaces() {
+  return state.availableEvents ?? [];
 }
 
 // The accepted games: everything that made it out of the suggestion pool into

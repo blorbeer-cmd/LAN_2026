@@ -4,8 +4,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
+import { nanoid } from 'nanoid';
 import { createTestApp } from './testApp';
-import { db } from '../db';
+import { db, DEFAULT_GROUP_ID } from '../db';
 
 const app = createTestApp();
 let gameId: string;
@@ -388,6 +389,45 @@ test('PATCH /api/matchmaking/draws/:id/move moves a player and recomputes totals
 
   const history = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}`);
   assert.equal(teamOf(history.body.history[0].teams, ids[0]), toTeam);
+});
+
+test('PATCH /api/matchmaking/draws/:id/move refuses a draw from an event the account is not part of', async () => {
+  // The handler's row lookup is scoped by group_id only. That is not the
+  // event boundary: POST /, POST /rematch and GET /history all additionally
+  // check participation, and reshuffling someone else's teams is a write, not
+  // a read — so the strictest of those rules applies here too.
+  const game = await request(app).post('/api/games').send({ name: 'Move Scope Game' });
+  const ids: string[] = [];
+  for (const name of ['ScopeA', 'ScopeB']) {
+    const p = await request(app).post('/api/players').send({ name });
+    ids.push(p.body.id);
+  }
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: ids, teamCount: 2 });
+  assert.equal(draw.status, 200, JSON.stringify(draw.body));
+
+  const foreignEventId = nanoid();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO events (id, name, starts_at, ends_at, tracking_enabled, group_id, status, visibility_scope)
+     VALUES (?, 'Fremdes Event', ?, ?, 0, ?, 'published', 'participants')`,
+  ).run(foreignEventId, now - 1_000, now + 60_000, DEFAULT_GROUP_ID);
+  db.prepare('UPDATE matchmaking_draws SET event_id = ? WHERE id = ?').run(foreignEventId, draw.body.id);
+
+  const moved = await request(app)
+    .patch(`/api/matchmaking/draws/${draw.body.id}/move`)
+    .send({ playerId: ids[0], toTeamIndex: 1 });
+  assert.equal(moved.status, 404, JSON.stringify(moved.body));
+
+  const stored = db.prepare('SELECT teams FROM matchmaking_draws WHERE id = ?').get(draw.body.id) as {
+    teams: string;
+  };
+  assert.deepEqual(
+    JSON.parse(stored.teams),
+    draw.body.teams,
+    'a refused move must not have touched the stored lineup',
+  );
 });
 
 test('PATCH /api/matchmaking/draws/:id/move recomputes seat-conflict flags after a manual reassignment', async () => {

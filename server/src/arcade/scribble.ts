@@ -717,7 +717,7 @@ export function registerScribbleSockets(io: Server): void {
       // so a real push is the only way the rest of the LAN finds out a lobby
       // is waiting for them. Throttled per game type (see lobbyPush.ts) so
       // rapid re-creation cannot spam every phone on the LAN.
-      if (shouldSendLobbyPush('scribble')) {
+      if (lobby.eventId && shouldSendLobbyPush('scribble')) {
         const otherPlayerIds = communicationRecipientIds(lobby.groupId, lobby.eventId).filter((id) => id !== player.id);
         notifyPlayers(
           otherPlayerIds,

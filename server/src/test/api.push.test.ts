@@ -7,8 +7,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createTestApp } from './testApp';
-import { db } from '../db';
-import { pushTransport } from '../push';
+import { db, DEFAULT_GROUP_ID } from '../db';
+import { notifyPlayers, pushTransport } from '../push';
 
 const app = createTestApp();
 let playerId: string;
@@ -549,7 +549,8 @@ test('new group members can load the notification center before accepting a priv
     const explicitCurrent = await request(app).get(`/api/push/current?playerId=${member.body.id}&eventId=${event.body.id}`);
     assert.equal(explicitCurrent.status, 404);
     const explicitHistory = await request(app).get(`/api/push/log?playerId=${member.body.id}&eventId=${event.body.id}`);
-    assert.equal(explicitHistory.status, 404);
+    assert.equal(explicitHistory.status, 200);
+    assert.deepEqual(explicitHistory.body.entries, []);
 
     const seenAll = await request(app).post('/api/push/seen-all').send({ playerId: member.body.id });
     assert.equal(seenAll.status, 200, JSON.stringify(seenAll.body));
@@ -560,4 +561,54 @@ test('new group members can load the notification center before accepting a priv
     const stopped = await request(app).post(`/api/events/${event.body.id}/tracking/stop`).send();
     assert.equal(stopped.status, 200, JSON.stringify(stopped.body));
   }
+});
+
+test('same notification type from different events keeps distinct visible event identity', async () => {
+  const now = Date.now();
+  const firstEventId = 'push-distinct-event-a';
+  const secondEventId = 'push-distinct-event-b';
+  for (const [id, name] of [
+    [firstEventId, 'LAN Nord'],
+    [secondEventId, 'LAN Süd'],
+  ]) {
+    db.prepare(
+      `INSERT OR IGNORE INTO events
+         (id, name, starts_at, ends_at, tracking_enabled, group_id, status, visibility_scope)
+       VALUES (?, ?, ?, ?, 0, ?, 'published', 'participants')`,
+    ).run(id, name, now, now + 60_000, DEFAULT_GROUP_ID);
+    db.prepare(
+      `INSERT INTO event_participants (event_id, player_id, status)
+       VALUES (?, ?, 'accepted')
+       ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted'`,
+    ).run(id, playerId);
+  }
+
+  notifyPlayers(
+    [playerId],
+    { title: 'Abstimmung offen', body: 'Bitte abstimmen', type: 'vote', targetId: 'round-1' },
+    'direct',
+    { key: 'vote:round-1' },
+    { groupId: DEFAULT_GROUP_ID, eventId: firstEventId },
+  );
+  notifyPlayers(
+    [playerId],
+    { title: 'Abstimmung offen', body: 'Bitte abstimmen', type: 'vote', targetId: 'round-1' },
+    'direct',
+    { key: 'vote:round-1' },
+    { groupId: DEFAULT_GROUP_ID, eventId: secondEventId },
+  );
+
+  const history = await request(app).get(`/api/push/log?playerId=${playerId}`);
+  const entries = history.body.entries.filter(
+    (entry: { notificationType: string; targetId: string }) =>
+      entry.notificationType === 'vote' && entry.targetId === 'round-1',
+  );
+  assert.deepEqual(
+    new Set(entries.map((entry: { eventId: string }) => entry.eventId)),
+    new Set([firstEventId, secondEventId]),
+  );
+  assert.deepEqual(
+    new Set(entries.map((entry: { eventName: string }) => entry.eventName)),
+    new Set(['LAN Nord', 'LAN Süd']),
+  );
 });

@@ -6,10 +6,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { nanoid } from 'nanoid';
-import { db } from './db';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from './db';
 import { config } from './config';
 import { closeStaleSessions } from './liveStatus';
-import { getTrackingEventId } from './events';
 
 test('a stale live_status_games row is removed and its session closed at last_seen', () => {
   const playerId = nanoid();
@@ -26,24 +25,21 @@ test('a stale live_status_games row is removed and its session closed at last_se
   ).run(gameId, 'Sweep Test Game', '🎮', 1, 5, Date.now());
 
   const longAgo = Date.now() - config.offlineTimeoutMs * 5;
-  db.prepare('INSERT INTO live_status (player_id, last_seen, manual_note) VALUES (?, ?, NULL)').run(
-    playerId,
-    longAgo
-  );
-  db.prepare('INSERT INTO live_status_games (player_id, game_id, since) VALUES (?, ?, ?)').run(
-    playerId,
-    gameId,
-    longAgo
-  );
+  db.prepare(
+    'INSERT INTO tracking_live_contexts (player_id, group_id, event_id, last_seen, manual_note, activity_tracked) VALUES (?, ?, ?, ?, NULL, 0)',
+  ).run(playerId, DEFAULT_GROUP_ID, BASE_EVENT_ID, longAgo);
+  db.prepare(
+    'INSERT INTO tracking_live_games (player_id, group_id, event_id, game_id, since, is_foreground) VALUES (?, ?, ?, ?, ?, 0)',
+  ).run(playerId, DEFAULT_GROUP_ID, BASE_EVENT_ID, gameId, longAgo);
   const sessionId = nanoid();
   db.prepare(
-    'INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at) VALUES (?, ?, ?, ?, ?, NULL)'
-  ).run(sessionId, playerId, gameId, getTrackingEventId(), longAgo);
+    'INSERT INTO play_sessions (id, player_id, game_id, group_id, event_id, started_at, ended_at) VALUES (?, ?, ?, ?, ?, ?, NULL)'
+  ).run(sessionId, playerId, gameId, DEFAULT_GROUP_ID, BASE_EVENT_ID, longAgo);
 
   closeStaleSessions(Date.now());
 
   const remaining = db
-    .prepare('SELECT 1 FROM live_status_games WHERE player_id = ? AND game_id = ?')
+    .prepare('SELECT 1 FROM tracking_live_games WHERE player_id = ? AND game_id = ?')
     .get(playerId, gameId);
   assert.equal(remaining, undefined, 'stale live_status_games row should be removed');
 
@@ -68,20 +64,17 @@ test('a fresh live_status_games row is left untouched', () => {
   ).run(gameId, 'Fresh Game', '🎮', 1, 5, Date.now());
 
   const now = Date.now();
-  db.prepare('INSERT INTO live_status (player_id, last_seen, manual_note) VALUES (?, ?, NULL)').run(
-    playerId,
-    now
-  );
-  db.prepare('INSERT INTO live_status_games (player_id, game_id, since) VALUES (?, ?, ?)').run(
-    playerId,
-    gameId,
-    now
-  );
+  db.prepare(
+    'INSERT INTO tracking_live_contexts (player_id, group_id, event_id, last_seen, manual_note, activity_tracked) VALUES (?, ?, ?, ?, NULL, 0)',
+  ).run(playerId, DEFAULT_GROUP_ID, BASE_EVENT_ID, now);
+  db.prepare(
+    'INSERT INTO tracking_live_games (player_id, group_id, event_id, game_id, since, is_foreground) VALUES (?, ?, ?, ?, ?, 0)',
+  ).run(playerId, DEFAULT_GROUP_ID, BASE_EVENT_ID, gameId, now);
 
   closeStaleSessions(now + 1000);
 
   const remaining = db
-    .prepare('SELECT 1 FROM live_status_games WHERE player_id = ? AND game_id = ?')
+    .prepare('SELECT 1 FROM tracking_live_games WHERE player_id = ? AND game_id = ?')
     .get(playerId, gameId);
   assert.ok(remaining, 'fresh row must not be swept');
 });

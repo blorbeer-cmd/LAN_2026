@@ -9,9 +9,8 @@ import { openLobbySummaries as snakeLobbies } from '../arcade/snake';
 import { openLobbySummaries as battleshipLobbies } from '../arcade/battleship';
 import { isKnownArcadeBotId } from '../arcade/botIds';
 import {
-  requestCanAccessGroupEvent,
+  requestCanUseEventWorkspace,
   requireGroupEventAccess,
-  resolveGroupEventScope,
   resolveRequestGroupEventScope,
 } from '../groupEventScope';
 
@@ -67,12 +66,14 @@ interface ScribbleArtStatsRow {
 }
 
 function eventFilter(
-  groupId: string,
+  req: Request,
   requested: unknown,
-): { ok: true; eventId?: string | null } | { ok: false; status: 400 | 404; error: string } {
-  if (requested === undefined) return { ok: true };
-  const resolved = resolveGroupEventScope(groupId, requested);
-  return resolved.ok ? { ok: true, eventId: resolved.eventId } : resolved;
+): { ok: true; eventId: string } | { ok: false; status: 400 | 404; error: string } {
+  const resolved = resolveRequestGroupEventScope(req, requested);
+  if (!resolved.ok) return resolved;
+  return resolved.eventId
+    ? { ok: true, eventId: resolved.eventId }
+    : { ok: false, status: 404, error: 'Event nicht gefunden.' };
 }
 
 function parseJsonArray(value: string): unknown[] {
@@ -106,7 +107,7 @@ function resultPayload(row: ArcadeResultRow) {
 arcadeRouter.get('/lobbies', (req, res) => {
   const selectedEvent = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!selectedEvent.ok) return res.status(selectedEvent.status).json({ error: selectedEvent.error });
-  if (!requestCanAccessGroupEvent(req, selectedEvent.eventId)) return res.json({ lobbies: [] });
+  if (!requestCanUseEventWorkspace(req, selectedEvent.eventId)) return res.json({ lobbies: [] });
   const groupId = req.group!.id;
   const eventId = selectedEvent.eventId;
   const lobbies = [
@@ -124,15 +125,13 @@ arcadeRouter.get('/lobbies', (req, res) => {
 });
 
 arcadeRouter.get('/stats', (req, res) => {
-  const selectedEvent = eventFilter(req.group!.id, req.query.eventId);
+  const selectedEvent = eventFilter(req, req.query.eventId);
   if (!selectedEvent.ok) return res.status(selectedEvent.status).json({ error: selectedEvent.error });
-  if (selectedEvent.eventId !== undefined && !requireGroupEventAccess(req, res, selectedEvent.eventId)) return;
+  if (!requireGroupEventAccess(req, res, selectedEvent.eventId)) return;
   const clauses = ["group_id = ?", "reason = 'completed'"];
   const params: Array<string | null> = [req.group!.id];
-  if (selectedEvent.eventId !== undefined) {
-    clauses.push('event_id IS ?');
-    params.push(selectedEvent.eventId);
-  }
+  clauses.push('event_id = ?');
+  params.push(selectedEvent.eventId);
   const rows = db
     .prepare(
       `SELECT id, event_id, game_type, winner_id, players, scores, reason, started_at, ended_at
@@ -169,10 +168,8 @@ arcadeRouter.get('/stats', (req, res) => {
   >();
   const scribbleResultClauses = ['group_id = ?', "game_type = 'scribble'", 'source_match_id IS NOT NULL'];
   const scribbleResultParams: Array<string | null> = [req.group!.id];
-  if (selectedEvent.eventId !== undefined) {
-    scribbleResultClauses.push('event_id IS ?');
-    scribbleResultParams.push(selectedEvent.eventId);
-  }
+  scribbleResultClauses.push('event_id = ?');
+  scribbleResultParams.push(selectedEvent.eventId);
   const aiScribbleMatchIds = (
     db.prepare(
       `SELECT source_match_id, scores
@@ -265,10 +262,8 @@ arcadeRouter.get('/stats', (req, res) => {
 
   const drawingClauses = ['d.group_id = ?'];
   const drawingParams: Array<string | null> = [req.group!.id];
-  if (selectedEvent.eventId !== undefined) {
-    drawingClauses.push('d.event_id IS ?');
-    drawingParams.push(selectedEvent.eventId);
-  }
+  drawingClauses.push('d.event_id = ?');
+  drawingParams.push(selectedEvent.eventId);
   if (aiScribbleMatchIds.length > 0) {
     drawingClauses.push(`d.match_id NOT IN (${aiScribbleMatchIds.map(() => '?').join(',')})`);
     drawingParams.push(...aiScribbleMatchIds);
@@ -346,15 +341,13 @@ arcadeRouter.get('/stats', (req, res) => {
 });
 
 arcadeRouter.get('/scribble/gallery', (req, res) => {
-  const selectedEvent = eventFilter(req.group!.id, req.query.eventId);
+  const selectedEvent = eventFilter(req, req.query.eventId);
   if (!selectedEvent.ok) return res.status(selectedEvent.status).json({ error: selectedEvent.error });
-  if (selectedEvent.eventId !== undefined && !requireGroupEventAccess(req, res, selectedEvent.eventId)) return;
+  if (!requireGroupEventAccess(req, res, selectedEvent.eventId)) return;
   const clauses = ['d.group_id = ?', 'd.is_round_winner = 1'];
   const params: Array<string | null> = [req.group!.id];
-  if (selectedEvent.eventId !== undefined) {
-    clauses.push('d.event_id IS ?');
-    params.push(selectedEvent.eventId);
-  }
+  clauses.push('d.event_id = ?');
+  params.push(selectedEvent.eventId);
   const rows = db.prepare(
     `SELECT d.id, d.match_id, d.round_number, d.artist_id, d.artist_name, d.word, d.draw_ops, d.created_at,
             COUNT(DISTINCT r.player_id) AS reaction_count,
@@ -392,15 +385,13 @@ arcadeRouter.get('/scribble/gallery', (req, res) => {
 });
 
 function listResults(req: Request, res: Response) {
-  const selectedEvent = eventFilter(req.group!.id, req.query.eventId);
+  const selectedEvent = eventFilter(req, req.query.eventId);
   if (!selectedEvent.ok) return res.status(selectedEvent.status).json({ error: selectedEvent.error });
-  if (selectedEvent.eventId !== undefined && !requireGroupEventAccess(req, res, selectedEvent.eventId)) return;
+  if (!requireGroupEventAccess(req, res, selectedEvent.eventId)) return;
   const clauses = ['r.group_id = ?'];
   const params: Array<string | number | null> = [req.group!.id];
-  if (selectedEvent.eventId !== undefined) {
-    clauses.push('r.event_id IS ?');
-    params.push(selectedEvent.eventId);
-  }
+  clauses.push('r.event_id = ?');
+  params.push(selectedEvent.eventId);
   if (req.query.gameType !== undefined) {
     if (typeof req.query.gameType !== 'string' || !ARCADE_TITLES[req.query.gameType]) {
       return res.status(400).json({ error: 'gameType ist ungültig.' });
@@ -452,5 +443,6 @@ arcadeRouter.get('/results/:id', (req, res) => {
      FROM arcade_results WHERE id = ? AND group_id = ?`,
   ).get(req.params.id, req.group!.id) as ArcadeResultRow | undefined;
   if (!row) return res.status(404).json({ error: 'Arcade-Ergebnis nicht gefunden.' });
+  if (!row.event_id || !requireGroupEventAccess(req, res, row.event_id)) return;
   res.json(resultPayload(row));
 });

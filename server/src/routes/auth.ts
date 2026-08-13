@@ -6,7 +6,7 @@
 
 import { Router, type RequestHandler } from 'express';
 import { nanoid } from 'nanoid';
-import { db } from '../db';
+import { BASE_EVENT_ID, db } from '../db';
 import { config } from '../config';
 import { broadcast, disconnectPlayerSockets, disconnectSessionSockets, Events } from '../realtime';
 import { isNonEmptyString, isHexColor, isValidAvatar } from '../validation';
@@ -41,6 +41,12 @@ import {
 } from '../loginRateLimit';
 import { writeAdminAudit } from '../adminAudit';
 import { resetOnboardingForNewAccount } from './onboarding';
+import {
+  ensureAccountEventContext,
+  getOrRepairActiveEvent,
+  getSelectableEvent,
+  InvalidEventContextError,
+} from '../eventContext';
 
 export const authRouter = Router();
 
@@ -174,10 +180,11 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
 
       if (invite && !markInviteUsed(invite.code, player.id, 'register')) throw new InvalidInviteError();
       ensureDefaultGroupMembership(player.id, { bootstrapAdmin: isBootstrap });
+      ensureAccountEventContext(player.id, invite?.event_id ?? BASE_EVENT_ID);
       resetOnboardingForNewAccount(player.id);
     })();
   } catch (error) {
-    if (error instanceof InvalidInviteError) {
+    if (error instanceof InvalidInviteError || error instanceof InvalidEventContextError) {
       return res.status(400).json({ error: 'Einladungscode ist ungültig oder abgelaufen.' });
     }
     throw error;
@@ -244,10 +251,11 @@ authRouter.post('/claim', limitAnonymousAuthAttempts, (req, res) => {
       if (result.changes !== 1) throw new InvalidInviteError();
       voidOutstandingInvites(existing.id, 'claim');
       ensureDefaultGroupMembership(existing.id, { bootstrapAdmin: isBootstrap });
+      ensureAccountEventContext(existing.id, invite?.event_id ?? BASE_EVENT_ID);
       resetOnboardingForNewAccount(existing.id);
     })();
   } catch (error) {
-    if (error instanceof InvalidInviteError) {
+    if (error instanceof InvalidInviteError || error instanceof InvalidEventContextError) {
       return res.status(400).json({
         error: isBootstrap
           ? 'Bootstrap-Code ist nicht mehr gültig oder das Konto wurde bereits beansprucht.'
@@ -323,7 +331,10 @@ authRouter.post('/login', limitAnonymousAuthAttempts, (req, res) => {
   }
 
   recordLoginSuccess(trimmedName);
-  db.prepare('UPDATE players SET last_login_at = ? WHERE id = ?').run(Date.now(), player!.id);
+  db.transaction(() => {
+    db.prepare('UPDATE players SET last_login_at = ? WHERE id = ?').run(Date.now(), player!.id);
+    getOrRepairActiveEvent(player!.id);
+  })();
 
   const token = createSession(player!.id);
   setSessionCookie(res, token);
@@ -426,6 +437,7 @@ authRouter.post('/reset', limitAnonymousAuthAttempts, (req, res) => {
     deleteAllSessionsForPlayer(existing.id);
     db.prepare('DELETE FROM push_subscriptions WHERE player_id = ?').run(existing.id);
     voidOutstandingInvites(existing.id, 'reset');
+    getOrRepairActiveEvent(existing.id);
     return true;
   })();
   if (!reset) {
@@ -465,7 +477,12 @@ authRouter.post('/test-session', limitAnonymousAuthAttempts, (req, res) => {
     return res.status(409).json({ error: 'Dieser Test-Spieler ist nicht mehr verfügbar.' });
   }
 
-  if (!markInviteUsed(invite.code, target.id, 'test_login')) {
+  const consumed = db.transaction(() => {
+    if (!markInviteUsed(invite.code, target.id, 'test_login')) return false;
+    getOrRepairActiveEvent(target.id);
+    return true;
+  })();
+  if (!consumed) {
     return res.status(409).json({ error: 'Der Link wurde bereits verwendet.' });
   }
 
@@ -487,9 +504,11 @@ authRouter.get('/invites', ...requireSessionAdmin, (_req, res) => {
   const rows = db
     .prepare(
       `SELECT i.code, i.purpose, i.player_id AS playerId, p.name AS playerName,
+              i.event_id AS eventId, e.name AS eventName,
               i.created_at AS createdAt, i.expires_at AS expiresAt
        FROM invites i
        LEFT JOIN players p ON p.id = i.player_id
+       LEFT JOIN events e ON e.id = i.event_id
        WHERE i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > ?
        ORDER BY i.created_at DESC`
     )
@@ -497,14 +516,21 @@ authRouter.get('/invites', ...requireSessionAdmin, (_req, res) => {
   res.json(rows);
 });
 
-// POST /api/auth/invites - admin-only. Body: { purpose, playerId?, expiresInMs? }
+// POST /api/auth/invites - admin-only.
+// Body: { purpose, playerId?, eventId?, expiresInMs? }
 authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthentication, (req, res) => {
-  const { purpose, playerId, expiresInMs } = req.body ?? {};
+  const { purpose, playerId, eventId, expiresInMs } = req.body ?? {};
   if (typeof purpose !== 'string' || !INVITE_PURPOSES.includes(purpose as InvitePurpose)) {
     return res.status(400).json({ error: `purpose muss eines von ${INVITE_PURPOSES.join(', ')} sein.` });
   }
   if (expiresInMs !== undefined && (typeof expiresInMs !== 'number' || !Number.isFinite(expiresInMs) || expiresInMs <= 0)) {
     return res.status(400).json({ error: 'expiresInMs muss eine positive Zahl sein.' });
+  }
+  if (eventId !== undefined && (typeof eventId !== 'string' || !eventId)) {
+    return res.status(400).json({ error: 'eventId muss eine nicht-leere Zeichenfolge sein.' });
+  }
+  if (eventId !== undefined && purpose !== 'register' && purpose !== 'claim') {
+    return res.status(400).json({ error: 'eventId ist nur bei Registrierungs- und Konto-Einladungen zulässig.' });
   }
 
   if (purpose === 'register') {
@@ -535,9 +561,16 @@ authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthenticatio
     }
   }
 
+  const inviteEventId = purpose === 'register' || purpose === 'claim' ? eventId ?? BASE_EVENT_ID : undefined;
+  const inviteEvent = inviteEventId ? getSelectableEvent(inviteEventId) : undefined;
+  if (inviteEventId && !inviteEvent) {
+    return res.status(404).json({ error: 'Event nicht gefunden.' });
+  }
+
   const invite = createInvite({
     purpose: purpose as InvitePurpose,
     playerId: purpose === 'register' ? undefined : playerId,
+    eventId: inviteEventId,
     createdBy: req.player!.id,
     expiresInMs,
   });
@@ -546,12 +579,14 @@ authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthenticatio
     action: 'invite_created',
     targetType: purpose === 'register' ? 'registration' : 'player',
     targetId: purpose === 'register' ? undefined : playerId,
-    details: { purpose, expiresAt: invite.expires_at },
+    details: { purpose, eventId: invite.event_id, expiresAt: invite.expires_at },
   });
   res.status(201).json({
     code: invite.code,
     purpose: invite.purpose,
     playerId: invite.player_id,
+    eventId: invite.event_id,
+    eventName: inviteEvent?.name ?? null,
     expiresAt: invite.expires_at,
   });
 });

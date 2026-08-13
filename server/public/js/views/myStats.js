@@ -10,6 +10,7 @@ import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { eventSwitcherLabel } from '../eventStatus.js';
 
 let statsCache = null;
 let statsLoading = false;
@@ -39,11 +40,37 @@ async function loadStats(playerId, eventId, ctx) {
 }
 
 function renderEventOptions() {
-  const sorted = [...accessibleEvents()].sort((a, b) => b.starts_at - a.starts_at);
+  const sorted = [...accessibleEvents()].sort((a, b) => b.startsAt - a.startsAt);
   const options = sorted
-    .map((e) => `<option value="${e.id}" ${e.id === statsEventId ? 'selected' : ''}>${escapeHtml(e.name)}</option>`)
+    // Finished LANs are the point of this filter, so every option names its
+    // state in words through the shared event vocabulary.
+    .map((e) => `<option value="${e.id}" ${e.id === statsEventId ? 'selected' : ''}>${escapeHtml(eventSwitcherLabel(e))}</option>`)
     .join('');
   return `<option value="" ${statsEventId === '' ? 'selected' : ''}>Gesamt (alle Events)</option>${options}`;
+}
+
+// Two accounts see different totals here, because each aggregate covers only
+// the events its own account took part in. Name that basis instead of letting
+// the difference look like a bug (docs/KONZEPT-EVENT-SICHTBARKEIT.md,
+// Abschnitt 4.4). Only for the "Gesamt" selection — with one event picked the
+// dropdown already says what the numbers cover.
+//
+// Exported and free of module state so the wording itself is testable: the
+// singular is the normal case for every account that has not accepted a LAN
+// invitation yet, so both halves of the sentence have to agree in number.
+export function dataBasisText(eventIds, selectedEventId) {
+  if (selectedEventId !== '') return '';
+  const count = eventIds?.length ?? 0;
+  if (count === 0) return '';
+  return count === 1
+    ? 'Aus einem Event, an dem du teilgenommen hast.'
+    : `Aus deinen ${count} Events, an denen du teilgenommen hast.`;
+}
+
+function dataBasisHtml(stats) {
+  const text = dataBasisText(stats.eventIds, statsEventId);
+  if (!text) return '';
+  return `<div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(text)}</div>`;
 }
 
 function renderStats() {
@@ -143,6 +170,7 @@ function renderStats() {
   return `
     <div class="card stack">
       <select id="my-stats-event">${renderEventOptions()}</select>
+      ${dataBasisHtml(s)}
     </div>
     ${kpis}
 

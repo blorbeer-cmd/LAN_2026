@@ -527,9 +527,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   process mappings, Kiosk and the latest persistent backup. Every card pairs its semantic badge
   with a textual summary and actionable detail; loading and retry errors stay inside the group.
   Backup and seating-plan editing are absent from regular member views and live
-  together as nested tool cards in the active Admin mode. A third tool card, „Event- &
-  Kioskverwaltung“, links into Orga's „Events“ tab — that global, non-personal management surface
-  is otherwise only reachable through „Mehr“ like any other Orga tab. Each tool card keeps its
+  together as nested tool cards in the active Admin mode. Two further tool cards,
+  „Eventverwaltung“ and „Kioskverwaltung“, link into Orga's „Events“ and „TV-Kiosk“ tabs — those
+  global, non-personal management surfaces are otherwise only reachable through „Mehr“ like any
+  other Orga tab. They stay two separate cards because Orga exposes them as two separate tabs; one
+  combined card would leave the Kiosk tab without an Admin entry point. Each tool card keeps its
   title, adjacent help tooltip and colorful primary action on one row; the seating editor returns
   to Admin and blocks editing outside that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and
   need no separate Admin action. The test-data fixture explanation and the existing test-player count live in adjacent
@@ -648,10 +650,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   zugewiesen“ with „Freigeben“/„Erledigt“ actions instead. Completed To-Dos live in one standard,
   initially collapsed „Historie“ section whose open state survives live re-renders, same as Food
   orders.
-  The „Events“ tab keeps the full event-management surface: anlegen/bearbeiten, Tracking
-  starten/stoppen, Teilnehmer einladen/entfernen and the PDF „Andenken“-Export, plus any pending
-  invitations for the current identity as a leading subsection. Event cards use the standard
-  two-column nested-card grid. The „TV-Kiosk“ tab is deliberately minimal — one grouped-page-section
+  The „Events“ tab is reachable by every member, not only by owner/admin, because answering an
+  invitation is a personal action. What it shows depends on the role: owner/admin receive the full
+  management surface — anlegen/bearbeiten, Tracking starten/stoppen, Teilnehmer einladen/entfernen
+  and the PDF „Andenken“-Export — while a member gets read-only cards for the events they take
+  part in, without the „+ Event“ action, the participant count and the tracking state they never
+  receive. Pending invitations for the current identity lead the tab as a subsection for both.
+  Event cards use the standard two-column nested-card grid. The „TV-Kiosk“ tab is deliberately minimal — one grouped-page-section
   with a single full-width link that opens `/kiosk.html` in a new tab; it stays a separate tab
   rather than a second section inside „Events“ so the two setup tasks (running events vs. the
   shared-screen dashboard) don't compete for space on the same page.

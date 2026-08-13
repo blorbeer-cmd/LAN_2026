@@ -3,6 +3,11 @@
 // touch during actual play, which is why it lives behind "Mehr" rather than
 // the main bottom nav. Game management (including the process-name mappings
 // the agent uses) lives in the Spiele view — see server/CLAUDE.md games reorg.
+//
+// The Events tab is deliberately not admin-only: every member reaches it,
+// sees the events they take part in and answers their invitations here. The
+// management actions stay owner/admin — a member gets read-only cards, since
+// only owner/admin receive `state.managedEvents` at all.
 
 import { api } from '../api.js';
 import { openModal, confirmDialog } from '../modal.js';
@@ -14,8 +19,9 @@ import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { getMyId } from '../whoami.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { eventStatusBadgeHtml } from '../eventStatus.js';
 
-const EVENT_HELP = 'Mehrere Events sind möglich. Nur ein Event erfasst gleichzeitig Live-Status und Spielzeit; alles andere bleibt „Außerhalb von Events“.';
+const EVENT_HELP = 'Jede Aktion gehört zu deinem aktuell gewählten Event. Du kannst dein Arbeits-Event jederzeit oben in der Leiste wechseln.';
 const KIOSK_HELP = 'Für gemeinsame Bildschirme: zeigt Live-Status, Vote, Rang und Turnier automatisch. Der Kiosk benötigt seinen eigenen Token.';
 
 function renderKioskSection() {
@@ -32,14 +38,33 @@ function renderKioskSection() {
   `;
 }
 
-function eventStatusBadge(e) {
-  if (e.isEnded) return `<span class="badge badge-offline">${icon('circleCheck')} Beendet</span>`;
-  if (e.trackingEnabled) return `<span class="badge badge-playing">${icon('radioTower')} Trackt gerade</span>`;
-  return `<span class="badge badge-paused">${icon('pause')} Nicht aktiv</span>`;
+// The base workspace is permanently open, so it has no end date to print.
+function eventDateRange(e) {
+  return e.endsAt == null
+    ? 'Dauerhaft geöffnet'
+    : `${new Date(e.startsAt).toLocaleDateString('de-DE')} – ${new Date(e.endsAt).toLocaleDateString('de-DE')}`;
+}
+
+// Read-only card for a member's own accepted events: same identity and dates
+// as the management card, without the admin-only actions, participant count
+// and tracking state a member never receives.
+function renderMemberEventCard(e) {
+  return `
+    <div class="card stack" style="gap:var(--space-3);">
+      <div class="row-between">
+        <strong>${escapeHtml(e.name)}</strong>
+      </div>
+      <div class="stack" style="gap:var(--space-1);">
+        ${e.location ? `<div class="muted" style="font-size:var(--font-size-sm);">${icon('mapPin')} ${escapeHtml(e.location)}</div>` : ''}
+        <div class="muted" style="font-size:var(--font-size-sm);">${icon('calendar')} ${eventDateRange(e)}</div>
+        ${e.description ? `<div class="muted" style="font-size:var(--font-size-sm);">${escapeHtml(e.description)}</div>` : ''}
+      </div>
+    </div>
+  `;
 }
 
 function renderEventCard(e) {
-  const dateRange = `${new Date(e.starts_at).toLocaleDateString('de-DE')} – ${new Date(e.ends_at).toLocaleDateString('de-DE')}`;
+  const dateRange = eventDateRange(e);
   const participantCount = e.participantIds?.length ?? 0;
 
   const trackingBtn = e.isEnded
@@ -55,7 +80,7 @@ function renderEventCard(e) {
     <div class="card stack" style="gap:var(--space-3);">
       <div class="row-between">
         <strong>${escapeHtml(e.name)}</strong>
-        ${eventStatusBadge(e)}
+        ${eventStatusBadgeHtml(e)}
       </div>
       <div class="stack" style="gap:var(--space-1);">
         ${e.location ? `<div class="muted" style="font-size:var(--font-size-sm);">${icon('mapPin')} ${escapeHtml(e.location)}</div>` : ''}
@@ -74,12 +99,22 @@ function renderEventCard(e) {
 }
 
 function renderEventSection() {
-  const realEvents = (state.events || []).filter((e) => !e.isOutsideEvents);
-  const cards = realEvents.map(renderEventCard).join('');
+  // Only owner/admin receive `managedEvents`; a member's own accepted events
+  // carry neither participants nor tracking state and must not be rendered
+  // through the management card, whose actions they cannot use anyway. The
+  // base workspace is filtered out of both: it is not a LAN anyone manages or
+  // joins, it is where everyone already is.
+  const canManage = Array.isArray(state.managedEvents);
+  const realEvents = (canManage ? state.managedEvents : []).filter((e) => !e.isOutsideEvents && !e.isBase);
+  const memberEvents = canManage ? [] : (state.availableEvents || []).filter((e) => !e.isBase);
+  const cards = canManage
+    ? realEvents.map(renderEventCard).join('')
+    : memberEvents.map(renderMemberEventCard).join('');
+  const visibleEventCount = canManage ? realEvents.length : memberEvents.length;
   const myId = getMyId();
-  const pendingInvitations = myId
-    ? realEvents.filter((event) => event.participants?.some((entry) => entry.playerId === myId && entry.status === 'invited'))
-    : [];
+  // A teaser is all an invited account receives, so the invitation list comes
+  // from its own payload instead of a participant roster it never sees.
+  const pendingInvitations = myId ? state.eventInvitations || [] : [];
   const invitationRows = pendingInvitations
     .map(
       (event) => `
@@ -89,7 +124,7 @@ function renderEventSection() {
             <span class="badge badge-paused">Eingeladen</span>
           </div>
           <div class="muted" style="font-size:var(--font-size-sm);">
-            ${icon('calendar')} ${new Date(event.starts_at).toLocaleDateString('de-DE')} – ${new Date(event.ends_at).toLocaleDateString('de-DE')}
+            ${icon('calendar')} ${new Date(event.startsAt).toLocaleDateString('de-DE')}${event.endsAt == null ? '' : ` – ${new Date(event.endsAt).toLocaleDateString('de-DE')}`}
           </div>
           <div class="row" style="gap:var(--space-2);">
             <button type="button" class="btn btn-primary" data-accept-invitation="${event.id}">Annehmen</button>
@@ -106,7 +141,7 @@ function renderEventSection() {
           <h2 id="orga-events-title">Events</h2>
           ${infoTooltipHtml('orga-events-help', 'Events', EVENT_HELP)}
         </span>
-        <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>
+        ${canManage ? `<button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>` : ''}
       </div>
       ${
         pendingInvitations.length > 0
@@ -117,8 +152,11 @@ function renderEventSection() {
           : ''
       }
       ${
-        realEvents.length === 0
-          ? emptyStateHtml('Noch keine Events angelegt.', { icon: icon('calendar') })
+        visibleEventCount === 0
+          ? emptyStateHtml(
+              canManage ? 'Noch keine Events angelegt.' : 'Du nimmst noch an keinem eigenen Event teil.',
+              { icon: icon('calendar') },
+            )
           : `<div class="two-column-card-grid orga-event-grid">${cards}</div>`
       }
     </section>
@@ -165,11 +203,11 @@ function openEventForm(ctx, existing) {
         <div class="field-row">
           <div>
             <label for="event-starts" class="field-label">Beginnt am</label>
-            ${dateTimeFieldHtml('event-starts', existing?.starts_at ?? now, { clearable: false, label: 'Beginnt am' })}
+            ${dateTimeFieldHtml('event-starts', existing?.startsAt ?? now, { clearable: false, label: 'Beginnt am' })}
           </div>
           <div>
             <label for="event-ends" class="field-label">Endet am</label>
-            ${dateTimeFieldHtml('event-ends', existing?.ends_at ?? defaultEnd, { clearable: isEdit, label: 'Endet am' })}
+            ${dateTimeFieldHtml('event-ends', existing?.endsAt ?? defaultEnd, { clearable: isEdit, label: 'Endet am' })}
           </div>
         </div>
         <div>
@@ -311,7 +349,7 @@ function openParticipantsForm(ctx, event) {
             if (isInvite) await api.events.inviteParticipant(event.id, playerId);
             else await api.events.removeParticipant(event.id, playerId);
             await ctx.refresh();
-            const updatedEvent = (state.events || []).find((candidate) => candidate.id === event.id);
+            const updatedEvent = (state.managedEvents || []).find((candidate) => candidate.id === event.id);
             if (!updatedEvent) return close();
             modalEl.querySelector('.modal-body').innerHTML = renderParticipantsBody(updatedEvent);
             modalEl.querySelector('[data-invite-participant], [data-remove-participant]')?.focus();
@@ -347,16 +385,17 @@ export function renderOrgaEvents(container, ctx) {
   });
   wireInfoTooltips(container);
 
-  container.querySelector('#new-event-btn').addEventListener('click', () => openEventForm(ctx, null));
+  // Absent for a member: only owner/admin get the create action.
+  container.querySelector('#new-event-btn')?.addEventListener('click', () => openEventForm(ctx, null));
   container.querySelectorAll('[data-edit-event]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const event = (state.events || []).find((e) => e.id === btn.dataset.editEvent);
+      const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.editEvent);
       if (event) openEventForm(ctx, event);
     });
   });
   container.querySelectorAll('[data-participants-event]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const event = (state.events || []).find((e) => e.id === btn.dataset.participantsEvent);
+      const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.participantsEvent);
       if (event) openParticipantsForm(ctx, event);
     });
   });
@@ -379,7 +418,7 @@ export function renderOrgaEvents(container, ctx) {
   });
   container.querySelectorAll('[data-start-tracking]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const event = (state.events || []).find((e) => e.id === btn.dataset.startTracking);
+      const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.startTracking);
       if (!event) return;
       if (!(await confirmDialog(`Tracking für „${event.name}" starten? Live-Status und Spielzeit werden ab jetzt für die Teilnehmer erfasst.`, { confirmText: 'Tracking starten' }))) return;
       try {
@@ -393,9 +432,9 @@ export function renderOrgaEvents(container, ctx) {
   });
   container.querySelectorAll('[data-stop-tracking]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const event = (state.events || []).find((e) => e.id === btn.dataset.stopTracking);
+      const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.stopTracking);
       if (!event) return;
-      if (!(await confirmDialog(`Tracking für „${event.name}" stoppen? Es läuft dann wieder alles unter „Außerhalb von Events".`, { confirmText: 'Tracking stoppen' }))) return;
+      if (!(await confirmDialog(`Tracking für „${event.name}" stoppen? Der Event-Workspace bleibt erhalten.`, { confirmText: 'Tracking stoppen' }))) return;
       try {
         await api.events.stopTracking(event.id);
         await ctx.refresh();
@@ -407,7 +446,7 @@ export function renderOrgaEvents(container, ctx) {
   });
   container.querySelectorAll('[data-end-event]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const event = (state.events || []).find((e) => e.id === btn.dataset.endEvent);
+      const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.endEvent);
       if (!event) return;
       if (!(await confirmDialog(`Event „${event.name}" endgültig beenden? Das lässt sich nicht rückgängig machen.`, { confirmText: 'Beenden', danger: true }))) return;
       try {

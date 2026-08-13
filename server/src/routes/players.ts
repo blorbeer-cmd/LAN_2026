@@ -3,7 +3,7 @@
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { db, OUTSIDE_EVENTS_ID } from '../db';
+import { db } from '../db';
 import { broadcast, disconnectPlayerSockets, Events } from '../realtime';
 import { isNonEmptyString, isHexColor, isValidAvatar } from '../validation';
 import { formatDurationMs, computePlaytime, type PlaySession } from '../playtime';
@@ -11,12 +11,14 @@ import { sessionDurations, computeSimultaneousGameTime, type SessionDuration } f
 import { computeAwards } from '../awards';
 import { hasRecentReauthentication, requireUser, withParamPlayerIdentity } from '../sessions';
 import { requireAdmin } from '../auth';
-import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
+import { broadcastLiveBoards, clearPlayerLiveStatus } from '../liveStatus';
 import { writeAdminAudit } from '../adminAudit';
 import { voidOutstandingInvites } from '../invites';
 import { activeGroupPlayers } from '../groupPlayers';
 import { activePlayerGroupIds, ensureDefaultGroupMembership, syncInstanceAdminForRole } from '../groups';
 import { resolveAccessibleGroupEventScope } from '../groupEventScope';
+import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
+import { getOrRepairActiveEvent } from '../eventContext';
 
 export const playersRouter = Router();
 
@@ -345,7 +347,7 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
     broadcast(Events.playersChanged, null, { groupId });
     // live:changed carries the fresh board — clients assign the payload to
     // their state directly and do not treat null as a reload signal.
-    broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+    broadcastLiveBoards(groupId);
   }
   res.status(204).end();
 });
@@ -366,6 +368,7 @@ playersRouter.post('/:id/reactivate', requireAdmin, (req, res) => {
       .prepare("SELECT role FROM group_memberships WHERE group_id = ? AND player_id = ? AND status = 'active'")
       .get(req.group!.id, req.params.id) as { role: 'owner' | 'admin' | 'member' } | undefined;
     syncInstanceAdminForRole(req.group!.id, req.params.id, membership?.role ?? 'member', req.player?.id);
+    getOrRepairActiveEvent(req.params.id);
     writeAdminAudit({
       actorPlayerId: req.player?.id,
       action: 'player_reactivated',
@@ -401,7 +404,7 @@ playersRouter.post('/:id/api-key/rotate', requireUser, (req, res) => {
     targetId: target.id,
   });
   for (const groupId of activePlayerGroupIds(target.id)) {
-    broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+    broadcastLiveBoards(groupId);
   }
   res.json({ apiKey });
 });
@@ -565,28 +568,32 @@ interface SessionRow {
 
 // GET /api/players/:id/stats - "my own stats": per-game and per-event
 // breakdown, multitasking/AFK ratio, longest sessions, and any awards this
-// player holds. Optionally narrowed to one ?eventId=. Read-only and not
-// ownership-gated for the same reason the rest of this API isn't (see
-// PATCH above) — it's just as visible to everyone as the roster already is.
+// account holds. Optionally narrowed to one ?eventId=.
+//
+// Despite the `:id` in the path this is a self-service endpoint, not a
+// lookup: withParamPlayerIdentity('id') rebinds req.params.id to the session
+// account (see sessions.ts), so the id in the URL is never what decides whose
+// numbers come back. That is also why scoping the events via
+// resolveAnalyticsEvents(req, ...) — which keys on req.player — is correct
+// here: reader and subject are always the same account. It aggregates only
+// events this account actually accepted at some point, so a private event it
+// never joined contributes neither playtime nor its name, and an explicit
+// ?eventId= for such an event is a 404.
 playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => {
   const player = db.prepare('SELECT * FROM players WHERE id = ? AND deactivated_at IS NULL').get(req.params.id) as PlayerRow | undefined;
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const { eventId } = req.query;
-  const scope = resolveAccessibleGroupEventScope(req, res, eventId);
-  if (!scope) return;
-  const filterEventId = scope.eventId;
+  const scope = resolveAnalyticsEvents(req, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  const filterEventId = scope.explicitEventId;
   const now = Date.now();
 
   const ownClauses = ['player_id = ?', 'group_id = ?'];
   const ownParams: string[] = [player.id, req.group!.id];
-  if (filterEventId) {
-    ownClauses.push('event_id = ?');
-    ownParams.push(filterEventId);
-  } else if (scope.usedGroupRoomFallback) {
-    ownClauses.push('event_id = ?');
-    ownParams.push(OUTSIDE_EVENTS_ID);
-  }
+  const ownEventFilter = eventIdSql('event_id', scope.eventIds);
+  ownClauses.push(ownEventFilter.clause);
+  ownParams.push(...ownEventFilter.params);
   const ownRows = db
     .prepare(
       `SELECT player_id, game_id, event_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${ownClauses.join(' AND ')}`,
@@ -680,13 +687,9 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
   // relative to the rest of the group), then filtered down to this player's.
   const allClauses: string[] = ['group_id = ?'];
   const allParams: string[] = [req.group!.id];
-  if (filterEventId) {
-    allClauses.push('event_id = ?');
-    allParams.push(filterEventId);
-  } else if (scope.usedGroupRoomFallback) {
-    allClauses.push('event_id = ?');
-    allParams.push(OUTSIDE_EVENTS_ID);
-  }
+  const allEventFilter = eventIdSql('event_id', scope.eventIds);
+  allClauses.push(allEventFilter.clause);
+  allParams.push(...allEventFilter.params);
   const allRows = db
     .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${allClauses.join(' AND ')}`)
     .all(...allParams) as SessionRow[];
@@ -715,6 +718,7 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
     playerId: player.id,
     playerName: player.name,
     eventId: filterEventId,
+    eventIds: scope.eventIds,
     totalMs,
     formatted: formatDurationMs(totalMs),
     activeMs,

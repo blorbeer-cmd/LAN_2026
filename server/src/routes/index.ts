@@ -43,8 +43,11 @@ import { config } from '../config';
 import { extractToken } from '../auth';
 import { requireConfiguredGroupMembership } from '../groupAuthorization';
 import { getGroup } from '../groups';
-import { DEFAULT_GROUP_ID } from '../db';
+import { BASE_EVENT_ID, DEFAULT_GROUP_ID } from '../db';
 import { resolveKioskToken } from '../kioskTokens';
+import { getOrRepairActiveEvent, setActiveEventForPlayer, type EventContextEvent } from '../eventContext';
+import { broadcast, Events, switchPlayerEventScope } from '../realtime';
+import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 
 export const apiRouter = Router();
 
@@ -99,9 +102,10 @@ apiRouter.use((req, res, next) => {
     if (!group || group.archived_at !== null) {
       return res.status(404).json({ error: 'Kiosk-Gruppe ist nicht verfügbar.' });
     }
-    if (tokenScope?.eventId) req.query.eventId = tokenScope.eventId;
+    const kioskEventId = tokenScope?.eventId ?? BASE_EVENT_ID;
+    req.query.eventId = kioskEventId;
     req.group = group;
-    req.kioskScope = { groupId, eventId: tokenScope?.eventId ?? null };
+    req.kioskScope = { groupId, eventId: kioskEventId };
     return next();
   }
   requireUser(req, res, next);
@@ -117,8 +121,20 @@ apiRouter.use((req, res, next) => {
 
 // GET /api/me - the logged-in account, per the real per-user login system
 // (see docs/KONZEPT-USER-MANAGEMENT.md).
+function serializeActiveEvent(event: EventContextEvent) {
+  return {
+    id: event.id,
+    name: event.name,
+    startsAt: event.starts_at,
+    endsAt: event.ends_at,
+    status: event.status,
+    isBase: event.id === BASE_EVENT_ID,
+  };
+}
+
 apiRouter.get('/me', requireUser, (req, res) => {
   const p = req.player!;
+  const activeEvent = getOrRepairActiveEvent(p.id);
   res.json({
     id: p.id,
     name: p.name,
@@ -126,7 +142,35 @@ apiRouter.get('/me', requireUser, (req, res) => {
     avatar: p.avatar,
     isAdmin: Boolean(p.is_admin),
     isTest: Boolean(p.is_test),
+    activeEventId: activeEvent.id,
   });
+});
+
+// The selected workspace is account-wide rather than tab-local. Switching is
+// allowed only to published events the account has accepted.
+apiRouter.get('/me/active-event', requireUser, (req, res) => {
+  res.json(serializeActiveEvent(getOrRepairActiveEvent(req.player!.id)));
+});
+
+apiRouter.put('/me/active-event', requireUser, (req, res) => {
+  const { eventId } = req.body ?? {};
+  if (typeof eventId !== 'string' || !eventId) {
+    return res.status(400).json({ error: 'eventId ist erforderlich.' });
+  }
+  const previousEvent = getOrRepairActiveEvent(req.player!.id);
+  const event = setActiveEventForPlayer(req.player!.id, eventId);
+  if (!event) return res.status(404).json({ error: 'Event nicht gefunden oder nicht freigegeben.' });
+  if (previousEvent.id !== event.id) {
+    clearPlayerLiveStatus(req.player!.id, Date.now(), previousEvent.id);
+    if (previousEvent.group_id) {
+      broadcast(Events.liveStatusChanged, getLiveBoard(previousEvent.group_id, previousEvent.id), {
+        groupId: previousEvent.group_id,
+        eventId: previousEvent.id,
+      });
+    }
+  }
+  switchPlayerEventScope(req.player!.id, event.group_id!, event.id);
+  return res.json(serializeActiveEvent(event));
 });
 
 apiRouter.use('/me/onboarding', onboardingRouter);

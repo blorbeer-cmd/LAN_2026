@@ -306,6 +306,8 @@ export const api = {
   events: {
     list: () => apiFetch('/api/events'),
     active: () => apiFetch('/api/events/active'),
+    activate: (eventId) =>
+      apiFetch('/api/me/active-event', { method: 'PUT', body: JSON.stringify({ eventId }) }),
     // data: { name, startsAt, endsAt, location?, description? }
     create: (data) => apiFetch('/api/events', { method: 'POST', body: JSON.stringify(data) }),
     // fields: any subset of { name?, startsAt?, endsAt?, location?, description? }

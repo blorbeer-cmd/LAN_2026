@@ -7,7 +7,7 @@ import { ensureLogin } from './authGate.js';
 import { connectSocket } from './socket.js';
 import { initConnectionStatus } from './connectionStatus.js';
 import { createConnectionRefreshCoordinator } from './connectionRefresh.js';
-import { state } from './state.js';
+import { selectableEventWorkspaces, state } from './state.js';
 import { loadAll } from './data.js';
 import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
@@ -16,7 +16,7 @@ import { filterTestUsers } from './testFilter.js';
 import { invalidateHomeSeating } from './views/home.js';
 import { initNotificationBanner, refreshNotificationBanner } from './notificationBanner.js';
 import { invalidateMissingSkills, invalidateAktuellStatus } from './aktuellStatus.js';
-import { invalidateMatchmakingHistory, setDraftState } from './views/matchmaking.js';
+import { invalidateMatchmakingHistory, invalidateMatchmakingDraft, setDraftState } from './views/matchmaking.js';
 import { invalidateBroadcasts } from './views/broadcast.js';
 import { invalidateInfoBoard, openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
@@ -24,12 +24,16 @@ import { invalidateFoodOrders } from './views/foodOrders.js';
 import { invalidateChecklist } from './views/checklist.js';
 import { invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
 import { invalidateArrivals } from './views/arrivals.js';
-import { invalidateVoteHistory } from './views/votes.js';
+import { invalidateVoteEventScope, invalidateVoteHistory } from './views/votes.js';
 import { invalidateTournaments, focusTournament, showTournamentLanding } from './views/tournament.js';
 import { invalidateHallOfFame } from './views/hallOfFame.js';
 import { invalidateSeating } from './views/seating.js';
 import { invalidateAdminMemberships, invalidateAdminReadiness } from './views/admin.js';
 import { invalidateMusic } from './views/music.js';
+import { invalidateAnalytics } from './views/analytics.js';
+import { invalidateMyStats } from './views/myStats.js';
+import { invalidateSeatNeighbors } from './views/profile.js';
+import { eventStatus, eventSwitcherLabel } from './eventStatus.js';
 import { icon, installIconReplacement } from './icons.js';
 import { initNumberStepper } from './numberStepper.js';
 import { initGlobalSearch } from './searchPalette.js';
@@ -38,6 +42,7 @@ import { initGroupContext, refreshGroupContext } from './groupContext.js';
 import { isKnownView, VIEW_REGISTRY } from './viewRegistry.js';
 import { navGroupForView, sectionKeyForView } from './sectionNav.js';
 import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
+import { escapeHtml } from './format.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -92,6 +97,7 @@ const ctx = {
   // after mutations whose effects aren't already carried by a socket event.
   refresh: async () => {
     await loadAll();
+    renderEventContextSwitcher();
     renderCurrent();
   },
   // Re-render the active view from whatever is already in `state`, with no
@@ -99,6 +105,124 @@ const ctx = {
   // (e.g. a freshly drawn matchmaking result).
   rerender: () => renderCurrent(),
 };
+
+// Everything a view kept from the workspace it was rendered in. loadAll()
+// refreshes `state`, but every view module that fetches from its own endpoint
+// caches outside `state` — those survive the switch and would keep the
+// previous event's data on screen.
+//
+// This list is the complete set of event-scoped caches; the contract test in
+// eventScopedCaches.test.js fails when a view gains an invalidator that is
+// neither listed here nor declared event-independent, so it cannot silently
+// drift again.
+function invalidateEventScopedCaches() {
+  invalidateAktuellStatus();
+  invalidateMatchmakingHistory();
+  invalidateMatchmakingDraft();
+  invalidateVoteEventScope();
+  invalidateTournaments();
+  invalidateHomeSeating();
+  invalidateSeating();
+  invalidateBroadcasts();
+  invalidateInfoBoard();
+  invalidateFoodOrders();
+  invalidateChecklist();
+  invalidateArrivals();
+  invalidateMusic();
+  invalidateAnalytics();
+  invalidateMyStats();
+  invalidateHallOfFame();
+  invalidateAdminReadiness();
+  invalidateSeatNeighbors();
+  // Not a view cache but the same problem: a drawn lineup belongs to the
+  // event it was drawn in, and nothing in loadAll() overwrites it.
+  state.lastMatchmaking = null;
+}
+
+function renderEventContextSwitcher() {
+  const container = document.getElementById('event-context');
+  const select = document.getElementById('event-context-switcher');
+  const statusEl = document.getElementById('event-context-status');
+  if (!container || !select) return;
+  const events = selectableEventWorkspaces();
+  select.innerHTML = events
+    .map((event) => `<option value="${escapeHtml(event.id)}">${escapeHtml(eventSwitcherLabel(event))}</option>`)
+    .join('');
+  select.value = state.activeEvent?.id ?? '';
+  container.hidden = events.length === 0;
+
+  // The icon repeats the active event's state at a glance; the option text
+  // above already carries it in words, and the select's accessible name spells
+  // it out too, so the colour never has to be read on its own.
+  const active = events.find((event) => event.id === state.activeEvent?.id) ?? state.activeEvent;
+  const status = eventStatus(active);
+  if (statusEl) {
+    statusEl.innerHTML = icon(status.icon);
+    statusEl.dataset.eventStatus = status.key;
+  }
+  // Same rule as the option label: "Allgemein – Allgemein" stutters, so the
+  // base workspace names itself once.
+  const description = active
+    ? `Aktives Event: ${eventSwitcherLabel(active).replace(' · ', ' – ')}`
+    : 'Aktives Event';
+  select.setAttribute('aria-label', description);
+  container.title = description;
+}
+
+async function activateEvent(eventId, { navigate } = {}) {
+  // A missing eventId is not an error: a notification stored before this
+  // release carries no event, and its destination is still the thing the
+  // reader tapped. Skip the switch, keep the navigation.
+  if (eventId && state.activeEvent?.id !== eventId) {
+    await api.events.activate(eventId);
+    invalidateEventScopedCaches();
+    await loadAll();
+    renderEventContextSwitcher();
+    await refreshNotificationBanner();
+    renderCurrent();
+  }
+  if (navigate && isKnownView(navigate)) switchView(navigate);
+}
+
+// The one entry point for "a notification wants me somewhere". Its event may
+// be gone by the time it is tapped — ended, cancelled, or the participation
+// withdrawn — and PUT /api/me/active-event answers 404 for all three. That is
+// an expected outcome of a stale link, not a startup failure: say so once and
+// still take the reader to the promised view in whatever workspace is active.
+async function followEventDeepLink(eventId, view) {
+  try {
+    await activateEvent(eventId, { navigate: view });
+  } catch (error) {
+    // Defensive on purpose: this catch runs during startup, so throwing a
+    // second time here would reintroduce exactly the aborted-startup bug it
+    // exists to prevent.
+    if (error?.status === 404) {
+      showToast('Das Event dieser Mitteilung ist nicht mehr verfügbar.', { error: true });
+    } else {
+      showToast(error?.message ?? 'Der Eventwechsel ist fehlgeschlagen.', { error: true });
+    }
+    if (view && isKnownView(view)) switchView(view);
+  }
+}
+
+function wireEventContextSwitcher() {
+  const select = document.getElementById('event-context-switcher');
+  select?.addEventListener('change', async () => {
+    select.disabled = true;
+    try {
+      await activateEvent(select.value);
+    } catch (error) {
+      renderEventContextSwitcher();
+      showToast(error.message, { error: true });
+    } finally {
+      select.disabled = false;
+    }
+  });
+  window.addEventListener('respawn:event-navigate', (event) => {
+    const { eventId, view } = event.detail ?? {};
+    void followEventDeepLink(eventId, view);
+  });
+}
 
 function renderCurrent() {
   const revision = ++renderRevision;
@@ -306,7 +430,9 @@ function wireNav() {
   // of reloading the whole SPA just to change tabs.
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (e) => {
-      if (e.data?.type === 'navigate' && isKnownView(e.data.view)) switchView(e.data.view);
+      if (e.data?.type === 'navigate' && isKnownView(e.data.view)) {
+        void followEventDeepLink(e.data.eventId, e.data.view);
+      }
     });
   }
 }
@@ -585,6 +711,13 @@ function wireSocket() {
     invalidateMusic();
     if (currentView === 'music') renderCurrent();
   });
+  socket.on('event-context:changed', async () => {
+    invalidateEventScopedCaches();
+    await loadAll();
+    renderEventContextSwitcher();
+    await refreshNotificationBanner();
+    renderCurrent();
+  });
   socket.on('groups:changed', async () => {
     await refreshGroupContext();
     invalidateAdminMemberships();
@@ -618,11 +751,13 @@ async function main() {
   wireAdminMode();
   initConnectionStatus();
   initNotificationBanner();
+  wireEventContextSwitcher();
   // Socket connection and REST cache recovery are background concerns. The
   // app shell and onboarding must still become usable when a single refresh
   // request fails temporarily (or keeps retrying in the background).
-  void loadAll()
+  const initialDataLoad = loadAll()
     .then(() => {
+      renderEventContextSwitcher();
       if (appReady) renderCurrent();
     })
     .catch((error) => {
@@ -635,6 +770,18 @@ async function main() {
   appReady = true;
   await initOnboarding({ navigate: (view) => switchView(view, { replace: true }), rerender: renderCurrent, getCurrentView: () => currentView });
   lastVoteRound = state.votes ? state.votes.round : null;
+  const pushedEventId = new URL(location.href).searchParams.get('eventId');
+  if (pushedEventId) {
+    await initialDataLoad;
+    // Never let a stale link abort the remaining startup: the base history
+    // entry, the initial switchView() and onboarding all still have to run.
+    // The parameter is dropped either way, or a failing link would replay its
+    // failure on every reload of this tab.
+    await followEventDeepLink(pushedEventId);
+    const cleanUrl = new URL(location.href);
+    cleanUrl.searchParams.delete('eventId');
+    history.replaceState(history.state, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+  }
   // A push notification's deep link (e.g. /#votes, opened by sw.js when no
   // app window existed yet) overrides that default so the tap actually lands
   // where the notification promised.

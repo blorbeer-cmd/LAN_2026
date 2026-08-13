@@ -100,7 +100,7 @@ function arcadePayloadScope(payload: Record<string, unknown>): ArcadeDeliverySco
   return typeof payload.groupId === 'string' &&
     payload.groupId &&
     Object.prototype.hasOwnProperty.call(payload, 'eventId') &&
-    (payload.eventId === null || (typeof payload.eventId === 'string' && payload.eventId))
+    typeof payload.eventId === 'string' && payload.eventId
     ? { groupId: payload.groupId, eventId: payload.eventId as string | null }
     : null;
 }
@@ -110,7 +110,7 @@ function normalSocketCanUseArcadeScope(socket: Socket, scope: ArcadeDeliveryScop
   const socketEventId = typeof socket.data.eventId === 'string' && socket.data.eventId ? socket.data.eventId : null;
   if (socket.data.groupId !== scope.groupId || socketEventId !== scope.eventId) return false;
   if (!activeGroupMember(scope.groupId, socket.data.authPlayerId)) return false;
-  return scope.eventId === null || activeEventAccess(scope.groupId, scope.eventId, socket.data.authPlayerId);
+  return scope.eventId !== null && activeEventAccess(scope.groupId, scope.eventId, socket.data.authPlayerId);
 }
 
 function kioskCanUseArcadeScope(socket: Socket, scope: ArcadeDeliveryScope): boolean {

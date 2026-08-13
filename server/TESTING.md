@@ -62,7 +62,7 @@ required.test.ts` prüfen deshalb Rollen (`403` für unzureichende Rechte, sofor
   Kiosk-Token-Hashing, Scope und Widerruf werden zusätzlich in `src/test/kioskTokens.test.ts` geprüft.
 - Die Zustellmatrix des gescopten Broadcast-Modells liegt in
   `src/test/realtime.delivery.required.test.ts`: default-deny für unabonnierte Sockets, Kiosk-Token
-  samt Event-Allowlist, Eventzugriff für Teilnehmer/Admins/Owner, Produzenten eventgebundener
+  samt Event-Allowlist, teilnahmegebundener Eventzugriff ohne Admin-/Owner-Lesebypass, Produzenten eventgebundener
   Payloads, empfängergebundene Pushes, immutable Arcade-Lobby-/Match-Scopes samt
   Watch-/Replay-Pfaden, Mitgliedschaftsentzug und Gruppenwechsel bei offenem Socket, ungescopte
   Fach-Broadcasts sowie das globale Instanz-Signal. Ein Teil dieser Suite legt ihre Testgruppen

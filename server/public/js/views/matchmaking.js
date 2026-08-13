@@ -97,6 +97,15 @@ export function invalidateMatchmakingHistory() {
   historyForGameId = null;
 }
 
+// A running captain draft belongs to exactly one event, so switching the
+// workspace has to drop it alongside the history — otherwise the previous
+// event's draft board stays on screen and its pick buttons keep firing
+// against a draft the new workspace cannot see.
+export function invalidateMatchmakingDraft() {
+  draftCache = null;
+  draftLoading = false;
+}
+
 // A draw currently on screen either comes from the freshly-generated result
 // (state.lastMatchmaking) or from the history list — both use the same
 // shape (see parseDrawRow on the server), so lookups/updates work uniformly.

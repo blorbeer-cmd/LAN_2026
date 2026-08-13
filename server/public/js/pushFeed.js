@@ -7,6 +7,11 @@ import { icon } from './icons.js';
 import { domainIcon } from './domainIcons.js';
 
 export const FEED_LINK_LABELS = {
+  // Event invitations deep-link here: the dedicated Events area is where a
+  // pending invitation is answered. No DOMAIN_ICONS lookup is needed for the
+  // entry itself — the notification's bell fallback is the right icon for an
+  // invitation.
+  events: 'Zu den Events',
   votes: 'Zur Abstimmung',
   tournaments: 'Zum Turnier',
   matchmaking: 'Zu den Teams',
@@ -40,5 +45,6 @@ export function feedEntryIcon(entry) {
 
 // Bell + title + body markup for the read-only Kiosk banner.
 export function bannerContentHtml(entry) {
-  return `${icon(feedEntryIcon(entry))}<span class="notification-banner-text"><strong>${escapeHtml(feedEntryTitle(entry))}</strong><span class="notification-banner-body">${escapeHtml(entry.body)}</span></span>`;
+  const title = entry?.eventName ? `${entry.eventName} · ${feedEntryTitle(entry)}` : feedEntryTitle(entry);
+  return `${icon(feedEntryIcon(entry))}<span class="notification-banner-text"><strong>${escapeHtml(title)}</strong><span class="notification-banner-body">${escapeHtml(entry.body)}</span></span>`;
 }

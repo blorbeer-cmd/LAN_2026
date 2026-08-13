@@ -197,6 +197,7 @@ flowTest('shell', 'Orga Events/TV-Kiosk tabs and Profil use grouped help while a
   assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
   assert.equal(await page.locator('[data-navigate="seating"]').count(), 0);
   assert.equal(await page.locator('#download-backup').count(), 0);
+
   await page.click('[aria-label="Mehr Informationen zu Events"]');
   await page.waitForSelector('#orga-events-help:not([hidden])');
   await page.click('[aria-label="Mehr Informationen zu Events"]');
@@ -307,11 +308,14 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   assert.equal(await page.locator('#admin-backup-help').count(), 1);
   assert.equal(await page.locator('#admin-test-count-help').count(), 1);
   assert.equal(await page.locator('#admin-test-data-help').count(), 1);
-  // Global Event/Kiosk management is reachable from Admin's tool grid too,
-  // not only through Orga's own tab row.
+  // Global Event and Kiosk management are reachable from Admin's tool grid
+  // too, not only through Orga's own tab row. They stay two separate cards
+  // because Orga exposes them as two separate tabs.
   assert.equal(await page.locator('[data-navigate="events"]').count(), 1);
-  assert.equal(await page.locator('#admin-event-kiosk-help').count(), 1);
-  assert.equal(await page.locator('.admin-tool-row').count(), 3);
+  assert.equal(await page.locator('#admin-event-help').count(), 1);
+  assert.equal(await page.locator('[data-navigate="kiosk"]').count(), 1);
+  assert.equal(await page.locator('#admin-kiosk-help').count(), 1);
+  assert.equal(await page.locator('.admin-tool-row').count(), 4);
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
   assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
   // The count field's own id now sits one level down, inside the
@@ -1150,10 +1154,23 @@ flowTest('competition', 'Ergebnis eintragen keeps a manual team reassignment aft
 flowTest('competition', 'Auswertungen (via Mehr) shows a real award and keeps detail logs collapsed', async () => {
   // Create a player + a session via the real agent-report endpoint (not the
   // UI) so there's an actual play_sessions row to render.
-  const playerRes = await page.request.post(`${BASE_URL}/api/players`, {
-    data: { name: 'Analytics E2E Player' },
+  const account = await createE2EAccount(BASE_URL, adminCookie, 'Analytics E2E Player');
+  const playerRes = await page.request.get(`${BASE_URL}/api/players/${account.id}`);
+  assert.equal(playerRes.status(), 200);
+  const player = await playerRes.json() as { api_key: string };
+  const activeEventResponse = await fetch(`${BASE_URL}/api/events/active`, {
+    headers: { cookie: account.cookie },
   });
-  const player = await playerRes.json();
+  assert.equal(activeEventResponse.status, 200);
+  const activeEvent = await activeEventResponse.json() as { id: string };
+  const trackingResponse = await page.request.post(`${BASE_URL}/api/events/${activeEvent.id}/tracking/start`);
+  assert.equal(trackingResponse.status(), 200, await trackingResponse.text());
+  const consentResponse = await fetch(`${BASE_URL}/api/events/${activeEvent.id}/tracking-consent`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: account.cookie },
+    body: JSON.stringify({ granted: true }),
+  });
+  assert.equal(consentResponse.status, 200, await consentResponse.text());
   await page.request.post(`${BASE_URL}/api/agent/report`, {
     headers: { 'x-api-key': player.api_key },
     data: { processNames: ['cs2.exe'] },

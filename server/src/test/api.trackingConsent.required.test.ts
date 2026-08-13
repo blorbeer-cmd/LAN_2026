@@ -7,10 +7,11 @@ import request from 'supertest';
 import { Server } from 'socket.io';
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import { createApp } from '../app';
-import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from '../db';
+import { db, DEFAULT_GROUP_ID } from '../db';
 import { createSocketAuthGuard, Events, registerScopedSockets, setIo } from '../realtime';
 import { registerArcadeSockets } from '../arcade/realtime';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
+import { ensureAccountEventContext } from '../eventContext';
 
 function connect(baseUrl: string, sessionToken: string): Promise<ClientSocket> {
   return new Promise((resolve, reject) => {
@@ -88,6 +89,7 @@ test('tracking consent is self-only, idempotent and revokes agent fan-out immedi
     eventId,
     playerId,
   );
+  ensureAccountEventContext(playerId, eventId);
 
   const sessionToken = createSession(playerId);
   const cookie = `${SESSION_COOKIE_NAME}=${sessionToken}`;
@@ -242,62 +244,20 @@ test('tracking consent is self-only, idempotent and revokes agent fan-out immedi
       true,
     );
 
-    // Switching back to the group room keeps the older compatibility bit in
-    // sync, and revocation closes the sentinel-backed outside session.
-    db.prepare('UPDATE events SET tracking_enabled = 0 WHERE id = ?').run(eventId);
+    const finalLiveChange = nextLiveChange(socket);
     assert.equal(
       (
         await request(app)
-          .post(`/api/groups/${DEFAULT_GROUP_ID}/tracking-consent`)
-          .set('Cookie', cookie)
-          .send({ granted: true })
-      ).status,
-      200,
-    );
-    assert.equal(
-      (
-        await request(app)
-          .post('/api/agent/report')
-          .set('x-api-key', apiKey)
-          .send({ processNames: [processName] })
-      ).body.tracked,
-      true,
-    );
-    assert.equal(
-      (
-        db
-          .prepare(
-            'SELECT COUNT(*) AS count FROM play_sessions WHERE player_id = ? AND event_id = ? AND ended_at IS NULL',
-          )
-          .get(playerId, OUTSIDE_EVENTS_ID) as { count: number }
-      ).count,
-      1,
-    );
-
-    const outsideLiveChanged = nextLiveChange(socket);
-    assert.equal(
-      (
-        await request(app)
-          .post(`/api/groups/${DEFAULT_GROUP_ID}/tracking-consent`)
+          .post(`/api/events/${eventId}/tracking-consent`)
           .set('Cookie', cookie)
           .send({ granted: false })
       ).status,
       200,
     );
-    await outsideLiveChanged;
-    assert.equal(
-      (
-        db
-          .prepare(
-            'SELECT COUNT(*) AS count FROM play_sessions WHERE player_id = ? AND event_id = ? AND ended_at IS NULL',
-          )
-          .get(playerId, OUTSIDE_EVENTS_ID) as { count: number }
-      ).count,
-      0,
-    );
+    await finalLiveChange;
 
-    // A following report with no eligible context performs the same stale
-    // reconciliation and never resurrects the revoked live state.
+    // A following report with no eligible event context never resurrects the
+    // revoked live state or writes an eventless replacement.
     const afterRevoke = await request(app)
       .post('/api/agent/report')
       .set('x-api-key', apiKey)

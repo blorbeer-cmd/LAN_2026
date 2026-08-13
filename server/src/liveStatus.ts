@@ -6,10 +6,9 @@
 // of currently detected games per player, not a single game_id.
 
 import { Server } from 'socket.io';
-import { db, DEFAULT_GROUP_ID } from './db';
+import { db } from './db';
 import { config } from './config';
 import { broadcast, Events, isPlayerConnected } from './realtime';
-import { activePlayerGroupIds } from './groups';
 
 export interface LiveGameEntry {
   game_id: string;
@@ -38,11 +37,20 @@ export type LiveState = 'playing' | 'online' | 'paused' | 'offline';
 
 // Removes one player's currently detected games and closes their open play
 // sessions. The next agent report starts a clean live-status window.
-export function clearPlayerLiveStatus(playerId: string, endedAt = Date.now()): void {
+export function clearPlayerLiveStatus(playerId: string, endedAt = Date.now(), eventId?: string): void {
   const cleanup = db.transaction(() => {
-    db.prepare(
-      'UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND ended_at IS NULL'
-    ).run(endedAt, playerId);
+    if (eventId) {
+      db.prepare(
+        'UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND event_id = ? AND ended_at IS NULL',
+      ).run(endedAt, playerId, eventId);
+      db.prepare('DELETE FROM tracking_live_games WHERE player_id = ? AND event_id = ?').run(playerId, eventId);
+      db.prepare('DELETE FROM tracking_live_contexts WHERE player_id = ? AND event_id = ?').run(playerId, eventId);
+      return;
+    }
+    db.prepare('UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND ended_at IS NULL').run(
+      endedAt,
+      playerId,
+    );
     db.prepare('DELETE FROM tracking_live_games WHERE player_id = ?').run(playerId);
     db.prepare('DELETE FROM tracking_live_contexts WHERE player_id = ?').run(playerId);
     db.prepare('DELETE FROM live_status_games WHERE player_id = ?').run(playerId);
@@ -82,7 +90,13 @@ export function deriveState(
 // heartbeat describes the physical PC, not a group), so a member seen from
 // two groups would show the same last_seen/manual_note in both — only the
 // games list and the roster are group-scoped.
-export function getLiveBoard(groupId: string): LiveBoardEntry[] {
+// `eventId` is deliberately required rather than defaulting to the base
+// event. A live board belongs to exactly one workspace, and broadcast() fans
+// a scope without an eventId out to every active event context in the group —
+// so a defaulted parameter silently shipped the base event's board into every
+// other event's room. Making it explicit is what forces each call site to
+// name the workspace it actually computed the board for.
+export function getLiveBoard(groupId: string, eventId: string): LiveBoardEntry[] {
   const now = Date.now();
   const recentSessionRows = db
     .prepare(
@@ -99,28 +113,26 @@ export function getLiveBoard(groupId: string): LiveBoardEntry[] {
       `SELECT p.id, p.name, p.color, p.avatar
        FROM players p
        JOIN group_memberships gm ON gm.player_id = p.id
+       JOIN event_participants ep ON ep.player_id = p.id AND ep.event_id = ? AND ep.status = 'accepted'
        WHERE p.deactivated_at IS NULL AND gm.group_id = ? AND gm.status = 'active'
        ORDER BY p.name COLLATE NOCASE`
     )
-    .all(groupId) as Array<{ id: string; name: string; color: string; avatar: string | null }>;
+    .all(eventId, groupId) as Array<{ id: string; name: string; color: string; avatar: string | null }>;
 
   const statusRows = db
-    .prepare('SELECT player_id, MAX(last_seen) AS last_seen, MAX(manual_note) AS manual_note, MAX(activity_tracked) AS activity_tracked FROM tracking_live_contexts WHERE group_id = ? GROUP BY player_id')
-    .all(groupId) as Array<{ player_id: string; last_seen: number; manual_note: string | null; activity_tracked: number }>;
+    .prepare('SELECT player_id, last_seen, manual_note, activity_tracked FROM tracking_live_contexts WHERE group_id = ? AND event_id = ?')
+    .all(groupId, eventId) as Array<{ player_id: string; last_seen: number; manual_note: string | null; activity_tracked: number }>;
   const statusByPlayer = new Map(statusRows.map((r) => [r.player_id, r]));
-  for (const row of db.prepare('SELECT player_id, last_seen, manual_note, activity_tracked FROM live_status').all() as Array<{ player_id: string; last_seen: number; manual_note: string | null; activity_tracked: number }>) {
-    if (!statusByPlayer.has(row.player_id)) statusByPlayer.set(row.player_id, row);
-  }
 
   const gameRows = db
     .prepare(
       `SELECT lsg.player_id, lsg.game_id, g.name AS game_name, g.icon AS game_icon, lsg.since, lsg.is_foreground
        FROM tracking_live_games lsg
        JOIN games g ON g.id = lsg.game_id
-       WHERE lsg.group_id = ?
+       WHERE lsg.group_id = ? AND lsg.event_id = ?
        ORDER BY lsg.since ASC`
     )
-    .all(groupId) as Array<{
+    .all(groupId, eventId) as Array<{
     player_id: string;
     game_id: string;
     game_name: string;
@@ -139,12 +151,6 @@ export function getLiveBoard(groupId: string): LiveBoardEntry[] {
       since: row.since,
       foreground: Boolean(row.is_foreground),
     });
-    gamesByPlayer.set(row.player_id, list);
-  }
-  for (const row of db.prepare(`SELECT lsg.player_id, lsg.game_id, g.name AS game_name, g.icon AS game_icon, lsg.since, lsg.is_foreground
-    FROM live_status_games lsg JOIN games g ON g.id = lsg.game_id WHERE lsg.group_id = ?`).all(groupId) as Array<{player_id:string;game_id:string;game_name:string;game_icon:string;since:number;is_foreground:number}>) {
-    const list = gamesByPlayer.get(row.player_id) ?? [];
-    if (!list.some((game) => game.game_id === row.game_id)) list.push({ game_id: row.game_id, game_name: row.game_name, game_icon: row.game_icon, since: row.since, foreground: Boolean(row.is_foreground) });
     gamesByPlayer.set(row.player_id, list);
   }
 
@@ -168,6 +174,33 @@ export function getLiveBoard(groupId: string): LiveBoardEntry[] {
   });
 }
 
+// A group-wide change (a deactivated account, a removed member, a deleted
+// game) changes the live board of *every* workspace in the group, not just
+// one. Broadcasting a single board with an eventId-less scope is what the
+// review caught: broadcast() fans that scope out to every active event
+// context, so every workspace received whichever board happened to be
+// computed — the base event's.
+//
+// Fan out explicitly instead, so each event room receives the board that was
+// computed for exactly that event. The event list mirrors broadcast()'s own
+// fan-out source, so no room that would have received the payload is missed.
+export function broadcastLiveBoards(groupId: string): void {
+  const eventIds = db
+    .prepare(
+      `SELECT DISTINCT pec.active_event_id AS eventId
+       FROM player_event_contexts pec
+       JOIN events e ON e.id = pec.active_event_id AND e.group_id = ?
+       UNION
+       SELECT DISTINCT kt.event_id AS eventId
+       FROM kiosk_tokens kt
+       WHERE kt.group_id = ? AND kt.event_id IS NOT NULL AND kt.revoked_at IS NULL`,
+    )
+    .all(groupId, groupId) as Array<{ eventId: string }>;
+  for (const { eventId } of eventIds) {
+    broadcast(Events.liveStatusChanged, getLiveBoard(groupId, eventId), { groupId, eventId });
+  }
+}
+
 // Garbage-collects "currently playing" rows for players whose agent has gone
 // silent past the timeout (crashed, PC switched off, network dead). Without
 // this, a crashed agent's last known game would linger in live_status_games
@@ -176,14 +209,8 @@ export function getLiveBoard(groupId: string): LiveBoardEntry[] {
 // would never get an ended_at. Closes sessions at last_seen (the last
 // confirmed real timestamp), not "now", since the game may have stopped
 // running well before we noticed.
-export function closeStaleSessions(now: number): Set<string> {
-  const sweptGroupIds = new Set<string>();
-  const legacyStale = db.prepare(`SELECT lsg.player_id, lsg.game_id, lsg.group_id, ls.last_seen FROM live_status_games lsg JOIN live_status ls ON ls.player_id = lsg.player_id WHERE ? - ls.last_seen > ?`).all(now, config.offlineTimeoutMs) as Array<{player_id:string;game_id:string;group_id:string;last_seen:number}>;
-  for (const row of legacyStale) {
-    db.prepare('DELETE FROM live_status_games WHERE player_id = ? AND game_id = ?').run(row.player_id, row.game_id);
-    db.prepare('UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND game_id = ? AND ended_at IS NULL').run(row.last_seen, row.player_id, row.game_id);
-    sweptGroupIds.add(row.group_id ?? DEFAULT_GROUP_ID);
-  }
+export function closeStaleSessions(now: number): Map<string, { groupId: string; eventId: string }> {
+  const sweptScopes = new Map<string, { groupId: string; eventId: string }>();
   const stale = db
     .prepare(
       `SELECT lsg.player_id AS player_id, lsg.group_id AS group_id, lsg.event_id AS event_id,
@@ -193,13 +220,13 @@ export function closeStaleSessions(now: number): Set<string> {
         AND ls.group_id = lsg.group_id AND ls.event_id IS lsg.event_id
        WHERE ? - ls.last_seen > ?`
     )
-    .all(now, config.offlineTimeoutMs) as Array<{ player_id: string; group_id: string; event_id: string | null; game_id: string; last_seen: number }>;
+    .all(now, config.offlineTimeoutMs) as Array<{ player_id: string; group_id: string; event_id: string; game_id: string; last_seen: number }>;
 
-  if (stale.length === 0) return sweptGroupIds;
+  if (stale.length === 0) return sweptScopes;
 
   const cleanup = db.transaction(() => {
     for (const row of stale) {
-      db.prepare('DELETE FROM tracking_live_games WHERE player_id = ? AND group_id = ? AND event_id IS ? AND game_id = ?').run(
+      db.prepare('DELETE FROM tracking_live_games WHERE player_id = ? AND group_id = ? AND event_id = ? AND game_id = ?').run(
         row.player_id,
         row.group_id,
         row.event_id,
@@ -207,13 +234,13 @@ export function closeStaleSessions(now: number): Set<string> {
       );
       db.prepare(
         `UPDATE play_sessions SET ended_at = ?
-         WHERE player_id = ? AND group_id = ? AND event_id = COALESCE(?, 'outside-events') AND game_id = ? AND ended_at IS NULL`
+         WHERE player_id = ? AND group_id = ? AND event_id = ? AND game_id = ? AND ended_at IS NULL`
       ).run(row.last_seen, row.player_id, row.group_id, row.event_id, row.game_id);
-      sweptGroupIds.add(row.group_id);
+      sweptScopes.set(`${row.group_id}\u0000${row.event_id}`, { groupId: row.group_id, eventId: row.event_id });
     }
   });
   cleanup();
-  return sweptGroupIds;
+  return sweptScopes;
 }
 
 // One sweep pass: closes stale sessions and re-broadcasts the board. Split
@@ -221,33 +248,18 @@ export function closeStaleSessions(now: number): Set<string> {
 // without waiting on a real timer.
 export function sweepOnce(now: number = Date.now()): void {
   try {
-    const sweptGroupIds = closeStaleSessions(now);
-    // Every group that currently carries live rows (or just had stale rows
-    // closed) gets its own refreshed board, each under its own group scope.
-    // The default group is always included: legacy live_status rows carry no
-    // group, and its board is the one every legacy client renders.
-    const groupIds = new Set<string>([DEFAULT_GROUP_ID, ...sweptGroupIds]);
-    for (const row of db.prepare('SELECT DISTINCT group_id AS id FROM tracking_live_contexts').all() as Array<{ id: string }>) {
-      groupIds.add(row.id);
-    }
-    for (const row of db.prepare('SELECT DISTINCT group_id AS id FROM tracking_live_games').all() as Array<{ id: string }>) {
-      groupIds.add(row.id);
-    }
-    // Manual pauses/notes without an agent create a group-less live_status row
-    // and no tracking rows, so the queries above miss them. Fan out to each
-    // such player's active groups so a non-default group's Home/Seating board
-    // keeps ticking instead of freezing on a stale manual state.
-    for (const row of db.prepare('SELECT DISTINCT player_id AS id FROM live_status').all() as Array<{ id: string }>) {
-      for (const gid of activePlayerGroupIds(row.id)) groupIds.add(gid);
-    }
-    // Login presence also needs a periodic refresh: after the short activity
-    // window expires there may be no tracking row to otherwise make the
-    // board broadcast the transition back to offline.
-    for (const row of db.prepare('SELECT DISTINCT player_id AS id FROM sessions WHERE expires_at > ?').all(now) as Array<{ id: string }>) {
-      for (const gid of activePlayerGroupIds(row.id)) groupIds.add(gid);
-    }
-    for (const groupId of groupIds) {
-      broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+    const scopes = closeStaleSessions(now);
+    const rows = db.prepare(
+      `SELECT DISTINCT e.group_id AS groupId, pec.active_event_id AS eventId
+       FROM player_event_contexts pec
+       JOIN events e ON e.id = pec.active_event_id
+       JOIN event_participants ep ON ep.event_id = pec.active_event_id AND ep.player_id = pec.player_id
+       JOIN players p ON p.id = pec.player_id
+       WHERE ep.status = 'accepted' AND p.deactivated_at IS NULL`,
+    ).all() as Array<{ groupId: string; eventId: string }>;
+    for (const scope of rows) scopes.set(`${scope.groupId}\u0000${scope.eventId}`, scope);
+    for (const { groupId, eventId } of scopes.values()) {
+      broadcast(Events.liveStatusChanged, getLiveBoard(groupId, eventId), { groupId, eventId });
     }
   } catch (err) {
     // Never let a sweep error take down the timer/process.
@@ -264,9 +276,13 @@ export function startOfflineSweeper(io: Server): void {
     if (typeof playerId !== 'string') return;
 
     const refreshPresence = () => {
-      const groupIds = activePlayerGroupIds(playerId);
-      for (const groupId of new Set(groupIds)) {
-        broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+      const scope = db.prepare(
+        `SELECT e.group_id AS groupId, pec.active_event_id AS eventId
+         FROM player_event_contexts pec JOIN events e ON e.id = pec.active_event_id
+         WHERE pec.player_id = ?`,
+      ).get(playerId) as { groupId: string; eventId: string } | undefined;
+      if (scope) {
+        broadcast(Events.liveStatusChanged, getLiveBoard(scope.groupId, scope.eventId), scope);
       }
     };
 

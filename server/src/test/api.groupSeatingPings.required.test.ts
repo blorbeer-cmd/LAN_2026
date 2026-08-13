@@ -11,7 +11,7 @@ test('seating and pings are roles-gated and event-scoped inside the one real gro
     const assert = require('assert/strict');
     const request = require('supertest');
     const { createApp } = require(${JSON.stringify(APP_JS_PATH)});
-    const { db } = require(${JSON.stringify(DB_JS_PATH)});
+    const { BASE_EVENT_ID, db } = require(${JSON.stringify(DB_JS_PATH)});
 
     function cookie(response) { return response.headers['set-cookie'][0].split(';')[0]; }
     function scoped(app, method, url, user, groupId) {
@@ -88,8 +88,8 @@ test('seating and pings are roles-gated and event-scoped inside the one real gro
       assert.equal((await scoped(app, 'put', '/api/players/' + bob.account.id + '/neighbors', bob, groupId)
         .send({ neighborIds: [alice.account.id] })).status, 200);
       assert.throws(() => db.prepare(
-        "UPDATE seating_layouts SET assignments = ? WHERE group_id = ? AND event_id IS NULL"
-      ).run(JSON.stringify([{ side: 'top', seat: 0, playerId: 'does-not-exist' }]), groupId), /group mismatch/);
+        "UPDATE seating_layouts SET assignments = ? WHERE group_id = ? AND event_id = ?"
+      ).run(JSON.stringify([{ side: 'top', seat: 0, playerId: 'does-not-exist' }]), groupId, BASE_EVENT_ID), /group mismatch/);
 
       // Active pings and durable history remain group/event scoped; a
       // nonexistent game or event id 404s instead of silently creating one.

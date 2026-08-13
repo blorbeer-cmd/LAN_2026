@@ -74,6 +74,24 @@ export function invalidateVoteHistory() {
   historyLoading = false;
 }
 
+// Switching the active event is a harder reset than a votes:changed refresh:
+// the round number, this account's submitted entries and any unsubmitted
+// draft all belong to the event they were made in. invalidateVoteHistory()
+// deliberately leaves the draft alone (a broadcast must never discard picks
+// someone is still working on), so the event switch needs its own entry
+// point rather than a stronger version of that one.
+export function invalidateVoteEventScope() {
+  invalidateVoteHistory();
+  mineCache = null;
+  mineCacheKey = null;
+  mineLoading = false;
+  draftSingleGameId = null;
+  draftPoints = null;
+  draftKey = null;
+  voteUnratedOnly = false;
+  resetVoteGameSelection();
+}
+
 // The current player's own already-submitted entries in the running round.
 // Any entry means this identity has used its one submission for the round;
 // the values remain visible, but the controls and submit action are locked.

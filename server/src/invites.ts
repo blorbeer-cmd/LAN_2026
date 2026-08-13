@@ -8,7 +8,7 @@
 // player, and changing a password voids outstanding reset codes the same way.
 
 import { nanoid } from 'nanoid';
-import { db } from './db';
+import { BASE_EVENT_ID, db } from './db';
 
 // 'test_login' mints a one-time link that logs the browser in directly as an
 // admin-seeded is_test player (no password) — see docs/KONZEPT-TEST-USER.md
@@ -25,6 +25,7 @@ export interface InviteRow {
   code: string;
   purpose: InvitePurpose;
   player_id: string | null;
+  event_id: string | null;
   created_by: string | null;
   created_at: number;
   expires_at: number;
@@ -36,6 +37,7 @@ export interface InviteRow {
 export interface CreateInviteOptions {
   purpose: InvitePurpose;
   playerId?: string | null;
+  eventId?: string | null;
   createdBy: string;
   expiresInMs?: number;
 }
@@ -54,10 +56,14 @@ export function createInvite(options: CreateInviteOptions): InviteRow {
     throw new RangeError('Invite expiry must be a positive, finite duration.');
   }
   const expiresAt = now + Math.min(requestedTtl, MAX_INVITE_TTL_MS);
+  const eventId =
+    options.eventId ?? (options.purpose === 'register' || options.purpose === 'claim' ? BASE_EVENT_ID : null);
 
   db.prepare(
-    'INSERT INTO invites (code, purpose, player_id, created_by, created_at, expires_at, revoked_at, used_at, used_by) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL)'
-  ).run(code, options.purpose, options.playerId ?? null, options.createdBy, now, expiresAt);
+    `INSERT INTO invites
+       (code, purpose, player_id, event_id, created_by, created_at, expires_at, revoked_at, used_at, used_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)`,
+  ).run(code, options.purpose, options.playerId ?? null, eventId, options.createdBy, now, expiresAt);
 
   return db.prepare('SELECT * FROM invites WHERE code = ?').get(code) as InviteRow;
 }

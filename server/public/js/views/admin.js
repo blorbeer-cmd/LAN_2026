@@ -15,7 +15,8 @@ import { currentGroup, refreshGroupContext } from '../groupContext.js';
 
 const SEATING_HELP = 'Tisch, Plätze und Sitzordnung verwalten.';
 const BACKUP_HELP = 'Aktuellen Stand als SQLite-Datei sichern.';
-const EVENT_KIOSK_HELP = 'Events anlegen, Tracking starten/stoppen und die TV-/Kiosk-Ansicht öffnen.';
+const EVENT_HELP = 'Events anlegen, Teilnehmende einladen und Tracking starten oder stoppen.';
+const KIOSK_HELP = 'Die TV-/Kiosk-Ansicht und ihren eigenen Token verwalten.';
 const TEST_DATA_HELP = 'Kommen fertig eingerichtet: Platz im Sitzplan samt sichtbarer Monitore, Skill- und Bock-Werte pro Spiel, Spielzeit fürs aktive Event – zwei davon spielen gerade. Nur im Admin-Modus sichtbar.';
 const ADMIN_ROLE_HELP = 'Owner und Admins dürfen den Admin-Bereich verwalten. Mindestens ein aktiver Owner muss erhalten bleiben.';
 
@@ -539,10 +540,17 @@ function renderPanel(container, ctx) {
           </div>
           <div class="card admin-tool-row">
             <span class="title-with-info">
-              <strong>Event- &amp; Kioskverwaltung</strong>
-              ${infoTooltipHtml('admin-event-kiosk-help', 'Event- & Kioskverwaltung', EVENT_KIOSK_HELP)}
+              <strong>Eventverwaltung</strong>
+              ${infoTooltipHtml('admin-event-help', 'Eventverwaltung', EVENT_HELP)}
             </span>
             <button type="button" class="btn btn-primary btn-sm" data-navigate="events">Öffnen</button>
+          </div>
+          <div class="card admin-tool-row">
+            <span class="title-with-info">
+              <strong>Kioskverwaltung</strong>
+              ${infoTooltipHtml('admin-kiosk-help', 'Kioskverwaltung', KIOSK_HELP)}
+            </span>
+            <button type="button" class="btn btn-primary btn-sm" data-navigate="kiosk">Öffnen</button>
           </div>
         </div>
       </section>
