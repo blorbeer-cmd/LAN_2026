@@ -160,10 +160,10 @@ function renderEventContextSwitcher() {
     statusEl.innerHTML = icon(status.icon);
     statusEl.dataset.eventStatus = status.key;
   }
-  // Same rule as the option label: "Allgemein – Allgemein" stutters, so the
-  // base workspace names itself once.
+  // Keep the visible option concise. The state remains in the accessible
+  // description because the visual icon is intentionally aria-hidden.
   const description = active
-    ? `Aktives Event: ${eventSwitcherLabel(active).replace(' · ', ' – ')}`
+    ? `Aktives Event: ${eventSwitcherLabel(active)} – ${status.label}`
     : 'Aktives Event';
   select.setAttribute('aria-label', description);
   container.title = description;
