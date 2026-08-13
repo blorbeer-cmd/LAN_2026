@@ -119,8 +119,14 @@ Bei Zielkonflikten gewinnt die weiter oben stehende Priorität.
   einer neuen Änderung autorisiert genau einen neuen, aufgabenspezifischen Branch und Worktree,
   sofern der aktuelle Kontext nicht bereits nachweislich zu derselben Aufgabe und demselben PR
   gehört. Keine bestehenden Worktrees oder fremden Branches dafür umhängen.
-- Commit und Push nur auf ausdrücklichen Wunsch. Commits klein, in sich geschlossen und imperativ
-  auf Englisch benennen.
+- Ein Änderungsauftrag autorisiert nach erfolgreicher Umsetzung und den einschlägigen Prüfungen
+  standardmäßig genau einen aufgabenspezifischen Commit, den Push des eigenen Feature-Branches und
+  die Eröffnung eines Draft-PRs mit gültigem Task-Vertrag. Der Nutzer kann diesen Abschluss mit
+  „nur lokal“, „nicht committen“, „nicht pushen“ oder „kein PR“ ganz oder teilweise ausschließen.
+  Bei unklarem Änderungsscope, sachfremden Änderungen im Arbeitsbaum, fehlenden Berechtigungen oder
+  einer laut Abschnitt 12 des Pipeline-Konzepts kritischen Entscheidung vor der betroffenen Aktion
+  anhalten. Niemals direkt auf `main` pushen, approven, mergen oder Auto-Merge aktivieren. Commits
+  klein, in sich geschlossen und imperativ auf Englisch benennen.
 - Abhängigkeiten und Lockfiles nur ändern, wenn sie notwendig sind; neue Pakete auf Wartung,
   Sicherheit und Offline-Auswirkungen prüfen.
 

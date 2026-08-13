@@ -54,12 +54,23 @@ Zusätzliche Regeln werden nur im betroffenen Unterbaum geladen:
 
 ## Agenten-Pipeline für Pull Requests
 
-Sobald ein Coding-Agent im Rahmen eines Nutzerauftrags einen Branch oder Pull Request erstellen,
-pushen oder weiterbearbeiten soll, gilt zusätzlich
+Jeder Änderungsauftrag aktiviert nach erfolgreicher Umsetzung und den einschlägigen Prüfungen
+standardmäßig den Abschluss über Commit, Push des eigenen Feature-Branches und Draft-PR. Der Nutzer
+kann diesen Abschluss ausdrücklich ganz oder teilweise ausschließen. Sobald ein Coding-Agent im
+Rahmen eines Nutzerauftrags einen Branch oder Pull Request erstellen, pushen oder weiterbearbeiten
+soll, gilt zusätzlich
 [`docs/plans/auto-feature-to-deploy-pipeline.md`](docs/plans/auto-feature-to-deploy-pipeline.md).
 Das vollständige Konzept nur für Arbeiten am PR-Lebenszyklus oder an der Pipeline selbst laden;
 für normale Implementierungsdetails gelten diese Kurzregeln:
 
+- Ein fehlgeschlagenes `gh auth status` innerhalb einer Sandbox beweist keinen ungültigen Token.
+  Netzwerk-, DNS-, Socket-, Timeout- und Sandboxfehler von einer GitHub-Authentifizierungsantwort
+  unterscheiden und dieselbe schreibgeschützte Prüfung bei Bedarf über den erlaubten
+  Netzwerk-/Freigabepfad wiederholen. Die Anmeldung zusätzlich mit einer echten lesenden
+  GitHub-Abfrage wie `gh api user` oder einer Repository-Abfrage verifizieren. `gh auth login` erst
+  verlangen, wenn eine netzwerkfähige Prüfung tatsächlich `401 Bad credentials` oder einen
+  gleichwertigen eindeutigen Authentifizierungsfehler von GitHub liefert. Nach dem Branch-Push den
+  PR bevorzugt über die GitHub-App erstellen; `gh pr create` bleibt der Fallback.
 - Agenten-PRs erhalten den maschinenlesbaren Task-Vertrag aus der PR-Vorlage. Anbieter, Branch,
   Scope und Ausgangs-SHA müssen der tatsächlichen Arbeit entsprechen.
 - Der Implementierungs-Agent behebt eigene CI-Fehler, Mergekonflikte und berechtigte
