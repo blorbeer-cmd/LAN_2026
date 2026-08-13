@@ -798,6 +798,9 @@ textarea {
   flex: 1;
   min-height: 0; /* allow this flex item to actually shrink and scroll internally, see .app */
   overflow-y: auto;
+  /* Reserve the scrollbar track even for short views so switching to a
+     longer view never changes the content width for a single frame. */
+  scrollbar-gutter: stable;
   /* Full-width scroll area with the content column centered via computed
      side padding instead of max-width + auto margins — same visible column,
      but the scrollbar parks at the window's right edge instead of floating
