@@ -68,7 +68,7 @@ function renderEventCard(e) {
   const participantCount = e.participantIds?.length ?? 0;
 
   const trackingBtn = e.isEnded
-    ? ''
+    ? `<button type="button" class="btn btn-sm btn-primary" data-restart-event="${e.id}">Event wieder starten</button>`
     : e.trackingEnabled
       ? `<button type="button" class="btn btn-sm" data-stop-tracking="${e.id}">${icon('pause')} Tracking stoppen</button>`
       : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${e.id}">Tracking starten</button>`;
@@ -285,6 +285,7 @@ function participationStatus(status) {
 
 function renderParticipantsBody(event) {
   const participants = new Map((event.participants ?? []).map((entry) => [entry.playerId, entry.status]));
+  const inviteAllowed = !event.isEnded;
   const rows = state.players
     .map((p) => {
       const status = participants.get(p.id);
@@ -294,19 +295,20 @@ function renderParticipantsBody(event) {
           <span class="player-name" style="min-width:0;">${escapeHtml(p.name)}</span>
           <span class="row" style="gap:var(--space-2);flex-wrap:wrap;justify-content:flex-end;">
             ${presentation ? `<span class="badge ${presentation.badge}">${presentation.label}</span>` : ''}
-            ${!status || status === 'declined' ? `<button type="button" class="btn btn-sm" data-invite-participant="${p.id}">${status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>` : ''}
+            ${inviteAllowed && (!status || status === 'declined') ? `<button type="button" class="btn btn-sm" data-invite-participant="${p.id}">${status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>` : ''}
             ${status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${p.id}">Entfernen</button>` : ''}
           </span>
         </div>`;
     })
     .join('');
-  return `<div class="stack"><p class="muted" style="font-size:var(--font-size-xs);">Nur zugesagte Spieler erhalten Teilnehmerdaten und werden bei aktivem Event-Tracking berücksichtigt.</p>${state.players.length === 0 ? emptyStateHtml('Noch keine Spieler.') : rows}</div>`;
+  return `<div class="stack"><p class="muted" style="font-size:var(--font-size-xs);">Nur zugesagte Spieler erhalten Teilnehmerdaten und werden bei aktivem Event-Tracking berücksichtigt.</p>${event.isEnded ? '<p class="muted" style="font-size:var(--font-size-xs);">Für beendete Events sind keine neuen Einladungen mehr möglich.</p>' : ''}${state.players.length === 0 ? emptyStateHtml('Noch keine Spieler.') : rows}</div>`;
 }
 
 // Event managers invite active group members here. Acceptance remains a
 // personal action; administrative removal stays available for every status.
 function openParticipantsForm(ctx, event) {
   const participants = new Map((event.participants ?? []).map((entry) => [entry.playerId, entry.status]));
+  const inviteAllowed = !event.isEnded;
   const rows = state.players
     .map((p) => {
       const status = participants.get(p.id);
@@ -317,7 +319,7 @@ function openParticipantsForm(ctx, event) {
           <span class="row" style="gap:var(--space-2);flex-wrap:wrap;justify-content:flex-end;">
             ${presentation ? `<span class="badge ${presentation.badge}">${presentation.label}</span>` : ''}
             ${
-              !status || status === 'declined'
+              inviteAllowed && (!status || status === 'declined')
                 ? `<button type="button" class="btn btn-sm" data-invite-participant="${p.id}">${status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>`
                 : ''
             }
@@ -334,6 +336,7 @@ function openParticipantsForm(ctx, event) {
         <p class="muted" style="font-size:var(--font-size-xs);">
           Nur zugesagte Spieler erhalten Teilnehmerdaten und werden bei aktivem Event-Tracking berücksichtigt.
         </p>
+        ${event.isEnded ? '<p class="muted" style="font-size:var(--font-size-xs);">Für beendete Events sind keine neuen Einladungen mehr möglich.</p>' : ''}
         ${state.players.length === 0 ? emptyStateHtml('Noch keine Spieler.') : rows}
       </div>
     `,
@@ -439,6 +442,20 @@ export function renderOrgaEvents(container, ctx) {
         await api.events.stopTracking(event.id);
         await ctx.refresh();
         showToast('Tracking gestoppt.');
+      } catch (err) {
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+  container.querySelectorAll('[data-restart-event]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const event = (state.events || []).find((e) => e.id === btn.dataset.restartEvent);
+      if (!event) return;
+      if (!(await confirmDialog(`Event „${event.name}" wieder starten? Das Event wird geöffnet und Tracking für die Teilnehmer aktiviert.`, { confirmText: 'Event wieder starten' }))) return;
+      try {
+        await api.events.restart(event.id);
+        await ctx.refresh();
+        showToast('Event wieder gestartet.');
       } catch (err) {
         showToast(err.message, { error: true });
       }
