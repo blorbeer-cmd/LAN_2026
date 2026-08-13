@@ -676,7 +676,15 @@ export function renderAdmin(container, ctx) {
     return;
   }
   if (!isAdmin()) {
-    setAdmin(true);
+    container.innerHTML = `
+      <button type="button" class="btn btn-sm" data-navigate="more">Zurück</button>
+      <h1 class="view-title">${icon('shield')} Admin</h1>
+      <section class="card stack grouped-page-section" aria-labelledby="admin-mode-title">
+        <div class="grouped-page-section-title"><h2 id="admin-mode-title">Admin-Modus</h2></div>
+        <p class="muted">Aktiviere den Admin-Modus, um Test-Spieler und die Admin-Werkzeuge auf diesem Gerät anzuzeigen.</p>
+        <button type="button" class="btn btn-primary btn-block" id="admin-mode-activate">Admin-Modus aktivieren</button>
+      </section>`;
+    container.querySelector('#admin-mode-activate').addEventListener('click', () => setAdmin(true));
     return;
   }
   renderPanel(container, ctx);

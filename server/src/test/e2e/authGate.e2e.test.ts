@@ -309,6 +309,9 @@ test('admin creates, displays and revokes a registration link in the UI', async 
 
     await adminPage.click('.nav-btn[data-view="more"]');
     await adminPage.click('[data-navigate="admin"]');
+    await adminPage.waitForSelector('#admin-mode-activate');
+    assert.equal(await adminPage.locator('#admin-banner').isHidden(), true);
+    await adminPage.click('#admin-mode-activate');
     await adminPage.waitForSelector('#admin-register-link');
     await adminPage.waitForSelector('.admin-role-select');
     assert.equal(await adminPage.locator('#group-btn').count(), 0);
@@ -353,6 +356,47 @@ test('admin creates, displays and revokes a registration link in the UI', async 
   }
 });
 
+test('switching from an admin to a new account clears the local admin mode', async () => {
+  const invite = await fetch(`${BASE_URL}/api/auth/invites`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ purpose: 'register' }),
+  });
+  const inviteText = await invite.text();
+  assert.equal(invite.status, 201, inviteText);
+  const { code } = JSON.parse(inviteText) as { code: string };
+
+  const switchPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  try {
+    await switchPage.goto(BASE_URL);
+    await switchPage.waitForSelector('#auth-screen:not([hidden])');
+    await switchPage.fill('#auth-name', 'E2E Bootstrap Admin');
+    await switchPage.fill('#auth-password', 'e2e bootstrap password');
+    await switchPage.click('#auth-form button[type="submit"]');
+    await switchPage.waitForSelector('#app:not([hidden])');
+    await switchPage.click('.nav-btn[data-view="more"]');
+    await switchPage.click('[data-navigate="admin"]');
+    await switchPage.click('#admin-mode-activate');
+    await switchPage.waitForSelector('#admin-banner:not([hidden])');
+
+    await switchPage.goto(`${BASE_URL}/?invite=${code}`);
+    await switchPage.waitForSelector('#auth-screen:not([hidden])');
+    await switchPage.fill('#auth-name', 'E2E Switched Person');
+    await switchPage.fill('#auth-password', 'e2e switched password');
+    await switchPage.click('#auth-form button[type="submit"]');
+    await switchPage.waitForSelector('#app:not([hidden])');
+    await switchPage.waitForTimeout(300);
+
+    assert.equal(await switchPage.locator('#admin-banner').isHidden(), true);
+    assert.equal(
+      await switchPage.evaluate(() => localStorage.getItem('respawn_admin')),
+      null,
+    );
+  } finally {
+    await switchPage.close();
+  }
+});
+
 test('admin roster retries role loading, serializes changes and follows group role signals', async () => {
   const groupsResponse = await fetch(`${BASE_URL}/api/groups`, { headers: { Cookie: adminCookie } });
   const [{ id: groupId }] = (await groupsResponse.json()) as Array<{ id: string }>;
@@ -389,6 +433,7 @@ test('admin roster retries role loading, serializes changes and follows group ro
     await adminPage.waitForSelector('#app:not([hidden])');
     await adminPage.click('.nav-btn[data-view="more"]');
     await adminPage.click('[data-navigate="admin"]');
+    if (await adminPage.locator('#admin-mode-activate').count()) await adminPage.click('#admin-mode-activate');
 
     await adminPage.waitForSelector('#admin-members-retry');
     assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \([1-9]\d*\)$/);
@@ -473,6 +518,7 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
 
     await adminPage.click('.nav-btn[data-view="more"]');
     await adminPage.click('[data-navigate="admin"]');
+    if (await adminPage.locator('#admin-mode-activate').count()) await adminPage.click('#admin-mode-activate');
     const testSessionButton = adminPage.locator(`[data-test-session="${testPlayer.id}"]`);
     await testSessionButton.waitFor();
     await testSessionButton.click();

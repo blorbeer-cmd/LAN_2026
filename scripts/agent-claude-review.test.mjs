@@ -71,6 +71,41 @@ test("dispatch starts only an outstanding Claude cross-review", () => {
   assert.match(retry.reason, /may be retried/);
 });
 
+test("dispatch accepts a fresh current-head cross choice before reconciliation binds the mode", () => {
+  const readiness = {
+    phase: "awaiting-review-decision",
+    reviewerProvider: "claude",
+    details: {
+      mechanicallyGreen: true,
+      reviewMode: null,
+      crossResult: null,
+      reviewDecision: { record: { headSha: HEAD, mode: "none" } },
+    },
+  };
+
+  assert.equal(
+    deriveClaudeReviewDispatch(readiness, {
+      headSha: HEAD,
+      labels: ["review:cross"],
+    }).shouldRun,
+    true,
+  );
+
+  for (const snapshot of [
+    { headSha: "b".repeat(40), labels: ["review:cross"] },
+    { headSha: HEAD, labels: [] },
+  ]) {
+    assert.equal(deriveClaudeReviewDispatch(readiness, snapshot).shouldRun, false);
+  }
+  assert.equal(
+    deriveClaudeReviewDispatch(
+      { ...readiness, details: { ...readiness.details, mechanicallyGreen: false } },
+      { headSha: HEAD, labels: ["review:cross"] },
+    ).shouldRun,
+    false,
+  );
+});
+
 test("structured output enforces verdict and finding consistency", () => {
   assert.deepEqual(validateClaudeReviewOutput(JSON.stringify(reviewOutput())), {
     verdict: "pass",
