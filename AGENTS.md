@@ -15,6 +15,10 @@ Vor Analyse, Planung oder Änderung
   genannten Dateien, Quellcode und Tests erschließen.
 - Nur nachfragen, wenn mehrere plausible Auslegungen zu wesentlich verschiedenen Ergebnissen
   führen oder neue Berechtigungen bzw. schwer rückgängige externe Aktionen nötig wären.
+  Der in diesem Repository für Änderungsaufträge festgelegte Abschluss über den eigenen
+  Feature-Branch und einen Draft-PR ist bereits durch den Auftrag autorisiert und gilt nicht als
+  neue Berechtigung oder schwer rückgängige Aktion; die Ausnahmen und Stop-Bedingungen in
+  `DEVELOPMENT_GUIDELINES.md` und im Pipeline-Konzept bleiben verbindlich.
 - Bei Änderungsaufträgen den gemeinsamen Preflight genau einmal mit dem passendsten Bereich
   (`root`, `server`, `frontend`, `agent`, `docs` oder `infra`) ausführen, zum Beispiel
   `node ./scripts/agent-preflight.mjs --scope frontend`. Seine Ausgabe ersetzt getrennte
@@ -71,8 +75,11 @@ für normale Implementierungsdetails gelten diese Kurzregeln:
   verlangen, wenn eine netzwerkfähige Prüfung tatsächlich `401 Bad credentials` oder einen
   gleichwertigen eindeutigen Authentifizierungsfehler von GitHub liefert. Nach dem Branch-Push den
   PR bevorzugt über die GitHub-App erstellen; `gh pr create` bleibt der Fallback.
-- Agenten-PRs erhalten den maschinenlesbaren Task-Vertrag aus der PR-Vorlage. Anbieter, Branch,
-  Scope und Ausgangs-SHA müssen der tatsächlichen Arbeit entsprechen.
+- Agenten-PRs erhalten den maschinenlesbaren Task-Vertrag aus der PR-Vorlage. Die Task-ID wird beim
+  Erstellen aus aktuellem Datum und einem aufgabenspezifischen, kleingeschriebenen Bezeichner im
+  Format `agent-YYYYMMDD-<id>` gebildet; bei einer Kollision einen kurzen eindeutigen Suffix
+  anhängen und niemals den Vorlagenwert übernehmen. Anbieter, Branch, Scope und Ausgangs-SHA
+  müssen der tatsächlichen Arbeit entsprechen.
 - Der Implementierungs-Agent behebt eigene CI-Fehler, Mergekonflikte und berechtigte
   Review-Findings. Nach jedem neuen Commit sind CI und Review für den neuen Head-SHA erneut nötig.
 - Wer reviewt, entscheidet der Nutzer pro Head-SHA: Cross-Review durch den Gegen-Anbieter

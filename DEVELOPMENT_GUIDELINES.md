@@ -121,12 +121,15 @@ Bei Zielkonflikten gewinnt die weiter oben stehende Priorität.
   gehört. Keine bestehenden Worktrees oder fremden Branches dafür umhängen.
 - Ein Änderungsauftrag autorisiert nach erfolgreicher Umsetzung und den einschlägigen Prüfungen
   standardmäßig genau einen aufgabenspezifischen Commit, den Push des eigenen Feature-Branches und
-  die Eröffnung eines Draft-PRs mit gültigem Task-Vertrag. Der Nutzer kann diesen Abschluss mit
-  „nur lokal“, „nicht committen“, „nicht pushen“ oder „kein PR“ ganz oder teilweise ausschließen.
-  Bei unklarem Änderungsscope, sachfremden Änderungen im Arbeitsbaum, fehlenden Berechtigungen oder
-  einer laut Abschnitt 12 des Pipeline-Konzepts kritischen Entscheidung vor der betroffenen Aktion
-  anhalten. Niemals direkt auf `main` pushen, approven, mergen oder Auto-Merge aktivieren. Commits
-  klein, in sich geschlossen und imperativ auf Englisch benennen.
+  die Eröffnung eines Draft-PRs mit gültigem Task-Vertrag. Diese vorab erteilte
+  Repository-Autorisierung ist innerhalb des eindeutig abgegrenzten Änderungsauftrags keine neue
+  Berechtigung und keine schwer rückgängige externe Aktion im Sinne der allgemeinen Rückfrageregel
+  aus `AGENTS.md`. Der Nutzer kann diesen Abschluss mit „nur lokal“, „nicht committen“, „nicht
+  pushen“ oder „kein PR“ ganz oder teilweise ausschließen. Bei unklarem Änderungsscope,
+  sachfremden Änderungen im Arbeitsbaum, fehlenden Berechtigungen, einer wesentlichen Erweiterung
+  des Auftrags oder einer laut Abschnitt 12 des Pipeline-Konzepts kritischen Entscheidung vor der
+  betroffenen Aktion anhalten. Niemals direkt auf `main` pushen, approven, mergen oder Auto-Merge
+  aktivieren. Commits klein, in sich geschlossen und imperativ auf Englisch benennen.
 - Abhängigkeiten und Lockfiles nur ändern, wenn sie notwendig sind; neue Pakete auf Wartung,
   Sicherheit und Offline-Auswirkungen prüfen.
 
