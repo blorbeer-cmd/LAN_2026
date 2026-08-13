@@ -872,8 +872,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   „Bewertung/Stimme abgegeben“ state while locking that identity's controls.
   Vote history is labeled simply „Historie“, uses the shared icon-free collapsible header, starts
   closed and retains its open state across live re-renders.
-- **Tournament overview** — the „Turniere“ tab and default entry of the „Wettkampf“ area, whose
-  second tab is Team formation; switching back to „Turniere“ from the tab row always returns to the
+- **Tournament overview** — the „Turniere“ tab in the „Match“ area, whose first/default tab is
+  „Teams“; switching back to „Turniere“ from the tab row always returns to the
   list rather than the tournament board that was last open. A tournament's own detail page keeps
   the area tabs above it and titles itself with an `h2`, so the page never carries two `h1`
   headings. `.tournament-list-grid` shows at most two tournament cards per row;
