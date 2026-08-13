@@ -645,8 +645,6 @@ textarea {
 }
 .event-context-switcher {
   padding-left: 38px; /* design-token-ok: clears the status icon, mirrors the chevron's own 38px right inset */
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
   text-overflow: ellipsis;
 }
 
