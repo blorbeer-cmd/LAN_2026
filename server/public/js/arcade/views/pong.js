@@ -28,8 +28,8 @@ let latestAt = 0;
 let animation = null;
 let keyboardBound = false;
 let keys = { up: false, down: false };
-let targetScore = 21;
-let lobbyMode = 'doubles';
+let targetScore = 7;
+let lobbyMode = 'duel';
 let impact = null;
 const trail = [];
 
