@@ -268,7 +268,7 @@ test('simultaneous carpool joins: exactly seatsTotal of them win', async () => {
   assert.equal(carpool.seatsFree, 0);
 });
 
-test('two events starting tracking simultaneously: exactly one wins', async () => {
+test('two events can start tracking simultaneously without sharing global state', async () => {
   const now = Date.now();
   const events = await Promise.all(
     ['Race Event A', 'Race Event B'].map((name) =>
@@ -279,8 +279,7 @@ test('two events starting tracking simultaneously: exactly one wins', async () =
     events.map((e) => request(app).post(`/api/events/${e.body.id}/tracking/start`))
   );
   const counts = statusCounts(results.map((r) => r.status));
-  assert.equal(counts[200], 1, JSON.stringify(counts));
-  assert.equal(counts[409], 1, JSON.stringify(counts));
+  assert.equal(counts[200], 2, JSON.stringify(counts));
 });
 
 test('two results submitted for the same draw at once: exactly one is recorded and claims the draw', async () => {

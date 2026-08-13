@@ -23,6 +23,8 @@ import { emptyStateHtml } from '../emptyState.js';
 const TRACKING_PAUSE_HELP = 'Pausiert Live-Status und Spielzeit. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
 const ACTIVITY_TRACKING_HELP = 'Erfasst zusätzlich, ob das Spielfenster im Vordergrund ist. Der Wert lässt sich später in der Agent-Steuerung ändern.';
 const PUSH_HELP = 'Benachrichtigt dich auch, wenn Respawn nicht geöffnet ist.';
+const RATING_HELP = 'Bock unterstützt die Spielauswahl, Skill die Teamaufteilung.';
+const AGENT_DOWNLOAD_HELP = 'Das ZIP enthält bereits Server-Adresse und deinen persönlichen Key.';
 
 function normalizedProfileColor(value) {
   return /^#[0-9a-f]{6}$/i.test(value ?? '')
@@ -180,6 +182,16 @@ let neighborsCache = null;
 let neighborsLoading = false;
 let neighborsForPlayerId = null;
 
+// Seat neighbours are pre-filled from the active event's seating plan, so
+// they are event data even though the cache is keyed by player id. Switching
+// the workspace has to drop them, or the previous event's seating keeps
+// driving the checkboxes for the new one.
+export function invalidateSeatNeighbors() {
+  neighborsCache = null;
+  neighborsLoading = false;
+  neighborsForPlayerId = null;
+}
+
 // 'unsupported' | 'denied' | 'unsubscribed' | 'subscribed' | null (not yet
 // checked). Re-checked whenever the view renders fresh (cheap local
 // permission/registration lookups, no network round trip).
@@ -287,8 +299,7 @@ export function renderProfile(container, ctx) {
       <button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>
     </div>
     <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section" aria-labelledby="profile-data-title">
-        <div class="grouped-page-section-title"><h2 id="profile-data-title">Profil</h2></div>
+      <section class="card stack grouped-page-section" aria-label="Profildaten">
         <div class="profile-identity-editor">
           <div class="profile-identity-fields">
             <div class="profile-avatar-editor">
@@ -326,7 +337,6 @@ export function renderProfile(container, ctx) {
                    <input type="password" id="profile-new-password" autocomplete="new-password" minlength="1" maxlength="1024" required style="flex:1;" placeholder="Neues Passwort" />
                    <button type="button" class="icon-btn" data-password-toggle="profile-new-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
                  </div>
-                 <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Wähl ein Passwort, das du dir gut merken kannst.</p>
                  <button type="submit" class="btn btn-primary btn-sm">Passwort speichern</button>
                </form>
       </section>
@@ -335,8 +345,12 @@ export function renderProfile(container, ctx) {
         state.games.length === 0 || hasAnyRating
           ? ''
           : `<section class="card stack grouped-page-section profile-rating-nudge" aria-labelledby="profile-rating-title">
-               <div class="grouped-page-section-title"><h2 id="profile-rating-title">Bock & Skill eintragen</h2></div>
-               <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Hilft beim Voting und beim Teams-Auslosen und dauert nur eine Minute.</p>
+               <div class="grouped-page-section-title">
+                 <h2 id="profile-rating-title" class="title-with-info">
+                   <span>Bock &amp; Skill eintragen</span>
+                   ${infoTooltipHtml('profile-rating-help', 'Bock und Skill', RATING_HELP)}
+                 </h2>
+               </div>
                <button type="button" class="btn btn-primary btn-block" data-navigate="gameCatalog">Zu den Spielen</button>
              </section>`
       }
@@ -364,8 +378,10 @@ export function renderProfile(container, ctx) {
           </div>
           <div class="card stack profile-agent-step">
             <span class="muted profile-agent-step-label">Schritt 2</span>
-            <strong>Agent herunterladen</strong>
-            <span class="muted">Das ZIP enthält bereits Server-Adresse und deinen persönlichen Key.</span>
+            <strong class="title-with-info">
+              <span>Agent herunterladen</span>
+              ${infoTooltipHtml('profile-agent-download-help', 'Agent herunterladen', AGENT_DOWNLOAD_HELP)}
+            </strong>
             <button type="button" class="btn btn-primary btn-block" id="agent-download">Für Windows herunterladen</button>
           </div>
           <div class="card stack profile-agent-step">
@@ -381,7 +397,7 @@ export function renderProfile(container, ctx) {
             <button type="button" class="btn btn-sm" id="profile-copy-key">Kopieren</button>
             <button type="button" class="btn btn-sm btn-danger" id="profile-rotate-key">Erneuern</button>
           </div>
-          <p class="muted" style="font-size:var(--font-size-xs);margin-bottom:0;">Key in die Agent-Konfiguration eintragen; Details stehen in <code>agent/README.md</code>.</p>
+          <p class="muted" style="font-size:var(--font-size-xs);margin-bottom:0;">Key in die Agent-Konfiguration eintragen.</p>
         </details>
       </section>
 

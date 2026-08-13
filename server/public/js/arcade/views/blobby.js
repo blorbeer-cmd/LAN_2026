@@ -32,7 +32,7 @@ const avatarImages = new Map();
 const courtBackground = new Image();
 courtBackground.src = '/img/blobby-beach-court.png';
 let targetScore = 7;
-let lobbyMode = 'doubles';
+let lobbyMode = 'duel';
 
 const myId = () => getMyId();
 const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));

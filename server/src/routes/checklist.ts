@@ -40,10 +40,11 @@ import { isNonEmptyString } from '../validation';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
-import { resolveRequestGroupEventScope } from '../groupEventScope';
+import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 import { communicationRecipientIds } from '../communicationRecipients';
 import { activeGroupPlayers } from '../groupPlayers';
 import { DEFAULT_CHECKLIST_ITEMS } from '../checklistDefaults';
+import { isParticipant } from '../events';
 
 export const checklistRouter = Router();
 
@@ -213,59 +214,19 @@ function isChecklistModerator(req: Request): boolean {
   return role === 'owner' || role === 'admin';
 }
 
-// Reparents a player's own fallback-bucket rows (created through the
-// null-eventId courtesy room below, while they could not yet access the
-// group's real tracking event) into that event once they do gain access -
-// materializations move alongside their items so ensureDefaultItems() does
-// not re-insert a second Grundstock under the now-resolved real event id.
-// Only the player's own items and the tasks *they* created are moved: tasks
-// merely assigned to them were created (and scoped) by someone who already
-// had access, so those already live under the real event and need no repair.
-const reconcilePendingChecklistScope = db.transaction(
-  (groupId: string, eventId: string, playerId: string): { itemsMoved: number; tasksMoved: number } => {
-    const itemsMoved = db
-      .prepare('UPDATE checklist_items SET event_id = ? WHERE group_id = ? AND event_id IS NULL AND player_id = ?')
-      .run(eventId, groupId, playerId).changes;
-    db.prepare(
-      `INSERT OR IGNORE INTO checklist_materializations (group_id, event_id, player_id, materialized_at)
-       SELECT group_id, ?, player_id, materialized_at
-       FROM checklist_materializations WHERE group_id = ? AND event_id IS NULL AND player_id = ?`,
-    ).run(eventId, groupId, playerId);
-    db.prepare('DELETE FROM checklist_materializations WHERE group_id = ? AND event_id IS NULL AND player_id = ?').run(
-      groupId,
-      playerId,
-    );
-    const tasksMoved = db
-      .prepare('UPDATE checklist_tasks SET event_id = ? WHERE group_id = ? AND event_id IS NULL AND created_by = ?')
-      .run(eventId, groupId, playerId).changes;
-    return { itemsMoved, tasksMoved };
-  },
-);
-
 // resolveGroupResource only re-verifies group membership - a task/item id
 // from a *past* event in the very same group (e.g. right after an organizer
 // switches which event is tracked) would otherwise stay mutable forever,
 // even though GET no longer lists it in the current scope. Every id-based
 // mutation calls this right after loading its row and 404s on a mismatch,
 // same wording as "not found" since a stale id has no other legitimate use.
-function currentEventScope(req: Request, res: Response): { eventId: string | null } | null {
+function currentEventScope(req: Request, res: Response): { eventId: string } | null {
   const scope = resolveRequestGroupEventScope(req, undefined);
   if (!scope.ok) {
     res.status(scope.status).json({ error: scope.error });
     return null;
   }
-  // The checklist is a group collaboration surface. A new member can be
-  // active in the group before an organizer has accepted them for the
-  // currently tracking participant-private event. Keep that event's private
-  // rows isolated and use the durable group room instead of surfacing a
-  // misleading "Event nicht gefunden" error when the checklist is opened.
-  if (scope.eventId !== null && req.player) {
-    const groupId = req.group!.id;
-    const eventId = scope.eventId;
-    const { itemsMoved, tasksMoved } = reconcilePendingChecklistScope(groupId, eventId, req.player.id);
-    if (itemsMoved > 0) broadcast(Events.checklistChanged, { scope: 'items', playerId: req.player.id }, { groupId, eventId });
-    if (tasksMoved > 0) broadcast(Events.checklistChanged, { scope: 'tasks' }, { groupId, eventId });
-  }
+  if (!scope.eventId || !requireGroupEventAccess(req, res, scope.eventId)) return null;
   return { eventId: scope.eventId };
 }
 
@@ -282,6 +243,7 @@ checklistRouter.get('/items', ...withQueryPlayerIdentity, (req, res) => {
   const groupId = req.group!.id;
   const scope = currentEventScope(req, res);
   if (!scope) return;
+  if (!isParticipant(scope.eventId, playerId)) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   ensureDefaultItems(groupId, scope.eventId, playerId);
   res.json({ items: listItems(groupId, scope.eventId, playerId).map(serializeItem) });
 });
@@ -301,6 +263,7 @@ checklistRouter.post('/items', ...withBodyPlayerIdentity, (req, res) => {
   const groupId = req.group!.id;
   const scope = currentEventScope(req, res);
   if (!scope) return;
+  if (!isParticipant(scope.eventId, playerId)) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   const row: ItemRow = {
     id: nanoid(),
     group_id: groupId,
@@ -411,6 +374,9 @@ checklistRouter.post('/tasks', ...withBodyPlayerIdentity, (req, res) => {
   const scope = currentEventScope(req, res);
   if (!scope) return;
   const eventId = scope.eventId;
+  if (assigneeIds.some((assigneeId) => !isParticipant(eventId, assigneeId))) {
+    return res.status(404).json({ error: 'Mindestens eine zugewiesene Person wurde nicht gefunden.' });
+  }
   const now = Date.now();
   const trimmedTitle = title.trim();
   const trimmedDescription = description ? description.trim() : null;
@@ -541,6 +507,9 @@ checklistRouter.post('/tasks/todo', ...withBodyPlayerIdentity, requireGroupRole(
   const scope = currentEventScope(req, res);
   if (!scope) return;
   const eventId = scope.eventId;
+  if (assigneeIds.some((assigneeId) => !isParticipant(eventId, assigneeId))) {
+    return res.status(404).json({ error: 'Mindestens eine zugewiesene Person wurde nicht gefunden.' });
+  }
   const now = Date.now();
   const trimmedTitle = title.trim();
   const trimmedDescription = description ? description.trim() : null;

@@ -45,12 +45,18 @@ async function makeAdmin(playerId: string): Promise<void> {
   await promoteE2EAdmin(BASE_URL, adminCookies.get(BASE_URL)!, playerId);
 }
 
-async function openArcade(playerId: string, baseUrl: string = BASE_URL): Promise<{ context: BrowserContext; page: Page }> {
+async function openArcade(playerId: string, baseUrl: string = BASE_URL, { adminMode = false } = {}): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await addSessionCookie(context, baseUrl, playerCookies.get(`${baseUrl}:${playerId}`)!);
   const page = await context.newPage();
   await page.goto(baseUrl);
   await page.waitForSelector('.nav-btn[data-view="more"]');
+  if (adminMode) {
+    await page.click('.nav-btn[data-view="more"]');
+    await page.click('[data-navigate="admin"]');
+    await page.click('#admin-mode-activate');
+    await page.waitForSelector('#admin-banner:not([hidden])');
+  }
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await page.click('.nav-btn[data-view="more"]', { timeout: 4_000 }).catch(() => undefined);
     try {
@@ -79,7 +85,7 @@ after(async () => { await browser?.close(); serverProcess?.kill(); });
 challengeRushTest('scenarios', 'Challenge Rush admin can run selected tasks in checkbox order', async () => {
   const playerId = await createPlayer();
   await makeAdmin(playerId);
-  const actor = await openArcade(playerId);
+  const actor = await openArcade(playerId, BASE_URL, { adminMode: true });
   try {
     await actor.page.click('[data-game="challenge-rush"]');
     await actor.page.click('.challenge-rush-test-selector > summary');
@@ -115,7 +121,7 @@ challengeRushTest('scenarios', 'Challenge Rush drops a hidden admin selection af
   const adminId = await createPlayer();
   const playerId = await createPlayer();
   await makeAdmin(adminId);
-  const actor = await openArcade(adminId);
+  const actor = await openArcade(adminId, BASE_URL, { adminMode: true });
   try {
     await actor.page.click('[data-game="challenge-rush"]');
     await actor.page.click('.challenge-rush-test-selector > summary');
@@ -137,12 +143,12 @@ challengeRushTest('scenarios', 'Challenge Rush drops a hidden admin selection af
 
 challengeRushTest('scenarios', 'Challenge Rush focuses timed targets after start and server-side expiry', async () => {
   for (const challenge of [
-    { key: 'aim-trainer', selector: '.challenge-rush-circle', expiryMs: 2_000 },
-    { key: 'whack-a-mole', selector: '.challenge-rush-tile.is-active', expiryMs: 1_600 },
+    { key: 'aim-trainer', selector: '.challenge-rush-circle' },
+    { key: 'whack-a-mole', selector: '.challenge-rush-tile.is-active' },
   ]) {
     const playerId = await createPlayer();
     await makeAdmin(playerId);
-    const actor = await openArcade(playerId);
+    const actor = await openArcade(playerId, BASE_URL, { adminMode: true });
     try {
       await actor.page.click('[data-game="challenge-rush"]');
       await actor.page.click('.challenge-rush-test-selector > summary');
@@ -155,8 +161,17 @@ challengeRushTest('scenarios', 'Challenge Rush focuses timed targets after start
       await actor.page.waitForSelector('[data-cr-start]');
       await actor.page.click('[data-cr-start]');
       await actor.page.waitForSelector(`${challenge.selector}:focus`);
-      await actor.page.waitForTimeout(challenge.expiryMs);
-      assert.equal(await actor.page.locator(challenge.selector).evaluate((node) => document.activeElement === node), true);
+      const initialTarget = await actor.page.locator(challenge.selector).elementHandle();
+      assert.ok(initialTarget);
+      const focusedReplacement = await actor.page.waitForFunction(
+        ({ selector, previousTarget }) => {
+          const currentTarget = document.querySelector(selector);
+          return currentTarget !== null && currentTarget !== previousTarget && document.activeElement === currentTarget;
+        },
+        { selector: challenge.selector, previousTarget: initialTarget },
+      );
+      await focusedReplacement.dispose();
+      await initialTarget.dispose();
       await actor.page.locator(challenge.selector).press('Space');
       await actor.page.waitForSelector('#cr-ready-next:not([disabled])');
     } finally {
@@ -316,7 +331,7 @@ async function playCurrentChallenge(page: Page): Promise<void> {
 challengeRushTest('scenarios', 'Challenge Rush hides the reaction target until play, gates the next challenge behind a ready click, and ends with a per-challenge summary', async () => {
   const playerId = await createPlayer();
   await makeAdmin(playerId);
-  const actor = await openArcade(playerId);
+  const actor = await openArcade(playerId, BASE_URL, { adminMode: true });
   try {
     await actor.page.click('[data-game="challenge-rush"]');
     await actor.page.click('.challenge-rush-test-selector > summary');

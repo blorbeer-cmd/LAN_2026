@@ -34,7 +34,7 @@ async function grantAdmin(playerId: string): Promise<void> {
   await promoteE2EAdmin(BASE_URL, adminCookie, playerId);
 }
 
-async function openArcadeAs(playerId: string): Promise<Actor> {
+async function openArcadeAs(playerId: string, { adminMode = false } = {}): Promise<Actor> {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const cookie = playerCookies.get(playerId);
   assert.ok(cookie);
@@ -43,6 +43,12 @@ async function openArcadeAs(playerId: string): Promise<Actor> {
   await page.goto(BASE_URL);
   await page.waitForSelector('.nav-btn[data-view="more"]');
   await page.click('.nav-btn[data-view="more"]');
+  if (adminMode) {
+    await page.click('[data-navigate="admin"]');
+    await page.click('#admin-mode-activate');
+    await page.waitForSelector('#admin-banner:not([hidden])');
+    await page.click('.nav-btn[data-view="more"]');
+  }
   await page.click('[data-navigate="arcade"]');
   await page.waitForSelector('.arcade-tiles');
   await page.click('[data-game="battleship"]');
@@ -148,7 +154,14 @@ test('Battleship: two browsers play a complete duel and watch state reveals then
 
     const matchId = await host.page.locator('[data-battleship-match]').getAttribute('data-battleship-match');
     assert.ok(matchId);
-    await new Promise((resolve) => watcher.emit('scope:subscribe', { groupId: 'default-group', eventId: null }, resolve));
+    const activeEventResponse = await fetch(`${BASE_URL}/api/events/active`, {
+      headers: { Cookie: playerCookies.get(hostPlayer.id)! },
+    });
+    assert.equal(activeEventResponse.status, 200);
+    const activeEventId = ((await activeEventResponse.json()) as { id: string }).id;
+    await new Promise((resolve) =>
+      watcher.emit('scope:subscribe', { groupId: 'default-group', eventId: activeEventId }, resolve)
+    );
     const runningState = waitForSocketEvent<{
       matchId: string;
       phase: string;
@@ -312,7 +325,7 @@ test('Battleship: disconnect ends the duel immediately and awards the connected 
 test('Battleship: an admin starts a playable match against the AI', async () => {
   const adminPlayer = await createPlayer('Battleship AI E2E Admin');
   await grantAdmin(adminPlayer.id);
-  const admin = await openArcadeAs(adminPlayer.id);
+  const admin = await openArcadeAs(adminPlayer.id, { adminMode: true });
 
   try {
     await admin.page.waitForSelector('#battleship-bot');

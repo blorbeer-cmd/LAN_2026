@@ -13,12 +13,12 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 | Feature | Beschreibung |
 |---|---|
 | 🏠 **Home** | Die gruppierte Startübersicht mit „Aktuell“, Live-Status, Rangliste und Sitzplan. Die neueste aktive Mitteilung erscheint als farbiger Direktlink unter der Kopfzeile; die Glocke öffnet die persönliche Historie mit Gelesen- und Löschaktionen. |
-| ⚔️ **Turniere** | K.O.-Baum, Liga „jeder gegen jeden" (optional mit Hin-/Rückspielen) oder Gruppenphase + K.O. – Teams werden skill-balanciert vorgeschlagen, Ergebnisse (mit oder ohne Punktestand) direkt im Turnierbaum eintragbar, der sich automatisch weiterentwickelt. Bei neuem/anstehendem Match gibt's einen Push-Hinweis an die Beteiligten. |
-| ⚖️ **Teams** | Für ein Spiel automatisch faire Teams aus den anwesenden Spielern auslosen (skill-basiert) oder per Captain Draft zusammenstellen, optional unter Berücksichtigung der Sitznachbarn. Ergebnisse und Rematches landen in einer gemeinsamen Historie. |
+| ⚔️ **Wettkampf** | Ein Bereich mit den Tabs **Turniere** und **Teams**. Turniere: K.O.-Baum, Liga „jeder gegen jeden" (optional mit Hin-/Rückspielen) oder Gruppenphase + K.O. – Teams werden skill-balanciert vorgeschlagen, Ergebnisse (mit oder ohne Punktestand) direkt im Turnierbaum eintragbar, der sich automatisch weiterentwickelt. Bei neuem/anstehendem Match gibt's einen Push-Hinweis an die Beteiligten. Teams: für ein Spiel automatisch faire Teams aus den anwesenden Spielern auslosen (skill-basiert) oder per Captain Draft zusammenstellen, optional unter Berücksichtigung der Sitznachbarn. Ergebnisse und Rematches landen in einer gemeinsamen Historie. |
 | 👑 **Captain Draft** | Die soziale Alternative zur Auslosung innerhalb von „Teams“: erst Teilnehmer, dann 2–4 Captains festlegen und anschließend abwechselnd aus den übrigen Spielern wählen. Das Ergebnis landet in derselben Historie wie Auslosungen und Matches. |
 | 🗳️ **Vote** | Jeder gibt seine Stimme oder Punkte ab, sieht dabei aber nur die eigene Wahl und nicht den Zwischenstand. Die volle Punkteverteilung erscheint erst nach Rundenende; Unentschieden können direkt in eine Stichwahl übergehen. Vergangene Runden stehen in der eingeklappten Historie. |
-| 🏆 **Rang** | Match-Ergebnisse eintragen (auch Frei-für-alle ohne Teams), Punkte übers ganze Wochenende, Gesamtsieger der LAN, gefilterte Spieler-Spielzeit und ein ungefilterter Vergleich der Spielzeit pro Spiel. |
-| ☰ **Mehr** | Sammelstelle für An-/Abreise, Arcade, Auswertungen, Durchsage, Essen, Hall of Fame, Info, Spieler, Spiele, Einstellungen und weitere Werkzeuge. |
+| 🏆 **Auswertung** | Ein Bereich mit den Tabs **Rangliste**, **Statistiken** und **Hall of Fame**. Rangliste: Match-Ergebnisse eintragen (auch Frei-für-alle ohne Teams), Punkte übers ganze Wochenende, Gesamtsieger der LAN, gefilterte Spieler-Spielzeit und ein ungefilterter Vergleich der Spielzeit pro Spiel. |
+| ☰ **Mehr** | Sammelstelle für Orga (To-Dos, Packliste, An- & Abreise), Arcade, Durchsage, Essen, Jam, Spiele, Admin und weitere Werkzeuge. |
+| ℹ️ **Info** | Kein eigener Bereich, sondern das „i“ in der Kopfzeile: WLAN-Passwort, Discord-Link, Server-IPs und Hausregeln lassen sich als Dialog über jeder Ansicht öffnen, ohne den aktuellen Arbeitsstand zu verlassen. |
 
 ### Auswertungen & Erinnerungsstücke
 
@@ -26,7 +26,7 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 |---|---|
 | 🕒 **Spielzeit-Auswertungen** | Awards (z. B. „Marathon-Zocker"), beliebteste Spiele, wer wann was gespielt hat, ein Concurrency-Chart („wie viele haben X gleichzeitig gespielt") – filterbar nach Event bzw. Zeitraum. |
 | 📊 **Spiele & Turniere** | Match-/Turnier-Statistiken abseits der reinen Punkte: Rivalitäten, erfolgreichste Duos, größte Underdog-Siege. |
-| 🏛️ **Hall of Fame** | Champions über alle LAN-Partys hinweg (mehrere `events` in der DB) – Gesamtsieger je Event plus eine All-Time-Rangliste „wer hat am häufigsten gewonnen". |
+| 🏛️ **Hall of Fame** | Champions über alle LAN-Partys hinweg (mehrere `events` in der DB) – Gesamtsieger je Event plus eine All-Time-Rangliste „wer hat am häufigsten gewonnen". Liegt als Tab im Bereich „Auswertung“. |
 | 🪑 **Sitzplan** | Wer neben wem sitzt (jeder trägt seine Nachbarn selbst im Profil ein), zu „Sitzgruppen" zusammengefasst – hilft Neulingen, ihre Freunde im Raum zu finden. |
 | 📄 **Export als Andenken** | Ein Event per Knopfdruck als gestaltetes PDF exportieren (Rangliste, Spielzeit, Awards, Turnier-Champions). Dieselben Daten stehen auch roh als JSON über `GET /api/export` bereit, falls jemand eigenes Tooling anschließen will. |
 

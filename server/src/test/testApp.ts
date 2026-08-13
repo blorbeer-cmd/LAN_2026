@@ -1,7 +1,7 @@
 import express from 'express';
 import type { Server } from 'socket.io';
 import { createApp } from '../app';
-import { db, DEFAULT_GROUP_ID } from '../db';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
 import {
   createSession,
@@ -9,6 +9,8 @@ import {
   SESSION_COOKIE_NAME,
   verifySession,
 } from '../sessions';
+import { ensureAccountEventContext, getOrRepairActiveEvent } from '../eventContext';
+import { setEventTrackingConsent } from '../trackingContexts';
 
 const TEST_ADMIN_ID = '__integration-test-admin__';
 
@@ -74,6 +76,17 @@ export function sessionCookie(playerId: string): string {
   return `${SESSION_COOKIE_NAME}=${token}`;
 }
 
+/** Explicit opt-in for legacy integration suites that exercise Agent data. */
+export function enableTestTracking(playerId: string, eventId = BASE_EVENT_ID): void {
+  const event = db.prepare('SELECT group_id AS groupId FROM events WHERE id = ?').get(eventId) as
+    | { groupId: string }
+    | undefined;
+  if (!event) throw new Error(`Test event ${eventId} does not exist.`);
+  ensureAccountEventContext(playerId, eventId);
+  db.prepare('UPDATE events SET tracking_enabled = 1, starts_at = 0 WHERE id = ?').run(eventId);
+  setEventTrackingConsent(eventId, event.groupId, playerId, true);
+}
+
 /**
  * Compatibility fixture for feature-level Socket.IO suites. Production
  * sockets always authenticate during the handshake; these older tests focus
@@ -92,6 +105,7 @@ export function installTestSocketIdentity(io: Server): void {
       if (activePlayer) {
         socket.data.authPlayerId = activePlayer.id;
         socket.data.groupId = DEFAULT_GROUP_ID;
+        socket.data.eventId = getOrRepairActiveEvent(activePlayer.id).id;
       }
       next();
     });

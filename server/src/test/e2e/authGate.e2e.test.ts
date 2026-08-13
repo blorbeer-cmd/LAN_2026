@@ -132,7 +132,6 @@ test('an invite link registers a new account and logs it straight in', async () 
   // bottom anchor (which would stretch the panel), and the spotlight shadow
   // must remain below the dialog instead of dimming its copy and controls.
   await page.setViewportSize({ width: 1024, height: 768 });
-  await page.click('[data-onboarding-next]');
   await page.waitForSelector('.onboarding-dialog--top');
   await page.waitForSelector('.onboarding-target-ring');
   const onboardingLayers = await page.evaluate(() => {
@@ -159,7 +158,9 @@ test('an invite link registers a new account and logs it straight in', async () 
   assert.ok(onboardingLayers.dialogZIndex > onboardingLayers.ringZIndex, 'the dialog must stay above the spotlight shadow');
   await page.setViewportSize({ width: 390, height: 844 });
 
-  for (let step = 1; step < 9; step += 1) {
+  // One click per STEPS entry in onboarding.js (3 total) reaches the
+  // mandatory rating phase after the compact core tour.
+  for (let step = 0; step < 3; step += 1) {
     await page.click('[data-onboarding-next]');
     await page.waitForSelector('#onboarding-root [role="dialog"]');
   }
@@ -310,9 +311,10 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await adminPage.click('[data-navigate="admin"]');
     await adminPage.waitForSelector('#admin-mode-activate');
     assert.equal(await adminPage.locator('#admin-banner').isHidden(), true);
-    await adminPage.click('#admin-mode-activate');
     await adminPage.waitForSelector('#admin-register-link');
+    await adminPage.waitForSelector('#admin-tools-title');
     await adminPage.waitForSelector('.admin-role-select');
+    assert.equal(await adminPage.locator('#admin-test-players-title').count(), 0);
     assert.equal(await adminPage.locator('#group-btn').count(), 0);
     assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \(\d+\)$/);
     assert.deepEqual(await adminPage.locator('.admin-role-select').first().locator('option').allTextContents(), [
@@ -355,6 +357,47 @@ test('admin creates, displays and revokes a registration link in the UI', async 
   }
 });
 
+test('switching from an admin to a new account clears the local admin mode', async () => {
+  const invite = await fetch(`${BASE_URL}/api/auth/invites`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ purpose: 'register' }),
+  });
+  const inviteText = await invite.text();
+  assert.equal(invite.status, 201, inviteText);
+  const { code } = JSON.parse(inviteText) as { code: string };
+
+  const switchPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  try {
+    await switchPage.goto(BASE_URL);
+    await switchPage.waitForSelector('#auth-screen:not([hidden])');
+    await switchPage.fill('#auth-name', 'E2E Bootstrap Admin');
+    await switchPage.fill('#auth-password', 'e2e bootstrap password');
+    await switchPage.click('#auth-form button[type="submit"]');
+    await switchPage.waitForSelector('#app:not([hidden])');
+    await switchPage.click('.nav-btn[data-view="more"]');
+    await switchPage.click('[data-navigate="admin"]');
+    await switchPage.click('#admin-mode-activate');
+    await switchPage.waitForSelector('#admin-banner:not([hidden])');
+
+    await switchPage.goto(`${BASE_URL}/?invite=${code}`);
+    await switchPage.waitForSelector('#auth-screen:not([hidden])');
+    await switchPage.fill('#auth-name', 'E2E Switched Person');
+    await switchPage.fill('#auth-password', 'e2e switched password');
+    await switchPage.click('#auth-form button[type="submit"]');
+    await switchPage.waitForSelector('#app:not([hidden])');
+    await switchPage.waitForTimeout(300);
+
+    assert.equal(await switchPage.locator('#admin-banner').isHidden(), true);
+    assert.equal(
+      await switchPage.evaluate(() => localStorage.getItem('respawn_admin')),
+      null,
+    );
+  } finally {
+    await switchPage.close();
+  }
+});
+
 test('admin roster retries role loading, serializes changes and follows group role signals', async () => {
   const groupsResponse = await fetch(`${BASE_URL}/api/groups`, { headers: { Cookie: adminCookie } });
   const [{ id: groupId }] = (await groupsResponse.json()) as Array<{ id: string }>;
@@ -391,11 +434,21 @@ test('admin roster retries role loading, serializes changes and follows group ro
     await adminPage.waitForSelector('#app:not([hidden])');
     await adminPage.click('.nav-btn[data-view="more"]');
     await adminPage.click('[data-navigate="admin"]');
-    if (await adminPage.locator('#admin-mode-activate').count()) await adminPage.click('#admin-mode-activate');
+    if (await adminPage.locator('#admin-mode-activate').count()) {
+      await adminPage.click('#admin-mode-activate');
+      // Activating admin mode drops the cached roster and refetches it with the
+      // test players included, but the panel only re-renders once that refresh
+      // resolves. Until then the pre-activation DOM is still on screen, so the
+      // roster waits below would settle on the stale markup and the assertion
+      // could then read the empty in-between render. The Testdaten section only
+      // exists in admin mode and is therefore the barrier for that re-render.
+      await adminPage.waitForSelector('#admin-test-players-title');
+    }
 
     await adminPage.waitForSelector('#admin-members-retry');
-    assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \([1-9]\d*\)$/);
     await adminPage.waitForSelector(`.admin-player-row:has-text("${NAME}")`);
+    await adminPage.waitForFunction(() => /^Benutzer \([1-9]\d*\)$/.test(document.querySelector('#admin-players-title')?.textContent ?? ''));
+    assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \([1-9]\d*\)$/);
     await adminPage.click('#admin-members-retry');
 
     let roleSelect = adminPage.locator(`[data-player-role="${target.id}"]`);
@@ -513,14 +566,14 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
     // Despite having no real admin role, it must see its seeded peer (not
     // just itself) - otherwise it could never join a carpool/vote/arcade
     // lobby created by another test player (see testFilter.js isTestIdentity()).
-    await testPage.click('.nav-btn[data-view="more"]');
-    await testPage.click('[data-navigate="players"]');
-    await testPage.waitForSelector(`text=${peerTestPlayer.name}`);
+    // Home's Live-Status is the roster since the separate "Spieler" area was
+    // removed.
+    await testPage.click('.nav-btn[data-view="home"]');
+    await testPage.waitForSelector(`button[data-player]:has-text("${peerTestPlayer.name}")`);
 
     // But it does not gain real admin rights.
     await testPage.click('.nav-btn[data-view="more"]');
-    await testPage.click('[data-navigate="admin"]');
-    await testPage.waitForSelector('text=Dieses Konto hat keine Admin-Rechte.');
+    assert.equal(await testPage.locator('[data-navigate="admin"]').count(), 0);
   } finally {
     await testPage.close();
   }

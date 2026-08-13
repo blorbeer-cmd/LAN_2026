@@ -80,6 +80,7 @@ infoBoardRouter.patch('/:id', requireGroupRole('admin'), (req, res) => {
     .prepare('SELECT * FROM info_entries WHERE id = ? AND group_id = ?')
     .get(req.params.id, req.group!.id) as InfoRow | undefined;
   if (!existing) return res.status(404).json({ error: 'Eintrag nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, existing.event_id)) return;
 
   const { title, content } = req.body ?? {};
   if (title !== undefined && !isNonEmptyString(title, MAX_TITLE_LENGTH)) {
@@ -104,8 +105,13 @@ infoBoardRouter.patch('/:id', requireGroupRole('admin'), (req, res) => {
 });
 
 infoBoardRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
-  const result = db.prepare('DELETE FROM info_entries WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Eintrag nicht gefunden.' });
+  const existing = db.prepare('SELECT * FROM info_entries WHERE id = ? AND group_id = ?').get(
+    req.params.id,
+    req.group!.id,
+  ) as InfoRow | undefined;
+  if (!existing) return res.status(404).json({ error: 'Eintrag nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, existing.event_id)) return;
+  db.prepare('DELETE FROM info_entries WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.group!.id,

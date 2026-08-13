@@ -15,8 +15,15 @@ export const DOMAIN_ICONS = Object.freeze({
   arrivals: 'van',
   analytics: 'chart',
   hallOfFame: 'landmark',
-  infoBoard: 'pin',
-  players: 'users',
+  // Info lives in the topbar as the conventional "i" instead of a pinned note:
+  // it is one small always-available control, not an area in the nav.
+  infoBoard: 'info',
+  // Merged top-level areas (see sectionNav.js). Each one reuses the symbol of
+  // its leading tab so the nav keeps the meaning it already had.
+  competition: 'swords',
+  insights: 'trophy',
+  orga: 'clipboard',
+  checklistPacking: 'clipboard',
   live: 'radioTower',
   foodOrders: 'hamburger',
   checklist: 'clipboard',
@@ -25,6 +32,7 @@ export const DOMAIN_ICONS = Object.freeze({
   gameCatalog: 'gamepad',
   skill: 'activity',
   music: 'music',
+  events: 'calendar',
 });
 
 export function domainIcon(key, fallback = 'bell') {

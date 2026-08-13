@@ -50,7 +50,7 @@ function arcadeFlowTest(
 }
 
 async function waitForArcadeStylesheet(targetPage: Page): Promise<void> {
-  await targetPage.waitForSelector('#arcade-stylesheet[href="/css/arcade.css?v=1"]', { state: 'attached' });
+  await targetPage.waitForSelector('#arcade-stylesheet[href="/css/arcade.css?v=2"]', { state: 'attached' });
   await targetPage.waitForFunction(() => {
     const link = document.querySelector('#arcade-stylesheet');
     return link instanceof HTMLLinkElement && link.sheet !== null;
@@ -122,6 +122,54 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
   await waitForArcadeStylesheet(page);
   // Arcade is a launcher; select the quiz tile before its lobby controls
   // become visible (module state is intentionally reset on a fresh run).
+  await page.click('[data-game="quiz"]');
+  await page.waitForSelector('#quiz-create-lobby');
+  const mobileInsets = await page.locator('#quiz-create-lobby').evaluate((button) => {
+    const buttonRect = button.getBoundingClientRect();
+    const rowRect = button.closest('.arcade-lobby-create-row')!.getBoundingClientRect();
+    return {
+      left: Math.round(buttonRect.left - rowRect.left),
+      right: Math.round(rowRect.right - buttonRect.right),
+    };
+  });
+  assert.deepEqual(mobileInsets, { left: 0, right: 0 });
+
+  const mobileViewport = page.viewportSize();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const createButtonLayout = async (selector: string) => page.locator(selector).evaluate((button) => {
+    const buttonRect = button.getBoundingClientRect();
+    const cardRect = button.closest('.arcade-lobby-card')!.getBoundingClientRect();
+    return {
+      left: Math.round(buttonRect.left - cardRect.left),
+      right: Math.round(cardRect.right - buttonRect.right),
+      top: Math.round(buttonRect.top - cardRect.top),
+      width: Math.round(buttonRect.width),
+      height: Math.round(buttonRect.height),
+    };
+  });
+  const noModeLayout = await createButtonLayout('#quiz-create-lobby');
+  assert.ok(Math.abs(noModeLayout.left - noModeLayout.right) <= 1, 'the no-mode create action must be centered');
+  await page.click('[data-game="scribble"]');
+  await page.waitForSelector('#scribble-create');
+  assert.deepEqual(await createButtonLayout('#scribble-create'), noModeLayout);
+
+  const duelDefaults = [
+    ['tetris', '#tetris-create', '#tetris-mode [data-arcade-mode="duel"]'],
+    ['pong', '#pong-create', '#pong-mode [data-arcade-mode="duel"]'],
+    ['snake', '#snake-create', '#snake-mode [data-arcade-mode="classic"]'],
+    ['blobby', '#blobby-create', '#blobby-mode [data-arcade-mode="duel"]'],
+  ] as const;
+  let modeLayout: Awaited<ReturnType<typeof createButtonLayout>> | null = null;
+  for (const [game, createSelector, duelSelector] of duelDefaults) {
+    await page.click(`[data-game="${game}"]`);
+    await page.waitForSelector(createSelector);
+    assert.equal(await page.locator(duelSelector).getAttribute('aria-pressed'), 'true');
+    const currentLayout = await createButtonLayout(createSelector);
+    if (modeLayout) assert.deepEqual(currentLayout, modeLayout);
+    else modeLayout = currentLayout;
+  }
+
+  if (mobileViewport) await page.setViewportSize(mobileViewport);
   await page.click('[data-game="quiz"]');
   await page.waitForSelector('#quiz-create-lobby');
   await page.click('#quiz-create-lobby');
@@ -198,7 +246,7 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby warns and closes the owne
       ).some((select) => Math.round(select.getBoundingClientRect().height) === 32), game);
       assert.equal(
         await targetSelect.inputValue(),
-        game === 'pong' ? '21' : '7',
+        '7',
       );
       // Rounded: see the #admin-count assertion above for why.
       assert.equal(await targetSelect.evaluate((select) => Math.round(select.getBoundingClientRect().height)), 32);
@@ -440,7 +488,7 @@ arcadeFlowTest('full', 'Arcade: Scribble - host draws, a second device guesses c
             reject(new Error('watch-list probe timed out'));
           }, 5_000);
           probe.once('connect', () => {
-            probe.emit('scope:subscribe', { groupId: 'default-group', eventId: null }, (result: { error?: string }) => {
+            probe.emit('scope:subscribe', { groupId: 'default-group', eventId: 'instance-base-event' }, (result: { error?: string }) => {
               if (result?.error) {
                 clearTimeout(timeout);
                 probe.close();

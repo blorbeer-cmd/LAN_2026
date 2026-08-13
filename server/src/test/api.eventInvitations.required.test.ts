@@ -11,7 +11,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
     const assert = require('assert/strict');
     const request = require('supertest');
     const { createApp } = require(${JSON.stringify(APP_JS_PATH)});
-    const { db, DEFAULT_GROUP_ID } = require(${JSON.stringify(DB_JS_PATH)});
+    const { db, DEFAULT_GROUP_ID, BASE_EVENT_ID } = require(${JSON.stringify(DB_JS_PATH)});
 
     function cookie(response) {
       return response.headers['set-cookie'][0].split(';')[0];
@@ -81,28 +81,81 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal(repeatedInvite.status, 200);
       assert.equal(repeatedInvite.body.status, 'invited');
 
+      // The invitation must reach the invitee as a notification. It has to be
+      // recorded against the base event: the invitee is by definition not an
+      // accepted participant of the event being offered, and notifyPlayers
+      // only delivers inside its scope event's accepted set.
+      const invitationTopic = 'event-invitation:' + event.body.id + ':' + bob.account.id;
+      function invitationPushRows() {
+        return db
+          .prepare('SELECT event_id AS eventId, audience, player_ids AS playerIds, url, resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?')
+          .all(invitationTopic);
+      }
+      const invitationPushes = invitationPushRows();
+      assert.equal(invitationPushes.length, 1, 'a repeated invite must not notify a second time');
+      assert.equal(invitationPushes[0].eventId, BASE_EVENT_ID);
+      assert.equal(invitationPushes[0].audience, 'direct');
+      assert.equal(invitationPushes[0].url, '/#events');
+      assert.deepEqual(JSON.parse(invitationPushes[0].playerIds), [bob.account.id]);
+      assert.equal(invitationPushes[0].resolvedAt, null);
+      // It is genuinely readable for the invitee, whatever workspace is
+      // active for them — that is the whole point of notifying them about an
+      // event they cannot see yet.
+      const invitationFeed = await call(app, 'get', '/api/push/log', bob);
+      assert.equal(invitationFeed.status, 200);
+      assert.ok(
+        invitationFeed.body.entries.some((entry) => entry.title === 'Event-Einladung' && entry.body.includes('Invitation Event')),
+        'the invitee must see the invitation in their notification feed',
+      );
+
       const invitedList = await call(app, 'get', '/api/events', bob);
-      const invitedEvent = invitedList.body.find((entry) => entry.id === event.body.id);
-      assert.deepEqual(invitedEvent.participantIds, []);
-      assert.deepEqual(invitedEvent.participants, [{ playerId: bob.account.id, status: 'invited' }]);
+      const invitedEvent = invitedList.body.invitations.find((entry) => entry.id === event.body.id);
+      assert.equal(invitedEvent.participationStatus, 'invited');
+      assert.equal('participantIds' in invitedEvent, false);
+      assert.equal('participants' in invitedEvent, false);
       assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, bob)).status, 404);
-      assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, owner)).status, 200);
+      assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, owner)).status, 404);
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/tracking-consent', bob)).status, 409);
 
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', carol)).status, 409);
-      assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', bob)).status, 200);
-      assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', bob)).status, 200);
+      const firstAccept = await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', bob);
+      assert.equal(firstAccept.status, 200, JSON.stringify(firstAccept.body));
+      const repeatedAccept = await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', bob);
+      assert.equal(repeatedAccept.status, 200, JSON.stringify(repeatedAccept.body));
+      // Answering the invitation retires its notification: it stays in the
+      // history, but stops being an open item in banners.
+      assert.notEqual(invitationPushRows()[0].resolvedAt, null, 'accepting must resolve the invitation notification');
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/tracking-consent', bob)).status, 200);
       assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, bob)).status, 200);
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/invitation/decline', bob)).status, 409);
 
       const acceptedEvent = (await call(app, 'get', '/api/events/' + event.body.id, bob)).body;
       assert.deepEqual(acceptedEvent.participantIds, [bob.account.id]);
-      assert.deepEqual(acceptedEvent.participants, [{ playerId: bob.account.id, status: 'accepted' }]);
+      assert.equal('participants' in acceptedEvent, false);
 
       const removed = await call(app, 'delete', '/api/events/' + event.body.id + '/participants/' + bob.account.id, owner);
       assert.equal(removed.status, 204);
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', bob)).status, 409);
+      assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/end', owner)).status, 200);
+      const lateInvite = await call(app, 'post', '/api/events/' + event.body.id + '/invitations', owner)
+        .send({ playerId: bob.account.id });
+      assert.equal(lateInvite.status, 409);
+
+      // Withdrawing an unanswered invitation is the third way it stops being
+      // open. Its notification must retire with it, or the banner keeps
+      // asking about an event the account can no longer see at all.
+      const withdrawnEvent = await call(app, 'post', '/api/events', owner).send({
+        name: 'Withdrawn Event', startsAt: now, endsAt: now + 60_000,
+      });
+      assert.equal(withdrawnEvent.status, 201);
+      assert.equal((await call(app, 'post', '/api/events/' + withdrawnEvent.body.id + '/invitations', owner).send({ playerId: bob.account.id })).status, 201);
+      const withdrawnTopic = 'event-invitation:' + withdrawnEvent.body.id + ':' + bob.account.id;
+      function withdrawnPushRow() {
+        return db.prepare('SELECT resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?').get(withdrawnTopic);
+      }
+      assert.equal(withdrawnPushRow().resolvedAt, null, 'the invitation is an open item first');
+      assert.equal((await call(app, 'delete', '/api/events/' + withdrawnEvent.body.id + '/participants/' + bob.account.id, owner)).status, 204);
+      assert.notEqual(withdrawnPushRow().resolvedAt, null, 'withdrawing must resolve the invitation notification');
 
       const declineEvent = await call(app, 'post', '/api/events', owner).send({
         name: 'Decline Event', startsAt: now, endsAt: now + 60_000,
@@ -112,9 +165,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal((await call(app, 'post', '/api/events/' + declineEvent.body.id + '/invitation/decline', bob)).status, 200);
       assert.equal((await call(app, 'post', '/api/events/' + declineEvent.body.id + '/invitation/decline', bob)).status, 200);
       assert.equal((await call(app, 'post', '/api/events/' + declineEvent.body.id + '/invitation/accept', bob)).status, 409);
-      const declined = (await call(app, 'get', '/api/events/' + declineEvent.body.id, bob)).body;
-      assert.deepEqual(declined.participantIds, []);
-      assert.equal(declined.participants[0].status, 'declined');
+      assert.equal((await call(app, 'get', '/api/events/' + declineEvent.body.id, bob)).status, 404);
       assert.equal((await call(app, 'get', '/api/seating?eventId=' + declineEvent.body.id, bob)).status, 404);
 
       assert.equal((await call(app, 'post', '/api/events/' + declineEvent.body.id + '/invitations', owner).send({ playerId: bob.account.id })).status, 201);
@@ -124,7 +175,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       ]);
       assert.equal(race.filter((response) => response.status === 200).length, 1, race.map((response) => response.status).join(','));
       assert.equal(race.filter((response) => response.status === 409).length, 1);
-      const finalEvent = (await call(app, 'get', '/api/events/' + declineEvent.body.id, bob)).body;
+      const finalEvent = (await call(app, 'get', '/api/events/' + declineEvent.body.id, owner)).body;
       const finalStatus = finalEvent.participants.find((entry) => entry.playerId === bob.account.id).status;
       assert.ok(['accepted', 'declined'].includes(finalStatus));
       assert.equal(finalEvent.participantIds.includes(bob.account.id), finalStatus === 'accepted');
@@ -143,10 +194,11 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       const bobEvents = (await call(app, 'get', '/api/events', bob)).body;
       const carolEvents = (await call(app, 'get', '/api/events', carol)).body;
       const ownerEvents = (await call(app, 'get', '/api/events', owner)).body;
-      assert.equal(bobEvents.find((event) => event.id === scopeEvent.body.id).canAccess, false);
-      assert.equal(carolEvents.find((event) => event.id === scopeEvent.body.id).canAccess, false);
-      assert.equal(ownerEvents.find((event) => event.id === scopeEvent.body.id).canAccess, true);
-      assert.equal(bobEvents.find((event) => event.isOutsideEvents).canAccess, true);
+      assert.ok(bobEvents.invitations.some((event) => event.id === scopeEvent.body.id));
+      assert.ok(!carolEvents.availableEvents.some((event) => event.id === scopeEvent.body.id));
+      assert.ok(!carolEvents.invitations.some((event) => event.id === scopeEvent.body.id));
+      assert.ok(ownerEvents.managedEvents.some((event) => event.id === scopeEvent.body.id));
+      assert.ok(bobEvents.availableEvents.some((event) => event.isBase));
 
       const explicitScopedRoutes = (actor) => [
         ['/api/broadcasts?eventId=' + scopeEvent.body.id, 'get'],
@@ -165,7 +217,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
         }
       }
 
-      const implicitGroupRoomRoutes = (actor) => [
+      const implicitActiveEventRoutes = (actor) => [
         '/api/arrivals',
         '/api/food-orders',
         '/api/broadcasts',
@@ -184,20 +236,20 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
         '/api/arcade/lobbies',
       ];
       for (const actor of [bob, carol]) {
-        for (const path of implicitGroupRoomRoutes(actor)) {
+        for (const path of implicitActiveEventRoutes(actor)) {
           const response = await call(app, 'get', path, actor);
-          assert.equal(response.status, 200, 'GET ' + path + ' must use the group room for ' + actor.account.name + ': ' + JSON.stringify(response.body));
+          assert.equal(response.status, 200, 'GET ' + path + ' must use the active base event for ' + actor.account.name + ': ' + JSON.stringify(response.body));
         }
       }
 
       db.prepare("UPDATE event_participants SET status = 'accepted' WHERE event_id = ? AND player_id = ?").run(scopeEvent.body.id, bob.account.id);
       const acceptedEvents = (await call(app, 'get', '/api/events', bob)).body;
-      assert.equal(acceptedEvents.find((event) => event.id === scopeEvent.body.id).canAccess, true);
+      assert.ok(acceptedEvents.availableEvents.some((event) => event.id === scopeEvent.body.id));
       for (const [path, method] of explicitScopedRoutes(bob)) {
         assert.equal((await call(app, method, path, bob)).status, 200, method.toUpperCase() + ' ' + path + ' must admit accepted participants');
       }
       for (const [path, method] of explicitScopedRoutes(owner)) {
-        assert.equal((await call(app, method, path, owner)).status, 200, method.toUpperCase() + ' ' + path + ' must admit event admins');
+        assert.equal((await call(app, method, path, owner)).status, 404, method.toUpperCase() + ' ' + path + ' must not bypass event participation');
       }
     })().catch((error) => {
       console.error(error);

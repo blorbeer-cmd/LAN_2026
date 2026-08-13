@@ -73,7 +73,8 @@ test('group roles, event resources and audit stay isolated inside the one real g
 
       const bobEventsA = await scoped(app, 'get', '/api/events', bob.cookie);
       assert.equal(bobEventsA.status, 200);
-      assert.ok(bobEventsA.body.some((event) => event.id === eventA.body.id));
+      assert.equal(bobEventsA.body.availableEvents.some((event) => event.id === eventA.body.id), false);
+      assert.ok(bobEventsA.body.availableEvents.some((event) => event.isBase));
       const bobCreateDenied = await scoped(app, 'post', '/api/events', bob.cookie).send({
         name: 'Forbidden', startsAt: now, endsAt: now + 60_000,
       });
@@ -87,6 +88,8 @@ test('group roles, event resources and audit stay isolated inside the one real g
       const ownParticipant = await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice.cookie)
         .send({ playerIds: [bob.account.id] });
       assert.equal(ownParticipant.status, 200, JSON.stringify(ownParticipant.body));
+      const bobEventsAfterJoin = await scoped(app, 'get', '/api/events', bob.cookie);
+      assert.ok(bobEventsAfterJoin.body.availableEvents.some((event) => event.id === eventA.body.id));
 
       db.prepare(
         'INSERT INTO players (id, name, api_key, is_admin, password_hash, created_at) VALUES (?, ?, ?, 1, NULL, ?)'

@@ -2,57 +2,33 @@ import { nanoid } from 'nanoid';
 import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 
-export interface TrackingContext { groupId: string; eventId: string | null; weight: number; }
+export interface TrackingContext {
+  groupId: string;
+  eventId: string;
+  weight: number;
+}
 
-// Resolve the complete fan-out set.  A group room is used only when no
-// accepted event is currently in its window; overlapping accepted events share
-// the report's time proportionally, so analytics never double-count a tick.
+// Resolve the single trackable context selected by this account. Parallel
+// events are supported, but one account report belongs to one active event.
 export function activeTrackingContexts(playerId: string, now = Date.now()): TrackingContext[] {
-  const groups = db.prepare(
-    `SELECT gm.group_id FROM group_memberships gm
-     JOIN groups g ON g.id = gm.group_id
-     WHERE gm.player_id = ? AND gm.status = 'active' AND g.archived_at IS NULL`,
-  ).all(playerId) as Array<{ group_id: string }>;
-  const result: TrackingContext[] = [];
-  for (const { group_id: groupId } of groups) {
-    const hasGroupConsent = Boolean(
-      db.prepare(
-        `SELECT 1 FROM group_tracking_consents
-         WHERE group_id = ? AND player_id = ? AND revoked_at IS NULL
-         LIMIT 1`,
-      ).get(groupId, playerId),
-    );
-    const events = db.prepare(
-      `SELECT e.id, e.visibility_scope FROM events e
-       WHERE e.group_id = ? AND e.tracking_enabled = 1 AND e.status = 'published'
-         AND (
-           (? = 1 AND e.visibility_scope IN ('group', 'public'))
-           OR (
-             e.visibility_scope = 'participants'
-             AND EXISTS (
-               SELECT 1 FROM event_participants ep
-               WHERE ep.event_id = e.id AND ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
-             )
-             AND (
-               EXISTS (
-                 SELECT 1 FROM event_tracking_consents c
-                 WHERE c.event_id = e.id AND c.player_id = ? AND c.revoked_at IS NULL
-               )
-             )
-           )
-         )
+  const active = db
+    .prepare(
+      `SELECT e.id AS eventId, e.group_id AS groupId
+       FROM player_event_contexts pec
+       JOIN events e ON e.id = pec.active_event_id
+       JOIN event_participants ep
+         ON ep.event_id = e.id AND ep.player_id = pec.player_id AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
+       JOIN group_memberships gm
+         ON gm.group_id = e.group_id AND gm.player_id = pec.player_id AND gm.status = 'active'
+       JOIN groups g ON g.id = gm.group_id AND g.archived_at IS NULL
+       JOIN event_tracking_consents c
+         ON c.event_id = e.id AND c.player_id = pec.player_id AND c.revoked_at IS NULL
+       WHERE pec.player_id = ? AND e.tracking_enabled = 1 AND e.status = 'published'
          AND e.starts_at <= ? AND (e.ends_at IS NULL OR e.ends_at > ?)
-       ORDER BY e.id`,
-    ).all(groupId, hasGroupConsent ? 1 : 0, playerId, playerId, now, now) as Array<{ id: string; visibility_scope: string }>;
-    const activeEventCount = (db.prepare("SELECT COUNT(*) AS count FROM events WHERE group_id = ? AND tracking_enabled = 1 AND status = 'published' AND starts_at <= ? AND (ends_at IS NULL OR ends_at > ?)").get(groupId, now, now) as { count: number }).count;
-    if (events.length) {
-      const weight = 1 / events.length;
-      for (const event of events) result.push({ groupId, eventId: event.id, weight });
-    } else if (activeEventCount === 0 && hasGroupConsent) {
-      result.push({ groupId, eventId: null, weight: 1 });
-    }
-  }
-  return result;
+       LIMIT 1`,
+    )
+    .get(playerId, now, now) as { eventId: string; groupId: string } | undefined;
+  return active ? [{ groupId: active.groupId, eventId: active.eventId, weight: 1 }] : [];
 }
 
 export function setGroupTrackingConsent(groupId: string, playerId: string, granted: boolean, now = Date.now()): void {

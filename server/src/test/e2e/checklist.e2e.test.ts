@@ -28,7 +28,7 @@ let bob: E2EAccount;
 async function openChecklist(): Promise<void> {
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="checklist"]');
-  await page.waitForSelector('.view-title:has-text("Checkliste")');
+  await page.waitForSelector('.view-title:has-text("Orga")');
 }
 
 async function switchAccount(account: E2EAccount): Promise<void> {
@@ -65,8 +65,9 @@ test('create a To-Do as one member, claim and complete it as another, "Mir zugew
   await openChecklist();
   await page.waitForSelector('#checklist-new-todo-btn:not([disabled])');
 
-  // Defaults to the To-Dos tab (not Meine Packliste).
-  assert.equal(await page.locator('[data-checklist-tab="todos"]').getAttribute('aria-pressed'), 'true');
+  // Orga opens on To-Dos (not Packliste), and the area's tab row marks it.
+  assert.equal(await page.locator('[data-section-tab="checklist"]').getAttribute('aria-current'), 'page');
+  assert.equal(await page.locator('[data-section-tab="checklistPacking"]').getAttribute('aria-current'), null);
 
   await page.click('#checklist-new-todo-btn');
   await page.waitForSelector('#todo-title');
@@ -151,4 +152,53 @@ test('any member (not just Owner/Admin) can create and directly self-assign a To
   const mineCard = page.locator('[data-checklist-task]', { hasText: 'Namensschilder drucken' });
   await mineCard.waitFor();
   assert.equal(await mineCard.locator('[data-release-task]').count(), 1);
+});
+
+test('the Packliste draft and its focus survive a realtime re-render of the area', async () => {
+  // Regression for the area shell: it used to replace the whole #view-container
+  // (heading, tab row and content slot) before handing control to the sub-view,
+  // so renderChecklist read its "what was typed last" snapshot from an already
+  // emptied node and silently dropped a half-written entry on every background
+  // refresh.
+  await switchAccount(alice);
+  await openChecklist();
+  await page.click('[data-section-tab="checklistPacking"]');
+  const draft = page.locator('[data-add-item-form] [data-item-label]');
+  await draft.waitFor();
+  await draft.click();
+  await draft.fill('Ersatzmaus');
+
+  // Bob assigns a To-Do to Alice: the server broadcasts checklist:changed, this
+  // tab re-renders, and the count on the neighbouring To-Dos tab is the visible
+  // proof that the re-render actually landed.
+  const created = await page.request.post(`${BASE_URL}/api/checklist/tasks/todo`, {
+    headers: { cookie: bob.cookie },
+    data: { playerId: bob.id, title: 'Beamer mitbringen', assigneePlayerIds: [alice.id] },
+  });
+  assert.equal(created.status(), 201, await created.text());
+  await page.waitForSelector('[data-section-tab="checklist"] [data-section-tab-count]:text("(1)")');
+
+  // The typed value and the caret stay where they were.
+  assert.equal(await draft.inputValue(), 'Ersatzmaus');
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.matches('[data-add-item-form] [data-item-label]')),
+    true,
+    'focus must stay in the add-item field across a background re-render',
+  );
+
+  // Submitting still works afterwards, so the surviving node is the live one.
+  await page.click('[data-add-item-form] button[type="submit"]');
+  await page.waitForSelector('.checklist-item-list:has-text("Ersatzmaus")');
+});
+
+test('the To-Dos tab count is present on every Orga tab, not only on the To-Dos list', async () => {
+  // Regression: openTaskCount() reads a cache that only the To-Dos list filled,
+  // so entering Orga through another tab left the badge permanently blank.
+  await switchAccount(bob);
+  // Bob still owns the self-assigned "Namensschilder drucken" To-Do, and the
+  // area is entered through a tab that never touches that list.
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'arrivals' })));
+  await page.waitForSelector('#view-container[data-view="arrivals"]');
+  await page.waitForSelector('[data-section-tab="checklist"] [data-section-tab-count]:text("(1)")');
+  assert.equal(await page.locator('[data-section-tab="checklist"][aria-current="page"]').count(), 0);
 });

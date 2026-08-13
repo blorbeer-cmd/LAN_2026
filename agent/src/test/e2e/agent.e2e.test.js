@@ -163,6 +163,27 @@ test('agent reports the running node process and the server reflects it as "play
   assert.equal(claimRes.status, 200);
   playerCookie = claimRes.headers.get('set-cookie').split(';')[0];
 
+  // Agent reports are deliberately counted only inside the account's active
+  // event, while that event's tracking window is open and the participant has
+  // opted in. Set up that real contract explicitly instead of relying on the
+  // legacy group-wide tracking default.
+  const activeEventRes = await fetch(`${BASE_URL}/api/events/active`, {
+    headers: { Cookie: playerCookie },
+  });
+  assert.equal(activeEventRes.status, 200);
+  const activeEvent = await activeEventRes.json();
+  const trackingStartRes = await fetch(`${BASE_URL}/api/events/${activeEvent.id}/tracking/start`, {
+    method: 'POST',
+    headers: { Cookie: adminCookie },
+  });
+  assert.equal(trackingStartRes.status, 200, await trackingStartRes.text());
+  const consentRes = await fetch(`${BASE_URL}/api/events/${activeEvent.id}/tracking-consent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: playerCookie },
+    body: JSON.stringify({ granted: true }),
+  });
+  assert.equal(consentRes.status, 200, await consentRes.text());
+
   // Write a real agent config file and start the real agent loop.
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-e2e-'));
   configFile = path.join(tempDir, 'agent.config.json');

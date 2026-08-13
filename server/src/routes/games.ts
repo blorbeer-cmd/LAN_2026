@@ -12,7 +12,7 @@ import { isNonEmptyString, isIntInRange, isValidAvatar } from '../validation';
 import { writeAdminAudit } from '../adminAudit';
 import { requireRecentReauthentication, withBodyPlayerIdentity } from '../sessions';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
-import { getLiveBoard } from '../liveStatus';
+import { broadcastLiveBoards } from '../liveStatus';
 
 export const gamesRouter = Router();
 
@@ -486,7 +486,7 @@ gamesRouter.delete(
       targetId: existing.id,
     });
     broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
-    broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
+    broadcastLiveBoards(req.group!.id);
     res.status(204).end();
   },
 );

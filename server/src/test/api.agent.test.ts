@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createTestApp } from './testApp';
+import { createTestApp, enableTestTracking } from './testApp';
 import { db } from '../db';
 
 const app = createTestApp();
@@ -23,6 +23,7 @@ test('setup: create a player and locate two seeded games', async () => {
   const player = await request(app).post('/api/players').send({ name: 'Agent Tester' });
   playerId = player.body.id;
   apiKey = player.body.api_key;
+  enableTestTracking(playerId);
 
   const games = await request(app).get('/api/games');
   cs2GameId = games.body.find((g: { name: string }) => g.name === 'Counter-Strike 2').id;

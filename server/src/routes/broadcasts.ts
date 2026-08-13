@@ -66,6 +66,7 @@ broadcastsRouter.get('/', (req, res) => {
   const scope = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  if (!scope.eventId) return res.status(404).json({ error: 'Event nicht gefunden.' });
   res.json(buildList(req.group!.id, scope.eventId));
 });
 
@@ -80,6 +81,7 @@ broadcastsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const scope = resolveRequestGroupEventScope(req, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
   if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  if (!scope.eventId) return res.status(404).json({ error: 'Event nicht gefunden.' });
   if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
@@ -174,6 +176,7 @@ broadcastsRouter.post('/:id/end', ...withBodyPlayerIdentity, (req, res) => {
     .prepare('SELECT * FROM broadcasts WHERE id = ? AND group_id = ?')
     .get(req.params.id, req.group!.id) as BroadcastRow | undefined;
   if (!row) return res.status(404).json({ error: 'Durchsage nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, row.event_id)) return;
   const mayModerate = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
   if (row.player_id !== playerId && !mayModerate) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Gruppen-Admin kann diese Durchsage beenden.' });

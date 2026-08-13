@@ -115,15 +115,22 @@ export const DISPATCH_CODES = {
 };
 
 /** Pure eligibility check; the workflow calls it only after deriving current readiness. */
-export function deriveClaudeReviewDispatch(readiness) {
-  if (readiness.phase !== "review") {
+export function deriveClaudeReviewDispatch(readiness, snapshot = null) {
+  const currentHeadCrossChoice = Boolean(
+    readiness.details?.mechanicallyGreen === true &&
+      snapshot?.headSha &&
+      snapshot.labels?.includes("review:cross") &&
+      readiness.details?.reviewDecision?.record?.headSha === snapshot.headSha &&
+      readiness.details?.reviewDecision?.record?.mode === "none",
+  );
+  if (readiness.phase !== "review" && !currentHeadCrossChoice) {
     return {
       shouldRun: false,
       code: DISPATCH_CODES.phase,
       reason: `phase is ${readiness.phase}`,
     };
   }
-  if (readiness.details?.reviewMode !== "cross") {
+  if (readiness.details?.reviewMode !== "cross" && !currentHeadCrossChoice) {
     return {
       shouldRun: false,
       code: DISPATCH_CODES.mode,
@@ -506,7 +513,7 @@ async function dispatchCommand(args) {
 
   const { snapshot } = await fetchSnapshot({ owner, repo, pullNumber, token });
   const readiness = deriveReadiness(snapshot, loadConfig());
-  const decision = deriveClaudeReviewDispatch(readiness);
+  const decision = deriveClaudeReviewDispatch(readiness, snapshot);
   const values = {
     should_run: decision.shouldRun,
     code: decision.code,

@@ -347,6 +347,10 @@ arcadeTest('navigation', 'the kiosk removes stale quiz markup before rendering a
     await guest.page.click('[data-snake-join]');
     await host.page.waitForSelector('#snake-start:not([disabled])');
     await host.page.click('#snake-start');
+    // Freeze the continuously rendered match before asserting the kiosk transition. Otherwise
+    // every game tick can replace the finish button while Playwright is trying to click it.
+    await host.page.dispatchEvent('#snake-pause', 'click');
+    await host.page.waitForSelector('.snake-overlay');
 
     await kiosk.waitForSelector('#kiosk-game-content canvas');
     assert.equal(await kiosk.locator('#kiosk-game-content .kiosk-game-question').count(), 0);
@@ -717,6 +721,8 @@ arcadeTest('multiplayer', 'Blobby Doppel: mobile lobby assigns two full teams an
       await actor.page.waitForSelector('#blobby-create');
     }
     const [host, blue, pinkA, pinkB] = actors;
+    assert.equal(await host.page.locator('#blobby-mode [data-arcade-mode="duel"]').getAttribute('aria-pressed'), 'true');
+    await host.page.click('#blobby-mode [data-arcade-mode="doubles"]');
     assert.equal(await host.page.locator('#blobby-mode [data-arcade-mode="doubles"]').getAttribute('aria-pressed'), 'true');
     await host.page.click('#blobby-create');
     await host.page.waitForSelector('text=Team Blau');
@@ -767,6 +773,8 @@ arcadeTest('multiplayer', 'Pong Doppel: mobile and desktop lobbies assign two fu
       await actor.page.waitForSelector('#pong-create');
     }
     const [host, blue, pinkA, pinkB] = actors;
+    assert.equal(await host.page.locator('#pong-mode [data-arcade-mode="duel"]').getAttribute('aria-pressed'), 'true');
+    await host.page.click('#pong-mode [data-arcade-mode="doubles"]');
     assert.equal(await host.page.locator('#pong-mode [data-arcade-mode="doubles"]').getAttribute('aria-pressed'), 'true');
     await host.page.click('#pong-create');
     await host.page.waitForSelector('text=Team Blau');

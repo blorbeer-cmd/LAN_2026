@@ -3,8 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createTestApp } from './testApp';
-import { db } from '../db';
+import { createTestApp, enableTestTracking } from './testApp';
+import { db, DEFAULT_GROUP_ID } from '../db';
 import { KIOSK_RESULT_DURATION_MS, KIOSK_RESULT_REVEAL_DELAY_MS, voteNotificationPlayerIds } from '../routes/votes';
 
 const app = createTestApp();
@@ -196,8 +196,8 @@ test('GET /api/votes/history still lists a round nobody voted in', async () => {
 });
 
 test('GET /api/votes/history ranks rounds with a result above later rounds nobody voted in', async () => {
-  // At this point round 1 (has votes) and round 3 (nobody voted, from the
-  // previous test) are both closed. Close a brand-new round 4 with a vote so
+  // At this point round 1 (has votes) and round 2 (nobody voted, from the
+  // previous test) are both closed. Close a brand-new round 3 with a vote so
   // the newest round in history is also a "no result" round beats out by an
   // older-but-voted round. Voting for Age of Empires 2 here (rather than CS2)
   // keeps this round's win out of the later "each result row reports its
@@ -209,7 +209,7 @@ test('GET /api/votes/history ranks rounds with a result above later rounds nobod
 
   const history = await request(app).get('/api/votes/history');
   const rounds = history.body.history.map((h: { round: number }) => h.round);
-  assert.deepEqual(rounds, [closed.body.round, 1, 3]);
+  assert.deepEqual(rounds, [closed.body.round, 1, 2]);
 });
 
 test('a fresh round with no votes yet is sorted by aggregate "Bock" rating (Beliebtheit)', async () => {
@@ -393,6 +393,7 @@ test('each result row reports total all-time playtime, growing as sessions are t
   assert.equal(cs2Before.totalPlaytimeFormatted, '0m');
 
   const player = await request(app).post('/api/players').send({ name: 'Playtime Voter' });
+  enableTestTracking(player.body.id);
   await request(app).post('/api/agent/report').set('x-api-key', player.body.api_key).send({ processNames: ['cs2.exe'] });
   await new Promise((r) => setTimeout(r, 50));
   await request(app).post('/api/agent/report').set('x-api-key', player.body.api_key).send({ processNames: [] });
@@ -413,7 +414,7 @@ test('vote notifications target only the active event roster', async () => {
   const started = await request(app).post(`/api/events/${event.body.id}/tracking/start`).send({});
   assert.equal(started.status, 200);
 
-  assert.deepEqual(voteNotificationPlayerIds(), [playerA]);
+  assert.deepEqual(voteNotificationPlayerIds(DEFAULT_GROUP_ID, event.body.id), [playerA]);
 });
 
 test('a round can carry a title/info and a preselection of games', async () => {

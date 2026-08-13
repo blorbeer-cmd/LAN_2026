@@ -12,7 +12,7 @@
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { db, OUTSIDE_EVENTS_ID } from '../db';
+import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { requireGroupEventAccess, resolveRequestGroupEventScope, resolveRequestGroupEventStorageId } from '../groupEventScope';
 import { isIntInRange, isNonEmptyString, isValidUrl } from '../validation';
@@ -37,7 +37,6 @@ const MAX_ITEM_QUANTITY = 99;
 const MAX_NOTES_LENGTH = 500;
 const MAX_LINK_LENGTH = 300;
 const HISTORY_LIMIT = 10;
-const communicationEventId = (eventId: string): string | null => (eventId === OUTSIDE_EVENTS_ID ? null : eventId);
 
 interface OrderRow {
   id: string;
@@ -144,8 +143,8 @@ function getOrder(id: string, groupId: string, eventId: string | null): OrderRow
     .get(id, groupId, eventId) as OrderRow | undefined;
 }
 
-function orderDeliveryScope(order: OrderRow): { groupId: string; eventId: string | null } {
-  return { groupId: order.group_id, eventId: communicationEventId(order.event_id) };
+function orderDeliveryScope(order: OrderRow): { groupId: string; eventId: string } {
+  return { groupId: order.group_id, eventId: order.event_id };
 }
 
 // GET /api/food-orders - current event's orders, newest first (open ones on
@@ -229,7 +228,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   // (they just tapped the button themselves). Scoped to the order's event so
   // non-participants of an event-only order are not prompted for it — the
   // same recipient set the push below is limited to.
-  const eventScope = communicationEventId(row.event_id);
+  const eventScope = row.event_id;
   broadcast(Events.foodOrdersChanged, {
     notify: {
       message: `Neue Sammelbestellung: ${row.title}${sendAtNote} – jetzt eintragen!`,
@@ -304,7 +303,7 @@ foodOrdersRouter.patch('/:id', requireUser, (req, res) => {
   if (sendAt !== undefined) {
     updatePushTopicExpiry(`food-order:${order.id}`, next.send_at, {
       groupId: order.group_id,
-      eventId: communicationEventId(order.event_id),
+      eventId: order.event_id,
     });
   }
   broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
@@ -326,7 +325,7 @@ foodOrdersRouter.delete('/:id', requireUser, (req, res) => {
   db.prepare('DELETE FROM food_orders WHERE id = ?').run(order.id);
   resolvePushTopic(`food-order:${order.id}`, false, {
     groupId: order.group_id,
-    eventId: communicationEventId(order.event_id),
+    eventId: order.event_id,
   });
   broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
   res.status(204).end();
@@ -439,7 +438,7 @@ foodOrdersRouter.post('/:id/close', requireUser, (req, res) => {
   db.prepare('UPDATE food_orders SET closed_at = ? WHERE id = ?').run(closedAt, order.id);
   resolvePushTopic(`food-order:${order.id}`, false, {
     groupId: order.group_id,
-    eventId: communicationEventId(order.event_id),
+    eventId: order.event_id,
   });
   broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
   res.json(serializeOrder({ ...order, closed_at: closedAt }));

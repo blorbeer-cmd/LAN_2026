@@ -174,6 +174,11 @@ function resetCreateForm() {
 
 function renderList(container, ctx) {
   if (listCache === null && !listLoading) loadList(ctx);
+  if (createOpen) {
+    container.innerHTML = '<div id="tourn-create" class="tournament-create-slot"></div>';
+    renderCreateForm(container.querySelector('#tourn-create'), ctx);
+    return;
+  }
 
   const tournamentCards = (tournaments) => `<div class="card-grid tournament-list-grid">${tournaments
     .map(
@@ -231,8 +236,7 @@ function renderList(container, ctx) {
   }
 
   container.innerHTML = `
-    <div class="row-between">
-      <h1 class="view-title">Turniere</h1>
+    <div class="row view-actions">
       <button type="button" class="btn btn-primary btn-sm" id="tourn-new-btn">Turnier anlegen</button>
     </div>
     ${currentListHtml}
@@ -257,9 +261,6 @@ function renderList(container, ctx) {
     completedSectionOpen = completedSection.open;
   });
 
-  if (createOpen) {
-    renderCreateForm(container.querySelector('#tourn-create'), ctx);
-  }
 }
 
 // A tournament runs on an accepted game only — a suggestion nobody has taken
@@ -271,8 +272,18 @@ function createFormGameId() {
 
 function renderCreateForm(el, ctx) {
   if (catalogGames().length === 0 || state.players.length < 2) {
-    el.innerHTML = emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', {
-      style: 'padding:var(--space-4);',
+    el.innerHTML = `<div class="card stack">
+      <div class="row-between">
+        <div class="section-title" style="margin:0;">Neues Turnier</div>
+        <button type="button" class="icon-btn" id="tourn-create-close" aria-label="Schließen">${icon('x')}</button>
+      </div>
+      ${emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', {
+        style: 'padding:var(--space-4);',
+      })}
+    </div>`;
+    el.querySelector('#tourn-create-close').addEventListener('click', () => {
+      resetCreateForm();
+      ctx.rerender();
     });
     return;
   }
@@ -350,7 +361,6 @@ function renderCreateForm(el, ctx) {
       <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="tournament-draw-step-title">
         <div class="tournament-create-step-title">
           <h3 id="tournament-draw-step-title">Auslosung</h3>
-          <span class="muted">Teams zusammenstellen</span>
         </div>
         <label class="field-label" for="tourn-game-search">Spiel auswählen</label>
         ${searchSelectHtml('tourn-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen…' })}
@@ -386,7 +396,6 @@ function renderCreateForm(el, ctx) {
       <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="tournament-mode-step-title">
         <div class="tournament-create-step-title">
           <h3 id="tournament-mode-step-title">Modus</h3>
-          <span class="muted">Ablauf festlegen</span>
         </div>
         <div class="title-with-info tournament-format-label">
           <label class="field-label" for="tourn-format">Turnierformat</label>
@@ -421,27 +430,13 @@ function renderCreateForm(el, ctx) {
           createFormat === 'round_robin' || createFormat === 'group_knockout'
             ? `<div class="check-row">
                  <input type="checkbox" id="tourn-two-legged" ${createTwoLegged ? 'checked' : ''} />
-                 <span class="title-with-info tournament-option-label">
-                   <label for="tourn-two-legged">Hin- und Rückspiel${createFormat === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>
-                   ${infoTooltipHtml(
-                       'tournament-two-legged-help',
-                       'Hin- und Rückspiel',
-                       'Jede Paarung wird zweimal gespielt.'
-                     )}
-                 </span>
+                 <label for="tourn-two-legged">Hin- und Rückspiel${createFormat === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>
                </div>`
             : ''
         }
         <div class="check-row">
           <input type="checkbox" id="tourn-track-score" ${createTrackScore ? 'checked' : ''} />
-          <span class="title-with-info tournament-option-label">
-            <label for="tourn-track-score">Ergebnisse inkl. Punktestand</label>
-            ${infoTooltipHtml(
-                'tournament-score-help',
-                'Ergebnisse inklusive Punktestand',
-                'Erfasst den genauen Punktestand statt nur Sieg oder Niederlage.'
-              )}
-          </span>
+          <label for="tourn-track-score">Ergebnisse inkl. Punktestand</label>
         </div>
         <div class="field-row">
           <div>
@@ -1027,7 +1022,6 @@ function renderGroupKnockout(t) {
         <section class="tournament-section-panel tournament-group-panel stack" aria-labelledby="tournament-group-${g.groupIndex}">
           <div class="tournament-create-step-title">
             <h3 id="tournament-group-${g.groupIndex}">Gruppe ${g.groupIndex + 1}</h3>
-            <span class="muted">Tabelle und Spielrunden</span>
           </div>
           ${renderRoundRobinBoard(t, teamsById, groupMatches, g.standings)}
         </section>`;
@@ -1038,11 +1032,11 @@ function renderGroupKnockout(t) {
   const knockoutHtml =
     knockoutMatches.length === 0
       ? `<section class="tournament-section-panel tournament-group-panel stack">
-           <div class="tournament-create-step-title"><h3>K.O.-Runde</h3><span class="muted">Entscheidungsphase</span></div>
+           <div class="tournament-create-step-title"><h3>K.O.-Runde</h3></div>
            ${emptyStateHtml('Startet automatisch, sobald alle Gruppenspiele entschieden sind.')}
          </section>`
       : `<section class="tournament-section-panel tournament-group-panel stack">
-           <div class="tournament-create-step-title"><h3>K.O.-Runde</h3><span class="muted">Entscheidungsphase</span></div>
+           <div class="tournament-create-step-title"><h3>K.O.-Runde</h3></div>
            ${renderBracket(t, knockoutMatches)}
          </section>`;
 
@@ -1141,7 +1135,7 @@ function renderDetail(container, ctx) {
       <button type="button" class="btn btn-sm" id="tourn-back">‹ Zurück</button>
       <button type="button" class="btn btn-sm btn-danger" id="tourn-delete">Löschen</button>
     </div>
-    <h1 class="view-title">${escapeHtml(t.name)}</h1>
+    <h2 class="view-title">${escapeHtml(t.name)}</h2>
     <div class="muted tournament-detail-meta">
       ${formatDisplay}
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>

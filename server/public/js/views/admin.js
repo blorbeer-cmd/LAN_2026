@@ -13,10 +13,8 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { getMyId } from '../whoami.js';
 import { currentGroup, refreshGroupContext } from '../groupContext.js';
 
-const SEATING_HELP = 'Tisch, Plätze und Sitzordnung verwalten.';
-const BACKUP_HELP = 'Aktuellen Stand als SQLite-Datei sichern.';
-const EVENT_KIOSK_HELP = 'Events anlegen, Tracking starten/stoppen und die TV-/Kiosk-Ansicht öffnen.';
-const TEST_DATA_HELP = 'Kommen fertig eingerichtet: Platz im Sitzplan samt sichtbarer Monitore, Skill- und Bock-Werte pro Spiel, Spielzeit fürs aktive Event – zwei davon spielen gerade. Nur im Admin-Modus sichtbar.';
+const ONBOARDING_HELP = 'Neue Person: Registrierungslink. Bestehendes Profil: Claim-Link. Vergessenes Passwort: Reset-Link.';
+const TEST_DATA_HELP = 'Legt Test-Spieler mit Sitzplatz, Bewertungen und Spielzeit an; zwei spielen gerade. Nur im Admin-Modus sichtbar.';
 const ADMIN_ROLE_HELP = 'Owner und Admins dürfen den Admin-Bereich verwalten. Mindestens ein aktiver Owner muss erhalten bleiben.';
 
 let agentDiagnostics = null;
@@ -383,8 +381,10 @@ function renderPanel(container, ctx) {
   if (adminPlayers === null && !adminPlayersLoading) loadAdminPlayers(ctx);
   if (adminMembers === null && !adminMembersLoading && !adminMembersError) loadAdminMembers(ctx);
   if (activeInvites === null && !activeInvitesLoading) loadActiveInvites(ctx);
-  const players = adminPlayers || [];
-  const testCount = players.filter((p) => p.is_test).length;
+  const adminModeActive = isAdmin();
+  const allPlayers = adminPlayers || [];
+  const players = adminModeActive ? allPlayers : allPlayers.filter((player) => !player.is_test);
+  const testCount = allPlayers.filter((player) => player.is_test).length;
   if (agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
   if (readiness === null && !readinessLoading && !readinessError) loadReadiness(ctx);
   const rows = players
@@ -503,6 +503,11 @@ function renderPanel(container, ctx) {
       <h1 class="view-title">Admin</h1>
     </div>
     <div class="grouped-page-sections">
+      ${adminModeActive ? '' : `<section class="card stack grouped-page-section" aria-labelledby="admin-mode-title">
+        <div class="grouped-page-section-title"><h2 id="admin-mode-title">Admin-Modus</h2></div>
+        <p class="muted">Aktiviere den Admin-Modus, um Test-Spieler in der App anzuzeigen und im Arcade-Bereich gegen die KI zu spielen.</p>
+        <button type="button" class="btn btn-primary btn-block" id="admin-mode-activate">Admin-Modus aktivieren</button>
+      </section>`}
       <section class="card stack grouped-page-section" aria-labelledby="admin-readiness-title">
         <div class="grouped-page-section-title">
           <h2 id="admin-readiness-title">LAN-Bereitschaft</h2>
@@ -513,8 +518,12 @@ function renderPanel(container, ctx) {
         </div>
       </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-onboarding-title">
-        <div class="grouped-page-section-title"><h2 id="admin-onboarding-title">Onboarding &amp; Kontozugang</h2></div>
-        <p class="muted">Neue Personen registrieren sich über einen allgemeinen Einmal-Link. Bestehende Profile erhalten einen persönlichen Claim-Link; für vergessene Passwörter gibt es einen Reset-Link.</p>
+        <div class="grouped-page-section-title">
+          <h2 id="admin-onboarding-title" class="title-with-info">
+            <span>Onboarding &amp; Kontozugang</span>
+            ${infoTooltipHtml('admin-onboarding-help', 'Onboarding und Kontozugang', ONBOARDING_HELP)}
+          </h2>
+        </div>
         <button type="button" class="btn btn-primary" id="admin-register-link">Link für neue Person erstellen</button>
         <div class="stack">${accountRows || '<span class="muted">Keine aktiven echten Konten vorhanden.</span>'}</div>
         <div class="section-title">Aktive Einmal-Links</div>
@@ -524,29 +533,24 @@ function renderPanel(container, ctx) {
         <div class="grouped-page-section-title"><h2 id="admin-tools-title">Werkzeuge</h2></div>
         <div class="two-column-card-grid">
           <div class="card admin-tool-row">
-            <span class="title-with-info">
-              <strong>Sitzplan</strong>
-              ${infoTooltipHtml('admin-seating-help', 'Sitzplan', SEATING_HELP)}
-            </span>
+            <strong>Sitzplan</strong>
             <button type="button" class="btn btn-primary btn-sm" data-navigate="seating">Öffnen</button>
           </div>
           <div class="card admin-tool-row">
-            <span class="title-with-info">
-              <strong>Backup</strong>
-              ${infoTooltipHtml('admin-backup-help', 'Backup', BACKUP_HELP)}
-            </span>
+            <strong>Backup</strong>
             <button type="button" class="btn btn-primary btn-sm" id="download-backup">Herunterladen</button>
           </div>
           <div class="card admin-tool-row">
-            <span class="title-with-info">
-              <strong>Event- &amp; Kioskverwaltung</strong>
-              ${infoTooltipHtml('admin-event-kiosk-help', 'Event- & Kioskverwaltung', EVENT_KIOSK_HELP)}
-            </span>
-            <button type="button" class="btn btn-primary btn-sm" data-navigate="settings">Öffnen</button>
+            <strong>Eventverwaltung</strong>
+            <button type="button" class="btn btn-primary btn-sm" data-navigate="events">Öffnen</button>
+          </div>
+          <div class="card admin-tool-row">
+            <strong>Kioskverwaltung</strong>
+            <button type="button" class="btn btn-primary btn-sm" data-navigate="kiosk">Öffnen</button>
           </div>
         </div>
       </section>
-      <section class="card stack grouped-page-section" aria-labelledby="admin-test-players-title">
+      ${adminModeActive ? `<section class="card stack grouped-page-section" aria-labelledby="admin-test-players-title">
         <div class="grouped-page-section-title">
           <span class="title-with-info">
             <h2 id="admin-test-players-title">Testdaten</h2>
@@ -555,14 +559,14 @@ function renderPanel(container, ctx) {
         </div>
         <div class="title-with-info">
           <strong>Test-Spieler</strong>
-          ${infoTooltipHtml('admin-test-count-help', 'Vorhandene Test-Spieler', `${testCount} Test-Spieler vorhanden`)}
+          <span class="badge badge-neutral" aria-label="${testCount} Test-Spieler vorhanden">${testCount}</span>
         </div>
         <div class="admin-test-controls">
           <input type="number" id="admin-count" value="5" min="1" max="20" aria-label="Anzahl Test-Spieler" />
           <button type="button" class="btn btn-sm btn-danger" id="admin-cleanup">Test-Daten aufräumen</button>
           <button type="button" class="btn btn-primary btn-sm" id="admin-bulk" ${seedBusy ? 'disabled' : ''}>Test-Spieler anlegen</button>
         </div>
-      </section>
+      </section>` : ''}
       <section class="card stack grouped-page-section" aria-labelledby="admin-players-title">
         <div class="grouped-page-section-title">
           <span class="title-with-info">
@@ -594,6 +598,10 @@ function renderPanel(container, ctx) {
     </div>
   `;
 
+  container.querySelector('#admin-mode-activate')?.addEventListener('click', () => {
+    adminPlayers = null;
+    setAdmin(true);
+  });
   container.querySelector('#admin-register-link')?.addEventListener('click', () => createLoginInvite('register', null, ctx));
   container.querySelectorAll('[data-create-login-link]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -614,12 +622,12 @@ function renderPanel(container, ctx) {
     });
   });
 
-  container.querySelector('#admin-bulk').addEventListener('click', () => {
+  container.querySelector('#admin-bulk')?.addEventListener('click', () => {
     const count = Math.min(20, Math.max(1, parseInt(container.querySelector('#admin-count').value, 10) || 5));
     createTestUsers(count, ctx);
   });
 
-  container.querySelector('#admin-cleanup').addEventListener('click', () => cleanupTestUsers(ctx));
+  container.querySelector('#admin-cleanup')?.addEventListener('click', () => cleanupTestUsers(ctx));
 
   container.querySelector('#download-backup').addEventListener('click', () => downloadBackup(ctx));
   wireInfoTooltips(container);
@@ -676,18 +684,6 @@ export function renderAdmin(container, ctx) {
       <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
       <h1 class="view-title">${icon('shield')} Admin</h1>
       <div class="card"><p class="muted">Dieses Konto hat keine Admin-Rechte.</p></div>`;
-    return;
-  }
-  if (!isAdmin()) {
-    container.innerHTML = `
-      <button type="button" class="btn btn-sm" data-navigate="more">Zurück</button>
-      <h1 class="view-title">${icon('shield')} Admin</h1>
-      <section class="card stack grouped-page-section" aria-labelledby="admin-mode-title">
-        <div class="grouped-page-section-title"><h2 id="admin-mode-title">Admin-Modus</h2></div>
-        <p class="muted">Aktiviere den Admin-Modus, um Test-Spieler und die Admin-Werkzeuge auf diesem Gerät anzuzeigen.</p>
-        <button type="button" class="btn btn-primary btn-block" id="admin-mode-activate">Admin-Modus aktivieren</button>
-      </section>`;
-    container.querySelector('#admin-mode-activate').addEventListener('click', () => setAdmin(true));
     return;
   }
   renderPanel(container, ctx);

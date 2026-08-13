@@ -109,8 +109,6 @@ export function renderHallOfFame(container, ctx) {
   const selectedEvent = events.find((event) => event.eventId === selectedEventId) ?? null;
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title">Hall of Fame</h1>
     ${
       loading || cache === null
         ? emptyStateHtml('Lädt…')

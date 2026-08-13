@@ -10,6 +10,8 @@ import { detachPushSubscription, rebindExistingPushSubscription } from './push.j
 import { setAdmin } from './admin.js';
 import { setTestIdentity } from './testFilter.js';
 
+const SESSION_ACCOUNT_KEY = 'respawn_session_account';
+
 function paramFromUrl(name) {
   return new URLSearchParams(location.search).get(name);
 }
@@ -25,6 +27,9 @@ function clearAuthActionUrl() {
 // as a test identity when it is an is_test player (see testFilter.js) so it can
 // see its seeded peers without gaining any real admin privilege.
 function applySession(account) {
+  const previousAccountId = localStorage.getItem(SESSION_ACCOUNT_KEY);
+  if (previousAccountId !== account.id || !account.isAdmin) setAdmin(false);
+  localStorage.setItem(SESSION_ACCOUNT_KEY, account.id);
   lockMyIdToSession(account.id);
   setTestIdentity(Boolean(account.isTest));
 }
@@ -34,6 +39,7 @@ export async function logout() {
     await detachPushSubscription().catch(() => {});
     await api.auth.logout();
     setAdmin(false);
+    localStorage.removeItem(SESSION_ACCOUNT_KEY);
     setTestIdentity(false);
   } finally {
     // Simplest correct reset: every piece of client state that assumed a
@@ -48,7 +54,7 @@ function cardShell(title, subtitle, bodyHtml) {
     <form id="auth-form" class="login-card">
       <img class="login-logo" src="/img/logo.svg" alt="" width="72" height="72" />
       <h1 class="brand-title">${escapeHtml(title)}</h1>
-      <p class="muted">${escapeHtml(subtitle)}</p>
+      ${subtitle ? `<p class="muted">${escapeHtml(subtitle)}</p>` : ''}
       ${bodyHtml}
       <p id="auth-error" class="error-text" hidden></p>
     </form>
@@ -79,7 +85,7 @@ function passwordField({ autofocus = false, autocomplete = 'current-password', l
 function renderLoginForm() {
   return cardShell(
     'Respawn',
-    'Melde dich mit Name und Passwort an.',
+    '',
     `${nameField()}${passwordField()}<button type="submit" class="btn btn-primary">Anmelden</button>`
   );
 }

@@ -101,6 +101,8 @@ test('game catalog, process names, skills/preferences and live status are roles-
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/accept', alice.cookie, groupId).send({})).status, 200);
       assert.equal((await scoped(app, 'post', '/api/groups/' + groupId + '/tracking-consent', alice.cookie, groupId).send({ granted: true })).status, 200);
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/start', alice.cookie, groupId).send({})).status, 200);
+      const selectEventA = await scoped(app, 'put', '/api/me/active-event', alice.cookie, groupId).send({ eventId: eventA.body.id });
+      assert.equal(selectEventA.status, 200, JSON.stringify(selectEventA.body));
 
       const report = await request(app).post('/api/agent/report').set('x-api-key', aliceApiKey).send({ processNames: ['trackedgame.exe'] });
       assert.equal(report.status, 200, JSON.stringify(report.body));

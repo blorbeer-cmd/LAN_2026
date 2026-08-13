@@ -6,7 +6,7 @@ import { Router } from 'express';
 import { db } from '../db';
 import { computeStandings, type MatchForScoring } from '../leaderboard';
 import { getCompletedTournamentSummaries } from './tournamentChampion';
-import { listEvents } from '../events';
+import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
 
 export const hallOfFameRouter = Router();
 
@@ -28,9 +28,22 @@ function playerSummary(playerById: Map<string, PlayerRow>, playerId: string) {
 }
 
 hallOfFameRouter.get('/', (req, res) => {
-  // Real events only — "außerhalb von Events" isn't a LAN party to crown a
-  // champion of, it's just the fallback bucket for untracked activity.
-  const events = listEvents(req.group!.id);
+  const scope = resolveAnalyticsEvents(req, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  const filter = eventIdSql('id', scope.eventIds);
+  const events = db
+    .prepare(
+      `SELECT id, name, starts_at, ends_at
+       FROM events
+       WHERE group_id = ? AND ${filter.clause}
+       ORDER BY starts_at DESC`,
+    )
+    .all(req.group!.id, ...filter.params) as Array<{
+    id: string;
+    name: string;
+    starts_at: number;
+    ends_at: number | null;
+  }>;
   const players = db.prepare('SELECT id, name, color, avatar FROM players WHERE deactivated_at IS NULL').all() as PlayerRow[];
   const playerById = new Map(players.map((p) => [p.id, p]));
 
@@ -88,6 +101,7 @@ hallOfFameRouter.get('/', (req, res) => {
       .sort((a, b) => b.count - a.count);
 
   res.json({
+    eventIds: scope.eventIds,
     events: eventSummaries,
     allTime: {
       mostOverallWins: toRanked(overallWinCounts),

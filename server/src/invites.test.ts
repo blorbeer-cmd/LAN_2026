@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { nanoid } from 'nanoid';
-import { db } from './db';
+import { BASE_EVENT_ID, db } from './db';
 import {
   createInvite,
   DEFAULT_INVITE_TTL_MS,
@@ -33,6 +33,7 @@ test('createInvite + findValidInvite round-trip for a register code', () => {
   const found = findValidInvite(invite.code, 'register');
   assert.ok(found);
   assert.equal(found!.code, invite.code);
+  assert.equal(found!.event_id, BASE_EVENT_ID);
   assert.ok(invite.expires_at >= invite.created_at + DEFAULT_INVITE_TTL_MS);
 });
 
@@ -40,6 +41,7 @@ test('reset codes use a shorter default expiry and zero-length expiry is rejecte
   const admin = makePlayer();
   const target = makePlayer();
   const reset = createInvite({ purpose: 'reset', playerId: target, createdBy: admin });
+  assert.equal(reset.event_id, null);
   assert.ok(reset.expires_at >= reset.created_at + DEFAULT_RESET_TTL_MS);
   assert.ok(reset.expires_at < reset.created_at + DEFAULT_INVITE_TTL_MS);
   assert.throws(

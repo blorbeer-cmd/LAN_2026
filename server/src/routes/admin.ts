@@ -5,12 +5,13 @@ import { requireAdmin } from '../auth';
 import { db } from '../db';
 import { config } from '../config';
 import { broadcast, Events } from '../realtime';
-import { getLiveBoard } from '../liveStatus';
+import { broadcastLiveBoards } from '../liveStatus';
 import { createTestUsers, countTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
 import { deleteAllTestData, seedHallOfFameTestData } from '../testData';
 import { writeAdminAudit } from '../adminAudit';
 import { requireRecentReauthentication } from '../sessions';
 import { getReadiness } from '../readiness';
+import { getOrRepairActiveEvent } from '../eventContext';
 
 export const adminRouter = Router();
 
@@ -30,7 +31,7 @@ adminRouter.post('/test-users', requireAdmin, (req, res) => {
   if (!Number.isInteger(count) || count < 1 || count > MAX_TEST_USERS_PER_CALL) {
     return res.status(400).json({ error: `count muss eine ganze Zahl zwischen 1 und ${MAX_TEST_USERS_PER_CALL} sein.` });
   }
-  const created = createTestUsers(count);
+  const created = createTestUsers(count, req.group!.id, getOrRepairActiveEvent(req.player!.id).id);
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     action: 'test_users_created',
@@ -39,7 +40,7 @@ adminRouter.post('/test-users', requireAdmin, (req, res) => {
   });
   broadcast(Events.playersChanged, null, { groupId: req.group!.id });
   broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
+  broadcastLiveBoards(req.group!.id);
   res.status(201).json({ created, totalTestUsers: countTestUsers() });
 });
 
@@ -72,7 +73,7 @@ adminRouter.delete('/test-users', requireAdmin, requireRecentReauthentication, (
   if (deletedPlayers > 0 || deletedEvents > 0) {
     broadcast(Events.playersChanged, null, { groupId: req.group!.id });
     broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
-    broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
+    broadcastLiveBoards(req.group!.id);
     broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
     broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
     broadcast(Events.tournamentsChanged, null, { groupId: req.group!.id });

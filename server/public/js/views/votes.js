@@ -74,6 +74,24 @@ export function invalidateVoteHistory() {
   historyLoading = false;
 }
 
+// Switching the active event is a harder reset than a votes:changed refresh:
+// the round number, this account's submitted entries and any unsubmitted
+// draft all belong to the event they were made in. invalidateVoteHistory()
+// deliberately leaves the draft alone (a broadcast must never discard picks
+// someone is still working on), so the event switch needs its own entry
+// point rather than a stronger version of that one.
+export function invalidateVoteEventScope() {
+  invalidateVoteHistory();
+  mineCache = null;
+  mineCacheKey = null;
+  mineLoading = false;
+  draftSingleGameId = null;
+  draftPoints = null;
+  draftKey = null;
+  voteUnratedOnly = false;
+  resetVoteGameSelection();
+}
+
 // The current player's own already-submitted entries in the running round.
 // Any entry means this identity has used its one submission for the round;
 // the values remain visible, but the controls and submit action are locked.
@@ -637,6 +655,18 @@ export function renderVotes(container, ctx) {
       </section>`;
   }
 
+  // Title/Info are typed before the round exists, so they live only in the
+  // DOM — and this view re-renders on its own whenever a background fetch
+  // (history, own submissions) resolves or a realtime event arrives. Carry
+  // both across that re-render, same survives-its-own-rerender pattern the
+  // Checkliste's add-item field uses; without it a round could be started
+  // with an empty title just because a fetch landed mid-typing.
+  const previousDraft = {
+    title: container.querySelector('#votes-title')?.value ?? '',
+    info: container.querySelector('#votes-info')?.value ?? '',
+    focusedId: document.activeElement?.closest?.('#votes-title, #votes-info')?.id ?? null,
+  };
+
   container.innerHTML = `
     <h1 class="view-title">Vote</h1>
     ${openSectionHtml}
@@ -664,6 +694,13 @@ export function renderVotes(container, ctx) {
   `;
 
   wireInfoTooltips(container);
+
+  for (const [id, value] of [['votes-title', previousDraft.title], ['votes-info', previousDraft.info]]) {
+    if (!value) continue;
+    const field = container.querySelector(`#${id}`);
+    if (field) field.value = value;
+  }
+  if (previousDraft.focusedId) container.querySelector(`#${previousDraft.focusedId}`)?.focus();
 
   container.querySelector('[data-vote-history]')?.addEventListener('toggle', (event) => {
     historyOpen = event.currentTarget.open;

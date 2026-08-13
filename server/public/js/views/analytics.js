@@ -23,6 +23,8 @@ import { escapeHtml, formatDateTime, avatarHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { eventSwitcherLabel } from '../eventStatus.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let activeTab = 'playtime'; // 'playtime' | 'matches' | 'arcade'
 
@@ -40,19 +42,36 @@ function defaultFilters() {
 }
 let filters = defaultFilters();
 
+// Every tab's data is filtered by this view's own event selection, so all of
+// it belongs to the event that was active when it was fetched. Switching the
+// workspace has to drop the numbers *and* the selection: the selected event
+// may not even be readable from the new workspace, and re-resolving the
+// 'active' sentinel is what re-points the view at the new event.
+export function invalidateAnalytics() {
+  cache = null;
+  matchesCache = null;
+  arcadeCache = null;
+  loading = false;
+  matchesLoading = false;
+  arcadeLoading = false;
+  filters = defaultFilters();
+}
+
 // Resolves the 'active' sentinel to a real event id once the events list is
 // available, so the view opens pre-filtered to the current LAN by default.
+// state.activeEvent is the account's persisted workspace; the per-event
+// payload carries no "is this the active one" flag of its own.
 function resolveEventSelection() {
   if (filters.eventId !== 'active') return;
-  const active = accessibleEvents().find((e) => e.isActive);
-  filters.eventId = active?.id ?? '';
+  const activeId = state.activeEvent?.id ?? null;
+  filters.eventId = activeId && accessibleEvents().some((e) => e.id === activeId) ? activeId : '';
 }
 
 // Arcade results do not carry an event id. For that tab only, translate the
 // selected event into its date bounds before querying the shared endpoint.
 function selectedEventRange() {
   const ev = accessibleEvents().find((e) => e.id === filters.eventId);
-  if (ev) return { from: ev.starts_at, to: ev.ends_at ?? Date.now() };
+  if (ev) return { from: ev.startsAt, to: ev.endsAt ?? Date.now() };
   return null;
 }
 
@@ -130,11 +149,14 @@ async function loadArcadeData(ctx) {
 }
 
 function renderEventOptions() {
-  const sorted = [...accessibleEvents()].sort((a, b) => b.starts_at - a.starts_at);
+  const sorted = [...accessibleEvents()].sort((a, b) => b.startsAt - a.startsAt);
   const options = sorted
     .map((e) => {
-      const range = `${new Date(e.starts_at).toLocaleDateString('de-DE')}${e.ends_at ? '–' + new Date(e.ends_at).toLocaleDateString('de-DE') : ' (läuft)'}`;
-      return `<option value="${e.id}" ${e.id === filters.eventId ? 'selected' : ''}>${escapeHtml(e.name)} (${range})</option>`;
+      const range = `${new Date(e.startsAt).toLocaleDateString('de-DE')}${e.endsAt ? '–' + new Date(e.endsAt).toLocaleDateString('de-DE') : ' (läuft)'}`;
+      // The list spans finished LANs as well as the running one, so each
+      // option names its state in words through the shared event vocabulary
+      // instead of leaving the reader to infer it from the dates.
+      return `<option value="${e.id}" ${e.id === filters.eventId ? 'selected' : ''}>${escapeHtml(eventSwitcherLabel(e))} (${range})</option>`;
     })
     .join('');
   return `<option value="" ${filters.eventId === '' ? 'selected' : ''}>Gesamt (alle Events)</option>${options}`;
@@ -152,11 +174,8 @@ export function renderAnalytics(container, ctx) {
     loadArcadeData(ctx);
   }
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title">Auswertungen</h1>
     <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section" aria-labelledby="analytics-controls-title">
-        <div class="grouped-page-section-title"><h2 id="analytics-controls-title">Ansicht</h2></div>
+      <section class="card stack grouped-page-section" aria-label="Ansicht">
         <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
           <button type="button" class="btn btn-sm ${activeTab === 'playtime' ? 'btn-primary' : ''}" data-an-tab="playtime">Spielzeit</button>
           <button type="button" class="btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}" data-an-tab="matches">Matches & Turniere</button>
@@ -185,6 +204,8 @@ export function renderAnalytics(container, ctx) {
       ctx.rerender();
     });
   }
+
+  wireInfoTooltips(container);
 
 }
 
@@ -404,8 +425,13 @@ function renderMatchesContent() {
   if (fun.biggestRivalry) {
     funCards.push(`
       <div class="card">
-        <div class="row-between"><div class="player-name">Größte Rivalität</div><span class="lb-points">${fun.biggestRivalry.count}×</span></div>
-        <div class="muted" style="font-size:var(--font-size-xs);">Sind sich am häufigsten als Gegner begegnet.</div>
+        <div class="row-between">
+          <div class="player-name title-with-info">
+            <span>Größte Rivalität</span>
+            ${infoTooltipHtml('analytics-rivalry-help', 'Größte Rivalität', 'Häufigste Begegnung als Gegner.')}
+          </div>
+          <span class="lb-points">${fun.biggestRivalry.count}×</span>
+        </div>
         <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           <div class="row">${playerChip(fun.biggestRivalry.playerA)}</div>
           <div class="row">${playerChip(fun.biggestRivalry.playerB)}</div>

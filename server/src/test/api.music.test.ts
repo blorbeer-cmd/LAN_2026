@@ -2,7 +2,7 @@ import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Response as SuperAgentResponse } from 'superagent';
 import request from 'supertest';
-import { db } from '../db';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
 import { createTestApp } from './testApp';
 
 const app = createTestApp();
@@ -135,6 +135,22 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
   const started = await request(app).post('/api/music/sessions').send({ deviceId: 'speaker-1' });
   assert.equal(started.status, 201);
   assert.equal(started.body.deviceName, 'LAN Boxen');
+
+  const otherEventId = `music-other-${Date.now()}`;
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO events
+       (id, name, starts_at, ends_at, group_id, status, visibility_scope)
+     VALUES (?, 'Music Other Event', ?, ?, ?, 'published', 'participants')`,
+  ).run(otherEventId, now - 1_000, now + 60_000, DEFAULT_GROUP_ID);
+  db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')").run(otherEventId, alice.id);
+  db.prepare('UPDATE player_event_contexts SET active_event_id = ?, updated_at = ? WHERE player_id = ?').run(otherEventId, now, alice.id);
+  const crossEventConflict = await request(app)
+    .post('/api/music/sessions')
+    .send({ playerId: alice.id, deviceId: 'speaker-1' });
+  assert.equal(crossEventConflict.status, 409);
+  assert.match(crossEventConflict.body.error, /anderen Event/);
+  db.prepare('UPDATE player_event_contexts SET active_event_id = ?, updated_at = ? WHERE player_id = ?').run(BASE_EVENT_ID, now, alice.id);
 
   const oldControllerToken = controllerToken;
   db.prepare('UPDATE music_controllers SET last_seen = 0 WHERE group_id = ?').run('default-group');

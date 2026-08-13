@@ -68,6 +68,9 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
       })).status, 403);
 
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/start', alice).send({})).status, 200);
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', alice).send({ eventId: eventA.body.id })).status, 200);
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', bob).send({ eventId: eventA.body.id })).status, 200);
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', eve).send({ eventId: eventA.body.id })).status, 200);
       const voteA = await scoped(app, 'post', '/api/votes/start', alice).send({ mode: 'single', title: 'A vote' });
       assert.equal(voteA.status, 201, JSON.stringify(voteA.body));
       assert.equal(voteA.body.eventId, eventA.body.id);
@@ -115,9 +118,12 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
       const eventB = await scoped(app, 'post', '/api/events', alice).send({ name: 'Vote Event B', startsAt: now, endsAt: now + 60_000 });
       assert.equal(eventB.status, 201, JSON.stringify(eventB.body));
       assert.equal((await scoped(app, 'put', '/api/events/' + eventB.body.id + '/participants', alice)
-        .send({ playerIds: [alice.account.id, bob.account.id] })).status, 200);
+        .send({ playerIds: [alice.account.id, bob.account.id, eve.account.id] })).status, 200);
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/stop', alice).send({})).status, 200);
       assert.equal((await scoped(app, 'post', '/api/events/' + eventB.body.id + '/tracking/start', alice).send({})).status, 200);
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', alice).send({ eventId: eventB.body.id })).status, 200);
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', bob).send({ eventId: eventB.body.id })).status, 200);
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', eve).send({ eventId: eventB.body.id })).status, 200);
 
       const voteB = await scoped(app, 'post', '/api/votes/start', alice).send({ mode: 'single', title: 'B vote' });
       assert.equal(voteB.status, 201, JSON.stringify(voteB.body));

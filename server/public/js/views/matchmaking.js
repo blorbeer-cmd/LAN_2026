@@ -97,6 +97,15 @@ export function invalidateMatchmakingHistory() {
   historyForGameId = null;
 }
 
+// A running captain draft belongs to exactly one event, so switching the
+// workspace has to drop it alongside the history — otherwise the previous
+// event's draft board stays on screen and its pick buttons keep firing
+// against a draft the new workspace cannot see.
+export function invalidateMatchmakingDraft() {
+  draftCache = null;
+  draftLoading = false;
+}
+
 // A draw currently on screen either comes from the freshly-generated result
 // (state.lastMatchmaking) or from the history list — both use the same
 // shape (see parseDrawRow on the server), so lookups/updates work uniformly.
@@ -522,9 +531,9 @@ export function renderMatchmaking(container, ctx) {
   // Drawing and drafting stay blocked for such a game (see drawDisabledReason).
   const pickableGames = gamesWithHistory([state.lastMatchmaking?.gameId]);
   if (catalogGames().length === 0 || state.players.length === 0) {
-    container.innerHTML = `
-      <h1 class="view-title">Teams</h1>
-      ${emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', { icon: icon(domainIcon('matchmaking')) })}`;
+    container.innerHTML = emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', {
+      icon: icon(domainIcon('matchmaking')),
+    });
     return;
   }
 
@@ -538,9 +547,7 @@ export function renderMatchmaking(container, ctx) {
   // Historie below (see draft.ts), same as any other draw.
   const draft = draftCache?.draft;
   if (draft && draft.status === 'active') {
-    container.innerHTML = `
-      <h1 class="view-title">Teams</h1>
-      ${renderDraftBoard(draft)}`;
+    container.innerHTML = renderDraftBoard(draft);
     wireDraftBoard(container, ctx);
     return;
   }
@@ -636,7 +643,6 @@ export function renderMatchmaking(container, ctx) {
       </div>`;
 
   container.innerHTML = `
-    <h1 class="view-title">Teams</h1>
     <div class="card stack">
       <div>
         <label class="field-label" for="mm-game-search">Spiel auswählen</label>

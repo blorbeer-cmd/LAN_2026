@@ -119,20 +119,29 @@ after(async () => {
 });
 
 test('manager invites a member who accepts and both open clients update', async () => {
-  for (const view of ['votes', 'broadcast', 'infoBoard', 'foodOrders', 'checklist', 'arrivals', 'seating', 'myStats', 'analytics']) {
+  for (const view of ['votes', 'broadcast', 'foodOrders', 'checklist', 'checklistPacking', 'arrivals', 'events', 'kiosk', 'seating', 'myStats', 'analytics', 'hallOfFame']) {
     await memberPage.evaluate((target) => {
       window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: target }));
     }, view);
     await memberPage.waitForSelector(`#view-container[data-view="${view}"]`);
   }
+  // Info is a topbar dialog rather than a view, but loads the same event-scoped
+  // data and therefore belongs in this check.
+  await memberPage.click('#info-btn');
+  await memberPage.waitForSelector('#info-new-btn');
+  await memberPage.click('.info-board-modal [data-close]');
   await memberPage.waitForTimeout(300);
   assert.deepEqual(memberEventNotFoundResponses, []);
   assert.equal(await memberPage.locator('.toast-error', { hasText: 'Event nicht gefunden.' }).count(), 0);
 
-  await ownerPage.click('#settings-btn');
-  await memberPage.click('#settings-btn');
+  await ownerPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
+  await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
   await ownerPage.waitForSelector(`[data-participants-event="${eventId}"]`);
-  await memberPage.waitForSelector(`[data-participants-event="${eventId}"]`);
+  assert.equal(
+    await memberPage.locator(`[data-participants-event="${eventId}"]`).count(),
+    0,
+    'a private event must stay hidden before the member is invited',
+  );
   assert.equal(await memberPage.locator(`[data-pending-invitation="${eventId}"]`).count(), 0);
 
   await ownerPage.click(`[data-participants-event="${eventId}"]`);
@@ -147,6 +156,20 @@ test('manager invites a member who accepts and both open clients update', async 
 
   const pending = memberPage.locator(`[data-pending-invitation="${eventId}"]`);
   await pending.waitFor();
+
+  // The invitation also arrives as a personal notification. It is delivered in
+  // the base workspace because the member is not a participant of the target
+  // event yet, and it deep-links back into the event area.
+  const invitationNotification = memberPage.locator('[data-notification-entry]', { hasText: EVENT_NAME });
+  await memberPage.click('#notifications-btn');
+  await invitationNotification.waitFor();
+  assert.match((await invitationNotification.textContent()) ?? '', /Einladung/);
+  assert.equal(
+    await invitationNotification.locator('[data-notification-navigate="events"]').count(),
+    1,
+    'the notification offers the jump into the event area',
+  );
+  await memberPage.click('#notifications-btn');
   assert.match((await pending.textContent()) ?? '', new RegExp(EVENT_NAME));
   assert.match((await pending.textContent()) ?? '', /Eingeladen/);
   assert.equal(
@@ -164,9 +187,51 @@ test('manager invites a member who accepts and both open clients update', async 
   await pending.waitFor({ state: 'detached' });
   await ownerRefresh;
 
+  await memberPage.locator(`#event-context-switcher option[value="${eventId}"]`).waitFor({ state: 'attached' });
+  const mirrorPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await login(mirrorPage, MEMBER_NAME, MEMBER_PASSWORD);
+  await mirrorPage.locator(`#event-context-switcher option[value="${eventId}"]`).waitFor({ state: 'attached' });
+
+  await memberPage.selectOption('#event-context-switcher', eventId);
+  await memberPage.waitForFunction(
+    (expected) => (document.querySelector('#event-context-switcher') as HTMLSelectElement | null)?.value === expected,
+    eventId,
+  );
+  await mirrorPage.waitForFunction(
+    (expected) => (document.querySelector('#event-context-switcher') as HTMLSelectElement | null)?.value === expected,
+    eventId,
+  );
+  // The title lives on the wrapper (#event-context), not the <select> itself:
+  // the select carries only an aria-label now that it shares the app's
+  // standard select shape, and the wrapper also seats the status icon that
+  // title has to describe alongside the event name.
+  await memberPage.waitForFunction(
+    (eventName) => document.querySelector('#event-context')?.getAttribute('title')?.includes(eventName),
+    EVENT_NAME,
+  );
+  assert.match(await memberPage.locator('#event-context').getAttribute('title') ?? '', new RegExp(EVENT_NAME));
+  const activeEvent = await memberPage.request.get(`${BASE_URL}/api/events/active`);
+  assert.equal(activeEvent.status(), 200);
+  assert.equal(((await activeEvent.json()) as { id: string }).id, eventId);
+  await mirrorPage.close();
+
   await ownerPage.locator('.modal-backdrop [data-close]').click();
   await ownerPage.click(`[data-participants-event="${eventId}"]`);
   const memberRow = ownerPage.locator('.modal-backdrop .card', { hasText: MEMBER_NAME });
   await memberRow.waitFor();
   assert.match((await memberRow.textContent()) ?? '', /Zugesagt/);
+
+  await ownerPage.locator('.modal-backdrop [data-close]').click();
+  await ownerPage.click(`[data-end-event="${eventId}"]`);
+  await ownerPage.click('[data-confirm]');
+  await ownerPage.waitForSelector(`[data-restart-event="${eventId}"]`);
+
+  await ownerPage.click(`[data-participants-event="${eventId}"]`);
+  assert.equal(await ownerPage.locator('.modal-backdrop [data-invite-participant]').count(), 0);
+  assert.match((await ownerPage.locator('.modal-backdrop').textContent()) ?? '', /keine neuen Einladungen mehr möglich/);
+  await ownerPage.locator('.modal-backdrop [data-close]').click();
+
+  await ownerPage.click(`[data-restart-event="${eventId}"]`);
+  await ownerPage.click('[data-confirm]');
+  await ownerPage.waitForSelector(`[data-stop-tracking="${eventId}"]`);
 });

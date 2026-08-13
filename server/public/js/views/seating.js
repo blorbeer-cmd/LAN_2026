@@ -87,7 +87,6 @@ export function renderSeatingPlan(layout, players, { editable = false } = {}) {
     ${sideHtml(layout, players, 'top', editable)}
     ${sideHtml(layout, players, 'right', editable)}
     <div class="seating-table-center">
-      <div class="seating-table-mark"><strong>Sitzplan</strong></div>
       ${editable ? `<span class="muted">${selected ? 'Zielplatz antippen' : 'Spieler ziehen oder antippen'}</span>` : ''}
     </div>
     ${sideHtml(layout, players, 'bottom', editable)}
@@ -98,18 +97,13 @@ export function renderSeatingPlan(layout, players, { editable = false } = {}) {
 function renderSideControls(layout) {
   return `<section class="seating-controls card stack grouped-page-section" aria-labelledby="seating-config-title">
     <div class="grouped-page-section-title">
-      <span class="title-with-info">
-        <h2 id="seating-config-title">Konfiguration</h2>
-        ${infoTooltipHtml('seating-save-help', 'Konfiguration', 'Änderungen werden direkt gespeichert.')}
-      </span>
+      <h2 id="seating-config-title">Konfiguration</h2>
     </div>
     <div class="seating-control-grid">${SIDES.map((side) => `
       <label>${LABELS[side]}
         <input type="number" min="0" max="12" value="${layout[`${side}Seats`]}" data-seat-count="${side}" />
       </label>`).join('')}</div>
-    <div class="seating-save-status">
-      <span class="muted">${saving ? 'Speichert…' : 'Automatisch gespeichert'}</span>
-    </div>
+    ${saving ? '<div class="seating-save-status"><span class="muted">Speichert…</span></div>' : ''}
   </section>`;
 }
 
@@ -295,12 +289,12 @@ export function renderSeating(container, ctx) {
   const canEdit = isGroupAdmin();
   if (!canEdit) {
     container.innerHTML = `
-      <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
+      <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
       <h1 class="view-title">Sitzplan</h1>
       <div class="card stack">
-        <strong>Nur im Admin-Modus verfügbar</strong>
-        <span class="muted">Aktiviere zuerst den Admin-Modus, um den Sitzplan zu bearbeiten.</span>
-        <button type="button" class="btn btn-primary btn-block" data-navigate="admin">Zum Admin-Modus</button>
+        <strong>Nur für Admins verfügbar</strong>
+        <span class="muted">Dieses Konto hat keine Admin-Rechte für den Sitzplan.</span>
+        <button type="button" class="btn btn-primary btn-block" data-navigate="more">Zu Mehr</button>
       </div>`;
     return;
   }

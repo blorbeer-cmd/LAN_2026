@@ -3,10 +3,11 @@
 
 import { Server, Socket } from 'socket.io';
 import { config } from './config';
-import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from './db';
 import { isSessionActive, parseCookieHeader, verifySession, SESSION_COOKIE_NAME } from './sessions';
 import { resolveKioskToken } from './kioskTokens';
 import { isParticipant } from './events';
+import { getOrRepairActiveEvent } from './eventContext';
 
 let io: Server | null = null;
 let authSessionSweep: NodeJS.Timeout | null = null;
@@ -39,12 +40,6 @@ export function activeGroupMember(groupId: string, playerId: unknown): boolean {
 export function activeEventAccess(groupId: string, eventId: string, playerId: unknown): boolean {
   if (!activeGroupMember(groupId, playerId)) return false;
   if (typeof playerId !== 'string') return false;
-  const membership = db
-    .prepare("SELECT role FROM group_memberships WHERE group_id = ? AND player_id = ? AND status = 'active'")
-    .get(groupId, playerId) as { role: string } | undefined;
-  if (membership?.role === 'admin' || membership?.role === 'owner') {
-    return Boolean(db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId));
-  }
   const event = db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId);
   return Boolean(event) && isParticipant(eventId, playerId);
 }
@@ -52,7 +47,7 @@ export function activeEventAccess(groupId: string, eventId: string, playerId: un
 function validScope(socket: Socket, groupId: unknown, eventId: unknown): boolean {
   if (typeof groupId !== 'string' || !groupId || socket.data.kioskReadOnly) return false;
   if (!activeGroupMember(groupId, socket.data.authPlayerId)) return false;
-  if (eventId === undefined || eventId === null || eventId === '') return true;
+  if (eventId === undefined || eventId === null || eventId === '') return false;
   if (typeof eventId !== 'string') return false;
   return (
     Boolean(db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId)) &&
@@ -88,7 +83,14 @@ export function registerScopedSockets(server: Server): void {
   server.on('connection', (socket) => {
     const subscribe = (payload: { groupId?: unknown; eventId?: unknown }, ack?: (result: unknown) => void) => {
       const groupId = payload?.groupId;
-      const eventId = payload?.eventId;
+      const playerId = socket.data.authPlayerId;
+      const requestedEventId = payload?.eventId;
+      const eventId =
+        typeof requestedEventId === 'string' && requestedEventId
+          ? requestedEventId
+          : typeof playerId === 'string'
+            ? getOrRepairActiveEvent(playerId).id
+            : requestedEventId;
       if (!validScope(socket, groupId, eventId)) {
         ack?.({ ok: false, error: 'Gruppen- oder Eventzugriff verweigert.' });
         return;
@@ -144,6 +146,19 @@ export function disconnectPlayerSockets(playerId: string, exceptSessionId?: stri
     if (socket.data.authPlayerId !== playerId) continue;
     if (exceptSessionId && socket.data.authSessionId === exceptSessionId) continue;
     socket.disconnect(true);
+  }
+}
+
+export function switchPlayerEventScope(playerId: string, groupId: string, eventId: string): void {
+  if (!io || !activeEventAccess(groupId, eventId, playerId)) return;
+  for (const socket of io.sockets.sockets.values()) {
+    if (socket.data.authPlayerId !== playerId || socket.data.kioskReadOnly) continue;
+    clearSocketScope(socket);
+    socket.join(groupRoom(groupId));
+    socket.join(eventRoom(eventId));
+    socket.data.groupId = groupId;
+    socket.data.eventId = eventId;
+    socket.emit(Events.eventContextChanged, { eventId });
   }
 }
 
@@ -208,18 +223,6 @@ export function kioskDeliveryAllowed(socket: Socket): boolean {
   return Boolean(db.prepare('SELECT 1 FROM kiosk_tokens WHERE id = ? AND revoked_at IS NULL').get(tokenId));
 }
 
-// The tracking event for the supplied retained group_id scope. Do not use the
-// unscoped getTrackingEventId() helper here: legacy or regression data may
-// contain rows outside the start group. A group kiosk's /api/push/last banner
-// view is scoped to exactly this event, so the live push:sent banner must
-// accept it too.
-function groupCurrentTrackingEventId(groupId: string): string | null {
-  const row = db
-    .prepare('SELECT id FROM events WHERE tracking_enabled = 1 AND group_id = ? AND id != ?')
-    .get(groupId, OUTSIDE_EVENTS_ID) as { id: string } | undefined;
-  return row?.id ?? null;
-}
-
 // Eagerly ends the sockets of a just-revoked kiosk token; the delivery-time
 // re-check above stays the authoritative guard either way.
 export function disconnectKioskTokenSockets(tokenId: string): void {
@@ -253,7 +256,23 @@ export function broadcast(event: string, payload: unknown, scope: BroadcastScope
   if (!io) return;
   const groupId = typeof scope?.groupId === 'string' && scope.groupId ? scope.groupId : null;
   if (!groupId) return rejectUnscopedBroadcast(event);
-  const eventId = typeof scope.eventId === 'string' && scope.eventId ? scope.eventId : null;
+  if (scope.eventId === undefined) {
+    const eventIds = db
+      .prepare(
+        `SELECT DISTINCT pec.active_event_id AS eventId
+         FROM player_event_contexts pec
+         JOIN events e ON e.id = pec.active_event_id AND e.group_id = ?
+         UNION
+         SELECT DISTINCT kt.event_id AS eventId
+         FROM kiosk_tokens kt
+         WHERE kt.group_id = ? AND kt.event_id IS NOT NULL AND kt.revoked_at IS NULL`,
+      )
+      .all(groupId, groupId) as Array<{ eventId: string }>;
+    for (const { eventId } of eventIds) broadcast(event, payload, { ...scope, eventId });
+    return;
+  }
+  const eventId = scope.eventId === null ? BASE_EVENT_ID : scope.eventId;
+  if (!eventId) return rejectUnscopedBroadcast(event);
   const hasRecipientFilter = Array.isArray(scope.recipientPlayerIds);
   const recipients = hasRecipientFilter ? new Set(scope.recipientPlayerIds) : null;
   // Unit/test adapters may expose only the historical io.emit surface.
@@ -275,33 +294,29 @@ export function broadcast(event: string, payload: unknown, scope: BroadcastScope
       if (!kioskDeliveryAllowed(socket)) continue;
       if (event === 'push:sent') {
         // The push banner is the one payload the kiosk renders directly, so
-        // its scope mirrors the kiosk's /api/push/last view exactly. An event
-        // kiosk shows only its own event's banner; a group kiosk shows its
-        // group-room banners plus its group's currently tracking event (the
-        // same event resolveGroupEventScope returns for that kiosk's REST
-        // reads), so an event-scoped push is not stuck until a reload.
-        const kioskEventId = (socket.data.kioskEventId ?? null) as string | null;
-        const accepted =
-          kioskEventId !== null
-            ? eventId === kioskEventId
-            : eventId === null || eventId === groupCurrentTrackingEventId(groupId);
-        if (!accepted) continue;
+        // its scope mirrors the kiosk's /api/push/last view exactly: a kiosk
+        // shows only banners from the event encoded in its token.
+        const kioskEventId = socket.data.kioskEventId as string | undefined;
+        if (!kioskEventId || eventId !== kioskEventId) continue;
         socket.emit(event, payload);
       } else {
         // Every other allowlisted event is a null refresh signal (fachliche
         // payloads can carry member-only details, e.g. match-ready lobby
         // credentials). The kiosk refetches through its own token-scoped REST
-        // reads, so it must fire on any change in its group — including
-        // event-room changes that routes emit as a plain { groupId } signal,
-        // which an exact eventId match would otherwise drop for an event kiosk.
+        // reads, which are exact to the event in its token — so the signal is
+        // matched exactly too. A route that emits a plain { groupId } signal
+        // still reaches it: the fan-out above expands an eventId-less scope
+        // over every active event context *and* every live kiosk event.
+        if (socket.data.kioskEventId !== eventId) continue;
         socket.emit(event, null);
       }
       continue;
     }
     if (socket.data.groupId !== groupId) continue;
+    if (socket.data.eventId !== eventId) continue;
     if (recipients && !recipients.has(socket.data.authPlayerId as string)) continue;
     if (!activeGroupMember(groupId, socket.data.authPlayerId)) continue;
-    if (eventId && !activeEventAccess(groupId, eventId, socket.data.authPlayerId)) continue;
+    if (!activeEventAccess(groupId, eventId, socket.data.authPlayerId)) continue;
     socket.emit(event, payload);
   }
 }
@@ -335,7 +350,7 @@ export function createSocketAuthGuard(kioskToken: string = config.kioskToken) {
     ) {
       socket.data.kioskReadOnly = true;
       socket.data.kioskGroupId = kioskScope?.groupId ?? DEFAULT_GROUP_ID;
-      socket.data.kioskEventId = kioskScope?.eventId ?? null;
+      socket.data.kioskEventId = kioskScope?.eventId ?? BASE_EVENT_ID;
       socket.data.kioskTokenId = kioskScope?.id ?? null;
       socket.use(([event], proceed) => {
         if (event === 'kiosk:subscribe') return proceed();
@@ -373,6 +388,7 @@ export const Events = {
   matchmakingGenerated: 'matchmaking:generated',
   matchmakingDrawsChanged: 'matchmaking:draws-changed',
   eventsChanged: 'events:changed',
+  eventContextChanged: 'event-context:changed',
   tournamentsChanged: 'tournaments:changed',
   draftChanged: 'draft:changed',
   broadcastNew: 'broadcast:new',

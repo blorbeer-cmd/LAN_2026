@@ -4,7 +4,7 @@
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { db, OUTSIDE_EVENTS_ID } from '../db';
+import { db } from '../db';
 import { requireGroupEventAccess, resolveRequestGroupEventScope, resolveRequestGroupEventStorageId } from '../groupEventScope';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString } from '../validation';
@@ -144,21 +144,7 @@ function serializeCarpool(row: CarpoolRow) {
   };
 }
 
-function deliveryEventId(eventId: string): string | null {
-  return eventId === OUTSIDE_EVENTS_ID ? null : eventId;
-}
-
-function buildList(groupId: string, eventId: string | null) {
-  if (!eventId) {
-    return {
-      eventId: null,
-      arrivals: [] as ArrivalRow[],
-      carpools: {
-        arrival: [] as ReturnType<typeof serializeCarpool>[],
-        departure: [] as ReturnType<typeof serializeCarpool>[],
-      },
-    };
-  }
+function buildList(groupId: string, eventId: string) {
   const arrivals = db
     .prepare(
       `SELECT a.event_id, a.player_id, p.name AS playerName, p.color AS playerColor, p.avatar AS playerAvatar,
@@ -231,7 +217,7 @@ function getCarpool(id: string, groupId: string, eventId: string | null): Carpoo
 }
 
 arrivalsRouter.get('/', (req, res) => {
-  res.json(buildList(req.group!.id, res.locals.storageEventId as string | null));
+  res.json(buildList(req.group!.id, res.locals.storageEventId as string));
 });
 
 // PUT /api/arrivals/mine - body: { playerId, arrivalAt?, departureAt?, note? }
@@ -261,7 +247,7 @@ arrivalsRouter.put('/mine', ...withBodyPlayerIdentity, (req, res) => {
        updated_at = excluded.updated_at`
   ).run(eventId, playerId, parsedArrival, parsedDeparture, parsedNote, Date.now());
 
-  broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id, eventId: deliveryEventId(eventId) });
+  broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id, eventId });
   res.json(buildList(req.group!.id, eventId));
 });
 
@@ -312,7 +298,7 @@ arrivalsRouter.post('/carpools', ...withBodyPlayerIdentity, (req, res) => {
   });
   create();
 
-  broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id, eventId: deliveryEventId(eventId) });
+  broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id, eventId });
   res.status(201).json(serializeCarpool(getCarpool(id, req.group!.id, eventId)!));
 });
 
@@ -355,7 +341,7 @@ arrivalsRouter.patch('/carpools/:id', ...withBodyPlayerIdentity, (req, res) => {
 
   broadcast(Events.arrivalsChanged, null, {
     groupId: carpool.group_id,
-    eventId: deliveryEventId(carpool.event_id),
+    eventId: carpool.event_id,
   });
   res.json(serializeCarpool(getCarpool(carpool.id, carpool.group_id, carpool.event_id)!));
 });
@@ -387,7 +373,7 @@ arrivalsRouter.post('/carpools/:id/join', ...withBodyPlayerIdentity, (req, res) 
   join();
   broadcast(Events.arrivalsChanged, null, {
     groupId: carpool.group_id,
-    eventId: deliveryEventId(carpool.event_id),
+    eventId: carpool.event_id,
   });
   res.json(serializeCarpool(carpool));
 });
@@ -412,7 +398,7 @@ arrivalsRouter.post('/carpools/:id/leave', ...withBodyPlayerIdentity, (req, res)
 
   broadcast(Events.arrivalsChanged, null, {
     groupId: carpool.group_id,
-    eventId: deliveryEventId(carpool.event_id),
+    eventId: carpool.event_id,
   });
   if (remaining === 0) return res.status(204).end();
   res.json(serializeCarpool(carpool));
@@ -437,7 +423,7 @@ arrivalsRouter.delete('/carpools/:id', ...withBodyPlayerIdentity, (req, res) => 
   remove();
   broadcast(Events.arrivalsChanged, null, {
     groupId: carpool.group_id,
-    eventId: deliveryEventId(carpool.event_id),
+    eventId: carpool.event_id,
   });
   res.status(204).end();
 });

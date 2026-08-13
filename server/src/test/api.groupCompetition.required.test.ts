@@ -60,6 +60,8 @@ test('matches, matchmaking draws, tournaments and their aggregates stay event-sc
       assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice.cookie, groupId)
         .send({ playerIds: [alice.account.id, bob.account.id] })).status, 200);
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/start', alice.cookie, groupId).send({})).status, 200);
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', alice.cookie, groupId).send({ eventId: eventA.body.id })).status, 200);
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', bob.cookie, groupId).send({ eventId: eventA.body.id })).status, 200);
 
       // ---------- matches, draws, tournaments (tagged to event A) ----------
       const matchA = await scoped(app, 'post', '/api/matches', alice.cookie, groupId).send({
@@ -114,6 +116,8 @@ test('matches, matchmaking draws, tournaments and their aggregates stay event-sc
         .send({ playerIds: [alice.account.id, bob.account.id] })).status, 200);
 
       assert.equal((await scoped(app, 'post', '/api/events/' + eventB.body.id + '/tracking/start', alice.cookie, groupId).send({})).status, 200);
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', alice.cookie, groupId).send({ eventId: eventB.body.id })).status, 200);
+      assert.equal((await scoped(app, 'put', '/api/me/active-event', bob.cookie, groupId).send({ eventId: eventB.body.id })).status, 200);
 
       const gameB = await scoped(app, 'post', '/api/games', alice.cookie, groupId).send({ name: 'Competition Game B', status: 'catalog' });
       assert.equal(gameB.status, 201, JSON.stringify(gameB.body));

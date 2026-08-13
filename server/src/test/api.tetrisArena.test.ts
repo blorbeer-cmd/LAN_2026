@@ -8,7 +8,7 @@ import request from 'supertest';
 import { createTestApp, DEFAULT_GROUP_ID, installTestSocketIdentity, TEST_ADMIN_ID } from './testApp';
 import { registerTetrisSockets } from '../arcade/tetris';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
-import { db } from '../db';
+import { BASE_EVENT_ID, db } from '../db';
 
 function connect(baseUrl: string): Promise<ClientSocket> {
   return new Promise((resolve, reject) => {
@@ -161,6 +161,7 @@ test('a paused KI Arena ends when its last human host leaves', async () => {
     assert.ok(observer);
     observer.data.authPlayerId = TEST_ADMIN_ID;
     observer.data.groupId = DEFAULT_GROUP_ID;
+    observer.data.eventId = BASE_EVENT_ID;
     observer.join(`tetris:${started.matchId}`);
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, started.beginsAt - Date.now()) + 25));
 

@@ -8,11 +8,10 @@ import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
-import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
+import { dateTimeFieldHtml, wireDateTimeField, parseDatetimeLocalMs } from '../dateTimeField.js';
 import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { onboardingHintHtml, wireOnboardingHint } from '../onboarding.js';
 
 let cache = null;
 let loading = false;
@@ -50,8 +49,15 @@ function parseDatetimeValue(value) {
   return Number.isFinite(timestamp) ? timestamp : NaN;
 }
 
-function renderMyForm(myId) {
+// `draft`, if given, overrides the persisted "own" values with whatever was
+// still sitting unsaved in the form at the moment of a background re-render
+// (see renderArrivals' snapshot below) - same survives-its-own-rerender
+// pattern the Checkliste's add-item field and Vote's round fields use.
+function renderMyForm(myId, draft) {
   const own = (cache?.arrivals || []).find((a) => a.player_id === myId);
+  const arrivalAt = draft ? draft.arrivalAt : (own?.arrival_at ?? null);
+  const departureAt = draft ? draft.departureAt : (own?.departure_at ?? null);
+  const note = draft ? draft.note : (own?.note || '');
   return `
     <section class="card stack grouped-page-section arrivals-block" aria-labelledby="arrivals-mine-title">
       <div class="grouped-page-section-title"><h2 id="arrivals-mine-title">Meine An-/Abreise</h2></div>
@@ -59,18 +65,37 @@ function renderMyForm(myId) {
         <div class="field-row">
           <div>
             <label for="arrival-at" class="field-label">Ankunft</label>
-            ${dateTimeFieldHtml('arrival-at', own?.arrival_at ?? null, { clearable: true, disabled: !myId, label: 'Ankunft' })}
+            ${dateTimeFieldHtml('arrival-at', arrivalAt, { clearable: true, disabled: !myId, label: 'Ankunft' })}
           </div>
           <div>
             <label for="departure-at" class="field-label">Abreise</label>
-            ${dateTimeFieldHtml('departure-at', own?.departure_at ?? null, { clearable: true, disabled: !myId, label: 'Abreise' })}
+            ${dateTimeFieldHtml('departure-at', departureAt, { clearable: true, disabled: !myId, label: 'Abreise' })}
           </div>
         </div>
-        <textarea class="arrival-note-input" id="arrival-note" maxlength="240" rows="1" placeholder="Notiz (optional)" ${myId ? '' : 'disabled'}>${escapeHtml(own?.note || '')}</textarea>
+        <textarea class="arrival-note-input" id="arrival-note" maxlength="240" rows="1" placeholder="Notiz (optional)" ${myId ? '' : 'disabled'}>${escapeHtml(note)}</textarea>
         <button type="submit" class="btn btn-primary btn-block" ${myId ? '' : 'disabled'}>Speichern</button>
       </form>
     </section>
   `;
+}
+
+// A control inside the still-mounted "Meine An-/Abreise" form that currently
+// has focus, expressed as a selector that resolves to the equivalent control
+// in the freshly rendered form. Only the note textarea has a stable id; the
+// date widget's trigger/hour/minute controls are matched through the field's
+// data-dt-field id instead (see dateTimeField.js - it renders no id of its
+// own on those).
+function focusedArrivalControlSelector(container) {
+  const active = document.activeElement;
+  if (!active || !container.contains(active)) return null;
+  if (active.id === 'arrival-note') return '#arrival-note';
+  const field = active.closest('[data-dt-field]');
+  if (!field) return null;
+  const fieldSelector = `[data-dt-field="${field.dataset.dtField}"]`;
+  if (active.matches('[data-dt-trigger]')) return `${fieldSelector} [data-dt-trigger]`;
+  if (active.matches('[data-dt-hour]')) return `${fieldSelector} [data-dt-hour]`;
+  if (active.matches('[data-dt-minute]')) return `${fieldSelector} [data-dt-minute]`;
+  return null;
 }
 
 // A player can only drive or ride along in one carpool per direction (see
@@ -381,14 +406,29 @@ export function renderArrivals(container, ctx) {
   // show yet and falls back to the placeholder below.
   const loaded = cache !== null;
 
+  // A background re-render can land while somebody is still typing their
+  // Ankunft/Abreise/Notiz - e.g. an unrelated Orga To-Do event now re-renders
+  // every Orga tab, not just the Checkliste's own (see app.js's
+  // checklist:changed handler). Only treat the current DOM as an unsaved
+  // draft when focus is actually inside the form: `own` can legitimately
+  // change on its own (joining/editing/leaving a carpool syncs the matching
+  // Ankunft/Abreise field server-side, see syncOwnDirectionField in
+  // src/routes/arrivals.ts), and that sync must still show up whenever
+  // nobody is mid-edit here.
+  const focusedSelector = loaded ? focusedArrivalControlSelector(container) : null;
+  const draft = focusedSelector
+    ? {
+        arrivalAt: parseDatetimeLocalMs(container.querySelector('#arrival-at')?.value),
+        departureAt: parseDatetimeLocalMs(container.querySelector('#departure-at')?.value),
+        note: container.querySelector('#arrival-note')?.value ?? '',
+      }
+    : null;
+
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title">An- & Abreise</h1>
-    ${onboardingHintHtml('arrivals')}
     ${
       loaded
         ? `<div class="arrivals-layout grouped-page-sections">
-             ${renderMyForm(myId)}
+             ${renderMyForm(myId, draft)}
              ${renderCarpools(myId)}
              ${renderPeopleList()}
            </div>`
@@ -401,6 +441,7 @@ export function renderArrivals(container, ctx) {
   wireInfoTooltips(container);
   wireDateTimeField(container, 'arrival-at');
   wireDateTimeField(container, 'departure-at');
+  if (focusedSelector) container.querySelector(focusedSelector)?.focus();
 
   container.querySelectorAll('[data-arrivals-sort]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -490,5 +531,4 @@ export function renderArrivals(container, ctx) {
       }
     });
   });
-  wireOnboardingHint(container, ctx.rerender);
 }

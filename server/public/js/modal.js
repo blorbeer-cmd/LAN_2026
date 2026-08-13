@@ -4,6 +4,16 @@
 
 import { icon } from './icons.js';
 
+// Modals can stack: the Info dialog opens its entry form, a confirmDialog or a
+// step-up password prompt on top of itself. Every open modal keeps a
+// document-level keydown listener, so without this guard one Escape would close
+// the whole stack at once and Tab would be trapped by two backdrops competing
+// for focus. Only the topmost backdrop reacts.
+function isTopmostModal(backdrop) {
+  const open = document.querySelectorAll('.modal-backdrop');
+  return open.length === 0 || open[open.length - 1] === backdrop;
+}
+
 // `confirmClose`, if given, is called whenever the user tries to dismiss the
 // modal via the X button, Escape, or a backdrop tap (never for the returned
 // `close()` — that's for callers closing programmatically, e.g. after a
@@ -48,6 +58,7 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose } = 
     if (confirmed) close();
   };
   const onKeydown = (e) => {
+    if (!isTopmostModal(backdrop)) return;
     if (e.key === 'Escape') requestClose();
     if (e.key !== 'Tab') return;
     const focusableSelector = [
@@ -123,7 +134,7 @@ export function confirmDialog(message, { title = 'Bestätigen', confirmText = 'O
     // button-activation behavior already does the safe thing by default;
     // only Escape needs an explicit document-level shortcut.
     const onKey = (e) => {
-      if (e.key === 'Escape') finish(false);
+      if (e.key === 'Escape' && isTopmostModal(backdrop)) finish(false);
     };
     backdrop.addEventListener('click', (e) => {
       if (e.target === backdrop) finish(false);

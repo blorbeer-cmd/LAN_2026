@@ -12,18 +12,30 @@ self.addEventListener('push', (event) => {
     // Ignore malformed payloads rather than crashing the service worker.
   }
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Respawn', {
-      body: data.body || '',
-      icon: '/img/logo-192.png',
-      badge: '/img/logo-badge-96.png',
-      data: { url: data.url || '/' },
-    })
+    self.registration.showNotification(
+      data.eventName ? `${data.eventName} · ${data.title || 'Respawn'}` : data.title || 'Respawn',
+      {
+        body: data.body || '',
+        icon: '/img/logo-192.png',
+        badge: '/img/logo-badge-96.png',
+        tag: ['respawn', data.eventId, data.notificationType, data.targetId].filter(Boolean).join(':'),
+        data: {
+          url: data.url || '/',
+          eventId: data.eventId || null,
+          eventName: data.eventName || null,
+          notificationType: data.notificationType || null,
+          targetId: data.targetId || null,
+          occurredAt: data.occurredAt || Date.now(),
+        },
+      },
+    )
   );
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = event.notification.data?.url || '/';
+  const eventId = event.notification.data?.eventId || null;
   // The url's hash names the SPA view the push wants to land on (e.g.
   // "/#votes"). An already-open window gets focused and told to switch views
   // via postMessage (see app.js) — client.navigate() would reload the whole
@@ -34,11 +46,15 @@ self.addEventListener('notificationclick', (event) => {
       for (const client of clients) {
         if ('focus' in client) {
           const hashIndex = url.indexOf('#');
-          if (hashIndex !== -1) client.postMessage({ type: 'navigate', view: url.slice(hashIndex + 1) });
+          if (hashIndex !== -1) {
+            client.postMessage({ type: 'navigate', view: url.slice(hashIndex + 1), eventId });
+          }
           return client.focus();
         }
       }
-      return self.clients.openWindow(url);
+      const target = new URL(url, self.location.origin);
+      if (eventId) target.searchParams.set('eventId', eventId);
+      return self.clients.openWindow(target.toString());
     })
   );
 });

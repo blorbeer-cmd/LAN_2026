@@ -1,57 +1,18 @@
-// Players view (FR-05..08, FR-15): public roster with read-only profile
-// details. Editing stays in "Mein Profil" so a device can only change the
+// Read-only profile details for another participant. This used to be the
+// payload of a separate "Spieler" area; the roster itself was removed because
+// Home's Live-Status already lists everyone. The detail dialog stays, opened
+// straight from a live card or from a global-search hit, so looking somebody
+// up costs one tap instead of a detour through an extra area.
+//
+// Editing deliberately stays in "Mein Profil": a device may only change the
 // identity it currently represents.
 
 import { state, playerById } from '../state.js';
 import { escapeHtml, avatarHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { icon } from '../icons.js';
-import { domainIcon } from '../domainIcons.js';
-import { getMyId } from '../whoami.js';
-import { emptyStateHtml } from '../emptyState.js';
 
-export function renderPlayers(container) {
-  const myId = getMyId();
-  const rows = state.players
-    .map(
-      (p) => `
-      <button type="button" class="card row list-row" data-player="${p.id}">
-        ${avatarHtml(p, 36)}
-        <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
-        ${p.id === myId ? '<span class="muted">Mein Profil</span>' : ''}
-        <span class="muted">${icon('chevronRight')}</span>
-      </button>`
-    )
-    .join('');
-
-  container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title">Spieler</h1>
-    <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section" aria-label="Spielerliste">
-        ${
-          state.players.length === 0
-            ? emptyStateHtml('Noch keine Spieler.', { icon: icon(domainIcon('players')) })
-            : `<div class="two-column-card-grid player-roster-grid">${rows}</div>`
-        }
-      </section>
-    </div>
-  `;
-
-  // Player creation intentionally stays out of this public roster until the
-  // future authenticated user-management flow owns identities and access.
-  container.querySelectorAll('[data-player]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (btn.dataset.player === getMyId()) {
-        window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'profile' }));
-        return;
-      }
-      openPlayerDetail(btn.dataset.player);
-    });
-  });
-}
-
-function openPlayerDetail(playerId) {
+export function openPlayerDetail(playerId) {
   const player = playerById(playerId);
   if (!player) return;
 
@@ -79,7 +40,6 @@ function openPlayerDetail(playerId) {
             ${player.real_name ? `<span class="muted">${escapeHtml(player.real_name)}</span>` : ''}
           </div>
         </div>
-        <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Dieses Profil kann nur von ${escapeHtml(player.name)} selbst bearbeitet werden.</p>
         ${
           state.games.length > 0
             ? `<details class="collapsible-section">

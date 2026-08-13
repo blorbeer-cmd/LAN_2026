@@ -1047,6 +1047,9 @@ registerMigration({ version: 17, name: 'add event location and description', up:
 // can recognize/exclude it without duplicating the constant.
 export const OUTSIDE_EVENTS_ID = 'outside-events';
 export const DEFAULT_GROUP_ID = 'default-group';
+// Stable id for the permanently available workspace every account belongs to.
+// Unlike OUTSIDE_EVENTS_ID this is a real, user-selectable event.
+export const BASE_EVENT_ID = 'instance-base-event';
 
 // Migration: older databases predate the tracking_enabled/ended_at event
 // columns, event_participants, and players.tracking_paused (all added
@@ -3191,6 +3194,442 @@ registerMigration({
 // Every migration is registered by now — run them all in ascending version
 // order (see registerMigration/runRegisteredMigrations above). This is the
 // single place migrations actually execute.
+// Establishes the account-wide event workspace invariant: every active
+// account participates in one permanently open base event and has exactly one
+// persisted active event. Registration/claim invites may additionally select
+// the event that becomes active when the code is redeemed.
+function createPlayerEventContext(): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO events
+       (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at,
+        is_test, group_id, status, visibility_scope)
+     VALUES (?, 'Allgemein', 0, NULL, NULL, 'Dauerhaft geöffneter gemeinsamer Bereich',
+             0, NULL, 0, ?, 'published', 'participants')`,
+  ).run(BASE_EVENT_ID, DEFAULT_GROUP_ID);
+
+  db.prepare(
+    `INSERT INTO app_state (key, value) VALUES ('base_event_id', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  ).run(BASE_EVENT_ID);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS player_event_contexts (
+      player_id       TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+      active_event_id TEXT NOT NULL REFERENCES events(id) ON DELETE RESTRICT,
+      updated_at      INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_player_event_contexts_active_event
+      ON player_event_contexts(active_event_id);
+  `);
+
+  const inviteColumns = db.prepare('PRAGMA table_info(invites)').all() as Array<{ name: string }>;
+  if (!inviteColumns.some((column) => column.name === 'event_id')) {
+    db.exec('ALTER TABLE invites ADD COLUMN event_id TEXT REFERENCES events(id) ON DELETE RESTRICT');
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_invites_event ON invites(event_id)');
+
+  db.prepare(
+    `INSERT INTO event_participants (event_id, player_id, status)
+     SELECT ?, p.id, 'accepted'
+     FROM players p
+     WHERE p.deactivated_at IS NULL
+     ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted'`,
+  ).run(BASE_EVENT_ID);
+
+  const migratedAt = Date.now();
+  db.prepare(
+    `INSERT OR IGNORE INTO player_event_contexts (player_id, active_event_id, updated_at)
+     SELECT p.id,
+            COALESCE((
+              SELECT e.id
+              FROM events e
+              JOIN event_participants ep
+                ON ep.event_id = e.id AND ep.player_id = p.id AND ep.status = 'accepted'
+              JOIN group_memberships gm
+                ON gm.group_id = e.group_id AND gm.player_id = p.id AND gm.status = 'active'
+              WHERE e.id NOT IN (?, ?) AND e.group_id = ?
+                AND e.tracking_enabled = 1 AND e.status = 'published' AND e.ended_at IS NULL
+                AND e.starts_at <= ? AND (e.ends_at IS NULL OR e.ends_at > ?)
+              ORDER BY
+                EXISTS (
+                  SELECT 1 FROM tracking_live_contexts tlc
+                  WHERE tlc.player_id = p.id AND tlc.group_id = e.group_id AND tlc.event_id = e.id
+                ) DESC,
+                COALESCE((
+                  SELECT MAX(tlc.last_seen) FROM tracking_live_contexts tlc
+                  WHERE tlc.player_id = p.id AND tlc.group_id = e.group_id AND tlc.event_id = e.id
+                ), 0) DESC,
+                EXISTS (
+                  SELECT 1 FROM play_sessions ps
+                  WHERE ps.player_id = p.id AND ps.group_id = e.group_id
+                    AND ps.event_id = e.id AND ps.ended_at IS NULL
+                ) DESC,
+                e.starts_at DESC,
+                e.id
+              LIMIT 1
+            ), ?),
+            ?
+     FROM players p
+     WHERE p.deactivated_at IS NULL`,
+  ).run(
+    OUTSIDE_EVENTS_ID,
+    BASE_EVENT_ID,
+    DEFAULT_GROUP_ID,
+    migratedAt,
+    migratedAt,
+    BASE_EVENT_ID,
+    migratedAt,
+  );
+
+  db.prepare(
+    `UPDATE invites
+     SET event_id = ?
+     WHERE purpose IN ('register', 'claim') AND event_id IS NULL`,
+  ).run(BASE_EVENT_ID);
+}
+registerMigration({
+  version: 63,
+  name: 'add base event and player event context',
+  up: createPlayerEventContext,
+});
+
+// Keeps the evidence needed for personal cross-event history even after an
+// organizer removes the current roster row. Triggers cover every write path,
+// including maintenance scripts and future features that update the roster
+// without going through events.ts.
+function createEventParticipationHistory(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS event_participation_history (
+      event_id      TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id     TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      accepted_at   INTEGER,
+      declined_at   INTEGER,
+      removed_at    INTEGER,
+      updated_at    INTEGER NOT NULL,
+      PRIMARY KEY (event_id, player_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_event_participation_history_player
+      ON event_participation_history(player_id, accepted_at);
+
+    INSERT OR IGNORE INTO event_participation_history
+      (event_id, player_id, accepted_at, declined_at, removed_at, updated_at)
+    SELECT ep.event_id, ep.player_id,
+           CASE WHEN ep.status = 'accepted' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+           CASE WHEN ep.status = 'declined' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+           NULL,
+           CAST(strftime('%s', 'now') AS INTEGER) * 1000
+    FROM event_participants ep;
+
+    CREATE TRIGGER IF NOT EXISTS trg_event_participation_history_insert
+    AFTER INSERT ON event_participants
+    BEGIN
+      INSERT INTO event_participation_history
+        (event_id, player_id, accepted_at, declined_at, removed_at, updated_at)
+      VALUES (
+        NEW.event_id,
+        NEW.player_id,
+        CASE WHEN NEW.status = 'accepted' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+        CASE WHEN NEW.status = 'declined' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+        NULL,
+        CAST(strftime('%s', 'now') AS INTEGER) * 1000
+      )
+      ON CONFLICT(event_id, player_id) DO UPDATE SET
+        accepted_at = CASE
+          WHEN NEW.status = 'accepted' THEN COALESCE(event_participation_history.accepted_at, excluded.updated_at)
+          ELSE event_participation_history.accepted_at
+        END,
+        declined_at = CASE WHEN NEW.status = 'declined' THEN excluded.updated_at ELSE event_participation_history.declined_at END,
+        updated_at = excluded.updated_at;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_event_participation_history_update
+    AFTER UPDATE OF status ON event_participants
+    BEGIN
+      INSERT INTO event_participation_history
+        (event_id, player_id, accepted_at, declined_at, removed_at, updated_at)
+      VALUES (
+        NEW.event_id,
+        NEW.player_id,
+        CASE WHEN NEW.status = 'accepted' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+        CASE WHEN NEW.status = 'declined' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+        NULL,
+        CAST(strftime('%s', 'now') AS INTEGER) * 1000
+      )
+      ON CONFLICT(event_id, player_id) DO UPDATE SET
+        accepted_at = CASE
+          WHEN NEW.status = 'accepted' THEN COALESCE(event_participation_history.accepted_at, excluded.updated_at)
+          ELSE event_participation_history.accepted_at
+        END,
+        declined_at = CASE WHEN NEW.status = 'declined' THEN excluded.updated_at ELSE event_participation_history.declined_at END,
+        updated_at = excluded.updated_at;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_event_participation_history_delete
+    AFTER DELETE ON event_participants
+    WHEN EXISTS (SELECT 1 FROM players p WHERE p.id = OLD.player_id)
+     AND EXISTS (SELECT 1 FROM events e WHERE e.id = OLD.event_id)
+    BEGIN
+      INSERT INTO event_participation_history
+        (event_id, player_id, accepted_at, declined_at, removed_at, updated_at)
+      VALUES (
+        OLD.event_id,
+        OLD.player_id,
+        CASE WHEN OLD.status = 'accepted' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+        CASE WHEN OLD.status = 'declined' THEN CAST(strftime('%s', 'now') AS INTEGER) * 1000 END,
+        CAST(strftime('%s', 'now') AS INTEGER) * 1000,
+        CAST(strftime('%s', 'now') AS INTEGER) * 1000
+      )
+      ON CONFLICT(event_id, player_id) DO UPDATE SET
+        removed_at = excluded.updated_at,
+        updated_at = excluded.updated_at;
+    END;
+  `);
+}
+registerMigration({
+  version: 64,
+  name: 'add event participation history',
+  up: createEventParticipationHistory,
+});
+
+function scopeActiveDraftsPerEvent(): void {
+  db.prepare('UPDATE drafts SET event_id = ? WHERE event_id IS NULL').run(BASE_EVENT_ID);
+  db.exec(`
+    DROP INDEX IF EXISTS idx_drafts_one_active_per_group;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_one_active_per_event
+      ON drafts(group_id, event_id) WHERE status = 'active';
+  `);
+}
+registerMigration({
+  version: 65,
+  name: 'scope active drafts per event',
+  up: scopeActiveDraftsPerEvent,
+});
+
+function scopeMusicSessionsPerEvent(): void {
+  const columns = db.prepare('PRAGMA table_info(music_sessions)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'event_id')) {
+    db.exec('ALTER TABLE music_sessions ADD COLUMN event_id TEXT REFERENCES events(id) ON DELETE RESTRICT');
+  }
+  db.prepare('UPDATE music_sessions SET event_id = ? WHERE event_id IS NULL').run(BASE_EVENT_ID);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_music_sessions_event_status
+      ON music_sessions(event_id, status, started_at);
+    CREATE TRIGGER IF NOT EXISTS trg_music_sessions_event_group_insert
+    BEFORE INSERT ON music_sessions
+    WHEN NEW.event_id IS NULL OR NOT EXISTS (
+      SELECT 1 FROM events e WHERE e.id = NEW.event_id AND e.group_id = NEW.group_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'music session event/group mismatch');
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_music_sessions_event_group_update
+    BEFORE UPDATE OF event_id, group_id ON music_sessions
+    WHEN NEW.event_id IS NULL OR NOT EXISTS (
+      SELECT 1 FROM events e WHERE e.id = NEW.event_id AND e.group_id = NEW.group_id
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'music session event/group mismatch');
+    END;
+  `);
+}
+registerMigration({
+  version: 66,
+  name: 'scope music sessions per event',
+  up: scopeMusicSessionsPerEvent,
+});
+
+function addEventIdentityToPushLog(): void {
+  const columns = db.prepare('PRAGMA table_info(push_log)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'event_name_snapshot')) {
+    db.exec('ALTER TABLE push_log ADD COLUMN event_name_snapshot TEXT');
+  }
+  if (!columns.some((column) => column.name === 'notification_type')) {
+    db.exec('ALTER TABLE push_log ADD COLUMN notification_type TEXT');
+  }
+  if (!columns.some((column) => column.name === 'target_id')) {
+    db.exec('ALTER TABLE push_log ADD COLUMN target_id TEXT');
+  }
+  db.prepare('UPDATE push_log SET event_id = ? WHERE event_id IS NULL').run(BASE_EVENT_ID);
+  db.exec(`
+    UPDATE push_log
+    SET event_name_snapshot = COALESCE(
+          event_name_snapshot,
+          (SELECT e.name FROM events e WHERE e.id = push_log.event_id),
+          'Allgemein'
+        ),
+        notification_type = COALESCE(notification_type, 'legacy'),
+        target_id = COALESCE(target_id, topic_key, id);
+    INSERT INTO push_mutes (group_id, player_id, event_id, muted_at)
+    SELECT group_id, player_id, '${BASE_EVENT_ID}', MAX(muted_at)
+    FROM push_mutes
+    WHERE event_id IS NULL
+    GROUP BY group_id, player_id
+    ON CONFLICT(group_id, player_id, event_id) DO UPDATE SET
+      muted_at = MAX(push_mutes.muted_at, excluded.muted_at);
+    DELETE FROM push_mutes WHERE event_id IS NULL;
+  `);
+}
+registerMigration({
+  version: 67,
+  name: 'add event identity to push notifications',
+  up: addEventIdentityToPushLog,
+});
+
+function repairParticipationHistoryDeleteTrigger(): void {
+  db.exec('DROP TRIGGER IF EXISTS trg_event_participation_history_delete');
+  createEventParticipationHistory();
+}
+registerMigration({
+  version: 68,
+  name: 'repair participation history account deletion',
+  up: repairParticipationHistoryDeleteTrigger,
+});
+
+registerMigration({
+  version: 69,
+  name: 'repair participation history event deletion',
+  up: repairParticipationHistoryDeleteTrigger,
+});
+
+function enforceParticipantEventVisibility(): void {
+  db.prepare(
+    `UPDATE events
+     SET visibility_scope = 'participants'
+     WHERE id != ? AND visibility_scope != 'participants'`,
+  ).run(OUTSIDE_EVENTS_ID);
+}
+registerMigration({
+  version: 70,
+  name: 'enforce participant event visibility',
+  up: enforceParticipantEventVisibility,
+});
+
+// Before the permanent base event existed, several operational tables used
+// NULL as the start group's implicit room. That room is no longer a valid
+// runtime scope: legacy records must remain reachable through "Allgemein".
+// Live tracking rows are merged (rather than merely updated) because SQLite
+// permits duplicate composite keys when one key part is NULL.
+//
+// This covers the operational and arcade tables only. The competition and
+// seating tables that could also hold a NULL event are backfilled by v72 —
+// they were missed here, and their readers were tightened to strict equality
+// in the same change, which is what made the omission unreachable data
+// rather than merely untidy.
+function backfillLegacyOperationalDataToBaseEvent(): void {
+  // Some early v44 databases recorded the migration before these two tables
+  // were included in it. Ensure the compatibility tables exist before v71
+  // touches them; the helper is intentionally idempotent.
+  createPushMuteTable();
+  const updateSimpleScope = db.prepare(
+    `UPDATE broadcasts SET event_id = ? WHERE group_id = ? AND event_id IS NULL`,
+  );
+  updateSimpleScope.run(BASE_EVENT_ID, DEFAULT_GROUP_ID);
+
+  for (const table of [
+    'info_entries',
+    'push_log',
+    'quiz_seen',
+    'scribble_seen',
+    'scribble_drawings',
+    'scribble_drawing_reactions',
+    'scribble_drawing_favorites',
+    'arcade_results',
+    'checklist_items',
+    'checklist_tasks',
+    'kiosk_tokens',
+  ]) {
+    db.prepare(`UPDATE ${table} SET event_id = ? WHERE group_id = ? AND event_id IS NULL`).run(
+      BASE_EVENT_ID,
+      DEFAULT_GROUP_ID,
+    );
+  }
+
+  db.prepare(
+    `INSERT OR IGNORE INTO checklist_materializations
+       (group_id, event_id, player_id, materialized_at)
+     SELECT group_id, ?, player_id, materialized_at
+     FROM checklist_materializations
+     WHERE group_id = ? AND event_id IS NULL`,
+  ).run(BASE_EVENT_ID, DEFAULT_GROUP_ID);
+  db.prepare(
+    'DELETE FROM checklist_materializations WHERE group_id = ? AND event_id IS NULL',
+  ).run(DEFAULT_GROUP_ID);
+
+  db.prepare(
+    `INSERT INTO tracking_live_contexts
+       (player_id, group_id, event_id, last_seen, manual_note, activity_tracked)
+     SELECT player_id, group_id, ?, last_seen, manual_note, activity_tracked
+     FROM tracking_live_contexts
+     WHERE group_id = ? AND event_id IS NULL
+     ON CONFLICT(player_id, group_id, event_id) DO UPDATE SET
+       last_seen = MAX(tracking_live_contexts.last_seen, excluded.last_seen),
+       manual_note = COALESCE(excluded.manual_note, tracking_live_contexts.manual_note),
+       activity_tracked = MAX(tracking_live_contexts.activity_tracked, excluded.activity_tracked)`,
+  ).run(BASE_EVENT_ID, DEFAULT_GROUP_ID);
+  db.prepare('DELETE FROM tracking_live_contexts WHERE group_id = ? AND event_id IS NULL').run(DEFAULT_GROUP_ID);
+
+  db.prepare(
+    `INSERT INTO tracking_live_games
+       (player_id, group_id, event_id, game_id, since, is_foreground)
+     SELECT player_id, group_id, ?, game_id, since, is_foreground
+     FROM tracking_live_games
+     WHERE group_id = ? AND event_id IS NULL
+     ON CONFLICT(player_id, group_id, event_id, game_id) DO UPDATE SET
+       since = MIN(tracking_live_games.since, excluded.since),
+       is_foreground = MAX(tracking_live_games.is_foreground, excluded.is_foreground)`,
+  ).run(BASE_EVENT_ID, DEFAULT_GROUP_ID);
+  db.prepare('DELETE FROM tracking_live_games WHERE group_id = ? AND event_id IS NULL').run(DEFAULT_GROUP_ID);
+
+  db.prepare(
+    `INSERT INTO push_mutes (group_id, player_id, event_id, muted_at)
+     SELECT group_id, player_id, ?, muted_at
+     FROM push_mutes
+     WHERE group_id = ? AND event_id IS NULL
+     ON CONFLICT(group_id, player_id, event_id) DO UPDATE SET
+       muted_at = MAX(push_mutes.muted_at, excluded.muted_at)`,
+  ).run(BASE_EVENT_ID, DEFAULT_GROUP_ID);
+  db.prepare('DELETE FROM push_mutes WHERE group_id = ? AND event_id IS NULL').run(DEFAULT_GROUP_ID);
+}
+registerMigration({
+  version: 71,
+  name: 'backfill legacy operational data to base event',
+  up: backfillLegacyOperationalDataToBaseEvent,
+});
+
+// v71 backfilled the operational tables but left the competition and seating
+// ones behind, even though they carry the same nullable event_id and the same
+// legacy NULL rows: before this PR, POST /api/votes/start stored NULL whenever
+// no event was tracking. Their readers were tightened to strict equality at
+// the same time (`JOIN events` + `vr.event_id = ?` in routes/votes.ts), so
+// those rows stopped being reachable through any route at all — a closed vote
+// round that still exists in the database but no history endpoint can return.
+//
+// seating_layouts and seat_neighbors *do* carry partial unique indexes on
+// (group_id, event_id, ...) — see idx_seating_layouts_group_event and
+// idx_seat_neighbors_group_event above — so this UPDATE could in principle
+// collide with an existing base-event row. It cannot here: the base event is
+// created by v63, and v63..v72 all land in the same release, so every
+// migration runs in one uninterrupted sequence with no application write in
+// between. A legacy database therefore holds NULL rows or base-event rows,
+// never both. A future backfill of these tables must re-establish that
+// argument rather than assume it.
+function backfillLegacyCompetitionDataToBaseEvent(): void {
+  for (const table of ['vote_rounds', 'votes', 'seating_layouts', 'seat_neighbors', 'game_pings']) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'event_id')) continue;
+    if (!columns.some((column) => column.name === 'group_id')) continue;
+    db.prepare(`UPDATE ${table} SET event_id = ? WHERE group_id = ? AND event_id IS NULL`).run(
+      BASE_EVENT_ID,
+      DEFAULT_GROUP_ID,
+    );
+  }
+}
+registerMigration({
+  version: 72,
+  name: 'backfill legacy competition and seating data to base event',
+  up: backfillLegacyCompetitionDataToBaseEvent,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
@@ -3606,11 +4045,9 @@ for (const group of db.prepare('SELECT id FROM groups').all() as Array<{ id: str
 cleanupCatalogGames();
 seedCatalogGames();
 
-// Seed the permanent "außerhalb von Events" sentinel, once. This is the ONLY
-// place that ever creates it: events.ts's getTrackingEventId() is a pure
-// reader that assumes this has already run. Never touched again after —
-// no tracking, no roster, no end date, always present as the fallback
-// event_id for anything recorded while no real event is tracking.
+// Keep the historical "außerhalb von Events" sentinel available only so old
+// databases and migrations can still be read safely. Product code rejects it
+// as a workspace and never writes new fachliche data into it.
 function seedOutsideEventsEvent(): void {
   const exists = db.prepare('SELECT 1 FROM events WHERE id = ?').get(OUTSIDE_EVENTS_ID);
   if (exists) return;

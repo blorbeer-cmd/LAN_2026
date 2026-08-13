@@ -7,7 +7,7 @@ import { ensureLogin } from './authGate.js';
 import { connectSocket } from './socket.js';
 import { initConnectionStatus } from './connectionStatus.js';
 import { createConnectionRefreshCoordinator } from './connectionRefresh.js';
-import { state } from './state.js';
+import { selectableEventWorkspaces, state } from './state.js';
 import { loadAll } from './data.js';
 import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
@@ -16,26 +16,33 @@ import { filterTestUsers } from './testFilter.js';
 import { invalidateHomeSeating } from './views/home.js';
 import { initNotificationBanner, refreshNotificationBanner } from './notificationBanner.js';
 import { invalidateMissingSkills, invalidateAktuellStatus } from './aktuellStatus.js';
-import { invalidateMatchmakingHistory, setDraftState } from './views/matchmaking.js';
+import { invalidateMatchmakingHistory, invalidateMatchmakingDraft, setDraftState } from './views/matchmaking.js';
 import { invalidateBroadcasts } from './views/broadcast.js';
-import { invalidateInfoBoard } from './views/infoBoard.js';
+import { invalidateInfoBoard, openInfoBoard } from './views/infoBoard.js';
+import { openPlayerDetail } from './views/playerDetail.js';
 import { invalidateFoodOrders } from './views/foodOrders.js';
 import { invalidateChecklist } from './views/checklist.js';
 import { invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
 import { invalidateArrivals } from './views/arrivals.js';
-import { invalidateVoteHistory } from './views/votes.js';
+import { invalidateVoteEventScope, invalidateVoteHistory } from './views/votes.js';
 import { invalidateTournaments, focusTournament, showTournamentLanding } from './views/tournament.js';
 import { invalidateHallOfFame } from './views/hallOfFame.js';
 import { invalidateSeating } from './views/seating.js';
 import { invalidateAdminMemberships, invalidateAdminReadiness } from './views/admin.js';
 import { invalidateMusic } from './views/music.js';
+import { invalidateAnalytics } from './views/analytics.js';
+import { invalidateMyStats } from './views/myStats.js';
+import { invalidateSeatNeighbors } from './views/profile.js';
+import { eventStatus, eventSwitcherLabel } from './eventStatus.js';
 import { icon, installIconReplacement } from './icons.js';
 import { initNumberStepper } from './numberStepper.js';
 import { initGlobalSearch } from './searchPalette.js';
-import { installDomainIcons } from './domainIcons.js';
+import { domainIcon, installDomainIcons } from './domainIcons.js';
 import { initGroupContext, refreshGroupContext } from './groupContext.js';
 import { isKnownView, VIEW_REGISTRY } from './viewRegistry.js';
+import { navGroupForView, sectionKeyForView } from './sectionNav.js';
 import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
+import { escapeHtml } from './format.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -61,7 +68,9 @@ function syncArcadeStylesheet(entry) {
     const link = document.createElement('link');
     link.id = linkId;
     link.rel = 'stylesheet';
-    link.href = '/css/arcade.css?v=1';
+    // bump ?v= when arcade.css changes so no cached copy survives a reload
+    // (keep in sync with kiosk.html's static link)
+    link.href = '/css/arcade.css?v=2';
     const loaded = new Promise((resolve, reject) => {
       link.addEventListener('load', () => {
         link.dataset.loaded = 'true';
@@ -90,6 +99,7 @@ const ctx = {
   // after mutations whose effects aren't already carried by a socket event.
   refresh: async () => {
     await loadAll();
+    renderEventContextSwitcher();
     renderCurrent();
   },
   // Re-render the active view from whatever is already in `state`, with no
@@ -97,6 +107,124 @@ const ctx = {
   // (e.g. a freshly drawn matchmaking result).
   rerender: () => renderCurrent(),
 };
+
+// Everything a view kept from the workspace it was rendered in. loadAll()
+// refreshes `state`, but every view module that fetches from its own endpoint
+// caches outside `state` — those survive the switch and would keep the
+// previous event's data on screen.
+//
+// This list is the complete set of event-scoped caches; the contract test in
+// eventScopedCaches.test.js fails when a view gains an invalidator that is
+// neither listed here nor declared event-independent, so it cannot silently
+// drift again.
+function invalidateEventScopedCaches() {
+  invalidateAktuellStatus();
+  invalidateMatchmakingHistory();
+  invalidateMatchmakingDraft();
+  invalidateVoteEventScope();
+  invalidateTournaments();
+  invalidateHomeSeating();
+  invalidateSeating();
+  invalidateBroadcasts();
+  invalidateInfoBoard();
+  invalidateFoodOrders();
+  invalidateChecklist();
+  invalidateArrivals();
+  invalidateMusic();
+  invalidateAnalytics();
+  invalidateMyStats();
+  invalidateHallOfFame();
+  invalidateAdminReadiness();
+  invalidateSeatNeighbors();
+  // Not a view cache but the same problem: a drawn lineup belongs to the
+  // event it was drawn in, and nothing in loadAll() overwrites it.
+  state.lastMatchmaking = null;
+}
+
+function renderEventContextSwitcher() {
+  const container = document.getElementById('event-context');
+  const select = document.getElementById('event-context-switcher');
+  const statusEl = document.getElementById('event-context-status');
+  if (!container || !select) return;
+  const events = selectableEventWorkspaces();
+  select.innerHTML = events
+    .map((event) => `<option value="${escapeHtml(event.id)}">${escapeHtml(eventSwitcherLabel(event))}</option>`)
+    .join('');
+  select.value = state.activeEvent?.id ?? '';
+  container.hidden = events.length === 0;
+
+  // The icon repeats the active event's state at a glance; the option text
+  // above already carries it in words, and the select's accessible name spells
+  // it out too, so the colour never has to be read on its own.
+  const active = events.find((event) => event.id === state.activeEvent?.id) ?? state.activeEvent;
+  const status = eventStatus(active);
+  if (statusEl) {
+    statusEl.innerHTML = icon(status.icon);
+    statusEl.dataset.eventStatus = status.key;
+  }
+  // Keep the visible option concise. The state remains in the accessible
+  // description because the visual icon is intentionally aria-hidden.
+  const description = active
+    ? `Aktives Event: ${eventSwitcherLabel(active)} – ${status.label}`
+    : 'Aktives Event';
+  select.setAttribute('aria-label', description);
+  container.title = description;
+}
+
+async function activateEvent(eventId, { navigate } = {}) {
+  // A missing eventId is not an error: a notification stored before this
+  // release carries no event, and its destination is still the thing the
+  // reader tapped. Skip the switch, keep the navigation.
+  if (eventId && state.activeEvent?.id !== eventId) {
+    await api.events.activate(eventId);
+    invalidateEventScopedCaches();
+    await loadAll();
+    renderEventContextSwitcher();
+    await refreshNotificationBanner();
+    renderCurrent();
+  }
+  if (navigate && isKnownView(navigate)) switchView(navigate);
+}
+
+// The one entry point for "a notification wants me somewhere". Its event may
+// be gone by the time it is tapped — ended, cancelled, or the participation
+// withdrawn — and PUT /api/me/active-event answers 404 for all three. That is
+// an expected outcome of a stale link, not a startup failure: say so once and
+// still take the reader to the promised view in whatever workspace is active.
+async function followEventDeepLink(eventId, view) {
+  try {
+    await activateEvent(eventId, { navigate: view });
+  } catch (error) {
+    // Defensive on purpose: this catch runs during startup, so throwing a
+    // second time here would reintroduce exactly the aborted-startup bug it
+    // exists to prevent.
+    if (error?.status === 404) {
+      showToast('Das Event dieser Mitteilung ist nicht mehr verfügbar.', { error: true });
+    } else {
+      showToast(error?.message ?? 'Der Eventwechsel ist fehlgeschlagen.', { error: true });
+    }
+    if (view && isKnownView(view)) switchView(view);
+  }
+}
+
+function wireEventContextSwitcher() {
+  const select = document.getElementById('event-context-switcher');
+  select?.addEventListener('change', async () => {
+    select.disabled = true;
+    try {
+      await activateEvent(select.value);
+    } catch (error) {
+      renderEventContextSwitcher();
+      showToast(error.message, { error: true });
+    } finally {
+      select.disabled = false;
+    }
+  });
+  window.addEventListener('respawn:event-navigate', (event) => {
+    const { eventId, view } = event.detail ?? {};
+    void followEventDeepLink(eventId, view);
+  });
+}
 
 function renderCurrent() {
   const revision = ++renderRevision;
@@ -130,13 +258,13 @@ function renderCurrent() {
 function focusPendingSearchTarget() {
   if (!pendingSearchTarget || pendingSearchTarget.view !== currentView) return;
   const { type, id } = pendingSearchTarget.target;
+  // No `player`/`info` entry: both open as a dialog instead of navigating to a
+  // view that would then have to highlight a row (see initGlobalSearch below).
   const candidates = {
-    player: [...viewContainer.querySelectorAll('[data-player]')].filter((el) => el.dataset.player === id),
     game: [...viewContainer.querySelectorAll('[data-search-game]')].filter((el) => el.dataset.searchGame === id),
     order: [
       ...viewContainer.querySelectorAll('[data-order-card], [data-closed-order]'),
     ].filter((el) => el.dataset.orderCard === id || el.dataset.closedOrder === id),
-    info: [...viewContainer.querySelectorAll('[data-info-entry]')].filter((el) => el.dataset.infoEntry === id),
     broadcast: [...viewContainer.querySelectorAll('[data-broadcast]')].filter((el) => el.dataset.broadcast === id),
     carpool: [...viewContainer.querySelectorAll('[data-carpool]')].filter((el) => el.dataset.carpool === id),
   }[type] ?? [];
@@ -171,8 +299,11 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
   // view is active. Without it, a running game can rebuild the current DOM
   // during navigation and make a tap appear to be lost.
   viewContainer.dataset.view = view;
+  // A nav button stands for a whole area, so every route inside that area
+  // (e.g. Teams inside Wettkampf) keeps its button lit — see sectionNav.js.
+  const activeGroup = navGroupForView(view);
   document.querySelectorAll('.nav-btn').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.view === view);
+    btn.classList.toggle('active', navGroupForView(btn.dataset.view) === activeGroup);
   });
   // Restart the view-enter animation (see .view-enter in style.css). Only on
   // deliberate navigation — realtime-triggered re-renders of the same view
@@ -207,15 +338,26 @@ function wireAdminMode() {
     setAdmin(false);
     showToast('Admin-Modus verlassen.');
   });
+  // Both the Home board and the Sitzplan editor embed their own snapshot of
+  // player data, so a visibility change must drop them too — otherwise a test
+  // player stays readable on Home's seating plan after admin mode is left.
+  const invalidateVisibilityCaches = () => {
+    invalidateHomeSeating();
+    invalidateSeating();
+  };
   window.addEventListener('respawn:admin-changed', () => {
     updateAdminIndicator();
     invalidateMusic();
+    invalidateVisibilityCaches();
     ctx.refresh();
   });
   // A redeemed test-session identity also needs its test-player peers visible
   // (see testFilter.js) — same "refetch so already-loaded data gets
   // re-filtered" reason as admin-changed above.
-  window.addEventListener('respawn:test-identity-changed', () => ctx.refresh());
+  window.addEventListener('respawn:test-identity-changed', () => {
+    invalidateVisibilityCaches();
+    ctx.refresh();
+  });
 }
 
 function wireNav() {
@@ -223,8 +365,8 @@ function wireNav() {
   // (index.html stays free of hand-copied SVG paths); the app shell is
   // hidden until this boot code runs, so nothing renders icon-less.
   document.getElementById('notifications-btn').insertAdjacentHTML('afterbegin', icon('bell'));
+  document.getElementById('info-btn').innerHTML = icon(domainIcon('infoBoard'));
   document.getElementById('profile-btn').innerHTML = icon('circleUser');
-  document.getElementById('settings-btn').innerHTML = icon('settings');
   document.querySelector('.admin-banner-label').insertAdjacentHTML('afterbegin', icon('shield'));
 
   document.querySelectorAll('.nav-btn').forEach((btn) => {
@@ -233,8 +375,10 @@ function wireNav() {
       switchView(btn.dataset.view);
     });
   });
-  document.getElementById('settings-btn').addEventListener('click', () => switchView('settings'));
   document.getElementById('profile-btn').addEventListener('click', () => switchView('profile'));
+  // Info is reference material people look up mid-conversation, so it opens
+  // over whatever they were doing instead of costing them their current view.
+  document.getElementById('info-btn').addEventListener('click', () => openInfoBoard());
 
   // Views can request navigation to a non-bottom-nav view (settings,
   // analytics) by rendering a button with data-navigate="<view>", without
@@ -242,6 +386,20 @@ function wireNav() {
   viewContainer.addEventListener('click', (e) => {
     if (e.target.closest('[data-retry-arcade]')) {
       renderCurrent();
+      return;
+    }
+    // An area's own tab row (see sectionNav.js). Same navigation as
+    // data-navigate, but switching back to the Turniere tab always returns to
+    // the tournament list instead of whichever board was open last.
+    const tab = e.target.closest('[data-section-tab]');
+    if (tab) {
+      if (tab.dataset.sectionTab === 'tournaments') showTournamentLanding();
+      switchView(tab.dataset.sectionTab);
+      return;
+    }
+    const detail = e.target.closest('[data-open-player-detail]');
+    if (detail) {
+      openPlayerDetail(detail.dataset.openPlayerDetail);
       return;
     }
     const btn = e.target.closest('[data-navigate]');
@@ -274,7 +432,9 @@ function wireNav() {
   // of reloading the whole SPA just to change tabs.
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (e) => {
-      if (e.data?.type === 'navigate' && isKnownView(e.data.view)) switchView(e.data.view);
+      if (e.data?.type === 'navigate' && isKnownView(e.data.view)) {
+        void followEventDeepLink(e.data.eventId, e.data.view);
+      }
     });
   }
 }
@@ -518,10 +678,9 @@ function wireSocket() {
     if (currentView === 'broadcast') renderCurrent();
   });
 
-  socket.on('info:changed', () => {
-    invalidateInfoBoard();
-    if (currentView === 'infoBoard') renderCurrent();
-  });
+  // The Info dialog refreshes itself while it is open; nothing else on screen
+  // depends on those entries.
+  socket.on('info:changed', invalidateInfoBoard);
 
   socket.on('foodOrders:changed', (payload) => {
     invalidateFoodOrders();
@@ -540,14 +699,26 @@ function wireSocket() {
     invalidateArrivals();
     if (currentView === 'arrivals') renderCurrent();
   });
-  socket.on('checklist:changed', () => {
-    invalidateChecklist();
-    if (currentView === 'checklist') renderCurrent();
+  socket.on('checklist:changed', (payload) => {
+    // The payload says whether tasks or someone's items changed; passing it on
+    // keeps an unrelated half of the cache (and the Packliste draft it feeds)
+    // from being thrown away.
+    invalidateChecklist(payload);
+    // Every Orga tab re-renders, not just the two checklist ones: the To-Dos
+    // tab count belongs to the area shell and is visible from all of them.
+    if (sectionKeyForView(currentView) === 'orga') renderCurrent();
   });
 
   socket.on('music:changed', () => {
     invalidateMusic();
     if (currentView === 'music') renderCurrent();
+  });
+  socket.on('event-context:changed', async () => {
+    invalidateEventScopedCaches();
+    await loadAll();
+    renderEventContextSwitcher();
+    await refreshNotificationBanner();
+    renderCurrent();
   });
   socket.on('groups:changed', async () => {
     await refreshGroupContext();
@@ -562,6 +733,17 @@ async function main() {
   await initGroupContext();
   wireNav();
   initGlobalSearch((entry) => {
+    // Info entries and foreign profiles have no own area any more — they open
+    // as a dialog over the current view instead of navigating away from it.
+    if (entry.target?.type === 'info' || entry.action === 'info') {
+      openInfoBoard({ focusEntryId: entry.target?.id ?? null });
+      return;
+    }
+    if (entry.target?.type === 'player') {
+      if (entry.target.id === getMyId()) switchView('profile');
+      else openPlayerDetail(entry.target.id);
+      return;
+    }
     if (entry.target?.type === 'tournament') focusTournament(entry.target.id);
     if (entry.target?.type === 'game') focusGameCatalog(entry.target.id);
     switchView(entry.view, {
@@ -571,11 +753,13 @@ async function main() {
   wireAdminMode();
   initConnectionStatus();
   initNotificationBanner();
+  wireEventContextSwitcher();
   // Socket connection and REST cache recovery are background concerns. The
   // app shell and onboarding must still become usable when a single refresh
   // request fails temporarily (or keeps retrying in the background).
-  void loadAll()
+  const initialDataLoad = loadAll()
     .then(() => {
+      renderEventContextSwitcher();
       if (appReady) renderCurrent();
     })
     .catch((error) => {
@@ -588,6 +772,18 @@ async function main() {
   appReady = true;
   await initOnboarding({ navigate: (view) => switchView(view, { replace: true }), rerender: renderCurrent, getCurrentView: () => currentView });
   lastVoteRound = state.votes ? state.votes.round : null;
+  const pushedEventId = new URL(location.href).searchParams.get('eventId');
+  if (pushedEventId) {
+    await initialDataLoad;
+    // Never let a stale link abort the remaining startup: the base history
+    // entry, the initial switchView() and onboarding all still have to run.
+    // The parameter is dropped either way, or a failing link would replay its
+    // failure on every reload of this tab.
+    await followEventDeepLink(pushedEventId);
+    const cleanUrl = new URL(location.href);
+    cleanUrl.searchParams.delete('eventId');
+    history.replaceState(history.state, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+  }
   // A push notification's deep link (e.g. /#votes, opened by sw.js when no
   // app window existed yet) overrides that default so the tap actually lands
   // where the notification promised.

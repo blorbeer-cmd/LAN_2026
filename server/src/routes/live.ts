@@ -6,19 +6,26 @@ import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { getLiveBoard } from '../liveStatus';
 import { withParamPlayerIdentity } from '../sessions';
+import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 
 export const liveRouter = Router();
 
 const MAX_NOTE_LENGTH = 60;
 
 liveRouter.get('/', (req, res) => {
-  res.json(getLiveBoard(req.group!.id));
+  const scope = resolveRequestGroupEventScope(req, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!scope.eventId || !requireGroupEventAccess(req, res, scope.eventId)) return;
+  res.json(getLiveBoard(req.group!.id, scope.eventId));
 });
 
 // POST /api/live/:playerId/note - manual override (FR-28), e.g. "Pause/Essen"
 // when someone steps away without closing their game, or to clear it again.
 // Body: { note: string | null }
 liveRouter.post('/:playerId/note', ...withParamPlayerIdentity(), (req, res) => {
+  const scope = resolveRequestGroupEventScope(req, undefined);
+  if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const player = db.prepare('SELECT id FROM players WHERE id = ?').get(req.params.playerId);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
@@ -35,12 +42,16 @@ liveRouter.post('/:playerId/note', ...withParamPlayerIdentity(), (req, res) => {
   // only for deriveState to immediately discard it again as stale, making
   // the pause button appear to silently do nothing (see liveStatus.ts).
   db.prepare(
-    `INSERT INTO live_status (player_id, last_seen, manual_note) VALUES (?, ?, ?)
-     ON CONFLICT(player_id) DO UPDATE SET last_seen = excluded.last_seen, manual_note = excluded.manual_note`
-  ).run(req.params.playerId, Date.now(), normalized);
-  db.prepare('UPDATE tracking_live_contexts SET last_seen = ?, manual_note = ? WHERE player_id = ? AND group_id = ?')
-    .run(Date.now(), normalized, req.params.playerId, req.group!.id);
+    `INSERT INTO tracking_live_contexts
+       (player_id, group_id, event_id, last_seen, manual_note, activity_tracked)
+     VALUES (?, ?, ?, ?, ?, 0)
+     ON CONFLICT(player_id, group_id, event_id) DO UPDATE SET
+       last_seen = excluded.last_seen, manual_note = excluded.manual_note`,
+  ).run(req.params.playerId, req.group!.id, scope.eventId, Date.now(), normalized);
 
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id, scope.eventId), {
+    groupId: req.group!.id,
+    eventId: scope.eventId,
+  });
   res.json({ ok: true });
 });
