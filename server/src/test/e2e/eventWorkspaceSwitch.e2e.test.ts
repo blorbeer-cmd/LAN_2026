@@ -214,7 +214,7 @@ test('the personal statistics event filter only offers accepted workspaces', asy
   assert.deepEqual(notFound, [], 'no offered event may answer the personal stats request with 404');
 });
 
-test('the workspace switcher names and shows the state of every event it offers', async () => {
+test('the workspace switcher keeps event names concise and shows state through its icon', async () => {
   const started = await api(`/api/events/${eventA}/tracking/start`, { method: 'POST' });
   assert.equal(started.status, 200, JSON.stringify(started.body));
 
@@ -227,16 +227,17 @@ test('the workspace switcher names and shows the state of every event it offers'
     `the base workspace names itself once, got: ${JSON.stringify(labels)}`,
   );
   assert.ok(
-    labels.some((label) => label === 'E2E Workspace A · Trackt gerade'),
-    `a tracking event says so in the dropdown, got: ${JSON.stringify(labels)}`,
+    labels.some((label) => label === 'E2E Workspace A'),
+    `the tracking event keeps only its name in the dropdown, got: ${JSON.stringify(labels)}`,
   );
   assert.ok(
-    labels.some((label) => label === 'E2E Workspace B · Nicht aktiv'),
-    `a created but idle event says so too, got: ${JSON.stringify(labels)}`,
+    labels.some((label) => label === 'E2E Workspace B'),
+    `the idle event keeps only its name in the dropdown, got: ${JSON.stringify(labels)}`,
   );
+  assert.ok(labels.every((label) => !label.includes('Trackt gerade') && !label.includes('Nicht aktiv')));
 
-  // The indicator follows the active event, and the state stays readable
-  // without it: the option text spells it out and the control is described.
+  // The indicator follows the active event, and the state stays available to
+  // assistive technology through the control's accessible name.
   assert.equal(await page.$eval('#event-context-status', (el) => (el as HTMLElement).dataset.eventStatus), 'idle');
   await switchWorkspaceInBrowser(eventA);
   assert.equal(await page.$eval('#event-context-status', (el) => (el as HTMLElement).dataset.eventStatus), 'tracking');
