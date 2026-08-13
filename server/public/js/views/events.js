@@ -21,8 +21,8 @@ import { getMyId } from '../whoami.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { eventStatusBadgeHtml } from '../eventStatus.js';
 
-const EVENT_HELP = 'Jede Aktion gehört zu deinem aktuell gewählten Event. Du kannst dein Arbeits-Event jederzeit oben in der Leiste wechseln.';
-const KIOSK_HELP = 'Für gemeinsame Bildschirme: zeigt Live-Status, Vote, Rang und Turnier automatisch. Der Kiosk benötigt seinen eigenen Token.';
+const EVENT_HELP = 'Nur ein Event gleichzeitig erfasst Live-Status und Spielzeit.';
+const KIOSK_HELP = 'Zeigt Live-Status, Vote, Rang und Turnier; ein eigener Token ist erforderlich.';
 
 function renderKioskSection() {
   return `

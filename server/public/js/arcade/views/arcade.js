@@ -31,7 +31,6 @@ import { infoTooltipHtml, wireInfoTooltips } from '../../infoTooltip.js';
 import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
 import { searchSelectHtml, wireSearchSelect } from '../../searchSelect.js';
 import { emptyStateHtml } from '../../emptyState.js';
-import { onboardingHintHtml, wireOnboardingHint } from '../../onboarding.js';
 
 // The Arcade opens as a launcher: a compact grid of playable game tiles.
 // Picking one reveals that game's lobby below.
@@ -584,7 +583,6 @@ export function renderArcade(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Arcade</h1>
-    ${onboardingHintHtml('arcade')}
     <div class="grouped-page-sections" style="margin-top:var(--space-3);">
       <section class="card stack grouped-page-section" aria-labelledby="arcade-games-title">
         <div class="grouped-page-section-title"><h2 id="arcade-games-title">Spiele</h2></div>
@@ -614,7 +612,6 @@ export function renderArcade(container, ctx) {
   `;
 
   wireInfoTooltips(container);
-  wireOnboardingHint(container, ctx.rerender);
   wireTetrisLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('tetris', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('tetris', 'join') });
   wireScribbleLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('scribble', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('scribble', 'join') });
   wirePongLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('pong', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('pong', 'join') });

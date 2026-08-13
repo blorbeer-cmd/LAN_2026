@@ -9,26 +9,10 @@ import { escapeHtml } from './format.js';
 import { showToast } from './toast.js';
 
 const STEPS = [
-  { title: 'Willkommen', text: 'Diese kurze Einführung zeigt die wichtigsten Bereiche und Funktionen.', view: 'home' },
-  { title: 'Home', text: 'Home zeigt aktuelle Aktivitäten, den Live-Status aller Spielenden, die Rangliste und den Sitzplan auf einen Blick.', view: 'home', target: '.nav-btn[data-view="home"]' },
-  { title: 'Wettkampf', text: 'Turniere und Teams liegen hier zusammen: Turniere anlegen und live verfolgen, Teams nach Skill-Level auslosen oder per Captain Draft zusammenstellen.', view: 'tournaments', target: '.nav-btn[data-view="tournaments"]' },
-  { title: 'Vote', text: 'Hier startet und beantwortet ihr Abstimmungen zur nächsten Spielauswahl und seht die Top 10 nach Bock-Level.', view: 'votes', target: '.nav-btn[data-view="votes"]' },
-  { title: 'Auswertung', text: 'Rangliste, Statistiken und Hall of Fame in einem Bereich: Punkte, Platzierungen, Spielzeit und die Champions vergangener LANs.', view: 'leaderboard', target: '.nav-btn[data-view="leaderboard"]' },
-  { title: 'Mehr', text: 'Hier erreichst du alle weiteren Bereiche: Orga mit To-Dos, Packliste und An- & Abreise, dazu Essen, Arcade, Jam, Durchsagen und Spiele. Jeder dieser Bereiche erklärt sich beim ersten Öffnen kurz selbst.', view: 'more', target: '.nav-btn[data-view="more"]' },
-  { title: 'Info, Profil und Suche', text: 'Das „i“ oben öffnet WLAN, Discord, Server-IPs und Hausregeln von jeder Ansicht aus. Im Profil verwaltest du deine persönlichen Angaben, deinen Tracking-Agent und Push-Benachrichtigungen. Über die Suche erreichst du Bereiche und Inhalte direkt.', view: 'profile', target: '#profile-btn' },
-  { title: 'Spielekatalog', text: 'Bewerte jetzt die ersten zehn Spiele. Bock verbessert die gemeinsame Spielauswahl. Skill ermöglicht eine ausgewogenere Teamaufteilung.', view: 'gameCatalog' },
+  { title: 'Teams & Turniere', text: 'Hier lost ihr Teams aus, legt Turniere an und verwaltet Ergebnisse.', view: 'tournaments', target: '.nav-btn[data-view="tournaments"]' },
+  { title: 'Profil und Suche', text: 'Im Profil verwaltest du persönliche Angaben, Tracking-Agent und Push. Über die Suche erreichst du Bereiche und Inhalte direkt.', view: 'profile', target: '#profile-btn' },
+  { title: 'Spielekatalog', text: 'Bewerte die ersten zehn Spiele. Bock unterstützt die Spielauswahl, Skill die Teamaufteilung.', view: 'gameCatalog' },
 ];
-
-// Views reachable under "Mehr" that get their own short, one-time
-// explanation on first visit instead of being crammed into the "Mehr" tour
-// step's text (see onboardingHintHtml/wireOnboardingHint below).
-const VIEW_HINTS = {
-  checklist: 'Orga bündelt die Vorbereitung: Aufgaben und Mitbring-Anfragen für die Gruppe, deine persönliche Packliste und die Fahrgemeinschaften – jeweils ein Tab oben.',
-  arrivals: 'Fahrgemeinschaften für An- und Abreise: Fahrten anlegen oder als Mitfahrer:in eintragen.',
-  foodOrders: 'Sammelbestellungen: Positionen hinzufügen, eigenen Anteil markieren und die Bestellung gemeinsam abrechnen.',
-  arcade: 'Kleine Zwischendurch-Spiele für 1 bis 8 Personen: Lobby öffnen oder einer offenen Lobby beitreten.',
-  broadcast: 'Durchsagen an die ganze Gruppe senden, inklusive Verlauf der letzten Nachrichten.',
-};
 
 let runtime = null;
 let candidateSyncPending = false;
@@ -86,41 +70,6 @@ export function onboardingRatingProgress() {
       && state.preferences.some((row) => row.player_id === myId && row.game_id === gameId),
   ).length;
   return { completed, required: ids.length, ready: ids.length === 0 || completed >= ids.length };
-}
-
-// A short, dismissible one-time explanation for a view reached under "Mehr"
-// (see VIEW_HINTS above). Renders nothing once the view is already in
-// seenViews, before the onboarding state has loaded, or for a view with no
-// registered hint - safe to call unconditionally from any view's render
-// function.
-export function onboardingHintHtml(view) {
-  const text = VIEW_HINTS[view];
-  if (!text || !runtime || runtime.state.seenViews.includes(view)) return '';
-  return `<div class="onboarding-view-hint" data-onboarding-hint="${view}" role="note">
-    <p>${escapeHtml(text)}</p>
-    <button type="button" class="btn btn-sm" data-onboarding-hint-dismiss>Verstanden</button>
-  </div>`;
-}
-
-// Call once after rendering a view that used onboardingHintHtml, passing the
-// same rerender callback the view's own controls use.
-export function wireOnboardingHint(container, rerenderView) {
-  const hint = container.querySelector('[data-onboarding-hint]');
-  hint?.querySelector('[data-onboarding-hint-dismiss]')?.addEventListener('click', () => {
-    void dismissOnboardingHint(hint.dataset.onboardingHint, rerenderView);
-  });
-}
-
-async function dismissOnboardingHint(view, rerenderView) {
-  if (!runtime || runtime.state.seenViews.includes(view)) return;
-  const seenViews = Array.from(new Set([...runtime.state.seenViews, view])).slice(-20);
-  try {
-    runtime.state = await api.onboarding.update({ seenViews });
-  } catch (error) {
-    showToast(error?.message || 'Hinweis konnte nicht gespeichert werden.', { error: true });
-    return;
-  }
-  rerenderView();
 }
 
 function clearTargetHighlight() {
