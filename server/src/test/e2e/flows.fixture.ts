@@ -44,7 +44,12 @@ function flowTest(
   name: string,
   fn: (context: TestContext) => void | Promise<void>,
 ): void {
-  if (flowShard === shard) test(name, fn);
+  if (flowShard === shard) {
+    // All flows in a shard intentionally share one server session and one
+    // Playwright page. Running sibling tests concurrently lets one flow
+    // navigate or resize that page while another is asserting it.
+    test(name, { concurrency: false }, fn);
+  }
 }
 
 async function setDateTimeField(id: string, value: string): Promise<void> {
