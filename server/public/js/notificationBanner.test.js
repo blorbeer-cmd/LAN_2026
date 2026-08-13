@@ -18,8 +18,9 @@ test('a notification link carries its event id so the deep link can switch works
 
 test('a notification without an event id yields an empty attribute, never the string "undefined"', () => {
   // The attribute is read back as control.dataset.notificationEventId and
-  // handed to activateEvent(), whose `if (!eventId) return;` guard a literal
-  // "undefined" would pass — the app would then activate a non-existent event.
+  // handed to activateEvent(), which skips the workspace switch for a falsy
+  // eventId. The literal string "undefined" is truthy and would pass that
+  // check — the app would then try to activate a non-existent event.
   const html = entryHtml(baseEntry);
 
   assert.match(html, /data-notification-event-id=""/);

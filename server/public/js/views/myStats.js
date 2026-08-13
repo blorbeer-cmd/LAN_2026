@@ -54,12 +54,23 @@ function renderEventOptions() {
 // the difference look like a bug (docs/KONZEPT-EVENT-SICHTBARKEIT.md,
 // Abschnitt 4.4). Only for the "Gesamt" selection — with one event picked the
 // dropdown already says what the numbers cover.
-function dataBasisHtml(stats) {
-  if (statsEventId !== '') return '';
-  const count = stats.eventIds?.length ?? 0;
+//
+// Exported and free of module state so the wording itself is testable: the
+// singular is the normal case for every account that has not accepted a LAN
+// invitation yet, so both halves of the sentence have to agree in number.
+export function dataBasisText(eventIds, selectedEventId) {
+  if (selectedEventId !== '') return '';
+  const count = eventIds?.length ?? 0;
   if (count === 0) return '';
-  const events = count === 1 ? 'einem Event' : `deinen ${count} Events`;
-  return `<div class="muted" style="font-size:var(--font-size-xs);">Aus ${events}, an denen du teilgenommen hast.</div>`;
+  return count === 1
+    ? 'Aus einem Event, an dem du teilgenommen hast.'
+    : `Aus deinen ${count} Events, an denen du teilgenommen hast.`;
+}
+
+function dataBasisHtml(stats) {
+  const text = dataBasisText(stats.eventIds, statsEventId);
+  if (!text) return '';
+  return `<div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(text)}</div>`;
 }
 
 function renderStats() {

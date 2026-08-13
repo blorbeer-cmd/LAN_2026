@@ -253,6 +253,35 @@ test('the participation history keeps a finished event available to personal ana
   assert.equal(scoped.body.eventId, eventId);
 });
 
+test('the participation history drops an event that was called off', async () => {
+  // Cancelling only flips events.status; roster and history rows survive, and
+  // the server-side allowlist in historicallyParticipatedEventIds() does not
+  // filter on status either. So an accepted-then-cancelled event would reach
+  // the event filters and be labelled by eventStatus(), which knows no
+  // "abgesagt" — it would read as "Nicht aktiv" and select an empty dataset
+  // for a LAN that never took place.
+  const created = await createEvent('Abgesagte LAN');
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const eventId = created.body.id as string;
+  accept(eventId, TEST_ADMIN_ID);
+  assert.ok((await request(app).get('/api/events')).body.historicalEvents.some((e: { id: string }) => e.id === eventId));
+
+  const cancelled = await request(app).delete(`/api/events/${eventId}`);
+  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.body));
+  assert.equal(cancelled.body.status, 'cancelled');
+
+  const afterCancel = await request(app).get('/api/events');
+  assert.equal(
+    afterCancel.body.historicalEvents.some((event: { id: string }) => event.id === eventId),
+    false,
+    'a cancelled event is not something anyone took part in',
+  );
+  assert.equal(
+    afterCancel.body.availableEvents.some((event: { id: string }) => event.id === eventId),
+    false,
+  );
+});
+
 test('the participation history never offers an event this account only manages', async () => {
   const foreign = await createEvent('Fremdes Event');
   assert.equal(foreign.status, 201, JSON.stringify(foreign.body));

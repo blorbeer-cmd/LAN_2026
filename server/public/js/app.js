@@ -191,10 +191,13 @@ async function followEventDeepLink(eventId, view) {
   try {
     await activateEvent(eventId, { navigate: view });
   } catch (error) {
+    // Defensive on purpose: this catch runs during startup, so throwing a
+    // second time here would reintroduce exactly the aborted-startup bug it
+    // exists to prevent.
     if (error?.status === 404) {
       showToast('Das Event dieser Mitteilung ist nicht mehr verfügbar.', { error: true });
     } else {
-      showToast(error.message, { error: true });
+      showToast(error?.message ?? 'Der Eventwechsel ist fehlgeschlagen.', { error: true });
     }
     if (view && isKnownView(view)) switchView(view);
   }

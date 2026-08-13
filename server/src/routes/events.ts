@@ -163,11 +163,19 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
   // (docs/KONZEPT-EVENT-SICHTBARKEIT.md, Abschnitte 4.3 und 4.4).
   const historicalEvents = db
     .prepare(
+      // Cancelled events are excluded even though the server-side allowlist
+      // in historicallyParticipatedEventIds() still contains them: cancelling
+      // leaves roster and history rows untouched, so an accepted event that
+      // was called off would otherwise show up as a filter option for a LAN
+      // that never happened — and eventStatus() has no vocabulary for it, so
+      // it would be labelled "Nicht aktiv". Narrowing here keeps this list a
+      // strict subset of what the analytics endpoints accept, so an offered
+      // option can still never answer with a 404.
       `SELECT e.*
        FROM events e
        JOIN event_participation_history h ON h.event_id = e.id
        WHERE h.player_id = ? AND h.accepted_at IS NOT NULL
-         AND e.id != ? AND e.group_id = ?
+         AND e.id != ? AND e.group_id = ? AND e.status != 'cancelled'
        ORDER BY e.starts_at DESC, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
