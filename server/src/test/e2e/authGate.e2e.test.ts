@@ -434,7 +434,16 @@ test('admin roster retries role loading, serializes changes and follows group ro
     await adminPage.waitForSelector('#app:not([hidden])');
     await adminPage.click('.nav-btn[data-view="more"]');
     await adminPage.click('[data-navigate="admin"]');
-    if (await adminPage.locator('#admin-mode-activate').count()) await adminPage.click('#admin-mode-activate');
+    if (await adminPage.locator('#admin-mode-activate').count()) {
+      await adminPage.click('#admin-mode-activate');
+      // Activating admin mode drops the cached roster and refetches it with the
+      // test players included, but the panel only re-renders once that refresh
+      // resolves. Until then the pre-activation DOM is still on screen, so the
+      // roster waits below would settle on the stale markup and the assertion
+      // could then read the empty in-between render. The Testdaten section only
+      // exists in admin mode and is therefore the barrier for that re-render.
+      await adminPage.waitForSelector('#admin-test-players-title');
+    }
 
     await adminPage.waitForSelector('#admin-members-retry');
     await adminPage.waitForSelector(`.admin-player-row:has-text("${NAME}")`);
