@@ -25,7 +25,7 @@ export const ARCADE_TITLES: Record<string, string> = {
   blobby: 'Blobby Volley',
   pong: 'Pong',
   snake: 'Snake',
-  battleship: 'Schiffe versenken',
+  battleship: 'Battleship',
 };
 interface ArcadeResultRow {
   id: string;

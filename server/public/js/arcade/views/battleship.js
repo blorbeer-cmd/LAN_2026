@@ -166,7 +166,7 @@ function renderPlacement() {
   const missing = SHIPS.length - placements.length;
   const submitReason = !locked && missing > 0 ? `Es fehlen noch ${missing} von ${SHIPS.length} Schiffen.` : '';
   return `<div class="arcade-game-shell" data-battleship-match="${escapeHtml(match.matchId)}">
-    <h1 class="view-title">Schiffe versenken</h1>
+    <h1 class="view-title">Battleship</h1>
     ${arcadeToolbarHtml()}
     <section class="card stack battleship-setup" aria-labelledby="battleship-setup-title">
       <div class="grouped-page-section-title"><h2 id="battleship-setup-title">Flotte platzieren</h2></div>
@@ -238,7 +238,7 @@ function renderBattle() {
   const resultLabels = { miss: 'Wasser', hit: 'Treffer' };
   const result = match.lastShot ? `<div class="badge badge-playing" aria-live="polite">Letzter Schuss: ${resultLabels[hideSunkDuringPlay(match.lastShot.kind)] ?? 'Aufgelöst'}</div>` : '';
   return `<div class="arcade-game-shell" data-battleship-match="${escapeHtml(match.matchId)}">
-    <h1 class="view-title">Schiffe versenken</h1>
+    <h1 class="view-title">Battleship</h1>
     ${arcadeToolbarHtml()}
     <div class="battleship-status card" aria-live="polite"><strong>${connectionState === 'offline' ? 'Verbindung verloren' : status}</strong>${result}${connectionState === 'offline' ? '<span class="muted">Verbindung wird wiederhergestellt …</span>' : ''}</div>
     <div class="battleship-board-layout">
@@ -277,13 +277,13 @@ function renderResult() {
     const shotsAgainst = (match.shots ?? []).filter((shot) => shot.targetId === player.id);
     return `<section class="card stack" data-battleship-reveal="${escapeHtml(player.id)}" aria-labelledby="battleship-reveal-${escapeHtml(player.id)}"><h2 id="battleship-reveal-${escapeHtml(player.id)}">${escapeHtml(player.name)}${player.id === match.winnerId ? ` ${icon('trophy')}` : ''}</h2>${revealGridHtml(player, fleet, shotsAgainst)}</section>`;
   }).join('');
-  return `<div class="arcade-game-shell"><h1 class="view-title">Schiffe versenken</h1><section class="card arcade-winner-card stack"><h2>${winner ? `${escapeHtml(winner.name)} gewinnt!` : 'Match beendet'}</h2><p class="muted">${match.reason === 'aborted' ? 'Das Match wurde beendet.' : match.reason === 'player-left' ? 'Ein Spieler hat das Match verlassen.' : 'Alle gegnerischen Schiffe wurden versenkt.'}</p></section><div class="battleship-board-layout">${boards}</div><section class="card"><button type="button" class="btn btn-primary btn-block" id="battleship-back">Zur Arcade</button></section></div>`;
+  return `<div class="arcade-game-shell"><h1 class="view-title">Battleship</h1><section class="card arcade-winner-card stack"><h2>${winner ? `${escapeHtml(winner.name)} gewinnt!` : 'Match beendet'}</h2><p class="muted">${match.reason === 'aborted' ? 'Das Match wurde beendet.' : match.reason === 'player-left' ? 'Ein Spieler hat das Match verlassen.' : 'Alle gegnerischen Schiffe wurden versenkt.'}</p></section><div class="battleship-board-layout">${boards}</div><section class="card"><button type="button" class="btn btn-primary btn-block" id="battleship-back">Zur Arcade</button></section></div>`;
 }
 
 export function renderBattleship(container) {
   ensureBattleshipSocket();
   if (!match) {
-    container.innerHTML = `<button type="button" class="btn btn-sm" data-navigate="arcade">${icon('chevronLeft')} Zurück</button><h1 class="view-title">Schiffe versenken</h1>${renderBattleshipLobbyCard()}`;
+    container.innerHTML = `<button type="button" class="btn btn-sm" data-navigate="arcade">${icon('chevronLeft')} Zurück</button><h1 class="view-title">Battleship</h1>${renderBattleshipLobbyCard()}`;
     wireBattleshipLobbyCard(container);
     return;
   }
@@ -396,7 +396,7 @@ function wireBattle(container) {
 }
 
 function lobbyList() {
-  if (!lobbies.length) return emptyStateHtml('Keine offene Lobby.', { style: 'padding:var(--space-4);' });
+  if (!lobbies.length) return emptyStateHtml('Keine offene Battleship-Lobby.', { style: 'padding:var(--space-4);' });
   return lobbies.map((lobby) => {
     const joined = lobby.players.some((player) => player.id === myId());
     const isHost = lobby.host.id === myId();

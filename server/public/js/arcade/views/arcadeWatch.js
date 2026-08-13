@@ -14,7 +14,7 @@ const GAME_NAMES = {
   pong: 'Pong',
   blobby: 'Blobby Volley',
   snake: 'Snake',
-  battleship: 'Schiffe versenken',
+  battleship: 'Battleship',
   'challenge-rush': 'Challenge Rush',
 };
 
