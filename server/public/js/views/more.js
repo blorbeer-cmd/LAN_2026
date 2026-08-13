@@ -1,26 +1,21 @@
-// "Mehr" hub: the secondary destinations (Spielerprofile, Auswertungen,
-// Hall of Fame, Info) each get their own clear entry point here, leaving
-// the bottom nav to the things people reach for constantly during the party
-// (tournaments earned that spot; the roster is mostly a setup-time concern
-// since everyone self-onboards through their profile).
+// "Mehr" hub: the secondary destinations that don't earn a bottom-nav slot.
+// The nav itself carries what people reach for constantly during the party
+// (Home, Wettkampf, Vote, Auswertung); everything below is either preparation
+// (Orga), a side activity (Arcade, Jam, Essen) or an organizer tool (Admin).
+// Info moved out entirely — it is a topbar dialog now, reachable from any view
+// without leaving it.
 
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
 
 const ITEMS = [
   { view: 'admin', title: 'Admin' },
-  { view: 'arrivals', title: 'An- & Abreise' },
   { view: 'arcade', title: 'Arcade' },
-  { view: 'analytics', title: 'Auswertungen' },
-  { view: 'checklist', title: 'Checkliste' },
   { view: 'broadcast', title: 'Durchsage' },
-  { view: 'events', title: 'Events' },
   { view: 'foodOrders', title: 'Essen' },
-  { view: 'hallOfFame', title: 'Hall of Fame' },
-  { view: 'infoBoard', title: 'Info' },
   { view: 'music', title: 'Jam' },
+  { view: 'checklist', title: 'Orga', iconKey: 'orga' },
   { view: 'gameCatalog', title: 'Spiele' },
-  { view: 'players', title: 'Spieler' },
 ];
 
 export function renderMore(container) {
@@ -28,7 +23,7 @@ export function renderMore(container) {
     (item) => `
     <button type="button" class="card row list-row more-card" data-navigate="${item.view}">
       <span class="more-card-label">
-        <span class="list-row-icon">${icon(domainIcon(item.view))}</span>
+        <span class="list-row-icon">${icon(domainIcon(item.iconKey ?? item.view))}</span>
         <span class="player-name more-card-title">${item.title}</span>
       </span>
       <span class="muted more-card-chevron">${icon('chevronRight')}</span>

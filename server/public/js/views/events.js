@@ -1,12 +1,13 @@
-// Events view: the dedicated area for the event workspaces themselves —
-// creating them, inviting participants, starting/stopping tracking, ending
-// them, and answering an invitation. This used to sit inside Einstellungen,
-// which put a global, non-personal management surface behind a personal-
-// looking gear icon and buried the invitation teaser a member has to act on.
+// Events (FR-30) and TV-/Kiosk-Ansicht: the "Events" and "TV-Kiosk" tabs of the
+// "Orga" area (see sectionNav.js) — this is setup work, not something people
+// touch during actual play, which is why it lives behind "Mehr" rather than
+// the main bottom nav. Game management (including the process-name mappings
+// the agent uses) lives in the Spiele view — see server/CLAUDE.md games reorg.
 //
-// Deliberately not admin-only: every member reaches it, sees the events they
-// take part in and answers their invitations here. The management actions
-// stay owner/admin, as before — a member simply gets read-only cards.
+// The Events tab is deliberately not admin-only: every member reaches it,
+// sees the events they take part in and answers their invitations here. The
+// management actions stay owner/admin — a member gets read-only cards, since
+// only owner/admin receive `state.managedEvents` at all.
 
 import { api } from '../api.js';
 import { openModal, confirmDialog } from '../modal.js';
@@ -21,7 +22,23 @@ import { emptyStateHtml } from '../emptyState.js';
 import { eventStatusBadgeHtml } from '../eventStatus.js';
 
 const EVENT_HELP = 'Jede Aktion gehört zu deinem aktuell gewählten Event. Du kannst dein Arbeits-Event jederzeit oben in der Leiste wechseln.';
+const KIOSK_HELP = 'Für gemeinsame Bildschirme: zeigt Live-Status, Vote, Rang und Turnier automatisch. Der Kiosk benötigt seinen eigenen Token.';
 
+function renderKioskSection() {
+  return `
+    <section class="card stack grouped-page-section" aria-labelledby="orga-kiosk-title">
+      <div class="grouped-page-section-title">
+        <span class="title-with-info">
+          <h2 id="orga-kiosk-title">TV-/Kiosk-Ansicht</h2>
+          ${infoTooltipHtml('orga-kiosk-help', 'TV-/Kiosk-Ansicht', KIOSK_HELP)}
+        </span>
+      </div>
+      <a href="/kiosk.html" target="_blank" rel="noopener" class="btn btn-block">Kiosk-Ansicht öffnen</a>
+    </section>
+  `;
+}
+
+// The base workspace is permanently open, so it has no end date to print.
 function eventDateRange(e) {
   return e.endsAt == null
     ? 'Dauerhaft geöffnet'
@@ -36,7 +53,6 @@ function renderMemberEventCard(e) {
     <div class="card stack" style="gap:var(--space-3);">
       <div class="row-between">
         <strong>${escapeHtml(e.name)}</strong>
-        ${e.isBase ? `<span class="badge badge-online">Allgemein</span>` : ''}
       </div>
       <div class="stack" style="gap:var(--space-1);">
         ${e.location ? `<div class="muted" style="font-size:var(--font-size-sm);">${icon('mapPin')} ${escapeHtml(e.location)}</div>` : ''}
@@ -85,7 +101,9 @@ function renderEventCard(e) {
 function renderEventSection() {
   // Only owner/admin receive `managedEvents`; a member's own accepted events
   // carry neither participants nor tracking state and must not be rendered
-  // through the management card, whose actions they cannot use anyway.
+  // through the management card, whose actions they cannot use anyway. The
+  // base workspace is filtered out of both: it is not a LAN anyone manages or
+  // joins, it is where everyone already is.
   const canManage = Array.isArray(state.managedEvents);
   const realEvents = (canManage ? state.managedEvents : []).filter((e) => !e.isOutsideEvents && !e.isBase);
   const memberEvents = canManage ? [] : (state.availableEvents || []).filter((e) => !e.isBase);
@@ -94,6 +112,8 @@ function renderEventSection() {
     : memberEvents.map(renderMemberEventCard).join('');
   const visibleEventCount = canManage ? realEvents.length : memberEvents.length;
   const myId = getMyId();
+  // A teaser is all an invited account receives, so the invitation list comes
+  // from its own payload instead of a participant roster it never sees.
   const pendingInvitations = myId ? state.eventInvitations || [] : [];
   const invitationRows = pendingInvitations
     .map(
@@ -115,18 +135,18 @@ function renderEventSection() {
     .join('');
 
   return `
-    <section class="card stack grouped-page-section" aria-labelledby="events-title">
+    <section class="card stack grouped-page-section" aria-labelledby="orga-events-title">
       <div class="grouped-page-section-title">
         <span class="title-with-info">
-          <h2 id="events-title">Events</h2>
-          ${infoTooltipHtml('events-help', 'Events', EVENT_HELP)}
+          <h2 id="orga-events-title">Events</h2>
+          ${infoTooltipHtml('orga-events-help', 'Events', EVENT_HELP)}
         </span>
         ${canManage ? `<button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>` : ''}
       </div>
       ${
         pendingInvitations.length > 0
-          ? `<div class="stack" aria-labelledby="events-invitations-title">
-               <div class="section-title" id="events-invitations-title" tabindex="-1">Ausstehende Einladungen</div>
+          ? `<div class="stack" aria-labelledby="orga-invitations-title">
+               <div class="section-title" id="orga-invitations-title" tabindex="-1">Ausstehende Einladungen</div>
                <div class="two-column-card-grid">${invitationRows}</div>
              </div>`
           : ''
@@ -137,7 +157,7 @@ function renderEventSection() {
               canManage ? 'Noch keine Events angelegt.' : 'Du nimmst noch an keinem eigenen Event teil.',
               { icon: icon('calendar') },
             )
-          : `<div class="two-column-card-grid events-card-grid">${cards}</div>`
+          : `<div class="two-column-card-grid orga-event-grid">${cards}</div>`
       }
     </section>
   `;
@@ -344,10 +364,22 @@ function openParticipantsForm(ctx, event) {
   );
 }
 
+export function renderOrgaKiosk(container) {
+  container.innerHTML = `
+    <div class="grouped-page-sections">
+      ${renderKioskSection()}
+    </div>
+  `;
+  wireInfoTooltips(container);
+}
 
+export function renderOrgaEvents(container, ctx) {
+  container.innerHTML = `
+    <div class="grouped-page-sections">
+      ${renderEventSection()}
+    </div>
+  `;
 
-// All event wiring in one place so the view function stays a layout.
-function wireEventSection(container, ctx) {
   container.querySelectorAll('[data-export-event]').forEach((btn) => {
     btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
   });
@@ -376,7 +408,7 @@ function wireEventSection(container, ctx) {
         if (accept) await api.events.acceptInvitation(eventId);
         else await api.events.declineInvitation(eventId);
         await ctx.refresh();
-        (document.querySelector('#events-invitations-title') || document.querySelector('#events-title'))?.focus();
+        (document.querySelector('#orga-invitations-title') || document.querySelector('#orga-events-title'))?.focus();
         showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
       } catch (err) {
         btn.disabled = false;
@@ -426,14 +458,4 @@ function wireEventSection(container, ctx) {
       }
     });
   });
-}
-
-export function renderEvents(container, ctx) {
-  container.innerHTML = `
-    <h1 class="view-title">Events</h1>
-    <div class="grouped-page-sections">
-      ${renderEventSection()}
-    </div>
-  `;
-  wireEventSection(container, ctx);
 }

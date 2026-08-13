@@ -550,7 +550,7 @@ function renderPanel(container, ctx) {
               <strong>Kioskverwaltung</strong>
               ${infoTooltipHtml('admin-kiosk-help', 'Kioskverwaltung', KIOSK_HELP)}
             </span>
-            <button type="button" class="btn btn-primary btn-sm" data-navigate="settings">Öffnen</button>
+            <button type="button" class="btn btn-primary btn-sm" data-navigate="kiosk">Öffnen</button>
           </div>
         </div>
       </section>

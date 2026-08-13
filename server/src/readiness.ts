@@ -136,7 +136,13 @@ function kioskCheck(groupId: string): ReadinessCheck {
     label: 'Kiosk',
     status: configured > 0 ? 'ready' : 'warning',
     summary: configured > 0 ? `${configured} aktiver Kiosk-Zugang` : 'Kein aktiver Kiosk-Zugang.',
-    details: configured > 0 ? [] : ['Erzeuge in den Einstellungen einen Kiosk-Link, bevor der TV aufgebaut wird.'],
+    // No frontend surface issues kiosk tokens — not before and not after the
+    // area reorganisation — so this names the two mechanisms that actually
+    // exist instead of pointing at a screen.
+    details:
+      configured > 0
+        ? []
+        : ['Vor dem TV-Aufbau einen Kiosk-Zugang einrichten: KIOSK_TOKEN in der Serverkonfiguration setzen oder einen Kiosk-Token über die Admin-API ausstellen.'],
   };
 }
 

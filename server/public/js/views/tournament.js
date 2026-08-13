@@ -231,8 +231,7 @@ function renderList(container, ctx) {
   }
 
   container.innerHTML = `
-    <div class="row-between">
-      <h1 class="view-title">Turniere</h1>
+    <div class="row view-actions">
       <button type="button" class="btn btn-primary btn-sm" id="tourn-new-btn">Turnier anlegen</button>
     </div>
     ${currentListHtml}
@@ -1141,7 +1140,7 @@ function renderDetail(container, ctx) {
       <button type="button" class="btn btn-sm" id="tourn-back">‹ Zurück</button>
       <button type="button" class="btn btn-sm btn-danger" id="tourn-delete">Löschen</button>
     </div>
-    <h1 class="view-title">${escapeHtml(t.name)}</h1>
+    <h2 class="view-title">${escapeHtml(t.name)}</h2>
     <div class="muted tournament-detail-meta">
       ${formatDisplay}
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>

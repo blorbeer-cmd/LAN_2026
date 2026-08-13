@@ -159,7 +159,9 @@ test('an invite link registers a new account and logs it straight in', async () 
   assert.ok(onboardingLayers.dialogZIndex > onboardingLayers.ringZIndex, 'the dialog must stay above the spotlight shadow');
   await page.setViewportSize({ width: 390, height: 844 });
 
-  for (let step = 1; step < 9; step += 1) {
+  // One click per remaining STEPS entry in onboarding.js (8 total, the first
+  // of which already happened above).
+  for (let step = 1; step < 8; step += 1) {
     await page.click('[data-onboarding-next]');
     await page.waitForSelector('#onboarding-root [role="dialog"]');
   }
@@ -508,9 +510,10 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
     // Despite having no real admin role, it must see its seeded peer (not
     // just itself) - otherwise it could never join a carpool/vote/arcade
     // lobby created by another test player (see testFilter.js isTestIdentity()).
-    await testPage.click('.nav-btn[data-view="more"]');
-    await testPage.click('[data-navigate="players"]');
-    await testPage.waitForSelector(`text=${peerTestPlayer.name}`);
+    // Home's Live-Status is the roster since the separate "Spieler" area was
+    // removed.
+    await testPage.click('.nav-btn[data-view="home"]');
+    await testPage.waitForSelector(`button[data-player]:has-text("${peerTestPlayer.name}")`);
 
     // But it does not gain real admin rights.
     await testPage.click('.nav-btn[data-view="more"]');

@@ -173,8 +173,6 @@ export function renderAnalytics(container, ctx) {
     loadArcadeData(ctx);
   }
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title">Auswertungen</h1>
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="analytics-controls-title">
         <div class="grouped-page-section-title"><h2 id="analytics-controls-title">Ansicht</h2></div>

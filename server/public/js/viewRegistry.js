@@ -1,17 +1,14 @@
 import { renderHome } from './views/home.js';
-import { renderPlayers } from './views/players.js';
-import { renderSettings } from './views/games.js';
+import { renderOrgaEvents, renderOrgaKiosk } from './views/events.js';
 import { renderMatchmaking } from './views/matchmaking.js';
 import { renderBroadcast } from './views/broadcast.js';
-import { renderInfoBoard } from './views/infoBoard.js';
 import { renderFoodOrders } from './views/foodOrders.js';
-import { renderChecklist } from './views/checklist.js';
+import { renderChecklist, ensureTasksLoaded, openTaskCount } from './views/checklist.js';
 import { renderGameCatalog } from './views/gameCatalog.js';
 import { renderArrivals } from './views/arrivals.js';
 import { renderVotes } from './views/votes.js';
 import { renderLeaderboard } from './views/leaderboard.js';
 import { renderAnalytics } from './views/analytics.js';
-import { renderEvents } from './views/events.js';
 import { renderProfile } from './views/profile.js';
 import { renderTournaments } from './views/tournament.js';
 import { renderHallOfFame } from './views/hallOfFame.js';
@@ -21,28 +18,42 @@ import { renderMore } from './views/more.js';
 import { renderAdmin } from './views/admin.js';
 import { renderMusic } from './views/music.js';
 import { createViewRegistry } from './viewManifest.js';
+import { renderSectionShell, sectionKeyForView } from './sectionNav.js';
+
+// A route inside a merged area (see sectionNav.js) draws that area's heading
+// and tab row first and then hands the remaining surface to its own renderer,
+// which stays unchanged apart from no longer owning the page title.
+function inSection(view, render) {
+  const inOrga = sectionKeyForView(view) === 'orga';
+  return (container, ctx) => {
+    // Orga's To-Dos tab carries a live count, so every tab of that area needs
+    // the underlying data — not just the one that renders the list.
+    if (inOrga) ensureTasksLoaded(ctx);
+    const content = renderSectionShell(container, view, { badges: { checklist: openTaskCount() } });
+    render(content, ctx);
+  };
+}
 
 export const VIEW_REGISTRY = createViewRegistry({
   home: renderHome,
-  players: renderPlayers,
-  matchmaking: renderMatchmaking,
+  matchmaking: inSection('matchmaking', renderMatchmaking),
   votes: renderVotes,
-  leaderboard: renderLeaderboard,
-  settings: renderSettings,
-  analytics: renderAnalytics,
-  events: renderEvents,
+  leaderboard: inSection('leaderboard', renderLeaderboard),
+  analytics: inSection('analytics', renderAnalytics),
   profile: renderProfile,
-  tournaments: renderTournaments,
-  hallOfFame: renderHallOfFame,
+  tournaments: inSection('tournaments', renderTournaments),
+  hallOfFame: inSection('hallOfFame', renderHallOfFame),
   seating: renderSeating,
   myStats: renderMyStats,
   more: renderMore,
   broadcast: renderBroadcast,
-  infoBoard: renderInfoBoard,
   foodOrders: renderFoodOrders,
-  checklist: renderChecklist,
+  checklist: inSection('checklist', (container, ctx) => renderChecklist(container, ctx, 'todos')),
+  checklistPacking: inSection('checklistPacking', (container, ctx) => renderChecklist(container, ctx, 'packliste')),
   gameCatalog: renderGameCatalog,
-  arrivals: renderArrivals,
+  arrivals: inSection('arrivals', renderArrivals),
+  events: inSection('events', renderOrgaEvents),
+  kiosk: inSection('kiosk', renderOrgaKiosk),
   admin: renderAdmin,
   music: renderMusic,
 });

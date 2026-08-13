@@ -58,14 +58,32 @@ async function openMatchmakingHistory(): Promise<void> {
   if (!(await details.getAttribute('open'))) await details.locator('summary').click();
 }
 
+// Merged areas (see public/js/sectionNav.js): the bottom nav opens the area on
+// its first tab, the tab row switches within it. Each tab is still its own
+// route, so these two clicks are ordinary navigation.
+async function openSectionTab(navView: string, tab: string): Promise<void> {
+  await page.click(`.nav-btn[data-view="${navView}"]`);
+  await page.click(`[data-section-tab="${tab}"]`);
+}
+
+async function openTeams(): Promise<void> {
+  await openSectionTab('tournaments', 'matchmaking');
+}
+
+// Orga is reached through "Mehr" rather than the bottom nav.
+async function openOrgaTab(tab: string): Promise<void> {
+  await page.click('.nav-btn[data-view="more"]');
+  await page.click('[data-navigate="checklist"]');
+  await page.click(`[data-section-tab="${tab}"]`);
+}
+
 async function switchIdentityAndOpenArrivals(label: string): Promise<void> {
   const account = accountsByName.get(label);
   assert.ok(account, `missing E2E account for ${label}`);
   await addSessionCookie(page.context(), BASE_URL, account.cookie);
   await page.reload();
   await page.waitForSelector('#app:not([hidden])');
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="arrivals"]');
+  await openOrgaTab('arrivals');
   await page.waitForSelector('[data-new-carpool="arrival"]');
 }
 
@@ -80,7 +98,10 @@ async function createAccountForFlow(name: string): Promise<E2EAccount> {
   const account = await createE2EAccount(BASE_URL, adminCookie, name);
   accountsByName.set(name, account);
   await page.reload();
-  await page.waitForSelector(`[data-player]:has-text("${name}")`);
+  // Home's Live-Status is where the roster lives now, so that is where the
+  // freshly created identity becomes visible to the browser.
+  await page.click('.nav-btn[data-view="home"]');
+  await page.waitForSelector(`button[data-player]:has-text("${name}")`);
   return account;
 }
 
@@ -158,7 +179,7 @@ flowTest('shell', 'fresh device uses the personal login and reaches the app with
   assert.equal(await loginPage.inputValue('#profile-name'), alice.name);
 });
 
-flowTest('shell', 'Einstellungen und Profil use grouped help while admin tools stay out of regular settings', async (t) => {
+flowTest('shell', 'Orga Events/TV-Kiosk tabs and Profil use grouped help while admin tools stay out of regular Orga', async (t) => {
   // Switches to a desktop viewport partway through (for the desktop-only
   // profile layout checks below) and never switches back on its own —
   // relying on a later test happening to reset it first. If this test
@@ -171,24 +192,23 @@ flowTest('shell', 'Einstellungen und Profil use grouped help while admin tools s
   t.after(async () => {
     await page.setViewportSize({ width: 390, height: 844 });
   });
-  // Einstellungen is the Kiosk screen only; events moved to their own area.
-  await page.click('#settings-btn');
-  await page.waitForSelector('#settings-kiosk-title');
+  await openOrgaTab('events');
+  await page.waitForSelector('#orga-events-title');
   assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
-  assert.equal(await page.locator('#events-title').count(), 0);
   assert.equal(await page.locator('[data-navigate="seating"]').count(), 0);
   assert.equal(await page.locator('#download-backup').count(), 0);
 
-  await page.click('[data-view="more"]');
-  await page.click('[data-navigate="events"]');
-  await page.waitForSelector('#events-title');
-  assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
   await page.click('[aria-label="Mehr Informationen zu Events"]');
-  await page.waitForSelector('#events-help:not([hidden])');
+  await page.waitForSelector('#orga-events-help:not([hidden])');
   await page.click('[aria-label="Mehr Informationen zu Events"]');
   await page.click('#new-event-btn');
   assert.equal(await page.getByText('Tracking', { exact: true }).count(), 0);
   await page.click('.modal[aria-label="Neues Event"] [data-close]');
+
+  await openOrgaTab('kiosk');
+  await page.waitForSelector('#orga-kiosk-title');
+  assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
+  assert.equal(await page.locator('a[href="/kiosk.html"]').count(), 1);
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.click('#profile-btn');
@@ -273,7 +293,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   t.after(async () => {
     // This test switches to a desktop viewport for the pool-column check;
     // always restore the shared page's mobile default regardless of how the
-    // test ends (same viewport-leak safety net as the Einstellungen test).
+    // test ends (same viewport-leak safety net as the Orga Events/TV-Kiosk test).
     await page.setViewportSize({ width: 390, height: 844 });
   });
   await page.click('.nav-btn[data-view="more"]');
@@ -289,11 +309,11 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   assert.equal(await page.locator('#admin-test-count-help').count(), 1);
   assert.equal(await page.locator('#admin-test-data-help').count(), 1);
   // Global Event and Kiosk management are reachable from Admin's tool grid
-  // too, not only through the personal-looking topbar gear. They are separate
-  // destinations since events moved into their own area.
+  // too, not only through Orga's own tab row. They stay two separate cards
+  // because Orga exposes them as two separate tabs.
   assert.equal(await page.locator('[data-navigate="events"]').count(), 1);
   assert.equal(await page.locator('#admin-event-help').count(), 1);
-  assert.equal(await page.locator('[data-navigate="settings"]').count(), 1);
+  assert.equal(await page.locator('[data-navigate="kiosk"]').count(), 1);
   assert.equal(await page.locator('#admin-kiosk-help').count(), 1);
   assert.equal(await page.locator('.admin-tool-row').count(), 4);
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
@@ -329,7 +349,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   // The unassigned-player pool is one column on phones and two from --bp-md
   // (DESIGN_SYSTEM.md: "phones keep one column"). The old bare 2-column
   // assertion only ever passed while a desktop viewport leaked in from the
-  // Einstellungen test; check both documented layouts explicitly instead.
+  // Orga Events/TV-Kiosk test; check both documented layouts explicitly instead.
   assert.equal(await page.locator('.seating-player-pool').evaluate((pool) => getComputedStyle(pool).gridTemplateColumns.split(' ').length), 1);
   await page.setViewportSize({ width: 900, height: 844 });
   assert.equal(await page.locator('.seating-player-pool').evaluate((pool) => getComputedStyle(pool).gridTemplateColumns.split(' ').length), 2);
@@ -365,7 +385,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
 
 flowTest('shell', 'global search filters areas, supports keyboard navigation and restores focus', async (t) => {
   // Also switches viewport size mid-test (see the note on the same pattern
-  // in "Einstellungen und Profil..." above) and only restores the shared
+  // in "Orga Events/TV-Kiosk tabs and Profil..." above) and only restores the shared
   // page's default at the very end — guarantee it regardless of where this
   // test fails, so a flake here can't cascade into unrelated mobile-layout
   // assertions in whatever test runs next.
@@ -382,23 +402,33 @@ flowTest('shell', 'global search filters areas, supports keyboard navigation and
   assert.equal(await page.locator('.global-search-result').count(), 0, 'search must not show frequent areas before input');
   assert.equal(await page.locator('.global-search-shortcuts').count(), 0, 'keyboard legend is intentionally omitted');
 
+  // The current identity's own search hit leads to the editable profile; a
+  // foreign one opens the read-only detail dialog over the current view.
   await page.fill('#global-search-input', 'E2E Alice');
   await page.waitForSelector('.global-search-result:has-text("E2E Alice")');
   await page.click('.global-search-result:has-text("E2E Alice")');
-  await page.waitForSelector('.view-title:text("Spieler")');
-  await page.waitForSelector('[data-player].search-target-highlight:has-text("E2E Alice")');
+  await page.waitForSelector('#profile-name');
 
+  await page.keyboard.press('Control+K');
+  await page.fill('#global-search-input', 'E2E Bob');
+  await page.waitForSelector('.global-search-result:has-text("E2E Bob")');
+  await page.click('.global-search-result:has-text("E2E Bob")');
+  await page.waitForSelector('.modal:has-text("Dieses Profil kann nur von E2E Bob selbst bearbeitet werden.")');
+  await page.click('[data-close]');
+
+  // A merged area's tab is its own search hit and lands on that tab.
   await page.keyboard.press('Control+K');
   await page.fill('#global-search-input', 'Captain Draft');
   await page.waitForSelector('.global-search-result:has-text("Teams")');
   await page.click('.global-search-result:has-text("Teams")');
-  await page.waitForSelector('.view-title:text("Teams")');
+  await page.waitForSelector('.view-title:text("Wettkampf")');
+  await page.waitForSelector('[data-section-tab="matchmaking"][aria-current="page"]');
 
   await page.keyboard.press('Control+K');
-  await page.fill('#global-search-input', 'Statistik');
-  await page.keyboard.press('ArrowDown');
+  await page.fill('#global-search-input', 'Statistiken');
   await page.keyboard.press('Enter');
-  await page.waitForSelector('.view-title:text("Auswertungen")');
+  await page.waitForSelector('.view-title:text("Auswertung")');
+  await page.waitForSelector('[data-section-tab="analytics"][aria-current="page"]');
 
   await page.click('#global-search-btn');
   await page.fill('#global-search-input', 'gibt es nicht');
@@ -432,11 +462,21 @@ flowTest('competition', 'full click-through: players, matchmaking, voting, leade
     const current = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
     if (current.open) await page.request.post(`${BASE_URL}/api/votes/cancel`);
   });
-  // The public roster no longer creates identities; test setup creates the
-  // second profile through the API that future user management will own.
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="players"]');
-  await page.waitForSelector('[data-player]:has-text("E2E Bob")');
+  // The separate "Spieler" area is gone: Home's Live-Status is the roster and
+  // every card opens that participant's profile. Identities are still created
+  // through the API that future user management will own.
+  await page.click('.nav-btn[data-view="home"]');
+  await page.waitForSelector('button[data-player]:has-text("E2E Bob")');
+
+  // The live state (badge text) is part of the button's accessible name, not
+  // hidden inside presentational children — role=button treats descendants as
+  // presentational, so an aria-label alone would have silently dropped it.
+  const bobCard = page.locator('button[data-player]', { hasText: 'E2E Bob' });
+  const bobBadgeText = (await bobCard.locator('.badge').innerText()).trim();
+  assert.ok(
+    (await bobCard.getAttribute('aria-label'))?.includes(bobBadgeText),
+    'the live-status badge text must be part of the card\'s accessible name',
+  );
 
   // Other profiles are read-only; the current identity opens its own editor.
   await page.click('button[data-player] >> text=E2E Bob');
@@ -448,7 +488,7 @@ flowTest('competition', 'full click-through: players, matchmaking, voting, leade
   assert.equal(await page.inputValue('#profile-name'), 'E2E Alice');
 
   // Matchmaking: draw teams for both players.
-  await page.click('.nav-btn[data-view="matchmaking"]');
+  await openTeams();
   assert.equal(await page.inputValue('#mm-teamcount'), '2');
   await page.click('[data-selection-search-trigger][aria-controls="mm-player-search"]');
   await page.fill('#mm-player-search', 'E2E Bob');
@@ -631,9 +671,11 @@ flowTest('competition', 'full click-through: players, matchmaking, voting, leade
   assert.equal(await page.locator('.modal .vote-row').count(), 2);
   await page.click('[data-close]');
 
-  // Leaderboard: record a match and see it reflected.
+  // Leaderboard: record a match and see it reflected. The bottom nav opens the
+  // "Auswertung" area on its Rangliste tab.
   await page.click('.nav-btn[data-view="leaderboard"]');
-  await page.waitForSelector('h1:text-is("Rang")');
+  await page.waitForSelector('h1:text-is("Auswertung")');
+  await page.waitForSelector('[data-section-tab="leaderboard"][aria-current="page"]');
   assert.equal(
     await page.locator('section.grouped-page-section:has(> .grouped-page-section-title > h2:text-is("Rangliste & Spielzeit"))').count(),
     1,
@@ -1035,7 +1077,7 @@ flowTest('competition', 'Vote: genre filter scopes the game-limit list, select-a
 });
 
 flowTest('competition', 'matchmaking Historie marks a recorded draw as Unentschieden', async () => {
-  await page.click('.nav-btn[data-view="matchmaking"]');
+  await openTeams();
   await page.click('#mm-generate');
   await openMatchmakingHistory();
   await page.waitForSelector('[data-record-draw]');
@@ -1056,7 +1098,7 @@ flowTest('competition', 'matchmaking Historie shows the winner after switching t
   // "Frei-für-alle" instead of the drawn team shape — the draw must still
   // remain in Historie with the winner shown instead of retaining the open
   // draw actions.
-  await page.click('.nav-btn[data-view="matchmaking"]');
+  await openTeams();
   await page.click('#mm-generate');
   await openMatchmakingHistory();
   await page.waitForSelector('[data-record-draw]');
@@ -1078,7 +1120,7 @@ flowTest('competition', 'Ergebnis eintragen keeps a manual team reassignment aft
   // Regression test: reassigning a player to a different team in the entry
   // form, then changing "Anzahl Teams", must not silently revert that player
   // back to the original drawn team.
-  await page.click('.nav-btn[data-view="matchmaking"]');
+  await openTeams();
   await page.click('#mm-generate');
   await openMatchmakingHistory();
   await page.waitForSelector('[data-record-draw]');
@@ -1141,11 +1183,10 @@ flowTest('competition', 'Auswertungen (via Mehr) shows a real award and keeps de
 
   await page.reload();
   await page.waitForSelector('#app:not([hidden])');
-  // Spielzeit-Auswertungen lives in the "Mehr" tab.
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="analytics"]');
+  // Spielzeit-Statistiken are the second tab of the "Auswertung" area.
+  await openSectionTab('leaderboard', 'analytics');
   await page.waitForSelector('text=Marathon-Zocker', { timeout: 5000 });
-  assert.ok((await page.textContent('.view-title'))?.includes('Auswertungen'));
+  assert.ok((await page.textContent('.view-title'))?.includes('Auswertung'));
 
   // The noisy concurrency controls are intentionally gone. The session log
   // remains available on demand, but starts collapsed.
@@ -1603,14 +1644,53 @@ flowTest('shell', 'Turnier: create a K.O. bracket from proposed teams and play i
 });
 
 flowTest('community', 'Info: create an entry, see it rendered', async () => {
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="infoBoard"]');
+  // Info is a topbar dialog, reachable from whatever view is open.
+  await page.click('#info-btn');
   await page.waitForSelector('#info-new-btn');
   await page.click('#info-new-btn');
   await page.fill('#info-title', 'WLAN');
   await page.fill('#info-content', 'Netz: Respawn\nPasswort: kartoffel');
   await page.click('#info-form button[type="submit"]');
   await page.waitForSelector('text=kartoffel');
+
+  // Regression: saving reloads the dialog's own data (load() -> renderOpenDialog()),
+  // which used to rebuild .modal-body without restoring focus - the entry
+  // form's close() already returned focus to "Eintrag anlegen" by this point,
+  // and the async reload's DOM rebuild must not then drop it back to <body>.
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    'info-new-btn',
+    'focus must stay on "Eintrag anlegen" after the Info dialog refreshes its data'
+  );
+
+  // Modals stack now that Info is one itself: Escape must dismiss only the
+  // topmost dialog, not the whole stack underneath it.
+  await page.click('[data-delete-entry]');
+  await page.waitForSelector('[data-confirm]');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('[data-confirm]', { state: 'detached' });
+  assert.equal(await page.locator('.info-board-modal').count(), 1, 'Escape must not close the Info dialog underneath');
+  await page.waitForSelector('text=kartoffel');
+
+  await page.click('#info-new-btn');
+  await page.fill('#info-title', 'Discord');
+  await page.keyboard.press('Escape');
+  // The entry form asks before discarding; that question is now the topmost
+  // dialog and Escape declines it without taking Info down with it.
+  await page.waitForSelector('[data-confirm]');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('[data-confirm]', { state: 'detached' });
+  assert.equal(await page.locator('#info-title').count(), 1, 'the entry form stays open after declining');
+  assert.equal(await page.locator('.info-board-modal').count(), 1);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('[data-confirm]');
+  await page.click('[data-confirm]');
+  await page.waitForSelector('#info-title', { state: 'detached' });
+
+  // The dialog stays open over the current view until it is dismissed.
+  assert.equal(await page.locator('.info-board-modal').count(), 1);
+  await page.click('.info-board-modal [data-close]');
+  await page.waitForSelector('.info-board-modal', { state: 'detached' });
 });
 
 flowTest('community', 'Essensbestellung: open an order with a send time/notes/link, edit them, add a priced item, close it', async () => {
@@ -1775,12 +1855,9 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
 
 flowTest('community', 'An- & Abreise: carpool marks the driver, enforces seats, driver can only delete', async () => {
   // A third player to later demonstrate a full carpool.
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="players"]');
   await createAccountForFlow('E2E Carol');
 
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="arrivals"]');
+  await openOrgaTab('arrivals');
   await page.waitForSelector('[data-new-carpool="arrival"]');
 
   // Current identity is still "E2E Alice Pro" - she creates the carpool and
@@ -1846,6 +1923,62 @@ flowTest('community', 'An- & Abreise: carpool marks the driver, enforces seats, 
   await page.click('[data-confirm]');
   await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
 });
+
+flowTest(
+  'community',
+  'An- & Abreise: an unrelated Orga To-Do keeps the unsaved Ankunft/Abreise draft and focus',
+  async () => {
+    // Regression for the area shell: checklist:changed now re-renders every
+    // Orga tab (see app.js), not only the Checkliste's own, so that the
+    // To-Dos tab's live count stays correct everywhere. An unrelated To-Do
+    // assigned to Alice by someone else must not throw away what she is
+    // still typing into "Meine An-/Abreise" on a different Orga tab.
+    await switchIdentityAndOpenArrivals('E2E Alice Pro');
+
+    const note = page.locator('#arrival-note');
+    await note.click();
+    await note.fill('Bringe Verlängerungskabel mit');
+
+    const badge = page.locator('[data-section-tab="checklist"] [data-section-tab-count]');
+    const before = (await badge.textContent()) ?? '';
+
+    const created = await page.request.post(`${BASE_URL}/api/checklist/tasks/todo`, {
+      headers: { cookie: bob.cookie },
+      data: { playerId: bob.id, title: 'Kabeltrommel besorgen', assigneePlayerIds: [alice.id] },
+    });
+    assert.equal(created.status(), 201, await created.text());
+    // The changed tab count is the visible proof that the unrelated event's
+    // re-render actually landed on this tab, not just that nothing happened.
+    await page.waitForFunction(
+      ({ selector, previous }) => document.querySelector(selector)?.textContent !== previous,
+      { selector: '[data-section-tab="checklist"] [data-section-tab-count]', previous: before }
+    );
+
+    assert.equal(await note.inputValue(), 'Bringe Verlängerungskabel mit');
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.id === 'arrival-note'),
+      true,
+      'focus must stay in the Notiz field across a background Orga re-render'
+    );
+
+    // Saving afterwards still works, so the surviving node is the live one.
+    await page.click('#arrival-form button[type="submit"]');
+    await page.waitForSelector('text=An-/Abreise gespeichert.');
+
+    // The assignment above sent Alice a personal, still-unread push
+    // notification ("Dir wurde eine Aufgabe zugewiesen") - the same
+    // getCurrentPushLogEntryFor() query the header highlight banner uses
+    // would otherwise keep surfacing it as the *next* highlighted entry the
+    // moment a later test's own notification gets dismissed, since it
+    // orders by creation time and this one is now the oldest unseen. Clear
+    // it so it does not leak into the "Durchsage" test's
+    // #notification-highlight assertions right after this one.
+    await page.request.post(`${BASE_URL}/api/push/seen-all`, {
+      headers: { cookie: alice.cookie },
+      data: { playerId: alice.id },
+    });
+  }
+);
 
 flowTest('community', 'Durchsage: notification center can navigate, mark read and remove without duplicating Home', async () => {
   await page.click('.nav-btn[data-view="more"]');
@@ -1947,7 +2080,7 @@ flowTest('community', 'Durchsage: notification center can navigate, mark read an
 });
 
 flowTest('community', 'Captain-Draft: pick captains, run the live draft to completion', async () => {
-  await page.click('.nav-btn[data-view="matchmaking"]');
+  await openTeams();
   await page.click('[data-mm-mode="draft"]');
   await page.waitForSelector('[data-captain-toggle]');
 
@@ -2001,7 +2134,7 @@ flowTest('community', 'the device back button steps back through in-app views in
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Vote');
   await page.click('.nav-btn[data-view="leaderboard"]');
-  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Rang');
+  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Auswertung');
 
   // Back should undo the last switch (leaderboard -> votes), not leave the
   // single-page app (there is nowhere else to navigate to in this test, so
@@ -2312,8 +2445,7 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   const testLans = hallBody.events.filter((event) => event.eventName.startsWith('Respawn Test-LAN'));
   assert.equal(testLans.length, 12);
   assert.ok(testLans.every((event) => event.overallStandings.length >= 4 && event.tournamentChampions.length === 3));
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="hallOfFame"]');
+  await openSectionTab('leaderboard', 'hallOfFame');
   await page.waitForSelector('#hall-event-select');
   assert.equal(await page.getByText('LAN auswählen', { exact: true }).count(), 0);
   assert.equal(await page.locator('.hall-of-fame-event-section').count(), 2);
@@ -2332,10 +2464,9 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector(`.seating-plan.is-editable [data-player-id="${pausedTestPlayer.id}"] .seating-status-indicator.is-paused`);
 
-  // Visible on the roster (Mehr → Spieler) while in admin mode...
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="players"]');
-  await page.waitForSelector('text=Test Alex');
+  // Visible on Home's roster board while in admin mode...
+  await page.click('.nav-btn[data-view="home"]');
+  await page.waitForSelector('button[data-player]:has-text("Test Alex")');
 
   // ...gone everywhere once admin mode is left via the banner.
   await page.click('#admin-banner-leave');

@@ -16,7 +16,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
   <!-- bump ?v= when the stylesheet changes so no cached copy survives a reload -->
-  <link rel="stylesheet" href="/css/style.css?v=38" />
+  <link rel="stylesheet" href="/css/style.css?v=39" />
   <!-- app.js adds this sheet only while an Arcade view is active. -->
 </head>
 <body>
@@ -31,6 +31,7 @@
         <span class="brand-title">Respawn</span>
       </a>
       <div class="topbar-actions">
+        <button id="info-btn" class="icon-btn" type="button" aria-label="Info: WLAN, Discord, Server und Hausregeln" title="Info"></button>
         <div id="event-context" class="event-context" hidden>
           <span id="event-context-status" class="event-context-status" aria-hidden="true"></span>
           <select id="event-context-switcher" class="event-context-switcher" aria-label="Aktives Event"></select>
@@ -43,7 +44,6 @@
           <div id="notifications-panel" class="notification-center-panel" role="region" aria-label="Mitteilungen" hidden></div>
         </div>
         <button id="profile-btn" class="icon-btn" aria-label="Mein Profil" title="Mein Profil"></button>
-        <button id="settings-btn" class="icon-btn" aria-label="Einstellungen" title="Einstellungen"></button>
       </div>
     </header>
 
@@ -65,17 +65,14 @@
         <button class="nav-btn" data-view="home" aria-label="Home">
           <span class="nav-icon" data-domain-icon="home"></span><span class="nav-label">Home</span>
         </button>
-        <button class="nav-btn" data-view="tournaments" aria-label="Turniere">
-          <span class="nav-icon" data-domain-icon="tournaments"></span><span class="nav-label">Turniere</span>
-        </button>
-        <button class="nav-btn" data-view="matchmaking" aria-label="Teams">
-          <span class="nav-icon" data-domain-icon="matchmaking"></span><span class="nav-label">Teams</span>
+        <button class="nav-btn" data-view="tournaments" aria-label="Wettkampf: Turniere und Teams">
+          <span class="nav-icon" data-domain-icon="competition"></span><span class="nav-label">Wettkampf</span>
         </button>
         <button class="nav-btn" data-view="votes" aria-label="Abstimmung">
           <span class="nav-icon" data-domain-icon="votes"></span><span class="nav-label">Vote</span>
         </button>
-        <button class="nav-btn" data-view="leaderboard" aria-label="Rangliste">
-          <span class="nav-icon" data-domain-icon="leaderboard"></span><span class="nav-label">Rang</span>
+        <button class="nav-btn" data-view="leaderboard" aria-label="Auswertung: Rangliste, Statistiken und Hall of Fame">
+          <span class="nav-icon" data-domain-icon="insights"></span><span class="nav-label">Auswertung</span>
         </button>
         <button class="nav-btn" data-view="more" aria-label="Mehr">
           <span class="nav-icon" data-domain-icon="more"></span><span class="nav-label">Mehr</span>

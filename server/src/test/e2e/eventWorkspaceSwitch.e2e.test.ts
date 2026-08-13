@@ -145,12 +145,22 @@ test('the running vote of the previous event disappears when the workspace chang
 });
 
 test('an info board entry stays inside the event it was written in', async () => {
+  // Info is a topbar dialog rather than a view, so it is read from the modal
+  // and closed again before the switcher in that same topbar is used.
+  async function infoDialogText(): Promise<string> {
+    await page.click('#info-btn');
+    await page.waitForSelector('.modal-body');
+    const text = await page.$eval('.modal-body', (el) => (el as HTMLElement).innerText);
+    await page.click('.modal [data-close]');
+    await page.waitForSelector('.modal-body', { state: 'detached' });
+    return text;
+  }
+
   await switchWorkspaceInBrowser(eventA);
-  await openView('infoBoard');
-  assert.match(await viewText(), /Nur in Event A/, 'event A owns the entry');
+  assert.match(await infoDialogText(), /Nur in Event A/, 'event A owns the entry');
 
   await switchWorkspaceInBrowser(eventB);
-  assert.doesNotMatch(await viewText(), /Nur in Event A/, 'event B must not inherit the entry');
+  assert.doesNotMatch(await infoDialogText(), /Nur in Event A/, 'event B must not inherit the entry');
 });
 
 test('the personal statistics event filter only offers accepted workspaces', async () => {
