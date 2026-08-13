@@ -143,8 +143,8 @@ challengeRushTest('scenarios', 'Challenge Rush drops a hidden admin selection af
 
 challengeRushTest('scenarios', 'Challenge Rush focuses timed targets after start and server-side expiry', async () => {
   for (const challenge of [
-    { key: 'aim-trainer', selector: '.challenge-rush-circle', expiryMs: 2_000 },
-    { key: 'whack-a-mole', selector: '.challenge-rush-tile.is-active', expiryMs: 1_600 },
+    { key: 'aim-trainer', selector: '.challenge-rush-circle' },
+    { key: 'whack-a-mole', selector: '.challenge-rush-tile.is-active' },
   ]) {
     const playerId = await createPlayer();
     await makeAdmin(playerId);
@@ -161,8 +161,17 @@ challengeRushTest('scenarios', 'Challenge Rush focuses timed targets after start
       await actor.page.waitForSelector('[data-cr-start]');
       await actor.page.click('[data-cr-start]');
       await actor.page.waitForSelector(`${challenge.selector}:focus`);
-      await actor.page.waitForTimeout(challenge.expiryMs);
-      assert.equal(await actor.page.locator(challenge.selector).evaluate((node) => document.activeElement === node), true);
+      const initialTarget = await actor.page.locator(challenge.selector).elementHandle();
+      assert.ok(initialTarget);
+      const focusedReplacement = await actor.page.waitForFunction(
+        ({ selector, previousTarget }) => {
+          const currentTarget = document.querySelector(selector);
+          return currentTarget !== null && currentTarget !== previousTarget && document.activeElement === currentTarget;
+        },
+        { selector: challenge.selector, previousTarget: initialTarget },
+      );
+      await focusedReplacement.dispose();
+      await initialTarget.dispose();
       await actor.page.locator(challenge.selector).press('Space');
       await actor.page.waitForSelector('#cr-ready-next:not([disabled])');
     } finally {
