@@ -150,6 +150,17 @@ test('an info board entry stays inside the event it was written in', async () =>
   async function infoDialogText(): Promise<string> {
     await page.click('#info-btn');
     await page.waitForSelector('.modal-body');
+    // openInfoBoard() starts its fetch and renders the modal in the same
+    // synchronous turn, so the first paint is always the "Lädt…" placeholder
+    // (infoBoard.js: `loading` is set before the await, entriesHtml() checks
+    // it). Reading here without waiting would make the positive assertion a
+    // race — and, worse, let the negative one pass against the placeholder
+    // instead of against event B's actual entries. The cache is dropped on
+    // every workspace switch, so this applies to both openings.
+    await page.waitForFunction(() => {
+      const body = document.querySelector('.modal-body');
+      return body !== null && !body.textContent?.includes('Lädt');
+    });
     const text = await page.$eval('.modal-body', (el) => (el as HTMLElement).innerText);
     await page.click('.modal [data-close]');
     await page.waitForSelector('.modal-body', { state: 'detached' });
@@ -160,7 +171,11 @@ test('an info board entry stays inside the event it was written in', async () =>
   assert.match(await infoDialogText(), /Nur in Event A/, 'event A owns the entry');
 
   await switchWorkspaceInBrowser(eventB);
-  assert.doesNotMatch(await infoDialogText(), /Nur in Event A/, 'event B must not inherit the entry');
+  const inB = await infoDialogText();
+  assert.doesNotMatch(inB, /Nur in Event A/, 'event B must not inherit the entry');
+  // Stated positively as well, so the check above cannot pass merely because
+  // the dialog had not finished loading: event B owns no entry at all.
+  assert.match(inB, /Noch keine Einträge/, 'event B starts from its own empty info board');
 });
 
 test('the personal statistics event filter only offers accepted workspaces', async () => {
