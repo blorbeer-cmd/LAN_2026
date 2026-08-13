@@ -218,17 +218,36 @@ export function renderHome(container, ctx) {
       // was the last source of a tile being taller than its siblings, which
       // visibly resized the whole .card-grid row (that stretches every card
       // in a row to the tallest one) the moment someone paused.
+      //
+      // The card is the roster: tapping it opens that participant's read-only
+      // profile (or "Mein Profil" for the own row). The separate "Spieler"
+      // area that used to hold the same list is gone — the live board already
+      // shows everyone, so a second identical list was pure detour.
+      const action = isMe
+        ? 'data-navigate="profile"'
+        : `data-open-player-detail="${p.player_id}"`;
+      // A button's descendants are presentational to assistive technology, so
+      // the live state and the running games would silently disappear from the
+      // card the moment it became tappable. They are the card's whole point —
+      // spell them into its accessible name instead. Children are <span>s for
+      // the same reason a button may not wrap flow content; the layout classes
+      // supply their own display.
+      const runningGames = p.games.map((g) => g.game_name).join(', ');
+      const label = `${p.name}${isMe ? ' (du)' : ''}, ${stateLabel(p.state)}${runningGames ? `, ${runningGames}` : ''}. ${
+        isMe ? 'Mein Profil öffnen' : 'Profil ansehen'
+      }`;
       return `
-        <div class="card player-card">
+        <button type="button" class="card player-card" data-player="${p.player_id}" ${action}
+          aria-label="${escapeHtml(label)}">
           ${avatarHtml(p, 36)}
-          <div class="player-card-main">
-            <div class="row-between">
+          <span class="player-card-main">
+            <span class="row-between">
               <span class="player-name">${escapeHtml(p.name)}${isMe ? ' <span class="muted">(du)</span>' : ''}</span>
               <span class="badge ${badgeClass}">${stateLabel(p.state)}</span>
-            </div>
-            ${games ? `<div class="player-card-games chip-list">${games}</div>` : ''}
-          </div>
-        </div>`;
+            </span>
+            ${games ? `<span class="player-card-games chip-list">${games}</span>` : ''}
+          </span>
+        </button>`;
     })
     .join('');
 

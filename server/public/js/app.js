@@ -18,7 +18,8 @@ import { initNotificationBanner, refreshNotificationBanner } from './notificatio
 import { invalidateMissingSkills, invalidateAktuellStatus } from './aktuellStatus.js';
 import { invalidateMatchmakingHistory, setDraftState } from './views/matchmaking.js';
 import { invalidateBroadcasts } from './views/broadcast.js';
-import { invalidateInfoBoard } from './views/infoBoard.js';
+import { invalidateInfoBoard, openInfoBoard } from './views/infoBoard.js';
+import { openPlayerDetail } from './views/playerDetail.js';
 import { invalidateFoodOrders } from './views/foodOrders.js';
 import { invalidateChecklist } from './views/checklist.js';
 import { invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
@@ -32,9 +33,10 @@ import { invalidateMusic } from './views/music.js';
 import { icon, installIconReplacement } from './icons.js';
 import { initNumberStepper } from './numberStepper.js';
 import { initGlobalSearch } from './searchPalette.js';
-import { installDomainIcons } from './domainIcons.js';
+import { domainIcon, installDomainIcons } from './domainIcons.js';
 import { initGroupContext, refreshGroupContext } from './groupContext.js';
 import { isKnownView, VIEW_REGISTRY } from './viewRegistry.js';
+import { navGroupForView, sectionKeyForView } from './sectionNav.js';
 import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
 
 installIconReplacement();
@@ -130,13 +132,13 @@ function renderCurrent() {
 function focusPendingSearchTarget() {
   if (!pendingSearchTarget || pendingSearchTarget.view !== currentView) return;
   const { type, id } = pendingSearchTarget.target;
+  // No `player`/`info` entry: both open as a dialog instead of navigating to a
+  // view that would then have to highlight a row (see initGlobalSearch below).
   const candidates = {
-    player: [...viewContainer.querySelectorAll('[data-player]')].filter((el) => el.dataset.player === id),
     game: [...viewContainer.querySelectorAll('[data-search-game]')].filter((el) => el.dataset.searchGame === id),
     order: [
       ...viewContainer.querySelectorAll('[data-order-card], [data-closed-order]'),
     ].filter((el) => el.dataset.orderCard === id || el.dataset.closedOrder === id),
-    info: [...viewContainer.querySelectorAll('[data-info-entry]')].filter((el) => el.dataset.infoEntry === id),
     broadcast: [...viewContainer.querySelectorAll('[data-broadcast]')].filter((el) => el.dataset.broadcast === id),
     carpool: [...viewContainer.querySelectorAll('[data-carpool]')].filter((el) => el.dataset.carpool === id),
   }[type] ?? [];
@@ -171,8 +173,11 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
   // view is active. Without it, a running game can rebuild the current DOM
   // during navigation and make a tap appear to be lost.
   viewContainer.dataset.view = view;
+  // A nav button stands for a whole area, so every route inside that area
+  // (e.g. Teams inside Wettkampf) keeps its button lit — see sectionNav.js.
+  const activeGroup = navGroupForView(view);
   document.querySelectorAll('.nav-btn').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.view === view);
+    btn.classList.toggle('active', navGroupForView(btn.dataset.view) === activeGroup);
   });
   // Restart the view-enter animation (see .view-enter in style.css). Only on
   // deliberate navigation — realtime-triggered re-renders of the same view
@@ -207,15 +212,26 @@ function wireAdminMode() {
     setAdmin(false);
     showToast('Admin-Modus verlassen.');
   });
+  // Both the Home board and the Sitzplan editor embed their own snapshot of
+  // player data, so a visibility change must drop them too — otherwise a test
+  // player stays readable on Home's seating plan after admin mode is left.
+  const invalidateVisibilityCaches = () => {
+    invalidateHomeSeating();
+    invalidateSeating();
+  };
   window.addEventListener('respawn:admin-changed', () => {
     updateAdminIndicator();
     invalidateMusic();
+    invalidateVisibilityCaches();
     ctx.refresh();
   });
   // A redeemed test-session identity also needs its test-player peers visible
   // (see testFilter.js) — same "refetch so already-loaded data gets
   // re-filtered" reason as admin-changed above.
-  window.addEventListener('respawn:test-identity-changed', () => ctx.refresh());
+  window.addEventListener('respawn:test-identity-changed', () => {
+    invalidateVisibilityCaches();
+    ctx.refresh();
+  });
 }
 
 function wireNav() {
@@ -223,8 +239,8 @@ function wireNav() {
   // (index.html stays free of hand-copied SVG paths); the app shell is
   // hidden until this boot code runs, so nothing renders icon-less.
   document.getElementById('notifications-btn').insertAdjacentHTML('afterbegin', icon('bell'));
+  document.getElementById('info-btn').innerHTML = icon(domainIcon('infoBoard'));
   document.getElementById('profile-btn').innerHTML = icon('circleUser');
-  document.getElementById('settings-btn').innerHTML = icon('settings');
   document.querySelector('.admin-banner-label').insertAdjacentHTML('afterbegin', icon('shield'));
 
   document.querySelectorAll('.nav-btn').forEach((btn) => {
@@ -233,8 +249,10 @@ function wireNav() {
       switchView(btn.dataset.view);
     });
   });
-  document.getElementById('settings-btn').addEventListener('click', () => switchView('settings'));
   document.getElementById('profile-btn').addEventListener('click', () => switchView('profile'));
+  // Info is reference material people look up mid-conversation, so it opens
+  // over whatever they were doing instead of costing them their current view.
+  document.getElementById('info-btn').addEventListener('click', () => openInfoBoard());
 
   // Views can request navigation to a non-bottom-nav view (settings,
   // analytics) by rendering a button with data-navigate="<view>", without
@@ -242,6 +260,20 @@ function wireNav() {
   viewContainer.addEventListener('click', (e) => {
     if (e.target.closest('[data-retry-arcade]')) {
       renderCurrent();
+      return;
+    }
+    // An area's own tab row (see sectionNav.js). Same navigation as
+    // data-navigate, but switching back to the Turniere tab always returns to
+    // the tournament list instead of whichever board was open last.
+    const tab = e.target.closest('[data-section-tab]');
+    if (tab) {
+      if (tab.dataset.sectionTab === 'tournaments') showTournamentLanding();
+      switchView(tab.dataset.sectionTab);
+      return;
+    }
+    const detail = e.target.closest('[data-open-player-detail]');
+    if (detail) {
+      openPlayerDetail(detail.dataset.openPlayerDetail);
       return;
     }
     const btn = e.target.closest('[data-navigate]');
@@ -518,10 +550,9 @@ function wireSocket() {
     if (currentView === 'broadcast') renderCurrent();
   });
 
-  socket.on('info:changed', () => {
-    invalidateInfoBoard();
-    if (currentView === 'infoBoard') renderCurrent();
-  });
+  // The Info dialog refreshes itself while it is open; nothing else on screen
+  // depends on those entries.
+  socket.on('info:changed', invalidateInfoBoard);
 
   socket.on('foodOrders:changed', (payload) => {
     invalidateFoodOrders();
@@ -540,9 +571,14 @@ function wireSocket() {
     invalidateArrivals();
     if (currentView === 'arrivals') renderCurrent();
   });
-  socket.on('checklist:changed', () => {
-    invalidateChecklist();
-    if (currentView === 'checklist') renderCurrent();
+  socket.on('checklist:changed', (payload) => {
+    // The payload says whether tasks or someone's items changed; passing it on
+    // keeps an unrelated half of the cache (and the Packliste draft it feeds)
+    // from being thrown away.
+    invalidateChecklist(payload);
+    // Every Orga tab re-renders, not just the two checklist ones: the To-Dos
+    // tab count belongs to the area shell and is visible from all of them.
+    if (sectionKeyForView(currentView) === 'orga') renderCurrent();
   });
 
   socket.on('music:changed', () => {
@@ -562,6 +598,17 @@ async function main() {
   await initGroupContext();
   wireNav();
   initGlobalSearch((entry) => {
+    // Info entries and foreign profiles have no own area any more — they open
+    // as a dialog over the current view instead of navigating away from it.
+    if (entry.target?.type === 'info' || entry.action === 'info') {
+      openInfoBoard({ focusEntryId: entry.target?.id ?? null });
+      return;
+    }
+    if (entry.target?.type === 'player') {
+      if (entry.target.id === getMyId()) switchView('profile');
+      else openPlayerDetail(entry.target.id);
+      return;
+    }
     if (entry.target?.type === 'tournament') focusTournament(entry.target.id);
     if (entry.target?.type === 'game') focusGameCatalog(entry.target.id);
     switchView(entry.view, {

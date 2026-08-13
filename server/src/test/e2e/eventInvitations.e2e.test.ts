@@ -119,18 +119,23 @@ after(async () => {
 });
 
 test('manager invites a member who accepts and both open clients update', async () => {
-  for (const view of ['votes', 'broadcast', 'infoBoard', 'foodOrders', 'checklist', 'arrivals', 'seating', 'myStats', 'analytics']) {
+  for (const view of ['votes', 'broadcast', 'foodOrders', 'checklist', 'checklistPacking', 'arrivals', 'events', 'kiosk', 'seating', 'myStats', 'analytics', 'hallOfFame']) {
     await memberPage.evaluate((target) => {
       window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: target }));
     }, view);
     await memberPage.waitForSelector(`#view-container[data-view="${view}"]`);
   }
+  // Info is a topbar dialog rather than a view, but loads the same event-scoped
+  // data and therefore belongs in this check.
+  await memberPage.click('#info-btn');
+  await memberPage.waitForSelector('#info-new-btn');
+  await memberPage.click('.info-board-modal [data-close]');
   await memberPage.waitForTimeout(300);
   assert.deepEqual(memberEventNotFoundResponses, []);
   assert.equal(await memberPage.locator('.toast-error', { hasText: 'Event nicht gefunden.' }).count(), 0);
 
-  await ownerPage.click('#settings-btn');
-  await memberPage.click('#settings-btn');
+  await ownerPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
+  await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
   await ownerPage.waitForSelector(`[data-participants-event="${eventId}"]`);
   await memberPage.waitForSelector(`[data-participants-event="${eventId}"]`);
   assert.equal(await memberPage.locator(`[data-pending-invitation="${eventId}"]`).count(), 0);

@@ -260,11 +260,18 @@ view and to new views unless a documented domain constraint requires a different
    states must retain the same geometry as the populated state.
 9. **Reuse canonical semantics.** Navigation and „Mehr“ define domain icons through
    `domainIcons.js`; all other appearances reuse those mappings. Visible German page labels stay
-   concise (`Teams`, `Vote`, `Rang`, `Info`, `Trivia`, `Historie`), while longer explanations and
+   concise (`Teams`, `Vote`, `Orga`, `Info`, `Trivia`, `Historie`), while longer explanations and
    former labels may appear only in help text or technical documentation where needed.
 10. **Keep account management behind the authenticated boundary.** The current roster is readable
     by every signed-in member, while only the session account can edit its own profile. Player
     creation, deletion, roles and foreign-profile editing remain admin-only actions.
+11. **Group related workflows into one area with tabs instead of adding nav entries.** The bottom
+    nav carries exactly the five during-party destinations (Home, Wettkampf, Vote, Auswertung,
+    Mehr); everything else lives under „Mehr“ or in the topbar. Where two or three closely related
+    workflows would otherwise each claim their own entry, they become tabs of one area (see
+    `sectionNav.js`). Every tab keeps its own route, so deep links, the back button and persisted
+    push urls stay valid, and a tab never nests inside another tab row — a merged area flattens the
+    sub-view's own tabs into its area tab row.
 
 ## Components
 
@@ -273,6 +280,23 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Button** — `.btn` (default), `.btn-primary`, `.btn-danger`, `.btn-block`
   (full width), `.btn-sm` (compact). Combine variant + size, e.g.
   `class="btn btn-primary btn-sm"`.
+- **Area tabs** — `.section-tabs` with `.section-tab` is the tab row of a merged top-level area
+  (Wettkampf, Auswertung, Orga; defined in `sectionNav.js`). It sits directly under the area's
+  `.view-title`, outside any card, which is what keeps it distinguishable from the in-card control
+  rows further down. Because each tab is a real route, the row is `<nav>` navigation rather than a
+  toggle: the active tab carries `aria-current="page"` plus `.btn-primary`, never `aria-pressed`.
+  A tab may carry a live count in parentheses (Orga's „To-Dos“ shows the current identity's own
+  open items) so the number stays visible from every tab of the area; a zero count renders no
+  parentheses at all. That count is loaded once the area is entered on any of its tabs, not only the
+  one that renders the underlying list, and is patched into all of the area's tab buttons in place. Tabs share the full width on phones for a comfortable tap target and size to
+  their own label from `--bp-md`, because two tabs stretched across the wide content column would
+  read as banners rather than navigation. A page-level primary action that used to share a row with the view title
+  moves into a right-aligned `.row.view-actions` above the content („Turnier anlegen“,
+  „Ergebnis eintragen“).
+  Re-rendering the same tab reuses its existing `.section-view` element instead of rebuilding the
+  shell, so a sub-view that reads its own previous DOM before redrawing (the Packliste's add-item
+  draft and focus, the same survives-its-own-rerender pattern the Checkliste's To-Do form uses)
+  keeps working across a background refresh triggered from outside that tab.
 - **Mode / setting choice** — pick the widget by the shape of the decision, not by habit: a native
   `<select>` for three or more mutually exclusive named options (tournament format); the
   `.btn`/`.btn-primary` two-or-three-way toggle (`aria-pressed`, usually inside `.selection-toolbar`)
@@ -358,7 +382,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Every `.seating-seat` uses the same width and height on all four table sides, so vertical sides
   no longer stretch into wide rows. Phones switch all four sides to one shared compact size and
   keep exceptionally narrow layouts locally scrollable instead of widening the page.
-- **Team formation** — the Teams view first asks for game and mode: one shared `<select>` picks the
+- **Team formation** — the „Teams“ tab of the „Wettkampf“ area. The view first asks for game and mode: one shared `<select>` picks the
   game, followed by a `Modus` toggle (two `.btn`/`.btn-sm` buttons, `.btn-primary` marking the active
   one, `aria-pressed` conveying state beyond color) choosing between „Auslosung“ and „Captain Draft“.
   Only the chosen mode's `.tournament-section-panel` renders below — the two workflows never compete
@@ -468,18 +492,23 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Test-player ratings are excluded from this ranking because those players are hidden in normal
   member views. `Später` persists a deferred round, restores the normal catalog for the current
   session and resumes the rating panel on the next login.
-- **Player profiles** — The roster is available to signed-in members and opens read-only details for other participants.
-  The session account is marked as „Mein Profil“ and opens the dedicated self-service
-  profile editor. Foreign profiles expose neither edit/delete actions nor the private agent key;
+- **Player profiles** — There is no separate roster area: Home's Live-Status already lists everyone,
+  so every card there is a button that opens that participant's read-only detail dialog. The card
+  of the session account is marked „(du)“ and opens the dedicated self-service profile editor
+  instead. A global-search hit on a person behaves the same way — the dialog opens over the current
+  view rather than navigating away from it. The card's children stay `<span>`s carrying only display
+  styling — a `<button>`'s content model is phrasing content, and its descendants are presentational
+  to assistive technology once an `aria-label` is set — so the live state and running games are
+  spelled into that accessible name itself instead of only appearing as visible child markup.
+  Foreign profiles expose neither edit/delete actions nor the private agent key;
   the API omits the private agent key and rejects profile-field updates when the session does not
   match the target player.
   A foreign profile's detail dialog leads with identity (avatar, Gamertag, real name); the complete
   „Bock & Skill“ rating list across every game sits inside one initially collapsed
   `.collapsible-section` carrying the total game count, so a roster of many games does not force a
   long scroll just to see who someone is.
-  The roster itself has no duplicate „Teilnehmende“ heading and no player-creation action. Player
-  creation stays in the authenticated Admin workflow. The
-  desktop roster keeps exactly two equal-width cards per row; an odd final player does not stretch.
+  Player creation stays in the authenticated Admin workflow. The desktop live board keeps exactly
+  two equal-width cards per row; an odd final player does not stretch.
   The self-service profile uses the shared
   grouped-page hierarchy for profile data, Agent setup, Push, visible monitors and personal stats.
   Agent setup is split into three stable nested cards for choosing tracking, downloading and
@@ -491,17 +520,16 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   below that row. The foreground option uses the concise label „Erweitertes Tracking“. Push uses the same checkbox language with its
   explanation in a tooltip instead of an action button and omits a redundant off-state sentence.
   Visible-monitor choices form exactly two columns from `--bp-md`, with phones kept to one column.
-- **Settings and admin tools** — Settings uses separate grouped cards for Events and the TV/Kiosk
-  view. Account invitations and claim/reset links live in Admin's authenticated onboarding group;
-  their QR codes open in the shared centered modal. Event cards use the standard two-column nested-card grid.
+- **Admin tools** — Account invitations and claim/reset links live in Admin's authenticated
+  onboarding group; their QR codes open in the shared centered modal.
   Admin begins with one „LAN-Bereitschaft“ group: its overall badge and responsive
   two-column check cards cover Server/SQLite, Event and participants, agent coverage/version,
   process mappings, Kiosk and the latest persistent backup. Every card pairs its semantic badge
   with a textual summary and actionable detail; loading and retry errors stay inside the group.
-  Backup and seating-plan editing are absent from regular settings and live
+  Backup and seating-plan editing are absent from regular member views and live
   together as nested tool cards in the active Admin mode. A third tool card, „Event- &
-  Kioskverwaltung“, links into the settings view itself — the personal-looking topbar gear is not
-  the only entry point into that global, non-personal management surface. Each tool card keeps its
+  Kioskverwaltung“, links into Orga's „Events“ tab — that global, non-personal management surface
+  is otherwise only reachable through „Mehr“ like any other Orga tab. Each tool card keeps its
   title, adjacent help tooltip and colorful primary action on one row; the seating editor returns
   to Admin and blocks editing outside that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and
   need no separate Admin action. The test-data fixture explanation and the existing test-player count live in adjacent
@@ -555,8 +583,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Nested `.card` surfaces use the secondary elevated background so their hierarchy remains visible.
   `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
-  The „Mehr“ hub keeps each destination's canonical icon directly beside its centered title so
-  both read as one label; those icons are one spacing step smaller than standard list-row icons and
+  The „Mehr“ hub holds Admin, Arcade, Durchsage, Essen, Jam, Orga and Spiele — the destinations
+  that are not among the five bottom-nav entries. It keeps each destination's canonical icon
+  directly beside its centered title so both read as one label; those icons are one spacing step smaller than standard list-row icons and
   use the wider section gap to keep icon and text visually distinct. Only the navigation chevron
   remains independently aligned at the right.
   The destinations below „Mehr“ follow this same hierarchy without adding decorative accent rails:
@@ -586,11 +615,16 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   label („Bezahlt“, „Sammelzahlung“) instead of relying on an aria-label alone; a single contextual
   tooltip beside „Sammelzahlung“, shown once per card when the order has a PayPal link, explains
   that any position — including someone else's — can be picked for the combined payment below.
-- **Checkliste** — the area's own nav/view title (formerly „Packliste“; docs/KONZEPT-PACKLISTE-TICKETS.md
-  Abschnitt 9 records the rename). „Meine Packliste“ and „To-Dos“ inside it are two `.btn`/
-  `.btn-primary` toggle tabs, same active-marking convention as Team formation's „Modus“ toggle; the
-  „To-Dos“ tab label carries a live count of the current identity's own open+taken items. The
-  personal list is unchanged: a compact checkbox row per item (Grundstock plus freely added/removable
+- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its five area tabs
+  are „To-Dos“, „Packliste“, „An- & Abreise“, „Events“ and „TV-Kiosk“ (the first two formerly the
+  separate „Checkliste“ and „An- & Abreise“ areas; docs/KONZEPT-PACKLISTE-TICKETS.md Abschnitt 9
+  records the earlier „Packliste“→„Checkliste“ rename — „Events“ and „TV-Kiosk“ are the former
+  standalone „Einstellungen“ view, moved here because they are setup work like the rest of Orga
+  rather than a personal preference screen; there is no longer a topbar settings icon). To-Dos lead because that is what people open the area to check,
+  which also keeps the persisted push url `/#checklist` landing where it always did; that tab label
+  carries the live count of the current identity's own open+taken items. The checklist's former
+  in-view toggle is gone — its two halves are area tabs now, so no tab row nests inside another.
+  The personal list is unchanged: a compact checkbox row per item (Grundstock plus freely added/removable
   custom entries) with a checked item shown via muted, struck-through text instead of a separate
   badge, followed by the plain add-item field/button row.
   Any active member — not only Owner/Admin — can create a To-Do of either Art (Aufgabe/
@@ -614,15 +648,30 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   zugewiesen“ with „Freigeben“/„Erledigt“ actions instead. Completed To-Dos live in one standard,
   initially collapsed „Historie“ section whose open state survives live re-renders, same as Food
   orders.
+  The „Events“ tab keeps the full event-management surface: anlegen/bearbeiten, Tracking
+  starten/stoppen, Teilnehmer einladen/entfernen and the PDF „Andenken“-Export, plus any pending
+  invitations for the current identity as a leading subsection. Event cards use the standard
+  two-column nested-card grid. The „TV-Kiosk“ tab is deliberately minimal — one grouped-page-section
+  with a single full-width link that opens `/kiosk.html` in a new tab; it stays a separate tab
+  rather than a second section inside „Events“ so the two setup tasks (running events vs. the
+  shared-screen dashboard) don't compete for space on the same page.
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
   grid. „Nach LAN“ uses one directly labeled event dropdown and shows every overall placement for
   the selected LAN, followed by tournament winners in the same leaderboard-row structure. Blue and
   pink accent rails distinguish the two result groups; tournament game names have no decorative
   game symbols. Admin fixtures cover twelve years with full standings and three tournament winners per LAN so dense
-  long-term states remain testable. The
-  visible short name for the former Info-Board is „Info“ throughout navigation, search and the page
-  itself; entries remain alphabetically sorted responsive two-column nested cards.
-- **Arrival carpools** — Anreise and Abreise remain separate full-width accented panels. Their
+  long-term states remain testable. Hall of Fame is the third tab of the „Auswertung“ area.
+  Info is not an area at all: the topbar's „i“ (`#info-btn`, the canonical `info` icon from
+  `domainIcons.js`) opens it as a dialog over whatever view is open, because it is reference
+  material — WLAN, Discord, server IPs, house rules — that people look up mid-conversation and must
+  not cost them their current workflow. Entries remain alphabetically sorted responsive two-column
+  nested cards; „Eintrag anlegen“ is the dialog's leading full-width primary action, and an open
+  dialog refreshes itself on `info:changed` instead of stacking a second copy. Being itself an
+  `openModal()` instance, its entry form and delete confirmation can open on top of it — `modal.js`
+  delivers Escape only to the topmost open `.modal-backdrop`, so cancelling a nested confirmation
+  never takes the dialog underneath it down too.
+- **Arrival carpools** — the „An- & Abreise“ tab of Orga. Anreise and Abreise remain separate
+  full-width accented panels. Their
   carpool cards use two columns from `--bp-md`, but an odd final card deliberately keeps one-column
   width instead of spanning the row; phones stay single-column. Every card repeats Start and
   Ankunft vertically and proceeds directly into the passenger rows without a redundant
@@ -741,7 +790,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   requests only Spotify reauthorization, never an unnecessary controller reinstall. Realtime
   playback refreshes retain the current Jam DOM while new status is fetched; active controls keep
   focus and the view preserves its internal scroll position instead of flashing a loading state.
-- **Analytics** — All three tabs share the same event dropdown and show no additional date controls.
+- **Analytics** — the „Statistiken“ tab of the „Auswertung“ area. Its own three datasets
+  (Spielzeit, Matches & Turniere, Arcade) stay an in-card control group under the visible heading
+  „Ansicht“, which is what separates them from the area tab row above. All three share the same
+  event dropdown and show no additional date controls.
   Playtime and tournament data use the selected event directly; Arcade internally derives the
   event's date bounds because arcade results have no event assignment. The daily match chart is
   omitted. Tournament formats and per-game tournament counts are separate nested groups with blue
@@ -754,7 +806,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   copyable `#RRGGBB` field, and explicit cancel/apply actions; it has no competing preset palette.
   Invalid hex input is visibly rejected and cannot be applied or copied. The chosen value remains a draft until the profile's
   main save action persists it.
-- **Leaderboard** — The concise page title is „Rang“. The filtered „Rangliste“ and per-player
+- **Leaderboard** — the „Rangliste“ tab and default entry of the „Auswertung“ area, which the
+  bottom nav opens. The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
   each remains a distinct `.tournament-section-panel` with the shared accent rail. „Spielzeit pro
   Spiel“ stays a separate grouped page section. The selected game scopes the two accented sections
@@ -814,7 +867,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   „Bewertung/Stimme abgegeben“ state while locking that identity's controls.
   Vote history is labeled simply „Historie“, uses the shared icon-free collapsible header, starts
   closed and retains its open state across live re-renders.
-- **Tournament overview** — `.tournament-list-grid` shows at most two tournament cards per row;
+- **Tournament overview** — the „Turniere“ tab and default entry of the „Wettkampf“ area, whose
+  second tab is Team formation; switching back to „Turniere“ from the tab row always returns to the
+  list rather than the tournament board that was last open. A tournament's own detail page keeps
+  the area tabs above it and titles itself with an `h2`, so the page never carries two `h1`
+  headings. `.tournament-list-grid` shows at most two tournament cards per row;
   a single card stretches across the available width and further cards wrap. `.tournament-list-section` presents
   active and completed tournaments as two prominent status rows without separate summary-stat
   cards. The completed row uses the shared collapsible-section presentation, starts collapsed and
