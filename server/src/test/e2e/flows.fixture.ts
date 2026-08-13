@@ -271,6 +271,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   });
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
+  if (await page.locator('#admin-mode-activate').count()) await page.click('#admin-mode-activate');
   await page.waitForSelector('#admin-banner:not([hidden])');
   await page.waitForSelector('#admin-tools-title');
   assert.equal(await page.locator('#download-backup').count(), 1);
@@ -1232,6 +1233,7 @@ flowTest('shell', 'Sitzplan: the real name set in Mein Profil shows in small eve
   // simulate reliably.
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
+  if (await page.locator('#admin-mode-activate').count()) await page.click('#admin-mode-activate');
   await page.waitForSelector('#admin-banner:not([hidden])');
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
@@ -2210,6 +2212,8 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   // Enter admin mode — no PIN prompt, one tap (see docs/KONZEPT-TEST-USER.md).
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
+  await page.waitForSelector('#admin-mode-activate, #admin-readiness-refresh');
+  if (await page.locator('#admin-mode-activate').count()) await page.click('#admin-mode-activate');
   await page.waitForSelector('#admin-banner:not([hidden]) >> text=Admin-Modus aktiv');
 
   await page.waitForSelector('#admin-readiness-refresh:not([disabled])');
@@ -2239,6 +2243,7 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   // Seed test users from the role-protected panel.
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
+  if (await page.locator('#admin-mode-activate').count()) await page.click('#admin-mode-activate');
   const reauthenticated = await page.request.post(`${BASE_URL}/api/auth/reauth`, {
     data: { password: alice.password },
   });
@@ -2306,6 +2311,7 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   await page.waitForSelector('.live-seating .seating-status-indicator.is-offline[aria-label="Status: Offline"]');
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
+  if (await page.locator('#admin-mode-activate').count()) await page.click('#admin-mode-activate');
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector(`.seating-plan.is-editable [data-player-id="${pausedTestPlayer.id}"] .seating-status-indicator.is-paused`);
 
@@ -2325,6 +2331,7 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   await page.waitForSelector('#admin-banner:not([hidden])');
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
+  if (await page.locator('#admin-mode-activate').count()) await page.click('#admin-mode-activate');
   await page.click('#admin-cleanup');
   // confirmDialog is an in-app modal (not a native browser dialog).
   await page.click('[data-confirm]');

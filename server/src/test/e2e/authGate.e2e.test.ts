@@ -308,6 +308,9 @@ test('admin creates, displays and revokes a registration link in the UI', async 
 
     await adminPage.click('.nav-btn[data-view="more"]');
     await adminPage.click('[data-navigate="admin"]');
+    await adminPage.waitForSelector('#admin-mode-activate');
+    assert.equal(await adminPage.locator('#admin-banner').isHidden(), true);
+    await adminPage.click('#admin-mode-activate');
     await adminPage.waitForSelector('#admin-register-link');
     await adminPage.waitForSelector('.admin-role-select');
     assert.equal(await adminPage.locator('#group-btn').count(), 0);
@@ -388,6 +391,7 @@ test('admin roster retries role loading, serializes changes and follows group ro
     await adminPage.waitForSelector('#app:not([hidden])');
     await adminPage.click('.nav-btn[data-view="more"]');
     await adminPage.click('[data-navigate="admin"]');
+    if (await adminPage.locator('#admin-mode-activate').count()) await adminPage.click('#admin-mode-activate');
 
     await adminPage.waitForSelector('#admin-members-retry');
     assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \([1-9]\d*\)$/);
@@ -472,6 +476,7 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
 
     await adminPage.click('.nav-btn[data-view="more"]');
     await adminPage.click('[data-navigate="admin"]');
+    if (await adminPage.locator('#admin-mode-activate').count()) await adminPage.click('#admin-mode-activate');
     const testSessionButton = adminPage.locator(`[data-test-session="${testPlayer.id}"]`);
     await testSessionButton.waitFor();
     await testSessionButton.click();

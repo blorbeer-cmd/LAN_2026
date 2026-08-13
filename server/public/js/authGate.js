@@ -21,13 +21,11 @@ function clearAuthActionUrl() {
 }
 
 // Applies a resolved account (from /api/me or any auth response) to this
-// device: locks the compatibility identity, mirrors the account's real admin
-// role, and separately marks this device as a test identity when the account
-// itself is an is_test player (see testFilter.js) so it can see its seeded
-// peers without gaining any real admin privilege.
+// device: locks the compatibility identity and separately marks this device
+// as a test identity when it is an is_test player (see testFilter.js) so it can
+// see its seeded peers without gaining any real admin privilege.
 function applySession(account) {
   lockMyIdToSession(account.id);
-  setAdmin(Boolean(account.isAdmin));
   setTestIdentity(Boolean(account.isTest));
 }
 
