@@ -27,11 +27,12 @@ export function eventStatus(event) {
   return EVENT_STATUS.idle;
 }
 
-// The badge used on event cards. The label carries the meaning; the colour
-// only reinforces it.
+// The badge used on event cards. The icon carries the compact visual state;
+// the accessible label and tooltip preserve the meaning without repeating it
+// as visible copy.
 export function eventStatusBadgeHtml(event) {
   const status = eventStatus(event);
-  return `<span class="badge ${status.badge}">${icon(status.icon)} ${status.label}</span>`;
+  return `<span class="badge ${status.badge}" role="img" aria-label="${status.label}" title="${status.label}">${icon(status.icon)}</span>`;
 }
 
 // "Allgemein" is the permanent base workspace's visible name everywhere; its
@@ -41,12 +42,9 @@ export function eventDisplayName(event) {
   return event.isBase ? 'Allgemein' : event.name;
 }
 
-// The workspace switcher's option text. The state is spelled out next to the
-// name so the dropdown answers "läuft das gerade?" without opening a card —
-// and so the status icon beside the field never carries the meaning alone.
-// The base workspace is exempt: repeating "Allgemein · Allgemein" is noise.
+// The workspace switcher's option text stays concise. The selected control's
+// accessible label still includes the state, while the status icon provides
+// the visual cue beside the shared select.
 export function eventSwitcherLabel(event) {
-  const name = eventDisplayName(event);
-  const status = eventStatus(event);
-  return status.key === 'base' ? name : `${name} · ${status.label}`;
+  return eventDisplayName(event);
 }
