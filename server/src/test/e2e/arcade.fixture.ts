@@ -349,7 +349,7 @@ arcadeTest('navigation', 'the kiosk removes stale quiz markup before rendering a
     await host.page.click('#snake-start');
     // Freeze the continuously rendered match before asserting the kiosk transition. Otherwise
     // every game tick can replace the finish button while Playwright is trying to click it.
-    await host.page.click('#snake-pause');
+    await host.page.dispatchEvent('#snake-pause', 'click');
     await host.page.waitForSelector('.snake-overlay');
 
     await kiosk.waitForSelector('#kiosk-game-content canvas');
