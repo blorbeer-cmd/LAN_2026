@@ -311,9 +311,10 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await adminPage.click('[data-navigate="admin"]');
     await adminPage.waitForSelector('#admin-mode-activate');
     assert.equal(await adminPage.locator('#admin-banner').isHidden(), true);
-    await adminPage.click('#admin-mode-activate');
     await adminPage.waitForSelector('#admin-register-link');
+    await adminPage.waitForSelector('#admin-tools-title');
     await adminPage.waitForSelector('.admin-role-select');
+    assert.equal(await adminPage.locator('#admin-test-players-title').count(), 0);
     assert.equal(await adminPage.locator('#group-btn').count(), 0);
     assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \(\d+\)$/);
     assert.deepEqual(await adminPage.locator('.admin-role-select').first().locator('option').allTextContents(), [
@@ -436,8 +437,9 @@ test('admin roster retries role loading, serializes changes and follows group ro
     if (await adminPage.locator('#admin-mode-activate').count()) await adminPage.click('#admin-mode-activate');
 
     await adminPage.waitForSelector('#admin-members-retry');
-    assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \([1-9]\d*\)$/);
     await adminPage.waitForSelector(`.admin-player-row:has-text("${NAME}")`);
+    await adminPage.waitForFunction(() => /^Benutzer \([1-9]\d*\)$/.test(document.querySelector('#admin-players-title')?.textContent ?? ''));
+    assert.match((await adminPage.locator('#admin-players-title').textContent()) ?? '', /^Benutzer \([1-9]\d*\)$/);
     await adminPage.click('#admin-members-retry');
 
     let roleSelect = adminPage.locator(`[data-player-role="${target.id}"]`);
@@ -562,8 +564,7 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
 
     // But it does not gain real admin rights.
     await testPage.click('.nav-btn[data-view="more"]');
-    await testPage.click('[data-navigate="admin"]');
-    await testPage.waitForSelector('text=Dieses Konto hat keine Admin-Rechte.');
+    assert.equal(await testPage.locator('[data-navigate="admin"]').count(), 0);
   } finally {
     await testPage.close();
   }
