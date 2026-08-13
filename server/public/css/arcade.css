@@ -191,10 +191,10 @@
   gap: var(--space-2);
   min-height: var(--tap-target-size);
 }
-.arcade-lobby-create-row--single::before {
-  content: '';
-  flex: 0 0 var(--arcade-lobby-mode-toggle-width);
-  height: var(--tap-target-size);
+@media (min-width: 640px) { /* --bp-md */
+  .arcade-lobby-create-row--single {
+    padding-inline: calc(var(--arcade-lobby-mode-toggle-width) + var(--space-2));
+  }
 }
 /* Compact segmented switch: a bordered pill housing both mode segments so
    they read as one grouped control rather than two more buttons the size of
