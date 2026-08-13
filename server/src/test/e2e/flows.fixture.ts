@@ -1947,6 +1947,19 @@ flowTest(
     // Saving afterwards still works, so the surviving node is the live one.
     await page.click('#arrival-form button[type="submit"]');
     await page.waitForSelector('text=An-/Abreise gespeichert.');
+
+    // The assignment above sent Alice a personal, still-unread push
+    // notification ("Dir wurde eine Aufgabe zugewiesen") - the same
+    // getCurrentPushLogEntryFor() query the header highlight banner uses
+    // would otherwise keep surfacing it as the *next* highlighted entry the
+    // moment a later test's own notification gets dismissed, since it
+    // orders by creation time and this one is now the oldest unseen. Clear
+    // it so it does not leak into the "Durchsage" test's
+    // #notification-highlight assertions right after this one.
+    await page.request.post(`${BASE_URL}/api/push/seen-all`, {
+      headers: { cookie: alice.cookie },
+      data: { playerId: alice.id },
+    });
   }
 );
 
