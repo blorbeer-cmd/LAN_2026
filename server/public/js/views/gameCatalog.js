@@ -742,8 +742,8 @@ export function renderGameCatalog(container, ctx) {
       <button type="button" class="btn btn-primary btn-sm" id="suggest-new">Spiel vorschlagen</button>
     </div>
     <div class="grouped-page-sections" style="margin-top:var(--space-3);">
-      <section class="card stack grouped-page-section" aria-labelledby="game-catalog-list-title">
-        <div class="grouped-page-section-title"><h2 id="game-catalog-list-title">${sectionTitle}</h2></div>
+      <section class="card stack grouped-page-section" ${ratingMode ? 'aria-labelledby="game-catalog-list-title"' : `aria-label="${sectionTitle}"`}>
+        ${ratingMode ? `<div class="grouped-page-section-title"><h2 id="game-catalog-list-title">${sectionTitle}</h2></div>` : ''}
         ${ratingMode ? `
           <div class="onboarding-rating-banner" aria-live="polite">
             <div class="onboarding-rating-banner-copy">

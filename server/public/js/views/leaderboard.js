@@ -14,6 +14,9 @@ import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+
+const RESULT_HELP = 'Sieger aus Platz 1 oder höchstem Wert; beide Angaben sind optional.';
 
 export function renderLeaderboard(container, ctx) {
   const filterGameId = state.selectedGameId || '';
@@ -304,7 +307,10 @@ export function openMatchForm(ctx, options = {}) {
               </section>
               <section class="tournament-section-panel stack match-form-section" aria-labelledby="match-result-title">
                 <div class="grouped-page-section-title">
-                  <h2 id="match-result-title">Ergebnis</h2>
+                  <span class="title-with-info">
+                    <h2 id="match-result-title">Ergebnis</h2>
+                    ${infoTooltipHtml('match-team-result-help', 'Ergebnis', RESULT_HELP)}
+                  </span>
                 </div>
                 <div id="match-winner-section" ${advancedMode ? 'hidden' : ''}>
                   <div class="row" style="flex-wrap:wrap;">
@@ -313,10 +319,6 @@ export function openMatchForm(ctx, options = {}) {
                   </div>
                 </div>
                 <div id="match-scores-section" class="stack" ${advancedMode ? '' : 'hidden'}>
-                  <p class="muted match-result-help">
-                    Sieger wird automatisch aus Platz 1 bzw. dem höchsten Wert bestimmt. Beides ist optional
-                    und unabhängig voneinander — leer lassen, was nicht zutrifft.
-                  </p>
                   ${Array.from(
                     { length: teamCount },
                     (_, i) => `
@@ -330,6 +332,8 @@ export function openMatchForm(ctx, options = {}) {
               </section>
             </div>
           `;
+
+          wireInfoTooltips(bodyEl);
 
           bodyEl.querySelector('#match-teamcount').addEventListener('input', (e) => {
             // Capture whatever the user already picked before re-rendering,
@@ -392,21 +396,21 @@ export function openMatchForm(ctx, options = {}) {
               </section>
               <section class="tournament-section-panel stack match-form-section" aria-labelledby="match-result-title">
                 <div class="grouped-page-section-title">
-                  <h2 id="match-result-title">Ergebnis</h2>
+                  <span class="title-with-info">
+                    <h2 id="match-result-title">Ergebnis</h2>
+                    ${infoTooltipHtml('match-ffa-result-help', 'Ergebnis', RESULT_HELP)}
+                  </span>
                 </div>
                 <div id="match-ffa-winner-section" ${advancedMode ? 'hidden' : ''}>
                   <div id="match-ffa-winner"></div>
                 </div>
                 <div id="match-ffa-scores-section" class="stack" ${advancedMode ? '' : 'hidden'}>
-                  <p class="muted match-result-help">
-                    Sieger wird automatisch aus Platz 1 bzw. dem höchsten Wert bestimmt. Beides ist optional
-                    und unabhängig voneinander — leer lassen, was nicht zutrifft.
-                  </p>
                   <div id="match-ffa-scores"></div>
                 </div>
               </section>
             </div>
           `;
+          wireInfoTooltips(bodyEl);
           renderFfaWinnerOptions();
           renderFfaScoreOptions();
           bodyEl.querySelectorAll('[data-ffa-player]').forEach((cb) => {

@@ -50,7 +50,7 @@ function cardShell(title, subtitle, bodyHtml) {
     <form id="auth-form" class="login-card">
       <img class="login-logo" src="/img/logo.svg" alt="" width="72" height="72" />
       <h1 class="brand-title">${escapeHtml(title)}</h1>
-      <p class="muted">${escapeHtml(subtitle)}</p>
+      ${subtitle ? `<p class="muted">${escapeHtml(subtitle)}</p>` : ''}
       ${bodyHtml}
       <p id="auth-error" class="error-text" hidden></p>
     </form>
@@ -81,7 +81,7 @@ function passwordField({ autofocus = false, autocomplete = 'current-password', l
 function renderLoginForm() {
   return cardShell(
     'Respawn',
-    'Melde dich mit Name und Passwort an.',
+    '',
     `${nameField()}${passwordField()}<button type="submit" class="btn btn-primary">Anmelden</button>`
   );
 }

@@ -40,7 +40,6 @@ export function openPlayerDetail(playerId) {
             ${player.real_name ? `<span class="muted">${escapeHtml(player.real_name)}</span>` : ''}
           </div>
         </div>
-        <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Dieses Profil kann nur von ${escapeHtml(player.name)} selbst bearbeitet werden.</p>
         ${
           state.games.length > 0
             ? `<details class="collapsible-section">
