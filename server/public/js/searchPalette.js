@@ -13,11 +13,11 @@ export { normalizeSearchText };
 // Areas that merge several routes (see sectionNav.js) stay listed by their own
 // tab here: "Rangliste" and "Hall of Fame" are what people type, and each tab
 // is still its own route. The area name is carried as an alias so searching
-// "Wettkampf", "Auswertung" or "Orga" finds its tabs too.
+// "Match" (and the legacy name "Wettkampf"), "Auswertung" or "Orga" finds its tabs too.
 export const SEARCH_ENTRIES = [
   { view: 'home', title: 'Home', category: 'Bereich', description: 'Aktuelles, Live-Status und Überblick', aliases: 'start übersicht dashboard', priority: 100 },
-  { view: 'tournaments', title: 'Turniere', category: 'Wettkampf', description: 'Turniere anlegen und Ergebnisse verwalten', aliases: 'wettkampf tournament ko runde bracket', priority: 99 },
-  { view: 'matchmaking', title: 'Teams', category: 'Wettkampf', description: 'Auslosen, Captain Draft und Historie', aliases: 'wettkampf teams auslosen matchmaking captain draft kraft team-historie ergebnis-historie', priority: 98 },
+  { view: 'tournaments', title: 'Turniere', category: 'Match', description: 'Turniere anlegen und Ergebnisse verwalten', aliases: 'match wettkampf tournament ko runde bracket', priority: 99 },
+  { view: 'matchmaking', title: 'Teams', category: 'Match', description: 'Auslosen, Captain Draft und Historie', aliases: 'match wettkampf teams auslosen matchmaking captain draft kraft team-historie ergebnis-historie', priority: 98 },
   { view: 'votes', title: 'Vote', category: 'Bereich', description: 'Gemeinsam das nächste Spiel wählen', aliases: 'abstimmung voting punkte spielwahl', priority: 97 },
   { view: 'leaderboard', title: 'Rangliste', category: 'Auswertung', description: 'Ergebnisse, Punkte und Platzierungen', aliases: 'auswertung rang leaderboard ergebnis match', priority: 96 },
   { view: 'more', title: 'Mehr', category: 'Bereich', description: 'Alle weiteren Bereiche und Tools', aliases: 'menü tools', priority: 95 },

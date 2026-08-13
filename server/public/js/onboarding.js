@@ -11,7 +11,7 @@ import { showToast } from './toast.js';
 const STEPS = [
   { title: 'Willkommen', text: 'Diese kurze Einführung zeigt die wichtigsten Bereiche und Funktionen.', view: 'home' },
   { title: 'Home', text: 'Home zeigt aktuelle Aktivitäten, den Live-Status aller Spielenden, die Rangliste und den Sitzplan auf einen Blick.', view: 'home', target: '.nav-btn[data-view="home"]' },
-  { title: 'Wettkampf', text: 'Turniere und Teams liegen hier zusammen: Turniere anlegen und live verfolgen, Teams nach Skill-Level auslosen oder per Captain Draft zusammenstellen.', view: 'tournaments', target: '.nav-btn[data-view="tournaments"]' },
+  { title: 'Match', text: 'Teams und Turniere liegen hier zusammen: Teams nach Skill-Level auslosen oder per Captain Draft zusammenstellen, Turniere anlegen und live verfolgen.', view: 'matchmaking', target: '.nav-btn[data-view="matchmaking"]' },
   { title: 'Vote', text: 'Hier startet und beantwortet ihr Abstimmungen zur nächsten Spielauswahl und seht die Top 10 nach Bock-Level.', view: 'votes', target: '.nav-btn[data-view="votes"]' },
   { title: 'Auswertung', text: 'Rangliste, Statistiken und Hall of Fame in einem Bereich: Punkte, Platzierungen, Spielzeit und die Champions vergangener LANs.', view: 'leaderboard', target: '.nav-btn[data-view="leaderboard"]' },
   { title: 'Mehr', text: 'Hier erreichst du alle weiteren Bereiche: Orga mit To-Dos, Packliste und An- & Abreise, dazu Essen, Arcade, Jam, Durchsagen und Spiele. Jeder dieser Bereiche erklärt sich beim ersten Öffnen kurz selbst.', view: 'more', target: '.nav-btn[data-view="more"]' },

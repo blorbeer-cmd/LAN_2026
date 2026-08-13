@@ -10,10 +10,10 @@
 
 export const SECTIONS = Object.freeze({
   competition: Object.freeze({
-    title: 'Wettkampf',
+    title: 'Match',
     tabs: Object.freeze([
-      Object.freeze({ view: 'tournaments', label: 'Turniere' }),
       Object.freeze({ view: 'matchmaking', label: 'Teams' }),
+      Object.freeze({ view: 'tournaments', label: 'Turniere' }),
     ]),
   }),
   insights: Object.freeze({

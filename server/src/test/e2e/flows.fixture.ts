@@ -67,7 +67,7 @@ async function openSectionTab(navView: string, tab: string): Promise<void> {
 }
 
 async function openTeams(): Promise<void> {
-  await openSectionTab('tournaments', 'matchmaking');
+  await openSectionTab('matchmaking', 'matchmaking');
 }
 
 // Orga is reached through "Mehr" rather than the bottom nav.
@@ -421,7 +421,7 @@ flowTest('shell', 'global search filters areas, supports keyboard navigation and
   await page.fill('#global-search-input', 'Captain Draft');
   await page.waitForSelector('.global-search-result:has-text("Teams")');
   await page.click('.global-search-result:has-text("Teams")');
-  await page.waitForSelector('.view-title:text("Wettkampf")');
+  await page.waitForSelector('.view-title:text("Match")');
   await page.waitForSelector('[data-section-tab="matchmaking"][aria-current="page"]');
 
   await page.keyboard.press('Control+K');
@@ -1467,8 +1467,9 @@ flowTest('shell', 'Spiele: a skill suggestion chip appears after enough recorded
 });
 
 flowTest('shell', 'Turnier: create a K.O. bracket from proposed teams and play it to a champion', async () => {
-  // Tournaments earned their own bottom-nav slot.
-  await page.click('.nav-btn[data-view="tournaments"]');
+  // Tournaments live in the second tab of the shared Match area.
+  await page.click('.nav-btn[data-view="matchmaking"]');
+  await page.click('[data-section-tab="tournaments"]');
   await page.waitForSelector('#tourn-new-btn');
   await page.click('#tourn-new-btn');
 

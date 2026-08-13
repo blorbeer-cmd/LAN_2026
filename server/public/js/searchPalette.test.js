@@ -16,7 +16,8 @@ test('searchEntries finds navigation targets by title and aliases', () => {
 test('merged areas stay findable by their area name and open Info as a dialog', () => {
   // The merged areas are listed by tab, so the area name has to reach them
   // through its alias instead of an own entry.
-  assert.equal(searchEntries('Wettkampf')[0]?.category, 'Wettkampf');
+  assert.equal(searchEntries('Match')[0]?.category, 'Match');
+    assert.equal(searchEntries('Wettkampf')[0]?.category, 'Match');
   assert.equal(searchEntries('Orga')[0]?.category, 'Orga');
   assert.equal(searchEntries('Hall of Fame')[0]?.view, 'hallOfFame');
   assert.equal(searchEntries('Packliste')[0]?.view, 'checklistPacking');
