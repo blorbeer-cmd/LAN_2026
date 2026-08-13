@@ -77,7 +77,10 @@
   --seating-seat-width-compact: calc(var(--avatar-size-lg) + var(--space-4));
   --seating-seat-height-compact: calc(var(--row-min-h) + var(--space-5));
   --assignment-select-width: 112px;
+  /* Stable Arcade creation geometry: mode-capable and fixed-mode games keep
+     the primary lobby action in the same column while switching tiles. */
   --arcade-lobby-mode-width: 134px;
+  --arcade-lobby-mode-toggle-width: 154px;
   --arcade-lobby-card-min-height: 220px;
   --challenge-rush-stage-max-width: 760px;
   --challenge-rush-playfield-min-height: 280px;

@@ -543,10 +543,10 @@ function activeGameHtml() {
     return `
       <div class="card stack arcade-lobby-card">
         <div class="arcade-lobby-create-actions">
-          <span class="row" style="gap:var(--space-1);">
+          <div class="arcade-lobby-create-row arcade-lobby-create-row--single">
             <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button>
             ${createReason ? infoTooltipHtml('quiz-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
-          </span>
+          </div>
           ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="quiz-bot" ${match ? 'disabled' : ''}>Gegen KI</button>` : ''}
         </div>
         ${renderLobbyList()}
