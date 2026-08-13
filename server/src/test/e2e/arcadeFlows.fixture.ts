@@ -124,29 +124,52 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
   // become visible (module state is intentionally reset on a fresh run).
   await page.click('[data-game="quiz"]');
   await page.waitForSelector('#quiz-create-lobby');
+  const mobileInsets = await page.locator('#quiz-create-lobby').evaluate((button) => {
+    const buttonRect = button.getBoundingClientRect();
+    const rowRect = button.closest('.arcade-lobby-create-row')!.getBoundingClientRect();
+    return {
+      left: Math.round(buttonRect.left - rowRect.left),
+      right: Math.round(rowRect.right - buttonRect.right),
+    };
+  });
+  assert.deepEqual(mobileInsets, { left: 0, right: 0 });
+
+  const mobileViewport = page.viewportSize();
+  await page.setViewportSize({ width: 1280, height: 800 });
   const createButtonLayout = async (selector: string) => page.locator(selector).evaluate((button) => {
     const buttonRect = button.getBoundingClientRect();
     const cardRect = button.closest('.arcade-lobby-card')!.getBoundingClientRect();
     return {
       left: Math.round(buttonRect.left - cardRect.left),
+      right: Math.round(cardRect.right - buttonRect.right),
       top: Math.round(buttonRect.top - cardRect.top),
       width: Math.round(buttonRect.width),
       height: Math.round(buttonRect.height),
     };
   });
-  const fixedModeLayout = await createButtonLayout('#quiz-create-lobby');
+  const noModeLayout = await createButtonLayout('#quiz-create-lobby');
+  assert.ok(Math.abs(noModeLayout.left - noModeLayout.right) <= 1, 'the no-mode create action must be centered');
+  await page.click('[data-game="scribble"]');
+  await page.waitForSelector('#scribble-create');
+  assert.deepEqual(await createButtonLayout('#scribble-create'), noModeLayout);
+
   const duelDefaults = [
     ['tetris', '#tetris-create', '#tetris-mode [data-arcade-mode="duel"]'],
     ['pong', '#pong-create', '#pong-mode [data-arcade-mode="duel"]'],
     ['snake', '#snake-create', '#snake-mode [data-arcade-mode="classic"]'],
     ['blobby', '#blobby-create', '#blobby-mode [data-arcade-mode="duel"]'],
   ] as const;
+  let modeLayout: Awaited<ReturnType<typeof createButtonLayout>> | null = null;
   for (const [game, createSelector, duelSelector] of duelDefaults) {
     await page.click(`[data-game="${game}"]`);
     await page.waitForSelector(createSelector);
     assert.equal(await page.locator(duelSelector).getAttribute('aria-pressed'), 'true');
-    assert.deepEqual(await createButtonLayout(createSelector), fixedModeLayout);
+    const currentLayout = await createButtonLayout(createSelector);
+    if (modeLayout) assert.deepEqual(currentLayout, modeLayout);
+    else modeLayout = currentLayout;
   }
+
+  if (mobileViewport) await page.setViewportSize(mobileViewport);
   await page.click('[data-game="quiz"]');
   await page.waitForSelector('#quiz-create-lobby');
   await page.click('#quiz-create-lobby');

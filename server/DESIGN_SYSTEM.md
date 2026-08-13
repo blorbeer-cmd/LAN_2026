@@ -720,10 +720,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   a redundant waiting sentence. Member actions use the same destructive treatment for „Verlassen“
   as the host's „Schließen“ action, and only render for a member who actually joined that lobby.
   Guest footers place „Verlassen“ before the readiness toggle;
-  compact score selectors use the smaller shared row height. Create actions use the same inset as
-  lobby footer actions, so „Lobby öffnen“ and readiness controls align exactly. The creation row
-  reserves the same fixed mode column for games without a selector; their primary button therefore
-  keeps the same position and width while users switch between game tiles. Tetris, Pong, Snake and
+  compact score selectors use the smaller shared row height. Create-action containers use the same
+  outer inset as lobby footers. The creation row
+  uses equal left and right insets for games without a selector from `--bp-md`; on phones their
+  primary action remains full-width. Tetris, Pong, Snake and
   Blobby Volley all select Duell by default. A disabled „Lobby
   öffnen“ or „Start“ carries the same red `.info-tooltip-trigger--warning` reason pattern as Team
   formation's „Teams auslosen“/„Draft starten“.
