@@ -1601,3 +1601,24 @@ test('migration 58 preserves missing event consent from required-auth operation'
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
+
+test('the Battleship display-name rename reaches a database seeded before the rename and is restart-safe', () => {
+  const dbFile = makeTempDbPath('arcade-battleship-rename');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.prepare("UPDATE games SET name = 'Schiffe versenken' WHERE arcade_key = 'battleship'").run();
+  fixture.prepare("DELETE FROM app_state WHERE key = 'arcade_rename_battleship_2026_08'").run();
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.equal(
+    (migrated.prepare("SELECT name FROM games WHERE arcade_key = 'battleship'").get() as { name: string }).name,
+    'Battleship',
+  );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});

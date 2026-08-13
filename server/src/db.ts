@@ -3328,7 +3328,7 @@ export const ARCADE_GAME_DEFS = [
   { key: 'scribble', name: 'Scribble', icon: '✏️' },
   { key: 'blobby', name: 'Blobby Volley', icon: '🏐' },
   { key: 'snake', name: 'Snake', icon: '🐍' },
-  { key: 'battleship', name: 'Schiffe versenken', icon: '⚓' },
+  { key: 'battleship', name: 'Battleship', icon: '⚓' },
   { key: 'challenge-rush', name: 'Challenge Rush', icon: '🎯' },
 ] as const;
 
@@ -3348,6 +3348,18 @@ function seedArcadeGames(): void {
   seed();
 }
 seedArcadeGames();
+
+// One-time rename (August 2026): seedArcadeGames() above only ever inserts a
+// missing arcade_key row, so it never renames a row an earlier startup already
+// seeded as "Schiffe versenken". Applies the "Battleship" rename once, guarded
+// by an app_state key, same pattern as cleanupCatalogGames() below.
+function renameBattleshipArcadeGame(): void {
+  const KEY = 'arcade_rename_battleship_2026_08';
+  if (getState(KEY)) return;
+  db.prepare("UPDATE games SET name = 'Battleship' WHERE arcade_key = 'battleship'").run();
+  setState(KEY, String(Date.now()));
+}
+renameBattleshipArcadeGame();
 
 function seedQuizQuestions(groupId: string): void {
   const count = (

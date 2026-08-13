@@ -75,7 +75,7 @@ const GAMES = [
   {
     id: 'battleship',
     icon: icon('ship'),
-    name: 'Schiffe versenken',
+    name: 'Battleship',
     help: 'Ziel: Versenke die gegnerische Flotte. Steuerung: Raster antippen oder mit der Tastatur bedienen.',
   },
   {
@@ -445,7 +445,7 @@ async function leaveCurrentLobbyBeforeAction(targetGame, action) {
     { name: 'Pong', lobby: myPongLobby(), leave: leaveMyPongLobby },
     { name: 'Blobby Volley', lobby: myBlobbyLobby(), leave: leaveMyBlobbyLobby },
     { name: 'Snake', lobby: mySnakeLobby(), leave: leaveMySnakeLobby },
-    { name: 'Schiffe versenken', lobby: myBattleshipLobby(), leave: async (lobby) => emitWithAck('battleship:lobby:leave', { lobbyId: lobby.id, playerId }) },
+    { name: 'Battleship', lobby: myBattleshipLobby(), leave: async (lobby) => emitWithAck('battleship:lobby:leave', { lobbyId: lobby.id, playerId }) },
     { name: 'Challenge Rush', lobby: myChallengeRushLobby(), leave: leaveMyChallengeRushLobby },
   ];
   const current = candidates.find((entry) => entry.lobby);
