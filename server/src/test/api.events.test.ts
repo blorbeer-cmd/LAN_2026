@@ -156,6 +156,22 @@ test('event metadata remains editable without changing tracking state', async ()
   assert.equal(invalid.status, 400);
 });
 
+test('an ended event can be restarted in an emergency', async () => {
+  const normalStart = await request(app).post(`/api/events/${eventAId}/tracking/start`).send({});
+  assert.equal(normalStart.status, 400);
+
+  const otherStart = await request(app).post(`/api/events/${eventBId}/tracking/start`).send({});
+  assert.equal(otherStart.status, 200);
+
+  const res = await request(app).post(`/api/events/${eventAId}/restart`).send({});
+  assert.equal(res.status, 200);
+  assert.equal(res.body.isEnded, false);
+  assert.equal(res.body.trackingEnabled, true);
+  assert.equal(res.body.status, 'published');
+
+  await request(app).post(`/api/events/${eventAId}/tracking/stop`).send({});
+});
+
 test('the management shape is a strict superset of the summary shape', async () => {
   // A member only ever receives the summary shape, an admin additionally the
   // management shape — and both render through the same frontend cards. When

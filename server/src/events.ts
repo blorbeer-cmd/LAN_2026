@@ -123,16 +123,24 @@ export type StartTrackingResult =
 // (FR-29) — used whenever tracking starts/stops/ends, since a switch in who
 // is being tracked means whatever "currently running" state existed before
 // is now stale and would otherwise never get an ended_at.
-// Turns tracking on for this event only. Other events may continue tracking
-// in parallel; each account report still belongs to its selected event.
-export function startTracking(id: string): StartTrackingResult {
+// Turns tracking on for one event — clearing stale live status from
+// whatever was tracked before (a fresh tracking window shouldn't show last
+// time's "who's playing what") and giving every existing agent report a
+// clean slate. Rejects if a DIFFERENT event is already tracking (only one
+// at a time, system-wide) rather than silently switching, since that's the
+// one thing that must stay exclusive even though events themselves can
+// overlap in time.
+function startTrackingInternal(id: string, reopenEnded: boolean): StartTrackingResult {
   const event = getEvent(id);
   if (!event) return { ok: false, code: 'not_found', error: 'Event nicht gefunden.' };
   if (event.id === OUTSIDE_EVENTS_ID) {
     return { ok: false, code: 'invalid', error: 'Dieser technische Migrationskontext kann nicht getrackt werden.' };
   }
-  if (event.ended_at) {
+  if (event.ended_at && !reopenEnded) {
     return { ok: false, code: 'invalid', error: 'Ein beendetes Event kann nicht wieder getrackt werden.' };
+  }
+  if (reopenEnded && (!event.ended_at || event.status !== 'ended')) {
+    return { ok: false, code: 'invalid', error: 'Nur beendete Events können wieder gestartet werden.' };
   }
   if (event.status === 'cancelled') {
     return { ok: false, code: 'invalid', error: 'Ein abgesagtes Event kann nicht getrackt werden.' };
@@ -141,9 +149,25 @@ export function startTracking(id: string): StartTrackingResult {
 
   closeEventContexts(id);
 
-  db.prepare('UPDATE events SET tracking_enabled = 1 WHERE id = ?').run(id);
+  const updated = reopenEnded
+    ? db.prepare("UPDATE events SET tracking_enabled = 1, ended_at = NULL, status = 'published' WHERE id = ? AND ended_at IS NOT NULL AND status = 'ended'").run(id)
+    : db.prepare('UPDATE events SET tracking_enabled = 1 WHERE id = ?').run(id);
+  if (updated.changes !== 1) {
+    return { ok: false, code: 'invalid', error: 'Event konnte nicht gestartet werden.' };
+  }
 
   return { ok: true, event: getEvent(id)! };
+}
+
+export function startTracking(id: string): StartTrackingResult {
+  return startTrackingInternal(id, false);
+}
+
+// Reopens an event that was ended manually and starts tracking it again. The
+// caller must use the explicit restart action so a normal tracking start
+// cannot accidentally undo an event's completed state.
+export function restartEvent(id: string): StartTrackingResult {
+  return startTrackingInternal(id, true);
 }
 
 // Pauses tracking without ending the event — can be resumed with

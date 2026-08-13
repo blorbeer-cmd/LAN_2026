@@ -136,6 +136,10 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       const removed = await call(app, 'delete', '/api/events/' + event.body.id + '/participants/' + bob.account.id, owner);
       assert.equal(removed.status, 204);
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/invitation/accept', bob)).status, 409);
+      assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/end', owner)).status, 200);
+      const lateInvite = await call(app, 'post', '/api/events/' + event.body.id + '/invitations', owner)
+        .send({ playerId: bob.account.id });
+      assert.equal(lateInvite.status, 409);
 
       // Withdrawing an unanswered invitation is the third way it stops being
       // open. Its notification must retire with it, or the banner keeps

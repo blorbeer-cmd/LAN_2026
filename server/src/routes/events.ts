@@ -10,6 +10,7 @@ import {
   createEvent,
   updateEvent,
   startTracking,
+  restartEvent,
   stopTracking,
   endEvent,
   getParticipantIds,
@@ -46,15 +47,15 @@ function eventInvitationTopicKey(eventId: string, playerId: string): string {
 
 let trackingStartQueue: Promise<void> = Promise.resolve();
 
-async function startTrackingWithBackup(id: string) {
+async function startTrackingWithBackup(id: string, reopenEnded = false) {
   const operation = async () => {
     const event = getEvent(id);
     const canStart = Boolean(
       event &&
       event.id !== OUTSIDE_EVENTS_ID &&
-      !event.ended_at &&
       event.status !== 'cancelled' &&
-      !event.tracking_enabled,
+      !event.tracking_enabled &&
+      (reopenEnded ? Boolean(event.ended_at && event.status === 'ended') : !event.ended_at),
     );
     if (canStart) {
       try {
@@ -63,7 +64,7 @@ async function startTrackingWithBackup(id: string) {
         return { backupError: error } as const;
       }
     }
-    return { result: startTracking(id) } as const;
+    return { result: reopenEnded ? restartEvent(id) : startTracking(id) } as const;
   };
   const pending = trackingStartQueue.then(operation, operation);
   trackingStartQueue = pending.then(
@@ -255,6 +256,9 @@ eventsRouter.post('/:id/invitations', resolveEvent, requireGroupRole('admin'), (
   if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
   if (event.id === BASE_EVENT_ID) {
     return res.status(409).json({ error: 'Das Basis-Event umfasst automatisch alle aktiven Konten.' });
+  }
+  if (event.ended_at || event.status === 'ended') {
+    return res.status(409).json({ error: 'Für beendete Events können keine neuen Einladungen gesendet werden.' });
   }
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId || playerId.length > 200) {
@@ -548,6 +552,35 @@ eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin')
     actorPlayerId: req.player?.id,
     groupId: req.player ? req.group!.id : undefined,
     action: 'event_tracking_started',
+    targetType: 'event',
+    targetId: req.params.id,
+  });
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id, req.params.id), {
+    groupId: req.group!.id,
+    eventId: req.params.id,
+  });
+  res.json(serializeEvent(result.event));
+});
+
+// POST /api/events/:id/restart - reopens an ended event and starts tracking.
+eventsRouter.post('/:id/restart', resolveEvent, requireGroupRole('admin'), async (req, res) => {
+  const attempt = await startTrackingWithBackup(req.params.id, true);
+  if ('backupError' in attempt) {
+    // eslint-disable-next-line no-console
+    console.error('Pre-event backup failed:', attempt.backupError);
+    return res.status(503).json({
+      error: 'Sicherungs-Snapshot fehlgeschlagen. Neustart wurde zur Sicherheit abgebrochen.',
+    });
+  }
+  const { result } = attempt;
+  if (!result.ok) {
+    return res.status(result.code === 'not_found' ? 404 : 400).json({ error: result.error });
+  }
+  writeAdminAudit({
+    actorPlayerId: req.player?.id,
+    groupId: req.player ? req.group!.id : undefined,
+    action: 'event_restarted',
     targetType: 'event',
     targetId: req.params.id,
   });
