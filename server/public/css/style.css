@@ -4147,8 +4147,7 @@ input.food-order-price-input {
 .check-row > .leaderboard-row-name {
   flex: 1;
 }
-.leaderboard-row-stat,
-.match-result-help {
+.leaderboard-row-stat {
   font-size: var(--font-size-xs);
 }
 .lb-points {
@@ -4160,9 +4159,6 @@ input.food-order-price-input {
 }
 .match-team-count-field {
   width: calc(var(--space-8) * 2);
-}
-.match-result-help {
-  margin: 0;
 }
 .match-result-row {
   display: grid;
@@ -4567,29 +4563,6 @@ input.food-order-price-input {
   flex: 0 0 auto;
 }
 
-/* First-visit explanation for a view reached under "Mehr" - see
-   onboardingHintHtml in onboarding.js. Same accent-bordered treatment as
-   .onboarding-rating-banner below, plus a dismiss action. */
-.onboarding-view-hint {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  margin-bottom: var(--space-3);
-  background: var(--bg-elevated-2);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius);
-}
-
-.onboarding-view-hint p {
-  flex: 1 1 240px;
-  min-width: 0;
-  margin: 0;
-  font-size: var(--font-size-sm);
-}
-
 .onboarding-rating-banner {
   display: flex;
   flex-wrap: wrap;
@@ -4860,12 +4833,6 @@ input.food-order-price-input {
   border-radius: var(--radius-lg);
   background: linear-gradient(135deg, rgba(145, 99, 245, .2), rgba(91, 140, 255, .12));
   color: var(--text-muted);
-}
-.seating-table-mark {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text);
 }
 .seating-seat {
   flex: 0 0 auto;

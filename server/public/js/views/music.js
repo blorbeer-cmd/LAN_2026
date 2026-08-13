@@ -8,7 +8,7 @@ import { emptyStateHtml } from '../emptyState.js';
 import { confirmDialog } from '../modal.js';
 
 const JAM_HELP =
-  'Jam steuert Spotify gemeinsam: Nur ein Musik-PC oder Kiosk-Pi wird einmalig als Controller eingerichtet und hält die Spotify-Anmeldung lokal; alle anderen brauchen kein Spotify-Konto. Danach können alle Titel oder ganze Playlists suchen, die Wiedergabe steuern und Songwünsche ergänzen. Eine gestartete Playlist ersetzt die bisherige Warteschlange, zeigt ihre noch folgenden Titel unter „Als Nächstes“ und nimmt zusätzliche Wünsche in Eingangsreihenfolge auf. Der laufende Controller verbindet sich nach Unterbrechungen automatisch erneut und lässt sich mit einem neuen Code ohne weiteren Download wieder koppeln.';
+  'Ein Musik-PC oder Kiosk-Pi steuert Spotify lokal; nur dort ist ein Spotify-Konto nötig. Alle können Wiedergabe, Playlists und Songwünsche gemeinsam steuern.';
 const LOCAL_CONTROLLER_URL = 'http://127.0.0.1:43821';
 
 let cache = null;
@@ -103,8 +103,8 @@ export function musicSetupHtml(status, activePairing = pairing) {
       <section class="card stack music-setup-card" aria-labelledby="music-setup-title">
           <strong id="music-setup-title">${reconnecting ? 'Jam-Controller wieder verbinden' : 'Jam einrichten'}</strong>
           ${hasKnownController
-            ? `<p><strong>${escapeHtml(status.controller.label)}</strong><span class="muted"> ist gerade nicht erreichbar. Öffne auf dem Musik-PC erneut die bekannte Startdatei; sie startet die bereits installierte Version, ohne etwas neu zu installieren. Netzwerkunterbrechungen werden danach automatisch überbrückt.</span></p>`
-            : '<p class="muted">Eine vorhandene Installation lässt sich mit einem neuen Code koppeln. Das Downloadpaket wird nur für die erste Installation benötigt.</p>'}
+            ? `<p><strong>${escapeHtml(status.controller.label)}</strong><span class="muted"> ist nicht erreichbar.</span></p>`
+            : ''}
           ${activePairing ? `<div class="music-pairing-panel">
             <div class="music-pairing-header">
               <span class="music-pairing-title"><strong>Kopplungscode</strong><small>Im lokalen Controller eingeben</small></span>
@@ -115,7 +115,7 @@ export function musicSetupHtml(status, activePairing = pairing) {
               <button type="button" class="icon-btn music-pairing-copy" id="music-copy-pairing" title="Kopplungscode kopieren" aria-label="Kopplungscode kopieren">${icon('copy')}</button>
             </div>
           </div>
-          <p class="muted music-pairing-hint">Auf dem Musik-PC <a href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">den lokalen Controller öffnen</a> und diesen Code unter „Wieder verbinden“ eingeben.</p>` : ''}
+          <p class="muted music-pairing-hint">Code im lokalen Controller unter „Wieder verbinden“ eingeben.</p>` : ''}
           ${status.canManageController
             ? `<div class="button-row">
                   <button type="button" class="btn btn-primary" id="music-reconnect-controller" ${getMyId() ? '' : 'disabled'}>${activePairing ? 'Neuen Code erzeugen' : reconnecting ? 'Wiederverbindung vorbereiten' : 'Vorhandenen Controller koppeln'}</button>
@@ -138,9 +138,8 @@ export function musicControllerRecoveryHtml(connectionStatus) {
           ? 'Der Controller ist erreichbar, benötigt aber eine neue Spotify-Anmeldung.'
           : 'Der Controller bleibt verbunden und versucht es automatisch erneut.'))}</p>
         ${needsLogin
-          ? `<p class="muted">Auf dem Musik-PC den lokalen Controller öffnen. Das Controller-Paket muss nicht erneut installiert werden.</p>
-             <a class="btn btn-primary" href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">Lokalen Controller öffnen</a>`
-          : '<p class="muted">Kein Skript-Neustart nötig.</p>'}
+          ? `<a class="btn btn-primary" href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">Lokalen Controller öffnen</a>`
+          : ''}
       </section>`;
 }
 
