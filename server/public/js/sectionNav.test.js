@@ -18,13 +18,14 @@ test('every section tab is a real route and belongs to exactly one section', () 
 });
 
 test('a section is entered on its first tab and its tabs share one nav group', () => {
-  assert.equal(sectionEntryView('competition'), 'tournaments');
+  assert.equal(sectionEntryView('competition'), 'matchmaking');
   assert.equal(sectionEntryView('insights'), 'leaderboard');
   // To-Dos lead Orga, so the persisted push url "/#checklist" keeps landing
   // where it always did.
   assert.equal(sectionEntryView('checklist'), null);
   assert.equal(sectionEntryView('orga'), 'checklist');
 
+  assert.deepEqual(SECTIONS.competition.tabs.map((tab) => tab.view), ['matchmaking', 'tournaments']);
   assert.equal(navGroupForView('matchmaking'), navGroupForView('tournaments'));
   assert.equal(navGroupForView('hallOfFame'), navGroupForView('leaderboard'));
   // A route outside every section stands for itself.
@@ -71,7 +72,7 @@ test('the shell renders the area title, marks the active tab and returns the con
   const container = stubContainer();
   const slot = renderSectionShell(container, 'matchmaking', { badges: { checklist: 3 } });
   assert.equal(slot, container.sectionView);
-  assert.match(container.innerHTML, /<h1 class="view-title">Wettkampf<\/h1>/);
+  assert.match(container.innerHTML, /<h1 class="view-title">Match<\/h1>/);
   for (const tab of SECTIONS.competition.tabs) {
     assert.ok(container.innerHTML.includes(`data-section-tab="${tab.view}"`), tab.view);
   }

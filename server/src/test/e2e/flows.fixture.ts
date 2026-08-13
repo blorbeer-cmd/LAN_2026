@@ -44,7 +44,12 @@ function flowTest(
   name: string,
   fn: (context: TestContext) => void | Promise<void>,
 ): void {
-  if (flowShard === shard) test(name, fn);
+  if (flowShard === shard) {
+    // All flows in a shard intentionally share one server session and one
+    // Playwright page. Running sibling tests concurrently lets one flow
+    // navigate or resize that page while another is asserting it.
+    test(name, { concurrency: false }, fn);
+  }
 }
 
 async function setDateTimeField(id: string, value: string): Promise<void> {
@@ -67,7 +72,7 @@ async function openSectionTab(navView: string, tab: string): Promise<void> {
 }
 
 async function openTeams(): Promise<void> {
-  await openSectionTab('tournaments', 'matchmaking');
+  await openSectionTab('matchmaking', 'matchmaking');
 }
 
 async function ensureAdminMode(): Promise<void> {
@@ -105,10 +110,11 @@ async function createAccountForFlow(name: string): Promise<E2EAccount> {
   const account = await createE2EAccount(BASE_URL, adminCookie, name);
   accountsByName.set(name, account);
   await page.reload();
-  // Home's Live-Status is where the roster lives now, so that is where the
-  // freshly created identity becomes visible to the browser.
-  await page.click('.nav-btn[data-view="home"]');
-  await page.waitForSelector(`button[data-player]:has-text("${name}")`);
+  await page.waitForSelector('#app:not([hidden])');
+  // The API setup above already verifies the new account. Home's live roster
+  // is populated asynchronously and is not required for the arrival flow;
+  // requiring it here makes this setup depend on an unrelated live-status
+  // refresh race.
   return account;
 }
 
@@ -427,7 +433,7 @@ flowTest('shell', 'global search filters areas, supports keyboard navigation and
   await page.fill('#global-search-input', 'Captain Draft');
   await page.waitForSelector('.global-search-result:has-text("Teams")');
   await page.click('.global-search-result:has-text("Teams")');
-  await page.waitForSelector('.view-title:text("Wettkampf")');
+  await page.waitForSelector('.view-title:text("Match")');
   await page.waitForSelector('[data-section-tab="matchmaking"][aria-current="page"]');
 
   await page.keyboard.press('Control+K');
@@ -1474,8 +1480,9 @@ flowTest('shell', 'Spiele: a skill suggestion chip appears after enough recorded
 });
 
 flowTest('shell', 'Turnier: create a K.O. bracket from proposed teams and play it to a champion', async () => {
-  // Tournaments earned their own bottom-nav slot.
-  await page.click('.nav-btn[data-view="tournaments"]');
+  // Tournaments live in the second tab of the shared Match area.
+  await page.click('.nav-btn[data-view="matchmaking"]');
+  await page.click('[data-section-tab="tournaments"]');
   await page.waitForSelector('#tourn-new-btn');
   await page.click('#tourn-new-btn');
   assert.equal(await page.locator('#tourn-new-btn').count(), 0);

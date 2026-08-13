@@ -313,6 +313,7 @@ export const api = {
     // fields: any subset of { name?, startsAt?, endsAt?, location?, description? }
     update: (id, fields) => apiFetch(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(fields) }),
     startTracking: (id) => apiFetch(`/api/events/${id}/tracking/start`, { method: 'POST' }),
+    restart: (id) => apiFetch(`/api/events/${id}/restart`, { method: 'POST' }),
     stopTracking: (id) => apiFetch(`/api/events/${id}/tracking/stop`, { method: 'POST' }),
     end: (id) => apiFetch(`/api/events/${id}/end`, { method: 'POST' }),
     cancel: (id) => apiFetch(`/api/events/${id}`, { method: 'DELETE' }),
