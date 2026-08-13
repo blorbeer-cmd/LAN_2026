@@ -289,12 +289,12 @@ export function renderSeating(container, ctx) {
   const canEdit = isGroupAdmin();
   if (!canEdit) {
     container.innerHTML = `
-      <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
+      <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
       <h1 class="view-title">Sitzplan</h1>
       <div class="card stack">
-        <strong>Nur im Admin-Modus verfügbar</strong>
-        <span class="muted">Aktiviere zuerst den Admin-Modus, um den Sitzplan zu bearbeiten.</span>
-        <button type="button" class="btn btn-primary btn-block" data-navigate="admin">Zum Admin-Modus</button>
+        <strong>Nur für Admins verfügbar</strong>
+        <span class="muted">Dieses Konto hat keine Admin-Rechte für den Sitzplan.</span>
+        <button type="button" class="btn btn-primary btn-block" data-navigate="more">Zu Mehr</button>
       </div>`;
     return;
   }

@@ -5,7 +5,7 @@ import { openModal } from './modal.js';
 import { feedEntryTitle, feedLinkView } from './pushFeed.js';
 import { state } from './state.js';
 import { getMyId } from './whoami.js';
-import { isAdmin } from './admin.js';
+import { currentPlayerHasAdminRole } from './adminAccess.js';
 import { normalizeSearchText } from './searchText.js';
 
 export { normalizeSearchText };
@@ -13,11 +13,11 @@ export { normalizeSearchText };
 // Areas that merge several routes (see sectionNav.js) stay listed by their own
 // tab here: "Rangliste" and "Hall of Fame" are what people type, and each tab
 // is still its own route. The area name is carried as an alias so searching
-// "Wettkampf", "Auswertung" or "Orga" finds its tabs too.
+// "Match" (and the legacy name "Wettkampf"), "Auswertung" or "Orga" finds its tabs too.
 export const SEARCH_ENTRIES = [
   { view: 'home', title: 'Home', category: 'Bereich', description: 'Aktuelles, Live-Status und Überblick', aliases: 'start übersicht dashboard', priority: 100 },
-  { view: 'tournaments', title: 'Turniere', category: 'Wettkampf', description: 'Turniere anlegen und Ergebnisse verwalten', aliases: 'wettkampf tournament ko runde bracket', priority: 99 },
-  { view: 'matchmaking', title: 'Teams', category: 'Wettkampf', description: 'Auslosen, Captain Draft und Historie', aliases: 'wettkampf teams auslosen matchmaking captain draft kraft team-historie ergebnis-historie', priority: 98 },
+  { view: 'tournaments', title: 'Turniere', category: 'Match', description: 'Turniere anlegen und Ergebnisse verwalten', aliases: 'match wettkampf tournament ko runde bracket', priority: 99 },
+  { view: 'matchmaking', title: 'Teams', category: 'Match', description: 'Auslosen, Captain Draft und Historie', aliases: 'match wettkampf teams auslosen matchmaking captain draft kraft team-historie ergebnis-historie', priority: 98 },
   { view: 'votes', title: 'Vote', category: 'Bereich', description: 'Gemeinsam das nächste Spiel wählen', aliases: 'abstimmung voting punkte spielwahl', priority: 97 },
   { view: 'leaderboard', title: 'Rangliste', category: 'Auswertung', description: 'Ergebnisse, Punkte und Platzierungen', aliases: 'auswertung rang leaderboard ergebnis match', priority: 96 },
   { view: 'more', title: 'Mehr', category: 'Bereich', description: 'Alle weiteren Bereiche und Tools', aliases: 'menü tools', priority: 95 },
@@ -25,7 +25,7 @@ export const SEARCH_ENTRIES = [
   { view: 'myStats', title: 'Meine Statistiken', category: 'Bereich', description: 'Eigene Spielzeit und persönliche Werte', aliases: 'stats spielzeit auswertung', priority: 80 },
   { view: 'events', title: 'Events', category: 'Orga', description: 'Events anlegen, Tracking und Teilnehmer verwalten', aliases: 'orga einstellungen setup konfiguration tracking teilnehmer einladung', priority: 85 },
   { view: 'kiosk', title: 'TV-Kiosk', category: 'Orga', description: 'TV-/Kiosk-Ansicht öffnen', aliases: 'orga einstellungen tv bildschirm dashboard kiosk-ansicht', priority: 62 },
-  { view: 'admin', title: 'Admin', category: 'Bereich', description: 'Einladungslink, Sitzplan, Backup, Test-Spieler, Rechte und Diagnose', aliases: 'moderation verwaltung diagnose einladung invite sitzplan backup', priority: 60 },
+  { view: 'admin', title: 'Admin', category: 'Bereich', description: 'Einladungslink, Sitzplan, Backup, Test-Spieler, Rechte und Diagnose', aliases: 'moderation verwaltung diagnose einladung invite sitzplan backup', priority: 60, adminOnly: true },
   { view: 'gameCatalog', title: 'Spiele', category: 'Bereich', description: 'Bock, Skill und Spielekatalog', aliases: 'games katalog bewertung skill bock', priority: 75 },
   { view: 'arrivals', title: 'An- & Abreise', category: 'Orga', description: 'Zeiten und Fahrgemeinschaften planen', aliases: 'orga anreise abreise ankunft abfahrt fahrt carpool', priority: 65 },
   { view: 'arcade', title: 'Arcade', category: 'Bereich', description: 'Minigame-Lobbies öffnen und mitspielen', aliases: 'quiz tetris scribble pong blobby snake minigame', priority: 74 },
@@ -61,6 +61,10 @@ export function searchEntries(query, entries = SEARCH_ENTRIES, limit = 20) {
     .filter(Boolean)
     .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title, 'de'))
     .slice(0, limit);
+}
+
+export function searchEntriesVisibleToRole(entries, hasAdminAccess) {
+  return entries.filter((entry) => !entry.adminOnly || hasAdminAccess);
 }
 
 function compactText(value, maxLength = 100) {
@@ -224,7 +228,7 @@ export function initGlobalSearch(onNavigate) {
           const input = backdrop.querySelector('#global-search-input');
           const summary = backdrop.querySelector('#global-search-summary');
           const resultsContainer = backdrop.querySelector('#global-search-results');
-          const visibleAreaEntries = SEARCH_ENTRIES.filter((entry) => !entry.adminOnly || isAdmin());
+          const visibleAreaEntries = searchEntriesVisibleToRole(SEARCH_ENTRIES, currentPlayerHasAdminRole());
           let allEntries = [...visibleAreaEntries, ...createContentSearchEntries(state)];
           let results = [];
           let selectedIndex = 0;

@@ -1,5 +1,5 @@
 // Top-level areas of the app. Several formerly standalone views now share one
-// area with a tab row (Turniere+Teams, Rangliste+Statistiken+Hall of Fame,
+// area with a tab row (Teams+Turniere, Rangliste+Statistiken+Hall of Fame,
 // Packliste+To-Dos+An-/Abreise) so the bottom nav stays short and related work
 // sits next to each other instead of in separate corners of the "Mehr" hub.
 //
@@ -10,10 +10,10 @@
 
 export const SECTIONS = Object.freeze({
   competition: Object.freeze({
-    title: 'Wettkampf',
+    title: 'Match',
     tabs: Object.freeze([
-      Object.freeze({ view: 'tournaments', label: 'Turniere' }),
       Object.freeze({ view: 'matchmaking', label: 'Teams' }),
+      Object.freeze({ view: 'tournaments', label: 'Turniere' }),
     ]),
   }),
   insights: Object.freeze({

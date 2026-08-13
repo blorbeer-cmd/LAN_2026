@@ -220,4 +220,18 @@ test('manager invites a member who accepts and both open clients update', async 
   const memberRow = ownerPage.locator('.modal-backdrop .card', { hasText: MEMBER_NAME });
   await memberRow.waitFor();
   assert.match((await memberRow.textContent()) ?? '', /Zugesagt/);
+
+  await ownerPage.locator('.modal-backdrop [data-close]').click();
+  await ownerPage.click(`[data-end-event="${eventId}"]`);
+  await ownerPage.click('[data-confirm]');
+  await ownerPage.waitForSelector(`[data-restart-event="${eventId}"]`);
+
+  await ownerPage.click(`[data-participants-event="${eventId}"]`);
+  assert.equal(await ownerPage.locator('.modal-backdrop [data-invite-participant]').count(), 0);
+  assert.match((await ownerPage.locator('.modal-backdrop').textContent()) ?? '', /keine neuen Einladungen mehr möglich/);
+  await ownerPage.locator('.modal-backdrop [data-close]').click();
+
+  await ownerPage.click(`[data-restart-event="${eventId}"]`);
+  await ownerPage.click('[data-confirm]');
+  await ownerPage.waitForSelector(`[data-stop-tracking="${eventId}"]`);
 });

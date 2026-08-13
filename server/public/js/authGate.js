@@ -10,6 +10,8 @@ import { detachPushSubscription, rebindExistingPushSubscription } from './push.j
 import { setAdmin } from './admin.js';
 import { setTestIdentity } from './testFilter.js';
 
+const SESSION_ACCOUNT_KEY = 'respawn_session_account';
+
 function paramFromUrl(name) {
   return new URLSearchParams(location.search).get(name);
 }
@@ -21,13 +23,14 @@ function clearAuthActionUrl() {
 }
 
 // Applies a resolved account (from /api/me or any auth response) to this
-// device: locks the compatibility identity, mirrors the account's real admin
-// role, and separately marks this device as a test identity when the account
-// itself is an is_test player (see testFilter.js) so it can see its seeded
-// peers without gaining any real admin privilege.
+// device: locks the compatibility identity and separately marks this device
+// as a test identity when it is an is_test player (see testFilter.js) so it can
+// see its seeded peers without gaining any real admin privilege.
 function applySession(account) {
+  const previousAccountId = localStorage.getItem(SESSION_ACCOUNT_KEY);
+  if (previousAccountId !== account.id || !account.isAdmin) setAdmin(false);
+  localStorage.setItem(SESSION_ACCOUNT_KEY, account.id);
   lockMyIdToSession(account.id);
-  setAdmin(Boolean(account.isAdmin));
   setTestIdentity(Boolean(account.isTest));
 }
 
@@ -36,6 +39,7 @@ export async function logout() {
     await detachPushSubscription().catch(() => {});
     await api.auth.logout();
     setAdmin(false);
+    localStorage.removeItem(SESSION_ACCOUNT_KEY);
     setTestIdentity(false);
   } finally {
     // Simplest correct reset: every piece of client state that assumed a

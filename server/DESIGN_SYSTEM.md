@@ -266,7 +266,7 @@ view and to new views unless a documented domain constraint requires a different
     by every signed-in member, while only the session account can edit its own profile. Player
     creation, deletion, roles and foreign-profile editing remain admin-only actions.
 11. **Group related workflows into one area with tabs instead of adding nav entries.** The bottom
-    nav carries exactly the five during-party destinations (Home, Wettkampf, Vote, Auswertung,
+    nav carries exactly the five during-party destinations (Home, Match, Vote, Auswertung,
     Mehr); everything else lives under „Mehr“ or in the topbar. Where two or three closely related
     workflows would otherwise each claim their own entry, they become tabs of one area (see
     `sectionNav.js`). Every tab keeps its own route, so deep links, the back button and persisted
@@ -281,7 +281,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   (full width), `.btn-sm` (compact). Combine variant + size, e.g.
   `class="btn btn-primary btn-sm"`.
 - **Area tabs** — `.section-tabs` with `.section-tab` is the tab row of a merged top-level area
-  (Wettkampf, Auswertung, Orga; defined in `sectionNav.js`). It sits directly under the area's
+  (Match, Auswertung, Orga; defined in `sectionNav.js`). It sits directly under the area's
   `.view-title`, outside any card, which is what keeps it distinguishable from the in-card control
   rows further down. Because each tab is a real route, the row is `<nav>` navigation rather than a
   toggle: the active tab carries `aria-current="page"` plus `.btn-primary`, never `aria-pressed`.
@@ -382,7 +382,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Every `.seating-seat` uses the same width and height on all four table sides, so vertical sides
   no longer stretch into wide rows. Phones switch all four sides to one shared compact size and
   keep exceptionally narrow layouts locally scrollable instead of widening the page.
-- **Team formation** — the „Teams“ tab of the „Wettkampf“ area. The view first asks for game and mode: one shared `<select>` picks the
+- **Team formation** — the „Teams“ tab of the „Match“ area. The view first asks for game and mode: one shared `<select>` picks the
   game, followed by a `Modus` toggle (two `.btn`/`.btn-sm` buttons, `.btn-primary` marking the active
   one, `aria-pressed` conveying state beyond color) choosing between „Auslosung“ and „Captain Draft“.
   Only the chosen mode's `.tournament-section-panel` renders below — the two workflows never compete
@@ -527,13 +527,15 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   process mappings, Kiosk and the latest persistent backup. Every card pairs its semantic badge
   with a textual summary and actionable detail; loading and retry errors stay inside the group.
   Backup and seating-plan editing are absent from regular member views and live
-  together as nested tool cards in the active Admin mode. Two further tool cards,
+  together as nested tool cards in the role-protected Admin area. Admin settings and tools remain
+  visible to owners/admins without activating the device-local Admin mode; that mode only reveals
+  test players and test-data controls throughout the app and enables Arcade AI matches. Two further tool cards,
   „Eventverwaltung“ and „Kioskverwaltung“, link into Orga's „Events“ and „TV-Kiosk“ tabs — those
   global, non-personal management surfaces are otherwise only reachable through „Mehr“ like any
   other Orga tab. They stay two separate cards because Orga exposes them as two separate tabs; one
   combined card would leave the Kiosk tab without an Admin entry point. Each tool card keeps its
   title, adjacent help tooltip and colorful primary action on one row; the seating editor returns
-  to Admin and blocks editing outside that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and
+  to Admin and remains role-protected independently of that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and
   need no separate Admin action. The test-data fixture explanation and the existing test-player count live in adjacent
   tooltips; the compact count input, „Test-Daten aufräumen“ and create action share one control row
   in that order. Cleanup removes every marked test player and test LAN
@@ -711,7 +713,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Arena accepts three to eight players and keeps the local board large beside a responsive grid of
   opponent boards. On phones the local board sits above that grid. The current automatic attack
   target receives a textual „Ziel“ marker in addition to its accent border, while eliminated
-  players remain visibly dimmed for spectating. Admins can create a „KI-Test“ in its own full-width
+  players remain visibly dimmed for spectating. Admins with active Admin mode can create a „KI-Test“ in its own full-width
   row; Duell uses one bot and Arena always fills all seven opponent slots without a count selector.
   An empty
   lobby no longer adds
@@ -719,7 +721,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   as the host's „Schließen“ action, and only render for a member who actually joined that lobby.
   Guest footers place „Verlassen“ before the readiness toggle;
   compact score selectors use the smaller shared row height. Create actions use the same inset as
-  lobby footer actions, so „Lobby öffnen“ and readiness controls align exactly. A disabled „Lobby
+  lobby footer actions, so „Lobby öffnen“ and readiness controls align exactly. The creation row
+  reserves the same fixed mode column for games without a selector; their primary button therefore
+  keeps the same position and width while users switch between game tiles. Tetris, Pong, Snake and
+  Blobby Volley all select Duell by default. A disabled „Lobby
   öffnen“ or „Start“ carries the same red `.info-tooltip-trigger--warning` reason pattern as Team
   formation's „Teams auslosen“/„Draft starten“.
   Blobby Volley and Pong both offer Duell (1 gegen 1) and Doppel (2 gegen 2) through the same
@@ -746,7 +751,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   canvas dims their snake and marks the shrinking safe zone with the shared danger treatment.
   Numbered head markers and a matching `Schlange N · Name` legend identify every participant
   without relying on color; the same legend appears in player, spectator and kiosk contexts.
-  Challenge Rush also offers an admin-gated „Gegen KI“ quick start; playing the bot solo draws
+  Challenge Rush also offers an Admin-mode-gated „Gegen KI“ quick start and test-challenge
+  selection; playing the bot solo draws
   from its ten original single-payload challenges, since the bot cannot yet play the thirty
   logic/memory trial challenges. A lobby that further humans join before it starts keeps the
   full forty-challenge catalog like any other match, and the bot then simply scores 0 on
@@ -872,8 +878,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   „Bewertung/Stimme abgegeben“ state while locking that identity's controls.
   Vote history is labeled simply „Historie“, uses the shared icon-free collapsible header, starts
   closed and retains its open state across live re-renders.
-- **Tournament overview** — the „Turniere“ tab and default entry of the „Wettkampf“ area, whose
-  second tab is Team formation; switching back to „Turniere“ from the tab row always returns to the
+- **Tournament overview** — the „Turniere“ tab in the „Match“ area, whose first/default tab is
+  „Teams“; switching back to „Turniere“ from the tab row always returns to the
   list rather than the tournament board that was last open. A tournament's own detail page keeps
   the area tabs above it and titles itself with an `h2`, so the page never carries two `h1`
   headings. `.tournament-list-grid` shows at most two tournament cards per row;

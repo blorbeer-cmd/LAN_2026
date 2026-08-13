@@ -1,6 +1,6 @@
-import { playerById } from '../state.js';
-import { getMyId } from '../whoami.js';
+import { isAdmin } from '../admin.js';
+import { currentPlayerHasAdminRole } from '../adminAccess.js';
 
 export function currentPlayerMayUseArcadeAi() {
-  return playerById(getMyId())?.is_admin === 1;
+  return isAdmin() && currentPlayerHasAdminRole();
 }

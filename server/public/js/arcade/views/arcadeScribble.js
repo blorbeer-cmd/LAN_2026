@@ -867,10 +867,10 @@ export function renderScribbleLobbyCard() {
     <div class="card stack arcade-lobby-card">
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
       <div class="arcade-lobby-create-actions">
-        <span class="row" style="gap:var(--space-1);">
+        <div class="arcade-lobby-create-row arcade-lobby-create-row--single">
           <button type="button" class="btn btn-primary btn-sm" id="scribble-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
           ${createReason ? infoTooltipHtml('scribble-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
-        </span>
+        </div>
         ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="scribble-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
       </div>
       ${renderLobbyList()}

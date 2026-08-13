@@ -44,7 +44,12 @@ function flowTest(
   name: string,
   fn: (context: TestContext) => void | Promise<void>,
 ): void {
-  if (flowShard === shard) test(name, fn);
+  if (flowShard === shard) {
+    // All flows in a shard intentionally share one server session and one
+    // Playwright page. Running sibling tests concurrently lets one flow
+    // navigate or resize that page while another is asserting it.
+    test(name, { concurrency: false }, fn);
+  }
 }
 
 async function setDateTimeField(id: string, value: string): Promise<void> {
@@ -67,7 +72,14 @@ async function openSectionTab(navView: string, tab: string): Promise<void> {
 }
 
 async function openTeams(): Promise<void> {
-  await openSectionTab('tournaments', 'matchmaking');
+  await openSectionTab('matchmaking', 'matchmaking');
+}
+
+async function ensureAdminMode(): Promise<void> {
+  await page.waitForSelector('#admin-mode-activate, #admin-tools-title');
+  const activateButton = page.locator('#admin-mode-activate');
+  if (await activateButton.count()) await activateButton.click();
+  await page.waitForSelector('#admin-banner:not([hidden])');
 }
 
 // Orga is reached through "Mehr" rather than the bottom nav.
@@ -98,10 +110,11 @@ async function createAccountForFlow(name: string): Promise<E2EAccount> {
   const account = await createE2EAccount(BASE_URL, adminCookie, name);
   accountsByName.set(name, account);
   await page.reload();
-  // Home's Live-Status is where the roster lives now, so that is where the
-  // freshly created identity becomes visible to the browser.
-  await page.click('.nav-btn[data-view="home"]');
-  await page.waitForSelector(`button[data-player]:has-text("${name}")`);
+  await page.waitForSelector('#app:not([hidden])');
+  // The API setup above already verifies the new account. Home's live roster
+  // is populated asynchronously and is not required for the arrival flow;
+  // requiring it here makes this setup depend on an unrelated live-status
+  // refresh race.
   return account;
 }
 
@@ -298,7 +311,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   });
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
-  await page.waitForSelector('#admin-banner:not([hidden])');
+  await ensureAdminMode();
   await page.waitForSelector('#admin-tools-title');
   assert.equal(await page.locator('#download-backup').count(), 1);
   assert.equal(await page.locator('[data-navigate="seating"]').count(), 1);
@@ -420,7 +433,7 @@ flowTest('shell', 'global search filters areas, supports keyboard navigation and
   await page.fill('#global-search-input', 'Captain Draft');
   await page.waitForSelector('.global-search-result:has-text("Teams")');
   await page.click('.global-search-result:has-text("Teams")');
-  await page.waitForSelector('.view-title:text("Wettkampf")');
+  await page.waitForSelector('.view-title:text("Match")');
   await page.waitForSelector('[data-section-tab="matchmaking"][aria-current="page"]');
 
   await page.keyboard.press('Control+K');
@@ -1296,7 +1309,7 @@ flowTest('shell', 'Sitzplan: the real name set in Mein Profil shows in small eve
   // simulate reliably.
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
-  await page.waitForSelector('#admin-banner:not([hidden])');
+  await ensureAdminMode();
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await page.click('[data-navigate="seating"]');
@@ -1320,8 +1333,7 @@ flowTest('shell', 'Sitzplan: the real name set in Mein Profil shows in small eve
 });
 
 flowTest('shell', 'Spiele: suggest a game (duplicate name rejected), promote it, then rate Bock/Skill inline', async () => {
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="gameCatalog"]');
+  await page.click('.nav-btn[data-view="gameCatalog"]');
   await page.waitForSelector('#suggest-new');
 
   await page.click('#suggest-new');
@@ -1379,8 +1391,7 @@ flowTest('shell', 'Spiele: suggest a game (duplicate name rejected), promote it,
     0,
     'a suggestion must not be offered as a votable game',
   );
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="gameCatalog"]');
+  await page.click('.nav-btn[data-view="gameCatalog"]');
   await suggestionRow.waitFor();
 
   // Promote the suggestion into the catalog via its detail modal (row-level
@@ -1450,8 +1461,7 @@ flowTest('shell', 'Spiele: a skill suggestion chip appears after enough recorded
     assert.equal(res.status(), 201);
   }
 
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="gameCatalog"]');
+  await page.click('.nav-btn[data-view="gameCatalog"]');
   const cs2Row = page.locator('.game-table-row', { hasText: 'Counter-Strike 2' });
   await cs2Row.waitFor();
   const chip = cs2Row.locator('[data-apply-suggestion]');
@@ -1467,8 +1477,9 @@ flowTest('shell', 'Spiele: a skill suggestion chip appears after enough recorded
 });
 
 flowTest('shell', 'Turnier: create a K.O. bracket from proposed teams and play it to a champion', async () => {
-  // Tournaments earned their own bottom-nav slot.
-  await page.click('.nav-btn[data-view="tournaments"]');
+  // Tournaments live in the second tab of the shared Match area.
+  await page.click('.nav-btn[data-view="matchmaking"]');
+  await page.click('[data-section-tab="tournaments"]');
   await page.waitForSelector('#tourn-new-btn');
   await page.click('#tourn-new-btn');
   assert.equal(await page.locator('#tourn-new-btn').count(), 0);
@@ -2362,10 +2373,10 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   await page.goto(BASE_URL);
   await page.waitForSelector('#app:not([hidden])');
 
-  // Enter admin mode — no PIN prompt, one tap (see docs/KONZEPT-TEST-USER.md).
+  // Enter admin mode explicitly; opening the Admin area alone must not enable it.
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
-  await page.waitForSelector('#admin-banner:not([hidden]) >> text=Admin-Modus aktiv');
+  await ensureAdminMode();
 
   await page.waitForSelector('#admin-readiness-refresh:not([disabled])');
   assert.equal(await page.locator('#admin-readiness-status').getAttribute('role'), 'status');
@@ -2394,6 +2405,7 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   // Seed test users from the role-protected panel.
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
+  await ensureAdminMode();
   const reauthenticated = await page.request.post(`${BASE_URL}/api/auth/reauth`, {
     data: { password: alice.password },
   });
@@ -2458,6 +2470,7 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   await page.waitForSelector('.live-seating .seating-status-indicator.is-offline[aria-label="Status: Offline"]');
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
+  await ensureAdminMode();
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector(`.seating-plan.is-editable [data-player-id="${pausedTestPlayer.id}"] .seating-status-indicator.is-paused`);
 
@@ -2470,12 +2483,12 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   await page.waitForSelector('#admin-banner', { state: 'hidden' });
   await page.waitForFunction(() => !document.body.textContent?.includes('Test Alex'));
 
-  // Reload restores the display state from the verified admin session.
+  // Reload leaves admin mode inactive until it is explicitly activated again.
   await page.reload();
   await page.waitForSelector('#app:not([hidden])');
-  await page.waitForSelector('#admin-banner:not([hidden])');
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
+  await ensureAdminMode();
   await page.click('#admin-cleanup');
   // confirmDialog is an in-app modal (not a native browser dialog).
   await page.click('[data-confirm]');

@@ -7,6 +7,7 @@
 
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
+import { currentPlayerHasAdminRole } from '../adminAccess.js';
 
 const ITEMS = [
   { view: 'admin', title: 'Admin' },
@@ -15,11 +16,10 @@ const ITEMS = [
   { view: 'foodOrders', title: 'Essen' },
   { view: 'music', title: 'Jam' },
   { view: 'checklist', title: 'Orga', iconKey: 'orga' },
-  { view: 'gameCatalog', title: 'Spiele' },
 ];
 
 export function renderMore(container) {
-  const rows = ITEMS.map(
+  const rows = ITEMS.filter((item) => item.view !== 'admin' || currentPlayerHasAdminRole()).map(
     (item) => `
     <button type="button" class="card row list-row more-card" data-navigate="${item.view}">
       <span class="more-card-label">
