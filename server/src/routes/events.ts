@@ -45,7 +45,16 @@ function eventInvitationTopicKey(eventId: string, playerId: string): string {
   return `event-invitation:${eventId}:${playerId}`;
 }
 
-let trackingStartQueue: Promise<void> = Promise.resolve();
+let eventLifecycleQueue: Promise<void> = Promise.resolve();
+
+function enqueueEventLifecycle<T>(operation: () => T | Promise<T>): Promise<T> {
+  const pending = eventLifecycleQueue.then(operation, operation);
+  eventLifecycleQueue = pending.then(
+    () => undefined,
+    () => undefined,
+  );
+  return pending;
+}
 
 async function startTrackingWithBackup(id: string, reopenEnded = false) {
   const operation = async () => {
@@ -66,12 +75,7 @@ async function startTrackingWithBackup(id: string, reopenEnded = false) {
     }
     return { result: reopenEnded ? restartEvent(id) : startTracking(id) } as const;
   };
-  const pending = trackingStartQueue.then(operation, operation);
-  trackingStartQueue = pending.then(
-    () => undefined,
-    () => undefined,
-  );
-  return pending;
+  return enqueueEventLifecycle(operation);
 }
 
 const resolveEvent = resolveGroupResource<EventRow>({
@@ -594,8 +598,8 @@ eventsRouter.post('/:id/restart', resolveEvent, requireGroupRole('admin'), async
 
 // POST /api/events/:id/tracking/stop - pauses tracking without ending the
 // event; can be resumed with .../tracking/start later.
-eventsRouter.post('/:id/tracking/stop', resolveEvent, requireGroupRole('admin'), (req, res) => {
-  const updated = stopTracking(req.params.id);
+eventsRouter.post('/:id/tracking/stop', resolveEvent, requireGroupRole('admin'), async (req, res) => {
+  const updated = await enqueueEventLifecycle(() => stopTracking(req.params.id));
   if (!updated) return res.status(404).json({ error: 'Event nicht gefunden.' });
   writeAdminAudit({
     actorPlayerId: req.player?.id,
@@ -614,12 +618,14 @@ eventsRouter.post('/:id/tracking/stop', resolveEvent, requireGroupRole('admin'),
 
 // POST /api/events/:id/end - closes the event for good (stops tracking
 // first if it was on).
-eventsRouter.post('/:id/end', resolveEvent, requireGroupRole('admin'), (req, res) => {
+eventsRouter.post('/:id/end', resolveEvent, requireGroupRole('admin'), async (req, res) => {
   if (req.params.id === BASE_EVENT_ID) {
     return res.status(409).json({ error: 'Das dauerhaft offene Basis-Event kann nicht beendet werden.' });
   }
-  const affectedPlayers = activeContextPlayerIds(req.params.id);
-  const updated = endEvent(req.params.id);
+  const { affectedPlayers, updated } = await enqueueEventLifecycle(() => ({
+    affectedPlayers: activeContextPlayerIds(req.params.id),
+    updated: endEvent(req.params.id),
+  }));
   if (!updated) return res.status(404).json({ error: 'Event nicht gefunden.' });
   for (const playerId of affectedPlayers) switchPlayerEventScope(playerId, req.group!.id, BASE_EVENT_ID);
   writeAdminAudit({
