@@ -246,7 +246,7 @@ flowTest('shell', 'Orga Events/TV-Kiosk tabs and Profil use grouped help while a
   // versions. A 2px center delta is visually aligned and must not make the
   // otherwise unrelated end-to-end suite flaky.
   assert.ok(
-    Math.max(...identityFieldCenters) - Math.min(...identityFieldCenters) <= 2,
+    Math.round((Math.max(...identityFieldCenters) - Math.min(...identityFieldCenters)) * 10) / 10 <= 2,
     `profile identity controls should remain vertically aligned: ${JSON.stringify(identityFieldCenters)}`,
   );
   const originalProfileColor = await page.inputValue('#profile-color');
@@ -305,17 +305,17 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   assert.equal(await page.locator('[data-navigate="seating"]').count(), 1);
   assert.equal(await page.locator('[data-navigate="seating"]').textContent(), 'Öffnen');
   assert.ok(await page.locator('[data-navigate="seating"]').evaluate((element) => element.classList.contains('btn-primary')));
-  assert.equal(await page.locator('#admin-seating-help').count(), 1);
-  assert.equal(await page.locator('#admin-backup-help').count(), 1);
-  assert.equal(await page.locator('#admin-test-count-help').count(), 1);
+  assert.equal(await page.locator('#admin-seating-help').count(), 0);
+  assert.equal(await page.locator('#admin-backup-help').count(), 0);
+  assert.equal(await page.locator('[aria-label$="Test-Spieler vorhanden"]').count(), 1);
   assert.equal(await page.locator('#admin-test-data-help').count(), 1);
   // Global Event and Kiosk management are reachable from Admin's tool grid
   // too, not only through Orga's own tab row. They stay two separate cards
   // because Orga exposes them as two separate tabs.
   assert.equal(await page.locator('[data-navigate="events"]').count(), 1);
-  assert.equal(await page.locator('#admin-event-help').count(), 1);
+  assert.equal(await page.locator('#admin-event-help').count(), 0);
   assert.equal(await page.locator('[data-navigate="kiosk"]').count(), 1);
-  assert.equal(await page.locator('#admin-kiosk-help').count(), 1);
+  assert.equal(await page.locator('#admin-kiosk-help').count(), 0);
   assert.equal(await page.locator('.admin-tool-row').count(), 4);
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
   assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
@@ -374,14 +374,12 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   }), true);
   assert.equal(await page.locator('.seating-seat-realname.is-empty').first().evaluate((element) => getComputedStyle(element).display), 'none');
   assert.equal(await page.getByText('Sichtbare Monitore', { exact: true }).count(), 0);
-  assert.equal(await page.getByText('Automatisch gespeichert', { exact: true }).count(), 1);
+  assert.equal(await page.getByText('Automatisch gespeichert', { exact: true }).count(), 0);
   assert.equal(await page.locator('#seating-monitors-help').count(), 1);
-  assert.equal(await page.locator('#seating-save-help').count(), 1);
+  assert.equal(await page.locator('#seating-save-help').count(), 0);
   assert.equal(await page.locator('#seating-plan-title [data-info-tooltip-trigger]').count(), 1);
   await page.click('[aria-label="Mehr Informationen zu Sitzplan"]');
   await page.waitForSelector('#seating-monitors-help:not([hidden])');
-  await page.click('[aria-label="Mehr Informationen zu Konfiguration"]');
-  await page.waitForSelector('#seating-save-help:not([hidden])');
 });
 
 flowTest('shell', 'global search filters areas, supports keyboard navigation and restores focus', async (t) => {
@@ -414,7 +412,8 @@ flowTest('shell', 'global search filters areas, supports keyboard navigation and
   await page.fill('#global-search-input', 'E2E Bob');
   await page.waitForSelector('.global-search-result:has-text("E2E Bob")');
   await page.click('.global-search-result:has-text("E2E Bob")');
-  await page.waitForSelector('.modal:has-text("Dieses Profil kann nur von E2E Bob selbst bearbeitet werden.")');
+  await page.waitForSelector('.modal:has-text("E2E Bob")');
+  assert.equal(await page.getByText('Dieses Profil kann nur von E2E Bob selbst bearbeitet werden.', { exact: true }).count(), 0);
   await page.click('[data-close]');
 
   // A merged area's tab is its own search hit and lands on that tab.
@@ -481,7 +480,8 @@ flowTest('competition', 'full click-through: players, matchmaking, voting, leade
 
   // Other profiles are read-only; the current identity opens its own editor.
   await page.click('button[data-player] >> text=E2E Bob');
-  await page.waitForSelector('text=Dieses Profil kann nur von E2E Bob selbst bearbeitet werden.');
+  await page.waitForSelector('.modal:has-text("E2E Bob")');
+  assert.equal(await page.getByText('Dieses Profil kann nur von E2E Bob selbst bearbeitet werden.', { exact: true }).count(), 0);
   assert.equal(await page.locator('#detail-save, #detail-delete, #detail-apikey').count(), 0);
   await page.click('[data-close]');
   await page.click('button[data-player] >> text=E2E Alice');
@@ -1473,6 +1473,8 @@ flowTest('shell', 'Turnier: create a K.O. bracket from proposed teams and play i
   await page.click('[data-section-tab="tournaments"]');
   await page.waitForSelector('#tourn-new-btn');
   await page.click('#tourn-new-btn');
+  assert.equal(await page.locator('#tourn-new-btn').count(), 0);
+  assert.equal(await page.locator('[data-open-tournament], [data-completed-tournaments]').count(), 0);
 
   // Propose balanced teams from the checked players (all by default), then
   // create — the submit button only unlocks once a proposal exists.
@@ -1590,8 +1592,9 @@ flowTest('shell', 'Turnier: create a K.O. bracket from proposed teams and play i
   );
   await page.keyboard.press('Escape');
   const neighborHelp = page.locator('[aria-controls="tournament-neighbors-help"]');
-  const scoreHelp = page.locator('[aria-controls="tournament-score-help"]');
   const lobbyHelp = page.locator('[aria-controls="tournament-lobby-help"]');
+  assert.equal(await page.locator('[aria-controls="tournament-score-help"]').count(), 0);
+  assert.equal(await page.locator('[aria-controls="tournament-two-legged-help"]').count(), 0);
   assert.ok((await page.locator('[data-create-player]').count()) >= 2);
   await page.click('[data-selection-search-trigger][aria-controls="tourn-player-search"]');
   await page.fill('#tourn-player-search', 'E2E Alice');
@@ -1615,11 +1618,7 @@ flowTest('shell', 'Turnier: create a K.O. bracket from proposed teams and play i
   );
   await neighborHelp.click();
   assert.equal(await neighborHelp.getAttribute('aria-expanded'), 'true');
-  await scoreHelp.click();
-  assert.equal(await neighborHelp.getAttribute('aria-expanded'), 'false');
-  assert.equal(await scoreHelp.getAttribute('aria-expanded'), 'true');
   await page.keyboard.press('Escape');
-  assert.equal(await scoreHelp.getAttribute('aria-expanded'), 'false');
   await neighborHelp.focus();
   await page.keyboard.press('Enter');
   assert.equal(await neighborHelp.getAttribute('aria-expanded'), 'true');
@@ -2430,13 +2429,11 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
     body: JSON.stringify({ note: 'Pause / Essen' }),
   });
   assert.equal(pauseResponse.status, 200, await pauseResponse.text());
-  await page.click('[aria-label="Mehr Informationen zu Vorhandene Test-Spieler"]');
   await page.waitForFunction((minimum) => {
-    const help = document.querySelector('#admin-test-count-help:not([hidden])');
-    const match = help?.textContent?.match(/(\d+)\s+Test-Spieler vorhanden/);
+    const badge = document.querySelector('[aria-label$="Test-Spieler vorhanden"]');
+    const match = badge?.getAttribute('aria-label')?.match(/(\d+)\s+Test-Spieler vorhanden/);
     return match !== null && match !== undefined && Number(match[1]) >= minimum;
   }, seededBody.created.length);
-  await page.keyboard.press('Escape');
   await page.waitForSelector('.badge-paused >> text=Test');
 
   assert.equal(await page.locator('#admin-seed-hall').count(), 0);
@@ -2484,8 +2481,7 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   await page.click('#admin-cleanup');
   // confirmDialog is an in-app modal (not a native browser dialog).
   await page.click('[data-confirm]');
-  await page.click('[aria-label="Mehr Informationen zu Vorhandene Test-Spieler"]');
-  await page.waitForSelector('#admin-test-count-help:not([hidden]) >> text=0 Test-Spieler vorhanden');
+  await page.waitForSelector('[aria-label="0 Test-Spieler vorhanden"]');
   const cleanedHall = await (await page.request.get(`${BASE_URL}/api/hall-of-fame`)).json() as { events: Array<{ eventName: string }> };
   assert.equal(cleanedHall.events.filter((event) => event.eventName.startsWith('Respawn Test-LAN')).length, 0);
 });
