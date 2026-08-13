@@ -98,10 +98,11 @@ async function createAccountForFlow(name: string): Promise<E2EAccount> {
   const account = await createE2EAccount(BASE_URL, adminCookie, name);
   accountsByName.set(name, account);
   await page.reload();
-  // Home's Live-Status is where the roster lives now, so that is where the
-  // freshly created identity becomes visible to the browser.
-  await page.click('.nav-btn[data-view="home"]');
-  await page.waitForSelector(`button[data-player]:has-text("${name}")`);
+  await page.waitForSelector('#app:not([hidden])');
+  // The API setup above already verifies the new account. Home's live roster
+  // is populated asynchronously and is not required for the arrival flow;
+  // requiring it here makes this setup depend on an unrelated live-status
+  // refresh race.
   return account;
 }
 
