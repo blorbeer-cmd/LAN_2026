@@ -4,10 +4,14 @@ Status: beschlossenes Zielkonzept; Phasen 0 bis 2 umgesetzt (Task-Vertrag, Label
 Readiness-Reconciler) sowie Phase 7 (Commit-Status `Agent pipeline / ready for human merge`, aktiv
 als Required Check auf `main`). Aus Phase 4 sind die Pilotpfade Codex-Implementierung →
 Claude-Cross-Review und Claude-Implementierung → Codex-Cross-Review umgesetzt; Self-Review ist
-in beiden Provider-Richtungen pilotiert. Die Sechs-Felder-Matrix ist table-driven abgesichert.
+in beiden Provider-Richtungen pilotiert. Für Claude-Selbst-Review existiert zusätzlich zum lokalen
+`agent-review-session.mjs --headless`-Launcher ein automatisierter, credential-read-only
+Workflow (`agent-pipeline-claude-self-review.yml`), der bei `review:self` für eine
+Claude-Implementierung ohne manuellen Aufruf startet; für eine Codex-Implementierung bleibt Self-
+Review beim dedizierten Codex-`/review`-Weg. Die Sechs-Felder-Matrix ist table-driven abgesichert.
 Die post-#396 Human-Pilotfälle in beiden Implementierer-Richtungen sind noch nicht abgenommen.
 CI-/Konflikt-Fixes, automatische Retries, Rundenzähler und Findings-Fix-Schleife fehlen weiterhin.
-Stand: 2026-08-11
+Stand: 2026-08-14
 
 Der Reviewer wird nicht mehr automatisch bestimmt, sondern vom Nutzer pro Head-SHA gewählt. Die
 Herleitung dieser Änderung steht in [`review-mode-selection.md`](review-mode-selection.md), der
@@ -617,7 +621,15 @@ erwähnenden Kommentar. Solange die Auswahl unbeantwortet ist, blockiert das Gat
 GitHub-Outbox-/Codex-Monitor-Grenze stehen in `.github/agent-pipeline/review-decision.md`.
 Für Codex-Implementierungen startet `review:cross`
 den eng begrenzten Claude-Pilotpfad; für Claude-Implementierungen fordert der Codex-Adapter die
-native Review an. Die Sechs-Felder-Matrix ist als table-driven Akzeptanzstandard getestet. Die
+native Review an. Für Claude-Implementierungen startet `review:self` zusätzlich den eng begrenzten,
+credential-read-only `agent-pipeline-claude-self-review.yml`-Workflow; sein Ergebnis-Marker teilt
+sich mit dem manuell gestarteten Launcher denselben Gate-Pfad (`selfReviewResultAuthors` ergänzt
+dessen `github-actions[bot]`-Identität als zweite gültige Quelle neben `claude[bot]` und dem
+menschlichen Betreiber), sodass der jeweils neuere Marker zählt. Ein automatisiertes erneutes
+Auslösen nach einem zunächst noch nicht bereiten Head (wie `planReviewRetrigger` es für `cross`
+bereits leistet) existiert für `self` noch nicht; ein deklinierter Versuch bleibt bis zu einer
+erneuten Label-Wahl liegen. Codex-Selbst-Review läuft weiterhin ausschließlich über den dedizierten
+Codex-`/review`-Weg. Die Sechs-Felder-Matrix ist als table-driven Akzeptanzstandard getestet. Die
 Findings-Fix-Schleife, automatische CI-/Konfliktkorrektur und Rundenzähler bleiben außerhalb
 dieses Auftrags.
 

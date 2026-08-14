@@ -18,6 +18,10 @@
   "crossReviewResultAuthors": {
     "claude": ["github-actions[bot]"]
   },
+  "//selfReviewResultAuthors": "Trusted workflow identities that may publish a structured, head-bound self-review result on a provider's behalf, alongside resultAuthorsFor's manual identities (the provider's own bot account or its human operator running the local launcher). Kept separate for the same reason as crossReviewResultAuthors: a workflow identity is not itself one of the provider's own identities.",
+  "selfReviewResultAuthors": {
+    "claude": ["github-actions[bot]"]
+  },
   "//reviewStartFailureAuthors": "Trusted workflow identities that publish a head-bound start failure for either cross-review provider.",
   "reviewStartFailureAuthors": ["github-actions[bot]"],
   "//reviewModeLabels": "Set by the user, never by an agent: they decide who reviews the current head. The reconciler only removes one that was bound to an earlier head, so the choice is asked again per head SHA.",
@@ -83,7 +87,13 @@
     "Select Codex review target",
     "Request Codex cross-review",
     "Announce missing Codex cross-review",
-    "Reconcile missing Codex cross-review"
+    "Reconcile missing Codex cross-review",
+    "Select Claude self-review target",
+    "Run Claude self-review",
+    "Announce missing Claude self-review",
+    "Reconcile failed Claude self-review",
+    "Publish Claude self-review",
+    "Reconcile Claude self-review result"
   ],
   "reviewTimeoutMinutes": 45,
   "waitingEscalationHours": 2,

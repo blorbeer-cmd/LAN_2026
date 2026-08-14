@@ -238,14 +238,18 @@ export function collectCodexDeliveryEvents(
     const start = body.match(REVIEW_START_NOTICE_PATTERN);
     if (
       start?.[1] === pullRequest.headSha &&
+      // Self-review failures are the same provider's own, delivered through the ordinary GitHub
+      // comment surface; there is no Codex task to wake for one, so only a `cross` notice — which
+      // for this adapter always means the requested-but-refused Codex review — is a Codex event.
+      start?.[2] === "cross" &&
       (config.reviewStartFailureAuthors ?? []).includes(comment.author) &&
       (latestCurrentChoiceAt === null ||
         String(comment.createdAt ?? "") > latestCurrentChoiceAt)
     ) {
-      const eventId = `review-start-failed-${pullRequest.headSha}-${start[4] ?? comment.id}`;
+      const eventId = `review-start-failed-${pullRequest.headSha}-${start[5] ?? comment.id}`;
       const event = eventBase(pullRequest, contract, "review-start-failed", eventId);
       addCandidate(
-        { ...event, outcome: start[2], message: renderTaskPrompt(event, body) },
+        { ...event, outcome: start[3], message: renderTaskPrompt(event, body) },
         comment.createdAt,
       );
     }
