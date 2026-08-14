@@ -198,3 +198,39 @@ Die in Workflows verwendeten Actions werden über `.github/dependabot.yml` wöch
 geprüft. Runtime-Deprecation-Warnungen in Action-Post-Steps stammen aus der jeweiligen Action und
 nicht automatisch aus dem Node-Prozess der Anwendung; sie werden durch zeitnahe Action-Upgrades
 behoben.
+
+## Cloudflare-Caching statischer Assets
+
+Der Server liefert alle statischen Dateien bewusst mit `Cache-Control: no-cache` plus ETag aus
+(`src/app.ts`). `no-cache` heißt „im Cache halten, aber vor jeder Nutzung per ETag beim Server
+revalidieren“; unveränderte Dateien beantwortet der Server dann mit `304 Not Modified`. So erhalten
+Clients nach einem Deploy sofort die neue Datei, ohne dass jede Auslieferung den vollen Inhalt
+überträgt. Dieses Verhalten ist die gewünschte Strategie und darf nicht durch statische `max-age`-
+Header am Ursprung ersetzt werden.
+
+Cloudflare kann diese Ursprungs-Header überschreiben. Die Einstellung **Caching → Configuration →
+Browser Cache TTL** injiziert für edge-cachebare, nach Endung als statisch eingestufte Antworten
+(zum Beispiel `.css` und `.js`) einen eigenen `max-age`-Wert und setzt damit das `no-cache` des
+Ursprungs außer Kraft. Ein per Endung nicht als statisch eingestuftes HTML-Dokument (`/`,
+`/index.html`) bleibt davon unberührt und wird als `DYNAMIC` mit unverändertem `no-cache`
+durchgereicht. Symptom des Fehlers: Der Browser erhält für CSS/JS `Cache-Control: max-age=<Sekunden>`
+(typisch `14400`, Cloudflares 4-Stunden-Standard) statt `no-cache`, obwohl der Ursprung `no-cache`
+sendet. Solange dieser `max-age`-Wert frisch ist, revalidiert der Browser gar nicht erst und der
+vorhandene ETag bleibt wirkungslos; Nutzer sehen nach einem Deploy bis zu vier Stunden alte
+CSS-/JS-Dateien.
+
+**Behebung (nur im Cloudflare-Dashboard, keine Repository-Änderung):** Browser Cache TTL auf
+**„Respect Existing Headers“** stellen. Setzt stattdessen eine Cache-Rule oder eine ältere Page-Rule
+die Browser-TTL gezielt auf `*.css`/`*.js`, dort korrigieren, weil regelbasierte Werte die globale
+Einstellung überschreiben. Danach liefern auch CSS/JS `no-cache` wie das HTML aus, die
+ETag-Revalidierung (`304`) greift wieder und das manuelle `?v=`-Cache-Busting der Asset-Referenzen
+in `public/index.html` wird für die Cache-Korrektheit überflüssig.
+
+**Prüfung am Live-System** (erwartet nach der Korrektur `cache-control: no-cache` und keinen
+`max-age`-Wert für beide Typen):
+
+```bash
+curl -sSI https://lan.dbehnke.dev/index.html      | grep -iE 'cache-control|cf-cache-status|etag'
+curl -sSI https://lan.dbehnke.dev/css/style.css   | grep -iE 'cache-control|cf-cache-status|etag'
+curl -sSI https://lan.dbehnke.dev/js/app.js       | grep -iE 'cache-control|cf-cache-status|etag'
+```
