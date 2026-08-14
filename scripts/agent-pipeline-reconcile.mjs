@@ -69,8 +69,10 @@ export const REVIEW_RESULT_SOURCE =
 // own status comment: that comment is what agents read, and without this they cannot tell a review
 // that died from one still running.
 export const REVIEW_START_NOTICE_MARKER = "<!-- agent-pipeline:review-start-notice";
+// `mode` was `cross` only until the self-review workflow started writing this same marker; it is
+// captured rather than fixed so both review-mode adapters share one parser.
 export const REVIEW_START_NOTICE_PATTERN =
-  /<!--\s*agent-pipeline:review-start-notice\s+([0-9a-f]{40})\s+mode=cross\s+outcome=(declined|failed)(?:\s+code=([a-z-]+))?(?:\s+attempt=([A-Za-z0-9._-]+))?\s*-->/;
+  /<!--\s*agent-pipeline:review-start-notice\s+([0-9a-f]{40})\s+mode=(cross|self)\s+outcome=(declined|failed)(?:\s+code=([a-z-]+))?(?:\s+attempt=([A-Za-z0-9._-]+))?\s*-->/;
 
 /**
  * Reads the newest review-start notice, so the status comment can name a failed attempt.
@@ -83,7 +85,7 @@ export function parseReviewStartNotice(comments) {
   for (const comment of comments ?? []) {
     if (!isTrustedCommentAuthor(comment)) continue;
     const match = comment?.body?.match(REVIEW_START_NOTICE_PATTERN);
-    if (match) found = { headSha: match[1], outcome: match[2] };
+    if (match) found = { headSha: match[1], mode: match[2], outcome: match[3] };
   }
   return found;
 }
@@ -116,6 +118,12 @@ export function parseReviewRetriggerHeadShas(comments, config = loadConfig()) {
 
 export const CLAUDE_CROSS_REVIEW_HEADING = "## Claude Cross-Review";
 export const CLAUDE_CROSS_REVIEW_SOURCE = "claude-cross-review";
+// Published by the same restricted, credential-read-only workflow as the cross-review, but for a
+// same-provider `self` review: GitHub carries no native evidence for it either, so the trusted
+// publisher's structured result is a second accepted source alongside a manually posted marker
+// from one of the implementation provider's own identities.
+export const CLAUDE_SELF_REVIEW_HEADING = "## Claude Self-Review";
+export const CLAUDE_SELF_REVIEW_SOURCE = "claude-self-review";
 export const REVIEW_START_FAILURE_MARKER = "<!-- agent-pipeline:review-start-failure";
 const REVIEW_START_FAILURE_PATTERN =
   /<!--\s*agent-pipeline:review-start-failure\s+([0-9a-f]{40})\s+attempt=([A-Za-z0-9._-]+)\s*-->/;
@@ -608,7 +616,9 @@ export function parseReviewResults(comments) {
         // boundary: a marker merely echoed inside another bot comment is not Claude evidence.
         source: String(comment.body).startsWith(`${CLAUDE_CROSS_REVIEW_HEADING}\n`)
           ? CLAUDE_CROSS_REVIEW_SOURCE
-          : null,
+          : String(comment.body).startsWith(`${CLAUDE_SELF_REVIEW_HEADING}\n`)
+            ? CLAUDE_SELF_REVIEW_SOURCE
+            : null,
         createdAt: comment.createdAt ?? null,
       });
     }
@@ -739,9 +749,10 @@ export function parseReviewStartFailures(
     const reason = String(comment.body ?? "").match(/^- Grund: `([^`]+)`/m)?.[1] ?? "unknown";
     failures.push({
       headSha: match[1],
-      outcome: match[2],
-      code: match[3] ?? "unknown",
-      attempt: match[4] ?? `comment-${comment.id}`,
+      mode: match[2],
+      outcome: match[3],
+      code: match[4] ?? "unknown",
+      attempt: match[5] ?? `comment-${comment.id}`,
       reason,
     });
   }
@@ -779,6 +790,29 @@ export function latestReviewResult(
     if (result.headSha !== headSha || result.mode !== mode) continue;
     if (!allowed.includes(result.author)) continue;
     if (requiredSource && result.source !== requiredSource) continue;
+    found = result;
+  }
+  return found;
+}
+
+/**
+ * Like `latestReviewResult`, but accepts a result matching any of several (authors, source) pairs.
+ *
+ * A `self` review has two legitimate origins: a manually posted marker from one of the
+ * implementation provider's own identities (no source heading required), or a structured result
+ * from the trusted, credential-read-only workflow (author plus its self-review source heading,
+ * exactly like the cross-review publisher). Both are valid evidence, and whichever comment is
+ * newest — by iteration order, the same rule `latestReviewResult` uses — wins.
+ */
+export function latestReviewResultFromAny(results, headSha, mode, candidates) {
+  let found = null;
+  for (const result of results ?? []) {
+    if (result.headSha !== headSha || result.mode !== mode) continue;
+    const eligible = candidates.some(
+      ({ authors, source }) =>
+        (authors ?? []).includes(result.author) && (!source || result.source === source),
+    );
+    if (!eligible) continue;
     found = result;
   }
   return found;
@@ -1181,13 +1215,16 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
   const reviewDecisionNotificationDelivered = (
     snapshot.reviewDecisionNotificationHeadShas ?? []
   ).includes(snapshot.headSha);
-  // A self-review is run by the implementation provider, so only its identities may report one.
-  const selfResult = latestReviewResult(
-    snapshot.reviewResults,
-    snapshot.headSha,
-    "self",
-    resultAuthorsFor(contract.implementer, config),
-  );
+  // A self-review is run by the implementation provider, so only its identities may report one —
+  // either a marker one of them posted directly, or a structured result the trusted, credential-
+  // read-only self-review workflow published on that provider's behalf.
+  const selfResult = latestReviewResultFromAny(snapshot.reviewResults, snapshot.headSha, "self", [
+    { authors: resultAuthorsFor(contract.implementer, config) },
+    {
+      authors: config.selfReviewResultAuthors?.[contract.implementer] ?? [],
+      source: CLAUDE_SELF_REVIEW_SOURCE,
+    },
+  ]);
   // Repository policy, not a per-run choice: how strongly a self-review session must have been kept
   // away from the code before its verdict counts. Lowering it to `false` is a deliberate decision to
   // accept a verdict nothing outside the prompt backed up.
@@ -1218,21 +1255,23 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     reviews.verdict === "changes-required" ||
     crossResult?.verdict === "pass" ||
     crossResult?.verdict === "changes-required";
+  const completedSelfReview =
+    selfResult?.verdict === "pass" || selfResult?.verdict === "changes-required";
+  // A failure record predates `self`, so a legacy or hand-built one without a `mode` field is read
+  // as `cross` — the only mode that ever produced one before this workflow existed. A parsed marker
+  // always carries an explicit mode.
+  const failedMode = reviewStartFailure?.mode ?? "cross";
   const invalidatedStartFailure =
-    decision.mode === "cross" &&
     reviewStartFailure &&
     !failureHandled &&
-    !completedCrossReview;
+    decision.mode === failedMode &&
+    (decision.mode === "cross" ? !completedCrossReview : !completedSelfReview);
   if (invalidatedStartFailure) {
+    const staleLabel = config.reviewModeLabels[decision.mode];
     decision = {
       ...decision,
       mode: null,
-      staleLabels: [
-        ...new Set([
-          ...(decision.staleLabels ?? []),
-          config.reviewModeLabels.cross,
-        ]),
-      ],
+      staleLabels: [...new Set([...(decision.staleLabels ?? []), staleLabel])],
       record: { headSha: snapshot.headSha, mode: "none", since: null },
       unboundReason: "provider-start-failed",
     };
@@ -1252,7 +1291,7 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     if (mechanicallyGreen) {
       blockers.push(
         decision.unboundReason === "provider-start-failed"
-          ? `The selected ${reviewerProvider ?? "cross"} review did not start (${reviewStartFailure.reason}); choose the review mode again.`
+          ? `The selected ${reviewStartFailure.mode ?? "cross"} review did not start (${reviewStartFailure.reason}); choose the review mode again.`
           : decision.unboundReason === "earlier-head"
           ? "The review mode was chosen for an earlier head SHA; choose again for the current head."
           : decision.unboundReason === "never-observed"
@@ -1361,7 +1400,11 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
   // point: the status comment is the machine-readable surface, and an agent reading only "no review
   // covers this head" cannot tell a review that died from one still running.
   const startNotice =
-    evidenceOutstanding && snapshot.reviewStartNotice?.headSha === snapshot.headSha
+    evidenceOutstanding &&
+    snapshot.reviewStartNotice?.headSha === snapshot.headSha &&
+    // A missing mode predates `self` and is read as `cross`, the only mode that wrote this marker
+    // before; a mode switch on the same head must not surface a notice that belongs to the old one.
+    (snapshot.reviewStartNotice?.mode ?? "cross") === decision.mode
       ? snapshot.reviewStartNotice
       : null;
   if (startNotice) {
@@ -1413,16 +1456,24 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     config,
   );
   if (!decision.mode && reviewStartFailure) {
-    const retryCross = new Set(["phase", "mode", "provider", "disabled"]);
-    recommendation = retryCross.has(reviewStartFailure.code)
+    // A missing mode predates `self` and is read as `cross`, matching how the marker itself falls
+    // back (see `failedMode` above); a parsed marker always carries an explicit mode.
+    const failedMode = reviewStartFailure.mode ?? "cross";
+    const retryable = new Set(["phase", "mode", "provider", "disabled"]);
+    recommendation = retryable.has(reviewStartFailure.code)
       ? {
-          mode: "cross",
-          reason: `the last cross-review was declined (${reviewStartFailure.reason}); retrying the provider remains appropriate`,
+          mode: failedMode,
+          reason: `the last ${failedMode}-review was declined (${reviewStartFailure.reason}); retrying the same mode remains appropriate`,
         }
-      : {
-          mode: "self",
-          reason: `the ${reviewerProvider ?? "cross"} provider failed (${reviewStartFailure.reason}); a fresh same-provider review avoids another automatic switch`,
-        };
+      : failedMode === "cross"
+        ? {
+            mode: "self",
+            reason: `the ${reviewerProvider ?? "cross"} provider failed (${reviewStartFailure.reason}); a fresh same-provider review avoids another automatic switch`,
+          }
+        : {
+            mode: "cross",
+            reason: `the self-review failed to start (${reviewStartFailure.reason}); an independent ${reviewerProvider ?? "cross"} cross-review avoids repeating the same failure`,
+          };
   }
 
   // Delivery is a separate state from rendering the question in the sticky comment. It becomes

@@ -24,6 +24,18 @@ The pipeline reports state and has narrow provider actions for both regular cros
 - `scripts/agent-codex-review.mjs` reuses the readiness snapshot and posts one exact-head-bound
   `@codex review` request under the identity in `AGENT_PIPELINE_REVIEW_REQUEST_TOKEN`; Codex submits
   the native GitHub review and the reconciler evaluates it.
+- `.github/workflows/agent-pipeline-claude-self-review.yml` starts one read-only Claude review after
+  the user chooses `review:self` for a Claude implementation — the automated, credential-read-only
+  equivalent of running `scripts/agent-review-session.mjs --mode self --headless` locally. It shares
+  its restricted-job shape (inert diff-only PR-head input, no write credentials, no editing or shell
+  tools) with the cross-review workflow, but the same provider judges its own implementation, so the
+  result is still reduced independence, exactly as an interactively launched self-review would be.
+- `scripts/agent-claude-self-review.mjs` reuses the readiness snapshot, validates Claude's
+  structured result and publishes its head-bound `mode=self` marker; `selfReviewResultAuthors` adds
+  this workflow's `github-actions[bot]` identity as a second accepted source for that marker,
+  alongside a manually posted one from `claude[bot]` or the human operator. It only ever fires for a
+  Claude implementer — a Codex self-review still runs through the detached Codex `/review` route
+  described in `review-session-prompt.md`, which this workflow does not touch.
 - `scripts/agent-pipeline-codex-adapter.mjs` exposes the trusted GitHub outbox to the single
   persistent Codex heartbeat monitor. It emits undelivered review choices, positively observed
   review starts, completed reviews, provider-start failures, failing current-head CI attempts and
@@ -236,10 +248,14 @@ pass versus findings, event order and acknowledgement idempotence.
 
 The live provider pilots currently documented for this repository are Codex → Claude cross-review
 (PR #399), Claude → Codex cross-review (PR #394), Codex self-review (PR #383), and Claude
-self-review (PR #391). The Required Check `Agent pipeline / ready for human merge` is active on
-`main`. A post-#396, no-bypass human pilot for both implementer directions is not yet fulfilled;
-it remains an explicit acceptance blocker until the exact current head has a native human review,
-resolved threads and a successful gate result. No administrative bypass is evidence for that pilot.
+self-review (PR #391) — that last one via the local `agent-review-session.mjs --headless` launcher.
+The Required Check `Agent pipeline / ready for human merge` is active on `main`. A post-#396,
+no-bypass human pilot for both implementer directions is not yet fulfilled; it remains an explicit
+acceptance blocker until the exact current head has a native human review, resolved threads and a
+successful gate result. No administrative bypass is evidence for that pilot. The
+`agent-pipeline-claude-self-review.yml` workflow automates the same Claude self-review path inside
+CI and is not yet separately piloted; the gate treats its marker exactly like the launcher's,
+so no acceptance criteria change, but a first live run should still be observed before relying on it.
 
 ## Automated provider cross-review
 
@@ -318,6 +334,23 @@ failure would stay out of the sticky status until the half-hourly sweep. Only on
 writes the notice for a head: the adapter whose provider is not the counter provider stays silent,
 and a job that died before deriving anything re-checks current eligibility before writing at all.
 
+For a Claude implementation, applying `review:self` starts `agent-pipeline-claude-self-review.yml`
+under the same readiness, concurrency and diff-only-input rules as the Claude cross-review workflow
+— restricted tools, no editing or shell access, a job token with read-only repository permissions,
+and the PR-head checkout removed before the provider credential is used. The only differences are
+the eligibility check (`reviewMode === "self"` and the *implementer*, not the counter provider, is
+`claude`) and the published marker, which carries `mode=self` and the `## Claude Self-Review`
+heading instead of the cross-review one. `deriveReadiness` accepts that marker from
+`selfReviewResultAuthors.claude` (`github-actions[bot]`) exactly like `crossReviewResultAuthors`
+already does for cross, alongside a manually posted marker from `claude[bot]` or the human operator
+running `scripts/agent-review-session.mjs --mode self --headless`; both are valid evidence, and
+whichever is newer for the current head wins. Because the same provider that implemented the change
+also reviews it here, this stays reduced independence regardless of how the review was launched —
+the merge gate already reflects that in the `self` mode row, and choosing this mode remains the
+user's decision, never the pipeline's. A Codex self-review is not covered by any workflow: it still
+runs through the detached Codex `/review` route in `review-session-prompt.md`, verified by an
+operator independent of the implementation session before its marker is published by hand.
+
 Escalations the reconciler cannot derive from GitHub state — an exhausted round limit, a critical
 decision, the 24-hour waiting escalation — stay with `agent:needs-human`, exactly as the plan
 describes: raised by a human or by a later provider phase, blocking while set, and never written
@@ -327,11 +360,11 @@ review of the head clears it without label bookkeeping and no genuine escalation
 a sweep. To stop automation by hand, use `agent:no-auto`.
 
 The pipeline's own check runs are excluded from the CI evaluation via `selfCheckNames`. The
-reconcile, Claude-review, and Codex-review workflows run on `pull_request_target`, whose check runs
-attach to the pull request's head SHA, so
-without that exclusion the reconciler would read its own job as a running — or, after
-`cancel-in-progress`, a cancelled and therefore failing — CI check. `selfCheckNames` must stay in
-sync with the job names in all three workflow files.
+reconcile, Claude-cross-review, Claude-self-review, and Codex-review workflows run on
+`pull_request_target`, whose check runs attach to the pull request's head SHA, so without that
+exclusion the reconciler would read its own job as a running — or, after `cancel-in-progress`, a
+cancelled and therefore failing — CI check. `selfCheckNames` must stay in sync with the job names in
+all four workflow files.
 
 The CI/CD workflow reports the stable aggregate `Test performance`. `Detect test performance`
 compares the measured suites and, only after a preliminary warning, starts
@@ -466,6 +499,7 @@ node --test scripts/agent-pipeline.test.mjs
 node --test scripts/agent-pipeline-reconcile.test.mjs
 node --test scripts/agent-pipeline-select-prs.test.mjs
 node --test scripts/agent-claude-review.test.mjs
+node --test scripts/agent-claude-self-review.test.mjs
 node --test scripts/agent-codex-review.test.mjs
 node --test scripts/agent-preflight.test.mjs
 git diff --check

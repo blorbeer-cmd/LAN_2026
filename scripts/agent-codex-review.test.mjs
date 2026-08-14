@@ -425,6 +425,7 @@ test("the notice names the missing secret and the way out", () => {
   // instead of leaving it in a comment only a human would read.
   assert.deepEqual(parseReviewStartNotice([{ author: "github-actions[bot]", body: missing }]), {
     headSha: HEAD,
+    mode: "cross",
     outcome: "failed",
   });
   // A notice must never be mistaken for a verdict or for the reconciler's own record.

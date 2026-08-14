@@ -7,6 +7,7 @@ import {
   applyPlan,
   buildReviewDecisionPayload,
   CLAUDE_CROSS_REVIEW_HEADING,
+  CLAUDE_SELF_REVIEW_HEADING,
   dedupeCheckRunsByName,
   DEFAULT_WAITING_ESCALATION_HOURS,
   deriveReadiness,
@@ -151,6 +152,21 @@ function claudeCrossResultComment(headSha, overrides = {}) {
     author: "github-actions[bot]",
     authorAssociation: "NONE",
     body: `${CLAUDE_CROSS_REVIEW_HEADING}\n\n<!-- agent-pipeline:review-result ${headSha} mode=cross verdict=${values.verdict} session=${values.session} read-only=${values["read-only"]} -->`,
+  };
+}
+
+/** A structured Claude self-review result published by the trusted self-review Actions adapter. */
+function claudeSelfWorkflowResultComment(headSha, overrides = {}) {
+  const values = {
+    verdict: "pass",
+    session: "claude-self-action-123-1",
+    "read-only": "true",
+    ...overrides,
+  };
+  return {
+    author: "github-actions[bot]",
+    authorAssociation: "NONE",
+    body: `${CLAUDE_SELF_REVIEW_HEADING}\n\n<!-- agent-pipeline:review-result ${headSha} mode=self verdict=${values.verdict} session=${values.session} read-only=${values["read-only"]} -->`,
   };
 }
 
@@ -1925,6 +1941,46 @@ test("a finding-free provider review wins over an older start-failure notice", (
   assert.equal(passed.phase, "ready-for-merge");
 });
 
+test("a self-review start failure returns only the self choice to the user", () => {
+  const snapshot = readySnapshot({
+    labels: [SELF_LABEL],
+    reviews: [],
+    statusCommentBody: decisionRecord(HEAD, "self", "2026-08-09T10:00:00Z"),
+    reviewStartFailures: [reviewStartFailure(HEAD, { mode: "self" })],
+  });
+  const plan = reconcile(snapshot, config);
+  assert.equal(plan.readiness.phase, "awaiting-review-decision");
+  assert.equal(plan.readiness.details.reviewMode, null);
+  assert.ok(plan.labels.remove.includes(SELF_LABEL));
+  // The recommendation for a failed self-review points towards the independent cross-review
+  // instead of retrying the same provider that just failed to start.
+  assert.equal(plan.readiness.details.recommendation.mode, "cross");
+});
+
+test("a stale start failure from the other mode does not invalidate the current choice", () => {
+  // A cross-mode failure recorded before the user switched to `self` on the same head must not be
+  // read as a self-review failure, and vice versa: each mode only reacts to its own record.
+  const stillCross = deriveReadiness(
+    codexImplementationSnapshot({
+      reviewStartFailures: [reviewStartFailure(HEAD, { mode: "self" })],
+    }),
+    config,
+  );
+  assert.equal(stillCross.details.reviewMode, "cross");
+  assert.equal(stillCross.details.reviewDecision.staleLabels.length, 0);
+
+  const stillSelf = deriveReadiness(
+    readySnapshot({
+      labels: [SELF_LABEL],
+      reviews: [],
+      reviewStartFailures: [reviewStartFailure(HEAD, { mode: "cross" })],
+    }),
+    config,
+  );
+  assert.equal(stillSelf.details.reviewMode, "self");
+  assert.equal(stillSelf.details.reviewDecision.staleLabels.length, 0);
+});
+
 test("review-start notices are trusted, head-bound and keep a stable attempt", () => {
   const marker = `${REVIEW_START_NOTICE_MARKER} ${HEAD} mode=cross outcome=failed code=failed attempt=77-2 -->`;
   const failures = parseReviewStartFailures([
@@ -1940,6 +1996,7 @@ test("review-start notices are trusted, head-bound and keep a stable attempt", (
   assert.deepEqual(failures, [
     {
       headSha: HEAD,
+      mode: "cross",
       outcome: "failed",
       code: "failed",
       attempt: "77-2",
@@ -1992,6 +2049,68 @@ test("a passing self-review opens the gate for the head it names", () => {
   assert.equal(readiness.ready, true);
   assert.equal(readiness.phase, "ready-for-merge");
   assert.equal(readiness.details.selfResult.sessionId, "claude-review-7f3");
+});
+
+test("a structured self-review result from the trusted workflow opens the gate like a manual marker", () => {
+  const readiness = deriveReadiness(
+    readySnapshot({
+      labels: [SELF_LABEL],
+      reviews: [],
+      reviewResults: parseReviewResults([claudeSelfWorkflowResultComment(HEAD)]),
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, true);
+  assert.equal(readiness.phase, "ready-for-merge");
+  assert.equal(readiness.details.selfResult.sessionId, "claude-self-action-123-1");
+});
+
+test("a github-actions[bot] self marker without the trusted self-review heading is not evidence", () => {
+  // `github-actions[bot]` is not one of `resultAuthorsFor("claude")`'s own identities; only the
+  // self-review workflow's own exact heading bridges it in, exactly like the cross-review marker.
+  const echoed = {
+    author: "github-actions[bot]",
+    authorAssociation: "NONE",
+    body: `Some other comment.\n\n<!-- agent-pipeline:review-result ${HEAD} mode=self verdict=pass session=x read-only=true -->`,
+  };
+  const readiness = deriveReadiness(
+    readySnapshot({
+      labels: [SELF_LABEL],
+      reviews: [],
+      reviewResults: parseReviewResults([echoed]),
+    }),
+    config,
+  );
+  assert.equal(readiness.details.selfResult, null);
+  assert.deepEqual(readiness.blockers, [
+    "No self-review result has been published for the current head SHA.",
+  ]);
+});
+
+test("the newer of a manual and a workflow-published self-review result wins", () => {
+  const manual = selfResultComment(HEAD, { verdict: "changes-required", session: "manual-1" });
+  const workflow = claudeSelfWorkflowResultComment(HEAD, { session: "workflow-1" });
+  const newerWorkflow = deriveReadiness(
+    readySnapshot({
+      labels: [SELF_LABEL],
+      reviews: [],
+      reviewResults: parseReviewResults([manual, workflow]),
+    }),
+    config,
+  );
+  assert.equal(newerWorkflow.details.selfResult.sessionId, "workflow-1");
+  assert.equal(newerWorkflow.ready, true);
+
+  const newerManual = deriveReadiness(
+    readySnapshot({
+      labels: [SELF_LABEL],
+      reviews: [],
+      reviewResults: parseReviewResults([workflow, manual]),
+    }),
+    config,
+  );
+  assert.equal(newerManual.details.selfResult.sessionId, "manual-1");
+  assert.equal(newerManual.ready, false);
 });
 
 test("a self-review with no read-only backing at all does not count", () => {
@@ -3185,7 +3304,7 @@ test("a failed review attempt is named in the status comment, not just in its ow
       { author: "github-actions[bot]", body: notice(HEAD, "declined") },
       { author: "github-actions[bot]", body: notice(HEAD, "failed") },
     ]),
-    { headSha: HEAD, outcome: "failed" },
+    { headSha: HEAD, mode: "cross", outcome: "failed" },
   );
   assert.equal(
     withNotice([{ author: "outsider", authorAssociation: "NONE", body: notice(HEAD, "failed") }]),
