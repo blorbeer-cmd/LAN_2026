@@ -713,16 +713,23 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Arena accepts three to eight players and keeps the local board large beside a responsive grid of
   opponent boards. On phones the local board sits above that grid. The current automatic attack
   target receives a textual „Ziel“ marker in addition to its accent border, while eliminated
-  players remain visibly dimmed for spectating. Admins with active Admin mode can create a „KI-Test“ in its own full-width
-  row; Duell uses one bot and Arena always fills all seven opponent slots without a count selector.
-  An empty
+  players remain visibly dimmed for spectating. For admins with active Admin mode the opponent
+  choice is a second `.arcade-mode-toggle` segmented switch („Mensch“/„KI“) directly to the right
+  of „Lobby öffnen“, so the create row reads as [Modus] [Lobby öffnen] [Gegner] and the primary
+  create action keeps its gradient to itself instead of competing with a separate „Gegen KI“
+  button. That switch only selects; „Lobby öffnen“ then opens either a human or an AI lobby, and
+  the AI lobby honors the mode switch beside it — Tetris and Snake Duell use one bot while their
+  Arena fills all seven opponent slots, and Pong and Blobby Volley cover both the AI duel and the
+  Doppel variant with a bot teammate. An empty
   lobby no longer adds
   a redundant waiting sentence. Member actions use the same destructive treatment for „Verlassen“
   as the host's „Schließen“ action, and only render for a member who actually joined that lobby.
   Guest footers place „Verlassen“ before the readiness toggle;
   compact score selectors use the smaller shared row height. Create-action containers use the same
-  outer inset as lobby footers. The creation row
-  uses equal left and right insets for games without a selector from `--bp-md`; on phones their
+  outer inset as lobby footers. Whichever of the two flanking switches a game or player does not
+  get reserves its width anyway (`.arcade-lobby-create-row--no-mode` /
+  `--no-opponent`), so from `--bp-md` „Lobby öffnen“ keeps one width and equal left and right
+  insets across every game; on phones the
   primary action remains full-width. Tetris, Pong, Snake and
   Blobby Volley all select Duell by default. A disabled „Lobby
   öffnen“ or „Start“ carries the same red `.info-tooltip-trigger--warning` reason pattern as Team
@@ -733,8 +740,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   shared team score and win to both teammates. Pong follows Atari's Pong-4 rules: each participant
   controls a separate paddle that remains in its assigned upper/lower half, player initials and roster
   lane labels identify all four paddles, and Doppel defaults to 21 points.
-  Both games additionally offer „Gegen KI (Doppel)“ beside the existing AI duel: the host and one
-  bot teammate play against two bot opponents.
+  Both games reach a Doppel AI match through the same two switches — „Doppel“ plus „KI“ — where
+  the host and one bot teammate play against two bot opponents.
   Statistics use the concise title „Statistiken“ and one full-width game dropdown whose options
   include each game's match count. The selected game is not repeated above its results. Those
   results follow directly without another enclosing card or accent rail; player rows reuse
@@ -745,13 +752,14 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   bots appear as separate „KI-Test“ entries and never alter the human-only Duell/Arena rankings.
   Mode-capable Arcade lobbies use the shared `.arcade-mode-toggle` segmented switch in the same
   action row as lobby creation. Snake „Duell“ remains the two-player classic mode; „Arena“ accepts
-  three to eight players and labels every lobby with mode and occupancy. Snake's „Gegen KI“ action
-  fills an Arena lobby directly with the maximum seven bots and exposes no count selector.
+  three to eight players and labels every lobby with mode and occupancy. Snake's AI lobby follows
+  that same mode switch: „Duell“ opens a one-on-one against a single bot, „Arena“ fills the lobby
+  with the maximum seven bots. Neither exposes a count selector.
   Arena matches keep eliminated players visibly in the roster with a textual status, while the
   canvas dims their snake and marks the shrinking safe zone with the shared danger treatment.
   Numbered head markers and a matching `Schlange N · Name` legend identify every participant
   without relying on color; the same legend appears in player, spectator and kiosk contexts.
-  Challenge Rush also offers an Admin-mode-gated „Gegen KI“ quick start and test-challenge
+  Challenge Rush also exposes the Admin-mode-gated opponent switch plus its test-challenge
   selection; playing the bot solo draws
   from its ten original single-payload challenges, since the bot cannot yet play the thirty
   logic/memory trial challenges. A lobby that further humans join before it starts keeps the

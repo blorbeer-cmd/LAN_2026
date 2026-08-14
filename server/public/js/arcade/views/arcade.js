@@ -26,7 +26,7 @@ import { playArcadeSound } from '../arcadeSound.js';
 import { startArcadeWatch } from './arcadeWatch.js';
 import { confirmDialog } from '../../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../../infoTooltip.js';
 import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
 import { searchSelectHtml, wireSearchSelect } from '../../searchSelect.js';
@@ -93,6 +93,7 @@ let statsLoading = false;
 let scribbleGallery = [];
 let activeStatsGame = null;
 let activeGame = null; // which game tile is expanded
+let quizOpponent = 'human';
 let match = null;
 let currentQuestion = null;
 let lastResult = null;
@@ -540,14 +541,15 @@ function activeGameHtml() {
   const game = currentGame();
   if (game === 'quiz') {
     const createReason = match ? 'Beende zuerst dein aktuelles Spiel.' : '';
+    const mayUseAi = currentPlayerMayUseArcadeAi();
     return `
       <div class="card stack arcade-lobby-card">
         <div class="arcade-lobby-create-actions">
-          <div class="arcade-lobby-create-row arcade-lobby-create-row--single">
+          <div class="arcade-lobby-create-row arcade-lobby-create-row--no-mode${mayUseAi ? '' : ' arcade-lobby-create-row--no-opponent'}">
             <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button>
             ${createReason ? infoTooltipHtml('quiz-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+            ${mayUseAi ? arcadeLobbyOpponentToggleHtml('quiz-opponent', quizOpponent, Boolean(match)) : ''}
           </div>
-          ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="quiz-bot" ${match ? 'disabled' : ''}>Gegen KI</button>` : ''}
         </div>
         ${renderLobbyList()}
       </div>`;
@@ -647,20 +649,23 @@ export function renderArcade(container, ctx) {
     if (drawing) renderScribbleDrawing(canvas, drawing.strokes ?? []);
   });
 
+  wireArcadeOpponentToggle(container, 'quiz-opponent', (value) => {
+    quizOpponent = value;
+    ctx.rerender();
+  });
+
   container.querySelector('#quiz-create-lobby')?.addEventListener('click', async () => {
     const playerId = getMyId();
     if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
     if (!(await leaveCurrentLobbyBeforeAction('quiz', 'create'))) return;
+    if (quizOpponent === 'bot') {
+      const botRes = await emitWithAck('arcade:lobby:bot', { playerId });
+      if (!botRes?.ok) showToast(botRes?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
+      return;
+    }
     const res = await emitWithAck('arcade:lobby:create', { gameType: 'quiz', playerId });
     if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
     showToast('Quiz-Lobby geöffnet.');
-  });
-
-  container.querySelector('#quiz-bot')?.addEventListener('click', async () => {
-    const playerId = getMyId();
-    if (!(await leaveCurrentLobbyBeforeAction('quiz', 'create'))) return;
-    const res = await emitWithAck('arcade:lobby:bot', { playerId });
-    if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
 
   container.querySelectorAll('[data-close-lobby]').forEach((btn) => {

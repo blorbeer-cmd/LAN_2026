@@ -6,7 +6,7 @@ import { getMyId } from '../../whoami.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../../modal.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
@@ -30,6 +30,7 @@ let keyboardBound = false;
 let keys = { up: false, down: false };
 let targetScore = 7;
 let lobbyMode = 'duel';
+let pongOpponent = 'human';
 let impact = null;
 const trail = [];
 
@@ -215,18 +216,19 @@ export function renderPongLobbyCard() {
   const lobby = myPongLobby();
   const noMe = !myId();
   const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
+  const mayUseAi = currentPlayerMayUseArcadeAi();
   return `<div class="card stack arcade-lobby-card">
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
     <div class="arcade-lobby-create-actions">
-      <div class="arcade-lobby-create-row">
+      <div class="arcade-lobby-create-row${lobby ? ' arcade-lobby-create-row--no-mode' : ''}${mayUseAi ? '' : ' arcade-lobby-create-row--no-opponent'}">
         ${!lobby ? arcadeLobbyModeButtonsHtml('pong-mode', 'Pong-Spielmodus', [
           { value: 'duel', label: 'Duell' },
           { value: 'doubles', label: 'Doppel' },
         ], lobbyMode) : ''}
         <button type="button" class="btn btn-primary btn-sm" id="pong-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
         ${createReason ? infoTooltipHtml('pong-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+        ${mayUseAi ? arcadeLobbyOpponentToggleHtml('pong-opponent', pongOpponent, Boolean(match || noMe)) : ''}
       </div>
-      ${currentPlayerMayUseArcadeAi() ? `<div class="arcade-lobby-ai-row"><button type="button" class="btn btn-sm" id="pong-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button></div>` : ''}
     </div>
     ${lobbyList()}
   </div>`;
@@ -245,16 +247,20 @@ export function wirePongLobbyCard(container, { beforeCreate, beforeJoin } = {}) 
     targetScore = lobbyMode === 'doubles' ? 21 : 7;
     rerender();
   }));
+  wireArcadeOpponentToggle(container, 'pong-opponent', (value) => {
+    pongOpponent = value;
+    rerender();
+  });
   container.querySelector('#pong-create')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
+    if (pongOpponent === 'bot') {
+      targetScore = lobbyMode === 'doubles' ? 21 : 7;
+      const botResult = await emitAck('pong:lobby:bot', { playerId: myId(), mode: lobbyMode });
+      if (!botResult?.ok) showToast(botResult?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
+      return;
+    }
     const result = await emitAck('pong:lobby:create', { playerId: myId(), mode: lobbyMode });
     if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
-  });
-  container.querySelector('#pong-bot')?.addEventListener('click', async () => {
-    if (beforeCreate && !(await beforeCreate())) return;
-    targetScore = lobbyMode === 'doubles' ? 21 : 7;
-    const result = await emitAck('pong:lobby:bot', { playerId: myId(), mode: lobbyMode });
-    if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelectorAll('[data-pong-join]').forEach((button) => button.addEventListener('click', async () => {
     if (beforeJoin && !(await beforeJoin())) return;

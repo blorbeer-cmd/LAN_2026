@@ -2,7 +2,7 @@ import { escapeHtml } from '../../format.js';
 import { connectSocket } from '../../socket.js';
 import { getMyId } from '../../whoami.js';
 import { showToast } from '../../toast.js';
-import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeMuteControlHtml, wireArcadeMuteControl, playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
 import { cancelCountdown } from '../countdown.js';
@@ -19,6 +19,7 @@ let countdownKey = null; let startedKey = null; let presentationKey = null;
 let countdownDeadline = null; let countdownTimer = null;
 const selectedChallengeKeys = new Set();
 let challengeSelectorOpen = false;
+let challengeRushOpponent = 'human';
 let currentTrial = null; let trialTimer = null; let interaction = freshInteraction(null);
 // Shared "how far into the current sequence" pointer for aim-trainer,
 // whack-a-mole, memory-sequence and color-word — only one of them is ever
@@ -362,13 +363,19 @@ export function renderChallengeRushLobbyCard() {
         ? 'Du hast bereits eine offene Lobby.'
         : '';
   const createDisabled = current || activeMatch || noMe;
-  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions">${adminChallengeSelectorHtml(Boolean(createDisabled))}<div class="arcade-lobby-create-row arcade-lobby-create-row--single"><button type="button" class="btn btn-primary btn-sm" id="cr-create" ${createDisabled ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('cr-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</div>${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="cr-bot" ${createDisabled ? 'disabled' : ''}>Gegen KI</button>` : ''}</div>${cards || emptyStateHtml('Keine offene Challenge-Rush-Lobby.', { style: 'padding:var(--space-4);' })}</div>`;
+  const mayUseAi = currentPlayerMayUseArcadeAi();
+  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions">${adminChallengeSelectorHtml(Boolean(createDisabled))}<div class="arcade-lobby-create-row arcade-lobby-create-row--no-mode${mayUseAi ? '' : ' arcade-lobby-create-row--no-opponent'}"><button type="button" class="btn btn-primary btn-sm" id="cr-create" ${createDisabled ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('cr-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}${mayUseAi ? arcadeLobbyOpponentToggleHtml('cr-opponent', challengeRushOpponent, Boolean(createDisabled)) : ''}</div></div>${cards || emptyStateHtml('Keine offene Challenge-Rush-Lobby.', { style: 'padding:var(--space-4);' })}</div>`;
 }
 export function wireChallengeRushLobbyCard(container, { beforeCreate = async () => true, beforeJoin = async () => true } = {}) {
   const createPayload = () => { const keys = challengeSelectionPayload(); return keys.length ? { playerId: myId(), challengeKeys: keys } : { playerId: myId() }; };
   container.querySelector('.challenge-rush-test-selector')?.addEventListener('toggle', (event) => { challengeSelectorOpen = event.currentTarget.open; });
-  container.querySelector('#cr-create')?.addEventListener('click', async () => { if (!(await beforeCreate())) return; const result = await emit('challenge-rush:lobby:create', createPayload()); if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true }); });
-  container.querySelector('#cr-bot')?.addEventListener('click', async () => { if (!(await beforeCreate())) return; const result = await emit('challenge-rush:lobby:bot', createPayload()); if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true }); });
+  wireArcadeOpponentToggle(container, 'cr-opponent', (value) => { challengeRushOpponent = value; rerender(); });
+  container.querySelector('#cr-create')?.addEventListener('click', async () => {
+    if (!(await beforeCreate())) return;
+    const bot = challengeRushOpponent === 'bot';
+    const result = await emit(bot ? 'challenge-rush:lobby:bot' : 'challenge-rush:lobby:create', createPayload());
+    if (!result?.ok) showToast(result?.error || (bot ? 'KI-Lobby konnte nicht erstellt werden.' : 'Lobby konnte nicht erstellt werden.'), { error: true });
+  });
   container.querySelectorAll('[data-cr-challenge-key]').forEach((checkbox) => checkbox.addEventListener('change', () => { if (checkbox.checked) selectedChallengeKeys.add(checkbox.dataset.crChallengeKey); else selectedChallengeKeys.delete(checkbox.dataset.crChallengeKey); syncChallengeSelectionControls(container); }));
   container.querySelector('[data-cr-select-all]')?.addEventListener('click', () => { challengeCatalog.forEach(({ key }) => selectedChallengeKeys.add(key)); container.querySelectorAll('[data-cr-challenge-key]').forEach((checkbox) => { checkbox.checked = true; }); syncChallengeSelectionControls(container); });
   container.querySelector('[data-cr-select-none]')?.addEventListener('click', () => { selectedChallengeKeys.clear(); container.querySelectorAll('[data-cr-challenge-key]').forEach((checkbox) => { checkbox.checked = false; }); syncChallengeSelectionControls(container); });

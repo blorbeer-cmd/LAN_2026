@@ -42,7 +42,7 @@ test('a required-mode member can open an Arcade lobby with a scoped game socket'
   await page.waitForSelector('.arcade-tiles');
   await page.click('[data-game="tetris"]');
   await page.waitForSelector('#tetris-create:not([disabled])');
-  assert.equal(await page.locator('#tetris-bot').count(), 0);
+  assert.equal(await page.locator('#tetris-opponent').count(), 0);
   await page.click('#tetris-create');
   await page.waitForSelector('[data-tetris-close]');
   assert.equal(await page.locator('.toast-error:has-text("Gruppen- oder Eventzugriff verweigert")').count(), 0);
@@ -50,7 +50,7 @@ test('a required-mode member can open an Arcade lobby with a scoped game socket'
   await page.waitForSelector('#tetris-create:not([disabled])');
   await page.click('[data-game="challenge-rush"]');
   await page.waitForSelector('#cr-create:not([disabled])');
-  assert.equal(await page.locator('#cr-bot').count(), 0);
+  assert.equal(await page.locator('#cr-opponent').count(), 0);
   assert.equal(await page.locator('.challenge-rush-test-selector').count(), 0);
 });
 
@@ -74,10 +74,10 @@ test('an admin sees settings without admin mode and Arcade AI only after activat
     await adminPage.waitForSelector('.arcade-tiles');
     await adminPage.click('[data-game="tetris"]');
     await adminPage.waitForSelector('#tetris-create:not([disabled])');
-    assert.equal(await adminPage.locator('#tetris-bot').count(), 0);
+    assert.equal(await adminPage.locator('#tetris-opponent').count(), 0);
     await adminPage.click('[data-game="challenge-rush"]');
     await adminPage.waitForSelector('#cr-create:not([disabled])');
-    assert.equal(await adminPage.locator('#cr-bot').count(), 0);
+    assert.equal(await adminPage.locator('#cr-opponent').count(), 0);
     assert.equal(await adminPage.locator('.challenge-rush-test-selector').count(), 0);
 
     await adminPage.click('.nav-btn[data-view="more"]');
@@ -88,10 +88,36 @@ test('an admin sees settings without admin mode and Arcade AI only after activat
     await adminPage.click('.nav-btn[data-view="more"]');
     await adminPage.click('[data-navigate="arcade"]');
     await adminPage.click('[data-game="tetris"]');
-    await adminPage.waitForSelector('#tetris-bot');
+    await adminPage.waitForSelector('#tetris-opponent');
     await adminPage.click('[data-game="challenge-rush"]');
-    await adminPage.waitForSelector('#cr-bot');
+    await adminPage.waitForSelector('#cr-opponent');
     await adminPage.waitForSelector('.challenge-rush-test-selector');
+
+    // "Lobby öffnen" is flanked by the mode switch on the left and the
+    // opponent switch on the right. A game that has no mode switch reserves
+    // that side anyway, so the create action keeps one width and equal insets
+    // across games instead of sliding sideways from game to game.
+    await adminPage.setViewportSize({ width: 1280, height: 900 });
+    await adminPage.click('[data-game="tetris"]');
+    await adminPage.waitForSelector('#tetris-mode');
+    const withMode = (await adminPage.locator('#tetris-create').boundingBox())!;
+    const modeRow = (await adminPage.locator('#tetris-create').locator('xpath=..').boundingBox())!;
+    await adminPage.click('[data-game="challenge-rush"]');
+    await adminPage.waitForSelector('#cr-opponent');
+    assert.equal(await adminPage.locator('#cr-mode').count(), 0);
+    const withoutMode = (await adminPage.locator('#cr-create').boundingBox())!;
+    const plainRow = (await adminPage.locator('#cr-create').locator('xpath=..').boundingBox())!;
+    assert.equal(withoutMode.width, withMode.width);
+    assert.equal(
+      Math.round(withoutMode.x - plainRow.x),
+      Math.round(withMode.x - modeRow.x),
+      'the create action keeps the same left inset with and without a mode switch',
+    );
+    assert.equal(
+      Math.round(plainRow.x + plainRow.width - (withoutMode.x + withoutMode.width)),
+      Math.round(withoutMode.x - plainRow.x),
+      'the create action keeps equal left and right insets',
+    );
   } finally {
     await adminContext.close();
   }

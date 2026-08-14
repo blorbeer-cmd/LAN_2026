@@ -328,8 +328,14 @@ test('Battleship: an admin starts a playable match against the AI', async () => 
   const admin = await openArcadeAs(adminPlayer.id, { adminMode: true });
 
   try {
-    await admin.page.waitForSelector('#battleship-bot');
-    await admin.page.click('#battleship-bot');
+    await admin.page.waitForSelector('#battleship-opponent');
+    // The opponent switch only selects — picking "KI" must not itself open a
+    // lobby. "Lobby öffnen" stays the single action that creates one.
+    await admin.page.click('#battleship-opponent [data-arcade-opponent="bot"]');
+    await admin.page.waitForSelector('#battleship-opponent [data-arcade-opponent="bot"][aria-pressed="true"]');
+    assert.equal(await admin.page.locator('[data-battleship-start]').count(), 0);
+
+    await admin.page.click('#battleship-create');
     await admin.page.waitForSelector('[data-battleship-start]:not([disabled])');
     assert.match(await admin.page.locator('.arcade-lobby-card').innerText(), /Flotten-Bot/);
     await admin.page.click('[data-battleship-start]');
