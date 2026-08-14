@@ -1,48 +1,85 @@
-// Shared searchable combobox used wherever a game must be selected. The
-// visible listbox is rendered by Respawn instead of the browser's native
-// <datalist> popup, so it follows the dark design system consistently while
-// preserving the hidden input contract used by the existing views.
+// Shared searchable combobox used wherever a game or an event must be
+// selected. The visible listbox is rendered by Respawn instead of the
+// browser's native <datalist> popup, so it follows the dark design system
+// consistently while preserving the hidden input contract used by the
+// existing views.
+//
+// An option may carry a leading status icon (`icon`, plus the German
+// `iconLabel` naming the state and an `iconState` key that colours it). It is
+// rendered in the collapsed control *and* on every row of the open list, so a
+// reader sees the state while choosing rather than only after choosing — the
+// native <select> this replaces could not show an icon inside its options at
+// all. The state is never colour alone: `iconLabel` becomes the row's own
+// accessible name and the control's description.
 
 import { escapeHtml } from './format.js';
 import { icon } from './icons.js';
 
-function optionHtml(id, option, index, selectedValue) {
-  const selected = option.value === (selectedValue ?? '');
-  return `<button type="button" id="${id}-option-${index}" class="search-select-option" role="option" aria-selected="${selected}" tabindex="-1" data-search-select-index="${index}" data-search-select-value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</button>`;
+// Icon markup shared by the collapsed control and the list rows, so both
+// always describe a state the same way.
+function statusIconHtml(option, className) {
+  if (!option?.icon) return '';
+  const state = option.iconState ? ` data-event-status="${escapeHtml(option.iconState)}"` : '';
+  return `<span class="${className}"${state} role="img" aria-label="${escapeHtml(option.iconLabel ?? '')}" title="${escapeHtml(option.iconLabel ?? '')}">${icon(option.icon)}</span>`;
 }
 
-// options: Array<{ value: string, label: string }>
-export function searchSelectHtml(id, options, selectedValue, { placeholder = 'Suchen…' } = {}) {
+function optionHtml(id, option, index, selectedValue) {
+  const selected = option.value === (selectedValue ?? '');
+  return `<button type="button" id="${id}-option-${index}" class="search-select-option" role="option" aria-selected="${selected}" tabindex="-1" data-search-select-index="${index}" data-search-select-value="${escapeHtml(option.value)}">${statusIconHtml(option, 'search-select-option-icon')}<span class="search-select-option-label">${escapeHtml(option.label)}</span></button>`;
+}
+
+// options: Array<{ value, label, icon?, iconLabel?, iconState? }>
+// `ariaLabel` names the control itself where no visible <label for="{id}-search">
+// precedes it; `label` names the listbox.
+export function searchSelectHtml(
+  id,
+  options,
+  selectedValue,
+  { placeholder = 'Suchen…', label = 'Verfügbare Optionen', ariaLabel = '' } = {},
+) {
   const selected = options.find((option) => option.value === (selectedValue ?? ''));
   const initialLabel = selected ? selected.label : '';
   const renderedOptions = options.map((option, index) => optionHtml(id, option, index, selectedValue)).join('');
+  // Only reserve the leading inset when this instance actually uses icons, so
+  // the game pickers keep their existing text alignment untouched.
+  const withIcons = options.some((option) => option.icon);
 
   return `
-    <div class="search-select" data-search-select>
+    <div class="search-select${withIcons ? ' has-status-icon' : ''}" data-search-select>
       <input type="hidden" id="${id}" value="${escapeHtml(selectedValue ?? '')}" />
       <div class="search-select-control">
-        <input type="text" id="${id}-search" value="${escapeHtml(initialLabel)}" placeholder="${escapeHtml(placeholder)}" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${id}-list" />
+        ${withIcons ? `<span class="search-select-value-icon" data-search-select-value-icon>${statusIconHtml(selected, 'search-select-status')}</span>` : ''}
+        <input type="text" id="${id}-search" value="${escapeHtml(initialLabel)}" placeholder="${escapeHtml(placeholder)}"${ariaLabel ? ` aria-label="${escapeHtml(ariaLabel)}"` : ''} autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${id}-list" />
         <button type="button" class="search-select-toggle" aria-label="Auswahl öffnen" aria-controls="${id}-list" aria-expanded="false" tabindex="-1">${icon('chevronDown')}</button>
       </div>
-      <div id="${id}-list" class="search-select-list" role="listbox" aria-label="Verfügbare Optionen" hidden>${renderedOptions}</div>
+      <div id="${id}-list" class="search-select-list" role="listbox" aria-label="${escapeHtml(label)}" hidden>${renderedOptions}</div>
     </div>
   `;
 }
 
-export function wireSearchSelect(container, id, options, { onChange } = {}) {
+export function wireSearchSelect(container, id, options, { onChange, emptyText = 'Kein passendes Spiel gefunden.' } = {}) {
   const hidden = container.querySelector(`#${id}`);
   const search = container.querySelector(`#${id}-search`);
   const wrapper = search?.closest('[data-search-select]');
   const list = container.querySelector(`#${id}-list`);
   const toggle = wrapper?.querySelector('.search-select-toggle');
+  const valueIcon = wrapper?.querySelector('[data-search-select-value-icon]');
   if (!hidden || !search || !wrapper || !list || !toggle) return;
 
   let filteredOptions = options.map((option, originalIndex) => ({ ...option, originalIndex }));
   let activeIndex = -1;
   let suppressNextFocusOpen = false;
 
-  const labelForValue = () => options.find((option) => option.value === hidden.value)?.label ?? '';
+  const optionForValue = () => options.find((option) => option.value === hidden.value);
+  const labelForValue = () => optionForValue()?.label ?? '';
   const isOpen = () => !list.hidden;
+
+  // Keep the collapsed control's status icon in step with the selection, so
+  // the state stays readable once the list is closed again.
+  const updateValueIcon = () => {
+    if (!valueIcon) return;
+    valueIcon.innerHTML = statusIconHtml(optionForValue(), 'search-select-status');
+  };
 
   const updateExpandedState = (expanded) => {
     wrapper.classList.toggle('is-open', expanded);
@@ -70,7 +107,7 @@ export function wireSearchSelect(container, id, options, { onChange } = {}) {
       .filter((option) => option.label.toLocaleLowerCase('de-DE').includes(normalizedQuery));
 
     if (filteredOptions.length === 0) {
-      list.innerHTML = '<div class="search-select-empty">Kein passendes Spiel gefunden.</div>';
+      list.innerHTML = `<div class="search-select-empty">${escapeHtml(emptyText)}</div>`;
       activeIndex = -1;
       search.removeAttribute('aria-activedescendant');
       return;
@@ -110,6 +147,7 @@ export function wireSearchSelect(container, id, options, { onChange } = {}) {
     const changed = hidden.value !== option.value;
     hidden.value = option.value;
     search.value = option.label;
+    updateValueIcon();
     close({ restore: false });
     focusSearchWithoutOpening();
     if (!changed) return;

@@ -61,14 +61,17 @@ async function activate(eventId: string): Promise<void> {
   assert.equal(res.status, 200, JSON.stringify(res.body));
 }
 
+// The switcher is the shared searchable dropdown, not a native <select>: open
+// its listbox and click the option, the same path a person takes.
 async function switchWorkspaceInBrowser(eventId: string): Promise<void> {
-  await page.selectOption('#event-context-switcher', eventId);
+  await page.click('#event-context .search-select-toggle');
+  await page.click(`#event-context-switcher-list [data-search-select-value="${eventId}"]`);
   await page.waitForFunction(
-    (id) => (document.getElementById('event-context-switcher') as HTMLSelectElement | null)?.value === id,
+    (id) => (document.getElementById('event-context-switcher') as HTMLInputElement | null)?.value === id,
     eventId,
   );
   // The switch persists the workspace, reloads every dataset and re-renders;
-  // waiting for the select alone would race that refresh.
+  // waiting for the hidden value alone would race that refresh.
   await page.waitForTimeout(1_500);
 }
 
@@ -185,13 +188,15 @@ test('the personal statistics event filter only offers accepted workspaces', asy
   await page.click('#profile-btn');
   await page.waitForSelector('[data-navigate="myStats"]');
   await page.click('[data-navigate="myStats"]');
-  // The event select only exists once the first stats payload has arrived.
-  await page.waitForSelector('#my-stats-event');
+  // The event dropdown only exists once the first stats payload has arrived.
+  // Wait for its visible control: `#my-stats-event` itself is the hidden input
+  // carrying the selected value.
+  await page.waitForSelector('#my-stats-event-search');
 
-  const options = await page.$$eval('#my-stats-event option', (nodes) =>
+  const options = await page.$$eval('#my-stats-event-list .search-select-option', (nodes) =>
     nodes.map((node) => ({
-      value: (node as HTMLOptionElement).value,
-      label: node.textContent?.trim() ?? '',
+      value: node.getAttribute('data-search-select-value') ?? '',
+      label: node.querySelector('.search-select-option-label')?.textContent?.trim() ?? '',
     })),
   );
   assert.ok(
@@ -208,7 +213,8 @@ test('the personal statistics event filter only offers accepted workspaces', asy
     if (response.url().includes('/api/players/') && response.status() === 404) notFound.push(response.url());
   });
   for (const option of options) {
-    await page.selectOption('#my-stats-event', option.value);
+    await page.click('#my-stats-event-search');
+    await page.click(`#my-stats-event-list [data-search-select-value="${option.value}"]`);
     await page.waitForTimeout(400);
   }
   assert.deepEqual(notFound, [], 'no offered event may answer the personal stats request with 404');
@@ -219,9 +225,15 @@ test('the workspace switcher keeps event names concise and shows state through i
   assert.equal(started.status, 200, JSON.stringify(started.body));
 
   await switchWorkspaceInBrowser(eventB);
-  const labels = await page.$$eval('#event-context-switcher option', (nodes) =>
-    nodes.map((node) => node.textContent?.trim() ?? ''),
+  await page.click('#event-context .search-select-toggle');
+  const rows = await page.$$eval('#event-context-switcher-list .search-select-option', (nodes) =>
+    nodes.map((node) => ({
+      label: node.querySelector('.search-select-option-label')?.textContent?.trim() ?? '',
+      state: node.querySelector('.search-select-option-icon')?.getAttribute('data-event-status') ?? '',
+      iconLabel: node.querySelector('.search-select-option-icon')?.getAttribute('aria-label') ?? '',
+    })),
   );
+  const labels = rows.map((row) => row.label);
   assert.ok(
     labels.includes('Allgemein'),
     `the base workspace names itself once, got: ${JSON.stringify(labels)}`,
@@ -236,26 +248,102 @@ test('the workspace switcher keeps event names concise and shows state through i
   );
   assert.ok(labels.every((label) => !label.includes('Trackt gerade') && !label.includes('Nicht aktiv')));
 
-  // The indicator follows the active event, and the state stays available to
-  // assistive technology through the control's accessible name.
-  assert.equal(await page.$eval('#event-context-status', (el) => (el as HTMLElement).dataset.eventStatus), 'idle');
-  await switchWorkspaceInBrowser(eventA);
-  assert.equal(await page.$eval('#event-context-status', (el) => (el as HTMLElement).dataset.eventStatus), 'tracking');
+  // The state is an icon on every row of the *open* list, not something the
+  // reader only learns after choosing — and never colour alone, so each icon
+  // carries its German state as accessible name.
+  assert.equal(rows.find((row) => row.label === 'E2E Workspace A')?.state, 'tracking');
+  assert.equal(rows.find((row) => row.label === 'E2E Workspace A')?.iconLabel, 'Trackt gerade');
+  assert.equal(rows.find((row) => row.label === 'E2E Workspace B')?.state, 'idle');
+  assert.equal(rows.find((row) => row.label === 'Allgemein')?.state, 'base');
+  await page.keyboard.press('Escape');
+
+  // The collapsed control shows the active event's state through the same
+  // vocabulary, and the wrapper keeps it in words for assistive technology.
   assert.equal(
-    await page.$eval('#event-context-switcher', (el) => el.getAttribute('aria-label')),
+    await page.$eval('#event-context .search-select-status', (el) => (el as HTMLElement).dataset.eventStatus),
+    'idle',
+  );
+  await switchWorkspaceInBrowser(eventA);
+  assert.equal(
+    await page.$eval('#event-context .search-select-status', (el) => (el as HTMLElement).dataset.eventStatus),
+    'tracking',
+  );
+  assert.equal(
+    await page.$eval('#event-context-switcher-search', (el) => el.getAttribute('aria-label')),
     'Aktives Event: E2E Workspace A – Trackt gerade',
   );
 
   // Same control shape as every other dropdown in the app, not a pill.
-  const shape = await page.$eval('#event-context-switcher', (el) => {
+  const shape = await page.$eval('#event-context-switcher-search', (el) => {
     const style = getComputedStyle(el);
-    return { radius: style.borderTopLeftRadius, appearance: style.appearance };
+    return { radius: style.borderTopLeftRadius };
   });
-  assert.equal(shape.radius, '8px', 'the switcher uses the shared --radius-sm select treatment');
-  assert.equal(shape.appearance, 'none', 'and the shared custom chevron rather than the native arrow');
+  assert.equal(shape.radius, '8px', 'the switcher uses the shared --radius-sm control treatment');
+  assert.equal(
+    await page.$$eval('#event-context [data-search-select]', (nodes) => nodes.length),
+    1,
+    'the switcher is the shared searchable dropdown component',
+  );
 
   const overflows = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
   assert.equal(overflows, false, 'the topbar control must not create horizontal page scrolling');
+});
+
+test('the switcher disables itself while a workspace switch is in flight', async () => {
+  await switchWorkspaceInBrowser(eventB);
+  await page.click('#event-context .search-select-toggle');
+  await page.click(`#event-context-switcher-list [data-search-select-value="${eventA}"]`);
+  // The onChange handler disables both elements synchronously, before its
+  // first await — so by the time the click above has resolved, the disabled
+  // state is already in the DOM. Reading both in one evaluate() call (a
+  // single browser round trip) instead of two sequential waitForSelector
+  // polls avoids a race against an in-memory-DB switch that can complete
+  // (and re-enable the rebuilt control) between the two separate round
+  // trips a pair of waitForSelector calls would need.
+  const disabledDuringSwitch = await page.evaluate(() => ({
+    search: (document.getElementById('event-context-switcher-search') as HTMLInputElement | null)?.disabled,
+    toggle: (document.querySelector('#event-context .search-select-toggle') as HTMLButtonElement | null)?.disabled,
+  }));
+  assert.equal(disabledDuringSwitch.search, true, 'the search field must be disabled while the switch is in flight');
+  assert.equal(disabledDuringSwitch.toggle, true, 'the toggle button must be disabled while the switch is in flight');
+  // It re-enables again once the switch (and the render it triggers) settles.
+  await page.waitForFunction(
+    (id) => (document.getElementById('event-context-switcher') as HTMLInputElement | null)?.value === id,
+    eventA,
+    { timeout: 5_000 },
+  );
+  await page.waitForSelector('#event-context-switcher-search:not([disabled])');
+  await page.waitForSelector('#event-context .search-select-toggle:not([disabled])');
+});
+
+test('an open, actively-searched switcher survives an unrelated background refresh', async () => {
+  await switchWorkspaceInBrowser(eventA);
+  await page.click('#event-context .search-select-toggle');
+  await page.fill('#event-context-switcher-search', 'E2E Work');
+  await page.waitForSelector('#event-context-switcher-list:not([hidden])');
+
+  // events:changed (fired by creating an event) reaches every open client of
+  // the group and drives one of the 30+ unrelated ctx.refresh() call sites
+  // that rebuild this same switcher — exactly the kind of refresh that used
+  // to blow away in-progress typing.
+  const created = await api('/api/events', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Background Refresh Probe', startsAt: Date.now(), endsAt: Date.now() + 3_600_000 }),
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  await page.waitForTimeout(1_000);
+
+  assert.equal(
+    await page.$eval('#event-context-switcher-search', (el) => (el as HTMLInputElement).value),
+    'E2E Work',
+    'the typed search term must survive the unrelated refresh while the switcher is open',
+  );
+  assert.equal(
+    await page.$eval('#event-context-switcher-list', (el) => (el as HTMLElement).hidden),
+    false,
+    'the open list must stay open across the unrelated refresh',
+  );
+  await page.keyboard.press('Escape');
 });

@@ -33,7 +33,8 @@ import { invalidateMusic } from './views/music.js';
 import { invalidateAnalytics } from './views/analytics.js';
 import { invalidateMyStats } from './views/myStats.js';
 import { invalidateSeatNeighbors } from './views/profile.js';
-import { eventStatus, eventSwitcherLabel } from './eventStatus.js';
+import { eventSelectOptions, eventStatus, eventSwitcherLabel } from './eventStatus.js';
+import { searchSelectHtml, wireSearchSelect } from './searchSelect.js';
 import { icon, installIconReplacement } from './icons.js';
 import { initNumberStepper } from './numberStepper.js';
 import { initGlobalSearch } from './searchPalette.js';
@@ -42,7 +43,6 @@ import { initGroupContext, refreshGroupContext } from './groupContext.js';
 import { isKnownView, VIEW_REGISTRY } from './viewRegistry.js';
 import { navGroupForView, sectionKeyForView } from './sectionNav.js';
 import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
-import { escapeHtml } from './format.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -141,49 +141,105 @@ function invalidateEventScopedCaches() {
   state.lastMatchmaking = null;
 }
 
+// The topbar workspace switcher is the same searchable dropdown as every
+// other event picker (and as the game pickers in Match): title plus the state
+// as an icon, visible collapsed and on every row of the open list. It is
+// rebuilt rather than patched because the option set itself changes when an
+// event starts, ends or is left.
 function renderEventContextSwitcher() {
   const container = document.getElementById('event-context');
-  const select = document.getElementById('event-context-switcher');
-  const statusEl = document.getElementById('event-context-status');
-  if (!container || !select) return;
+  if (!container) return;
+  // renderEventContextSwitcher() is called from 30+ unrelated ctx.refresh()
+  // sites and from the event-context:changed socket push, none of which know
+  // whether a reader currently has this control open and mid-search. Rebuilding
+  // unconditionally would close the list and discard whatever they typed, which
+  // a native <select> never did. Skip the rebuild while it's open and focused —
+  // the option set (and the active-event highlight) simply catches up on the
+  // next render once the reader closes it again.
+  const openSearch = container.querySelector('#event-context-switcher-search');
+  const openList = container.querySelector('#event-context-switcher-list');
+  if (openList && !openList.hidden && document.activeElement === openSearch) return;
   const events = selectableEventWorkspaces();
-  select.innerHTML = events
-    .map((event) => `<option value="${escapeHtml(event.id)}">${escapeHtml(eventSwitcherLabel(event))}</option>`)
-    .join('');
-  select.value = state.activeEvent?.id ?? '';
   container.hidden = events.length === 0;
-
-  // The icon repeats the active event's state at a glance; the option text
-  // above already carries it in words, and the select's accessible name spells
-  // it out too, so the colour never has to be read on its own.
-  const active = events.find((event) => event.id === state.activeEvent?.id) ?? state.activeEvent;
-  const status = eventStatus(active);
-  if (statusEl) {
-    statusEl.innerHTML = icon(status.icon);
-    statusEl.dataset.eventStatus = status.key;
+  if (events.length === 0) {
+    container.innerHTML = '';
+    return;
   }
-  // Keep the visible option concise. The state remains in the accessible
-  // description because the visual icon is intentionally aria-hidden.
+
+  const active = events.find((event) => event.id === state.activeEvent?.id) ?? state.activeEvent;
+  const options = eventSelectOptions(events);
+  const activeId = active?.id ?? '';
+  // The state stays in words too: the icon carries the German label, and the
+  // wrapper describes the whole control, so colour is never the only cue. The
+  // base workspace is the one case where name and state are the same word
+  // ("Allgemein"), so it is not repeated back as "Allgemein – Allgemein".
+  const activeName = eventSwitcherLabel(active);
+  const activeState = eventStatus(active).label;
   const description = active
-    ? `Aktives Event: ${eventSwitcherLabel(active)} – ${status.label}`
+    ? `Aktives Event: ${activeName}${activeState === activeName ? '' : ` – ${activeState}`}`
     : 'Aktives Event';
-  select.setAttribute('aria-label', description);
+  container.innerHTML = searchSelectHtml('event-context-switcher', options, activeId, {
+    placeholder: 'Event suchen…',
+    ariaLabel: description,
+    label: 'Auswählbare Events',
+  });
   container.title = description;
+
+  wireSearchSelect(container, 'event-context-switcher', options, {
+    emptyText: 'Kein passendes Event gefunden.',
+    onChange: async (eventId) => {
+      // Mirrors the disabled state the previous native <select> got for free
+      // while its change handler awaited the switch: without it, a second
+      // pick before the first request resolves fired a second overlapping
+      // activateEvent() with no guarantee the visibly-last choice also wins
+      // the race, plus an avoidable duplicate round trip. Both elements are
+      // re-created by the renderEventContextSwitcher() call at the end of
+      // activateEvent() (success or error), so nothing needs to re-enable
+      // these exact nodes explicitly.
+      const search = container.querySelector('#event-context-switcher-search');
+      const toggle = container.querySelector('.search-select-toggle');
+      if (search) search.disabled = true;
+      if (toggle) toggle.disabled = true;
+      try {
+        await activateEvent(eventId);
+      } catch (error) {
+        renderEventContextSwitcher();
+        showToast(error.message, { error: true });
+      } finally {
+        if (search) search.disabled = false;
+        if (toggle) toggle.disabled = false;
+      }
+    },
+  });
 }
 
+// Every caller (the switcher above and followEventDeepLink) funnels through
+// this single queue, so two switches — however they were triggered — always
+// finish in the order they were requested instead of racing on network
+// timing. Without it, whichever request happened to complete last won,
+// independent of which one the reader actually picked last.
+let activateEventQueue = Promise.resolve();
+
 async function activateEvent(eventId, { navigate } = {}) {
-  // A missing eventId is not an error: a notification stored before this
-  // release carries no event, and its destination is still the thing the
-  // reader tapped. Skip the switch, keep the navigation.
-  if (eventId && state.activeEvent?.id !== eventId) {
-    await api.events.activate(eventId);
-    invalidateEventScopedCaches();
-    await loadAll();
-    renderEventContextSwitcher();
-    await refreshNotificationBanner();
-    renderCurrent();
-  }
-  if (navigate && isKnownView(navigate)) switchView(navigate);
+  const run = async () => {
+    // A missing eventId is not an error: a notification stored before this
+    // release carries no event, and its destination is still the thing the
+    // reader tapped. Skip the switch, keep the navigation.
+    if (eventId && state.activeEvent?.id !== eventId) {
+      await api.events.activate(eventId);
+      invalidateEventScopedCaches();
+      await loadAll();
+      renderEventContextSwitcher();
+      await refreshNotificationBanner();
+      renderCurrent();
+    }
+    if (navigate && isKnownView(navigate)) switchView(navigate);
+  };
+  const queued = activateEventQueue.then(run, run);
+  // A failure must not wedge every switch queued after it — only the caller
+  // that triggered it should see the rejection.
+  activateEventQueue = queued.catch(() => {});
+  return queued;
 }
 
 // The one entry point for "a notification wants me somewhere". Its event may
@@ -207,19 +263,10 @@ async function followEventDeepLink(eventId, view) {
   }
 }
 
+// Selecting a workspace is wired in renderEventContextSwitcher, because that
+// function owns the switcher's DOM and replaces it on every refresh. Only the
+// deep-link listener belongs here: it outlives any single render.
 function wireEventContextSwitcher() {
-  const select = document.getElementById('event-context-switcher');
-  select?.addEventListener('change', async () => {
-    select.disabled = true;
-    try {
-      await activateEvent(select.value);
-    } catch (error) {
-      renderEventContextSwitcher();
-      showToast(error.message, { error: true });
-    } finally {
-      select.disabled = false;
-    }
-  });
   window.addEventListener('respawn:event-navigate', (event) => {
     const { eventId, view } = event.detail ?? {};
     void followEventDeepLink(eventId, view);

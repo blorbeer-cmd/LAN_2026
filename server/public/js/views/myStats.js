@@ -10,7 +10,8 @@ import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { eventSwitcherLabel } from '../eventStatus.js';
+import { eventSelectOptions } from '../eventStatus.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 
 let statsCache = null;
 let statsLoading = false;
@@ -39,14 +40,11 @@ async function loadStats(playerId, eventId, ctx) {
   }
 }
 
-function renderEventOptions() {
-  const sorted = [...accessibleEvents()].sort((a, b) => b.startsAt - a.startsAt);
-  const options = sorted
-    // Finished LANs are the point of this filter, so every option names its
-    // state in words through the shared event vocabulary.
-    .map((e) => `<option value="${e.id}" ${e.id === statsEventId ? 'selected' : ''}>${escapeHtml(eventSwitcherLabel(e))}</option>`)
-    .join('');
-  return `<option value="" ${statsEventId === '' ? 'selected' : ''}>Gesamt (alle Events)</option>${options}`;
+// Finished LANs are the point of this filter, so every option carries the
+// event's title plus its state as an icon — the same option shape the topbar
+// switcher, Auswertung's filter and Hall of Fame's LAN picker use.
+function eventFilterOptions() {
+  return eventSelectOptions(accessibleEvents(), { allEntryLabel: 'Gesamt (alle Events)' });
 }
 
 // Two accounts see different totals here, because each aggregate covers only
@@ -169,7 +167,11 @@ function renderStats() {
 
   return `
     <div class="card stack">
-      <select id="my-stats-event">${renderEventOptions()}</select>
+      ${searchSelectHtml('my-stats-event', eventFilterOptions(), statsEventId, {
+        placeholder: 'Event suchen…',
+        ariaLabel: 'Veranstaltung',
+        label: 'Auswertbare Events',
+      })}
       ${dataBasisHtml(s)}
     </div>
     ${kpis}
@@ -209,12 +211,12 @@ export function renderMyStats(container, ctx) {
     ${renderStats()}
   `;
 
-  const eventSelect = container.querySelector('#my-stats-event');
-  if (eventSelect) {
-    eventSelect.addEventListener('change', (e) => {
-      statsEventId = e.target.value;
+  wireSearchSelect(container, 'my-stats-event', eventFilterOptions(), {
+    emptyText: 'Kein passendes Event gefunden.',
+    onChange: (eventId) => {
+      statsEventId = eventId;
       statsForPlayerId = null;
       ctx.rerender();
-    });
-  }
+    },
+  });
 }

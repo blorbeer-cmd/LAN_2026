@@ -350,7 +350,26 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.search-select-list`/`.search-select-option` listbox. It replaces the browser's native
   unthemeable `datalist` popup for long game catalogs, keeps the selected value in the existing
   hidden input contract, filters while typing, caps long result lists locally and supports
-  pointer, touch, arrow keys, Enter, Escape and visible focus.
+  pointer, touch, arrow keys, Enter, Escape and visible focus. An option may carry a leading
+  status icon (`icon`, `iconLabel`, `iconState`); the component then renders it both inside the
+  collapsed control (`.search-select-value-icon`/`.search-select-status`, seated in the field's own
+  left padding, which `.has-status-icon` reserves) and on every row of the open list
+  (`.search-select-option-icon`). That is the point of the icon: the state is readable *while*
+  choosing, which a native `<select>` cannot do inside its options. `iconState` only colours the
+  icon — each one also carries the German state as `aria-label` and `title`, so meaning is never
+  colour alone. Option sets without icons render exactly the markup they did before.
+- **Event dropdown** — every place that picks an event uses the searchable select above with one
+  shared option shape from `eventStatus.js` (`eventSelectOption`/`eventSelectOptions`): the event
+  title plus its state as an icon, newest first. That covers the topbar workspace switcher
+  (`#event-context`), Auswertung's shared filter, „Meine Statistiken“ and Hall of Fame's „Nach
+  LAN“ picker. They previously described the same events in three different ways — one appended
+  the date range, another showed the bare name, and none showed the state until after a choice had
+  been made. The date range is deliberately gone: `eventStatus.js`'s vocabulary is what the reader
+  chooses by, and the event cards in Orga remain the place that shows a LAN's exact dates. A filter
+  that also offers „Gesamt (alle Events)“ passes it as `allEntryLabel`; that entry is not an event
+  and therefore carries no state icon. Hall of Fame's payload holds results rather than lifecycle
+  flags, so it joins its events against `accessibleEvents()` for the state and falls back to a
+  plain title for an event that list no longer holds.
 - **Sticky in-card actions** — `.sticky-actions` pins a card's primary action(s) to the bottom of
   the viewport, just above the fixed bottom nav, while a long preceding list (vote game rows,
   player-selection grids) scrolls through. It stays bounded to its own card via `position: sticky`
