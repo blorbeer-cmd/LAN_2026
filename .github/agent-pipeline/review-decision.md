@@ -61,6 +61,13 @@ Schnittstelle zum Wecken der ursprünglichen Claude-Session; dafür werden keine
 und kein Claude-Task erfunden. GitHub bleibt in diesem Fall die Outbox. Leere Scans bleiben still,
 und der Monitor verändert keine `review:*`-Labels.
 
+Nach einer Auswahl liefert derselbe Monitor nicht nur das Endergebnis oder einen Startfehler. Ein
+laufender beziehungsweise erfolgreich angenommener provider-spezifischer Check erzeugt einmalig
+`review-started`; die Implementierungs-Task informiert den Nutzer dadurch aktiv, dass das Review
+tatsächlich läuft oder auf sein Ergebnis wartet, verlinkt den Run und verfolgt ihn weiter. Das bloße
+Auslösen des Workflows gilt nicht als Startnachweis. Ein späteres Ergebnis oder ein vertrauenswürdig
+publizierter Startfehler ersetzt diese Zwischenmeldung für denselben Head.
+
 ## Die drei Optionen
 
 | Option              | Modus    | Label          | Unabhängigkeit                                                     |
