@@ -176,6 +176,22 @@ test("an acknowledged choice does not starve a later provider-start failure", ()
   assert.equal(events[0].eventId, `review-start-failed-${HEAD}-run-22`);
 });
 
+test("a self-review start failure is not a Codex event", () => {
+  // Self-review failures are the same provider's own, delivered through the ordinary GitHub
+  // comment surface; there is no Codex task to wake for one. Only `mode=cross` — which for this
+  // adapter always means the requested-but-refused Codex review — produces a delivery event.
+  const comments = [
+    {
+      id: 30,
+      author: "github-actions[bot]",
+      createdAt: "2026-08-14T09:00:00Z",
+      body: `Review failed.\n<!-- agent-pipeline:review-start-notice ${HEAD} mode=self outcome=failed code=provider attempt=run-30 -->`,
+    },
+  ];
+
+  assert.deepEqual(collectCodexDeliveryEvents(pull(), comments, [], config), []);
+});
+
 test("delivery events require the centrally validated task contract", () => {
   const choice = {
     id: 23,

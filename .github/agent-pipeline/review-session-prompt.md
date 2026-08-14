@@ -226,6 +226,14 @@ node ./scripts/agent-review-session.mjs --pr 363 --mode self --headless
 `--headless` is part of the default example on purpose: without it the run is interactive, stays at
 `read-only=false` and writes no marker, so it informs a human but cannot satisfy the gate.
 
+For a Claude implementation, `review:self` no longer requires running this script by hand:
+`.github/workflows/agent-pipeline-claude-self-review.yml` starts the same kind of restricted,
+credential-read-only review automatically once the label is set, and its published `mode=self`
+marker satisfies the gate exactly like this launcher's does — `selfReviewMinimumEnforcement` does
+not distinguish where a valid marker came from. Nothing about running the launcher manually stops
+working; it stays the way to review interactively, to inspect the prompt with `--print-only`, or to
+get a result when the workflow itself cannot run.
+
 **The local launcher only ever runs `claude`, and only for `--mode self`.** Every other combination
 is rejected before anything is created, and `--print-only` prepares its prompt. This limitation is
 not a statement that Codex self-review is unavailable: for a Codex implementation in `self` mode,
@@ -237,10 +245,14 @@ before/after verification succeeds.
   say codex. In an unattended run nobody notices.
 - A Codex `cross` review is evidenced by the counter provider's native review. A Claude `cross`
   review is launched only by `.github/workflows/agent-pipeline-claude-review.yml`, which enforces
-  the restricted tool and credential boundary before its trusted publisher appends a marker.
-  This local launcher still handles only `self`; use the `review:cross` label for either automated
-  provider direction. The Codex adapter posts `@codex review` for a Claude implementation, while
-  the Claude adapter runs the restricted workflow for a Codex implementation.
+  the restricted tool and credential boundary before its trusted publisher appends a marker. A
+  Claude `self` review of a Claude implementation is launched the same way by
+  `agent-pipeline-claude-self-review.yml`. This local launcher still handles only `self`, and only
+  for a Claude implementer — running it is now optional there, not the only way to satisfy the
+  label; use the `review:cross` label for either automated cross-review direction, and the detached
+  Codex `/review` route for a Codex self-review. The Codex adapter posts `@codex review` for a
+  Claude implementation, while the Claude adapters run their restricted workflows for a Codex
+  implementation (`cross`) or a Claude implementation (`self`).
 
 `--mode cross|self`, `--enforced`, `--implementer codex|claude` (otherwise read from the branch prefix),
 `--focus-file` and `--goal-file` to override the defaults, `--print-only` to just get the prompt and

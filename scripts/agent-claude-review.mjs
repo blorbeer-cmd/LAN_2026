@@ -27,30 +27,30 @@ const VERDICTS = new Set(["pass", "changes-required", "blocked"]);
 const SEVERITIES = new Set(["critical", "high", "medium", "low"]);
 const DISPOSITIONS = new Set(["actionable", "needs-human"]);
 const MAX_FINDINGS = 20;
-const MAX_TEXT = 4_000;
-const MAX_RENDERED_DETAIL = 400;
+export const MAX_TEXT = 4_000;
+export const MAX_RENDERED_DETAIL = 400;
 export const MAX_REVIEW_COMMENT_LENGTH = 60_000;
 
-function option(args, name) {
+export function option(args, name) {
   const index = args.indexOf(name);
   if (index === -1 || index + 1 >= args.length) return null;
   return args[index + 1];
 }
 
-function repositoryParts(repository) {
+export function repositoryParts(repository) {
   const match = String(repository ?? "").match(/^([^/\s]+)\/([^/\s]+)$/);
   if (!match) throw new Error("Expected --repository <owner/repo>.");
   return { owner: match[1], repo: match[2] };
 }
 
-function output(name, value) {
+export function output(name, value) {
   const rendered = String(value ?? "").replace(/[\r\n]+/g, " ");
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${rendered}\n`, "utf8");
   }
 }
 
-function requiredText(value, name, max = MAX_TEXT) {
+export function requiredText(value, name, max = MAX_TEXT) {
   if (typeof value !== "string" || !value.trim()) {
     throw new Error(`${name} must be a non-empty string.`);
   }
@@ -59,12 +59,12 @@ function requiredText(value, name, max = MAX_TEXT) {
   return text;
 }
 
-function optionalText(value, name, max = MAX_TEXT) {
+export function optionalText(value, name, max = MAX_TEXT) {
   if (value === null || value === undefined || value === "") return null;
   return requiredText(value, name, max);
 }
 
-function markdownText(value) {
+export function markdownText(value) {
   return String(value)
     .replace(/<!--[\s\S]*?-->/g, "[HTML comment removed]")
     .replace(/</g, "&lt;")
@@ -74,19 +74,19 @@ function markdownText(value) {
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
 }
 
-function boundedMarkdownText(value, maximum = MAX_RENDERED_DETAIL) {
+export function boundedMarkdownText(value, maximum = MAX_RENDERED_DETAIL) {
   const rendered = markdownText(value);
   if (rendered.length <= maximum) return rendered;
   const suffix = "… [gekürzt]";
   return `${rendered.slice(0, maximum - suffix.length)}${suffix}`;
 }
 
-function rejectUnknownKeys(value, allowed, name) {
+export function rejectUnknownKeys(value, allowed, name) {
   const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
   if (unknown.length) throw new Error(`${name} contains unknown field(s): ${unknown.join(", ")}.`);
 }
 
-function rejectSecretEcho(raw) {
+export function rejectSecretEcho(raw) {
   for (const [name, secret] of [
     ["GITHUB_TOKEN", process.env.GITHUB_TOKEN],
     ["CLAUDE_CODE_OAUTH_TOKEN", process.env.CLAUDE_CODE_OAUTH_TOKEN_FOR_SCAN],
@@ -334,7 +334,8 @@ export function renderClaudeReviewComment({
 
 // What the reader has to do next, per decline code. Kept beside the codes so a new decline reason
 // cannot silently fall back to a message that does not fit it.
-function reviewStartGuidance(code, reason) {
+function reviewStartGuidance(code, reason, mode = "cross") {
+  const modeLabel = mode === "self" ? "review:self" : "review:cross";
   switch (code) {
     case DISPATCH_CODES.phase:
       return [
@@ -342,23 +343,30 @@ function reviewStartGuidance(code, reason) {
         "nicht in `review`. Der Workflow startet ausschließlich beim Setzen des Labels und versucht es",
         "danach nicht erneut — das Label allein bewirkt jetzt nichts mehr.",
         "",
-        "Abhilfe: warten, bis dieser Statuskommentar Phase `review` meldet, dann `review:cross`",
+        `Abhilfe: warten, bis dieser Statuskommentar Phase \`review\` meldet, dann \`${modeLabel}\``,
         "abnehmen und erneut setzen.",
       ].join("\n");
     case DISPATCH_CODES.mode:
       return [
-        "Für diesen Head-SHA ist nicht `cross` als Reviewmodus gebunden. Ein Label, das zu einem",
+        `Für diesen Head-SHA ist nicht \`${mode}\` als Reviewmodus gebunden. Ein Label, das zu einem`,
         "früheren Head gehörte, zählt nicht mehr.",
         "",
         "Abhilfe: den Reviewmodus für den aktuellen Head wählen.",
       ].join("\n");
     case DISPATCH_CODES.provider:
-      return [
-        "Der Gegen-Anbieter für diesen Pull Request ist nicht `claude`, deshalb ist dieser Workflow",
-        "nicht zuständig.",
-        "",
-        "Abhilfe: den Implementierungs-Anbieter im Task-Vertrag prüfen.",
-      ].join("\n");
+      return mode === "self"
+        ? [
+            "Der Implementierungs-Anbieter dieses Pull Requests ist nicht `claude`, deshalb ist dieser",
+            "Workflow nicht zuständig.",
+            "",
+            "Abhilfe: den Implementierungs-Anbieter im Task-Vertrag prüfen.",
+          ].join("\n")
+        : [
+            "Der Gegen-Anbieter für diesen Pull Request ist nicht `claude`, deshalb ist dieser Workflow",
+            "nicht zuständig.",
+            "",
+            "Abhilfe: den Implementierungs-Anbieter im Task-Vertrag prüfen.",
+          ].join("\n");
     case DISPATCH_CODES.disabled:
       return [
         "Die Agenten-Pipeline ist über die Repository-Variable `AGENT_PIPELINE_DISABLED` global",
@@ -371,7 +379,7 @@ function reviewStartGuidance(code, reason) {
         "ist kein Verdikt im Pull Request angekommen und die Pipeline wartet unverändert weiter.",
         "",
         "Abhilfe: den verlinkten Workflow-Lauf öffnen; der Publish-Schritt nennt den",
-        "Ablehnungsgrund. Nach der Behebung `review:cross` abnehmen und erneut setzen.",
+        `Ablehnungsgrund. Nach der Behebung \`${modeLabel}\` abnehmen und erneut setzen.`,
       ].join("\n");
     case DISPATCH_CODES.failed:
       return [
@@ -380,7 +388,7 @@ function reviewStartGuidance(code, reason) {
         "für diesen Head.",
         "",
         "Abhilfe: den verlinkten Workflow-Lauf öffnen. Der Schritt `Report Claude failure details`",
-        "nennt Fehlerart und Fehlertext. Nach der Behebung `review:cross` abnehmen und erneut setzen.",
+        `nennt Fehlerart und Fehlertext. Nach der Behebung \`${modeLabel}\` abnehmen und erneut setzen.`,
       ].join("\n");
     default:
       return [
@@ -398,6 +406,7 @@ const PROVIDER_LABELS = { claude: "Claude", codex: "Codex" };
 /** Pure renderer for the PR-facing notice; the caller decides whether it is warranted. */
 export function renderReviewStartNotice({
   provider = "claude",
+  mode = "cross",
   repository,
   pullNumber,
   headSha,
@@ -410,6 +419,7 @@ export function renderReviewStartNotice({
 }) {
   const providerLabel = PROVIDER_LABELS[provider];
   if (!providerLabel) throw new Error("provider must be claude or codex.");
+  if (mode !== "cross" && mode !== "self") throw new Error("mode must be cross or self.");
   if (!/^[0-9a-f]{40}$/.test(headSha ?? "")) throw new Error("headSha must be a full SHA.");
   if (outcome !== "declined" && outcome !== "failed") {
     throw new Error("outcome must be declined or failed.");
@@ -418,8 +428,9 @@ export function renderReviewStartNotice({
     throw new Error("attempt must be a stable workflow-attempt identifier.");
   }
   if (!/^[a-z-]+$/.test(code ?? "")) throw new Error("code is invalid.");
+  const modeLabel = mode === "self" ? "Self-Review" : "Cross-Review";
   const lines = [
-    `## ${providerLabel} Cross-Review nicht gestartet`,
+    `## ${providerLabel} ${modeLabel} nicht gestartet`,
     "",
     `- Repository: \`${markdownText(repository)}\``,
     `- Pull Request: \`#${Number(pullNumber)}\``,
@@ -428,13 +439,13 @@ export function renderReviewStartNotice({
     `- Grund: \`${boundedMarkdownText(reason ?? "unknown", 200)}\``,
     ...(runUrl ? [`- Workflow-Lauf: ${markdownText(runUrl)}`] : []),
     "",
-    guidance ?? reviewStartGuidance(code, reason),
+    guidance ?? reviewStartGuidance(code, reason, mode),
     "",
     // The attempt id is what lets the reconciler treat this as a trustworthy, attempt-specific
     // notice; without one (the plain codex-request path) the marker keeps its original shape.
     attempt === undefined
-      ? `${REVIEW_START_NOTICE_MARKER} ${headSha} mode=cross outcome=${outcome} -->`
-      : `${REVIEW_START_NOTICE_MARKER} ${headSha} mode=cross outcome=${outcome} code=${code} attempt=${attempt} -->`,
+      ? `${REVIEW_START_NOTICE_MARKER} ${headSha} mode=${mode} outcome=${outcome} -->`
+      : `${REVIEW_START_NOTICE_MARKER} ${headSha} mode=${mode} outcome=${outcome} code=${code} attempt=${attempt} -->`,
     "",
     "---",
     "_Maintained by the trusted agent-pipeline workflow. It reports state only; it does not approve or merge._",
@@ -452,17 +463,19 @@ export function renderReviewStartNotice({
  * Only trusted authors count: anyone able to comment could otherwise plant the marker and have the
  * workflow keep editing a comment it never wrote.
  */
-export function findReviewStartNotice(comments, headSha) {
+export function findReviewStartNotice(comments, headSha, mode = "cross") {
   let found = null;
   for (const comment of comments ?? []) {
     if (!isTrustedCommentAuthor(comment)) continue;
     const match = comment?.body?.match(REVIEW_START_NOTICE_PATTERN);
-    if (match && match[1] === headSha) found = comment;
+    // A stale notice from the other mode must never be adopted: rewriting it would relabel that
+    // mode's notice as this one's, and a mode switch on the same head can leave both standing.
+    if (match && match[1] === headSha && match[2] === mode) found = comment;
   }
   return found;
 }
 
-async function githubApi(path, { token, method = "GET", body } = {}) {
+export async function githubApi(path, { token, method = "GET", body } = {}) {
   const base = process.env.GITHUB_API_URL ?? "https://api.github.com";
   const response = await fetch(`${base}${path}`, {
     method,
@@ -481,7 +494,7 @@ async function githubApi(path, { token, method = "GET", body } = {}) {
   return response.status === 204 ? null : response.json();
 }
 
-async function pullComments({ owner, repo, pullNumber, token }) {
+export async function pullComments({ owner, repo, pullNumber, token }) {
   const comments = [];
   for (let page = 1; ; page += 1) {
     const batch = await githubApi(
