@@ -33,7 +33,8 @@ import { invalidateMusic } from './views/music.js';
 import { invalidateAnalytics } from './views/analytics.js';
 import { invalidateMyStats } from './views/myStats.js';
 import { invalidateSeatNeighbors } from './views/profile.js';
-import { eventStatus, eventSwitcherLabel } from './eventStatus.js';
+import { eventSelectOptions, eventStatus, eventSwitcherLabel } from './eventStatus.js';
+import { searchSelectHtml, wireSearchSelect } from './searchSelect.js';
 import { icon, installIconReplacement } from './icons.js';
 import { initNumberStepper } from './numberStepper.js';
 import { initGlobalSearch } from './searchPalette.js';
@@ -42,7 +43,6 @@ import { initGroupContext, refreshGroupContext } from './groupContext.js';
 import { isKnownView, VIEW_REGISTRY } from './viewRegistry.js';
 import { navGroupForView, sectionKeyForView } from './sectionNav.js';
 import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
-import { escapeHtml } from './format.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -141,34 +141,51 @@ function invalidateEventScopedCaches() {
   state.lastMatchmaking = null;
 }
 
+// The topbar workspace switcher is the same searchable dropdown as every
+// other event picker (and as the game pickers in Match): title plus the state
+// as an icon, visible collapsed and on every row of the open list. It is
+// rebuilt rather than patched because the option set itself changes when an
+// event starts, ends or is left.
 function renderEventContextSwitcher() {
   const container = document.getElementById('event-context');
-  const select = document.getElementById('event-context-switcher');
-  const statusEl = document.getElementById('event-context-status');
-  if (!container || !select) return;
+  if (!container) return;
   const events = selectableEventWorkspaces();
-  select.innerHTML = events
-    .map((event) => `<option value="${escapeHtml(event.id)}">${escapeHtml(eventSwitcherLabel(event))}</option>`)
-    .join('');
-  select.value = state.activeEvent?.id ?? '';
   container.hidden = events.length === 0;
-
-  // The icon repeats the active event's state at a glance; the option text
-  // above already carries it in words, and the select's accessible name spells
-  // it out too, so the colour never has to be read on its own.
-  const active = events.find((event) => event.id === state.activeEvent?.id) ?? state.activeEvent;
-  const status = eventStatus(active);
-  if (statusEl) {
-    statusEl.innerHTML = icon(status.icon);
-    statusEl.dataset.eventStatus = status.key;
+  if (events.length === 0) {
+    container.innerHTML = '';
+    return;
   }
-  // Keep the visible option concise. The state remains in the accessible
-  // description because the visual icon is intentionally aria-hidden.
+
+  const active = events.find((event) => event.id === state.activeEvent?.id) ?? state.activeEvent;
+  const options = eventSelectOptions(events);
+  const activeId = active?.id ?? '';
+  // The state stays in words too: the icon carries the German label, and the
+  // wrapper describes the whole control, so colour is never the only cue. The
+  // base workspace is the one case where name and state are the same word
+  // ("Allgemein"), so it is not repeated back as "Allgemein – Allgemein".
+  const activeName = eventSwitcherLabel(active);
+  const activeState = eventStatus(active).label;
   const description = active
-    ? `Aktives Event: ${eventSwitcherLabel(active)} – ${status.label}`
+    ? `Aktives Event: ${activeName}${activeState === activeName ? '' : ` – ${activeState}`}`
     : 'Aktives Event';
-  select.setAttribute('aria-label', description);
+  container.innerHTML = searchSelectHtml('event-context-switcher', options, activeId, {
+    placeholder: 'Event suchen…',
+    ariaLabel: description,
+    label: 'Auswählbare Events',
+  });
   container.title = description;
+
+  wireSearchSelect(container, 'event-context-switcher', options, {
+    emptyText: 'Kein passendes Event gefunden.',
+    onChange: async (eventId) => {
+      try {
+        await activateEvent(eventId);
+      } catch (error) {
+        renderEventContextSwitcher();
+        showToast(error.message, { error: true });
+      }
+    },
+  });
 }
 
 async function activateEvent(eventId, { navigate } = {}) {
@@ -207,19 +224,10 @@ async function followEventDeepLink(eventId, view) {
   }
 }
 
+// Selecting a workspace is wired in renderEventContextSwitcher, because that
+// function owns the switcher's DOM and replaces it on every refresh. Only the
+// deep-link listener belongs here: it outlives any single render.
 function wireEventContextSwitcher() {
-  const select = document.getElementById('event-context-switcher');
-  select?.addEventListener('change', async () => {
-    select.disabled = true;
-    try {
-      await activateEvent(select.value);
-    } catch (error) {
-      renderEventContextSwitcher();
-      showToast(error.message, { error: true });
-    } finally {
-      select.disabled = false;
-    }
-  });
   window.addEventListener('respawn:event-navigate', (event) => {
     const { eventId, view } = event.detail ?? {};
     void followEventDeepLink(eventId, view);

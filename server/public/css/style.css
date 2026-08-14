@@ -601,54 +601,41 @@ textarea {
   .event-context {
     max-width: 164px;
   }
-  .event-context-switcher {
-    padding-left: 34px; /* design-token-ok: tighter status inset for the crowded phone topbar */
+  /* The phone topbar has no room for the chevron's full tap-target inset next
+     to the status icon; the toggle stays tappable via the field itself. */
+  .event-context .search-select-control > input {
+    padding-right: var(--space-6);
   }
-  .event-context-status {
-    left: var(--space-2);
+  /* The switcher only gets ~120px between the logo and the icon buttons, which
+     would truncate every LAN name in its own popup. The topbar is sticky at
+     the top, so the list anchors to the viewport under it instead of to the
+     control — full width, and it cannot spill past either edge the way a
+     control-anchored min-width did. */
+  .event-context .search-select-list {
+    position: fixed;
+    top: calc(var(--topbar-height) + env(safe-area-inset-top) + var(--space-1));
+    right: var(--space-3);
+    left: var(--space-3);
   }
 }
 
-/* Workspace switcher. Deliberately *not* its own control shape: it inherits
-   the shared select treatment (radius, border, background, focus ring, custom
-   chevron) so it reads as the same kind of dropdown as every other one in the
-   app. The wrapper exists only to seat the status icon inside the field's own
-   left padding, which is why the select carries the extra left inset. */
+/* Workspace switcher. Deliberately *not* its own control shape: it is the
+   shared `.search-select` every other event and game dropdown uses, so it
+   reads as the same kind of dropdown as the rest of the app. This wrapper
+   only bounds its width inside the crowded topbar; the status icon, listbox
+   and colours all come from the shared component. */
 .event-context {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
+  display: block;
+  width: 100%;
   max-width: 300px;
 }
 .event-context[hidden] {
   display: none;
 }
-.event-context-status {
-  position: absolute;
-  left: var(--space-3);
-  display: inline-flex;
-  align-items: center;
-  line-height: var(--line-height-tight);
-  color: var(--text-muted);
-  pointer-events: none;
-}
-.event-context-status .ui-icon {
-  flex: 0 0 auto;
-}
-/* The state is never colour alone: the select's own option text spells it
-   out, and the wrapper carries a German title/description for the icon. */
-.event-context-status[data-event-status='tracking'] {
-  color: var(--state-playing);
-}
-.event-context-status[data-event-status='ended'] {
-  color: var(--state-offline);
-}
-.event-context-status[data-event-status='base'] {
-  color: var(--accent);
-}
-.event-context-switcher {
-  padding-left: 38px; /* design-token-ok: clears the status icon, mirrors the chevron's own 38px right inset */
-  text-overflow: ellipsis;
+/* The topbar sits above the page content, so the switcher's popup has to as
+   well — otherwise the open list slides behind the first card. */
+.event-context .search-select-list {
+  z-index: 40;
 }
 
 /* ---------- Battleship ---------- */
@@ -1130,7 +1117,9 @@ select {
   box-shadow: var(--shadow);
 }
 .search-select-option {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   width: 100%;
   min-height: var(--tap-target-size);
   padding: var(--space-2) var(--space-3);
@@ -1141,6 +1130,52 @@ select {
   font-size: var(--font-size-md);
   text-align: left;
   cursor: pointer;
+}
+.search-select-option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Status icon for the event dropdowns. It sits inside the field's own left
+   padding when collapsed — the same seating the topbar switcher already used
+   — and repeats on every row of the open list, so the state is readable while
+   choosing instead of only afterwards. Never colour alone: each icon carries
+   the German state as its accessible name and native title. */
+.search-select-value-icon {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--space-3);
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.search-select.has-status-icon .search-select-control > input {
+  padding-left: 38px; /* design-token-ok: clears the status icon, mirrors the chevron's own 38px inset */
+}
+.search-select-status,
+.search-select-option-icon {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  line-height: var(--line-height-tight);
+  color: var(--text-muted);
+}
+.search-select-status[data-event-status='tracking'],
+.search-select-option-icon[data-event-status='tracking'] {
+  color: var(--state-playing);
+}
+.search-select-status[data-event-status='ended'],
+.search-select-option-icon[data-event-status='ended'] {
+  color: var(--state-offline);
+}
+.search-select-status[data-event-status='base'],
+.search-select-option-icon[data-event-status='base'] {
+  color: var(--accent);
 }
 .search-select-option[aria-selected='true'] {
   background: var(--accent-bg);

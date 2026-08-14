@@ -9,6 +9,9 @@ import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { accessibleEvents } from '../state.js';
+import { eventSelectOption } from '../eventStatus.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 
 let cache = null;
 let loading = false;
@@ -102,6 +105,20 @@ function renderEvent(e) {
   `;
 }
 
+// The Hall-of-Fame payload carries results, not lifecycle flags, so the state
+// comes from the shared event list this account can see. An event that list
+// no longer holds still gets an option — it has results to show — just
+// without a state claim the payload cannot back.
+function eventPickerOptions(events) {
+  const byId = new Map(accessibleEvents().map((event) => [event.id, event]));
+  return events.map((summary) => {
+    const known = byId.get(summary.eventId);
+    return known
+      ? { ...eventSelectOption(known), value: summary.eventId }
+      : { value: summary.eventId, label: summary.eventName };
+  });
+}
+
 export function renderHallOfFame(container, ctx) {
   if (cache === null && !loading) load(ctx);
   const events = cache?.events ?? [];
@@ -127,9 +144,11 @@ export function renderHallOfFame(container, ctx) {
           ${
             events.length === 0
               ? emptyStateHtml('Noch keine Events.', { icon: icon(domainIcon('hallOfFame')) })
-              : `<select id="hall-event-select" aria-label="LAN">
-                   ${events.map((event) => `<option value="${event.eventId}" ${event.eventId === selectedEventId ? 'selected' : ''}>${escapeHtml(event.eventName)}</option>`).join('')}
-                 </select>
+              : `${searchSelectHtml('hall-event-select', eventPickerOptions(events), selectedEventId, {
+                  placeholder: 'LAN suchen…',
+                  ariaLabel: 'LAN',
+                  label: 'LANs mit Ergebnissen',
+                })}
                  <div class="card hall-of-fame-selected-event">${renderEvent(selectedEvent)}</div>`
           }
         </section>
@@ -138,8 +157,11 @@ export function renderHallOfFame(container, ctx) {
     }
   `;
 
-  container.querySelector('#hall-event-select')?.addEventListener('change', (event) => {
-    selectedEventId = event.currentTarget.value;
-    ctx.rerender();
+  wireSearchSelect(container, 'hall-event-select', eventPickerOptions(events), {
+    emptyText: 'Kein passendes LAN gefunden.',
+    onChange: (eventId) => {
+      selectedEventId = eventId;
+      ctx.rerender();
+    },
   });
 }
