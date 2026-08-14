@@ -37,9 +37,10 @@ The pipeline reports state and has narrow provider actions for both regular cros
   Claude implementer — a Codex self-review still runs through the detached Codex `/review` route
   described in `review-session-prompt.md`, which this workflow does not touch.
 - `scripts/agent-pipeline-codex-adapter.mjs` exposes the trusted GitHub outbox to the single
-  persistent Codex heartbeat monitor. It emits undelivered review choices, completed reviews and
-  provider-start failures only for Codex implementations, maps them to an explicit
-  `codex-thread-id` or a unique matching head branch, and records a durable GitHub acknowledgement
+  persistent Codex heartbeat monitor. It emits undelivered review choices, positively observed
+  review starts, completed reviews, provider-start failures, failing current-head CI attempts and
+  failed post-merge `main` CI/CD runs only for Codex implementations. It maps them to an explicit
+  `codex-thread-id` or a unique matching head branch and records a durable GitHub acknowledgement
   only after the task message was sent successfully. Claude implementations have no Codex target:
   their GitHub comments remain the documented outbox until a real Claude-session connector exists.
 - `.github/workflows/agent-pipeline-tests.yml` runs the pipeline and provider-adapter unit tests.
@@ -53,17 +54,24 @@ The pipeline reports state and has narrow provider actions for both regular cros
   only long enough to render an inert diff, then removes the checkout before the provider secret is
   exposed. Claude receives the diff but no PR-owned `CLAUDE.md`, `AGENTS.md` or `.claude` settings;
   no pull-request code, tests, hooks or package-manager commands are executed.
-- The provider adapters have no automatic retry, round counter, approval or merge. The Codex task
-  delivery adapter wakes only the Codex implementation task with completed findings and tells it to
-  run the normal fix/re-review procedure; the pipeline still has no independent fix worker. A
-  trusted terminal start failure is reconciled back to the user's review choice, where the user may
-  select the same provider again. The merge-gate status is active as a required check on `main`.
+- The provider adapters have no automatic provider retry, independent fix worker, approval or
+  merge. The Codex task delivery adapter wakes the original Codex implementation task for review
+  findings and every distinct failing CI attempt and tells that task to run the normal bounded
+  fix/re-review procedure automatically. A failed post-merge `main` run returns to the same task
+  with the rule that a code fix starts on a new branch and pull request. A trusted terminal review-
+  start failure is reconciled back to the user's review choice, where the user may select the same
+  provider again. The merge-gate status is active as a required check on `main`.
 
 The local automation `agent-pipeline-codex-zustellung` is a five-minute heartbeat bound to exactly
 one dedicated monitor task. Empty scans use `failed_runs_only` and produce no notification. The
 monitor never changes `review:*` labels and acknowledges an event only after the thread send
-returns successfully. A second scheduled run is still required as an operational acceptance check
-after this configuration change; no new sidebar task is expected from either run.
+returns successfully. Review-start events tell the implementation task to report that the selected
+provider is actually queued/running and to keep following it; a workflow trigger alone is no longer
+presented as proof. CI and CI/CD failure events tell the task to inform the user immediately,
+inspect the linked jobs, automatically fix reproducible failures or safely retry proven transient
+failures, and escalate only at the documented safety boundaries. A second scheduled run is still
+required as an operational acceptance check after this configuration change; no new sidebar task
+is expected from either run.
 
 ## Readiness reconciler
 
@@ -140,6 +148,32 @@ after the send succeeds. The acknowledgement marker
 `agent-pipeline:codex-delivery <event-id> thread=<thread-id>` deduplicates later runs across
 machines. Unresolved mappings and failed sends remain unacknowledged and are retried; the monitor
 never sets a `review:*` label itself.
+
+The scan treats GitHub's own head-bound state as the source of truth:
+
+- the reviewer provider's own check from `reviewCheckNames` emits `review-started` while it is
+  queued, running or successfully accepted; a completed result or explicit trusted start-failure
+  supersedes it,
+- the newest check run per name is evaluated exactly like the reconciler. Every distinct failing
+  attempt emits `ci-failed`, while the pipeline's own reconcile/review checks remain excluded
+  through `selfCheckNames`. The prompt quotes this pull request's contracted `max-ci-fix-rounds`
+  as the bound for automatic fixing, so no limit is invented that the pipeline does not have,
+- completed failed runs of `deploymentWorkflowFile` on the base branch are mapped through their
+  merge commit to the originating pull request. Only the unresolved failure streak newer than the
+  latest successful completed base-branch run is active, so first rollout cannot replay obsolete
+  incidents. The newest active failed run per pull request emits `ci-cd-failed` even though that
+  pull request is already closed; its failed jobs and run link travel with the event.
+
+That recovery boundary must be observed, not assumed. Completed runs are read newest first and the
+scan pages on until a successful run appears, so a page consisting only of failures cannot hide it.
+If no success is reachable within the paging cap, the window is treated as truncated history and no
+`ci-cd-failed` event is emitted at all — an unbounded red history wakes nobody instead of waking
+every task in it.
+
+The acknowledgement remains a pull-request comment, including after merge. A rerun creates new
+GitHub check/run ids and therefore a new event id; an unchanged failed attempt does not repeatedly
+wake the task. If a newer attempt exists, an older attempt for the same head or merged pull request
+is not replayed after the newer one has been acknowledged.
 
 This boundary is provider-specific. The Codex desktop tools expose no reliable wake-up interface
 for an original Claude session, so the adapter emits no Codex delivery event for a Claude
