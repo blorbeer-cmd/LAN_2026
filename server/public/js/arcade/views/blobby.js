@@ -5,7 +5,7 @@ import { avatarHtml, escapeHtml } from '../../format.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../../modal.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyModeSpacerHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
@@ -32,7 +32,8 @@ const avatarImages = new Map();
 const courtBackground = new Image();
 courtBackground.src = '/img/blobby-beach-court.png';
 let targetScore = 7;
-let lobbyMode = 'duel';
+let lobbyMode = 'doubles';
+let vsBot = false;
 
 const myId = () => getMyId();
 const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
@@ -49,7 +50,12 @@ export function blobbyLobbies() { return lobbies; }
 export function ensureBlobbySocket() {
   if (socket) return socket;
   socket = connectSocket();
-  socket.on('blobby:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; if (!match && currentView() === 'arcade') rerender(); });
+  socket.on('blobby:lobbies', (payload) => {
+    lobbies = payload?.lobbies ?? [];
+    const joinedLobby = myBlobbyLobby();
+    if (joinedLobby?.mode === 'duel' || joinedLobby?.mode === 'doubles') lobbyMode = joinedLobby.mode;
+    if (!match && currentView() === 'arcade') rerender();
+  });
   socket.on('blobby:match:start', (payload) => {
     match = { ...payload, ended: false, winner: null };
     previous = latest = null;
@@ -215,14 +221,21 @@ export function renderBlobbyLobbyCard() {
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
     <div class="arcade-lobby-create-actions">
       <div class="arcade-lobby-create-row">
-        ${!lobby ? arcadeLobbyModeButtonsHtml('blobby-mode', 'Blobby-Spielmodus', [
+        ${arcadeLobbyModeButtonsHtml('blobby-mode', 'Blobby-Spielmodus', [
           { value: 'duel', label: 'Duell' },
           { value: 'doubles', label: 'Doppel' },
-        ], lobbyMode) : ''}
-        <button type="button" class="btn btn-primary btn-sm" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
-        ${createReason ? infoTooltipHtml('blobby-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+        ], lobbyMode, Boolean(lobby || match))}
+        <span class="row" style="gap:var(--space-1);">
+          <button type="button" class="btn btn-primary btn-sm" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+          ${createReason ? infoTooltipHtml('blobby-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+        </span>
+        ${currentPlayerMayUseArcadeAi()
+          ? arcadeLobbyModeButtonsHtml('blobby-ai-mode', 'Gegen KI spielen', [
+              { value: 'human', label: 'Mensch' },
+              { value: 'bot', label: 'KI' },
+            ], vsBot ? 'bot' : 'human', Boolean(lobby || match || noMe))
+          : arcadeLobbyModeSpacerHtml(2)}
       </div>
-      ${currentPlayerMayUseArcadeAi() ? `<div class="arcade-lobby-ai-row"><button type="button" class="btn btn-sm" id="blobby-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button></div>` : ''}
     </div>
     ${lobbyList()}
   </div>`;
@@ -239,15 +252,14 @@ export function wireBlobbyLobbyCard(container, { beforeCreate, beforeJoin } = {}
     lobbyMode = button.dataset.arcadeMode === 'doubles' ? 'doubles' : 'duel';
     rerender();
   }));
+  container.querySelectorAll('#blobby-ai-mode [data-arcade-mode]').forEach((button) => button.addEventListener('click', () => {
+    vsBot = button.dataset.arcadeMode === 'bot';
+    rerender();
+  }));
   container.querySelector('#blobby-create')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
-    const res = await emitAck('blobby:lobby:create', { playerId: myId(), mode: lobbyMode });
-    if (!res?.ok) showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
-  });
-  container.querySelector('#blobby-bot')?.addEventListener('click', async () => {
-    if (beforeCreate && !(await beforeCreate())) return;
-    const res = await emitAck('blobby:lobby:bot', { playerId: myId(), mode: lobbyMode });
-    if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
+    const res = await emitAck(vsBot ? 'blobby:lobby:bot' : 'blobby:lobby:create', { playerId: myId(), mode: lobbyMode });
+    if (!res?.ok) showToast(res?.error || (vsBot ? 'KI-Lobby konnte nicht erstellt werden.' : 'Lobby konnte nicht erstellt werden.'), { error: true });
   });
   container.querySelectorAll('[data-blobby-join]').forEach((b) => b.addEventListener('click', async () => {
     if (beforeJoin && !(await beforeJoin())) return;

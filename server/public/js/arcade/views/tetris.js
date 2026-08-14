@@ -20,7 +20,7 @@ import { getMyId } from '../../whoami.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../../modal.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyModeSpacerHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
@@ -54,6 +54,7 @@ let prevLines = {}; // playerId -> last seen line count, to detect fresh clears 
 let prevLevels = {}; // playerId -> last seen level, to detect level-ups for the level-up cue
 let inputBound = false;
 let lobbyMode = 'duel';
+let vsBot = false;
 
 function myId() {
   return getMyId();
@@ -99,6 +100,8 @@ export function ensureTetrisSocket() {
 
   socket.on('tetris:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
+    const joinedLobby = myTetrisLobby();
+    if (joinedLobby?.mode === 'duel' || joinedLobby?.mode === 'arena') lobbyMode = joinedLobby.mode;
     // Only refresh the lobby UI while no match is running — never interrupt a
     // live match's canvases with a full rebuild.
     if (!match && currentView() === 'arcade') rerender();
@@ -481,16 +484,21 @@ export function renderTetrisLobbyCard() {
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
       <div class="arcade-lobby-create-actions">
         <div class="arcade-lobby-create-row">
-          ${!lobby ? arcadeLobbyModeButtonsHtml('tetris-mode', 'Tetris-Spielmodus', [
+          ${arcadeLobbyModeButtonsHtml('tetris-mode', 'Tetris-Spielmodus', [
             { value: 'duel', label: 'Duell' },
             { value: 'arena', label: 'Arena' },
-          ], lobbyMode) : ''}
-          <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${match || lobby || noMe ? 'disabled' : ''}>Lobby öffnen</button>
-          ${createReason ? infoTooltipHtml('tetris-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+          ], lobbyMode, Boolean(lobby || match))}
+          <span class="row" style="gap:var(--space-1);">
+            <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${match || lobby || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+            ${createReason ? infoTooltipHtml('tetris-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+          </span>
+          ${currentPlayerMayUseArcadeAi()
+            ? arcadeLobbyModeButtonsHtml('tetris-ai-mode', 'Gegen KI spielen', [
+                { value: 'human', label: 'Mensch' },
+                { value: 'bot', label: 'KI' },
+              ], vsBot ? 'bot' : 'human', Boolean(lobby || match || noMe))
+            : arcadeLobbyModeSpacerHtml(2)}
         </div>
-        ${currentPlayerMayUseArcadeAi() ? `<div class="arcade-lobby-ai-row">
-          <button type="button" class="btn btn-sm" id="tetris-bot" ${match || lobby || noMe ? 'disabled' : ''}>Gegen KI</button>
-        </div>` : ''}
       </div>
       ${renderLobbyList()}
     </div>`;
@@ -507,18 +515,17 @@ export function wireTetrisLobbyCard(container, { beforeCreate, beforeJoin } = {}
     lobbyMode = button.dataset.arcadeMode === 'arena' ? 'arena' : 'duel';
     rerender();
   }));
-  container.querySelector('#tetris-bot')?.addEventListener('click', async () => {
-    if (beforeCreate && !(await beforeCreate())) return;
-    const res = await emitWithAck('tetris:lobby:bot', { playerId: myId(), mode: lobbyMode });
-    if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
-  });
+  container.querySelectorAll('#tetris-ai-mode [data-arcade-mode]').forEach((button) => button.addEventListener('click', () => {
+    vsBot = button.dataset.arcadeMode === 'bot';
+    rerender();
+  }));
   container.querySelector('#tetris-create')?.addEventListener('click', async () => {
     const playerId = myId();
     if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
     if (beforeCreate && !(await beforeCreate())) return;
-    const res = await emitWithAck('tetris:lobby:create', { playerId, mode: lobbyMode });
-    if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
-    showToast('Tetris-Lobby geöffnet.');
+    const res = await emitWithAck(vsBot ? 'tetris:lobby:bot' : 'tetris:lobby:create', { playerId, mode: lobbyMode });
+    if (!res?.ok) return showToast(res?.error || (vsBot ? 'KI-Lobby konnte nicht erstellt werden.' : 'Lobby konnte nicht erstellt werden.'), { error: true });
+    if (!vsBot) showToast('Tetris-Lobby geöffnet.');
   });
 
   container.querySelectorAll('[data-tetris-join]').forEach((btn) => {

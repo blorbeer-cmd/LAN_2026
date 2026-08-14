@@ -55,6 +55,17 @@ export function arcadeLobbyModeButtonsHtml(id, ariaLabel, options, selected, dis
   return `<div id="${escapeHtml(id)}" class="arcade-mode-toggle" role="group" aria-label="${escapeHtml(ariaLabel)}">${buttonHtml}</div>`;
 }
 
+// An invisible mirror of the mode toggle, placed on the opposite end of the
+// create row so "Lobby öffnen" is trimmed by the same amount on both sides —
+// the button then centers inside a symmetric remaining width, landing its
+// label back on the card's true center instead of the toggle's own.
+export function arcadeLobbyModeSpacerHtml(optionCount) {
+  // The non-breaking space gives each empty segment the same text line box
+  // (and so the same height) as a real, label-carrying toggle segment.
+  const buttonHtml = '<span class="arcade-mode-toggle-btn">&nbsp;</span>'.repeat(optionCount);
+  return `<div class="arcade-mode-toggle arcade-lobby-mode-spacer" aria-hidden="true">${buttonHtml}</div>`;
+}
+
 // Toggle button for the current player (guests only — the host has no ready
 // state to manage). `dataAttr` keeps each game's buttons in its own namespace,
 // e.g. 'quiz-ready' -> data-quiz-ready="<lobbyId>".
