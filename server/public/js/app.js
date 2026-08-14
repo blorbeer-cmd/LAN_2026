@@ -149,6 +149,16 @@ function invalidateEventScopedCaches() {
 function renderEventContextSwitcher() {
   const container = document.getElementById('event-context');
   if (!container) return;
+  // renderEventContextSwitcher() is called from 30+ unrelated ctx.refresh()
+  // sites and from the event-context:changed socket push, none of which know
+  // whether a reader currently has this control open and mid-search. Rebuilding
+  // unconditionally would close the list and discard whatever they typed, which
+  // a native <select> never did. Skip the rebuild while it's open and focused —
+  // the option set (and the active-event highlight) simply catches up on the
+  // next render once the reader closes it again.
+  const openSearch = container.querySelector('#event-context-switcher-search');
+  const openList = container.querySelector('#event-context-switcher-list');
+  if (openList && !openList.hidden && document.activeElement === openSearch) return;
   const events = selectableEventWorkspaces();
   container.hidden = events.length === 0;
   if (events.length === 0) {
@@ -178,29 +188,58 @@ function renderEventContextSwitcher() {
   wireSearchSelect(container, 'event-context-switcher', options, {
     emptyText: 'Kein passendes Event gefunden.',
     onChange: async (eventId) => {
+      // Mirrors the disabled state the previous native <select> got for free
+      // while its change handler awaited the switch: without it, a second
+      // pick before the first request resolves fired a second overlapping
+      // activateEvent() with no guarantee the visibly-last choice also wins
+      // the race, plus an avoidable duplicate round trip. Both elements are
+      // re-created by the renderEventContextSwitcher() call at the end of
+      // activateEvent() (success or error), so nothing needs to re-enable
+      // these exact nodes explicitly.
+      const search = container.querySelector('#event-context-switcher-search');
+      const toggle = container.querySelector('.search-select-toggle');
+      if (search) search.disabled = true;
+      if (toggle) toggle.disabled = true;
       try {
         await activateEvent(eventId);
       } catch (error) {
         renderEventContextSwitcher();
         showToast(error.message, { error: true });
+      } finally {
+        if (search) search.disabled = false;
+        if (toggle) toggle.disabled = false;
       }
     },
   });
 }
 
+// Every caller (the switcher above and followEventDeepLink) funnels through
+// this single queue, so two switches — however they were triggered — always
+// finish in the order they were requested instead of racing on network
+// timing. Without it, whichever request happened to complete last won,
+// independent of which one the reader actually picked last.
+let activateEventQueue = Promise.resolve();
+
 async function activateEvent(eventId, { navigate } = {}) {
-  // A missing eventId is not an error: a notification stored before this
-  // release carries no event, and its destination is still the thing the
-  // reader tapped. Skip the switch, keep the navigation.
-  if (eventId && state.activeEvent?.id !== eventId) {
-    await api.events.activate(eventId);
-    invalidateEventScopedCaches();
-    await loadAll();
-    renderEventContextSwitcher();
-    await refreshNotificationBanner();
-    renderCurrent();
-  }
-  if (navigate && isKnownView(navigate)) switchView(navigate);
+  const run = async () => {
+    // A missing eventId is not an error: a notification stored before this
+    // release carries no event, and its destination is still the thing the
+    // reader tapped. Skip the switch, keep the navigation.
+    if (eventId && state.activeEvent?.id !== eventId) {
+      await api.events.activate(eventId);
+      invalidateEventScopedCaches();
+      await loadAll();
+      renderEventContextSwitcher();
+      await refreshNotificationBanner();
+      renderCurrent();
+    }
+    if (navigate && isKnownView(navigate)) switchView(navigate);
+  };
+  const queued = activateEventQueue.then(run, run);
+  // A failure must not wedge every switch queued after it — only the caller
+  // that triggered it should see the rejection.
+  activateEventQueue = queued.catch(() => {});
+  return queued;
 }
 
 // The one entry point for "a notification wants me somewhere". Its event may

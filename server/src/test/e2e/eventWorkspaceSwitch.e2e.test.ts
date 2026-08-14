@@ -290,3 +290,54 @@ test('the workspace switcher keeps event names concise and shows state through i
   );
   assert.equal(overflows, false, 'the topbar control must not create horizontal page scrolling');
 });
+
+test('the switcher disables itself while a workspace switch is in flight', async () => {
+  await switchWorkspaceInBrowser(eventB);
+  await page.click('#event-context .search-select-toggle');
+  await page.click(`#event-context-switcher-list [data-search-select-value="${eventA}"]`);
+  // The switch itself (activateEvent -> api.events.activate + loadAll) is
+  // still in progress right after the click resolves; the control has to be
+  // disabled for that window, the same way the previous native <select> was,
+  // so a second pick cannot start a second overlapping switch and race the
+  // one already in flight.
+  await page.waitForSelector('#event-context-switcher-search:disabled', { timeout: 1_000 });
+  await page.waitForSelector('#event-context .search-select-toggle:disabled', { timeout: 1_000 });
+  // It re-enables again once the switch (and the render it triggers) settles.
+  await page.waitForFunction(
+    (id) => (document.getElementById('event-context-switcher') as HTMLInputElement | null)?.value === id,
+    eventA,
+    { timeout: 5_000 },
+  );
+  await page.waitForSelector('#event-context-switcher-search:not([disabled])');
+  await page.waitForSelector('#event-context .search-select-toggle:not([disabled])');
+});
+
+test('an open, actively-searched switcher survives an unrelated background refresh', async () => {
+  await switchWorkspaceInBrowser(eventA);
+  await page.click('#event-context .search-select-toggle');
+  await page.fill('#event-context-switcher-search', 'E2E Work');
+  await page.waitForSelector('#event-context-switcher-list:not([hidden])');
+
+  // events:changed (fired by creating an event) reaches every open client of
+  // the group and drives one of the 30+ unrelated ctx.refresh() call sites
+  // that rebuild this same switcher — exactly the kind of refresh that used
+  // to blow away in-progress typing.
+  const created = await api('/api/events', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Background Refresh Probe', startsAt: Date.now(), endsAt: Date.now() + 3_600_000 }),
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  await page.waitForTimeout(1_000);
+
+  assert.equal(
+    await page.$eval('#event-context-switcher-search', (el) => (el as HTMLInputElement).value),
+    'E2E Work',
+    'the typed search term must survive the unrelated refresh while the switcher is open',
+  );
+  assert.equal(
+    await page.$eval('#event-context-switcher-list', (el) => (el as HTMLElement).hidden),
+    false,
+    'the open list must stay open across the unrelated refresh',
+  );
+  await page.keyboard.press('Escape');
+});

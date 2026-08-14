@@ -1102,6 +1102,14 @@ select {
 .search-select.is-open .search-select-toggle .ui-icon {
   transform: rotate(180deg);
 }
+/* Busy state while a selection triggers an in-flight request (e.g. the
+   topbar workspace switcher awaiting its activate call) — same treatment as
+   .btn:disabled so it reads as the same kind of "wait" state app-wide. */
+.search-select-control > input:disabled,
+.search-select-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .search-select-list {
   position: absolute;
   z-index: 20;
