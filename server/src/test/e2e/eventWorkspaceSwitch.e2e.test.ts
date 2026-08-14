@@ -295,13 +295,19 @@ test('the switcher disables itself while a workspace switch is in flight', async
   await switchWorkspaceInBrowser(eventB);
   await page.click('#event-context .search-select-toggle');
   await page.click(`#event-context-switcher-list [data-search-select-value="${eventA}"]`);
-  // The switch itself (activateEvent -> api.events.activate + loadAll) is
-  // still in progress right after the click resolves; the control has to be
-  // disabled for that window, the same way the previous native <select> was,
-  // so a second pick cannot start a second overlapping switch and race the
-  // one already in flight.
-  await page.waitForSelector('#event-context-switcher-search:disabled', { timeout: 1_000 });
-  await page.waitForSelector('#event-context .search-select-toggle:disabled', { timeout: 1_000 });
+  // The onChange handler disables both elements synchronously, before its
+  // first await — so by the time the click above has resolved, the disabled
+  // state is already in the DOM. Reading both in one evaluate() call (a
+  // single browser round trip) instead of two sequential waitForSelector
+  // polls avoids a race against an in-memory-DB switch that can complete
+  // (and re-enable the rebuilt control) between the two separate round
+  // trips a pair of waitForSelector calls would need.
+  const disabledDuringSwitch = await page.evaluate(() => ({
+    search: (document.getElementById('event-context-switcher-search') as HTMLInputElement | null)?.disabled,
+    toggle: (document.querySelector('#event-context .search-select-toggle') as HTMLButtonElement | null)?.disabled,
+  }));
+  assert.equal(disabledDuringSwitch.search, true, 'the search field must be disabled while the switch is in flight');
+  assert.equal(disabledDuringSwitch.toggle, true, 'the toggle button must be disabled while the switch is in flight');
   // It re-enables again once the switch (and the render it triggers) settles.
   await page.waitForFunction(
     (id) => (document.getElementById('event-context-switcher') as HTMLInputElement | null)?.value === id,
