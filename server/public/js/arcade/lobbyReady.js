@@ -87,15 +87,21 @@ export function wireArcadeOpponentToggle(container, id, select) {
   });
 }
 
-// The opponent choice is admin-gated, so it must not survive a switch to an
-// identity that may not use Arcade AI: the switch stops rendering while the
-// stored value stays 'bot', and "Lobby öffnen" would then emit a bot event
-// that the server rejects as admin-only. Each game registers its own reset
-// once, mirroring how challengeRush.js clears its hidden challenge selection.
-export function resetArcadeOpponentOnIdentityChange(reset) {
-  window.addEventListener('respawn:identity-changed', () => {
+// The opponent choice is admin-gated, so it must not outlive the privilege:
+// once the switch stops rendering while the stored value stays 'bot',
+// "Lobby öffnen" would emit a bot event that the server rejects as admin-only,
+// with no visible control left to undo it. Both routes that can take the
+// privilege away have to clear it — `currentPlayerMayUseArcadeAi()` reads
+// `isAdmin() && currentPlayerHasAdminRole()`, so leaving Admin mode
+// ('respawn:admin-changed') locks AI just as surely as switching to a
+// non-admin identity ('respawn:identity-changed'). Each game registers its own
+// reset once, mirroring how challengeRush.js clears its challenge selection.
+export function resetArcadeOpponentWhenAiUnavailable(reset) {
+  const clearWhenLocked = () => {
     if (!currentPlayerMayUseArcadeAi()) reset();
-  });
+  };
+  window.addEventListener('respawn:identity-changed', clearWhenLocked);
+  window.addEventListener('respawn:admin-changed', clearWhenLocked);
 }
 
 // Toggle button for the current player (guests only — the host has no ready

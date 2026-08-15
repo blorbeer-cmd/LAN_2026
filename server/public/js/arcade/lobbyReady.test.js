@@ -3,14 +3,14 @@ import test from 'node:test';
 
 // `currentPlayerMayUseArcadeAi()` reads the device-local admin flag, so the
 // opponent helpers below need a localStorage stand-in before lobbyReady.js is
-// imported. An empty store is the non-admin identity, which is exactly the
-// case resetArcadeOpponentOnIdentityChange has to clean up after.
+// imported. An empty store is the AI-locked state, which is exactly the case
+// resetArcadeOpponentWhenAiUnavailable has to clean up after.
 globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
 
 const {
   arcadeLobbyModeButtonsHtml,
   arcadeLobbyOpponentToggleHtml,
-  resetArcadeOpponentOnIdentityChange,
+  resetArcadeOpponentWhenAiUnavailable,
   wireArcadeOpponentToggle,
 } = await import('./lobbyReady.js');
 
@@ -94,20 +94,26 @@ test('wires each opponent segment to its own value', () => {
   assert.deepEqual(selected, ['bot', 'human']);
 });
 
-test('clears an admin-gated opponent selection when the identity may not use Arcade AI', () => {
-  const listeners = [];
-  const previousWindow = globalThis.window;
-  globalThis.window = { addEventListener: (type, cb) => listeners.push([type, cb]) };
-  try {
-    let opponent = 'bot';
-    resetArcadeOpponentOnIdentityChange(() => { opponent = 'human'; });
+// Both routes revoke the Arcade-AI privilege: `currentPlayerMayUseArcadeAi()`
+// is `isAdmin() && currentPlayerHasAdminRole()`, so leaving Admin mode locks it
+// just as surely as switching to a non-admin identity. Watching only the
+// identity event would leave the far easier admin-mode route broken.
+for (const event of ['respawn:identity-changed', 'respawn:admin-changed']) {
+  test(`clears a stale bot selection on ${event} once Arcade AI is unavailable`, () => {
+    const listeners = new Map();
+    const previousWindow = globalThis.window;
+    globalThis.window = { addEventListener: (type, cb) => listeners.set(type, cb) };
+    try {
+      let opponent = 'bot';
+      resetArcadeOpponentWhenAiUnavailable(() => { opponent = 'human'; });
 
-    assert.deepEqual(listeners.map(([type]) => type), ['respawn:identity-changed']);
-    // The stubbed store holds no admin flag, so the new identity may not use
-    // Arcade AI and the stale 'bot' selection must not survive the switch.
-    listeners[0][1]();
-    assert.equal(opponent, 'human');
-  } finally {
-    globalThis.window = previousWindow;
-  }
-});
+      assert.deepEqual([...listeners.keys()].sort(), ['respawn:admin-changed', 'respawn:identity-changed']);
+      // The stubbed store holds no admin flag, so Arcade AI is locked and the
+      // stale 'bot' selection must not survive.
+      listeners.get(event)();
+      assert.equal(opponent, 'human');
+    } finally {
+      globalThis.window = previousWindow;
+    }
+  });
+}

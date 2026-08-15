@@ -20,7 +20,7 @@ import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../../modal.js';
 import { connectSocket } from '../../socket.js';
 import { icon } from '../../icons.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentWhenAiUnavailable, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
@@ -611,7 +611,7 @@ function emitWithAck(event, payload) {
 
 export function ensureScribbleSocket() {
   if (socket) return socket;
-  resetArcadeOpponentOnIdentityChange(() => { scribbleOpponent = 'human'; });
+  resetArcadeOpponentWhenAiUnavailable(() => { scribbleOpponent = 'human'; });
   socket = connectSocket();
 
   socket.on('scribble:lobbies', (payload) => {
@@ -844,10 +844,8 @@ function renderLobbyList() {
         : '';
       const startReason = ready ? '' : 'Noch nicht genug Spieler (mind. 2).';
       const footerActions = isHost
-        ? `<span class="row" style="gap:var(--space-1);">
-            <button type="button" class="btn btn-sm btn-equal btn-primary" id="scribble-start" ${ready ? '' : 'disabled'}>Start</button>
+        ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="scribble-start" ${ready ? '' : 'disabled'}>Start</button>
             ${startReason ? infoTooltipHtml(`scribble-start-${l.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
-          </span>
           <button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-close="${l.id}">Schließen</button>`
         : joined
           ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-leave="${l.id}">Verlassen</button>

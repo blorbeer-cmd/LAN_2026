@@ -351,11 +351,22 @@
 }
 .arcade-lobby-entry-actions {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
 }
-.arcade-lobby-entry-actions .btn {
+/* Both footer actions split the row evenly, so a host's Start renders at the
+   same width as the destructive action beside it. What makes that work is the
+   markup: the optional reason tooltip is a direct sibling rather than a
+   wrapper around Start — nested in one, the wrapper claimed only its content
+   width while the lone sibling stretched, leaving the pair visibly uneven.
+   The share stays scoped to the footer's own actions so a button nested in
+   some future wrapper cannot silently claim one. */
+.arcade-lobby-entry-actions > .btn {
   flex: 1 1 0;
   min-width: 0;
+}
+.arcade-lobby-entry-actions > .info-tooltip {
+  flex: 0 0 auto;
 }
 @media (min-width: 640px) { /* --bp-md */
   .arcade-lobby-control-bar:has(.arcade-lobby-settings):has(.arcade-lobby-entry-actions) {
