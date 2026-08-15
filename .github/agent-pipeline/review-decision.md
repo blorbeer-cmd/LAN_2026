@@ -138,14 +138,21 @@ das Kontingent verbrauchen, das diese Frage schützen soll.
 
 ## Nach der Antwort
 
-1. Die interaktive Agenten-Session setzt das zugehörige Label selbst am Pull Request, sofort nach
-   der ausdrücklichen, zum aktuellen Head-SHA gehörenden Antwort und ohne
-   weitere Rückfrage. Der Nutzer muss dafür nicht auf GitHub wechseln. Genau ein Wahl-Label
-   gleichzeitig: ein zuvor gesetztes anderes wird dabei entfernt. Erst das Label bringt die Wahl
-   ins Merge-Gate und macht sie außerhalb der Session sichtbar. Falls die Codex-Zustellung sichtbar
-   fehlschlägt, kann der Nutzer alternativ genau eines der drei Labels direkt in GitHub setzen;
-   auch diese Handlung ist eine ausdrückliche Antwort. Eine Antwort auf den SHA einer älteren
-   Benachrichtigung darf nie auf den aktuellen Head übertragen werden.
+1. Bevor die interaktive Agenten-Session das Label setzt, prüft sie, dass der Sticky-Statuskommentar
+   des Reconcilers (Marker `agent-pipeline:review-decision <head-sha> ...`) bereits genau den
+   aktuellen Head-SHA nennt. Nur dieser vorherige Eintrag lässt den Reconciler das Label später
+   diesem Head zuordnen (siehe Punkt 6 und `README.md`, Abschnitt „Review-mode selection"). Nennt
+   der Statuskommentar noch einen älteren Head oder gar keinen — etwa weil die Prüfungen gerade erst
+   grün wurden und der Reconciler für diesen Head noch nicht gelaufen ist —, wartet die Session kurz
+   und prüft erneut, statt sofort zu setzen: Ein Label, das keinem vorherigen Eintrag folgt, wird vom
+   nächsten Reconciler-Lauf als unbelegt entfernt, und die Frage würde unnötig ein weiteres Mal
+   gestellt. Sobald der Eintrag für den aktuellen Head vorliegt, setzt die Session das zugehörige
+   Label selbst am Pull Request, ohne weitere Rückfrage. Der Nutzer muss dafür nicht auf GitHub
+   wechseln. Genau ein Wahl-Label gleichzeitig: ein zuvor gesetztes anderes wird dabei entfernt. Erst
+   das Label bringt die Wahl ins Merge-Gate und macht sie außerhalb der Session sichtbar. Falls die
+   Codex-Zustellung sichtbar fehlschlägt, kann der Nutzer alternativ genau eines der drei Labels
+   direkt in GitHub setzen; auch diese Handlung ist eine ausdrückliche Antwort. Eine Antwort auf den
+   SHA einer älteren Benachrichtigung darf nie auf den aktuellen Head übertragen werden.
 2. Bei a) und b) das Review nach
    [`review-session-prompt.md`](review-session-prompt.md) starten — `review_mode: cross`
    beziehungsweise `self`.
