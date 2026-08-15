@@ -5,7 +5,7 @@ import { showToast } from '../../toast.js';
 import { confirmDialog } from '../../modal.js';
 import { getMyId } from '../../whoami.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentWhenAiUnavailable, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { arcadeToolbarHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
@@ -60,7 +60,7 @@ export function hasBattleshipMatch() { return Boolean(match); }
 
 export function ensureBattleshipSocket() {
   if (socket) return socket;
-  resetArcadeOpponentOnIdentityChange(() => { battleshipOpponent = 'human'; });
+  resetArcadeOpponentWhenAiUnavailable(() => { battleshipOpponent = 'human'; });
   socket = connectSocket();
   socket.on('connect', () => {
     const returningAfterDisconnect = connectionState === 'offline';
@@ -410,7 +410,7 @@ function lobbyList() {
         ? 'Noch nicht genug Spieler (mind. 2).'
         : 'Nicht alle Mitspieler sind bereit.';
     const footerActions = isHost
-      ? `<span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-sm btn-equal btn-primary" data-battleship-start="${lobby.id}" ${startReady ? '' : 'disabled'}>Start</button>${startReason ? infoTooltipHtml(`battleship-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}</span><button type="button" class="btn btn-sm btn-equal btn-danger" data-battleship-close="${lobby.id}">Schließen</button>`
+      ? `<button type="button" class="btn btn-sm btn-equal btn-primary" data-battleship-start="${lobby.id}" ${startReady ? '' : 'disabled'}>Start</button>${startReason ? infoTooltipHtml(`battleship-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}<button type="button" class="btn btn-sm btn-equal btn-danger" data-battleship-close="${lobby.id}">Schließen</button>`
       : joined
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-battleship-leave="${lobby.id}">Verlassen</button>${readyToggleHtml(lobby, myId(), 'battleship-ready')}`
         : '';

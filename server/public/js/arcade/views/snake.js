@@ -6,7 +6,7 @@ import { confirmDialog } from '../../modal.js';
 import { getMyId } from '../../whoami.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentWhenAiUnavailable, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
@@ -38,7 +38,7 @@ export function snakeLobbies() { return lobbies; }
 
 export function ensureSnakeSocket() {
   if (socket) return socket;
-  resetArcadeOpponentOnIdentityChange(() => { snakeOpponent = 'human'; });
+  resetArcadeOpponentWhenAiUnavailable(() => { snakeOpponent = 'human'; });
   socket = connectSocket();
   socket.on('snake:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
@@ -110,10 +110,8 @@ function lobbyList() {
     const modeLabel = lobby.mode === 'arena' ? 'Arena' : 'Klassisch';
     const settingsHtml = `<span class="badge">${modeLabel} · ${lobby.players.length}/${playerLimit}</span>`;
     const footerActions = isHost
-      ? `<span class="row" style="gap:var(--space-1);">
-          <button type="button" class="btn btn-sm btn-equal btn-primary" id="snake-start" ${ready ? '' : 'disabled'}>Start</button>
+      ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="snake-start" ${ready ? '' : 'disabled'}>Start</button>
           ${startReason ? infoTooltipHtml(`snake-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
-        </span>
         <button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-close="${lobby.id}">Schließen</button>`
       : joined
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-snake-leave="${lobby.id}">Verlassen</button>

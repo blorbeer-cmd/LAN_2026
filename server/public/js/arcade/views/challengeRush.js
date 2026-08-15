@@ -2,7 +2,7 @@ import { escapeHtml } from '../../format.js';
 import { connectSocket } from '../../socket.js';
 import { getMyId } from '../../whoami.js';
 import { showToast } from '../../toast.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentWhenAiUnavailable, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeMuteControlHtml, wireArcadeMuteControl, playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
 import { cancelCountdown } from '../countdown.js';
@@ -230,7 +230,7 @@ function syncProgressFromServer(state) {
 
 export function ensureChallengeRushSocket() {
   if (socket) return socket;
-  resetArcadeOpponentOnIdentityChange(() => { challengeRushOpponent = 'human'; });
+  resetArcadeOpponentWhenAiUnavailable(() => { challengeRushOpponent = 'human'; });
   socket = connectSocket();
   socket.on('challenge-rush:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
@@ -346,9 +346,9 @@ export function renderChallengeRushLobbyCard() {
     const startReady = lobby.players.every((p) => p.ready || p.id === lobby.host.id);
     const startReason = startReady ? '' : 'Nicht alle Mitspieler sind bereit.';
     const footerActions = isHost
-      ? `<span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-sm btn-primary" data-cr-start="${lobby.id}" ${startReady ? '' : 'disabled'}>Start</button>${startReason ? infoTooltipHtml(`cr-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}</span><button type="button" class="btn btn-sm btn-danger" data-cr-leave="${lobby.id}">Schließen</button>`
+      ? `<button type="button" class="btn btn-sm btn-equal btn-primary" data-cr-start="${lobby.id}" ${startReady ? '' : 'disabled'}>Start</button>${startReason ? infoTooltipHtml(`cr-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}<button type="button" class="btn btn-sm btn-equal btn-danger" data-cr-leave="${lobby.id}">Schließen</button>`
       : joined
-        ? `<button type="button" class="btn btn-sm btn-danger" data-cr-leave="${lobby.id}">Verlassen</button>${readyToggleHtml(lobby, myId(), 'cr-ready')}`
+        ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-cr-leave="${lobby.id}">Verlassen</button>${readyToggleHtml(lobby, myId(), 'cr-ready')}`
         : '';
     const joinDisabled = lobby.players.length >= 15 || activeMatch;
     const selectedTitles = (lobby.challengeKeys ?? []).map((key) => challengeCatalog.find((challenge) => challenge.key === key)?.title ?? key);

@@ -721,8 +721,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   grid and row height. A host's game settings belong inside that lobby card; the compact
   „Punkte bis Sieg“ control shares the separated footer with „Start“ and „Schließen“ from `--bp-md`
   instead of forming a wide radio-button block. „Start“ precedes „Schließen“ in that footer so the
-  primary action reads first, ahead of the destructive one. Readiness is communicated in the player
-  rows without a duplicate status sentence. Tetris exposes a compact Duell/Arena selector before creation.
+  primary action reads first, ahead of the destructive one, and both split the footer evenly so they
+  render at the same width. A disabled „Start“ keeps its red reason tooltip as a direct sibling in
+  that footer rather than wrapping it together with the button: a wrapper claims only its content
+  width while the lone sibling stretches, which left the pair visibly uneven. Readiness is
+  communicated in the player rows without a duplicate status sentence. Tetris exposes a compact Duell/Arena selector before creation.
   „Lobby öffnen“ precedes the lobby cards at full width, so opening a new lobby never requires
   scrolling past every existing one first. The mode selector is a small bordered segmented switch
   (`.arcade-mode-toggle`) with a flat `--accent` fill on the active segment, deliberately distinct

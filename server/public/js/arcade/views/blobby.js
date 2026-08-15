@@ -5,7 +5,7 @@ import { avatarHtml, escapeHtml } from '../../format.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../../modal.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentWhenAiUnavailable, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
@@ -49,7 +49,7 @@ export function blobbyLobbies() { return lobbies; }
 
 export function ensureBlobbySocket() {
   if (socket) return socket;
-  resetArcadeOpponentOnIdentityChange(() => { blobbyOpponent = 'human'; });
+  resetArcadeOpponentWhenAiUnavailable(() => { blobbyOpponent = 'human'; });
   socket = connectSocket();
   socket.on('blobby:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; if (!match && currentView() === 'arcade') rerender(); });
   socket.on('blobby:match:start', (payload) => {
@@ -176,10 +176,8 @@ function lobbyList() {
         </label>`
       : '';
     const footerActions = isHost
-      ? `<span class="row" style="gap:var(--space-1);">
-          <button type="button" class="btn btn-sm btn-equal btn-primary" id="blobby-start" ${ready ? '' : 'disabled'}>Start</button>
+      ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="blobby-start" ${ready ? '' : 'disabled'}>Start</button>
           ${reason ? infoTooltipHtml(`blobby-start-${l.id}`, 'Start nicht möglich', reason, 'warning') : ''}
-        </span>
         <button type="button" class="btn btn-sm btn-equal btn-danger" data-blobby-close="${l.id}">Schließen</button>`
       : joined
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-blobby-leave="${l.id}">Verlassen</button>
