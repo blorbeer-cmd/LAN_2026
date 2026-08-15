@@ -20,7 +20,7 @@ import { getMyId } from '../../whoami.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../../modal.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
@@ -54,6 +54,7 @@ let prevLines = {}; // playerId -> last seen line count, to detect fresh clears 
 let prevLevels = {}; // playerId -> last seen level, to detect level-ups for the level-up cue
 let inputBound = false;
 let lobbyMode = 'duel';
+let tetrisOpponent = 'human';
 
 function myId() {
   return getMyId();
@@ -95,6 +96,7 @@ export function tetrisLobbies() {
 
 export function ensureTetrisSocket() {
   if (socket) return socket;
+  resetArcadeOpponentOnIdentityChange(() => { tetrisOpponent = 'human'; });
   socket = connectSocket();
 
   socket.on('tetris:lobbies', (payload) => {
@@ -476,21 +478,20 @@ export function renderTetrisLobbyCard() {
     : !noMe && lobby
       ? 'Du bist bereits in einer Lobby.'
       : '';
+  const mayUseAi = currentPlayerMayUseArcadeAi();
   return `
     <div class="card stack arcade-lobby-card">
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
       <div class="arcade-lobby-create-actions">
-        <div class="arcade-lobby-create-row">
+        <div class="arcade-lobby-create-row${lobby ? ' arcade-lobby-create-row--no-mode' : ''}${mayUseAi ? '' : ' arcade-lobby-create-row--no-opponent'}">
           ${!lobby ? arcadeLobbyModeButtonsHtml('tetris-mode', 'Tetris-Spielmodus', [
             { value: 'duel', label: 'Duell' },
             { value: 'arena', label: 'Arena' },
           ], lobbyMode) : ''}
           <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${match || lobby || noMe ? 'disabled' : ''}>Lobby öffnen</button>
           ${createReason ? infoTooltipHtml('tetris-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+          ${mayUseAi ? arcadeLobbyOpponentToggleHtml('tetris-opponent', tetrisOpponent, Boolean(match || lobby || noMe)) : ''}
         </div>
-        ${currentPlayerMayUseArcadeAi() ? `<div class="arcade-lobby-ai-row">
-          <button type="button" class="btn btn-sm" id="tetris-bot" ${match || lobby || noMe ? 'disabled' : ''}>Gegen KI</button>
-        </div>` : ''}
       </div>
       ${renderLobbyList()}
     </div>`;
@@ -507,15 +508,19 @@ export function wireTetrisLobbyCard(container, { beforeCreate, beforeJoin } = {}
     lobbyMode = button.dataset.arcadeMode === 'arena' ? 'arena' : 'duel';
     rerender();
   }));
-  container.querySelector('#tetris-bot')?.addEventListener('click', async () => {
-    if (beforeCreate && !(await beforeCreate())) return;
-    const res = await emitWithAck('tetris:lobby:bot', { playerId: myId(), mode: lobbyMode });
-    if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
+  wireArcadeOpponentToggle(container, 'tetris-opponent', (value) => {
+    tetrisOpponent = value;
+    rerender();
   });
   container.querySelector('#tetris-create')?.addEventListener('click', async () => {
     const playerId = myId();
     if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
     if (beforeCreate && !(await beforeCreate())) return;
+    if (tetrisOpponent === 'bot') {
+      const botRes = await emitWithAck('tetris:lobby:bot', { playerId, mode: lobbyMode });
+      if (!botRes?.ok) showToast(botRes?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
+      return;
+    }
     const res = await emitWithAck('tetris:lobby:create', { playerId, mode: lobbyMode });
     if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
     showToast('Tetris-Lobby geöffnet.');

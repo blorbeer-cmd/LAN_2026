@@ -1,5 +1,6 @@
 import { avatarHtml, escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
+import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 
 // Shared lobby UI for every arcade game: stable player rows, the lobby card
 // shell and the guest's own ready toggle. The server
@@ -45,14 +46,56 @@ export function arcadeLobbyEntryHtml(
 // the two choices read as one grouped control (not two more action buttons
 // competing with "Lobby öffnen") while the active one stays announced beyond
 // color via aria-pressed.
-export function arcadeLobbyModeButtonsHtml(id, ariaLabel, options, selected, disabled = false) {
+function segmentedToggleHtml(id, ariaLabel, options, selected, disabled, dataAttr) {
   const buttonHtml = options
     .map(({ value, label }) => {
       const active = value === selected;
-      return `<button type="button" class="arcade-mode-toggle-btn${active ? ' is-active' : ''}" data-arcade-mode="${escapeHtml(value)}" aria-pressed="${active}"${disabled ? ' disabled' : ''}>${escapeHtml(label)}</button>`;
+      return `<button type="button" class="arcade-mode-toggle-btn${active ? ' is-active' : ''}" data-${dataAttr}="${escapeHtml(value)}" aria-pressed="${active}"${disabled ? ' disabled' : ''}>${escapeHtml(label)}</button>`;
     })
     .join('');
   return `<div id="${escapeHtml(id)}" class="arcade-mode-toggle" role="group" aria-label="${escapeHtml(ariaLabel)}">${buttonHtml}</div>`;
+}
+
+export function arcadeLobbyModeButtonsHtml(id, ariaLabel, options, selected, disabled = false) {
+  return segmentedToggleHtml(id, ariaLabel, options, selected, disabled, 'arcade-mode');
+}
+
+// The opponent choice mirrors the mode switch so "Lobby öffnen" keeps exactly
+// one primary action beside it instead of a second, competing "Gegen KI"
+// button. It selects only; the create action then opens a human or an AI
+// lobby. Its own data attribute keeps it from colliding with the mode switch
+// when both sit in the same row.
+export function arcadeLobbyOpponentToggleHtml(id, opponent, disabled = false) {
+  return segmentedToggleHtml(
+    id,
+    'Gegner',
+    [
+      { value: 'human', label: 'Mensch' },
+      { value: 'bot', label: 'KI' },
+    ],
+    opponent === 'bot' ? 'bot' : 'human',
+    disabled,
+    'arcade-opponent'
+  );
+}
+
+// Wires the segments rendered by arcadeLobbyOpponentToggleHtml. `select`
+// receives 'human' or 'bot'.
+export function wireArcadeOpponentToggle(container, id, select) {
+  container.querySelectorAll(`#${id} [data-arcade-opponent]`).forEach((button) => {
+    button.addEventListener('click', () => select(button.dataset.arcadeOpponent === 'bot' ? 'bot' : 'human'));
+  });
+}
+
+// The opponent choice is admin-gated, so it must not survive a switch to an
+// identity that may not use Arcade AI: the switch stops rendering while the
+// stored value stays 'bot', and "Lobby öffnen" would then emit a bot event
+// that the server rejects as admin-only. Each game registers its own reset
+// once, mirroring how challengeRush.js clears its hidden challenge selection.
+export function resetArcadeOpponentOnIdentityChange(reset) {
+  window.addEventListener('respawn:identity-changed', () => {
+    if (!currentPlayerMayUseArcadeAi()) reset();
+  });
 }
 
 // Toggle button for the current player (guests only — the host has no ready

@@ -191,9 +191,17 @@
   gap: var(--space-2);
   min-height: var(--tap-target-size);
 }
+/* "Lobby öffnen" is flanked by up to two segmented switches: the game mode on
+   the left, the opponent (Mensch/KI) on the right. Whichever side is absent
+   for this game or player reserves the same width anyway, so the create
+   action keeps one width and equal insets instead of sliding sideways
+   depending on which toggles happen to render. */
 @media (min-width: 640px) { /* --bp-md */
-  .arcade-lobby-create-row--single {
-    padding-inline: calc(var(--arcade-lobby-mode-toggle-width) + var(--space-2));
+  .arcade-lobby-create-row--no-mode {
+    padding-left: calc(var(--arcade-lobby-mode-toggle-width) + var(--space-2));
+  }
+  .arcade-lobby-create-row--no-opponent {
+    padding-right: calc(var(--arcade-lobby-mode-toggle-width) + var(--space-2));
   }
 }
 /* Compact segmented switch: a bordered pill housing both mode segments so
@@ -243,17 +251,6 @@
 .arcade-lobby-create-row > .btn {
   width: auto;
   flex: 1 1 0;
-  min-width: var(--arcade-lobby-mode-width);
-}
-.arcade-lobby-ai-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-.arcade-lobby-ai-row .btn {
-  width: auto;
-  flex: 1 1 var(--arcade-lobby-mode-width);
   min-width: var(--arcade-lobby-mode-width);
 }
 .arcade-lobby-entry {

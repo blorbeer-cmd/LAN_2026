@@ -20,7 +20,7 @@ import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../../modal.js';
 import { connectSocket } from '../../socket.js';
 import { icon } from '../../icons.js';
-import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
@@ -42,6 +42,7 @@ let socket = null;
 let lobbies = [];
 let scribbleRounds = 2;
 let scribbleTurnSeconds = 60;
+let scribbleOpponent = 'human';
 
 let match = null; // { matchId, host, players, rounds, turnDurationMs, beginsAt }
 let turn = null; // latest scribble:turn payload
@@ -610,6 +611,7 @@ function emitWithAck(event, payload) {
 
 export function ensureScribbleSocket() {
   if (socket) return socket;
+  resetArcadeOpponentOnIdentityChange(() => { scribbleOpponent = 'human'; });
   socket = connectSocket();
 
   socket.on('scribble:lobbies', (payload) => {
@@ -863,15 +865,16 @@ function renderLobbyList() {
 export function renderScribbleLobbyCard() {
   const noMe = !myId();
   const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
+  const mayUseAi = currentPlayerMayUseArcadeAi();
   return `
     <div class="card stack arcade-lobby-card">
       ${noMe ? `<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>` : ''}
       <div class="arcade-lobby-create-actions">
-        <div class="arcade-lobby-create-row arcade-lobby-create-row--single">
+        <div class="arcade-lobby-create-row arcade-lobby-create-row--no-mode${mayUseAi ? '' : ' arcade-lobby-create-row--no-opponent'}">
           <button type="button" class="btn btn-primary btn-sm" id="scribble-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
           ${createReason ? infoTooltipHtml('scribble-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+          ${mayUseAi ? arcadeLobbyOpponentToggleHtml('scribble-opponent', scribbleOpponent, Boolean(match || noMe)) : ''}
         </div>
-        ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="scribble-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
       </div>
       ${renderLobbyList()}
     </div>`;
@@ -884,15 +887,19 @@ export async function leaveMyScribbleLobby() {
 }
 
 export function wireScribbleLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
-  container.querySelector('#scribble-bot')?.addEventListener('click', async () => {
-    if (beforeCreate && !(await beforeCreate())) return;
-    const res = await emitWithAck('scribble:lobby:bot', { playerId: myId() });
-    if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
+  wireArcadeOpponentToggle(container, 'scribble-opponent', (value) => {
+    scribbleOpponent = value;
+    rerender();
   });
   container.querySelector('#scribble-create')?.addEventListener('click', async () => {
     const playerId = myId();
     if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
     if (beforeCreate && !(await beforeCreate())) return;
+    if (scribbleOpponent === 'bot') {
+      const botRes = await emitWithAck('scribble:lobby:bot', { playerId });
+      if (!botRes?.ok) showToast(botRes?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
+      return;
+    }
     const res = await emitWithAck('scribble:lobby:create', { playerId });
     if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
     showToast('Scribble-Lobby geöffnet.');
