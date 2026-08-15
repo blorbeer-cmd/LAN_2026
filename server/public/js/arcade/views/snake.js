@@ -6,7 +6,7 @@ import { confirmDialog } from '../../modal.js';
 import { getMyId } from '../../whoami.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
@@ -22,6 +22,7 @@ let world = null;
 let keyboardBound = false;
 let prevMyScore = null; // last seen score for my own snake, to detect an eaten food for the cue
 let lobbyMode = 'classic';
+let snakeOpponent = 'human';
 
 const myId = () => getMyId();
 const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
@@ -37,6 +38,7 @@ export function snakeLobbies() { return lobbies; }
 
 export function ensureSnakeSocket() {
   if (socket) return socket;
+  resetArcadeOpponentOnIdentityChange(() => { snakeOpponent = 'human'; });
   socket = connectSocket();
   socket.on('snake:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
@@ -129,18 +131,19 @@ export function renderSnakeLobbyCard() {
   const noMe = !myId();
   const modeLocked = Boolean(lobby || match);
   const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
+  const mayUseAi = currentPlayerMayUseArcadeAi();
   return `<div class="card stack arcade-lobby-card">
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
     <div class="arcade-lobby-create-actions">
-      <div class="arcade-lobby-create-row">
+      <div class="arcade-lobby-create-row${mayUseAi ? '' : ' arcade-lobby-create-row--no-opponent'}">
         ${arcadeLobbyModeButtonsHtml('snake-mode', 'Snake-Spielmodus', [
           { value: 'classic', label: 'Duell' },
           { value: 'arena', label: 'Arena' },
         ], lobbyMode, modeLocked)}
         <button type="button" class="btn btn-primary btn-sm" id="snake-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
         ${createReason ? infoTooltipHtml('snake-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+        ${mayUseAi ? arcadeLobbyOpponentToggleHtml('snake-opponent', snakeOpponent, Boolean(match || noMe)) : ''}
       </div>
-      ${currentPlayerMayUseArcadeAi() ? `<button type="button" class="btn btn-sm" id="snake-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button>` : ''}
     </div>
     ${lobbyList()}
   </div>`;
@@ -157,15 +160,15 @@ export function wireSnakeLobbyCard(container, { beforeCreate, beforeJoin } = {})
     lobbyMode = button.dataset.arcadeMode === 'arena' ? 'arena' : 'classic';
     rerender();
   }));
-  container.querySelector('#snake-bot')?.addEventListener('click', async () => {
-    if (beforeCreate && !(await beforeCreate())) return;
-    const result = await emitAck('snake:lobby:bot', { playerId: myId(), mode: lobbyMode });
-    if (!result?.ok) showToast(result?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
+  wireArcadeOpponentToggle(container, 'snake-opponent', (value) => {
+    snakeOpponent = value;
+    rerender();
   });
   container.querySelector('#snake-create')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
-    const result = await emitAck('snake:lobby:create', { playerId: myId(), mode: lobbyMode });
-    if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
+    const bot = snakeOpponent === 'bot';
+    const result = await emitAck(bot ? 'snake:lobby:bot' : 'snake:lobby:create', { playerId: myId(), mode: lobbyMode });
+    if (!result?.ok) showToast(result?.error || (bot ? 'KI-Lobby konnte nicht erstellt werden.' : 'Lobby konnte nicht erstellt werden.'), { error: true });
   });
   container.querySelectorAll('[data-snake-join]').forEach((button) => button.addEventListener('click', async () => {
     if (beforeJoin && !(await beforeJoin())) return;

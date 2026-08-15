@@ -5,7 +5,7 @@ import { avatarHtml, escapeHtml } from '../../format.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../../modal.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
@@ -33,6 +33,7 @@ const courtBackground = new Image();
 courtBackground.src = '/img/blobby-beach-court.png';
 let targetScore = 7;
 let lobbyMode = 'duel';
+let blobbyOpponent = 'human';
 
 const myId = () => getMyId();
 const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
@@ -48,6 +49,7 @@ export function blobbyLobbies() { return lobbies; }
 
 export function ensureBlobbySocket() {
   if (socket) return socket;
+  resetArcadeOpponentOnIdentityChange(() => { blobbyOpponent = 'human'; });
   socket = connectSocket();
   socket.on('blobby:lobbies', (payload) => { lobbies = payload?.lobbies ?? []; if (!match && currentView() === 'arcade') rerender(); });
   socket.on('blobby:match:start', (payload) => {
@@ -211,18 +213,19 @@ function lobbyList() {
 export function renderBlobbyLobbyCard() {
   const lobby = myBlobbyLobby(); const noMe = !myId();
   const createReason = !noMe && match ? 'Beende zuerst dein aktuelles Spiel.' : '';
+  const mayUseAi = currentPlayerMayUseArcadeAi();
   return `<div class="card stack arcade-lobby-card">
     ${noMe ? '<div class="muted" style="font-size:var(--font-size-xs);">Wähle oben zuerst aus, wer du bist.</div>' : ''}
     <div class="arcade-lobby-create-actions">
-      <div class="arcade-lobby-create-row">
+      <div class="arcade-lobby-create-row${lobby ? ' arcade-lobby-create-row--no-mode' : ''}${mayUseAi ? '' : ' arcade-lobby-create-row--no-opponent'}">
         ${!lobby ? arcadeLobbyModeButtonsHtml('blobby-mode', 'Blobby-Spielmodus', [
           { value: 'duel', label: 'Duell' },
           { value: 'doubles', label: 'Doppel' },
         ], lobbyMode) : ''}
         <button type="button" class="btn btn-primary btn-sm" id="blobby-create" ${match || noMe ? 'disabled' : ''}>Lobby öffnen</button>
         ${createReason ? infoTooltipHtml('blobby-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+        ${mayUseAi ? arcadeLobbyOpponentToggleHtml('blobby-opponent', blobbyOpponent, Boolean(match || noMe)) : ''}
       </div>
-      ${currentPlayerMayUseArcadeAi() ? `<div class="arcade-lobby-ai-row"><button type="button" class="btn btn-sm" id="blobby-bot" ${match || noMe ? 'disabled' : ''}>Gegen KI</button></div>` : ''}
     </div>
     ${lobbyList()}
   </div>`;
@@ -239,15 +242,15 @@ export function wireBlobbyLobbyCard(container, { beforeCreate, beforeJoin } = {}
     lobbyMode = button.dataset.arcadeMode === 'doubles' ? 'doubles' : 'duel';
     rerender();
   }));
+  wireArcadeOpponentToggle(container, 'blobby-opponent', (value) => {
+    blobbyOpponent = value;
+    rerender();
+  });
   container.querySelector('#blobby-create')?.addEventListener('click', async () => {
     if (beforeCreate && !(await beforeCreate())) return;
-    const res = await emitAck('blobby:lobby:create', { playerId: myId(), mode: lobbyMode });
-    if (!res?.ok) showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
-  });
-  container.querySelector('#blobby-bot')?.addEventListener('click', async () => {
-    if (beforeCreate && !(await beforeCreate())) return;
-    const res = await emitAck('blobby:lobby:bot', { playerId: myId(), mode: lobbyMode });
-    if (!res?.ok) showToast(res?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
+    const bot = blobbyOpponent === 'bot';
+    const res = await emitAck(bot ? 'blobby:lobby:bot' : 'blobby:lobby:create', { playerId: myId(), mode: lobbyMode });
+    if (!res?.ok) showToast(res?.error || (bot ? 'KI-Lobby konnte nicht erstellt werden.' : 'Lobby konnte nicht erstellt werden.'), { error: true });
   });
   container.querySelectorAll('[data-blobby-join]').forEach((b) => b.addEventListener('click', async () => {
     if (beforeJoin && !(await beforeJoin())) return;
