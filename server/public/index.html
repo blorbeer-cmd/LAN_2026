@@ -16,7 +16,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
   <!-- bump ?v= when the stylesheet changes so no cached copy survives a reload -->
-  <link rel="stylesheet" href="/css/style.css?v=40" />
+  <link rel="stylesheet" href="/css/style.css?v=41" />
   <!-- app.js adds this sheet only while an Arcade view is active. -->
 </head>
 <body>
@@ -32,10 +32,8 @@
       </a>
       <div class="topbar-actions">
         <button id="info-btn" class="icon-btn" type="button" aria-label="Info: WLAN, Discord, Server und Hausregeln" title="Info"></button>
-        <div id="event-context" class="event-context" hidden>
-          <span id="event-context-status" class="event-context-status" aria-hidden="true"></span>
-          <select id="event-context-switcher" class="event-context-switcher" aria-label="Aktives Event"></select>
-        </div>
+        <!-- app.js renders the shared searchable event dropdown in here. -->
+        <div id="event-context" class="event-context" hidden></div>
         <button id="global-search-btn" class="icon-btn" type="button" aria-label="Bereiche und Tools durchsuchen" aria-keyshortcuts="Control+K Meta+K" title="Suchen (Strg/⌘ K)"></button>
         <div class="notification-center" data-notification-center>
           <button id="notifications-btn" class="icon-btn" aria-label="Mitteilungen" aria-controls="notifications-panel" aria-expanded="false" title="Mitteilungen">

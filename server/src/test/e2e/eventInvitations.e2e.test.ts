@@ -187,24 +187,28 @@ test('manager invites a member who accepts and both open clients update', async 
   await pending.waitFor({ state: 'detached' });
   await ownerRefresh;
 
-  await memberPage.locator(`#event-context-switcher option[value="${eventId}"]`).waitFor({ state: 'attached' });
+  const optionSelector = `#event-context-switcher-list [data-search-select-value="${eventId}"]`;
+  await memberPage.locator(optionSelector).waitFor({ state: 'attached' });
   const mirrorPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await login(mirrorPage, MEMBER_NAME, MEMBER_PASSWORD);
-  await mirrorPage.locator(`#event-context-switcher option[value="${eventId}"]`).waitFor({ state: 'attached' });
+  await mirrorPage.locator(optionSelector).waitFor({ state: 'attached' });
 
-  await memberPage.selectOption('#event-context-switcher', eventId);
+  // The switcher is the shared searchable dropdown: open the listbox, then
+  // pick the new workspace the way a person would.
+  await memberPage.click('#event-context .search-select-toggle');
+  await memberPage.click(optionSelector);
   await memberPage.waitForFunction(
-    (expected) => (document.querySelector('#event-context-switcher') as HTMLSelectElement | null)?.value === expected,
+    (expected) => (document.querySelector('#event-context-switcher') as HTMLInputElement | null)?.value === expected,
     eventId,
   );
   await mirrorPage.waitForFunction(
-    (expected) => (document.querySelector('#event-context-switcher') as HTMLSelectElement | null)?.value === expected,
+    (expected) => (document.querySelector('#event-context-switcher') as HTMLInputElement | null)?.value === expected,
     eventId,
   );
-  // The title lives on the wrapper (#event-context), not the <select> itself:
-  // the select carries only an aria-label now that it shares the app's
-  // standard select shape, and the wrapper also seats the status icon that
-  // title has to describe alongside the event name.
+  // The title lives on the wrapper (#event-context), not the control itself:
+  // the search field carries only an aria-label now that it shares the app's
+  // standard dropdown shape, and the wrapper describes the status icon
+  // alongside the event name.
   await memberPage.waitForFunction(
     (eventName) => document.querySelector('#event-context')?.getAttribute('title')?.includes(eventName),
     EVENT_NAME,

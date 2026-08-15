@@ -23,7 +23,8 @@ import { escapeHtml, formatDateTime, avatarHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { eventSwitcherLabel } from '../eventStatus.js';
+import { eventSelectOptions } from '../eventStatus.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let activeTab = 'playtime'; // 'playtime' | 'matches' | 'arcade'
@@ -148,18 +149,13 @@ async function loadArcadeData(ctx) {
   }
 }
 
-function renderEventOptions() {
-  const sorted = [...accessibleEvents()].sort((a, b) => b.startsAt - a.startsAt);
-  const options = sorted
-    .map((e) => {
-      const range = `${new Date(e.startsAt).toLocaleDateString('de-DE')}${e.endsAt ? '–' + new Date(e.endsAt).toLocaleDateString('de-DE') : ' (läuft)'}`;
-      // The list spans finished LANs as well as the running one, so each
-      // option names its state in words through the shared event vocabulary
-      // instead of leaving the reader to infer it from the dates.
-      return `<option value="${e.id}" ${e.id === filters.eventId ? 'selected' : ''}>${escapeHtml(eventSwitcherLabel(e))} (${range})</option>`;
-    })
-    .join('');
-  return `<option value="" ${filters.eventId === '' ? 'selected' : ''}>Gesamt (alle Events)</option>${options}`;
+// The list spans finished LANs as well as the running one. Each option is the
+// event's title plus its state as an icon — the same shape every other event
+// dropdown uses. The date range this filter used to append is gone: it made
+// this one option list read differently from all the others, and the state
+// the reader is actually choosing by is now visible directly.
+function eventFilterOptions() {
+  return eventSelectOptions(accessibleEvents(), { allEntryLabel: 'Gesamt (alle Events)' });
 }
 
 export function renderAnalytics(container, ctx) {
@@ -181,7 +177,11 @@ export function renderAnalytics(container, ctx) {
           <button type="button" class="btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}" data-an-tab="matches">Matches & Turniere</button>
           <button type="button" class="btn btn-sm ${activeTab === 'arcade' ? 'btn-primary' : ''}" data-an-tab="arcade">Arcade</button>
         </div>
-        <select id="an-event" aria-label="Veranstaltung">${renderEventOptions()}</select>
+        ${searchSelectHtml('an-event', eventFilterOptions(), filters.eventId, {
+          placeholder: 'Event suchen…',
+          ariaLabel: 'Veranstaltung',
+          label: 'Auswertbare Events',
+        })}
       </section>
       <div id="an-content" class="grouped-page-sections">${renderActiveTabContent()}</div>
     </div>
@@ -194,16 +194,16 @@ export function renderAnalytics(container, ctx) {
     });
   });
 
-  const eventSelect = container.querySelector('#an-event');
-  if (eventSelect) {
-    eventSelect.addEventListener('change', (e) => {
-      filters.eventId = e.target.value; // '' selects "Gesamt (alle Events)"
+  wireSearchSelect(container, 'an-event', eventFilterOptions(), {
+    emptyText: 'Kein passendes Event gefunden.',
+    onChange: (eventId) => {
+      filters.eventId = eventId; // '' selects "Gesamt (alle Events)"
       cache = null;
       matchesCache = null;
       arcadeCache = null;
       ctx.rerender();
-    });
-  }
+    },
+  });
 
   wireInfoTooltips(container);
 

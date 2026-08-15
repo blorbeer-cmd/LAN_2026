@@ -48,3 +48,29 @@ export function eventDisplayName(event) {
 export function eventSwitcherLabel(event) {
   return eventDisplayName(event);
 }
+
+// One option shape for every event dropdown in the app — the topbar
+// workspace switcher, Auswertung's shared filter and Hall of Fame's LAN
+// picker. They used to describe the same events differently (one appended the
+// date range, another showed the bare name, none showed the state while the
+// list was open), which is the drift this collapses: title plus the state as
+// an icon, everywhere, expanded and collapsed alike.
+export function eventSelectOption(event) {
+  const status = eventStatus(event);
+  return {
+    value: event.id,
+    label: eventDisplayName(event),
+    icon: status.icon,
+    iconLabel: status.label,
+    iconState: status.key,
+  };
+}
+
+// The event filters additionally offer an "all events" entry. It is not an
+// event and therefore has no lifecycle icon of its own.
+export function eventSelectOptions(events, { allEntryLabel } = {}) {
+  const options = [...events]
+    .sort((a, b) => b.startsAt - a.startsAt)
+    .map((event) => eventSelectOption(event));
+  return allEntryLabel ? [{ value: '', label: allEntryLabel }, ...options] : options;
+}

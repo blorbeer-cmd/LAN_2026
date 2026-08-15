@@ -1209,7 +1209,7 @@ flowTest('competition', 'Auswertungen (via Mehr) shows a real award and keeps de
   await page.waitForSelector('text=Längste individuelle Session pro Spiel');
   assert.equal(await page.locator('#analytics-event-range-help').count(), 0);
   assert.equal(await page.getByText('Event wählen zeigt genau dessen Daten.', { exact: true }).count(), 0);
-  assert.equal(await page.locator('#an-event[aria-label="Veranstaltung"]').count(), 1);
+  assert.equal(await page.locator('#an-event-search[aria-label="Veranstaltung"]').count(), 1);
   assert.equal(await page.locator('[data-dt-field^="an-"]').count(), 0);
 
   // The "Matches & Turniere" tab (merged in from the old separate Spiele &
@@ -1225,11 +1225,11 @@ flowTest('competition', 'Auswertungen (via Mehr) shows a real award and keeps de
   assert.equal(await triviaSection.getByText('Noch nicht genug Ergebnisse.', { exact: true }).count(), 0);
   assert.ok((await triviaSection.locator('.card').count()) >= 1, 'trivia should show at least one fun record');
   assert.equal(await triviaSection.locator('.empty-state-icon').count(), 0);
-  assert.equal(await page.locator('#an-event[aria-label="Veranstaltung"]').count(), 1);
+  assert.equal(await page.locator('#an-event-search[aria-label="Veranstaltung"]').count(), 1);
 
   await page.click('[data-an-tab="arcade"]');
   await page.waitForSelector('#analytics-arcade-total-title');
-  assert.equal(await page.locator('#an-event[aria-label="Veranstaltung"]').count(), 1);
+  assert.equal(await page.locator('#an-event-search[aria-label="Veranstaltung"]').count(), 1);
   assert.equal(await page.locator('[data-dt-field^="an-"]').count(), 0);
   assert.equal(await page.locator('#analytics-arcade-range-help').count(), 0);
   assert.equal(await page.getByText('Matches pro Tag', { exact: true }).count(), 0);
@@ -1288,7 +1288,9 @@ flowTest('shell', 'Mein Profil: rename with a uniqueness conflict, then succeed;
   await page.waitForSelector('text=Bock & Skill eintragen');
   await page.click('[data-navigate="myStats"]');
   await page.waitForSelector('text=Meine Statistiken');
-  await page.waitForSelector('#my-stats-event');
+  // `#my-stats-event` is the dropdown's hidden value input; its visible
+  // control is the `-search` combobox.
+  await page.waitForSelector('#my-stats-event-search');
 
   // Back to the profile; the session remains bound to this account.
   await page.click('[data-navigate="profile"]');
@@ -2455,7 +2457,7 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   assert.equal(testLans.length, 12);
   assert.ok(testLans.every((event) => event.overallStandings.length >= 4 && event.tournamentChampions.length === 3));
   await openSectionTab('leaderboard', 'hallOfFame');
-  await page.waitForSelector('#hall-event-select');
+  await page.waitForSelector('#hall-event-select-search');
   assert.equal(await page.getByText('LAN auswählen', { exact: true }).count(), 0);
   assert.equal(await page.locator('.hall-of-fame-event-section').count(), 2);
   assert.equal(await page.locator('.hall-of-fame-event-section.is-tournaments .hall-of-fame-tournament-row').count(), 3);
