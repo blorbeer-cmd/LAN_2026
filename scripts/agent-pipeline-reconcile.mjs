@@ -1763,6 +1763,29 @@ export function renderReviewDecisionFacts(payload, config = loadConfig()) {
   ];
 }
 
+/**
+ * Same facts as `renderReviewDecisionFacts`, with the audit-trail detail (files, round, provider
+ * state, timeouts) folded behind a collapsed `<details>` block and only the recommendation left
+ * visible. A pull request that goes through several heads gets one of these per head, so leaving
+ * everything expanded turns the thread into mostly-repeated boilerplate; folding it keeps the
+ * same information one tap away instead of forcing a scroll past it.
+ */
+function renderReviewDecisionFactsFolded(payload, config = loadConfig()) {
+  const facts = renderReviewDecisionFacts(payload, config);
+  const recommendation = facts[facts.length - 1];
+  const rest = facts.slice(0, -1);
+  return [
+    recommendation,
+    "",
+    "<details>",
+    "<summary>Details (head SHA, files, round, provider status)</summary>",
+    "",
+    ...rest,
+    "",
+    "</details>",
+  ];
+}
+
 function reviewDecisionSection(readiness, snapshot, config) {
   const details = readiness.details ?? {};
   const modeLabels = config.reviewModeLabels ?? {};
@@ -1777,7 +1800,7 @@ function reviewDecisionSection(readiness, snapshot, config) {
           "",
         ]
       : []),
-    ...renderReviewDecisionFacts(payload, config),
+    ...renderReviewDecisionFactsFolded(payload, config),
     "",
     "Set exactly one label:",
     "",
@@ -1823,7 +1846,7 @@ export function renderReviewDecisionNotification(
     "",
     "## Choose who reviews this head",
     "",
-    ...renderReviewDecisionFacts(payload, config),
+    ...renderReviewDecisionFactsFolded(payload, config),
     "",
     `a) Cross-review by \`${reviewer}\` (\`${modeLabels.cross}\`)`,
     `b) Self-review by \`${implementer}\` in a fresh, technically read-only session (\`${modeLabels.self}\`)`,
