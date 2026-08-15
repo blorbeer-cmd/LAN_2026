@@ -5,7 +5,7 @@ import { showToast } from '../../toast.js';
 import { confirmDialog } from '../../modal.js';
 import { getMyId } from '../../whoami.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { arcadeToolbarHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
@@ -60,6 +60,7 @@ export function hasBattleshipMatch() { return Boolean(match); }
 
 export function ensureBattleshipSocket() {
   if (socket) return socket;
+  resetArcadeOpponentOnIdentityChange(() => { battleshipOpponent = 'human'; });
   socket = connectSocket();
   socket.on('connect', () => {
     const returningAfterDisconnect = connectionState === 'offline';

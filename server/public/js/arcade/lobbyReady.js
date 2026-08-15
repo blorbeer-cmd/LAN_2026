@@ -1,5 +1,6 @@
 import { avatarHtml, escapeHtml } from '../format.js';
 import { icon } from '../icons.js';
+import { currentPlayerMayUseArcadeAi } from './arcadeAdmin.js';
 
 // Shared lobby UI for every arcade game: stable player rows, the lobby card
 // shell and the guest's own ready toggle. The server
@@ -83,6 +84,17 @@ export function arcadeLobbyOpponentToggleHtml(id, opponent, disabled = false) {
 export function wireArcadeOpponentToggle(container, id, select) {
   container.querySelectorAll(`#${id} [data-arcade-opponent]`).forEach((button) => {
     button.addEventListener('click', () => select(button.dataset.arcadeOpponent === 'bot' ? 'bot' : 'human'));
+  });
+}
+
+// The opponent choice is admin-gated, so it must not survive a switch to an
+// identity that may not use Arcade AI: the switch stops rendering while the
+// stored value stays 'bot', and "Lobby öffnen" would then emit a bot event
+// that the server rejects as admin-only. Each game registers its own reset
+// once, mirroring how challengeRush.js clears its hidden challenge selection.
+export function resetArcadeOpponentOnIdentityChange(reset) {
+  window.addEventListener('respawn:identity-changed', () => {
+    if (!currentPlayerMayUseArcadeAi()) reset();
   });
 }
 

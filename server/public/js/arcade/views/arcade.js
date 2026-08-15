@@ -26,7 +26,7 @@ import { playArcadeSound } from '../arcadeSound.js';
 import { startArcadeWatch } from './arcadeWatch.js';
 import { confirmDialog } from '../../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../../infoTooltip.js';
 import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
 import { searchSelectHtml, wireSearchSelect } from '../../searchSelect.js';
@@ -155,6 +155,7 @@ async function loadStats(ctx) {
 
 function ensureSocket(ctx) {
   if (socket) return socket;
+  resetArcadeOpponentOnIdentityChange(() => { quizOpponent = 'human'; });
   socket = connectSocket();
   socket.on('arcade:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];

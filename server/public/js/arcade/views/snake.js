@@ -6,7 +6,7 @@ import { confirmDialog } from '../../modal.js';
 import { getMyId } from '../../whoami.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
@@ -38,6 +38,7 @@ export function snakeLobbies() { return lobbies; }
 
 export function ensureSnakeSocket() {
   if (socket) return socket;
+  resetArcadeOpponentOnIdentityChange(() => { snakeOpponent = 'human'; });
   socket = connectSocket();
   socket.on('snake:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];

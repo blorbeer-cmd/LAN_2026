@@ -2,7 +2,7 @@ import { escapeHtml } from '../../format.js';
 import { connectSocket } from '../../socket.js';
 import { getMyId } from '../../whoami.js';
 import { showToast } from '../../toast.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeMuteControlHtml, wireArcadeMuteControl, playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
 import { cancelCountdown } from '../countdown.js';
@@ -230,6 +230,7 @@ function syncProgressFromServer(state) {
 
 export function ensureChallengeRushSocket() {
   if (socket) return socket;
+  resetArcadeOpponentOnIdentityChange(() => { challengeRushOpponent = 'human'; });
   socket = connectSocket();
   socket.on('challenge-rush:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
