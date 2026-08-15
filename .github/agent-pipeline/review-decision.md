@@ -8,14 +8,43 @@ automatisch weiter.
 
 ## Wann fragen
 
+Die Frage gehört zu genau einem Head-SHA und wird für diesen Head genau einmal gestellt.
+
 - Nach abgeschlossener Implementierung, sobald der Branch gepusht und die einschlägigen Prüfungen
   grün sind. Das gilt auch, wenn der PR noch ein Draft ist.
-- Nach jedem Fix-Commit erneut, denn jeder neue Commit entwertet das vorherige Verdikt.
-- Nicht fragen, solange CI rot oder ein Mergekonflikt offen ist. Diese Punkte behebt der
-  Implementierungs-Agent zuerst ohne Rückfrage.
-- Nicht fragen, wenn `agent:no-auto`, `agent:needs-human` oder `agent:waiting` gesetzt sind.
-- Keine aktive Zustellung, solange Review-Threads nicht vollständig lesbar beziehungsweise noch
-  offen sind oder eine geschützte Pfadfreigabe fehlt.
+- Nach jedem Fix-Commit erneut, denn jeder neue Commit entwertet das vorherige Verdikt. Allein ein
+  neuer Head-SHA eröffnet die Frage erneut.
+
+## Wann nicht erneut fragen
+
+Vor jeder Frage prüft die Session die folgenden Punkte. Trifft einer zu, wird die Frage nicht
+gestellt und eine bereits gestellte nicht wiederholt:
+
+- Der Pull Request ist gemergt oder geschlossen. Damit endet dieser Ablauf endgültig; für einen
+  solchen PR wird nie wieder eine Wahl erfragt, auch nicht nach später eintreffenden Ereignissen.
+  Der Reconciler schreibt für ihn ebenfalls nichts mehr, weil ein geschlossener Pull Request
+  Geschichte ist. Folgearbeit beginnt auf einem neuen Branch und in einem neuen Ablauf.
+- Für den aktuellen Head liegt bereits eine Wahl vor: Der Statuskommentar nennt diesen Head mit
+  `mode=cross`, `mode=self` oder `mode=human`, oder das zugehörige Label ist für diesen Head
+  gebunden. Die Entscheidung ist getroffen, das Review läuft oder wartet auf sein Ergebnis. Die
+  Session berichtet dann den Fortschritt, statt erneut zu fragen.
+- Die Session hat die Frage für genau diesen Head bereits gestellt. Weitere Reconciler-Läufe,
+  aktualisierte Statuskommentare, erneute Benachrichtigungen, CI-Ereignisse oder eine Wiederaufnahme
+  der Session sind kein neuer Anlass. Auch eine noch unbeantwortete Frage wird nicht neu gestellt,
+  sondern abgewartet.
+- Die Antwort liegt vor, aber das Label ist noch nicht gesetzt, weil der Statuskommentar den
+  aktuellen Head noch nicht führt (siehe „Nach der Antwort“, Punkt 1). Die Antwort bleibt gültig;
+  die Session wartet auf den Eintrag und setzt das Label anschließend, ohne die Frage zu wiederholen.
+- Für den aktuellen Head liegt bereits ein bestandenes Reviewergebnis vor.
+- CI ist rot oder ein Mergekonflikt ist offen. Diese Punkte behebt der Implementierungs-Agent
+  zuerst ohne Rückfrage.
+- `agent:no-auto`, `agent:needs-human` oder `agent:waiting` sind gesetzt.
+- Review-Threads sind noch offen beziehungsweise nicht vollständig lesbar, oder eine geschützte
+  Pfadfreigabe fehlt. Dann erfolgt keine aktive Zustellung.
+
+Ein Ereignis, das lediglich einen dieser Zustände erneut meldet, wird still übergangen. Sichtbar
+gemeldet wird stattdessen der Fortschritt: welches Review läuft, worauf gewartet wird und wie das
+Ergebnis ausfiel.
 
 Ein Draft blockiert nur das menschliche Merge-Gate. Die Review-Auswahl und das anschließende Review
 werden bereits auf dem Draft-PR gestartet; erst nach bestandenem Review darf der PR auf „Ready for
