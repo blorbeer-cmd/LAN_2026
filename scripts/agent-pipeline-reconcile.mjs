@@ -1765,20 +1765,24 @@ export function renderReviewDecisionFacts(payload, config = loadConfig()) {
 
 /**
  * Same facts as `renderReviewDecisionFacts`, with the audit-trail detail (files, round, provider
- * state, timeouts) folded behind a collapsed `<details>` block and only the recommendation left
- * visible. A pull request that goes through several heads gets one of these per head, so leaving
- * everything expanded turns the thread into mostly-repeated boilerplate; folding it keeps the
- * same information one tap away instead of forcing a scroll past it.
+ * state, timeouts) folded behind a collapsed `<details>` block and only the head SHA and
+ * recommendation left visible. A pull request that goes through several heads gets one of these
+ * per head, so leaving everything expanded turns the thread into mostly-repeated boilerplate;
+ * folding it keeps the same information one tap away instead of forcing a scroll past it. The
+ * head SHA specifically stays visible because callers refer back to "the head SHA shown here" as
+ * the thing this choice is bound to — folding it away would make that reference false.
  */
 function renderReviewDecisionFactsFolded(payload, config = loadConfig()) {
   const facts = renderReviewDecisionFacts(payload, config);
+  const headSha = facts[0];
   const recommendation = facts[facts.length - 1];
-  const rest = facts.slice(0, -1);
+  const rest = facts.slice(1, -1);
   return [
+    headSha,
     recommendation,
     "",
     "<details>",
-    "<summary>Details (head SHA, files, round, provider status)</summary>",
+    "<summary>Details (files, round, provider status)</summary>",
     "",
     ...rest,
     "",
