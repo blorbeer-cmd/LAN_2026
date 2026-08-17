@@ -480,7 +480,11 @@ Produktionsdeployment.
 ### Nutzer fragen und auf die Antwort warten
 
 - wer das Review für den aktuellen Head-SHA durchführt. Diese Frage hält die Pipeline an, ohne sie
-  zu eskalieren: kein Auto-Start nach Zeitablauf, keine Ersatzwahl durch einen Agenten.
+  zu eskalieren: kein Auto-Start nach Zeitablauf, keine Ersatzwahl durch einen Agenten. Sie hält
+  dabei nur die Pipeline an, nicht den Nutzer: Sie wird als Text vorgelegt und nie über ein
+  blockierendes Frage-Werkzeug, das die Eingabe der Session bis zur Antwort sperren würde. Pro
+  Head-SHA wird sie höchstens einmal gestellt und mit dem Merge oder Schließen des Pull Requests gar
+  nicht mehr (`.github/agent-pipeline/review-decision.md`).
 
 ### Nutzer informieren, aber nicht anhalten
 
