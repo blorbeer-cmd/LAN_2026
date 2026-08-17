@@ -41,7 +41,7 @@ Ohne diese Punkte funktioniert nichts anderes. Zuerst bauen.
 
 | ID | Anforderung |
 |----|-------------|
-| FR-09 | Agent auf jedem Spieler-PC scannt periodisch laufende Prozesse und meldet dem Server die aktuell laufenden Spiele. **Mehrere Spiele gleichzeitig sind normal** (z.B. Launcher + Spiel, oder wirklich zwei Spiele parallel) und werden alle erfasst, nicht nur eines. |
+| FR-09 | Agent auf jedem Spieler-PC fragt das Betriebssystem periodisch gezielt nur nach den vom Server hinterlegten Spiele-Prozessnamen – nicht nach der gesamten Prozessliste – und meldet die aktuell laufenden Spiele. **Mehrere Spiele gleichzeitig sind normal** (z.B. Launcher + Spiel, oder wirklich zwei Spiele parallel) und werden alle erfasst, nicht nur eines. |
 | FR-10 | Prozessname→Spiel-Zuordnung ist zentral gepflegt (`game_process_names`), erweiterbar ohne Agent-Update. |
 | FR-11 | Server authentifiziert Agent-Meldungen über den API-Key des Spielers; ungültige Keys werden abgewiesen. |
 | FR-12 | Server erkennt „offline" automatisch: bleibt eine Agent-Meldung länger als ein Timeout aus, wird der Status auf offline gesetzt. |
