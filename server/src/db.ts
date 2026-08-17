@@ -3635,6 +3635,67 @@ registerMigration({
   up: backfillLegacyCompetitionDataToBaseEvent,
 });
 
+// agent_diagnostics.process_names is documented (see its CREATE TABLE comment
+// above) as never holding more than the process names currently configured
+// for the player's active group(s) — but that guarantee only took effect once
+// routes/agent.ts started filtering every report against that allow-list
+// before storing it. Rows written by an older agent/server pairing, before
+// that filter existed, can still carry raw OS process names (svchost.exe,
+// lsass.exe, csrss.exe, ...) picked up by an unfiltered full process scan.
+// Re-filter every stored row against each player's current allow-list once so
+// the admin diagnostics view stops surfacing them; a player's own PC never
+// re-sends a cleared name unless it is actually a configured game process.
+function refilterLegacyAgentDiagnostics(): void {
+  const rows = db.prepare('SELECT player_id, process_names FROM agent_diagnostics').all() as Array<{
+    player_id: string;
+    process_names: string;
+  }>;
+  if (rows.length === 0) return;
+
+  // Mirrors groups.ts's activePlayerGroupIds() inline: db.ts cannot import
+  // from groups.ts (which itself imports db.ts) without a circular module
+  // dependency, and every other migration in this file already talks to the
+  // database directly rather than through domain-module helpers.
+  const activeGroupIds = db.prepare(
+    `SELECT gm.group_id AS id FROM group_memberships gm
+     JOIN groups g ON g.id = gm.group_id AND g.archived_at IS NULL
+     WHERE gm.player_id = ? AND gm.status = 'active'`,
+  );
+  const allowedNamesForGroups = db.prepare(
+    `SELECT DISTINCT process_name FROM game_process_names WHERE group_id IN (SELECT value FROM json_each(?))`,
+  );
+  const update = db.prepare('UPDATE agent_diagnostics SET process_names = ? WHERE player_id = ?');
+
+  for (const row of rows) {
+    let stored: unknown;
+    try {
+      stored = JSON.parse(row.process_names);
+    } catch {
+      stored = [];
+    }
+    if (!Array.isArray(stored)) stored = [];
+
+    const groupIds = (activeGroupIds.all(row.player_id) as Array<{ id: string }>).map((r) => r.id);
+    const allowed = new Set(
+      (allowedNamesForGroups.all(JSON.stringify(groupIds.length > 0 ? groupIds : [DEFAULT_GROUP_ID])) as Array<{
+        process_name: string;
+      }>).map((r) => r.process_name),
+    );
+    const filtered = (stored as unknown[]).filter((name): name is string => typeof name === 'string' && allowed.has(name));
+
+    // String comparison (rather than just a length check) also normalizes a
+    // row whose JSON failed to parse above back to a valid empty array,
+    // instead of leaving unreadable content behind.
+    const normalized = JSON.stringify(filtered);
+    if (normalized !== row.process_names) update.run(normalized, row.player_id);
+  }
+}
+registerMigration({
+  version: 73,
+  name: 'refilter legacy agent diagnostics process names',
+  up: refilterLegacyAgentDiagnostics,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

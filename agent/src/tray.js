@@ -1,6 +1,6 @@
 // Windows-only system tray icon, so the agent doesn't need a visible console
 // window logging every poll to stay reachable. No new npm/native dependency —
-// same trick as activity.js/autostart.js: a small embedded script (here,
+// same trick as systemProbe.js/autostart.js: a small embedded script (here,
 // WinForms via PowerShell) run as its own detached process, since pkg-built
 // exes can't easily bundle native tray addons.
 //

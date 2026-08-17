@@ -16,7 +16,7 @@ import { currentGroup, refreshGroupContext } from '../groupContext.js';
 const ONBOARDING_HELP = 'Neue Person: Registrierungslink. Bestehendes Profil: Claim-Link. Vergessenes Passwort: Reset-Link.';
 const TEST_DATA_HELP = 'Legt Test-Spieler mit Sitzplatz, Bewertungen und Spielzeit an; zwei spielen gerade. Nur im Admin-Modus sichtbar.';
 const ADMIN_ROLE_HELP = 'Owner und Admins dürfen den Admin-Bereich verwalten. Mindestens ein aktiver Owner muss erhalten bleiben.';
-const AGENT_DIAGNOSTICS_HELP = 'Der Agent gleicht laufende Prozesse lokal auf dem PC mit den hinterlegten Spielen ab. Nur Treffer werden hier angezeigt – andere laufende Programme verlassen den PC nie.';
+const AGENT_DIAGNOSTICS_HELP = 'Der Agent fragt den PC gezielt nur nach den hier hinterlegten Spiele-Prozessen. Andere laufende Programme sieht er gar nicht erst und sie verlassen den PC nie.';
 
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
