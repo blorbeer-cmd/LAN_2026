@@ -74,8 +74,9 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 
 - **Server**: läuft in der Cloud, hält alle Daten (SQLite), liefert die Web-Oberfläche aus und
   verteilt Live-Updates über WebSockets.
-- **Agent**: winziges Programm, das jeder Teilnehmer einmal auf seinem PC installiert. Es scannt die
-  laufenden Prozesse (z. B. `cs2.exe`) und meldet dem Server, welches Spiel gerade läuft. Bringt ein
+- **Agent**: winziges Programm, das jeder Teilnehmer einmal auf seinem PC installiert. Es fragt den
+  PC gezielt nur nach den zentral hinterlegten Spiele-Prozessen (z. B. `cs2.exe`) – nie nach allem,
+  was gerade läuft – und meldet dem Server, welches Spiel gerade läuft. Bringt ein
   eigenes, rein lokales **Kontroll-Tool** mit (Tray-Icon + kleine Weboberfläche) zum Pausieren,
   Umschalten von Einstellungen und Deinstallieren, ohne Server-Zugriff und ohne dass ein Mitspieler
   im LAN darauf zugreifen könnte – siehe [„Agent-Steuerung"](#agent-steuerung-kontroll-tool) unten.
