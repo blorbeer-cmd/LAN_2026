@@ -53,7 +53,9 @@ export const VIEW_REGISTRY = createViewRegistry({
   gameCatalog: renderGameCatalog,
   arrivals: inSection('arrivals', renderArrivals),
   events: inSection('events', renderOrgaEvents),
-  kiosk: inSection('kiosk', renderOrgaKiosk),
+  // Not an Orga tab — reached only from Admin's "Kioskverwaltung" tool card,
+  // like Sitzplan (see renderOrgaKiosk).
+  kiosk: renderOrgaKiosk,
   admin: renderAdmin,
   music: renderMusic,
 });

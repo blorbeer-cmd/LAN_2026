@@ -20,7 +20,7 @@ test('every section tab is a real route and belongs to exactly one section', () 
 test('a section is entered on its first tab and its tabs share one nav group', () => {
   assert.equal(sectionEntryView('competition'), 'matchmaking');
   assert.equal(sectionEntryView('insights'), 'leaderboard');
-  // To-Dos lead Orga, so the persisted push url "/#checklist" keeps landing
+  // To-Do leads Orga, so the persisted push url "/#checklist" keeps landing
   // where it always did.
   assert.equal(sectionEntryView('checklist'), null);
   assert.equal(sectionEntryView('orga'), 'checklist');
@@ -82,12 +82,12 @@ test('the shell renders the area title, marks the active tab and returns the con
   assert.match(container.innerHTML, /data-section-tab="matchmaking"[^>]*>Teams</);
 
   renderSectionShell(container, 'checklist', { badges: { checklist: 3 } });
-  assert.match(container.innerHTML, /data-section-tab="checklist"[^>]*>To-Dos<span data-section-tab-count> \(3\)</);
+  assert.match(container.innerHTML, /data-section-tab="checklist"[^>]*>To-Do<span data-section-tab-count> \(3\)</);
   // A zero count must not render an empty-looking badge.
   const zero = stubContainer();
   renderSectionShell(zero, 'checklist', { badges: { checklist: 0 } });
-  assert.match(zero.innerHTML, /data-section-tab="checklist"[^>]*>To-Dos<span data-section-tab-count><\//);
-  assert.equal(zero.innerHTML.includes('To-Dos (0)'), false);
+  assert.match(zero.innerHTML, /data-section-tab="checklist"[^>]*>To-Do<span data-section-tab-count><\//);
+  assert.equal(zero.innerHTML.includes('To-Do (0)'), false);
 });
 
 test('re-rendering the same route keeps the shell and its content element alive', () => {
