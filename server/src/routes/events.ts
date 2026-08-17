@@ -191,7 +191,18 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
         .map((event) => serializeEvent(event))
     : undefined;
   res.json({
-    activeEvent: serializeEventSummary(activeEvent as EventRow),
+    activeEvent: {
+      ...serializeEventSummary(activeEvent as EventRow),
+      // Every picker that draws teams or starts a draft must offer only
+      // players who can actually be entered as participants of this
+      // workspace (see competitionPlayersBelongToGroup) — otherwise a
+      // non-participant selected from the full roster fails that check with
+      // a confusing 404 on submit. Accepted-only, like getParticipantIds
+      // elsewhere. Tournament creation (routes/tournaments.ts) hits the same
+      // check but its player picker (public/js/views/tournament.js) is not
+      // wired up to this field yet — see the PR's own follow-up note.
+      participantIds: getParticipantIds(activeEvent.id),
+    },
     availableEvents: availableEvents.map(serializeEventSummary),
     historicalEvents: historicalEvents.map(serializeEventSummary),
     invitations: invitations.map((event) => ({ ...serializeEventSummary(event), participationStatus: 'invited' })),

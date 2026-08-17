@@ -10,6 +10,7 @@ import {
   gameById,
   catalogGames,
   gamesWithHistory,
+  eventPlayers,
 } from './state.js';
 
 test('state starts with the expected empty defaults', () => {
@@ -106,6 +107,20 @@ test('gamesWithHistory keeps a demoted game that already carries results', () =>
     gamesWithHistory().map((g) => g.id),
     ['g1', 'g2'],
   );
+});
+
+test('eventPlayers keeps only players accepted into the active event', () => {
+  state.players = [{ id: 'p1', name: 'Alice' }, { id: 'p2', name: 'Bob' }, { id: 'p3', name: 'Carla' }];
+  state.activeEvent = { id: 'testevent', participantIds: ['p1', 'p3'] };
+  assert.deepEqual(eventPlayers().map((p) => p.id), ['p1', 'p3']);
+});
+
+test('eventPlayers falls back to the full roster before participant ids are known', () => {
+  state.players = [{ id: 'p1', name: 'Alice' }, { id: 'p2', name: 'Bob' }];
+  state.activeEvent = { id: 'base' };
+  assert.deepEqual(eventPlayers().map((p) => p.id), ['p1', 'p2']);
+  state.activeEvent = null;
+  assert.deepEqual(eventPlayers().map((p) => p.id), ['p1', 'p2']);
 });
 
 test('gamesWithHistory also keeps the extra ids it is handed', () => {
