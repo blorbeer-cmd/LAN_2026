@@ -16,6 +16,7 @@ import { icon } from '../icons.js';
 import { renderSeatingPlan } from './seating.js';
 import { ensureAktuellLoaded, aktuellItems } from '../aktuellStatus.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { isAdmin } from '../admin.js';
 
 const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
 
@@ -136,6 +137,11 @@ function renderActiveGroups(players) {
 // Leaderboard snapshot: the top six use the otherwise empty card width as
 // two compact columns on larger screens and stay a single list on phones.
 function renderLeaderboardTop() {
+  // The Auswertung area (leaderboard/analytics/hallOfFame) is only reachable
+  // with the device-local Admin mode active (see app.js's switchView()) — a
+  // preview here would otherwise offer a "Gesamte Rangliste" link that
+  // silently redirects a regular member to Essen instead.
+  if (!isAdmin()) return '';
   const standings = state.leaderboard?.standings || [];
   if (standings.length === 0) return '';
   const columns = [standings.slice(0, 3), standings.slice(3, 6)]

@@ -3973,6 +3973,10 @@ input[type='number'].tournament-score-input {
 .food-order-item-chip {
   cursor: pointer;
 }
+.food-order-item-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .food-order-item-controls {
   display: inline-flex;
   align-items: center;
