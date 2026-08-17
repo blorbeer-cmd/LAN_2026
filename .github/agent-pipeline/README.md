@@ -117,7 +117,12 @@ question about which provider's quota to spend. Everything else stays automatic.
 
 The answer is one of three labels. An interactive session sets the label for the user right after
 they answer, so nobody has to switch to GitHub for it — but only ever as a transcription of an
-explicit answer, never invented or changed on its own. Unattended automation never sets one: not
+explicit answer, never invented or changed on its own. It puts the choice to the user as plain text
+at the end of its turn and never through a blocking question dialog: the decision is asynchronous,
+its durable copy already sits in the pull request, and a modal would lock the session's input until
+answered. It asks at most once per head SHA, and not at all once the pull request is merged or
+closed — at which point it also cancels its own recurring check-ins and event subscriptions for that
+pull request. Unattended automation never sets one: not
 the reconciler, not a later dispatcher, not a review session, not a CI job. An agent choosing its
 own review mode would be helping itself past the merge gate. The gate cannot verify that
 provenance — it only sees a label — so the rule is binding and the pull request's label history is
