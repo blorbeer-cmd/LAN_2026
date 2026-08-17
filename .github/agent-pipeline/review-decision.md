@@ -17,9 +17,11 @@ Die Frage gehört zu genau einem Head-SHA und wird für diesen Head genau einmal
 
 ## Wann nicht erneut fragen
 
-Vor jeder Frage prüft die Session die folgenden Punkte am aktuellen GitHub-Zustand — nicht aus dem
-Gedächtnis, das ein Wecken, ein neuer Container oder eine Kompaktierung verliert. Trifft einer zu,
-wird die Frage nicht gestellt und eine bereits gestellte nicht wiederholt:
+Vor jeder Frage prüft die Session die folgenden Punkte. Alle bis auf einen sind am aktuellen
+GitHub-Zustand belegbar und werden dort gelesen, nicht aus dem Gedächtnis, das ein Wecken, ein neuer
+Container oder eine Kompaktierung verliert. Der eine nicht belegbare Punkt ist unten ausdrücklich
+gekennzeichnet. Trifft einer zu, wird die Frage nicht gestellt und eine bereits gestellte nicht
+wiederholt:
 
 - Der Pull Request ist gemergt oder geschlossen. Damit endet dieser Ablauf endgültig; für einen
   solchen PR wird nie wieder eine Wahl erfragt, auch nicht nach später eintreffenden Ereignissen.
@@ -32,7 +34,9 @@ wird die Frage nicht gestellt und eine bereits gestellte nicht wiederholt:
 - Die Session hat die Frage für genau diesen Head bereits gestellt. Weitere Reconciler-Läufe,
   aktualisierte Statuskommentare, erneute Benachrichtigungen, CI-Ereignisse oder eine Wiederaufnahme
   der Session sind kein neuer Anlass. Auch eine noch unbeantwortete Frage wird nicht neu gestellt,
-  sondern abgewartet.
+  sondern abgewartet. Dies ist der eine Punkt, für den es in GitHub kein Artefakt gibt: Die Frage
+  wird als Turn-Text zugestellt, nicht als Kommentar der Session. Sie ist deshalb nicht nachlesbar,
+  und für den unklaren Fall gilt die Regel unter dieser Liste.
 - Die Antwort liegt vor, aber das Label ist noch nicht gesetzt, weil der Statuskommentar den
   aktuellen Head noch nicht führt (siehe „Nach der Antwort“, Punkt 1). Die Antwort bleibt gültig;
   die Session wartet auf den Eintrag und setzt das Label anschließend, ohne die Frage zu wiederholen.

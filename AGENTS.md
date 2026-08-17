@@ -97,8 +97,10 @@ für normale Implementierungsdetails gelten diese Kurzregeln:
   gemergt oder geschlossen ist, wenn für den aktuellen Head bereits eine Wahl oder ein bestandenes
   Review vorliegt oder wenn die Frage für diesen Head schon gestellt und noch unbeantwortet ist.
   Ein erneutes Wecken durch Check-in, CI- oder PR-Ereignis ist kein neuer Anlass; dann wird nur der
-  Fortschritt berichtet. Der Zustand wird vor jeder Frage aus GitHub gelesen, nicht aus dem
-  Gedächtnis der Session.
+  Fortschritt berichtet. Merge, Wahl und Reviewergebnis werden dafür aus GitHub gelesen, nicht aus
+  dem Gedächtnis der Session. Ob die Frage schon lief, ist dort nicht belegbar; kann die Session das
+  nach einem Wecken nicht mehr beurteilen, fragt sie nicht — die Frage liegt ohnehin dauerhaft als
+  PR-Kommentar des Reconcilers vor.
 - Mit dem Merge oder dem Schließen des Pull Requests endet die Begleitung endgültig: eigene
   wiederkehrende Check-ins und PR-Ereignis-Abonnements abbestellen, das Ende einmal melden und
   danach für diesen Pull Request nichts mehr fragen. Folgearbeit beginnt auf einem neuen Branch.
