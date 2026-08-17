@@ -17,8 +17,9 @@ Die Frage gehört zu genau einem Head-SHA und wird für diesen Head genau einmal
 
 ## Wann nicht erneut fragen
 
-Vor jeder Frage prüft die Session die folgenden Punkte. Trifft einer zu, wird die Frage nicht
-gestellt und eine bereits gestellte nicht wiederholt:
+Vor jeder Frage prüft die Session die folgenden Punkte am aktuellen GitHub-Zustand — nicht aus dem
+Gedächtnis, das ein Wecken, ein neuer Container oder eine Kompaktierung verliert. Trifft einer zu,
+wird die Frage nicht gestellt und eine bereits gestellte nicht wiederholt:
 
 - Der Pull Request ist gemergt oder geschlossen. Damit endet dieser Ablauf endgültig; für einen
   solchen PR wird nie wieder eine Wahl erfragt, auch nicht nach später eintreffenden Ereignissen.
@@ -46,9 +47,33 @@ Ein Ereignis, das lediglich einen dieser Zustände erneut meldet, wird still üb
 gemeldet wird stattdessen der Fortschritt: welches Review läuft, worauf gewartet wird und wie das
 Ergebnis ausfiel.
 
+Ob die Frage für diesen Head schon gestellt wurde, weiß nur die Session selbst. Kann sie das nach
+einem Wecken nicht mehr beurteilen, wird im Zweifel **nicht** gefragt: Für einen reviewbereiten Head
+existiert der Zustellkommentar des Reconcilers ohnehin dauerhaft im Pull Request, eine Wiederholung
+bringt dem Nutzer also nichts und kostet ihn nur eine weitere Unterbrechung. Die Session berichtet
+dann den Zustand und wartet auf die Antwort.
+
 Ein Draft blockiert nur das menschliche Merge-Gate. Die Review-Auswahl und das anschließende Review
 werden bereits auf dem Draft-PR gestartet; erst nach bestandenem Review darf der PR auf „Ready for
 review“ wechseln.
+
+## Ende des Ablaufs
+
+Mit dem Merge oder dem Schließen des Pull Requests endet dieser Ablauf endgültig — und mit ihm die
+gesamte Begleitung des Pull Requests durch die Session. Die Session räumt dabei ihre eigenen
+Weckquellen ab, statt sie weiterlaufen zu lassen:
+
+- eigene wiederkehrende Check-ins für diesen Pull Request abbestellen,
+- das Abonnement seiner PR-Ereignisse beenden,
+- das Ende einmal melden: gemergt beziehungsweise geschlossen, und dass nichts mehr aussteht.
+
+Danach erzeugt dieser Pull Request keine Frage, keine Empfehlung und keinen Statusbericht mehr.
+Trifft später doch noch ein Ereignis zu ihm ein, wird es still übergangen. Folgearbeit beginnt auf
+einem neuen Branch mit einem eigenen Ablauf.
+
+Ein weiterlaufender Check-in auf einem gemergten Pull Request ist selbst dann ein Fehler, wenn er
+nichts meldet: Er weckt die Session ohne Anlass und stellt damit genau die Fragen wieder her, die
+dieser Abschnitt beendet.
 
 ## Aktive Zustellung
 
@@ -141,7 +166,15 @@ würde und ob für einen der Anbieter bereits ein Limit oder ein Timeout beobach
 
 ## Frageformat
 
-Die Frage wird als Auswahl mit genau diesen drei Optionen gestellt und nennt vorab kompakt:
+Die Frage wird als gewöhnlicher Text am Ende des Zuges vorgelegt und nie über ein blockierendes
+Frage-Werkzeug gestellt. Sie ist bewusst asynchron: Ohne Antwort startet nichts, und dieselbe Wahl
+liegt dauerhaft als PR-Kommentar vor. Ein modaler Dialog würde dagegen die Eingabe der Session
+sperren, sodass der Nutzer bis zur Antwort keinen anderen Auftrag mehr abschicken kann — und jedes
+Wecken der Session würde die Sperre erneut aufziehen. Nach dem Vorlegen endet der Zug; der Nutzer
+antwortet mit einem normalen Prompt (`a`, `b`, `c`) oder setzt eines der drei Labels selbst. Beides
+zählt gleichermaßen als ausdrückliche Antwort.
+
+Die Auswahl nennt genau diese drei Optionen und vorab kompakt:
 
 - Implementierer und wer bei a) reviewen würde,
 - Head-SHA und was sich seit dem letzten Review geändert hat (Dateien, Umfang),
