@@ -35,6 +35,10 @@ gestellt und eine bereits gestellte nicht wiederholt:
 - Die Antwort liegt vor, aber das Label ist noch nicht gesetzt, weil der Statuskommentar den
   aktuellen Head noch nicht führt (siehe „Nach der Antwort“, Punkt 1). Die Antwort bleibt gültig;
   die Session wartet auf den Eintrag und setzt das Label anschließend, ohne die Frage zu wiederholen.
+- Der gewählte Anbieter ist nur vorübergehend ausgefallen und die beobachtete Ursache nennt ein
+  erkennbares Ende — etwa ein Nutzungslimit mit Reset-Zeitpunkt. Die Wahl gilt weiter; derselbe
+  Modus wird nach dem Wegfall der Ursache erneut versucht, statt zu fragen. Einzelheiten und die
+  Abgrenzung zum terminalen Ausfall unter „Ausfall des gewählten Anbieters“.
 - Für den aktuellen Head liegt bereits ein bestandenes Reviewergebnis vor.
 - CI ist rot oder ein Mergekonflikt ist offen. Diese Punkte behebt der Implementierungs-Agent
   zuerst ohne Rückfrage.
@@ -224,6 +228,36 @@ das Kontingent verbrauchen, das diese Frage schützen soll.
    der Statuskommentar den neuen Head-SHA nennt — vorher kann der Reconciler die Antwort nicht
    diesem Head zuordnen und würde sie noch einmal erfragen.
 
+## Ausfall des gewählten Anbieters
+
+Ein Startfehler des gewählten Anbieters ist kein Widerruf der Antwort. Der Nutzer hat für diesen Head
+entschieden; nicht erreichbar war der Anbieter. Deshalb wird nach der beobachteten Ursache
+unterschieden — stillschweigend auf einen anderen Modus ausgewichen wird in keinem der beiden Fälle.
+
+**Vorübergehend mit erkennbarem Ende.** Die Ursache nennt oder impliziert, wann sie entfällt: ein
+Nutzungslimit mit Reset-Zeitpunkt, ein Rate-Limit, ein einzelner technischer Zustellfehler, eine
+Infrastrukturstörung. Dann gilt die Wahl weiter. Die Session meldet Ursache und geplanten neuen
+Versuch, wartet den Wegfall der Ursache ab und setzt danach denselben Modus erneut — ohne neue Frage.
+Dass der Reconciler das an den Fehlversuch gebundene Label bereits entfernt hat, ist Buchführung über
+den gescheiterten Versuch und nicht das Verwerfen der Antwort. Höchstens ein solcher automatischer
+Versuch je genannter Ursache.
+
+**Terminal oder unklar.** Der Anbieter hat abgelehnt, ist nicht verbunden, eine Vorbedingung wurde
+zurückgewiesen, die Ursache ist unbekannt, ein Ende ist nicht benennbar, oder der eine automatische
+Versuch ist erneut gescheitert. Dann wird der beobachtete Grund gemeldet und die Auswahl mit
+angepasster Empfehlung erneut vorgelegt.
+
+Zwei Grenzen gelten in beiden Fällen:
+
+- Der erneute Versuch gilt nur für denselben Head und denselben Modus. Hat sich der Head zwischen
+  Ausfall und Wiederholung geändert, ist die Antwort verfallen und die Auswahl wird neu vorgelegt.
+- Der Wartezustand muss sichtbar sein: Ursache und geplanter Zeitpunkt werden genannt, damit aus dem
+  Warten kein stilles Hängen wird. Warteversuche zählen nicht als Reviewrunde.
+
+Das entspricht der Reihenfolge in
+[`../../docs/plans/auto-feature-to-deploy-pipeline.md`](../../docs/plans/auto-feature-to-deploy-pipeline.md),
+Abschnitt „Reihenfolge“.
+
 ## Was die Wahl nicht verändert
 
 - Die Entscheidung gehört dem Nutzer. Der Agent überträgt sie nur: Er setzt das Label ausschließlich
@@ -237,5 +271,6 @@ das Kontingent verbrauchen, das diese Frage schützen soll.
 - Alle übrigen Gate-Bedingungen gelten unverändert: grüne CI, konfliktfrei, aufgelöste Threads,
   UI/UX-Nachricht, menschliche Freigabe geschützter Pfade.
 - Der Merge bleibt in jedem Modus beim Nutzer.
-- Ist der gewählte Anbieter nicht verfügbar, wird nicht heimlich auf einen anderen Modus
-  ausgewichen. Der Ausfall wird gemeldet und die Auswahl erneut vorgelegt.
+- Ein Ausfall des gewählten Anbieters führt nie heimlich auf einen anderen Modus. Ob dabei derselbe
+  Modus erneut versucht oder die Auswahl neu vorgelegt wird, richtet sich nach der beobachteten
+  Ursache; siehe „Ausfall des gewählten Anbieters“.
