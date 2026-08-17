@@ -1,9 +1,12 @@
 # Respawn – Agent
 
 Kleines Programm, das auf jedem Spieler-PC läuft. Es kennt nur drei Dinge: die Server-URL, den
-eigenen API-Key und wie oft es nachschauen soll. Es scannt periodisch die laufenden Prozesse und
-meldet sie dem Server – die Zuordnung „welcher Prozessname gehört zu welchem Spiel" liegt zentral
-auf dem Server (`⚙️ Spiele verwalten` im Web-Tool) und muss hier nicht gepflegt werden.
+eigenen API-Key und wie oft es nachschauen soll. Es scannt periodisch die laufenden Prozesse,
+gleicht sie **lokal auf dem PC** mit der vom Server bekannten Liste konfigurierter Spiele-Prozesse
+ab und meldet ausschließlich die Treffer – die Zuordnung „welcher Prozessname gehört zu welchem
+Spiel" liegt zentral auf dem Server (`⚙️ Spiele verwalten` im Web-Tool) und muss hier nicht
+gepflegt werden. Jedes andere gerade laufende Programm (Browser, Chat, ...) verlässt den PC nie
+und wird auch serverseitig verworfen, falls es doch gesendet würde.
 
 ## Für Teilnehmer: fertiges Download (empfohlen)
 
@@ -85,9 +88,10 @@ damit unterscheiden, ob ein Spiel nur im Hintergrund lief oder tatsächlich akti
   wieder geändert wird.
 - **Was tatsächlich übertragen wird**: der Prozessname des aktuell fokussierten Fensters (das kann
   grundsätzlich jedes laufende Programm sein, nicht nur eines unserer Spiele) sowie die Leerlaufzeit
-  in Sekunden als Zahl. Der Server nutzt das nur, wenn es zu einem der konfigurierten Spiele passt –
-  alles andere wird verworfen und nirgends gespeichert oder angezeigt. Wer das nicht möchte, lässt
-  es einfach auf „aus".
+  in Sekunden als Zahl. Der Agent gleicht den Prozessnamen bereits lokal mit der Liste konfigurierter
+  Spiele ab; ist es keines davon, wird statt des Namens „nichts erkannt" gesendet – der tatsächliche
+  Name eines fremden Programms verlässt den PC also nie. Wer das nicht möchte, lässt es einfach auf
+  „aus".
 
 ## Als eigenständige `.exe` paketieren
 

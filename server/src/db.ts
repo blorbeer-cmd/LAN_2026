@@ -158,6 +158,11 @@ db.exec(`
   -- Technical heartbeat metadata for the admin diagnosis view. Kept apart
   -- from live_status because these are troubleshooting details, not gameplay
   -- state, and must still update while tracking is paused or roster-gated.
+  -- process_names never holds more than the process names configured in
+  -- game_process_names for the player's group(s) — both the agent (locally)
+  -- and routes/agent.ts (server-side, defense in depth) filter every scan
+  -- against that allow-list before it reaches this column, so nothing else
+  -- currently running on a player's PC is ever visible here.
   CREATE TABLE IF NOT EXISTS agent_diagnostics (
     player_id       TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
     agent_version   TEXT,

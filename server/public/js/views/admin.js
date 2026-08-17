@@ -16,6 +16,7 @@ import { currentGroup, refreshGroupContext } from '../groupContext.js';
 const ONBOARDING_HELP = 'Neue Person: Registrierungslink. Bestehendes Profil: Claim-Link. Vergessenes Passwort: Reset-Link.';
 const TEST_DATA_HELP = 'Legt Test-Spieler mit Sitzplatz, Bewertungen und Spielzeit an; zwei spielen gerade. Nur im Admin-Modus sichtbar.';
 const ADMIN_ROLE_HELP = 'Owner und Admins dürfen den Admin-Bereich verwalten. Mindestens ein aktiver Owner muss erhalten bleiben.';
+const AGENT_DIAGNOSTICS_HELP = 'Der Agent gleicht laufende Prozesse lokal auf dem PC mit den hinterlegten Spielen ab. Nur Treffer werden hier angezeigt – andere laufende Programme verlassen den PC nie.';
 
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
@@ -588,7 +589,10 @@ function renderPanel(container, ctx) {
       </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-agent-title">
         <div class="grouped-page-section-title">
-          <h2 id="admin-agent-title">Agent-Diagnose</h2>
+          <h2 id="admin-agent-title" class="title-with-info">
+            <span>Agent-Diagnose</span>
+            ${infoTooltipHtml('admin-agent-diagnostics-help', 'Agent-Diagnose', AGENT_DIAGNOSTICS_HELP)}
+          </h2>
           <button type="button" class="btn btn-sm" id="agent-diagnostics-refresh">Aktualisieren</button>
         </div>
         <div class="card stack">
