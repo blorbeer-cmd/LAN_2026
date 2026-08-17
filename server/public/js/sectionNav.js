@@ -26,15 +26,15 @@ export const SECTIONS = Object.freeze({
   }),
   // To-Dos lead on purpose: that is what people open this area to check, and
   // it keeps the already persisted push url "/#checklist" landing where it
-  // always did.
+  // always did. TV-Kiosk is not a tab here — it lives only in Admin's
+  // "Kioskverwaltung" tool card, which is the single entry point now.
   orga: Object.freeze({
     title: 'Orga',
     tabs: Object.freeze([
-      Object.freeze({ view: 'checklist', label: 'To-Dos' }),
+      Object.freeze({ view: 'checklist', label: 'To-Do' }),
       Object.freeze({ view: 'checklistPacking', label: 'Packliste' }),
       Object.freeze({ view: 'arrivals', label: 'An- & Abreise' }),
       Object.freeze({ view: 'events', label: 'Events' }),
-      Object.freeze({ view: 'kiosk', label: 'TV-Kiosk' }),
     ]),
   }),
 });

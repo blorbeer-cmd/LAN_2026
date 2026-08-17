@@ -75,7 +75,7 @@ const GAMES = [
     id: 'battleship',
     icon: icon('ship'),
     name: 'Battleship',
-    help: 'Ziel: Versenke die gegnerische Flotte. Steuerung: Raster antippen oder mit der Tastatur bedienen.',
+    help: 'Ziel: Versenke die gegnerische Flotte. Zu Beginn ein Schiff wählen und auf das Startfeld tippen, um es zu platzieren; Berührungen zwischen Schiffen sind erlaubt. Steuerung: Raster antippen oder mit der Tastatur bedienen.',
   },
   {
     id: 'challenge-rush',
