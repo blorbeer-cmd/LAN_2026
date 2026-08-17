@@ -18,9 +18,17 @@
 // a `user32.dll` P/Invoke for foreground window and idle time. Both used to be
 // separate PowerShell invocations; keeping them in one script halves the
 // process starts on the player's machine, which is the expensive part.
-// A `pgrep -x` fallback covers macOS/Linux so the agent (and its tests) also
-// work during development on non-Windows machines; activity tracking stays
-// Windows-only and reports nulls there.
+// A `ps -A`-based fallback covers macOS/Linux so the agent (and its tests)
+// also work during development on non-Windows machines; activity tracking
+// stays Windows-only and reports nulls there. This dev fallback lists every
+// process and filters in JS rather than asking the OS a targeted question —
+// unlike the Windows path, it is never what a real player's agent runs, so
+// the privacy property this module exists for only has to hold on Windows.
+// (An earlier version used `pgrep -x` to keep the same OS-level narrowing on
+// this path too, but pgrep's un-anchored `-x` name matching turned out to
+// behave inconsistently across environments — CI's runner failed to match a
+// plain "node" it should have — so this path trades that consistency risk
+// for the same one-line JS filter the rest of this module already uses.)
 
 const fs = require('fs');
 const os = require('os');
@@ -70,12 +78,10 @@ public class LanPartyNative {
   $idleSeconds = [Math]::Round(([Environment]::TickCount - $lii.dwTime) / 1000)
 } catch {}`;
 
-function execAsync(cmd, { emptyOnExitCode1 = false } = {}) {
+function execAsync(cmd) {
   return new Promise((resolve, reject) => {
     exec(cmd, { windowsHide: true, timeout: PROBE_TIMEOUT_MS, maxBuffer: 1024 * 1024 }, (err, stdout) => {
-      // pgrep exits 1 when simply nothing matched, which is a perfectly normal
-      // "no game running" result rather than a failure.
-      if (err && !(emptyOnExitCode1 && err.code === 1 && !err.signal)) return reject(err);
+      if (err) return reject(err);
       resolve(stdout || '');
     });
   });
@@ -184,14 +190,13 @@ function parseProbeOutput(raw) {
   return { processes, foreground, idleSeconds };
 }
 
-// `pgrep -x -l` prints one `<pid> <name>` pair per match.
-function parsePgrepOutput(output) {
+// `ps -A -o comm=` prints one command per line, occasionally with a path.
+function parsePsOutput(output) {
   return output
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => line.replace(/^\d+\s+/, '').toLowerCase())
-    .filter(Boolean);
+    .map((line) => line.split('/').pop().toLowerCase());
 }
 
 async function probeWindows(lookupNames, includeActivity) {
@@ -200,15 +205,10 @@ async function probeWindows(lookupNames, includeActivity) {
   return parseProbeOutput(out);
 }
 
-// `-x` makes pgrep require a full match of the whole process name, so the
-// alternation below can never match a longer, unrelated name.
 async function probePosix(lookupNames) {
-  // An empty pattern would match every process — exactly the thing this module
-  // exists to prevent, so it is guarded here as well as at the call site.
   if (lookupNames.length === 0) return { processes: [], foreground: null, idleSeconds: null };
-  const pattern = lookupNames.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  const out = await execAsync(`pgrep -x -l '${pattern}'`, { emptyOnExitCode1: true });
-  return { processes: parsePgrepOutput(out), foreground: null, idleSeconds: null };
+  const running = new Set(parsePsOutput(await execAsync('ps -A -o comm=')));
+  return { processes: lookupNames.filter((name) => running.has(name)), foreground: null, idleSeconds: null };
 }
 
 // Returns { processNames, foregroundProcessName, idleSeconds }. processNames is
@@ -241,5 +241,5 @@ module.exports = {
   mapHitsToConfiguredNames,
   buildProbeScript,
   parseProbeOutput,
-  parsePgrepOutput,
+  parsePsOutput,
 };

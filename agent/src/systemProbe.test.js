@@ -9,7 +9,7 @@ const {
   mapHitsToConfiguredNames,
   buildProbeScript,
   parseProbeOutput,
-  parsePgrepOutput,
+  parsePsOutput,
 } = require('./systemProbe');
 
 test('buildLookup strips the .exe extension the OS lookup does not want', () => {
@@ -174,12 +174,20 @@ test('parseProbeOutput rejects malformed output instead of reporting no games', 
   assert.throws(() => parseProbeOutput('not json at all'), /keine gültige Antwort/);
 });
 
-test('parsePgrepOutput drops the pid column', () => {
-  assert.deepEqual(parsePgrepOutput('6994 bash\n7001 Node\n'), ['bash', 'node']);
+test('parsePsOutput lowercases one command per line', () => {
+  assert.deepEqual(parsePsOutput('Xorg\nbash\nNode\n'), ['xorg', 'bash', 'node']);
 });
 
-test('parsePgrepOutput returns an empty array when nothing matched', () => {
-  assert.deepEqual(parsePgrepOutput(''), []);
+test('parsePsOutput strips a leading path if present', () => {
+  assert.deepEqual(parsePsOutput('/usr/bin/node\nbash\n'), ['node', 'bash']);
+});
+
+test('parsePsOutput ignores blank lines', () => {
+  assert.deepEqual(parsePsOutput('node\n\n'), ['node']);
+});
+
+test('parsePsOutput returns an empty array for empty output', () => {
+  assert.deepEqual(parsePsOutput(''), []);
 });
 
 test('probeSystem finds a process that is actually running', async () => {
