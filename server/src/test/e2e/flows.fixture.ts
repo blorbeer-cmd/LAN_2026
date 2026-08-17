@@ -75,6 +75,16 @@ async function openTeams(): Promise<void> {
   await openSectionTab('matchmaking', 'matchmaking');
 }
 
+// Auswertung (Rangliste/Statistiken/Hall of Fame) has no bottom-nav slot or
+// "Mehr" entry of its own any more - it lives behind Admin's own
+// "Auswertung" tool card, gated by the real admin role instead.
+async function openAuswertungTab(tab: string): Promise<void> {
+  await page.click('.nav-btn[data-view="more"]');
+  await page.click('[data-navigate="admin"]');
+  await page.click('[data-navigate="leaderboard"]');
+  await page.click(`[data-section-tab="${tab}"]`);
+}
+
 async function ensureAdminMode(): Promise<void> {
   await page.waitForSelector('#admin-mode-activate, #admin-tools-title');
   const activateButton = page.locator('#admin-mode-activate');
@@ -219,10 +229,11 @@ flowTest('shell', 'Orga Events tab and Profil use grouped help while admin tools
   await page.click('.modal[aria-label="Neues Event"] [data-close]');
   // TV-Kiosk is not an Orga tab (only "Kioskverwaltung" in Admin reaches it,
   // see "the authenticated admin role owns the seating editor and backup
-  // tools" below) — Orga itself only ever exposes these four tabs.
+  // tools" below) — Orga itself only ever exposes these four tabs, sorted
+  // alphabetically by their German label.
   assert.deepEqual(
     await page.locator('.section-tabs [data-section-tab]').evaluateAll((tabs) => tabs.map((tab) => tab.dataset.sectionTab)),
-    ['checklist', 'checklistPacking', 'arrivals', 'events']
+    ['arrivals', 'events', 'checklistPacking', 'checklist']
   );
 
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -330,7 +341,10 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   assert.equal(await page.locator('#admin-event-help').count(), 0);
   assert.equal(await page.locator('[data-navigate="kiosk"]').count(), 1);
   assert.equal(await page.locator('#admin-kiosk-help').count(), 0);
-  assert.equal(await page.locator('.admin-tool-row').count(), 4);
+  // Auswertung (Rangliste/Statistiken/Hall of Fame) is reachable only from
+  // here — it has no bottom-nav slot or "Mehr" entry of its own any more.
+  assert.equal(await page.locator('[data-navigate="leaderboard"]').count(), 1);
+  assert.equal(await page.locator('.admin-tool-row').count(), 5);
   await page.click('[data-navigate="kiosk"]');
   await page.waitForSelector('a[href="/kiosk.html"]');
   assert.equal(await page.getByRole('heading', { name: 'TV-Kiosk' }).count(), 1);
@@ -693,16 +707,16 @@ flowTest('competition', 'full click-through: players, matchmaking, voting, leade
   assert.equal(await page.locator('.modal .vote-row').count(), 2);
   await page.click('[data-close]');
 
-  // Auswertung is admin-mode-only (see updateAdminIndicator() in app.js) —
-  // activate it once so the bottom nav exposes "Auswertung" instead of
-  // "Essen" for the rest of this shard's shared page/session.
+  // Admin mode stays active from here for the rest of this shard's shared
+  // page/session (test players, Arcade AI). Auswertung itself no longer
+  // depends on it - it lives behind Admin's own "Auswertung" tool card,
+  // gated by the real admin role instead.
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await ensureAdminMode();
 
-  // Leaderboard: record a match and see it reflected. The bottom nav opens the
-  // "Auswertung" area on its Rangliste tab.
-  await page.click('.nav-btn[data-view="leaderboard"]');
+  // Leaderboard: record a match and see it reflected.
+  await page.click('[data-navigate="leaderboard"]');
   await page.waitForSelector('h1:text-is("Auswertung")');
   await page.waitForSelector('[data-section-tab="leaderboard"][aria-current="page"]');
   assert.equal(
@@ -1213,7 +1227,7 @@ flowTest('competition', 'Auswertungen (via Mehr) shows a real award and keeps de
   await page.reload();
   await page.waitForSelector('#app:not([hidden])');
   // Spielzeit-Statistiken are the second tab of the "Auswertung" area.
-  await openSectionTab('leaderboard', 'analytics');
+  await openAuswertungTab('analytics');
   await page.waitForSelector('text=Marathon-Zocker', { timeout: 5000 });
   assert.ok((await page.textContent('.view-title'))?.includes('Auswertung'));
 
@@ -1721,6 +1735,48 @@ flowTest('community', 'Info: create an entry, see it rendered', async () => {
   await page.waitForSelector('.info-board-modal', { state: 'detached' });
 });
 
+flowTest('community', 'Info: a long entry starts collapsed behind an explicit toggle', async () => {
+  await page.click('#info-btn');
+  await page.waitForSelector('#info-new-btn');
+
+  // A short entry (well under the collapse threshold) renders in full,
+  // exactly like today, with no toggle at all.
+  await page.click('#info-new-btn');
+  await page.fill('#info-title', 'Discord');
+  await page.fill('#info-content', 'discord.gg/example');
+  await page.click('#info-form button[type="submit"]');
+  await page.waitForSelector('text=discord.gg/example');
+  const discordEntry = page.locator('[data-info-entry]', { hasText: 'Discord' });
+  assert.equal(await discordEntry.locator('.info-board-content-toggle').count(), 0);
+
+  // A long entry starts collapsed behind "Vollständig anzeigen" instead of
+  // stretching its card (and its short neighbor) to match its full height.
+  const longContent = Array.from({ length: 6 }, (_, i) => `Regel ${i + 1}: Sei nett zueinander.`).join('\n');
+  await page.click('#info-new-btn');
+  await page.fill('#info-title', 'Hausregeln');
+  await page.fill('#info-content', longContent);
+  await page.click('#info-form button[type="submit"]');
+  await page.waitForSelector('text=Vollständig anzeigen');
+  const rulesEntry = page.locator('[data-info-entry]', { hasText: 'Hausregeln' });
+  const toggle = rulesEntry.locator('.info-board-content-toggle');
+  await toggle.waitFor();
+  assert.equal(await toggle.getAttribute('open'), null);
+  // The native <details> keeps the collapsed content in the DOM but hides it
+  // (display: none) - assert visibility, not mere presence.
+  assert.equal(await rulesEntry.getByText('Regel 6', { exact: false }).isVisible(), false);
+
+  // Expanding reveals the full content; the toggle stays reachable and
+  // reversible.
+  await rulesEntry.locator('.info-board-content-summary').click();
+  await rulesEntry.getByText('Regel 6: Sei nett zueinander.').waitFor();
+  assert.equal(await toggle.getAttribute('open'), '');
+  await rulesEntry.locator('.info-board-content-summary').click();
+  assert.equal(await toggle.getAttribute('open'), null);
+
+  await page.click('.info-board-modal [data-close]');
+  await page.waitForSelector('.info-board-modal', { state: 'detached' });
+});
+
 flowTest('community', 'Essensbestellung: open an order with a send time/notes/link, edit them, add a priced item, close it', async () => {
   // Essen sits directly in the bottom nav for a non-admin device — it takes
   // over Auswertung's slot there, so it is not also listed under "Mehr"
@@ -1750,7 +1806,10 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
 
   assert.equal(await page.locator('[data-item-quantity]').inputValue(), '');
   assert.equal(await page.locator('[data-item-quantity]').getAttribute('placeholder'), 'Anzahl');
-  assert.equal(await page.locator('.food-order-quantity-field > span').textContent(), '×');
+  // The quantity field carries no decorative suffix span - it is a
+  // type="number" field, so numberStepper.js's own +/- overlay is the only
+  // control in its right-hand padding.
+  assert.equal(await page.locator('.food-order-quantity-field > span').count(), 0);
   assert.equal(await page.locator('[data-item-quantity]').evaluate((input) => getComputedStyle(input).textAlign), 'left');
   await page.fill('[data-item-desc]', 'Margherita groß');
   await page.fill('[data-item-quantity]', '2');
@@ -1780,6 +1839,33 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   // after closing.
   await page.click('[data-toggle-paid]');
   await page.waitForSelector('.food-order-item.is-paid');
+  // Marking a position paid strikes through its price too, not only its
+  // description - it is fully settled, not merely renamed.
+  assert.equal(
+    await page
+      .locator('.food-order-item.is-paid .food-order-item-price strong')
+      .first()
+      .evaluate((el) => getComputedStyle(el).textDecorationLine),
+    'line-through'
+  );
+
+  // Left to right, a position's own row reads: quantity × description /
+  // price + breakdown / copy / Sammelzahlung / Bezahlt (remove trails last,
+  // only for the item's own owner).
+  const marghieToggleOrder = await page
+    .locator('.food-order-item', { hasText: 'Margherita' })
+    .locator('.food-order-item-toggles')
+    .first()
+    .evaluate((row) =>
+      Array.from(row.children).map((child) => {
+        if (child.matches('[data-copy-food-total]')) return 'copy';
+        if (child.matches('[data-select-pay]')) return 'sammelzahlung';
+        if (child.matches('[data-toggle-paid]')) return 'bezahlt';
+        if (child.querySelector('[data-remove-item]')) return 'remove';
+        return 'other';
+      })
+    );
+  assert.deepEqual(marghieToggleOrder, ['copy', 'sammelzahlung', 'bezahlt', 'remove']);
 
   // Anyone can select any mix of items — their own or someone else's — and
   // pay them together in one PayPal link, tip included.
@@ -1788,10 +1874,14 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await page.waitForSelector('.food-order-payment-selector:has-text("1 Position ausgewählt")');
   await page.waitForSelector('.food-order-payment-selector:has-text("20,90")');
   await page.waitForSelector('.food-order-payment-selector:has-text("10% Trinkgeld")');
+  // The selection is broken down position by position, not just counted.
+  await page.waitForSelector('.food-order-selection-breakdown li:has-text("2 × Margherita groß — 20,90 €")');
   assert.equal(
     await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'),
     'https://paypal.me/luigi/20.90EUR'
   );
+  // Margherita is already paid, so there is nothing left to settle in bulk.
+  assert.equal(await paymentSelector.locator('[data-mark-selected-paid]').count(), 0);
 
   // The combined Sammelzahlung total can be copied too, same as a single
   // position's amount.
@@ -1818,6 +1908,41 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
     await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'),
     'https://paypal.me/luigi/20.90EUR'
   );
+
+  // Selecting an unpaid position for Sammelzahlung and then marking it paid
+  // (directly on its own chip) must clear that Sammelzahlung mark again - a
+  // paid position has nothing left to collect.
+  await page.fill('[data-item-desc]', 'Cola');
+  await page.fill('[data-item-quantity]', '1');
+  await page.fill('[data-item-price]', '2,50');
+  await page.click('[data-add-item-form] button[type="submit"]');
+  await page.waitForSelector('text=Cola');
+  const colaRow = page.locator('.food-order-item', { hasText: 'Cola' });
+  await colaRow.locator('[data-select-pay]').click();
+  await page.waitForSelector('.food-order-payment-selector:has-text("2 Positionen ausgewählt")');
+  await colaRow.locator('[data-toggle-paid]').click();
+  await page.waitForSelector('.food-order-payment-selector:has-text("1 Position ausgewählt")');
+  assert.equal(await colaRow.locator('[data-select-pay]').getAttribute('aria-pressed'), 'false');
+  assert.equal(await colaRow.evaluate((el) => el.classList.contains('is-paid')), true);
+
+  // The bulk action under Gesamtsumme settles every still-unpaid selected
+  // position at once and clears their Sammelzahlung marks the same way.
+  await page.fill('[data-item-desc]', 'Chips');
+  await page.fill('[data-item-quantity]', '1');
+  await page.fill('[data-item-price]', '3,00');
+  await page.click('[data-add-item-form] button[type="submit"]');
+  await page.waitForSelector('text=Chips');
+  const chipsRow = page.locator('.food-order-item', { hasText: 'Chips' });
+  await chipsRow.locator('[data-select-pay]').click();
+  await page.waitForSelector('.food-order-payment-selector:has-text("2 Positionen ausgewählt")');
+  await page.waitForSelector('.food-order-selection-breakdown li:has-text("1 × Chips — 3,30 €")');
+  await paymentSelector.locator('[data-mark-selected-paid]').click();
+  await page.waitForSelector('.food-order-payment-selector:has-text("1 Position ausgewählt")');
+  assert.equal(await chipsRow.locator('[data-select-pay]').getAttribute('aria-pressed'), 'false');
+  assert.equal(await chipsRow.evaluate((el) => el.classList.contains('is-paid')), true);
+  // Only Margherita (already paid) remains selected, so nothing is left to
+  // settle in bulk again.
+  assert.equal(await paymentSelector.locator('[data-mark-selected-paid]').count(), 0);
 
   // Clearing the PayPal link while an item is still selected must not crash
   // the view (a selection can outlive the link it was made for).
@@ -2477,7 +2602,7 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   const testLans = hallBody.events.filter((event) => event.eventName.startsWith('Respawn Test-LAN'));
   assert.equal(testLans.length, 12);
   assert.ok(testLans.every((event) => event.overallStandings.length >= 4 && event.tournamentChampions.length === 3));
-  await openSectionTab('leaderboard', 'hallOfFame');
+  await openAuswertungTab('hallOfFame');
   await page.waitForSelector('#hall-event-select-search');
   assert.equal(await page.getByText('LAN auswählen', { exact: true }).count(), 0);
   assert.equal(await page.locator('.hall-of-fame-event-section').count(), 2);

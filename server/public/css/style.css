@@ -2535,6 +2535,30 @@ button.card {
   font-size: var(--font-size-lg);
   line-height: 1.5;
 }
+/* A long entry (well past the 1000-character server cap, but already
+   overwhelming next to a short one-line entry) stays collapsed behind this
+   toggle instead of stretching every card in its grid row to match it. */
+.info-board-content-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  list-style: none;
+}
+.info-board-content-summary::-webkit-details-marker {
+  display: none;
+}
+.info-board-content-chevron {
+  display: inline-flex;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+.info-board-content-toggle[open] .info-board-content-chevron {
+  transform: rotate(90deg);
+}
+.info-board-content-toggle .info-board-content {
+  margin-top: var(--space-2);
+}
 .award-card {
   display: flex;
   flex-direction: column;
@@ -3937,7 +3961,12 @@ input[type='number'].tournament-score-input {
   flex: 1;
   overflow-wrap: anywhere;
 }
-.food-order-item.is-paid .food-order-item-description {
+/* The price sits in its own flex column (for the muted breakdown line
+   underneath it), so its "paid" strikethrough is set explicitly on both
+   inner pieces rather than relied on to propagate from the flex container. */
+.food-order-item.is-paid .food-order-item-description,
+.food-order-item.is-paid .food-order-item-price strong,
+.food-order-item.is-paid .food-order-item-price .muted {
   color: var(--text-muted);
   text-decoration: line-through;
 }
@@ -3989,10 +4018,25 @@ input[type='number'].tournament-score-input {
   padding: var(--space-1);
   font-size: var(--font-size-xs);
 }
+/* Deliberately heavier than the surrounding muted meta/info text (send time,
+   notes, per-item rows) so the order-wide total reads as a real total at a
+   glance instead of blending in as another info line. */
 .food-order-total {
-  padding-top: var(--space-2);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
-  font-size: var(--font-size-sm);
+}
+.food-order-total-label {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+}
+.food-order-total-value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.food-order-total-value strong {
+  font-size: var(--font-size-lg);
+  font-variant-numeric: tabular-nums;
 }
 .food-order-payment-selector {
   gap: var(--space-2);
@@ -4001,6 +4045,15 @@ input[type='number'].tournament-score-input {
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
   font-size: var(--font-size-sm);
+}
+.food-order-selection-breakdown {
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.food-order-selection-breakdown li {
+  overflow-wrap: anywhere;
 }
 .food-order-payment-selector > .muted {
   min-width: 0;
@@ -4053,24 +4106,30 @@ input[type='number'].tournament-score-input {
     align-self: flex-end;
   }
 }
-.food-order-quantity-field,
+.food-order-quantity-field {
+  display: block;
+  min-width: 0;
+}
 .food-order-price-field {
   position: relative;
   display: block;
   min-width: 0;
 }
-/* The element prefix keeps these ahead of the base input[type=...] rule,
-   which otherwise resets padding-right and lets text run under the ×/€
-   suffix on narrow fields. */
-input.food-order-quantity-input,
+/* The element prefix keeps this ahead of the base input[type=...] rule,
+   which otherwise resets padding-right and lets text run under the €
+   suffix on narrow fields. Quantity has no such suffix: it is a
+   type="number" field, so numberStepper.js already reserves its own
+   right-hand padding for the +/- overlay — a decorative × there used to sit
+   underneath those buttons and looked like a broken, non-functional third
+   control. */
 input.food-order-price-input {
   width: 100%;
   padding-right: var(--space-7);
 }
 .food-order-quantity-input {
+  width: 100%;
   text-align: left;
 }
-.food-order-quantity-field > span,
 .food-order-price-field > span {
   position: absolute;
   top: 50%;

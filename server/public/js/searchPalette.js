@@ -6,7 +6,6 @@ import { feedEntryTitle, feedLinkView } from './pushFeed.js';
 import { state } from './state.js';
 import { getMyId } from './whoami.js';
 import { currentPlayerHasAdminRole } from './adminAccess.js';
-import { isAdmin } from './admin.js';
 import { normalizeSearchText } from './searchText.js';
 
 export { normalizeSearchText };
@@ -20,10 +19,11 @@ export const SEARCH_ENTRIES = [
   { view: 'tournaments', title: 'Turniere', category: 'Match', description: 'Turniere anlegen und Ergebnisse verwalten', aliases: 'match wettkampf tournament ko runde bracket', priority: 99 },
   { view: 'matchmaking', title: 'Teams', category: 'Match', description: 'Auslosen, Captain Draft und Historie', aliases: 'match wettkampf teams auslosen matchmaking captain draft kraft team-historie ergebnis-historie', priority: 98 },
   { view: 'votes', title: 'Vote', category: 'Bereich', description: 'Gemeinsam das nächste Spiel wählen', aliases: 'abstimmung voting punkte spielwahl', priority: 97 },
-  // The "Auswertung" area (leaderboard/analytics/hallOfFame) is gated behind the device-local
-  // Admin mode toggle, not the real admin role (see app.js's switchView()) — localAdminOnly
-  // mirrors that exact gate so a result never leads into the same-slot redirect to Essen.
-  { view: 'leaderboard', title: 'Rangliste', category: 'Auswertung', description: 'Ergebnisse, Punkte und Platzierungen', aliases: 'auswertung rang leaderboard ergebnis match', priority: 96, localAdminOnly: true },
+  // The "Auswertung" area (leaderboard/analytics/hallOfFame) lives in Admin's
+  // Werkzeuge now, gated by the real admin role (see app.js's switchView()) —
+  // adminOnly mirrors that exact gate so a result never leads into the
+  // redirect to Essen.
+  { view: 'leaderboard', title: 'Rangliste', category: 'Auswertung', description: 'Ergebnisse, Punkte und Platzierungen', aliases: 'auswertung rang leaderboard ergebnis match', priority: 96, adminOnly: true },
   { view: 'more', title: 'Mehr', category: 'Bereich', description: 'Alle weiteren Bereiche und Tools', aliases: 'menü tools', priority: 95 },
   { view: 'profile', title: 'Mein Profil', category: 'Bereich', description: 'Profil, Agent und Push-Benachrichtigungen', aliases: 'account ich agent benachrichtigung', priority: 90 },
   { view: 'myStats', title: 'Meine Statistiken', category: 'Bereich', description: 'Eigene Spielzeit und persönliche Werte', aliases: 'stats spielzeit auswertung', priority: 80 },
@@ -33,11 +33,11 @@ export const SEARCH_ENTRIES = [
   { view: 'gameCatalog', title: 'Spiele', category: 'Bereich', description: 'Bock, Skill und Spielekatalog', aliases: 'games katalog bewertung skill bock', priority: 75 },
   { view: 'arrivals', title: 'An- & Abreise', category: 'Orga', description: 'Zeiten und Fahrgemeinschaften planen', aliases: 'orga anreise abreise ankunft abfahrt fahrt carpool', priority: 65 },
   { view: 'arcade', title: 'Arcade', category: 'Bereich', description: 'Minigame-Lobbies öffnen und mitspielen', aliases: 'quiz tetris scribble pong blobby snake minigame', priority: 74 },
-  { view: 'analytics', title: 'Statistiken', category: 'Auswertung', description: 'Awards und gemeinsame Statistiken', aliases: 'auswertung auswertungen analytics statistik awards spielzeit', priority: 64, localAdminOnly: true },
+  { view: 'analytics', title: 'Statistiken', category: 'Auswertung', description: 'Awards und gemeinsame Statistiken', aliases: 'auswertung auswertungen analytics statistik awards spielzeit', priority: 64, adminOnly: true },
   { view: 'broadcast', title: 'Durchsage', category: 'Bereich', description: 'Eine Mitteilung an alle Geräte senden', aliases: 'ansage nachricht push kiosk', priority: 63 },
   { view: 'music', title: 'Jam', category: 'Bereich', description: 'Spotify-Titel und Playlists gemeinsam abspielen', aliases: 'spotify musik songs playlist queue warteschlange', priority: 64 },
   { view: 'foodOrders', title: 'Essen', category: 'Bereich', description: 'Sammelbestellungen koordinieren', aliases: 'bestellung food pizza lieferdienst', priority: 68 },
-  { view: 'hallOfFame', title: 'Hall of Fame', category: 'Auswertung', description: 'Champions vergangener Events', aliases: 'auswertung champions sieger historie ruhmeshalle', priority: 61, localAdminOnly: true },
+  { view: 'hallOfFame', title: 'Hall of Fame', category: 'Auswertung', description: 'Champions vergangener Events', aliases: 'auswertung champions sieger historie ruhmeshalle', priority: 61, adminOnly: true },
   { action: 'info', title: 'Info', category: 'Dialog', description: 'WLAN, Discord, Server und Hausregeln', aliases: 'info board information wlan discord server hausregeln', priority: 69 },
   { view: 'checklist', title: 'To-Do', category: 'Orga', description: 'Aufgaben und Mitbring-Anfragen der Gruppe', aliases: 'orga checkliste todo aufgabe anfrage mitbringen', priority: 66 },
   { view: 'checklistPacking', title: 'Packliste', category: 'Orga', description: 'Persönliche Packliste für die LAN', aliases: 'orga checkliste packen mitnehmen', priority: 66 },
@@ -67,8 +67,8 @@ export function searchEntries(query, entries = SEARCH_ENTRIES, limit = 20) {
     .slice(0, limit);
 }
 
-export function searchEntriesVisibleToRole(entries, hasAdminAccess, hasLocalAdminMode = false) {
-  return entries.filter((entry) => (!entry.adminOnly || hasAdminAccess) && (!entry.localAdminOnly || hasLocalAdminMode));
+export function searchEntriesVisibleToRole(entries, hasAdminAccess) {
+  return entries.filter((entry) => !entry.adminOnly || hasAdminAccess);
 }
 
 function compactText(value, maxLength = 100) {
@@ -232,7 +232,7 @@ export function initGlobalSearch(onNavigate) {
           const input = backdrop.querySelector('#global-search-input');
           const summary = backdrop.querySelector('#global-search-summary');
           const resultsContainer = backdrop.querySelector('#global-search-results');
-          const visibleAreaEntries = searchEntriesVisibleToRole(SEARCH_ENTRIES, currentPlayerHasAdminRole(), isAdmin());
+          const visibleAreaEntries = searchEntriesVisibleToRole(SEARCH_ENTRIES, currentPlayerHasAdminRole());
           let allEntries = [...visibleAreaEntries, ...createContentSearchEntries(state)];
           let results = [];
           let selectedIndex = 0;
