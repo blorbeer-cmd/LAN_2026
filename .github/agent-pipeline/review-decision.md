@@ -239,13 +239,15 @@ Nutzungslimit mit Reset-Zeitpunkt, ein Rate-Limit, ein einzelner technischer Zus
 Infrastrukturstörung. Dann gilt die Wahl weiter. Die Session meldet Ursache und geplanten neuen
 Versuch, wartet den Wegfall der Ursache ab und setzt danach denselben Modus erneut — ohne neue Frage.
 Dass der Reconciler das an den Fehlversuch gebundene Label bereits entfernt hat, ist Buchführung über
-den gescheiterten Versuch und nicht das Verwerfen der Antwort. Höchstens ein solcher automatischer
-Versuch je genannter Ursache.
+den gescheiterten Versuch und nicht das Verwerfen der Antwort. Höchstens ein automatischer Versuch je
+Head — unabhängig davon, wie viele unterschiedlich benannte Ursachen seither aufgetreten sind. Eine
+Folgeursache nach diesem einen Versuch fällt immer unter den nächsten Absatz, auch wenn sie selbst
+vorübergehend und erkennbar befristet wäre.
 
 **Terminal oder unklar.** Der Anbieter hat abgelehnt, ist nicht verbunden, eine Vorbedingung wurde
-zurückgewiesen, die Ursache ist unbekannt, ein Ende ist nicht benennbar, oder der eine automatische
-Versuch ist erneut gescheitert. Dann wird der beobachtete Grund gemeldet und die Auswahl mit
-angepasster Empfehlung erneut vorgelegt.
+zurückgewiesen, die Ursache ist unbekannt, ein Ende ist nicht benennbar, oder für diesen Head wurde
+bereits ein automatischer Versuch verbraucht. Dann wird der beobachtete Grund gemeldet und die
+Auswahl mit angepasster Empfehlung erneut vorgelegt.
 
 Zwei Grenzen gelten in beiden Fällen:
 
