@@ -61,15 +61,36 @@ test('POST /api/agent/report matches a known process to its game', async () => {
   assert.deepEqual(res.body.gameIds, [cs2GameId]);
 });
 
-test('GET /api/admin/agent-diagnostics exposes the latest agent heartbeat', async () => {
+test('GET /api/admin/agent-diagnostics exposes the latest agent heartbeat, filtered to configured game processes', async () => {
   const res = await request(app).get('/api/admin/agent-diagnostics');
   assert.equal(res.status, 200);
   const entry = res.body.find((row: { playerId: string }) => row.playerId === playerId);
   assert.ok(entry);
   assert.equal(entry.agentVersion, '1.0.0');
   assert.ok(entry.lastReportAt);
-  assert.deepEqual(entry.processNames, ['explorer.exe', 'cs2.exe']);
+  // 'explorer.exe' was sent alongside 'CS2.EXE' but isn't a configured game
+  // process, so it's stripped before ever reaching this diagnostics view.
+  assert.deepEqual(entry.processNames, ['cs2.exe']);
   assert.equal(entry.online, true);
+});
+
+test('GET /api/agent/process-names without x-api-key is rejected', async () => {
+  const res = await request(app).get('/api/agent/process-names');
+  assert.equal(res.status, 401);
+});
+
+test('GET /api/agent/process-names with a wrong api key is rejected', async () => {
+  const res = await request(app).get('/api/agent/process-names').set('x-api-key', 'not-a-real-key');
+  assert.equal(res.status, 401);
+});
+
+test('GET /api/agent/process-names returns the configured game process allow-list', async () => {
+  const res = await request(app).get('/api/agent/process-names').set('x-api-key', apiKey);
+  assert.equal(res.status, 200);
+  assert.ok(Array.isArray(res.body.processNames));
+  assert.ok(res.body.processNames.includes('cs2.exe'));
+  assert.ok(res.body.processNames.includes('rocketleague.exe'));
+  assert.ok(!res.body.processNames.includes('explorer.exe'));
 });
 
 test('GET /api/live shows the player as playing exactly CS2', async () => {
