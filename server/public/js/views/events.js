@@ -1,13 +1,17 @@
-// Events (FR-30) and TV-/Kiosk-Ansicht: the "Events" and "TV-Kiosk" tabs of the
-// "Orga" area (see sectionNav.js) — this is setup work, not something people
-// touch during actual play, which is why it lives behind "Mehr" rather than
-// the main bottom nav. Game management (including the process-name mappings
-// the agent uses) lives in the Spiele view — see server/CLAUDE.md games reorg.
+// Events (FR-30): the "Events" tab of the "Orga" area (see sectionNav.js) —
+// this is setup work, not something people touch during actual play, which
+// is why it lives behind "Mehr" rather than the main bottom nav. Game
+// management (including the process-name mappings the agent uses) lives in
+// the Spiele view — see server/CLAUDE.md games reorg.
 //
 // The Events tab is deliberately not admin-only: every member reaches it,
 // sees the events they take part in and answers their invitations here. The
 // management actions stay owner/admin — a member gets read-only cards, since
 // only owner/admin receive `state.managedEvents` at all.
+//
+// TV-/Kiosk-Ansicht is a separate, standalone route (not an Orga tab): it is
+// reached only from Admin's "Kioskverwaltung" tool card, the same pattern
+// Sitzplan uses (see seating.js).
 
 import { api } from '../api.js';
 import { openModal, confirmDialog } from '../modal.js';
@@ -20,19 +24,14 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { getMyId } from '../whoami.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { eventStatusBadgeHtml } from '../eventStatus.js';
+import { isGroupAdmin } from '../groupContext.js';
 
 const EVENT_HELP = 'Nur ein Event gleichzeitig erfasst Live-Status und Spielzeit.';
 const KIOSK_HELP = 'Zeigt Live-Status, Vote, Rang und Turnier; ein eigener Token ist erforderlich.';
 
 function renderKioskSection() {
   return `
-    <section class="card stack grouped-page-section" aria-labelledby="orga-kiosk-title">
-      <div class="grouped-page-section-title">
-        <span class="title-with-info">
-          <h2 id="orga-kiosk-title">TV-/Kiosk-Ansicht</h2>
-          ${infoTooltipHtml('orga-kiosk-help', 'TV-/Kiosk-Ansicht', KIOSK_HELP)}
-        </span>
-      </div>
+    <section class="card stack grouped-page-section">
       <a href="/kiosk.html" target="_blank" rel="noopener" class="btn btn-block">Kiosk-Ansicht öffnen</a>
     </section>
   `;
@@ -368,7 +367,23 @@ function openParticipantsForm(ctx, event) {
 }
 
 export function renderOrgaKiosk(container) {
+  if (!isGroupAdmin()) {
+    container.innerHTML = `
+      <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+      <h1 class="view-title">TV-Kiosk</h1>
+      <div class="card stack">
+        <strong>Nur für Admins verfügbar</strong>
+        <span class="muted">Dieses Konto hat keine Admin-Rechte für die Kioskverwaltung.</span>
+        <button type="button" class="btn btn-primary btn-block" data-navigate="more">Zu Mehr</button>
+      </div>`;
+    return;
+  }
   container.innerHTML = `
+    <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
+    <h1 class="view-title title-with-info">
+      <span>TV-Kiosk</span>
+      ${infoTooltipHtml('orga-kiosk-help', 'TV-Kiosk', KIOSK_HELP)}
+    </h1>
     <div class="grouped-page-sections">
       ${renderKioskSection()}
     </div>

@@ -10,6 +10,32 @@ import { activePlayerGroupIds } from '../groups';
 
 export const agentRouter = Router();
 
+// The union of process names any of a player's active groups has mapped to a
+// game. Both the allow-list endpoint below and the report handler use this:
+// the agent filters its scan against it locally, and the server independently
+// filters what it persists against it too, so an older/unpatched agent can
+// never make an arbitrary process name show up in the admin diagnostics view.
+function allowedProcessNames(groupIds: string[]): string[] {
+  if (groupIds.length === 0) return [];
+  const placeholders = groupIds.map(() => '?').join(',');
+  const rows = db
+    .prepare(`SELECT DISTINCT process_name FROM game_process_names WHERE group_id IN (${placeholders})`)
+    .all(...groupIds) as Array<{ process_name: string }>;
+  return rows.map((row) => row.process_name);
+}
+
+// GET /api/agent/process-names — the set of process names the agent is
+// allowed to report at all. The agent fetches this before every scan and
+// only sends names that match, so anything else currently running on the
+// player's PC (browser, chat apps, ...) never leaves it in the first place.
+agentRouter.get('/process-names', (req, res) => {
+  const apiKey = req.header('x-api-key');
+  if (!apiKey) return res.status(401).json({ error: 'API-Key fehlt (Header x-api-key).' });
+  const player = db.prepare('SELECT id FROM players WHERE api_key = ? AND deactivated_at IS NULL').get(apiKey) as { id: string } | undefined;
+  if (!player) return res.status(401).json({ error: 'Ungültiger API-Key.' });
+  res.json({ processNames: allowedProcessNames(activePlayerGroupIds(player.id)) });
+});
+
 agentRouter.post('/report', (req, res) => {
   const apiKey = req.header('x-api-key');
   if (!apiKey) return res.status(401).json({ error: 'API-Key fehlt (Header x-api-key).' });
@@ -25,9 +51,16 @@ agentRouter.post('/report', (req, res) => {
   const idle = typeof idleSeconds === 'number' && Number.isFinite(idleSeconds) ? idleSeconds : null;
   const activityTracked = foregroundProcessName !== undefined;
   const now = Date.now();
+  const groupIds = activePlayerGroupIds(player.id);
+  // A current agent already only ever sends matched names (see the allow-list
+  // endpoint above), but this filters again server-side so a stale agent that
+  // hasn't picked up that behavior yet still can't leak arbitrary process
+  // names into the diagnostics view or the database.
+  const allowed = new Set(allowedProcessNames(groupIds));
+  const diagnosticProcessNames = normalized.filter((name) => allowed.has(name));
   db.prepare(`INSERT INTO agent_diagnostics (player_id, agent_version, last_report_at, process_names) VALUES (?, ?, ?, ?)
     ON CONFLICT(player_id) DO UPDATE SET agent_version=excluded.agent_version, last_report_at=excluded.last_report_at, process_names=excluded.process_names`)
-    .run(player.id, typeof agentVersion === 'string' && agentVersion.trim() ? agentVersion.trim() : null, now, JSON.stringify(normalized));
+    .run(player.id, typeof agentVersion === 'string' && agentVersion.trim() ? agentVersion.trim() : null, now, JSON.stringify(diagnosticProcessNames));
   const contexts = player.tracking_paused ? [] : activeTrackingContexts(player.id, now);
   const previousContexts = db.prepare(
     'SELECT group_id, event_id FROM tracking_live_contexts WHERE player_id = ?',

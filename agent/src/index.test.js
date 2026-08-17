@@ -12,7 +12,9 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { tick, setUpLogFile, formatLocalTime, LOG_FILE_MAX_BYTES } = require('./index.js');
+const { tick, setUpLogFile, formatLocalTime, LOG_FILE_MAX_BYTES, matchAllowedProcessNames } = require('./index.js');
+const { probeSystem } = require('./systemProbe');
+const { setPaused } = require('./state');
 
 function startFakeServer(handler) {
   return new Promise((resolve) => {
@@ -23,6 +25,23 @@ function startFakeServer(handler) {
     });
     server.listen(0, '127.0.0.1', () => resolve(server));
   });
+}
+
+// Fake server that additionally records every request it received (method +
+// path + parsed JSON body), for tests that need to inspect what tick() sent
+// rather than only what it logged.
+function startRecordingServer(routeHandler) {
+  const requests = [];
+  return startFakeServer((req, res, body) => {
+    let parsedBody = null;
+    try {
+      parsedBody = body ? JSON.parse(body) : null;
+    } catch {
+      // leave parsedBody null — a malformed body just isn't inspectable
+    }
+    requests.push({ method: req.method, url: req.url, body: parsedBody });
+    routeHandler(req, res, parsedBody);
+  }).then((server) => ({ server, requests }));
 }
 
 function serverUrl(server) {
@@ -118,6 +137,108 @@ test('tick() logs a clean error for a non-2xx server response instead of throwin
     assert.ok(
       lines.some((l) => l.includes('❌') && l.includes('Interner Serverfehler')),
       'the server error message should surface in the log'
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('matchAllowedProcessNames keeps only names present in the allow-list', () => {
+  assert.deepEqual(matchAllowedProcessNames(['cs2.exe', 'discord.exe', 'chrome.exe'], ['cs2.exe']), ['cs2.exe']);
+});
+
+test('matchAllowedProcessNames returns nothing when the allow-list is empty', () => {
+  assert.deepEqual(matchAllowedProcessNames(['cs2.exe', 'explorer.exe'], []), []);
+});
+
+test('matchAllowedProcessNames returns nothing for an empty scan regardless of the allow-list', () => {
+  assert.deepEqual(matchAllowedProcessNames([], ['cs2.exe']), []);
+});
+
+test('matchAllowedProcessNames keeps every match, including duplicates from the raw scan', () => {
+  assert.deepEqual(matchAllowedProcessNames(['cs2.exe', 'cs2.exe', 'explorer.exe'], ['cs2.exe']), ['cs2.exe', 'cs2.exe']);
+});
+
+// Spellings of the running Node test process, one of which the real OS lookup
+// must find — the same trick the e2e test uses, so these tests exercise the
+// actual wiring instead of a fabricated process list (see agent.e2e.test.js).
+const NODE_PROCESS_CANDIDATES = ['node.exe', 'node', 'mainthread'];
+
+test('tick() fetches the server allow-list and reports the game processes it names', async () => {
+  const { processNames: running } = await probeSystem({ allowedProcessNames: NODE_PROCESS_CANDIDATES });
+  assert.ok(running.length > 0, 'expected the running Node test process to be findable');
+  const allowedName = running[0];
+
+  const { server, requests } = await startRecordingServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/api/agent/process-names') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ processNames: [allowedName] }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ gameIds: [], trackingPaused: false }));
+  });
+  const stateFilePath = tempStatePath();
+  const config = { serverUrl: serverUrl(server), apiKey: 'test-key' };
+
+  try {
+    await tick(config, stateFilePath);
+
+    const allowListIndex = requests.findIndex((r) => r.method === 'GET' && r.url === '/api/agent/process-names');
+    const reportIndex = requests.findIndex((r) => r.method === 'POST' && r.url === '/api/agent/report');
+    assert.ok(allowListIndex >= 0, 'tick() should fetch the process-name allow-list');
+    assert.ok(reportIndex >= 0, 'tick() should still report after fetching the allow-list');
+    // Order matters now: the allow-list is what the process lookup asks the OS
+    // about, so it has to arrive before anything is looked up at all.
+    assert.ok(allowListIndex < reportIndex, 'the allow-list must be fetched before the report');
+
+    const reportReq = requests[reportIndex];
+    assert.deepEqual(reportReq.body.processNames, [allowedName], 'exactly the allow-listed process should be reported');
+  } finally {
+    server.close();
+  }
+});
+
+test('tick() reports nothing and looks up nothing when the server allow-list is empty', async () => {
+  // No configured game process means there is nothing to ask the player's OS
+  // about — plenty of processes are running on this machine, none may show up.
+  const { server, requests } = await startRecordingServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/api/agent/process-names') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ processNames: [] }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ gameIds: [], trackingPaused: false }));
+  });
+  const stateFilePath = tempStatePath();
+  const config = { serverUrl: serverUrl(server), apiKey: 'test-key' };
+
+  try {
+    await tick(config, stateFilePath);
+
+    const reportReq = requests.find((r) => r.method === 'POST' && r.url === '/api/agent/report');
+    assert.ok(reportReq, 'the agent should still report in (that is its heartbeat)');
+    assert.deepEqual(reportReq.body.processNames, [], 'an empty allow-list must produce an empty report');
+  } finally {
+    server.close();
+  }
+});
+
+test('tick() skips the allow-list fetch entirely while locally paused', async () => {
+  const { server, requests } = await startRecordingServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ gameIds: [], trackingPaused: true }));
+  });
+  const stateFilePath = tempStatePath();
+  setPaused(stateFilePath, true);
+  const config = { serverUrl: serverUrl(server), apiKey: 'test-key' };
+
+  try {
+    await tick(config, stateFilePath);
+    assert.ok(
+      !requests.some((r) => r.method === 'GET' && r.url === '/api/agent/process-names'),
+      'a paused agent must not fetch the allow-list, same as it already skips the process scan'
     );
   } finally {
     server.close();

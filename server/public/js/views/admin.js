@@ -16,6 +16,7 @@ import { currentGroup, refreshGroupContext } from '../groupContext.js';
 const ONBOARDING_HELP = 'Neue Person: Registrierungslink. Bestehendes Profil: Claim-Link. Vergessenes Passwort: Reset-Link.';
 const TEST_DATA_HELP = 'Legt Test-Spieler mit Sitzplatz, Bewertungen und Spielzeit an; zwei spielen gerade. Nur im Admin-Modus sichtbar.';
 const ADMIN_ROLE_HELP = 'Owner und Admins dürfen den Admin-Bereich verwalten. Mindestens ein aktiver Owner muss erhalten bleiben.';
+const AGENT_DIAGNOSTICS_HELP = 'Der Agent fragt den PC gezielt nur nach den hier hinterlegten Spiele-Prozessen. Andere laufende Programme sieht er gar nicht erst und sie verlassen den PC nie.';
 
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
@@ -513,7 +514,7 @@ function renderPanel(container, ctx) {
           <h2 id="admin-readiness-title">LAN-Bereitschaft</h2>
           <button type="button" class="btn btn-sm" id="admin-readiness-refresh" ${readinessLoading ? 'disabled' : ''}>Aktualisieren</button>
         </div>
-        <div id="admin-readiness-status" role="status" aria-live="polite" tabindex="-1">
+        <div id="admin-readiness-status" class="stack" role="status" aria-live="polite" tabindex="-1">
           ${readinessBody}
         </div>
       </section>
@@ -532,6 +533,10 @@ function renderPanel(container, ctx) {
       <section class="card stack grouped-page-section" aria-labelledby="admin-tools-title">
         <div class="grouped-page-section-title"><h2 id="admin-tools-title">Werkzeuge</h2></div>
         <div class="two-column-card-grid">
+          <div class="card admin-tool-row">
+            <strong>Auswertung</strong>
+            <button type="button" class="btn btn-primary btn-sm" data-navigate="leaderboard">Öffnen</button>
+          </div>
           <div class="card admin-tool-row">
             <strong>Sitzplan</strong>
             <button type="button" class="btn btn-primary btn-sm" data-navigate="seating">Öffnen</button>
@@ -588,7 +593,10 @@ function renderPanel(container, ctx) {
       </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-agent-title">
         <div class="grouped-page-section-title">
-          <h2 id="admin-agent-title">Agent-Diagnose</h2>
+          <h2 id="admin-agent-title" class="title-with-info">
+            <span>Agent-Diagnose</span>
+            ${infoTooltipHtml('admin-agent-diagnostics-help', 'Agent-Diagnose', AGENT_DIAGNOSTICS_HELP)}
+          </h2>
           <button type="button" class="btn btn-sm" id="agent-diagnostics-refresh">Aktualisieren</button>
         </div>
         <div class="card stack">

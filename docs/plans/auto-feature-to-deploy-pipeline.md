@@ -380,9 +380,14 @@ Approval des eigenen Pull Requests.
 ### Reihenfolge
 
 1. Den vom Nutzer gewählten Reviewer anfordern.
-2. Bei technischem Einzelfehler genau einmal neu zustellen.
-3. Bei bestätigtem Limit oder erneutem Ausfall den beobachteten Grund melden und dieselbe Auswahl
-   erneut vorlegen, mit angepasster Empfehlung. Kein stillschweigender Wechsel des Modus: gerade
+2. Bei technischem Einzelfehler genau einmal neu zustellen. Ebenso, wenn die beobachtete Ursache ein
+   erkennbares Ende nennt oder impliziert — ein Nutzungslimit mit Reset-Zeitpunkt, ein Rate-Limit,
+   eine Infrastrukturstörung: Ursache und geplanten neuen Versuch melden, den Wegfall der Ursache
+   abwarten und danach denselben Modus einmal erneut anfordern, ohne die Auswahl neu vorzulegen. Die
+   Antwort des Nutzers gilt weiter, denn ausgefallen ist der Anbieter, nicht die Entscheidung. Der
+   erneute Versuch bindet an denselben Head; ein neuer Head lässt die Antwort verfallen.
+3. Bei unbekannter Ursache, nicht benennbarem Ende oder erneutem Ausfall nach Schritt 2 den
+   beobachteten Grund melden und dieselbe Auswahl erneut vorlegen, mit angepasster Empfehlung. Kein stillschweigender Wechsel des Modus: gerade
    die Kontingentlage ist der Grund, aus dem der Nutzer diese Entscheidung selbst trifft. Wählt er
    daraufhin den Implementierungs-Anbieter, läuft dessen isoliertes Review als
    `agent:review-fallback`.
@@ -480,7 +485,11 @@ Produktionsdeployment.
 ### Nutzer fragen und auf die Antwort warten
 
 - wer das Review für den aktuellen Head-SHA durchführt. Diese Frage hält die Pipeline an, ohne sie
-  zu eskalieren: kein Auto-Start nach Zeitablauf, keine Ersatzwahl durch einen Agenten.
+  zu eskalieren: kein Auto-Start nach Zeitablauf, keine Ersatzwahl durch einen Agenten. Sie hält
+  dabei nur die Pipeline an, nicht den Nutzer: Sie wird als Text vorgelegt und nie über ein
+  blockierendes Frage-Werkzeug, das die Eingabe der Session bis zur Antwort sperren würde. Pro
+  Head-SHA wird sie höchstens einmal gestellt und mit dem Merge oder Schließen des Pull Requests gar
+  nicht mehr (`.github/agent-pipeline/review-decision.md`).
 
 ### Nutzer informieren, aber nicht anhalten
 

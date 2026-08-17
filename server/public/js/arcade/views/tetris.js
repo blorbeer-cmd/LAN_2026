@@ -20,7 +20,7 @@ import { getMyId } from '../../whoami.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../../modal.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentWhenAiUnavailable, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
@@ -96,7 +96,7 @@ export function tetrisLobbies() {
 
 export function ensureTetrisSocket() {
   if (socket) return socket;
-  resetArcadeOpponentOnIdentityChange(() => { tetrisOpponent = 'human'; });
+  resetArcadeOpponentWhenAiUnavailable(() => { tetrisOpponent = 'human'; });
   socket = connectSocket();
 
   socket.on('tetris:lobbies', (payload) => {
@@ -448,10 +448,8 @@ function renderLobbyList() {
           ? `Noch nicht genug Spieler (mind. ${minimumPlayers}).`
           : 'Noch nicht alle Spieler sind bereit.';
       const footerActions = isHost
-        ? `<span class="row" style="gap:var(--space-1);">
-            <button type="button" class="btn btn-sm btn-equal btn-primary" id="tetris-start" ${ready ? '' : 'disabled'}>Start</button>
+        ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="tetris-start" ${ready ? '' : 'disabled'}>Start</button>
             ${startReason ? infoTooltipHtml(`tetris-start-${l.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
-          </span>
           <button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-close="${l.id}">Schließen</button>`
         : joined
           ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-tetris-leave="${l.id}">Verlassen</button>

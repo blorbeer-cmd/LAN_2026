@@ -26,7 +26,7 @@ import { playArcadeSound } from '../arcadeSound.js';
 import { startArcadeWatch } from './arcadeWatch.js';
 import { confirmDialog } from '../../modal.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentWhenAiUnavailable, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../../infoTooltip.js';
 import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
 import { searchSelectHtml, wireSearchSelect } from '../../searchSelect.js';
@@ -75,7 +75,7 @@ const GAMES = [
     id: 'battleship',
     icon: icon('ship'),
     name: 'Battleship',
-    help: 'Ziel: Versenke die gegnerische Flotte. Steuerung: Raster antippen oder mit der Tastatur bedienen.',
+    help: 'Ziel: Versenke die gegnerische Flotte. Zu Beginn ein Schiff wählen und auf das Startfeld tippen, um es zu platzieren; Berührungen zwischen Schiffen sind erlaubt. Steuerung: Raster antippen oder mit der Tastatur bedienen.',
   },
   {
     id: 'challenge-rush',
@@ -155,7 +155,7 @@ async function loadStats(ctx) {
 
 function ensureSocket(ctx) {
   if (socket) return socket;
-  resetArcadeOpponentOnIdentityChange(() => { quizOpponent = 'human'; });
+  resetArcadeOpponentWhenAiUnavailable(() => { quizOpponent = 'human'; });
   socket = connectSocket();
   socket.on('arcade:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
@@ -335,10 +335,8 @@ function renderLobbyList() {
         : '';
       const startReason = l.players.length < 2 ? 'Noch nicht genug Spieler (mind. 2).' : '';
       const footerActions = isHost
-        ? `<span class="row" style="gap:var(--space-1);">
-            <button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-start-lobby" ${l.players.length < 2 ? 'disabled' : ''}>Start</button>
+        ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-start-lobby" ${l.players.length < 2 ? 'disabled' : ''}>Start</button>
             ${startReason ? infoTooltipHtml(`quiz-start-${l.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
-          </span>
           <button type="button" class="btn btn-sm btn-equal btn-danger" data-close-lobby="${l.id}">Schließen</button>`
         : joined
           ? readyToggleHtml(l, getMyId(), 'quiz-ready')

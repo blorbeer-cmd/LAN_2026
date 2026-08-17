@@ -20,7 +20,7 @@ import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../../modal.js';
 import { connectSocket } from '../../socket.js';
 import { icon } from '../../icons.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentWhenAiUnavailable, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
@@ -398,6 +398,24 @@ function endStroke(e) {
   lastFlushedPoint = null;
 }
 
+// setupCanvas() only reads the canvas's clientWidth/clientHeight once, at
+// mount time. The expand toggle and the arcade-h-budget correction it
+// triggers (see arcadeUi.js) both resize the wrap afterwards via CSS alone,
+// which left the canvas's own drawing-buffer resolution stale — every
+// fraction-to-pixel stroke conversion then targeted the old, now-wrong pixel
+// grid, which is what made drawing land in the wrong place (and, since a
+// stale 0-sized buffer never repaints, occasionally look like it silently
+// stopped working). A ResizeObserver keeps the buffer in sync and replays
+// the confirmed strokes at the corrected resolution whenever the box
+// actually changes size.
+let canvasResizeObserver = null;
+
+function resyncCanvasResolution() {
+  if (!canvasEl) return;
+  if (canvasEl.width === canvasEl.clientWidth && canvasEl.height === canvasEl.clientHeight) return;
+  setupCanvas(canvasEl);
+}
+
 function wireCanvas(el) {
   setupCanvas(el);
   if (!canvasEl) return;
@@ -405,6 +423,9 @@ function wireCanvas(el) {
   canvasEl.addEventListener('pointermove', onPointerMove);
   canvasEl.addEventListener('pointerup', endStroke);
   canvasEl.addEventListener('pointercancel', endStroke);
+  canvasResizeObserver?.disconnect();
+  canvasResizeObserver = new ResizeObserver(() => resyncCanvasResolution());
+  canvasResizeObserver.observe(canvasEl);
 }
 
 // Toolbar clicks (color/size/eraser/fill) must never go through rerender() -
@@ -611,7 +632,7 @@ function emitWithAck(event, payload) {
 
 export function ensureScribbleSocket() {
   if (socket) return socket;
-  resetArcadeOpponentOnIdentityChange(() => { scribbleOpponent = 'human'; });
+  resetArcadeOpponentWhenAiUnavailable(() => { scribbleOpponent = 'human'; });
   socket = connectSocket();
 
   socket.on('scribble:lobbies', (payload) => {
@@ -844,10 +865,8 @@ function renderLobbyList() {
         : '';
       const startReason = ready ? '' : 'Noch nicht genug Spieler (mind. 2).';
       const footerActions = isHost
-        ? `<span class="row" style="gap:var(--space-1);">
-            <button type="button" class="btn btn-sm btn-equal btn-primary" id="scribble-start" ${ready ? '' : 'disabled'}>Start</button>
+        ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="scribble-start" ${ready ? '' : 'disabled'}>Start</button>
             ${startReason ? infoTooltipHtml(`scribble-start-${l.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
-          </span>
           <button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-close="${l.id}">Schließen</button>`
         : joined
           ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-scribble-leave="${l.id}">Verlassen</button>

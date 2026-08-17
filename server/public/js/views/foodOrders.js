@@ -192,33 +192,29 @@ function renderItems(order, myId, { locked = false } = {}) {
                 }
               </span>`;
           const copyHtml = lineTotal === null
-            ? `<span class="food-order-item-action-slot food-order-item-copy-slot" aria-hidden="true"></span>`
+            ? ''
             : `<button type="button" class="icon-btn food-order-item-action food-order-item-copy" data-copy-food-total="${escapeHtml(formatCents(lineTotal))}" title="Summe kopieren" aria-label="Summe kopieren">${icon('copy')}</button>`;
+          const removeHtml =
+            !locked && order.open && i.playerId === myId
+              ? `<button type="button" class="icon-btn food-order-item-action food-order-item-remove" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen">${icon('x')}</button>`
+              : '';
           const selected = selectedForPayment.has(i.id);
           return `
-          <div class="row food-order-item ${i.paid ? 'is-paid' : ''} ${selected ? 'is-selected-for-payment' : ''}">
-            <label class="food-order-item-paid-toggle">
-              <input type="checkbox" data-toggle-paid="${i.id}" data-order="${order.id}" ${i.paid ? 'checked' : ''} ${locked ? 'disabled' : ''} />
-              <span class="food-order-item-toggle-label">Bezahlt</span>
-            </label>
-            <span class="food-order-item-description"><strong>${quantity} ×</strong> ${escapeHtml(i.description)}</span>
-            ${
-              order.paypalLink
-                ? `<label class="food-order-item-pay-select">
-                     <input type="checkbox" data-select-pay="${i.id}" ${selected ? 'checked' : ''} />
-                     <span class="food-order-item-toggle-label">Sammelzahlung</span>
-                   </label>`
-                : ''
-            }
-            <span class="food-order-item-controls">
+          <div class="stack food-order-item ${i.paid ? 'is-paid' : ''} ${selected ? 'is-selected-for-payment' : ''}">
+            <div class="row-between food-order-item-content">
+              <span class="food-order-item-description"><strong>${quantity} ×</strong> ${escapeHtml(i.description)}</span>
+              ${priceHtml}
+            </div>
+            <div class="row food-order-item-toggles">
               ${copyHtml}
               ${
-                !locked && order.open && i.playerId === myId
-                  ? `<button type="button" class="icon-btn food-order-item-action food-order-item-remove" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen">${icon('x')}</button>`
-                  : `<span class="food-order-item-action-slot food-order-item-remove-slot" aria-hidden="true"></span>`
+                order.paypalLink
+                  ? `<button type="button" class="chip food-order-item-chip${selected ? ' is-active' : ''}" data-select-pay="${i.id}" aria-pressed="${selected ? 'true' : 'false'}">Sammelzahlung</button>`
+                  : ''
               }
-            </span>
-            ${priceHtml}
+              <button type="button" class="chip food-order-item-chip${i.paid ? ' is-active' : ''}" data-toggle-paid="${i.id}" data-order="${order.id}" aria-pressed="${i.paid ? 'true' : 'false'}" ${locked ? 'disabled' : ''}>Bezahlt</button>
+              ${removeHtml ? `<span class="food-order-item-controls">${removeHtml}</span>` : ''}
+            </div>
           </div>`;
         })
         .join('');
@@ -234,13 +230,35 @@ function renderItems(order, myId, { locked = false } = {}) {
     .join('');
 }
 
+// The order-wide total, styled as a real total (not a muted info line) with
+// its own copy action directly beside the amount, so the sum sits left of
+// the copy button rather than trailing behind unrelated metadata.
+function renderOrderSummaryTotal(order) {
+  if (order.totalCents <= 0) return '';
+  const tipPercent = order.tipPercent || 0;
+  const totalCents = addTipToCents(order.totalCents, tipPercent);
+  const label = tipPercent > 0 ? `Gesamtsumme inkl. ${tipPercent}% Trinkgeld` : 'Gesamtsumme';
+  return `
+    <div class="row-between food-order-total">
+      <span class="food-order-total-label">${label}</span>
+      <span class="food-order-total-value">
+        <strong>${formatCents(totalCents)}</strong>
+        <button type="button" class="icon-btn food-order-item-action food-order-item-copy" data-copy-food-total="${escapeHtml(formatCents(totalCents))}" title="Summe kopieren" aria-label="Summe kopieren">${icon('copy')}</button>
+      </span>
+    </div>`;
+}
+
 // Lets anyone build a combined PayPal payment out of any mix of items —
 // their own, someone else's, or both — via the per-item checkboxes above.
 // Tip is applied to the selected subtotal, not the whole order. If any
 // selected item has no price, the sum would silently undercount it, so the
 // amount is withheld entirely and the raw PayPal link opens instead
-// (paypalPayUrl only appends an amount when cents > 0).
-function renderPaymentSelector(order) {
+// (paypalPayUrl only appends an amount when cents > 0). The selection is
+// broken down item by item so it is clear at a glance what is actually being
+// combined, and a bulk action settles every still-unpaid selected item at
+// once — either path clears that item's own Sammelzahlung mark, same as the
+// per-item "Bezahlt" toggle, since a paid position has nothing left to pay.
+function renderPaymentSelector(order, { locked = false } = {}) {
   // A selection can outlive the PayPal link it was made for — the creator
   // might clear it via "Info bearbeiten" while items are still selected on
   // someone else's device — so bail out before paypalPayUrl(null, …) throws.
@@ -248,42 +266,60 @@ function renderPaymentSelector(order) {
   const selectedItems = order.items.filter((i) => selectedForPayment.has(i.id));
   if (selectedItems.length === 0) return '';
 
+  const tipPercent = order.tipPercent || 0;
   const allPriced = selectedItems.every((i) => i.priceCents !== null);
   const rawCents = selectedItems.reduce((sum, i) => sum + (i.priceCents ?? 0) * (i.quantity ?? 1), 0);
-  const tipPercent = order.tipPercent || 0;
   const payableCents = allPriced ? addTipToCents(rawCents, tipPercent) : 0;
   const email = paypalEmailFromLink(order.paypalLink);
   const amountLabel = allPriced
     ? `${formatCents(payableCents)}${tipPercent > 0 ? ` (inkl. ${tipPercent}% Trinkgeld)` : ''}`
     : 'Preis unvollständig – Betrag manuell eingeben';
+  const unpaidSelectedCount = selectedItems.filter((i) => !i.paid).length;
+
+  const breakdownHtml = `
+    <ul class="food-order-selection-breakdown">
+      ${selectedItems
+        .map((i) => {
+          const quantity = i.quantity ?? 1;
+          const lineTotal = i.priceCents === null ? null : addTipToCents(i.priceCents * quantity, tipPercent);
+          return `<li>${quantity} × ${escapeHtml(i.description)}${lineTotal === null ? '' : ` — ${formatCents(lineTotal)}`}</li>`;
+        })
+        .join('')}
+    </ul>`;
 
   return `
-    <div class="row-between food-order-payment-selector">
-      <span class="muted">${selectedItems.length} ${selectedItems.length === 1 ? 'Position' : 'Positionen'} ausgewählt · ${amountLabel}</span>
-      <span class="food-order-payment-actions">
-        ${
-          allPriced
-            ? `<button type="button" class="icon-btn food-order-item-action food-order-item-copy" data-copy-food-total="${escapeHtml(formatCents(payableCents))}" title="Summe kopieren" aria-label="Summe kopieren">${icon('copy')}</button>`
-            : ''
-        }
-        <a
-          class="btn btn-sm btn-primary"
-          href="${escapeHtml(paypalPayUrl(order.paypalLink, payableCents))}"
-          target="_blank"
-          rel="noopener"
-          ${email ? `data-copy-paypal-email="${escapeHtml(email)}" title="Öffnet PayPal und kopiert ${escapeHtml(email)} zum Einfügen."` : ''}
-        >${email ? 'PayPal öffnen' : 'Bezahlen'}</a>
-      </span>
+    <div class="stack food-order-payment-selector">
+      <div class="row-between">
+        <span class="muted">${selectedItems.length} ${selectedItems.length === 1 ? 'Position' : 'Positionen'} ausgewählt · ${amountLabel}</span>
+        <span class="food-order-payment-actions">
+          ${
+            allPriced
+              ? `<button type="button" class="icon-btn food-order-item-action food-order-item-copy" data-copy-food-total="${escapeHtml(formatCents(payableCents))}" title="Summe kopieren" aria-label="Summe kopieren">${icon('copy')}</button>`
+              : ''
+          }
+          <a
+            class="btn btn-sm btn-primary"
+            href="${escapeHtml(paypalPayUrl(order.paypalLink, payableCents))}"
+            target="_blank"
+            rel="noopener"
+            ${email ? `data-copy-paypal-email="${escapeHtml(email)}" title="Öffnet PayPal und kopiert ${escapeHtml(email)} zum Einfügen."` : ''}
+          >${email ? 'PayPal öffnen' : 'Bezahlen'}</a>
+        </span>
+      </div>
+      ${breakdownHtml}
+      ${
+        !locked && unpaidSelectedCount > 0
+          ? `<button type="button" class="btn btn-sm btn-block" data-mark-selected-paid="${order.id}">Ausgewählte als bezahlt markieren</button>`
+          : ''
+      }
     </div>`;
 }
 
-function renderOrderTotal(order) {
-  if (order.totalCents <= 0) return '';
-  const tipPercent = order.tipPercent || 0;
-  const totalCents = addTipToCents(order.totalCents, tipPercent);
-  return `<div class="row-between food-order-total"><strong>${
-    tipPercent > 0 ? `Gesamtsumme inkl. ${tipPercent}% Trinkgeld` : 'Gesamtsumme'
-  }</strong><strong>${formatCents(totalCents)}</strong></div>`;
+function renderOrderSummary(order, { locked = false } = {}) {
+  const totalHtml = renderOrderSummaryTotal(order);
+  const selectorHtml = renderPaymentSelector(order, { locked });
+  if (!totalHtml && !selectorHtml) return '';
+  return `<div class="stack food-order-summary">${totalHtml}${selectorHtml}</div>`;
 }
 
 // Metadata block (send time / notes / link) shown on both open and closed
@@ -334,21 +370,19 @@ function renderOpenOrder(order, myId) {
       ${renderDetails(order)}
       ${renderPaymentHint(order)}
       <div class="food-order-items">${renderItems(order, myId)}</div>
-      ${renderOrderTotal(order)}
-      ${renderPaymentSelector(order)}
+      ${renderOrderSummary(order)}
       ${
         myId
           ? `<form class="food-order-item-form" data-add-item-form="${order.id}">
                <input type="text" data-item-desc placeholder="z.B. Margherita groß" maxlength="120" required aria-label="Artikelbezeichnung" />
                <label class="food-order-quantity-field">
                  <input type="number" class="food-order-quantity-input" data-item-quantity placeholder="Anzahl" min="1" max="99" inputmode="numeric" aria-label="Anzahl" />
-                 <span aria-hidden="true">×</span>
                </label>
                <label class="food-order-price-field">
                  <input type="text" class="food-order-price-input" data-item-price placeholder="Preis" inputmode="decimal" aria-label="Einzelpreis" />
                  <span aria-hidden="true">€</span>
                </label>
-               <button type="submit" class="btn btn-sm food-order-add-button">Hinzufügen</button>
+               <button type="submit" class="btn food-order-add-button">Hinzufügen</button>
              </form>`
           : `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um dich einzutragen.</div>`
       }
@@ -385,8 +419,7 @@ function renderClosedOrder(order, myId) {
       ${renderDetails(order, { locked: finalized })}
       ${renderPaymentHint(order)}
       <div class="food-order-items">${renderItems(order, myId, { locked: finalized })}</div>
-      ${renderOrderTotal(order)}
-      ${renderPaymentSelector(order)}
+      ${renderOrderSummary(order, { locked: finalized })}
       ${
         order.createdBy === myId
           ? `<div class="food-order-close-action stack" style="gap:var(--space-2);">
@@ -711,28 +744,54 @@ export function renderFoodOrders(container, ctx) {
     });
   });
 
-  container.querySelectorAll('[data-toggle-paid]').forEach((checkbox) => {
-    checkbox.addEventListener('change', async (e) => {
-      const paid = e.currentTarget.checked;
+  container.querySelectorAll('[data-toggle-paid]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const paid = button.getAttribute('aria-pressed') !== 'true';
       try {
-        await api.foodOrders.setItemPaid(checkbox.dataset.order, checkbox.dataset.togglePaid, paid);
-        const order = cache?.find((o) => o.id === checkbox.dataset.order);
-        const item = order?.items.find((i) => i.id === checkbox.dataset.togglePaid);
+        await api.foodOrders.setItemPaid(button.dataset.order, button.dataset.togglePaid, paid);
+        const order = cache?.find((o) => o.id === button.dataset.order);
+        const item = order?.items.find((i) => i.id === button.dataset.togglePaid);
         if (item) item.paid = paid;
+        // A paid position has nothing left to collect, so a leftover
+        // Sammelzahlung mark on it would be misleading.
+        if (paid) selectedForPayment.delete(button.dataset.togglePaid);
         ctx.rerender();
       } catch (err) {
-        e.currentTarget.checked = !paid;
         showToast(err.message, { error: true });
       }
     });
   });
 
-  container.querySelectorAll('[data-select-pay]').forEach((checkbox) => {
-    checkbox.addEventListener('change', (e) => {
-      const itemId = checkbox.dataset.selectPay;
-      if (e.currentTarget.checked) selectedForPayment.add(itemId);
-      else selectedForPayment.delete(itemId);
+  container.querySelectorAll('[data-select-pay]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const itemId = button.dataset.selectPay;
+      if (selectedForPayment.has(itemId)) selectedForPayment.delete(itemId);
+      else selectedForPayment.add(itemId);
       ctx.rerender();
+    });
+  });
+
+  container.querySelectorAll('[data-mark-selected-paid]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const order = cache?.find((o) => o.id === button.dataset.markSelectedPaid);
+      const targets = order?.items.filter((i) => selectedForPayment.has(i.id) && !i.paid) ?? [];
+      if (targets.length === 0) return;
+      button.disabled = true;
+      try {
+        await Promise.all(targets.map((i) => api.foodOrders.setItemPaid(order.id, i.id, true)));
+        for (const i of targets) {
+          i.paid = true;
+          selectedForPayment.delete(i.id);
+        }
+        ctx.rerender();
+      } catch (err) {
+        // A partial failure across several requests could leave the local
+        // cache disagreeing with the server for some items - reload instead
+        // of guessing which ones actually went through.
+        cache = null;
+        showToast(err.message, { error: true });
+        ctx.rerender();
+      }
     });
   });
 

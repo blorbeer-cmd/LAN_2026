@@ -28,6 +28,24 @@ export function playerById(id) {
   return state.players.find((p) => p.id === id);
 }
 
+// Everyone allowed to be entered as a participant of the active workspace —
+// the pool a player picker that draws teams or starts a draft must offer.
+// Selecting someone outside this set fails server-side
+// (competitionPlayersBelongToGroup) with a confusing 404 on submit, because
+// only accepted event participants can be recorded against it. Falls back to
+// the full roster when the active event hasn't reported its participant ids
+// yet (an older cached payload, or before the first load completes) so a
+// picker never renders empty instead of merely unfiltered.
+// Used by matchmaking.js's draw/draft pickers; tournament.js's player picker
+// for tournament creation is not wired up to this yet (same underlying gap,
+// left out of this change's scope — see the PR description).
+export function eventPlayers() {
+  const participantIds = state.activeEvent?.participantIds;
+  if (!participantIds) return state.players;
+  const allowed = new Set(participantIds);
+  return state.players.filter((p) => allowed.has(p.id));
+}
+
 export function gameById(id) {
   return state.games.find((g) => g.id === id);
 }

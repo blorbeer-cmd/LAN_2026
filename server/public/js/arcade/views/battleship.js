@@ -5,7 +5,7 @@ import { showToast } from '../../toast.js';
 import { confirmDialog } from '../../modal.js';
 import { getMyId } from '../../whoami.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentWhenAiUnavailable, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { arcadeToolbarHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
@@ -60,7 +60,7 @@ export function hasBattleshipMatch() { return Boolean(match); }
 
 export function ensureBattleshipSocket() {
   if (socket) return socket;
-  resetArcadeOpponentOnIdentityChange(() => { battleshipOpponent = 'human'; });
+  resetArcadeOpponentWhenAiUnavailable(() => { battleshipOpponent = 'human'; });
   socket = connectSocket();
   socket.on('connect', () => {
     const returningAfterDisconnect = connectionState === 'offline';
@@ -171,8 +171,7 @@ function renderPlacement() {
     <h1 class="view-title">Battleship</h1>
     ${arcadeToolbarHtml()}
     <section class="card stack battleship-setup" aria-labelledby="battleship-setup-title">
-      <div class="grouped-page-section-title"><h2 id="battleship-setup-title">Flotte platzieren</h2></div>
-      <p class="muted">Wähle ein Schiff und tippe auf das Startfeld. Berührungen zwischen Schiffen sind erlaubt.</p>
+      <div class="grouped-page-section-title"><h2 id="battleship-setup-title">Flotte platzieren</h2>${infoTooltipHtml('battleship-setup-help', 'Flotte platzieren', 'Wähle ein Schiff und tippe auf das Startfeld. Berührungen zwischen Schiffen sind erlaubt.')}</div>
       <div class="battleship-ship-picker" role="list" aria-label="Schiffe">
         ${SHIPS.map((ship) => `<button type="button" class="btn btn-sm ${selectedShip === ship.id ? 'btn-primary' : ''}" data-select-ship="${ship.id}" aria-pressed="${selectedShip === ship.id}" ${locked ? 'disabled' : ''}>${escapeHtml(ship.name)} · ${ship.length}</button>`).join('')}
       </div>
@@ -410,7 +409,7 @@ function lobbyList() {
         ? 'Noch nicht genug Spieler (mind. 2).'
         : 'Nicht alle Mitspieler sind bereit.';
     const footerActions = isHost
-      ? `<span class="row" style="gap:var(--space-1);"><button type="button" class="btn btn-sm btn-equal btn-primary" data-battleship-start="${lobby.id}" ${startReady ? '' : 'disabled'}>Start</button>${startReason ? infoTooltipHtml(`battleship-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}</span><button type="button" class="btn btn-sm btn-equal btn-danger" data-battleship-close="${lobby.id}">Schließen</button>`
+      ? `<button type="button" class="btn btn-sm btn-equal btn-primary" data-battleship-start="${lobby.id}" ${startReady ? '' : 'disabled'}>Start</button>${startReason ? infoTooltipHtml(`battleship-start-${lobby.id}`, 'Start nicht möglich', startReason, 'warning') : ''}<button type="button" class="btn btn-sm btn-equal btn-danger" data-battleship-close="${lobby.id}">Schließen</button>`
       : joined
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-battleship-leave="${lobby.id}">Verlassen</button>${readyToggleHtml(lobby, myId(), 'battleship-ready')}`
         : '';

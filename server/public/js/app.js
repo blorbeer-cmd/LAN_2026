@@ -12,6 +12,7 @@ import { loadAll } from './data.js';
 import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
 import { isAdmin, setAdmin } from './admin.js';
+import { currentPlayerHasAdminRole } from './adminAccess.js';
 import { filterTestUsers } from './testFilter.js';
 import { invalidateHomeSeating } from './views/home.js';
 import { initNotificationBanner, refreshNotificationBanner } from './notificationBanner.js';
@@ -339,6 +340,11 @@ function focusPendingSearchTarget() {
 // re-pushing would trap back/forward between the stale entry and its
 // redirect target).
 function switchView(view, { fromHistory = false, replace = false, searchTarget = null } = {}) {
+  // The entire Auswertung area (Rangliste/Statistiken/Hall of Fame) lives in
+  // Admin's Werkzeuge now, gated by the real admin role — redirect any
+  // attempt to reach it otherwise (deep link, restored history entry, search
+  // palette, ...) to Essen, its former bottom-nav slot.
+  if (sectionKeyForView(view) === 'insights' && !currentPlayerHasAdminRole()) view = 'foodOrders';
   const changed = view !== currentView;
   pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
   currentView = view;

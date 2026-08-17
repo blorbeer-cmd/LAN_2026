@@ -6,7 +6,7 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { confirmDialog, openModal } from '../modal.js';
-import { state, gameById, catalogGames, gamesWithHistory } from '../state.js';
+import { state, gameById, catalogGames, gamesWithHistory, eventPlayers } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { openMatchForm } from './leaderboard.js';
@@ -530,7 +530,7 @@ export function renderMatchmaking(container, ctx) {
   // without it, that draw's Ergebnis-/Rematch-Aktionen would be unreachable.
   // Drawing and drafting stay blocked for such a game (see drawDisabledReason).
   const pickableGames = gamesWithHistory([state.lastMatchmaking?.gameId]);
-  if (catalogGames().length === 0 || state.players.length === 0) {
+  if (catalogGames().length === 0 || eventPlayers().length === 0) {
     container.innerHTML = emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', {
       icon: icon(domainIcon('matchmaking')),
     });
@@ -555,10 +555,15 @@ export function renderMatchmaking(container, ctx) {
   if (checkedIds === null) {
     // First render: default to whoever is currently shown as playing.
     checkedIds = new Set(state.live.filter((p) => p.state === 'playing').map((p) => p.player_id));
-    if (checkedIds.size === 0) checkedIds = new Set(state.players.map((p) => p.id));
+    if (checkedIds.size === 0) checkedIds = new Set(eventPlayers().map((p) => p.id));
   }
   if (draftPlayerIds === null) draftPlayerIds = new Set(checkedIds);
-  const availablePlayerIds = new Set(state.players.map((player) => player.id));
+  const availablePlayerIds = new Set(eventPlayers().map((player) => player.id));
+  // Both selections predate the active event's participant scoping (a stale
+  // `state.live`-based default, or leftover from an event switch) and must be
+  // pruned the same way, or a since-removed/never-accepted id would still
+  // reach POST /api/matchmaking and fail competitionPlayersBelongToGroup.
+  checkedIds = new Set([...checkedIds].filter((id) => availablePlayerIds.has(id)));
   draftPlayerIds = new Set([...draftPlayerIds].filter((id) => availablePlayerIds.has(id)));
   draftCaptainIds = new Set([...draftCaptainIds].filter((id) => draftPlayerIds.has(id)));
 
@@ -575,7 +580,7 @@ export function renderMatchmaking(container, ctx) {
 
   const gameSelectOptions = pickableGames.map((g) => ({ value: g.id, label: g.name }));
 
-  const playerRows = state.players
+  const playerRows = eventPlayers()
     .map(
       (p) => `
       <label class="check-row" data-mm-draw-search-item data-selection-search="${escapeHtml(p.name)}">
@@ -587,7 +592,7 @@ export function renderMatchmaking(container, ctx) {
     )
     .join('');
 
-  const draftPlayerRows = state.players
+  const draftPlayerRows = eventPlayers()
     .map(
       (p) => `<label class="check-row" data-mm-draft-search-item data-selection-search="${escapeHtml(p.name)}">
         <input type="checkbox" data-draft-player="${p.id}" ${draftPlayerIds.has(p.id) ? 'checked' : ''} />
@@ -600,7 +605,7 @@ export function renderMatchmaking(container, ctx) {
 
   // Captains are selected only from the independently prepared draft roster;
   // every other selected participant becomes part of the live pick pool.
-  const draftPlayers = state.players.filter((p) => draftPlayerIds.has(p.id));
+  const draftPlayers = eventPlayers().filter((p) => draftPlayerIds.has(p.id));
   const captainRows = draftPlayers
     .map(
       (p) => `<label class="check-row" data-mm-captain-search-item data-selection-search="${escapeHtml(p.name)}">
@@ -775,26 +780,26 @@ export function renderMatchmaking(container, ctx) {
   });
 
   container.querySelector('#mm-select-all')?.addEventListener('click', () => {
-    for (const player of state.players.filter((entry) => matchesSelectionSearch(entry.name, drawPlayerSearchQuery))) {
+    for (const player of eventPlayers().filter((entry) => matchesSelectionSearch(entry.name, drawPlayerSearchQuery))) {
       checkedIds.add(player.id);
     }
     ctx.rerender();
   });
   container.querySelector('#mm-select-none')?.addEventListener('click', () => {
-    for (const player of state.players.filter((entry) => matchesSelectionSearch(entry.name, drawPlayerSearchQuery))) {
+    for (const player of eventPlayers().filter((entry) => matchesSelectionSearch(entry.name, drawPlayerSearchQuery))) {
       checkedIds.delete(player.id);
     }
     ctx.rerender();
   });
 
   container.querySelector('#draft-select-all')?.addEventListener('click', () => {
-    for (const player of state.players.filter((entry) => matchesSelectionSearch(entry.name, draftPlayerSearchQuery))) {
+    for (const player of eventPlayers().filter((entry) => matchesSelectionSearch(entry.name, draftPlayerSearchQuery))) {
       draftPlayerIds.add(player.id);
     }
     ctx.rerender();
   });
   container.querySelector('#draft-select-none')?.addEventListener('click', () => {
-    for (const player of state.players.filter((entry) => matchesSelectionSearch(entry.name, draftPlayerSearchQuery))) {
+    for (const player of eventPlayers().filter((entry) => matchesSelectionSearch(entry.name, draftPlayerSearchQuery))) {
       draftPlayerIds.delete(player.id);
       draftCaptainIds.delete(player.id);
     }

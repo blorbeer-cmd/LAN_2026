@@ -6,7 +6,7 @@ import { getMyId } from '../../whoami.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../../modal.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentOnIdentityChange, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyModeButtonsHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentWhenAiUnavailable, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
@@ -54,7 +54,7 @@ export function pongLobbies() {
 
 export function ensurePongSocket() {
   if (socket) return socket;
-  resetArcadeOpponentOnIdentityChange(() => { pongOpponent = 'human'; });
+  resetArcadeOpponentWhenAiUnavailable(() => { pongOpponent = 'human'; });
   socket = connectSocket();
   socket.on('pong:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
@@ -178,10 +178,8 @@ function lobbyList() {
         </label>`
       : '';
     const footerActions = isHost
-      ? `<span class="row" style="gap:var(--space-1);">
-          <button type="button" class="btn btn-sm btn-equal btn-primary" id="pong-start" ${ready ? '' : 'disabled'}>Start</button>
+      ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="pong-start" ${ready ? '' : 'disabled'}>Start</button>
           ${reason ? infoTooltipHtml(`pong-start-${lobby.id}`, 'Start nicht möglich', reason, 'warning') : ''}
-        </span>
         <button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-close="${lobby.id}">Schließen</button>`
       : joined
         ? `<button type="button" class="btn btn-sm btn-equal btn-danger" data-pong-leave="${lobby.id}">Verlassen</button>

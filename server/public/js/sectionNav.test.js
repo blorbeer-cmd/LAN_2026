@@ -20,10 +20,12 @@ test('every section tab is a real route and belongs to exactly one section', () 
 test('a section is entered on its first tab and its tabs share one nav group', () => {
   assert.equal(sectionEntryView('competition'), 'matchmaking');
   assert.equal(sectionEntryView('insights'), 'leaderboard');
-  // To-Dos lead Orga, so the persisted push url "/#checklist" keeps landing
-  // where it always did.
   assert.equal(sectionEntryView('checklist'), null);
-  assert.equal(sectionEntryView('orga'), 'checklist');
+  // Orga's tabs are sorted alphabetically for display, so its first tab is
+  // "An- & Abreise" here - but more.js hardcodes the actual "Mehr" hub entry
+  // point to "checklist" (To-Do) independently of this order, which is what
+  // keeps the persisted push url "/#checklist" landing where it always did.
+  assert.equal(sectionEntryView('orga'), 'arrivals');
 
   assert.deepEqual(SECTIONS.competition.tabs.map((tab) => tab.view), ['matchmaking', 'tournaments']);
   assert.equal(navGroupForView('matchmaking'), navGroupForView('tournaments'));
@@ -82,12 +84,12 @@ test('the shell renders the area title, marks the active tab and returns the con
   assert.match(container.innerHTML, /data-section-tab="matchmaking"[^>]*>Teams</);
 
   renderSectionShell(container, 'checklist', { badges: { checklist: 3 } });
-  assert.match(container.innerHTML, /data-section-tab="checklist"[^>]*>To-Dos<span data-section-tab-count> \(3\)</);
+  assert.match(container.innerHTML, /data-section-tab="checklist"[^>]*>To-Do<span data-section-tab-count> \(3\)</);
   // A zero count must not render an empty-looking badge.
   const zero = stubContainer();
   renderSectionShell(zero, 'checklist', { badges: { checklist: 0 } });
-  assert.match(zero.innerHTML, /data-section-tab="checklist"[^>]*>To-Dos<span data-section-tab-count><\//);
-  assert.equal(zero.innerHTML.includes('To-Dos (0)'), false);
+  assert.match(zero.innerHTML, /data-section-tab="checklist"[^>]*>To-Do<span data-section-tab-count><\//);
+  assert.equal(zero.innerHTML.includes('To-Do (0)'), false);
 });
 
 test('re-rendering the same route keeps the shell and its content element alive', () => {
