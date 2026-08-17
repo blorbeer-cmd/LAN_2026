@@ -191,7 +191,16 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
         .map((event) => serializeEvent(event))
     : undefined;
   res.json({
-    activeEvent: serializeEventSummary(activeEvent as EventRow),
+    activeEvent: {
+      ...serializeEventSummary(activeEvent as EventRow),
+      // Every picker that draws teams, starts a draft or creates a
+      // tournament must offer only players who can actually be entered as
+      // participants of this workspace (see competitionPlayersBelongToGroup)
+      // — otherwise a non-participant selected from the full roster fails
+      // that check with a confusing 404 on submit. Accepted-only, like
+      // getParticipantIds elsewhere.
+      participantIds: getParticipantIds(activeEvent.id),
+    },
     availableEvents: availableEvents.map(serializeEventSummary),
     historicalEvents: historicalEvents.map(serializeEventSummary),
     invitations: invitations.map((event) => ({ ...serializeEventSummary(event), participationStatus: 'invited' })),
