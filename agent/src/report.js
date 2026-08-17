@@ -1,17 +1,11 @@
-// Sends the currently seen process names to the server's agent-report
-// endpoint, and a small helper to push the local pause toggle up to the
-// server. Uses the global fetch (Node 18+) so there's no extra dependency to
-// bundle into the packaged .exe.
+// Fetches the server's process-name allow-list, sends the (locally filtered)
+// process names to the server's agent-report endpoint, and a small helper to
+// push the local pause toggle up to the server. Uses the global fetch
+// (Node 18+) so there's no extra dependency to bundle into the packaged .exe.
 
 const AGENT_VERSION = require('../package.json').version;
 
-async function postJson(serverUrl, apiKey, path, body) {
-  const res = await fetch(`${serverUrl}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-    body: JSON.stringify(body),
-  });
-
+async function parseJsonResponse(res) {
   const text = await res.text();
   let responseBody = null;
   if (text) {
@@ -27,6 +21,31 @@ async function postJson(serverUrl, apiKey, path, body) {
     throw new Error(message);
   }
   return responseBody;
+}
+
+async function postJson(serverUrl, apiKey, path, body) {
+  const res = await fetch(`${serverUrl}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+    body: JSON.stringify(body),
+  });
+  return parseJsonResponse(res);
+}
+
+async function getJson(serverUrl, apiKey, path) {
+  const res = await fetch(`${serverUrl}${path}`, {
+    headers: { 'x-api-key': apiKey },
+  });
+  return parseJsonResponse(res);
+}
+
+// Fetches the process names the server currently recognizes as belonging to
+// a game. The agent matches its own process scan against this allow-list
+// before ever sending anything, so no unrelated program running on the
+// player's PC leaves it in the first place.
+async function fetchAllowedProcessNames({ serverUrl, apiKey }) {
+  const body = await getJson(serverUrl, apiKey, '/api/agent/process-names');
+  return Array.isArray(body?.processNames) ? body.processNames : [];
 }
 
 async function reportToServer({ serverUrl, apiKey }, processNames, activitySnapshot) {
@@ -47,4 +66,4 @@ async function syncTrackingPaused({ serverUrl, apiKey }, paused) {
   return postJson(serverUrl, apiKey, '/api/agent/tracking-paused', { paused });
 }
 
-module.exports = { reportToServer, syncTrackingPaused };
+module.exports = { reportToServer, syncTrackingPaused, fetchAllowedProcessNames };
