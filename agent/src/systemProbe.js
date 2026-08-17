@@ -36,11 +36,12 @@ const path = require('path');
 const { exec } = require('child_process');
 
 // The names come from the server's game→process mapping (admin input) and end
-// up inside a PowerShell script and a pgrep pattern. Only this conservative
-// charset is ever passed on; anything else is dropped rather than escaped, so
-// no mapping entry can turn into a shell or PowerShell construct. Wildcards
-// (`*`, `?`, `[`) are excluded on purpose too: `Get-Process -Name` would treat
-// them as patterns and match processes that were never configured.
+// up inside a generated PowerShell script (the Windows path — the POSIX
+// fallback below never interpolates them into a command at all). Only this
+// conservative charset is ever passed on; anything else is dropped rather
+// than escaped, so no mapping entry can turn into a PowerShell construct.
+// Wildcards (`*`, `?`, `[`) are excluded on purpose too: `Get-Process -Name`
+// would treat them as patterns and match processes that were never configured.
 const SAFE_PROCESS_NAME = /^[a-z0-9 ._+()-]{1,64}$/;
 
 // A wedged shell must not stall the report loop forever — the interval is
@@ -88,8 +89,9 @@ function execAsync(cmd) {
 }
 
 // The server stores names the way Windows displays them (`cs2.exe`), while
-// both Get-Process and pgrep want the bare name. Strip the extension for the
-// lookup; hits are mapped back to the configured spelling afterwards.
+// both Get-Process (Windows) and the `ps` comm listing (POSIX fallback) use
+// the bare name. Strip the extension for the lookup; hits are mapped back to
+// the configured spelling afterwards.
 function toLookupName(name) {
   return name.replace(/\.exe$/, '');
 }

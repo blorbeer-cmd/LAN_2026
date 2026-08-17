@@ -1,5 +1,5 @@
 // End-to-end test of the real agent loop against the real (built) server —
-// no mocks. Since this sandbox is Linux, we exercise the `pgrep` fallback path
+// no mocks. Since this sandbox is Linux, we exercise the `ps -A` fallback path
 // instead of the PowerShell probe, but the flow is identical: fetch the
 // allow-list, ask the OS about exactly those names, report, show up on the
 // live board.

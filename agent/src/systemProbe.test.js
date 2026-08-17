@@ -31,8 +31,9 @@ test('buildLookup ignores empty, non-string and duplicate entries', () => {
 });
 
 // The allow-list is admin input from the server and gets interpolated into a
-// PowerShell script / a pgrep pattern, so anything that could change the
-// meaning of those commands must never reach them.
+// generated PowerShell script (the POSIX fallback never interpolates it into
+// a command at all), so anything that could change the meaning of that script
+// must never reach it.
 test('buildLookup drops names containing shell or PowerShell metacharacters', () => {
   const hostile = [
     "cs2.exe'; Stop-Computer #",
