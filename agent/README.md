@@ -1,12 +1,15 @@
 # Respawn – Agent
 
 Kleines Programm, das auf jedem Spieler-PC läuft. Es kennt nur drei Dinge: die Server-URL, den
-eigenen API-Key und wie oft es nachschauen soll. Es scannt periodisch die laufenden Prozesse,
-gleicht sie **lokal auf dem PC** mit der vom Server bekannten Liste konfigurierter Spiele-Prozesse
-ab und meldet ausschließlich die Treffer – die Zuordnung „welcher Prozessname gehört zu welchem
-Spiel" liegt zentral auf dem Server (`⚙️ Spiele verwalten` im Web-Tool) und muss hier nicht
-gepflegt werden. Jedes andere gerade laufende Programm (Browser, Chat, ...) verlässt den PC nie
-und wird auch serverseitig verworfen, falls es doch gesendet würde.
+eigenen API-Key und wie oft es nachschauen soll. Es holt sich periodisch die Liste der
+konfigurierten Spiele-Prozesse vom Server und fragt das Betriebssystem **gezielt nur nach genau
+diesen Namen** – es zieht also keine Liste aller laufenden Programme. Was davon läuft, wird
+gemeldet; die Zuordnung „welcher Prozessname gehört zu welchem Spiel" liegt zentral auf dem Server
+(`⚙️ Spiele verwalten` im Web-Tool) und muss hier nicht gepflegt werden.
+
+Jedes andere gerade laufende Programm (Browser, Chat, Arbeitskram, ...) ist damit für den Agent von
+vornherein unsichtbar: Es taucht schon in der Abfrage nicht auf, verlässt den PC nie und wird
+zusätzlich serverseitig verworfen, falls ein veralteter Agent es doch senden würde.
 
 ## Für Teilnehmer: fertiges Download (empfohlen)
 
@@ -110,6 +113,6 @@ Alternativ direkt neben eine `agent.config.json` legen und manuell starten – f
 ## Tests
 
 ```bash
-npm test        # Unit-Tests: Config-Validierung, Prozessnamen-Parsing
+npm test        # Unit-Tests: Config-Validierung, gezielte Prozessabfrage, Report-Loop
 npm run test:e2e  # Startet den echten Server + den echten Agent-Loop und prüft das Live-Board
 ```

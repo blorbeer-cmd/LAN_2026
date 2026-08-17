@@ -124,9 +124,10 @@ after(async () => {
 });
 
 test('agent reports the running node process and the server reflects it as "playing"', async () => {
-  const runningProcessNames = await getRunningProcessNames();
-  const nodeProcessName = ['node.exe', 'node', 'mainthread'].find((name) => runningProcessNames.includes(name));
-  assert.ok(nodeProcessName, 'the real process scanner should find the running Node test process');
+  // The lookup is targeted, so the candidate spellings go in and whichever one
+  // this platform actually uses comes back out.
+  const [nodeProcessName] = await getRunningProcessNames(['node.exe', 'node', 'mainthread']);
+  assert.ok(nodeProcessName, 'the real process lookup should find the running Node test process');
 
   // Map our own detected process name to a throwaway game.
   const gameRes = await fetch(`${BASE_URL}/api/games`, {
