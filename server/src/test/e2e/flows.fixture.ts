@@ -192,7 +192,7 @@ flowTest('shell', 'fresh device uses the personal login and reaches the app with
   assert.equal(await loginPage.inputValue('#profile-name'), alice.name);
 });
 
-flowTest('shell', 'Orga Events/TV-Kiosk tabs and Profil use grouped help while admin tools stay out of regular Orga', async (t) => {
+flowTest('shell', 'Orga Events tab and Profil use grouped help while admin tools stay out of regular Orga', async (t) => {
   // Switches to a desktop viewport partway through (for the desktop-only
   // profile layout checks below) and never switches back on its own —
   // relying on a later test happening to reset it first. If this test
@@ -217,11 +217,13 @@ flowTest('shell', 'Orga Events/TV-Kiosk tabs and Profil use grouped help while a
   await page.click('#new-event-btn');
   assert.equal(await page.getByText('Tracking', { exact: true }).count(), 0);
   await page.click('.modal[aria-label="Neues Event"] [data-close]');
-
-  await openOrgaTab('kiosk');
-  await page.waitForSelector('#orga-kiosk-title');
-  assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
-  assert.equal(await page.locator('a[href="/kiosk.html"]').count(), 1);
+  // TV-Kiosk is not an Orga tab (only "Kioskverwaltung" in Admin reaches it,
+  // see "the authenticated admin role owns the seating editor and backup
+  // tools" below) — Orga itself only ever exposes these four tabs.
+  assert.deepEqual(
+    await page.locator('.section-tabs [data-section-tab]').evaluateAll((tabs) => tabs.map((tab) => tab.dataset.sectionTab)),
+    ['checklist', 'checklistPacking', 'arrivals', 'events']
+  );
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.click('#profile-btn');
@@ -306,7 +308,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   t.after(async () => {
     // This test switches to a desktop viewport for the pool-column check;
     // always restore the shared page's mobile default regardless of how the
-    // test ends (same viewport-leak safety net as the Orga Events/TV-Kiosk test).
+    // test ends (same viewport-leak safety net as the Orga Events test).
     await page.setViewportSize({ width: 390, height: 844 });
   });
   await page.click('.nav-btn[data-view="more"]');
@@ -321,14 +323,21 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   assert.equal(await page.locator('#admin-backup-help').count(), 0);
   assert.equal(await page.locator('[aria-label$="Test-Spieler vorhanden"]').count(), 1);
   assert.equal(await page.locator('#admin-test-data-help').count(), 1);
-  // Global Event and Kiosk management are reachable from Admin's tool grid
-  // too, not only through Orga's own tab row. They stay two separate cards
-  // because Orga exposes them as two separate tabs.
+  // Global Event management is reachable from Admin's tool grid too, not
+  // only through Orga's own "Events" tab. Kiosk management, by contrast, is
+  // only reachable from here — it is not an Orga tab at all.
   assert.equal(await page.locator('[data-navigate="events"]').count(), 1);
   assert.equal(await page.locator('#admin-event-help').count(), 0);
   assert.equal(await page.locator('[data-navigate="kiosk"]').count(), 1);
   assert.equal(await page.locator('#admin-kiosk-help').count(), 0);
   assert.equal(await page.locator('.admin-tool-row').count(), 4);
+  await page.click('[data-navigate="kiosk"]');
+  await page.waitForSelector('a[href="/kiosk.html"]');
+  assert.equal(await page.getByRole('heading', { name: 'TV-Kiosk' }).count(), 1);
+  assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
+  assert.equal(await page.locator('#orga-kiosk-help').count(), 1);
+  await page.click('[data-navigate="admin"]');
+  await page.waitForSelector('#admin-tools-title');
   assert.equal(await page.locator('.admin-test-controls > *').count(), 3);
   assert.equal(await page.locator('#admin-cleanup').textContent(), 'Test-Daten aufräumen');
   // The count field's own id now sits one level down, inside the
@@ -362,7 +371,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   // The unassigned-player pool is one column on phones and two from --bp-md
   // (DESIGN_SYSTEM.md: "phones keep one column"). The old bare 2-column
   // assertion only ever passed while a desktop viewport leaked in from the
-  // Orga Events/TV-Kiosk test; check both documented layouts explicitly instead.
+  // Orga Events test; check both documented layouts explicitly instead.
   assert.equal(await page.locator('.seating-player-pool').evaluate((pool) => getComputedStyle(pool).gridTemplateColumns.split(' ').length), 1);
   await page.setViewportSize({ width: 900, height: 844 });
   assert.equal(await page.locator('.seating-player-pool').evaluate((pool) => getComputedStyle(pool).gridTemplateColumns.split(' ').length), 2);
@@ -396,7 +405,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
 
 flowTest('shell', 'global search filters areas, supports keyboard navigation and restores focus', async (t) => {
   // Also switches viewport size mid-test (see the note on the same pattern
-  // in "Orga Events/TV-Kiosk tabs and Profil..." above) and only restores the shared
+  // in "Orga Events tab and Profil..." above) and only restores the shared
   // page's default at the very end — guarantee it regardless of where this
   // test fails, so a flake here can't cascade into unrelated mobile-layout
   // assertions in whatever test runs next.
@@ -683,6 +692,13 @@ flowTest('competition', 'full click-through: players, matchmaking, voting, leade
   await page.waitForSelector('.modal .vote-bar-track');
   assert.equal(await page.locator('.modal .vote-row').count(), 2);
   await page.click('[data-close]');
+
+  // Auswertung is admin-mode-only (see updateAdminIndicator() in app.js) —
+  // activate it once so the bottom nav exposes "Auswertung" instead of
+  // "Essen" for the rest of this shard's shared page/session.
+  await page.click('.nav-btn[data-view="more"]');
+  await page.click('[data-navigate="admin"]');
+  await ensureAdminMode();
 
   // Leaderboard: record a match and see it reflected. The bottom nav opens the
   // "Auswertung" area on its Rangliste tab.
@@ -1706,8 +1722,10 @@ flowTest('community', 'Info: create an entry, see it rendered', async () => {
 });
 
 flowTest('community', 'Essensbestellung: open an order with a send time/notes/link, edit them, add a priced item, close it', async () => {
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="foodOrders"]');
+  // Essen sits directly in the bottom nav for a non-admin device — it takes
+  // over Auswertung's slot there, so it is not also listed under "Mehr"
+  // (see more.js).
+  await page.click('#nav-food-orders');
   await page.waitForSelector('#order-new-btn');
   await page.click('#order-new-btn');
   await page.fill('#order-title', "Pizza bei Luigi's");
@@ -1757,14 +1775,15 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
   await page.waitForSelector('text=Summe kopiert: 20,90');
 
-  // Whoever collects the money checks an item off once it's paid — works
-  // while the order is still open, and stays visible/editable after closing.
-  await page.check('[data-toggle-paid]');
+  // Whoever collects the money toggles an item's "Bezahlt" chip once it's
+  // paid — works while the order is still open, and stays visible/editable
+  // after closing.
+  await page.click('[data-toggle-paid]');
   await page.waitForSelector('.food-order-item.is-paid');
 
   // Anyone can select any mix of items — their own or someone else's — and
   // pay them together in one PayPal link, tip included.
-  await page.check('[data-select-pay]');
+  await page.click('[data-select-pay]');
   const paymentSelector = page.locator('.food-order-payment-selector');
   await page.waitForSelector('.food-order-payment-selector:has-text("1 Position ausgewählt")');
   await page.waitForSelector('.food-order-payment-selector:has-text("20,90")');
@@ -1786,14 +1805,14 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await page.fill('[data-item-quantity]', '1');
   await page.click('[data-add-item-form] button[type="submit"]');
   await page.waitForSelector('text=Wasser');
-  await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').check();
+  await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').click();
   await page.waitForSelector('text=Preis unvollständig');
   assert.equal(await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'), 'https://paypal.me/luigi');
   // No copyable amount while the selection has an unpriced item.
   assert.equal(await paymentSelector.locator('[data-copy-food-total]').count(), 0);
 
   // Deselecting it goes back to a complete, priced selection.
-  await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').uncheck();
+  await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').click();
   await page.waitForSelector('text=Preis unvollständig', { state: 'detached' });
   assert.equal(
     await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'),
@@ -1834,7 +1853,7 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   // Paid state survives closing, and stays togglable — settling up normally
   // happens after the order is already closed.
   await page.waitForSelector('.food-order-item.is-paid');
-  await page.locator('.food-order-item', { hasText: 'Margherita' }).locator('[data-toggle-paid]').uncheck();
+  await page.locator('.food-order-item', { hasText: 'Margherita' }).locator('[data-toggle-paid]').click();
   await page.waitForSelector('.food-order-item:not(.is-paid)');
 
   // Closing only freezes items — the details stay correctable afterward.
@@ -2016,8 +2035,9 @@ flowTest('community', 'Durchsage: notification center can navigate, mark read an
 
   // The highlighted strip shows the newest active push on any view and
   // deep-links back into Durchsagen. Opening it marks the entry as read,
-  // while the bell keeps it in the durable history.
-  await page.click('.nav-btn[data-view="leaderboard"]');
+  // while the bell keeps it in the durable history. (Auswertung is
+  // admin-mode-only, so "any view" is exercised with Home here instead.)
+  await page.click('.nav-btn[data-view="home"]');
   const highlight = page.locator('#notification-highlight:has-text("Essen ist da!")');
   await highlight.waitFor();
   await highlight.locator('[data-notification-highlight-navigate]').click();
@@ -2145,10 +2165,11 @@ flowTest('community', 'the device back button steps back through in-app views in
   await page.waitForSelector('.view-title');
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Vote');
-  await page.click('.nav-btn[data-view="leaderboard"]');
-  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Auswertung');
+  // Auswertung is admin-mode-only, so the third view here is Spiele instead.
+  await page.click('.nav-btn[data-view="gameCatalog"]');
+  await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Spiele');
 
-  // Back should undo the last switch (leaderboard -> votes), not leave the
+  // Back should undo the last switch (Spiele -> votes), not leave the
   // single-page app (there is nowhere else to navigate to in this test, so
   // if this fell through to real browser navigation the page would end up
   // blank/erroring instead of showing the votes view).

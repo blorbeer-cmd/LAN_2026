@@ -44,6 +44,17 @@ test('admin destinations are absent for members and visible for admins', () => {
   assert.equal(adminViews.includes('seating'), true);
 });
 
+test('Auswertung destinations require the device-local Admin mode independently of the real role', () => {
+  const withoutLocalAdminMode = searchEntriesVisibleToRole(SEARCH_ENTRIES, true, false).map((entry) => entry.view);
+  const withLocalAdminMode = searchEntriesVisibleToRole(SEARCH_ENTRIES, true, true).map((entry) => entry.view);
+  assert.equal(withoutLocalAdminMode.includes('leaderboard'), false);
+  assert.equal(withoutLocalAdminMode.includes('analytics'), false);
+  assert.equal(withoutLocalAdminMode.includes('hallOfFame'), false);
+  assert.equal(withLocalAdminMode.includes('leaderboard'), true);
+  assert.equal(withLocalAdminMode.includes('analytics'), true);
+  assert.equal(withLocalAdminMode.includes('hallOfFame'), true);
+});
+
 test('content index finds players and an order by one of its items', () => {
   const entries = createContentSearchEntries(
     { players: [{ id: 'p1', name: 'Nebelwolf', real_name: 'Daniel' }], games: [], events: [] },

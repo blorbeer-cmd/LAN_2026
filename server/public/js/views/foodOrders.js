@@ -192,33 +192,28 @@ function renderItems(order, myId, { locked = false } = {}) {
                 }
               </span>`;
           const copyHtml = lineTotal === null
-            ? `<span class="food-order-item-action-slot food-order-item-copy-slot" aria-hidden="true"></span>`
+            ? ''
             : `<button type="button" class="icon-btn food-order-item-action food-order-item-copy" data-copy-food-total="${escapeHtml(formatCents(lineTotal))}" title="Summe kopieren" aria-label="Summe kopieren">${icon('copy')}</button>`;
+          const removeHtml =
+            !locked && order.open && i.playerId === myId
+              ? `<button type="button" class="icon-btn food-order-item-action food-order-item-remove" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen">${icon('x')}</button>`
+              : '';
           const selected = selectedForPayment.has(i.id);
           return `
-          <div class="row food-order-item ${i.paid ? 'is-paid' : ''} ${selected ? 'is-selected-for-payment' : ''}">
-            <label class="food-order-item-paid-toggle">
-              <input type="checkbox" data-toggle-paid="${i.id}" data-order="${order.id}" ${i.paid ? 'checked' : ''} ${locked ? 'disabled' : ''} />
-              <span class="food-order-item-toggle-label">Bezahlt</span>
-            </label>
-            <span class="food-order-item-description"><strong>${quantity} ×</strong> ${escapeHtml(i.description)}</span>
-            ${
-              order.paypalLink
-                ? `<label class="food-order-item-pay-select">
-                     <input type="checkbox" data-select-pay="${i.id}" ${selected ? 'checked' : ''} />
-                     <span class="food-order-item-toggle-label">Sammelzahlung</span>
-                   </label>`
-                : ''
-            }
-            <span class="food-order-item-controls">
-              ${copyHtml}
+          <div class="stack food-order-item ${i.paid ? 'is-paid' : ''} ${selected ? 'is-selected-for-payment' : ''}">
+            <div class="row-between food-order-item-content">
+              <span class="food-order-item-description"><strong>${quantity} ×</strong> ${escapeHtml(i.description)}</span>
+              ${priceHtml}
+            </div>
+            <div class="row food-order-item-toggles">
+              <button type="button" class="chip food-order-item-chip${i.paid ? ' is-active' : ''}" data-toggle-paid="${i.id}" data-order="${order.id}" aria-pressed="${i.paid ? 'true' : 'false'}" ${locked ? 'disabled' : ''}>Bezahlt</button>
               ${
-                !locked && order.open && i.playerId === myId
-                  ? `<button type="button" class="icon-btn food-order-item-action food-order-item-remove" data-remove-item="${i.id}" data-order="${order.id}" aria-label="Entfernen">${icon('x')}</button>`
-                  : `<span class="food-order-item-action-slot food-order-item-remove-slot" aria-hidden="true"></span>`
+                order.paypalLink
+                  ? `<button type="button" class="chip food-order-item-chip${selected ? ' is-active' : ''}" data-select-pay="${i.id}" aria-pressed="${selected ? 'true' : 'false'}">Sammelzahlung</button>`
+                  : ''
               }
-            </span>
-            ${priceHtml}
+              ${copyHtml || removeHtml ? `<span class="food-order-item-controls">${copyHtml}${removeHtml}</span>` : ''}
+            </div>
           </div>`;
         })
         .join('');
@@ -348,7 +343,7 @@ function renderOpenOrder(order, myId) {
                  <input type="text" class="food-order-price-input" data-item-price placeholder="Preis" inputmode="decimal" aria-label="Einzelpreis" />
                  <span aria-hidden="true">€</span>
                </label>
-               <button type="submit" class="btn btn-sm food-order-add-button">Hinzufügen</button>
+               <button type="submit" class="btn food-order-add-button">Hinzufügen</button>
              </form>`
           : `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um dich einzutragen.</div>`
       }
@@ -711,27 +706,26 @@ export function renderFoodOrders(container, ctx) {
     });
   });
 
-  container.querySelectorAll('[data-toggle-paid]').forEach((checkbox) => {
-    checkbox.addEventListener('change', async (e) => {
-      const paid = e.currentTarget.checked;
+  container.querySelectorAll('[data-toggle-paid]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const paid = button.getAttribute('aria-pressed') !== 'true';
       try {
-        await api.foodOrders.setItemPaid(checkbox.dataset.order, checkbox.dataset.togglePaid, paid);
-        const order = cache?.find((o) => o.id === checkbox.dataset.order);
-        const item = order?.items.find((i) => i.id === checkbox.dataset.togglePaid);
+        await api.foodOrders.setItemPaid(button.dataset.order, button.dataset.togglePaid, paid);
+        const order = cache?.find((o) => o.id === button.dataset.order);
+        const item = order?.items.find((i) => i.id === button.dataset.togglePaid);
         if (item) item.paid = paid;
         ctx.rerender();
       } catch (err) {
-        e.currentTarget.checked = !paid;
         showToast(err.message, { error: true });
       }
     });
   });
 
-  container.querySelectorAll('[data-select-pay]').forEach((checkbox) => {
-    checkbox.addEventListener('change', (e) => {
-      const itemId = checkbox.dataset.selectPay;
-      if (e.currentTarget.checked) selectedForPayment.add(itemId);
-      else selectedForPayment.delete(itemId);
+  container.querySelectorAll('[data-select-pay]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const itemId = button.dataset.selectPay;
+      if (selectedForPayment.has(itemId)) selectedForPayment.delete(itemId);
+      else selectedForPayment.add(itemId);
       ctx.rerender();
     });
   });
