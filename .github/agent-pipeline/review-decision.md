@@ -40,10 +40,11 @@ wiederholt:
 - Die Antwort liegt vor, aber das Label ist noch nicht gesetzt, weil der Statuskommentar den
   aktuellen Head noch nicht führt (siehe „Nach der Antwort“, Punkt 1). Die Antwort bleibt gültig;
   die Session wartet auf den Eintrag und setzt das Label anschließend, ohne die Frage zu wiederholen.
-- Der gewählte Anbieter ist nur vorübergehend ausgefallen und die beobachtete Ursache nennt ein
-  erkennbares Ende — etwa ein Nutzungslimit mit Reset-Zeitpunkt. Die Wahl gilt weiter; derselbe
-  Modus wird nach dem Wegfall der Ursache erneut versucht, statt zu fragen. Einzelheiten und die
-  Abgrenzung zum terminalen Ausfall unter „Ausfall des gewählten Anbieters“.
+- Der gewählte Anbieter ist nur vorübergehend ausgefallen: ein einzelner technischer Zustellfehler,
+  oder eine Ursache mit erkennbarem Ende — etwa ein Nutzungslimit mit Reset-Zeitpunkt. Die Wahl gilt
+  weiter; derselbe Modus wird sofort beziehungsweise nach dem Wegfall der Ursache erneut versucht,
+  statt zu fragen. Einzelheiten und die Abgrenzung zum terminalen Ausfall unter „Ausfall des
+  gewählten Anbieters“.
 - Für den aktuellen Head liegt bereits ein bestandenes Reviewergebnis vor.
 - CI ist rot oder ein Mergekonflikt ist offen. Diese Punkte behebt der Implementierungs-Agent
   zuerst ohne Rückfrage.
@@ -271,15 +272,21 @@ Ein Startfehler des gewählten Anbieters ist kein Widerruf der Antwort. Der Nutz
 entschieden; nicht erreichbar war der Anbieter. Deshalb wird nach der beobachteten Ursache
 unterschieden — stillschweigend auf einen anderen Modus ausgewichen wird in keinem der beiden Fälle.
 
-**Vorübergehend mit erkennbarem Ende.** Die Ursache nennt oder impliziert, wann sie entfällt: ein
-Nutzungslimit mit Reset-Zeitpunkt, ein Rate-Limit, ein einzelner technischer Zustellfehler, eine
-Infrastrukturstörung. Dann gilt die Wahl weiter. Die Session meldet Ursache und geplanten neuen
-Versuch, wartet den Wegfall der Ursache ab und setzt danach denselben Modus erneut — ohne neue Frage.
-Dass der Reconciler das an den Fehlversuch gebundene Label bereits entfernt hat, ist Buchführung über
-den gescheiterten Versuch und nicht das Verwerfen der Antwort. Höchstens ein automatischer Versuch je
-Head — unabhängig davon, wie viele unterschiedlich benannte Ursachen seither aufgetreten sind. Eine
-Folgeursache nach diesem einen Versuch fällt immer unter den nächsten Absatz, auch wenn sie selbst
-vorübergehend und erkennbar befristet wäre.
+**Vorübergehend mit erkennbarem Ende.** Zwei Unterfälle, beide ohne neue Frage und mit derselben
+Wahl:
+
+- Ein einzelner technischer Zustellfehler hat keine Ursache, deren Wegfall abzuwarten wäre — die
+  Session stellt denselben Modus sofort einmal erneut zu.
+- Die Ursache nennt oder impliziert dagegen, wann sie entfällt: ein Nutzungslimit mit
+  Reset-Zeitpunkt, ein Rate-Limit, eine Infrastrukturstörung. Dann meldet die Session Ursache und
+  geplanten neuen Versuch, wartet den Wegfall der Ursache ab und setzt danach denselben Modus
+  erneut.
+
+Dass der Reconciler das an den Fehlversuch gebundene Label bereits entfernt hat, ist in beiden
+Unterfällen Buchführung über den gescheiterten Versuch und nicht das Verwerfen der Antwort.
+Höchstens ein automatischer Versuch je Head — unabhängig davon, wie viele unterschiedlich benannte
+Ursachen seither aufgetreten sind. Eine Folgeursache nach diesem einen Versuch fällt immer unter
+den nächsten Absatz, auch wenn sie selbst vorübergehend und erkennbar befristet wäre.
 
 **Terminal oder unklar.** Der Anbieter hat abgelehnt, ist nicht verbunden, eine Vorbedingung wurde
 zurückgewiesen, die Ursache ist unbekannt, ein Ende ist nicht benennbar, oder für diesen Head wurde
