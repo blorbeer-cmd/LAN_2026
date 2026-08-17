@@ -164,11 +164,11 @@ test('matchAllowedProcessNames keeps every match, including duplicates from the 
 // actual wiring instead of a fabricated process list (see agent.e2e.test.js).
 const NODE_PROCESS_CANDIDATES = ['node.exe', 'node', 'mainthread'];
 
-test('tick() fetches the server allow-list and reports the game processes it names', async () => {
-  const { processNames: running } = await probeSystem({ allowedProcessNames: NODE_PROCESS_CANDIDATES });
-  assert.ok(running.length > 0, 'expected the running Node test process to be findable');
-  const allowedName = running[0];
-
+// Runs one tick() against a fresh recording server that allow-lists exactly
+// `allowedName`, and returns the allow-list/report request indices plus the
+// report body — factored out so the flakiness-guard below can retry a whole
+// attempt (fresh server, fresh state file) rather than only the assertion.
+async function tickReportingAllowedName(allowedName) {
   const { server, requests } = await startRecordingServer((req, res) => {
     if (req.method === 'GET' && req.url === '/api/agent/process-names') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -183,20 +183,41 @@ test('tick() fetches the server allow-list and reports the game processes it nam
 
   try {
     await tick(config, stateFilePath);
-
     const allowListIndex = requests.findIndex((r) => r.method === 'GET' && r.url === '/api/agent/process-names');
     const reportIndex = requests.findIndex((r) => r.method === 'POST' && r.url === '/api/agent/report');
-    assert.ok(allowListIndex >= 0, 'tick() should fetch the process-name allow-list');
-    assert.ok(reportIndex >= 0, 'tick() should still report after fetching the allow-list');
-    // Order matters now: the allow-list is what the process lookup asks the OS
-    // about, so it has to arrive before anything is looked up at all.
-    assert.ok(allowListIndex < reportIndex, 'the allow-list must be fetched before the report');
-
-    const reportReq = requests[reportIndex];
-    assert.deepEqual(reportReq.body.processNames, [allowedName], 'exactly the allow-listed process should be reported');
+    return { allowListIndex, reportIndex, reportReq: reportIndex >= 0 ? requests[reportIndex] : null };
   } finally {
     server.close();
   }
+}
+
+test('tick() fetches the server allow-list and reports the game processes it names', async () => {
+  const { processNames: running } = await probeSystem({ allowedProcessNames: NODE_PROCESS_CANDIDATES });
+  assert.ok(running.length > 0, 'expected the running Node test process to be findable');
+  const allowedName = running[0];
+
+  // This assertion depends on two independent live `ps -A` scans of the same
+  // OS process table agreeing — one just above, one inside tick(). Shared CI
+  // runners have already shown a live scan for this exact process can
+  // occasionally miss (see this file's git history: pgrep -x once missed the
+  // running Node process outright on GitHub Actions, which is why the POSIX
+  // probe uses `ps -A` at all). A bounded retry re-runs the whole tick()
+  // attempt — a fresh OS scan each time — so one transient miss doesn't fail
+  // the test; the assertion itself stays exact on whichever attempt lands.
+  const ATTEMPTS = 3;
+  let result;
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    result = await tickReportingAllowedName(allowedName);
+    assert.ok(result.allowListIndex >= 0, 'tick() should fetch the process-name allow-list');
+    assert.ok(result.reportIndex >= 0, 'tick() should still report after fetching the allow-list');
+    // Order matters now: the allow-list is what the process lookup asks the OS
+    // about, so it has to arrive before anything is looked up at all.
+    assert.ok(result.allowListIndex < result.reportIndex, 'the allow-list must be fetched before the report');
+
+    if (result.reportReq.body.processNames.length > 0 || attempt === ATTEMPTS) break;
+  }
+
+  assert.deepEqual(result.reportReq.body.processNames, [allowedName], 'exactly the allow-listed process should be reported');
 });
 
 test('tick() reports nothing and looks up nothing when the server allow-list is empty', async () => {
