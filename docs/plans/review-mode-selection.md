@@ -97,9 +97,16 @@ würde exakt das Budget verbrauchen, das der Nutzer schützen will. Ohne Antwort
 `agent:awaiting-review-decision` stehen — sichtbar, aber ohne Kosten.
 
 Ist der gewählte Anbieter nicht verfügbar (Limit, Ausfall), wird **nicht** stillschweigend auf b)
-ausgewichen. Der Ausfall wird gemeldet und die Auswahl erneut vorgelegt, mit angepasster
-Empfehlung. Damit entfällt der automatische Fallback aus Abschnitt 9 des Hauptkonzepts; das
+ausgewichen. Damit entfällt der automatische Fallback aus Abschnitt 9 des Hauptkonzepts; das
 Fallback-Review wird von der Notlösung zur regulären, wählbaren Option b).
+
+Gemeldet wird der Ausfall immer; ob die Auswahl dabei neu vorgelegt wird, richtet sich nach der
+Ursache. Nennt sie ein erkennbares Ende — ein Nutzungslimit mit Reset-Zeitpunkt, ein Rate-Limit, ein
+einzelner technischer Fehler —, gilt die Antwort weiter: derselbe Modus wird nach dem Wegfall der
+Ursache einmal erneut versucht, gebunden an denselben Head. Ist die Ursache unklar, kein Ende
+benennbar oder scheitert dieser Versuch erneut, wird die Auswahl mit angepasster Empfehlung erneut
+vorgelegt. Eine Antwort für Code, den der Nutzer gesehen hat, soll ein Anbieterausfall nicht
+entwerten — ein neuer Head dagegen schon.
 
 ## 5. Review-Modi und Merge-Gate
 

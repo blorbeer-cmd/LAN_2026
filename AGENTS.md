@@ -105,9 +105,11 @@ für normale Implementierungsdetails gelten diese Kurzregeln:
   wiederkehrende Check-ins und PR-Ereignis-Abonnements abbestellen, das Ende einmal melden und
   danach für diesen Pull Request nichts mehr fragen. Folgearbeit beginnt auf einem neuen Branch.
 - Nach der Wahl laufen Reviewstart, Findings-Übergabe und Fix wieder automatisch. Ein Review darf
-  nie übersprungen werden; ist der gewählte Anbieter nicht verfügbar, wird der Ausfall gemeldet und
-  die Auswahl erneut vorgelegt, nie stillschweigend ein anderer Modus verwendet. Separate Reviews
-  verwenden den Prompt und Ablauf unter `.github/agent-pipeline/review-session-prompt.md`.
+  nie übersprungen werden. Fällt der gewählte Anbieter aus, wird der Ausfall stets gemeldet und nie
+  stillschweigend ein anderer Modus verwendet; nennt die Ursache ein erkennbares Ende — etwa ein
+  Nutzungslimit mit Reset-Zeitpunkt —, gilt die Wahl weiter und derselbe Modus wird danach einmal
+  erneut versucht, sonst wird die Auswahl erneut vorgelegt. Separate Reviews verwenden den Prompt
+  und Ablauf unter `.github/agent-pipeline/review-session-prompt.md`.
 - Nur kritische oder wesentlich mehrdeutige Entscheidungen werden dem Nutzer vorgelegt. Normale
   Fixes laufen bis zum grünen, konfliktfreien und vollständig reviewten PR automatisch weiter.
 - Bei sichtbaren UI/UX-Änderungen den Nutzer informieren, sobald der Branch sinnvoll prüfbar ist:
