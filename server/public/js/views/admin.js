@@ -514,7 +514,7 @@ function renderPanel(container, ctx) {
           <h2 id="admin-readiness-title">LAN-Bereitschaft</h2>
           <button type="button" class="btn btn-sm" id="admin-readiness-refresh" ${readinessLoading ? 'disabled' : ''}>Aktualisieren</button>
         </div>
-        <div id="admin-readiness-status" role="status" aria-live="polite" tabindex="-1">
+        <div id="admin-readiness-status" class="stack" role="status" aria-live="polite" tabindex="-1">
           ${readinessBody}
         </div>
       </section>
@@ -533,6 +533,10 @@ function renderPanel(container, ctx) {
       <section class="card stack grouped-page-section" aria-labelledby="admin-tools-title">
         <div class="grouped-page-section-title"><h2 id="admin-tools-title">Werkzeuge</h2></div>
         <div class="two-column-card-grid">
+          <div class="card admin-tool-row">
+            <strong>Auswertung</strong>
+            <button type="button" class="btn btn-primary btn-sm" data-navigate="leaderboard">Öffnen</button>
+          </div>
           <div class="card admin-tool-row">
             <strong>Sitzplan</strong>
             <button type="button" class="btn btn-primary btn-sm" data-navigate="seating">Öffnen</button>

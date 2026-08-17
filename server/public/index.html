@@ -69,12 +69,9 @@
         <button class="nav-btn" data-view="votes" aria-label="Abstimmung">
           <span class="nav-icon" data-domain-icon="votes"></span><span class="nav-label">Vote</span>
         </button>
-        <!-- Auswertung is admin-mode-only; app.js shows exactly one of this
-             pair in the same nav slot depending on isAdmin() (see wireAdminMode). -->
-        <button class="nav-btn" data-view="leaderboard" aria-label="Auswertung: Rangliste, Statistiken und Hall of Fame" id="nav-insights" hidden>
-          <span class="nav-icon" data-domain-icon="insights"></span><span class="nav-label">Auswertung</span>
-        </button>
-        <button class="nav-btn" data-view="foodOrders" aria-label="Essen: Sammelbestellungen koordinieren" id="nav-food-orders" hidden>
+        <!-- Auswertung (Rangliste/Statistiken/Hall of Fame) lives in Admin's
+             Werkzeuge now (see views/admin.js), not in the bottom nav. -->
+        <button class="nav-btn" data-view="foodOrders" aria-label="Essen: Sammelbestellungen koordinieren" id="nav-food-orders">
           <span class="nav-icon" data-domain-icon="foodOrders"></span><span class="nav-label">Essen</span>
         </button>
         <button class="nav-btn" data-view="gameCatalog" aria-label="Spiele">
