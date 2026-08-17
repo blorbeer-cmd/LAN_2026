@@ -266,13 +266,14 @@ view and to new views unless a documented domain constraint requires a different
     by every signed-in member, while only the session account can edit its own profile. Player
     creation, deletion, roles and foreign-profile editing remain admin-only actions.
 11. **Group related workflows into one area with tabs instead of adding nav entries.** The bottom
-    nav carries exactly the five during-party destinations (Home, Match, Vote, Auswertung,
-    Mehr); everything else lives under „Mehr“ or in the topbar. The Auswertung slot is conditional
-    on the device-local Admin mode (`admin.js`'s `isAdmin()`, not the real owner/admin role): it
-    shows Auswertung while that mode is active and Essen otherwise, so a regular member reaches
-    Sammelbestellungen directly from the bottom nav while an admin-mode device still reaches the
-    leaderboard/Statistiken/Hall of Fame area from there (`app.js`'s `switchView()` and
-    `updateAdminIndicator()`; the matching „Mehr“ hub rule for Essen is below). Where two or three
+    nav carries exactly the six during-party destinations Home, Match, Vote, Essen, Spiele and
+    Mehr; everything else lives under „Mehr“, the topbar, or (for the merged Rangliste/Statistiken/
+    Hall-of-Fame area, „Auswertung“) inside the role-protected Admin area. Auswertung is not a
+    bottom-nav destination: reaching it now always requires the real owner/admin role
+    (`switchView()`'s redirect guard in `app.js`, checked via `currentPlayerHasAdminRole()`), so it
+    lives behind Admin's „Auswertung“ tool card (see „Admin tools“) rather than sharing a
+    conditional bottom-nav slot with Essen the way it once did — Essen now has that slot
+    unconditionally, for every device. Where two or three
     closely related workflows would otherwise each claim their own entry, they become tabs of one area (see
     `sectionNav.js`). Every tab keeps its own route, so deep links, the back button and persisted
     push urls stay valid, and a tab never nests inside another tab row — a merged area flattens the
@@ -553,7 +554,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Backup and seating-plan editing are absent from regular member views and live
   together as nested tool cards in the role-protected Admin area. Admin settings and tools remain
   visible to owners/admins without activating the device-local Admin mode; that mode only reveals
-  test players and test-data controls throughout the app and enables Arcade AI matches. A further
+  test players and test-data controls throughout the app and enables Arcade AI matches. The leading
+  tool card, „Auswertung“, is the sole entry point into the merged Rangliste/Statistiken/Hall-of-Fame
+  area: it used to be a conditional bottom-nav destination gated by the device-local Admin mode
+  (sharing that slot with Essen), but now lives only here, gated by the real admin role like the
+  rest of Admin — the same standalone, role-protected pattern as „Kioskverwaltung“ below, not a
+  shortcut into an otherwise generally-reachable tab. A further
   tool card, „Eventverwaltung“, links into Orga's „Events“ tab — that global, non-personal
   management surface is otherwise only reachable through „Mehr“ like any other Orga tab. „Kioskverwaltung“
   is different: TV-Kiosk is not an Orga tab at all, so this card is its only entry point, a
@@ -613,10 +619,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
   The „Mehr“ hub holds Admin, Arcade, Durchsage, Jam and Orga — the destinations that are not
-  among the five bottom-nav entries and never occupy the conditional Auswertung/Essen slot. Essen
-  joins this list only on a device with the local Admin mode active, since Auswertung then occupies
-  that shared bottom-nav slot instead; on any other device Essen already has that bottom-nav slot
-  and is omitted here to avoid a duplicate entry (`more.js`). It keeps each destination's canonical icon
+  among the six bottom-nav entries. Essen is never listed here since it already has an
+  unconditional bottom-nav slot of its own (`more.js`); Auswertung is never listed here either —
+  it has no general-audience entry point at all, living only behind Admin's „Auswertung“ tool card
+  (see „Admin tools“). It keeps each destination's canonical icon
   directly beside its centered title so both read as one label; those icons are one spacing step smaller than standard list-row icons and
   use the wider section gap to keep icon and text visually distinct. Only the navigation chevron
   remains independently aligned at the right.
@@ -635,33 +641,49 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   suffix and the compact action together. Item totals multiply unit price by quantity; clearly
   labeled subtotals per player and the order-wide total use consistent German currency formatting.
   Quantity starts empty with the explicit placeholder „Anzahl“ instead of implying one item. Quantity
-  and price use the same wider field width; the left-aligned quantity carries an internal
-  multiplication sign just as the price carries its euro suffix, so neither placeholder is squeezed.
-  An absent send time is plain text without a misleading timer icon. Closing an order is the
-  colorful full-width primary action below a divider; the neutral „Hinzufügen“ action matches the
-  adjacent fields' height instead of the shorter `.btn-sm`. Closed orders live inside one standard,
-  initially collapsed „Historie“ section whose open state survives live re-renders. Every card —
-  open, abgeschickt or geschlossen — carries a stacked full-width „Bestellung löschen“ danger
-  action below its other actions, since scrapping an order stays possible at every lifecycle stage
-  unlike the other, stage-gated mutations. Each position is a two-line row: description and price
-  first, then its two independent flags („Bezahlt“, „Sammelzahlung“) as the same toggle-chip
-  pattern used for filters elsewhere (`.chip`/`.chip.is-active`, see Spiele's genre/rating chips)
-  instead of small checkboxes, so each stays clearly tappable and reads at a glance without relying
-  on a tiny label alone; a single contextual tooltip beside „Sammelzahlung“, shown once per card
+  and price use the same wider field width. Quantity is a `type="number"` field, so it is always
+  enhanced app-wide by the shared number stepper (see „Number stepper“ below); it carries no
+  decorative suffix of its own (unlike price's euro suffix) since a second, non-interactive ×
+  glyph in that same right-hand padding would sit underneath the stepper's real +/- buttons and
+  read as a third, broken control. An absent send time is plain text without a misleading timer
+  icon. Closing an order is the colorful full-width primary action below a divider; the neutral
+  „Hinzufügen“ action matches the adjacent fields' height instead of the shorter `.btn-sm`. Closed
+  orders live inside one standard, initially collapsed „Historie“ section whose open state survives
+  live re-renders. Every card — open, abgeschickt or geschlossen — carries a stacked full-width
+  „Bestellung löschen“ danger action below its other actions, since scrapping an order stays
+  possible at every lifecycle stage unlike the other, stage-gated mutations. Each position is a
+  two-line row: description and price first — a paid position strikes through both, not only its
+  description, since the price is settled too — then, left to right, its copy action and its two
+  independent flags („Sammelzahlung“, „Bezahlt“) as the same toggle-chip pattern used for filters
+  elsewhere (`.chip`/`.chip.is-active`, see Spiele's genre/rating chips) instead of small checkboxes,
+  so each stays clearly tappable and reads at a glance without relying on a tiny label alone; the
+  owner's remove action trails last. Marking a position „Bezahlt“ automatically clears its own
+  „Sammelzahlung“ mark, since a paid position has nothing left to collect. A single contextual
+  tooltip beside „Sammelzahlung“, shown once per card
   when the order has a PayPal link, explains that any position — including someone else's — can be
-  picked for the combined payment below.
+  picked for the combined payment below. „Gesamtsumme“ itself is set apart from the muted meta/info
+  text around it (larger, bolder, default text color) so it reads as a real total rather than
+  another info line, with its own copy action directly beside the amount so the sum sits left of
+  that button. A non-empty Sammelzahlung selection renders below it as its own bordered block: the
+  selected count and payable amount, a copy action and „PayPal öffnen“/„Bezahlen“, then the
+  selection broken down position by position (so it is clear at a glance what is actually being
+  combined), and — whenever at least one selected position is still unpaid — a full-width „Ausgewählte
+  als bezahlt markieren“ action that settles every selected, still-unpaid position at once and
+  clears their Sammelzahlung marks the same way the per-position toggle does.
 - **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its four area tabs
-  are „To-Do“, „Packliste“, „An- & Abreise“ and „Events“ (the first two formerly the
-  separate „Checkliste“ and „An- & Abreise“ areas; docs/KONZEPT-PACKLISTE-TICKETS.md Abschnitt 9
-  records the earlier „Packliste“→„Checkliste“ rename — „Events“ is the former
-  standalone „Einstellungen“ view, moved here because it is setup work like the rest of Orga
-  rather than a personal preference screen; there is no longer a topbar settings icon). TV-Kiosk is
-  deliberately not an Orga tab — it lives only behind Admin's „Kioskverwaltung“ tool card (see
-  „Admin tools“) since opening the shared-screen dashboard is an admin task, not something every
-  member needs from Orga. To-Do leads because that is what people open the area to check,
-  which also keeps the persisted push url `/#checklist` landing where it always did; that tab label
-  carries the live count of the current identity's own open+taken items. The checklist's former
-  in-view toggle is gone — its two halves are area tabs now, so no tab row nests inside another.
+  are sorted alphabetically by their German label: „An- & Abreise“, „Events“, „Packliste“ and
+  „To-Do“ (the last two formerly the separate „Checkliste“ and „An- & Abreise“ areas;
+  docs/KONZEPT-PACKLISTE-TICKETS.md Abschnitt 9 records the earlier „Packliste“→„Checkliste“
+  rename — „Events“ is the former standalone „Einstellungen“ view, moved here because it is setup
+  work like the rest of Orga rather than a personal preference screen; there is no longer a topbar
+  settings icon). TV-Kiosk is deliberately not an Orga tab — it lives only behind Admin's
+  „Kioskverwaltung“ tool card (see „Admin tools“) since opening the shared-screen dashboard is an
+  admin task, not something every member needs from Orga. The tab row's alphabetical order is
+  independent of the area's own entry point: „Mehr“ still opens Orga directly on To-Do (`more.js`
+  hardcodes the `checklist` route) because that is what people open the area to check, which also
+  keeps the persisted push url `/#checklist` landing where it always did; that tab label carries
+  the live count of the current identity's own open+taken items. The checklist's former in-view
+  toggle is gone — its two halves are area tabs now, so no tab row nests inside another.
   The personal list is unchanged: a compact checkbox row per item (Grundstock plus freely added/removable
   custom entries) with a checked item shown via muted, struck-through text instead of a separate
   badge, followed by the plain add-item field/button row.
@@ -861,8 +883,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   copyable `#RRGGBB` field, and explicit cancel/apply actions; it has no competing preset palette.
   Invalid hex input is visibly rejected and cannot be applied or copied. The chosen value remains a draft until the profile's
   main save action persists it.
-- **Leaderboard** — the „Rangliste“ tab and default entry of the „Auswertung“ area, which the
-  bottom nav opens. The filtered „Rangliste“ and per-player
+- **Leaderboard** — the „Rangliste“ tab and default entry of the „Auswertung“ area, reached only
+  through Admin's „Auswertung“ tool card (see „Admin tools“). The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
   each remains a distinct `.tournament-section-panel` with the shared accent rail. „Spielzeit pro
   Spiel“ stays a separate grouped page section. The selected game scopes the two accented sections

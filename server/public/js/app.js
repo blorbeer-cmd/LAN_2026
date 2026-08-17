@@ -12,6 +12,7 @@ import { loadAll } from './data.js';
 import { showToast } from './toast.js';
 import { getMyId } from './whoami.js';
 import { isAdmin, setAdmin } from './admin.js';
+import { currentPlayerHasAdminRole } from './adminAccess.js';
 import { filterTestUsers } from './testFilter.js';
 import { invalidateHomeSeating } from './views/home.js';
 import { initNotificationBanner, refreshNotificationBanner } from './notificationBanner.js';
@@ -339,11 +340,11 @@ function focusPendingSearchTarget() {
 // re-pushing would trap back/forward between the stale entry and its
 // redirect target).
 function switchView(view, { fromHistory = false, replace = false, searchTarget = null } = {}) {
-  // The entire Auswertung area (Rangliste/Statistiken/Hall of Fame) is
-  // admin-mode-only — redirect any attempt to reach it otherwise (deep link,
-  // restored history entry, search palette, ...) to Essen, which takes over
-  // that bottom-nav slot for non-admin devices (see updateAdminIndicator()).
-  if (sectionKeyForView(view) === 'insights' && !isAdmin()) view = 'foodOrders';
+  // The entire Auswertung area (Rangliste/Statistiken/Hall of Fame) lives in
+  // Admin's Werkzeuge now, gated by the real admin role — redirect any
+  // attempt to reach it otherwise (deep link, restored history entry, search
+  // palette, ...) to Essen, its former bottom-nav slot.
+  if (sectionKeyForView(view) === 'insights' && !currentPlayerHasAdminRole()) view = 'foodOrders';
   const changed = view !== currentView;
   pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
   currentView = view;
@@ -382,10 +383,6 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
 function updateAdminIndicator() {
   document.getElementById('admin-banner').hidden = !isAdmin();
   document.body.classList.toggle('admin-mode', isAdmin());
-  // Auswertung is only visible in admin mode; the bottom nav shows "Essen" in
-  // that same slot otherwise (see the redirect guard in switchView()).
-  document.getElementById('nav-insights').hidden = !isAdmin();
-  document.getElementById('nav-food-orders').hidden = isAdmin();
 }
 
 function wireAdminMode() {
@@ -406,10 +403,6 @@ function wireAdminMode() {
     invalidateMusic();
     invalidateVisibilityCaches();
     ctx.refresh();
-    // Leaving admin mode while on the now-hidden Auswertung area: switchView's
-    // own guard picks the redirect target, so re-entering the current route
-    // is enough — it only actually re-renders when that guard redirects it.
-    if (sectionKeyForView(currentView) === 'insights' && !isAdmin()) switchView(currentView, { replace: true });
   });
   // A redeemed test-session identity also needs its test-player peers visible
   // (see testFilter.js) — same "refetch so already-loaded data gets
