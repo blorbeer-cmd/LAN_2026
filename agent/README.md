@@ -83,18 +83,19 @@ Fenster gerade im Vordergrund ist und wie lange keine Maus-/Tastatureingabe kam.
 damit unterscheiden, ob ein Spiel nur im Hintergrund lief oder tatsächlich aktiv gespielt wurde
 (z. B. in der Rangliste als „davon aktiv gespielt: 2h 15m").
 
-- **Nur Windows** – nutzt `user32.dll` über ein kleines PowerShell-Skript. Auf anderen Systemen
-  wird die Option ignoriert.
+- **Nur Windows** – nutzt `user32.dll` über dasselbe kleine PowerShell-Skript, das auch die
+  Spiele-Prozesse abfragt. Einschalten kostet also keinen zusätzlichen Aufruf pro Intervall. Auf
+  anderen Systemen wird die Option ignoriert.
 - **Opt-in** – jeder Spieler entscheidet selbst, ob sein Agent das mitschickt. Standard ist `false`.
   `trackActivity` im Download-ZIP ist nur der Startwert; ist er einmal übers Steuerungs-Panel
   umgeschaltet worden, gilt der dort gewählte Wert dauerhaft (überlebt Neustarts), bis er dort
   wieder geändert wird.
-- **Was tatsächlich übertragen wird**: der Prozessname des aktuell fokussierten Fensters (das kann
-  grundsätzlich jedes laufende Programm sein, nicht nur eines unserer Spiele) sowie die Leerlaufzeit
-  in Sekunden als Zahl. Der Agent gleicht den Prozessnamen bereits lokal mit der Liste konfigurierter
-  Spiele ab; ist es keines davon, wird statt des Namens „nichts erkannt" gesendet – der tatsächliche
-  Name eines fremden Programms verlässt den PC also nie. Wer das nicht möchte, lässt es einfach auf
-  „aus".
+- **Was tatsächlich übertragen wird**: der Prozessname des aktuell fokussierten Fensters – aber nur,
+  wenn es eines der konfigurierten Spiele ist – sowie die Leerlaufzeit in Sekunden als Zahl. Ist ein
+  fremdes Programm im Vordergrund, wird sein Name schon in der Abfrage verworfen und „nichts
+  erkannt" gemeldet; er wird also nicht einmal ausgelesen, geschweige denn gesendet. Die
+  Leerlaufzeit selbst sagt nichts darüber aus, *was* jemand macht. Wer das nicht möchte, lässt es
+  einfach auf „aus".
 
 ## Als eigenständige `.exe` paketieren
 

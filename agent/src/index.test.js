@@ -13,7 +13,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { tick, setUpLogFile, formatLocalTime, LOG_FILE_MAX_BYTES, matchAllowedProcessNames } = require('./index.js');
-const { getRunningProcessNames } = require('./processList');
+const { probeSystem } = require('./systemProbe');
 const { setPaused } = require('./state');
 
 function startFakeServer(handler) {
@@ -165,7 +165,7 @@ test('matchAllowedProcessNames keeps every match, including duplicates from the 
 const NODE_PROCESS_CANDIDATES = ['node.exe', 'node', 'mainthread'];
 
 test('tick() fetches the server allow-list and reports the game processes it names', async () => {
-  const running = await getRunningProcessNames(NODE_PROCESS_CANDIDATES);
+  const { processNames: running } = await probeSystem({ allowedProcessNames: NODE_PROCESS_CANDIDATES });
   assert.ok(running.length > 0, 'expected the running Node test process to be findable');
   const allowedName = running[0];
 

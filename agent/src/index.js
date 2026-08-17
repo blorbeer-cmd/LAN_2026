@@ -23,8 +23,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { loadConfig } = require('./config');
-const { getRunningProcessNames } = require('./processList');
-const { getActivitySnapshot } = require('./activity');
+const { probeSystem } = require('./systemProbe');
 const { reportToServer, syncTrackingPaused, fetchAllowedProcessNames } = require('./report');
 const { loadState, setPaused, setTrackActivity } = require('./state');
 const { getStartupShortcutPath, isAutostartEnabled, enableAutostart, disableAutostart } = require('./autostart');
@@ -75,7 +74,7 @@ function getStartupDir() {
 
 // Filters process names down to the ones the server currently recognizes as
 // belonging to a configured game. The process lookup itself already asks the
-// OS only about those names (see processList.js), so this is a second, cheap
+// OS only about those names (see systemProbe.js), so this is a second, cheap
 // guard for the paths that can't pre-filter — most notably the single
 // foreground window name — and it keeps the privacy-critical invariant
 // ("nothing but a configured game process ever leaves this PC") in one
@@ -97,20 +96,24 @@ async function tick(config, stateFilePath) {
     // web-profile-initiated resume happened, without the player needing to
     // come back to this PC to notice.
     const allowedProcessNames = state.paused ? [] : await fetchAllowedProcessNames(config);
-    const processNames = state.paused ? [] : await getRunningProcessNames(allowedProcessNames);
-    const matchedProcessNames = matchAllowedProcessNames(processNames, allowedProcessNames);
-    // Opt-in only: reveals which process is focused + idle time, so the
-    // server can tell "actually played" apart from "just running". The
-    // player can flip this later via the control panel, so the state file
-    // (not the original downloaded config) is the source of truth here.
-    const rawActivitySnapshot = !state.paused && state.trackActivity ? await getActivitySnapshot() : null;
-    // Same allow-list filtering applies to the focused window: an unrelated
-    // foreground program is reported as "none" rather than by name.
-    const activitySnapshot = rawActivitySnapshot && {
-      ...rawActivitySnapshot,
-      foregroundProcessName:
-        matchAllowedProcessNames([rawActivitySnapshot.foregroundProcessName], allowedProcessNames)[0] ?? null,
-    };
+    // Activity data (focused window + idle time) is opt-in and comes out of the
+    // same single probe, so switching it on costs no extra process start. The
+    // player can flip it later via the control panel, so the state file (not
+    // the original downloaded config) is the source of truth here.
+    const trackActivity = !state.paused && state.trackActivity;
+    const probe = state.paused
+      ? { processNames: [], foregroundProcessName: null, idleSeconds: null }
+      : await probeSystem({ allowedProcessNames, includeActivity: trackActivity });
+    const matchedProcessNames = matchAllowedProcessNames(probe.processNames, allowedProcessNames);
+    // The probe already refuses to name a focused window that isn't a
+    // configured game; re-checking here keeps that invariant in one place and
+    // covers platforms whose probe can't pre-filter.
+    const activitySnapshot = trackActivity
+      ? {
+          foregroundProcessName: matchAllowedProcessNames([probe.foregroundProcessName], allowedProcessNames)[0] ?? null,
+          idleSeconds: probe.idleSeconds,
+        }
+      : null;
     const result = await reportToServer(config, matchedProcessNames, activitySnapshot);
 
     // The server's tracking_paused column is the single source of truth for
