@@ -119,7 +119,12 @@ after(async () => {
 });
 
 test('manager invites a member who accepts and both open clients update', async () => {
-  for (const view of ['votes', 'broadcast', 'foodOrders', 'checklist', 'checklistPacking', 'arrivals', 'events', 'kiosk', 'seating', 'myStats', 'analytics', 'hallOfFame']) {
+  // Auswertung (leaderboard/analytics/hallOfFame) is admin-mode-only and a
+  // plain member can never activate that device flag (its only entry point,
+  // the Admin route, itself requires the real admin role) — switchView()
+  // redirects any attempt to reach it to Essen instead of rendering it, so
+  // it is excluded from this per-view "no stale event data" check.
+  for (const view of ['votes', 'broadcast', 'foodOrders', 'checklist', 'checklistPacking', 'arrivals', 'events', 'kiosk', 'seating', 'myStats']) {
     await memberPage.evaluate((target) => {
       window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: target }));
     }, view);

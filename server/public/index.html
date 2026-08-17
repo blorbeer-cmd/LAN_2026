@@ -31,9 +31,9 @@
         <span class="brand-title">Respawn</span>
       </a>
       <div class="topbar-actions">
-        <button id="info-btn" class="icon-btn" type="button" aria-label="Info: WLAN, Discord, Server und Hausregeln" title="Info"></button>
         <!-- app.js renders the shared searchable event dropdown in here. -->
         <div id="event-context" class="event-context" hidden></div>
+        <button id="info-btn" class="icon-btn" type="button" aria-label="Info: WLAN, Discord, Server und Hausregeln" title="Info"></button>
         <button id="global-search-btn" class="icon-btn" type="button" aria-label="Bereiche und Tools durchsuchen" aria-keyshortcuts="Control+K Meta+K" title="Suchen (Strg/⌘ K)"></button>
         <div class="notification-center" data-notification-center>
           <button id="notifications-btn" class="icon-btn" aria-label="Mitteilungen" aria-controls="notifications-panel" aria-expanded="false" title="Mitteilungen">
@@ -69,8 +69,13 @@
         <button class="nav-btn" data-view="votes" aria-label="Abstimmung">
           <span class="nav-icon" data-domain-icon="votes"></span><span class="nav-label">Vote</span>
         </button>
-        <button class="nav-btn" data-view="leaderboard" aria-label="Auswertung: Rangliste, Statistiken und Hall of Fame">
+        <!-- Auswertung is admin-mode-only; app.js shows exactly one of this
+             pair in the same nav slot depending on isAdmin() (see wireAdminMode). -->
+        <button class="nav-btn" data-view="leaderboard" aria-label="Auswertung: Rangliste, Statistiken und Hall of Fame" id="nav-insights" hidden>
           <span class="nav-icon" data-domain-icon="insights"></span><span class="nav-label">Auswertung</span>
+        </button>
+        <button class="nav-btn" data-view="foodOrders" aria-label="Essen: Sammelbestellungen koordinieren" id="nav-food-orders" hidden>
+          <span class="nav-icon" data-domain-icon="foodOrders"></span><span class="nav-label">Essen</span>
         </button>
         <button class="nav-btn" data-view="gameCatalog" aria-label="Spiele">
           <span class="nav-icon" data-domain-icon="gameCatalog"></span><span class="nav-label">Spiele</span>

@@ -178,8 +178,8 @@ function renderMyStatus(myId, players) {
         <span>Dein Status:</span>
         <span class="badge ${badgeClass}">${stateLabel(me.state)}</span>
       </span>
-      <button type="button" class="btn btn-sm" data-toggle-pause="${me.player_id}" data-paused="${me.state === 'paused' ? '1' : '0'}">
-        ${me.state === 'paused' ? `${icon('play')} Bin wieder da` : `${icon('pause')} Pause / Essen`}
+      <button type="button" class="btn btn-primary btn-sm" data-toggle-pause="${me.player_id}" data-paused="${me.state === 'paused' ? '1' : '0'}">
+        ${me.state === 'paused' ? 'Bin wieder da' : 'Pause / Essen'}
       </button>
     </div>
   `;

@@ -24,7 +24,7 @@ export const SEARCH_ENTRIES = [
   { view: 'profile', title: 'Mein Profil', category: 'Bereich', description: 'Profil, Agent und Push-Benachrichtigungen', aliases: 'account ich agent benachrichtigung', priority: 90 },
   { view: 'myStats', title: 'Meine Statistiken', category: 'Bereich', description: 'Eigene Spielzeit und persönliche Werte', aliases: 'stats spielzeit auswertung', priority: 80 },
   { view: 'events', title: 'Events', category: 'Orga', description: 'Events anlegen, Tracking und Teilnehmer verwalten', aliases: 'orga einstellungen setup konfiguration tracking teilnehmer einladung', priority: 85 },
-  { view: 'kiosk', title: 'TV-Kiosk', category: 'Orga', description: 'TV-/Kiosk-Ansicht öffnen', aliases: 'orga einstellungen tv bildschirm dashboard kiosk-ansicht', priority: 62 },
+  { view: 'kiosk', title: 'TV-Kiosk', category: 'Bereich', description: 'TV-/Kiosk-Ansicht öffnen', aliases: 'admin einstellungen tv bildschirm dashboard kiosk-ansicht', priority: 62, adminOnly: true },
   { view: 'admin', title: 'Admin', category: 'Bereich', description: 'Einladungslink, Sitzplan, Backup, Test-Spieler, Rechte und Diagnose', aliases: 'moderation verwaltung diagnose einladung invite sitzplan backup', priority: 60, adminOnly: true },
   { view: 'gameCatalog', title: 'Spiele', category: 'Bereich', description: 'Bock, Skill und Spielekatalog', aliases: 'games katalog bewertung skill bock', priority: 75 },
   { view: 'arrivals', title: 'An- & Abreise', category: 'Orga', description: 'Zeiten und Fahrgemeinschaften planen', aliases: 'orga anreise abreise ankunft abfahrt fahrt carpool', priority: 65 },
@@ -35,7 +35,7 @@ export const SEARCH_ENTRIES = [
   { view: 'foodOrders', title: 'Essen', category: 'Bereich', description: 'Sammelbestellungen koordinieren', aliases: 'bestellung food pizza lieferdienst', priority: 68 },
   { view: 'hallOfFame', title: 'Hall of Fame', category: 'Auswertung', description: 'Champions vergangener Events', aliases: 'auswertung champions sieger historie ruhmeshalle', priority: 61 },
   { action: 'info', title: 'Info', category: 'Dialog', description: 'WLAN, Discord, Server und Hausregeln', aliases: 'info board information wlan discord server hausregeln', priority: 69 },
-  { view: 'checklist', title: 'To-Dos', category: 'Orga', description: 'Aufgaben und Mitbring-Anfragen der Gruppe', aliases: 'orga checkliste todo aufgabe anfrage mitbringen', priority: 66 },
+  { view: 'checklist', title: 'To-Do', category: 'Orga', description: 'Aufgaben und Mitbring-Anfragen der Gruppe', aliases: 'orga checkliste todo aufgabe anfrage mitbringen', priority: 66 },
   { view: 'checklistPacking', title: 'Packliste', category: 'Orga', description: 'Persönliche Packliste für die LAN', aliases: 'orga checkliste packen mitnehmen', priority: 66 },
   { view: 'seating', title: 'Sitzplan', category: 'Bereich', description: 'Plätze und sichtbare Monitore verwalten', aliases: 'sitzplatz tisch monitore nachbarn', priority: 67, adminOnly: true },
 ];

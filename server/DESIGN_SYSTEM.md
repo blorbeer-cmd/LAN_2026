@@ -285,7 +285,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.view-title`, outside any card, which is what keeps it distinguishable from the in-card control
   rows further down. Because each tab is a real route, the row is `<nav>` navigation rather than a
   toggle: the active tab carries `aria-current="page"` plus `.btn-primary`, never `aria-pressed`.
-  A tab may carry a live count in parentheses (Orga's „To-Dos“ shows the current identity's own
+  A tab may carry a live count in parentheses (Orga's „To-Do“ shows the current identity's own
   open items) so the number stays visible from every tab of the area; a zero count renders no
   parentheses at all. That count is loaded once the area is entered on any of its tabs, not only the
   one that renders the underlying list, and is patched into all of the area's tab buttons in place. Tabs share the full width on phones for a comfortable tap target and size to
@@ -548,13 +548,14 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Backup and seating-plan editing are absent from regular member views and live
   together as nested tool cards in the role-protected Admin area. Admin settings and tools remain
   visible to owners/admins without activating the device-local Admin mode; that mode only reveals
-  test players and test-data controls throughout the app and enables Arcade AI matches. Two further tool cards,
-  „Eventverwaltung“ and „Kioskverwaltung“, link into Orga's „Events“ and „TV-Kiosk“ tabs — those
-  global, non-personal management surfaces are otherwise only reachable through „Mehr“ like any
-  other Orga tab. They stay two separate cards because Orga exposes them as two separate tabs; one
-  combined card would leave the Kiosk tab without an Admin entry point. Each tool card keeps its
-  title, adjacent help tooltip and colorful primary action on one row; the seating editor returns
-  to Admin and remains role-protected independently of that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and
+  test players and test-data controls throughout the app and enables Arcade AI matches. A further
+  tool card, „Eventverwaltung“, links into Orga's „Events“ tab — that global, non-personal
+  management surface is otherwise only reachable through „Mehr“ like any other Orga tab. „Kioskverwaltung“
+  is different: TV-Kiosk is not an Orga tab at all, so this card is its only entry point, a
+  standalone role-protected route of its own (the same pattern as „Sitzplan“) rather than a link
+  into a tab row. Each tool card keeps its
+  title, adjacent help tooltip and colorful primary action on one row; the seating and kiosk
+  editors both return to Admin and remain role-protected independently of that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and
   need no separate Admin action. The test-data fixture explanation and the existing test-player count live in adjacent
   tooltips; the compact count input, „Test-Daten aufräumen“ and create action share one control row
   in that order. Cleanup removes every marked test player and test LAN
@@ -629,21 +630,27 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   and price use the same wider field width; the left-aligned quantity carries an internal
   multiplication sign just as the price carries its euro suffix, so neither placeholder is squeezed.
   An absent send time is plain text without a misleading timer icon. Closing an order is the
-  colorful full-width primary action below a divider; the compact neutral „Hinzufügen“ action does
-  not stretch to the input height. Closed orders live inside one standard, initially collapsed
-  „Historie“ section whose open state survives live re-renders. Every card — open, abgeschickt or
-  geschlossen — carries a stacked full-width „Bestellung löschen“ danger action below its other
-  actions, since scrapping an order stays possible at every lifecycle stage unlike the other,
-  stage-gated mutations. Each position's two per-item checkboxes carry their own short visible
-  label („Bezahlt“, „Sammelzahlung“) instead of relying on an aria-label alone; a single contextual
-  tooltip beside „Sammelzahlung“, shown once per card when the order has a PayPal link, explains
-  that any position — including someone else's — can be picked for the combined payment below.
-- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its five area tabs
-  are „To-Dos“, „Packliste“, „An- & Abreise“, „Events“ and „TV-Kiosk“ (the first two formerly the
+  colorful full-width primary action below a divider; the neutral „Hinzufügen“ action matches the
+  adjacent fields' height instead of the shorter `.btn-sm`. Closed orders live inside one standard,
+  initially collapsed „Historie“ section whose open state survives live re-renders. Every card —
+  open, abgeschickt or geschlossen — carries a stacked full-width „Bestellung löschen“ danger
+  action below its other actions, since scrapping an order stays possible at every lifecycle stage
+  unlike the other, stage-gated mutations. Each position is a two-line row: description and price
+  first, then its two independent flags („Bezahlt“, „Sammelzahlung“) as the same toggle-chip
+  pattern used for filters elsewhere (`.chip`/`.chip.is-active`, see Spiele's genre/rating chips)
+  instead of small checkboxes, so each stays clearly tappable and reads at a glance without relying
+  on a tiny label alone; a single contextual tooltip beside „Sammelzahlung“, shown once per card
+  when the order has a PayPal link, explains that any position — including someone else's — can be
+  picked for the combined payment below.
+- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its four area tabs
+  are „To-Do“, „Packliste“, „An- & Abreise“ and „Events“ (the first two formerly the
   separate „Checkliste“ and „An- & Abreise“ areas; docs/KONZEPT-PACKLISTE-TICKETS.md Abschnitt 9
-  records the earlier „Packliste“→„Checkliste“ rename — „Events“ and „TV-Kiosk“ are the former
-  standalone „Einstellungen“ view, moved here because they are setup work like the rest of Orga
-  rather than a personal preference screen; there is no longer a topbar settings icon). To-Dos lead because that is what people open the area to check,
+  records the earlier „Packliste“→„Checkliste“ rename — „Events“ is the former
+  standalone „Einstellungen“ view, moved here because it is setup work like the rest of Orga
+  rather than a personal preference screen; there is no longer a topbar settings icon). TV-Kiosk is
+  deliberately not an Orga tab — it lives only behind Admin's „Kioskverwaltung“ tool card (see
+  „Admin tools“) since opening the shared-screen dashboard is an admin task, not something every
+  member needs from Orga. To-Do leads because that is what people open the area to check,
   which also keeps the persisted push url `/#checklist` landing where it always did; that tab label
   carries the live count of the current identity's own open+taken items. The checklist's former
   in-view toggle is gone — its two halves are area tabs now, so no tab row nests inside another.
@@ -677,10 +684,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   and the PDF „Andenken“-Export — while a member gets read-only cards for the events they take
   part in, without the „+ Event“ action, the participant count and the tracking state they never
   receive. Pending invitations for the current identity lead the tab as a subsection for both.
-  Event cards use the standard two-column nested-card grid. The „TV-Kiosk“ tab is deliberately minimal — one grouped-page-section
-  with a single full-width link that opens `/kiosk.html` in a new tab; it stays a separate tab
-  rather than a second section inside „Events“ so the two setup tasks (running events vs. the
-  shared-screen dashboard) don't compete for space on the same page.
+  Event cards use the standard two-column nested-card grid. TV-Kiosk (Admin's „Kioskverwaltung“
+  card, not an Orga tab) is deliberately minimal — one grouped-page-section with a single
+  full-width link that opens `/kiosk.html` in a new tab.
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
   grid. „Nach LAN“ uses one directly labeled event dropdown and shows every overall placement for
   the selected LAN, followed by tournament winners in the same leaderboard-row structure. Blue and

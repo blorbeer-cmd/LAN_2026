@@ -797,14 +797,18 @@ textarea {
   width: 100%;
 }
 /* Re-applied by switchView() on every tab change (and only there — realtime
-   re-renders must not flash): the incoming view fades/slides in briefly. */
+   re-renders must not flash): the incoming view fades in briefly. Opacity
+   only, deliberately not transform: animating transform on this element
+   would animate the scroll container itself (it's also the overflow-y:auto
+   box), which briefly promotes it to its own compositing layer on every
+   switch and made overlay-style scrollbars flash in at the right edge for
+   that instant even on a view short enough to need no scrollbar at all. */
 .view-container.view-enter {
   animation: view-in 0.22s ease;
 }
 @keyframes view-in {
   from {
     opacity: 0;
-    transform: translateY(7px);
   }
 }
 
@@ -1340,7 +1344,6 @@ input[type='number']::-webkit-inner-spin-button {
   width: calc(var(--space-8) * 2);
   flex: 0 0 auto;
 }
-.selection-toolbar input[type='number'],
 .selection-toolbar .btn {
   height: var(--tap-target-size);
 }
@@ -1601,6 +1604,16 @@ input[type='number']::-webkit-inner-spin-button {
 }
 .profile-identity-fields .field-label {
   margin: 0;
+}
+.profile-password-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+}
+@media (min-width: 640px) { /* --bp-md */
+  .profile-password-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .analytics-tournament-breakdowns {
   display: grid;
@@ -3908,22 +3921,23 @@ input[type='number'].tournament-score-input {
   flex-wrap: wrap;
 }
 .food-order-item {
-  min-height: var(--space-7);
-  padding: var(--space-1) 0;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
   font-size: var(--font-size-sm);
+}
+.food-order-item:last-child {
+  border-bottom: none;
+}
+.food-order-item-content {
+  gap: var(--space-3);
 }
 .food-order-item-description {
   min-width: 0;
   flex: 1;
   overflow-wrap: anywhere;
 }
-.food-order-item-paid-toggle {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: var(--space-1);
-}
-.food-order-item.is-paid > span {
+.food-order-item.is-paid .food-order-item-description {
   color: var(--text-muted);
   text-decoration: line-through;
 }
@@ -3938,17 +3952,6 @@ input[type='number'].tournament-score-input {
 .food-order-item-price .muted {
   font-size: var(--font-size-xs);
 }
-.food-order-item-pay-select {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: var(--space-1);
-}
-.food-order-item-toggle-label {
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  white-space: nowrap;
-}
 .food-order-payment-hint {
   justify-content: flex-end;
 }
@@ -3956,20 +3959,29 @@ input[type='number'].tournament-score-input {
   border-left: var(--space-1) solid var(--accent);
   background: var(--bg-elevated-2);
   padding-left: var(--space-2);
+  margin-left: calc(-1 * var(--space-2));
 }
-.food-order-item-action,
-.food-order-item-action-slot {
-  width: var(--space-7);
-  height: var(--space-7);
-  flex: 0 0 var(--space-7);
+/* The two independent per-item flags (paid, included in the combined
+   Sammelzahlung) share the same toggle-chip look used for filters elsewhere
+   (see Spiele's genre/rating chips) instead of small checkboxes, so it reads
+   as clearly tappable. */
+.food-order-item-toggles {
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.food-order-item-chip {
+  cursor: pointer;
 }
 .food-order-item-controls {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
-  flex-shrink: 0;
+  gap: var(--space-2);
+  margin-left: auto;
 }
 .food-order-item-action {
+  width: var(--space-7);
+  height: var(--space-7);
   padding: var(--space-1);
   font-size: var(--font-size-xs);
 }
@@ -4006,32 +4018,12 @@ input[type='number'].tournament-score-input {
   .food-order-player-items {
     padding-left: 0;
   }
-  .food-order-item {
+  .food-order-item-content {
     flex-direction: column;
     align-items: flex-start;
-    gap: var(--space-2);
-    padding: var(--space-3) 0;
-  }
-  .food-order-item-description {
-    width: 100%;
-    order: 1;
   }
   .food-order-item-price {
-    order: 2;
     align-items: flex-start;
-  }
-  .food-order-item-paid-toggle {
-    order: 3;
-  }
-  .food-order-item-pay-select {
-    order: 4;
-  }
-  .food-order-item-controls {
-    order: 5;
-    gap: var(--space-2);
-  }
-  .food-order-item-action-slot {
-    display: none;
   }
   .food-order-total {
     flex-direction: column;
