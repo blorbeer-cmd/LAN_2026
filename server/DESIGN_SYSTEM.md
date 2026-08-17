@@ -267,8 +267,13 @@ view and to new views unless a documented domain constraint requires a different
     creation, deletion, roles and foreign-profile editing remain admin-only actions.
 11. **Group related workflows into one area with tabs instead of adding nav entries.** The bottom
     nav carries exactly the five during-party destinations (Home, Match, Vote, Auswertung,
-    Mehr); everything else lives under „Mehr“ or in the topbar. Where two or three closely related
-    workflows would otherwise each claim their own entry, they become tabs of one area (see
+    Mehr); everything else lives under „Mehr“ or in the topbar. The Auswertung slot is conditional
+    on the device-local Admin mode (`admin.js`'s `isAdmin()`, not the real owner/admin role): it
+    shows Auswertung while that mode is active and Essen otherwise, so a regular member reaches
+    Sammelbestellungen directly from the bottom nav while an admin-mode device still reaches the
+    leaderboard/Statistiken/Hall of Fame area from there (`app.js`'s `switchView()` and
+    `updateAdminIndicator()`; the matching „Mehr“ hub rule for Essen is below). Where two or three
+    closely related workflows would otherwise each claim their own entry, they become tabs of one area (see
     `sectionNav.js`). Every tab keeps its own route, so deep links, the back button and persisted
     push urls stay valid, and a tab never nests inside another tab row — a merged area flattens the
     sub-view's own tabs into its area tab row.
@@ -607,8 +612,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Nested `.card` surfaces use the secondary elevated background so their hierarchy remains visible.
   `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
-  The „Mehr“ hub holds Admin, Arcade, Durchsage, Essen, Jam, Orga and Spiele — the destinations
-  that are not among the five bottom-nav entries. It keeps each destination's canonical icon
+  The „Mehr“ hub holds Admin, Arcade, Durchsage, Jam and Orga — the destinations that are not
+  among the five bottom-nav entries and never occupy the conditional Auswertung/Essen slot. Essen
+  joins this list only on a device with the local Admin mode active, since Auswertung then occupies
+  that shared bottom-nav slot instead; on any other device Essen already has that bottom-nav slot
+  and is omitted here to avoid a duplicate entry (`more.js`). It keeps each destination's canonical icon
   directly beside its centered title so both read as one label; those icons are one spacing step smaller than standard list-row icons and
   use the wider section gap to keep icon and text visually distinct. Only the navigation chevron
   remains independently aligned at the right.
