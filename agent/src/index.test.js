@@ -13,7 +13,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { tick, setUpLogFile, formatLocalTime, LOG_FILE_MAX_BYTES, matchAllowedProcessNames } = require('./index.js');
-const { getRunningProcessNames } = require('./processList');
+const { probeSystem } = require('./systemProbe');
 const { setPaused } = require('./state');
 
 function startFakeServer(handler) {
@@ -159,13 +159,15 @@ test('matchAllowedProcessNames keeps every match, including duplicates from the 
   assert.deepEqual(matchAllowedProcessNames(['cs2.exe', 'cs2.exe', 'explorer.exe'], ['cs2.exe']), ['cs2.exe', 'cs2.exe']);
 });
 
-test('tick() fetches the server allow-list and only reports process names it contains', async () => {
-  // Real scan (same trick the e2e test uses) so this exercises the actual
-  // wiring instead of a fabricated process list — see agent.e2e.test.js.
-  const runningProcessNames = [...new Set(await getRunningProcessNames())];
-  assert.ok(runningProcessNames.length > 0, 'expected at least one process on the test machine to filter against');
-  const allowedName = runningProcessNames[0];
-  const disallowedName = runningProcessNames.find((name) => name !== allowedName);
+// Spellings of the running Node test process, one of which the real OS lookup
+// must find — the same trick the e2e test uses, so these tests exercise the
+// actual wiring instead of a fabricated process list (see agent.e2e.test.js).
+const NODE_PROCESS_CANDIDATES = ['node.exe', 'node', 'mainthread'];
+
+test('tick() fetches the server allow-list and reports the game processes it names', async () => {
+  const { processNames: running } = await probeSystem({ allowedProcessNames: NODE_PROCESS_CANDIDATES });
+  assert.ok(running.length > 0, 'expected the running Node test process to be findable');
+  const allowedName = running[0];
 
   const { server, requests } = await startRecordingServer((req, res) => {
     if (req.method === 'GET' && req.url === '/api/agent/process-names') {
@@ -182,22 +184,42 @@ test('tick() fetches the server allow-list and only reports process names it con
   try {
     await tick(config, stateFilePath);
 
-    const allowListReq = requests.find((r) => r.method === 'GET' && r.url === '/api/agent/process-names');
-    assert.ok(allowListReq, 'tick() should fetch the process-name allow-list before reporting');
+    const allowListIndex = requests.findIndex((r) => r.method === 'GET' && r.url === '/api/agent/process-names');
+    const reportIndex = requests.findIndex((r) => r.method === 'POST' && r.url === '/api/agent/report');
+    assert.ok(allowListIndex >= 0, 'tick() should fetch the process-name allow-list');
+    assert.ok(reportIndex >= 0, 'tick() should still report after fetching the allow-list');
+    // Order matters now: the allow-list is what the process lookup asks the OS
+    // about, so it has to arrive before anything is looked up at all.
+    assert.ok(allowListIndex < reportIndex, 'the allow-list must be fetched before the report');
+
+    const reportReq = requests[reportIndex];
+    assert.deepEqual(reportReq.body.processNames, [allowedName], 'exactly the allow-listed process should be reported');
+  } finally {
+    server.close();
+  }
+});
+
+test('tick() reports nothing and looks up nothing when the server allow-list is empty', async () => {
+  // No configured game process means there is nothing to ask the player's OS
+  // about — plenty of processes are running on this machine, none may show up.
+  const { server, requests } = await startRecordingServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/api/agent/process-names') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ processNames: [] }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ gameIds: [], trackingPaused: false }));
+  });
+  const stateFilePath = tempStatePath();
+  const config = { serverUrl: serverUrl(server), apiKey: 'test-key' };
+
+  try {
+    await tick(config, stateFilePath);
 
     const reportReq = requests.find((r) => r.method === 'POST' && r.url === '/api/agent/report');
-    assert.ok(reportReq, 'tick() should still report after fetching the allow-list');
-    assert.ok(reportReq.body.processNames.length > 0, 'the allowed process should be reported');
-    assert.ok(
-      reportReq.body.processNames.every((name) => name === allowedName),
-      'only the allow-listed process name should be reported'
-    );
-    if (disallowedName) {
-      assert.ok(
-        !reportReq.body.processNames.includes(disallowedName),
-        'a process not present in the allow-list must never be reported'
-      );
-    }
+    assert.ok(reportReq, 'the agent should still report in (that is its heartbeat)');
+    assert.deepEqual(reportReq.body.processNames, [], 'an empty allow-list must produce an empty report');
   } finally {
     server.close();
   }
