@@ -20,10 +20,12 @@ test('every section tab is a real route and belongs to exactly one section', () 
 test('a section is entered on its first tab and its tabs share one nav group', () => {
   assert.equal(sectionEntryView('competition'), 'matchmaking');
   assert.equal(sectionEntryView('insights'), 'leaderboard');
-  // To-Do leads Orga, so the persisted push url "/#checklist" keeps landing
-  // where it always did.
   assert.equal(sectionEntryView('checklist'), null);
-  assert.equal(sectionEntryView('orga'), 'checklist');
+  // Orga's tabs are sorted alphabetically for display, so its first tab is
+  // "An- & Abreise" here - but more.js hardcodes the actual "Mehr" hub entry
+  // point to "checklist" (To-Do) independently of this order, which is what
+  // keeps the persisted push url "/#checklist" landing where it always did.
+  assert.equal(sectionEntryView('orga'), 'arrivals');
 
   assert.deepEqual(SECTIONS.competition.tabs.map((tab) => tab.view), ['matchmaking', 'tournaments']);
   assert.equal(navGroupForView('matchmaking'), navGroupForView('tournaments'));
