@@ -1994,24 +1994,50 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   const nachosRow = page.locator('.food-order-item', { hasText: 'Nachos' });
   const nachosId = await nachosRow.locator('[data-toggle-paid]').getAttribute('data-toggle-paid');
 
-  // Happy path first: still genuinely unpaid, so the click opens PayPal for
-  // this position's own tip-inclusive amount. window.open is captured
-  // in-page rather than asserting on a real popup's URL, since this sandbox
-  // has no route to the real paypal.me and a failed navigation would just
-  // land on Chromium's own error page.
-  const capturedOpenUrl = page.evaluate(
-    () =>
-      new Promise<string>((resolve) => {
-        const original = window.open;
-        window.open = ((url?: string | URL) => {
-          window.open = original;
-          resolve(String(url ?? ''));
-          return null;
-        }) as typeof window.open;
-      })
-  );
+  // window.open is stubbed in-page for both cases below, rather than
+  // asserting on a real popup's eventual URL: this sandbox has no route to
+  // the real paypal.me, and asserting on the stub also verifies the actual
+  // fix for the popup-blocking finding from review - the tab must open
+  // synchronously inside the click handler (captured as soon as
+  // window.open() is called) and only get its destination assigned once the
+  // async re-check resolves (captured via the stub's own location setter),
+  // not opened as a delayed window.open(url) call that Safari/iOS would
+  // silently block after an await.
+  await page.evaluate(() => {
+    const original = window.open;
+    (window as unknown as { __restoreWindowOpen: () => void }).__restoreWindowOpen = () => {
+      window.open = original;
+    };
+    window.open = (() => {
+      const fake = {
+        closed: false,
+        _location: '',
+        get location() {
+          return this._location;
+        },
+        set location(value: string) {
+          this._location = value;
+        },
+        close() {
+          this.closed = true;
+        },
+      };
+      (window as unknown as { __lastPopup: typeof fake }).__lastPopup = fake;
+      return fake as unknown as Window;
+    }) as typeof window.open;
+  });
+  const lastPopup = () =>
+    page.evaluate(() => {
+      const popup = (window as unknown as { __lastPopup?: { location: string; closed: boolean } }).__lastPopup;
+      return popup ? { location: popup.location, closed: popup.closed } : null;
+    });
+
+  // Happy path first: still genuinely unpaid, so the click opens a tab
+  // synchronously and then redirects it to PayPal for this position's own
+  // tip-inclusive amount.
   await nachosRow.locator('.food-order-pay-button').click();
-  assert.equal(await capturedOpenUrl, 'https://paypal.me/luigi/5.50EUR');
+  await page.waitForFunction(() => (window as unknown as { __lastPopup?: { location: string } }).__lastPopup?.location);
+  assert.deepEqual(await lastPopup(), { location: 'https://paypal.me/luigi/5.50EUR', closed: false });
 
   // Now simulate another device settling Nachos in that exact window: the
   // click's own re-check fetch is intercepted to report it already paid,
@@ -2032,15 +2058,17 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
     }
     await route.fulfill({ response, json: body });
   });
-  const pageCountBefore = page.context().pages().length;
   await nachosRow.locator('.food-order-pay-button').click();
   await page.waitForSelector('text=„Nachos“ ist inzwischen bereits als bezahlt markiert.');
-  // Nothing opened - the stale-state warning replaces the navigation.
-  assert.equal(page.context().pages().length, pageCountBefore);
+  // The synchronously-opened tab is closed again instead of ever being
+  // redirected to PayPal - the stale-state warning replaces the navigation.
+  await page.waitForFunction(() => (window as unknown as { __lastPopup?: { closed: boolean } }).__lastPopup?.closed);
+  assert.deepEqual(await lastPopup(), { location: '', closed: true });
   // The re-check's own fresh fetch also updates the row itself.
   await page.waitForSelector('.food-order-item.is-paid:has-text("Nachos")');
   assert.equal(await nachosRow.locator('[data-toggle-paid]').isChecked(), true);
   await page.unroute(`${BASE_URL}/api/food-orders`);
+  await page.evaluate(() => (window as unknown as { __restoreWindowOpen: () => void }).__restoreWindowOpen());
 
   // Clearing the PayPal link while an item is still selected must not crash
   // the view (a selection can outlive the link it was made for).

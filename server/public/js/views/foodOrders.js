@@ -865,6 +865,14 @@ export function renderFoodOrders(container, ctx) {
   container.querySelectorAll('[data-pay-order]').forEach((link) => {
     link.addEventListener('click', async (event) => {
       event.preventDefault();
+      // Open the tab synchronously, as a direct consequence of the click,
+      // before the re-check below crosses an async boundary: Safari/iOS (and
+      // increasingly other browsers) only allow window.open() to succeed
+      // within that same synchronous user-gesture window and silently block
+      // it afterwards - with no error, PayPal would just never open. The tab
+      // starts blank and is only pointed at PayPal, or closed again, once
+      // the check resolves.
+      const popup = window.open('', '_blank', 'noopener');
       const orderId = link.dataset.payOrder;
       const itemIds = link.dataset.payItems.split(',').filter(Boolean);
       let alreadyPaid;
@@ -872,13 +880,20 @@ export function renderFoodOrders(container, ctx) {
         const res = await api.foodOrders.list();
         cache = res.orders;
         const order = cache.find((o) => o.id === orderId);
-        const items = order ? order.items.filter((i) => itemIds.includes(i.id)) : [];
+        if (!order) {
+          popup?.close();
+          showToast('Diese Bestellung existiert nicht mehr.', { error: true });
+          return;
+        }
+        const items = order.items.filter((i) => itemIds.includes(i.id));
         alreadyPaid = items.filter((i) => i.paid);
       } catch (err) {
+        popup?.close();
         showToast(err.message, { error: true });
         return;
       }
       if (alreadyPaid.length > 0) {
+        popup?.close();
         for (const i of alreadyPaid) selectedForPayment.delete(i.id);
         const names = alreadyPaid.map((i) => i.description).join(', ');
         showToast(
@@ -891,7 +906,8 @@ export function renderFoodOrders(container, ctx) {
         return;
       }
       if (link.dataset.payEmail) copyPaypalEmailToClipboard(link.dataset.payEmail);
-      window.open(link.href, '_blank', 'noopener');
+      if (popup) popup.location = link.href;
+      else window.open(link.href, '_blank', 'noopener');
     });
   });
 
