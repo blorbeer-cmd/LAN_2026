@@ -299,10 +299,16 @@ export function renderClaudeReviewComment({
         "",
         `- Disposition: \`${finding.disposition}\``,
         `- Datei: ${location}`,
+        "",
+        "<details>",
+        "<summary>Problem, Auswirkung, Evidenz, Verifikation</summary>",
+        "",
         `- Problem: ${boundedMarkdownText(finding.problem)}`,
         `- Auswirkung: ${boundedMarkdownText(finding.impact)}`,
         `- Evidenz: ${boundedMarkdownText(finding.evidence)}`,
         `- Verifikation: ${boundedMarkdownText(finding.verification)}`,
+        "",
+        "</details>",
         "",
       );
     }
