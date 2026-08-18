@@ -38,6 +38,7 @@ import { pingsRouter } from './pings';
 import { musicRouter } from './music';
 import { musicControllerRouter } from '../musicController';
 import { onboardingRouter } from './onboarding';
+import { feedbackRouter } from './feedback';
 import { requireUser } from '../sessions';
 import { config } from '../config';
 import { extractToken } from '../auth';
@@ -174,6 +175,7 @@ apiRouter.put('/me/active-event', requireUser, (req, res) => {
 });
 
 apiRouter.use('/me/onboarding', onboardingRouter);
+apiRouter.use('/feedback', feedbackRouter);
 
 apiRouter.use('/groups', groupsRouter);
 

@@ -452,6 +452,13 @@ export const api = {
     // The Admin panel promises to remove all marked test data, including the
     // historical Test-LAN fixtures. The group endpoint only removes players.
     cleanupTestUsers: () => apiFetch('/api/admin/test-users', { method: 'DELETE' }),
+    featureUsage: (eventId) =>
+      apiFetch(`/api/admin/feature-usage${eventId ? `?eventId=${encodeURIComponent(eventId)}` : ''}`),
+  },
+
+  feedback: {
+    create: (data) => apiFetch('/api/feedback', { method: 'POST', body: JSON.stringify(data) }),
+    list: (limit = 50) => apiFetch(`/api/feedback?limit=${limit}`),
   },
 
   foodOrders: {

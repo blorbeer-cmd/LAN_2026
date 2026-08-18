@@ -643,10 +643,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 72);
+  assert.equal(migrations.length, 73);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 72 }, (_, index) => index + 1),
+    Array.from({ length: 73 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1166,8 +1166,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 72 }, (_, index) => index + 1),
-    'every version 1..72 runs exactly once',
+    Array.from({ length: 73 }, (_, index) => index + 1),
+    'every version 1..73 runs exactly once',
   );
 });
 

@@ -33,6 +33,7 @@ export const DOMAIN_ICONS = Object.freeze({
   skill: 'activity',
   music: 'music',
   events: 'calendar',
+  feedback: 'messageSquare',
 });
 
 export function domainIcon(key, fallback = 'bell') {

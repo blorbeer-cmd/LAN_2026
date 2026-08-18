@@ -1,0 +1,220 @@
+// Integration tests for the Bestandsdaten-Auswertung (Baustein A):
+// GET /api/admin/feature-usage aggregates existing fachliche tables. Rows are
+// seeded directly via SQL (each source table's own write path is already
+// covered by its feature's own tests) so this stays focused on the
+// aggregation query itself.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import request from 'supertest';
+import { nanoid } from 'nanoid';
+import { createTestApp } from './testApp';
+import { db, BASE_EVENT_ID, DEFAULT_GROUP_ID } from '../db';
+
+const app = createTestApp();
+
+interface UsageEntry {
+  key: string;
+  players: number;
+  total: number;
+  eventScoped: boolean;
+}
+
+function findEntry(body: { entries: UsageEntry[] }, key: string): UsageEntry {
+  const entry = body.entries.find((e) => e.key === key);
+  assert.ok(entry, `missing entry for key ${key}`);
+  return entry!;
+}
+
+test('GET /api/admin/feature-usage rejects non-admin callers', async () => {
+  const member = await request(app).post('/api/players').send({ name: 'Feature Usage Member' });
+  const res = await request(app)
+    .get('/api/admin/feature-usage')
+    .set('x-test-player-id', member.body.id);
+  assert.equal(res.status, 403);
+});
+
+test('GET /api/admin/feature-usage validates eventId', async () => {
+  const res = await request(app).get('/api/admin/feature-usage?eventId=');
+  assert.equal(res.status, 400);
+});
+
+test('GET /api/admin/feature-usage aggregates real rows across fachliche tables', async () => {
+  const playerA = await request(app).post('/api/players').send({ name: 'Feature Usage A' });
+  const playerB = await request(app).post('/api/players').send({ name: 'Feature Usage B' });
+  const idA: string = playerA.body.id;
+  const idB: string = playerB.body.id;
+
+  const games = (await request(app).get('/api/games')).body as Array<{ id: string }>;
+  const gameId = games[0].id;
+  const now = Date.now();
+  const eventId = BASE_EVENT_ID;
+  const groupId = DEFAULT_GROUP_ID;
+
+  // A vote row is only valid once a matching vote_rounds row exists for the
+  // same (group_id, round, event_id) — enforced by trg_votes_round_scope_insert.
+  db.prepare(
+    `INSERT INTO vote_rounds (group_id, round, event_id, started_at, mode) VALUES (?, ?, ?, ?, 'single')`,
+  ).run(groupId, 999_001, eventId, now);
+  db.prepare(
+    `INSERT INTO votes (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+  ).run(nanoid(), groupId, idA, 'Feature Usage A', gameId, eventId, 999_001, now);
+  db.prepare(
+    `INSERT INTO votes (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+  ).run(nanoid(), groupId, idB, 'Feature Usage B', gameId, eventId, 999_001, now);
+
+  db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id) VALUES (?, ?, ?, ?, ?, ?)').run(
+    nanoid(),
+    gameId,
+    eventId,
+    now,
+    JSON.stringify({ teams: [{ playerIds: [idA] }, { playerIds: [idB] }], winnerTeamIndex: 0 }),
+    groupId,
+  );
+
+  const tournamentId = nanoid();
+  db.prepare(
+    `INSERT INTO tournaments (id, event_id, game_id, name, format, two_legged, track_score, group_count, advancers_per_group, status, created_at, lobby_name, lobby_password, group_id)
+     VALUES (?, ?, ?, ?, 'single_elimination', 0, 0, NULL, NULL, 'active', ?, NULL, NULL, ?)`,
+  ).run(tournamentId, eventId, gameId, 'Feature Usage Cup', now, groupId);
+  db.prepare('INSERT INTO tournament_teams (id, tournament_id, name, player_ids, group_index) VALUES (?, ?, ?, ?, NULL)').run(
+    nanoid(),
+    tournamentId,
+    'Team A',
+    JSON.stringify([idA, idB]),
+  );
+
+  db.prepare(
+    `INSERT INTO checklist_tasks (id, group_id, event_id, type, title, created_by, assignee_id, status, created_at, done_at)
+     VALUES (?, ?, ?, 'todo', 'Feature Usage To-Do', ?, ?, 'done', ?, ?)`,
+  ).run(nanoid(), groupId, eventId, idA, idA, now, now);
+
+  const orderId = nanoid();
+  db.prepare(
+    `INSERT INTO food_orders (id, event_id, title, created_by, created_at) VALUES (?, ?, ?, ?, ?)`,
+  ).run(orderId, eventId, 'Feature Usage Pizza', idA, now);
+  db.prepare(
+    `INSERT INTO food_order_items (id, order_id, player_id, description, quantity, created_at) VALUES (?, ?, ?, ?, 1, ?)`,
+  ).run(nanoid(), orderId, idA, 'Margherita', now);
+
+  db.prepare(`INSERT INTO arrivals (event_id, player_id, arrival_at, updated_at) VALUES (?, ?, ?, ?)`).run(
+    eventId,
+    idA,
+    now,
+    now,
+  );
+
+  const carpoolId = nanoid();
+  db.prepare(
+    `INSERT INTO carpools (id, event_id, direction, label, seats_total, created_by, created_at) VALUES (?, ?, 'arrival', 'Feature Usage Fahrt', 3, ?, ?)`,
+  ).run(carpoolId, eventId, idA, now);
+  db.prepare('INSERT INTO carpool_members (carpool_id, player_id) VALUES (?, ?)').run(carpoolId, idB);
+
+  db.prepare('INSERT INTO preferences (player_id, game_id, rating, group_id) VALUES (?, ?, 7, ?)').run(idA, gameId, groupId);
+
+  db.prepare(
+    `INSERT INTO event_tracking_consents (id, event_id, group_id, player_id, accepted_at, source) VALUES (?, ?, ?, ?, ?, 'user')`,
+  ).run(nanoid(), eventId, groupId, idA, now);
+
+  db.prepare(
+    `INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at, active_ms, group_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(nanoid(), idA, gameId, eventId, now - 60_000, now, 45_000, groupId);
+
+  db.prepare(
+    `INSERT INTO push_subscriptions (id, player_id, endpoint, p256dh, auth, created_at) VALUES (?, ?, ?, 'p', 'a', ?)`,
+  ).run(nanoid(), idA, `https://push.example/${nanoid()}`, now);
+
+  const musicSessionId = nanoid();
+  db.prepare(
+    `INSERT INTO music_sessions (id, group_id, event_id, host_player_id, device_id, device_name, status, started_at)
+     VALUES (?, ?, ?, ?, 'device-1', 'Test Device', 'ended', ?)`,
+  ).run(musicSessionId, groupId, eventId, idA, now);
+  db.prepare(
+    `INSERT INTO music_requests
+       (id, session_id, track_uri, track_id, track_name, artist_name, duration_ms, requested_by, requested_by_name_snapshot, status, created_at)
+     VALUES (?, ?, 'spotify:track:1', 'track-1', 'Track', 'Artist', 180000, ?, 'Feature Usage A', 'played', ?)`,
+  ).run(nanoid(), musicSessionId, idA, now);
+
+  const res = await request(app).get('/api/admin/feature-usage');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.eventId, null);
+  assert.ok(res.body.rosterSize >= 2);
+
+  assert.deepEqual({ players: findEntry(res.body, 'votes').players, total: findEntry(res.body, 'votes').total }, { players: 2, total: 2 });
+  assert.deepEqual({ players: findEntry(res.body, 'matches').players, total: findEntry(res.body, 'matches').total }, { players: 2, total: 1 });
+  assert.deepEqual(
+    { players: findEntry(res.body, 'tournaments').players, total: findEntry(res.body, 'tournaments').total },
+    { players: 2, total: 1 },
+  );
+  assert.deepEqual(
+    { players: findEntry(res.body, 'checklist_tasks').players, total: findEntry(res.body, 'checklist_tasks').total },
+    { players: 1, total: 1 },
+  );
+  assert.deepEqual(
+    { players: findEntry(res.body, 'food_orders').players, total: findEntry(res.body, 'food_orders').total },
+    { players: 1, total: 1 },
+  );
+  assert.deepEqual(
+    { players: findEntry(res.body, 'arrivals').players, total: findEntry(res.body, 'arrivals').total },
+    { players: 1, total: 1 },
+  );
+  assert.deepEqual(
+    { players: findEntry(res.body, 'carpools').players, total: findEntry(res.body, 'carpools').total },
+    { players: 1, total: 1 },
+  );
+  const preferences = findEntry(res.body, 'preferences');
+  assert.ok(preferences.players >= 1 && preferences.total >= 1);
+  assert.deepEqual(
+    { players: findEntry(res.body, 'tracking_consent').players, total: findEntry(res.body, 'tracking_consent').total },
+    { players: 1, total: 1 },
+  );
+  assert.deepEqual(
+    { players: findEntry(res.body, 'play_sessions').players, total: findEntry(res.body, 'play_sessions').total },
+    { players: 1, total: 1 },
+  );
+  const push = findEntry(res.body, 'push_subscriptions');
+  assert.ok(push.players >= 1 && push.total >= 1);
+  assert.deepEqual(
+    { players: findEntry(res.body, 'music_requests').players, total: findEntry(res.body, 'music_requests').total },
+    { players: 1, total: 1 },
+  );
+});
+
+test('GET /api/admin/feature-usage?eventId= narrows event-scoped entries to that event', async () => {
+  const player = await request(app).post('/api/players').send({ name: 'Feature Usage Scoped' });
+  const games = (await request(app).get('/api/games')).body as Array<{ id: string }>;
+  const gameId = games[0].id;
+  const now = Date.now();
+  const groupId = DEFAULT_GROUP_ID;
+
+  const otherEventId = nanoid();
+  db.prepare(
+    `INSERT INTO events (id, name, starts_at, ends_at, tracking_enabled, group_id, status, visibility_scope)
+     VALUES (?, 'Feature Usage Other Event', ?, ?, 0, ?, 'published', 'participants')`,
+  ).run(otherEventId, now, now + 3_600_000, groupId);
+
+  const baseline = await request(app).get(`/api/admin/feature-usage?eventId=${BASE_EVENT_ID}`);
+  const baselineVoteTotal = findEntry(baseline.body, 'votes').total;
+
+  db.prepare(
+    `INSERT INTO vote_rounds (group_id, round, event_id, started_at, mode) VALUES (?, ?, ?, ?, 'single')`,
+  ).run(groupId, 999_002, otherEventId, now);
+  db.prepare(
+    `INSERT INTO votes (id, group_id, player_id, player_name_snapshot, game_id, event_id, round, points, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+  ).run(nanoid(), groupId, player.body.id, 'Feature Usage Scoped', gameId, otherEventId, 999_002, now);
+
+  const scopedToOther = await request(app).get(`/api/admin/feature-usage?eventId=${otherEventId}`);
+  assert.equal(scopedToOther.status, 200);
+  assert.equal(findEntry(scopedToOther.body, 'votes').total, 1);
+
+  const scopedToBase = await request(app).get(`/api/admin/feature-usage?eventId=${BASE_EVENT_ID}`);
+  assert.equal(scopedToBase.status, 200);
+  assert.equal(
+    findEntry(scopedToBase.body, 'votes').total,
+    baselineVoteTotal,
+    'vote seeded for the other event must not count against the base event filter',
+  );
+});

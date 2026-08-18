@@ -12,6 +12,9 @@ import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { getMyId } from '../whoami.js';
 import { currentGroup, refreshGroupContext } from '../groupContext.js';
+import { eventSelectOptions } from '../eventStatus.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const ONBOARDING_HELP = 'Neue Person: Registrierungslink. Bestehendes Profil: Claim-Link. Vergessenes Passwort: Reset-Link.';
 const TEST_DATA_HELP = 'Legt Test-Spieler mit Sitzplatz, Bewertungen und Spielzeit an; zwei spielen gerade. Nur im Admin-Modus sichtbar.';
@@ -32,11 +35,26 @@ let readiness = null;
 let readinessLoading = false;
 let readinessError = null;
 
+// Bestandsdaten-Auswertung (docs/KONZEPT-FEATURE-NUTZUNGSANALYSE.md, Baustein A).
+let featureUsage = null;
+let featureUsageLoading = false;
+let featureUsageError = null;
+const featureUsageFilters = { eventId: '' };
+
+// In-app feedback (docs/KONZEPT-FEATURE-NUTZUNGSANALYSE.md, Baustein B).
+let feedbackEntries = null;
+let feedbackLoading = false;
+let feedbackError = null;
+
 const READINESS_STATUS = {
   ready: { label: 'Bereit', badge: 'badge-playing' },
   warning: { label: 'Prüfen', badge: 'badge-paused' },
   error: { label: 'Fehler', badge: 'badge-overdue' },
 };
+
+const FEATURE_USAGE_AREAS = ['Wettkampf', 'Orga', 'Sonstiges'];
+
+const SENTIMENT_LABEL = { positive: 'Lob', negative: 'Problem', idea: 'Idee' };
 
 function inviteUrl(invite) {
   const param = invite.purpose === 'register' ? 'invite' : invite.purpose === 'test_login' ? 'testSession' : invite.purpose;
@@ -181,6 +199,139 @@ async function loadReadiness(ctx, force = false, restoreFocusId = null) {
     ctx.rerender();
     if (restoreFocusId) focusReadinessTarget(restoreFocusId);
   }
+}
+
+async function loadFeatureUsage(ctx, force = false) {
+  if (featureUsageLoading || (featureUsage && !force)) return;
+  featureUsageLoading = true;
+  featureUsageError = null;
+  if (force) ctx.rerender();
+  try {
+    featureUsage = await api.admin.featureUsage(featureUsageFilters.eventId || undefined);
+  } catch (error) {
+    featureUsage = null;
+    featureUsageError = error.message;
+  } finally {
+    featureUsageLoading = false;
+    ctx.rerender();
+  }
+}
+
+async function loadFeedbackEntries(ctx, force = false) {
+  if (feedbackLoading || (feedbackEntries && !force)) return;
+  feedbackLoading = true;
+  feedbackError = null;
+  if (force) ctx.rerender();
+  try {
+    feedbackEntries = await api.feedback.list();
+  } catch (error) {
+    feedbackEntries = null;
+    feedbackError = error.message;
+  } finally {
+    feedbackLoading = false;
+    ctx.rerender();
+  }
+}
+
+// The group's whole event history, not just events the admin personally
+// joined (state.managedEvents, owner/admin only) — Bestandsdaten covers
+// everything the group produced, independent of the admin's own membership.
+function featureUsageEventOptions() {
+  const events = (state.managedEvents || []).filter((e) => !e.isOutsideEvents);
+  return eventSelectOptions(events, { allEntryLabel: 'Gesamter Verlauf' });
+}
+
+function featureUsageRowHtml(entry, rosterSize) {
+  const share = rosterSize > 0 ? Math.round((entry.players / rosterSize) * 100) : null;
+  return `
+    <div class="row-between" style="padding:var(--space-2) 0;border-bottom:1px solid var(--border);">
+      <span>
+        <strong>${escapeHtml(entry.label)}</strong>
+        ${entry.detail ? `<div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(entry.detail)}</div>` : ''}
+      </span>
+      <span class="row-between" style="gap:var(--space-3);text-align:right;">
+        <span>${entry.players}${share !== null ? ` <span class="muted">(${share}%)</span>` : ''} Person(en)</span>
+        <span class="muted">${entry.total}×</span>
+      </span>
+    </div>`;
+}
+
+function featureUsageSectionHtml() {
+  const body = featureUsageError
+    ? `<div class="notice notice-warning row-between" style="gap:var(--space-2);">
+        <span>Bestandsdaten konnten nicht geladen werden.</span>
+        <button type="button" class="btn btn-sm" id="admin-feature-usage-retry">Erneut versuchen</button>
+      </div>`
+    : featureUsageLoading && featureUsage === null
+      ? '<div class="card muted">Bestandsdaten werden geladen…</div>'
+      : featureUsage
+        ? FEATURE_USAGE_AREAS.map((area) => {
+            const entries = featureUsage.entries.filter((entry) => entry.area === area);
+            if (entries.length === 0) return '';
+            return `<div class="card stack">
+              <div class="section-title">${escapeHtml(area)}</div>
+              ${entries.map((entry) => featureUsageRowHtml(entry, featureUsage.rosterSize)).join('')}
+            </div>`;
+          }).join('')
+        : '';
+
+  return `
+    <section class="card stack grouped-page-section" aria-labelledby="admin-feature-usage-title">
+      <div class="grouped-page-section-title">
+        <span class="title-with-info">
+          <h2 id="admin-feature-usage-title">Nutzungsauswertung</h2>
+          ${infoTooltipHtml(
+            'admin-feature-usage-help',
+            'Nutzungsauswertung',
+            'Zeigt, wie viele Personen jede Funktion bereits genutzt haben — direkt aus den vorhandenen Daten, ohne separate Erhebung. „Gesamter Verlauf“ zählt über alle Events der Gruppe; manche Zeilen (z. B. Bock-Bewertungen, Push) sind nicht auf ein Event eingrenzbar.',
+          )}
+        </span>
+        <button type="button" class="btn btn-sm" id="admin-feature-usage-refresh" ${featureUsageLoading ? 'disabled' : ''}>Aktualisieren</button>
+      </div>
+      ${searchSelectHtml('admin-feature-usage-event', featureUsageEventOptions(), featureUsageFilters.eventId, {
+        placeholder: 'Event suchen…',
+        ariaLabel: 'Event',
+        label: 'Events',
+      })}
+      ${featureUsage ? `<div class="muted" style="font-size:var(--font-size-xs);">Aktueller Bestand: ${featureUsage.rosterSize} aktive Mitglieder.</div>` : ''}
+      <div class="stack">${body}</div>
+    </section>`;
+}
+
+function feedbackEntryHtml(entry) {
+  const sentiment = entry.sentiment ? ` <span class="badge">${escapeHtml(SENTIMENT_LABEL[entry.sentiment] ?? entry.sentiment)}</span>` : '';
+  return `
+    <div class="card stack" style="padding:var(--space-3);">
+      <div class="row-between">
+        <span>
+          <strong>${escapeHtml(entry.playerName || 'Unbekannt')}</strong>${sentiment}
+          <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(entry.view)} · ${escapeHtml(entry.eventName || '')} · ${formatDateTime(entry.createdAt)} Uhr</div>
+        </span>
+      </div>
+      <p style="margin:0;">${escapeHtml(entry.message)}</p>
+    </div>`;
+}
+
+function feedbackSectionHtml() {
+  const body = feedbackError
+    ? `<div class="notice notice-warning row-between" style="gap:var(--space-2);">
+        <span>Feedback konnte nicht geladen werden.</span>
+        <button type="button" class="btn btn-sm" id="admin-feedback-retry">Erneut versuchen</button>
+      </div>`
+    : feedbackLoading && feedbackEntries === null
+      ? '<div class="card muted">Feedback wird geladen…</div>'
+      : (feedbackEntries || []).length === 0
+        ? emptyStateHtml('Noch kein Feedback eingegangen.')
+        : `<div class="stack">${feedbackEntries.map(feedbackEntryHtml).join('')}</div>`;
+
+  return `
+    <section class="card stack grouped-page-section" aria-labelledby="admin-feedback-title">
+      <div class="grouped-page-section-title">
+        <h2 id="admin-feedback-title">Feedback</h2>
+        <button type="button" class="btn btn-sm" id="admin-feedback-refresh" ${feedbackLoading ? 'disabled' : ''}>Aktualisieren</button>
+      </div>
+      ${body}
+    </section>`;
 }
 
 function roleLabel(role) {
@@ -387,6 +538,8 @@ function renderPanel(container, ctx) {
   const testCount = allPlayers.filter((player) => player.is_test).length;
   if (agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
   if (readiness === null && !readinessLoading && !readinessError) loadReadiness(ctx);
+  if (featureUsage === null && !featureUsageLoading && !featureUsageError) loadFeatureUsage(ctx);
+  if (feedbackEntries === null && !feedbackLoading && !feedbackError) loadFeedbackEntries(ctx);
   const rows = players
     .map(
       (p) => `
@@ -595,6 +748,8 @@ function renderPanel(container, ctx) {
           ${diagnosticsLoading && agentDiagnostics === null ? '<div class="muted">Diagnose laden…</div>' : diagnosticRows || '<span class="muted">Noch keine Spieler.</span>'}
         </div>
       </section>
+      ${featureUsageSectionHtml()}
+      ${feedbackSectionHtml()}
     </div>
   `;
 
@@ -638,6 +793,19 @@ function renderPanel(container, ctx) {
     loadReadiness(ctx, true, event.currentTarget.id));
   container.querySelector('#agent-diagnostics-refresh').addEventListener('click', () => loadAgentDiagnostics(ctx, true));
   container.querySelector('#admin-members-retry')?.addEventListener('click', () => loadAdminMembers(ctx, true));
+
+  container.querySelector('#admin-feature-usage-refresh')?.addEventListener('click', () => loadFeatureUsage(ctx, true));
+  container.querySelector('#admin-feature-usage-retry')?.addEventListener('click', () => loadFeatureUsage(ctx, true));
+  wireSearchSelect(container, 'admin-feature-usage-event', featureUsageEventOptions(), {
+    emptyText: 'Kein passendes Event gefunden.',
+    onChange: (eventId) => {
+      featureUsageFilters.eventId = eventId; // '' selects "Gesamter Verlauf"
+      featureUsage = null;
+      ctx.rerender();
+    },
+  });
+  container.querySelector('#admin-feedback-refresh')?.addEventListener('click', () => loadFeedbackEntries(ctx, true));
+  container.querySelector('#admin-feedback-retry')?.addEventListener('click', () => loadFeedbackEntries(ctx, true));
 
   container.querySelectorAll('[data-test-session]').forEach((btn) => {
     btn.addEventListener('click', () => {

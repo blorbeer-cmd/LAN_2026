@@ -16,12 +16,17 @@ const ITEMS = [
   { view: 'foodOrders', title: 'Essen' },
   { view: 'music', title: 'Jam' },
   { view: 'checklist', title: 'Orga', iconKey: 'orga' },
+  // Opens a dialog instead of navigating (like a player card's detail
+  // dialog) — the topbar has no room left for a persistent icon at the
+  // narrowest supported phone width, and Feedback isn't a destination with
+  // its own content anyway.
+  { title: 'Feedback', iconKey: 'feedback', action: 'data-open-feedback' },
 ];
 
 export function renderMore(container) {
   const rows = ITEMS.filter((item) => item.view !== 'admin' || currentPlayerHasAdminRole()).map(
     (item) => `
-    <button type="button" class="card row list-row more-card" data-navigate="${item.view}">
+    <button type="button" class="card row list-row more-card" ${item.action ?? `data-navigate="${item.view}"`}>
       <span class="more-card-label">
         <span class="list-row-icon">${icon(domainIcon(item.iconKey ?? item.view))}</span>
         <span class="player-name more-card-title">${item.title}</span>

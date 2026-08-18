@@ -29,6 +29,7 @@ test('bottom navigation and More define every canonical view icon', () => {
     skill: 'activity',
     music: 'music',
     events: 'calendar',
+    feedback: 'messageSquare',
   });
 });
 

@@ -3630,6 +3630,30 @@ registerMigration({
   up: backfillLegacyCompetitionDataToBaseEvent,
 });
 
+// In-app feedback (docs/KONZEPT-FEATURE-NUTZUNGSANALYSE.md, Baustein B): a
+// short message plus the view it was sent from, captured automatically so
+// admins can see which screen prompted it without the sender typing it out.
+// Freeform message is fine here (unlike telemetry) since the player wrote it
+// deliberately; device is only a responsive-layout bucket, never a raw
+// user agent.
+function addFeedbackEntriesTable(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS feedback_entries (
+      id         TEXT PRIMARY KEY,
+      group_id   TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id  TEXT REFERENCES players(id) ON DELETE SET NULL,
+      view       TEXT NOT NULL,
+      sentiment  TEXT CHECK (sentiment IN ('positive', 'negative', 'idea')),
+      message    TEXT NOT NULL,
+      device     TEXT NOT NULL CHECK (device IN ('mobile', 'tablet', 'desktop')),
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_feedback_entries_group ON feedback_entries(group_id, created_at);
+  `);
+}
+registerMigration({ version: 73, name: 'add feedback entries', up: addFeedbackEntriesTable });
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
