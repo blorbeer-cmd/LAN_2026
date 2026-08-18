@@ -95,6 +95,11 @@
   --notification-panel-width: 360px;
   --search-panel-width: 640px;
   --search-select-results-max-height: 320px;
+  /* Caps a single Info entry's content so a long entry scrolls internally
+     instead of stretching every card in its two-column grid row to match it.
+     ~4 lines at --font-size-lg/1.5 line-height, matching the line-count half
+     of isLongContent()'s own threshold in infoBoard.js. */
+  --info-board-content-max-height: 120px;
   /* Set from JS to the first-login onboarding rating dialog's own rendered
      height so the required game rows can scroll fully clear of it instead
      of the last rows staying pinned behind a fixed panel; 0 outside rating
@@ -2536,28 +2541,12 @@ button.card {
   line-height: 1.5;
 }
 /* A long entry (well past the 1000-character server cap, but already
-   overwhelming next to a short one-line entry) stays collapsed behind this
-   toggle instead of stretching every card in its grid row to match it. */
-.info-board-content-summary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  cursor: pointer;
-  list-style: none;
-}
-.info-board-content-summary::-webkit-details-marker {
-  display: none;
-}
-.info-board-content-chevron {
-  display: inline-flex;
-  color: var(--text-muted);
-  transition: transform 0.15s ease;
-}
-.info-board-content-toggle[open] .info-board-content-chevron {
-  transform: rotate(90deg);
-}
-.info-board-content-toggle .info-board-content {
-  margin-top: var(--space-2);
+   overwhelming next to a short one-line entry) scrolls within a bounded box
+   instead of stretching every card in its grid row to match it. */
+.info-board-content-scroll {
+  max-height: var(--info-board-content-max-height);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .award-card {
   display: flex;
