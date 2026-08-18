@@ -618,8 +618,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Nested `.card` surfaces use the secondary elevated background so their hierarchy remains visible.
   `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
-  The „Mehr“ hub holds Admin, Arcade, Durchsage, Jam and Orga — the destinations that are not
-  among the six bottom-nav entries. Essen is never listed here since it already has an
+  The „Mehr“ hub holds Mein Profil, Admin, Arcade, Durchsage, Jam and Orga — the destinations that
+  are not among the six bottom-nav entries. Mein Profil moved here from its former topbar icon
+  (`#profile-btn`) to make room for the always-available Feedback icon there (see „Feedback“
+  below); the needs-setup indicator that used to sit on that topbar icon now sits on the „Mehr“
+  bottom-nav icon instead. Essen is never listed here since it already has an
   unconditional bottom-nav slot of its own (`more.js`); Auswertung is never listed here either —
   it has no general-audience entry point at all, living only behind Admin's „Auswertung“ tool card
   (see „Admin tools“). It keeps each destination's canonical icon
@@ -753,6 +756,15 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `openModal()` instance, its entry form and delete confirmation can open on top of it — `modal.js`
   delivers Escape only to the topmost open `.modal-backdrop`, so cancelling a nested confirmation
   never takes the dialog underneath it down too.
+- **Feedback** — the topbar's `#feedback-btn` (the canonical `feedback` icon from
+  `domainIcons.js`) opens the feedback dialog as a modal over whatever view is open, the same
+  reachable-from-anywhere pattern as Info. It automatically captures the view that was open when
+  the icon was tapped, so a report never needs to explain where it happened. A submission picks one
+  of four distinct sentiments — Positiv, Negativ, Problem, Idee — through the shared
+  `.selection-toolbar` toggle rather than a free-text category, plus a message field. Admin's
+  Feedback section lists submissions newest first and filters them by the same four sentiments plus
+  „Alle“ through the shared `.chip`/`.chip.is-active` pattern (mirroring Spiele's genre chips and
+  Orga's To-Do Art filter).
 - **Arrival carpools** — the „An- & Abreise“ tab of Orga. Anreise and Abreise remain separate
   full-width accented panels. Their
   carpool cards use two columns from `--bp-md`, but an odd final card deliberately keeps one-column

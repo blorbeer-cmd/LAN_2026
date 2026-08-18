@@ -771,14 +771,14 @@ textarea {
   height: 44px;
   padding: var(--space-3);
 }
-.icon-btn.needs-setup {
+.nav-btn.needs-setup .nav-icon {
   position: relative;
 }
-.icon-btn.needs-setup::after {
+.nav-btn.needs-setup .nav-icon::after {
   content: '';
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: -2px;
+  right: -2px;
   width: 8px;
   height: 8px;
   border-radius: 50%;

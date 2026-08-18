@@ -12,8 +12,24 @@ import { writeAdminAudit } from '../adminAudit';
 import { requireRecentReauthentication } from '../sessions';
 import { getReadiness } from '../readiness';
 import { getOrRepairActiveEvent } from '../eventContext';
+import { computeFeatureUsage } from '../featureUsage';
 
 export const adminRouter = Router();
+
+// GET /api/admin/feature-usage?eventId= — Bestandsdaten-Auswertung
+// (docs/KONZEPT-FEATURE-NUTZUNGSANALYSE.md, Baustein A): how many distinct
+// people and how much activity each existing fachliche feature already shows
+// in its own tables. An omitted eventId aggregates the whole group history;
+// an explicit one narrows every eventScoped entry to that event. A value
+// outside the caller's group simply yields empty entries (every query is
+// already group_id-scoped), so no extra existence check is needed here.
+adminRouter.get('/feature-usage', requireAdmin, (req, res) => {
+  const { eventId } = req.query;
+  if (eventId !== undefined && (typeof eventId !== 'string' || !eventId)) {
+    return res.status(400).json({ error: 'eventId muss eine nicht-leere Zeichenkette sein.' });
+  }
+  res.json(computeFeatureUsage(req.group!.id, typeof eventId === 'string' ? eventId : null));
+});
 
 adminRouter.get('/readiness', requireAdmin, async (req, res, next) => {
   try {

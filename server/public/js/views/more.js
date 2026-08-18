@@ -11,6 +11,9 @@ import { domainIcon } from '../domainIcons.js';
 import { currentPlayerHasAdminRole } from '../adminAccess.js';
 
 const ITEMS = [
+  // Moved out of the topbar to make room for the always-available Feedback
+  // icon there; still just as reachable, one tap into "Mehr".
+  { view: 'profile', title: 'Mein Profil' },
   { view: 'admin', title: 'Admin' },
   { view: 'arcade', title: 'Arcade' },
   { view: 'broadcast', title: 'Durchsage' },

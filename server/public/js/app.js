@@ -10,6 +10,7 @@ import { createConnectionRefreshCoordinator } from './connectionRefresh.js';
 import { selectableEventWorkspaces, state } from './state.js';
 import { loadAll } from './data.js';
 import { showToast } from './toast.js';
+import { openFeedbackModal } from './feedback.js';
 import { getMyId } from './whoami.js';
 import { isAdmin, setAdmin } from './admin.js';
 import { currentPlayerHasAdminRole } from './adminAccess.js';
@@ -50,6 +51,12 @@ installDomainIcons();
 initNumberStepper();
 
 let currentView = 'home';
+// The topbar has no room for a persistent Feedback icon at the narrowest
+// supported phone width (verified: even one more 44px icon overflows a
+// 320px viewport), so Feedback lives in the "Mehr" hub instead and needs
+// this to still capture "which view were you actually looking at" — "Mehr"
+// itself carries no content of its own to report feedback about.
+let lastSubstantiveView = 'home';
 let appReady = false;
 const viewContainer = document.getElementById('view-container');
 let pendingSearchTarget = null;
@@ -348,6 +355,7 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
   const changed = view !== currentView;
   pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
   currentView = view;
+  if (view !== 'more') lastSubstantiveView = view;
   // Realtime game modules use this marker to ignore updates while another
   // view is active. Without it, a running game can rebuild the current DOM
   // during navigation and make a tap appear to be lost.
@@ -364,10 +372,10 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
   viewContainer.classList.remove('view-enter');
   void viewContainer.offsetWidth; // force reflow so removing+adding re-triggers
   viewContainer.classList.add('view-enter');
-  // A little indicator on the profile icon points new/unset devices at
-  // self-onboarding (name, avatar, skills, agent key) instead of leaving
-  // them to stumble onto it.
-  document.getElementById('profile-btn').classList.toggle('needs-setup', !getMyId());
+  // A little indicator on the "Mehr" nav button (which now leads to "Mein
+  // Profil") points new/unset devices at self-onboarding (name, avatar,
+  // skills, agent key) instead of leaving them to stumble onto it.
+  document.querySelector('.nav-btn[data-view="more"]').classList.toggle('needs-setup', !getMyId());
   renderCurrent();
   viewContainer.scrollTop = 0;
   if (replace) {
@@ -419,7 +427,7 @@ function wireNav() {
   // hidden until this boot code runs, so nothing renders icon-less.
   document.getElementById('notifications-btn').insertAdjacentHTML('afterbegin', icon('bell'));
   document.getElementById('info-btn').innerHTML = icon(domainIcon('infoBoard'));
-  document.getElementById('profile-btn').innerHTML = icon('circleUser');
+  document.getElementById('feedback-btn').innerHTML = icon(domainIcon('feedback'));
   document.querySelector('.admin-banner-label').insertAdjacentHTML('afterbegin', icon('shield'));
 
   document.querySelectorAll('.nav-btn').forEach((btn) => {
@@ -428,7 +436,9 @@ function wireNav() {
       switchView(btn.dataset.view);
     });
   });
-  document.getElementById('profile-btn').addEventListener('click', () => switchView('profile'));
+  // Feedback is reachable from every view via this topbar icon; the view it
+  // was opened from is captured automatically (see lastSubstantiveView).
+  document.getElementById('feedback-btn').addEventListener('click', () => openFeedbackModal(lastSubstantiveView));
   // Info is reference material people look up mid-conversation, so it opens
   // over whatever they were doing instead of costing them their current view.
   document.getElementById('info-btn').addEventListener('click', () => openInfoBoard());
