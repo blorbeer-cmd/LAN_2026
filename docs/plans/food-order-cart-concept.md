@@ -70,15 +70,17 @@ Rein visuell und sprachlich, keine neue Logik. Kleinster und risikoärmster Schr
 - **AP1.2 Betrag ist Anzeige, kein Knopf.** Die Zeile zeigt den zahlbaren Betrag als Text, darunter
   klein „inkl. <x> % Trinkgeld“. Der Hinweis muss bleiben: ohne ihn passt die Zahl nicht zum Preis
   auf der Speisekarte. Ohne Trinkgeld entfällt die Zeile.
-- **AP1.3 Bezahlt-Marke** links: im Zustand „bezahlt“ grün mit Haken und Wort „Bezahlt“, im offenen
-  Zustand nur der gestrichelte Kreis ohne Wort. Sie bleibt auch auf einer gesperrten Zeile bedienbar
-  — sie ist der einzige Weg zurück.
+- **AP1.3 Bezahlt-Marke** links, mit Wort in beiden Zuständen: „Offen“ mit gestricheltem Kreis,
+  „Bezahlt“ grün mit Haken. Die Marke bekommt eine feste Mindestbreite, damit die Bezeichnung
+  dahinter beim Umschalten nicht springt. Sie bleibt auch auf einer gesperrten Zeile bedienbar — sie
+  ist der einzige Weg zurück.
 - **AP1.4 Warenkorb-Knopf** je Zeile mit `aria-pressed`; aktiver Zustand über Akzentring plus die
   bestehende Akzentschiene an der Zeile.
 - **AP1.5 Warenkorb-Kasten**: Kopf „Warenkorb“ mit Anzahl-Badge, darunter die Positionen mit
   Farbpunkt und Namen des ursprünglichen Bestellers, Summenzeile „Summe“, Knopf „Bezahlen ·
-  <Summe>“. Jede Korbzeile bekommt ein eigenes X zum Herausnehmen. Kein erklärender Untertitel. Der
-  Kasten erscheint weiterhin erst, wenn etwas drin liegt.
+  <Summe>“ und darunter „Alle als bezahlt markieren“ — ausgeschrieben, die Kurzform „Alle als
+  bezahlt“ liest sich falsch. Jede Korbzeile bekommt ein eigenes X zum Herausnehmen. Kein
+  erklärender Untertitel. Der Kasten erscheint weiterhin erst, wenn etwas drin liegt.
 - **AP1.6 Besteller in der Liste** bleibt wie heute die Gruppierung aus `itemsGroupedByPlayer()`
   (Farbpunkt, Name, eingerückte Positionen; auf schmalen Geräten ohne Einrückung).
 - **AP1.7 Icons**: `shoppingCart` und `wallet` in `icons.js` ergänzen. `creditCard` prüfen und
@@ -97,9 +99,9 @@ links, Bestätigen rechts, Fokus startet auf der harmlosen Seite, Escape bricht 
   geänderten Positionen.
 - **AP2.2 Rückfrage „Bezahlt?“** nach jedem Bezahlen-Klick, unmittelbar nachdem der PayPal-Tab
   geöffnet wurde. Text: „<Summe> für <n> Positionen an PayPal übergeben.“ plus die Liste mit
-  Besteller. „Ja, bezahlt“ markiert alle Positionen des Korbs als bezahlt und leert ihn; „Noch
-  nicht“, Escape und Klick daneben ändern nichts. Keine Erfolgsmeldung behaupten — Respawn bekommt
-  von PayPal keine Rückmeldung.
+  Besteller und dem Hinweis „Der Warenkorb wird danach geleert.“. „Ja, bezahlt“ markiert alle
+  Positionen des Korbs als bezahlt und leert ihn; „Noch nicht“, Escape und Klick daneben ändern
+  nichts. Keine Erfolgsmeldung behaupten — Respawn bekommt von PayPal keine Rückmeldung.
 - **AP2.3 Rückfrage vor der Sammel-Markierung**: „<n> Positionen · <Summe>. Der Warenkorb wird
   geleert.“ plus Liste. Bestätigen blau, nicht rot: umkehrbar durch erneutes Abhaken.
 - **AP2.4 Rückfrage vor dem Löschen**: Titel „<Menge> × <Bezeichnung> löschen?“, Text „Lässt sich
@@ -207,3 +209,9 @@ bezahlt“ fremde, längst erledigte Zahlungen zurückdrehen.
   `aria-label` erhalten.
 - **Stufe 2 der Gruppen** (Bezahlt je Gruppe) wird erst gebaut, wenn sich im Betrieb zeigt, dass
   Leute regelmäßig alles von einer Person auf einmal abhaken wollen.
+- **Löschrecht.** Heute erlaubt `DELETE /api/food-orders/:id/items/:itemId` ausschließlich eigene
+  Positionen (`403` sonst), deshalb trägt eine fremde Zeile keinen Mülleimer, sondern einen leeren
+  Platzhalter gleicher Breite. Offen ist, ob die erstellende Person zusätzlich fremde Positionen
+  entfernen darf — praktisch beim Aufgeben („X ist doch nicht da“), aber eine bewusste
+  Rechteerweiterung mit Server-Änderung und eigenen Tests. Bis zur Entscheidung bleibt es beim
+  heutigen Stand.
