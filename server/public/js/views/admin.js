@@ -46,6 +46,7 @@ const featureUsageFilters = { eventId: '' };
 let feedbackEntries = null;
 let feedbackLoading = false;
 let feedbackError = null;
+let feedbackSentimentFilter = 'all'; // 'all' | 'positive' | 'negative' | 'problem' | 'idea'
 
 const READINESS_STATUS = {
   ready: { label: 'Bereit', badge: 'badge-playing' },
@@ -318,7 +319,23 @@ function feedbackEntryHtml(entry) {
     </div>`;
 }
 
+function feedbackSentimentFilterHtml() {
+  const options = [{ value: 'all', label: 'Alle' }, ...Object.entries(SENTIMENT_LABEL).map(([value, label]) => ({ value, label }))];
+  return `
+    <div class="chip-list" role="group" aria-label="Nach Art filtern">
+      ${options
+        .map(
+          (o) => `<button type="button" class="chip${feedbackSentimentFilter === o.value ? ' is-active' : ''}"
+            aria-pressed="${feedbackSentimentFilter === o.value}" data-feedback-sentiment-filter="${o.value}">${escapeHtml(o.label)}</button>`,
+        )
+        .join('')}
+    </div>`;
+}
+
 function feedbackSectionHtml() {
+  const visibleEntries = (feedbackEntries || []).filter(
+    (entry) => feedbackSentimentFilter === 'all' || entry.sentiment === feedbackSentimentFilter,
+  );
   const body = feedbackError
     ? `<div class="notice notice-warning row-between" style="gap:var(--space-2);">
         <span>Feedback konnte nicht geladen werden.</span>
@@ -326,9 +343,11 @@ function feedbackSectionHtml() {
       </div>`
     : feedbackLoading && feedbackEntries === null
       ? '<div class="card muted">Feedback wird geladen…</div>'
-      : (feedbackEntries || []).length === 0
-        ? emptyStateHtml('Noch kein Feedback eingegangen.')
-        : `<div class="stack">${feedbackEntries.map(feedbackEntryHtml).join('')}</div>`;
+      : visibleEntries.length === 0
+        ? emptyStateHtml(
+            (feedbackEntries || []).length === 0 ? 'Noch kein Feedback eingegangen.' : 'Kein Feedback dieser Art.',
+          )
+        : `<div class="stack">${visibleEntries.map(feedbackEntryHtml).join('')}</div>`;
 
   return `
     <section class="card stack grouped-page-section" aria-labelledby="admin-feedback-title">
@@ -336,6 +355,7 @@ function feedbackSectionHtml() {
         <h2 id="admin-feedback-title">Feedback</h2>
         <button type="button" class="btn btn-sm" id="admin-feedback-refresh" ${feedbackLoading ? 'disabled' : ''}>Aktualisieren</button>
       </div>
+      ${feedbackError || (feedbackEntries || []).length === 0 ? '' : feedbackSentimentFilterHtml()}
       ${body}
     </section>`;
 }
@@ -820,6 +840,12 @@ function renderPanel(container, ctx) {
   });
   container.querySelector('#admin-feedback-refresh')?.addEventListener('click', () => loadFeedbackEntries(ctx, true));
   container.querySelector('#admin-feedback-retry')?.addEventListener('click', () => loadFeedbackEntries(ctx, true));
+  container.querySelectorAll('[data-feedback-sentiment-filter]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      feedbackSentimentFilter = btn.dataset.feedbackSentimentFilter;
+      ctx.rerender();
+    });
+  });
 
   container.querySelectorAll('[data-test-session]').forEach((btn) => {
     btn.addEventListener('click', () => {

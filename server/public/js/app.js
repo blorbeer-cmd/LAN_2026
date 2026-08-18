@@ -372,10 +372,10 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
   viewContainer.classList.remove('view-enter');
   void viewContainer.offsetWidth; // force reflow so removing+adding re-triggers
   viewContainer.classList.add('view-enter');
-  // A little indicator on the profile icon points new/unset devices at
-  // self-onboarding (name, avatar, skills, agent key) instead of leaving
-  // them to stumble onto it.
-  document.getElementById('profile-btn').classList.toggle('needs-setup', !getMyId());
+  // A little indicator on the "Mehr" nav button (which now leads to "Mein
+  // Profil") points new/unset devices at self-onboarding (name, avatar,
+  // skills, agent key) instead of leaving them to stumble onto it.
+  document.querySelector('.nav-btn[data-view="more"]').classList.toggle('needs-setup', !getMyId());
   renderCurrent();
   viewContainer.scrollTop = 0;
   if (replace) {
@@ -427,7 +427,7 @@ function wireNav() {
   // hidden until this boot code runs, so nothing renders icon-less.
   document.getElementById('notifications-btn').insertAdjacentHTML('afterbegin', icon('bell'));
   document.getElementById('info-btn').innerHTML = icon(domainIcon('infoBoard'));
-  document.getElementById('profile-btn').innerHTML = icon('circleUser');
+  document.getElementById('feedback-btn').innerHTML = icon(domainIcon('feedback'));
   document.querySelector('.admin-banner-label').insertAdjacentHTML('afterbegin', icon('shield'));
 
   document.querySelectorAll('.nav-btn').forEach((btn) => {
@@ -436,7 +436,9 @@ function wireNav() {
       switchView(btn.dataset.view);
     });
   });
-  document.getElementById('profile-btn').addEventListener('click', () => switchView('profile'));
+  // Feedback is reachable from every view via this topbar icon; the view it
+  // was opened from is captured automatically (see lastSubstantiveView).
+  document.getElementById('feedback-btn').addEventListener('click', () => openFeedbackModal(lastSubstantiveView));
   // Info is reference material people look up mid-conversation, so it opens
   // over whatever they were doing instead of costing them their current view.
   document.getElementById('info-btn').addEventListener('click', () => openInfoBoard());
@@ -461,10 +463,6 @@ function wireNav() {
     const detail = e.target.closest('[data-open-player-detail]');
     if (detail) {
       openPlayerDetail(detail.dataset.openPlayerDetail);
-      return;
-    }
-    if (e.target.closest('[data-open-feedback]')) {
-      openFeedbackModal(lastSubstantiveView);
       return;
     }
     const btn = e.target.closest('[data-navigate]');

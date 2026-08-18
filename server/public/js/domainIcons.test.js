@@ -30,6 +30,7 @@ test('bottom navigation and More define every canonical view icon', () => {
     music: 'music',
     events: 'calendar',
     feedback: 'messageSquare',
+    profile: 'circleUser',
   });
 });
 

@@ -185,7 +185,8 @@ test('the personal statistics event filter only offers accepted workspaces', asy
   await switchWorkspaceInBrowser(eventB);
   // "Meine Statistiken" hangs off the profile view rather than the nav or the
   // "Mehr" hub, and is reached through its "Ansehen" action.
-  await page.click('#profile-btn');
+  await page.click('.nav-btn[data-view="more"]');
+  await page.click('[data-navigate="profile"]');
   await page.waitForSelector('[data-navigate="myStats"]');
   await page.click('[data-navigate="myStats"]');
   // The event dropdown only exists once the first stats payload has arrived.

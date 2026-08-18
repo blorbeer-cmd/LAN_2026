@@ -99,6 +99,13 @@ async function openOrgaTab(tab: string): Promise<void> {
   await page.click(`[data-section-tab="${tab}"]`);
 }
 
+// "Mein Profil" moved out of the topbar into "Mehr" to make room for the
+// always-available Feedback icon there.
+async function openProfile(): Promise<void> {
+  await page.click('.nav-btn[data-view="more"]');
+  await page.click('[data-navigate="profile"]');
+}
+
 async function switchIdentityAndOpenArrivals(label: string): Promise<void> {
   const account = accountsByName.get(label);
   assert.ok(account, `missing E2E account for ${label}`);
@@ -197,7 +204,8 @@ flowTest('shell', 'fresh device uses the personal login and reaches the app with
     { fontStyle: 'normal', transform: 'none' },
   );
 
-  await loginPage.click('#profile-btn');
+  await loginPage.click('.nav-btn[data-view="more"]');
+  await loginPage.click('[data-navigate="profile"]');
   await loginPage.waitForSelector('#profile-name');
   assert.equal(await loginPage.inputValue('#profile-name'), alice.name);
 });
@@ -237,7 +245,7 @@ flowTest('shell', 'Orga Events tab and Profil use grouped help while admin tools
   );
 
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.click('#profile-btn');
+  await openProfile();
   await page.waitForSelector('#profile-name');
   assert.equal(await page.locator('.profile-agent-step').count(), 3);
   assert.equal(await page.locator('#push-toggle[type="checkbox"]').count(), 1);
@@ -1274,7 +1282,7 @@ flowTest('shell', 'Mein Profil: rename with a uniqueness conflict, then succeed;
     const createRes = await page.request.post(`${BASE_URL}/api/players`, { data: { name: 'E2E Bob' } });
     assert.equal(createRes.status(), 201);
   }
-  await page.click('#profile-btn');
+  await openProfile();
 
   // The personal session still belongs to "E2E Alice", so this view opens
   // straight into her profile editor.
@@ -1330,7 +1338,7 @@ flowTest('shell', 'Mein Profil: rename with a uniqueness conflict, then succeed;
 });
 
 flowTest('shell', 'Sitzplan: the real name set in Mein Profil shows in small everywhere the seating plan renders', async () => {
-  await page.click('#profile-btn');
+  await openProfile();
   await page.waitForSelector('#profile-real-name');
   await page.fill('#profile-real-name', 'Alice Musterfrau');
   await page.click('#profile-save');

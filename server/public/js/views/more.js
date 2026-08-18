@@ -11,16 +11,14 @@ import { domainIcon } from '../domainIcons.js';
 import { currentPlayerHasAdminRole } from '../adminAccess.js';
 
 const ITEMS = [
+  // Moved out of the topbar to make room for the always-available Feedback
+  // icon there; still just as reachable, one tap into "Mehr".
+  { view: 'profile', title: 'Mein Profil' },
   { view: 'admin', title: 'Admin' },
   { view: 'arcade', title: 'Arcade' },
   { view: 'broadcast', title: 'Durchsage' },
   { view: 'music', title: 'Jam' },
   { view: 'checklist', title: 'Orga', iconKey: 'orga' },
-  // Opens a dialog instead of navigating (like a player card's detail
-  // dialog) — the topbar has no room left for a persistent icon at the
-  // narrowest supported phone width, and Feedback isn't a destination with
-  // its own content anyway.
-  { title: 'Feedback', iconKey: 'feedback', action: 'data-open-feedback' },
 ];
 
 export function renderMore(container) {
