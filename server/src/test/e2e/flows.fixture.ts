@@ -1834,42 +1834,40 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
   await page.waitForSelector('text=Summe kopiert: 20,90');
 
-  // Whoever collects the money toggles an item's "Bezahlt" chip once it's
-  // paid — works while the order is still open, and stays visible/editable
-  // after closing.
-  await page.click('[data-toggle-paid]');
-  await page.waitForSelector('.food-order-item.is-paid');
-  // Marking a position paid strikes through its price too, not only its
-  // description - it is fully settled, not merely renamed.
-  assert.equal(
-    await page
-      .locator('.food-order-item.is-paid .food-order-item-price strong')
-      .first()
-      .evaluate((el) => getComputedStyle(el).textDecorationLine),
-    'line-through'
-  );
-
   // Left to right, a position's own row reads: quantity × description /
-  // price + breakdown / copy / Sammelzahlung / Bezahlt (remove trails last,
-  // only for the item's own owner).
-  const marghieToggleOrder = await page
-    .locator('.food-order-item', { hasText: 'Margherita' })
+  // price + breakdown / copy / Bezahlen / Sammelzahlung / Bezahlt, with the
+  // remove action set apart as the row's own trailing last element (only for
+  // the item's own owner).
+  const marghieRow = page.locator('.food-order-item', { hasText: 'Margherita' }).first();
+  const marghieToggleOrder = await marghieRow
     .locator('.food-order-item-toggles')
     .first()
     .evaluate((row) =>
       Array.from(row.children).map((child) => {
         if (child.matches('[data-copy-food-total]')) return 'copy';
+        if (child.matches('.food-order-item-pay')) return 'pay';
         if (child.matches('[data-select-pay]')) return 'sammelzahlung';
         if (child.matches('[data-toggle-paid]')) return 'bezahlt';
-        if (child.querySelector('[data-remove-item]')) return 'remove';
         return 'other';
       })
     );
-  assert.deepEqual(marghieToggleOrder, ['copy', 'sammelzahlung', 'bezahlt', 'remove']);
+  assert.deepEqual(marghieToggleOrder, ['copy', 'pay', 'sammelzahlung', 'bezahlt']);
+  assert.equal(
+    await marghieRow.evaluate((row) => row.lastElementChild?.matches('[data-remove-item]')),
+    true
+  );
+
+  // A single position can be paid directly, without going through the
+  // combined Sammelzahlung first: its own link carries that position's own
+  // tip-inclusive amount.
+  assert.equal(
+    await marghieRow.locator('.food-order-item-pay').getAttribute('href'),
+    'https://paypal.me/luigi/20.90EUR'
+  );
 
   // Anyone can select any mix of items — their own or someone else's — and
   // pay them together in one PayPal link, tip included.
-  await page.click('[data-select-pay]');
+  await marghieRow.locator('[data-select-pay]').click();
   const paymentSelector = page.locator('.food-order-payment-selector');
   await page.waitForSelector('.food-order-payment-selector:has-text("1 Position ausgewählt")');
   await page.waitForSelector('.food-order-payment-selector:has-text("20,90")');
@@ -1880,8 +1878,8 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
     await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'),
     'https://paypal.me/luigi/20.90EUR'
   );
-  // Margherita is already paid, so there is nothing left to settle in bulk.
-  assert.equal(await paymentSelector.locator('[data-mark-selected-paid]').count(), 0);
+  // Margherita is unpaid and selected, so bulk-settling it is offered.
+  assert.equal(await paymentSelector.locator('[data-mark-selected-paid]').count(), 1);
 
   // The combined Sammelzahlung total can be copied too, same as a single
   // position's amount.
@@ -1909,6 +1907,31 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
     'https://paypal.me/luigi/20.90EUR'
   );
 
+  // Whoever collects the money toggles an item's "Bezahlt" chip once it's
+  // paid — works while the order is still open, and stays visible/editable
+  // after closing. Marking it paid strikes through its price too (fully
+  // settled, not merely renamed), clears its own Sammelzahlung mark and
+  // disables that chip: a paid position can't be picked for the combined
+  // payment again until "Bezahlt" is unmarked.
+  await marghieRow.locator('[data-toggle-paid]').click();
+  await page.waitForSelector('.food-order-item.is-paid:has-text("Margherita")');
+  assert.equal(
+    await marghieRow.locator('.food-order-item-price strong').evaluate((el) => getComputedStyle(el).textDecorationLine),
+    'line-through'
+  );
+  assert.equal(await marghieRow.locator('[data-select-pay]').getAttribute('aria-pressed'), 'false');
+  assert.equal(await marghieRow.locator('[data-select-pay]').isDisabled(), true);
+  // Margherita was the only selected position, so the selector disappears
+  // entirely once it is paid.
+  await page.waitForSelector('.food-order-payment-selector', { state: 'detached' });
+
+  // Unmarking "Bezahlt" makes the position selectable for Sammelzahlung again.
+  await marghieRow.locator('[data-toggle-paid]').click();
+  await page.waitForSelector('.food-order-item:not(.is-paid):has-text("Margherita")');
+  assert.equal(await marghieRow.locator('[data-select-pay]').isDisabled(), false);
+  await marghieRow.locator('[data-select-pay]').click();
+  await page.waitForSelector('.food-order-payment-selector:has-text("1 Position ausgewählt")');
+
   // Selecting an unpaid position for Sammelzahlung and then marking it paid
   // (directly on its own chip) must clear that Sammelzahlung mark again - a
   // paid position has nothing left to collect.
@@ -1925,8 +1948,10 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   assert.equal(await colaRow.locator('[data-select-pay]').getAttribute('aria-pressed'), 'false');
   assert.equal(await colaRow.evaluate((el) => el.classList.contains('is-paid')), true);
 
-  // The bulk action under Gesamtsumme settles every still-unpaid selected
-  // position at once and clears their Sammelzahlung marks the same way.
+  // The bulk action under Gesamtsumme settles every selected position at
+  // once — a selection can only ever hold unpaid positions, so this also
+  // settles Margherita, which is still selected from re-picking it above —
+  // and clears their Sammelzahlung marks the same way.
   await page.fill('[data-item-desc]', 'Chips');
   await page.fill('[data-item-quantity]', '1');
   await page.fill('[data-item-price]', '3,00');
@@ -1937,12 +1962,19 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await page.waitForSelector('.food-order-payment-selector:has-text("2 Positionen ausgewählt")');
   await page.waitForSelector('.food-order-selection-breakdown li:has-text("1 × Chips — 3,30 €")');
   await paymentSelector.locator('[data-mark-selected-paid]').click();
-  await page.waitForSelector('.food-order-payment-selector:has-text("1 Position ausgewählt")');
+  // Both Margherita and Chips were unpaid and selected, so the bulk action
+  // settles both at once and the selection empties out entirely.
+  await page.waitForSelector('.food-order-payment-selector', { state: 'detached' });
   assert.equal(await chipsRow.locator('[data-select-pay]').getAttribute('aria-pressed'), 'false');
   assert.equal(await chipsRow.evaluate((el) => el.classList.contains('is-paid')), true);
-  // Only Margherita (already paid) remains selected, so nothing is left to
-  // settle in bulk again.
-  assert.equal(await paymentSelector.locator('[data-mark-selected-paid]').count(), 0);
+  assert.equal(await marghieRow.locator('[data-select-pay]').getAttribute('aria-pressed'), 'false');
+  assert.equal(await marghieRow.evaluate((el) => el.classList.contains('is-paid')), true);
+
+  // Re-select an unpaid position so the "clearing the link mid-selection"
+  // check below still exercises a populated selector (the bulk action above
+  // emptied the selection entirely).
+  await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').click();
+  await page.waitForSelector('.food-order-payment-selector:has-text("1 Position ausgewählt")');
 
   // Clearing the PayPal link while an item is still selected must not crash
   // the view (a selection can outlive the link it was made for).

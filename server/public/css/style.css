@@ -3944,7 +3944,12 @@ input[type='number'].tournament-score-input {
   gap: var(--space-2);
   flex-wrap: wrap;
 }
+/* One line per position, left to right: quantity × description / price +
+   breakdown / copy / Sammelzahlung / Bezahlt / remove. The description's
+   flex-grow pushes everything after it toward the row's end; flex-wrap lets
+   the row break onto further lines instead of overflowing on narrow phones. */
 .food-order-item {
+  flex-wrap: wrap;
   gap: var(--space-2);
   padding: var(--space-3) 0;
   border-bottom: 1px solid var(--border);
@@ -3952,9 +3957,6 @@ input[type='number'].tournament-score-input {
 }
 .food-order-item:last-child {
   border-bottom: none;
-}
-.food-order-item-content {
-  gap: var(--space-3);
 }
 .food-order-item-description {
   min-width: 0;
@@ -3981,42 +3983,49 @@ input[type='number'].tournament-score-input {
 .food-order-item-price .muted {
   font-size: var(--font-size-xs);
 }
-.food-order-payment-hint {
-  justify-content: flex-end;
-}
 .food-order-item.is-selected-for-payment {
   border-left: var(--space-1) solid var(--accent);
   background: var(--bg-elevated-2);
   padding-left: var(--space-2);
   margin-left: calc(-1 * var(--space-2));
 }
-/* The two independent per-item flags (paid, included in the combined
-   Sammelzahlung) share the same toggle-chip look used for filters elsewhere
-   (see Spiele's genre/rating chips) instead of small checkboxes, so it reads
-   as clearly tappable. */
+/* Copy, pay and the two independent per-item flags (included in the combined
+   Sammelzahlung, paid) sit together as compact icon buttons. Labelled chips
+   were dropped here because four controls plus a long German word
+   ("Sammelzahlung") cannot share one line on a phone; each button keeps a
+   German title/aria-label naming its current state instead. */
 .food-order-item-toggles {
   align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
-}
-.food-order-item-chip {
-  cursor: pointer;
-}
-.food-order-item-chip:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.food-order-item-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-left: auto;
 }
 .food-order-item-action {
   width: var(--space-7);
   height: var(--space-7);
   padding: var(--space-1);
   font-size: var(--font-size-xs);
+  flex-shrink: 0;
+}
+.food-order-item-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* Pressed state uses an inset ring rather than a real border so the button
+   keeps its exact size when toggled, and pairs that with the accent color.
+   It is never the only signal: a selected row also carries the accent rail
+   and is listed by name in the Sammelzahlung breakdown, a paid row is struck
+   through and muted, and the "Bezahlt" toggle swaps its glyph as well. */
+.food-order-item-toggle[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--bg-elevated-2);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+/* Set apart from the toggle chips (own color, pushed flush to the row's end)
+   so removing a position reads as a distinct, deliberate action rather than
+   a third chip easy to hit by mistake. */
+.food-order-item-remove {
+  margin-left: auto;
+  color: var(--danger);
 }
 /* Deliberately heavier than the surrounding muted meta/info text (send time,
    notes, per-item rows) so the order-wide total reads as a real total at a
@@ -4075,9 +4084,10 @@ input[type='number'].tournament-score-input {
   .food-order-player-items {
     padding-left: 0;
   }
-  .food-order-item-content {
-    flex-direction: column;
-    align-items: flex-start;
+  /* Force the description onto its own line so the price, actions and
+     remove button wrap together underneath it instead of interleaving. */
+  .food-order-item-description {
+    flex-basis: 100%;
   }
   .food-order-item-price {
     align-items: flex-start;

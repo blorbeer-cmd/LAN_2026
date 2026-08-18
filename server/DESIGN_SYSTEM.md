@@ -651,25 +651,37 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   orders live inside one standard, initially collapsed „Historie“ section whose open state survives
   live re-renders. Every card — open, abgeschickt or geschlossen — carries a stacked full-width
   „Bestellung löschen“ danger action below its other actions, since scrapping an order stays
-  possible at every lifecycle stage unlike the other, stage-gated mutations. Each position is a
-  two-line row: description and price first — a paid position strikes through both, not only its
-  description, since the price is settled too — then, left to right, its copy action and its two
-  independent flags („Sammelzahlung“, „Bezahlt“) as the same toggle-chip pattern used for filters
-  elsewhere (`.chip`/`.chip.is-active`, see Spiele's genre/rating chips) instead of small checkboxes,
-  so each stays clearly tappable and reads at a glance without relying on a tiny label alone; the
-  owner's remove action trails last. Marking a position „Bezahlt“ automatically clears its own
-  „Sammelzahlung“ mark, since a paid position has nothing left to collect. A single contextual
-  tooltip beside „Sammelzahlung“, shown once per card
-  when the order has a PayPal link, explains that any position — including someone else's — can be
-  picked for the combined payment below. „Gesamtsumme“ itself is set apart from the muted meta/info
-  text around it (larger, bolder, default text color) so it reads as a real total rather than
-  another info line, with its own copy action directly beside the amount so the sum sits left of
-  that button. A non-empty Sammelzahlung selection renders below it as its own bordered block: the
-  selected count and payable amount, a copy action and „PayPal öffnen“/„Bezahlen“, then the
-  selection broken down position by position (so it is clear at a glance what is actually being
-  combined), and — whenever at least one selected position is still unpaid — a full-width „Ausgewählte
-  als bezahlt markieren“ action that settles every selected, still-unpaid position at once and
-  clears their Sammelzahlung marks the same way the per-position toggle does.
+  possible at every lifecycle stage unlike the other, stage-gated mutations. Each position is one
+  row, left to right: quantity × description, price plus breakdown (a paid position strikes through
+  both, not only its description, since the price is settled too), then a cluster of compact
+  `.food-order-item-action` icon buttons — copy, „Bezahlen“, „Sammelzahlung“, „Bezahlt“ — that the
+  description's own flex-grow pushes toward the row's end; the row wraps onto further lines on
+  narrow phones rather than overflowing. These four are icon buttons rather than labelled chips
+  because four controls plus a word as long as „Sammelzahlung“ cannot share one line on a phone,
+  which is the whole point of the single-row layout. State therefore never rests on the button
+  alone: a paid row is struck through and muted, a selected row carries the accent rail and is
+  listed by name in the Sammelzahlung breakdown below, the „Bezahlt“ toggle additionally swaps its
+  glyph (`check` → `circleCheck`), and both toggles pair `aria-pressed` with a German
+  `title`/`aria-label` naming their current state. `.food-order-item-toggle[aria-pressed='true']`
+  marks the pressed state with an inset accent ring instead of a real border, so toggling never
+  changes a button's size. „Bezahlen“ opens PayPal for that single position with its own
+  tip-inclusive amount, so settling one item never requires building a Sammelzahlung first; an
+  unpriced position still gets the action and falls back to the bare link, an email-based link
+  copies the address like everywhere else, and a settled position keeps the control as a disabled
+  button so the row's geometry stays put. The owner's remove action trails
+  last, set apart with its own danger color, a trash icon and an explicit „Position entfernen“
+  label/tooltip instead of a bare X, and pushed flush to the row's end so it reads as a distinct,
+  deliberate action rather than one more toggle. Marking a position „Bezahlt“ automatically clears
+  its own „Sammelzahlung“ mark and disables that toggle, since a paid position has nothing left to
+  collect; it only becomes selectable again once „Bezahlt“ is unmarked. „Gesamtsumme“ itself is set
+  apart from the muted meta/info text around it (larger, bolder, default text color) so it reads as
+  a real total rather than another info line, with its own copy action directly beside the amount
+  so the sum sits left of that button. A non-empty Sammelzahlung selection renders below it as its
+  own bordered block: the selected count and payable amount, a copy action and „PayPal öffnen“/
+  „Bezahlen“, then the selection broken down position by position (so it is clear at a glance what
+  is actually being combined), and — since a selection can only ever hold unpaid positions — a
+  full-width „Ausgewählte als bezahlt markieren“ action that settles every selected position at
+  once and clears their Sammelzahlung marks the same way the per-position toggle does.
 - **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its four area tabs
   are sorted alphabetically by their German label: „An- & Abreise“, „Events“, „Packliste“ and
   „To-Do“ (the last two formerly the separate „Checkliste“ and „An- & Abreise“ areas;
