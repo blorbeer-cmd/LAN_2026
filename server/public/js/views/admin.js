@@ -814,6 +814,7 @@ function renderPanel(container, ctx) {
     onChange: (eventId) => {
       featureUsageFilters.eventId = eventId; // '' selects "Gesamter Verlauf"
       featureUsage = null;
+      featureUsageError = null;
       ctx.rerender();
     },
   });
