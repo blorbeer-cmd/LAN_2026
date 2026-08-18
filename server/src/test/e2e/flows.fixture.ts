@@ -2084,6 +2084,41 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await page.waitForSelector('.food-order-item.is-paid:has-text("Nachos")');
   assert.equal(await nachosRow.locator('[data-toggle-paid]').isChecked(), true);
   await page.unroute(`${BASE_URL}/api/food-orders`);
+
+  // Same idea, but the position itself is gone (its creator removed it) by
+  // the time the re-check resolves rather than merely being paid - the DOM
+  // must still catch up to the freshly fetched cache instead of leaving the
+  // stale, now-nonexistent row on screen.
+  await page.fill('[data-item-desc]', 'Erdnüsse');
+  await page.fill('[data-item-quantity]', '1');
+  await page.fill('[data-item-price]', '2,00');
+  await page.click('[data-add-item-form] button[type="submit"]');
+  await page.waitForSelector('text=Erdnüsse');
+  const peanutsRow = page.locator('.food-order-item', { hasText: 'Erdnüsse' });
+  const peanutsId = await peanutsRow.locator('[data-toggle-paid]').getAttribute('data-toggle-paid');
+  let peanutsIntercepted = false;
+  await page.route(`${BASE_URL}/api/food-orders`, async (route) => {
+    if (peanutsIntercepted) {
+      await route.continue();
+      return;
+    }
+    peanutsIntercepted = true;
+    const response = await route.fetch();
+    const body = await response.json();
+    for (const o of body.orders) {
+      o.items = o.items.filter((item: { id: string }) => item.id !== peanutsId);
+    }
+    await route.fulfill({ response, json: body });
+  });
+  await peanutsRow.locator('.food-order-pay-button').click();
+  await page.waitForSelector('text=Diese Position existiert nicht mehr.');
+  await page.waitForFunction(() => (window as unknown as { __lastPopup?: { closed: boolean } }).__lastPopup?.closed);
+  assert.deepEqual(await lastPopup(), { location: '', closed: true });
+  // The re-check's fresh cache no longer contains this item, and the row is
+  // actually gone from the DOM instead of only showing a toast over stale
+  // markup.
+  await page.waitForSelector('.food-order-item:has-text("Erdnüsse")', { state: 'detached' });
+  await page.unroute(`${BASE_URL}/api/food-orders`);
   await page.evaluate(() => (window as unknown as { __restoreWindowOpen: () => void }).__restoreWindowOpen());
 
   // Clearing the PayPal link while an item is still selected must not crash

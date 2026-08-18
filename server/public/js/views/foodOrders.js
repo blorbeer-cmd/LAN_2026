@@ -892,12 +892,14 @@ export function renderFoodOrders(container, ctx) {
         if (!order) {
           popup?.close();
           showToast('Diese Bestellung existiert nicht mehr.', { error: true });
+          ctx.rerender();
           return;
         }
         const items = order.items.filter((i) => itemIds.includes(i.id));
         if (items.length < itemIds.length) {
           popup?.close();
           showToast('Diese Position existiert nicht mehr.', { error: true });
+          ctx.rerender();
           return;
         }
         alreadyPaid = items.filter((i) => i.paid);
