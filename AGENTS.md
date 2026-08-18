@@ -89,10 +89,27 @@ für normale Implementierungsdetails gelten diese Kurzregeln:
   danach das gewählte Label selbst. Ohne ausdrückliche Antwort des Nutzers wird nie ein Wahl-Label
   gesetzt oder geändert. Ablauf und Empfehlungsregeln:
   `.github/agent-pipeline/review-decision.md`.
+- Die Auswahl wird als gewöhnlicher Text am Ende des Zuges vorgelegt, nie über ein blockierendes
+  Frage-Werkzeug. Sie ist bewusst asynchron, steht dauerhaft als PR-Kommentar bereit und darf die
+  Eingabe der Session nicht sperren; der Nutzer antwortet mit einem normalen Prompt oder setzt das
+  Label selbst.
+- Pro Head-SHA wird höchstens einmal gefragt. Nicht erneut gefragt wird, wenn der Pull Request
+  gemergt oder geschlossen ist, wenn für den aktuellen Head bereits eine Wahl oder ein bestandenes
+  Review vorliegt oder wenn die Frage für diesen Head schon gestellt und noch unbeantwortet ist.
+  Ein erneutes Wecken durch Check-in, CI- oder PR-Ereignis ist kein neuer Anlass; dann wird nur der
+  Fortschritt berichtet. Merge, Wahl und Reviewergebnis werden dafür aus GitHub gelesen, nicht aus
+  dem Gedächtnis der Session. Ob die Frage schon lief, ist dort nicht belegbar; kann die Session das
+  nach einem Wecken nicht mehr beurteilen, fragt sie nicht — die Frage liegt ohnehin dauerhaft als
+  PR-Kommentar des Reconcilers vor.
+- Mit dem Merge oder dem Schließen des Pull Requests endet die Begleitung endgültig: eigene
+  wiederkehrende Check-ins und PR-Ereignis-Abonnements abbestellen, das Ende einmal melden und
+  danach für diesen Pull Request nichts mehr fragen. Folgearbeit beginnt auf einem neuen Branch.
 - Nach der Wahl laufen Reviewstart, Findings-Übergabe und Fix wieder automatisch. Ein Review darf
-  nie übersprungen werden; ist der gewählte Anbieter nicht verfügbar, wird der Ausfall gemeldet und
-  die Auswahl erneut vorgelegt, nie stillschweigend ein anderer Modus verwendet. Separate Reviews
-  verwenden den Prompt und Ablauf unter `.github/agent-pipeline/review-session-prompt.md`.
+  nie übersprungen werden. Fällt der gewählte Anbieter aus, wird der Ausfall stets gemeldet und nie
+  stillschweigend ein anderer Modus verwendet; nennt die Ursache ein erkennbares Ende — etwa ein
+  Nutzungslimit mit Reset-Zeitpunkt —, gilt die Wahl weiter und derselbe Modus wird danach einmal
+  erneut versucht, sonst wird die Auswahl erneut vorgelegt. Separate Reviews verwenden den Prompt
+  und Ablauf unter `.github/agent-pipeline/review-session-prompt.md`.
 - Nur kritische oder wesentlich mehrdeutige Entscheidungen werden dem Nutzer vorgelegt. Normale
   Fixes laufen bis zum grünen, konfliktfreien und vollständig reviewten PR automatisch weiter.
 - Bei sichtbaren UI/UX-Änderungen den Nutzer informieren, sobald der Branch sinnvoll prüfbar ist:

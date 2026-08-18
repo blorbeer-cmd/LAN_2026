@@ -23,6 +23,11 @@ let itemsCache = null;
 let itemsCacheForId = null;
 let loadingTasks = false;
 let loadingItems = false;
+// Set when a realtime echo of the signed-in identity's own items arrives
+// while a good cache is already showing (see invalidateChecklist below) —
+// a background refetch reconciles it without the destructive null-the-cache
+// "Lädt…" flash a full invalidateItems() would cause on every checkbox tap.
+let itemsStale = false;
 let historyOpen = false;
 let typeFilter = 'all'; // 'all' | 'todo' | 'item_request', open-pool only
 let onlyMineFilter = false; // open-pool only: "von mir erstellt"
@@ -41,16 +46,25 @@ async function loadTasks(ctx) {
   }
 }
 
-async function loadItems(ctx, playerId) {
+// `silent: true` (the realtime-echo reconciliation path) keeps whatever is
+// currently cached on screen instead of replacing it with a loading/error
+// placeholder — the previous list stays correct-looking while this quietly
+// retries in the background.
+async function loadItems(ctx, playerId, { silent = false } = {}) {
   loadingItems = true;
+  itemsStale = false;
   try {
     const res = await api.checklist.items(playerId);
     itemsCache = res.items;
     itemsCacheForId = playerId;
   } catch (err) {
-    showToast(err.message, { error: true });
-    itemsCache = [];
-    itemsCacheForId = playerId;
+    if (silent) {
+      itemsStale = true; // retry on the next trigger instead of giving up quietly
+    } else {
+      showToast(err.message, { error: true });
+      itemsCache = [];
+      itemsCacheForId = playerId;
+    }
   } finally {
     loadingItems = false;
     ctx.rerender();
@@ -63,6 +77,7 @@ async function loadItems(ctx, playerId) {
 function invalidateItems() {
   itemsCache = null;
   itemsCacheForId = null;
+  itemsStale = false;
 }
 
 // Called from app.js on every checklist:changed socket event, and without a
@@ -78,6 +93,15 @@ export function invalidateChecklist(payload) {
   if (scope !== 'items') tasksCache = null;
   if (scope === 'tasks') return;
   if (scope === 'items' && payload.playerId && payload.playerId !== getMyId()) return;
+  // This is the signed-in identity's own items: either this very client just
+  // applied the change optimistically (add/remove/toggle below), or another
+  // of its own devices did. Either way the currently rendered list is either
+  // already correct or only briefly behind — reconcile it quietly instead of
+  // nulling the cache and flashing "Lädt…" on every click.
+  if (scope === 'items' && itemsCache !== null) {
+    itemsStale = true;
+    return;
+  }
   invalidateItems();
 }
 
@@ -111,7 +135,7 @@ window.addEventListener('respawn:group-changed', invalidateChecklist);
 const addItemFormHtml = () => `
     <form class="row" data-add-item-form style="gap:var(--space-2);">
       <input type="text" data-item-label placeholder="z.B. Skill" maxlength="80" required style="flex:1;" aria-label="Neuer Packlisten-Eintrag" />
-      <button type="submit" class="btn btn-sm">Hinzufügen</button>
+      <button type="submit" class="btn">Hinzufügen</button>
     </form>`;
 
 function renderItems(myId) {
@@ -424,6 +448,7 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
   if (tasksCache === null && !loadingTasks) loadTasks(ctx);
   const myId = getMyId();
   if (myId && itemsCacheForId !== myId && !loadingItems) loadItems(ctx, myId);
+  else if (myId && itemsStale && !loadingItems) loadItems(ctx, myId, { silent: true });
 
   const prevItemLabel = container.querySelector('[data-add-item-form] [data-item-label]')?.value ?? '';
   const prevItemFocused = document.activeElement?.matches('[data-add-item-form] [data-item-label]');
@@ -472,8 +497,8 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
           ? `<section class="card stack grouped-page-section" aria-label="Meine Packliste">
                ${renderItems(myId)}
              </section>`
-          : `<section class="card stack grouped-page-section" aria-label="To-Dos">
-               <button type="button" class="btn btn-primary btn-sm" id="checklist-new-todo-btn" ${myId ? '' : 'disabled'}>+ To-Do erstellen</button>
+          : `<section class="card stack grouped-page-section" aria-label="To-Do">
+               <button type="button" class="btn btn-primary btn-sm" id="checklist-new-todo-btn" ${myId ? '' : 'disabled'}>To-Do erstellen</button>
                <div class="section-title" style="margin-top:0;">Mir zugewiesen</div>
                ${mineHtml}
                <div class="section-title">Offen</div>
@@ -540,8 +565,9 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
     if (!label) return;
     try {
       await api.checklist.addItem(myId, label);
-      invalidateItems();
-      ctx.rerender();
+      // Refetch to pick up the server-assigned id, but keep showing the
+      // current list meanwhile instead of flashing "Lädt…" (see loadItems).
+      loadItems(ctx, myId, { silent: true });
     } catch (err) {
       showToast(err.message, { error: true });
     }
@@ -566,8 +592,9 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
     btn.addEventListener('click', async () => {
       try {
         await api.checklist.removeItem(btn.dataset.removeItem, myId);
-        invalidateItems();
-        ctx.rerender();
+        // Same quiet refetch as adding an item — the row is gone from the
+        // still-visible list immediately below, no loading flash needed.
+        loadItems(ctx, myId, { silent: true });
       } catch (err) {
         showToast(err.message, { error: true });
       }

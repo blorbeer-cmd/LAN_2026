@@ -44,6 +44,17 @@ test('admin destinations are absent for members and visible for admins', () => {
   assert.equal(adminViews.includes('seating'), true);
 });
 
+test('Auswertung destinations require the real admin role, same as the rest of Admin', () => {
+  const memberViews = searchEntriesVisibleToRole(SEARCH_ENTRIES, false).map((entry) => entry.view);
+  const adminViews = searchEntriesVisibleToRole(SEARCH_ENTRIES, true).map((entry) => entry.view);
+  assert.equal(memberViews.includes('leaderboard'), false);
+  assert.equal(memberViews.includes('analytics'), false);
+  assert.equal(memberViews.includes('hallOfFame'), false);
+  assert.equal(adminViews.includes('leaderboard'), true);
+  assert.equal(adminViews.includes('analytics'), true);
+  assert.equal(adminViews.includes('hallOfFame'), true);
+});
+
 test('content index finds players and an order by one of its items', () => {
   const entries = createContentSearchEntries(
     { players: [{ id: 'p1', name: 'Nebelwolf', real_name: 'Daniel' }], games: [], events: [] },

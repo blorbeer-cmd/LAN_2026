@@ -1,9 +1,15 @@
 # Respawn – Agent
 
 Kleines Programm, das auf jedem Spieler-PC läuft. Es kennt nur drei Dinge: die Server-URL, den
-eigenen API-Key und wie oft es nachschauen soll. Es scannt periodisch die laufenden Prozesse und
-meldet sie dem Server – die Zuordnung „welcher Prozessname gehört zu welchem Spiel" liegt zentral
-auf dem Server (`⚙️ Spiele verwalten` im Web-Tool) und muss hier nicht gepflegt werden.
+eigenen API-Key und wie oft es nachschauen soll. Es holt sich periodisch die Liste der
+konfigurierten Spiele-Prozesse vom Server und fragt das Betriebssystem **gezielt nur nach genau
+diesen Namen** – es zieht also keine Liste aller laufenden Programme. Was davon läuft, wird
+gemeldet; die Zuordnung „welcher Prozessname gehört zu welchem Spiel" liegt zentral auf dem Server
+(`⚙️ Spiele verwalten` im Web-Tool) und muss hier nicht gepflegt werden.
+
+Jedes andere gerade laufende Programm (Browser, Chat, Arbeitskram, ...) ist damit für den Agent von
+vornherein unsichtbar: Es taucht schon in der Abfrage nicht auf, verlässt den PC nie und wird
+zusätzlich serverseitig verworfen, falls ein veralteter Agent es doch senden würde.
 
 ## Für Teilnehmer: fertiges Download (empfohlen)
 
@@ -77,17 +83,19 @@ Fenster gerade im Vordergrund ist und wie lange keine Maus-/Tastatureingabe kam.
 damit unterscheiden, ob ein Spiel nur im Hintergrund lief oder tatsächlich aktiv gespielt wurde
 (z. B. in der Rangliste als „davon aktiv gespielt: 2h 15m").
 
-- **Nur Windows** – nutzt `user32.dll` über ein kleines PowerShell-Skript. Auf anderen Systemen
-  wird die Option ignoriert.
+- **Nur Windows** – nutzt `user32.dll` über dasselbe kleine PowerShell-Skript, das auch die
+  Spiele-Prozesse abfragt. Einschalten kostet also keinen zusätzlichen Aufruf pro Intervall. Auf
+  anderen Systemen wird die Option ignoriert.
 - **Opt-in** – jeder Spieler entscheidet selbst, ob sein Agent das mitschickt. Standard ist `false`.
   `trackActivity` im Download-ZIP ist nur der Startwert; ist er einmal übers Steuerungs-Panel
   umgeschaltet worden, gilt der dort gewählte Wert dauerhaft (überlebt Neustarts), bis er dort
   wieder geändert wird.
-- **Was tatsächlich übertragen wird**: der Prozessname des aktuell fokussierten Fensters (das kann
-  grundsätzlich jedes laufende Programm sein, nicht nur eines unserer Spiele) sowie die Leerlaufzeit
-  in Sekunden als Zahl. Der Server nutzt das nur, wenn es zu einem der konfigurierten Spiele passt –
-  alles andere wird verworfen und nirgends gespeichert oder angezeigt. Wer das nicht möchte, lässt
-  es einfach auf „aus".
+- **Was tatsächlich übertragen wird**: der Prozessname des aktuell fokussierten Fensters – aber nur,
+  wenn es eines der konfigurierten Spiele ist – sowie die Leerlaufzeit in Sekunden als Zahl. Ist ein
+  fremdes Programm im Vordergrund, wird sein Name schon in der Abfrage verworfen und „nichts
+  erkannt" gemeldet; er wird also nicht einmal ausgelesen, geschweige denn gesendet. Die
+  Leerlaufzeit selbst sagt nichts darüber aus, *was* jemand macht. Wer das nicht möchte, lässt es
+  einfach auf „aus".
 
 ## Als eigenständige `.exe` paketieren
 
@@ -106,6 +114,6 @@ Alternativ direkt neben eine `agent.config.json` legen und manuell starten – f
 ## Tests
 
 ```bash
-npm test        # Unit-Tests: Config-Validierung, Prozessnamen-Parsing
+npm test        # Unit-Tests: Config-Validierung, gezielte Prozessabfrage, Report-Loop
 npm run test:e2e  # Startet den echten Server + den echten Agent-Loop und prüft das Live-Board
 ```

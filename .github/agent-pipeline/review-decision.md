@@ -17,8 +17,11 @@ Die Frage gehört zu genau einem Head-SHA und wird für diesen Head genau einmal
 
 ## Wann nicht erneut fragen
 
-Vor jeder Frage prüft die Session die folgenden Punkte. Trifft einer zu, wird die Frage nicht
-gestellt und eine bereits gestellte nicht wiederholt:
+Vor jeder Frage prüft die Session die folgenden Punkte. Alle bis auf einen sind am aktuellen
+GitHub-Zustand belegbar und werden dort gelesen, nicht aus dem Gedächtnis, das ein Wecken, ein neuer
+Container oder eine Kompaktierung verliert. Der eine nicht belegbare Punkt ist unten ausdrücklich
+gekennzeichnet. Trifft einer zu, wird die Frage nicht gestellt und eine bereits gestellte nicht
+wiederholt:
 
 - Der Pull Request ist gemergt oder geschlossen. Damit endet dieser Ablauf endgültig; für einen
   solchen PR wird nie wieder eine Wahl erfragt, auch nicht nach später eintreffenden Ereignissen.
@@ -31,10 +34,17 @@ gestellt und eine bereits gestellte nicht wiederholt:
 - Die Session hat die Frage für genau diesen Head bereits gestellt. Weitere Reconciler-Läufe,
   aktualisierte Statuskommentare, erneute Benachrichtigungen, CI-Ereignisse oder eine Wiederaufnahme
   der Session sind kein neuer Anlass. Auch eine noch unbeantwortete Frage wird nicht neu gestellt,
-  sondern abgewartet.
+  sondern abgewartet. Dies ist der eine Punkt, für den es in GitHub kein Artefakt gibt: Die Frage
+  wird als Turn-Text zugestellt, nicht als Kommentar der Session. Sie ist deshalb nicht nachlesbar,
+  und für den unklaren Fall gilt die Regel unter dieser Liste.
 - Die Antwort liegt vor, aber das Label ist noch nicht gesetzt, weil der Statuskommentar den
   aktuellen Head noch nicht führt (siehe „Nach der Antwort“, Punkt 1). Die Antwort bleibt gültig;
   die Session wartet auf den Eintrag und setzt das Label anschließend, ohne die Frage zu wiederholen.
+- Der gewählte Anbieter ist nur vorübergehend ausgefallen: ein einzelner technischer Zustellfehler,
+  oder eine Ursache mit erkennbarem Ende — etwa ein Nutzungslimit mit Reset-Zeitpunkt. Die Wahl gilt
+  weiter; derselbe Modus wird sofort beziehungsweise nach dem Wegfall der Ursache erneut versucht,
+  statt zu fragen. Einzelheiten und die Abgrenzung zum terminalen Ausfall unter „Ausfall des
+  gewählten Anbieters“.
 - Für den aktuellen Head liegt bereits ein bestandenes Reviewergebnis vor.
 - CI ist rot oder ein Mergekonflikt ist offen. Diese Punkte behebt der Implementierungs-Agent
   zuerst ohne Rückfrage.
@@ -46,9 +56,33 @@ Ein Ereignis, das lediglich einen dieser Zustände erneut meldet, wird still üb
 gemeldet wird stattdessen der Fortschritt: welches Review läuft, worauf gewartet wird und wie das
 Ergebnis ausfiel.
 
+Ob die Frage für diesen Head schon gestellt wurde, weiß nur die Session selbst. Kann sie das nach
+einem Wecken nicht mehr beurteilen, wird im Zweifel **nicht** gefragt: Für einen reviewbereiten Head
+existiert der Zustellkommentar des Reconcilers ohnehin dauerhaft im Pull Request, eine Wiederholung
+bringt dem Nutzer also nichts und kostet ihn nur eine weitere Unterbrechung. Die Session berichtet
+dann den Zustand und wartet auf die Antwort.
+
 Ein Draft blockiert nur das menschliche Merge-Gate. Die Review-Auswahl und das anschließende Review
 werden bereits auf dem Draft-PR gestartet; erst nach bestandenem Review darf der PR auf „Ready for
 review“ wechseln.
+
+## Ende des Ablaufs
+
+Mit dem Merge oder dem Schließen des Pull Requests endet dieser Ablauf endgültig — und mit ihm die
+gesamte Begleitung des Pull Requests durch die Session. Die Session räumt dabei ihre eigenen
+Weckquellen ab, statt sie weiterlaufen zu lassen:
+
+- eigene wiederkehrende Check-ins für diesen Pull Request abbestellen,
+- das Abonnement seiner PR-Ereignisse beenden,
+- das Ende einmal melden: gemergt beziehungsweise geschlossen, und dass nichts mehr aussteht.
+
+Danach erzeugt dieser Pull Request keine Frage, keine Empfehlung und keinen Statusbericht mehr.
+Trifft später doch noch ein Ereignis zu ihm ein, wird es still übergangen. Folgearbeit beginnt auf
+einem neuen Branch mit einem eigenen Ablauf.
+
+Ein weiterlaufender Check-in auf einem gemergten Pull Request ist selbst dann ein Fehler, wenn er
+nichts meldet: Er weckt die Session ohne Anlass und stellt damit genau die Fragen wieder her, die
+dieser Abschnitt beendet.
 
 ## Aktive Zustellung
 
@@ -141,7 +175,15 @@ würde und ob für einen der Anbieter bereits ein Limit oder ein Timeout beobach
 
 ## Frageformat
 
-Die Frage wird als Auswahl mit genau diesen drei Optionen gestellt und nennt vorab kompakt:
+Die Frage wird als gewöhnlicher Text am Ende des Zuges vorgelegt und nie über ein blockierendes
+Frage-Werkzeug gestellt. Sie ist bewusst asynchron: Ohne Antwort startet nichts, und dieselbe Wahl
+liegt dauerhaft als PR-Kommentar vor. Ein modaler Dialog würde dagegen die Eingabe der Session
+sperren, sodass der Nutzer bis zur Antwort keinen anderen Auftrag mehr abschicken kann — und jedes
+Wecken der Session würde die Sperre erneut aufziehen. Nach dem Vorlegen endet der Zug; der Nutzer
+antwortet mit einem normalen Prompt (`a`, `b`, `c`) oder setzt eines der drei Labels selbst. Beides
+zählt gleichermaßen als ausdrückliche Antwort.
+
+Die Auswahl nennt genau diese drei Optionen und vorab kompakt:
 
 - Implementierer und wer bei a) reviewen würde,
 - Head-SHA und was sich seit dem letzten Review geändert hat (Dateien, Umfang),
@@ -224,6 +266,44 @@ das Kontingent verbrauchen, das diese Frage schützen soll.
    der Statuskommentar den neuen Head-SHA nennt — vorher kann der Reconciler die Antwort nicht
    diesem Head zuordnen und würde sie noch einmal erfragen.
 
+## Ausfall des gewählten Anbieters
+
+Ein Startfehler des gewählten Anbieters ist kein Widerruf der Antwort. Der Nutzer hat für diesen Head
+entschieden; nicht erreichbar war der Anbieter. Deshalb wird nach der beobachteten Ursache
+unterschieden — stillschweigend auf einen anderen Modus ausgewichen wird in keinem der beiden Fälle.
+
+**Vorübergehend mit erkennbarem Ende.** Zwei Unterfälle, beide ohne neue Frage und mit derselben
+Wahl:
+
+- Ein einzelner technischer Zustellfehler hat keine Ursache, deren Wegfall abzuwarten wäre — die
+  Session stellt denselben Modus sofort einmal erneut zu.
+- Die Ursache nennt oder impliziert dagegen, wann sie entfällt: ein Nutzungslimit mit
+  Reset-Zeitpunkt, ein Rate-Limit, eine Infrastrukturstörung. Dann meldet die Session Ursache und
+  geplanten neuen Versuch, wartet den Wegfall der Ursache ab und setzt danach denselben Modus
+  erneut.
+
+Dass der Reconciler das an den Fehlversuch gebundene Label bereits entfernt hat, ist in beiden
+Unterfällen Buchführung über den gescheiterten Versuch und nicht das Verwerfen der Antwort.
+Höchstens ein automatischer Versuch je Head — unabhängig davon, wie viele unterschiedlich benannte
+Ursachen seither aufgetreten sind. Eine Folgeursache nach diesem einen Versuch fällt immer unter
+den nächsten Absatz, auch wenn sie selbst vorübergehend und erkennbar befristet wäre.
+
+**Terminal oder unklar.** Der Anbieter hat abgelehnt, ist nicht verbunden, eine Vorbedingung wurde
+zurückgewiesen, die Ursache ist unbekannt, ein Ende ist nicht benennbar, oder für diesen Head wurde
+bereits ein automatischer Versuch verbraucht. Dann wird der beobachtete Grund gemeldet und die
+Auswahl mit angepasster Empfehlung erneut vorgelegt.
+
+Zwei Grenzen gelten in beiden Fällen:
+
+- Der erneute Versuch gilt nur für denselben Head und denselben Modus. Hat sich der Head zwischen
+  Ausfall und Wiederholung geändert, ist die Antwort verfallen und die Auswahl wird neu vorgelegt.
+- Der Wartezustand muss sichtbar sein: Ursache und geplanter Zeitpunkt werden genannt, damit aus dem
+  Warten kein stilles Hängen wird. Warteversuche zählen nicht als Reviewrunde.
+
+Das entspricht der Reihenfolge in
+[`../../docs/plans/auto-feature-to-deploy-pipeline.md`](../../docs/plans/auto-feature-to-deploy-pipeline.md),
+Abschnitt „Reihenfolge“.
+
 ## Was die Wahl nicht verändert
 
 - Die Entscheidung gehört dem Nutzer. Der Agent überträgt sie nur: Er setzt das Label ausschließlich
@@ -237,5 +317,6 @@ das Kontingent verbrauchen, das diese Frage schützen soll.
 - Alle übrigen Gate-Bedingungen gelten unverändert: grüne CI, konfliktfrei, aufgelöste Threads,
   UI/UX-Nachricht, menschliche Freigabe geschützter Pfade.
 - Der Merge bleibt in jedem Modus beim Nutzer.
-- Ist der gewählte Anbieter nicht verfügbar, wird nicht heimlich auf einen anderen Modus
-  ausgewichen. Der Ausfall wird gemeldet und die Auswahl erneut vorgelegt.
+- Ein Ausfall des gewählten Anbieters führt nie heimlich auf einen anderen Modus. Ob dabei derselbe
+  Modus erneut versucht oder die Auswahl neu vorgelegt wird, richtet sich nach der beobachteten
+  Ursache; siehe „Ausfall des gewählten Anbieters“.

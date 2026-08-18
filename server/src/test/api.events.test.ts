@@ -61,6 +61,41 @@ test('event creation validates name, required timestamps and ordering', async ()
   assert.equal(participantsOnly.status, 201, JSON.stringify(participantsOnly.body));
 });
 
+test("GET /api/events scopes the active event's participantIds to accepted participants, not the whole roster", async () => {
+  // Regression: the Team-formation/Turnier/Draft player pickers filter to
+  // this list client-side (see public/js/state.js eventPlayers()). Without
+  // it, a picker offered the entire roster and submitting a non-participant
+  // failed server-side (competitionPlayersBelongToGroup) with a confusing 404.
+  const event = await createEvent('Testevent Rangliste');
+  assert.equal(event.status, 201, JSON.stringify(event.body));
+  const eventId = event.body.id;
+
+  accept(eventId, TEST_ADMIN_ID);
+  const acceptedPlayer = await request(app).post('/api/players').send({ name: 'Angenommen' });
+  accept(eventId, acceptedPlayer.body.id);
+  const invitedPlayer = await request(app).post('/api/players').send({ name: 'Nur eingeladen' });
+  db.prepare(`INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'invited')`).run(
+    eventId,
+    invitedPlayer.body.id,
+  );
+  const outsidePlayer = await request(app).post('/api/players').send({ name: 'Nicht eingeladen' });
+
+  const activated = await request(app).put('/api/me/active-event').send({ eventId });
+  assert.equal(activated.status, 200, JSON.stringify(activated.body));
+
+  const list = await request(app).get('/api/events');
+  assert.equal(list.status, 200);
+  assert.equal(list.body.activeEvent.id, eventId);
+  const participantIds: string[] = list.body.activeEvent.participantIds;
+  assert.ok(participantIds.includes(TEST_ADMIN_ID));
+  assert.ok(participantIds.includes(acceptedPlayer.body.id));
+  assert.ok(!participantIds.includes(invitedPlayer.body.id));
+  assert.ok(!participantIds.includes(outsidePlayer.body.id));
+
+  const resetActive = await request(app).put('/api/me/active-event').send({ eventId: BASE_EVENT_ID });
+  assert.equal(resetActive.status, 200, JSON.stringify(resetActive.body));
+});
+
 let eventAId: string;
 let eventBId: string;
 

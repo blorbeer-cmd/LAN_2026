@@ -268,7 +268,7 @@ function renderPushSection() {
           ${infoTooltipHtml('profile-push-help', 'Push-Benachrichtigungen aktivieren', PUSH_HELP)}
         </span>
       </label>
-      ${pushBusy || status ? `<span class="muted" style="font-size:var(--font-size-xs);">${pushBusy ? 'Wird aktualisiert…' : status}</span>` : ''}
+      ${status ? `<span class="muted" style="font-size:var(--font-size-xs);">${status}</span>` : ''}
     </div>`;
 }
 
@@ -329,15 +329,17 @@ export function renderProfile(container, ctx) {
       <section class="card stack grouped-page-section" aria-labelledby="profile-password-title">
                <div class="grouped-page-section-title"><h2 id="profile-password-title">Passwort ändern</h2></div>
                <form class="stack" id="profile-password-form">
-                 <div class="row">
-                   <input type="password" id="profile-current-password" autocomplete="current-password" required style="flex:1;" placeholder="Aktuelles Passwort" />
-                   <button type="button" class="icon-btn" data-password-toggle="profile-current-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
+                 <div class="profile-password-fields">
+                   <div class="row">
+                     <input type="password" id="profile-current-password" autocomplete="current-password" required style="flex:1;" placeholder="Aktuelles Passwort" />
+                     <button type="button" class="icon-btn" data-password-toggle="profile-current-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
+                   </div>
+                   <div class="row">
+                     <input type="password" id="profile-new-password" autocomplete="new-password" minlength="1" maxlength="1024" required style="flex:1;" placeholder="Neues Passwort" />
+                     <button type="button" class="icon-btn" data-password-toggle="profile-new-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
+                   </div>
                  </div>
-                 <div class="row">
-                   <input type="password" id="profile-new-password" autocomplete="new-password" minlength="1" maxlength="1024" required style="flex:1;" placeholder="Neues Passwort" />
-                   <button type="button" class="icon-btn" data-password-toggle="profile-new-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
-                 </div>
-                 <button type="submit" class="btn btn-primary btn-sm">Passwort speichern</button>
+                 <button type="submit" class="btn btn-primary btn-block">Passwort speichern</button>
                </form>
       </section>
 

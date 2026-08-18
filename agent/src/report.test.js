@@ -1,6 +1,6 @@
 const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
-const { reportToServer, syncTrackingPaused } = require('./report');
+const { reportToServer, syncTrackingPaused, fetchAllowedProcessNames } = require('./report');
 
 let calls;
 let originalFetch;
@@ -73,5 +73,28 @@ test('syncTrackingPaused throws on a non-ok response', async () => {
   await assert.rejects(
     () => syncTrackingPaused({ serverUrl: 'http://x', apiKey: 'key123' }, 'not-a-bool'),
     /paused muss ein Boolean sein/
+  );
+});
+
+test('fetchAllowedProcessNames GETs /api/agent/process-names with the api key header', async () => {
+  stubFetch(200, { processNames: ['cs2.exe', 'rocketleague.exe'] });
+  const result = await fetchAllowedProcessNames({ serverUrl: 'http://x', apiKey: 'key123' });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'http://x/api/agent/process-names');
+  assert.equal(calls[0].options.headers['x-api-key'], 'key123');
+  assert.deepEqual(result, ['cs2.exe', 'rocketleague.exe']);
+});
+
+test('fetchAllowedProcessNames returns an empty array for a malformed or missing processNames field', async () => {
+  stubFetch(200, { ok: true });
+  const result = await fetchAllowedProcessNames({ serverUrl: 'http://x', apiKey: 'key123' });
+  assert.deepEqual(result, []);
+});
+
+test('fetchAllowedProcessNames throws the server error message on a non-ok response', async () => {
+  stubFetch(401, { error: 'Ungültiger API-Key.' });
+  await assert.rejects(
+    () => fetchAllowedProcessNames({ serverUrl: 'http://x', apiKey: 'bad' }),
+    /Ungültiger API-Key/
   );
 });

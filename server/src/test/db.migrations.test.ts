@@ -643,10 +643,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 73);
+  assert.equal(migrations.length, 74);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 73 }, (_, index) => index + 1),
+    Array.from({ length: 74 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1166,8 +1166,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 73 }, (_, index) => index + 1),
-    'every version 1..73 runs exactly once',
+    Array.from({ length: 74 }, (_, index) => index + 1),
+    'every version 1..74 runs exactly once',
   );
 });
 
@@ -1996,6 +1996,121 @@ test('migration 72 keeps legacy competition and seating rows reachable through t
     0,
     'no competition row is left in the retired NULL room',
   );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 73 re-filters legacy agent diagnostics down to configured game processes', () => {
+  const dbFile = makeTempDbPath('legacy-agent-diagnostics-refilter');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture
+    .prepare(
+      `INSERT INTO games (id, name, icon, min_team_size, max_team_size, created_at, group_id)
+       VALUES ('legacy-diag-game', 'Legacy Diag Game', '🎮', 1, 1, ?, 'default-group')`,
+    )
+    .run(now);
+  fixture
+    .prepare(
+      `INSERT INTO game_process_names (id, game_id, group_id, process_name)
+       VALUES ('legacy-diag-proc', 'legacy-diag-game', 'default-group', 'legacy-diag-legit.exe')`,
+    )
+    .run();
+
+  // A player whose agent reported before routes/agent.ts filtered every scan
+  // server-side: raw Windows system processes sit next to the one real game
+  // process, exactly what the admin diagnostics view showed in production.
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('legacy-diag-player', 'Legacy Diag Player', 'legacy-diag-player-key', now);
+  fixture
+    .prepare(
+      `INSERT INTO group_memberships
+         (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+       VALUES ('default-group', 'legacy-diag-player', 'member', 'active', ?, 0)`,
+    )
+    .run(now);
+  fixture
+    .prepare('INSERT INTO agent_diagnostics (player_id, agent_version, last_report_at, process_names) VALUES (?, ?, ?, ?)')
+    .run(
+      'legacy-diag-player',
+      '0.9.0',
+      now,
+      JSON.stringify(['legacy-diag-legit.exe', 'svchost.exe', 'lsass.exe', 'csrss.exe', 'memory compression']),
+    );
+
+  // A player whose stored diagnostics are already clean must be left exactly
+  // as-is — this migration only removes, it never needs to touch a row that
+  // is already correct.
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('legacy-diag-clean-player', 'Legacy Diag Clean Player', 'legacy-diag-clean-key', now);
+  fixture
+    .prepare(
+      `INSERT INTO group_memberships
+         (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+       VALUES ('default-group', 'legacy-diag-clean-player', 'member', 'active', ?, 0)`,
+    )
+    .run(now);
+  fixture
+    .prepare('INSERT INTO agent_diagnostics (player_id, agent_version, last_report_at, process_names) VALUES (?, ?, ?, ?)')
+    .run('legacy-diag-clean-player', '1.0.0', now, JSON.stringify(['legacy-diag-legit.exe']));
+
+  // A player with no group_memberships row at all falls back to the default
+  // group, same as activePlayerGroupIds() does at request time — so this
+  // legacy player must be re-filtered against the default group's allow-list
+  // too, not skipped or wiped to nothing.
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('legacy-diag-no-membership', 'Legacy Diag No Membership', 'legacy-diag-no-membership-key', now);
+  fixture
+    .prepare('INSERT INTO agent_diagnostics (player_id, agent_version, last_report_at, process_names) VALUES (?, ?, ?, ?)')
+    .run('legacy-diag-no-membership', '0.8.0', now, JSON.stringify(['legacy-diag-legit.exe', 'explorer.exe']));
+
+  // A row corrupted beyond valid JSON must not crash the migration or the
+  // rest of the database it runs alongside.
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('legacy-diag-malformed', 'Legacy Diag Malformed', 'legacy-diag-malformed-key', now);
+  fixture
+    .prepare('INSERT INTO agent_diagnostics (player_id, agent_version, last_report_at, process_names) VALUES (?, ?, ?, ?)')
+    .run('legacy-diag-malformed', '0.7.0', now, 'not valid json');
+
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 73').run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  // Re-running must not double-write or fail: schema_migrations already
+  // records version 73 by now, so this second call must be a pure no-op.
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the re-filter must be restart-safe');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  const processNamesOf = (playerId: string): string[] =>
+    JSON.parse(
+      (migrated.prepare('SELECT process_names FROM agent_diagnostics WHERE player_id = ?').get(playerId) as {
+        process_names: string;
+      }).process_names,
+    );
+
+  assert.deepEqual(
+    processNamesOf('legacy-diag-player'),
+    ['legacy-diag-legit.exe'],
+    'Windows system processes from before server-side filtering existed must be removed',
+  );
+  assert.deepEqual(
+    processNamesOf('legacy-diag-clean-player'),
+    ['legacy-diag-legit.exe'],
+    'an already-clean row must be left untouched',
+  );
+  assert.deepEqual(
+    processNamesOf('legacy-diag-no-membership'),
+    ['legacy-diag-legit.exe'],
+    'a player without a group_memberships row falls back to the default group allow-list, same as at request time',
+  );
+  assert.deepEqual(processNamesOf('legacy-diag-malformed'), [], 'unreadable JSON is normalized to an empty array, not left broken');
+
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
