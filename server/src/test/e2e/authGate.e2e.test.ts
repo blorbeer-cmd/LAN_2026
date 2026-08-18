@@ -216,7 +216,9 @@ test('an invite link registers a new account and logs it straight in', async () 
 });
 
 test('logging out drops back to the login gate, and logging back in works', async () => {
-  await page.click('#profile-btn');
+  await page.click('.nav-btn[data-view="more"]');
+
+  await page.click('[data-navigate="profile"]');
   await page.waitForSelector('#profile-logout');
   await page.click('#profile-logout');
 
@@ -232,7 +234,9 @@ test('logging out drops back to the login gate, and logging back in works', asyn
 });
 
 test('a wrong password on the login gate shows an error and does not proceed', async () => {
-  await page.click('#profile-btn');
+  await page.click('.nav-btn[data-view="more"]');
+
+  await page.click('[data-navigate="profile"]');
   await page.waitForSelector('#profile-logout');
   await page.click('#profile-logout');
   await page.waitForSelector('#auth-screen:not([hidden])');
@@ -559,7 +563,10 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
     assert.equal(me.isTest, true);
     assert.equal(me.isAdmin, false);
 
-    await testPage.click('#profile-btn');
+    await testPage.click('.nav-btn[data-view="more"]');
+
+
+    await testPage.click('[data-navigate="profile"]');
     await testPage.waitForSelector('#profile-logout');
     await testPage.keyboard.press('Escape');
 

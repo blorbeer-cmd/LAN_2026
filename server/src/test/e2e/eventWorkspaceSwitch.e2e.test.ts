@@ -71,8 +71,16 @@ async function switchWorkspaceInBrowser(eventId: string): Promise<void> {
     eventId,
   );
   // The switch persists the workspace, reloads every dataset and re-renders;
-  // waiting for the hidden value alone would race that refresh.
-  await page.waitForTimeout(1_500);
+  // waiting for the hidden value alone would race that refresh. app.js's
+  // onChange handler disables the switcher's search field and toggle before
+  // awaiting the switch and only re-enables them in its `finally`, once
+  // loadAll(), renderEventContextSwitcher() and renderCurrent() have all
+  // settled — the same completion signal "the switcher disables itself
+  // while a workspace switch is in flight" below asserts against. Waiting
+  // for it here (instead of a fixed sleep) removes the fixed-timeout race
+  // against a slower CI runner without ever waiting less than necessary.
+  await page.waitForSelector('#event-context-switcher-search:not([disabled])');
+  await page.waitForSelector('#event-context .search-select-toggle:not([disabled])');
 }
 
 // The bottom nav only carries the six primary views; everything else is
@@ -185,7 +193,8 @@ test('the personal statistics event filter only offers accepted workspaces', asy
   await switchWorkspaceInBrowser(eventB);
   // "Meine Statistiken" hangs off the profile view rather than the nav or the
   // "Mehr" hub, and is reached through its "Ansehen" action.
-  await page.click('#profile-btn');
+  await page.click('.nav-btn[data-view="more"]');
+  await page.click('[data-navigate="profile"]');
   await page.waitForSelector('[data-navigate="myStats"]');
   await page.click('[data-navigate="myStats"]');
   // The event dropdown only exists once the first stats payload has arrived.
@@ -226,6 +235,16 @@ test('the workspace switcher keeps event names concise and shows state through i
 
   await switchWorkspaceInBrowser(eventB);
   await page.click('#event-context .search-select-toggle');
+  // The tracking/start call above raced ahead of this switch's own dataset
+  // reload only for that one write; give the option row a moment to catch
+  // up to it instead of asserting against whatever the first render shows.
+  await page.waitForFunction(
+    (id) =>
+      document
+        .querySelector(`#event-context-switcher-list [data-search-select-value="${id}"] .search-select-option-icon`)
+        ?.getAttribute('data-event-status') === 'tracking',
+    eventA,
+  );
   const rows = await page.$$eval('#event-context-switcher-list .search-select-option', (nodes) =>
     nodes.map((node) => ({
       label: node.querySelector('.search-select-option-label')?.textContent?.trim() ?? '',
@@ -264,9 +283,10 @@ test('the workspace switcher keeps event names concise and shows state through i
     'idle',
   );
   await switchWorkspaceInBrowser(eventA);
-  assert.equal(
-    await page.$eval('#event-context .search-select-status', (el) => (el as HTMLElement).dataset.eventStatus),
-    'tracking',
+  // Same tracking/start race as above: the switch's own dataset reload can
+  // still occasionally settle a beat behind the raw API write it followed.
+  await page.waitForFunction(
+    () => (document.querySelector('#event-context .search-select-status') as HTMLElement | null)?.dataset.eventStatus === 'tracking',
   );
   assert.equal(
     await page.$eval('#event-context-switcher-search', (el) => el.getAttribute('aria-label')),
