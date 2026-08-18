@@ -117,12 +117,18 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
       .prepare(`SELECT result FROM matches WHERE group_id = ? ${evClause}`)
       .all(groupId, ...evParam) as Array<{ result: string }>;
     const players = excludingTestPlayers(distinctPlayersFromMatchResults(rows.map((r) => r.result)));
+    // A match played entirely between test/fixture players (both is_test = 1)
+    // isn't real usage; one with at least one real participant still is.
+    const total = rows.filter((r) => {
+      const rowPlayers = distinctPlayersFromMatchResults([r.result]);
+      return excludingTestPlayers(rowPlayers).size > 0;
+    }).length;
     entries.push({
       key: 'matches',
       label: 'Matchmaking-Ergebnisse',
       area: 'Wettkampf',
       players: players.size,
-      total: rows.length,
+      total,
       eventScoped: true,
     });
   }
@@ -133,18 +139,27 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
       .all(groupId, ...evParam) as Array<{ id: string }>;
     const teamRows = db
       .prepare(
-        `SELECT tt.player_ids AS playerIds FROM tournament_teams tt
+        `SELECT tt.tournament_id AS tournamentId, tt.player_ids AS playerIds FROM tournament_teams tt
          JOIN tournaments t ON t.id = tt.tournament_id
          WHERE t.group_id = ? ${eventId ? 'AND t.event_id = ?' : ''}`,
       )
-      .all(groupId, ...evParam) as Array<{ playerIds: string }>;
+      .all(groupId, ...evParam) as Array<{ tournamentId: string; playerIds: string }>;
     const players = excludingTestPlayers(distinctPlayersFromTeamRosters(teamRows.map((r) => r.playerIds)));
+    // Same rationale as matches: a tournament fielding only test/fixture
+    // rosters isn't real usage.
+    const realPlayerTournamentIds = new Set<string>();
+    for (const row of teamRows) {
+      if (excludingTestPlayers(distinctPlayersFromTeamRosters([row.playerIds])).size > 0) {
+        realPlayerTournamentIds.add(row.tournamentId);
+      }
+    }
+    const total = tournamentRows.filter((t) => realPlayerTournamentIds.has(t.id)).length;
     entries.push({
       key: 'tournaments',
       label: 'Turniere',
       area: 'Wettkampf',
       players: players.size,
-      total: tournamentRows.length,
+      total,
       eventScoped: true,
     });
   }
@@ -175,7 +190,7 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
       .prepare(
         `SELECT COUNT(*) AS n FROM food_orders fo
          JOIN events e ON e.id = fo.event_id
-         WHERE e.group_id = ? ${eventId ? 'AND fo.event_id = ?' : ''}`,
+         WHERE e.group_id = ? AND fo.created_by ${NOT_TEST_PLAYER} ${eventId ? 'AND fo.event_id = ?' : ''}`,
       )
       .get(groupId, ...evParam) as { n: number };
     const itemRow = db

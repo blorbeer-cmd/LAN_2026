@@ -17,6 +17,7 @@ interface UsageEntry {
   key: string;
   players: number;
   total: number;
+  detail?: string;
   eventScoped: boolean;
 }
 
@@ -275,5 +276,114 @@ test('checklist_tasks stays unfiltered by ?eventId= like its eventScoped: false 
     findEntry(scoped.body, 'checklist_tasks').total,
     before.total + 1,
     'a permanent-room task (event_id NULL) must still count when narrowed to an unrelated event',
+  );
+});
+
+function insertTestPlayer(name: string): string {
+  const id = nanoid();
+  db.prepare(
+    `INSERT INTO players (id, name, color, api_key, is_test, created_at) VALUES (?, ?, '#4f9dff', ?, 1, ?)`,
+  ).run(id, name, nanoid(), Date.now());
+  return id;
+}
+
+test('matches and tournaments played entirely between test players do not inflate total, but a mixed one still counts', async () => {
+  const realPlayer = await request(app).post('/api/players').send({ name: 'Feature Usage Real Match Player' });
+  const testPlayerA = insertTestPlayer('Feature Usage Test Match A');
+  const testPlayerB = insertTestPlayer('Feature Usage Test Match B');
+  const games = (await request(app).get('/api/games')).body as Array<{ id: string }>;
+  const gameId = games[0].id;
+  const groupId = DEFAULT_GROUP_ID;
+  const now = Date.now();
+
+  const before = await request(app).get('/api/admin/feature-usage');
+  const matchesBefore = findEntry(before.body, 'matches').total;
+  const tournamentsBefore = findEntry(before.body, 'tournaments').total;
+
+  db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id) VALUES (?, ?, ?, ?, ?, ?)').run(
+    nanoid(),
+    gameId,
+    BASE_EVENT_ID,
+    now,
+    JSON.stringify({ teams: [{ playerIds: [testPlayerA] }, { playerIds: [testPlayerB] }], winnerTeamIndex: 0 }),
+    groupId,
+  );
+  const testOnlyTournamentId = nanoid();
+  db.prepare(
+    `INSERT INTO tournaments (id, event_id, game_id, name, format, two_legged, track_score, group_count, advancers_per_group, status, created_at, lobby_name, lobby_password, group_id)
+     VALUES (?, ?, ?, ?, 'single_elimination', 0, 0, NULL, NULL, 'active', ?, NULL, NULL, ?)`,
+  ).run(testOnlyTournamentId, BASE_EVENT_ID, gameId, 'Feature Usage Test-Only Cup', now, groupId);
+  db.prepare('INSERT INTO tournament_teams (id, tournament_id, name, player_ids, group_index) VALUES (?, ?, ?, ?, NULL)').run(
+    nanoid(),
+    testOnlyTournamentId,
+    'Team Test',
+    JSON.stringify([testPlayerA, testPlayerB]),
+  );
+
+  const afterTestOnly = await request(app).get('/api/admin/feature-usage');
+  assert.equal(
+    findEntry(afterTestOnly.body, 'matches').total,
+    matchesBefore,
+    'a match played only between test players must not count',
+  );
+  assert.equal(
+    findEntry(afterTestOnly.body, 'tournaments').total,
+    tournamentsBefore,
+    'a tournament fielding only test-player rosters must not count',
+  );
+
+  db.prepare('INSERT INTO matches (id, game_id, event_id, played_at, result, group_id) VALUES (?, ?, ?, ?, ?, ?)').run(
+    nanoid(),
+    gameId,
+    BASE_EVENT_ID,
+    now,
+    JSON.stringify({ teams: [{ playerIds: [realPlayer.body.id] }, { playerIds: [testPlayerA] }], winnerTeamIndex: 0 }),
+    groupId,
+  );
+  const mixedTournamentId = nanoid();
+  db.prepare(
+    `INSERT INTO tournaments (id, event_id, game_id, name, format, two_legged, track_score, group_count, advancers_per_group, status, created_at, lobby_name, lobby_password, group_id)
+     VALUES (?, ?, ?, ?, 'single_elimination', 0, 0, NULL, NULL, 'active', ?, NULL, NULL, ?)`,
+  ).run(mixedTournamentId, BASE_EVENT_ID, gameId, 'Feature Usage Mixed Cup', now, groupId);
+  db.prepare('INSERT INTO tournament_teams (id, tournament_id, name, player_ids, group_index) VALUES (?, ?, ?, ?, NULL)').run(
+    nanoid(),
+    mixedTournamentId,
+    'Team Mixed',
+    JSON.stringify([realPlayer.body.id, testPlayerA]),
+  );
+
+  const afterMixed = await request(app).get('/api/admin/feature-usage');
+  assert.equal(
+    findEntry(afterMixed.body, 'matches').total,
+    matchesBefore + 1,
+    'a match with at least one real participant must still count',
+  );
+  assert.equal(
+    findEntry(afterMixed.body, 'tournaments').total,
+    tournamentsBefore + 1,
+    'a tournament with at least one real participant must still count',
+  );
+});
+
+test('food_orders order count in detail excludes orders created by test players', async () => {
+  const testCreator = insertTestPlayer('Feature Usage Test Order Creator');
+  const now = Date.now();
+
+  const before = await request(app).get('/api/admin/feature-usage');
+  const detailBefore = findEntry(before.body, 'food_orders').detail;
+
+  db.prepare('INSERT INTO food_orders (id, event_id, title, created_by, created_at) VALUES (?, ?, ?, ?, ?)').run(
+    nanoid(),
+    BASE_EVENT_ID,
+    'Feature Usage Test Order',
+    testCreator,
+    now,
+  );
+
+  const after = await request(app).get('/api/admin/feature-usage');
+  assert.equal(
+    findEntry(after.body, 'food_orders').detail,
+    detailBefore,
+    'an order created by a test player must not raise the order count',
   );
 });

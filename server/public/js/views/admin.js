@@ -242,13 +242,18 @@ function featureUsageEventOptions() {
   return eventSelectOptions(events, { allEntryLabel: 'Gesamter Verlauf' });
 }
 
-function featureUsageRowHtml(entry, rosterSize) {
+function featureUsageRowHtml(entry, rosterSize, eventFilterActive) {
   const share = rosterSize > 0 ? Math.round((entry.players / rosterSize) * 100) : null;
+  const unscopedNote =
+    eventFilterActive && !entry.eventScoped
+      ? '<div class="muted" style="font-size:var(--font-size-xs);">Zeigt den gesamten Verlauf, nicht auf das gewählte Event eingrenzbar.</div>'
+      : '';
   return `
     <div class="row-between" style="padding:var(--space-2) 0;border-bottom:1px solid var(--border);">
       <span>
         <strong>${escapeHtml(entry.label)}</strong>
         ${entry.detail ? `<div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(entry.detail)}</div>` : ''}
+        ${unscopedNote}
       </span>
       <span class="row-between" style="gap:var(--space-3);text-align:right;">
         <span>${entry.players}${share !== null ? ` <span class="muted">(${share}%)</span>` : ''} Person(en)</span>
@@ -271,7 +276,7 @@ function featureUsageSectionHtml() {
             if (entries.length === 0) return '';
             return `<div class="card stack">
               <div class="section-title">${escapeHtml(area)}</div>
-              ${entries.map((entry) => featureUsageRowHtml(entry, featureUsage.rosterSize)).join('')}
+              ${entries.map((entry) => featureUsageRowHtml(entry, featureUsage.rosterSize, Boolean(featureUsageFilters.eventId))).join('')}
             </div>`;
           }).join('')
         : '';
@@ -284,7 +289,7 @@ function featureUsageSectionHtml() {
           ${infoTooltipHtml(
             'admin-feature-usage-help',
             'Nutzungsauswertung',
-            'Zeigt, wie viele Personen jede Funktion bereits genutzt haben — direkt aus den vorhandenen Daten, ohne separate Erhebung. „Gesamter Verlauf“ zählt über alle Events der Gruppe; manche Zeilen (z. B. Bock-Bewertungen, Push) sind nicht auf ein Event eingrenzbar.',
+            'Zeigt, wie viele Personen jede Funktion bereits genutzt haben — direkt aus den vorhandenen Daten, ohne separate Erhebung. „Gesamter Verlauf“ zählt über alle Events der Gruppe; einzelne Zeilen sind nicht auf ein Event eingrenzbar und weisen das dann direkt aus.',
           )}
         </span>
         <button type="button" class="btn btn-sm" id="admin-feature-usage-refresh" ${featureUsageLoading ? 'disabled' : ''}>Aktualisieren</button>
