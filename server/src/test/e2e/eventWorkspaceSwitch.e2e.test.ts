@@ -71,8 +71,16 @@ async function switchWorkspaceInBrowser(eventId: string): Promise<void> {
     eventId,
   );
   // The switch persists the workspace, reloads every dataset and re-renders;
-  // waiting for the hidden value alone would race that refresh.
-  await page.waitForTimeout(1_500);
+  // waiting for the hidden value alone would race that refresh. app.js's
+  // onChange handler disables the switcher's search field and toggle before
+  // awaiting the switch and only re-enables them in its `finally`, once
+  // loadAll(), renderEventContextSwitcher() and renderCurrent() have all
+  // settled — the same completion signal "the switcher disables itself
+  // while a workspace switch is in flight" below asserts against. Waiting
+  // for it here (instead of a fixed sleep) removes the fixed-timeout race
+  // against a slower CI runner without ever waiting less than necessary.
+  await page.waitForSelector('#event-context-switcher-search:not([disabled])');
+  await page.waitForSelector('#event-context .search-select-toggle:not([disabled])');
 }
 
 // The bottom nav only carries the six primary views; everything else is
