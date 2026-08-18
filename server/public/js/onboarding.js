@@ -10,7 +10,7 @@ import { showToast } from './toast.js';
 
 const STEPS = [
   { title: 'Match', text: 'Hier lost ihr Teams aus, legt Turniere an und verwaltet Ergebnisse.', view: 'matchmaking', target: '.nav-btn[data-view="matchmaking"]' },
-  { title: 'Profil und Suche', text: 'Im Profil (über „Mehr“ erreichbar) verwaltest du persönliche Angaben, Tracking-Agent und Push. Über die Suche erreichst du Bereiche und Inhalte direkt.', view: 'profile', target: '#global-search-btn' },
+  { title: 'Profil und Suche', text: 'Im Profil (über „Mehr“ erreichbar) verwaltest du persönliche Angaben, Tracking-Agent und Push. Über die Suche erreichst du Bereiche und Inhalte direkt.', view: 'profile', target: '.nav-btn[data-view="more"]' },
   { title: 'Spielekatalog', text: 'Bewerte die ersten zehn Spiele. Bock unterstützt die Spielauswahl, Skill die Teamaufteilung.', view: 'gameCatalog' },
 ];
 

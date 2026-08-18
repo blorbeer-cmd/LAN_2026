@@ -25,7 +25,7 @@ export function renderMore(container) {
   const rows = ITEMS.filter((item) => item.view !== 'admin' || currentPlayerHasAdminRole())
     .map(
       (item) => `
-    <button type="button" class="card row list-row more-card" ${item.action ?? `data-navigate="${item.view}"`}>
+    <button type="button" class="card row list-row more-card" data-navigate="${item.view}">
       <span class="more-card-label">
         <span class="list-row-icon">${icon(domainIcon(item.iconKey ?? item.view))}</span>
         <span class="player-name more-card-title">${item.title}</span>
