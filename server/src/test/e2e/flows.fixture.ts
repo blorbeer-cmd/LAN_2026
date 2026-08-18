@@ -2008,8 +2008,18 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
     (window as unknown as { __restoreWindowOpen: () => void }).__restoreWindowOpen = () => {
       window.open = original;
     };
-    window.open = (() => {
+    window.open = ((_url?: string, _target?: string, features?: string) => {
+      // Mirrors the WHATWG footgun the round-2 review caught: passing
+      // 'noopener' makes window.open() always return null, regardless of
+      // whether a browsing context was actually created. The fix opens the
+      // pre-open tab WITHOUT 'noopener' to keep a real reference, then
+      // severs .opener by hand - a stub that always returned a reference
+      // would hide a regression back to passing 'noopener' on that call.
+      if (features && features.includes('noopener')) {
+        return null;
+      }
       const fake = {
+        opener: window,
         closed: false,
         _location: '',
         get location() {
@@ -2038,6 +2048,12 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await nachosRow.locator('.food-order-pay-button').click();
   await page.waitForFunction(() => (window as unknown as { __lastPopup?: { location: string } }).__lastPopup?.location);
   assert.deepEqual(await lastPopup(), { location: 'https://paypal.me/luigi/5.50EUR', closed: false });
+  // The manual opener-severing (replacing the 'noopener' argument that would
+  // have made window.open() return null outright) actually ran.
+  assert.equal(
+    await page.evaluate(() => (window as unknown as { __lastPopup?: { opener: unknown } }).__lastPopup?.opener),
+    null
+  );
 
   // Now simulate another device settling Nachos in that exact window: the
   // click's own re-check fetch is intercepted to report it already paid,

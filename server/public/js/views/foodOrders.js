@@ -871,8 +871,17 @@ export function renderFoodOrders(container, ctx) {
       // within that same synchronous user-gesture window and silently block
       // it afterwards - with no error, PayPal would just never open. The tab
       // starts blank and is only pointed at PayPal, or closed again, once
-      // the check resolves.
-      const popup = window.open('', '_blank', 'noopener');
+      // the check resolves. Passing 'noopener' here would make window.open()
+      // always return null per spec, regardless of whether a tab actually
+      // opened, leaving nothing to redirect later - severing .opener by hand
+      // once we have the reference keeps the same "destination can't reach
+      // back into this page" protection without losing that reference.
+      // Copying the PayPal email (if any) is subject to the same
+      // synchronous-activation rule as Clipboard writes, so it happens here
+      // too rather than after the await.
+      const popup = window.open('', '_blank');
+      if (popup) popup.opener = null;
+      if (link.dataset.payEmail) copyPaypalEmailToClipboard(link.dataset.payEmail);
       const orderId = link.dataset.payOrder;
       const itemIds = link.dataset.payItems.split(',').filter(Boolean);
       let alreadyPaid;
@@ -886,6 +895,11 @@ export function renderFoodOrders(container, ctx) {
           return;
         }
         const items = order.items.filter((i) => itemIds.includes(i.id));
+        if (items.length < itemIds.length) {
+          popup?.close();
+          showToast('Diese Position existiert nicht mehr.', { error: true });
+          return;
+        }
         alreadyPaid = items.filter((i) => i.paid);
       } catch (err) {
         popup?.close();
@@ -905,7 +919,6 @@ export function renderFoodOrders(container, ctx) {
         ctx.rerender();
         return;
       }
-      if (link.dataset.payEmail) copyPaypalEmailToClipboard(link.dataset.payEmail);
       if (popup) popup.location = link.href;
       else window.open(link.href, '_blank', 'noopener');
     });
