@@ -218,3 +218,30 @@ test('GET /api/admin/feature-usage?eventId= narrows event-scoped entries to that
     'vote seeded for the other event must not count against the base event filter',
   );
 });
+
+test('GET /api/admin/feature-usage excludes admin-seeded test players from every entry', async () => {
+  // Real path: POST /api/admin/test-users (server/src/testUsers.ts) writes
+  // directly into preferences, play_sessions and event_tracking_consents for
+  // an is_test=1 player — exactly the tables a prior review found leaking
+  // into these counts.
+  const baseline = await request(app).get('/api/admin/feature-usage');
+  assert.equal(baseline.status, 200);
+  const before = {
+    preferences: findEntry(baseline.body, 'preferences'),
+    play_sessions: findEntry(baseline.body, 'play_sessions'),
+    tracking_consent: findEntry(baseline.body, 'tracking_consent'),
+  };
+
+  const created = await request(app).post('/api/admin/test-users').send({ count: 1 });
+  assert.equal(created.status, 201);
+
+  const after = await request(app).get('/api/admin/feature-usage');
+  assert.equal(after.status, 200);
+  for (const key of ['preferences', 'play_sessions', 'tracking_consent'] as const) {
+    assert.deepEqual(
+      { players: findEntry(after.body, key).players, total: findEntry(after.body, key).total },
+      { players: before[key].players, total: before[key].total },
+      `${key} must not count the freshly seeded test player`,
+    );
+  }
+});

@@ -62,6 +62,13 @@ export function distinctPlayersFromTeamRosters(playerIdsJson: string[]): Set<str
   return ids;
 }
 
+// Admin-seeded fixtures (server/src/testUsers.ts) write directly into
+// preferences, play_sessions and event_tracking_consents, and a "Testsitzung
+// öffnen" login can produce further rows in any of these tables through
+// normal UI use. None of that is real usage, so every player-attributed
+// query below excludes it the same way currentRosterSize() already does.
+const NOT_TEST_PLAYER = 'NOT IN (SELECT id FROM players WHERE is_test = 1)';
+
 function currentRosterSize(groupId: string): number {
   const row = db
     .prepare(
@@ -77,12 +84,21 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
   const entries: FeatureUsageEntry[] = [];
   const evParam = eventId ? [eventId] : [];
   const evClause = eventId ? 'AND event_id = ?' : '';
+  const testIds = new Set(
+    (db.prepare('SELECT id FROM players WHERE is_test = 1').all() as Array<{ id: string }>).map((r) => r.id),
+  );
+  const excludingTestPlayers = (ids: Set<string>): Set<string> => {
+    if (testIds.size === 0) return ids;
+    const filtered = new Set<string>();
+    for (const id of ids) if (!testIds.has(id)) filtered.add(id);
+    return filtered;
+  };
 
   {
     const row = db
       .prepare(
         `SELECT COUNT(DISTINCT player_id) AS players, COUNT(*) AS total, COUNT(DISTINCT round) AS rounds
-         FROM votes WHERE group_id = ? ${evClause}`,
+         FROM votes WHERE group_id = ? AND player_id ${NOT_TEST_PLAYER} ${evClause}`,
       )
       .get(groupId, ...evParam) as { players: number; total: number; rounds: number };
     entries.push({
@@ -100,7 +116,7 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
     const rows = db
       .prepare(`SELECT result FROM matches WHERE group_id = ? ${evClause}`)
       .all(groupId, ...evParam) as Array<{ result: string }>;
-    const players = distinctPlayersFromMatchResults(rows.map((r) => r.result));
+    const players = excludingTestPlayers(distinctPlayersFromMatchResults(rows.map((r) => r.result)));
     entries.push({
       key: 'matches',
       label: 'Matchmaking-Ergebnisse',
@@ -122,7 +138,7 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
          WHERE t.group_id = ? ${eventId ? 'AND t.event_id = ?' : ''}`,
       )
       .all(groupId, ...evParam) as Array<{ playerIds: string }>;
-    const players = distinctPlayersFromTeamRosters(teamRows.map((r) => r.playerIds));
+    const players = excludingTestPlayers(distinctPlayersFromTeamRosters(teamRows.map((r) => r.playerIds)));
     entries.push({
       key: 'tournaments',
       label: 'Turniere',
@@ -137,7 +153,8 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
     const row = db
       .prepare(
         `SELECT COUNT(DISTINCT assignee_id) AS players, COUNT(*) AS total
-         FROM checklist_tasks WHERE group_id = ? AND type = 'todo' AND status = 'done' ${evClause}`,
+         FROM checklist_tasks WHERE group_id = ? AND type = 'todo' AND status = 'done'
+           AND assignee_id ${NOT_TEST_PLAYER} ${evClause}`,
       )
       .get(groupId, ...evParam) as { players: number; total: number };
     entries.push({
@@ -167,7 +184,7 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
          FROM food_order_items foi
          JOIN food_orders fo ON fo.id = foi.order_id
          JOIN events e ON e.id = fo.event_id
-         WHERE e.group_id = ? ${eventId ? 'AND fo.event_id = ?' : ''}`,
+         WHERE e.group_id = ? AND foi.player_id ${NOT_TEST_PLAYER} ${eventId ? 'AND fo.event_id = ?' : ''}`,
       )
       .get(groupId, ...evParam) as { players: number; total: number };
     entries.push({
@@ -186,7 +203,7 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
       .prepare(
         `SELECT COUNT(DISTINCT a.player_id) AS players, COUNT(*) AS total
          FROM arrivals a JOIN events e ON e.id = a.event_id
-         WHERE e.group_id = ? ${eventId ? 'AND a.event_id = ?' : ''}`,
+         WHERE e.group_id = ? AND a.player_id ${NOT_TEST_PLAYER} ${eventId ? 'AND a.event_id = ?' : ''}`,
       )
       .get(groupId, ...evParam) as { players: number; total: number };
     entries.push({
@@ -206,7 +223,7 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
          FROM carpool_members cm
          JOIN carpools c ON c.id = cm.carpool_id
          JOIN events e ON e.id = c.event_id
-         WHERE e.group_id = ? ${eventId ? 'AND c.event_id = ?' : ''}`,
+         WHERE e.group_id = ? AND cm.player_id ${NOT_TEST_PLAYER} ${eventId ? 'AND c.event_id = ?' : ''}`,
       )
       .get(groupId, ...evParam) as { players: number; total: number };
     entries.push({
@@ -221,7 +238,10 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
 
   {
     const row = db
-      .prepare(`SELECT COUNT(DISTINCT player_id) AS players, COUNT(*) AS total FROM preferences WHERE group_id = ?`)
+      .prepare(
+        `SELECT COUNT(DISTINCT player_id) AS players, COUNT(*) AS total
+         FROM preferences WHERE group_id = ? AND player_id ${NOT_TEST_PLAYER}`,
+      )
       .get(groupId) as { players: number; total: number };
     entries.push({
       key: 'preferences',
@@ -237,11 +257,14 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
     const granted = db
       .prepare(
         `SELECT COUNT(DISTINCT player_id) AS n FROM event_tracking_consents
-         WHERE group_id = ? AND revoked_at IS NULL ${evClause}`,
+         WHERE group_id = ? AND revoked_at IS NULL AND player_id ${NOT_TEST_PLAYER} ${evClause}`,
       )
       .get(groupId, ...evParam) as { n: number };
     const everGranted = db
-      .prepare(`SELECT COUNT(DISTINCT player_id) AS n FROM event_tracking_consents WHERE group_id = ? ${evClause}`)
+      .prepare(
+        `SELECT COUNT(DISTINCT player_id) AS n FROM event_tracking_consents
+         WHERE group_id = ? AND player_id ${NOT_TEST_PLAYER} ${evClause}`,
+      )
       .get(groupId, ...evParam) as { n: number };
     entries.push({
       key: 'tracking_consent',
@@ -258,7 +281,7 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
     const row = db
       .prepare(
         `SELECT COUNT(DISTINCT player_id) AS players, COUNT(*) AS total, COALESCE(SUM(active_ms), 0) AS activeMs
-         FROM play_sessions WHERE group_id = ? ${evClause}`,
+         FROM play_sessions WHERE group_id = ? AND player_id ${NOT_TEST_PLAYER} ${evClause}`,
       )
       .get(groupId, ...evParam) as { players: number; total: number; activeMs: number };
     entries.push({
@@ -277,7 +300,8 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
       .prepare(
         `SELECT COUNT(DISTINCT ps.player_id) AS players, COUNT(*) AS total
          FROM push_subscriptions ps
-         JOIN group_memberships gm ON gm.player_id = ps.player_id AND gm.group_id = ? AND gm.status = 'active'`,
+         JOIN group_memberships gm ON gm.player_id = ps.player_id AND gm.group_id = ? AND gm.status = 'active'
+         WHERE ps.player_id ${NOT_TEST_PLAYER}`,
       )
       .get(groupId) as { players: number; total: number };
     entries.push({
@@ -295,7 +319,7 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
       .prepare(
         `SELECT COUNT(DISTINCT mr.requested_by) AS players, COUNT(*) AS total
          FROM music_requests mr JOIN music_sessions ms ON ms.id = mr.session_id
-         WHERE ms.group_id = ? ${eventId ? 'AND ms.event_id = ?' : ''}`,
+         WHERE ms.group_id = ? AND mr.requested_by ${NOT_TEST_PLAYER} ${eventId ? 'AND ms.event_id = ?' : ''}`,
       )
       .get(groupId, ...evParam) as { players: number; total: number };
     entries.push({

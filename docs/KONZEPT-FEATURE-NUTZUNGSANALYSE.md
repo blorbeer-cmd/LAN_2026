@@ -1,11 +1,11 @@
 # Konzept: Feature-Nutzungsanalyse
 
-Stand: 2026-08-17 · Status: **Konzept, noch nicht umgesetzt**
+Stand: 2026-08-18 · Status: **Stufe 0 und 1 umgesetzt** (Bestandsdaten-Auswertung, Feedback),
+Stufe 2–4 offen
 
 Zweck: Nach der ersten LAN belastbar entscheiden können, welche Funktionen **ausgebaut**, welche
 **umgebaut/verbessert** und welche **entfernt** werden. Dieses Dokument beschreibt, welche Daten
-dafür nötig sind, wie sie erhoben werden und wie daraus Entscheidungen abgeleitet werden. Es
-enthält bewusst noch keine Implementierung.
+dafür nötig sind, wie sie erhoben werden und wie daraus Entscheidungen abgeleitet werden.
 
 ---
 
@@ -412,13 +412,13 @@ fehlschlagender Usage-Endpunkt die Oberfläche nicht beeinträchtigt.
 
 ## 12. Stufenplan
 
-| Stufe | Inhalt | Nutzen | Aufwand |
-| --- | --- | --- | --- |
-| 0 | Auswertung der Bestandsdaten (Baustein A) im Adminbereich | sofortige Aussage über alle Fachfunktionen, kein neues Schema | klein |
-| 1 | Feedback-Button und `feedback_entries` (Baustein B) | Begründungen ab dem ersten Eventtag | klein |
-| 2 | `usage.js`, `usage_events`, Endpunkt, `data-usage`-Delegation, zentrale Einbaupunkte aus 6.3 und die Messpunkte aus 6.4 | beantwortet Filter-, Such-, Auswahl- und Bezahlfragen | klein–mittel |
-| 3 | Admin-Auswertung nach Abschnitt 8 inklusive Selbsttest und Export | Auswertung ohne Datenbankzugriff | klein–mittel |
-| 4 | Kurzumfrage (Baustein D) und Entscheidungsreport je Messpunkt | dokumentierte Entscheidungen | kein Code |
+| Stufe | Inhalt | Nutzen | Aufwand | Status |
+| --- | --- | --- | --- | --- |
+| 0 | Auswertung der Bestandsdaten (Baustein A) im Adminbereich | sofortige Aussage über alle Fachfunktionen, kein neues Schema | klein | **umgesetzt** |
+| 1 | Feedback-Einstieg und `feedback_entries` (Baustein B) | Begründungen ab dem ersten Eventtag | klein | **umgesetzt** (Einstieg liegt in der „Mehr“-Hub statt der Topbar — eine Messung ergab, dass die Topbar bei 320px keinen Platz für ein weiteres Icon hat) |
+| 2 | `usage.js`, `usage_events`, Endpunkt, `data-usage`-Delegation, zentrale Einbaupunkte aus 6.3 und die Messpunkte aus 6.4 | beantwortet Filter-, Such-, Auswahl- und Bezahlfragen | klein–mittel | offen |
+| 3 | Admin-Auswertung nach Abschnitt 8 inklusive Selbsttest und Export | Auswertung ohne Datenbankzugriff | klein–mittel | offen |
+| 4 | Kurzumfrage (Baustein D) und Entscheidungsreport je Messpunkt | dokumentierte Entscheidungen | kein Code | offen |
 
 Stufen 0–3 sollten **spätestens zwei Wochen vor dem Event** stehen, damit die Erhebung im
 Testbetrieb einmal verifiziert werden kann — insbesondere der Selbsttest aus Abschnitt 8.7. Eine
@@ -448,7 +448,10 @@ interessant wird.
 
 1. **Einwilligung:** Hinweis + Opt-out (Empfehlung) oder striktes Opt-in?
 2. **Schwellenwerte** aus Abschnitt 9 so übernehmen oder anpassen?
-3. **Feedback-Einstieg:** Topbar (immer sichtbar) oder Profil (unauffälliger)?
+3. ~~**Feedback-Einstieg:** Topbar (immer sichtbar) oder Profil (unauffälliger)?~~ Entschieden: keine
+   der beiden — die „Mehr“-Hub, weil die Topbar bei der schmalsten unterstützten Handybreite (320px)
+   keinen Platz für ein weiteres Icon hat.
 4. **Kurzumfrage** am letzten Eventtag: gewünscht, und in welcher Form?
 
-Nach Klärung dieser Punkte können die Stufen 0–3 als eigene Änderungsaufträge umgesetzt werden.
+Nach Klärung der verbleibenden Punkte können die Stufen 2–3 als eigene Änderungsaufträge umgesetzt
+werden.

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createTestApp } from './testApp';
-import { BASE_EVENT_ID } from '../db';
+import { db, BASE_EVENT_ID } from '../db';
 
 const app = createTestApp();
 
@@ -53,4 +53,19 @@ test('POST /api/feedback rejects unauthenticated requests', async () => {
     .set('x-test-player-id', 'unknown-player-id')
     .send({ message: 'Hallo', view: 'votes', device: 'mobile' });
   assert.equal(res.status, 401);
+});
+
+test('deleting the account cascades to its feedback entries instead of orphaning them', async () => {
+  const player = await request(app).post('/api/players').send({ name: 'Feedback Deleted Account' });
+  const created = await request(app)
+    .post('/api/feedback')
+    .set('x-test-player-id', player.body.id)
+    .send({ message: 'Wird beim Löschen des Kontos mitgelöscht.', view: 'home', device: 'desktop' });
+  assert.equal(created.status, 201);
+
+  const deleteRes = await request(app).delete(`/api/players/${player.body.id}`);
+  assert.equal(deleteRes.status, 204, JSON.stringify(deleteRes.body));
+
+  const row = db.prepare('SELECT id FROM feedback_entries WHERE id = ?').get(created.body.id);
+  assert.equal(row, undefined, 'the feedback row must be deleted, not orphaned with a NULL player_id');
 });

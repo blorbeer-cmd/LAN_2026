@@ -3708,7 +3708,7 @@ function addFeedbackEntriesTable(): void {
       id         TEXT PRIMARY KEY,
       group_id   TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
       event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-      player_id  TEXT REFERENCES players(id) ON DELETE SET NULL,
+      player_id  TEXT REFERENCES players(id) ON DELETE CASCADE,
       view       TEXT NOT NULL,
       sentiment  TEXT CHECK (sentiment IN ('positive', 'negative', 'idea')),
       message    TEXT NOT NULL,
