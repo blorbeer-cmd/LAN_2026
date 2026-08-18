@@ -56,8 +56,8 @@ function linkify(escaped) {
 // Content is capped at 1000 characters (server-enforced), but even a much
 // shorter entry can already dominate a two-column card next to short ones
 // like a WLAN password if it wraps across many lines. Anything past this
-// stays collapsed behind an explicit toggle instead of stretching every card
-// in its row to match it.
+// scrolls within a bounded box instead of stretching every card in its row
+// to match it.
 const LONG_CONTENT_CHAR_THRESHOLD = 220;
 const LONG_CONTENT_LINE_THRESHOLD = 4;
 export function isLongContent(content) {
@@ -121,7 +121,8 @@ function entriesHtml() {
   return `<div class="two-column-card-grid">${[...cache]
     .sort((a, b) => a.title.localeCompare(b.title, 'de', { sensitivity: 'base' }))
     .map((e) => {
-      const contentHtml = `<div class="info-board-content">${linkify(escapeHtml(e.content))}</div>`;
+      const contentClass = `info-board-content${isLongContent(e.content) ? ' info-board-content-scroll' : ''}`;
+      const contentHtml = `<div class="${contentClass}">${linkify(escapeHtml(e.content))}</div>`;
       return `
       <div class="card stack" style="gap:var(--space-2);" data-info-entry="${e.id}">
         <div class="row-between">
@@ -132,17 +133,7 @@ function entriesHtml() {
             <button type="button" class="icon-btn" data-delete-entry="${e.id}" title="Löschen" aria-label="Löschen">${icon('trash')}</button>
           </span>
         </div>
-        ${
-          isLongContent(e.content)
-            ? `<details class="info-board-content-toggle">
-                <summary class="info-board-content-summary">
-                  <span class="muted" style="font-size:var(--font-size-xs);">Vollständig anzeigen</span>
-                  <span class="info-board-content-chevron">${icon('chevronRight')}</span>
-                </summary>
-                ${contentHtml}
-              </details>`
-            : contentHtml
-        }
+        ${contentHtml}
       </div>`;
     })
     .join('')}</div>`;

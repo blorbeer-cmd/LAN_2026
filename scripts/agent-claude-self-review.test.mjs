@@ -138,6 +138,31 @@ test("the publisher appends the only effective marker and neutralizes injected c
   assert.match(body, /HTML comment removed/);
 });
 
+test("each finding folds Problem/Auswirkung/Evidenz/Verifikation behind <details>, keeping title/disposition/file visible", () => {
+  const result = validateClaudeReviewOutput(
+    reviewOutput({ verdict: "changes-required", findings: [finding()] }),
+  );
+  const body = renderClaudeSelfReviewComment({
+    repository: "blorbeer-cmd/LAN_2026",
+    pullNumber: 392,
+    headSha: HEAD,
+    sessionId: "claude-self-action-123-1",
+    result,
+  });
+  const detailsStart = body.indexOf("<details>");
+  const detailsEnd = body.indexOf("</details>");
+  assert.ok(detailsStart > -1 && detailsEnd > detailsStart, "expected a collapsed details block");
+  assert.ok(body.indexOf("- Disposition:") < detailsStart, "disposition must stay visible");
+  assert.ok(body.indexOf("- Datei:") < detailsStart, "file must stay visible");
+  for (const label of ["- Problem:", "- Auswirkung:", "- Evidenz:", "- Verifikation:"]) {
+    const index = body.indexOf(label, detailsStart);
+    assert.ok(
+      index > detailsStart && index < detailsEnd,
+      `expected "${label}" folded inside <details>`,
+    );
+  }
+});
+
 test("the rendered review always fits in one GitHub comment", () => {
   const longText = "<".repeat(4_000);
   const result = validateClaudeReviewOutput(

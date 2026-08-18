@@ -1735,43 +1735,36 @@ flowTest('community', 'Info: create an entry, see it rendered', async () => {
   await page.waitForSelector('.info-board-modal', { state: 'detached' });
 });
 
-flowTest('community', 'Info: a long entry starts collapsed behind an explicit toggle', async () => {
+flowTest('community', 'Info: a long entry scrolls within a bounded box instead of collapsing', async () => {
   await page.click('#info-btn');
   await page.waitForSelector('#info-new-btn');
 
-  // A short entry (well under the collapse threshold) renders in full,
-  // exactly like today, with no toggle at all.
+  // A short entry (well under the scroll threshold) renders in full, with no
+  // bounded scroll box at all.
   await page.click('#info-new-btn');
   await page.fill('#info-title', 'Discord');
   await page.fill('#info-content', 'discord.gg/example');
   await page.click('#info-form button[type="submit"]');
   await page.waitForSelector('text=discord.gg/example');
   const discordEntry = page.locator('[data-info-entry]', { hasText: 'Discord' });
-  assert.equal(await discordEntry.locator('.info-board-content-toggle').count(), 0);
+  assert.equal(await discordEntry.locator('.info-board-content-scroll').count(), 0);
 
-  // A long entry starts collapsed behind "Vollständig anzeigen" instead of
-  // stretching its card (and its short neighbor) to match its full height.
+  // A long entry stays fully visible - no toggle, nothing hidden - but
+  // scrolls within a bounded box instead of stretching its card (and its
+  // short neighbor) to match its full height.
   const longContent = Array.from({ length: 6 }, (_, i) => `Regel ${i + 1}: Sei nett zueinander.`).join('\n');
   await page.click('#info-new-btn');
   await page.fill('#info-title', 'Hausregeln');
   await page.fill('#info-content', longContent);
   await page.click('#info-form button[type="submit"]');
-  await page.waitForSelector('text=Vollständig anzeigen');
   const rulesEntry = page.locator('[data-info-entry]', { hasText: 'Hausregeln' });
-  const toggle = rulesEntry.locator('.info-board-content-toggle');
-  await toggle.waitFor();
-  assert.equal(await toggle.getAttribute('open'), null);
-  // The native <details> keeps the collapsed content in the DOM but hides it
-  // (display: none) - assert visibility, not mere presence.
-  assert.equal(await rulesEntry.getByText('Regel 6', { exact: false }).isVisible(), false);
-
-  // Expanding reveals the full content; the toggle stays reachable and
-  // reversible.
-  await rulesEntry.locator('.info-board-content-summary').click();
-  await rulesEntry.getByText('Regel 6: Sei nett zueinander.').waitFor();
-  assert.equal(await toggle.getAttribute('open'), '');
-  await rulesEntry.locator('.info-board-content-summary').click();
-  assert.equal(await toggle.getAttribute('open'), null);
+  const scrollBox = rulesEntry.locator('.info-board-content-scroll');
+  await scrollBox.waitFor();
+  assert.equal(await rulesEntry.getByText('Regel 6: Sei nett zueinander.').isVisible(), true);
+  // The box is actually bounded rather than merely tall enough to fit
+  // everything - otherwise the scroll container would be pointless.
+  const isBounded = await scrollBox.evaluate((el) => el.scrollHeight > el.clientHeight);
+  assert.equal(isBounded, true);
 
   await page.click('.info-board-modal [data-close]');
   await page.waitForSelector('.info-board-modal', { state: 'detached' });

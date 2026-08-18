@@ -2652,6 +2652,43 @@ test("the sticky choice and active notification share one canonical fact block",
   }
 });
 
+test("the folded review-decision facts keep only the head SHA and recommendation visible", () => {
+  // renderReviewDecisionFactsFolded() assumes facts[0] is the Head SHA line and facts[last] is
+  // the Recommendation line, folding everything between them behind <details>. Assert that
+  // contract directly so a reordering of renderReviewDecisionFacts() fails loudly here instead of
+  // silently folding away — or silently exposing — the wrong line.
+  const snapshot = readySnapshot({ labels: [], reviews: [] });
+  const readiness = deriveReadiness(snapshot, config);
+  const payload = buildReviewDecisionPayload(readiness, snapshot, config);
+  const facts = renderReviewDecisionFacts(payload, config);
+  const headShaFact = facts[0];
+  const recommendationFact = facts[facts.length - 1];
+  const restFacts = facts.slice(1, -1);
+  assert.match(headShaFact, /^- Head SHA:/);
+  assert.match(recommendationFact, /^- Recommendation:/);
+  assert.ok(restFacts.length > 0);
+
+  for (const body of [
+    renderStatusComment(readiness, snapshot, config),
+    reconcile(snapshot, config, { notificationRecipient: "blorbeer-cmd" }).notification.body,
+  ]) {
+    const detailsStart = body.indexOf("<details>");
+    const detailsEnd = body.indexOf("</details>");
+    assert.ok(detailsStart > -1 && detailsEnd > detailsStart, "expected a collapsed details block");
+    assert.ok(body.indexOf(headShaFact) < detailsStart, "head SHA must stay visible");
+    assert.ok(body.indexOf(recommendationFact) < detailsStart, "recommendation must stay visible");
+    for (const fact of restFacts) {
+      // Search from detailsStart: the status comment also has an unrelated top-level "- Task:"
+      // line before the folded block, so a plain indexOf() would match that instead.
+      const index = body.indexOf(fact, detailsStart);
+      assert.ok(
+        index > detailsStart && index < detailsEnd,
+        `expected "${fact}" folded inside <details>`,
+      );
+    }
+  }
+});
+
 test("review history identifies the previous head and summarizes structured severities", () => {
   const comments = [
     {
