@@ -55,7 +55,7 @@ const READINESS_STATUS = {
 
 const FEATURE_USAGE_AREAS = ['Wettkampf', 'Orga', 'Sonstiges'];
 
-const SENTIMENT_LABEL = { positive: 'Lob', negative: 'Problem', idea: 'Idee' };
+const SENTIMENT_LABEL = { positive: 'Positiv', negative: 'Negativ', problem: 'Problem', idea: 'Idee' };
 
 function inviteUrl(invite) {
   const param = invite.purpose === 'register' ? 'invite' : invite.purpose === 'test_login' ? 'testSession' : invite.purpose;

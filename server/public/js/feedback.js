@@ -20,8 +20,9 @@ function deviceBucket() {
 }
 
 const SENTIMENTS = [
-  { value: 'positive', label: 'Lob' },
-  { value: 'negative', label: 'Problem' },
+  { value: 'positive', label: 'Positiv' },
+  { value: 'negative', label: 'Negativ' },
+  { value: 'problem', label: 'Problem' },
   { value: 'idea', label: 'Idee' },
 ];
 

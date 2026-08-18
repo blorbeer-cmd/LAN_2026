@@ -3710,7 +3710,7 @@ function addFeedbackEntriesTable(): void {
       event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
       player_id  TEXT REFERENCES players(id) ON DELETE CASCADE,
       view       TEXT NOT NULL,
-      sentiment  TEXT CHECK (sentiment IN ('positive', 'negative', 'idea')),
+      sentiment  TEXT CHECK (sentiment IN ('positive', 'negative', 'problem', 'idea')),
       message    TEXT NOT NULL,
       device     TEXT NOT NULL CHECK (device IN ('mobile', 'tablet', 'desktop')),
       created_at INTEGER NOT NULL

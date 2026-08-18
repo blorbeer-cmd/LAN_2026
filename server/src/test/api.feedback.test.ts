@@ -23,6 +23,20 @@ test('POST /api/feedback validates message, view and device', async () => {
   assert.equal((await asPlayer({ message: 'Hallo', view: 'votes', device: 'mobile', sentiment: 'angry' })).status, 400);
 });
 
+test('POST /api/feedback accepts the problem sentiment alongside positive, negative and idea', async () => {
+  const player = await request(app).post('/api/players').send({ name: 'Feedback Problem Sentiment' });
+  const created = await request(app)
+    .post('/api/feedback')
+    .set('x-test-player-id', player.body.id)
+    .send({ message: 'Der Speichern-Button reagiert manchmal nicht.', view: 'votes', device: 'mobile', sentiment: 'problem' });
+  assert.equal(created.status, 201);
+
+  const asAdmin = await request(app).get('/api/feedback');
+  const entry = (asAdmin.body as Array<Record<string, unknown>>).find((e) => e.id === created.body.id);
+  assert.ok(entry, 'created feedback entry should appear in the admin listing');
+  assert.equal(entry!.sentiment, 'problem');
+});
+
 test('POST /api/feedback stores the entry with automatic event context, then is only readable by admins', async () => {
   const player = await request(app).post('/api/players').send({ name: 'Feedback Sender' });
 

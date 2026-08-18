@@ -16,7 +16,7 @@ export const feedbackRouter = Router();
 
 const MAX_MESSAGE_LENGTH = 500;
 const MAX_VIEW_LENGTH = 60;
-const SENTIMENTS = new Set(['positive', 'negative', 'idea']);
+const SENTIMENTS = new Set(['positive', 'negative', 'problem', 'idea']);
 const DEVICES = new Set(['mobile', 'tablet', 'desktop']);
 const LIST_LIMIT = 200;
 
