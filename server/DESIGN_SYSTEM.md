@@ -652,36 +652,45 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   live re-renders. Every card — open, abgeschickt or geschlossen — carries a stacked full-width
   „Bestellung löschen“ danger action below its other actions, since scrapping an order stays
   possible at every lifecycle stage unlike the other, stage-gated mutations. Each position is one
-  row, left to right: quantity × description, price plus breakdown (a paid position strikes through
-  both, not only its description, since the price is settled too), then a cluster of compact
-  `.food-order-item-action` icon buttons — copy, „Bezahlen“, „Sammelzahlung“, „Bezahlt“ — that the
-  description's own flex-grow pushes toward the row's end; the row wraps onto further lines on
-  narrow phones rather than overflowing. These four are icon buttons rather than labelled chips
-  because four controls plus a word as long as „Sammelzahlung“ cannot share one line on a phone,
-  which is the whole point of the single-row layout. State therefore never rests on the button
-  alone: a paid row is struck through and muted, a selected row carries the accent rail and is
-  listed by name in the Sammelzahlung breakdown below, the „Bezahlt“ toggle additionally swaps its
-  glyph (`check` → `circleCheck`), and both toggles pair `aria-pressed` with a German
-  `title`/`aria-label` naming their current state. `.food-order-item-toggle[aria-pressed='true']`
-  marks the pressed state with an inset accent ring instead of a real border, so toggling never
-  changes a button's size. „Bezahlen“ opens PayPal for that single position with its own
-  tip-inclusive amount, so settling one item never requires building a Sammelzahlung first; an
-  unpriced position still gets the action and falls back to the bare link, an email-based link
-  copies the address like everywhere else, and a settled position keeps the control as a disabled
-  button so the row's geometry stays put. The owner's remove action trails
-  last, set apart with its own danger color, a trash icon and an explicit „Position entfernen“
-  label/tooltip instead of a bare X, and pushed flush to the row's end so it reads as a distinct,
-  deliberate action rather than one more toggle. Marking a position „Bezahlt“ automatically clears
-  its own „Sammelzahlung“ mark and disables that toggle, since a paid position has nothing left to
-  collect; it only becomes selectable again once „Bezahlt“ is unmarked. „Gesamtsumme“ itself is set
+  row, left to right: a plain „Bezahlt“ checkbox (`.food-order-item-paid-checkbox`, the same 20px/
+  accent-color treatment as the checklist's own checkboxes — a plain independent on/off flag, not a
+  named exclusive choice, so it stays a checkbox rather than a toggle-chip), the „Sammelzahlung“
+  icon toggle, quantity × description, the amount itself as the „Bezahlen“ action, then copy and
+  remove. The description's own flex-grow pushes the amount and trailing actions toward the row's
+  end; the row wraps onto further lines on narrow phones rather than overflowing, and the copy/
+  remove slot each reserve their width even when empty (unpriced item, someone else's position) so
+  the two stay aligned across every row in the card. „Bezahlen“ needs no label of its own: the
+  amount **is** the button (`.food-order-pay-button`, a bordered box with a small credit-card icon
+  ahead of the sum), opening PayPal for that single position's own tip-inclusive share so settling
+  one item never requires building a Sammelzahlung first. The exact same component — same class, same
+  look — is reused for the combined Sammelzahlung total in the selection block below (see there),
+  rather than a separate primary-gradient „Bezahlen“ pill, so paying one item or several selected
+  ones behaves identically. An unpriced position still gets the action („Betrag offen“) and falls
+  back to the bare link (`paypalPayUrl` only appends an amount once cents are known), an email-based
+  PayPal link copies the address before opening like everywhere else, and every „Bezahlen“ click
+  re-checks with the server immediately beforehand whether the position(s) involved have meanwhile
+  been marked paid elsewhere — opening PayPal for money someone already collected is worse than a
+  moment's delay — showing a toast and refreshing instead of navigating if so. A paid position is
+  fully locked: „Sammelzahlung“, „Bezahlen“ and remove all render disabled (the settled amount stays
+  visible as a struck-through disabled button rather than disappearing, so the row's geometry does
+  not shift), and only copy and the „Bezahlt“ checkbox itself stay usable, since unchecking it is
+  how the row unlocks again. Selecting „Sammelzahlung“ pairs `aria-pressed` with a German
+  `title`/`aria-label` naming its current state; `.food-order-item-toggle[aria-pressed='true']`
+  marks the pressed state with an inset accent ring rather than a real border, so toggling never
+  changes the button's size. State never rests on a single control alone: a paid row is struck
+  through and muted everywhere (description and amount alike), a selected row carries the accent
+  rail and is listed by name in the Sammelzahlung breakdown below. The owner's remove action is set
+  apart with its own danger color, a trash icon and an explicit „Position entfernen“ label/tooltip
+  instead of a bare X. Marking a position „Bezahlt“ automatically clears its own „Sammelzahlung“
+  mark; it only becomes selectable again once „Bezahlt“ is unmarked. „Gesamtsumme“ itself is set
   apart from the muted meta/info text around it (larger, bolder, default text color) so it reads as
   a real total rather than another info line, with its own copy action directly beside the amount
   so the sum sits left of that button. A non-empty Sammelzahlung selection renders below it as its
-  own bordered block: the selected count and payable amount, a copy action and „PayPal öffnen“/
-  „Bezahlen“, then the selection broken down position by position (so it is clear at a glance what
-  is actually being combined), and — since a selection can only ever hold unpaid positions — a
-  full-width „Ausgewählte als bezahlt markieren“ action that settles every selected position at
-  once and clears their Sammelzahlung marks the same way the per-position toggle does.
+  own bordered block: the selected count, a copy action and the same amount-as-„Bezahlen“-button
+  component described above, then the selection broken down position by position (so it is clear at
+  a glance what is actually being combined), and — since a selection can only ever hold unpaid
+  positions — a full-width „Ausgewählte als bezahlt markieren“ action that settles every selected
+  position at once and clears their Sammelzahlung marks the same way the per-position toggle does.
 - **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its four area tabs
   are sorted alphabetically by their German label: „An- & Abreise“, „Events“, „Packliste“ and
   „To-Do“ (the last two formerly the separate „Checkliste“ and „An- & Abreise“ areas;

@@ -3944,10 +3944,11 @@ input[type='number'].tournament-score-input {
   gap: var(--space-2);
   flex-wrap: wrap;
 }
-/* One line per position, left to right: quantity × description / price +
-   breakdown / copy / Sammelzahlung / Bezahlt / remove. The description's
-   flex-grow pushes everything after it toward the row's end; flex-wrap lets
-   the row break onto further lines instead of overflowing on narrow phones. */
+/* One line per position, left to right: Bezahlt checkbox / Sammelzahlung /
+   quantity × description / price as the "Bezahlen" action / copy / remove.
+   The description's flex-grow pushes everything after it toward the row's
+   end; flex-wrap lets the row break onto further lines on narrow phones
+   instead of overflowing. */
 .food-order-item {
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -3957,6 +3958,17 @@ input[type='number'].tournament-score-input {
 }
 .food-order-item:last-child {
   border-bottom: none;
+}
+/* The independent on/off "Bezahlt" flag is a plain checkbox rather than a
+   labelled control (see DESIGN_SYSTEM's mode/setting-choice guidance) - the
+   same size and accent as the checklist's own checkboxes. It stays enabled
+   even on an otherwise fully locked paid row: it is the row's own reversing
+   control, not one of the actions that row disables. */
+.food-order-item-paid-checkbox {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
 }
 .food-order-item-description {
   min-width: 0;
@@ -3983,28 +3995,61 @@ input[type='number'].tournament-score-input {
 .food-order-item-price .muted {
   font-size: var(--font-size-xs);
 }
+/* Modifier making the amount itself the "Bezahlen" action, instead of a
+   separate button beside a plain price - used both for a single position's
+   own tip-inclusive share and, reusing the exact same component, for the
+   combined Sammelzahlung total below (renderPaymentSelector). */
+.food-order-pay-button {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+.food-order-pay-button strong {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.food-order-pay-button strong .ui-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+}
+.food-order-pay-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+@media (hover: hover) {
+  a.food-order-pay-button:hover {
+    filter: brightness(1.12);
+  }
+}
 .food-order-item.is-selected-for-payment {
   border-left: var(--space-1) solid var(--accent);
   background: var(--bg-elevated-2);
   padding-left: var(--space-2);
   margin-left: calc(-1 * var(--space-2));
 }
-/* Copy, pay and the two independent per-item flags (included in the combined
-   Sammelzahlung, paid) sit together as compact icon buttons. Labelled chips
-   were dropped here because four controls plus a long German word
-   ("Sammelzahlung") cannot share one line on a phone; each button keeps a
-   German title/aria-label naming its current state instead. */
-.food-order-item-toggles {
+/* Copy and remove are the row's trailing actions. Each reserves its own slot
+   even when absent (an unpriced item has no copy action; someone else's
+   position has no remove action) via .food-order-item-action-spacer, so the
+   two stay aligned across every row in the card instead of drifting. */
+.food-order-item-actions {
   align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
 }
-.food-order-item-action {
+.food-order-item-action,
+.food-order-item-action-spacer {
   width: var(--space-7);
   height: var(--space-7);
+  flex-shrink: 0;
+}
+.food-order-item-action {
   padding: var(--space-1);
   font-size: var(--font-size-xs);
-  flex-shrink: 0;
 }
 .food-order-item-action:disabled {
   opacity: 0.5;
@@ -4013,18 +4058,14 @@ input[type='number'].tournament-score-input {
 /* Pressed state uses an inset ring rather than a real border so the button
    keeps its exact size when toggled, and pairs that with the accent color.
    It is never the only signal: a selected row also carries the accent rail
-   and is listed by name in the Sammelzahlung breakdown, a paid row is struck
-   through and muted, and the "Bezahlt" toggle swaps its glyph as well. */
+   and is listed by name in the Sammelzahlung breakdown, and the button's own
+   title/aria-label names its current state. */
 .food-order-item-toggle[aria-pressed='true'] {
   color: var(--accent);
   background: var(--bg-elevated-2);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
-/* Set apart from the toggle chips (own color, pushed flush to the row's end)
-   so removing a position reads as a distinct, deliberate action rather than
-   a third chip easy to hit by mistake. */
 .food-order-item-remove {
-  margin-left: auto;
   color: var(--danger);
 }
 /* Deliberately heavier than the surrounding muted meta/info text (send time,
@@ -4084,12 +4125,12 @@ input[type='number'].tournament-score-input {
   .food-order-player-items {
     padding-left: 0;
   }
-  /* Force the description onto its own line so the price, actions and
-     remove button wrap together underneath it instead of interleaving. */
-  .food-order-item-description {
-    flex-basis: 100%;
-  }
+  /* The leading checkbox, Sammelzahlung toggle and description share the
+     first line; forcing the price/pay block onto its own line lets copy and
+     remove wrap together after it instead of interleaving with the leading
+     controls. */
   .food-order-item-price {
+    flex-basis: 100%;
     align-items: flex-start;
   }
   .food-order-total {

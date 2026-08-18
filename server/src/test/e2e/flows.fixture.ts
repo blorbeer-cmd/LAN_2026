@@ -1834,34 +1834,38 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
   await page.waitForSelector('text=Summe kopiert: 20,90');
 
-  // Left to right, a position's own row reads: quantity × description /
-  // price + breakdown / copy / Bezahlen / Sammelzahlung / Bezahlt, with the
-  // remove action set apart as the row's own trailing last element (only for
-  // the item's own owner).
+  // Left to right, a position's own row reads: Bezahlt checkbox /
+  // Sammelzahlung / quantity × description / the amount itself as the
+  // "Bezahlen" action / trailing copy+remove actions.
   const marghieRow = page.locator('.food-order-item', { hasText: 'Margherita' }).first();
-  const marghieToggleOrder = await marghieRow
-    .locator('.food-order-item-toggles')
+  const marghieRowOrder = await marghieRow.evaluate((row) =>
+    Array.from(row.children).map((child) => {
+      if (child.matches('[data-toggle-paid]')) return 'bezahlt';
+      if (child.matches('[data-select-pay]')) return 'sammelzahlung';
+      if (child.matches('.food-order-item-description')) return 'description';
+      if (child.matches('.food-order-pay-button')) return 'pay';
+      if (child.matches('.food-order-item-actions')) return 'actions';
+      return 'other';
+    })
+  );
+  assert.deepEqual(marghieRowOrder, ['bezahlt', 'sammelzahlung', 'description', 'pay', 'actions']);
+  const marghieActionsOrder = await marghieRow
+    .locator('.food-order-item-actions')
     .first()
     .evaluate((row) =>
       Array.from(row.children).map((child) => {
         if (child.matches('[data-copy-food-total]')) return 'copy';
-        if (child.matches('.food-order-item-pay')) return 'pay';
-        if (child.matches('[data-select-pay]')) return 'sammelzahlung';
-        if (child.matches('[data-toggle-paid]')) return 'bezahlt';
+        if (child.matches('[data-remove-item]')) return 'remove';
         return 'other';
       })
     );
-  assert.deepEqual(marghieToggleOrder, ['copy', 'pay', 'sammelzahlung', 'bezahlt']);
-  assert.equal(
-    await marghieRow.evaluate((row) => row.lastElementChild?.matches('[data-remove-item]')),
-    true
-  );
+  assert.deepEqual(marghieActionsOrder, ['copy', 'remove']);
 
   // A single position can be paid directly, without going through the
   // combined Sammelzahlung first: its own link carries that position's own
   // tip-inclusive amount.
   assert.equal(
-    await marghieRow.locator('.food-order-item-pay').getAttribute('href'),
+    await marghieRow.locator('.food-order-pay-button').getAttribute('href'),
     'https://paypal.me/luigi/20.90EUR'
   );
 
@@ -1875,7 +1879,7 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   // The selection is broken down position by position, not just counted.
   await page.waitForSelector('.food-order-selection-breakdown li:has-text("2 × Margherita groß — 20,90 €")');
   assert.equal(
-    await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'),
+    await paymentSelector.locator('.food-order-pay-button').getAttribute('href'),
     'https://paypal.me/luigi/20.90EUR'
   );
   // Margherita is unpaid and selected, so bulk-settling it is offered.
@@ -1895,7 +1899,7 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await page.waitForSelector('text=Wasser');
   await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').click();
   await page.waitForSelector('text=Preis unvollständig');
-  assert.equal(await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'), 'https://paypal.me/luigi');
+  assert.equal(await paymentSelector.locator('.food-order-pay-button').getAttribute('href'), 'https://paypal.me/luigi');
   // No copyable amount while the selection has an unpriced item.
   assert.equal(await paymentSelector.locator('[data-copy-food-total]').count(), 0);
 
@@ -1903,7 +1907,7 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').click();
   await page.waitForSelector('text=Preis unvollständig', { state: 'detached' });
   assert.equal(
-    await paymentSelector.locator('a:has-text("Bezahlen")').getAttribute('href'),
+    await paymentSelector.locator('.food-order-pay-button').getAttribute('href'),
     'https://paypal.me/luigi/20.90EUR'
   );
 
@@ -1921,14 +1925,24 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   );
   assert.equal(await marghieRow.locator('[data-select-pay]').getAttribute('aria-pressed'), 'false');
   assert.equal(await marghieRow.locator('[data-select-pay]').isDisabled(), true);
+  // A paid position is fully locked: only copy and the "Bezahlt" checkbox
+  // itself (the row's own reversing control) stay usable - Sammelzahlung,
+  // Bezahlen and remove are all disabled.
+  assert.equal(await marghieRow.locator('.food-order-pay-button').isDisabled(), true);
+  assert.equal(await marghieRow.locator('[data-remove-item]').isDisabled(), true);
+  assert.equal(await marghieRow.locator('[data-copy-food-total]').isDisabled(), false);
+  assert.equal(await marghieRow.locator('[data-toggle-paid]').isDisabled(), false);
   // Margherita was the only selected position, so the selector disappears
   // entirely once it is paid.
   await page.waitForSelector('.food-order-payment-selector', { state: 'detached' });
 
-  // Unmarking "Bezahlt" makes the position selectable for Sammelzahlung again.
+  // Unmarking "Bezahlt" makes the position selectable for Sammelzahlung again
+  // and unlocks Bezahlen and remove too.
   await marghieRow.locator('[data-toggle-paid]').click();
   await page.waitForSelector('.food-order-item:not(.is-paid):has-text("Margherita")');
   assert.equal(await marghieRow.locator('[data-select-pay]').isDisabled(), false);
+  assert.equal(await marghieRow.locator('.food-order-pay-button').isDisabled(), false);
+  assert.equal(await marghieRow.locator('[data-remove-item]').isDisabled(), false);
   await marghieRow.locator('[data-select-pay]').click();
   await page.waitForSelector('.food-order-payment-selector:has-text("1 Position ausgewählt")');
 
@@ -1975,6 +1989,65 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   // emptied the selection entirely).
   await page.locator('.food-order-item', { hasText: 'Wasser' }).locator('[data-select-pay]').click();
   await page.waitForSelector('.food-order-payment-selector:has-text("1 Position ausgewählt")');
+
+  // "Bezahlen" always re-checks with the server immediately before opening
+  // PayPal, since another device could have marked the same position paid in
+  // the exact window between this device's last render and the click.
+  await page.fill('[data-item-desc]', 'Nachos');
+  await page.fill('[data-item-quantity]', '1');
+  await page.fill('[data-item-price]', '5,00');
+  await page.click('[data-add-item-form] button[type="submit"]');
+  await page.waitForSelector('text=Nachos');
+  const nachosRow = page.locator('.food-order-item', { hasText: 'Nachos' });
+  const nachosId = await nachosRow.locator('[data-toggle-paid]').getAttribute('data-toggle-paid');
+
+  // Happy path first: still genuinely unpaid, so the click opens PayPal for
+  // this position's own tip-inclusive amount. window.open is captured
+  // in-page rather than asserting on a real popup's URL, since this sandbox
+  // has no route to the real paypal.me and a failed navigation would just
+  // land on Chromium's own error page.
+  const capturedOpenUrl = page.evaluate(
+    () =>
+      new Promise<string>((resolve) => {
+        const original = window.open;
+        window.open = ((url?: string | URL) => {
+          window.open = original;
+          resolve(String(url ?? ''));
+          return null;
+        }) as typeof window.open;
+      })
+  );
+  await nachosRow.locator('.food-order-pay-button').click();
+  assert.equal(await capturedOpenUrl, 'https://paypal.me/luigi/5.50EUR');
+
+  // Now simulate another device settling Nachos in that exact window: the
+  // click's own re-check fetch is intercepted to report it already paid,
+  // without touching the real server state.
+  let intercepted = false;
+  await page.route(`${BASE_URL}/api/food-orders`, async (route) => {
+    if (intercepted) {
+      await route.continue();
+      return;
+    }
+    intercepted = true;
+    const response = await route.fetch();
+    const body = await response.json();
+    for (const o of body.orders) {
+      for (const item of o.items) {
+        if (item.id === nachosId) item.paid = true;
+      }
+    }
+    await route.fulfill({ response, json: body });
+  });
+  const pageCountBefore = page.context().pages().length;
+  await nachosRow.locator('.food-order-pay-button').click();
+  await page.waitForSelector('text=„Nachos“ ist inzwischen bereits als bezahlt markiert.');
+  // Nothing opened - the stale-state warning replaces the navigation.
+  assert.equal(page.context().pages().length, pageCountBefore);
+  // The re-check's own fresh fetch also updates the row itself.
+  await page.waitForSelector('.food-order-item.is-paid:has-text("Nachos")');
+  assert.equal(await nachosRow.locator('[data-toggle-paid]').isChecked(), true);
+  await page.unroute(`${BASE_URL}/api/food-orders`);
 
   // Clearing the PayPal link while an item is still selected must not crash
   // the view (a selection can outlive the link it was made for).

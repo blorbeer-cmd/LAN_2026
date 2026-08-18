@@ -76,6 +76,16 @@ async function copyFoodOrderTotal(value) {
   }
 }
 
+// PayPal has no link that pre-fills a recipient by email, so these links
+// only open PayPal's generic "send money" page - copying the address here is
+// what saves the actual step of typing it in by hand.
+function copyPaypalEmailToClipboard(email) {
+  navigator.clipboard?.writeText(email).then(
+    () => showToast(`E-Mail-Adresse kopiert: ${email}`),
+    () => {}
+  );
+}
+
 export function addTipToCents(cents, tipPercent) {
   return Math.round(cents * (1 + (tipPercent || 0) / 100));
 }
@@ -162,79 +172,85 @@ function renderItems(order, myId, { locked = false } = {}) {
           const lineTotal = lineSubtotal === null ? null : addTipToCents(lineSubtotal, tipPercent);
           const basePriceLabel = quantity > 1 ? `${quantity} × ${formatCents(i.priceCents)}` : formatCents(lineSubtotal);
           const showBasePrice = quantity > 1 || tipPercent > 0;
-          const priceHtml = lineTotal === null
-            ? ''
-            : `<span class="food-order-item-price">
-                <strong>${formatCents(lineTotal)}</strong>
-                ${
-                  showBasePrice
-                    ? `<span class="muted">${basePriceLabel}${tipPercent > 0 ? ` · inkl. ${tipPercent}% Trinkgeld` : ''}</span>`
-                    : ''
-                }
-              </span>`;
+          const priceBreakdownHtml =
+            lineTotal === null || !showBasePrice
+              ? ''
+              : `<span class="muted">${basePriceLabel}${tipPercent > 0 ? ` · inkl. ${tipPercent}% Trinkgeld` : ''}</span>`;
           const copyHtml = lineTotal === null
             ? ''
             : `<button type="button" class="icon-btn food-order-item-action food-order-item-copy" data-copy-food-total="${escapeHtml(formatCents(lineTotal))}" title="Summe kopieren" aria-label="Summe kopieren">${icon('copy')}</button>`;
+          // A paid position is fully locked - only the copy action stays
+          // usable on it, so removing it is blocked the same way the
+          // Sammelzahlung and Bezahlen controls already are.
+          const removeTitle = i.paid ? 'Bezahlte Position kann nicht entfernt werden' : 'Position entfernen';
           const removeHtml =
             !locked && order.open && i.playerId === myId
-              ? `<button type="button" class="icon-btn food-order-item-action food-order-item-remove" data-remove-item="${i.id}" data-order="${order.id}" title="Position entfernen" aria-label="Position entfernen">${icon('trash')}</button>`
+              ? `<button type="button" class="icon-btn food-order-item-action food-order-item-remove" data-remove-item="${i.id}" data-order="${order.id}" ${i.paid ? 'disabled' : ''} title="${removeTitle}" aria-label="${removeTitle}">${icon('trash')}</button>`
               : '';
+          // The copy/remove slot each reserve their own width even when empty
+          // (unpriced item, someone else's position) so the two actions stay
+          // aligned across every row in the card instead of drifting per row.
+          const actionsHtml = `
+            <div class="row food-order-item-actions">
+              ${copyHtml || '<span class="food-order-item-action-spacer" aria-hidden="true"></span>'}
+              ${removeHtml || '<span class="food-order-item-action-spacer" aria-hidden="true"></span>'}
+            </div>`;
           // A paid position is settled - it can't be picked for the combined
           // Sammelzahlung anymore until "Bezahlt" is unmarked again. The
           // `!i.paid` guard also protects against a stale local selection
           // (e.g. an item another device already marked paid) ever rendering
           // as selected.
           const selected = selectedForPayment.has(i.id) && !i.paid;
-          // Paying a single position directly, without going through the
-          // combined Sammelzahlung first - the common case when someone just
-          // owes for their own item. An unpriced position still gets the
-          // action: paypalPayUrl falls back to the bare link so the amount can
-          // be typed in PayPal. A settled position keeps the control as a
-          // disabled button so the row's geometry does not shift.
-          const payLabel = lineTotal === null
-            ? 'Position per PayPal bezahlen – Betrag in PayPal eingeben'
-            : `Position per PayPal bezahlen (${formatCents(lineTotal)})`;
-          const payHtml = !order.paypalLink
-            ? ''
-            : i.paid
-              ? `<button type="button" class="icon-btn food-order-item-action" disabled title="Bereits bezahlt" aria-label="Bereits bezahlt">${icon('creditCard')}</button>`
-              : `<a
-                  class="icon-btn food-order-item-action food-order-item-pay"
-                  href="${escapeHtml(paypalPayUrl(order.paypalLink, lineTotal ?? 0))}"
-                  target="_blank"
-                  rel="noopener"
-                  title="${escapeHtml(paypalEmail ? `${payLabel} – ${paypalEmail} wird kopiert` : payLabel)}"
-                  aria-label="${escapeHtml(payLabel)}"
-                  ${paypalEmail ? `data-copy-paypal-email="${escapeHtml(paypalEmail)}"` : ''}
-                >${icon('creditCard')}</a>`;
-          // Both flags are icon toggles rather than labelled chips: with copy,
-          // pay and remove beside them, two long German words ("Sammelzahlung")
-          // could not share one line. State stays readable without the label
-          // because the row itself carries it - a paid row is struck through
-          // and muted, a selected row gets the accent rail and appears by name
-          // in the breakdown below - and each button pairs aria-pressed with a
-          // German title/aria-label naming its current state.
           const selectPayTitle = i.paid
             ? 'Bereits bezahlt – für Sammelzahlung nicht auswählbar'
             : selected
               ? 'Für Sammelzahlung ausgewählt – Auswahl aufheben'
               : 'Für Sammelzahlung auswählen';
           const paidTitle = i.paid ? 'Bezahlt – Markierung aufheben' : 'Als bezahlt markieren';
+          // The amount itself is the "Bezahlen" action - opens PayPal for
+          // exactly this position's own tip-inclusive share, so settling a
+          // single item never requires building a Sammelzahlung first. An
+          // unpriced position still gets the action ("Betrag offen") and
+          // falls back to the bare link (paypalPayUrl only appends an amount
+          // when cents > 0); a settled position keeps the same element as a
+          // disabled button so the row's geometry does not shift. Without a
+          // PayPal link at all there is nothing to pay, so the price stays
+          // the plain, non-interactive display it always was.
+          const priceBlockHtml = !order.paypalLink
+            ? lineTotal === null
+              ? ''
+              : `<span class="food-order-item-price"><strong>${formatCents(lineTotal)}</strong>${priceBreakdownHtml}</span>`
+            : (() => {
+                const label = lineTotal === null ? 'Betrag offen' : formatCents(lineTotal);
+                const payTitle = lineTotal === null
+                  ? 'Position per PayPal bezahlen – Betrag in PayPal eingeben'
+                  : `Position per PayPal bezahlen (${formatCents(lineTotal)})`;
+                if (i.paid) {
+                  return `<button type="button" class="food-order-item-price food-order-pay-button" disabled title="Bereits bezahlt" aria-label="Bereits bezahlt"><strong>${icon('creditCard')}${label}</strong>${priceBreakdownHtml}</button>`;
+                }
+                return `<a
+                    class="food-order-item-price food-order-pay-button"
+                    href="${escapeHtml(paypalPayUrl(order.paypalLink, lineTotal ?? 0))}"
+                    target="_blank"
+                    rel="noopener"
+                    title="${escapeHtml(paypalEmail ? `${payTitle} – ${paypalEmail} wird kopiert` : payTitle)}"
+                    aria-label="${escapeHtml(payTitle)}"
+                    data-pay-order="${order.id}"
+                    data-pay-items="${i.id}"
+                    ${paypalEmail ? `data-pay-email="${escapeHtml(paypalEmail)}"` : ''}
+                  ><strong>${icon('creditCard')}${label}</strong>${priceBreakdownHtml}</a>`;
+              })();
           return `
           <div class="row food-order-item ${i.paid ? 'is-paid' : ''} ${selected ? 'is-selected-for-payment' : ''}">
+            <input type="checkbox" class="food-order-item-paid-checkbox" data-toggle-paid="${i.id}" data-order="${order.id}" ${i.paid ? 'checked' : ''} ${locked ? 'disabled' : ''} title="${paidTitle}" aria-label="${paidTitle}" />
+            ${
+              order.paypalLink
+                ? `<button type="button" class="icon-btn food-order-item-action food-order-item-toggle" data-select-pay="${i.id}" aria-pressed="${selected ? 'true' : 'false'}" ${i.paid ? 'disabled' : ''} title="${selectPayTitle}" aria-label="${selectPayTitle}">${icon('listChecks')}</button>`
+                : ''
+            }
             <span class="food-order-item-description"><strong>${quantity} ×</strong> ${escapeHtml(i.description)}</span>
-            ${priceHtml}
-            <div class="row food-order-item-toggles">
-              ${copyHtml}
-              ${payHtml}
-              ${
-                order.paypalLink
-                  ? `<button type="button" class="icon-btn food-order-item-action food-order-item-toggle" data-select-pay="${i.id}" aria-pressed="${selected ? 'true' : 'false'}" ${i.paid ? 'disabled' : ''} title="${selectPayTitle}" aria-label="${selectPayTitle}">${icon('listChecks')}</button>`
-                  : ''
-              }
-              <button type="button" class="icon-btn food-order-item-action food-order-item-toggle" data-toggle-paid="${i.id}" data-order="${order.id}" aria-pressed="${i.paid ? 'true' : 'false'}" ${locked ? 'disabled' : ''} title="${paidTitle}" aria-label="${paidTitle}">${icon(i.paid ? 'circleCheck' : 'check')}</button>
-            </div>
-            ${removeHtml}
+            ${priceBlockHtml}
+            ${actionsHtml}
           </div>`;
         })
         .join('');
@@ -294,9 +310,6 @@ function renderPaymentSelector(order, { locked = false } = {}) {
   const rawCents = selectedItems.reduce((sum, i) => sum + (i.priceCents ?? 0) * (i.quantity ?? 1), 0);
   const payableCents = allPriced ? addTipToCents(rawCents, tipPercent) : 0;
   const email = paypalEmailFromLink(order.paypalLink);
-  const amountLabel = allPriced
-    ? `${formatCents(payableCents)}${tipPercent > 0 ? ` (inkl. ${tipPercent}% Trinkgeld)` : ''}`
-    : 'Preis unvollständig – Betrag manuell eingeben';
 
   const breakdownHtml = `
     <ul class="food-order-selection-breakdown">
@@ -309,10 +322,23 @@ function renderPaymentSelector(order, { locked = false } = {}) {
         .join('')}
     </ul>`;
 
+  // The combined total reuses the exact same "amount is the Bezahlen action"
+  // component as a single position's own price (see renderItems), so paying
+  // one item or several selected ones reads and behaves identically.
+  const payLabel = allPriced ? formatCents(payableCents) : 'Betrag offen';
+  const payNoteHtml = allPriced
+    ? tipPercent > 0
+      ? `<span class="muted">inkl. ${tipPercent}% Trinkgeld</span>`
+      : ''
+    : `<span class="muted">Preis unvollständig – Betrag manuell eingeben</span>`;
+  const payTitle = allPriced
+    ? `Ausgewählte Positionen per PayPal bezahlen (${formatCents(payableCents)})`
+    : 'Ausgewählte Positionen per PayPal bezahlen – Betrag in PayPal eingeben';
+
   return `
     <div class="stack food-order-payment-selector">
       <div class="row-between">
-        <span class="muted">${selectedItems.length} ${selectedItems.length === 1 ? 'Position' : 'Positionen'} ausgewählt · ${amountLabel}</span>
+        <span class="muted">${selectedItems.length} ${selectedItems.length === 1 ? 'Position' : 'Positionen'} ausgewählt</span>
         <span class="food-order-payment-actions">
           ${
             allPriced
@@ -320,12 +346,16 @@ function renderPaymentSelector(order, { locked = false } = {}) {
               : ''
           }
           <a
-            class="btn btn-sm btn-primary"
+            class="food-order-item-price food-order-pay-button"
             href="${escapeHtml(paypalPayUrl(order.paypalLink, payableCents))}"
             target="_blank"
             rel="noopener"
-            ${email ? `data-copy-paypal-email="${escapeHtml(email)}" title="Öffnet PayPal und kopiert ${escapeHtml(email)} zum Einfügen."` : ''}
-          >${email ? 'PayPal öffnen' : 'Bezahlen'}</a>
+            title="${escapeHtml(email ? `${payTitle} – ${email} wird kopiert` : payTitle)}"
+            aria-label="${escapeHtml(payTitle)}"
+            data-pay-order="${order.id}"
+            data-pay-items="${selectedItems.map((i) => i.id).join(',')}"
+            ${email ? `data-pay-email="${escapeHtml(email)}"` : ''}
+          ><strong>${icon('creditCard')}${payLabel}</strong>${payNoteHtml}</a>
         </span>
       </div>
       ${breakdownHtml}
@@ -764,19 +794,22 @@ export function renderFoodOrders(container, ctx) {
     });
   });
 
-  container.querySelectorAll('[data-toggle-paid]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      const paid = button.getAttribute('aria-pressed') !== 'true';
+  container.querySelectorAll('[data-toggle-paid]').forEach((checkbox) => {
+    checkbox.addEventListener('change', async () => {
+      const paid = checkbox.checked;
       try {
-        await api.foodOrders.setItemPaid(button.dataset.order, button.dataset.togglePaid, paid);
-        const order = cache?.find((o) => o.id === button.dataset.order);
-        const item = order?.items.find((i) => i.id === button.dataset.togglePaid);
+        await api.foodOrders.setItemPaid(checkbox.dataset.order, checkbox.dataset.togglePaid, paid);
+        const order = cache?.find((o) => o.id === checkbox.dataset.order);
+        const item = order?.items.find((i) => i.id === checkbox.dataset.togglePaid);
         if (item) item.paid = paid;
         // A paid position has nothing left to collect, so a leftover
         // Sammelzahlung mark on it would be misleading.
-        if (paid) selectedForPayment.delete(button.dataset.togglePaid);
+        if (paid) selectedForPayment.delete(checkbox.dataset.togglePaid);
         ctx.rerender();
       } catch (err) {
+        // The native checkbox already flipped its own visual state on click;
+        // undo that so it doesn't disagree with the server after a failure.
+        checkbox.checked = !paid;
         showToast(err.message, { error: true });
       }
     });
@@ -815,21 +848,51 @@ export function renderFoodOrders(container, ctx) {
     });
   });
 
-  // PayPal has no link that pre-fills a recipient by email, so these links
-  // only open PayPal's generic "send money" page — copying the address here
-  // is what saves the actual step of typing it in by hand.
   container.querySelectorAll('[data-copy-paypal-email]').forEach((a) => {
-    a.addEventListener('click', () => {
-      const email = a.dataset.copyPaypalEmail;
-      navigator.clipboard?.writeText(email).then(
-        () => showToast(`E-Mail-Adresse kopiert: ${email}`),
-        () => {}
-      );
-    });
+    a.addEventListener('click', () => copyPaypalEmailToClipboard(a.dataset.copyPaypalEmail));
   });
 
   container.querySelectorAll('[data-copy-food-total]').forEach((button) => {
     button.addEventListener('click', () => copyFoodOrderTotal(button.dataset.copyFoodTotal));
+  });
+
+  // A "Bezahlen" link (single position or the combined Sammelzahlung) always
+  // re-checks with the server right before opening PayPal - the local view
+  // only updates when its own realtime event arrives, and someone else could
+  // have marked one of these exact positions paid in the meantime. Opening
+  // PayPal for money that's already settled would be worse than a moment's
+  // delay, so the link never navigates on the stale, already-rendered state.
+  container.querySelectorAll('[data-pay-order]').forEach((link) => {
+    link.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const orderId = link.dataset.payOrder;
+      const itemIds = link.dataset.payItems.split(',').filter(Boolean);
+      let alreadyPaid;
+      try {
+        const res = await api.foodOrders.list();
+        cache = res.orders;
+        const order = cache.find((o) => o.id === orderId);
+        const items = order ? order.items.filter((i) => itemIds.includes(i.id)) : [];
+        alreadyPaid = items.filter((i) => i.paid);
+      } catch (err) {
+        showToast(err.message, { error: true });
+        return;
+      }
+      if (alreadyPaid.length > 0) {
+        for (const i of alreadyPaid) selectedForPayment.delete(i.id);
+        const names = alreadyPaid.map((i) => i.description).join(', ');
+        showToast(
+          itemIds.length > 1
+            ? `Inzwischen bereits bezahlt und aus der Auswahl entfernt: ${names}. Bitte Auswahl und Betrag prüfen.`
+            : `„${names}“ ist inzwischen bereits als bezahlt markiert.`,
+          { error: true }
+        );
+        ctx.rerender();
+        return;
+      }
+      if (link.dataset.payEmail) copyPaypalEmailToClipboard(link.dataset.payEmail);
+      window.open(link.href, '_blank', 'noopener');
+    });
   });
 
   container.querySelector('[data-food-history]')?.addEventListener('toggle', (event) => {
