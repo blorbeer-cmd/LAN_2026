@@ -245,3 +245,35 @@ test('GET /api/admin/feature-usage excludes admin-seeded test players from every
     );
   }
 });
+
+test('checklist_tasks stays unfiltered by ?eventId= like its eventScoped: false marker promises', async () => {
+  // event_id is nullable on checklist_tasks (the group's permanent room, not
+  // tied to one event); the entry is deliberately marked eventScoped: false
+  // because an eventId filter would silently drop those NULL rows.
+  const player = await request(app).post('/api/players').send({ name: 'Feature Usage Checklist Scope' });
+  const groupId = DEFAULT_GROUP_ID;
+  const now = Date.now();
+
+  const otherEventId = nanoid();
+  db.prepare(
+    `INSERT INTO events (id, name, starts_at, ends_at, tracking_enabled, group_id, status, visibility_scope)
+     VALUES (?, 'Feature Usage Checklist Other Event', ?, ?, 0, ?, 'published', 'participants')`,
+  ).run(otherEventId, now, now + 3_600_000, groupId);
+
+  const unscoped = await request(app).get('/api/admin/feature-usage');
+  const before = findEntry(unscoped.body, 'checklist_tasks');
+  assert.equal(before.eventScoped, false);
+
+  db.prepare(
+    `INSERT INTO checklist_tasks (id, group_id, event_id, type, title, created_by, assignee_id, status, created_at, done_at)
+     VALUES (?, ?, NULL, 'todo', 'Feature Usage Permanent Room Task', ?, ?, 'done', ?, ?)`,
+  ).run(nanoid(), groupId, player.body.id, player.body.id, now, now);
+
+  const scoped = await request(app).get(`/api/admin/feature-usage?eventId=${otherEventId}`);
+  assert.equal(scoped.status, 200);
+  assert.equal(
+    findEntry(scoped.body, 'checklist_tasks').total,
+    before.total + 1,
+    'a permanent-room task (event_id NULL) must still count when narrowed to an unrelated event',
+  );
+});

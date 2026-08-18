@@ -154,9 +154,9 @@ export function computeFeatureUsage(groupId: string, eventId: string | null): Fe
       .prepare(
         `SELECT COUNT(DISTINCT assignee_id) AS players, COUNT(*) AS total
          FROM checklist_tasks WHERE group_id = ? AND type = 'todo' AND status = 'done'
-           AND assignee_id ${NOT_TEST_PLAYER} ${evClause}`,
+           AND assignee_id ${NOT_TEST_PLAYER}`,
       )
-      .get(groupId, ...evParam) as { players: number; total: number };
+      .get(groupId) as { players: number; total: number };
     entries.push({
       key: 'checklist_tasks',
       label: 'To-Dos abgeschlossen',
