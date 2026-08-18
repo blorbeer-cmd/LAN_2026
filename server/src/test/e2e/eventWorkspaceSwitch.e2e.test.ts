@@ -235,6 +235,16 @@ test('the workspace switcher keeps event names concise and shows state through i
 
   await switchWorkspaceInBrowser(eventB);
   await page.click('#event-context .search-select-toggle');
+  // The tracking/start call above raced ahead of this switch's own dataset
+  // reload only for that one write; give the option row a moment to catch
+  // up to it instead of asserting against whatever the first render shows.
+  await page.waitForFunction(
+    (id) =>
+      document
+        .querySelector(`#event-context-switcher-list [data-search-select-value="${id}"] .search-select-option-icon`)
+        ?.getAttribute('data-event-status') === 'tracking',
+    eventA,
+  );
   const rows = await page.$$eval('#event-context-switcher-list .search-select-option', (nodes) =>
     nodes.map((node) => ({
       label: node.querySelector('.search-select-option-label')?.textContent?.trim() ?? '',
@@ -273,9 +283,10 @@ test('the workspace switcher keeps event names concise and shows state through i
     'idle',
   );
   await switchWorkspaceInBrowser(eventA);
-  assert.equal(
-    await page.$eval('#event-context .search-select-status', (el) => (el as HTMLElement).dataset.eventStatus),
-    'tracking',
+  // Same tracking/start race as above: the switch's own dataset reload can
+  // still occasionally settle a beat behind the raw API write it followed.
+  await page.waitForFunction(
+    () => (document.querySelector('#event-context .search-select-status') as HTMLElement | null)?.dataset.eventStatus === 'tracking',
   );
   assert.equal(
     await page.$eval('#event-context-switcher-search', (el) => el.getAttribute('aria-label')),
