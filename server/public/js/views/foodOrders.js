@@ -84,15 +84,36 @@ export function invalidateFoodOrders() {
 // renderFoodOrders only ever restores the (by then already-zeroed) current
 // position. Refetching quietly and only ever swapping in real data keeps
 // the DOM - and its scroll position - stable across every realtime update.
+let refreshInFlight = false;
+let refreshPending = false;
+
 export async function refreshFoodOrders(ctx) {
   if (loading) return; // a load() is already in flight and will rerender when it resolves
   if (cache === null) return load(ctx);
+  if (refreshInFlight) {
+    // A refresh is already in the air - each mutating endpoint broadcasts
+    // its own foodOrders:changed, so a batch action (e.g. "Alle als bezahlt
+    // markieren" PATCHing every cart item in parallel) can fire several of
+    // these in quick succession. Starting a second overlapping fetch here
+    // would race the first: an earlier-issued-but-later-resolving response
+    // could then overwrite the newer state the first one already applied.
+    // Just remember to run one more fetch after the in-flight one settles
+    // instead - that always ends on the latest server state.
+    refreshPending = true;
+    return;
+  }
+  refreshInFlight = true;
   try {
-    const res = await api.foodOrders.list();
-    cache = res.orders;
-    ctx.rerender();
+    do {
+      refreshPending = false;
+      const res = await api.foodOrders.list();
+      cache = res.orders;
+      ctx.rerender();
+    } while (refreshPending);
   } catch (err) {
     showToast(err.message, { error: true });
+  } finally {
+    refreshInFlight = false;
   }
 }
 
