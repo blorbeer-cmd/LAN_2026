@@ -136,6 +136,17 @@ serialisiert. Die veröffentlichte Environment-URL ist `https://lan.dbehnke.dev`
 Branch-Protection-Regel noch den früheren Sammel-Check „Build and test“, muss sie auf die neuen
 Job-Namen umgestellt werden.
 
+Die Chromium-Installation der E2E-Jobs läuft über `scripts/ci-install-chromium.mjs` statt direkt
+über `npx playwright install`. Der Helfer bricht einen Versuch nach 180 Sekunden ab und wiederholt
+ihn einmal, weil `playwright install-deps` an `apt-get` weiterreicht und ein hängender Ubuntu-Mirror
+sonst das gesamte Job-Timeout aufbraucht. Das ist kein kosmetischer Unterschied: Ein per Job-Timeout
+beendeter Job endet als `cancelled`, und „Re-run failed jobs“ startet ausschließlich `failure`-Jobs
+neu. Ein einmal abgebrochener Pflichtjob behält seinen Zustand dadurch über beliebig viele solcher
+Neustarts, der Sammel-Check `Browser E2E` liest ihn erneut und scheitert binnen Sekunden, und
+`publish` und `deploy` bleiben übersprungen. Ein so festgefahrener Lauf lässt sich nur über
+„Re-run all jobs“ (API: `POST /actions/runs/<id>/rerun`) lösen; der Timeout des Helfers macht daraus
+einen gewöhnlichen, wiederholbaren Fehlschlag.
+
 Der reine, nicht veröffentlichende Image-Gate-Build erzeugt keinen Build-Record und keine
 Provenance-Attestation. Der nach allen Pflichtchecks ausgeführte Publish-Build behält die
 standardmäßige Provenance des Docker-Builds bei. `better-sqlite3` wird als offizielles
