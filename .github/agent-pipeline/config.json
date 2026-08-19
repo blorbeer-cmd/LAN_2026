@@ -62,7 +62,7 @@
   "allowedScopes": ["root", "server", "frontend", "agent", "docs", "infra"],
   "scopePathPrefixes": {
     "server": ["server/src/", "server/package", "server/tsconfig"],
-    "frontend": ["server/public/", "server/src/test/e2e/"],
+    "frontend": ["server/public/"],
     "agent": ["agent/"],
     "docs": ["docs/"],
     "infra": [".github/", "infra/", "scripts/agent-"]
@@ -71,8 +71,7 @@
     "AGENTS.md",
     "DEVELOPMENT_GUIDELINES.md",
     "README.md",
-    "docs/",
-    "server/DESIGN_SYSTEM.md"
+    "docs/"
   ],
   "uiPathPrefixes": ["server/public/"],
   "protectedPathPrefixes": ["infra/"],
