@@ -3720,6 +3720,42 @@ function addFeedbackEntriesTable(): void {
 }
 registerMigration({ version: 74, name: 'add feedback entries', up: addFeedbackEntriesTable });
 
+// The core tour grew from 3 steps to one per bottom-nav destination plus
+// every area under "Mehr" (see buildSteps() in public/js/onboarding.js), so
+// the highest step index a player can persist grew from 9 to 11. Migration
+// history is immutable (see repairInviteAuditForeignKeys above), so the
+// original CHECK from migration 62 is widened here via the standard SQLite
+// rebuild-and-rename technique instead of editing that migration.
+function widenOnboardingCoreStepBound(): void {
+  db.exec(`
+    ALTER TABLE player_onboarding RENAME TO player_onboarding_migration_75;
+    CREATE TABLE player_onboarding (
+      player_id                 TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+      version                   INTEGER NOT NULL DEFAULT 1,
+      status                    TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (status IN ('pending', 'active', 'completed', 'skipped')),
+      last_core_step            INTEGER NOT NULL DEFAULT 9 CHECK (last_core_step BETWEEN 0 AND 11),
+      rating_status             TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (rating_status IN ('pending', 'active', 'completed', 'deferred')),
+      rating_candidate_ids_json TEXT NOT NULL DEFAULT '[]',
+      seen_views_json           TEXT NOT NULL DEFAULT '[]',
+      completed_at              INTEGER,
+      updated_at                INTEGER NOT NULL
+    );
+    INSERT INTO player_onboarding
+      (player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at)
+    SELECT player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at
+    FROM player_onboarding_migration_75;
+    DROP TABLE player_onboarding_migration_75;
+    CREATE INDEX IF NOT EXISTS idx_player_onboarding_status ON player_onboarding(status, rating_status);
+  `);
+}
+registerMigration({
+  version: 75,
+  name: 'widen onboarding core step bound',
+  up: widenOnboardingCoreStepBound,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

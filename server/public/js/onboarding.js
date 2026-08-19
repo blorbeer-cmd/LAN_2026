@@ -7,12 +7,92 @@ import { state } from './state.js';
 import { getMyId } from './whoami.js';
 import { escapeHtml } from './format.js';
 import { showToast } from './toast.js';
+import { currentPlayerHasAdminRole } from './adminAccess.js';
 
-const STEPS = [
-  { title: 'Match', text: 'Hier lost ihr Teams aus, legt Turniere an und verwaltet Ergebnisse.', view: 'matchmaking', target: '.nav-btn[data-view="matchmaking"]' },
-  { title: 'Profil und Suche', text: 'Im Profil (über „Mehr“ erreichbar) verwaltest du persönliche Angaben, Tracking-Agent und Push. Über die Suche erreichst du Bereiche und Inhalte direkt.', view: 'profile', target: '.nav-btn[data-view="more"]' },
-  { title: 'Spielekatalog', text: 'Bewerte die ersten zehn Spiele. Bock unterstützt die Spielauswahl, Skill die Teamaufteilung.', view: 'gameCatalog' },
-];
+// Ordered to match the bottom nav (Home, Match, Vote, Essen), then the
+// individual areas under "Mehr" (which itself sits after Essen in the nav),
+// and finally the game catalog last since its own step is what hands off
+// into the mandatory rating mode below (see nextCoreStep()).
+const MEHR_TARGET = '.nav-btn[data-view="more"]';
+
+function buildSteps() {
+  const steps = [
+    {
+      title: 'Home',
+      text: 'Hier siehst du auf einen Blick, wer online ist, was gerade gespielt wird und wie die Rangliste steht. Tippe im Live-Status auf eine Person, um ihr Profil mit Bock- und Skill-Werten zu öffnen.',
+      view: 'home',
+      target: '.nav-btn[data-view="home"]',
+    },
+    {
+      title: 'Match',
+      text: 'Hier lost ihr Teams aus, startet Captain-Drafts und legt Turniere an. Die Suchfelder in der Spieler- und Captain-Auswahl helfen euch, bei vielen Teilnehmenden schnell die richtigen Leute zu finden.',
+      view: 'matchmaking',
+      target: '.nav-btn[data-view="matchmaking"]',
+    },
+    {
+      title: 'Vote',
+      text: 'Hier startet ihr Abstimmungen, welche Spiele als Nächstes gespielt werden, und seht die Top 10 nach Bock-Level. Bei Gleichstand lässt sich direkt aus dem letzten Ergebnis eine Stichwahl starten.',
+      view: 'votes',
+      target: '.nav-btn[data-view="votes"]',
+    },
+    {
+      title: 'Essen',
+      text: 'Hier organisiert ihr Sammelbestellungen mit Artikeln, Preisen und Bezahlstatus. Über den Warenkorb bezahlt ihr mehrere Positionen gebündelt per PayPal, statt jede einzeln abzuhaken.',
+      view: 'foodOrders',
+      target: '.nav-btn[data-view="foodOrders"]',
+    },
+    {
+      title: 'Mehr',
+      text: 'Hier findet ihr weitere Bereiche wie Profil, Arcade, Durchsage, Jam und Orga. Über die Suche oben (oder Strg/Cmd+K am Laptop) erreicht ihr jeden Bereich und Inhalt auch direkt, ohne über Mehr zu navigieren.',
+      view: 'more',
+      target: MEHR_TARGET,
+    },
+    {
+      title: 'Mein Profil',
+      text: 'Im Profil verwaltest du Avatar-Farbe, Gamertag und den Tracking-Agent für deinen PC. Aktiviere Push, um Durchsagen und wichtige Updates auch außerhalb der App zu bekommen.',
+      view: 'profile',
+      target: MEHR_TARGET,
+    },
+    {
+      title: 'Arcade',
+      text: 'Hier spielt ihr Zwischendurch-Games wie Tetris, Snake oder Pong gegeneinander in eigenen Lobbys. Unter Statistiken seht ihr eure persönliche Bilanz für jedes Arcade-Spiel.',
+      view: 'arcade',
+      target: MEHR_TARGET,
+    },
+    {
+      title: 'Durchsage',
+      text: 'Hier verschickt ihr Durchsagen an alle im Netzwerk, zum Beispiel wenn das Essen da ist. Die letzten Durchsagen bleiben in der Historie nachlesbar, falls jemand eine verpasst hat.',
+      view: 'broadcast',
+      target: MEHR_TARGET,
+    },
+    {
+      title: 'Jam',
+      text: 'Hier steuert ihr gemeinsam die Musik: Titel suchen, zur Warteschlange hinzufügen und die Reihenfolge per Drag & Drop anpassen. Nur das Gerät, das die Session startet, braucht einen Spotify-Zugang.',
+      view: 'music',
+      target: MEHR_TARGET,
+    },
+    {
+      title: 'Orga',
+      text: 'Hier organisiert ihr die LAN mit To-Do-Liste, Packliste, An- und Abreise sowie den Events. Unter „Mir zugewiesen“ siehst du sofort deine eigenen offenen To-Dos inklusive Fälligkeit.',
+      view: 'checklist',
+      target: MEHR_TARGET,
+    },
+  ];
+  if (currentPlayerHasAdminRole()) {
+    steps.push({
+      title: 'Admin',
+      text: 'Hier behältst du als Admin die LAN-Bereitschaft im Blick und verwaltest Nutzer, Sitzplan und Backups. Über den Werkzeug-Eintrag „Auswertung“ erreichst du außerdem Rangliste, Statistiken und Hall of Fame, die sonst nirgends verlinkt sind.',
+      view: 'admin',
+      target: MEHR_TARGET,
+    });
+  }
+  steps.push({
+    title: 'Spielekatalog',
+    text: 'Bewerte die ersten zehn Spiele mit Bock und Skill. Bock unterstützt die Spielauswahl, Skill die Teamaufteilung; die Chips „Bock offen“ und „Skill offen“ helfen dir später, schnell noch unbewertete Spiele zu finden.',
+    view: 'gameCatalog',
+  });
+  return steps;
+}
 
 let runtime = null;
 let candidateSyncPending = false;
@@ -103,7 +183,7 @@ function positionTargetRing() {
 
 function syncTarget() {
   clearTargetHighlight();
-  const step = runtime?.mode === 'core' ? STEPS[runtime.step] : null;
+  const step = runtime?.mode === 'core' ? runtime.steps[runtime.step] : null;
   if (!step?.target) {
     root()?.querySelector('.onboarding-dialog')?.classList.remove('onboarding-dialog--top');
     return;
@@ -174,17 +254,6 @@ async function handleOnboardingError(error) {
   }
 }
 
-// Two full copies of the same portrait, each clipped to one side of the
-// mouth line and nudged apart on their own animation - the classic
-// paper-cutout "talking head" look (upper head and lower jaw sliding apart
-// with the mouth in between), rather than the whole head just bobbing.
-function mascotHtml() {
-  return `<div class="onboarding-mascot" aria-hidden="true">
-    <div class="onboarding-mascot-half onboarding-mascot-half-top"><img src="/img/guide-head.jpg" alt="" /></div>
-    <div class="onboarding-mascot-half onboarding-mascot-half-bottom"><img src="/img/guide-head.jpg" alt="" /></div>
-  </div>`;
-}
-
 function focusableElements(container) {
   return [...container.querySelectorAll('button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
     .filter((element) => !element.hidden && element.getClientRects().length > 0);
@@ -228,7 +297,7 @@ function wireDialogFocus() {
 
 function renderCore() {
   const element = root();
-  const step = STEPS[runtime.step];
+  const step = runtime.steps[runtime.step];
   // A step with a target relies on the ring's own spotlight shadow (see
   // style.css) to dim the page while keeping the highlighted element at
   // full brightness. Adding the plain full-screen backdrop on top of that
@@ -237,17 +306,14 @@ function renderCore() {
   element.innerHTML = `
     ${step.target ? '' : '<div class="onboarding-backdrop" aria-hidden="true"></div>'}
     <section class="onboarding-dialog" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="onboarding-title" aria-describedby="onboarding-copy">
-      ${mascotHtml()}
-      <div class="onboarding-dialog-body">
-        <p class="onboarding-progress">Schritt ${runtime.step + 1} von ${STEPS.length}</p>
-        <h2 id="onboarding-title">${escapeHtml(step.title)}</h2>
-        <p id="onboarding-copy">${escapeHtml(step.text)}</p>
-        <div class="onboarding-actions">
-          <button type="button" class="btn" data-onboarding-skip>Tour überspringen</button>
-          <span class="onboarding-actions-spacer"></span>
-          <button type="button" class="btn" data-onboarding-back ${runtime.step === 0 ? 'disabled' : ''}>Zurück</button>
-          <button type="button" class="btn btn-primary" data-onboarding-next>${runtime.step === STEPS.length - 1 ? 'Bewertungen öffnen' : 'Weiter'}</button>
-        </div>
+      <p class="onboarding-progress">Schritt ${runtime.step + 1} von ${runtime.steps.length}</p>
+      <h2 id="onboarding-title">${escapeHtml(step.title)}</h2>
+      <p id="onboarding-copy">${escapeHtml(step.text)}</p>
+      <div class="onboarding-actions">
+        <button type="button" class="btn" data-onboarding-skip>Tour überspringen</button>
+        <span class="onboarding-actions-spacer"></span>
+        <button type="button" class="btn" data-onboarding-back ${runtime.step === 0 ? 'disabled' : ''}>Zurück</button>
+        <button type="button" class="btn btn-primary" data-onboarding-next>${runtime.step === runtime.steps.length - 1 ? 'Bewertungen öffnen' : 'Weiter'}</button>
       </div>
     </section>`;
   root().querySelector('[data-onboarding-next]').addEventListener('click', () => void nextCoreStep().catch(handleOnboardingError));
@@ -262,17 +328,14 @@ function renderRating() {
   const progress = onboardingRatingProgress();
   element.innerHTML = `
     <section class="onboarding-dialog onboarding-rating-dialog" role="dialog" tabindex="-1" aria-modal="false" aria-labelledby="onboarding-rating-title" aria-describedby="onboarding-rating-copy">
-      ${mascotHtml()}
-      <div class="onboarding-dialog-body">
-        <p class="onboarding-progress">Bewertung</p>
-        <h2 id="onboarding-rating-title">Erste Spiele bewerten</h2>
-        <p id="onboarding-rating-copy">Bewerte Bock und Skill für die ersten zehn Spiele. Bock unterstützt die Spielauswahl, Skill die Teamaufteilung.</p>
-        <p class="onboarding-rating-progress" role="status">${progress.completed} von ${progress.required} Pflichtspielen vollständig bewertet.</p>
-        <div class="onboarding-actions onboarding-rating-actions">
-          <button type="button" class="btn" data-onboarding-all>Alle bewerten</button>
-          <button type="button" class="btn" data-onboarding-later>Später</button>
-          <button type="button" class="btn btn-primary" data-onboarding-finish ${progress.ready ? '' : 'disabled'}>Abschließen</button>
-        </div>
+      <p class="onboarding-progress">Bewertung</p>
+      <h2 id="onboarding-rating-title">Erste Spiele bewerten</h2>
+      <p id="onboarding-rating-copy">Bewerte Bock und Skill für die ersten zehn Spiele. Bock unterstützt die Spielauswahl, Skill die Teamaufteilung.</p>
+      <p class="onboarding-rating-progress" role="status">${progress.completed} von ${progress.required} Pflichtspielen vollständig bewertet.</p>
+      <div class="onboarding-actions onboarding-rating-actions">
+        <button type="button" class="btn" data-onboarding-all>Alle bewerten</button>
+        <button type="button" class="btn" data-onboarding-later>Später</button>
+        <button type="button" class="btn btn-primary" data-onboarding-finish ${progress.ready ? '' : 'disabled'}>Abschließen</button>
       </div>
     </section>`;
   root().querySelector('[data-onboarding-all]').addEventListener('click', () => void includeAllGames().catch(handleOnboardingError));
@@ -291,12 +354,12 @@ function renderOverlay() {
 }
 
 async function saveCore(patch) {
-  const seenViews = Array.from(new Set([...runtime.state.seenViews, STEPS[runtime.step].view])).slice(-20);
+  const seenViews = Array.from(new Set([...runtime.state.seenViews, runtime.steps[runtime.step].view])).slice(-20);
   runtime.state = await api.onboarding.update({ ...patch, seenViews });
 }
 
 async function nextCoreStep() {
-  if (runtime.step === STEPS.length - 1) {
+  if (runtime.step === runtime.steps.length - 1) {
     runtime.state = await api.onboarding.rating.start({ includeAll: false });
     clearTargetHighlight();
     if (runtime.state.ratingStatus === 'completed') {
@@ -311,7 +374,7 @@ async function nextCoreStep() {
   }
   runtime.step += 1;
   await saveCore({ status: 'active', lastCoreStep: runtime.step });
-  runtime.navigate(STEPS[runtime.step].view);
+  runtime.navigate(runtime.steps[runtime.step].view);
   renderOverlay();
 }
 
@@ -319,7 +382,7 @@ async function previousCoreStep() {
   if (runtime.step === 0) return;
   runtime.step -= 1;
   await saveCore({ status: 'active', lastCoreStep: runtime.step });
-  runtime.navigate(STEPS[runtime.step].view);
+  runtime.navigate(runtime.steps[runtime.step].view);
   renderOverlay();
 }
 
@@ -389,11 +452,13 @@ export async function initOnboarding({ navigate, rerender, getCurrentView }) {
   if (!getMyId()) return;
   try {
     const onboardingState = await api.onboarding.get();
+    const steps = buildSteps();
     runtime = {
       state: onboardingState,
       mode: null,
       deferredThisSession: false,
-      step: Math.min(Math.max(onboardingState.lastCoreStep, 0), STEPS.length - 1),
+      steps,
+      step: Math.min(Math.max(onboardingState.lastCoreStep, 0), steps.length - 1),
       previousFocus: null,
       navigate,
       rerender,
@@ -426,8 +491,14 @@ export function maybeStartOnboarding() {
     runtime.mode = 'rating';
     runtime.navigate('gameCatalog');
   } else {
+    // Player data (and with it the admin role the step list depends on) may
+    // still be loading when initOnboarding() first builds runtime.steps -
+    // refresh it here, right before the tour actually becomes visible, and
+    // re-clamp the saved step index against the now-current step count.
+    runtime.steps = buildSteps();
+    runtime.step = Math.min(Math.max(runtime.step, 0), runtime.steps.length - 1);
     runtime.mode = 'core';
-    runtime.navigate(STEPS[runtime.step].view);
+    runtime.navigate(runtime.steps[runtime.step].view);
   }
   renderOverlay();
 }

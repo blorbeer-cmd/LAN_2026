@@ -4718,9 +4718,6 @@ input.food-order-price-input {
   left: var(--space-4);
   right: var(--space-4);
   bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + var(--space-4));
-  display: flex;
-  gap: var(--space-4);
-  align-items: flex-start;
   max-width: var(--search-panel-width);
   margin: 0 auto;
   padding: var(--space-4);
@@ -4738,48 +4735,6 @@ input.food-order-price-input {
 .onboarding-dialog--top {
   top: calc(var(--topbar-height) + var(--space-4));
   bottom: auto;
-}
-
-.onboarding-dialog-body {
-  min-width: 0;
-  flex: 1;
-}
-
-.onboarding-mascot {
-  position: relative;
-  flex: 0 0 96px; /* design-token-ok: guide illustration has its own fixed asset size */
-  width: 96px; /* design-token-ok: guide illustration has its own fixed asset size */
-  height: 96px; /* design-token-ok: guide illustration has its own fixed asset size */
-  overflow: hidden;
-  border-radius: var(--radius);
-  background: var(--bg);
-}
-
-/* Two identically positioned copies of the same portrait, each clipped to
-   one side of its drawn mouth line (~58% down the face) so nudging them
-   apart on their own animation opens a "mouth" gap between them instead of
-   just bobbing the whole head - see mascotHtml() in onboarding.js. */
-.onboarding-mascot-half {
-  position: absolute;
-  inset: 0;
-}
-
-.onboarding-mascot-half img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  mix-blend-mode: screen;
-}
-
-.onboarding-mascot-half-top {
-  clip-path: inset(0 0 42% 0);
-  animation: onboarding-speak-top 0.42s ease-in-out infinite alternate;
-}
-
-.onboarding-mascot-half-bottom {
-  clip-path: inset(58% 0 0 0);
-  animation: onboarding-speak-bottom 0.42s ease-in-out infinite alternate;
 }
 
 .onboarding-progress {
@@ -4908,24 +4863,6 @@ input.food-order-price-input {
   font-size: var(--font-size-xs);
 }
 
-@keyframes onboarding-speak-top {
-  from {
-    transform: translateY(0);
-  }
-  to {
-    transform: translateY(-3px); /* design-token-ok: half-pixel-scale mouth-gap nudge, smaller than --space-1 would allow at this 96px asset size */
-  }
-}
-
-@keyframes onboarding-speak-bottom {
-  from {
-    transform: translateY(0);
-  }
-  to {
-    transform: translateY(3px); /* design-token-ok: mirrors onboarding-speak-top's nudge on the jaw half */
-  }
-}
-
 @media (min-width: 640px) { /* --bp-md */
   .onboarding-dialog {
     bottom: var(--space-6);
@@ -4938,12 +4875,7 @@ input.food-order-price-input {
 
 @media (max-width: 639px) { /* --bp-md */
   .onboarding-rating-dialog {
-    gap: var(--space-2);
     padding: var(--space-3);
-  }
-
-  .onboarding-rating-dialog .onboarding-mascot {
-    display: none;
   }
 
   .onboarding-rating-dialog .onboarding-rating-actions {
