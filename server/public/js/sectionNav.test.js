@@ -22,9 +22,9 @@ test('a section is entered on its first tab and its tabs share one nav group', (
   assert.equal(sectionEntryView('insights'), 'leaderboard');
   assert.equal(sectionEntryView('checklist'), null);
   // Orga's tabs are sorted alphabetically for display, so its first tab is
-  // "An- & Abreise" here - but more.js hardcodes the actual "Mehr" hub entry
-  // point to "checklist" (To-Do) independently of this order, which is what
-  // keeps the persisted push url "/#checklist" landing where it always did.
+  // "An- & Abreise" - more.js uses this as the "Mehr" hub entry point too, so
+  // the top-left tab is the one actually selected on arrival, like every
+  // other section.
   assert.equal(sectionEntryView('orga'), 'arrivals');
 
   assert.deepEqual(SECTIONS.competition.tabs.map((tab) => tab.view), ['matchmaking', 'tournaments']);

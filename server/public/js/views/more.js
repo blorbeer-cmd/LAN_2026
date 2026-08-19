@@ -9,6 +9,7 @@
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
 import { currentPlayerHasAdminRole } from '../adminAccess.js';
+import { sectionEntryView } from '../sectionNav.js';
 
 const ITEMS = [
   // Moved out of the topbar to make room for the always-available Feedback
@@ -18,7 +19,10 @@ const ITEMS = [
   { view: 'arcade', title: 'Arcade' },
   { view: 'broadcast', title: 'Durchsage' },
   { view: 'music', title: 'Jam' },
-  { view: 'checklist', title: 'Orga', iconKey: 'orga' },
+  // Opens on Orga's own first tab, same as every other area entered from
+  // "Mehr" or the bottom nav (see sectionNav.js's sectionEntryView) — so the
+  // tab row's top-left tab is the one actually selected on arrival.
+  { view: sectionEntryView('orga'), title: 'Orga', iconKey: 'orga' },
 ];
 
 export function renderMore(container) {
