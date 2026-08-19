@@ -3912,10 +3912,39 @@ input[type='number'].tournament-score-input {
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
 }
+/* flex-end, not space-between: "Bestellliste" must stay in the same spot
+   whether or not "Alle ausklappen/einklappen" is also rendered next to it
+   (that toggle only appears once an order has more than one orderer group),
+   otherwise it visibly jumps sides the moment a second group is added. */
 .food-order-card-toolbar {
   gap: var(--space-2);
   flex-wrap: wrap;
-  justify-content: space-between;
+  justify-content: flex-end;
+}
+/* Whole-order collapse toggle (only rendered once more than one order is
+   open at once, see renderOpenOrder's collapsible param) - a native
+   <summary>, so it stays keyboard-operable and toggleable without a click
+   handler of its own. */
+.food-order-card-header-toggle {
+  cursor: pointer;
+  list-style: none;
+  min-height: var(--tap-target-size);
+}
+.food-order-card-header-toggle::-webkit-details-marker {
+  display: none;
+}
+.food-order-card-header-end {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.food-order-card-chevron {
+  display: inline-flex;
+  color: var(--text-muted);
+  transition: transform var(--motion-fast);
+}
+.food-order-card[open] > .food-order-card-header-toggle .food-order-card-chevron {
+  transform: rotate(90deg);
 }
 /* Arbeitspaket 3: each orderer group is its own subtle nested surface,
    distinguishing "open" from "fully paid" through border/background rather
