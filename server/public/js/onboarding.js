@@ -8,6 +8,7 @@ import { getMyId } from './whoami.js';
 import { escapeHtml } from './format.js';
 import { showToast } from './toast.js';
 import { currentPlayerHasAdminRole } from './adminAccess.js';
+import { sectionEntryView } from './sectionNav.js';
 
 // Ordered to match the bottom nav (Home, Match, Vote, Essen), then the
 // individual areas under "Mehr" (which itself sits after Essen in the nav),
@@ -73,8 +74,8 @@ function buildSteps() {
     },
     {
       title: 'Orga',
-      text: 'Hier organisiert ihr die LAN mit To-Do-Liste, Packliste, An- und Abreise sowie den Events. Unter „Mir zugewiesen“ siehst du sofort deine eigenen offenen To-Dos inklusive Fälligkeit.',
-      view: 'checklist',
+      text: 'Hier organisiert ihr die LAN mit An- und Abreise, Events, Packliste und To-Do-Liste als eigene Reiter. Im To-Do-Reiter siehst du unter „Mir zugewiesen“ sofort deine eigenen offenen Aufgaben inklusive Fälligkeit.',
+      view: sectionEntryView('orga'),
       target: MEHR_TARGET,
     },
   ];
