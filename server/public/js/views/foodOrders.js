@@ -67,9 +67,33 @@ async function load(ctx) {
   }
 }
 
-// Called from app.js on every foodOrders:changed socket event.
+// Called from app.js on every foodOrders:changed socket event for a device
+// that isn't currently looking at this view - the next time it opens Essen,
+// load() runs its normal first-load fetch.
 export function invalidateFoodOrders() {
   cache = null;
+}
+
+// Called from app.js instead of invalidateFoodOrders() while this view is
+// the one currently on screen. A live update (someone adding an item,
+// marking a position paid - including the echo of this very device's own
+// change PATCHing back over the socket) must not go through the hard
+// invalidate: renderFoodOrders() shows a "Lädt…" placeholder for as long as
+// `cache` is null, which collapses the whole card list to one line and
+// clamps its scrollTop to 0 - permanently, since the scroll-restore in
+// renderFoodOrders only ever restores the (by then already-zeroed) current
+// position. Refetching quietly and only ever swapping in real data keeps
+// the DOM - and its scroll position - stable across every realtime update.
+export async function refreshFoodOrders(ctx) {
+  if (loading) return; // a load() is already in flight and will rerender when it resolves
+  if (cache === null) return load(ctx);
+  try {
+    const res = await api.foodOrders.list();
+    cache = res.orders;
+    ctx.rerender();
+  } catch (err) {
+    showToast(err.message, { error: true });
+  }
 }
 
 // "4,50" / "4.50" / "4" -> 450 cents; null for empty, NaN for garbage.

@@ -2610,6 +2610,66 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
 });
 
+flowTest('community', 'Essensbestellung: marking a position paid does not scroll the Essen view back to the top', async () => {
+  // Regression for the socket race behind the reported bug: PATCHing a
+  // position's paid state makes the server broadcast foodOrders:changed to
+  // every connected client, including the very device that just made the
+  // change - often before that device's own fetch() promise has even
+  // resolved. Handling that echo with a hard cache invalidate collapsed the
+  // whole card list down to a one-line "Lädt…" placeholder for a moment,
+  // which clamps .view-container's scrollTop to 0 - and it never recovered
+  // once the real content came back (see refreshFoodOrders in
+  // views/foodOrders.js, which now refetches quietly in place instead).
+  await page.click('#nav-food-orders');
+  await page.waitForSelector('#order-new-btn');
+  await page.click('#order-new-btn');
+  await page.fill('#order-title', 'Scroll-Test-Bestellung');
+  await page.click('#order-form button[type="submit"]');
+  await page.waitForSelector('text=Scroll-Test-Bestellung');
+
+  // Enough positions for the order card alone to overflow the phone
+  // viewport's .view-container, so there is an actual scroll position to
+  // lose.
+  for (let i = 0; i < 15; i += 1) {
+    await page.fill('[data-item-desc]', `Scrolltest-Artikel ${i}`);
+    await page.fill('[data-item-quantity]', '1');
+    await page.fill('[data-item-price]', '1,00');
+    await page.click('[data-add-item-form] button[type="submit"]');
+    await page.waitForSelector(`text=Scrolltest-Artikel ${i}`);
+  }
+
+  const viewContainer = page.locator('#view-container');
+  assert.equal(
+    await viewContainer.evaluate((el) => el.scrollHeight > el.clientHeight),
+    true,
+    'the Essen view must actually be scrollable for this test to be meaningful'
+  );
+
+  // Center the target position in the viewport ourselves (native
+  // scrollIntoView, not Playwright's own actionability auto-scroll) so its
+  // toggle is already fully visible - other food-order cards this shard's
+  // earlier tests left on screen make "the very bottom of the page" an
+  // unreliable stand-in for "this row's own position", and a Playwright
+  // click that still had to nudge the page into view would move the exact
+  // scroll position this test checks.
+  const lastRow = page.locator('.food-order-item', { hasText: 'Scrolltest-Artikel 14' });
+  await lastRow.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  const scrollTopBeforeToggle = await viewContainer.evaluate((el) => el.scrollTop);
+  assert.ok(scrollTopBeforeToggle > 0);
+
+  await lastRow.locator('[data-toggle-paid]').click();
+  await page.waitForSelector('.food-order-item.is-paid:has-text("Scrolltest-Artikel 14")');
+  // Give the realtime echo of this device's own change time to arrive and
+  // (if the regression came back) trigger its reload.
+  await page.waitForTimeout(300);
+
+  const scrollTopAfterToggle = await viewContainer.evaluate((el) => el.scrollTop);
+  assert.ok(
+    scrollTopAfterToggle > scrollTopBeforeToggle - 4,
+    `expected the scroll position to stay near ${scrollTopBeforeToggle}, was ${scrollTopAfterToggle}`
+  );
+});
+
 flowTest('community', 'An- & Abreise: carpool marks the driver, enforces seats, driver can only delete', async () => {
   // A third player to later demonstrate a full carpool.
   await createAccountForFlow('E2E Carol');
