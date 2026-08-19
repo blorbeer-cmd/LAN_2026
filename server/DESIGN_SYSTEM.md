@@ -809,10 +809,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   work like the rest of Orga rather than a personal preference screen; there is no longer a topbar
   settings icon). TV-Kiosk is deliberately not an Orga tab — it lives only behind Admin's
   „Kioskverwaltung“ tool card (see „Admin tools“) since opening the shared-screen dashboard is an
-  admin task, not something every member needs from Orga. The tab row's alphabetical order is
-  independent of the area's own entry point: „Mehr“ still opens Orga directly on To-Do (`more.js`
-  hardcodes the `checklist` route) because that is what people open the area to check, which also
-  keeps the persisted push url `/#checklist` landing where it always did; that tab label carries
+  admin task, not something every member needs from Orga. „Mehr“ opens Orga on its first tab,
+  „An- & Abreise“, like every other area (`sectionEntryView()` in `sectionNav.js`), so the tab row's
+  top-left tab is the one actually selected on arrival; the already persisted push url `/#checklist`
+  is unaffected and still lands directly on To-Do. That tab label carries
   the live count of the current identity's own open+taken items. The checklist's former in-view
   toggle is gone — its two halves are area tabs now, so no tab row nests inside another.
   The personal list is unchanged: a compact checkbox row per item (Grundstock plus freely added/removable
