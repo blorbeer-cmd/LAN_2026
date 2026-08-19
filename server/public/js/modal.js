@@ -83,8 +83,19 @@ export function openModal(title, bodyHtml, { onMount, onClose, confirmClose } = 
       first.focus();
     }
   };
+  // A click's target is the nearest common ancestor of its mousedown and
+  // mouseup targets, not necessarily where either one landed. Selecting text
+  // or dragging a slider inside the modal and releasing the pointer outside
+  // it (still within the backdrop) would otherwise report the backdrop as
+  // e.target and close the dialog out from under that interaction. Only a
+  // pointer interaction that both started and ended on the bare backdrop
+  // should close it.
+  let pointerDownOnBackdrop = false;
+  backdrop.addEventListener('pointerdown', (e) => {
+    pointerDownOnBackdrop = e.target === backdrop;
+  });
   backdrop.addEventListener('click', (e) => {
-    if (e.target === backdrop) requestClose();
+    if (e.target === backdrop && pointerDownOnBackdrop) requestClose();
   });
   backdrop.querySelector('[data-close]').addEventListener('click', requestClose);
   document.addEventListener('keydown', onKeydown);
@@ -136,8 +147,12 @@ export function confirmDialog(message, { title = 'Bestätigen', confirmText = 'O
     const onKey = (e) => {
       if (e.key === 'Escape' && isTopmostModal(backdrop)) finish(false);
     };
+    let pointerDownOnBackdrop = false;
+    backdrop.addEventListener('pointerdown', (e) => {
+      pointerDownOnBackdrop = e.target === backdrop;
+    });
     backdrop.addEventListener('click', (e) => {
-      if (e.target === backdrop) finish(false);
+      if (e.target === backdrop && pointerDownOnBackdrop) finish(false);
     });
     backdrop.querySelectorAll('[data-cancel]').forEach((b) => b.addEventListener('click', () => finish(false)));
     backdrop.querySelector('[data-confirm]').addEventListener('click', () => finish(true));
