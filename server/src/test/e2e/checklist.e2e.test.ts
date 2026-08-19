@@ -27,8 +27,9 @@ let bob: E2EAccount;
 
 async function openChecklist(): Promise<void> {
   await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="checklist"]');
+  await page.click('[data-navigate="arrivals"]');
   await page.waitForSelector('.view-title:has-text("Orga")');
+  await page.click('[data-section-tab="checklist"]');
 }
 
 async function switchAccount(account: E2EAccount): Promise<void> {

@@ -736,7 +736,6 @@ export function renderGameCatalog(container, ctx) {
         : 'Keine Spiele für diese Filter.';
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <div class="row-between">
       <h1 class="view-title">Spiele</h1>
       <button type="button" class="btn btn-primary btn-sm" id="suggest-new">Spiel vorschlagen</button>

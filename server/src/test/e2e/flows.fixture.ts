@@ -92,10 +92,11 @@ async function ensureAdminMode(): Promise<void> {
   await page.waitForSelector('#admin-banner:not([hidden])');
 }
 
-// Orga is reached through "Mehr" rather than the bottom nav.
+// Orga is reached through "Mehr" rather than the bottom nav, opening on its
+// first tab ("arrivals"); switch to the requested tab from there.
 async function openOrgaTab(tab: string): Promise<void> {
   await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="checklist"]');
+  await page.click('[data-navigate="arrivals"]');
   await page.click(`[data-section-tab="${tab}"]`);
 }
 
