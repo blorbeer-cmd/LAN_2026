@@ -3912,32 +3912,116 @@ input[type='number'].tournament-score-input {
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
 }
-.food-order-player {
-  gap: var(--space-1);
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--border);
-}
-.food-order-player:last-child {
-  border-bottom: 0;
-}
-.food-order-player-head {
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-}
-.food-order-player-items {
-  padding-left: calc(var(--space-5) + var(--space-2));
-}
-.food-order-payment-actions {
-  display: inline-flex;
-  align-items: center;
+.food-order-card-toolbar {
   gap: var(--space-2);
   flex-wrap: wrap;
+  justify-content: space-between;
 }
-/* One line per position, left to right: Bezahlt checkbox / Sammelzahlung /
-   quantity × description / price as the "Bezahlen" action / copy / remove.
-   The description's flex-grow pushes everything after it toward the row's
-   end; flex-wrap lets the row break onto further lines on narrow phones
-   instead of overflowing. */
+/* Arbeitspaket 3: each orderer group is its own subtle nested surface,
+   distinguishing "open" from "fully paid" through border/background rather
+   than the accent rail (that stays reserved for position rows, see the
+   selected-cart-row treatment further below). */
+.food-order-group {
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+.food-order-group.is-all-paid {
+  background: transparent;
+  opacity: 0.75;
+}
+.food-order-group-header {
+  gap: var(--space-2);
+}
+/* The toggle is one sibling of the header row, not a wrapper around the
+   amount/cart-button siblings ("kein Knopf im Knopf" - AP3.1). */
+.food-order-group-toggle {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.food-order-group-static {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+}
+.food-order-group-chevron {
+  flex-shrink: 0;
+  transition: transform var(--motion-fast);
+}
+.food-order-group-toggle[aria-expanded='true'] .food-order-group-chevron {
+  transform: rotate(90deg);
+}
+.food-order-group-headtext {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0;
+}
+.food-order-group-headtext strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.food-order-group-meta {
+  font-size: var(--font-size-xs);
+}
+.food-order-group-amount {
+  flex-shrink: 0;
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.food-order-group-paid-badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--state-playing);
+  font-weight: var(--font-weight-medium);
+}
+/* Mixed state (some but not all open positions in the cart) uses amber
+   instead of the accent blue, plus a small dot, so it never rests on color
+   alone - the button's title/aria-label spells out the state too. */
+.food-order-group-cart-btn.is-some {
+  position: relative;
+  color: var(--state-paused);
+}
+.food-order-group-cart-btn.is-some::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--state-paused);
+}
+.food-order-group-cart-btn[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--bg-elevated-2);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.food-order-group-items {
+  padding-left: calc(var(--space-5) + var(--space-2));
+  padding-top: var(--space-2);
+}
+/* One line per position, left to right: Bezahlt-Marke / quantity ×
+   description / amount / copy ┊ Warenkorb / remove. The description's
+   flex-grow pushes everything after it toward the row's end; flex-wrap lets
+   the row break onto further lines on narrow phones instead of overflowing. */
 .food-order-item {
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -3948,32 +4032,50 @@ input[type='number'].tournament-score-input {
 .food-order-item:last-child {
   border-bottom: none;
 }
-/* The independent on/off "Bezahlt" flag is a plain checkbox rather than a
-   labelled control (see DESIGN_SYSTEM's mode/setting-choice guidance) - the
-   same size and accent as the checklist's own checkboxes. It stays enabled
-   even on an otherwise fully locked paid row: it is the row's own reversing
-   control, not one of the actions that row disables. */
-.food-order-item-paid-checkbox {
-  width: 20px;
-  height: 20px;
+/* The Bezahlt-Marke is a button (not a plain checkbox) so it can show the
+   word in both states plus an icon, and gets a fixed minimum width so the
+   description behind it doesn't shift when the label text changes length. */
+.food-order-paid-marker {
+  display: inline-flex;
   flex-shrink: 0;
-  accent-color: var(--accent);
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 84px;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+.food-order-paid-marker.is-paid {
+  border-color: var(--state-playing);
+  background: var(--state-playing-bg);
+  color: var(--state-playing);
+}
+.food-order-paid-marker:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .food-order-item-description {
   min-width: 0;
   flex: 1;
   overflow-wrap: anywhere;
 }
-/* The price sits in its own flex column (for the muted breakdown line
+/* The amount sits in its own flex column (for the muted breakdown line
    underneath it), so its "paid" strikethrough is set explicitly on both
    inner pieces rather than relied on to propagate from the flex container. */
 .food-order-item.is-paid .food-order-item-description,
-.food-order-item.is-paid .food-order-item-price strong,
-.food-order-item.is-paid .food-order-item-price .muted {
+.food-order-item.is-paid .food-order-item-amount strong,
+.food-order-item.is-paid .food-order-item-amount .muted {
   color: var(--text-muted);
   text-decoration: line-through;
 }
-.food-order-item-price {
+/* Betrag ist Anzeige, kein Knopf (AP1.2) - a plain display block, unlike the
+   removed per-item "Bezahlen" action. */
+.food-order-item-amount {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -3981,54 +4083,34 @@ input[type='number'].tournament-score-input {
   font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
 }
-.food-order-item-price .muted {
+.food-order-item-amount strong {
+  font-size: var(--font-size-md);
+}
+.food-order-item-amount .muted {
   font-size: var(--font-size-xs);
 }
-/* Modifier making the amount itself the "Bezahlen" action, instead of a
-   separate button beside a plain price - used both for a single position's
-   own tip-inclusive share and, reusing the exact same component, for the
-   combined Sammelzahlung total below (renderPaymentSelector). */
-.food-order-pay-button {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
-  color: var(--text);
-  text-decoration: none;
-  cursor: pointer;
-}
-.food-order-pay-button strong {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.food-order-pay-button strong .ui-icon {
-  width: 15px;
-  height: 15px;
-  color: var(--text-muted);
-}
-.food-order-pay-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-@media (hover: hover) {
-  a.food-order-pay-button:hover {
-    filter: brightness(1.12);
-  }
-}
-.food-order-item.is-selected-for-payment {
+.food-order-item.is-in-cart {
   border-left: var(--space-1) solid var(--accent);
   background: var(--bg-elevated-2);
   padding-left: var(--space-2);
   margin-left: calc(-1 * var(--space-2));
 }
-/* Copy and remove are the row's trailing actions. Each reserves its own slot
-   even when absent (an unpriced item has no copy action; someone else's
-   position has no remove action) via .food-order-item-action-spacer, so the
-   two stay aligned across every row in the card instead of drifting. */
-.food-order-item-actions {
+/* Copy and Warenkorb are grouped as one cluster with a hairline divider
+   between them (Leitentscheidung 2); remove stays visually outside that
+   cluster. Each slot reserves its own width even when the action is absent
+   (an unpriced item has no copy action; without a PayPal link there is no
+   Warenkorb toggle) via .food-order-item-action-spacer, so rows stay
+   aligned across the whole card. */
+.food-order-item-action-cluster {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+.food-order-item-action-divider {
+  width: 1px;
+  height: var(--space-5);
+  background: var(--border);
 }
 .food-order-item-action,
 .food-order-item-action-spacer {
@@ -4046,10 +4128,9 @@ input[type='number'].tournament-score-input {
 }
 /* Pressed state uses an inset ring rather than a real border so the button
    keeps its exact size when toggled, and pairs that with the accent color.
-   It is never the only signal: a selected row also carries the accent rail
-   and is listed by name in the Sammelzahlung breakdown, and the button's own
-   title/aria-label names its current state. */
-.food-order-item-toggle[aria-pressed='true'] {
+   It is never the only signal: an in-cart row also carries the accent rail,
+   and the button's own title/aria-label names its current state. */
+.food-order-item-cart-toggle[aria-pressed='true'] {
   color: var(--accent);
   background: var(--bg-elevated-2);
   box-shadow: inset 0 0 0 1px var(--accent);
@@ -4077,25 +4158,82 @@ input[type='number'].tournament-score-input {
   font-size: var(--font-size-lg);
   font-variant-numeric: tabular-nums;
 }
-.food-order-payment-selector {
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
+/* Warenkorb-Kasten (AP1.5): appears only once something is inside it. */
+.food-order-cart {
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
+}
+.food-order-cart-header {
+  font-size: var(--font-size-md);
+}
+.food-order-cart-rows {
+  gap: var(--space-2);
+}
+.food-order-cart-row {
+  gap: var(--space-2);
   font-size: var(--font-size-sm);
 }
-.food-order-selection-breakdown {
+.food-order-cart-row-desc {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.food-order-cart-row-amount {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.food-order-cart-summary {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  font-weight: var(--font-weight-bold);
+}
+.food-order-cart-pay {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+/* Used by confirmWithList (AP2.2/AP2.3) to show the affected positions
+   alongside the confirmation message - the same visual weight as the
+   removed selection breakdown it replaces. */
+.food-order-confirm-list {
   margin: 0;
   padding-left: var(--space-5);
   color: var(--text-muted);
   font-size: var(--font-size-xs);
 }
-.food-order-selection-breakdown li {
+.food-order-confirm-list li {
   overflow-wrap: anywhere;
 }
-.food-order-payment-selector > .muted {
+/* AP4: consolidated order list dialog. */
+.food-order-consolidated-rows {
+  gap: var(--space-1);
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.food-order-consolidated-row {
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  font-size: var(--font-size-sm);
+}
+.food-order-consolidated-row-desc {
   min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.food-order-consolidated-totals {
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--font-size-sm);
+}
+.food-order-consolidated-open-note {
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-xs);
 }
 .food-order-item-form {
   display: grid;
@@ -4111,14 +4249,13 @@ input[type='number'].tournament-score-input {
   padding-right: 0;
 }
 @media (max-width: 639px) { /* --bp-md */
-  .food-order-player-items {
+  .food-order-group-items {
     padding-left: 0;
   }
-  /* The leading checkbox, Sammelzahlung toggle and description share the
-     first line; forcing the price/pay block onto its own line lets copy and
-     remove wrap together after it instead of interleaving with the leading
-     controls. */
-  .food-order-item-price {
+  /* The Bezahlt-Marke and description share the first line; forcing the
+     amount block onto its own line lets copy/Warenkorb and remove wrap
+     together after it instead of interleaving with the leading controls. */
+  .food-order-item-amount {
     flex-basis: 100%;
     align-items: flex-start;
   }
@@ -4137,13 +4274,6 @@ input[type='number'].tournament-score-input {
   .food-order-add-button {
     width: 100%;
     padding-right: var(--space-3);
-  }
-  .food-order-payment-selector {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .food-order-payment-actions {
-    align-self: flex-end;
   }
 }
 .food-order-quantity-field {
