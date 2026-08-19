@@ -53,18 +53,58 @@ const collapsedOpenOrders = new Set();
 // live re-render of the underlying view needs to be able to refresh it too.
 let consolidatedListDialog = null; // { orderId, el, ctx } | null
 
-async function load(ctx) {
-  loading = true;
-  try {
-    const res = await api.foodOrders.list();
-    cache = res.orders;
-  } catch (err) {
-    showToast(err.message, { error: true });
-    cache = [];
-  } finally {
-    loading = false;
-    ctx.rerender();
+// Single-flight coordinator for GET /api/food-orders. load() (the first
+// fetch, or any fetch that starts from a hard-invalidated `cache === null`)
+// and refreshFoodOrders() (the silent background refresh used while Essen
+// is already open, see below) used to be two independently-guarded fetch
+// pipelines - self-review found that a second self-review (after the first
+// found a related race) still let them run concurrently: nothing stopped
+// load() from firing its own GET while a refreshFoodOrders() one was still
+// in flight (e.g. cache forced back to null by an unrelated invalidate -
+// event switch, reconnect - while a background refresh was running), and
+// two overlapping requests can resolve out of order, letting the
+// earlier-issued one overwrite state a later one already applied. One
+// shared lock instead: at most one GET is ever in flight, and every caller
+// that arrives while one is running just asks for one more round after it
+// settles rather than starting a second, independently-resolving request.
+let fetchInFlight = false;
+let refetchPending = false;
+
+async function fetchFoodOrders(ctx) {
+  if (fetchInFlight) {
+    refetchPending = true;
+    return;
   }
+  fetchInFlight = true;
+  do {
+    refetchPending = false;
+    // `loading` (and the "Lädt…" placeholder it drives, see
+    // renderFoodOrders) only makes sense for a genuine first load - decided
+    // fresh on every iteration since a retry after `cache` was populated by
+    // an earlier iteration must stay silent.
+    const showPlaceholder = cache === null;
+    if (showPlaceholder) loading = true;
+    // Caught per iteration, not around the whole loop: a failed fetch must
+    // not swallow a `refetchPending` set by another caller that arrived
+    // while this one was in flight - the `while` below still has to see it,
+    // or that follow-up refresh is silently lost until some unrelated event
+    // happens to trigger another one.
+    try {
+      const res = await api.foodOrders.list();
+      cache = res.orders;
+    } catch (err) {
+      showToast(err.message, { error: true });
+      if (showPlaceholder) cache = [];
+    } finally {
+      if (showPlaceholder) loading = false;
+      ctx.rerender();
+    }
+  } while (refetchPending);
+  fetchInFlight = false;
+}
+
+async function load(ctx) {
+  return fetchFoodOrders(ctx);
 }
 
 // Called from app.js on every foodOrders:changed socket event for a device
@@ -84,41 +124,8 @@ export function invalidateFoodOrders() {
 // renderFoodOrders only ever restores the (by then already-zeroed) current
 // position. Refetching quietly and only ever swapping in real data keeps
 // the DOM - and its scroll position - stable across every realtime update.
-let refreshInFlight = false;
-let refreshPending = false;
-
 export async function refreshFoodOrders(ctx) {
-  if (loading) return; // a load() is already in flight and will rerender when it resolves
-  if (cache === null) return load(ctx);
-  if (refreshInFlight) {
-    // A refresh is already in the air - each mutating endpoint broadcasts
-    // its own foodOrders:changed, so a batch action (e.g. "Alle als bezahlt
-    // markieren" PATCHing every cart item in parallel) can fire several of
-    // these in quick succession. Starting a second overlapping fetch here
-    // would race the first: an earlier-issued-but-later-resolving response
-    // could then overwrite the newer state the first one already applied.
-    // Just remember to run one more fetch after the in-flight one settles
-    // instead - that always ends on the latest server state.
-    refreshPending = true;
-    return;
-  }
-  refreshInFlight = true;
-  do {
-    refreshPending = false;
-    // Caught per iteration, not around the whole loop: a failed fetch must
-    // not swallow a `refreshPending` set by another event that arrived
-    // while this one was in flight - the `while` below still has to see it,
-    // or that follow-up refresh is silently lost until some unrelated event
-    // happens to trigger another one.
-    try {
-      const res = await api.foodOrders.list();
-      cache = res.orders;
-      ctx.rerender();
-    } catch (err) {
-      showToast(err.message, { error: true });
-    }
-  } while (refreshPending);
-  refreshInFlight = false;
+  return fetchFoodOrders(ctx);
 }
 
 // "4,50" / "4.50" / "4" -> 450 cents; null for empty, NaN for garbage.
