@@ -864,6 +864,14 @@ async function main() {
   // before any tab switch starts pushing entries on top of it.
   history.replaceState({ view: initialView }, '');
   switchView(initialView, { fromHistory: true });
+  // The core tour's step list depends on the admin role, which only exists
+  // on state.players once initialDataLoad resolves (see loadAll() above).
+  // The app itself stays interactive regardless - only starting the tour
+  // waits, so an admin's first login never silently loses the Admin step to
+  // this still-loading player list. initialDataLoad never rejects (see its
+  // own .catch() above), so this can't turn a failed refresh into a stuck
+  // startup.
+  await initialDataLoad;
   maybeStartOnboarding();
 }
 
