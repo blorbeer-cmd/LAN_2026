@@ -22,7 +22,7 @@ import { invalidateMatchmakingHistory, invalidateMatchmakingDraft, setDraftState
 import { invalidateBroadcasts } from './views/broadcast.js';
 import { invalidateInfoBoard, openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
-import { invalidateFoodOrders } from './views/foodOrders.js';
+import { invalidateFoodOrders, refreshFoodOrders } from './views/foodOrders.js';
 import { invalidateChecklist } from './views/checklist.js';
 import { invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
 import { invalidateArrivals } from './views/arrivals.js';
@@ -746,9 +746,17 @@ function wireSocket() {
   socket.on('info:changed', invalidateInfoBoard);
 
   socket.on('foodOrders:changed', (payload) => {
-    invalidateFoodOrders();
     invalidateAktuellStatus();
-    if (currentView === 'foodOrders' || currentView === 'home') renderCurrent();
+    if (currentView === 'foodOrders') {
+      // Silent background refetch (see refreshFoodOrders) instead of the
+      // hard invalidate+"Lädt…" reload every other live update uses - that
+      // would flash and jump the view back to the top on every payment
+      // toggle, including the echo of this device's own change.
+      refreshFoodOrders(ctx);
+    } else {
+      invalidateFoodOrders();
+      if (currentView === 'home') renderCurrent();
+    }
     const myId = getMyId();
     if (payload?.notify && myId && myId !== payload.notify.excludePlayerId && currentView !== 'foodOrders') {
       showToast(payload.notify.message, {
