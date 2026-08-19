@@ -2627,15 +2627,21 @@ flowTest('community', 'Essensbestellung: marking a position paid does not scroll
   await page.click('#order-form button[type="submit"]');
   await page.waitForSelector('text=Scroll-Test-Bestellung');
 
+  // Scoped to this order's own card throughout: earlier community-shard
+  // tests in this same file (shared page/session, see flowTest above) leave
+  // their own orders open with their own live add-item forms on screen, so
+  // bare page-level selectors here could hit the wrong order's form.
+  const orderCard = page.locator('[data-order-card]', { hasText: 'Scroll-Test-Bestellung' });
+
   // Enough positions for the order card alone to overflow the phone
   // viewport's .view-container, so there is an actual scroll position to
   // lose.
   for (let i = 0; i < 15; i += 1) {
-    await page.fill('[data-item-desc]', `Scrolltest-Artikel ${i}`);
-    await page.fill('[data-item-quantity]', '1');
-    await page.fill('[data-item-price]', '1,00');
-    await page.click('[data-add-item-form] button[type="submit"]');
-    await page.waitForSelector(`text=Scrolltest-Artikel ${i}`);
+    await orderCard.locator('[data-item-desc]').fill(`Scrolltest-Artikel ${i}`);
+    await orderCard.locator('[data-item-quantity]').fill('1');
+    await orderCard.locator('[data-item-price]').fill('1,00');
+    await orderCard.locator('[data-add-item-form] button[type="submit"]').click();
+    await orderCard.locator(`text=Scrolltest-Artikel ${i}`).waitFor();
   }
 
   const viewContainer = page.locator('#view-container');
@@ -2652,13 +2658,13 @@ flowTest('community', 'Essensbestellung: marking a position paid does not scroll
   // unreliable stand-in for "this row's own position", and a Playwright
   // click that still had to nudge the page into view would move the exact
   // scroll position this test checks.
-  const lastRow = page.locator('.food-order-item', { hasText: 'Scrolltest-Artikel 14' });
+  const lastRow = orderCard.locator('.food-order-item', { hasText: 'Scrolltest-Artikel 14' });
   await lastRow.evaluate((el) => el.scrollIntoView({ block: 'center' }));
   const scrollTopBeforeToggle = await viewContainer.evaluate((el) => el.scrollTop);
   assert.ok(scrollTopBeforeToggle > 0);
 
   await lastRow.locator('[data-toggle-paid]').click();
-  await page.waitForSelector('.food-order-item.is-paid:has-text("Scrolltest-Artikel 14")');
+  await orderCard.locator('.food-order-item.is-paid', { hasText: 'Scrolltest-Artikel 14' }).waitFor();
   // Give the realtime echo of this device's own change time to arrive and
   // (if the regression came back) trigger its reload.
   await page.waitForTimeout(300);

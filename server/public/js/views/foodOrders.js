@@ -103,18 +103,22 @@ export async function refreshFoodOrders(ctx) {
     return;
   }
   refreshInFlight = true;
-  try {
-    do {
-      refreshPending = false;
+  do {
+    refreshPending = false;
+    // Caught per iteration, not around the whole loop: a failed fetch must
+    // not swallow a `refreshPending` set by another event that arrived
+    // while this one was in flight - the `while` below still has to see it,
+    // or that follow-up refresh is silently lost until some unrelated event
+    // happens to trigger another one.
+    try {
       const res = await api.foodOrders.list();
       cache = res.orders;
       ctx.rerender();
-    } while (refreshPending);
-  } catch (err) {
-    showToast(err.message, { error: true });
-  } finally {
-    refreshInFlight = false;
-  }
+    } catch (err) {
+      showToast(err.message, { error: true });
+    }
+  } while (refreshPending);
+  refreshInFlight = false;
 }
 
 // "4,50" / "4.50" / "4" -> 450 cents; null for empty, NaN for garbage.
