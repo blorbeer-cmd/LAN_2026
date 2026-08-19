@@ -158,9 +158,16 @@ test('an invite link registers a new account and logs it straight in', async () 
   assert.ok(onboardingLayers.dialogZIndex > onboardingLayers.ringZIndex, 'the dialog must stay above the spotlight shadow');
   await page.setViewportSize({ width: 390, height: 844 });
 
-  // One click per STEPS entry in onboarding.js (3 total) reaches the
-  // mandatory rating phase after the compact core tour.
-  for (let step = 0; step < 3; step += 1) {
+  // One click per step reaches the mandatory rating phase after the core
+  // tour. The step count depends on the account's role (see buildSteps() in
+  // onboarding.js), so read it off the tour's own progress text ("Schritt 1
+  // von N") instead of hardcoding it.
+  const totalCoreSteps = await page.locator('.onboarding-progress').evaluate((element) => {
+    const match = element.textContent?.match(/von (\d+)/);
+    if (!match) throw new Error('onboarding progress text is missing the step count');
+    return Number(match[1]);
+  });
+  for (let step = 0; step < totalCoreSteps; step += 1) {
     await page.click('[data-onboarding-next]');
     await page.waitForSelector('#onboarding-root [role="dialog"]');
   }

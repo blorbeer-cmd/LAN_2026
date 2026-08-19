@@ -643,10 +643,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 74);
+  assert.equal(migrations.length, 75);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 74 }, (_, index) => index + 1),
+    Array.from({ length: 75 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1166,8 +1166,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 74 }, (_, index) => index + 1),
-    'every version 1..74 runs exactly once',
+    Array.from({ length: 75 }, (_, index) => index + 1),
+    'every version 1..75 runs exactly once',
   );
 });
 
@@ -1191,6 +1191,86 @@ test('migration 62 backfills existing players as completed and is restart-safe',
     migrated.prepare('SELECT status, last_core_step, rating_status FROM player_onboarding WHERE player_id = ?').get('legacy-onboarding-player'),
     { status: 'completed', last_core_step: 9, rating_status: 'completed' },
   );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 75 widens the onboarding core step bound and is restart-safe', () => {
+  const dbFile = makeTempDbPath('onboarding-core-step-bound');
+  runMigrations(dbFile);
+
+  // Rebuild the legacy migration-62 shape (CHECK last_core_step BETWEEN 0 AND
+  // 9) over the already-migrated database, carrying over one row parked at
+  // the old maximum, so migration 75 has to widen a populated table rather
+  // than an empty one.
+  const fixture = new Database(dbFile);
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('legacy-step-bound-player', 'Legacy Step Bound Player', 'legacy-step-bound-key', Date.now());
+  fixture.exec(`
+    ALTER TABLE player_onboarding RENAME TO player_onboarding_legacy;
+    CREATE TABLE player_onboarding (
+      player_id                 TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+      version                   INTEGER NOT NULL DEFAULT 1,
+      status                    TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (status IN ('pending', 'active', 'completed', 'skipped')),
+      last_core_step            INTEGER NOT NULL DEFAULT 9 CHECK (last_core_step BETWEEN 0 AND 9),
+      rating_status             TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (rating_status IN ('pending', 'active', 'completed', 'deferred')),
+      rating_candidate_ids_json TEXT NOT NULL DEFAULT '[]',
+      seen_views_json           TEXT NOT NULL DEFAULT '[]',
+      completed_at              INTEGER,
+      updated_at                INTEGER NOT NULL
+    );
+    INSERT INTO player_onboarding
+      (player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at)
+    SELECT player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at
+    FROM player_onboarding_legacy;
+    DROP TABLE player_onboarding_legacy;
+  `);
+  fixture
+    .prepare(
+      `INSERT INTO player_onboarding
+         (player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at)
+       VALUES (?, 1, 'active', 9, 'pending', '[]', '[]', NULL, ?)`,
+    )
+    .run('legacy-step-bound-player', Date.now());
+  assert.throws(
+    () =>
+      fixture
+        .prepare('UPDATE player_onboarding SET last_core_step = 11 WHERE player_id = ?')
+        .run('legacy-step-bound-player'),
+    /CHECK constraint failed/,
+    'the pre-migration table must still reject the widened bound',
+  );
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 75').run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'a second start must skip the recorded migration');
+
+  const migrated = new Database(dbFile);
+  assert.deepEqual(
+    migrated.prepare('SELECT last_core_step FROM player_onboarding WHERE player_id = ?').get('legacy-step-bound-player'),
+    { last_core_step: 9 },
+    'the pre-existing row survives the rebuild unchanged',
+  );
+  assert.doesNotThrow(
+    () =>
+      migrated
+        .prepare('UPDATE player_onboarding SET last_core_step = 11 WHERE player_id = ?')
+        .run('legacy-step-bound-player'),
+    'the widened CHECK must accept the new maximum step index',
+  );
+  assert.throws(
+    () =>
+      migrated
+        .prepare('UPDATE player_onboarding SET last_core_step = 12 WHERE player_id = ?')
+        .run('legacy-step-bound-player'),
+    /CHECK constraint failed/,
+    'the widened CHECK must still reject anything past the new maximum',
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 75').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
