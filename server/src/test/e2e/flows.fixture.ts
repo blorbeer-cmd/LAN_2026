@@ -2412,6 +2412,56 @@ flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
 });
 
+flowTest('community', "Essensbestellung: the description field suggests the order's own existing positions while typing", async () => {
+  await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
+  await page.click('#order-new-btn');
+  await page.fill('#order-title', 'Vorschlags-Test');
+  await page.click('#order-form button[type="submit"]');
+  await page.waitForSelector('text=Vorschlags-Test');
+  const suggestOrderCard = page.locator('[data-order-card]', { hasText: 'Vorschlags-Test' });
+
+  // A brand-new order's first position has nothing to suggest yet - the
+  // description field stays a plain text input without the search-select
+  // chrome.
+  assert.equal(await suggestOrderCard.locator('[data-desc-suggest]').count(), 0);
+  await suggestOrderCard.locator('[data-item-desc]').fill('Margherita groß');
+  await suggestOrderCard.locator('[data-item-quantity]').fill('1');
+  await suggestOrderCard.locator('[data-add-item-form] button[type="submit"]').click();
+  await page.waitForSelector('text=Margherita groß');
+
+  // Once the order has a position, the field gains the dropdown - opening it
+  // via its toggle lists that exact existing description.
+  const descField = suggestOrderCard.locator('[data-desc-suggest]');
+  await descField.waitFor();
+  await descField.locator('[data-desc-toggle]').click();
+  await page.waitForSelector('.food-order-desc-field .search-select-option:has-text("Margherita groß")');
+
+  // Typing filters the open list live, and an unmatched query shows the
+  // dedicated empty state instead of an empty box.
+  await descField.locator('[data-item-desc]').fill('marg');
+  await page.waitForSelector('.food-order-desc-field .search-select-option:has-text("Margherita groß")');
+  assert.equal(await descField.locator('.search-select-option').count(), 1);
+  await descField.locator('[data-item-desc]').fill('xyz-nicht-vorhanden');
+  await page.waitForSelector('.search-select-empty:has-text("Keine passende Position gefunden.")');
+
+  // Picking the suggestion reuses its exact spelling instead of whatever was
+  // typed - the point being that the consolidated "Bestellliste" keeps
+  // merging repeat orders of the same item into one row instead of splitting
+  // it because someone spelled it slightly differently.
+  await descField.locator('[data-item-desc]').fill('marg');
+  await page.click('.food-order-desc-field .search-select-option');
+  assert.equal(await descField.locator('[data-item-desc]').inputValue(), 'Margherita groß');
+  await suggestOrderCard.locator('[data-item-quantity]').fill('2');
+  await suggestOrderCard.locator('[data-add-item-form] button[type="submit"]').click();
+
+  await suggestOrderCard.locator('[data-open-order-list]').click();
+  await page.waitForSelector('.modal h2:has-text("Bestellliste – Vorschlags-Test")');
+  await page.waitForSelector('.food-order-consolidated-row:has-text("3 × Margherita groß")');
+  assert.equal(await page.locator('.food-order-consolidated-row').count(), 1);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+});
+
 flowTest('community', 'An- & Abreise: carpool marks the driver, enforces seats, driver can only delete', async () => {
   // A third player to later demonstrate a full carpool.
   await createAccountForFlow('E2E Carol');

@@ -11,6 +11,7 @@ import {
   groupCartState,
   buildConsolidatedRows,
   buildConsolidatedText,
+  foodOrderDescriptionSuggestions,
 } from './views/foodOrders.js';
 
 test('addTipToCents adds and rounds the configured percentage', () => {
@@ -141,6 +142,28 @@ test('buildConsolidatedRows sorts alphabetically with the German locale', () => 
     rows.map((r) => r.description),
     ['Apfelschorle', 'Öl', 'Pizza']
   );
+});
+
+test('foodOrderDescriptionSuggestions deduplicates by normalized description, keeping the first spelling', () => {
+  const suggestions = foodOrderDescriptionSuggestions([
+    { description: 'Margherita' },
+    { description: '  margherita  ' },
+    { description: 'MARGHERITA' },
+  ]);
+  assert.deepEqual(suggestions, ['Margherita']);
+});
+
+test('foodOrderDescriptionSuggestions sorts alphabetically with the German locale', () => {
+  const suggestions = foodOrderDescriptionSuggestions([
+    { description: 'Pizza' },
+    { description: 'Öl' },
+    { description: 'Apfelschorle' },
+  ]);
+  assert.deepEqual(suggestions, ['Apfelschorle', 'Öl', 'Pizza']);
+});
+
+test('foodOrderDescriptionSuggestions returns an empty list for an order without items', () => {
+  assert.deepEqual(foodOrderDescriptionSuggestions([]), []);
 });
 
 test('buildConsolidatedText lists rows and sums, flagging an incomplete subtotal', () => {

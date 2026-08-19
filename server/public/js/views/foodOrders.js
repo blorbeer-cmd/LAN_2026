@@ -516,6 +516,168 @@ function renderCardToolbar(order, myId) {
   return `<div class="row food-order-card-toolbar">${groupToggle}${listButton}</div>`;
 }
 
+// Description field with a suggestion dropdown of the order's own already
+// entered positions (see foodOrderDescriptionSuggestions): opening it or
+// filtering it while typing makes it easy to reuse the exact existing
+// spelling instead of accidentally splitting the same item into two
+// consolidated-list rows. Unlike the shared search-select combobox, typed
+// text is never resolved against or reset to a fixed option — a genuinely
+// new item stays exactly as typed, so a brand-new order's first position
+// (no suggestions yet) stays a plain text field.
+function renderDescField(order) {
+  const suggestions = foodOrderDescriptionSuggestions(order.items);
+  if (suggestions.length === 0) {
+    return `<input type="text" class="food-order-desc-field" data-item-desc placeholder="z.B. Margherita groß" maxlength="120" required aria-label="Artikelbezeichnung" autocomplete="off" />`;
+  }
+  const listId = `food-order-desc-${order.id}`;
+  const optionsHtml = suggestions
+    .map(
+      (label, index) => `
+      <button type="button" id="${listId}-option-${index}" class="search-select-option" role="option" aria-selected="false" tabindex="-1" data-desc-option-index="${index}">
+        <span class="search-select-option-label">${escapeHtml(label)}</span>
+      </button>`
+    )
+    .join('');
+  return `
+    <div class="search-select food-order-desc-field" data-desc-suggest>
+      <div class="search-select-control">
+        <input type="text" data-item-desc placeholder="z.B. Margherita groß" maxlength="120" required autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${listId}" aria-label="Artikelbezeichnung – bereits eingetragene Positionen vorschlagen" />
+        <button type="button" class="search-select-toggle" data-desc-toggle aria-controls="${listId}" aria-expanded="false" aria-label="Vorhandene Bezeichnungen anzeigen" tabindex="-1">${icon('chevronDown')}</button>
+      </div>
+      <div id="${listId}" class="search-select-list" role="listbox" aria-label="Bereits eingetragene Positionen" hidden>${optionsHtml}</div>
+    </div>`;
+}
+
+// Wires one renderDescField() suggestion dropdown. Deliberately not a call
+// into wireSearchSelect(): that shared combobox always resolves the visible
+// text back to a known option's value (or clears it), which is right for a
+// closed catalog (games, events) but would silently discard a genuinely new,
+// unlisted item description here.
+function wireDescSuggest(wrapper) {
+  const input = wrapper.querySelector('[data-item-desc]');
+  const toggle = wrapper.querySelector('[data-desc-toggle]');
+  const list = wrapper.querySelector('.search-select-list');
+  if (!input || !toggle || !list) return;
+
+  const suggestions = [...list.querySelectorAll('[data-desc-option-index]')].map(
+    (el) => el.querySelector('.search-select-option-label').textContent
+  );
+  let filtered = suggestions;
+  let activeIndex = -1;
+
+  const isOpen = () => !list.hidden;
+
+  const updateExpanded = (expanded) => {
+    wrapper.classList.toggle('is-open', expanded);
+    input.setAttribute('aria-expanded', String(expanded));
+    toggle.setAttribute('aria-expanded', String(expanded));
+    toggle.setAttribute('aria-label', expanded ? 'Vorschlagsliste schließen' : 'Vorhandene Bezeichnungen anzeigen');
+  };
+
+  const updateActiveOption = () => {
+    const optionElements = [...list.querySelectorAll('[data-desc-option-index]')];
+    optionElements.forEach((el, index) => el.classList.toggle('is-active', index === activeIndex));
+    const active = optionElements[activeIndex];
+    if (active) input.setAttribute('aria-activedescendant', active.id);
+    else input.removeAttribute('aria-activedescendant');
+    active?.scrollIntoView({ block: 'nearest' });
+  };
+
+  const renderOptions = () => {
+    const query = input.value.trim().toLocaleLowerCase('de-DE');
+    filtered = suggestions.filter((label) => label.toLocaleLowerCase('de-DE').includes(query));
+    if (filtered.length === 0) {
+      list.innerHTML = `<div class="search-select-empty">Keine passende Position gefunden.</div>`;
+      activeIndex = -1;
+      input.removeAttribute('aria-activedescendant');
+      return;
+    }
+    const typed = input.value.trim();
+    list.innerHTML = filtered
+      .map(
+        (label, index) => `
+        <button type="button" id="${list.id}-option-${index}" class="search-select-option" role="option" aria-selected="${label === typed}" tabindex="-1" data-desc-option-index="${index}">
+          <span class="search-select-option-label">${escapeHtml(label)}</span>
+        </button>`
+      )
+      .join('');
+    activeIndex = -1;
+  };
+
+  const open = () => {
+    list.hidden = false;
+    updateExpanded(true);
+    renderOptions();
+  };
+  const close = () => {
+    list.hidden = true;
+    updateExpanded(false);
+    input.removeAttribute('aria-activedescendant');
+    activeIndex = -1;
+  };
+  const selectLabel = (label) => {
+    input.value = label;
+    close();
+    input.focus();
+  };
+
+  toggle.addEventListener('click', () => {
+    if (isOpen()) {
+      close();
+      input.focus();
+      return;
+    }
+    open();
+    input.focus();
+  });
+  input.addEventListener('input', () => {
+    if (!isOpen()) open();
+    else renderOptions();
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!isOpen()) {
+        open();
+        return;
+      }
+      if (filtered.length === 0) return;
+      const direction = event.key === 'ArrowDown' ? 1 : -1;
+      activeIndex = (activeIndex + direction + filtered.length) % filtered.length;
+      updateActiveOption();
+    } else if (event.key === 'Enter' && isOpen() && activeIndex >= 0) {
+      event.preventDefault();
+      selectLabel(filtered[activeIndex]);
+    } else if (event.key === 'Escape' && isOpen()) {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    } else if (event.key === 'Tab' && isOpen()) {
+      close();
+    }
+  });
+  list.addEventListener('pointermove', (event) => {
+    const optionEl = event.target.closest('[data-desc-option-index]');
+    if (!optionEl) return;
+    const index = Number(optionEl.dataset.descOptionIndex);
+    if (index === activeIndex) return;
+    activeIndex = index;
+    updateActiveOption();
+  });
+  list.addEventListener('click', (event) => {
+    const optionEl = event.target.closest('[data-desc-option-index]');
+    if (!optionEl) return;
+    selectLabel(filtered[Number(optionEl.dataset.descOptionIndex)]);
+  });
+  wrapper.addEventListener('focusout', (event) => {
+    if (!wrapper.contains(event.relatedTarget)) close();
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (!wrapper.isConnected) return;
+    if (isOpen() && !wrapper.contains(event.target)) close();
+  });
+}
+
 function renderOpenOrder(order, myId) {
   // renderItems() has to run before renderCardToolbar(): it is the only
   // place that calls ensureGroupStartRule(), which populates expandedGroups
@@ -539,7 +701,7 @@ function renderOpenOrder(order, myId) {
       ${
         myId
           ? `<form class="food-order-item-form" data-add-item-form="${order.id}">
-               <input type="text" data-item-desc placeholder="z.B. Margherita groß" maxlength="120" required aria-label="Artikelbezeichnung" />
+               ${renderDescField(order)}
                <label class="food-order-quantity-field">
                  <input type="number" class="food-order-quantity-input" data-item-quantity placeholder="Anzahl" min="1" max="99" inputmode="numeric" aria-label="Anzahl" />
                </label>
@@ -805,6 +967,20 @@ async function handleCartMarkPaid(order, ctx) {
 
 function normalizeDescription(desc) {
   return desc.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+// Distinct descriptions already entered in this order, for the add-item
+// field's suggestion dropdown: same normalized-description dedup as
+// buildConsolidatedRows, keeping the first-seen original spelling so picking
+// a suggestion reuses the exact wording the consolidated list already keys
+// on. Sorted with the German locale like the consolidated list itself.
+export function foodOrderDescriptionSuggestions(items) {
+  const seen = new Map();
+  for (const item of items) {
+    const norm = normalizeDescription(item.description);
+    if (!seen.has(norm)) seen.set(norm, item.description.trim().replace(/\s+/g, ' '));
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, 'de'));
 }
 
 // AP4.2: groups by normalized description + exact unit price; same name at
@@ -1200,6 +1376,8 @@ export function renderFoodOrders(container, ctx) {
     if (prev.focus === 'quantity') quantity.focus();
     if (prev.focus === 'price') price.focus();
   });
+
+  container.querySelectorAll('[data-desc-suggest]').forEach((wrapper) => wireDescSuggest(wrapper));
 
   container.querySelector('#order-new-btn').addEventListener('click', () => {
     if (!myId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });

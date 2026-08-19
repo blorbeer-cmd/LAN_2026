@@ -4240,7 +4240,7 @@ input[type='number'].tournament-score-input {
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
   gap: var(--space-2);
 }
-.food-order-item-form > [data-item-desc] {
+.food-order-item-form > .food-order-desc-field {
   grid-column: 1 / -1;
 }
 .food-order-add-button {
@@ -4267,7 +4267,7 @@ input[type='number'].tournament-score-input {
   .food-order-item-form {
     grid-template-columns: minmax(0, 1fr);
   }
-  .food-order-item-form > [data-item-desc],
+  .food-order-item-form > .food-order-desc-field,
   .food-order-add-button {
     grid-column: 1;
   }
@@ -4389,7 +4389,7 @@ input.food-order-price-input {
   .food-order-item-form {
     grid-template-columns: minmax(0, 1fr) repeat(2, var(--assignment-select-width)) auto;
   }
-  .food-order-item-form > [data-item-desc] {
+  .food-order-item-form > .food-order-desc-field {
     grid-column: auto;
   }
 }
