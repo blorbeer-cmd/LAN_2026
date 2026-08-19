@@ -2641,7 +2641,11 @@ flowTest('community', 'Essensbestellung: marking a position paid does not scroll
     await orderCard.locator('[data-item-quantity]').fill('1');
     await orderCard.locator('[data-item-price]').fill('1,00');
     await orderCard.locator('[data-add-item-form] button[type="submit"]').click();
-    await orderCard.locator(`text=Scrolltest-Artikel ${i}`).waitFor();
+    // Once the order has at least one position, the description field grows
+    // its own suggestion dropdown listing already-entered descriptions (see
+    // renderDescField) - a bare text match would then also hit that
+    // suggestion option, not just the newly added row itself.
+    await orderCard.locator('.food-order-item', { hasText: `Scrolltest-Artikel ${i}` }).waitFor();
   }
 
   const viewContainer = page.locator('#view-container');
