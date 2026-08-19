@@ -531,20 +531,26 @@ function renderCardToolbar(order, myId) {
 // text is never resolved against or reset to a fixed option — a genuinely
 // new item stays exactly as typed, so a brand-new order's first position
 // (no suggestions yet) stays a plain text field.
+// One suggestion row, shared between the initial render and renderOptions()'s
+// re-filtered re-render. The price (when this description already carries
+// one) is a plain muted trailing value, not a real option field, so a
+// suggestion without a recorded price just omits it instead of showing a
+// misleading placeholder.
+function descOptionHtml(listId, suggestion, index, selected) {
+  return `
+      <button type="button" id="${listId}-option-${index}" class="search-select-option" role="option" aria-selected="${selected}" tabindex="-1" data-desc-option-index="${index}" data-desc-option-price="${suggestion.priceCents ?? ''}">
+        <span class="search-select-option-label">${escapeHtml(suggestion.label)}</span>
+        ${suggestion.priceCents !== null ? `<span class="search-select-option-price">${formatCents(suggestion.priceCents)}</span>` : ''}
+      </button>`;
+}
+
 function renderDescField(order) {
   const suggestions = foodOrderDescriptionSuggestions(order.items);
   if (suggestions.length === 0) {
     return `<input type="text" class="food-order-desc-field" data-item-desc placeholder="z.B. Margherita groß" maxlength="120" required aria-label="Artikelbezeichnung" autocomplete="off" />`;
   }
   const listId = `food-order-desc-${order.id}`;
-  const optionsHtml = suggestions
-    .map(
-      (label, index) => `
-      <button type="button" id="${listId}-option-${index}" class="search-select-option" role="option" aria-selected="false" tabindex="-1" data-desc-option-index="${index}">
-        <span class="search-select-option-label">${escapeHtml(label)}</span>
-      </button>`
-    )
-    .join('');
+  const optionsHtml = suggestions.map((suggestion, index) => descOptionHtml(listId, suggestion, index, false)).join('');
   return `
     <div class="search-select food-order-desc-field" data-desc-suggest>
       <div class="search-select-control">
@@ -566,9 +572,11 @@ function wireDescSuggest(wrapper) {
   const list = wrapper.querySelector('.search-select-list');
   if (!input || !toggle || !list) return;
 
-  const suggestions = [...list.querySelectorAll('[data-desc-option-index]')].map(
-    (el) => el.querySelector('.search-select-option-label').textContent
-  );
+  const priceInput = wrapper.closest('form')?.querySelector('[data-item-price]');
+  const suggestions = [...list.querySelectorAll('[data-desc-option-index]')].map((el) => ({
+    label: el.querySelector('.search-select-option-label').textContent,
+    priceCents: el.dataset.descOptionPrice ? Number(el.dataset.descOptionPrice) : null,
+  }));
   let filtered = suggestions;
   let activeIndex = -1;
 
@@ -592,7 +600,7 @@ function wireDescSuggest(wrapper) {
 
   const renderOptions = () => {
     const query = input.value.trim().toLocaleLowerCase('de-DE');
-    filtered = suggestions.filter((label) => label.toLocaleLowerCase('de-DE').includes(query));
+    filtered = suggestions.filter((s) => s.label.toLocaleLowerCase('de-DE').includes(query));
     // This field is free text, not a closed catalog - an unmatched query has
     // no actionable suggestion to show, and on a phone an empty-state box
     // would sit directly over the next field (quantity) and eat the next
@@ -602,14 +610,7 @@ function wireDescSuggest(wrapper) {
       return;
     }
     const typed = input.value.trim();
-    list.innerHTML = filtered
-      .map(
-        (label, index) => `
-        <button type="button" id="${list.id}-option-${index}" class="search-select-option" role="option" aria-selected="${label === typed}" tabindex="-1" data-desc-option-index="${index}">
-          <span class="search-select-option-label">${escapeHtml(label)}</span>
-        </button>`
-      )
-      .join('');
+    list.innerHTML = filtered.map((s, index) => descOptionHtml(list.id, s, index, s.label === typed)).join('');
     activeIndex = -1;
     input.removeAttribute('aria-activedescendant');
   };
@@ -625,8 +626,18 @@ function wireDescSuggest(wrapper) {
     input.removeAttribute('aria-activedescendant');
     activeIndex = -1;
   };
-  const selectLabel = (label) => {
-    input.value = label;
+  const selectSuggestion = (suggestion) => {
+    input.value = suggestion.label;
+    // "Übernehmen" also means the price: a description reused from a
+    // suggestion carries the price it was last entered with, so re-adding
+    // the same item never requires retyping it. Always sync the field to
+    // the picked suggestion (clearing it when that suggestion has no
+    // recorded price) rather than only ever filling it in - otherwise a
+    // price auto-filled by an earlier pick could silently survive picking a
+    // different, price-less suggestion afterwards.
+    if (priceInput) {
+      priceInput.value = suggestion.priceCents === null ? '' : (suggestion.priceCents / 100).toFixed(2).replace('.', ',');
+    }
     close();
     input.focus();
   };
@@ -658,7 +669,7 @@ function wireDescSuggest(wrapper) {
       updateActiveOption();
     } else if (event.key === 'Enter' && isOpen() && activeIndex >= 0) {
       event.preventDefault();
-      selectLabel(filtered[activeIndex]);
+      selectSuggestion(filtered[activeIndex]);
     } else if (event.key === 'Escape' && isOpen()) {
       event.preventDefault();
       event.stopPropagation();
@@ -678,7 +689,7 @@ function wireDescSuggest(wrapper) {
   list.addEventListener('click', (event) => {
     const optionEl = event.target.closest('[data-desc-option-index]');
     if (!optionEl) return;
-    selectLabel(filtered[Number(optionEl.dataset.descOptionIndex)]);
+    selectSuggestion(filtered[Number(optionEl.dataset.descOptionIndex)]);
   });
   wrapper.addEventListener('focusout', (event) => {
     if (!wrapper.contains(event.relatedTarget)) close();
@@ -1015,16 +1026,20 @@ function normalizeDescription(desc) {
 
 // Distinct descriptions already entered in this order, for the add-item
 // field's suggestion dropdown: same normalized-description dedup as
-// buildConsolidatedRows, keeping the first-seen original spelling so picking
-// a suggestion reuses the exact wording the consolidated list already keys
-// on. Sorted with the German locale like the consolidated list itself.
+// buildConsolidatedRows, keeping the first-seen original spelling (and the
+// price it was entered with, if any) so picking a suggestion reuses both the
+// exact wording the consolidated list already keys on and its price, without
+// retyping either. Sorted with the German locale like the consolidated list
+// itself.
 export function foodOrderDescriptionSuggestions(items) {
   const seen = new Map();
   for (const item of items) {
     const norm = normalizeDescription(item.description);
-    if (!seen.has(norm)) seen.set(norm, item.description.trim().replace(/\s+/g, ' '));
+    if (!seen.has(norm)) {
+      seen.set(norm, { label: item.description.trim().replace(/\s+/g, ' '), priceCents: item.priceCents ?? null });
+    }
   }
-  return [...seen.values()].sort((a, b) => a.localeCompare(b, 'de'));
+  return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label, 'de'));
 }
 
 // AP4.2: groups by normalized description + exact unit price; same name at
@@ -1055,18 +1070,6 @@ function consolidatedTotals(rows, tipPercent) {
   return { incomplete, subtotalCents, totalCents };
 }
 
-// AP4.6: plain text for the clipboard — title, one "<n> × <Bezeichnung>"
-// line per row, then the sums.
-export function buildConsolidatedText(order, rows) {
-  const tipPercent = order.tipPercent || 0;
-  const { incomplete, subtotalCents, totalCents } = consolidatedTotals(rows, tipPercent);
-  const lines = [order.title, '', ...rows.map((r) => `${r.quantity} × ${r.description}`), ''];
-  lines.push(`Zwischensumme: ${formatCents(subtotalCents)}${incomplete ? ' (unvollständig)' : ''}`);
-  if (tipPercent > 0) lines.push(`+ ${tipPercent}% Trinkgeld: ${formatCents(totalCents - subtotalCents)}`);
-  lines.push(`Gesamt: ${formatCents(totalCents)}${incomplete ? ' (unvollständig)' : ''}`);
-  return lines.join('\n');
-}
-
 function renderConsolidatedListBody(order) {
   const rows = buildConsolidatedRows(order.items);
   const tipPercent = order.tipPercent || 0;
@@ -1091,27 +1094,16 @@ function renderConsolidatedListBody(order) {
       ${tipPercent > 0 ? `<div class="row-between muted"><span>+ ${tipPercent}% Trinkgeld</span><span>${formatCents(totalCents - subtotalCents)}</span></div>` : ''}
       <div class="row-between"><span>Gesamt${incomplete ? ' (unvollständig)' : ''}</span><strong>${formatCents(totalCents)}</strong></div>
     </div>
-    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
-      <button type="button" class="btn btn-sm" data-copy-consolidated-list>${icon('copy')} Liste kopieren</button>
-      ${order.open && order.createdByCurrentUser ? `<button type="button" class="btn btn-primary btn-sm" data-close-order-from-list="${order.id}">Bestellung abschicken</button>` : ''}
-    </div>`;
+    ${
+      order.open && order.createdByCurrentUser
+        ? `<div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
+             <button type="button" class="btn btn-primary btn-sm" data-close-order-from-list="${order.id}">Bestellung abschicken</button>
+           </div>`
+        : ''
+    }`;
 }
 
 function wireConsolidatedListActions(el, order) {
-  el.querySelector('[data-copy-consolidated-list]')?.addEventListener('click', async () => {
-    const rows = buildConsolidatedRows(order.items);
-    const text = buildConsolidatedText(order, rows);
-    if (!navigator.clipboard?.writeText) {
-      showToast('Kopieren ist in diesem Browser nicht verfügbar.', { error: true });
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast('Bestellliste kopiert.');
-    } catch {
-      showToast('Bestellliste konnte nicht kopiert werden.', { error: true });
-    }
-  });
   el.querySelector('[data-close-order-from-list]')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Bestellung abschicken? Danach kann niemand mehr etwas eintragen.', { confirmText: 'Abschicken' }))) return;
     try {
