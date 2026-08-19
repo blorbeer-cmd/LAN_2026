@@ -139,13 +139,23 @@ Job-Namen umgestellt werden.
 Die Chromium-Installation der E2E-Jobs läuft über `scripts/ci-install-chromium.mjs` statt direkt
 über `npx playwright install`. Der Helfer bricht einen Versuch nach 180 Sekunden ab und wiederholt
 ihn einmal, weil `playwright install-deps` an `apt-get` weiterreicht und ein hängender Ubuntu-Mirror
-sonst das gesamte Job-Timeout aufbraucht. Das ist kein kosmetischer Unterschied: Ein per Job-Timeout
-beendeter Job endet als `cancelled`, und „Re-run failed jobs“ startet ausschließlich `failure`-Jobs
-neu. Ein einmal abgebrochener Pflichtjob behält seinen Zustand dadurch über beliebig viele solcher
-Neustarts, der Sammel-Check `Browser E2E` liest ihn erneut und scheitert binnen Sekunden, und
-`publish` und `deploy` bleiben übersprungen. Ein so festgefahrener Lauf lässt sich nur über
-„Re-run all jobs“ (API: `POST /actions/runs/<id>/rerun`) lösen; der Timeout des Helfers macht daraus
-einen gewöhnlichen, wiederholbaren Fehlschlag.
+sonst das gesamte Job-Timeout aufbraucht. Beim Abbruch wird zusätzlich ein zurückgebliebener
+`apt-get` per `sudo pkill` beendet: Er läuft über `sudo` als root und außerhalb der Prozessgruppe
+des Helfers, hält sonst `/var/lib/apt/lists/lock` und lässt die Wiederholung sofort mit
+`Could not get lock` scheitern. Scheitern beide Versuche, ist das Ergebnis modusabhängig: Die reinen
+Systempakete (`deps`, nur bei Playwright-Cache-Treffer) gelten als Best Effort und der Job läuft
+weiter, weil das Runner-Image sie mitbringt und Playwright eine tatsächlich fehlende Bibliothek beim
+Start von Chromium benennt. Das Browser-Bundle (`browser`, nur bei Cache-Fehltreffer) hat keinen
+solchen Rückfall und lässt den Schritt fehlschlagen.
+
+Das Zeitlimit ist kein kosmetischer Unterschied: Ein per Job-Timeout beendeter Job endet als
+`cancelled`. Wird danach nur der Sammel-Check `Browser E2E` neu gestartet, liest dieser dasselbe
+eingefrorene Ergebnis erneut und scheitert binnen Sekunden mit
+`A browser E2E partition ended with: cancelled`, während `publish` und `deploy` übersprungen
+bleiben; beliebig viele solcher Neustarts ändern daran nichts. Ein so festgefahrener Lauf wird über
+„Re-run all jobs“ (API: `POST /actions/runs/<id>/rerun`) gelöst, das jeden Job neu startet. Der
+Timeout des Helfers macht aus dem Hänger von vornherein einen gewöhnlichen, wiederholbaren
+Fehlschlag.
 
 Der reine, nicht veröffentlichende Image-Gate-Build erzeugt keinen Build-Record und keine
 Provenance-Attestation. Der nach allen Pflichtchecks ausgeführte Publish-Build behält die

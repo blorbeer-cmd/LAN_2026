@@ -89,6 +89,35 @@ test("exhausting every attempt reports failure instead of hanging the job", asyn
   assert.equal(spy.sleeps.length, 1);
 });
 
+test("only the system dependencies are best effort, never the browser bundle", async () => {
+  const spy = collector();
+  const deps = await installChromium(
+    "deps",
+    spy.options([{ outcome: "timeout" }, { outcome: "timeout" }]),
+  );
+  const browser = await installChromium(
+    "browser",
+    collector().options([{ outcome: "timeout" }, { outcome: "timeout" }]),
+  );
+
+  // The runner image ships the apt libraries, and Chromium names a genuinely
+  // missing one when it launches — so a dead mirror must not stop the run.
+  // A missing browser bundle has no such fallback.
+  assert.equal(deps.bestEffort, true);
+  assert.equal(browser.bestEffort, false);
+});
+
+test("a successful install is never reported as best effort", async () => {
+  const spy = collector();
+  const result = await installChromium(
+    "deps",
+    spy.options([{ outcome: "success" }]),
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.bestEffort, undefined);
+});
+
 test("a non-zero exit is retried and reported with its exit code", async () => {
   const spy = collector();
   const result = await installChromium(

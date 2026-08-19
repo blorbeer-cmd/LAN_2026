@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -15,7 +15,18 @@ export const CHROMIUM_COMMANDS = {
     command: "npx",
     args: ["playwright", "install", "--with-deps", "chromium"],
   },
-  deps: { command: "npx", args: ["playwright", "install-deps", "chromium"] },
+  // Best effort on purpose: this mode only runs on a Playwright cache hit, so
+  // the browser bundle is already there and this step merely re-asserts the apt
+  // libraries the runner image ships anyway. A mirror that refuses to serve
+  // them must not cost the whole pipeline — and a genuinely missing library
+  // still surfaces immediately, because Playwright names it when Chromium
+  // fails to launch. The browser bundle itself has no such fallback, so that
+  // mode stays fatal.
+  deps: {
+    command: "npx",
+    args: ["playwright", "install-deps", "chromium"],
+    bestEffort: true,
+  },
 };
 
 export const DEFAULT_ATTEMPT_TIMEOUT_MS = 180_000;
@@ -50,6 +61,19 @@ export function runCommandWithTimeout({
           // The process tree is already gone; nothing left to signal.
         }
       }
+      // `playwright install-deps` runs apt-get through sudo, which both makes
+      // it root-owned and (with sudo's default use_pty) moves it out of our
+      // process group — so the kill above cannot reach it. It then keeps
+      // /var/lib/apt/lists/lock and the retry dies instantly with "Could not
+      // get lock". Clear it with the runner's passwordless sudo; failures are
+      // ignored on purpose because a machine without sudo has no such leftover.
+      // `-x` matches the process name, not the command line: `-f apt-get`
+      // would also match this very `sudo … pkill … apt-get` invocation.
+      spawnSync(
+        "sudo",
+        ["-n", "pkill", `-${signal.replace("SIG", "")}`, "-x", "apt-get"],
+        { stdio: "ignore", timeout: 15_000 },
+      );
     };
 
     const timeoutTimer = setTimeout(() => {
@@ -112,7 +136,7 @@ export async function installChromium(mode, options = {}) {
     );
     if (attempt < attempts) await sleep(retryDelayMs);
   }
-  return { ok: false, outcomes };
+  return { ok: false, outcomes, bestEffort: spec.bestEffort === true };
 }
 
 function positiveNumberFromEnv(name, fallback) {
@@ -127,7 +151,7 @@ function positiveNumberFromEnv(name, fallback) {
 async function main() {
   const mode = process.argv[2];
   try {
-    const { ok } = await installChromium(mode, {
+    const { ok, bestEffort } = await installChromium(mode, {
       attempts: positiveNumberFromEnv(
         "CHROMIUM_INSTALL_ATTEMPTS",
         DEFAULT_ATTEMPTS,
@@ -138,6 +162,12 @@ async function main() {
       ),
     });
     if (ok) return;
+    if (bestEffort) {
+      console.error(
+        `::warning::Chromium install (${mode}) did not succeed. Continuing: these packages ship with the runner image, and Chromium reports a genuinely missing library when it launches.`,
+      );
+      return;
+    }
     console.error(
       `Chromium install (${mode}) did not succeed; failing the step so a re-run can pick it up.`,
     );
