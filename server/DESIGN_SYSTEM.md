@@ -696,6 +696,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   uses the primary gradient — they support the workflow, they do not compete with „Bestellung
   abschicken“.
 
+  A muted one-line summary (`.food-order-overview`, reusing `.food-order-meta`'s small text size)
+  sits directly above the per-person Kästen, once the order has at least one position: total
+  positions across everyone and how many people ordered, how many are already marked bezahlt, and
+  the tip-inclusive total versus what's still open — the same at-a-glance numbers as the closed/
+  abgeschickt card's former plain position-count line, which this replaces there too.
+
   **Position row.** Left to right: the Bezahlt-Marke, quantity × description, the amount, then a
   copy action, a hairline divider and the Warenkorb toggle grouped together, and finally remove —
   the state marker leads, the amount is a plain value in the middle, and the two actions that change
@@ -711,6 +717,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
     seating-status precedents). A fixed `min-width` keeps the description behind it from shifting
     when the label text changes length. It stays enabled even on an otherwise fully locked paid row —
     it is that row's own reversing control — and is disabled only once the whole order is finalized.
+    Marking a position paid is not creator/admin-only: anyone who can pay into the order (any
+    authenticated group member) can mark it, since the automatic mark-paid-after-paying flows
+    through the Warenkorb would otherwise be useless for every participant but the creator. The
+    server records who last flipped the mark; the „Bezahlt“ state's tooltip/`aria-label` names that
+    person („Bezahlt von <Name> – Markierung aufheben“) instead of just repeating the state.
   - **Amount** (`.food-order-item-amount`) is plain display text, not a button: the tip-inclusive sum,
     with the quantity × unit price and „inkl. x% Trinkgeld“ breakdown muted underneath when either
     applies. An unpriced position shows „Betrag offen“ instead.
@@ -732,7 +743,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   it reads as a real total, with its own copy action directly beside the amount.
 
   **Warenkorb-Kasten** (`.food-order-cart`) appears only once at least one position is in the cart —
-  no explanatory subtitle, no separate primary-gradient pill competing with it. Its header names
+  no explanatory subtitle, no separate primary-gradient pill competing with it. It is deliberately
+  compact (a smaller header, `--font-size-xs` rows, tighter internal gaps and a `.btn-sm` „Bezahlen“
+  action) since it is a working selection layered on top of the already-detailed position rows
+  above it, not another full-size card. Its header names
   „Warenkorb“ plus a count badge; each row below repeats the original orderer's color dot and name
   next to quantity × description and the row's own amount, with its own X (`data-cart-remove`) to
   take a single position back out — no confirmation needed there, a stray tap is one more tap to
@@ -763,8 +777,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   last two segments only when they apply. The group's shown amount is exactly the sum of its own
   still-open (unpaid) positions, tip included — the same amount its own Warenkorb button would add;
   if any of those positions has no price, the amount shows „Betrag offen“ instead of a misleadingly
-  complete sum, the same fallback the Warenkorb cart box already uses. The group's full lifetime
-  total is not repeated here, it is readable from the rows themselves. Once
+  complete sum, the same fallback the Warenkorb cart box already uses. A small muted line
+  (`.food-order-group-total`) below that open amount repeats the group's whole lifetime total (paid
+  and unpaid positions, tip included) whenever every position in the group is priced, so a partially
+  settled group still shows what it originally added up to instead of only what remains. Once
   every position in a group is paid, the amount is replaced by the green Bezahlt badge and the group
   Warenkorb button disappears (nothing left to add) — that state is derived from the positions on
   every render, never a separate stored flag. The group's own accent stays deliberately restrained —

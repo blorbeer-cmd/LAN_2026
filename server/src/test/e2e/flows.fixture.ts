@@ -1865,6 +1865,17 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await page.waitForSelector('.food-order-total:has-text("Gesamtsumme inkl. 10% Trinkgeld")');
   assert.equal(await page.getByText('Zwischensumme', { exact: false }).count(), 0);
 
+  // Order-wide "auf einen Blick" summary, directly above the per-person
+  // Kästen: positions/people, how many are already paid, and the total vs.
+  // still-open sum - nothing paid yet, so total and open sum match.
+  await page.waitForSelector('.food-order-overview:has-text("2 Positionen von 1 Person")');
+  await page.waitForSelector('.food-order-overview:has-text("0 bezahlt")');
+  await page.waitForSelector('.food-order-overview:has-text("Gesamt 20,90")');
+  await page.waitForSelector('.food-order-overview:has-text("offen 20,90")');
+  // The orderer group's own header repeats its lifetime total in small text
+  // below the still-open amount.
+  await page.waitForSelector('.food-order-group-total:has-text("Gesamt 20,90")');
+
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -1916,6 +1927,7 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await page.waitForSelector('.food-order-cart-header:has-text("Warenkorb")');
   await page.waitForSelector('.food-order-cart-header .badge:has-text("1")');
   await page.waitForSelector('.food-order-cart-row:has-text("2 × Margherita groß")');
+  await page.waitForSelector(`.food-order-cart-row:has-text("${alice.name}")`);
   await page.waitForSelector('.food-order-cart-summary:has-text("20,90")');
   await page.waitForSelector('.food-order-cart-pay:has-text("Bezahlen · 20,90 €")');
   await page.waitForSelector('[data-cart-mark-paid]:has-text("Alle als bezahlt markieren")');
@@ -2043,6 +2055,12 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   assert.equal(await marghieRow.locator('[data-remove-item]').isDisabled(), true);
   assert.equal(await marghieRow.locator('[data-copy-food-total]').isDisabled(), false);
   assert.equal(await marghieRow.locator('[data-toggle-paid]').isDisabled(), false);
+  // Marking paid is no longer creator/admin-only, so the tooltip names who
+  // actually did it - here still Alice, the only identity acting so far.
+  assert.match(
+    (await marghieRow.locator('[data-toggle-paid]').getAttribute('title')) ?? '',
+    new RegExp(`^Bezahlt von ${alice.name}`)
+  );
   await page.waitForSelector('.food-order-cart', { state: 'detached' });
 
   // Unmarking "Bezahlt" (the only way back on an otherwise locked row) makes

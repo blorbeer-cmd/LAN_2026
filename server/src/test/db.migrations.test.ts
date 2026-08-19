@@ -161,7 +161,7 @@ test('legacy game_catalog tables are merged into games and preferences', () => {
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('historical test LANs are marked and food-order quantity/paid/finalized/paypal/tip columns default safely during upgrade', () => {
+test('historical test LANs are marked and food-order quantity/paid/paid_by/paid_at/finalized/paypal/tip columns default safely during upgrade', () => {
   const dbFile = makeTempDbPath('test-data-and-food-quantity');
   const now = Date.now();
   const fixture = new Database(dbFile);
@@ -200,9 +200,11 @@ test('historical test LANs are marked and food-order quantity/paid/finalized/pay
   const migrated = new Database(dbFile, { readonly: true });
   const testEvent = migrated.prepare('SELECT is_test FROM events WHERE id = ?').get('e-test') as { is_test: number };
   const realEvent = migrated.prepare('SELECT is_test FROM events WHERE id = ?').get('e-real') as { is_test: number };
-  const item = migrated.prepare('SELECT quantity, paid FROM food_order_items WHERE id = ?').get('i1') as {
+  const item = migrated.prepare('SELECT quantity, paid, paid_by, paid_at FROM food_order_items WHERE id = ?').get('i1') as {
     quantity: number;
     paid: number;
+    paid_by: string | null;
+    paid_at: number | null;
   };
   const order = migrated.prepare('SELECT finalized_at, paypal_link, tip_percent FROM food_orders WHERE id = ?').get('o1') as {
     finalized_at: number | null;
@@ -213,6 +215,8 @@ test('historical test LANs are marked and food-order quantity/paid/finalized/pay
   assert.equal(realEvent.is_test, 0);
   assert.equal(item.quantity, 1);
   assert.equal(item.paid, 0);
+  assert.equal(item.paid_by, null);
+  assert.equal(item.paid_at, null);
   assert.equal(order.finalized_at, null);
   assert.equal(order.paypal_link, null);
   assert.equal(order.tip_percent, null);
@@ -643,10 +647,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 75);
+  assert.equal(migrations.length, 76);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 75 }, (_, index) => index + 1),
+    Array.from({ length: 76 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1166,8 +1170,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 75 }, (_, index) => index + 1),
-    'every version 1..75 runs exactly once',
+    Array.from({ length: 76 }, (_, index) => index + 1),
+    'every version 1..76 runs exactly once',
   );
 });
 
