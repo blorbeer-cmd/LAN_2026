@@ -630,10 +630,13 @@ function wireDescSuggest(wrapper) {
     input.value = suggestion.label;
     // "Übernehmen" also means the price: a description reused from a
     // suggestion carries the price it was last entered with, so re-adding
-    // the same item never requires retyping it. A suggestion without a
-    // recorded price leaves whatever the player already typed untouched.
-    if (priceInput && suggestion.priceCents !== null) {
-      priceInput.value = (suggestion.priceCents / 100).toFixed(2).replace('.', ',');
+    // the same item never requires retyping it. Always sync the field to
+    // the picked suggestion (clearing it when that suggestion has no
+    // recorded price) rather than only ever filling it in - otherwise a
+    // price auto-filled by an earlier pick could silently survive picking a
+    // different, price-less suggestion afterwards.
+    if (priceInput) {
+      priceInput.value = suggestion.priceCents === null ? '' : (suggestion.priceCents / 100).toFixed(2).replace('.', ',');
     }
     close();
     input.focus();

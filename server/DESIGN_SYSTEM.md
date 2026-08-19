@@ -652,9 +652,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   descriptions — deduplicated by normalized text so „Margherita“ and „ margherita “ collapse into one
   suggestion — and narrowing that list while typing; a brand-new order's very first position stays a
   plain text field with no suggestions to offer. Each suggestion also carries the price it was first
-  entered with as a trailing muted value; picking it fills in that price alongside the description, so
-  reordering the same item never needs the price retyped (a suggestion without a recorded price
-  leaves the price field as-is). Unlike the shared `.search-select` combobox, picking
+  entered with as a trailing muted value; picking it always syncs the price field to match, filling in
+  that price alongside the description or clearing the field when the suggestion has none, so
+  reordering the same item never needs the price retyped and a price auto-filled by an earlier pick
+  can never silently survive picking a different, price-less suggestion afterwards. Unlike the shared `.search-select` combobox, picking
   a suggestion is optional and typed text is never resolved against or reset to one of the listed
   options: this stays free text so a genuinely new item can always be entered as typed, and the
   dropdown only exists to make reusing an existing item's exact spelling easy, which is what keeps

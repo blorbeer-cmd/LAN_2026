@@ -2571,11 +2571,27 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   // Picking a suggestion reuses its exact spelling instead of whatever was
   // typed - the point being that the consolidated "Bestellliste" keeps
   // merging repeat orders of the same item into one row instead of splitting
-  // it because someone spelled it slightly differently. It also carries over
-  // the price the item was originally entered with, overwriting whatever
-  // price happens to already be typed for the new position.
+  // it because someone spelled it slightly differently. It also syncs the
+  // price field to the picked suggestion, overwriting whatever price happens
+  // to already be typed for the new position.
   const priceInput = suggestOrderCard.locator('[data-item-price]');
   await priceInput.fill('1,00');
+  await descInput.fill('marg');
+  await page.click('.food-order-desc-field .search-select-option');
+  assert.equal(await descInput.inputValue(), 'Margherita groß');
+  assert.equal(await priceInput.inputValue(), '8,50');
+
+  // ...and just as reliably clears it again when the next picked suggestion
+  // has no recorded price - a price auto-filled by an earlier pick must
+  // never silently survive picking a different, price-less suggestion
+  // afterwards.
+  await descInput.fill('');
+  await page.waitForSelector('.food-order-desc-field .search-select-option');
+  await descInput.press('ArrowUp');
+  await descInput.press('Enter');
+  assert.equal(await descInput.inputValue(), 'Wasser');
+  assert.equal(await priceInput.inputValue(), '');
+
   await descInput.fill('marg');
   await page.click('.food-order-desc-field .search-select-option');
   assert.equal(await descInput.inputValue(), 'Margherita groß');
