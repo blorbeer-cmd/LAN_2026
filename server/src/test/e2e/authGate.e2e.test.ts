@@ -189,11 +189,20 @@ test('an invite link registers a new account and logs it straight in', async () 
   // Regression coverage: a rerender triggered by a required slider's own
   // debounced save must not steal focus (and the page scroll with it) back
   // to the very first required row - it only used to happen for a row other
-  // than the first, so rate a later one via real keyboard input.
+  // than the first, so rate a later one via real keyboard input. The save
+  // chain is a 250ms debounce plus a real network round-trip and rerender
+  // (see the 'input' listener in gameCatalog.js), so this polls for the
+  // actual completion signal instead of guessing a fixed delay - a single
+  // point-in-time check after a hardcoded wait was flaky under CI load,
+  // where that chain can easily take longer than the guessed margin.
   const midSlider = requiredRows.nth(5).locator('input[type="range"]').first();
   await midSlider.focus();
   await page.keyboard.press('ArrowRight');
-  await page.waitForTimeout(350);
+  await page.waitForFunction(() => {
+    const row = document.querySelectorAll('.game-table-row.onboarding-required')[5];
+    const input = row?.querySelector('input[type="range"]');
+    return input != null && input === document.activeElement;
+  });
   assert.equal(
     await midSlider.evaluate((element) => element === document.activeElement),
     true,
