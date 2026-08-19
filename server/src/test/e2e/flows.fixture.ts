@@ -1754,6 +1754,35 @@ flowTest('community', 'Info: create an entry, see it rendered', async () => {
   await page.waitForSelector('.info-board-modal', { state: 'detached' });
 });
 
+flowTest('community', 'Modal: a pointer interaction started inside the dialog does not close it, but a real backdrop click still does', async () => {
+  // Regression for modal.js's backdrop click-to-close: a click event's target
+  // is the nearest common ancestor of its mousedown and mouseup targets, not
+  // necessarily where either one landed. Selecting text (or dragging a
+  // slider) that starts inside the dialog and ends on the bare backdrop used
+  // to report the backdrop as e.target and close the dialog mid-interaction.
+  await page.click('#info-btn');
+  await page.waitForSelector('.info-board-modal');
+  const title = page.locator('.info-board-modal .modal-header h2');
+  const titleBox = await title.boundingBox();
+  assert.ok(titleBox, 'modal title must be visible to anchor the drag');
+
+  await page.mouse.move(titleBox.x + titleBox.width / 2, titleBox.y + titleBox.height / 2);
+  await page.mouse.down();
+  // Drag out past the dialog onto the bare backdrop before releasing, the
+  // same motion a text selection or slider drag produces.
+  await page.mouse.move(5, 5, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(100);
+  assert.equal(await page.locator('.info-board-modal').count(), 1, 'a drag that started inside the dialog must not close it');
+
+  // A genuine backdrop click - both mousedown and mouseup on the bare
+  // backdrop - still closes the dialog as before.
+  await page.mouse.move(5, 5);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForSelector('.info-board-modal', { state: 'detached' });
+});
+
 flowTest('community', 'Info: a long entry scrolls within a bounded box instead of collapsing', async () => {
   await page.click('#info-btn');
   await page.waitForSelector('#info-new-btn');
