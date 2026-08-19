@@ -513,6 +513,12 @@ function renderCardToolbar(order, myId) {
 }
 
 function renderOpenOrder(order, myId) {
+  // renderItems() has to run before renderCardToolbar(): it is the only
+  // place that calls ensureGroupStartRule(), which populates expandedGroups
+  // for an order on its first render. Computing the toolbar first would read
+  // that map before it exists yet, mislabeling "Alle ausklappen/einklappen"
+  // on that very first render.
+  const itemsHtml = renderItems(order, myId);
   return `
     <div class="card stack food-order-card" data-order-card="${order.id}">
       <div class="row-between">
@@ -524,7 +530,7 @@ function renderOpenOrder(order, myId) {
       </div>
       ${renderDetails(order)}
       ${renderCardToolbar(order, myId)}
-      <div class="food-order-items">${renderItems(order, myId)}</div>
+      <div class="food-order-items">${itemsHtml}</div>
       ${renderOrderSummary(order)}
       ${
         myId
@@ -562,6 +568,9 @@ function renderClosedOrder(order, myId) {
   const itemCount = order.items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
   const finalized = Boolean(order.finalizedAt);
   const totalCents = addTipToCents(order.totalCents, order.tipPercent);
+  // See renderOpenOrder(): renderItems() must run before renderCardToolbar()
+  // so ensureGroupStartRule() has already populated expandedGroups.
+  const itemsHtml = renderItems(order, myId, { locked: finalized });
   return `
     <article class="card stack food-order-card" data-closed-order="${order.id}">
       <div class="row-between">
@@ -573,7 +582,7 @@ function renderClosedOrder(order, myId) {
       </div>
       ${renderDetails(order, { locked: finalized })}
       ${renderCardToolbar(order, myId)}
-      <div class="food-order-items">${renderItems(order, myId, { locked: finalized })}</div>
+      <div class="food-order-items">${itemsHtml}</div>
       ${renderOrderSummary(order)}
       ${
         order.createdBy === myId
@@ -653,21 +662,30 @@ async function markCartItemsPaid(orderId, itemIds, ctx) {
     showToast(err.message, { error: true });
     return;
   }
-  for (const id of itemIds) cartItemIds.delete(id);
   if (targets.length === 0) {
+    // Every requested id is already paid or gone - none of them are valid
+    // cart members any more, whatever the reason.
+    for (const id of itemIds) cartItemIds.delete(id);
     showToast('Keine offenen Positionen mehr im Warenkorb.', { error: true });
     ctx.rerender();
     return;
   }
   try {
     await Promise.all(targets.map((i) => api.foodOrders.setItemPaid(orderId, i.id, true)));
-    for (const i of targets) i.paid = true;
+    for (const i of targets) {
+      i.paid = true;
+      cartItemIds.delete(i.id);
+    }
     showToast(`${targets.length} ${targets.length === 1 ? 'Position' : 'Positionen'} als bezahlt markiert.`);
     ctx.rerender();
   } catch (err) {
     // A partial failure across several requests could leave the local cache
     // disagreeing with the server for some items - reload instead of
-    // guessing which ones actually went through.
+    // guessing which ones actually went through. The cart selection itself
+    // stays untouched here: whatever did succeed server-side simply drops
+    // out of the cart on re-render (a paid item is never shown as selected),
+    // and whatever failed stays selected so the user can just retry instead
+    // of losing the whole selection to a transient error.
     cache = null;
     showToast(err.message, { error: true });
     ctx.rerender();

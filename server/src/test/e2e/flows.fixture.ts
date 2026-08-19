@@ -2276,6 +2276,17 @@ flowTest('community', 'Essensbestellung: orderer groups collapse/expand per AP3,
   // AP3.5's three states from Bob's own group.
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
   const detailsCard = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' });
+  // This is Alice's first render of this order in her fresh session, and she
+  // is the creator, so both groups already start expanded (AP3.6) - the
+  // "Alle ausklappen/einklappen" toolbar label must reflect that immediately
+  // rather than mislabeling it "Alle ausklappen" because it was computed
+  // before the start rule had populated the expand state.
+  await detailsCard.locator('.food-order-group-toggle[aria-expanded="true"]').first().waitFor();
+  assert.equal(
+    await detailsCard.locator('.food-order-group-toggle[aria-expanded="true"]').count(),
+    2
+  );
+  assert.equal(await detailsCard.locator('[data-toggle-all-groups]').innerText(), 'Alle einklappen');
   await detailsCard.locator('[data-edit-details]').click();
   await page.fill('#paypal-input', 'https://paypal.me/luigi');
   await page.fill('#link-input', 'https://kept.example');
