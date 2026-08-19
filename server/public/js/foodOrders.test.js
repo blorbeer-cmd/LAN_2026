@@ -10,7 +10,6 @@ import {
   paypalPayUrl,
   groupCartState,
   buildConsolidatedRows,
-  buildConsolidatedText,
   foodOrderDescriptionSuggestions,
 } from './views/foodOrders.js';
 
@@ -144,47 +143,33 @@ test('buildConsolidatedRows sorts alphabetically with the German locale', () => 
   );
 });
 
-test('foodOrderDescriptionSuggestions deduplicates by normalized description, keeping the first spelling', () => {
+test('foodOrderDescriptionSuggestions deduplicates by normalized description, keeping the first spelling and price', () => {
   const suggestions = foodOrderDescriptionSuggestions([
-    { description: 'Margherita' },
-    { description: '  margherita  ' },
-    { description: 'MARGHERITA' },
+    { description: 'Margherita', priceCents: 850 },
+    { description: '  margherita  ', priceCents: 900 },
+    { description: 'MARGHERITA', priceCents: 900 },
   ]);
-  assert.deepEqual(suggestions, ['Margherita']);
+  assert.deepEqual(suggestions, [{ label: 'Margherita', priceCents: 850 }]);
+});
+
+test('foodOrderDescriptionSuggestions keeps a null price when the first-seen item had none', () => {
+  const suggestions = foodOrderDescriptionSuggestions([{ description: 'Wasser', priceCents: null }]);
+  assert.deepEqual(suggestions, [{ label: 'Wasser', priceCents: null }]);
 });
 
 test('foodOrderDescriptionSuggestions sorts alphabetically with the German locale', () => {
   const suggestions = foodOrderDescriptionSuggestions([
-    { description: 'Pizza' },
-    { description: 'Öl' },
-    { description: 'Apfelschorle' },
+    { description: 'Pizza', priceCents: null },
+    { description: 'Öl', priceCents: null },
+    { description: 'Apfelschorle', priceCents: null },
   ]);
-  assert.deepEqual(suggestions, ['Apfelschorle', 'Öl', 'Pizza']);
+  assert.deepEqual(
+    suggestions.map((s) => s.label),
+    ['Apfelschorle', 'Öl', 'Pizza']
+  );
 });
 
 test('foodOrderDescriptionSuggestions returns an empty list for an order without items', () => {
   assert.deepEqual(foodOrderDescriptionSuggestions([]), []);
-});
-
-test('buildConsolidatedText lists rows and sums, flagging an incomplete subtotal', () => {
-  const order = { title: "Pizza bei Luigi's", tipPercent: 10 };
-  const rows = [
-    { description: 'Margherita', priceCents: 850, quantity: 2 },
-    { description: 'Wasser', priceCents: null, quantity: 1 },
-  ];
-  const text = buildConsolidatedText(order, rows);
-  assert.match(text, /^Pizza bei Luigi's\n\n2 × Margherita\n1 × Wasser\n\n/);
-  assert.match(text, /Zwischensumme:\s17,00\s€\s\(unvollständig\)/);
-  assert.match(text, /\+ 10% Trinkgeld:\s1,70\s€/);
-  assert.match(text, /Gesamt:\s18,70\s€\s\(unvollständig\)/);
-});
-
-test('buildConsolidatedText omits the tip line and incomplete flag for a complete, tip-free order', () => {
-  const order = { title: 'Pizza', tipPercent: 0 };
-  const rows = [{ description: 'Margherita', priceCents: 850, quantity: 2 }];
-  const text = buildConsolidatedText(order, rows);
-  assert.doesNotMatch(text, /Trinkgeld/);
-  assert.match(text, /Zwischensumme:\s17,00\s€\n/);
-  assert.match(text, /Gesamt:\s17,00\s€$/);
 });
 

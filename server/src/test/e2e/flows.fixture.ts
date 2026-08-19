@@ -2376,16 +2376,9 @@ flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for
   await page.waitForSelector('.food-order-consolidated-totals:has-text("+ 10% Trinkgeld")');
   await page.waitForSelector('.food-order-consolidated-totals:has-text("Gesamt (unvollständig)")');
 
-  await page.evaluate(() => {
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText: async (value: string) => { (window as Window & { copiedList?: string }).copiedList = value; } },
-    });
-  });
-  await page.click('[data-copy-consolidated-list]');
-  await page.waitForSelector('text=Bestellliste kopiert.');
-  const copied = await page.evaluate(() => (window as Window & { copiedList?: string }).copiedList);
-  assert.match(copied ?? '', /^Bestellliste-Test\n\n3 × Margherita\n1 × Wasser\n\n/);
+  // The clipboard "Liste kopieren" action was removed - the dialog no longer
+  // offers it at all.
+  assert.equal(await page.locator('[data-copy-consolidated-list]').count(), 0);
 
   // The dialog can close the still-open order directly (AP4.7) - only the
   // creator sees that action here, matching the main card's own gating.
@@ -2455,6 +2448,7 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
     page.evaluate(() => (window as unknown as { __pointerdownListenerCount: number }).__pointerdownListenerCount);
 
   await suggestOrderCard.locator('[data-item-desc]').fill('Margherita groß');
+  await suggestOrderCard.locator('[data-item-price]').fill('8,50');
   await suggestOrderCard.locator('[data-item-quantity]').fill('1');
   await suggestOrderCard.locator('[data-add-item-form] button[type="submit"]').click();
   await page.waitForSelector('text=Margherita groß');
@@ -2503,9 +2497,14 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   const afterClick = await pointerdownListenerCount();
   assert.ok(afterClick < afterCola, 'a single pointerdown must let the stale, detached listeners remove themselves again');
 
-  // Typing filters the open list live.
+  // Typing filters the open list live. The option also carries the price it
+  // was entered with, so it's visible before picking it.
   await descField.locator('[data-desc-toggle]').click();
   await page.waitForSelector('.food-order-desc-field .search-select-option:has-text("Margherita groß")');
+  assert.match(
+    (await page.locator('.food-order-desc-field .search-select-option', { hasText: 'Margherita groß' }).textContent()) ?? '',
+    /8,50/
+  );
   await descField.locator('[data-item-desc]').fill('marg');
   await page.waitForSelector('.food-order-desc-field .search-select-option:has-text("Margherita groß")');
   assert.equal(await descField.locator('.search-select-option').count(), 1);
@@ -2547,10 +2546,15 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   // Picking a suggestion reuses its exact spelling instead of whatever was
   // typed - the point being that the consolidated "Bestellliste" keeps
   // merging repeat orders of the same item into one row instead of splitting
-  // it because someone spelled it slightly differently.
+  // it because someone spelled it slightly differently. It also carries over
+  // the price the item was originally entered with, overwriting whatever
+  // price happens to already be typed for the new position.
+  const priceInput = suggestOrderCard.locator('[data-item-price]');
+  await priceInput.fill('1,00');
   await descInput.fill('marg');
   await page.click('.food-order-desc-field .search-select-option');
   assert.equal(await descInput.inputValue(), 'Margherita groß');
+  assert.equal(await priceInput.inputValue(), '8,50');
   await suggestOrderCard.locator('[data-item-quantity]').fill('2');
   await suggestOrderCard.locator('[data-add-item-form] button[type="submit"]').click();
 

@@ -1155,6 +1155,13 @@ select {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The food-order description dropdown's per-option price (see "Food orders"
+   in DESIGN_SYSTEM.md) - a plain trailing muted value, not a status icon. */
+.search-select-option-price {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
 
 /* Status icon for the event dropdowns. It sits inside the field's own left
    padding when collapsed — the same seating the topbar switcher already used
@@ -3887,6 +3894,15 @@ input[type='number'].tournament-score-input {
   position: relative;
   align-content: start;
   overflow: hidden;
+}
+/* The card clips its own content by design (the accent rail below stays
+   flush with the rounded corners), but that same clip cut off the add-item
+   description field's suggestion dropdown (.search-select-list) whenever it
+   had less room below the input than the open list needed, hiding or
+   truncating later suggestions instead of letting them float over the next
+   card the way the shared .search-select component does everywhere else. */
+.food-order-card:has(.search-select.is-open) {
+  overflow: visible;
 }
 .food-order-card::before {
   content: '';

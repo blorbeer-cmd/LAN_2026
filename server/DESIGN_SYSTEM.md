@@ -651,11 +651,19 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   (a trailing toggle chevron plus an absolute dropdown), offering the order's own already entered
   descriptions — deduplicated by normalized text so „Margherita“ and „ margherita “ collapse into one
   suggestion — and narrowing that list while typing; a brand-new order's very first position stays a
-  plain text field with no suggestions to offer. Unlike the shared `.search-select` combobox, picking
+  plain text field with no suggestions to offer. Each suggestion also carries the price it was first
+  entered with as a trailing muted value; picking it fills in that price alongside the description, so
+  reordering the same item never needs the price retyped (a suggestion without a recorded price
+  leaves the price field as-is). Unlike the shared `.search-select` combobox, picking
   a suggestion is optional and typed text is never resolved against or reset to one of the listed
   options: this stays free text so a genuinely new item can always be entered as typed, and the
   dropdown only exists to make reusing an existing item's exact spelling easy, which is what keeps
-  the consolidated „Bestellliste“ from splitting one item into differently spelled rows. Item totals
+  the consolidated „Bestellliste“ from splitting one item into differently spelled rows. The card
+  itself clips its own content (`overflow: hidden`, so the accent rail below stays flush with the
+  rounded corners), which would otherwise cut this dropdown off or hide it under the next card
+  whenever it had less room below the input than the open list needed; while a suggestion list is
+  open, the card temporarily allows overflow so the list floats above the following content instead,
+  the same way `.search-select-list` already does everywhere else. Item totals
   multiply unit price by quantity; clearly labeled subtotals per player and the order-wide total use consistent
   German currency formatting. Quantity starts empty with the explicit placeholder „Anzahl“ instead of
   implying one item. Quantity and price use the same wider field width. Quantity is a
@@ -776,9 +784,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   ordered, not who owes what) and is sorted with `localeCompare('de')` so umlauts land where a German
   reader expects them. Prices stay tip-free per row; a subtotal, „+ x% Trinkgeld“ and a tip-inclusive
   total follow underneath, each labeled „(unvollständig)“ whenever any row has no price at all rather
-  than silently treating it as free. „Liste kopieren“ puts the same content as plain text on the
-  clipboard — title, one „<n> × <Bezeichnung>“ line per row, then the sums — which is the dialog's
-  actual point: pasting into the order form, a phone note or the group chat. An open order is named
+  than silently treating it as free. An open order is named
   as such inside the dialog and can be submitted directly from there without leaving it; the dialog's
   content keeps refreshing live while it stays open, since a frozen list would be the more dangerous
   failure mode here.
