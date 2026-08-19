@@ -1,14 +1,15 @@
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 // `playwright install-deps` shells out to apt-get, and apt-get blocks
 // indefinitely when an Ubuntu mirror stalls mid-transfer. A stall like that
 // burns the whole job timeout, and a job killed by its own timeout ends as
-// `cancelled` rather than `failure` — which GitHub's "Re-run failed jobs"
-// silently skips, so the run can never reach green again and the post-merge
-// deploy stays blocked. A hard per-attempt timeout turns such a stall into an
-// ordinary, retryable step failure instead.
+// `cancelled` rather than `failure` — a state that is far harder to recover
+// than an ordinary failed step, so the run stays short of green and the
+// post-merge deploy never happens. A hard per-attempt timeout turns such a
+// stall into a normal, retryable step failure instead.
 export const CHROMIUM_COMMANDS = {
   browser: {
     command: "npx",
@@ -20,26 +21,66 @@ export const CHROMIUM_COMMANDS = {
 export const DEFAULT_ATTEMPT_TIMEOUT_MS = 180_000;
 export const DEFAULT_ATTEMPTS = 2;
 export const DEFAULT_RETRY_DELAY_MS = 10_000;
+export const DEFAULT_KILL_GRACE_MS = 10_000;
 
-function runWithTimeout({ command, args, timeoutMs }) {
-  const result = spawnSync(command, args, {
-    stdio: "inherit",
-    timeout: timeoutMs,
-    killSignal: "SIGKILL",
+// Exported for the regression test that proves a timed-out attempt takes the
+// whole process tree with it.
+export function runCommandWithTimeout({
+  command,
+  args,
+  timeoutMs,
+  killGraceMs = DEFAULT_KILL_GRACE_MS,
+}) {
+  return new Promise((resolve) => {
+    // `detached` puts the command into its own process group. apt-get runs as
+    // a grandchild of npx, so signalling only the direct child leaves it alive
+    // holding /var/lib/apt/lists/lock — the retry then dies immediately with
+    // "Could not get lock ... held by process N" and the timeout buys nothing.
+    const child = spawn(command, args, { stdio: "inherit", detached: true });
+    let timedOut = false;
+    let killTimer;
+
+    const signalGroup = (signal) => {
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+        try {
+          child.kill(signal);
+        } catch {
+          // The process tree is already gone; nothing left to signal.
+        }
+      }
+    };
+
+    const timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      signalGroup("SIGTERM");
+      // apt releases its lock on SIGTERM; SIGKILL is the fallback for a
+      // process that ignores the polite signal.
+      killTimer = setTimeout(() => signalGroup("SIGKILL"), killGraceMs);
+    }, timeoutMs);
+
+    const finish = (result) => {
+      clearTimeout(timeoutTimer);
+      clearTimeout(killTimer);
+      resolve(result);
+    };
+
+    child.on("error", (error) =>
+      finish({ outcome: "error", detail: error.message }),
+    );
+    child.on("close", (code) => {
+      if (timedOut) return finish({ outcome: "timeout" });
+      finish(
+        code === 0
+          ? { outcome: "success" }
+          : { outcome: "failure", detail: `exit code ${code}` },
+      );
+    });
   });
-  if (result.error?.code === "ETIMEDOUT" || result.signal === "SIGKILL")
-    return { outcome: "timeout" };
-  if (result.error) return { outcome: "error", detail: result.error.message };
-  return result.status === 0
-    ? { outcome: "success" }
-    : { outcome: "failure", detail: `exit code ${result.status}` };
 }
 
-function sleepSync(ms) {
-  if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
-
-export function installChromium(mode, options = {}) {
+export async function installChromium(mode, options = {}) {
   const spec = CHROMIUM_COMMANDS[mode];
   if (!spec)
     throw new Error(
@@ -48,17 +89,18 @@ export function installChromium(mode, options = {}) {
   const attempts = options.attempts ?? DEFAULT_ATTEMPTS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS;
   const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+  const killGraceMs = options.killGraceMs ?? DEFAULT_KILL_GRACE_MS;
   if (!Number.isInteger(attempts) || attempts < 1)
     throw new Error(`Attempts must be a positive integer, got ${attempts}.`);
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0)
     throw new Error(`Timeout must be a positive number, got ${timeoutMs}.`);
-  const run = options.run ?? runWithTimeout;
-  const sleep = options.sleep ?? sleepSync;
+  const run = options.run ?? runCommandWithTimeout;
+  const sleep = options.sleep ?? delay;
   const log = options.log ?? ((message) => console.error(message));
 
   const outcomes = [];
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const result = run({ ...spec, timeoutMs, mode, attempt });
+    const result = await run({ ...spec, timeoutMs, killGraceMs, mode, attempt });
     outcomes.push(result.outcome);
     if (result.outcome === "success") return { ok: true, outcomes };
     const reason =
@@ -68,7 +110,7 @@ export function installChromium(mode, options = {}) {
     log(
       `::warning::Chromium install (${mode}) attempt ${attempt}/${attempts} ${reason}.`,
     );
-    if (attempt < attempts) sleep(retryDelayMs);
+    if (attempt < attempts) await sleep(retryDelayMs);
   }
   return { ok: false, outcomes };
 }
@@ -82,10 +124,10 @@ function positiveNumberFromEnv(name, fallback) {
   return value;
 }
 
-function main() {
+async function main() {
   const mode = process.argv[2];
   try {
-    const { ok } = installChromium(mode, {
+    const { ok } = await installChromium(mode, {
       attempts: positiveNumberFromEnv(
         "CHROMIUM_INSTALL_ATTEMPTS",
         DEFAULT_ATTEMPTS,
@@ -110,4 +152,4 @@ if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 )
-  main();
+  await main();

@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
+import { rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { test } from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   CHROMIUM_COMMANDS,
   DEFAULT_ATTEMPTS,
   installChromium,
+  runCommandWithTimeout,
 } from "./ci-install-chromium.mjs";
 
 const collector = () => {
@@ -17,17 +22,25 @@ const collector = () => {
     options: (outcomes) => ({
       run: (invocation) => {
         calls.push(invocation);
-        return outcomes[calls.length - 1] ?? { outcome: "success" };
+        return Promise.resolve(outcomes[calls.length - 1] ?? {
+          outcome: "success",
+        });
       },
-      sleep: (ms) => sleeps.push(ms),
+      sleep: (ms) => {
+        sleeps.push(ms);
+        return Promise.resolve();
+      },
       log: (message) => messages.push(message),
     }),
   };
 };
 
-test("a successful install runs the mode's command exactly once", () => {
+test("a successful install runs the mode's command exactly once", async () => {
   const spy = collector();
-  const result = installChromium("deps", spy.options([{ outcome: "success" }]));
+  const result = await installChromium(
+    "deps",
+    spy.options([{ outcome: "success" }]),
+  );
 
   assert.deepEqual(result, { ok: true, outcomes: ["success"] });
   assert.equal(spy.calls.length, 1);
@@ -37,9 +50,9 @@ test("a successful install runs the mode's command exactly once", () => {
   assert.deepEqual(spy.sleeps, []);
 });
 
-test("the browser mode installs the bundle together with its system dependencies", () => {
+test("the browser mode installs the bundle together with its system dependencies", async () => {
   const spy = collector();
-  installChromium("browser", spy.options([{ outcome: "success" }]));
+  await installChromium("browser", spy.options([{ outcome: "success" }]));
 
   assert.deepEqual(spy.calls[0].args, [
     "playwright",
@@ -49,9 +62,9 @@ test("the browser mode installs the bundle together with its system dependencies
   ]);
 });
 
-test("a hung install times out and the retry can still succeed", () => {
+test("a hung install times out and the retry can still succeed", async () => {
   const spy = collector();
-  const result = installChromium(
+  const result = await installChromium(
     "deps",
     spy.options([{ outcome: "timeout" }, { outcome: "success" }]),
   );
@@ -62,9 +75,9 @@ test("a hung install times out and the retry can still succeed", () => {
   assert.match(spy.messages[0], /attempt 1\/2 timed out after 180s/);
 });
 
-test("exhausting every attempt reports failure instead of hanging the job", () => {
+test("exhausting every attempt reports failure instead of hanging the job", async () => {
   const spy = collector();
-  const result = installChromium(
+  const result = await installChromium(
     "deps",
     spy.options([{ outcome: "timeout" }, { outcome: "timeout" }]),
   );
@@ -76,9 +89,9 @@ test("exhausting every attempt reports failure instead of hanging the job", () =
   assert.equal(spy.sleeps.length, 1);
 });
 
-test("a non-zero exit is retried and reported with its exit code", () => {
+test("a non-zero exit is retried and reported with its exit code", async () => {
   const spy = collector();
-  const result = installChromium(
+  const result = await installChromium(
     "deps",
     spy.options([
       { outcome: "failure", detail: "exit code 100" },
@@ -90,9 +103,9 @@ test("a non-zero exit is retried and reported with its exit code", () => {
   assert.match(spy.messages[0], /attempt 1\/2 failed \(exit code 100\)/);
 });
 
-test("each attempt receives the configured timeout", () => {
+test("each attempt receives the configured timeout", async () => {
   const spy = collector();
-  installChromium("deps", {
+  await installChromium("deps", {
     ...spy.options([{ outcome: "timeout" }, { outcome: "success" }]),
     timeoutMs: 5_000,
     retryDelayMs: 250,
@@ -106,26 +119,83 @@ test("each attempt receives the configured timeout", () => {
   assert.match(spy.messages[0], /timed out after 5s/);
 });
 
-test("an unknown mode is rejected instead of silently skipping the install", () => {
-  assert.throws(
+test("an unknown mode is rejected instead of silently skipping the install", async () => {
+  await assert.rejects(
     () => installChromium("firefox"),
     /Unknown Chromium install mode/,
   );
-  assert.throws(
+  await assert.rejects(
     () => installChromium(undefined),
     /Unknown Chromium install mode/,
   );
 });
 
-test("a non-positive attempt count or timeout is rejected", () => {
+test("a non-positive attempt count or timeout is rejected", async () => {
   const spy = collector();
-  assert.throws(
+  await assert.rejects(
     () => installChromium("deps", { ...spy.options([]), attempts: 0 }),
     /positive integer/,
   );
-  assert.throws(
+  await assert.rejects(
     () => installChromium("deps", { ...spy.options([]), timeoutMs: 0 }),
     /positive number/,
   );
   assert.equal(spy.calls.length, 0);
+});
+
+test("a command that finishes on its own reports its real exit status", async () => {
+  assert.deepEqual(
+    await runCommandWithTimeout({
+      command: "sh",
+      args: ["-c", "exit 0"],
+      timeoutMs: 10_000,
+    }),
+    { outcome: "success" },
+  );
+  assert.deepEqual(
+    await runCommandWithTimeout({
+      command: "sh",
+      args: ["-c", "exit 100"],
+      timeoutMs: 10_000,
+    }),
+    { outcome: "failure", detail: "exit code 100" },
+  );
+});
+
+test("a timed-out attempt kills the whole process tree, not just the direct child", async () => {
+  // Regression guard for the real failure this helper exists for: apt-get runs
+  // as a grandchild of npx. Killing only the direct child leaves apt-get alive
+  // holding /var/lib/apt/lists/lock, and the retry dies instantly with
+  // "Could not get lock" — which is exactly what happened in run 32226375160.
+  const marker = path.join(
+    tmpdir(),
+    `ci-install-chromium-${process.pid}-${Date.now()}.marker`,
+  );
+  writeFileSync(marker, "");
+  const sizeOfMarker = () => statSync(marker).size;
+
+  try {
+    const result = await runCommandWithTimeout({
+      command: "sh",
+      args: [
+        "-c",
+        `sh -c 'while :; do printf x >> "${marker}"; sleep 0.05; done' & sleep 30`,
+      ],
+      timeoutMs: 400,
+      killGraceMs: 200,
+    });
+
+    assert.equal(result.outcome, "timeout");
+    await delay(500);
+    const afterKill = sizeOfMarker();
+    await delay(400);
+    assert.equal(
+      sizeOfMarker(),
+      afterKill,
+      "the grandchild kept running after the timeout",
+    );
+    assert.ok(afterKill > 0, "the grandchild never ran, so nothing was proven");
+  } finally {
+    rmSync(marker, { force: true });
+  }
 });
