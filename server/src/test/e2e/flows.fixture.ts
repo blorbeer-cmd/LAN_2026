@@ -2064,6 +2064,10 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await page.waitForSelector('.food-order-item.is-paid:has-text("Margherita")');
   await page.waitForSelector('.food-order-item.is-paid:has-text("Cola")');
   await page.waitForSelector('.food-order-cart', { state: 'detached' });
+  // Regression: a single-orderer group (the only kind this order has at this
+  // point, before the AP3 group test adds a second orderer) gets the same
+  // dimmed "is-all-paid" treatment as a fully-settled multi-orderer group.
+  await page.waitForSelector('.food-order-group.is-all-paid');
 
   // AP2.6: "Bezahlen" always re-checks with the server immediately before
   // opening PayPal, since another device could have marked the same

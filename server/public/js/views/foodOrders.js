@@ -359,8 +359,9 @@ function renderItems(order, myId, { locked = false } = {}) {
     return [...grouped.entries()]
       .map(([playerId, items]) => {
         const rows = items.map((i) => renderItemRow(order, i, myId, { locked })).join('');
+        const allPaid = items.every((i) => i.paid);
         return `
-          <div class="stack food-order-group">
+          <div class="stack food-order-group ${allPaid ? 'is-all-paid' : ''}">
             ${renderGroupHeader(order, playerId, items, { collapsible: false, locked })}
             <div class="food-order-group-items">${rows}</div>
           </div>`;
