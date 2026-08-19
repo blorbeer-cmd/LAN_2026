@@ -250,13 +250,15 @@ function renderItemRow(order, item, myId, { locked = false } = {}) {
   // Warenkorb toggle needs a PayPal link to mean anything — without one,
   // nothing in this order can ever be paid via the cart.
   const inCart = cartItemIds.has(item.id) && !item.paid;
-  const cartTitle = item.paid
-    ? 'Bereits bezahlt – nicht in den Warenkorb legbar'
-    : inCart
-      ? 'Aus dem Warenkorb nehmen'
-      : 'In den Warenkorb legen';
+  const cartTitle = locked
+    ? 'Bestellung geschlossen – keine Änderungen mehr möglich'
+    : item.paid
+      ? 'Bereits bezahlt – nicht in den Warenkorb legbar'
+      : inCart
+        ? 'Aus dem Warenkorb nehmen'
+        : 'In den Warenkorb legen';
   const cartToggleHtml = order.paypalLink
-    ? `<button type="button" class="icon-btn food-order-item-action food-order-item-cart-toggle" data-toggle-cart="${item.id}" aria-pressed="${inCart ? 'true' : 'false'}" ${item.paid ? 'disabled' : ''} title="${cartTitle}" aria-label="${cartTitle}">${icon('shoppingCart')}</button>`
+    ? `<button type="button" class="icon-btn food-order-item-action food-order-item-cart-toggle" data-toggle-cart="${item.id}" aria-pressed="${inCart ? 'true' : 'false'}" ${locked || item.paid ? 'disabled' : ''} title="${cartTitle}" aria-label="${cartTitle}">${icon('shoppingCart')}</button>`
     : '';
 
   const actionClusterHtml = `
@@ -296,7 +298,7 @@ function groupMetaLine(items) {
   return parts.join(' · ');
 }
 
-function renderGroupHeader(order, playerId, items, { collapsible, expanded }) {
+function renderGroupHeader(order, playerId, items, { collapsible, expanded, locked = false }) {
   const player = playerFor(items[0]);
   const tipPercent = order.tipPercent || 0;
   const unpaidItems = items.filter((i) => !i.paid);
@@ -327,13 +329,14 @@ function renderGroupHeader(order, playerId, items, { collapsible, expanded }) {
   const cartBtnHtml =
     order.paypalLink && cartState
       ? (() => {
-          const title =
-            cartState === 'all'
+          const title = locked
+            ? 'Bestellung geschlossen – keine Änderungen mehr möglich'
+            : cartState === 'all'
               ? 'Gruppe aus dem Warenkorb nehmen'
               : cartState === 'some'
                 ? 'Restliche offene Positionen in den Warenkorb legen'
                 : 'Alle offenen Positionen in den Warenkorb legen';
-          return `<button type="button" class="icon-btn food-order-item-action food-order-group-cart-btn is-${cartState}" data-group-cart-toggle="${playerId}" data-order="${order.id}" aria-pressed="${cartState === 'all' ? 'true' : 'false'}" title="${title}" aria-label="${title}">${icon('shoppingCart')}</button>`;
+          return `<button type="button" class="icon-btn food-order-item-action food-order-group-cart-btn is-${cartState}" data-group-cart-toggle="${playerId}" data-order="${order.id}" aria-pressed="${cartState === 'all' ? 'true' : 'false'}" ${locked ? 'disabled' : ''} title="${title}" aria-label="${title}">${icon('shoppingCart')}</button>`;
         })()
       : '';
 
@@ -358,7 +361,7 @@ function renderItems(order, myId, { locked = false } = {}) {
         const rows = items.map((i) => renderItemRow(order, i, myId, { locked })).join('');
         return `
           <div class="stack food-order-group">
-            ${renderGroupHeader(order, playerId, items, { collapsible: false })}
+            ${renderGroupHeader(order, playerId, items, { collapsible: false, locked })}
             <div class="food-order-group-items">${rows}</div>
           </div>`;
       })
@@ -375,7 +378,7 @@ function renderItems(order, myId, { locked = false } = {}) {
       const allPaid = items.every((i) => i.paid);
       return `
         <div class="stack food-order-group ${allPaid ? 'is-all-paid' : ''}">
-          ${renderGroupHeader(order, playerId, items, { collapsible: true, expanded })}
+          ${renderGroupHeader(order, playerId, items, { collapsible: true, expanded, locked })}
           <div class="food-order-group-items" ${expanded ? '' : 'hidden'}>${rows}</div>
         </div>`;
     })
@@ -405,7 +408,7 @@ function renderOrderSummaryTotal(order) {
 // "Summe" row, "Bezahlen · <Summe>" and "Alle als bezahlt markieren" below
 // it, and its own X per row to take a single item back out (no confirmation
 // — reversible with one tap, per Leitentscheidung 6).
-function renderCartBox(order) {
+function renderCartBox(order, { locked = false } = {}) {
   if (!order.paypalLink) return '';
   const cartItems = order.items.filter((i) => cartItemIds.has(i.id) && !i.paid);
   if (cartItems.length === 0) return '';
@@ -440,14 +443,14 @@ function renderCartBox(order) {
         <span>Summe</span>
         <strong>${sumLabel}</strong>
       </div>
-      <button type="button" class="btn btn-primary btn-block food-order-cart-pay" data-cart-pay="${order.id}">${icon('wallet')} Bezahlen · ${sumLabel}</button>
-      <button type="button" class="btn btn-sm btn-block" data-cart-mark-paid="${order.id}">Alle als bezahlt markieren</button>
+      <button type="button" class="btn btn-primary btn-block food-order-cart-pay" data-cart-pay="${order.id}" ${locked ? 'disabled' : ''}>${icon('wallet')} Bezahlen · ${sumLabel}</button>
+      <button type="button" class="btn btn-sm btn-block" data-cart-mark-paid="${order.id}" ${locked ? 'disabled' : ''}>Alle als bezahlt markieren</button>
     </div>`;
 }
 
-function renderOrderSummary(order) {
+function renderOrderSummary(order, { locked = false } = {}) {
   const totalHtml = renderOrderSummaryTotal(order);
-  const cartHtml = renderCartBox(order);
+  const cartHtml = renderCartBox(order, { locked });
   if (!totalHtml && !cartHtml) return '';
   return `<div class="stack food-order-summary">${totalHtml}${cartHtml}</div>`;
 }
@@ -583,7 +586,7 @@ function renderClosedOrder(order, myId) {
       ${renderDetails(order, { locked: finalized })}
       ${renderCardToolbar(order, myId)}
       <div class="food-order-items">${itemsHtml}</div>
-      ${renderOrderSummary(order)}
+      ${renderOrderSummary(order, { locked: finalized })}
       ${
         order.createdBy === myId
           ? `<div class="food-order-close-action stack" style="gap:var(--space-2);">
@@ -749,6 +752,15 @@ async function handleCartPay(order, ctx) {
         : `„${names}“ ist inzwischen bereits als bezahlt markiert.`,
       { error: true }
     );
+    ctx.rerender();
+    return;
+  }
+  // A selection can outlive the PayPal link it was made for — the creator
+  // might clear it via "Info bearbeiten" while items are still selected on
+  // someone else's device — so bail out before paypalPayUrl(null, …) throws.
+  if (!freshOrder.paypalLink) {
+    popup?.close();
+    showToast('Für diese Bestellung ist kein PayPal-Link mehr hinterlegt.', { error: true });
     ctx.rerender();
     return;
   }

@@ -2206,6 +2206,14 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await page.waitForSelector('[data-reopen-order]', { state: 'detached' });
   await page.waitForSelector('[data-edit-details]', { state: 'detached' });
   assert.equal(await page.locator('[data-toggle-paid]').first().isDisabled(), true);
+  // A finalized order is fully locked - the Warenkorb toggle on a still-
+  // unpaid position ("Vergessene Cola") must not stay open as a way to
+  // still trigger a real PayPal payment or bulk-mark after "Geschlossen".
+  await page.locator('[data-closed-order]', { hasText: 'Pizza bei Luigi' }).locator('.food-order-item', { hasText: 'Vergessene Cola' }).locator('[data-toggle-cart]').waitFor();
+  assert.equal(
+    await page.locator('[data-closed-order]', { hasText: 'Pizza bei Luigi' }).locator('.food-order-item', { hasText: 'Vergessene Cola' }).locator('[data-toggle-cart]').isDisabled(),
+    true
+  );
 });
 
 flowTest('community', 'Essensbestellung: orderer groups collapse/expand per AP3, force-open on add, "Alle ausklappen"', async () => {
