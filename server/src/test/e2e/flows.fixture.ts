@@ -2246,6 +2246,10 @@ flowTest('community', 'Essensbestellung: orderer groups collapse/expand per AP3,
   // A single-group order gets no collapse chrome at all (AP3.9).
   assert.equal(await groupOrderCard.locator('.food-order-group-toggle').count(), 0);
   assert.equal(await groupOrderCard.locator('[data-toggle-all-groups]').count(), 0);
+  // A single OPEN order gets no whole-order collapse chrome either - only
+  // once a second order is open at the same time does collapsing individual
+  // cards become useful (exercised below once "Bestellliste-Test" opens).
+  assert.equal(await groupOrderCard.locator('.food-order-card-header-toggle').count(), 0);
 
   await switchIdentityAndOpenFoodOrders('E2E Bob');
   const bobFormCard = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' });
@@ -2352,6 +2356,20 @@ flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for
   await page.waitForSelector('text=Bestellliste-Test');
   const listOrderCard = page.locator('[data-order-card]', { hasText: 'Bestellliste-Test' });
 
+  // "Gruppen-Test-Bestellung" (from the previous test) is still open, so
+  // there are now two open orders at once - each card gets its own
+  // whole-order collapse toggle, independent of the per-orderer-group one.
+  // Collapsing one must not affect the other, and the collapsed state must
+  // survive a live re-render triggered elsewhere (the item adds below).
+  const groupOrderCard = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' });
+  await page.waitForSelector('.food-order-card-header-toggle');
+  assert.equal(await groupOrderCard.locator('.food-order-card-header-toggle').count(), 1);
+  assert.equal(await listOrderCard.locator('.food-order-card-header-toggle').count(), 1);
+  await groupOrderCard.locator('.food-order-card-header-toggle').click();
+  await page.waitForSelector('[data-order-card]:has-text("Gruppen-Test-Bestellung"):not([open])');
+  assert.equal(await groupOrderCard.locator('.food-order-items').isVisible(), false);
+  assert.equal(await listOrderCard.getAttribute('open'), '');
+
   const addItem = async (desc: string, quantity: string, price?: string) => {
     await listOrderCard.locator('[data-item-desc]').fill(desc);
     await listOrderCard.locator('[data-item-quantity]').fill(quantity);
@@ -2362,6 +2380,13 @@ flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for
   await addItem('Margherita', '1', '8,50');
   await addItem('margherita', '2', '8,50');
   await addItem('Wasser', '1');
+
+  // The three item-add re-renders above must not have silently re-expanded
+  // "Gruppen-Test-Bestellung" again - collapse state belongs to the person
+  // looking at it, same rule as the orderer-group toggle above.
+  assert.equal(await groupOrderCard.getAttribute('open'), null);
+  await groupOrderCard.locator('.food-order-card-header-toggle').click();
+  await page.waitForSelector('[data-order-card]:has-text("Gruppen-Test-Bestellung")[open]');
 
   await listOrderCard.locator('[data-open-order-list]').click();
   await page.waitForSelector('.modal h2:has-text("Bestellliste – Bestellliste-Test")');
