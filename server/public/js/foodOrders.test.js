@@ -1,9 +1,17 @@
-// Unit tests for the pure PayPal link helpers used by the "Essen bestellen"
-// view. No DOM needed - these are plain string functions.
+// Unit tests for the pure helpers used by the "Essen bestellen" view. No DOM
+// needed - these are plain string/array functions.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addTipToCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from './views/foodOrders.js';
+import {
+  addTipToCents,
+  normalizePaypalInput,
+  paypalEmailFromLink,
+  paypalPayUrl,
+  groupCartState,
+  buildConsolidatedRows,
+  buildConsolidatedText,
+} from './views/foodOrders.js';
 
 test('addTipToCents adds and rounds the configured percentage', () => {
   assert.equal(addTipToCents(1000, 10), 1100);
@@ -63,3 +71,97 @@ test('paypalPayUrl leaves an email-based send-money link unchanged (no amount ca
   const link = normalizePaypalInput('blorbeer@gmx.de');
   assert.equal(paypalPayUrl(link, 2090), link);
 });
+
+// --- AP3.5: group Warenkorb button state -----------------------------------
+
+test('groupCartState returns null when the group has no unpaid positions', () => {
+  assert.equal(groupCartState([], new Set()), null);
+});
+
+test('groupCartState is "none" when nothing unpaid is in the cart', () => {
+  const items = [{ id: 'a' }, { id: 'b' }];
+  assert.equal(groupCartState(items, new Set()), 'none');
+  assert.equal(groupCartState(items, new Set(['other'])), 'none');
+});
+
+test('groupCartState is "all" once every unpaid position is in the cart', () => {
+  const items = [{ id: 'a' }, { id: 'b' }];
+  assert.equal(groupCartState(items, new Set(['a', 'b'])), 'all');
+});
+
+test('groupCartState is "some" for a mixed selection', () => {
+  const items = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  assert.equal(groupCartState(items, new Set(['a'])), 'some');
+});
+
+// --- AP4.2: consolidated order list -----------------------------------------
+
+test('buildConsolidatedRows merges same normalized description and same price', () => {
+  const rows = buildConsolidatedRows([
+    { description: 'Margherita', priceCents: 850, quantity: 1 },
+    { description: '  margherita  ', priceCents: 850, quantity: 2 },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0], { description: 'Margherita', priceCents: 850, quantity: 3 });
+});
+
+test('buildConsolidatedRows keeps the same name at a different price as its own row', () => {
+  const rows = buildConsolidatedRows([
+    { description: 'Margherita', priceCents: 850, quantity: 1 },
+    { description: 'Margherita', priceCents: 900, quantity: 1 },
+  ]);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(
+    rows.map((r) => r.priceCents).sort((a, b) => a - b),
+    [850, 900]
+  );
+});
+
+test('buildConsolidatedRows sums quantities of unpriced items with the same description', () => {
+  const rows = buildConsolidatedRows([
+    { description: 'Wasser', priceCents: null, quantity: 1 },
+    { description: 'Wasser', priceCents: null, quantity: 2 },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0], { description: 'Wasser', priceCents: null, quantity: 3 });
+});
+
+test('buildConsolidatedRows defaults a missing quantity to 1', () => {
+  const rows = buildConsolidatedRows([{ description: 'Cola', priceCents: 250 }]);
+  assert.equal(rows[0].quantity, 1);
+});
+
+test('buildConsolidatedRows sorts alphabetically with the German locale', () => {
+  const rows = buildConsolidatedRows([
+    { description: 'Pizza', priceCents: 100, quantity: 1 },
+    { description: 'Öl', priceCents: 100, quantity: 1 },
+    { description: 'Apfelschorle', priceCents: 100, quantity: 1 },
+  ]);
+  assert.deepEqual(
+    rows.map((r) => r.description),
+    ['Apfelschorle', 'Öl', 'Pizza']
+  );
+});
+
+test('buildConsolidatedText lists rows and sums, flagging an incomplete subtotal', () => {
+  const order = { title: "Pizza bei Luigi's", tipPercent: 10 };
+  const rows = [
+    { description: 'Margherita', priceCents: 850, quantity: 2 },
+    { description: 'Wasser', priceCents: null, quantity: 1 },
+  ];
+  const text = buildConsolidatedText(order, rows);
+  assert.match(text, /^Pizza bei Luigi's\n\n2 × Margherita\n1 × Wasser\n\n/);
+  assert.match(text, /Zwischensumme:\s17,00\s€\s\(unvollständig\)/);
+  assert.match(text, /\+ 10% Trinkgeld:\s1,70\s€/);
+  assert.match(text, /Gesamt:\s18,70\s€\s\(unvollständig\)/);
+});
+
+test('buildConsolidatedText omits the tip line and incomplete flag for a complete, tip-free order', () => {
+  const order = { title: 'Pizza', tipPercent: 0 };
+  const rows = [{ description: 'Margherita', priceCents: 850, quantity: 2 }];
+  const text = buildConsolidatedText(order, rows);
+  assert.doesNotMatch(text, /Trinkgeld/);
+  assert.match(text, /Zwischensumme:\s17,00\s€\n/);
+  assert.match(text, /Gesamt:\s17,00\s€$/);
+});
+
