@@ -884,11 +884,12 @@ function renderOpenOrder(order, myId, { collapsible = false, collapsed = false }
 }
 
 // The "Abgeschickt" (submitted) state — items are frozen for others, but the
-// creator/an admin can still reopen it, toggle paid status, and edit
-// metadata — is deliberately kept visually and textually distinct from
-// "Geschlossen" (finalized, fully locked): a different badge color
-// (badge-paused vs badge-offline, matching the amber/gray "pausiert"/
-// "offline" state language used elsewhere) plus different wording.
+// creator/an admin can still reopen it and edit metadata, and any group
+// member can still toggle paid status — is deliberately kept visually and
+// textually distinct from "Geschlossen" (finalized, fully locked): a
+// different badge color (badge-paused vs badge-offline, matching the
+// amber/gray "pausiert"/"offline" state language used elsewhere) plus
+// different wording.
 function renderClosedOrder(order, myId) {
   const finalized = Boolean(order.finalizedAt);
   // See renderOpenOrder(): renderItems() must run before renderCardToolbar()
