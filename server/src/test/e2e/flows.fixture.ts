@@ -2424,40 +2424,142 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   // description field stays a plain text input without the search-select
   // chrome.
   assert.equal(await suggestOrderCard.locator('[data-desc-suggest]').count(), 0);
+
+  // Instrument document.addEventListener/removeEventListener before any
+  // dropdown-bearing render happens, so the counter below reflects the true
+  // number of 'pointerdown' listeners wireDescSuggest() has registered - not
+  // just a delta from some later point.
+  await page.evaluate(() => {
+    const w = window as unknown as { __pointerdownListenerCount: number };
+    w.__pointerdownListenerCount = 0;
+    const originalAdd = document.addEventListener.bind(document);
+    const originalRemove = document.removeEventListener.bind(document);
+    document.addEventListener = ((
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions
+    ) => {
+      if (type === 'pointerdown') w.__pointerdownListenerCount += 1;
+      return originalAdd(type, listener, options);
+    }) as typeof document.addEventListener;
+    document.removeEventListener = ((
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | EventListenerOptions
+    ) => {
+      if (type === 'pointerdown') w.__pointerdownListenerCount -= 1;
+      return originalRemove(type, listener, options);
+    }) as typeof document.removeEventListener;
+  });
+  const pointerdownListenerCount = () =>
+    page.evaluate(() => (window as unknown as { __pointerdownListenerCount: number }).__pointerdownListenerCount);
+
   await suggestOrderCard.locator('[data-item-desc]').fill('Margherita groß');
   await suggestOrderCard.locator('[data-item-quantity]').fill('1');
   await suggestOrderCard.locator('[data-add-item-form] button[type="submit"]').click();
   await page.waitForSelector('text=Margherita groß');
 
   // Once the order has a position, the field gains the dropdown - opening it
-  // via its toggle lists that exact existing description.
+  // via its toggle lists that exact existing description. Its render also
+  // registered wireDescSuggest()'s document-level pointerdown listener,
+  // alongside one for every other order-with-a-position card this shard's
+  // earlier flows have left open on the same shared page - so this reads the
+  // current count as a baseline instead of assuming a specific number.
   const descField = suggestOrderCard.locator('[data-desc-suggest]');
   await descField.waitFor();
+  const afterFirstPosition = await pointerdownListenerCount();
+
+  // renderFoodOrders() rebuilds the whole card - including this wrapper - on
+  // every realtime re-render, so add two more positions via the API
+  // (no click involved) to trigger two re-renders without any interaction.
+  // Each one re-wires the currently visible order-with-a-position cards'
+  // listeners while the old, now-detached wrappers' listeners are
+  // deliberately *not* removed yet - cleanup is lazy, the same as the shared
+  // search-select's own pattern - so the count should keep growing with
+  // every render that has no click in between.
+  const orderId = await suggestOrderCard.getAttribute('data-order-card');
+  await page.request.post(`${BASE_URL}/api/food-orders/${orderId}/items`, {
+    data: { playerId: alice.id, description: 'Wasser', quantity: 1 },
+  });
+  await page.waitForSelector('text=Wasser');
+  const afterWasser = await pointerdownListenerCount();
+  assert.ok(
+    afterWasser > afterFirstPosition,
+    'a re-render without any click should register at least one more pointerdown listener, not clean up the previous one'
+  );
+
+  await page.request.post(`${BASE_URL}/api/food-orders/${orderId}/items`, {
+    data: { playerId: alice.id, description: 'Cola', quantity: 1 },
+  });
+  await page.waitForSelector('text=Cola');
+  const afterCola = await pointerdownListenerCount();
+  assert.ok(afterCola > afterWasser, 'a second re-render without any click should again grow the listener count, not stay flat');
+
+  // A single pointerdown anywhere on the page must let every detached
+  // wrapper's listener remove itself - before the fix nothing ever called
+  // removeEventListener, so this count would only ever grow, unboundedly,
+  // over a multi-day event.
+  await page.click('h1.view-title');
+  const afterClick = await pointerdownListenerCount();
+  assert.ok(afterClick < afterCola, 'a single pointerdown must let the stale, detached listeners remove themselves again');
+
+  // Typing filters the open list live.
   await descField.locator('[data-desc-toggle]').click();
   await page.waitForSelector('.food-order-desc-field .search-select-option:has-text("Margherita groß")');
-
-  // Typing filters the open list live, and an unmatched query shows the
-  // dedicated empty state instead of an empty box.
   await descField.locator('[data-item-desc]').fill('marg');
   await page.waitForSelector('.food-order-desc-field .search-select-option:has-text("Margherita groß")');
   assert.equal(await descField.locator('.search-select-option').count(), 1);
-  await descField.locator('[data-item-desc]').fill('xyz-nicht-vorhanden');
-  await page.waitForSelector('.search-select-empty:has-text("Keine passende Position gefunden.")');
 
-  // Picking the suggestion reuses its exact spelling instead of whatever was
+  // This field is free text (the main supported case per the PR description
+  // is typing something genuinely new), so an unmatched query keeps the list
+  // closed instead of showing an empty-state box - on a phone that box would
+  // sit right over the next field (quantity) and eat the tap meant for it.
+  // Playwright's .click() itself fails if another element intercepts the
+  // pointer at that point, so this also proves nothing is left overlapping.
+  await descField.locator('[data-item-desc]').fill('xyz-nicht-vorhanden');
+  assert.equal(await descField.evaluate((el) => el.classList.contains('is-open')), false);
+  const quantityInput = suggestOrderCard.locator('[data-item-quantity]');
+  await quantityInput.click();
+  assert.equal(await quantityInput.evaluate((el) => el === document.activeElement), true);
+
+  // Reopening with an empty query re-lists every suggestion. ArrowDown
+  // activates the first option and sets aria-activedescendant; typing
+  // further re-filters and must not leave that attribute pointing at an
+  // option id that may no longer be in the (rebuilt) list.
+  const descInput = descField.locator('[data-item-desc]');
+  await descInput.fill('');
+  await page.waitForSelector('.food-order-desc-field .search-select-option');
+  await descInput.press('ArrowDown');
+  assert.ok(await descInput.getAttribute('aria-activedescendant'));
+  await descInput.press('a');
+  assert.equal(await descInput.getAttribute('aria-activedescendant'), null);
+
+  // A fresh open leaves no option pre-activated (activeIndex -1). ArrowUp
+  // from that state must land on the alphabetically last suggestion
+  // ("Wasser" of Cola/Margherita groß/Wasser) rather than skip past it, which
+  // the plain wrap-around arithmetic otherwise does starting from -1.
+  await descInput.fill('');
+  await page.waitForSelector('.food-order-desc-field .search-select-option');
+  await descInput.press('ArrowUp');
+  await descInput.press('Enter');
+  assert.equal(await descInput.inputValue(), 'Wasser');
+
+  // Picking a suggestion reuses its exact spelling instead of whatever was
   // typed - the point being that the consolidated "Bestellliste" keeps
   // merging repeat orders of the same item into one row instead of splitting
   // it because someone spelled it slightly differently.
-  await descField.locator('[data-item-desc]').fill('marg');
+  await descInput.fill('marg');
   await page.click('.food-order-desc-field .search-select-option');
-  assert.equal(await descField.locator('[data-item-desc]').inputValue(), 'Margherita groß');
+  assert.equal(await descInput.inputValue(), 'Margherita groß');
   await suggestOrderCard.locator('[data-item-quantity]').fill('2');
   await suggestOrderCard.locator('[data-add-item-form] button[type="submit"]').click();
 
   await suggestOrderCard.locator('[data-open-order-list]').click();
   await page.waitForSelector('.modal h2:has-text("Bestellliste – Vorschlags-Test")');
   await page.waitForSelector('.food-order-consolidated-row:has-text("3 × Margherita groß")');
-  assert.equal(await page.locator('.food-order-consolidated-row').count(), 1);
+  await page.waitForSelector('.food-order-consolidated-row:has-text("1 × Wasser")');
+  await page.waitForSelector('.food-order-consolidated-row:has-text("1 × Cola")');
+  assert.equal(await page.locator('.food-order-consolidated-row').count(), 3);
   await page.keyboard.press('Escape');
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
 });

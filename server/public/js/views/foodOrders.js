@@ -586,10 +586,12 @@ function wireDescSuggest(wrapper) {
   const renderOptions = () => {
     const query = input.value.trim().toLocaleLowerCase('de-DE');
     filtered = suggestions.filter((label) => label.toLocaleLowerCase('de-DE').includes(query));
+    // This field is free text, not a closed catalog - an unmatched query has
+    // no actionable suggestion to show, and on a phone an empty-state box
+    // would sit directly over the next field (quantity) and eat the next
+    // tap. Keep the list closed instead of showing it empty.
     if (filtered.length === 0) {
-      list.innerHTML = `<div class="search-select-empty">Keine passende Position gefunden.</div>`;
-      activeIndex = -1;
-      input.removeAttribute('aria-activedescendant');
+      close();
       return;
     }
     const typed = input.value.trim();
@@ -602,6 +604,7 @@ function wireDescSuggest(wrapper) {
       )
       .join('');
     activeIndex = -1;
+    input.removeAttribute('aria-activedescendant');
   };
 
   const open = () => {
@@ -643,7 +646,8 @@ function wireDescSuggest(wrapper) {
       }
       if (filtered.length === 0) return;
       const direction = event.key === 'ArrowDown' ? 1 : -1;
-      activeIndex = (activeIndex + direction + filtered.length) % filtered.length;
+      activeIndex =
+        activeIndex === -1 ? (direction === 1 ? 0 : filtered.length - 1) : (activeIndex + direction + filtered.length) % filtered.length;
       updateActiveOption();
     } else if (event.key === 'Enter' && isOpen() && activeIndex >= 0) {
       event.preventDefault();
@@ -672,10 +676,20 @@ function wireDescSuggest(wrapper) {
   wrapper.addEventListener('focusout', (event) => {
     if (!wrapper.contains(event.relatedTarget)) close();
   });
-  document.addEventListener('pointerdown', (event) => {
-    if (!wrapper.isConnected) return;
+  // renderFoodOrders() rebuilds the whole card on every render (including
+  // realtime updates from other players), so this wrapper is replaced far
+  // more often than the shared search-select's own call sites. Without
+  // deregistering here, every re-render would leave behind another
+  // document-level listener for a detached wrapper - see searchSelect.js's
+  // closeFromOutsidePointer for the same self-removing pattern.
+  const closeFromOutsidePointer = (event) => {
+    if (!wrapper.isConnected) {
+      document.removeEventListener('pointerdown', closeFromOutsidePointer);
+      return;
+    }
     if (isOpen() && !wrapper.contains(event.target)) close();
-  });
+  };
+  document.addEventListener('pointerdown', closeFromOutsidePointer);
 }
 
 function renderOpenOrder(order, myId) {
