@@ -42,6 +42,13 @@ const cartItemIds = new Set();
 const expandedGroups = new Map();
 const groupStartRuleApplied = new Set();
 
+// Whole-order collapse state, only meaningful once more than one order is
+// open at a time (see renderOpenOrder's `collapsible` param): orderId ->
+// collapsed. A single open order gets no collapse chrome at all, same
+// precedent as ensureGroupStartRule's single-group case. Not persisted
+// beyond the session, same as the other module-level UI state here.
+const collapsedOpenOrders = new Set();
+
 // The consolidated-list dialog (AP4.7) keeps updating while it's open, so a
 // live re-render of the underlying view needs to be able to refresh it too.
 let consolidatedListDialog = null; // { orderId, el, ctx } | null
@@ -516,50 +523,73 @@ function renderCardToolbar(order, myId) {
   return `<div class="row food-order-card-toolbar">${groupToggle}${listButton}</div>`;
 }
 
-function renderOpenOrder(order, myId) {
+function renderOpenOrder(order, myId, { collapsible = false, collapsed = false } = {}) {
   // renderItems() has to run before renderCardToolbar(): it is the only
   // place that calls ensureGroupStartRule(), which populates expandedGroups
   // for an order on its first render. Computing the toolbar first would read
   // that map before it exists yet, mislabeling "Alle ausklappen/einklappen"
   // on that very first render.
   const itemsHtml = renderItems(order, myId);
+  const bodyHtml = `
+    <div class="muted food-order-meta">
+      von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
+    </div>
+    ${renderDetails(order)}
+    ${renderCardToolbar(order, myId)}
+    <div class="food-order-items">${itemsHtml}</div>
+    ${renderOrderSummary(order)}
+    ${
+      myId
+        ? `<form class="food-order-item-form" data-add-item-form="${order.id}">
+             <input type="text" data-item-desc placeholder="z.B. Margherita groß" maxlength="120" required aria-label="Artikelbezeichnung" />
+             <label class="food-order-quantity-field">
+               <input type="number" class="food-order-quantity-input" data-item-quantity placeholder="Anzahl" min="1" max="99" inputmode="numeric" aria-label="Anzahl" />
+             </label>
+             <label class="food-order-price-field">
+               <input type="text" class="food-order-price-input" data-item-price placeholder="Preis" inputmode="decimal" aria-label="Einzelpreis" />
+               <span aria-hidden="true">€</span>
+             </label>
+             <button type="submit" class="btn food-order-add-button">Hinzufügen</button>
+           </form>`
+        : `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um dich einzutragen.</div>`
+    }
+    ${
+      order.createdBy === myId
+        ? `<div class="food-order-close-action stack" style="gap:var(--space-2);">
+             <button type="button" class="btn btn-primary btn-sm btn-block" data-close-order="${order.id}">Bestellung abschicken</button>
+             <button type="button" class="btn btn-danger btn-sm btn-block" data-delete-order="${order.id}">Bestellung löschen</button>
+           </div>`
+        : ''
+    }`;
+
+  // Collapse chrome only when more than one order is open at once (mirrors
+  // renderItems()'s single-group precedent): with just one open order there
+  // is nothing to declutter by collapsing it. `<details>`/`<summary>` gives
+  // this native keyboard/toggle-event behavior for free and lets the
+  // existing global-search highlight (app.js's `instanceof
+  // HTMLDetailsElement` check) auto-expand a collapsed card it jumps to.
+  if (!collapsible) {
+    return `
+      <div class="card stack food-order-card" data-order-card="${order.id}">
+        <div class="row-between">
+          <strong>${escapeHtml(order.title)}</strong>
+          <span class="badge badge-playing">Offen</span>
+        </div>
+        ${bodyHtml}
+      </div>`;
+  }
+
   return `
-    <div class="card stack food-order-card" data-order-card="${order.id}">
-      <div class="row-between">
+    <details class="card stack food-order-card" data-order-card="${order.id}" data-order-collapse-toggle="${order.id}" ${collapsed ? '' : 'open'}>
+      <summary class="row-between food-order-card-header-toggle">
         <strong>${escapeHtml(order.title)}</strong>
-        <span class="badge badge-playing">Offen</span>
-      </div>
-      <div class="muted food-order-meta">
-        von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
-      </div>
-      ${renderDetails(order)}
-      ${renderCardToolbar(order, myId)}
-      <div class="food-order-items">${itemsHtml}</div>
-      ${renderOrderSummary(order)}
-      ${
-        myId
-          ? `<form class="food-order-item-form" data-add-item-form="${order.id}">
-               <input type="text" data-item-desc placeholder="z.B. Margherita groß" maxlength="120" required aria-label="Artikelbezeichnung" />
-               <label class="food-order-quantity-field">
-                 <input type="number" class="food-order-quantity-input" data-item-quantity placeholder="Anzahl" min="1" max="99" inputmode="numeric" aria-label="Anzahl" />
-               </label>
-               <label class="food-order-price-field">
-                 <input type="text" class="food-order-price-input" data-item-price placeholder="Preis" inputmode="decimal" aria-label="Einzelpreis" />
-                 <span aria-hidden="true">€</span>
-               </label>
-               <button type="submit" class="btn food-order-add-button">Hinzufügen</button>
-             </form>`
-          : `<div class="muted" style="font-size:var(--font-size-sm);">Wähle oben, wer du bist, um dich einzutragen.</div>`
-      }
-      ${
-        order.createdBy === myId
-          ? `<div class="food-order-close-action stack" style="gap:var(--space-2);">
-               <button type="button" class="btn btn-primary btn-sm btn-block" data-close-order="${order.id}">Bestellung abschicken</button>
-               <button type="button" class="btn btn-danger btn-sm btn-block" data-delete-order="${order.id}">Bestellung löschen</button>
-             </div>`
-          : ''
-      }
-    </div>`;
+        <span class="food-order-card-header-end">
+          <span class="badge badge-playing">Offen</span>
+          ${icon('chevronRight', { className: 'food-order-card-chevron' })}
+        </span>
+      </summary>
+      <div class="food-order-card-body stack">${bodyHtml}</div>
+    </details>`;
 }
 
 // The "Abgeschickt" (submitted) state — items are frozen for others, but the
@@ -1153,7 +1183,15 @@ export function renderFoodOrders(container, ctx) {
       ? emptyStateHtml('Lädt…')
       : openOrders.length === 0
         ? emptyStateHtml('Gerade keine offene Bestellung.')
-        : `<div class="two-column-card-grid food-order-grid">${openOrders.map((o) => renderOpenOrder(o, myId)).join('')}</div>`;
+        : `<div class="two-column-card-grid food-order-grid">${openOrders
+            .map((o) => renderOpenOrder(o, myId, { collapsible: openOrders.length > 1, collapsed: collapsedOpenOrders.has(o.id) }))
+            .join('')}</div>`;
+
+  // Replacing innerHTML momentarily drops all children, which clamps this
+  // scrollable container's own scrollTop to 0 - restoring it below is what
+  // keeps e.g. marking several positions paid in a row from jumping the
+  // whole view back to the top after every single toggle.
+  const scrollTop = container.scrollTop;
 
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
@@ -1184,6 +1222,7 @@ export function renderFoodOrders(container, ctx) {
       }
     </div>
   `;
+  container.scrollTop = scrollTop;
 
   wireInfoTooltips(container);
 
@@ -1374,6 +1413,14 @@ export function renderFoodOrders(container, ctx) {
 
   container.querySelector('[data-food-history]')?.addEventListener('toggle', (event) => {
     historyOpen = event.currentTarget.open;
+  });
+
+  container.querySelectorAll('[data-order-collapse-toggle]').forEach((details) => {
+    details.addEventListener('toggle', () => {
+      const orderId = details.dataset.orderCollapseToggle;
+      if (details.open) collapsedOpenOrders.delete(orderId);
+      else collapsedOpenOrders.add(orderId);
+    });
   });
 
   container.querySelectorAll('[data-edit-details]').forEach((btn) => {

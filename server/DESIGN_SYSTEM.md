@@ -661,10 +661,22 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   stacked full-width „Bestellung löschen“ danger action below its other actions, since scrapping an
   order stays possible at every lifecycle stage unlike the other, stage-gated mutations.
 
+  An open order card itself becomes collapsible (native `<summary>`, chevron rotates on `[open]`,
+  no `.collapsible-section` reuse — that class stays reserved for historical/completed data, see
+  „Use one history pattern“ above) only once more than one order is open at the same time; a single
+  open order gets no collapse chrome, the same precedent the orderer-group toggle below already
+  sets. This is what lets someone marking several positions paid across multiple open orders fold
+  away the ones they're not currently working on instead of scrolling past their full item lists
+  each time; collapse state is per order, survives live re-renders and is not persisted beyond the
+  browser session.
+
   A card's toolbar (below its metadata, above the positions) holds up to two secondary actions: an
   „Alle ausklappen“/„Alle einklappen“ toggle for its orderer groups (only rendered once the order has
-  more than one), and „Bestellliste“ (see below, only for the creator and admins). Neither uses the
-  primary gradient — they support the workflow, they do not compete with „Bestellung abschicken“.
+  more than one), and „Bestellliste“ (see below, only for the creator and admins). Both are right-
+  aligned as a group so „Bestellliste“ stays in the same spot whether or not the orderer-group toggle
+  renders beside it, instead of visibly jumping sides once a second orderer group appears. Neither
+  uses the primary gradient — they support the workflow, they do not compete with „Bestellung
+  abschicken“.
 
   **Position row.** Left to right: the Bezahlt-Marke, quantity × description, the amount, then a
   copy action, a hairline divider and the Warenkorb toggle grouped together, and finally remove —
