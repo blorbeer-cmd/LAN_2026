@@ -2036,6 +2036,10 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await colaRow.locator('[data-toggle-cart]').click();
   await page.waitForSelector('.food-order-cart-header .badge:has-text("2")');
   await page.click('[data-cart-mark-paid]');
+  // Regression: the trigger button disables itself while the confirm dialog
+  // is pending, so a fast double-click/double-tap can't fire the handler
+  // twice and stack two confirmation modals.
+  assert.equal(await page.locator('[data-cart-mark-paid]').isDisabled(), true);
   await page.waitForSelector('.modal h2:has-text("Alle als bezahlt markieren?")');
   assert.equal(
     await page.locator('.modal-body p').first().innerText(),
@@ -2049,6 +2053,10 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
   await page.waitForSelector('.food-order-item:not(.is-paid):has-text("Margherita")');
   await page.waitForSelector('.food-order-item:not(.is-paid):has-text("Cola")');
+  // Cancelling never triggers a rerender, so the disable/re-enable must be
+  // handled explicitly by the click handler rather than relying on the DOM
+  // swap from ctx.rerender() to reset it.
+  assert.equal(await page.locator('[data-cart-mark-paid]').isDisabled(), false);
 
   await page.click('[data-cart-mark-paid]');
   await page.click('[data-confirm-ok]');

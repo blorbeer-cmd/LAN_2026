@@ -1337,14 +1337,22 @@ export function renderFoodOrders(container, ctx) {
   container.querySelectorAll('[data-cart-pay]').forEach((button) => {
     button.addEventListener('click', () => {
       const order = cache?.find((o) => o.id === button.dataset.cartPay);
-      if (order) handleCartPay(order, ctx);
+      if (!order) return;
+      button.disabled = true;
+      handleCartPay(order, ctx).finally(() => {
+        button.disabled = false;
+      });
     });
   });
 
   container.querySelectorAll('[data-cart-mark-paid]').forEach((button) => {
     button.addEventListener('click', () => {
       const order = cache?.find((o) => o.id === button.dataset.cartMarkPaid);
-      if (order) handleCartMarkPaid(order, ctx);
+      if (!order) return;
+      button.disabled = true;
+      handleCartMarkPaid(order, ctx).finally(() => {
+        button.disabled = false;
+      });
     });
   });
 
