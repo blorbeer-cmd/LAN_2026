@@ -646,8 +646,17 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Warenkorb: there is no per-position „Bezahlen“ action any more, so there is exactly one place with
   popup handling, staleness checks, confirmations and tests
   (`docs/plans/food-order-cart-concept.md`). The responsive add-item row keeps description, explicit
-  quantity, unit price with euro suffix and the compact action together. Item totals multiply unit
-  price by quantity; clearly labeled subtotals per player and the order-wide total use consistent
+  quantity, unit price with euro suffix and the compact action together. Once the order already has
+  at least one position, the description field gains the same dark listbox chrome as `.search-select`
+  (a trailing toggle chevron plus an absolute dropdown), offering the order's own already entered
+  descriptions — deduplicated by normalized text so „Margherita“ and „ margherita “ collapse into one
+  suggestion — and narrowing that list while typing; a brand-new order's very first position stays a
+  plain text field with no suggestions to offer. Unlike the shared `.search-select` combobox, picking
+  a suggestion is optional and typed text is never resolved against or reset to one of the listed
+  options: this stays free text so a genuinely new item can always be entered as typed, and the
+  dropdown only exists to make reusing an existing item's exact spelling easy, which is what keeps
+  the consolidated „Bestellliste“ from splitting one item into differently spelled rows. Item totals
+  multiply unit price by quantity; clearly labeled subtotals per player and the order-wide total use consistent
   German currency formatting. Quantity starts empty with the explicit placeholder „Anzahl“ instead of
   implying one item. Quantity and price use the same wider field width. Quantity is a
   `type="number"` field, so it is always enhanced app-wide by the shared number stepper (see „Number
