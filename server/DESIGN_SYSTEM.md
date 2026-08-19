@@ -1138,10 +1138,9 @@ space pattern rather than content-dependent card heights.
   balancing, the activity pulse means Skill, the hamburger means a Sammelbestellung, and the trophy
   is reserved for rankings, results and wins.
 - Do not use emoji, Unicode pictograms or external icon CDNs in navigation, headings,
-  buttons, status badges, chips, empty states or toasts. The Respawn logo, the mascot
-  illustration (`img/mascot.svg`, Home's no-players empty state) and the onboarding guide
-  asset (`img/guide-head.jpg`, first-login tour) are the intentional brand exceptions;
-  user-authored content such as game names may contain emoji.
+  buttons, status badges, chips, empty states or toasts. The Respawn logo and the mascot
+  illustration (`img/mascot.svg`, Home's no-players empty state) are the intentional brand
+  exceptions; user-authored content such as game names may contain emoji.
 - Colorful buttons (`.btn-primary`, `.btn-danger`, `.btn-ready`) carry text only — no leading
   icon; the color treatment already marks them as the significant action.
 - Decorative icons are hidden from assistive technology. Icon-only controls require
