@@ -118,7 +118,11 @@ jobs:
         run: npm run format:check
       - name: Test CI selection and performance logic
         working-directory: ${{ github.workspace }}
-        run: node --test scripts/ci-path-classifier.test.mjs scripts/ci-test-performance.test.mjs
+        run: >-
+          node --test
+          scripts/ci-path-classifier.test.mjs
+          scripts/ci-test-performance.test.mjs
+          scripts/ci-install-chromium.test.mjs
       - run: npm run build
       - name: Compile unit and integration tests
         run: npm run test:compile
@@ -158,12 +162,18 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
+      # Both installs go through the helper instead of calling Playwright
+      # directly: it enforces a per-attempt timeout and one retry. Without it a
+      # stalled Ubuntu mirror keeps apt-get waiting until the *job* timeout
+      # fires, and a job killed that way ends as `cancelled` — a state
+      # "Re-run failed jobs" never picks up, which strands the whole run (and
+      # the post-merge deploy) short of green.
       - name: Install Chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" browser
       - name: Install Chromium system dependencies
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" deps
       - name: Prepare Core E2E build
         run: npm run test:e2e:prepare
       - name: Run measured Core E2E (${{ needs.changes.outputs.e2e_core_scope }})
@@ -201,10 +211,10 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
       - name: Install Chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" browser
       - name: Install Chromium system dependencies
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" deps
       - name: Prepare Arcade smoke E2E build
         run: npm run test:e2e:prepare
       - name: Run measured Arcade smoke E2E
@@ -242,10 +252,10 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
       - name: Install Chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" browser
       - name: Install Chromium system dependencies
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" deps
       - name: Prepare Arcade E2E build
         run: npm run test:e2e:prepare
       - name: Run measured Arcade E2E
@@ -359,10 +369,10 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
       - name: Install Chromium
         if: matrix.suite != 'unit-integration' && steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" browser
       - name: Install Chromium system dependencies
         if: matrix.suite != 'unit-integration' && steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" deps
       - name: Prepare repeated suite
         env:
           SUITE: ${{ matrix.suite }}
