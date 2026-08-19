@@ -293,7 +293,7 @@ function renderItemRow(order, item, myId, { locked = false } = {}) {
   // paid is no longer creator/admin-only (anyone who can pay into the order
   // can also mark a position paid), so the tooltip names who actually did it.
   const paidTitle = item.paid
-    ? `Bezahlt von ${item.paidByName ?? '?'} – Markierung aufheben`
+    ? `Bezahlt von ${escapeHtml(item.paidByName ?? '?')} – Markierung aufheben`
     : 'Als bezahlt markieren';
   const paidMarkerHtml = `
     <button type="button" class="food-order-paid-marker ${item.paid ? 'is-paid' : ''}" data-toggle-paid="${item.id}" data-order="${order.id}" ${locked ? 'disabled' : ''} aria-pressed="${item.paid ? 'true' : 'false'}" title="${paidTitle}" aria-label="${paidTitle}">
