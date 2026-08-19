@@ -87,11 +87,22 @@ function serializeOrder(row: OrderRow) {
     db
       .prepare(
         `SELECT i.id, i.player_id AS playerId, p.name AS playerName, p.color AS playerColor, p.avatar AS playerAvatar,
-                i.description, i.quantity, i.price_cents AS priceCents, i.paid, i.created_at AS createdAt
-         FROM food_order_items i JOIN players p ON p.id = i.player_id
+                i.description, i.quantity, i.price_cents AS priceCents, i.paid,
+                i.paid_by AS paidBy, pb.name AS paidByName, i.paid_at AS paidAt, i.created_at AS createdAt
+         FROM food_order_items i
+         JOIN players p ON p.id = i.player_id
+         LEFT JOIN players pb ON pb.id = i.paid_by
          WHERE i.order_id = ? ORDER BY i.created_at`
       )
-      .all(row.id) as Array<{ playerId: string; quantity: number; priceCents: number | null; paid: number }>
+      .all(row.id) as Array<{
+      playerId: string;
+      quantity: number;
+      priceCents: number | null;
+      paid: number;
+      paidBy: string | null;
+      paidByName: string | null;
+      paidAt: number | null;
+    }>
   ).map((i) => ({ ...i, paid: Boolean(i.paid) }));
 
   const creator = db.prepare('SELECT name FROM players WHERE id = ?').get(row.created_by) as
@@ -392,17 +403,17 @@ foodOrdersRouter.delete('/:id/items/:itemId', ...withBodyPlayerIdentity, (req, r
   res.json(serializeOrder(order));
 });
 
-// PATCH /api/food-orders/:id/items/:itemId - body: { paid }. Whoever collects
-// the money (the order's creator, or an admin) checks items off as people
-// pay — same authorization as close. Deliberately not gated on open/closed:
-// settling up normally happens after the order is already closed. A
-// finalized order is fully locked, though.
+// PATCH /api/food-orders/:id/items/:itemId - body: { paid }. Anyone who can
+// pay into this order (any authenticated group member, same as the identity
+// switch on the order itself) can also check a position off as paid — the
+// automatic "mark paid after paying" flows through the Warenkorb are useless
+// otherwise. paid_by/paid_at record who last flipped the mark, shown in the
+// Bezahlt-Marke's tooltip; both clear again when a position is unmarked.
+// Deliberately not gated on open/closed: settling up normally happens after
+// the order is already closed. A finalized order is fully locked, though.
 foodOrdersRouter.patch('/:id/items/:itemId', requireUser, (req, res) => {
   const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
-  if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
-    return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann Positionen als bezahlt markieren.' });
-  }
   if (order.finalized_at !== null) {
     return res.status(409).json({ error: 'Diese Bestellung ist geschlossen und kann nicht mehr geändert werden.' });
   }
@@ -416,7 +427,12 @@ foodOrdersRouter.patch('/:id/items/:itemId', requireUser, (req, res) => {
     .get(req.params.itemId, order.id) as { id: string } | undefined;
   if (!item) return res.status(404).json({ error: 'Position nicht gefunden.' });
 
-  db.prepare('UPDATE food_order_items SET paid = ? WHERE id = ?').run(paid ? 1 : 0, item.id);
+  db.prepare('UPDATE food_order_items SET paid = ?, paid_by = ?, paid_at = ? WHERE id = ?').run(
+    paid ? 1 : 0,
+    paid ? req.player!.id : null,
+    paid ? Date.now() : null,
+    item.id
+  );
   broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
   res.json(serializeOrder(order));
 });

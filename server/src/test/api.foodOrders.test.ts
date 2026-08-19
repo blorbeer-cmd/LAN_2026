@@ -187,7 +187,7 @@ test('players can only remove their own items, and only while open', async () =>
   aliceItemId = readded.body.items.find((i: { playerId: string }) => i.playerId === alice.id).id;
 });
 
-test('PATCH /api/food-orders/:id/items/:itemId marks and unmarks an item as paid', async () => {
+test('PATCH /api/food-orders/:id/items/:itemId marks and unmarks an item as paid, recording who did it, and any group member may do it', async () => {
   const bad = await request(app).patch(`/api/food-orders/${orderId}/items/${aliceItemId}`).send({ paid: 'yes' });
   assert.equal(bad.status, 400);
 
@@ -197,15 +197,29 @@ test('PATCH /api/food-orders/:id/items/:itemId marks and unmarks an item as paid
   const missingItem = await request(app).patch(`/api/food-orders/${orderId}/items/nope`).send({ paid: true });
   assert.equal(missingItem.status, 404);
 
-  const marked = await request(app).patch(`/api/food-orders/${orderId}/items/${aliceItemId}`).send({ paid: true });
+  // Bob is neither the order's creator (Alice) nor an admin. Marking a
+  // position paid used to be creator/admin-only; now anyone who can also pay
+  // into the order may do it - the Warenkorb's automatic mark-paid-after-
+  // paying flow is useless otherwise for every participant but the creator.
+  const marked = await request(app)
+    .patch(`/api/food-orders/${orderId}/items/${aliceItemId}`)
+    .send({ paid: true, playerId: bob.id });
   assert.equal(marked.status, 200);
   const markedItem = marked.body.items.find((i: { id: string }) => i.id === aliceItemId);
   assert.equal(markedItem.paid, true);
+  assert.equal(markedItem.paidBy, bob.id);
+  assert.equal(markedItem.paidByName, 'Hungriger Bob');
+  assert.ok(typeof markedItem.paidAt === 'number' && markedItem.paidAt > 0);
 
-  const unmarked = await request(app).patch(`/api/food-orders/${orderId}/items/${aliceItemId}`).send({ paid: false });
+  // Unmarking clears the paid-by trail again, whoever does it.
+  const unmarked = await request(app)
+    .patch(`/api/food-orders/${orderId}/items/${aliceItemId}`)
+    .send({ paid: false, playerId: bob.id });
   assert.equal(unmarked.status, 200);
   const unmarkedItem = unmarked.body.items.find((i: { id: string }) => i.id === aliceItemId);
   assert.equal(unmarkedItem.paid, false);
+  assert.equal(unmarkedItem.paidBy, null);
+  assert.equal(unmarkedItem.paidAt, null);
 });
 
 test('closing freezes the order: no more items, no second close', async () => {

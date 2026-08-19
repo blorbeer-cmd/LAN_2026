@@ -289,8 +289,12 @@ function renderItemRow(order, item, myId, { locked = false } = {}) {
   // Bezahlt-Marke (AP1.3): a button, not a plain checkbox, so it can carry
   // both an icon and the word in either state and stays operable even when
   // the row itself is otherwise locked because it is paid — it is the only
-  // way back. Only the finalized-order `locked` flag disables it.
-  const paidTitle = item.paid ? 'Bezahlt – Markierung aufheben' : 'Als bezahlt markieren';
+  // way back. Only the finalized-order `locked` flag disables it. Marking
+  // paid is no longer creator/admin-only (anyone who can pay into the order
+  // can also mark a position paid), so the tooltip names who actually did it.
+  const paidTitle = item.paid
+    ? `Bezahlt von ${item.paidByName ?? '?'} – Markierung aufheben`
+    : 'Als bezahlt markieren';
   const paidMarkerHtml = `
     <button type="button" class="food-order-paid-marker ${item.paid ? 'is-paid' : ''}" data-toggle-paid="${item.id}" data-order="${order.id}" ${locked ? 'disabled' : ''} aria-pressed="${item.paid ? 'true' : 'false'}" title="${paidTitle}" aria-label="${paidTitle}">
       ${icon(item.paid ? 'check' : 'circleDashed')}<span>${item.paid ? 'Bezahlt' : 'Offen'}</span>
@@ -384,9 +388,21 @@ function renderGroupHeader(order, playerId, items, { collapsible, expanded, lock
        </button>`
     : `<div class="food-order-group-static">${headText}</div>`;
 
+  // Below the still-open sum, a small muted line repeats the group's whole
+  // lifetime total (paid + unpaid positions, tip included) so a partially
+  // settled group still shows what it originally added up to, not just
+  // what's left to collect.
+  const groupAllPriced = items.every((i) => i.priceCents !== null);
+  const groupTotalCents = groupAllPriced
+    ? addTipToCents(items.reduce((sum, i) => sum + (i.priceCents ?? 0) * (i.quantity ?? 1), 0), tipPercent)
+    : null;
+
   const amountHtml = allPaid
     ? `<span class="food-order-group-paid-badge">${icon('check')}Bezahlt</span>`
-    : `<span class="food-order-group-amount">${allPriced ? formatCents(openCents) : 'Betrag offen'}</span>`;
+    : `<span class="food-order-group-amount-wrap">
+         <span class="food-order-group-amount">${allPriced ? formatCents(openCents) : 'Betrag offen'}</span>
+         ${groupTotalCents !== null ? `<span class="muted food-order-group-total">Gesamt ${formatCents(groupTotalCents)}</span>` : ''}
+       </span>`;
 
   const cartState = groupCartState(unpaidItems, cartItemIds);
   const cartBtnHtml =
@@ -449,6 +465,36 @@ function renderItems(order, myId, { locked = false } = {}) {
     .join('');
 }
 
+// Order-wide "auf einen Blick" summary, directly above the per-person Kästen
+// (`.food-order-items`): total positions across everyone and how many people
+// ordered, how many are already marked paid, and the tip-inclusive total vs.
+// what's still open - all before scrolling into the individual groups. Uses
+// the same quantity-weighted counting convention as groupMetaLine (a
+// quantity of 2 counts as 2 Positionen, not 1 row).
+function renderOrderOverview(order) {
+  if (order.items.length === 0) return '';
+  const tipPercent = order.tipPercent || 0;
+  const peopleCount = itemsGroupedByPlayer(order).size;
+  const totalQty = order.items.reduce((s, i) => s + (i.quantity ?? 1), 0);
+  const paidQty = order.items.filter((i) => i.paid).reduce((s, i) => s + (i.quantity ?? 1), 0);
+  const unpaidItems = order.items.filter((i) => !i.paid);
+  const allPriced = order.items.every((i) => i.priceCents !== null);
+  const totalLabel = allPriced ? formatCents(addTipToCents(order.totalCents, tipPercent)) : 'Betrag offen';
+
+  const parts = [
+    `${totalQty} ${totalQty === 1 ? 'Position' : 'Positionen'} von ${peopleCount} ${peopleCount === 1 ? 'Person' : 'Personen'}`,
+    `${paidQty} bezahlt`,
+    `Gesamt ${totalLabel}`,
+  ];
+  if (unpaidItems.length > 0) {
+    const unpaidPriced = unpaidItems.every((i) => i.priceCents !== null);
+    const openCents = unpaidItems.reduce((sum, i) => sum + (lineTotalCents(i, tipPercent) ?? 0), 0);
+    parts.push(`offen ${unpaidPriced ? formatCents(openCents) : 'Betrag offen'}`);
+  }
+
+  return `<div class="muted food-order-overview">${parts.join(' · ')}</div>`;
+}
+
 // The order-wide total, styled as a real total (not a muted info line) with
 // its own copy action directly beside the amount, so the sum sits left of
 // the copy button rather than trailing behind unrelated metadata.
@@ -488,7 +534,8 @@ function renderCartBox(order, { locked = false } = {}) {
       const total = lineTotalCents(item, tipPercent);
       return `
         <div class="row food-order-cart-row">
-          ${avatarHtml(playerFor(item), 18)}
+          ${avatarHtml(playerFor(item), 16)}
+          <span class="food-order-cart-row-name">${escapeHtml(item.playerName)}</span>
           <span class="food-order-cart-row-desc">${item.quantity ?? 1} × ${escapeHtml(item.description)}</span>
           <span class="food-order-cart-row-amount">${total === null ? 'Betrag offen' : formatCents(total)}</span>
           <button type="button" class="icon-btn food-order-item-action" data-cart-remove="${item.id}" title="Aus dem Warenkorb nehmen" aria-label="Aus dem Warenkorb nehmen">${icon('x')}</button>
@@ -507,7 +554,7 @@ function renderCartBox(order, { locked = false } = {}) {
         <span>Summe</span>
         <strong>${sumLabel}</strong>
       </div>
-      <button type="button" class="btn btn-primary btn-block food-order-cart-pay" data-cart-pay="${order.id}" ${locked ? 'disabled' : ''}>${icon('wallet')} Bezahlen · ${sumLabel}</button>
+      <button type="button" class="btn btn-primary btn-sm btn-block food-order-cart-pay" data-cart-pay="${order.id}" ${locked ? 'disabled' : ''}>${icon('wallet')} Bezahlen · ${sumLabel}</button>
       <button type="button" class="btn btn-sm btn-block" data-cart-mark-paid="${order.id}" ${locked ? 'disabled' : ''}>Alle als bezahlt markieren</button>
     </div>`;
 }
@@ -779,6 +826,7 @@ function renderOpenOrder(order, myId, { collapsible = false, collapsed = false }
     </div>
     ${renderDetails(order)}
     ${renderCardToolbar(order, myId)}
+    ${renderOrderOverview(order)}
     <div class="food-order-items">${itemsHtml}</div>
     ${renderOrderSummary(order)}
     ${
@@ -842,9 +890,7 @@ function renderOpenOrder(order, myId, { collapsible = false, collapsed = false }
 // (badge-paused vs badge-offline, matching the amber/gray "pausiert"/
 // "offline" state language used elsewhere) plus different wording.
 function renderClosedOrder(order, myId) {
-  const itemCount = order.items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
   const finalized = Boolean(order.finalizedAt);
-  const totalCents = addTipToCents(order.totalCents, order.tipPercent);
   // See renderOpenOrder(): renderItems() must run before renderCardToolbar()
   // so ensureGroupStartRule() has already populated expandedGroups.
   const itemsHtml = renderItems(order, myId, { locked: finalized });
@@ -854,11 +900,9 @@ function renderClosedOrder(order, myId) {
         <strong>${escapeHtml(order.title)}</strong>
         <span class="badge ${finalized ? 'badge-offline' : 'badge-paused'}">${finalized ? 'Geschlossen' : 'Abgeschickt'}</span>
       </div>
-      <div class="muted food-order-meta">
-        ${itemCount} ${itemCount === 1 ? 'Position' : 'Positionen'}${totalCents > 0 ? ` · ${formatCents(totalCents)}${order.tipPercent ? ' inkl. Trinkgeld' : ''}` : ''}
-      </div>
       ${renderDetails(order, { locked: finalized })}
       ${renderCardToolbar(order, myId)}
+      ${renderOrderOverview(order)}
       <div class="food-order-items">${itemsHtml}</div>
       ${renderOrderSummary(order, { locked: finalized })}
       ${

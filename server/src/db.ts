@@ -578,6 +578,8 @@ db.exec(`
     quantity    INTEGER NOT NULL DEFAULT 1,
     price_cents INTEGER,
     paid        INTEGER NOT NULL DEFAULT 0,
+    paid_by     TEXT REFERENCES players(id) ON DELETE SET NULL, -- who last marked it paid; NULL while unpaid
+    paid_at     INTEGER, -- when it was last marked paid; NULL while unpaid
     created_at  INTEGER NOT NULL
   );
 
@@ -3754,6 +3756,22 @@ registerMigration({
   version: 75,
   name: 'widen onboarding core step bound',
   up: widenOnboardingCoreStepBound,
+});
+
+// Marking a position paid used to be creator/admin-only, tracked nowhere.
+// Now every group member who can also pay may mark it, so the Bezahlt-Marke
+// tooltip can name who actually did it - paid_by/paid_at are set alongside
+// `paid` and cleared together with it when unmarked.
+function migrateFoodOrderItemPaidByColumns(): void {
+  const columns = db.prepare('PRAGMA table_info(food_order_items)').all() as Array<{ name: string }>;
+  const has = (name: string) => columns.some((c) => c.name === name);
+  if (!has('paid_by')) db.exec('ALTER TABLE food_order_items ADD COLUMN paid_by TEXT REFERENCES players(id) ON DELETE SET NULL');
+  if (!has('paid_at')) db.exec('ALTER TABLE food_order_items ADD COLUMN paid_at INTEGER');
+}
+registerMigration({
+  version: 76,
+  name: 'add food order item paid_by/paid_at columns',
+  up: migrateFoodOrderItemPaidByColumns,
 });
 
 runRegisteredMigrations();
