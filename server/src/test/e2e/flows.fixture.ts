@@ -2245,6 +2245,9 @@ flowTest('community', 'Essensbestellung: orderer groups collapse/expand per AP3,
   assert.equal(await aliceGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'false');
   assert.equal(await aliceGroup.locator('.food-order-group-items').isHidden(), true);
   await page.waitForSelector('.food-order-group-meta:has-text("1 Position")');
+  // Neither group's own position has a price - the header must say so rather
+  // than showing a misleadingly complete "0,00 €" for an incomplete sum.
+  assert.equal(await bobGroup.locator('.food-order-group-amount').innerText(), 'Betrag offen');
 
   // AP3.6: the toggle in the card header expands/collapses every group.
   await orderCard.locator('[data-toggle-all-groups]').click();

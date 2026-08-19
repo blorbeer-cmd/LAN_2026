@@ -301,6 +301,7 @@ function renderGroupHeader(order, playerId, items, { collapsible, expanded }) {
   const tipPercent = order.tipPercent || 0;
   const unpaidItems = items.filter((i) => !i.paid);
   const allPaid = unpaidItems.length === 0;
+  const allPriced = unpaidItems.every((i) => i.priceCents !== null);
   const openCents = unpaidItems.reduce((sum, i) => sum + (lineTotalCents(i, tipPercent) ?? 0), 0);
   const meta = groupMetaLine(items);
 
@@ -320,7 +321,7 @@ function renderGroupHeader(order, playerId, items, { collapsible, expanded }) {
 
   const amountHtml = allPaid
     ? `<span class="food-order-group-paid-badge">${icon('check')}Bezahlt</span>`
-    : `<span class="food-order-group-amount">${formatCents(openCents)}</span>`;
+    : `<span class="food-order-group-amount">${allPriced ? formatCents(openCents) : 'Betrag offen'}</span>`;
 
   const cartState = groupCartState(unpaidItems, cartItemIds);
   const cartBtnHtml =

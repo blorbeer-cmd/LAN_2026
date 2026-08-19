@@ -732,7 +732,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   siblings on the right. The meta line stays short: „<n> Positionen · <n> bezahlt · <n> im Korb“, the
   last two segments only when they apply. The group's shown amount is exactly the sum of its own
   still-open (unpaid) positions, tip included — the same amount its own Warenkorb button would add;
-  the group's full lifetime total is not repeated here, it is readable from the rows themselves. Once
+  if any of those positions has no price, the amount shows „Betrag offen“ instead of a misleadingly
+  complete sum, the same fallback the Warenkorb cart box already uses. The group's full lifetime
+  total is not repeated here, it is readable from the rows themselves. Once
   every position in a group is paid, the amount is replaced by the green Bezahlt badge and the group
   Warenkorb button disappears (nothing left to add) — that state is derived from the positions on
   every render, never a separate stored flag. The group's own accent stays deliberately restrained —
