@@ -121,6 +121,16 @@ Wiederholungsfall ab.
   parallele Läufe und andere Worktrees nicht mehr auf statisch reservierten Ports. Das gilt auch
   für zusätzliche Server innerhalb einer Testdatei, etwa den Forfait-Reconnect-Test. Der
   Agent-Server-Integrationstest unter `agent/` verwendet denselben `PORT=0`-Ablauf.
+- Die Browser-Fixtures sammeln bei einem Fehlschlag Browser-Konsole, Page- und Request-Fehler,
+  den letzten Server-Output und Metadaten sowie Screenshots und DOM-Snapshots noch offener Seiten.
+  Nach einem roten Browserlauf wiederholt CI dieselbe Partition einmal
+  mit `E2E_TRACE=1`; dadurch bleibt die gemessene Laufzeit unverfälscht und ein reproduzierbarer
+  Fehler erhält zusätzlich Playwright-Traces kurzlebiger Browser-Kontexte. Anschließend lädt CI
+  das Diagnoseverzeichnis sieben Tage lang als `*-failure-diagnostics`-Artefakt hoch. Lokal landen
+  Fehler standardmäßig im ignorierten Verzeichnis `test-results/e2e`; mit
+  `E2E_ARTIFACT_DIR=<pfad>` lässt sich ein anderer Zielordner wählen. `E2E_TRACE=1` aktiviert dort
+  bei Bedarf dieselben Traces wie in CI. Erfolgreiche Tests entfernen ihre temporären Trace-Daten
+  wieder.
 - `npm run test:e2e` setzt `E2E_FAST_TIMERS=1`. Der Schnellmodus verkürzt Arcade- und
   Challenge-Rush-Countdowns nur zusammen mit `NODE_ENV=test`; in Produktion und bei allen anderen
   Aufrufen bleiben die regulären Zeiten aktiv. Challenge Rush verkürzt im E2E-Schnellmodus seine

@@ -276,6 +276,8 @@ test("the workflow keeps the PR head inert and Claude tool access read-only", ()
   assert.match(workflow, /"problem":\{"type":"string","maxLength":4000\}/);
   assert.match(workflow, /"items":\{"type":"string","maxLength":4000\}/);
   assert.match(workflow, /--allowedTools "Glob,Grep,Read"/);
+  assert.match(workflow, /letzte Hunk darf deshalb mitten in einem syntaktischen Quelltextkonstrukt enden/);
+  assert.match(workflow, /Lies review\.diff mit Read bei Bedarf paginiert bis EOF/);
   assert.match(workflow, /--max-turns 60/);
   assert.match(workflow, /--disallowedTools "Bash,Edit,MultiEdit,Write/);
   assert.doesNotMatch(workflow, /track_progress:/);
