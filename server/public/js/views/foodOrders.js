@@ -579,15 +579,12 @@ function renderDetails(order, { locked = false } = {}) {
   return `
     <div class="food-order-details">
       <div class="food-order-details-head">
-        <span class="food-order-send-at">
-          <span class="food-order-detail-icon" aria-hidden="true">${icon('clock')}</span>
-          ${sendAtLabel}
-        </span>
+        <span class="food-order-send-at">${sendAtLabel}</span>
         ${locked ? '' : `<button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : 'Info'}</button>`}
       </div>
       ${order.notes ? `<div class="food-order-details-note">${escapeHtml(order.notes)}</div>` : ''}
       ${order.link || order.paypalLink ? `<div class="food-order-detail-links">` : ''}
-      ${order.link ? `<a class="btn btn-sm" href="${escapeHtml(order.link)}" target="_blank" rel="noopener">${icon('utensils')}Speisekarte</a>` : ''}
+      ${order.link ? `<a class="btn btn-sm" href="${escapeHtml(order.link)}" target="_blank" rel="noopener">Speisekarte</a>` : ''}
       ${
         order.paypalLink
           ? (() => {
@@ -598,7 +595,7 @@ function renderDetails(order, { locked = false } = {}) {
                 target="_blank"
                 rel="noopener"
                 ${email ? `data-copy-paypal-email="${escapeHtml(email)}" title="Öffnet PayPal und kopiert ${escapeHtml(email)} zum Einfügen."` : ''}
-              >${icon('wallet')}PayPal öffnen</a>`;
+              >PayPal öffnen</a>`;
             })()
           : ''
       }

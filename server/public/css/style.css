@@ -3985,10 +3985,6 @@ input[type='number'].tournament-score-input {
   color: var(--text-muted);
   font-size: var(--font-size-sm);
 }
-.food-order-detail-icon {
-  display: inline-flex;
-  flex: 0 0 auto;
-}
 .food-order-details-note {
   padding-top: var(--space-2);
   border-top: 1px solid var(--border);
