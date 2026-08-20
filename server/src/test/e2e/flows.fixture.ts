@@ -2403,6 +2403,8 @@ flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for
   await page.click('#order-form button[type="submit"]');
   await page.waitForSelector('text=Bestellliste-Test');
   const listOrderCard = page.locator('[data-order-card]', { hasText: 'Bestellliste-Test' });
+  const listOrderId = await listOrderCard.getAttribute('data-order-card');
+  assert.ok(listOrderId);
 
   // "Gruppen-Test-Bestellung" (from the previous test) is still open, so
   // there are now two open orders at once - each card gets its own
@@ -2422,8 +2424,18 @@ flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for
     await listOrderCard.locator('[data-item-desc]').fill(desc);
     await listOrderCard.locator('[data-item-quantity]').fill(quantity);
     if (price) await listOrderCard.locator('[data-item-price]').fill(price);
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url() === `${BASE_URL}/api/food-orders/${listOrderId}/items` &&
+        response.request().method() === 'POST',
+    );
     await listOrderCard.locator('[data-add-item-form] button[type="submit"]').click();
-    await page.waitForSelector(`text=${desc}`);
+    const response = await responsePromise;
+    assert.equal(response.status(), 201, await response.text());
+    // Earlier orders in this shared shard contain the same descriptions.
+    // A page-wide or case-insensitive wait can therefore resolve before this
+    // exact add and live re-render finish, letting the next add race it.
+    await listOrderCard.getByText(`${quantity} × ${desc}`, { exact: true }).waitFor();
   };
   await addItem('Margherita', '1', '8,50');
   await addItem('margherita', '2', '8,50');
@@ -2524,7 +2536,7 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   await suggestOrderCard.locator('[data-item-price]').fill('8,50');
   await suggestOrderCard.locator('[data-item-quantity]').fill('1');
   await suggestOrderCard.locator('[data-add-item-form] button[type="submit"]').click();
-  await page.waitForSelector('text=Margherita groß');
+  await suggestOrderCard.locator('.food-order-item', { hasText: 'Margherita groß' }).waitFor();
 
   // Once the order has a position, the field gains the dropdown - opening it
   // via its toggle lists that exact existing description. Its render also
@@ -2548,7 +2560,7 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   await page.request.post(`${BASE_URL}/api/food-orders/${orderId}/items`, {
     data: { playerId: alice.id, description: 'Wasser', quantity: 1 },
   });
-  await page.waitForSelector('text=Wasser');
+  await suggestOrderCard.locator('.food-order-item', { hasText: 'Wasser' }).waitFor();
   const afterWasser = await pointerdownListenerCount();
   assert.ok(
     afterWasser > afterFirstPosition,
@@ -2558,7 +2570,7 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   await page.request.post(`${BASE_URL}/api/food-orders/${orderId}/items`, {
     data: { playerId: alice.id, description: 'Cola', quantity: 1 },
   });
-  await page.waitForSelector('text=Cola');
+  await suggestOrderCard.locator('.food-order-item', { hasText: 'Cola' }).waitFor();
   const afterCola = await pointerdownListenerCount();
   assert.ok(afterCola > afterWasser, 'a second re-render without any click should again grow the listener count, not stay flat');
 
@@ -2816,11 +2828,18 @@ flowTest(
     const badge = page.locator('[data-section-tab="checklist"] [data-section-tab-count]');
     const before = (await badge.textContent()) ?? '';
 
-    const created = await page.request.post(`${BASE_URL}/api/checklist/tasks/todo`, {
-      headers: { cookie: bob.cookie },
-      data: { playerId: bob.id, title: 'Kabeltrommel besorgen', assigneePlayerIds: [alice.id] },
+    // Playwright's page.request shares the browser context's cookie jar. An
+    // authenticated response renews its session cookie, so using Bob's
+    // explicit Cookie header there can silently switch the page itself to
+    // Bob once a racing response settles. Node fetch is intentionally
+    // isolated from that jar while the open Alice page receives the socket
+    // update this scenario needs.
+    const created = await fetch(`${BASE_URL}/api/checklist/tasks/todo`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: bob.cookie },
+      body: JSON.stringify({ playerId: bob.id, title: 'Kabeltrommel besorgen', assigneePlayerIds: [alice.id] }),
     });
-    assert.equal(created.status(), 201, await created.text());
+    assert.equal(created.status, 201, await created.text());
     // The changed tab count is the visible proof that the unrelated event's
     // re-render actually landed on this tab, not just that nothing happened.
     await page.waitForFunction(
@@ -2847,10 +2866,12 @@ flowTest(
     // orders by creation time and this one is now the oldest unseen. Clear
     // it so it does not leak into the "Durchsage" test's
     // #notification-highlight assertions right after this one.
-    await page.request.post(`${BASE_URL}/api/push/seen-all`, {
-      headers: { cookie: alice.cookie },
-      data: { playerId: alice.id },
+    const cleared = await fetch(`${BASE_URL}/api/push/seen-all`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: alice.cookie },
+      body: JSON.stringify({ playerId: alice.id }),
     });
+    assert.equal(cleared.status, 200, await cleared.text());
   }
 );
 

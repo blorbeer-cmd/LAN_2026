@@ -64,7 +64,12 @@ async function activate(eventId: string): Promise<void> {
 // The switcher is the shared searchable dropdown, not a native <select>: open
 // its listbox and click the option, the same path a person takes.
 async function switchWorkspaceInBrowser(eventId: string): Promise<void> {
-  await page.click('#event-context .search-select-toggle');
+  // A failed assertion in a preceding test can leave the shared switcher
+  // open. Normalize that state before selecting: toggling an already-open
+  // list would close it and make the option below permanently invisible.
+  if (await page.locator('#event-context-switcher-list').isHidden()) {
+    await page.click('#event-context .search-select-toggle');
+  }
   await page.click(`#event-context-switcher-list [data-search-select-value="${eventId}"]`);
   await page.waitForFunction(
     (id) => (document.getElementById('event-context-switcher') as HTMLInputElement | null)?.value === id,
@@ -230,14 +235,21 @@ test('the personal statistics event filter only offers accepted workspaces', asy
 });
 
 test('the workspace switcher keeps event names concise and shows state through its icon', async () => {
+  // Hold the socket-driven event snapshot long enough for the switcher to
+  // open first. This deterministically exercises the ordering seen on CI.
+  await page.route(`${BASE_URL}/api/events`, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.continue();
+  }, { times: 1 });
   const started = await api(`/api/events/${eventA}/tracking/start`, { method: 'POST' });
   assert.equal(started.status, 200, JSON.stringify(started.body));
 
   await switchWorkspaceInBrowser(eventB);
-  await page.click('#event-context .search-select-toggle');
-  // The tracking/start call above raced ahead of this switch's own dataset
-  // reload only for that one write; give the option row a moment to catch
-  // up to it instead of asserting against whatever the first render shows.
+  // Wait for the socket refresh while the list is still closed. The control
+  // deliberately skips rebuilding an open, focused search so it does not
+  // discard a reader's query; opening before this signal therefore made the
+  // stale row permanent until the test timed out. The delayed route above
+  // turns that CI ordering into a deterministic regression case.
   await page.waitForFunction(
     (id) =>
       document
@@ -245,6 +257,7 @@ test('the workspace switcher keeps event names concise and shows state through i
         ?.getAttribute('data-event-status') === 'tracking',
     eventA,
   );
+  await page.click('#event-context .search-select-toggle');
   const rows = await page.$$eval('#event-context-switcher-list .search-select-option', (nodes) =>
     nodes.map((node) => ({
       label: node.querySelector('.search-select-option-label')?.textContent?.trim() ?? '',

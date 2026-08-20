@@ -172,11 +172,15 @@ test('the Packliste draft and its focus survive a realtime re-render of the area
   // Bob assigns a To-Do to Alice: the server broadcasts checklist:changed, this
   // tab re-renders, and the count on the neighbouring To-Dos tab is the visible
   // proof that the re-render actually landed.
-  const created = await page.request.post(`${BASE_URL}/api/checklist/tasks/todo`, {
-    headers: { cookie: bob.cookie },
-    data: { playerId: bob.id, title: 'Beamer mitbringen', assigneePlayerIds: [alice.id] },
+  // Keep the alternate actor out of page.request: authenticated responses
+  // renew their cookie in the shared BrowserContext and can otherwise turn
+  // Alice's page into Bob's between two unrelated UI actions.
+  const created = await fetch(`${BASE_URL}/api/checklist/tasks/todo`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: bob.cookie },
+    body: JSON.stringify({ playerId: bob.id, title: 'Beamer mitbringen', assigneePlayerIds: [alice.id] }),
   });
-  assert.equal(created.status(), 201, await created.text());
+  assert.equal(created.status, 201, await created.text());
   await page.waitForSelector('[data-section-tab="checklist"] [data-section-tab-count]:text("(1)")');
 
   // The typed value and the caret stay where they were.
