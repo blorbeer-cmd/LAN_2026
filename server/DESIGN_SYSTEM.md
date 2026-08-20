@@ -639,8 +639,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   responsive two-column row grid.
 - **Food orders** — Open and historical orders use one full-width nested card per row so their
   metadata, orderer groups, Warenkorb, add-item form, total and actions stay aligned regardless of
-  content. Consecutive cards alternate blue and pink accent rails and omit decorative order, timer
-  and link symbols. The order itself is still a „Sammelbestellung“ throughout text, tooltips and the
+  content. Consecutive cards alternate blue and pink accent rails; orderer groups and item rows omit
+  decorative order, timer and link symbols, while the compact metadata row may use a clock icon
+  when a send time is present. The order itself is still a „Sammelbestellung“ throughout text, tooltips and the
   push notification title — only the payment/selection mechanism inside it is called „Warenkorb“
   (see below), replacing the earlier „Sammelzahlung“ naming. Payment goes exclusively through the
   Warenkorb: there is no per-position „Bezahlen“ action any more, so there is exactly one place with
