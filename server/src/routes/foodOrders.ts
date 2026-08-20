@@ -252,7 +252,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     {
       title: 'Neue Sammelbestellung',
       body: `${row.title}${sendAtNote} (von ${player.name}) – jetzt eintragen!`,
-      url: '/#foodOrders',
+      url: `/#foodOrders/${row.id}`,
     },
     'all',
     { key: `food-order:${row.id}`, expiresAt: row.send_at },
@@ -406,7 +406,7 @@ foodOrdersRouter.delete('/:id/items/:itemId', ...withBodyPlayerIdentity, (req, r
 // PATCH /api/food-orders/:id/items/:itemId - body: { paid }. Anyone who can
 // pay into this order (any authenticated group member, same as the identity
 // switch on the order itself) can also check a position off as paid — the
-// automatic "mark paid after paying" flows through the Warenkorb are useless
+// automatic "mark paid after paying" flows through the group payment handoff
 // otherwise. paid_by/paid_at record who last flipped the mark, shown in the
 // Bezahlt-Marke's tooltip; both clear again when a position is unmarked.
 // Deliberately not gated on open/closed: settling up normally happens after

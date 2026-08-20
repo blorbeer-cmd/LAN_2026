@@ -201,7 +201,7 @@ test('PATCH /api/food-orders/:id/items/:itemId marks and unmarks an item as paid
 
   // Bob is neither the order's creator (Alice) nor an admin. Marking a
   // position paid used to be creator/admin-only; now anyone who can also pay
-  // into the order may do it - the Warenkorb's automatic mark-paid-after-
+  // into the order may do it - the payment handoff's automatic mark-paid-after-
   // paying flow is useless otherwise for every participant but the creator.
   const marked = await request(app)
     .patch(`/api/food-orders/${orderId}/items/${aliceItemId}`)
