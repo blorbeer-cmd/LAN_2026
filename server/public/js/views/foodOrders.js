@@ -575,11 +575,14 @@ function renderDetails(order, { locked = false } = {}) {
   const sendAtLabel = order.sendAt
     ? `Versand ${formatDateTime(order.sendAt)} Uhr`
     : 'Kein Zeitpunkt festgelegt';
+  const sendAtHtml = order.sendAt
+    ? `<span class="food-order-send-at"><span class="food-order-detail-icon" aria-hidden="true">${icon('clock')}</span>${sendAtLabel}</span>`
+    : `<span class="food-order-send-at">${sendAtLabel}</span>`;
   const hasDetails = Boolean(order.sendAt || order.notes || order.link || order.paypalLink || order.tipPercent);
   return `
     <div class="food-order-details">
       <div class="food-order-details-head">
-        <span class="food-order-send-at">${sendAtLabel}</span>
+        ${sendAtHtml}
         ${locked ? '' : `<button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : 'Info'}</button>`}
       </div>
       ${order.notes ? `<div class="food-order-details-note">${escapeHtml(order.notes)}</div>` : ''}
