@@ -79,6 +79,18 @@ export function filterDismissedAktuellItems(items, options = {}) {
   return items.filter((item) => !hidden.has(item.id));
 }
 
+export function missingSkillAktuellId(gameId, livePlayers = state.live) {
+  if (typeof gameId !== 'string' || !gameId) return null;
+  const starts = [];
+  for (const player of livePlayers ?? []) {
+    for (const game of player.games ?? []) {
+      if (game.game_id === gameId && Number.isFinite(game.since)) starts.push(game.since);
+    }
+  }
+  if (starts.length === 0) return null;
+  return `skill:${gameId}:${Math.min(...starts)}`;
+}
+
 // Fired whenever a (re)load completes, so Home can re-render without its own
 // poll loop.
 function notifyChanged() {
@@ -160,8 +172,13 @@ export function aktuellItems() {
   // Personal nudge first — nobody else would otherwise learn you still owe
   // a rating for a game everyone can already see running.
   for (const g of missingSkillsCache ?? []) {
+    const id = missingSkillAktuellId(g.id);
+    // The digest is group-wide while state.live belongs to the active event.
+    // Only show a nudge when that event has a concrete live occurrence whose
+    // start can make a later play session visible again after dismissal.
+    if (!id) continue;
     items.push({
-      id: `skill:${g.id}`,
+      id,
       iconName: domainIcon('skill'),
       title: `Skill für ${g.name} bewerten`,
       sub: 'Wird gerade gespielt',

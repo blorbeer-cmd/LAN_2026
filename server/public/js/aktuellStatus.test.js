@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { dismissAktuellItem, filterDismissedAktuellItems } from './aktuellStatus.js';
+import {
+  dismissAktuellItem,
+  filterDismissedAktuellItems,
+  missingSkillAktuellId,
+} from './aktuellStatus.js';
 
 function storage(initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -55,4 +59,22 @@ test('blocked storage falls back to a safe session-local dismissal', () => {
 
   assert.equal(dismissAktuellItem('arcade-lobby:quiz:lobby-1', options), true);
   assert.deepEqual(filterDismissedAktuellItems(items, options), [items[0]]);
+});
+
+test('a later live occurrence restores a dismissed missing-skill nudge', () => {
+  const firstLiveOccurrence = [
+    { games: [{ game_id: 'cs2', since: 1_000 }] },
+    { games: [{ game_id: 'cs2', since: 1_200 }] },
+  ];
+  const laterLiveOccurrence = [{ games: [{ game_id: 'cs2', since: 5_000 }] }];
+  const firstId = missingSkillAktuellId('cs2', firstLiveOccurrence);
+  const laterId = missingSkillAktuellId('cs2', laterLiveOccurrence);
+  const options = { playerId: 'dora', eventId: 'lan-2026', storage: storage() };
+
+  assert.equal(firstId, 'skill:cs2:1000');
+  assert.equal(laterId, 'skill:cs2:5000');
+  assert.equal(missingSkillAktuellId('cs2', []), null);
+  assert.equal(dismissAktuellItem(firstId, options), true);
+  assert.deepEqual(filterDismissedAktuellItems([{ id: firstId }], options), []);
+  assert.deepEqual(filterDismissedAktuellItems([{ id: laterId }], options), [{ id: laterId }]);
 });
