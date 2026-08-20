@@ -1,5 +1,11 @@
 # Plan: Essensbestellung als Warenkorb
 
+> **Teilweise überholt.** Der Warenkorb wird durch Direktzahlung an der Summe ersetzt; siehe
+> [`food-order-direct-payment.md`](food-order-direct-payment.md). Überholt sind dort benannt:
+> Leitentscheidungen 1–6, AP1.4, AP1.5, AP2.1–AP2.3 und AP3.5. Alles Übrige — insbesondere die
+> Bezahl-Härtung aus PR #444, die Bestellliste (AP4) und die Klapp-Regeln der Bestellergruppen —
+> bleibt gültig. Bis zur Umsetzung beschreibt dieses Dokument weiterhin den Ist-Zustand von `main`.
+
 ## Ziel und Zuschnitt
 
 Die Sammelbestellung wird von „Sammelzahlung“ auf eine Warenkorb-Logik umgestellt: Positionen werden

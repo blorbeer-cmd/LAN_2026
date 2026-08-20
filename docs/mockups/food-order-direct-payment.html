@@ -1,0 +1,1729 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bezahlen an der Summe — Respawn Essen, Mockup Runde 5</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* ============================================================
+   Respawn — Essen: Direktzahlung statt Warenkorb (Mockup)
+   Zwei Ebenen:
+   1) Annotationsebene (dieses Dokument) — IBM Plex, kühleres Ground
+   2) App-Ebene (.rs-*) — exakt die Tokens aus server/public/css/style.css
+      und der System-Font-Stack der App, damit die Panels aussehen wie
+      das Produkt und nicht wie ein Mockup-Nachbau.
+   Bewusst nur dunkel: Respawn hat keine helle Variante.
+   ============================================================ */
+
+:root {
+  /* --- App-Tokens (1:1 aus style.css) --- */
+  --bg: #0f1420;
+  --bg-elevated: #171e2e;
+  --bg-elevated-2: #1e2740;
+  --border: rgba(122, 141, 195, 0.21);
+  --text: #eef1f8;
+  --text-muted: #8b93a7;
+  --accent: #5b8cff;
+  --accent-2: #9163f5;
+  --accent-3: #ef5da8;
+  --accent-gradient: linear-gradient(135deg, #5b8cff 0%, #9163f5 55%, #ef5da8 100%);
+  --accent-text: #ffffff;
+  --accent-bg: rgba(91, 140, 255, 0.16);
+  --danger: #ef4444;
+  --danger-bg: rgba(239, 68, 68, 0.15);
+  --state-playing: #22c55e;
+  --state-playing-bg: rgba(34, 197, 94, 0.16);
+  --state-paused: #f59e0b;
+  --state-paused-bg: rgba(245, 158, 11, 0.16);
+  --state-offline: #6b7280;
+  --state-offline-bg: rgba(107, 114, 128, 0.16);
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 20px;
+  --radius-full: 999px;
+  --motion-fast: 0.15s ease;
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
+  --card-padding: var(--space-4) var(--space-4);
+  --tap-target-size: 44px;
+  --content-max-width: 720px;
+  --font-size-2xs: 0.7rem;
+  --font-size-xs: 0.78rem;
+  --font-size-sm: 0.85rem;
+  --font-size-md: 0.95rem;
+  --font-size-lg: 1.15rem;
+  --font-size-xl: 1.3rem;
+  --font-weight-regular: 400;
+  --font-weight-medium: 600;
+  --font-weight-bold: 700;
+  --font-weight-black: 800;
+  --line-height-tight: 1;
+  --font-app: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  /* --- Annotationsebene --- */
+  --sheet: #0a0e17;
+  --sheet-2: #101724;
+  --ink: #dfe5f2;
+  --ink-quiet: #7f8aa3;
+  --ink-faint: #59637a;
+  --rule: rgba(122, 141, 195, 0.16);
+  --spec: #5b8cff;
+  --font-doc: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--sheet);
+  color: var(--ink);
+  font-family: var(--font-doc);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Dokumentgerüst ---------- */
+
+.doc {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px 96px;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 12px 24px;
+  background: rgba(10, 14, 23, 0.88);
+  backdrop-filter: blur(14px) saturate(1.3);
+  border-bottom: 1px solid var(--rule);
+}
+.topbar-mark {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin-right: auto;
+}
+.topbar-mark b { color: var(--spec); font-weight: 600; }
+.topbar a {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-quiet);
+  text-decoration: none;
+  padding: 4px 0;
+  border-bottom: 1px solid transparent;
+}
+.topbar a:hover, .topbar a:focus-visible { color: var(--ink); border-bottom-color: var(--spec); }
+
+.masthead { padding: 72px 0 56px; border-bottom: 1px solid var(--rule); }
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--spec);
+  margin: 0 0 18px;
+}
+.masthead h1 {
+  margin: 0 0 20px;
+  font-size: clamp(34px, 5.2vw, 54px);
+  line-height: 1.06;
+  letter-spacing: -0.022em;
+  font-weight: 600;
+  text-wrap: balance;
+  max-width: 18ch;
+}
+.lede { max-width: 62ch; margin: 0; color: var(--ink-quiet); font-size: 18px; }
+.lede + .lede { margin-top: 14px; }
+.lede strong { color: var(--ink); font-weight: 600; }
+
+.meta-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  margin-top: 34px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+.meta-strip span b { color: var(--ink-quiet); font-weight: 500; }
+
+/* ---------- Änderungsliste ---------- */
+
+.changes { margin: 56px 0 0; display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+@media (min-width: 780px) { .changes { grid-template-columns: 1fr 1fr; } }
+.change { background: var(--sheet-2); padding: 20px 22px; display: flex; gap: 16px; }
+.change-no { font-family: var(--font-mono); font-size: 11px; color: var(--spec); padding-top: 3px; letter-spacing: 0.08em; }
+.change h3 { margin: 0 0 5px; font-size: 15px; font-weight: 600; letter-spacing: -0.005em; }
+.change p { margin: 0; font-size: 14px; color: var(--ink-quiet); line-height: 1.55; }
+.change p code { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink); }
+
+/* ---------- Plates ---------- */
+
+.plate { padding: 64px 0 0; }
+.plate-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 6px; }
+.plate-no {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--spec);
+}
+.plate h2 { margin: 0; font-size: 25px; font-weight: 600; letter-spacing: -0.015em; }
+.plate-intent { margin: 0 0 26px; max-width: 68ch; color: var(--ink-quiet); font-size: 15.5px; }
+.plate-intent code, .note code, li code, td code { font-family: var(--font-mono); font-size: 0.86em; color: var(--ink); background: rgba(91,140,255,0.10); padding: 1px 5px; border-radius: 4px; }
+
+.stage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+  align-items: flex-start;
+}
+.screen {
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45);
+  flex: 1 1 var(--content-max-width);
+  min-width: 0;
+  max-width: 100%;
+}
+.screen.is-phone { flex: 0 1 390px; }
+.screen-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0 0 14px;
+}
+.side { flex: 1 1 260px; min-width: 0; }
+.note {
+  margin: 0 0 16px;
+  padding-left: 16px;
+  border-left: 2px solid var(--rule);
+  font-size: 14.5px;
+  color: var(--ink-quiet);
+  line-height: 1.55;
+}
+.note b { color: var(--ink); font-weight: 600; }
+.note:last-child { margin-bottom: 0; }
+.note.is-warn { border-left-color: var(--state-paused); }
+.note.is-key { border-left-color: var(--spec); }
+
+/* ---------- Tabelle ---------- */
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; min-width: 720px; background: var(--sheet-2); }
+th, td { text-align: left; padding: 13px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; font-size: 14.5px; }
+thead th {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 500;
+  background: rgba(255,255,255,0.015);
+}
+tbody tr:last-child td { border-bottom: none; }
+td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.win { color: var(--state-playing); font-weight: 600; }
+.same { color: var(--state-paused); font-weight: 600; }
+.scenario-id { font-family: var(--font-mono); font-size: 11px; color: var(--spec); letter-spacing: 0.08em; }
+
+ul.doc-list { margin: 0 0 18px; padding-left: 20px; color: var(--ink-quiet); font-size: 15px; }
+ul.doc-list li { margin-bottom: 8px; }
+ul.doc-list li b { color: var(--ink); font-weight: 600; }
+
+.open-q { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.open-q > div { background: var(--sheet-2); padding: 18px 22px; }
+.open-q h3 { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
+.open-q p { margin: 0; font-size: 14.5px; color: var(--ink-quiet); }
+
+/* ============================================================
+   App-Ebene — Nachbau der Respawn-Komponenten
+   ============================================================ */
+
+.rs {
+  font-family: var(--font-app);
+  color: var(--text);
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.rs *, .rs *::before, .rs *::after { box-sizing: border-box; }
+.rs .stack { display: flex; flex-direction: column; gap: var(--space-3); }
+.rs .row { display: flex; align-items: center; gap: var(--space-3); }
+.rs .row-between { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.rs .muted { color: var(--text-muted); }
+
+.rs .card {
+  position: relative;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--card-padding);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+.rs .card::before {
+  content: '';
+  position: absolute;
+  inset: var(--space-3) auto var(--space-3) 0;
+  width: var(--space-1);
+  border-radius: 0 var(--radius-full) var(--radius-full) 0;
+  background: var(--accent);
+}
+.rs .card.rail-alt::before { background: var(--accent-3); }
+.rs .card.is-target { box-shadow: inset 0 1px 0 rgba(255,255,255,0.03), 0 0 0 2px var(--accent); }
+
+.rs .btn {
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) 18px;
+  font-family: inherit;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  text-decoration: none;
+  transition: filter var(--motion-fast), box-shadow var(--motion-fast);
+}
+.rs .btn:hover:not(:disabled) { filter: brightness(1.12); }
+.rs .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.rs .btn-primary { background: var(--accent-gradient); color: var(--accent-text); box-shadow: 0 2px 14px rgba(91, 140, 255, 0.28); }
+.rs .btn-danger { background: var(--danger-bg); color: var(--danger); }
+.rs .btn-block { width: 100%; }
+.rs .btn-sm { padding: var(--space-2) var(--space-3); font-size: var(--font-size-sm); }
+
+.rs .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: var(--space-2);
+  line-height: var(--line-height-tight);
+  border-radius: var(--radius-sm);
+}
+.rs .icon-btn:hover:not(:disabled) { background: var(--bg-elevated-2); }
+.rs .icon-btn .ui-icon { width: 20px; height: 20px; }
+
+.rs .ui-icon { width: 20px; height: 20px; flex: 0 0 auto; display: block; }
+
+.rs .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  white-space: nowrap;
+}
+.rs .badge-playing { background: var(--state-playing-bg); color: var(--state-playing); }
+.rs .badge-paused { background: var(--state-paused-bg); color: var(--state-paused); }
+.rs .badge-offline { background: var(--state-offline-bg); color: var(--state-offline); }
+.rs .badge .ui-icon { width: 15px; height: 15px; }
+
+.rs .avatar-dot { display: inline-block; border-radius: var(--radius-full); flex: 0 0 auto; }
+
+/* ---------- Bestellkarte ---------- */
+
+.food-order-card-toggle {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: var(--tap-target-size);
+}
+.food-order-card-toggle strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.food-order-card-chevron { color: var(--text-muted); transition: transform var(--motion-fast); }
+.food-order-card-toggle[aria-expanded='true'] .food-order-card-chevron { transform: rotate(90deg); }
+.food-order-card-header-end { display: inline-flex; align-items: center; gap: var(--space-2); flex: 0 0 auto; }
+
+.food-order-meta, .food-order-overview { font-size: var(--font-size-xs); }
+
+.food-order-details {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+.food-order-details-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.food-order-send-at {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.food-order-send-at .ui-icon { width: 16px; height: 16px; }
+.food-order-details-note {
+  padding-top: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.food-order-detail-links { display: flex; flex-wrap: wrap; gap: var(--space-2); padding-top: var(--space-3); }
+
+/* NEU: links "Alle ausklappen", rechts "Bestellliste" */
+.food-order-card-toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.food-order-card-toolbar > .food-order-list-btn { margin-left: auto; }
+
+/* ---------- Bestellergruppe ---------- */
+
+.food-order-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+.food-order-group.is-all-paid { background: transparent; opacity: 0.78; }
+.food-order-group-header { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.food-order-group-toggle {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 180px;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.food-order-group-static { display: flex; min-width: 0; flex: 1 1 180px; align-items: center; gap: var(--space-2); }
+.food-order-group-chevron { flex-shrink: 0; color: var(--text-muted); transition: transform var(--motion-fast); }
+.food-order-group-toggle[aria-expanded='true'] .food-order-group-chevron { transform: rotate(90deg); }
+.food-order-group-headtext { display: flex; min-width: 0; flex-direction: column; }
+.food-order-group-headtext strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* NEU: Positionszusammenfassung UND Gesamtsumme links unter dem Namen */
+.food-order-group-meta { font-size: var(--font-size-xs); color: var(--text-muted); }
+.food-order-group-meta .group-total { color: var(--text); font-weight: var(--font-weight-medium); font-variant-numeric: tabular-nums; }
+
+.food-order-group-end { display: inline-flex; align-items: center; gap: var(--space-2); flex: 0 0 auto; }
+.food-order-group-amount {
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------- Bezahlt-Marke ---------- */
+
+.food-order-paid-marker {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 84px;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+.food-order-paid-marker .ui-icon { width: 15px; height: 15px; }
+.food-order-paid-marker.is-paid { border-color: var(--state-playing); background: var(--state-playing-bg); color: var(--state-playing); }
+/* NEU: gemischter Gruppenzustand — Bernstein, wie beim alten Sammelzustand */
+.food-order-paid-marker.is-mixed { border-color: var(--state-paused); background: var(--state-paused-bg); color: var(--state-paused); }
+.food-order-paid-marker:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ---------- Positionszeile ---------- */
+
+.food-order-group-items { padding-left: calc(var(--space-5) + var(--space-2)); padding-top: var(--space-2); }
+.food-order-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--font-size-sm);
+}
+.food-order-item:last-child { border-bottom: none; }
+.food-order-item-description { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.food-order-item.is-paid .food-order-item-description,
+.food-order-item.is-paid .food-order-item-amount strong,
+.food-order-item.is-paid .food-order-item-amount .muted { color: var(--text-muted); text-decoration: line-through; }
+.food-order-item-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+.food-order-item-amount strong { font-size: var(--font-size-md); }
+.food-order-item-amount .muted { font-size: var(--font-size-xs); }
+.food-order-item-action-cluster { display: inline-flex; align-items: center; gap: var(--space-1); flex-shrink: 0; }
+.food-order-item-action-divider { width: 1px; height: var(--space-5); background: var(--border); }
+.food-order-item-action, .food-order-item-action-spacer { width: var(--space-7); height: var(--space-7); flex-shrink: 0; }
+.food-order-item-action { padding: var(--space-1); }
+.food-order-item-action .ui-icon { width: 18px; height: 18px; }
+.food-order-item-action:disabled { opacity: 0.5; cursor: not-allowed; }
+.food-order-item-remove { color: var(--danger); }
+/* NEU: PayPal-Aktion — Markenblau als Zustandsfarbe wäre falsch, also
+   currentColor wie jede andere Zeilenaktion; nur das Icon ist die Marke. */
+.food-order-item-pay { color: var(--accent); }
+
+/* ---------- Summen ---------- */
+
+.food-order-total { padding-top: var(--space-3); border-top: 1px solid var(--border); }
+.food-order-total-label { font-size: var(--font-size-md); font-weight: var(--font-weight-bold); }
+.food-order-total-value { display: inline-flex; align-items: center; gap: var(--space-2); }
+.food-order-total-value strong { font-size: var(--font-size-lg); font-variant-numeric: tabular-nums; }
+
+/* ---------- Hinzufügen-Formular ---------- */
+
+.food-order-item-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  gap: var(--space-2);
+}
+.food-order-item-form input {
+  width: 100%;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--font-size-md);
+  padding: var(--space-3);
+}
+.food-order-item-form input::placeholder { color: var(--text-muted); }
+.food-order-desc-field { grid-column: 1 / -1; }
+.food-order-price-field { position: relative; display: block; min-width: 0; }
+.food-order-price-field input { padding-right: var(--space-7); }
+.food-order-price-field > span { position: absolute; top: 50%; right: var(--space-3); color: var(--text-muted); transform: translateY(-50%); pointer-events: none; }
+/* NEU: gleiche Box wie jeder andere .btn — zentrierter Text, gleiche Höhe
+   wie die Felder daneben, kein einseitig weggeschnittenes Padding. */
+.food-order-add-button { grid-column: -2 / -1; align-self: stretch; }
+/* ALT (nur im Vergleichspanel): das ist der Ist-Zustand */
+.is-before .food-order-add-button { align-self: center; justify-self: end; padding-right: 0; }
+
+.food-order-close-action { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--border); }
+
+/* ---------- Dialog ---------- */
+
+.rs-modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 420px;
+}
+.rs-modal h3 { margin: 0; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); }
+.rs-modal p { margin: 0; font-size: var(--font-size-sm); color: var(--text-muted); }
+.food-order-confirm-list { margin: 0; padding-left: var(--space-5); color: var(--text-muted); font-size: var(--font-size-xs); }
+.rs-modal-actions { display: flex; justify-content: space-between; gap: var(--space-2); padding-top: var(--space-2); }
+
+/* ---------- Zustandsmatrix ---------- */
+
+.state-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.state-cell {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.state-cell-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.state-cell-why { font-size: var(--font-size-xs); color: var(--text-muted); }
+
+/* ---------- Vorher/Nachher ---------- */
+
+.ba { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 860px) { .ba { grid-template-columns: 1fr 1fr; } }
+.ba-tag {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: 0 0 10px;
+}
+.ba-tag.before { color: var(--danger); }
+.ba-tag.after { color: var(--state-playing); }
+
+.footer { margin-top: 80px; padding-top: 28px; border-top: 1px solid var(--rule); font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; color: var(--ink-faint); display: flex; flex-wrap: wrap; gap: 8px 24px; }
+
+:focus-visible { outline: 2px solid var(--spec); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+
+.muted-cell { color: var(--ink-faint); font-size: 13px; }
+td b { font-weight: 600; color: var(--ink); }
+
+/* Overlay für die interaktiven Rückfragen in Plate 04 */
+.mock-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(6, 9, 16, 0.72);
+  backdrop-filter: blur(3px);
+}
+.mock-overlay[hidden] { display: none; }
+.mock-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 95;
+  transform: translateX(-50%);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-family: var(--font-app);
+  font-size: var(--font-size-sm);
+  padding: var(--space-3) var(--space-4);
+  max-width: min(92vw, 460px);
+}
+.mock-toast[hidden] { display: none; }
+
+/* Messhilfe für Plate 08: macht Box und Textmitte des „Hinzufügen“-Knopfs
+   sichtbar. Gehört zur Annotation, nicht zur App. */
+.mock-guide .food-order-add-button { position: relative; outline: 1px dashed var(--danger); }
+.mock-guide.is-after .food-order-add-button { outline-color: var(--state-playing); }
+.mock-guide .food-order-add-button::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 3px;
+  bottom: 3px;
+  width: 1px;
+  background: var(--danger);
+  opacity: 0.75;
+}
+.mock-guide.is-after .food-order-add-button::after { background: var(--state-playing); }
+.mock-guide .food-order-item-form input { outline: 1px dashed rgba(122,141,195,0.45); }
+.guide-caption {
+  margin: 10px 0 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+}
+
+/* Die App schaltet bei --bp-md (640 px Viewport) auf das schmale Layout um.
+   Im Mockup stehen mehrere Breiten nebeneinander auf einer Seite, deshalb
+   hier containerbezogen statt viewportbezogen — dieselben Regeln. */
+.screen { container-type: inline-size; }
+@container (max-width: 560px) {
+  .food-order-group-items { padding-left: 0; }
+  .food-order-item-amount { flex-basis: 100%; align-items: flex-start; }
+  .food-order-group-end { flex: 1 1 100%; justify-content: flex-end; }
+  .food-order-total { flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+  .food-order-item-form { grid-template-columns: minmax(0, 1fr); }
+  .food-order-item-form > .food-order-desc-field,
+  .food-order-add-button { grid-column: 1; }
+  .food-order-details-head { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body>
+<nav class="topbar">
+  <div class="topbar-mark">Respawn · Essen <b>/ Direktzahlung</b></div>
+  <a href="#aenderungen">Änderungen</a>
+  <a href="#uebersicht">Übersicht</a>
+  <a href="#positionen">Positionen</a>
+  <a href="#zustaende">Zustände</a>
+  <a href="#rueckfragen">Rückfragen</a>
+  <a href="#details">Details</a>
+  <a href="#workflows">Workflows</a>
+  <a href="#offen">Offen</a>
+</nav>
+
+<div class="doc">
+
+  <header class="masthead">
+    <p class="eyebrow">Mockup · Runde 5 · Essensbestellung</p>
+    <h1>Bezahlen, wo der Betrag steht</h1>
+    <p class="lede">Der Warenkorb verschwindet vollständig. An seine Stelle tritt ein
+      <strong>PayPal-Link direkt an jeder Summe</strong> — an der einzelnen Position und an der
+      Gesamtsumme einer Person. Dazu: mehrere offene Bestellungen starten eingeklappt, zeigen aber
+      im eingeklappten Kasten alles, was man ohne Öffnen wissen will.</p>
+    <p class="lede">Dieses Dokument ist ein <strong>Mockup, keine Implementierung</strong>. Alle Panels
+      unten sind mit den echten Tokens und Komponenten aus <code>server/public/css/style.css</code>
+      nachgebaut und lassen sich anklicken: Karten und Gruppen klappen, Marken schalten um,
+      Rückfragen öffnen sich.</p>
+    <div class="meta-strip">
+      <span><b>Bereich</b> server/public/js/views/foodOrders.js</span>
+      <span><b>Ersetzt</b> docs/plans/food-order-cart-concept.md (AP1.4–AP1.5, AP2.1–AP2.3, AP3.5)</span>
+      <span><b>Stand</b> 20.08.2026</span>
+    </div>
+  </header>
+
+  <section id="aenderungen" class="changes">
+    <div class="change"><span class="change-no">01</span><div>
+      <h3>Warenkorb raus</h3>
+      <p>Kein Korb-Kasten, keine Korb-Umschalter an Zeile und Gruppe, kein „Alle als bezahlt
+        markieren“ im Korb, kein <code>shoppingCart</code>-Icon. Auch die Sammel-Markierung wandert
+        dahin, wo sie hingehört: an die Person.</p></div></div>
+    <div class="change"><span class="change-no">02</span><div>
+      <h3>PayPal an jeder Summe</h3>
+      <p>Ein Bezahlen-Knopf pro Position und einer pro Person, beide mit PayPal-Icon. Popup- und
+        Staleness-Härtung aus PR&nbsp;#444 bleibt unverändert, nur mit variabler Positionsmenge.</p></div></div>
+    <div class="change"><span class="change-no">03</span><div>
+      <h3>Kopieren an der Personensumme</h3>
+      <p>Die Position hatte das schon; die Person bekommt es dazu — für alles, was nicht über PayPal
+        läuft (Bar, Überweisung, andere App).</p></div></div>
+    <div class="change"><span class="change-no">04</span><div>
+      <h3>Offen&nbsp;/&nbsp;Bezahlt auch pro Person</h3>
+      <p>Ein Klick setzt alle Positionen der Person. Drei Zustände: nichts bezahlt, teilweise
+        (Bernstein), alles bezahlt (Grün).</p></div></div>
+    <div class="change"><span class="change-no">05</span><div>
+      <h3>Gesamtsumme nach links</h3>
+      <p>Die Lebenssumme der Person steht nicht mehr unter dem offenen Betrag, sondern links unter
+        dem Namen in der Positionszeile: <code>3 Positionen · 1 bezahlt · Gesamt 32,40 €</code>.</p></div></div>
+    <div class="change"><span class="change-no">06</span><div>
+      <h3>Bestellungen starten eingeklappt</h3>
+      <p>Bei mehreren offenen Bestellungen sind alle zu — außer der, auf die ein Direktlink zeigt.
+        Der eingeklappte Kasten trägt Ersteller, Erstellzeitpunkt, Versandzeit, Hinweis,
+        Bestellliste und die Zusammenfassungszeile.</p></div></div>
+    <div class="change"><span class="change-no">07</span><div>
+      <h3>Werkzeugleiste links/rechts</h3>
+      <p>„Alle ausklappen“ links, „Bestellliste“ rechts. Die Bestellliste bleibt rechts verankert,
+        auch wenn links nichts steht.</p></div></div>
+    <div class="change"><span class="change-no">08</span><div>
+      <h3>Kleinkram</h3>
+      <p>„Versand“ neben der Uhr entfällt, das Komma nach dem Datum ebenfalls. „Hinzufügen“ wird
+        ein ganz normaler <code>.btn</code>: zentrierter Text, gleiche Höhe wie die Felder daneben.</p></div></div>
+  </section>
+
+  <section id="uebersicht" class="plate">
+    <div class="plate-head"><span class="plate-no">Plate 01</span><h2>Mehrere offene Bestellungen</h2></div>
+    <p class="plate-intent">Standardzustand beim Öffnen von „Essen“. Jede Karte ist zu, zeigt aber
+      alles, was die Entscheidung „muss ich hier rein?“ trägt. Nur Positionen, Hinzufügen-Formular
+      und Bestellaktionen liegen hinter dem Chevron.</p>
+    <div class="stage">
+      <div class="screen">
+        <p class="screen-label">Inhaltsspalte · 720 px</p>
+        <div class="rs" data-mock="overview"></div>
+      </div>
+      <div class="side">
+        <p class="note"><b>Angemeldet ist hier ein Admin</b>, damit „Bestellliste“ auf allen drei Karten
+          erscheint. Für alle anderen bleibt sie auf eigene Bestellungen beschränkt — dann ist die
+          Werkzeugleiste im eingeklappten Zustand leer und entfällt ganz.</p>
+        <p class="note is-key"><b>Sichtbar bleibt:</b> Titel und Status, „von &lt;Ersteller&gt; ·
+          &lt;Erstellzeitpunkt&gt;“, der Infokasten mit Versandzeit, Hinweis, Speisekarte und PayPal,
+          die Werkzeugleiste mit „Bestellliste“ und die Zusammenfassungszeile.</p>
+        <p class="note"><b>„Alle ausklappen“ fehlt hier bewusst</b> — es klappt die Bestellergruppen
+          <i>innerhalb</i> einer Bestellung. Solange die Karte zu ist, hat es keinen Gegenstand.
+          „Bestellliste“ bleibt trotzdem rechts stehen (<code>margin-left: auto</code>).</p>
+        <p class="note"><b>Kein <code>&lt;details&gt;</code> mehr.</b> Der eingeklappte Kasten enthält
+          Knöpfe und Links; die dürfen nicht in einem <code>&lt;summary&gt;</code> liegen. Stattdessen
+          derselbe Aufbau wie beim Gruppenkopf: ein Umschalt-Button mit <code>aria-expanded</code>
+          als Geschwister neben dem Rest — kein Knopf im Knopf.</p>
+        <p class="note is-warn"><b>Folge:</b> Der Deep-Link-Sprung in <code>app.js</code> kann sich
+          nicht mehr auf <code>HTMLDetailsElement.open</code> verlassen. Er muss die Bestellung vor
+          dem Rendern als ausgeklappt eintragen — genau das ist Plate 02.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="direktlink" class="plate">
+    <div class="plate-head"><span class="plate-no">Plate 02</span><h2>Über einen Direktlink geöffnet</h2></div>
+    <p class="plate-intent">Suche, Push-Benachrichtigung oder geteilter Link zeigen auf genau eine
+      Bestellung. Dann ist diese eine offen, alle anderen bleiben zu — und die geöffnete trägt
+      zusätzlich den bestehenden Sprungmarken-Rahmen <code>.search-target-highlight</code>.</p>
+    <div class="stage">
+      <div class="screen">
+        <p class="screen-label">Aufruf: /#foodOrders/o-2</p>
+        <div class="rs" data-mock="deeplink"></div>
+      </div>
+      <div class="side">
+        <p class="note is-key"><b>Regel:</b> Beim ersten Rendern einer Ansicht gilt — gibt es ein
+          Linkziel, ist genau dieses aufgeklappt; sonst sind bei mehr als einer offenen Bestellung
+          alle zu. Danach gehört der Zustand dem Nutzer und überlebt jedes Realtime-Rerender.</p>
+        <p class="note">Der Push zur neuen Sammelbestellung zeigt heute auf <code>/#foodOrders</code>
+          und trägt die Bestell-ID nicht mit. Damit „Direktlink“ nicht nur über die Suche
+          funktioniert, bekommt er die ID: <code>/#foodOrders/&lt;id&gt;</code>.</p>
+        <p class="note">Die Suchpalette liefert das Ziel schon heute als
+          <code>{ type: 'order', id }</code> — dieselbe Stelle setzt künftig auch den
+          Ausklapp-Zustand, statt nur zu scrollen.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="einzeln" class="plate">
+    <div class="plate-head"><span class="plate-no">Plate 03</span><h2>Eine einzige offene Bestellung</h2></div>
+    <p class="plate-intent">Gibt es nur eine offene Bestellung, gibt es nichts zu entrümpeln: keine
+      Klapp-Hülle, kein Chevron, die Karte ist offen. Das ist derselbe Präzedenzfall wie bei einer
+      einzigen Bestellergruppe.</p>
+    <div class="stage">
+      <div class="screen">
+        <p class="screen-label">Inhaltsspalte · 720 px</p>
+        <div class="rs" data-mock="single"></div>
+      </div>
+      <div class="side">
+        <p class="note"><b>Unverändert</b> gegenüber heute — nur ohne Warenkorb und mit den neuen
+          Bezahlwegen. Die Zusammenfassungszeile steht an derselben Stelle wie im eingeklappten
+          Kasten, damit der Blick beim Auf- und Zuklappen nicht springt.</p>
+        <p class="note"><b>„Alle ausklappen“ erscheint hier</b>, sobald zwei Besteller drin sind —
+          links, wie gefordert.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="positionen" class="plate">
+    <div class="plate-head"><span class="plate-no">Plate 04</span><h2>Gruppen, Positionen, Bezahlwege</h2></div>
+    <p class="plate-intent">Das Herzstück. Klappen, Marken umschalten und die Bezahlen-Knöpfe sind
+      hier echt — Marek ist „ich“. Die Rückfragen aus Plate 07 öffnen sich dabei tatsächlich.</p>
+    <div class="stage">
+      <div class="screen">
+        <p class="screen-label">Interaktiv · Marek = angemeldete Person</p>
+        <div class="rs" data-mock="detail"></div>
+      </div>
+      <div class="side">
+        <p class="note is-key"><b>Positionszeile:</b><br>
+          Marke │ Menge&nbsp;×&nbsp;Bezeichnung │ Betrag │ Kopieren ┊ PayPal │ Löschen.<br>
+          Der Warenkorb-Umschalter wird durch PayPal ersetzt — gleicher Platz, gleiche Breite,
+          gleiche Haarlinie davor.</p>
+        <p class="note is-key"><b>Gruppenkopf:</b><br>
+          Chevron&nbsp;· Punkt&nbsp;· Name über <i>„n Positionen · n bezahlt · Gesamt x,xx €“</i>
+          │ Marke │ offener Betrag │ Kopieren ┊ PayPal.<br>
+          Erst der Zustand, dann der Betrag, dann die Aktionen — dieselbe Leserichtung wie in der
+          Positionszeile.</p>
+        <p class="note"><b>Der offene Betrag</b> ist weiterhin die Summe der unbezahlten Positionen
+          inkl. Trinkgeld — exakt das, was der PayPal-Knopf daneben überträgt. Die Lebenssumme steht
+          jetzt links in der Meta-Zeile.</p>
+        <p class="note"><b>Vollständig bezahlte Gruppe:</b> Marke grün, offener Betrag entfällt
+          (0,00&nbsp;€ ist keine Information), PayPal gesperrt, Kopieren bleibt — man kopiert dann die
+          Gesamtsumme aus der Meta-Zeile.</p>
+        <p class="note is-warn"><b>Nina hat keinen Preis eingetragen.</b> Dann steht „Betrag offen“
+          und beide Bezahlen-Knöpfe sind gesperrt; die Marke bleibt bedienbar, denn bar bezahlen kann
+          man auch ohne hinterlegten Preis.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="zustaende" class="plate">
+    <div class="plate-head"><span class="plate-no">Plate 05</span><h2>Zustände der Bezahl-Marke</h2></div>
+    <p class="plate-intent">Die Marke ist an der Position zweiwertig und an der Person dreiwertig.
+      Farbe trägt nie allein: jede Marke schreibt ihren Zustand aus und nennt im Tooltip die Wirkung
+      des Klicks.</p>
+    <div class="screen">
+      <p class="screen-label">Marke an der Position</p>
+      <div class="rs"><div class="state-grid" data-mock="states-item"></div></div>
+    </div>
+    <div class="screen" style="margin-top:18px;">
+      <p class="screen-label">Marke an der Person</p>
+      <div class="rs"><div class="state-grid" data-mock="states-group"></div></div>
+    </div>
+    <div class="stage" style="margin-top:22px;">
+      <div class="side" style="flex:1 1 100%;">
+        <p class="note is-warn"><b>Die eine gefährliche Richtung:</b> „alles bezahlt“ → Klick macht
+          alles wieder offen. Damit lassen sich fremde Bestätigungen zurückdrehen — auch die, die
+          jemand anders vor einer Stunde gesetzt hat. Deshalb ist genau dieser Weg der einzige an der
+          Personenmarke, der eine Rückfrage bekommt, und die Rückfrage nennt die Namen (Plate 07).</p>
+        <p class="note">Von „nichts bezahlt“ und von „teilweise“ aus geht es vorwärts: alle noch
+          offenen Positionen werden bezahlt. Bereits bezahlte bleiben unangetastet, ihre
+          <code>paidBy</code>-Zuordnung geht nicht verloren.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="ohne-paypal" class="plate">
+    <div class="plate-head"><span class="plate-no">Plate 06</span><h2>Ohne PayPal-Link · abgeschickt · geschlossen</h2></div>
+    <p class="plate-intent">Drei Randfälle, die den Aufbau nicht verbiegen dürfen.</p>
+    <div class="stage">
+      <div class="screen is-phone">
+        <p class="screen-label">Kein PayPal-Link hinterlegt</p>
+        <div class="rs" data-mock="nopaypal"></div>
+      </div>
+      <div class="screen is-phone">
+        <p class="screen-label">Geschlossen · vollständig gesperrt</p>
+        <div class="rs" data-mock="locked"></div>
+      </div>
+      <div class="side">
+        <p class="note"><b>Ohne PayPal-Link</b> entfallen die Bezahlen-Knöpfe samt Trennlinie — und
+          zwar für die ganze Bestellung, nicht zeilenweise. Ein Abstandhalter wäre hier sinnlos: es
+          gibt in dieser Karte keine einzige Zeile, mit der etwas fluchten müsste. Innerhalb einer
+          Bestellung <i>mit</i> Link bleibt der Platz dagegen reserviert, wenn eine einzelne Zeile
+          bezahlt oder preislos ist. Marke und Kopieren tragen den Fall vollständig: bar kassieren
+          und abhaken.</p>
+        <p class="note"><b>Abgeschickt</b> (nicht abgebildet, Badge „Abgeschickt“ in Bernstein):
+          Positionen eingefroren, Marken und Bezahlen weiterhin bedienbar — nach dem Abschicken wird
+          ja erst richtig kassiert.</p>
+        <p class="note"><b>Geschlossen</b> sperrt alles: Marke, Bezahlen und Löschen sind
+          <code>disabled</code>, Kopieren bleibt. Die Bestellliste ist weiter erreichbar, zum
+          Abgleichen der Lieferung.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="rueckfragen" class="plate">
+    <div class="plate-head"><span class="plate-no">Plate 07</span><h2>Rückfragen</h2></div>
+    <p class="plate-intent">Vier statt drei — und eine davon ist neu, weil das Zurückdrehen einer
+      Personenmarke fremde Bestätigungen trifft. Alles andere bleibt ohne Nachfrage: abhaken,
+      kopieren, eine einzelne Position vorwärts markieren.</p>
+    <div class="stage">
+      <div class="screen is-phone"><p class="screen-label">Nach dem PayPal-Klick</p><div class="rs" data-mock="dlg-paid"></div></div>
+      <div class="screen is-phone"><p class="screen-label">Person vorwärts markieren</p><div class="rs" data-mock="dlg-markall"></div></div>
+      <div class="screen is-phone"><p class="screen-label">Person zurückdrehen · neu</p><div class="rs" data-mock="dlg-unmark"></div></div>
+      <div class="screen is-phone"><p class="screen-label">Position löschen</p><div class="rs" data-mock="dlg-delete"></div></div>
+    </div>
+    <div class="stage" style="margin-top:22px;">
+      <div class="side" style="flex:1 1 100%;">
+        <p class="note"><b>„Bezahlt?“ erscheint nach jedem Bezahlen-Klick</b>, an der Position wie an
+          der Person — identischer Text, nur eine oder mehrere Zeilen in der Liste. Respawn bekommt
+          von PayPal keine Rückmeldung, deshalb wird nie ein Erfolg behauptet: „Noch nicht“, Escape
+          und Klick daneben ändern nichts.</p>
+        <p class="note"><b>Keine Rückfrage</b> an der Positionsmarke — in beide Richtungen ein Tipp
+          zurück. An der Personenmarke nur vorwärts ohne Rückfrage, weil dabei nichts verloren geht.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="details" class="plate">
+    <div class="plate-head"><span class="plate-no">Plate 08</span><h2>Bestellinfo und „Hinzufügen“</h2></div>
+    <p class="plate-intent">Zwei kleine Korrekturen, beide vorher/nachher.</p>
+    <div class="ba">
+      <div>
+        <p class="ba-tag before">Vorher</p>
+        <div class="screen"><div class="rs" data-mock="details-before"></div></div>
+      </div>
+      <div>
+        <p class="ba-tag after">Nachher</p>
+        <div class="screen"><div class="rs" data-mock="details-after"></div></div>
+      </div>
+    </div>
+    <div class="ba" style="margin-top:26px;">
+      <div>
+        <p class="ba-tag before">Vorher</p>
+        <div class="screen"><div class="rs is-before mock-guide" data-mock="add-before"></div>
+          <p class="guide-caption">Gestrichelt: die tatsächliche Knopf-Box. Die rote Linie ist die Mitte der Box —
+            der Text steht nicht darauf, und die Box ist niedriger als die Felder daneben.</p></div>
+      </div>
+      <div>
+        <p class="ba-tag after">Nachher</p>
+        <div class="screen"><div class="rs mock-guide is-after" data-mock="add-after"></div>
+          <p class="guide-caption">Standard-<code>.btn</code>-Box: Text auf der Mitte, gleiche Höhe wie Anzahl und Preis.</p></div>
+      </div>
+    </div>
+    <div class="stage" style="margin-top:22px;">
+      <div class="side" style="flex:1 1 100%;">
+        <p class="note"><b>Bestellinfo:</b> Das Wort „Versand“ neben der Uhr trägt nichts — das Icon
+          sagt schon „Zeitpunkt“, und ein anderer Zeitpunkt steht dort nie. Das Komma stammt aus
+          <code>toLocaleString('de-DE')</code>; die Essen-Ansicht bekommt dafür einen eigenen
+          schmalen Formatierer, statt <code>formatDateTime()</code> app-weit umzustellen.<br>
+          Ohne Zeitpunkt bleibt es beim schlichten „Kein Zeitpunkt festgelegt“ ohne Icon.</p>
+        <p class="note"><b>„Hinzufügen“:</b> Drei verstreute Regeln setzen heute
+          <code>padding-right: 0</code> (Desktop) bzw. <code>var(--space-3)</code> (Handy) gegen die
+          18&nbsp;px links aus <code>.btn</code> — daher der aus der Mitte gerutschte Text. Zusammen
+          mit <code>align-self: center</code> ist der Knopf außerdem niedriger als die Felder daneben,
+          was beim Hovern als abweichender Umriss auffällt. Nachher: eine Regel,
+          <code>align-self: stretch</code>, kein Padding-Eingriff.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="workflows" class="plate">
+    <div class="plate-head"><span class="plate-no">Plate 09</span><h2>Workflows und Klicks</h2></div>
+    <p class="plate-intent">Gezählt wird ab dem Moment, in dem die Position in der Bestellung steht,
+      bis sie als bezahlt markiert ist. Die Bestätigung „Ja, bezahlt“ zählt in beiden Modellen mit,
+      das Eintippen der Position in keinem.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th></th><th>Szenario</th><th>Warenkorb (heute)</th><th class="num">Klicks</th><th>Direktzahlung (neu)</th><th class="num">Klicks</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="scenario-id">A</td>
+            <td><b>Ich bezahle meine eigene Position.</b><br><span class="muted-cell">Der Normalfall. Jeder trägt ein, jeder zahlt seins.</span></td>
+            <td>In den Korb → Bezahlen → Ja, bezahlt</td><td class="num">3</td>
+            <td>PayPal an der Zeile → Ja, bezahlt</td><td class="num win">2</td>
+          </tr>
+          <tr>
+            <td class="scenario-id">B</td>
+            <td><b>Ich habe für jemanden mitbestellt und zahle nur meins.</b></td>
+            <td>Eine Zeile in den Korb → Bezahlen → Ja, bezahlt</td><td class="num">3</td>
+            <td>PayPal an meiner Zeile → Ja, bezahlt</td><td class="num win">2</td>
+          </tr>
+          <tr>
+            <td class="scenario-id">C</td>
+            <td><b>Ich habe mitbestellt und zahle beides.</b><br><span class="muted-cell">Beide Positionen stehen unter meinem Namen — sie sind eine Gruppe.</span></td>
+            <td>2× in den Korb → Bezahlen → Ja, bezahlt</td><td class="num">4</td>
+            <td>PayPal an meiner Personensumme → Ja, bezahlt</td><td class="num win">2</td>
+          </tr>
+          <tr>
+            <td class="scenario-id">D</td>
+            <td><b>Ich übernehme die Positionen einer anderen Person.</b><br><span class="muted-cell">Schulden ausgleichen, drei Positionen.</span></td>
+            <td>Gruppe in den Korb → Bezahlen → Ja, bezahlt</td><td class="num">3</td>
+            <td>PayPal an deren Personensumme → Ja, bezahlt</td><td class="num win">2</td>
+          </tr>
+          <tr>
+            <td class="scenario-id">E</td>
+            <td><b>Ich zahle meine Gruppe und die einer anderen Person zusammen.</b><br><span class="muted-cell">Der einzige Fall, in dem der Korb etwas konnte, was jetzt fehlt.</span></td>
+            <td>2 Gruppen in den Korb → Bezahlen → Ja, bezahlt<br><span class="muted-cell">eine Überweisung</span></td><td class="num">4</td>
+            <td>2× (PayPal → Ja, bezahlt)<br><span class="muted-cell">zwei Überweisungen an denselben Empfänger</span></td><td class="num same">4</td>
+          </tr>
+          <tr>
+            <td class="scenario-id">F</td>
+            <td><b>Jemand gibt mir bar. Ich hake nur ab.</b></td>
+            <td>Gruppe in den Korb → Alle als bezahlt → Bestätigen</td><td class="num">3</td>
+            <td>Marke an der Personensumme → Bestätigen</td><td class="num win">2</td>
+          </tr>
+          <tr>
+            <td class="scenario-id">G</td>
+            <td><b>Ich zahle per Überweisung und will nur den Betrag.</b></td>
+            <td>Kopieren an der Zeile; Personensumme hatte kein Kopieren</td><td class="num">1</td>
+            <td>Kopieren an Zeile <i>oder</i> Personensumme</td><td class="num">1</td>
+          </tr>
+          <tr>
+            <td class="scenario-id">H</td>
+            <td><b>Ich habe die falsche Person abgehakt.</b></td>
+            <td>Jede Position einzeln zurückschalten</td><td class="num">n</td>
+            <td>Marke an der Person → Bestätigen</td><td class="num win">2</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="stage" style="margin-top:24px;">
+      <div class="side" style="flex:1 1 100%;">
+        <p class="note is-key"><b>Die Theorie hält.</b> In sieben von acht Szenarien braucht die
+          Direktzahlung weniger oder gleich viele Klicks, im häufigsten Fall A ein Drittel weniger.
+          Der Grund ist strukturell: Der Korb verlangt <i>immer</i> einen Sammelschritt, auch wenn
+          nur eine Position gemeint ist — und genau das ist der Normalfall.</p>
+        <p class="note is-warn"><b>Der eine Verlust ist E</b> — zwei Gruppen in einer Überweisung.
+          Gleiche Klickzahl, aber zwei PayPal-Vorgänge statt einem. Der Empfänger ist in beiden
+          Fällen derselbe (der PayPal-Link der Bestellung), der Betrag stimmt in beiden Fällen. Für
+          diesen Verlust einen Korb zu behalten, der in jedem anderen Szenario einen Zusatzklick
+          kostet, wäre der schlechtere Tausch.</p>
+        <p class="note"><b>Weitere Szenarien, die der Aufbau mittragen muss:</b></p>
+        <ul class="doc-list">
+          <li><b>Der Aufgeber kassiert.</b> Er sieht in der Zusammenfassungszeile, was noch offen
+            ist, und hakt Eingänge an der Personenmarke ab — ein Klick pro Person statt pro Position.</li>
+          <li><b>Position ohne Preis.</b> Bezahlen gesperrt, Marke bedienbar. Die Personensumme sagt
+            „Betrag offen“, statt eine falsche Summe zu behaupten.</li>
+          <li><b>Zwei Leute bezahlen gleichzeitig.</b> Der Bezahlen-Knopf prüft unmittelbar vor dem
+            Öffnen erneut gegen den Server und bricht mit Meldung ab, wenn eine Position inzwischen
+            weg oder woanders bezahlt ist — unverändert aus PR&nbsp;#444.</li>
+          <li><b>Jemand trägt nach, während ich zahle.</b> Betrifft nur die Personensumme; sie ändert
+            sich beim nächsten Rerender. Die bereits übergebene Summe bleibt gültig, die neue Position
+            bleibt offen und wird separat bezahlt.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="offen" class="plate">
+    <div class="plate-head"><span class="plate-no">Plate 10</span><h2>Offene Entscheidungen</h2></div>
+    <p class="plate-intent">Vier Punkte, die vor der Umsetzung eine Ansage brauchen.</p>
+    <div class="open-q">
+      <div><h3>Zurückdrehen an der Personenmarke — erlauben oder sperren?</h3>
+        <p>Der Auftrag sagt „auf bezahlt oder offen setzen“, also ein echter Umschalter. Der Mockup
+          zeigt ihn mit Rückfrage und Namensnennung. Alternative: nur vorwärts, Zurückdrehen bleibt
+          Sache der einzelnen Zeile. <b>Vorschlag: Umschalter mit Rückfrage</b>, wie abgebildet.</p></div>
+      <div><h3>Bezahlen an der Gesamtsumme der Bestellung?</h3>
+        <p>Technisch dieselbe Mechanik, aber es hieße „ich zahle für alle“ — im Betrieb selten, und
+          es macht das Abhaken für alle anderen unbrauchbar. <b>Vorschlag: nein</b>, nur Kopieren wie
+          heute.</p></div>
+      <div><h3>Startregel für den Aufgeber</h3>
+        <p>Innerhalb einer aufgeklappten Bestellung sind für den Aufgeber bisher alle Gruppen offen.
+          Bei fünf Bestellern ist das die längste Liste für den, der die Übersicht braucht.
+          <b>Vorschlag: unverändert lassen</b> — „Alle einklappen“ steht jetzt links gleich daneben.</p></div>
+      <div><h3>Bestellliste im eingeklappten Kasten für alle sichtbar?</h3>
+        <p>Sie ist heute auf Aufgeber und Admins beschränkt. Daran ändert sich nichts; bei allen
+          anderen bleibt die Werkzeugleiste im eingeklappten Zustand leer und entfällt.
+          <b>Vorschlag: unverändert.</b></p></div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <span>Respawn · LAN 2026</span>
+    <span>Mockup Runde 5 · Essen / Direktzahlung</span>
+    <span>Branch claude/orders-display-payment-5jelmf</span>
+  </footer>
+</div>
+<script>
+(() => {
+  'use strict';
+
+  /* ---------- Icons (Lucide-Stil wie server/public/js/icons.js) ---------- */
+  const ICONS = {
+    chevronRight: '<path d="m9 18 6-6-6-6"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+    check: '<path d="m20 6-11 11-5-5"/>',
+    circleDashed: '<circle cx="12" cy="12" r="9" stroke-dasharray="3.2 3.2"/>',
+    trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 16H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>',
+    listChecks: '<path d="M16 6H3"/><path d="M16 12H3"/><path d="M11 18H3"/><path d="m15 18 2 2 4-4"/>',
+    shoppingCart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
+    // Neu: PayPal-Doppel-P, als Strichzeichnung im Stil der übrigen Icons.
+    paypal: '<path d="M4.8 20 7.2 3.5h4.6a3.6 3.6 0 0 1 0 7.2H6.5"/><path d="M10.2 20.5 11.9 9.2h4.3a3.6 3.6 0 0 1 0 7.2h-4.1"/>',
+  };
+  const icon = (name, cls = '', label = '') => {
+    const p = ICONS[name];
+    if (!p) return '';
+    const a = label ? `role="img" aria-label="${label}"` : 'aria-hidden="true"';
+    return `<svg class="ui-icon${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${a}>${p}</svg>`;
+  };
+
+  /* ---------- Daten ---------- */
+  const PLAYERS = {
+    marek: { name: 'Marek', color: '#5b8cff' },
+    jasmin: { name: 'Jasmin', color: '#ef5da8' },
+    tobi: { name: 'Tobi', color: '#22c55e' },
+    nina: { name: 'Nina', color: '#f59e0b' },
+    sven: { name: 'Sven', color: '#9163f5' },
+  };
+  const ME = 'marek';
+
+  const eurFmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+  const eur = (c) => eurFmt.format(c / 100);
+  const withTip = (c, t) => Math.round(c * (1 + (t || 0) / 100));
+  const lineTotal = (it, tip) => (it.priceCents === null ? null : withTip(it.priceCents * (it.quantity ?? 1), tip));
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const dot = (key, size) => `<span class="avatar-dot" style="background:${PLAYERS[key].color};width:${size}px;height:${size}px;"></span>`;
+
+  let uid = 0;
+  const item = (player, description, quantity, priceCents, paid = false, paidByName = null) =>
+    ({ id: `i${++uid}`, player, description, quantity, priceCents, paid, paidByName });
+
+  const luigi = () => ({
+    id: 'o-1', title: "Pizza bei Luigi's", createdBy: 'sven', createdByName: 'Sven',
+    createdAt: '20.08. 18:12', sendAt: '20.08. 19:30', tipPercent: 10,
+    notes: 'Ich fahre um 19:45 los. Wer später einträgt, holt selbst ab.',
+    link: '#', paypalLink: '#', open: true, finalized: false,
+    items: [
+      item('marek', 'Pizza Diavola groß', 1, 1290, true, 'Marek'),
+      item('marek', 'Knoblauchbrot', 2, 390),
+      item('jasmin', 'Pizza Funghi', 1, 1090),
+      item('jasmin', 'Tiramisu', 1, 450),
+      item('tobi', 'Pizza Salami groß', 1, 1290, true, 'Tobi'),
+      item('nina', 'Salat der Woche', 1, null),
+    ],
+  });
+
+  const doener = () => ({
+    id: 'o-2', title: 'Döner-Runde Mesopotamia', createdBy: 'jasmin', createdByName: 'Jasmin',
+    createdAt: '20.08. 17:40', sendAt: '20.08. 21:00', tipPercent: 0,
+    notes: 'Sammelbestellung für die Nachtschicht. Scharf bitte extra dazuschreiben.',
+    link: '#', paypalLink: '#', open: true, finalized: false,
+    items: [
+      item('tobi', 'Dürüm mit allem', 1, 750),
+      item('tobi', 'Ayran', 2, 180),
+      item('marek', 'Döner ohne Zwiebeln', 1, 700),
+      item('sven', 'Lahmacun', 2, 550, true, 'Sven'),
+    ],
+  });
+
+  const fruehstueck = () => ({
+    id: 'o-3', title: 'Frühstück Sonntag', createdBy: 'marek', createdByName: 'Marek',
+    createdAt: '20.08. 22:05', sendAt: null, tipPercent: 0,
+    notes: 'Noch kein Zeitpunkt — trägt euch schon mal ein.',
+    link: null, paypalLink: null, open: true, finalized: false,
+    items: [item('nina', 'Croissant', 3, 190), item('marek', 'Kaffeepad-Nachschub', 1, 620)],
+  });
+
+  /* ---------- Ableitungen ---------- */
+  const groupsOf = (order) => {
+    const m = new Map();
+    for (const it of order.items) {
+      if (!m.has(it.player)) m.set(it.player, []);
+      m.get(it.player).push(it);
+    }
+    return m;
+  };
+  const groupPaidState = (items) => {
+    const paid = items.filter((i) => i.paid).length;
+    if (paid === 0) return 'none';
+    if (paid === items.length) return 'all';
+    return 'some';
+  };
+  const openCentsOf = (items, tip) => {
+    const unpaid = items.filter((i) => !i.paid);
+    if (unpaid.length === 0) return 0;
+    if (unpaid.some((i) => i.priceCents === null)) return null;
+    return unpaid.reduce((s, i) => s + lineTotal(i, tip), 0);
+  };
+  const totalCentsOf = (items, tip) =>
+    items.some((i) => i.priceCents === null)
+      ? null
+      : withTip(items.reduce((s, i) => s + i.priceCents * (i.quantity ?? 1), 0), tip);
+
+  /* ---------- Bausteine ---------- */
+
+  function paidMarkerHtml(state, { disabled = false, attrs = '', title = '' } = {}) {
+    const map = {
+      none: ['', 'circleDashed', 'Offen'],
+      some: ['is-mixed', 'circleDashed', 'Teilweise'],
+      all: ['is-paid', 'check', 'Bezahlt'],
+    };
+    const [cls, ic, label] = map[state];
+    return `<button type="button" class="food-order-paid-marker ${cls}" ${attrs} ${disabled ? 'disabled' : ''} aria-pressed="${state === 'all'}" title="${esc(title || label)}">${icon(ic)}<span>${label}</span></button>`;
+  }
+
+  function payButtonHtml({ disabled, title, attrs = '' }) {
+    return `<button type="button" class="icon-btn food-order-item-action food-order-item-pay" ${attrs} ${disabled ? 'disabled' : ''} title="${esc(title)}" aria-label="${esc(title)}">${icon('paypal')}</button>`;
+  }
+
+  function copyButtonHtml(value, title = 'Summe kopieren') {
+    return `<button type="button" class="icon-btn food-order-item-action" data-copy="${esc(value)}" title="${esc(title)}" aria-label="${esc(title)}">${icon('copy')}</button>`;
+  }
+
+  const spacer = '<span class="food-order-item-action-spacer" aria-hidden="true"></span>';
+
+  function itemRowHtml(order, it, ui) {
+    const tip = order.tipPercent || 0;
+    const total = lineTotal(it, tip);
+    const qty = it.quantity ?? 1;
+    const locked = ui.locked;
+    const sub = it.priceCents === null ? null : it.priceCents * qty;
+    const showBase = qty > 1 || tip > 0;
+    const baseLabel = qty > 1 ? `${qty} × ${eur(it.priceCents)}` : eur(sub);
+    const breakdown = total === null || !showBase ? ''
+      : `<span class="muted">${baseLabel}${tip > 0 ? ` · inkl. ${tip}% Trinkgeld` : ''}</span>`;
+
+    const marker = paidMarkerHtml(it.paid ? 'all' : 'none', {
+      disabled: locked,
+      attrs: `data-item-paid="${it.id}"`,
+      title: it.paid ? `Bezahlt von ${it.paidByName} – Markierung aufheben` : 'Als bezahlt markieren',
+    });
+
+    const amount = total === null
+      ? '<span class="food-order-item-amount muted">Betrag offen</span>'
+      : `<span class="food-order-item-amount"><strong>${eur(total)}</strong>${breakdown}</span>`;
+
+    const copy = total === null ? spacer : copyButtonHtml(eur(total));
+    const pay = order.paypalLink
+      ? `<span class="food-order-item-action-divider" aria-hidden="true"></span>` + payButtonHtml({
+          disabled: locked || it.paid || total === null,
+          attrs: `data-pay-item="${it.id}"`,
+          title: it.paid ? 'Bereits bezahlt' : total === null ? 'Ohne Preis nicht bezahlbar' : `${eur(total)} über PayPal bezahlen`,
+        })
+      : '';
+
+    const remove = !locked && order.open && it.player === ME
+      ? `<button type="button" class="icon-btn food-order-item-action food-order-item-remove" data-delete-item="${it.id}" ${it.paid ? 'disabled' : ''} title="${it.paid ? 'Bezahlte Position kann nicht entfernt werden' : 'Position entfernen'}">${icon('trash')}</button>`
+      : spacer;
+
+    return `<div class="food-order-item ${it.paid ? 'is-paid' : ''}">
+      ${marker}
+      <span class="food-order-item-description"><strong>${qty} ×</strong> ${esc(it.description)}</span>
+      ${amount}
+      <span class="food-order-item-action-cluster">${copy}${pay}</span>
+      ${remove}
+    </div>`;
+  }
+
+  function groupHtml(order, key, items, ui) {
+    const tip = order.tipPercent || 0;
+    const state = groupPaidState(items);
+    const open = openCentsOf(items, tip);
+    const total = totalCentsOf(items, tip);
+    const expanded = ui.expandedGroups.has(key);
+    const collapsible = ui.collapsibleGroups;
+
+    const qty = items.reduce((s, i) => s + (i.quantity ?? 1), 0);
+    const paidQty = items.filter((i) => i.paid).reduce((s, i) => s + (i.quantity ?? 1), 0);
+    const metaParts = [`${qty} ${qty === 1 ? 'Position' : 'Positionen'}`];
+    if (paidQty > 0) metaParts.push(`${paidQty} bezahlt`);
+    const partial = items.reduce((s2, i) => s2 + (i.priceCents ?? 0) * (i.quantity ?? 1), 0);
+    const metaTotal = total !== null
+      ? `<span class="group-total">Gesamt ${eur(total)}</span>`
+      : partial > 0
+        ? `<span class="group-total">Gesamt ${eur(withTip(partial, tip))}</span> · Preis fehlt`
+        : 'kein Preis eingetragen';
+
+    const headText = `${dot(key, 20)}
+      <span class="food-order-group-headtext">
+        <strong>${esc(PLAYERS[key].name)}${key === ME ? ' <span class="muted" style="font-weight:400;">(du)</span>' : ''}</strong>
+        <span class="food-order-group-meta">${metaParts.join(' · ')} · ${metaTotal}</span>
+      </span>`;
+
+    const left = collapsible
+      ? `<button type="button" class="food-order-group-toggle" data-toggle-group="${key}" aria-expanded="${expanded}">${icon('chevronRight', 'food-order-group-chevron')}${headText}</button>`
+      : `<div class="food-order-group-static">${headText}</div>`;
+
+    const markerTitle = state === 'all'
+      ? `Alle Positionen von ${PLAYERS[key].name} wieder auf offen setzen`
+      : `Alle offenen Positionen von ${PLAYERS[key].name} als bezahlt markieren`;
+    const marker = paidMarkerHtml(state, { disabled: ui.locked, attrs: `data-group-paid="${key}"`, title: markerTitle });
+
+    const amountHtml = state === 'all'
+      ? ''
+      : `<span class="food-order-group-amount">${open === null ? 'Betrag offen' : eur(open)}</span>`;
+
+    const copyValue = state === 'all' ? (total === null ? null : eur(total)) : (open === null ? null : eur(open));
+    const copy = copyValue === null ? spacer : copyButtonHtml(copyValue, `Summe von ${PLAYERS[key].name} kopieren`);
+    const pay = order.paypalLink
+      ? `<span class="food-order-item-action-divider" aria-hidden="true"></span>` + payButtonHtml({
+          disabled: ui.locked || state === 'all' || open === null || open === 0,
+          attrs: `data-pay-group="${key}"`,
+          title: state === 'all' ? 'Alles bezahlt' : open === null ? 'Betrag unvollständig' : `${eur(open)} für ${PLAYERS[key].name} über PayPal bezahlen`,
+        })
+      : '';
+
+    const rows = items.map((i) => itemRowHtml(order, i, ui)).join('');
+
+    return `<div class="food-order-group ${state === 'all' ? 'is-all-paid' : ''}">
+      <div class="food-order-group-header">
+        ${left}
+        <span class="food-order-group-end">
+          ${marker}
+          ${amountHtml}
+          <span class="food-order-item-action-cluster">${copy}${pay}</span>
+        </span>
+      </div>
+      <div class="food-order-group-items" ${collapsible && !expanded ? 'hidden' : ''}>${rows}</div>
+    </div>`;
+  }
+
+  function detailsHtml(order, { legacy = false, locked = false } = {}) {
+    const sendAt = order.sendAt
+      ? `<span class="food-order-send-at">${icon('clock')}${legacy ? `Versand ${order.sendAt.replace('. ', '., ')}` : order.sendAt} Uhr</span>`
+      : '<span class="food-order-send-at">Kein Zeitpunkt festgelegt</span>';
+    const links = order.link || order.paypalLink
+      ? `<div class="food-order-detail-links">
+           ${order.link ? '<a class="btn btn-sm" href="#" onclick="return false;">Speisekarte</a>' : ''}
+           ${order.paypalLink ? '<a class="btn btn-sm" href="#" onclick="return false;">PayPal öffnen</a>' : ''}
+         </div>` : '';
+    return `<div class="food-order-details">
+      <div class="food-order-details-head">${sendAt}${locked ? '' : '<button type="button" class="btn btn-sm">Bearbeiten</button>'}</div>
+      ${order.notes ? `<div class="food-order-details-note">${esc(order.notes)}</div>` : ''}
+      ${links}
+    </div>`;
+  }
+
+  function overviewHtml(order) {
+    const tip = order.tipPercent || 0;
+    const people = groupsOf(order).size;
+    const qty = order.items.reduce((s, i) => s + (i.quantity ?? 1), 0);
+    const paidQty = order.items.filter((i) => i.paid).reduce((s, i) => s + (i.quantity ?? 1), 0);
+    const complete = !order.items.some((i) => i.priceCents === null);
+    const total = withTip(order.items.reduce((s2, i) => s2 + (i.priceCents ?? 0) * (i.quantity ?? 1), 0), tip);
+    const openRaw = order.items.filter((i) => !i.paid).reduce((s2, i) => s2 + (i.priceCents ?? 0) * (i.quantity ?? 1), 0);
+    const open = withTip(openRaw, tip);
+    const parts = [
+      `${qty} ${qty === 1 ? 'Position' : 'Positionen'} von ${people} ${people === 1 ? 'Person' : 'Personen'}`,
+      `${paidQty} bezahlt`,
+      `Gesamt ${eur(total)}`,
+    ];
+    if (open > 0) parts.push(`offen ${eur(open)}`);
+    if (!complete) parts.push('Preise unvollständig');
+    return `<div class="muted food-order-overview">${parts.join(' · ')}</div>`;
+  }
+
+  function toolbarHtml(order, ui) {
+    const canSeeList = order.createdBy === ME || ui.admin;
+    const showExpandAll = ui.expanded && groupsOf(order).size > 1;
+    if (!canSeeList && !showExpandAll) return '';
+    const allOpen = [...groupsOf(order).keys()].every((k) => ui.expandedGroups.has(k));
+    return `<div class="food-order-card-toolbar">
+      ${showExpandAll ? `<button type="button" class="btn btn-sm" data-toggle-all>${allOpen ? 'Alle einklappen' : 'Alle ausklappen'}</button>` : ''}
+      ${canSeeList ? `<button type="button" class="btn btn-sm food-order-list-btn">${icon('listChecks')} Bestellliste</button>` : ''}
+    </div>`;
+  }
+
+  function addFormHtml() {
+    return `<form class="food-order-item-form" onsubmit="return false;">
+      <input class="food-order-desc-field" type="text" placeholder="z.B. Margherita groß" aria-label="Artikelbezeichnung" />
+      <label class="food-order-quantity-field"><input type="text" inputmode="numeric" placeholder="Anzahl" aria-label="Anzahl" /></label>
+      <label class="food-order-price-field"><input type="text" inputmode="decimal" placeholder="Preis" aria-label="Einzelpreis" /><span aria-hidden="true">€</span></label>
+      <button type="submit" class="btn food-order-add-button">Hinzufügen</button>
+    </form>`;
+  }
+
+  function totalRowHtml(order) {
+    const tip = order.tipPercent || 0;
+    const complete = !order.items.some((i) => i.priceCents === null);
+    const total = withTip(order.items.reduce((s2, i) => s2 + (i.priceCents ?? 0) * (i.quantity ?? 1), 0), tip);
+    if (total <= 0) return '';
+    const label = (tip > 0 ? `Gesamtsumme inkl. ${tip}% Trinkgeld` : 'Gesamtsumme') + (complete ? '' : ' (unvollständig)');
+    return `<div class="row-between food-order-total">
+      <span class="food-order-total-label">${label}</span>
+      <span class="food-order-total-value"><strong>${eur(total)}</strong>${copyButtonHtml(eur(total), 'Gesamtsumme kopieren')}</span>
+    </div>`;
+  }
+
+  function cardHtml(order, ui) {
+    const badge = order.finalized
+      ? '<span class="badge badge-offline">Geschlossen</span>'
+      : order.open
+        ? '<span class="badge badge-playing">Offen</span>'
+        : '<span class="badge badge-paused">Abgeschickt</span>';
+
+    const header = ui.collapsible
+      ? `<div class="row-between">
+           <button type="button" class="food-order-card-toggle" data-toggle-order="${order.id}" aria-expanded="${ui.expanded}">
+             ${icon('chevronRight', 'food-order-card-chevron')}<strong>${esc(order.title)}</strong>
+           </button>
+           <span class="food-order-card-header-end">${badge}</span>
+         </div>`
+      : `<div class="row-between"><strong>${esc(order.title)}</strong>${badge}</div>`;
+
+    const always = `${header}
+      <div class="muted food-order-meta">von ${esc(order.createdByName)} · ${order.createdAt}</div>
+      ${detailsHtml(order, { locked: ui.locked })}
+      ${toolbarHtml(order, ui)}
+      ${overviewHtml(order)}`;
+
+    if (!ui.expanded) {
+      return `<div class="card stack ${ui.rail === 'alt' ? 'rail-alt' : ''} ${ui.target ? 'is-target' : ''}" data-order="${order.id}">${always}</div>`;
+    }
+
+    const grouped = groupsOf(order);
+    ui.collapsibleGroups = grouped.size > 1;
+    const groups = [...grouped.entries()].map(([k, items]) => groupHtml(order, k, items, ui)).join('');
+
+    const actions = order.createdBy === ME && !ui.locked
+      ? `<div class="food-order-close-action">
+           <button type="button" class="btn btn-primary btn-sm btn-block">Bestellung abschicken</button>
+           <button type="button" class="btn btn-danger btn-sm btn-block">Bestellung löschen</button>
+         </div>` : '';
+
+    return `<div class="card stack ${ui.rail === 'alt' ? 'rail-alt' : ''} ${ui.target ? 'is-target' : ''}" data-order="${order.id}">
+      ${always}
+      <div class="stack food-order-items">${groups}</div>
+      ${totalRowHtml(order)}
+      ${ui.locked ? '' : addFormHtml()}
+      ${actions}
+    </div>`;
+  }
+
+  /* ---------- Dialoge ---------- */
+
+  function modalHtml({ title, text, items = [], note, confirm = 'Bestätigen', cancel = 'Abbrechen', danger = false }) {
+    return `<div class="rs-modal">
+      <h3>${esc(title)}</h3>
+      <p>${text}</p>
+      ${items.length ? `<ul class="food-order-confirm-list">${items.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
+      ${note ? `<p>${esc(note)}</p>` : ''}
+      <div class="rs-modal-actions">
+        <button type="button" class="btn btn-sm" data-modal-close>${esc(cancel)}</button>
+        <button type="button" class="btn btn-sm ${danger ? 'btn-danger' : 'btn-primary'}" data-modal-confirm>${esc(confirm)}</button>
+      </div>
+    </div>`;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'mock-overlay';
+  overlay.hidden = true;
+  document.body.append(overlay);
+  const toastEl = document.createElement('div');
+  toastEl.className = 'mock-toast rs';
+  toastEl.hidden = true;
+  document.body.append(toastEl);
+  let toastTimer = null;
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2600);
+  }
+
+  function confirmDialog(opts) {
+    return new Promise((resolve) => {
+      overlay.innerHTML = `<div class="rs">${modalHtml(opts)}</div>`;
+      overlay.hidden = false;
+      const onBackdrop = (e) => { if (e.target === overlay) close(false); };
+      const close = (v) => {
+        overlay.removeEventListener('click', onBackdrop);
+        overlay.hidden = true;
+        overlay.innerHTML = '';
+        resolve(v);
+      };
+      overlay.querySelector('[data-modal-close]').addEventListener('click', () => close(false));
+      overlay.querySelector('[data-modal-confirm]').addEventListener('click', () => close(true));
+      overlay.addEventListener('click', onBackdrop);
+      overlay.querySelector('[data-modal-close]').focus();
+    });
+  }
+
+  /* ---------- Panels ---------- */
+
+  function mountList(root, orders, opts) {
+    const ui = {
+      expandedOrders: new Set(opts.expandedOrders || []),
+      expandedGroupsByOrder: new Map(),
+      admin: Boolean(opts.admin),
+      target: opts.target || null,
+      collapsible: opts.collapsible !== false,
+      locked: false,
+    };
+    for (const o of orders) {
+      const g = new Set();
+      const grouped = groupsOf(o);
+      if (opts.expandAllGroups) for (const k of grouped.keys()) g.add(k);
+      else for (const [k, items] of grouped) if ((k === ME || o.createdBy === ME) && !items.every((i) => i.paid)) g.add(k);
+      ui.expandedGroupsByOrder.set(o.id, g);
+    }
+
+    const draw = () => {
+      root.innerHTML = orders.map((o, idx) => cardHtml(o, {
+        ...ui,
+        expanded: ui.collapsible ? ui.expandedOrders.has(o.id) : true,
+        collapsible: ui.collapsible,
+        expandedGroups: ui.expandedGroupsByOrder.get(o.id),
+        collapsibleGroups: groupsOf(o).size > 1,
+        rail: idx % 2 === 1 ? 'alt' : 'main',
+        target: ui.target === o.id,
+        locked: Boolean(o.finalized),
+      })).join('');
+    };
+
+    root.addEventListener('click', async (e) => {
+      const t = e.target.closest('button');
+      if (!t) return;
+      const card = t.closest('[data-order]');
+      const order = orders.find((o) => o.id === card?.dataset.order);
+
+      if (t.dataset.toggleOrder) {
+        ui.expandedOrders.has(t.dataset.toggleOrder) ? ui.expandedOrders.delete(t.dataset.toggleOrder) : ui.expandedOrders.add(t.dataset.toggleOrder);
+        return draw();
+      }
+      if (t.dataset.copy !== undefined) return toast(`Summe kopiert: ${t.dataset.copy}`);
+      if (!order) return;
+      const groups = ui.expandedGroupsByOrder.get(order.id);
+
+      if (t.dataset.toggleGroup) {
+        groups.has(t.dataset.toggleGroup) ? groups.delete(t.dataset.toggleGroup) : groups.add(t.dataset.toggleGroup);
+        return draw();
+      }
+      if (t.hasAttribute('data-toggle-all')) {
+        const keys = [...groupsOf(order).keys()];
+        const allOpen = keys.every((k) => groups.has(k));
+        groups.clear();
+        if (!allOpen) keys.forEach((k) => groups.add(k));
+        return draw();
+      }
+      if (t.dataset.itemPaid) {
+        const it = order.items.find((i) => i.id === t.dataset.itemPaid);
+        it.paid = !it.paid;
+        it.paidByName = it.paid ? PLAYERS[ME].name : null;
+        return draw();
+      }
+      if (t.dataset.deleteItem) {
+        const it = order.items.find((i) => i.id === t.dataset.deleteItem);
+        const ok = await confirmDialog({
+          title: `${it.quantity} × ${it.description} löschen?`,
+          text: 'Lässt sich nicht rückgängig machen.',
+          confirm: 'Löschen', danger: true,
+        });
+        if (!ok) return;
+        order.items = order.items.filter((i) => i.id !== it.id);
+        return draw();
+      }
+      if (t.dataset.payItem) {
+        const it = order.items.find((i) => i.id === t.dataset.payItem);
+        const total = lineTotal(it, order.tipPercent || 0);
+        const ok = await confirmDialog({
+          title: 'Bezahlt?',
+          text: `${eur(total)} für 1 Position an PayPal übergeben.`,
+          items: [`${PLAYERS[it.player].name}: ${it.quantity} × ${it.description} — ${eur(total)}`],
+          confirm: 'Ja, bezahlt', cancel: 'Noch nicht',
+        });
+        if (!ok) return;
+        it.paid = true; it.paidByName = PLAYERS[ME].name;
+        return draw();
+      }
+      if (t.dataset.payGroup) {
+        const key = t.dataset.payGroup;
+        const items = groupsOf(order).get(key).filter((i) => !i.paid);
+        const sum = openCentsOf(groupsOf(order).get(key), order.tipPercent || 0);
+        const ok = await confirmDialog({
+          title: 'Bezahlt?',
+          text: `${eur(sum)} für ${items.length} ${items.length === 1 ? 'Position' : 'Positionen'} an PayPal übergeben.`,
+          items: items.map((i) => `${PLAYERS[i.player].name}: ${i.quantity} × ${i.description} — ${eur(lineTotal(i, order.tipPercent || 0))}`),
+          confirm: 'Ja, bezahlt', cancel: 'Noch nicht',
+        });
+        if (!ok) return;
+        items.forEach((i) => { i.paid = true; i.paidByName = PLAYERS[ME].name; });
+        return draw();
+      }
+      if (t.dataset.groupPaid) {
+        const key = t.dataset.groupPaid;
+        const items = groupsOf(order).get(key);
+        const state = groupPaidState(items);
+        if (state === 'all') {
+          const byNames = [...new Set(items.map((i) => i.paidByName).filter(Boolean))];
+          const ok = await confirmDialog({
+            title: `Bezahlt-Markierung für ${PLAYERS[key].name} aufheben?`,
+            text: `${items.length} ${items.length === 1 ? 'Position' : 'Positionen'} werden wieder als offen geführt.`,
+            items: items.map((i) => `${i.quantity} × ${i.description} — bestätigt von ${i.paidByName ?? '?'}`),
+            note: byNames.length > 1 || byNames[0] !== PLAYERS[ME].name
+              ? 'Darunter sind Bestätigungen von anderen.' : undefined,
+            confirm: 'Aufheben',
+          });
+          if (!ok) return;
+          items.forEach((i) => { i.paid = false; i.paidByName = null; });
+          return draw();
+        }
+        const open = items.filter((i) => !i.paid);
+        const sum = openCentsOf(items, order.tipPercent || 0);
+        const ok = await confirmDialog({
+          title: `Alle Positionen von ${PLAYERS[key].name} als bezahlt markieren?`,
+          text: `${open.length} ${open.length === 1 ? 'Position' : 'Positionen'} · ${sum === null ? 'Betrag unvollständig' : eur(sum)}.`,
+          items: open.map((i) => `${i.quantity} × ${i.description}`),
+          confirm: 'Bestätigen',
+        });
+        if (!ok) return;
+        open.forEach((i) => { i.paid = true; i.paidByName = PLAYERS[ME].name; });
+        return draw();
+      }
+    });
+
+    draw();
+  }
+
+  /* ---------- Mount ---------- */
+
+  const pick = (sel) => document.querySelector(`[data-mock="${sel}"]`);
+
+  mountList(pick('overview'), [luigi(), doener(), fruehstueck()], { expandedOrders: [], admin: true });
+  mountList(pick('deeplink'), [luigi(), doener(), fruehstueck()], { expandedOrders: ['o-2'], target: 'o-2', admin: true });
+  mountList(pick('single'), [doener()], { collapsible: false, admin: true });
+  mountList(pick('detail'), [luigi()], { collapsible: false, expandAllGroups: true, admin: true });
+
+  const noPaypal = fruehstueck();
+  noPaypal.items = [item('marek', 'Kaffeepad-Nachschub', 1, 620), item('nina', 'Croissant', 3, 190, true, 'Marek')];
+  mountList(pick('nopaypal'), [noPaypal], { collapsible: false, expandAllGroups: true });
+
+  const closed = (() => {
+    const o = doener();
+    o.open = false; o.finalized = true;
+    o.items.forEach((i) => { i.paid = true; i.paidByName = 'Jasmin'; });
+    return o;
+  })();
+  mountList(pick('locked'), [closed], { collapsible: false, expandAllGroups: true });
+
+  /* Statische Dialogtafeln */
+  pick('dlg-paid').innerHTML = modalHtml({
+    title: 'Bezahlt?',
+    text: '16,94 € für 2 Positionen an PayPal übergeben.',
+    items: ['Jasmin: 1 × Pizza Funghi — 11,99 €', 'Jasmin: 1 × Tiramisu — 4,95 €'],
+    confirm: 'Ja, bezahlt', cancel: 'Noch nicht',
+  });
+  pick('dlg-markall').innerHTML = modalHtml({
+    title: 'Alle Positionen von Jasmin als bezahlt markieren?',
+    text: '2 Positionen · 16,94 €.',
+    items: ['1 × Pizza Funghi', '1 × Tiramisu'],
+    confirm: 'Bestätigen',
+  });
+  pick('dlg-unmark').innerHTML = modalHtml({
+    title: 'Bezahlt-Markierung für Tobi aufheben?',
+    text: '1 Position wird wieder als offen geführt.',
+    items: ['1 × Pizza Salami groß — bestätigt von Tobi'],
+    note: 'Darunter sind Bestätigungen von anderen.',
+    confirm: 'Aufheben',
+  });
+  pick('dlg-delete').innerHTML = modalHtml({
+    title: '2 × Knoblauchbrot löschen?',
+    text: 'Lässt sich nicht rückgängig machen.',
+    confirm: 'Löschen', danger: true,
+  });
+
+  /* Zustandsmatrix */
+  const cell = (label, body, why) =>
+    `<div class="state-cell"><span class="state-cell-label">${label}</span><div>${body}</div><span class="state-cell-why">${why}</span></div>`;
+
+  pick('states-item').innerHTML = [
+    cell('Offen', paidMarkerHtml('none', { title: 'Als bezahlt markieren' }), 'Klick markiert bezahlt. Keine Rückfrage — ein Tipp zurück.'),
+    cell('Bezahlt', paidMarkerHtml('all', { title: 'Bezahlt von Tobi – Markierung aufheben' }), 'Tooltip nennt, wer bestätigt hat. Bleibt bedienbar, auch wenn die Zeile sonst gesperrt ist.'),
+    cell('Bestellung geschlossen', paidMarkerHtml('all', { disabled: true }), 'Erst „Geschlossen“ sperrt die Marke — „Abgeschickt“ nicht.'),
+  ].join('');
+
+  pick('states-group').innerHTML = [
+    cell('Nichts bezahlt', paidMarkerHtml('none', { title: 'Alle offenen Positionen als bezahlt markieren' }), 'Klick markiert alle Positionen der Person. Rückfrage mit Liste.'),
+    cell('Teilweise', paidMarkerHtml('some', { title: 'Restliche offene Positionen als bezahlt markieren' }), 'Bernstein plus Wort. Klick markiert nur die Übrigen; Bestätigtes bleibt unangetastet.'),
+    cell('Alles bezahlt', paidMarkerHtml('all', { title: 'Alle Positionen wieder auf offen setzen' }), 'Einziger rückwärts wirkender Weg. Rückfrage nennt die fremden Bestätigungen.'),
+    cell('Geschlossen', paidMarkerHtml('some', { disabled: true }), 'Gesperrt wie alles andere in einer geschlossenen Bestellung.'),
+  ].join('');
+
+  /* Vorher/Nachher: Bestellinfo */
+  const infoOrder = luigi();
+  pick('details-before').innerHTML = `<div class="card stack">${detailsHtml(infoOrder, { legacy: true })}</div>`;
+  pick('details-after').innerHTML = `<div class="card stack">${detailsHtml(infoOrder)}</div>`;
+
+  /* Vorher/Nachher: Hinzufügen */
+  pick('add-before').innerHTML = `<div class="card stack">${addFormHtml()}</div>`;
+  pick('add-after').innerHTML = `<div class="card stack">${addFormHtml()}</div>`;
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !overlay.hidden) {
+      overlay.hidden = true;
+      overlay.innerHTML = '';
+    }
+  });
+})();
+</script>
+</body>
+</html>
