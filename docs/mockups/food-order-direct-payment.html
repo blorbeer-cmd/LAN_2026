@@ -413,9 +413,11 @@ ul.doc-list li b { color: var(--ink); font-weight: 600; }
 }
 .food-order-detail-links { display: flex; flex-wrap: wrap; gap: var(--space-2); padding-top: var(--space-3); }
 
-/* NEU: links "Alle ausklappen", rechts "Bestellliste" */
+/* NEU: die Werkzeugleiste trägt nur noch "Alle ausklappen" und steht links,
+   unterhalb der Zusammenfassungszeile. Die Bestellliste ist in den Infokasten
+   gewandert (.food-order-detail-links). */
 .food-order-card-toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.food-order-card-toolbar > .food-order-list-btn { margin-left: auto; }
+.food-order-list-btn { display: inline-flex; align-items: center; gap: var(--space-2); }
 
 /* ---------- Bestellergruppe ---------- */
 
@@ -452,6 +454,9 @@ ul.doc-list li b { color: var(--ink); font-weight: 600; }
 /* NEU: Positionszusammenfassung UND Gesamtsumme links unter dem Namen */
 .food-order-group-meta { font-size: var(--font-size-xs); color: var(--text-muted); }
 .food-order-group-meta .group-total { color: var(--text); font-weight: var(--font-weight-medium); font-variant-numeric: tabular-nums; }
+/* NEU: vollständig bezahlte Person — die Gesamtsumme wird durchgestrichen,
+   genau wie der Betrag einer bezahlten Einzelposition. */
+.food-order-group-meta .group-total.is-settled { color: var(--text-muted); text-decoration: line-through; }
 
 .food-order-group-end { display: inline-flex; align-items: center; gap: var(--space-2); flex: 0 0 auto; }
 .food-order-group-amount {
@@ -692,6 +697,22 @@ td b { font-weight: 600; color: var(--ink); }
   .food-order-add-button { grid-column: 1; }
   .food-order-details-head { flex-wrap: wrap; }
 }
+
+
+/* Plate 05: Icon-Vergleich für den Bezahlen-Knopf. */
+.icon-lab { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+@media (min-width: 900px) { .icon-lab { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.icon-lab-cell { background: var(--sheet-2); padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+.icon-lab-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.icon-lab-name { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-quiet); }
+.icon-lab-verdict { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
+.icon-lab-verdict.pick { color: var(--state-playing); background: var(--state-playing-bg); }
+.icon-lab-verdict.no { color: var(--ink-faint); background: rgba(122,141,195,0.10); }
+.icon-lab-why { margin: 0; font-size: 14px; color: var(--ink-quiet); line-height: 1.5; }
+.icon-lab-sizes { display: flex; align-items: center; gap: 20px; padding: 10px 0; }
+.icon-lab-size { display: flex; align-items: center; gap: 8px; color: var(--accent); }
+.icon-lab-size .ui-icon { width: var(--s); height: var(--s); }
+.icon-lab-size span { font-family: var(--font-mono); font-size: 10px; color: var(--ink-faint); }
 </style>
 </head>
 <body>
@@ -700,6 +721,7 @@ td b { font-weight: 600; color: var(--ink); }
   <a href="#aenderungen">Änderungen</a>
   <a href="#uebersicht">Übersicht</a>
   <a href="#positionen">Positionen</a>
+  <a href="#icons">Icons</a>
   <a href="#zustaende">Zustände</a>
   <a href="#rueckfragen">Rückfragen</a>
   <a href="#details">Details</a>
@@ -710,7 +732,7 @@ td b { font-weight: 600; color: var(--ink); }
 <div class="doc">
 
   <header class="masthead">
-    <p class="eyebrow">Mockup · Runde 5 · Essensbestellung</p>
+    <p class="eyebrow">Mockup · Runde 6 · Essensbestellung</p>
     <h1>Bezahlen, wo der Betrag steht</h1>
     <p class="lede">Der Warenkorb verschwindet vollständig. An seine Stelle tritt ein
       <strong>PayPal-Link direkt an jeder Summe</strong> — an der einzelnen Position und an der
@@ -755,10 +777,22 @@ td b { font-weight: 600; color: var(--ink); }
         Der eingeklappte Kasten trägt Ersteller, Erstellzeitpunkt, Versandzeit, Hinweis,
         Bestellliste und die Zusammenfassungszeile.</p></div></div>
     <div class="change"><span class="change-no">07</span><div>
-      <h3>Werkzeugleiste links/rechts</h3>
-      <p>„Alle ausklappen“ links, „Bestellliste“ rechts. Die Bestellliste bleibt rechts verankert,
-        auch wenn links nichts steht.</p></div></div>
+      <h3>Bestellliste in den Infokasten, für alle</h3>
+      <p>Sie steht jetzt bei Speisekarte und PayPal statt in der Werkzeugleiste, und jede angemeldete
+        Person kann sie öffnen — nicht mehr nur Aufgeber und Admins.</p></div></div>
     <div class="change"><span class="change-no">08</span><div>
+      <h3>Zusammenfassung über „Alle ausklappen“</h3>
+      <p>Reihenfolge in der Karte: Infokasten, Zusammenfassungszeile, dann der Ausklapp-Schalter —
+        links, allein in seiner Zeile.</p></div></div>
+    <div class="change"><span class="change-no">09</span><div>
+      <h3>Bezahlte Personensumme durchgestrichen</h3>
+      <p>Ist alles bezahlt, wird die Gesamtsumme durchgestrichen — dieselbe Erledigt-Sprache wie
+        beim Betrag einer bezahlten Einzelposition.</p></div></div>
+    <div class="change"><span class="change-no">10</span><div>
+      <h3>Löschen an der Personensumme</h3>
+      <p>Entfernt alle eigenen Positionen auf einmal, statt jede Zeile einzeln. Nur die eigene
+        Gruppe, und nur solange keine davon bezahlt ist.</p></div></div>
+    <div class="change"><span class="change-no">11</span><div>
       <h3>Kleinkram</h3>
       <p>„Versand“ neben der Uhr entfällt, das Komma nach dem Datum ebenfalls. „Hinzufügen“ wird
         ein ganz normaler <code>.btn</code>: zentrierter Text, gleiche Höhe wie die Felder daneben.</p></div></div>
@@ -775,15 +809,16 @@ td b { font-weight: 600; color: var(--ink); }
         <div class="rs" data-mock="overview"></div>
       </div>
       <div class="side">
-        <p class="note"><b>Angemeldet ist hier ein Admin</b>, damit „Bestellliste“ auf allen drei Karten
-          erscheint. Für alle anderen bleibt sie auf eigene Bestellungen beschränkt — dann ist die
-          Werkzeugleiste im eingeklappten Zustand leer und entfällt ganz.</p>
         <p class="note is-key"><b>Sichtbar bleibt:</b> Titel und Status, „von &lt;Ersteller&gt; ·
-          &lt;Erstellzeitpunkt&gt;“, der Infokasten mit Versandzeit, Hinweis, Speisekarte und PayPal,
-          die Werkzeugleiste mit „Bestellliste“ und die Zusammenfassungszeile.</p>
+          &lt;Erstellzeitpunkt&gt;“, der Infokasten mit Versandzeit, Hinweis, Bestellliste,
+          Speisekarte und PayPal — und darunter die Zusammenfassungszeile.</p>
+        <p class="note"><b>Die Bestellliste steht im Infokasten</b>, an erster Stelle der Knopfreihe.
+          Sie ist immer vorhanden, also springt ihr Platz nicht, wenn Speisekarte oder PayPal fehlen.
+          Und sie ist für jede angemeldete Person zu öffnen: Sie enthält weder Namen noch
+          Bezahlt-Zustände, sondern nur, was insgesamt bestellt wurde.</p>
         <p class="note"><b>„Alle ausklappen“ fehlt hier bewusst</b> — es klappt die Bestellergruppen
-          <i>innerhalb</i> einer Bestellung. Solange die Karte zu ist, hat es keinen Gegenstand.
-          „Bestellliste“ bleibt trotzdem rechts stehen (<code>margin-left: auto</code>).</p>
+          <i>innerhalb</i> einer Bestellung. Solange die Karte zu ist, hat es keinen Gegenstand. Es
+          erscheint erst beim Ausklappen, links unter der Zusammenfassungszeile.</p>
         <p class="note"><b>Kein <code>&lt;details&gt;</code> mehr.</b> Der eingeklappte Kasten enthält
           Knöpfe und Links; die dürfen nicht in einem <code>&lt;summary&gt;</code> liegen. Stattdessen
           derselbe Aufbau wie beim Gruppenkopf: ein Umschalt-Button mit <code>aria-expanded</code>
@@ -855,15 +890,23 @@ td b { font-weight: 600; color: var(--ink); }
           gleiche Haarlinie davor.</p>
         <p class="note is-key"><b>Gruppenkopf:</b><br>
           Chevron&nbsp;· Punkt&nbsp;· Name über <i>„n Positionen · n bezahlt · Gesamt x,xx €“</i>
-          │ Marke │ offener Betrag │ Kopieren ┊ PayPal.<br>
-          Erst der Zustand, dann der Betrag, dann die Aktionen — dieselbe Leserichtung wie in der
-          Positionszeile.</p>
+          │ Marke │ offener Betrag │ Kopieren ┊ PayPal │ Löschen.<br>
+          Genau derselbe Abschluss wie die Positionszeile: erst der Zustand, dann der Betrag, dann
+          Kopieren und Bezahlen als Paar, und Löschen als bewusster Ausreißer ganz außen.</p>
+        <p class="note"><b>Löschen an der Personensumme</b> entfernt alle eigenen Positionen auf
+          einmal — der Weg, eine komplette eigene Bestellung zurückzuziehen, ohne jede Zeile
+          einzeln anzufassen. Es erscheint nur an der eigenen Gruppe (der Server erlaubt ohnehin nur
+          eigene Positionen) und ist gesperrt, sobald eine davon bezahlt ist: bezahlte Zeilen sind
+          einzeln geschützt, das darf der Sammelweg nicht umgehen. Marek hat deshalb einen aktiven
+          Mülleimer erst, wenn seine bezahlte Diavola wieder auf „Offen“ steht — einmal auf die grüne
+          Marke tippen, dann ist er bedienbar.</p>
         <p class="note"><b>Der offene Betrag</b> ist weiterhin die Summe der unbezahlten Positionen
           inkl. Trinkgeld — exakt das, was der PayPal-Knopf daneben überträgt. Die Lebenssumme steht
           jetzt links in der Meta-Zeile.</p>
-        <p class="note"><b>Vollständig bezahlte Gruppe:</b> Marke grün, offener Betrag entfällt
-          (0,00&nbsp;€ ist keine Information), PayPal gesperrt, Kopieren bleibt — man kopiert dann die
-          Gesamtsumme aus der Meta-Zeile.</p>
+        <p class="note"><b>Vollständig bezahlte Gruppe</b> (Tobi): Marke grün, <b>Gesamtsumme
+          durchgestrichen</b> — dieselbe Erledigt-Sprache wie beim Betrag einer bezahlten
+          Einzelposition. Der offene Betrag entfällt, 0,00&nbsp;€ ist keine Information. PayPal
+          gesperrt, Kopieren bleibt: kopiert wird dann die Gesamtsumme.</p>
         <p class="note is-warn"><b>Nina hat keinen Preis eingetragen.</b> Dann steht „Betrag offen“
           und beide Bezahlen-Knöpfe sind gesperrt; die Marke bleibt bedienbar, denn bar bezahlen kann
           man auch ohne hinterlegten Preis.</p>
@@ -871,8 +914,42 @@ td b { font-weight: 600; color: var(--ink); }
     </div>
   </section>
 
+  <section id="icons" class="plate">
+    <div class="plate-head"><span class="plate-no">Plate 05</span><h2>Welches Icon trägt „Bezahlen“?</h2></div>
+    <p class="plate-intent">Der vorhandene Icon-Satz in <code>server/public/js/icons.js</code> hat
+      88 Einträge, aber keinen, der „PayPal“ bedeutet — er besteht ausschließlich aus
+      Lucide-Strichsymbolen ohne Markenzeichen. Vier Kandidaten, jeweils an der echten Zeile und in
+      den tatsächlich vorkommenden Größen.</p>
+    <div class="screen">
+      <p class="screen-label">Im Einsatz · Positionszeile und Gruppenkopf</p>
+      <div class="rs" data-mock="icon-rows"></div>
+    </div>
+    <div class="icon-lab" style="margin-top:18px;" data-mock="icon-lab"></div>
+    <div class="stage" style="margin-top:22px;">
+      <div class="side" style="flex:1 1 100%;">
+        <p class="note is-key"><b>Empfehlung: das offizielle Monogramm.</b> Ein Bezahlen-Knopf lebt
+          davon, ohne Lesen erkannt zu werden — und was man erkennt, ist die Marke, nicht eine
+          Annäherung an sie. Die selbstgezeichnete Strichvariante passt zwar besser zum Hausstil,
+          verliert aber bei 18&nbsp;px genau die Eigenschaft, für die sie da ist. Quelle des Pfads:
+          das Paket <code>simple-icons</code> (die SVG-Sammlung steht unter CC0; das Markenrecht
+          bleibt bei PayPal — die Verwendung als Beschriftung eines echten PayPal-Bezahlwegs ist
+          genau der benennende Gebrauch, für den das zulässig ist).</p>
+        <p class="note is-warn"><b>Ein kleiner Eingriff ist nötig:</b> <code>icon()</code> setzt heute
+          fest <code>fill="none" stroke="currentColor"</code>. Ein Markenglyph ist aber eine Fläche.
+          Dafür bekommt <code>icons.js</code> einen schmalen Satz gefüllter Namen
+          (<code>FILLED_ICONS</code>), der nur die Malweise umschaltet — keine zweite Funktion, keine
+          neue Komponente. Der Rest des Satzes bleibt unberührt.</p>
+        <p class="note"><b>Verworfen, aber geprüft:</b> <code>wallet</code> und
+          <code>squareArrowOutUpRight</code> sind vorhanden und würden ohne jede Änderung
+          funktionieren. Beide sagen aber etwas anderes als „PayPal“ — das eine „Geld allgemein“,
+          das andere „öffnet extern“ — und beide stehen im Auftrag ausdrücklich nicht zur Debatte:
+          gewünscht war das PayPal-Icon.</p>
+      </div>
+    </div>
+  </section>
+
   <section id="zustaende" class="plate">
-    <div class="plate-head"><span class="plate-no">Plate 05</span><h2>Zustände der Bezahl-Marke</h2></div>
+    <div class="plate-head"><span class="plate-no">Plate 06</span><h2>Zustände der Bezahl-Marke</h2></div>
     <p class="plate-intent">Die Marke ist an der Position zweiwertig und an der Person dreiwertig.
       Farbe trägt nie allein: jede Marke schreibt ihren Zustand aus und nennt im Tooltip die Wirkung
       des Klicks.</p>
@@ -889,7 +966,7 @@ td b { font-weight: 600; color: var(--ink); }
         <p class="note is-warn"><b>Die eine gefährliche Richtung:</b> „alles bezahlt“ → Klick macht
           alles wieder offen. Damit lassen sich fremde Bestätigungen zurückdrehen — auch die, die
           jemand anders vor einer Stunde gesetzt hat. Deshalb ist genau dieser Weg der einzige an der
-          Personenmarke, der eine Rückfrage bekommt, und die Rückfrage nennt die Namen (Plate 07).</p>
+          Personenmarke, der eine Rückfrage bekommt, und die Rückfrage nennt die Namen (Plate 08).</p>
         <p class="note">Von „nichts bezahlt“ und von „teilweise“ aus geht es vorwärts: alle noch
           offenen Positionen werden bezahlt. Bereits bezahlte bleiben unangetastet, ihre
           <code>paidBy</code>-Zuordnung geht nicht verloren.</p>
@@ -898,7 +975,7 @@ td b { font-weight: 600; color: var(--ink); }
   </section>
 
   <section id="ohne-paypal" class="plate">
-    <div class="plate-head"><span class="plate-no">Plate 06</span><h2>Ohne PayPal-Link · abgeschickt · geschlossen</h2></div>
+    <div class="plate-head"><span class="plate-no">Plate 07</span><h2>Ohne PayPal-Link · abgeschickt · geschlossen</h2></div>
     <p class="plate-intent">Drei Randfälle, die den Aufbau nicht verbiegen dürfen.</p>
     <div class="stage">
       <div class="screen is-phone">
@@ -927,15 +1004,17 @@ td b { font-weight: 600; color: var(--ink); }
   </section>
 
   <section id="rueckfragen" class="plate">
-    <div class="plate-head"><span class="plate-no">Plate 07</span><h2>Rückfragen</h2></div>
-    <p class="plate-intent">Vier statt drei — und eine davon ist neu, weil das Zurückdrehen einer
-      Personenmarke fremde Bestätigungen trifft. Alles andere bleibt ohne Nachfrage: abhaken,
+    <div class="plate-head"><span class="plate-no">Plate 08</span><h2>Rückfragen</h2></div>
+    <p class="plate-intent">Fünf statt drei. Zwei davon sind neu: das Zurückdrehen einer
+      Personenmarke trifft fremde Bestätigungen, und das Löschen einer ganzen Personengruppe ist die
+      folgenreichste Aktion im Bereich überhaupt. Alles andere bleibt ohne Nachfrage: abhaken,
       kopieren, eine einzelne Position vorwärts markieren.</p>
     <div class="stage">
       <div class="screen is-phone"><p class="screen-label">Nach dem PayPal-Klick</p><div class="rs" data-mock="dlg-paid"></div></div>
       <div class="screen is-phone"><p class="screen-label">Person vorwärts markieren</p><div class="rs" data-mock="dlg-markall"></div></div>
       <div class="screen is-phone"><p class="screen-label">Person zurückdrehen · neu</p><div class="rs" data-mock="dlg-unmark"></div></div>
       <div class="screen is-phone"><p class="screen-label">Position löschen</p><div class="rs" data-mock="dlg-delete"></div></div>
+      <div class="screen is-phone"><p class="screen-label">Ganze Personengruppe löschen · neu</p><div class="rs" data-mock="dlg-delete-group"></div></div>
     </div>
     <div class="stage" style="margin-top:22px;">
       <div class="side" style="flex:1 1 100%;">
@@ -945,12 +1024,15 @@ td b { font-weight: 600; color: var(--ink); }
           und Klick daneben ändern nichts.</p>
         <p class="note"><b>Keine Rückfrage</b> an der Positionsmarke — in beide Richtungen ein Tipp
           zurück. An der Personenmarke nur vorwärts ohne Rückfrage, weil dabei nichts verloren geht.</p>
+        <p class="note is-warn"><b>Das Gruppen-Löschen zählt die Positionen auf</b>, nicht nur ihre
+          Anzahl. „3 Positionen löschen?“ ohne Liste wäre bei der einzigen unumkehrbaren Sammelaktion
+          zu wenig — man muss sehen, was verschwindet, bevor es verschwindet.</p>
       </div>
     </div>
   </section>
 
   <section id="details" class="plate">
-    <div class="plate-head"><span class="plate-no">Plate 08</span><h2>Bestellinfo und „Hinzufügen“</h2></div>
+    <div class="plate-head"><span class="plate-no">Plate 09</span><h2>Bestellinfo und „Hinzufügen“</h2></div>
     <p class="plate-intent">Zwei kleine Korrekturen, beide vorher/nachher.</p>
     <div class="ba">
       <div>
@@ -993,7 +1075,7 @@ td b { font-weight: 600; color: var(--ink); }
   </section>
 
   <section id="workflows" class="plate">
-    <div class="plate-head"><span class="plate-no">Plate 09</span><h2>Workflows und Klicks</h2></div>
+    <div class="plate-head"><span class="plate-no">Plate 10</span><h2>Workflows und Klicks</h2></div>
     <p class="plate-intent">Gezählt wird ab dem Moment, in dem die Position in der Bestellung steht,
       bis sie als bezahlt markiert ist. Die Bestätigung „Ja, bezahlt“ zählt in beiden Modellen mit,
       das Eintippen der Position in keinem.</p>
@@ -1051,12 +1133,18 @@ td b { font-weight: 600; color: var(--ink); }
             <td>Jede Position einzeln zurückschalten</td><td class="num">n</td>
             <td>Marke an der Person → Bestätigen</td><td class="num win">2</td>
           </tr>
+          <tr>
+            <td class="scenario-id">I</td>
+            <td><b>Ich ziehe meine ganze Bestellung zurück.</b><br><span class="muted-cell">Drei eigene Positionen, doch keinen Hunger.</span></td>
+            <td>3× (Mülleimer → Löschen)</td><td class="num">6</td>
+            <td>Mülleimer an meiner Personensumme → Löschen</td><td class="num win">2</td>
+          </tr>
         </tbody>
       </table>
     </div>
     <div class="stage" style="margin-top:24px;">
       <div class="side" style="flex:1 1 100%;">
-        <p class="note is-key"><b>Die Theorie hält.</b> In sieben von acht Szenarien braucht die
+        <p class="note is-key"><b>Die Theorie hält.</b> In acht von neun Szenarien braucht die
           Direktzahlung weniger oder gleich viele Klicks, im häufigsten Fall A ein Drittel weniger.
           Der Grund ist strukturell: Der Korb verlangt <i>immer</i> einen Sammelschritt, auch wenn
           nur eine Position gemeint ist — und genau das ist der Normalfall.</p>
@@ -1083,8 +1171,8 @@ td b { font-weight: 600; color: var(--ink); }
   </section>
 
   <section id="offen" class="plate">
-    <div class="plate-head"><span class="plate-no">Plate 10</span><h2>Offene Entscheidungen</h2></div>
-    <p class="plate-intent">Vier Punkte, die vor der Umsetzung eine Ansage brauchen.</p>
+    <div class="plate-head"><span class="plate-no">Plate 11</span><h2>Offene Entscheidungen</h2></div>
+    <p class="plate-intent">Fünf Punkte, die vor der Umsetzung eine Ansage brauchen.</p>
     <div class="open-q">
       <div><h3>Zurückdrehen an der Personenmarke — erlauben oder sperren?</h3>
         <p>Der Auftrag sagt „auf bezahlt oder offen setzen“, also ein echter Umschalter. Der Mockup
@@ -1098,16 +1186,22 @@ td b { font-weight: 600; color: var(--ink); }
         <p>Innerhalb einer aufgeklappten Bestellung sind für den Aufgeber bisher alle Gruppen offen.
           Bei fünf Bestellern ist das die längste Liste für den, der die Übersicht braucht.
           <b>Vorschlag: unverändert lassen</b> — „Alle einklappen“ steht jetzt links gleich daneben.</p></div>
-      <div><h3>Bestellliste im eingeklappten Kasten für alle sichtbar?</h3>
-        <p>Sie ist heute auf Aufgeber und Admins beschränkt. Daran ändert sich nichts; bei allen
-          anderen bleibt die Werkzeugleiste im eingeklappten Zustand leer und entfällt.
-          <b>Vorschlag: unverändert.</b></p></div>
+      <div><h3>Gefülltes Markenglyph im Strich-Icon-Satz</h3>
+        <p>Das offizielle PayPal-Monogramm ist eine Fläche und fällt neben den 88 Strichsymbolen auf.
+          Genau das macht es an einem Bezahlen-Knopf erkennbar, es ist aber eine bewusste Ausnahme in
+          einem bisher einheitlichen Satz. <b>Vorschlag: Ausnahme zulassen</b>, begrenzt auf
+          Markenglyphen (siehe Plate 05).</p></div>
+      <div><h3>Löschen einer Gruppe mit bezahlten Positionen</h3>
+        <p>Der Sammelweg ist gesperrt, sobald eine Position bezahlt ist — man muss dann erst die
+          Marke zurückdrehen. Alternative wäre, bezahlte Positionen stehen zu lassen und nur den Rest
+          zu löschen; das hinterlässt aber eine Gruppe, die nach dem „alles löschen“ noch da ist.
+          <b>Vorschlag: gesperrt lassen.</b></p></div>
     </div>
   </section>
 
   <footer class="footer">
     <span>Respawn · LAN 2026</span>
-    <span>Mockup Runde 5 · Essen / Direktzahlung</span>
+    <span>Mockup Runde 6 · Essen / Direktzahlung</span>
     <span>Branch claude/orders-display-payment-5jelmf</span>
   </footer>
 </div>
@@ -1125,14 +1219,25 @@ td b { font-weight: 600; color: var(--ink); }
     trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 16H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>',
     listChecks: '<path d="M16 6H3"/><path d="M16 12H3"/><path d="M11 18H3"/><path d="m15 18 2 2 4-4"/>',
     shoppingCart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
-    // Neu: PayPal-Doppel-P, als Strichzeichnung im Stil der übrigen Icons.
-    paypal: '<path d="M4.8 20 7.2 3.5h4.6a3.6 3.6 0 0 1 0 7.2H6.5"/><path d="M10.2 20.5 11.9 9.2h4.3a3.6 3.6 0 0 1 0 7.2h-4.1"/>',
+    // Offizielles PayPal-Monogramm (Quelle: simple-icons, 24×24). Gefüllt statt
+    // gestrichen — deshalb der FILLED_ICONS-Satz unten.
+    paypal: '<path d="M15.607 4.653H8.941L6.645 19.251H1.82L4.862 0h7.995c3.754 0 6.375 2.294 6.473 5.513-.648-.478-2.105-.86-3.722-.86m6.57 5.546c0 3.41-3.01 6.853-6.958 6.853h-2.493L11.595 24H6.74l1.845-11.538h3.592c4.208 0 7.346-3.634 7.153-6.949a5.24 5.24 0 0 1 2.848 4.686M9.653 5.546h6.408c.907 0 1.942.222 2.363.541-.195 2.741-2.655 5.483-6.441 5.483H8.714Z"/>',
+    // Nur für den Icon-Vergleich in Plate 05: die selbstgezeichnete Strichvariante.
+    paypalStroke: '<path d="M4.8 20 7.2 3.5h4.6a3.6 3.6 0 0 1 0 7.2H6.5"/><path d="M10.2 20.5 11.9 9.2h4.3a3.6 3.6 0 0 1 0 7.2h-4.1"/>',
+    wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>',
+    squareArrowOutUpRight: '<path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>',
   };
+  // Markenglyphen sind Flächen, keine Striche. icon() bekommt dafür einen
+  // schmalen Satz gefüllter Namen statt einer zweiten Funktion.
+  const FILLED_ICONS = new Set(['paypal']);
   const icon = (name, cls = '', label = '') => {
     const p = ICONS[name];
     if (!p) return '';
     const a = label ? `role="img" aria-label="${label}"` : 'aria-hidden="true"';
-    return `<svg class="ui-icon${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${a}>${p}</svg>`;
+    const paint = FILLED_ICONS.has(name)
+      ? 'fill="currentColor" stroke="none"'
+      : 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+    return `<svg class="ui-icon${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" ${paint} ${a}>${p}</svg>`;
   };
 
   /* ---------- Daten ---------- */
@@ -1262,8 +1367,9 @@ td b { font-weight: 600; color: var(--ink); }
       : `<span class="food-order-item-amount"><strong>${eur(total)}</strong>${breakdown}</span>`;
 
     const copy = total === null ? spacer : copyButtonHtml(eur(total));
+    const divider = total === null ? '' : '<span class="food-order-item-action-divider" aria-hidden="true"></span>';
     const pay = order.paypalLink
-      ? `<span class="food-order-item-action-divider" aria-hidden="true"></span>` + payButtonHtml({
+      ? divider + payButtonHtml({
           disabled: locked || it.paid || total === null,
           attrs: `data-pay-item="${it.id}"`,
           title: it.paid ? 'Bereits bezahlt' : total === null ? 'Ohne Preis nicht bezahlbar' : `${eur(total)} über PayPal bezahlen`,
@@ -1296,10 +1402,13 @@ td b { font-weight: 600; color: var(--ink); }
     const metaParts = [`${qty} ${qty === 1 ? 'Position' : 'Positionen'}`];
     if (paidQty > 0) metaParts.push(`${paidQty} bezahlt`);
     const partial = items.reduce((s2, i) => s2 + (i.priceCents ?? 0) * (i.quantity ?? 1), 0);
+    // Ist alles bezahlt, wird die Gesamtsumme durchgestrichen — dieselbe
+    // Erledigt-Sprache wie bei einer bezahlten Einzelposition.
+    const totalCls = `group-total${state === 'all' ? ' is-settled' : ''}`;
     const metaTotal = total !== null
-      ? `<span class="group-total">Gesamt ${eur(total)}</span>`
+      ? `<span class="${totalCls}">Gesamt ${eur(total)}</span>`
       : partial > 0
-        ? `<span class="group-total">Gesamt ${eur(withTip(partial, tip))}</span> · Preis fehlt`
+        ? `<span class="${totalCls}">Gesamt ${eur(withTip(partial, tip))}</span> · Preis fehlt`
         : 'kein Preis eingetragen';
 
     const headText = `${dot(key, 20)}
@@ -1323,13 +1432,24 @@ td b { font-weight: 600; color: var(--ink); }
 
     const copyValue = state === 'all' ? (total === null ? null : eur(total)) : (open === null ? null : eur(open));
     const copy = copyValue === null ? spacer : copyButtonHtml(copyValue, `Summe von ${PLAYERS[key].name} kopieren`);
+    const divider = copyValue === null ? '' : '<span class="food-order-item-action-divider" aria-hidden="true"></span>';
     const pay = order.paypalLink
-      ? `<span class="food-order-item-action-divider" aria-hidden="true"></span>` + payButtonHtml({
+      ? divider + payButtonHtml({
           disabled: ui.locked || state === 'all' || open === null || open === 0,
           attrs: `data-pay-group="${key}"`,
           title: state === 'all' ? 'Alles bezahlt' : open === null ? 'Betrag unvollständig' : `${eur(open)} für ${PLAYERS[key].name} über PayPal bezahlen`,
         })
       : '';
+
+    // Löschen an der Personensumme: entfernt alle Positionen dieser Person auf
+    // einmal. Nur die eigene Gruppe — der Server erlaubt ohnehin nur eigene
+    // Positionen (403 sonst) — und nur, solange keine davon bezahlt ist:
+    // bezahlte Positionen sind einzeln gesperrt, also darf der Sammelweg sie
+    // nicht umgehen.
+    const anyPaid = items.some((i) => i.paid);
+    const removeGroup = !ui.locked && order.open && key === ME
+      ? `<button type="button" class="icon-btn food-order-item-action food-order-item-remove" data-delete-group="${key}" ${anyPaid ? 'disabled' : ''} title="${anyPaid ? 'Enthält bezahlte Positionen – nur einzeln entfernbar' : 'Alle eigenen Positionen entfernen'}">${icon('trash')}</button>`
+      : spacer;
 
     const rows = items.map((i) => itemRowHtml(order, i, ui)).join('');
 
@@ -1340,6 +1460,7 @@ td b { font-weight: 600; color: var(--ink); }
           ${marker}
           ${amountHtml}
           <span class="food-order-item-action-cluster">${copy}${pay}</span>
+          ${removeGroup}
         </span>
       </div>
       <div class="food-order-group-items" ${collapsible && !expanded ? 'hidden' : ''}>${rows}</div>
@@ -1350,11 +1471,13 @@ td b { font-weight: 600; color: var(--ink); }
     const sendAt = order.sendAt
       ? `<span class="food-order-send-at">${icon('clock')}${legacy ? `Versand ${order.sendAt.replace('. ', '., ')}` : order.sendAt} Uhr</span>`
       : '<span class="food-order-send-at">Kein Zeitpunkt festgelegt</span>';
-    const links = order.link || order.paypalLink
-      ? `<div class="food-order-detail-links">
+    // Die Bestellliste steht immer an erster Stelle: sie ist für jeden da und
+    // immer vorhanden, also springt ihr Platz nicht, wenn ein Link fehlt.
+    const links = `<div class="food-order-detail-links">
+           <button type="button" class="btn btn-sm food-order-list-btn">${icon('listChecks')} Bestellliste</button>
            ${order.link ? '<a class="btn btn-sm" href="#" onclick="return false;">Speisekarte</a>' : ''}
            ${order.paypalLink ? '<a class="btn btn-sm" href="#" onclick="return false;">PayPal öffnen</a>' : ''}
-         </div>` : '';
+         </div>`;
     return `<div class="food-order-details">
       <div class="food-order-details-head">${sendAt}${locked ? '' : '<button type="button" class="btn btn-sm">Bearbeiten</button>'}</div>
       ${order.notes ? `<div class="food-order-details-note">${esc(order.notes)}</div>` : ''}
@@ -1382,13 +1505,10 @@ td b { font-weight: 600; color: var(--ink); }
   }
 
   function toolbarHtml(order, ui) {
-    const canSeeList = order.createdBy === ME || ui.admin;
-    const showExpandAll = ui.expanded && groupsOf(order).size > 1;
-    if (!canSeeList && !showExpandAll) return '';
+    if (!ui.expanded || groupsOf(order).size <= 1) return '';
     const allOpen = [...groupsOf(order).keys()].every((k) => ui.expandedGroups.has(k));
     return `<div class="food-order-card-toolbar">
-      ${showExpandAll ? `<button type="button" class="btn btn-sm" data-toggle-all>${allOpen ? 'Alle einklappen' : 'Alle ausklappen'}</button>` : ''}
-      ${canSeeList ? `<button type="button" class="btn btn-sm food-order-list-btn">${icon('listChecks')} Bestellliste</button>` : ''}
+      <button type="button" class="btn btn-sm" data-toggle-all>${allOpen ? 'Alle einklappen' : 'Alle ausklappen'}</button>
     </div>`;
   }
 
@@ -1432,8 +1552,8 @@ td b { font-weight: 600; color: var(--ink); }
     const always = `${header}
       <div class="muted food-order-meta">von ${esc(order.createdByName)} · ${order.createdAt}</div>
       ${detailsHtml(order, { locked: ui.locked })}
-      ${toolbarHtml(order, ui)}
-      ${overviewHtml(order)}`;
+      ${overviewHtml(order)}
+      ${toolbarHtml(order, ui)}`;
 
     if (!ui.expanded) {
       return `<div class="card stack ${ui.rail === 'alt' ? 'rail-alt' : ''} ${ui.target ? 'is-target' : ''}" data-order="${order.id}">${always}</div>`;
@@ -1514,7 +1634,6 @@ td b { font-weight: 600; color: var(--ink); }
     const ui = {
       expandedOrders: new Set(opts.expandedOrders || []),
       expandedGroupsByOrder: new Map(),
-      admin: Boolean(opts.admin),
       target: opts.target || null,
       collapsible: opts.collapsible !== false,
       locked: false,
@@ -1580,6 +1699,19 @@ td b { font-weight: 600; color: var(--ink); }
         });
         if (!ok) return;
         order.items = order.items.filter((i) => i.id !== it.id);
+        return draw();
+      }
+      if (t.dataset.deleteGroup) {
+        const key = t.dataset.deleteGroup;
+        const items = groupsOf(order).get(key);
+        const ok = await confirmDialog({
+          title: `Deine ${items.length} ${items.length === 1 ? 'Position' : 'Positionen'} löschen?`,
+          text: 'Lässt sich nicht rückgängig machen.',
+          items: items.map((i) => `${i.quantity} × ${i.description}`),
+          confirm: 'Löschen', danger: true,
+        });
+        if (!ok) return;
+        order.items = order.items.filter((i) => i.player !== key);
         return draw();
       }
       if (t.dataset.payItem) {
@@ -1648,10 +1780,10 @@ td b { font-weight: 600; color: var(--ink); }
 
   const pick = (sel) => document.querySelector(`[data-mock="${sel}"]`);
 
-  mountList(pick('overview'), [luigi(), doener(), fruehstueck()], { expandedOrders: [], admin: true });
-  mountList(pick('deeplink'), [luigi(), doener(), fruehstueck()], { expandedOrders: ['o-2'], target: 'o-2', admin: true });
-  mountList(pick('single'), [doener()], { collapsible: false, admin: true });
-  mountList(pick('detail'), [luigi()], { collapsible: false, expandAllGroups: true, admin: true });
+  mountList(pick('overview'), [luigi(), doener(), fruehstueck()], { expandedOrders: [] });
+  mountList(pick('deeplink'), [luigi(), doener(), fruehstueck()], { expandedOrders: ['o-2'], target: 'o-2' });
+  mountList(pick('single'), [doener()], { collapsible: false });
+  mountList(pick('detail'), [luigi()], { collapsible: false, expandAllGroups: true });
 
   const noPaypal = fruehstueck();
   noPaypal.items = [item('marek', 'Kaffeepad-Nachschub', 1, 620), item('nina', 'Croissant', 3, 190, true, 'Marek')];
@@ -1690,6 +1822,68 @@ td b { font-weight: 600; color: var(--ink); }
     text: 'Lässt sich nicht rückgängig machen.',
     confirm: 'Löschen', danger: true,
   });
+
+  pick('dlg-delete-group').innerHTML = modalHtml({
+    title: 'Deine 2 Positionen löschen?',
+    text: 'Lässt sich nicht rückgängig machen.',
+    items: ['1 × Pizza Diavola groß', '2 × Knoblauchbrot'],
+    confirm: 'Löschen', danger: true,
+  });
+
+  /* Icon-Labor (Plate 05) */
+  const ICON_CANDIDATES = [
+    {
+      name: 'paypal',
+      label: 'paypal · offizielles Monogramm',
+      verdict: ['pick', 'Empfehlung'],
+      why: 'Wird ohne Lesen erkannt, auch bei 18 px. Neu im Satz und als einziges Symbol gefüllt — genau darin liegt aber seine Wirkung: ein Markenglyph, das gestrichen wird, ist kein Markenglyph mehr.',
+    },
+    {
+      name: 'paypalStroke',
+      label: 'Doppel-P als Strichzeichnung',
+      verdict: ['no', 'verworfen'],
+      why: 'Fügt sich in den Hausstil, wird aber bei 18 px zu zwei unklaren Haken. Eine Annäherung an ein Logo erbt dessen Wiedererkennung nicht.',
+    },
+    {
+      name: 'wallet',
+      label: 'wallet · bereits vorhanden',
+      verdict: ['no', 'verworfen'],
+      why: 'Bisher das Icon des Warenkorb-Bezahlens. Sagt „Geld“, nicht „PayPal“ — und in einer Zeile mit Kopieren und Löschen fehlt ihm die Aussage, wohin der Klick führt.',
+    },
+    {
+      name: 'squareArrowOutUpRight',
+      label: 'squareArrowOutUpRight · bereits vorhanden',
+      verdict: ['no', 'verworfen'],
+      why: 'Beschreibt korrekt „öffnet einen neuen Tab“, aber nicht wofür. An einem Knopf, der Geld bewegt, ist das die falsche Information.',
+    },
+  ];
+
+  const labEl = pick('icon-lab');
+  labEl.innerHTML = ICON_CANDIDATES.map((c) => `
+    <div class="icon-lab-cell">
+      <div class="icon-lab-head">
+        <span class="icon-lab-name">${esc(c.label)}</span>
+        <span class="icon-lab-verdict ${c.verdict[0]}">${c.verdict[1]}</span>
+      </div>
+      <div class="icon-lab-sizes rs">
+        ${[18, 24, 40].map((s2) => `<span class="icon-lab-size" style="--s:${s2}px;">${icon(c.name)}<span>${s2}px</span></span>`).join('')}
+      </div>
+      <p class="icon-lab-why">${esc(c.why)}</p>
+    </div>`).join('');
+
+  const rowsEl = pick('icon-rows');
+  rowsEl.innerHTML = `<div class="card stack">${ICON_CANDIDATES.map((c) => `
+    <div class="food-order-item">
+      ${paidMarkerHtml('none')}
+      <span class="food-order-item-description"><strong>1 ×</strong> Pizza Funghi</span>
+      <span class="food-order-item-amount"><strong>11,99 €</strong><span class="muted">10,90 € · inkl. 10% Trinkgeld</span></span>
+      <span class="food-order-item-action-cluster">
+        ${copyButtonHtml('11,99 €')}
+        <span class="food-order-item-action-divider" aria-hidden="true"></span>
+        <button type="button" class="icon-btn food-order-item-action food-order-item-pay" title="11,99 € über PayPal bezahlen" aria-label="11,99 € über PayPal bezahlen">${icon(c.name)}</button>
+      </span>
+      <span class="food-order-item-action-spacer" aria-hidden="true"></span>
+    </div>`).join('')}</div>`;
 
   /* Zustandsmatrix */
   const cell = (label, body, why) =>

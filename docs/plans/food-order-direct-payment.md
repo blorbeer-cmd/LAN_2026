@@ -2,7 +2,7 @@
 
 ## Stand und Zuschnitt
 
-Dieses Dokument ist die Mockup-Fassung von Runde 5. Es beschreibt vollständig, **was** gebaut werden
+Dieses Dokument ist die Mockup-Fassung von Runde 6. Es beschreibt vollständig, **was** gebaut werden
 soll; die Umsetzung ist ausdrücklich noch nicht Teil dieses Arbeitspakets. Es ersetzt die
 Warenkorb-Entscheidungen aus [`food-order-cart-concept.md`](food-order-cart-concept.md)
 (Leitentscheidungen 1–6, AP1.4, AP1.5, AP2.1–AP2.3, AP3.5); alles Übrige dort — insbesondere die
@@ -34,7 +34,8 @@ hier rein?“ trägt.
    (synchron geöffneter Tab, `popup.opener = null`, frischer `api.foodOrders.list()`-Abgleich
    unmittelbar vor dem Navigieren, `ctx.rerender()` in allen Zweigen); sie arbeitet künftig nur mit
    einer variablen Positionsmenge statt mit der Korb-Auswahl.
-3. **Kopieren steht bei jeder Summe**, an der Position wie an der Person.
+3. **Kopieren steht bei jeder Summe**, an der Position wie an der Person. Ebenso **Löschen**: an
+   der Personensumme entfernt es alle eigenen Positionen auf einmal.
 4. **Die Bezahlt-Marke gibt es auch je Person**, mit drei Zuständen. Vorwärts markiert sie alle noch
    offenen Positionen der Person; rückwärts setzt sie alle wieder auf offen.
 5. **Die Lebenssumme der Person steht links** unter dem Namen bei der Positionszusammenfassung, nicht
@@ -82,9 +83,19 @@ hier rein?“ trägt.
   Karte — nicht zeilenweise. Ein Abstandhalter wäre dort sinnlos, weil keine einzige Zeile der Karte
   einen Knopf trägt, mit dem etwas fluchten müsste. Innerhalb einer Bestellung **mit** Link bleibt
   der Platz reserviert, wenn nur einzelne Zeilen keinen Knopf haben.
-- **AP2.7 PayPal-Icon**: neuer Eintrag `paypal` in `icons.js` als Strichzeichnung des Doppel-P im
-  Stil der übrigen Icons, damit es neben `copy`, `trash` und `check` nicht als Fremdkörper steht.
-  `wallet` entfällt, wenn kein anderer Aufrufer bleibt.
+- **AP2.7 PayPal-Icon**: neuer Eintrag `paypal` in `icons.js` mit dem **offiziellen Monogramm**
+  (Pfad aus dem npm-Paket `simple-icons`, 24×24). Der vorhandene Satz hat 88 Einträge, aber keinen,
+  der „PayPal“ bedeutet; `wallet` sagt „Geld allgemein“ und `squareArrowOutUpRight` sagt „öffnet
+  extern“ — beide wurden geprüft und verworfen, ebenso eine selbst gezeichnete Strichvariante des
+  Doppel-P, die bei 18 px zu zwei unklaren Haken zerfällt. Ein Bezahlen-Knopf lebt davon, ohne Lesen
+  erkannt zu werden, und erkannt wird die Marke, nicht eine Annäherung an sie.
+  Rechtlich: Die SVG-Sammlung von `simple-icons` steht unter CC0, das Markenrecht bleibt bei PayPal;
+  die Beschriftung eines echten PayPal-Bezahlwegs ist der benennende Gebrauch, für den das zulässig
+  ist. Der Pfad wird als Konstante übernommen, nicht das Paket als Abhängigkeit.
+- **AP2.8 Gefüllte Icons**: `icon()` setzt heute fest `fill="none" stroke="currentColor"`. Ein
+  Markenglyph ist eine Fläche. `icons.js` bekommt dafür einen schmalen Satz `FILLED_ICONS`, der nur
+  die Malweise umschaltet — keine zweite Funktion, keine neue Komponente, der übrige Satz bleibt
+  unberührt. `wallet` entfällt, wenn kein anderer Aufrufer bleibt.
 
 ## AP3 — Bezahlt-Marke je Person
 
@@ -99,8 +110,19 @@ hier rein?“ trägt.
   eigener, benannter Rückfrage (siehe AP4.3).
 - **AP3.4 Die grüne Gruppen-Bezahlt-Plakette** (`.food-order-group-paid-badge`) entfällt: die Marke
   zeigt denselben Zustand und ist zusätzlich bedienbar.
-- **AP3.5 Gesperrt** ist die Personenmarke nur bei geschlossener Bestellung, wie die Positionsmarke
+- **AP3.5 Ist alles bezahlt, wird die Gesamtsumme in der Meta-Zeile durchgestrichen** und auf
+  `--text-muted` gesetzt — dieselbe Erledigt-Sprache wie beim Betrag einer bezahlten Einzelposition.
+  Der offene Betrag rechts entfällt in diesem Zustand ganz; 0,00 € ist keine Information.
+- **AP3.6 Gesperrt** ist die Personenmarke nur bei geschlossener Bestellung, wie die Positionsmarke
   auch. „Abgeschickt“ sperrt sie nicht — danach wird ja erst richtig kassiert.
+- **AP3.7 Löschen an der Personensumme**, ganz außen im Aktionscluster, exakt wie am Zeilenende:
+  entfernt alle Positionen dieser Person auf einmal. Es erscheint nur an der **eigenen** Gruppe —
+  `DELETE /api/food-orders/:id/items/:itemId` erlaubt ohnehin nur eigene Positionen (403 sonst), es
+  ist also keine Rechteerweiterung — und nur, solange die Bestellung offen ist. Enthält die Gruppe
+  eine bezahlte Position, ist der Knopf `disabled` mit der Begründung im Tooltip: bezahlte Zeilen
+  sind einzeln geschützt, das darf der Sammelweg nicht umgehen. An fremden Gruppen steht ein
+  Abstandhalter derselben Breite, damit die Köpfe fluchten. Umgesetzt wird es als `Promise.all` über
+  dieselbe Einzel-Route; ein Bulk-Endpunkt kommt bei dieser Größenordnung nicht.
 
 ## AP4 — Rückfragen
 
@@ -121,6 +143,10 @@ Fokus auf der harmlosen Seite, Escape bricht ab.
   Bestätigen blau, nicht rot: es ist umkehrbar, aber es braucht die Namen.
 - **AP4.4 Position löschen** bleibt unverändert: „<Menge> × <Bezeichnung> löschen?“, „Lässt sich
   nicht rückgängig machen.“, rot.
+- **AP4.5 Ganze Personengruppe löschen** (neu): Titel „Deine <n> Positionen löschen?“, Text „Lässt
+  sich nicht rückgängig machen.“, darunter die vollständige Liste der betroffenen Positionen, rot.
+  Die Liste ist hier Pflicht, nicht Zierde: Es ist die einzige unumkehrbare Sammelaktion im Bereich,
+  und man muss sehen, was verschwindet, bevor es verschwindet.
 - **Ohne Rückfrage** bleiben: die Positionsmarke in beide Richtungen und jedes Kopieren.
 
 ## AP5 — Eingeklappte Bestellungen und Direktlink
@@ -132,9 +158,9 @@ Fokus auf der harmlosen Seite, Escape bricht ab.
   überlebt jedes Realtime-Rerender unverändert — dieselbe Zusage wie bei den Bestellergruppen
   (AP3.7 des Vorgängerplans).
 - **AP5.3 Der eingeklappte Kasten zeigt**: Titel und Status-Badge, „von <Ersteller> ·
-  <Erstellzeitpunkt>“, den Infokasten (Versandzeit, Hinweis, Speisekarte, PayPal öffnen), die
-  Werkzeugleiste mit „Bestellliste“ und die Zusammenfassungszeile. Eingeklappt sind nur
-  Bestellergruppen, Hinzufügen-Formular und Bestellaktionen.
+  <Erstellzeitpunkt>“, den Infokasten (Versandzeit, Hinweis, Bestellliste, Speisekarte, PayPal
+  öffnen) und darunter die Zusammenfassungszeile. Eingeklappt sind nur Bestellergruppen,
+  Hinzufügen-Formular, Werkzeugleiste und Bestellaktionen.
 - **AP5.4 Kein `<details>` mehr.** Der immer sichtbare Teil enthält Knöpfe und Links; die dürfen
   nicht in einem `<summary>` liegen. Stattdessen derselbe Aufbau wie beim Gruppenkopf: ein
   Umschalt-Button mit `aria-expanded` als Geschwister neben Badge und Rest — kein Knopf im Knopf.
@@ -150,24 +176,32 @@ Fokus auf der harmlosen Seite, Escape bricht ab.
 
 ## AP6 — Werkzeugleiste, Bestellinfo, Hinzufügen
 
-- **AP6.1 Werkzeugleiste** wird `space-between`: „Alle ausklappen“/„Alle einklappen“ links,
-  „Bestellliste“ rechts. „Bestellliste“ bleibt über `margin-left: auto` rechts verankert, auch wenn
-  links nichts steht — sie springt also nach wie vor nicht die Seite, sobald eine zweite
-  Bestellergruppe auftaucht.
-- **AP6.2 „Alle ausklappen“ nur im ausgeklappten Zustand.** Es klappt die Bestellergruppen innerhalb
-  der Bestellung; solange die Karte zu ist, hat es keinen Gegenstand.
-- **AP6.3 Bestellinfo**: Das Wort „Versand“ neben der Uhr entfällt, das Komma nach dem Datum
+- **AP6.1 Die Bestellliste zieht in den Infokasten**, an die erste Stelle der Knopfreihe vor
+  „Speisekarte“ und „PayPal öffnen“. Sie ist als einzige der drei immer vorhanden, steht also
+  vorn, damit ihr Platz nicht springt, wenn ein Link fehlt. `renderOrderListButton()` und der
+  separate Werkzeugleisten-Platz entfallen; die Knopfreihe wird damit auch dann gerendert, wenn
+  weder Speisekarte noch PayPal hinterlegt sind.
+- **AP6.2 Die Bestellliste ist für jede angemeldete Person zu öffnen**, nicht mehr nur für Aufgeber
+  und Admins. Sie enthält weder Namen noch Bezahlt-Zustände, sondern ausschließlich, was insgesamt
+  bestellt wurde — es gibt daran nichts zu schützen, und wer beim Abholen mitliest, braucht sie
+  genauso. Der Sichtbarkeits-Check in `renderOrderListButton()` fällt ersatzlos weg.
+- **AP6.3 Reihenfolge in der Karte**: Titel und Badge, Meta-Zeile, Infokasten,
+  Zusammenfassungszeile, dann die Werkzeugleiste mit „Alle ausklappen“/„Alle einklappen“ — links,
+  allein in ihrer Zeile. Der Schalter erscheint nur im ausgeklappten Zustand und nur bei mehr als
+  einer Bestellergruppe: Er klappt die Gruppen innerhalb der Bestellung, solange die Karte zu ist,
+  hat er keinen Gegenstand.
+- **AP6.4 Bestellinfo**: Das Wort „Versand“ neben der Uhr entfällt, das Komma nach dem Datum
   ebenfalls — also `<Uhr-Icon> 20.08. 19:30 Uhr`. Das Komma stammt aus
   `toLocaleString('de-DE')`; die Essen-Ansicht bekommt dafür einen eigenen schmalen Formatierer,
   statt `formatDateTime()` app-weit umzustellen und damit unbeteiligte Ansichten zu verändern.
   Ohne Zeitpunkt bleibt es beim schlichten „Kein Zeitpunkt festgelegt“ ohne Icon.
-- **AP6.4 „Hinzufügen“** wird ein ganz normaler `.btn`. Heute setzen drei verstreute Regeln
+- **AP6.5 „Hinzufügen“** wird ein ganz normaler `.btn`. Heute setzen drei verstreute Regeln
   `padding-right: 0` (Desktop) beziehungsweise `var(--space-3)` (Handy) gegen die 18 px links aus
   `.btn` — daher der aus der Mitte gerutschte Text — und `align-self: center` macht den Knopf
   niedriger als die Felder daneben, was beim Hovern als abweichender Umriss auffällt. Neu: eine
   Regel, `grid-column: -2 / -1`, `align-self: stretch`, kein Padding-Eingriff; auf Handybreite wie
   bisher volle Breite in eigener Zeile.
-- **AP6.5 Zusammenfassungszeile**: Beträge werden nicht mehr durch „Betrag offen“ ersetzt, wenn
+- **AP6.6 Zusammenfassungszeile**: Beträge werden nicht mehr durch „Betrag offen“ ersetzt, wenn
   einzelne Preise fehlen. Stattdessen die tatsächliche Teilsumme plus der abschließende Hinweis
   „Preise unvollständig“ — dieselbe Konvention, die der Bestelllisten-Dialog mit „(unvollständig)“
   schon verwendet. Die Gesamtsumme der Bestellung wird entsprechend als
@@ -188,8 +222,9 @@ ist. Die Bestätigung zählt in beiden Modellen mit, das Eintippen der Position 
 | F | Bar kassiert, nur abhaken | 3 | **2** |
 | G | Nur den Betrag kopieren | 1 | 1 |
 | H | Falsche Person abgehakt, zurückdrehen | n | **2** |
+| I | Eigene Bestellung komplett zurückziehen (3 Positionen) | 6 | **2** |
 
-Die Annahme des Nutzers hält: In sieben von acht Szenarien braucht die Direktzahlung weniger oder
+Die Annahme des Nutzers hält: In acht von neun Szenarien braucht die Direktzahlung weniger oder
 gleich viele Klicks, im häufigsten Fall A ein Drittel weniger. Der Grund ist strukturell — der Korb
 verlangt immer einen Sammelschritt, auch für eine einzelne Position.
 
@@ -215,9 +250,10 @@ Weitere Fälle, die der Aufbau mittragen muss:
 - `server/public/js/views/foodOrders.js` — `renderItemRow()`, `renderGroupHeader()`,
   `renderItems()`, `renderOrderOverview()`, `renderOrderSummary()`, `renderOrderSummaryTotal()`,
   `renderCardToolbar()`, `renderDetails()`, `renderOpenOrder()`, `renderClosedOrder()`; entfallend:
-  `renderCartBox()`, `handleCartPay()`, `handleCartMarkPaid()`, `groupCartState()`, `cartItemIds`.
-- `server/public/js/icons.js` — `paypal` ergänzen; `shoppingCart` und `wallet` prüfen und entfernen,
-  falls ungenutzt.
+  `renderCartBox()`, `handleCartPay()`, `handleCartMarkPaid()`, `groupCartState()`, `cartItemIds`,
+  `renderOrderListButton()` (geht in `renderDetails()` auf).
+- `server/public/js/icons.js` — `paypal` als gefüllten Markenglyph ergänzen, `FILLED_ICONS` in
+  `icon()`; `shoppingCart` und `wallet` prüfen und entfernen, falls ungenutzt.
 - `server/public/css/style.css` — `.food-order-cart*` entfernen; `.food-order-card-toolbar`,
   `.food-order-group-*`, `.food-order-item-*`, `.food-order-add-button` anpassen.
 - `server/public/js/app.js` — `focusPendingSearchTarget()` für den Ausklapp-Zustand statt
@@ -235,8 +271,12 @@ Weitere Fälle, die der Aufbau mittragen muss:
   inzwischen bezahlt“ (Teilmenge wird übergeben, Meldung nennt die tatsächliche Zahl).
 - Personenmarke: vorwärts aus „Offen“ und aus „Teilweise“, rückwärts aus „Bezahlt“ mit Rückfrage,
   Abbruch, gesperrt bei geschlossener Bestellung.
+- Gruppen-Löschen: Happy Path über alle eigenen Positionen, Abbruch im Dialog, gesperrt sobald eine
+  Position bezahlt ist, nicht vorhanden an fremden Gruppen, Teil-Fehlschlag beim parallelen Löschen
+  (Cache verwerfen und neu laden).
 - Klapp-Zustand: mehrere offene Bestellungen starten zu, Direktlink klappt genau eine auf, ein
   Realtime-Rerender ändert den Zustand nicht, eine einzige offene Bestellung hat keine Klapp-Hülle.
+- Bestellliste: für eine Person, die weder Aufgeberin noch Admin ist, erreichbar.
 
 ## Offene Entscheidungen
 
@@ -247,10 +287,14 @@ Weitere Fälle, die der Aufbau mittragen muss:
 - **Bezahlen an der Gesamtsumme der Bestellung.** Technisch dieselbe Mechanik, hieße aber „ich zahle
   für alle“ und macht das Abhaken für alle anderen unbrauchbar. **Vorschlag: nein**, dort bleibt es
   bei Kopieren.
-- **Bestellliste für alle sichtbar.** Sie ist heute auf Aufgeber und Admins beschränkt; für alle
-  anderen bleibt die Werkzeugleiste im eingeklappten Zustand leer und entfällt. Die Liste enthält
-  keine Namen und keine Bezahlt-Zustände, eine Öffnung wäre also vertretbar, ist aber eine bewusste
-  Rechteerweiterung. **Vorschlag: unverändert.**
+- **Gefülltes Markenglyph im Strich-Icon-Satz.** Das offizielle PayPal-Monogramm ist eine Fläche und
+  fällt neben den 88 Strichsymbolen auf. Genau das macht es an einem Bezahlen-Knopf erkennbar, es
+  bleibt aber eine bewusste Ausnahme in einem bisher einheitlichen Satz. **Vorschlag: Ausnahme
+  zulassen**, begrenzt auf Markenglyphen.
+- **Löschen einer Gruppe mit bezahlten Positionen.** Der Sammelweg ist gesperrt, sobald eine Position
+  bezahlt ist; man muss dann erst die Marke zurückdrehen. Alternative wäre, bezahlte Positionen
+  stehen zu lassen und nur den Rest zu löschen — das hinterlässt aber eine Gruppe, die nach dem
+  „alles löschen“ noch da ist. **Vorschlag: gesperrt lassen.**
 - **Startregel für den Aufgeber** innerhalb einer aufgeklappten Bestellung bleibt „alle Gruppen
   offen“. Bei fünf Bestellern ist das die längste Liste ausgerechnet für den, der die Übersicht
   braucht — „Alle einklappen“ steht jetzt links direkt daneben. **Vorschlag: unverändert lassen.**
