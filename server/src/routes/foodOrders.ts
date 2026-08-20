@@ -187,7 +187,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     return res.status(400).json({ error: `Infos dürfen höchstens ${MAX_NOTES_LENGTH} Zeichen lang sein.` });
   }
   if (link !== undefined && link !== null && !isValidLink(link)) {
-    return res.status(400).json({ error: 'Link muss eine gültige http(s)-URL sein.' });
+    return res.status(400).json({ error: 'Speisekarte muss eine gültige http(s)-URL sein.' });
   }
   if (paypalLink !== undefined && paypalLink !== null && !isValidLink(paypalLink)) {
     return res.status(400).json({ error: 'PayPal-Link muss eine gültige http(s)-URL sein.' });
@@ -287,7 +287,7 @@ foodOrdersRouter.patch('/:id', requireUser, (req, res) => {
     return res.status(400).json({ error: `Infos dürfen höchstens ${MAX_NOTES_LENGTH} Zeichen lang sein (oder null zum Entfernen).` });
   }
   if (link !== undefined && !isValidLink(link)) {
-    return res.status(400).json({ error: 'Link muss eine gültige http(s)-URL sein (oder null zum Entfernen).' });
+    return res.status(400).json({ error: 'Speisekarte muss eine gültige http(s)-URL sein (oder null zum Entfernen).' });
   }
   if (paypalLink !== undefined && !isValidLink(paypalLink)) {
     return res.status(400).json({ error: 'PayPal-Link muss eine gültige http(s)-URL sein (oder null zum Entfernen).' });

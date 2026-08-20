@@ -33,6 +33,7 @@ test('POST /api/food-orders validates title, player, sendAt, notes, link, paypal
     .post('/api/food-orders')
     .send({ playerId: alice.id, title: 'Pizza', link: 'javascript:alert(1)' });
   assert.equal(badLink.status, 400);
+  assert.equal(badLink.body.error, 'Speisekarte muss eine gültige http(s)-URL sein.');
   const badPaypalLink = await request(app)
     .post('/api/food-orders')
     .send({ playerId: alice.id, title: 'Pizza', paypalLink: 'javascript:alert(1)' });
@@ -130,6 +131,7 @@ test('PATCH /api/food-orders/:id sets, updates and clears send time, notes, link
 
   const invalidLink = await request(app).patch(`/api/food-orders/${orderId}`).send({ link: 'not-a-url' });
   assert.equal(invalidLink.status, 400);
+  assert.equal(invalidLink.body.error, 'Speisekarte muss eine gültige http(s)-URL sein (oder null zum Entfernen).');
 
   const invalidPaypalLink = await request(app).patch(`/api/food-orders/${orderId}`).send({ paypalLink: 'not-a-url' });
   assert.equal(invalidPaypalLink.status, 400);
