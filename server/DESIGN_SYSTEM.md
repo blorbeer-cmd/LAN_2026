@@ -1054,8 +1054,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   result entry. Team and free-for-all result inputs use the same aligned responsive grid.
 - **Home overview** — Home follows the same full-width grouped-card hierarchy as Tournaments,
   Teams and Vote. „Aktuell“, „Live-Status“, „Rangliste“ and „Sitzplan“ are separate main cards with
-  their heading inside the surface. Tappable current items, the personal status and player entries
-  remain nested cards on the secondary elevated background; „Gerade aktiv“ is a subsection of
+  their heading inside the surface. Every current item pairs its full-row navigation action with a
+  separate icon action that hides only that live occurrence for the signed-in identity and active
+  event on the current device; a new vote round, order, tournament or lobby remains visible again.
+  Tappable current items, the personal status and player entries remain nested cards on the
+  secondary elevated background; „Gerade aktiv“ is a subsection of
   „Live-Status“ rather than a competing page-level group. Main groups stay in one continuous column
   at phone and laptop widths while their existing internal grids remain responsive.
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the

@@ -2497,6 +2497,49 @@ button.card {
   min-height: 2.4em;
   font-size: var(--font-size-xs);
 }
+.home-current-row {
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  padding: 0;
+  cursor: default;
+}
+.home-current-navigate {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: var(--row-min-h);
+  flex: 1;
+  padding: var(--card-padding);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.home-current-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.home-current-dismiss {
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
+  align-self: center;
+  flex: 0 0 var(--tap-target-size);
+  margin-right: var(--space-2);
+  color: var(--text-muted);
+}
+@media (hover: hover) {
+  .home-current-navigate:hover {
+    background: var(--bg-elevated-2);
+  }
+  .home-current-row:has(.home-current-navigate:hover) {
+    border-color: var(--accent);
+  }
+}
 .more-card {
   display: grid;
   grid-template-columns:
