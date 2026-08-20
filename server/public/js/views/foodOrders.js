@@ -566,10 +566,10 @@ function renderOrderSummary(order, { locked = false } = {}) {
   return `<div class="stack food-order-summary">${totalHtml}${cartHtml}</div>`;
 }
 
-// Metadata block (send time / notes / link) shown on both open and closed
+// Metadata block (send time / notes / menu / payment) shown on both open and closed
 // orders, with a single edit affordance — all three are things people
-// commonly get wrong or need to correct ("doch erst um 21 Uhr", "Link war
-// falsch"), so they stay editable even after the order closed, unlike the
+// commonly get wrong or need to correct ("doch erst um 21 Uhr", "Speisekarte
+// war falsch"), so they stay editable even after the order closed, unlike the
 // items themselves.
 function renderDetails(order, { locked = false } = {}) {
   const sendAtLabel = order.sendAt
@@ -577,27 +577,32 @@ function renderDetails(order, { locked = false } = {}) {
     : 'Kein Zeitpunkt festgelegt';
   const hasDetails = Boolean(order.sendAt || order.notes || order.link || order.paypalLink || order.tipPercent);
   return `
-    <div class="stack food-order-details">
-      <div class="row-between">
-        <span class="muted" style="font-size:var(--font-size-sm);">${sendAtLabel}</span>
+    <div class="food-order-details">
+      <div class="food-order-details-head">
+        <span class="food-order-send-at">
+          <span class="food-order-detail-icon" aria-hidden="true">${icon('clock')}</span>
+          ${sendAtLabel}
+        </span>
         ${locked ? '' : `<button type="button" class="btn btn-sm" data-edit-details="${order.id}">${hasDetails ? 'Bearbeiten' : 'Info'}</button>`}
       </div>
-      ${order.notes ? `<div class="muted" style="font-size:var(--font-size-sm);white-space:pre-wrap;word-break:break-word;">${escapeHtml(order.notes)}</div>` : ''}
-      ${order.link ? `<a href="${escapeHtml(order.link)}" target="_blank" rel="noopener" style="font-size:var(--font-size-sm);">Link öffnen</a>` : ''}
+      ${order.notes ? `<div class="food-order-details-note">${escapeHtml(order.notes)}</div>` : ''}
+      ${order.link || order.paypalLink ? `<div class="food-order-detail-links">` : ''}
+      ${order.link ? `<a class="btn btn-sm" href="${escapeHtml(order.link)}" target="_blank" rel="noopener">${icon('utensils')}Speisekarte</a>` : ''}
       ${
         order.paypalLink
           ? (() => {
               const email = paypalEmailFromLink(order.paypalLink);
               return `<a
+                class="btn btn-sm"
                 href="${escapeHtml(order.paypalLink)}"
                 target="_blank"
                 rel="noopener"
-                style="font-size:var(--font-size-sm);"
                 ${email ? `data-copy-paypal-email="${escapeHtml(email)}" title="Öffnet PayPal und kopiert ${escapeHtml(email)} zum Einfügen."` : ''}
-              >PayPal öffnen</a>`;
+              >${icon('wallet')}PayPal öffnen</a>`;
             })()
           : ''
       }
+      ${order.link || order.paypalLink ? '</div>' : ''}
     </div>`;
 }
 
@@ -1271,7 +1276,7 @@ function openNewOrderForm(ctx, myId) {
           <textarea id="order-notes" rows="1" maxlength="500" placeholder="z.B. Mindestbestellwert 15€, bar zahlen"></textarea>
         </div>
         <div>
-          <label for="order-link" class="field-label">Link (optional)</label>
+          <label for="order-link" class="field-label">Speisekarte (optional)</label>
           <input type="url" id="order-link" maxlength="300" placeholder="https://…" />
         </div>
         <div>
@@ -1299,7 +1304,7 @@ function openNewOrderForm(ctx, myId) {
           (sel) => modalEl.querySelector(sel).value.trim(),
         );
         return values.some(Boolean)
-          ? 'Die neue Sammelbestellung mit allen eingegebenen Angaben (Titel, Link, PayPal, Trinkgeld …) geht verloren.'
+          ? 'Die neue Sammelbestellung mit allen eingegebenen Angaben (Titel, Speisekarte, PayPal, Trinkgeld …) geht verloren.'
           : null;
       },
       onMount: (el) => {
@@ -1315,7 +1320,7 @@ function openNewOrderForm(ctx, myId) {
           const notes = el.querySelector('#order-notes').value.trim() || undefined;
           const linkRaw = el.querySelector('#order-link').value.trim();
           if (linkRaw && !/^https?:\/\//i.test(linkRaw)) {
-            return showToast('Link muss mit http:// oder https:// beginnen.', { error: true });
+            return showToast('Die Speisekarten-Adresse muss mit http:// oder https:// beginnen.', { error: true });
           }
           const link = linkRaw || undefined;
           let paypalLink;
@@ -1359,7 +1364,7 @@ function openDetailsForm(ctx, order) {
           <textarea id="notes-input" rows="3" maxlength="500" placeholder="z.B. Mindestbestellwert 15€, bar zahlen">${escapeHtml(order.notes ?? '')}</textarea>
         </div>
         <div>
-          <label for="link-input" class="field-label">Link</label>
+          <label for="link-input" class="field-label">Speisekarte</label>
           <input type="url" id="link-input" maxlength="300" placeholder="https://…" value="${escapeHtml(order.link ?? '')}" />
         </div>
         <div>
@@ -1394,7 +1399,7 @@ function openDetailsForm(ctx, order) {
           paypal !== (paypalEmailFromLink(order.paypalLink) ?? order.paypalLink ?? '') ||
           tip !== String(order.tipPercent ?? '') ||
           Boolean(sendAt) !== Boolean(order.sendAt);
-        return dirty ? 'Deine Änderungen an Info, Link, PayPal oder Trinkgeld werden nicht gespeichert.' : null;
+        return dirty ? 'Deine Änderungen an Info, Speisekarte, PayPal oder Trinkgeld werden nicht gespeichert.' : null;
       },
       onMount: (el) => {
         modalEl = el;
@@ -1407,7 +1412,7 @@ function openDetailsForm(ctx, order) {
           const notes = el.querySelector('#notes-input').value.trim() || null;
           const linkRaw = el.querySelector('#link-input').value.trim();
           if (linkRaw && !/^https?:\/\//i.test(linkRaw)) {
-            return showToast('Link muss mit http:// oder https:// beginnen.', { error: true });
+            return showToast('Die Speisekarten-Adresse muss mit http:// oder https:// beginnen.', { error: true });
           }
           const link = linkRaw || null;
           let paypalLink;

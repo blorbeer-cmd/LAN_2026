@@ -1825,6 +1825,7 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await page.click('#nav-food-orders');
   await page.waitForSelector('#order-new-btn');
   await page.click('#order-new-btn');
+  await page.getByLabel('Speisekarte (optional)', { exact: true }).waitFor();
   await page.fill('#order-title', "Pizza bei Luigi's");
   await setDateTimeField('order-sendat', '2026-12-24T20:00');
   await page.fill('#order-notes', 'Mindestbestellwert 15€, bar zahlen');
@@ -1836,9 +1837,11 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await page.waitForSelector('text=Versand 24.12., 20:00 Uhr');
   await page.waitForSelector('text=Mindestbestellwert 15€, bar zahlen');
   await page.waitForSelector('a[href="https://luigis-pizza.example/karte"]');
+  await page.getByRole('link', { name: 'Speisekarte', exact: true }).waitFor();
 
   // The send time / notes / link are editable after the fact (independent of closing).
   await page.click('[data-edit-details]');
+  await page.getByLabel('Speisekarte', { exact: true }).waitFor();
   await setDateTimeField('sendat-input', '2026-12-24T21:30');
   await page.fill('#notes-input', 'Doch Kartenzahlung möglich');
   await page.click('#details-form button[type="submit"]');
