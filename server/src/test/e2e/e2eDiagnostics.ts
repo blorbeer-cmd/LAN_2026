@@ -1,12 +1,13 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { test as nodeTest } from 'node:test';
 import type { Browser, BrowserContext, Page } from 'playwright';
 import type { E2EServer } from './e2eServer';
 
 interface DiagnosticResources {
   testName: string;
   browser: Browser;
-  server: E2EServer;
+  server?: E2EServer;
 }
 
 interface TrackedContext {
@@ -105,6 +106,10 @@ class E2EDiagnosticRun {
     );
   }
 
+  private captureContexts(): BrowserContext[] {
+    return [...new Set([...this.contexts.keys(), ...this.resources.browser.contexts()])];
+  }
+
   private async stopTrace(tracked: TrackedContext, directory?: string): Promise<void> {
     if (!tracked.tracing) return;
     tracked.tracing = false;
@@ -129,7 +134,8 @@ class E2EDiagnosticRun {
     this.captured = true;
     await mkdir(this.directory, { recursive: true });
 
-    for (const [contextIndex, context] of this.resources.browser.contexts().entries()) {
+    const contexts = this.captureContexts();
+    for (const [contextIndex, context] of contexts.entries()) {
       await this.trackContext(context, `failure-context-${contextIndex + 1}`, false);
       for (const [pageIndex, page] of context.pages().entries()) {
         if (page.isClosed()) continue;
@@ -148,7 +154,10 @@ class E2EDiagnosticRun {
     }
 
     await this.stopTraces(this.directory);
-    const serverDiagnostics = this.resources.server.diagnostics();
+    const serverDiagnostics = this.resources.server?.diagnostics() ?? {
+      output: 'No E2E server diagnostics are available for this browser-only fixture.\n',
+      exit: null,
+    };
     await Promise.all([
       writeFile(path.join(this.directory, 'browser.log'), `${this.browserLog.join('\n')}\n`, 'utf8'),
       writeFile(path.join(this.directory, 'server.log'), serverDiagnostics.output, 'utf8'),
@@ -159,7 +168,7 @@ class E2EDiagnosticRun {
             testName: this.resources.testName,
             error: errorText(error),
             serverExit: serverDiagnostics.exit,
-            pages: this.resources.browser.contexts().flatMap((context) =>
+            pages: contexts.flatMap((context) =>
               context.pages().filter((page) => !page.isClosed()).map((page) => page.url()),
             ),
           },
@@ -183,6 +192,15 @@ class E2EDiagnosticRun {
 
 export async function trackE2EContext(context: BrowserContext, label: string): Promise<void> {
   await activeRun?.trackContext(context, label);
+}
+
+export function createE2EDiagnosticTest(
+  resources: () => Omit<DiagnosticResources, 'testName'>,
+): (name: string, run: () => void | Promise<void>) => Promise<void> {
+  return (name, run) =>
+    nodeTest(name, () =>
+      runWithE2EDiagnostics({ testName: name, ...resources() }, run),
+    );
 }
 
 export async function runWithE2EDiagnostics(

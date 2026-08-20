@@ -1,9 +1,10 @@
-import { test, before, after } from 'node:test';
+import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
 import { finishE2EOnboarding } from './authHelpers';
-import { startE2EServer } from './e2eServer';
+import { createE2EDiagnosticTest, trackE2EContext } from './e2eDiagnostics';
+import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
 const RECOVERY_CODE = 'event-invitations-e2e-recovery';
@@ -14,12 +15,15 @@ const MEMBER_PASSWORD = 'e2e event member secure passphrase';
 const EVENT_NAME = 'E2E Einladung LAN';
 
 let serverProcess: ChildProcess;
+let e2eServer: E2EServer;
 let browser: Browser;
 let ownerPage: Page;
 let memberPage: Page;
 let eventId: string;
 let memberId: string;
 const memberEventNotFoundResponses: string[] = [];
+
+const test = createE2EDiagnosticTest(() => ({ browser, server: e2eServer }));
 
 function sessionCookie(response: Response): string {
   const value = response.headers.get('set-cookie');
@@ -43,6 +47,7 @@ before(async () => {
     DB_FILE: ':memory:',
     ADMIN_RECOVERY_CODE: RECOVERY_CODE,
   });
+  e2eServer = server;
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
 
@@ -195,6 +200,7 @@ test('manager invites a member who accepts and both open clients update', async 
   const optionSelector = `#event-context-switcher-list [data-search-select-value="${eventId}"]`;
   await memberPage.locator(optionSelector).waitFor({ state: 'attached' });
   const mirrorPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(mirrorPage.context(), 'event-invitations-mirror');
   await login(mirrorPage, MEMBER_NAME, MEMBER_PASSWORD);
   await mirrorPage.locator(optionSelector).waitFor({ state: 'attached' });
 

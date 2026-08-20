@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
 import { classifyChangedPaths } from "./ci-path-classifier.mjs";
 import { VIEW_MANIFEST } from "../server/public/js/viewManifest.js";
@@ -49,6 +49,19 @@ test("unknown E2E files fail closed into both partitions until the manifest is u
   const result = selected(["server/src/test/e2e/newScenario.e2e.test.ts"]);
   assert.equal(result.e2eCore, true);
   assert.equal(result.e2eArcade, true);
+});
+
+test("every browser E2E owner participates in failure diagnostics", () => {
+  const directory = new URL("../server/src/test/e2e/", import.meta.url);
+  const owners = readdirSync(directory).filter((file) => {
+    if (!file.endsWith(".ts")) return false;
+    return /\bchromium\b/.test(readFileSync(new URL(file, directory), "utf8"));
+  });
+  assert.ok(owners.length > 0, "expected browser E2E owners");
+  for (const owner of owners) {
+    const source = readFileSync(new URL(owner, directory), "utf8");
+    assert.match(source, /runWithE2EDiagnostics|createE2EDiagnosticTest/, owner);
+  }
 });
 
 test("the kiosk remains a Core consumer and Arcade stylesheet versions stay synchronized", () => {

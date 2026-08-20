@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import express from 'express';
 import { chromium } from 'playwright';
+import { runWithE2EDiagnostics, trackE2EContext } from './e2eDiagnostics';
 
 const probeHtml = `<!doctype html>
 <html lang="de">
@@ -70,7 +71,11 @@ test('Arcade spectator canvases fit a mobile viewport and render every game worl
   const browser = await chromium.launch({ headless: true });
 
   try {
+    await runWithE2EDiagnostics(
+      { testName: 'Arcade spectator canvases fit a mobile viewport and render every game world', browser },
+      async () => {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await trackE2EContext(page.context(), 'arcade-stream-renderer');
     await page.goto(`http://127.0.0.1:${address.port}/probe`);
     await page.waitForFunction(() => (window as typeof window & { streamProbeReady?: boolean }).streamProbeReady === true);
 
@@ -128,6 +133,8 @@ test('Arcade spectator canvases fit a mobile viewport and render every game worl
       return corner[0] !== center[0] || corner[1] !== center[1] || corner[2] !== center[2];
     });
     assert.equal(scribbleFillVisible, true, 'Scribble fill operations are visible to spectators');
+      },
+    );
   } finally {
     await browser.close();
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
