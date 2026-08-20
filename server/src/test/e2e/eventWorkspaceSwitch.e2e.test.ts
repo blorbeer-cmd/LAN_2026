@@ -8,20 +8,24 @@
 // one of them: after switching, the other event must show its own empty
 // state rather than the neighbour's rows.
 
-import { test, before, after } from 'node:test';
+import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
 import { authenticatedServerEnv, loginE2EAdmin, finishE2EOnboarding, E2E_ADMIN_NAME, E2E_ADMIN_PASSWORD } from './authHelpers';
-import { startE2EServer } from './e2eServer';
+import { createE2EDiagnosticTest } from './e2eDiagnostics';
+import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
 let serverProcess: ChildProcess;
+let e2eServer: E2EServer;
 let browser: Browser;
 let page: Page;
 let cookie: string;
 let eventA: string;
 let eventB: string;
+
+const test = createE2EDiagnosticTest(() => ({ browser, server: e2eServer }));
 
 async function api(path: string, init: RequestInit = {}): Promise<{ status: number; body: any }> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -108,6 +112,7 @@ function viewText(): Promise<string> {
 
 before(async () => {
   const server = await startE2EServer({ ...authenticatedServerEnv(), NODE_ENV: 'test' });
+  e2eServer = server;
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   cookie = await loginE2EAdmin(BASE_URL);

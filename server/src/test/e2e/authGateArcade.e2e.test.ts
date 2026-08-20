@@ -1,20 +1,25 @@
-import { test, before, after } from 'node:test';
+import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { addSessionCookie, authenticatedServerEnv, createE2EAccount, loginE2EAdmin } from './authHelpers';
-import { startE2EServer } from './e2eServer';
+import { createE2EDiagnosticTest, trackE2EContext } from './e2eDiagnostics';
+import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
 
 let serverProcess: ChildProcess;
+let e2eServer: E2EServer;
 let browser: Browser;
 let context: BrowserContext;
 let page: Page;
 let adminCookie: string;
 
+const test = createE2EDiagnosticTest(() => ({ browser, server: e2eServer }));
+
 before(async () => {
   const server = await startE2EServer(authenticatedServerEnv());
+  e2eServer = server;
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   adminCookie = await loginE2EAdmin(BASE_URL);
@@ -56,6 +61,7 @@ test('a required-mode member can open an Arcade lobby with a scoped game socket'
 
 test('an admin sees settings without admin mode and Arcade AI only after activation', async () => {
   const adminContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(adminContext, 'arcade-auth-admin');
   await addSessionCookie(adminContext, BASE_URL, adminCookie);
   const adminPage = await adminContext.newPage();
   try {

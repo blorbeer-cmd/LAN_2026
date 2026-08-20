@@ -17,7 +17,8 @@ import {
   loginE2EAdmin,
   type E2EAccount,
 } from './authHelpers';
-import { startE2EServer } from './e2eServer';
+import { runWithE2EDiagnostics, trackE2EContext } from './e2eDiagnostics';
+import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
 
@@ -25,6 +26,7 @@ let BASE_URL: string;
 // scenarios are kept in arcadeFlows.e2e.test.ts so changing them cannot select
 // the Core browser partition.
 let serverProcess: ChildProcess;
+let e2eServer: E2EServer;
 let browser: Browser;
 let page: Page;
 let adminCookie: string;
@@ -48,7 +50,12 @@ function flowTest(
     // All flows in a shard intentionally share one server session and one
     // Playwright page. Running sibling tests concurrently lets one flow
     // navigate or resize that page while another is asserting it.
-    test(name, { concurrency: false }, fn);
+    test(name, { concurrency: false }, (context) =>
+      runWithE2EDiagnostics(
+        { testName: name, browser, server: e2eServer },
+        () => fn(context),
+      ),
+    );
   }
 }
 
@@ -161,6 +168,7 @@ async function bootstrapAdminAccount(name: string): Promise<E2EAccount> {
 
 before(async () => {
   const server = await startE2EServer(authenticatedServerEnv());
+  e2eServer = server;
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   adminCookie = await loginE2EAdmin(BASE_URL);
@@ -196,6 +204,7 @@ after(async () => {
 
 flowTest('shell', 'fresh device uses the personal login and reaches the app with its verified account', async (t) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(context, 'fresh-device');
   const loginPage = await context.newPage();
   t.after(async () => context.close());
   await loginPage.goto(BASE_URL);

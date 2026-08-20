@@ -7,11 +7,12 @@
 // api.auth.recovery.test.ts) purely to be able to mint the invite code this
 // test needs.
 
-import { test, before, after } from 'node:test';
+import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
-import { startE2EServer } from './e2eServer';
+import { createE2EDiagnosticTest, trackE2EContext } from './e2eDiagnostics';
+import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
 const RECOVERY_CODE = 'e2e-admin-recovery-code';
@@ -20,9 +21,12 @@ const PASSWORD = 'e2e new person password';
 const PASSWORD_AFTER_RESET = 'e2e password after reset';
 
 let serverProcess: ChildProcess;
+let e2eServer: E2EServer;
 let browser: Browser;
 let page: Page;
 let adminCookie: string;
+
+const test = createE2EDiagnosticTest(() => ({ browser, server: e2eServer }));
 
 // Mints a fresh 'register' invite code by bootstrapping one admin account
 // via the recovery code (plain HTTP, no browser involved) and having it
@@ -89,6 +93,7 @@ before(async () => {
     ADMIN_RECOVERY_CODE: RECOVERY_CODE,
     KIOSK_TOKEN: 'e2e-kiosk-token',
   });
+  e2eServer = server;
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   browser = await chromium.launch();
@@ -282,6 +287,7 @@ test('a logged-in user can leave a stale action link without editing the URL', a
 
 test('the required-mode kiosk starts with its dedicated read-only token', async () => {
   const kioskPage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  await trackE2EContext(kioskPage.context(), 'auth-kiosk');
   try {
     await kioskPage.goto(`${BASE_URL}/kiosk.html?token=e2e-kiosk-token`);
     await kioskPage.waitForSelector('#kiosk-dashboard:not([hidden])');
@@ -318,6 +324,7 @@ test('a reset link replaces the password and signs the browser in with a fresh s
 
 test('admin creates, displays and revokes a registration link in the UI', async () => {
   const adminPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(adminPage.context(), 'auth-invite-admin');
   try {
     await adminPage.goto(BASE_URL);
     await adminPage.waitForSelector('#auth-screen:not([hidden])');
@@ -388,6 +395,7 @@ test('switching from an admin to a new account clears the local admin mode', asy
   const { code } = JSON.parse(inviteText) as { code: string };
 
   const switchPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(switchPage.context(), 'auth-account-switch');
   try {
     await switchPage.goto(BASE_URL);
     await switchPage.waitForSelector('#auth-screen:not([hidden])');
@@ -428,6 +436,7 @@ test('admin roster retries role loading, serializes changes and follows group ro
   assert.ok(target);
 
   const adminPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(adminPage.context(), 'auth-roster-admin');
   let failNextMembersRequest = true;
   let rolePatchRequests = 0;
   adminPage.on('request', (request) => {
@@ -537,6 +546,7 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
   const [testPlayer, peerTestPlayer] = seededBody.created;
 
   const adminPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(adminPage.context(), 'auth-test-session-admin');
   let testSessionLink = '';
   try {
     await adminPage.goto(BASE_URL);
@@ -565,6 +575,7 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
   }
 
   const testPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(testPage.context(), 'auth-test-session-player');
   try {
     await testPage.goto(testSessionLink);
     await testPage.waitForSelector('#auth-screen:not([hidden])');

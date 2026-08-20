@@ -374,8 +374,12 @@ function applyChallengeInput(io: Server, match: Match, playerId: string, input: 
   } else if (match.current.key === 'traffic-light') {
     if (input.action !== 'click') return { ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) };
     const greenAtMs = Number(match.current.data.greenAtMs);
-    const falseStart = elapsed < greenAtMs;
-    p.score = scoreTrafficLight(elapsed - greenAtMs, falseStart);
+    // The timer is the authoritative state used by the public view and the
+    // one-shot green event. Comparing a separately rounded elapsed value with
+    // greenAtMs could still classify the first click after that event as a
+    // false start when the timer fired just below the millisecond boundary.
+    const falseStart = match.greenTimer !== null || match.greenPausedRemainingMs !== null;
+    p.score = scoreTrafficLight(Math.max(0, elapsed - greenAtMs), falseStart);
     if (falseStart) p.errors += 1;
     p.completed = true;
   } else {

@@ -556,15 +556,9 @@ function startNextTurn(io: Server, match: ScribbleMatchState): void {
   match.choiceExpiresAt = Date.now() + CHOICE_MS;
   match.choiceTimer = setTimeout(() => autoChooseWord(io, match), CHOICE_MS);
 
-  const drawerSocketId = match.socketIds.get(drawer.id);
-  if (drawerSocketId) {
-    emitArcadeSocket(io, drawerSocketId, 'scribble:choose', {
-      matchId: match.id,
-      options: match.wordOptions.map((w) => ({ id: w.id, word: w.word })),
-      expiresAt: match.choiceExpiresAt,
-    }, match);
-  }
-
+  // Establish the shared choosing phase first. The private word options then
+  // arrive on top of that durable state instead of briefly rendering against
+  // the previous reveal/drawing phase and being lost in a competing rerender.
   emitArcadeRoom(io, match.room, 'scribble:turn', {
     matchId: match.id,
     phase: 'choosing',
@@ -575,6 +569,14 @@ function startNextTurn(io: Server, match: ScribbleMatchState): void {
     expiresAt: match.choiceExpiresAt,
     scores: scorePayload(match),
   }, match);
+  const drawerSocketId = match.socketIds.get(drawer.id);
+  if (drawerSocketId) {
+    emitArcadeSocket(io, drawerSocketId, 'scribble:choose', {
+      matchId: match.id,
+      options: match.wordOptions.map((w) => ({ id: w.id, word: w.word })),
+      expiresAt: match.choiceExpiresAt,
+    }, match);
+  }
   kioskSnapshot(io, match);
 }
 

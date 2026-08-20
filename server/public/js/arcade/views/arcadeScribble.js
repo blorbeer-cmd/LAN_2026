@@ -14,6 +14,7 @@
 
 import { escapeHtml } from '../../format.js';
 import { showToast } from '../../toast.js';
+import { strokesForScribbleSync } from '../scribbleSync.js';
 import { getMyId } from '../../whoami.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
@@ -806,7 +807,7 @@ export function ensureScribbleSocket() {
       // Only a drawing-phase sync carries ops for a live canvas. A sync
       // during reveal/choosing must reset the mirror instead — the next
       // turn's canvas has to start blank, not replay stale artwork.
-      confirmedOps = sync.phase === 'drawing' ? sync.strokes ?? [] : [];
+      confirmedOps = strokesForScribbleSync(sync);
       confirmedStrokeCount = new Set(confirmedOps.map((op) => op.strokeId)).size;
       match = { matchId: sync.matchId, host: sync.host, players: sync.players, rounds: sync.rounds, turnDurationMs: sync.turnDurationMs };
       turn = {
@@ -1095,7 +1096,12 @@ function wireRoom(container) {
     const input = container.querySelector('#scribble-guess-input');
     const text = input.value.trim();
     if (!text) return;
+    // Keep the acknowledgement on the stable view container: a correct guess
+    // immediately replaces the form during the turn transition, while this
+    // state remains available to diagnostics and browser synchronization.
+    container.dataset.scribbleGuessResult = 'pending';
     socket.emit('scribble:guess', { matchId: match.matchId, playerId: myId(), text }, (res) => {
+      container.dataset.scribbleGuessResult = !res?.ok ? 'rejected' : res.correct ? 'correct' : 'wrong';
       if (!res?.ok) return showToast(res?.error || 'Tipp nicht angenommen.', { error: true });
       // Shown only to this guesser (the server never broadcasts it) - a
       // wrong-but-close guess is otherwise indistinguishable from any other

@@ -9,10 +9,12 @@ import {
   loginE2EAdmin,
   promoteE2EAdmin,
 } from './authHelpers';
-import { startE2EServer } from './e2eServer';
+import { runWithE2EDiagnostics, trackE2EContext } from './e2eDiagnostics';
+import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
 let serverProcess: ChildProcess;
+let e2eServer: E2EServer;
 let browser: Browser;
 const adminCookies = new Map<string, string>();
 const playerCookies = new Map<string, string>();
@@ -29,7 +31,14 @@ function challengeRushTest(
   name: string,
   fn: (context: TestContext) => void | Promise<void>,
 ): void {
-  if (challengeRushShard === shard) test(name, fn);
+  if (challengeRushShard === shard) {
+    test(name, (context) =>
+      runWithE2EDiagnostics(
+        { testName: name, browser, server: e2eServer },
+        () => fn(context),
+      ),
+    );
+  }
 }
 
 async function createPlayer(baseUrl: string = BASE_URL): Promise<string> {
@@ -47,6 +56,7 @@ async function makeAdmin(playerId: string): Promise<void> {
 
 async function openArcade(playerId: string, baseUrl: string = BASE_URL, { adminMode = false } = {}): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(context, `challenge-rush-${playerId}`);
   await addSessionCookie(context, baseUrl, playerCookies.get(`${baseUrl}:${playerId}`)!);
   const page = await context.newPage();
   await page.goto(baseUrl);
@@ -74,6 +84,7 @@ async function openArcade(playerId: string, baseUrl: string = BASE_URL, { adminM
 
 before(async () => {
   const server = await startE2EServer(authenticatedServerEnv());
+  e2eServer = server;
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   adminCookies.set(BASE_URL, await loginE2EAdmin(BASE_URL));

@@ -263,6 +263,8 @@ test("the workflow keeps the PR head inert and Claude tool access read-only", ()
   assert.match(workflow, /"items":\{"type":"string","maxLength":4000\}/);
   assert.doesNotMatch(workflow, /ausschließlich Glob, Grep und Read/);
   assert.match(workflow, /--allowedTools "Glob,Grep,Read"/);
+  assert.match(workflow, /letzte Hunk darf deshalb mitten in einem syntaktischen Quelltextkonstrukt enden/);
+  assert.match(workflow, /Lies review\.diff mit Read bei Bedarf paginiert bis EOF/);
   // 25 turns aborted a real review of a 26-file pull request with `error_max_turns` before it could
   // emit its result. The 45-minute job timeout stays the hard ceiling.
   assert.match(workflow, /--max-turns 60/);

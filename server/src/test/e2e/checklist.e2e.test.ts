@@ -4,7 +4,7 @@
 // it under "Mir zugewiesen", then marks it done. Separate from the fast
 // unit/integration suite (`npm test`) - run via `npm run test:e2e`.
 
-import { test, before, after } from 'node:test';
+import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
@@ -15,15 +15,19 @@ import {
   E2EAccount,
   loginE2EAdmin,
 } from './authHelpers';
-import { startE2EServer } from './e2eServer';
+import { createE2EDiagnosticTest } from './e2eDiagnostics';
+import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
 
 let serverProcess: ChildProcess;
+let e2eServer: E2EServer;
 let browser: Browser;
 let page: Page;
 let alice: E2EAccount;
 let bob: E2EAccount;
+
+const test = createE2EDiagnosticTest(() => ({ browser, server: e2eServer }));
 
 async function openChecklist(): Promise<void> {
   await page.click('.nav-btn[data-view="more"]');
@@ -40,6 +44,7 @@ async function switchAccount(account: E2EAccount): Promise<void> {
 
 before(async () => {
   const server = await startE2EServer(authenticatedServerEnv());
+  e2eServer = server;
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   const adminCookie = await loginE2EAdmin(BASE_URL);
