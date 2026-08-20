@@ -3027,7 +3027,8 @@ flowTest('community', 'the device back button steps back through in-app views in
   await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Vote');
 });
 
-flowTest('community', 'Aktuell: an open vote\'s title (if set) shows on Home\'s status card', async () => {
+flowTest('community', 'Aktuell: an open vote can be dismissed without hiding the next round', async (t) => {
+  t.after(async () => page.setViewportSize({ width: 390, height: 844 }));
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-title');
   await page.fill('#votes-title', 'Freitagabend-Runde');
@@ -3044,7 +3045,40 @@ flowTest('community', 'Aktuell: an open vote\'s title (if set) shows on Home\'s 
 
   await page.click('.nav-btn[data-view="home"]');
   await page.waitForSelector('section.grouped-page-section:has(h2:text-is("Aktuell"))');
-  await page.waitForSelector('text=Freitagabend-Runde');
+  const currentVote = page.locator(`[data-current-item="vote:${openedVote.round}"]`);
+  await currentVote.waitFor();
+  const dismissButton = currentVote.locator('[data-dismiss-current]');
+  assert.equal(await dismissButton.getAttribute('aria-label'), 'Freitagabend-Runde ausblenden');
+  const mobileDismissBox = await dismissButton.boundingBox();
+  assert.ok(mobileDismissBox && mobileDismissBox.width >= 44 && mobileDismissBox.height >= 44);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+  await page.setViewportSize({ width: 900, height: 844 });
+  await currentVote.waitFor();
+  assert.ok(await dismissButton.isVisible());
+  await page.setViewportSize({ width: 390, height: 844 });
+  await dismissButton.focus();
+  await page.keyboard.press('Enter');
+  await currentVote.waitFor({ state: 'detached' });
+
+  // The personal dismissal survives a reload, just like removing an entry
+  // from Mitteilungen, without closing the shared vote itself.
+  await page.reload();
+  await page.waitForSelector('#app:not([hidden])');
+  await page.click('.nav-btn[data-view="home"]');
+  assert.equal(await page.locator(`[data-current-item="vote:${openedVote.round}"]`).count(), 0);
+  assert.equal((await (await page.request.get(`${BASE_URL}/api/votes`)).json()).open, true);
+
+  // A later lifecycle gets a new stable id and must be visible again.
+  await page.click('.nav-btn[data-view="votes"]');
+  await page.click('#votes-close');
+  await page.waitForSelector('#votes-start');
+  await page.fill('#votes-title', 'Samstagabend-Runde');
+  await page.click('#votes-start');
+  await page.waitForSelector('#votes-close');
+  const nextVote = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
+  assert.notEqual(nextVote.round, openedVote.round);
+  await page.click('.nav-btn[data-view="home"]');
+  await page.waitForSelector(`[data-current-item="vote:${nextVote.round}"]:has-text("Samstagabend-Runde")`);
 
   // Leave no open round behind for later tests.
   await page.click('.nav-btn[data-view="votes"]');

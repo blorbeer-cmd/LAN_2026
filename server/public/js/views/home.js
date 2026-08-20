@@ -14,7 +14,7 @@ import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { renderSeatingPlan } from './seating.js';
-import { ensureAktuellLoaded, aktuellItems } from '../aktuellStatus.js';
+import { ensureAktuellLoaded, aktuellItems, dismissAktuellItem } from '../aktuellStatus.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { isAdmin } from '../admin.js';
 
@@ -66,25 +66,27 @@ let lastCtx = null;
 window.addEventListener('respawn:aktuell-changed', () => lastCtx?.rerender());
 
 // Compact single-line row (the "Mehr" hub's list-row component, see
-// more.js) instead of a full card with its own button: the prominent header
-// banner (notificationBanner.js) already covers the "look at me" job for
-// the single latest thing, so these just need to be scannable at a glance,
-// with the whole row (not a separate button) as the tap target.
-function statusRowHtml({ iconName, title, sub, navigate }) {
+// more.js). Navigation and dismissal are sibling buttons so both remain
+// semantic, keyboard-operable controls without nesting one button in another.
+function statusRowHtml({ id, iconName, title, sub, navigate }) {
   return `
-    <button type="button" class="card row list-row" data-navigate="${navigate}">
-      <span class="list-row-icon">${icon(iconName)}</span>
-      <span style="flex:1;min-width:0;">
-        <div class="player-name">${title}</div>
-        ${sub ? `<div class="muted list-row-desc">${sub}</div>` : ''}
-      </span>
-      <span class="muted">${icon('chevronRight')}</span>
-    </button>`;
+    <article class="card list-row home-current-row" data-current-item="${id}">
+      <button type="button" class="home-current-navigate" data-navigate="${navigate}">
+        <span class="list-row-icon">${icon(iconName)}</span>
+        <span class="home-current-copy">
+          <span class="player-name">${title}</span>
+          ${sub ? `<span class="muted list-row-desc">${sub}</span>` : ''}
+        </span>
+        <span class="muted">${icon('chevronRight')}</span>
+      </button>
+      <button type="button" class="icon-btn home-current-dismiss" data-dismiss-current="${id}" aria-label="${title} ausblenden" title="Meldung ausblenden">${icon('x')}</button>
+    </article>`;
 }
 
 function renderStatus() {
   const rows = aktuellItems().map((item) =>
     statusRowHtml({
+      id: escapeHtml(item.id),
       iconName: item.iconName,
       title: escapeHtml(item.title),
       sub: item.sub ? escapeHtml(item.sub) : '',
@@ -281,6 +283,14 @@ export function renderHome(container, ctx) {
       } catch (err) {
         showToast(err.message, { error: true });
       }
+    });
+  });
+
+  container.querySelectorAll('[data-dismiss-current]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!dismissAktuellItem(btn.dataset.dismissCurrent)) return;
+      showToast('Meldung ausgeblendet.');
+      ctx.rerender();
     });
   });
 }

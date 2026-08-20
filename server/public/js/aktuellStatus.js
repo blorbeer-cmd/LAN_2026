@@ -15,6 +15,70 @@ let missingSkillsCache = null;
 let missingSkillsLoadedForId = null;
 let missingSkillsLoading = false;
 
+const DISMISSED_STORAGE_PREFIX = 'respawn_home_current_dismissed';
+const MAX_DISMISSED_ITEMS = 100;
+const MAX_ITEM_ID_LENGTH = 200;
+const memoryDismissals = new Map();
+
+function dismissalScope({ playerId = getMyId(), eventId = state.activeEvent?.id ?? 'base' } = {}) {
+  if (!playerId) return null;
+  return `${DISMISSED_STORAGE_PREFIX}:${encodeURIComponent(playerId)}:${encodeURIComponent(eventId || 'base')}`;
+}
+
+function browserStorage(storage) {
+  if (storage !== undefined) return storage;
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function dismissedIds(scope, storage) {
+  const ids = new Set(memoryDismissals.get(scope) ?? []);
+  try {
+    const stored = JSON.parse(storage?.getItem(scope) ?? '[]');
+    if (Array.isArray(stored)) {
+      for (const id of stored.slice(-MAX_DISMISSED_ITEMS)) {
+        if (typeof id === 'string' && id.length > 0 && id.length <= MAX_ITEM_ID_LENGTH) ids.add(id);
+      }
+    }
+  } catch {
+    // A blocked or corrupt localStorage must not make Home unusable. The
+    // in-memory fallback still keeps the dismissal for this browser session.
+  }
+  return ids;
+}
+
+// "Aktuell" is derived live state rather than a second notification feed.
+// Dismissals therefore stay client-side, scoped to the signed-in identity
+// and active event, and use lifecycle-specific item ids (vote round, lobby
+// id, etc.) so the next genuinely new occurrence becomes visible again.
+export function dismissAktuellItem(itemId, options = {}) {
+  if (typeof itemId !== 'string' || itemId.length === 0 || itemId.length > MAX_ITEM_ID_LENGTH) return false;
+  const scope = dismissalScope(options);
+  if (!scope) return false;
+  const storage = browserStorage(options.storage);
+  const ids = dismissedIds(scope, storage);
+  ids.delete(itemId);
+  ids.add(itemId);
+  while (ids.size > MAX_DISMISSED_ITEMS) ids.delete(ids.values().next().value);
+  memoryDismissals.set(scope, ids);
+  try {
+    storage?.setItem(scope, JSON.stringify([...ids]));
+  } catch {
+    // See dismissedIds(): session-local behavior is the safe fallback.
+  }
+  return true;
+}
+
+export function filterDismissedAktuellItems(items, options = {}) {
+  const scope = dismissalScope(options);
+  if (!scope) return items;
+  const hidden = dismissedIds(scope, browserStorage(options.storage));
+  return items.filter((item) => !hidden.has(item.id));
+}
+
 // Fired whenever a (re)load completes, so Home can re-render without its own
 // poll loop.
 function notifyChanged() {
@@ -86,8 +150,10 @@ const FORMAT_LABELS = {
   group_knockout: 'Gruppen + K.O.',
 };
 
-// { iconName, title, sub, navigate }[] — title/sub are raw text, not yet
-// HTML-escaped, so the caller escapes them while rendering.
+// { id, iconName, title, sub, navigate }[] — title/sub are raw text, not yet
+// HTML-escaped, so the caller escapes them while rendering. The id names the
+// live occurrence, not just its category, so dismissing one vote/lobby never
+// suppresses the next one.
 export function aktuellItems() {
   const items = [];
 
@@ -95,6 +161,7 @@ export function aktuellItems() {
   // a rating for a game everyone can already see running.
   for (const g of missingSkillsCache ?? []) {
     items.push({
+      id: `skill:${g.id}`,
       iconName: domainIcon('skill'),
       title: `Skill für ${g.name} bewerten`,
       sub: 'Wird gerade gespielt',
@@ -105,6 +172,7 @@ export function aktuellItems() {
   if (state.votes?.open) {
     const voters = state.votes.totalVoters ?? 0;
     items.push({
+      id: `vote:${state.votes.round}`,
       iconName: domainIcon('votes'),
       title: state.votes.title || 'Abstimmung läuft',
       sub: `${voters} Teilnehmer bisher`,
@@ -114,6 +182,7 @@ export function aktuellItems() {
 
   for (const t of (statusCache?.tournaments ?? []).filter((t) => t.status === 'active')) {
     items.push({
+      id: `tournament:${t.id}`,
       iconName: domainIcon('tournaments'),
       title: t.name,
       sub: `${t.gameName} · ${FORMAT_LABELS[t.format] ?? t.format}`,
@@ -123,6 +192,7 @@ export function aktuellItems() {
 
   for (const o of (statusCache?.foodOrders ?? []).filter((o) => o.open)) {
     items.push({
+      id: `food-order:${o.id}`,
       iconName: domainIcon('foodOrders'),
       title: `Sammelbestellung „${o.title}"`,
       sub: o.sendAt ? `Versand ${formatDateTime(o.sendAt)} Uhr` : 'Zeitpunkt noch offen',
@@ -132,6 +202,7 @@ export function aktuellItems() {
 
   for (const l of statusCache?.arcadeLobbies ?? []) {
     items.push({
+      id: `arcade-lobby:${l.gameType}:${l.id}`,
       iconName: domainIcon('arcade'),
       title: `${l.title}-Lobby offen`,
       sub: `Von ${l.hostName} · ${l.playerCount} ${l.playerCount === 1 ? 'wartet' : 'warten'}`,
@@ -139,5 +210,5 @@ export function aktuellItems() {
     });
   }
 
-  return items;
+  return filterDismissedAktuellItems(items);
 }
