@@ -252,6 +252,31 @@ test("the workflow preserves the required aggregate Browser E2E check", () => {
   );
 });
 
+test("E2E trace retries have bounded time and job-level upload headroom", () => {
+  const workflow = readDeployWorkflow();
+  const expectations = [
+    ["e2e-core", "e2e-arcade-smoke", 35, "Core E2E", 10],
+    ["e2e-arcade-smoke", "e2e-arcade", 20, "Arcade smoke E2E", 5],
+    ["e2e-arcade", "browser-e2e", 35, "Arcade E2E", 10],
+    ["test-performance-confirm", "test-performance", 45, "repeated E2E", 10],
+  ];
+
+  for (const [job, nextJob, jobTimeout, retryName, retryTimeout] of expectations) {
+    const block = workflow.match(
+      new RegExp(`\\n  ${job}:\\n([\\s\\S]*?)\\n  ${nextJob}:`),
+    )?.[1];
+    assert.ok(block, `the ${job} job is missing`);
+    assert.match(block, new RegExp(`^    timeout-minutes: ${jobTimeout}$`, "m"));
+
+    const retry = block.match(
+      new RegExp(`      - name: Reproduce ${retryName} failure with tracing\\n([\\s\\S]*?)(?=\\n      - name:)`),
+    )?.[1];
+    assert.ok(retry, `the ${job} trace retry is missing`);
+    assert.match(retry, new RegExp(`^        timeout-minutes: ${retryTimeout}$`, "m"));
+    assert.match(retry, /^        continue-on-error: true$/m);
+  }
+});
+
 // Regression guard: without a status check function GitHub adds an implicit
 // success() that also trips on a *transitively* skipped dependency. That
 // silently skipped deploy on every merge whose test-performance-confirm was
