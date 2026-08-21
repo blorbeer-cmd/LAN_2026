@@ -294,11 +294,11 @@ function renderItemRow(order, item, myId, { locked = false } = {}) {
   const copyHtml =
     total === null
       ? ''
-      : `<button type="button" class="icon-btn food-order-item-action food-order-item-copy" data-copy-food-total="${escapeHtml(formatCents(total))}" title="Summe kopieren" aria-label="Summe kopieren">${icon('copy')}</button>`;
+      : `<button type="button" class="icon-btn food-order-item-action food-order-item-copy" data-copy-food-total="${escapeHtml(formatCents(total))}" title="Betrag dieser Position kopieren" aria-label="Betrag dieser Position kopieren">${icon('copy')}</button>`;
 
   const actionClusterHtml = `<span class="food-order-item-action-cluster">${copyHtml || '<span class="food-order-item-action-spacer" aria-hidden="true"></span>'}</span>`;
 
-  const removeTitle = item.paid ? 'Bezahlte Position kann nicht entfernt werden' : 'Position entfernen';
+  const removeTitle = item.paid ? 'Als bezahlt bestätigt – erst die Marke der Person zurückdrehen' : 'Position entfernen';
   const removeHtml =
     !locked && order.open && item.playerId === myId
       ? `<button type="button" class="icon-btn food-order-item-action food-order-item-remove" data-remove-item="${item.id}" data-order="${order.id}" ${item.paid ? 'disabled' : ''} title="${removeTitle}" aria-label="${removeTitle}">${icon('trash')}</button>`
@@ -351,7 +351,7 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
   const headText = `
     ${avatarHtml(player, 20)}
     <span class="food-order-group-headtext">
-      <strong>${escapeHtml(items[0].playerName)}</strong>
+      <strong>${escapeHtml(items[0].playerName)}${playerId === myId ? ' <span class="muted food-order-group-self-label">(du)</span>' : ''}</strong>
       <span class="muted food-order-group-meta">${meta}</span>
     </span>`;
 
@@ -376,7 +376,7 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
     ? paidNames.length
       ? `Bezahlt, bestätigt von ${paidNames.join(', ')} – Markierung aufheben`
       : 'Bezahlt – Markierung aufheben'
-    : 'Als bezahlt markieren';
+    : `${items[0].playerName} als bezahlt markieren`;
   const paidMarkerHtml = `<button type="button" class="food-order-paid-marker ${allPaid ? 'is-paid' : ''}" data-toggle-group-paid="${playerId}" data-order="${order.id}" ${locked ? 'disabled' : ''} aria-pressed="${allPaid ? 'true' : 'false'}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}">
     ${icon(allPaid ? 'check' : 'circleDashed')}<span>${allPaid ? 'Bezahlt' : 'Offen'}</span>
   </button>`;
@@ -401,7 +401,7 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
   const deleteReason = locked
     ? 'Bestellung geschlossen – keine Änderungen mehr möglich'
     : hasPaid
-      ? 'Gruppe enthält bezahlte Positionen – erst die Personenmarke zurückdrehen'
+      ? 'Enthält bezahlte Positionen – erst die Marke zurückdrehen'
       : 'Alle eigenen Positionen entfernen';
   const deleteHtml = canDelete
     ? `<button type="button" class="icon-btn food-order-item-action food-order-group-remove" data-remove-group="${playerId}" data-order="${order.id}" ${hasPaid || locked ? 'disabled' : ''} title="${escapeHtml(deleteReason)}" aria-label="${escapeHtml(deleteReason)}">${icon('trash')}</button>`
@@ -469,7 +469,7 @@ function renderOrderOverview(order) {
     order.items.reduce((sum, i) => sum + (i.priceCents === null ? 0 : i.priceCents * (i.quantity ?? 1)), 0),
     tipPercent,
   );
-  const totalLabel = allPriced ? formatCents(totalCents) : `${formatCents(pricedTotalCents)} · Preise unvollständig`;
+  const totalLabel = allPriced ? formatCents(totalCents) : formatCents(pricedTotalCents);
   const openCents = [...itemsGroupedByPlayer(order).values()]
     .filter((items) => !items.every((i) => i.paid))
     .reduce((sum, items) => sum + items.reduce((groupSum, i) => groupSum + (lineTotalCents(i, tipPercent) ?? 0), 0), 0);
@@ -480,6 +480,7 @@ function renderOrderOverview(order) {
     `Gesamt ${totalLabel}`,
   ];
   if (openCents > 0) parts.push(`offen ${formatCents(openCents)}`);
+  if (!allPriced) parts.push('Preise unvollständig');
 
   return `<div class="muted food-order-overview">${parts.join(' · ')}</div>`;
 }
@@ -1011,7 +1012,10 @@ async function handleGroupPay(order, playerId, ctx) {
     items.map((item) => ({ ...item, amount: formatCents(lineTotalCents(item, tipPercent)) })),
     { confirmText: 'Ja, bezahlt', cancelText: 'Noch nicht' },
   );
-  if (!confirmed) return;
+  if (!confirmed) {
+    ctx.rerender();
+    return;
+  }
   await markGroupItemsPaid(order.id, playerId, items.filter((item) => !item.paid).map((item) => item.id), ctx);
 }
 
@@ -1074,8 +1078,13 @@ async function handleRemoveGroup(order, playerId, myId, ctx) {
       ctx.rerender();
       return;
     }
-    await Promise.all(freshItems.map((item) => api.foodOrders.removeItem(order.id, item.id, myId)));
-    freshOrder.items = freshOrder.items.filter((item) => !freshItems.some((removed) => removed.id === item.id));
+    // The confirmation listed the snapshot from before the fresh GET. Any
+    // position added while the dialog was open is deliberately outside that
+    // snapshot and must survive this bulk action.
+    const initialItemIds = new Set(items.map((item) => item.id));
+    const itemsToRemove = freshItems.filter((item) => initialItemIds.has(item.id));
+    await Promise.all(itemsToRemove.map((item) => api.foodOrders.removeItem(order.id, item.id, myId)));
+    freshOrder.items = freshOrder.items.filter((item) => !itemsToRemove.some((removed) => removed.id === item.id));
     showToast('Eigene Positionen entfernt.');
     ctx.rerender();
   } catch (err) {

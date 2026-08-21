@@ -2070,8 +2070,10 @@ flowTest('community', 'Essensbestellung: orderer groups collapse/expand and pay 
   assert.equal(await bobGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'true');
   assert.equal(await aliceGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'false');
   assert.equal(await aliceGroup.locator('.food-order-group-items').isHidden(), true);
+  assert.match(await bobGroup.locator('.food-order-group-toggle').innerText(), /E2E Bob \(du\)/);
   assert.equal(await bobGroup.locator('.food-order-group-toggle[aria-expanded="true"] .food-order-group-meta').textContent(), '1 Position');
   assert.equal(await bobGroup.locator('.food-order-group-amount').innerText(), '1,00 €');
+  assert.equal(await bobGroup.locator('.food-order-item-copy').getAttribute('title'), 'Betrag dieser Position kopieren');
 
   await orderCard.locator('[data-toggle-all-groups]').click();
   await aliceGroup.locator('.food-order-group-toggle[aria-expanded="true"]').waitFor();
@@ -2361,6 +2363,35 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
     await page.unroute('**/api/food-orders', concurrencyRoute);
   }
   await cleanupScenario(concurrencyScenario);
+
+  // Group deletion is confirmed against a visible snapshot. A position added
+  // while that dialog is open is outside the confirmed list and must survive.
+  const deleteSnapshotScenario = await createScenario('Freshness Löschen-Snapshot', [{ description: 'Vorhandene Position', priceCents: 1_00 }]);
+  const { card: deleteSnapshotCard, group: deleteSnapshotGroup } = await openScenario(deleteSnapshotScenario);
+  let deleteSnapshotIntercepted = false;
+  const deleteSnapshotRoute = async (route: import('playwright').Route) => {
+    if (!deleteSnapshotIntercepted && route.request().method() === 'GET') {
+      deleteSnapshotIntercepted = true;
+      const response = await page.request.post(`${BASE_URL}/api/food-orders/${deleteSnapshotScenario.id}/items`, {
+        data: { playerId: alice.id, description: 'Während Bestätigung ergänzt', quantity: 1, priceCents: 2_00 },
+      });
+      assert.equal(response.status(), 201, await response.text());
+    }
+    await route.continue();
+  };
+  await page.route('**/api/food-orders', deleteSnapshotRoute);
+  try {
+    await deleteSnapshotGroup.locator('[data-remove-group]').click();
+    await page.waitForSelector('.modal h2:has-text("Deine 1 Position löschen?")');
+    await page.click('[data-confirm-ok]');
+    await page.waitForSelector('text=Während Bestätigung ergänzt');
+    await deleteSnapshotCard.locator('.food-order-item', { hasText: 'Vorhandene Position' }).waitFor({ state: 'detached' });
+    assert.equal(await deleteSnapshotCard.locator('.food-order-item', { hasText: 'Während Bestätigung ergänzt' }).count(), 1);
+    assert.equal(deleteSnapshotIntercepted, true);
+  } finally {
+    await page.unroute('**/api/food-orders', deleteSnapshotRoute);
+  }
+  await cleanupScenario(deleteSnapshotScenario);
 
   // Promise.all deletion is deliberately partial-safe: if one DELETE fails,
   // the successful sibling is gone, the failed one remains, and the cache is

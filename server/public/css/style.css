@@ -4112,6 +4112,9 @@ input[type='number'].tournament-score-input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.food-order-group-self-label {
+  font-weight: var(--font-weight-regular);
+}
 .food-order-group-meta {
   font-size: var(--font-size-xs);
 }
