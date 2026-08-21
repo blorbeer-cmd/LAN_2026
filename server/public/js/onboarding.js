@@ -78,6 +78,12 @@ function buildSteps() {
       view: sectionEntryView('orga'),
       target: MEHR_TARGET,
     },
+    {
+      title: 'Event-Auswahl',
+      text: 'In den Auswertungen kannst du Spielzeit, Matches, Turniere und Arcade-Ergebnisse nach Event filtern. Achte vor jeder Auswertung darauf, welches Event im Dropdown ausgewählt ist – sonst siehst du möglicherweise die Daten einer anderen LAN oder aller Events.',
+      view: 'analytics',
+      target: '#an-event-search',
+    },
   ];
   if (currentPlayerHasAdminRole()) {
     steps.push({
