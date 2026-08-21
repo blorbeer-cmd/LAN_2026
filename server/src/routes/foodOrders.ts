@@ -401,7 +401,34 @@ foodOrdersRouter.delete('/:id/items/:itemId', ...withBodyPlayerIdentity, (req, r
     return res.status(409).json({ error: 'Bezahlte Positionen können nicht entfernt werden.' });
   }
 
-  db.prepare('DELETE FROM food_order_items WHERE id = ?').run(item.id);
+  // Keep the state check in the DELETE itself: the read above only decides
+  // which user-facing error to return. A simultaneous payment must win over
+  // deletion instead of turning a stale UI into a paid-item delete.
+  const deleted = db
+    .prepare(
+      `DELETE FROM food_order_items
+       WHERE id = ? AND order_id = ? AND player_id = ? AND paid = 0
+         AND EXISTS (SELECT 1 FROM food_orders WHERE id = ? AND closed_at IS NULL)`,
+    )
+    .run(item.id, order.id, playerId, order.id);
+  if (deleted.changes === 0) {
+    const currentOrder = db.prepare('SELECT closed_at FROM food_orders WHERE id = ?').get(order.id) as { closed_at: number | null } | undefined;
+    if (!currentOrder) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
+    if (currentOrder.closed_at !== null) {
+      return res.status(409).json({ error: 'Diese Bestellung wurde bereits abgeschickt.' });
+    }
+    const currentItem = db
+      .prepare('SELECT player_id, paid FROM food_order_items WHERE id = ? AND order_id = ?')
+      .get(item.id, order.id) as { player_id: string; paid: number } | undefined;
+    if (!currentItem) return res.status(404).json({ error: 'Position nicht gefunden.' });
+    if (currentItem.player_id !== playerId) {
+      return res.status(403).json({ error: 'Nur eigene Positionen können entfernt werden.' });
+    }
+    if (currentItem.paid) {
+      return res.status(409).json({ error: 'Bezahlte Positionen können nicht entfernt werden.' });
+    }
+    return res.status(409).json({ error: 'Position konnte wegen einer parallelen Änderung nicht entfernt werden.' });
+  }
   broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
   res.json(serializeOrder(order));
 });

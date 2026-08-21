@@ -834,6 +834,9 @@ function renderClosedOrder(order, myId) {
         <strong>${escapeHtml(order.title)}</strong>
         <span class="badge ${finalized ? 'badge-offline' : 'badge-paused'}">${finalized ? 'Geschlossen' : 'Abgeschickt'}</span>
       </div>
+      <div class="muted food-order-meta">
+        von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
+      </div>
       ${renderDetails(order, { locked: finalized })}
       ${renderOrderOverview(order)}
       ${renderCardToolbar(order)}
