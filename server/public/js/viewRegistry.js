@@ -16,6 +16,8 @@ import { renderSeating } from './views/seating.js';
 import { renderMyStats } from './views/myStats.js';
 import { renderMore } from './views/more.js';
 import { renderAdmin } from './views/admin.js';
+import { renderAdminFeatureUsage } from './views/adminFeatureUsage.js';
+import { renderAdminFeedback } from './views/adminFeedback.js';
 import { renderMusic } from './views/music.js';
 import { createViewRegistry } from './viewManifest.js';
 import { renderSectionShell, sectionKeyForView } from './sectionNav.js';
@@ -57,6 +59,8 @@ export const VIEW_REGISTRY = createViewRegistry({
   // like Sitzplan (see renderOrgaKiosk).
   kiosk: renderOrgaKiosk,
   admin: renderAdmin,
+  adminFeatureUsage: renderAdminFeatureUsage,
+  adminFeedback: renderAdminFeedback,
   music: renderMusic,
 });
 
