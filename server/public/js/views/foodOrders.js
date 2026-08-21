@@ -83,6 +83,7 @@ export function clearFoodOrderTarget() {
 // settles rather than starting a second, independently-resolving request.
 let fetchInFlight = null;
 let refetchPending = false;
+let foodOrderScopeVersion = 0;
 
 async function fetchFoodOrders(ctx) {
   if (fetchInFlight) {
@@ -106,10 +107,13 @@ async function fetchFoodOrders(ctx) {
       // happens to trigger another one.
       const requestTargetId = activeOrderTargetId;
       const requestTargetStateVersion = orderTargetStateVersion;
+      const requestScopeVersion = foodOrderScopeVersion;
       try {
         const res = await api.foodOrders.list(requestTargetId);
         const responseIsCurrent =
-          requestTargetStateVersion === orderTargetStateVersion && requestTargetId === activeOrderTargetId;
+          requestTargetStateVersion === orderTargetStateVersion &&
+          requestTargetId === activeOrderTargetId &&
+          requestScopeVersion === foodOrderScopeVersion;
         if (responseIsCurrent) {
           cache = res.orders;
           succeeded = true;
@@ -121,7 +125,9 @@ async function fetchFoodOrders(ctx) {
         }
       } catch (err) {
         const responseIsCurrent =
-          requestTargetStateVersion === orderTargetStateVersion && requestTargetId === activeOrderTargetId;
+          requestTargetStateVersion === orderTargetStateVersion &&
+          requestTargetId === activeOrderTargetId &&
+          requestScopeVersion === foodOrderScopeVersion;
         succeeded = false;
         if (responseIsCurrent) {
           showToast(err.message, { error: true });
@@ -151,6 +157,7 @@ async function load(ctx) {
 // that isn't currently looking at this view - the next time it opens Essen,
 // load() runs its normal first-load fetch.
 export function invalidateFoodOrders() {
+  foodOrderScopeVersion += 1;
   cache = null;
 }
 
@@ -1052,9 +1059,10 @@ async function handleGroupPay(order, playerId, ctx) {
     ctx.rerender();
     return;
   }
-  // Keep the original handoff snapshot. A position added while PayPal is
-  // opening must stay out of this payment and be settled separately later.
-  items = freshGroupItems.filter((item) => initialItemIds.includes(item.id));
+  // Keep the original unpaid handoff snapshot. A position added while PayPal
+  // is opening must stay out of this payment, and an already-paid legacy
+  // position must never be charged a second time.
+  items = freshGroupItems.filter((item) => initialUnpaidItemIds.includes(item.id));
 
   if (initialUnpaidItemIds.some((id) => freshGroupItems.some((item) => item.id === id && item.paid))) {
     popup?.close();

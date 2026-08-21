@@ -11,6 +11,8 @@ import { domainIcon } from './domainIcons.js';
 
 let statusCache = null; // { tournaments, foodOrders, arcadeLobbies }
 let statusLoading = false;
+let statusRequest = null;
+let statusGeneration = 0;
 let missingSkillsCache = null;
 let missingSkillsLoadedForId = null;
 let missingSkillsLoading = false;
@@ -128,25 +130,50 @@ function notifyChanged() {
   window.dispatchEvent(new CustomEvent('respawn:aktuell-changed'));
 }
 
-async function loadStatus() {
+function statusScopeKey() {
+  return state.activeEvent?.id ?? 'base';
+}
+
+function loadStatus() {
+  if (statusRequest) return statusRequest;
+
+  const requestGeneration = statusGeneration;
+  const requestScope = statusScopeKey();
+  const isCurrent = () => requestGeneration === statusGeneration && requestScope === statusScopeKey();
   statusLoading = true;
-  try {
-    const [tournaments, foodOrders, arcadeLobbies] = await Promise.all([
-      api.tournaments.list(),
-      api.foodOrders.list(),
-      api.arcade.lobbies(),
-    ]);
-    statusCache = {
-      tournaments,
-      foodOrders: foodOrders.orders ?? [],
-      arcadeLobbies: arcadeLobbies.lobbies ?? [],
-    };
-  } catch {
-    statusCache = { tournaments: [], foodOrders: [], arcadeLobbies: [] };
-  } finally {
-    statusLoading = false;
-    notifyChanged();
-  }
+  const run = (async () => {
+    try {
+      const [tournaments, foodOrders, arcadeLobbies] = await Promise.all([
+        api.tournaments.list(),
+        api.foodOrders.list(),
+        api.arcade.lobbies(),
+      ]);
+      if (isCurrent()) {
+        statusCache = {
+          tournaments,
+          foodOrders: foodOrders.orders ?? [],
+          arcadeLobbies: arcadeLobbies.lobbies ?? [],
+        };
+      }
+    } catch {
+      if (isCurrent()) statusCache = { tournaments: [], foodOrders: [], arcadeLobbies: [] };
+    } finally {
+      if (statusRequest === run) {
+        statusRequest = null;
+        statusLoading = false;
+        if (isCurrent()) {
+          notifyChanged();
+        } else if (statusCache === null) {
+          // The active event changed while this request was in flight. Start
+          // exactly one fresh request for the new scope after releasing the
+          // single-flight slot; stale data and stale failures stay discarded.
+          void loadStatus();
+        }
+      }
+    }
+  })();
+  statusRequest = run;
+  return run;
 }
 
 async function loadMissingSkills(myId) {
@@ -176,6 +203,7 @@ export function ensureAktuellLoaded() {
 // Called on socket events that change this data (see app.js). Refetching
 // right away keeps an already-open Home view current.
 export function invalidateAktuellStatus() {
+  statusGeneration += 1;
   statusCache = null;
   loadStatus();
 }

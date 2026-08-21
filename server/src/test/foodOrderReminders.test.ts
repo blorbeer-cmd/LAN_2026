@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { nanoid } from 'nanoid';
-import { BASE_EVENT_ID, db } from '../db';
+import { BASE_EVENT_ID, DEFAULT_GROUP_ID, db } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
 import { runFoodOrderPaymentReminderOnce } from '../foodOrderReminders';
 
@@ -80,6 +80,49 @@ test('food-order payment reminders aggregate unpaid orders and deduplicate withi
     assert.equal(runFoodOrderPaymentReminderOnce(now + 180 * 60 * 1000), 0);
   } finally {
     db.prepare('DELETE FROM food_orders WHERE id IN (?, ?)').run(firstOrderId, secondOrderId);
+    db.prepare('DELETE FROM players WHERE id = ?').run(playerId);
+  }
+});
+
+test('food-order payment reminders skip ended events', () => {
+  const playerId = nanoid();
+  const eventId = nanoid();
+  const orderId = nanoid();
+  const itemId = nanoid();
+  const now = Date.now();
+
+  db.prepare(
+    `INSERT INTO players (id, name, api_key, created_at)
+     VALUES (?, 'Ended Event Reminder Tester', ?, ?)`,
+  ).run(playerId, nanoid(), now);
+  ensureDefaultGroupMembership(playerId);
+  db.prepare(
+    `INSERT INTO events
+       (id, name, starts_at, tracking_enabled, ended_at, is_test, group_id, status, visibility_scope)
+     VALUES (?, 'Ended Reminder Event', ?, 0, ?, 1, ?, 'ended', 'participants')`,
+  ).run(eventId, now - 2 * 60 * 60 * 1000, now, DEFAULT_GROUP_ID);
+  db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')").run(
+    eventId,
+    playerId,
+  );
+  db.prepare(
+    `INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at)
+     VALUES (?, ?, 'Ended Reminder Pizza', ?, ?, ?)`,
+  ).run(orderId, eventId, playerId, now, now);
+  db.prepare(
+    `INSERT INTO food_order_items (id, order_id, player_id, description, quantity, created_at)
+     VALUES (?, ?, ?, 'Pizza', 1, ?)`,
+  ).run(itemId, orderId, playerId, now);
+
+  try {
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 60 * 60 * 1000), 0);
+    assert.equal(
+      (db.prepare('SELECT COUNT(*) AS count FROM push_log WHERE event_id = ?').get(eventId) as { count: number }).count,
+      0,
+    );
+  } finally {
+    db.prepare('DELETE FROM food_orders WHERE id = ?').run(orderId);
+    db.prepare('DELETE FROM events WHERE id = ?').run(eventId);
     db.prepare('DELETE FROM players WHERE id = ?').run(playerId);
   }
 });

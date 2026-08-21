@@ -1989,7 +1989,8 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
 
   // A previously paid group becomes payable again when a new priced position
   // is added. The full group sum is shown, while the already-paid item stays
-  // assigned to its original confirmer when the new item is paid.
+  // assigned to its original confirmer when the new item is paid. The next
+  // PayPal handoff must charge only the newly added unpaid position.
   await group.locator('[data-group-pay]').click();
   await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
   await page.click('[data-confirm-ok]');
@@ -2004,7 +2005,9 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   assert.equal(await group.locator('[data-group-pay]').isDisabled(), false);
   await group.locator('[data-group-pay]').click();
   await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
-  assert.match(await page.locator('.modal-body p').first().innerText(), /25,30 € für/);
+  assert.match(await page.locator('.modal-body p').first().innerText(), /4,40 € für/);
+  assert.equal(await page.locator('.food-order-confirm-list li').count(), 1);
+  await page.waitForSelector('.food-order-confirm-list li:has-text("Nachtrag nach Bestätigung")');
   await page.click('[data-confirm-cancel]');
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
   await group.locator('[data-group-pay]').click();

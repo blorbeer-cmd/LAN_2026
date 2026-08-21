@@ -34,6 +34,8 @@ function reminderGroups(now = Date.now()): ReminderGroup[] {
          AND fo.closed_at IS NOT NULL
          AND fo.closed_at <= ?
          AND fo.finalized_at IS NULL
+         AND e.status = 'published'
+         AND e.ended_at IS NULL
          AND p.deactivated_at IS NULL
        GROUP BY fo.id, fo.event_id, e.group_id, fo.title, i.player_id, fo.created_at
        ORDER BY fo.created_at DESC`,
