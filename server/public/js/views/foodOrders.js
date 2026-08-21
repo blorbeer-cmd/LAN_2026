@@ -85,9 +85,11 @@ export function clearFoodOrderTarget() {
 let fetchInFlight = null;
 let refetchPending = false;
 let foodOrderScopeVersion = 0;
+let foodOrderWorkspaceVersion = 0;
 
 function invalidateFoodOrderCache() {
   foodOrderScopeVersion += 1;
+  foodOrderWorkspaceVersion += 1;
   cache = null;
 }
 
@@ -179,6 +181,68 @@ export function invalidateFoodOrders() {
 // the DOM - and its scroll position - stable across every realtime update.
 export async function refreshFoodOrders(ctx) {
   return fetchFoodOrders(ctx);
+}
+
+function sortCachedOrders(orders) {
+  return orders.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+// Mutation endpoints return the complete, freshly serialized order. Apply
+// that response directly instead of clearing the cache: a hard invalidate
+// briefly replaced the whole Essen view with "Lädt…", shrank the scroll
+// container and forced its scrollTop to 0. The quiet follow-up GET still
+// reconciles concurrent changes from other devices without introducing that
+// intermediate empty frame.
+function reconcileLocalOrderMutation(nextOrder, ctx, mutationWorkspaceVersion) {
+  if (mutationWorkspaceVersion !== foodOrderWorkspaceVersion) {
+    void refreshFoodOrders(ctx);
+    return;
+  }
+  foodOrderScopeVersion += 1;
+  const nextCache = cache === null ? [] : [...cache];
+  const index = nextCache.findIndex((order) => order.id === nextOrder.id);
+  if (index === -1) nextCache.push(nextOrder);
+  else nextCache[index] = nextOrder;
+  cache = sortCachedOrders(nextCache);
+
+  if (nextOrder.open) {
+    const openCount = cache.filter((order) => order.open).length;
+    if (openCount > 1) {
+      // A just-created or reopened order is the thing the user is working
+      // with, so keep it visible when the open-order cards are collapsible.
+      if (!orderStartRuleApplied) {
+        orderStartRuleApplied = true;
+        expandedOpenOrders.clear();
+      }
+      expandedOpenOrders.add(nextOrder.id);
+    }
+  } else {
+    // Closing an order moves its card into Historie. Keep the same card on
+    // screen instead of making it disappear into a newly collapsed section.
+    historyOpen = true;
+    expandedOpenOrders.delete(nextOrder.id);
+  }
+
+  ctx.rerender();
+  void refreshFoodOrders(ctx);
+}
+
+function reconcileLocalOrderRemoval(orderId, ctx, mutationWorkspaceVersion) {
+  if (mutationWorkspaceVersion !== foodOrderWorkspaceVersion) {
+    void refreshFoodOrders(ctx);
+    return;
+  }
+  foodOrderScopeVersion += 1;
+  if (cache !== null) cache = cache.filter((order) => order.id !== orderId);
+  expandedGroups.delete(orderId);
+  groupStartRuleApplied.delete(orderId);
+  expandedOpenOrders.delete(orderId);
+  ctx.rerender();
+  void refreshFoodOrders(ctx);
+}
+
+function refreshFoodOrdersAfterMutationError(ctx) {
+  void refreshFoodOrders(ctx);
 }
 
 // "4,50" / "4.50" / "4" -> 450 cents; null for empty, NaN for garbage.
@@ -406,7 +470,11 @@ function applyLocalPaidState(items, paid) {
 // current when it resolves; mutating the pre-PATCH object would let a stale
 // response overwrite the local result (and invalidating to null would jump
 // the visible Essen view back to its loading placeholder).
-function reconcileLocalPaidMutation(orderId, itemIds, paid, ctx) {
+function reconcileLocalPaidMutation(orderId, itemIds, paid, ctx, mutationWorkspaceVersion) {
+  if (mutationWorkspaceVersion !== foodOrderWorkspaceVersion) {
+    void refreshFoodOrders(ctx);
+    return;
+  }
   foodOrderScopeVersion += 1;
   const currentOrder = cache?.find((candidate) => candidate.id === orderId);
   const currentItems = currentOrder?.items.filter((item) => itemIds.includes(item.id)) ?? [];
@@ -1038,14 +1106,14 @@ async function markGroupItemsPaid(orderId, playerId, itemIds, ctx) {
     // Invalidate GETs that may start while this PATCH is in flight. The
     // completion helper bumps the version once more before applying the
     // result to the current cache.
+    const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
     foodOrderScopeVersion += 1;
     await api.foodOrders.setGroupPaid(orderId, targets.map((item) => item.id), true);
-    reconcileLocalPaidMutation(orderId, targets.map((item) => item.id), true, ctx);
+    reconcileLocalPaidMutation(orderId, targets.map((item) => item.id), true, ctx, mutationWorkspaceVersion);
     showToast(`${targets.length} ${targets.length === 1 ? 'Position' : 'Positionen'} als bezahlt markiert.`);
   } catch (err) {
-    invalidateFoodOrderCache();
     showToast(err.message, { error: true });
-    ctx.rerender();
+    refreshFoodOrdersAfterMutationError(ctx);
   }
 }
 
@@ -1150,14 +1218,14 @@ async function handleGroupPaid(orderId, playerId, paid, ctx) {
   const targets = items.filter((item) => item.paid !== paid);
   if (targets.length === 0) return;
   try {
+    const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
     foodOrderScopeVersion += 1;
     await api.foodOrders.setGroupPaid(orderId, targets.map((item) => item.id), paid);
-    reconcileLocalPaidMutation(orderId, targets.map((item) => item.id), paid, ctx);
+    reconcileLocalPaidMutation(orderId, targets.map((item) => item.id), paid, ctx, mutationWorkspaceVersion);
     showToast(paid ? `${items[0].playerName} als bezahlt markiert.` : `${items[0].playerName} wieder als offen markiert.`);
   } catch (err) {
-    invalidateFoodOrderCache();
     showToast(err.message, { error: true });
-    ctx.rerender();
+    refreshFoodOrdersAfterMutationError(ctx);
   }
 }
 
@@ -1191,8 +1259,14 @@ async function handleRemoveGroup(order, playerId, myId, ctx) {
     const itemsToRemove = freshItems.filter((item) => initialItemIds.has(item.id));
     // Invalidate GETs that may have started while the DELETEs are in flight.
     // Otherwise an older response could reintroduce the deleted positions.
+    const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
     foodOrderScopeVersion += 1;
     await Promise.all(itemsToRemove.map((item) => api.foodOrders.removeItem(order.id, item.id, myId)));
+    if (mutationWorkspaceVersion !== foodOrderWorkspaceVersion) {
+      showToast('Eigene Positionen entfernt.');
+      void refreshFoodOrders(ctx);
+      return;
+    }
     const currentOrder = cache?.find((candidate) => candidate.id === order.id);
     if (currentOrder) {
       // Apply the successful deletes to whichever snapshot is current now.
@@ -1200,17 +1274,17 @@ async function handleRemoveGroup(order, playerId, myId, ctx) {
       // writing through the stale `freshOrder` object used for validation.
       currentOrder.items = currentOrder.items.filter((item) => !itemsToRemove.some((removed) => removed.id === item.id));
     } else {
-      // A refresh left no current snapshot while the individual deletes were
-      // in flight. Discard the current generation and fetch authoritatively.
-      invalidateFoodOrderCache();
-      await fetchFoodOrders(ctx);
+      // A scope change removed the current snapshot while the individual
+      // deletes were in flight. Keep the validated order itself as a stable
+      // local bridge until the quiet authoritative refresh completes.
+      cache = [{ ...freshOrder, items: freshOrder.items.filter((item) => !itemsToRemove.some((removed) => removed.id === item.id)) }];
     }
     showToast('Eigene Positionen entfernt.');
     ctx.rerender();
+    void refreshFoodOrders(ctx);
   } catch (err) {
-    invalidateFoodOrderCache();
     showToast(err.message, { error: true });
-    ctx.rerender();
+    refreshFoodOrdersAfterMutationError(ctx);
   }
 }
 
@@ -1302,13 +1376,15 @@ function renderConsolidatedListBody(order) {
 function wireConsolidatedListActions(el, order) {
   el.querySelector('[data-close-order-from-list]')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Bestellung abschicken? Danach kann niemand mehr etwas eintragen.', { confirmText: 'Abschicken' }))) return;
+    const ctx = consolidatedListDialog?.ctx;
     try {
-      await api.foodOrders.close(order.id);
-      invalidateFoodOrderCache();
+      const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+      const updatedOrder = await api.foodOrders.close(order.id);
       showToast('Bestellung abgeschickt.');
-      consolidatedListDialog?.ctx.rerender();
+      if (ctx) reconcileLocalOrderMutation(updatedOrder, ctx, mutationWorkspaceVersion);
     } catch (err) {
       showToast(err.message, { error: true });
+      if (ctx) refreshFoodOrdersAfterMutationError(ctx);
     }
   });
 }
@@ -1425,13 +1501,14 @@ function openNewOrderForm(ctx, myId) {
           }
           const tipPercent = tipRaw ? Number(tipRaw) : undefined;
           try {
-            await api.foodOrders.create(myId, title, { sendAt, notes, link, paypalLink, tipPercent });
+            const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+            const createdOrder = await api.foodOrders.create(myId, title, { sendAt, notes, link, paypalLink, tipPercent });
             close();
-            invalidateFoodOrderCache();
             showToast('Bestellung geöffnet – alle wurden benachrichtigt.');
-            ctx.rerender();
+            reconcileLocalOrderMutation(createdOrder, ctx, mutationWorkspaceVersion);
           } catch (err) {
             showToast(err.message, { error: true });
+            refreshFoodOrdersAfterMutationError(ctx);
           }
         });
       },
@@ -1517,18 +1594,46 @@ function openDetailsForm(ctx, order) {
           }
           const tipPercent = tipRaw ? Number(tipRaw) : null;
           try {
-            await api.foodOrders.updateDetails(order.id, { sendAt, notes, link, paypalLink, tipPercent });
+            const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+            const updatedOrder = await api.foodOrders.updateDetails(order.id, { sendAt, notes, link, paypalLink, tipPercent });
             close();
-            invalidateFoodOrderCache();
             showToast('Gespeichert.');
-            ctx.rerender();
+            reconcileLocalOrderMutation(updatedOrder, ctx, mutationWorkspaceVersion);
           } catch (err) {
             showToast(err.message, { error: true });
+            refreshFoodOrdersAfterMutationError(ctx);
           }
         });
       },
     }
   );
+}
+
+function visibleOrderViewportAnchors(container) {
+  const viewport = container.getBoundingClientRect();
+  return [...container.querySelectorAll('[data-order-card], [data-closed-order]')]
+    .map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        id: element.dataset.orderCard ?? element.dataset.closedOrder,
+        offset: rect.top - viewport.top,
+        visible: rect.bottom > viewport.top && rect.top < viewport.bottom,
+      };
+    })
+    .filter((anchor) => anchor.id && anchor.visible)
+    .sort((a, b) => Math.abs(a.offset) - Math.abs(b.offset));
+}
+
+function restoreOrderViewportAnchor(container, anchors, previousScrollTop) {
+  container.scrollTop = previousScrollTop;
+  const viewportTop = container.getBoundingClientRect().top;
+  const cards = [...container.querySelectorAll('[data-order-card], [data-closed-order]')];
+  for (const anchor of anchors) {
+    const element = cards.find((card) => (card.dataset.orderCard ?? card.dataset.closedOrder) === anchor.id);
+    if (!element || element.getClientRects().length === 0) continue;
+    container.scrollTop += element.getBoundingClientRect().top - viewportTop - anchor.offset;
+    return;
+  }
 }
 
 export function renderFoodOrders(container, ctx) {
@@ -1587,6 +1692,7 @@ export function renderFoodOrders(container, ctx) {
   // keeps e.g. marking several positions paid in a row from jumping the
   // whole view back to the top after every single toggle.
   const scrollTop = container.scrollTop;
+  const viewportAnchors = visibleOrderViewportAnchors(container);
 
   container.innerHTML = `
     <div class="row-between">
@@ -1616,7 +1722,7 @@ export function renderFoodOrders(container, ctx) {
       }
     </div>
   `;
-  container.scrollTop = scrollTop;
+  restoreOrderViewportAnchor(container, viewportAnchors, scrollTop);
 
   wireInfoTooltips(container);
 
@@ -1629,9 +1735,9 @@ export function renderFoodOrders(container, ctx) {
     if (prev.desc) desc.value = prev.desc;
     quantity.value = prev.quantity;
     if (prev.price) price.value = prev.price;
-    if (prev.focus === 'desc') desc.focus();
-    if (prev.focus === 'quantity') quantity.focus();
-    if (prev.focus === 'price') price.focus();
+    if (prev.focus === 'desc') desc.focus({ preventScroll: true });
+    if (prev.focus === 'quantity') quantity.focus({ preventScroll: true });
+    if (prev.focus === 'price') price.focus({ preventScroll: true });
   });
 
   container.querySelectorAll('[data-desc-suggest]').forEach((wrapper) => wireDescSuggest(wrapper));
@@ -1662,17 +1768,21 @@ export function renderFoodOrders(container, ctx) {
       if (submitBtn.disabled) return;
       submitBtn.disabled = true;
       try {
-        await api.foodOrders.addItem(orderId, { playerId: myId, description, quantity, priceCents: priceCents ?? undefined });
-        invalidateFoodOrderCache();
+        const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+        const updatedOrder = await api.foodOrders.addItem(orderId, { playerId: myId, description, quantity, priceCents: priceCents ?? undefined });
+        descInput.value = '';
+        quantityInput.value = '';
+        priceInput.value = '';
         // AP3.8: adding an own position forces the own group open again, in
         // case it had been collapsed.
         const set = expandedGroups.get(orderId) ?? new Set();
         set.add(myId);
         expandedGroups.set(orderId, set);
-        ctx.rerender();
+        reconcileLocalOrderMutation(updatedOrder, ctx, mutationWorkspaceVersion);
       } catch (err) {
         submitBtn.disabled = false;
         showToast(err.message, { error: true });
+        refreshFoodOrdersAfterMutationError(ctx);
       }
     });
   });
@@ -1684,11 +1794,12 @@ export function renderFoodOrders(container, ctx) {
       const title = item ? `${item.quantity ?? 1} × ${item.description} löschen?` : 'Position löschen?';
       if (!(await confirmDialog('Lässt sich nicht rückgängig machen.', { title, confirmText: 'Löschen', danger: true }))) return;
       try {
-        await api.foodOrders.removeItem(btn.dataset.order, btn.dataset.removeItem, myId);
-        invalidateFoodOrderCache();
-        ctx.rerender();
+        const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+        const updatedOrder = await api.foodOrders.removeItem(btn.dataset.order, btn.dataset.removeItem, myId);
+        reconcileLocalOrderMutation(updatedOrder, ctx, mutationWorkspaceVersion);
       } catch (err) {
         showToast(err.message, { error: true });
+        refreshFoodOrdersAfterMutationError(ctx);
       }
     });
   });
@@ -1787,12 +1898,13 @@ export function renderFoodOrders(container, ctx) {
     btn.addEventListener('click', async () => {
       if (!(await confirmDialog('Bestellung abschicken? Danach kann niemand mehr etwas eintragen.', { confirmText: 'Abschicken' }))) return;
       try {
-        await api.foodOrders.close(btn.dataset.closeOrder);
-        invalidateFoodOrderCache();
+        const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+        const updatedOrder = await api.foodOrders.close(btn.dataset.closeOrder);
         showToast('Bestellung abgeschickt.');
-        ctx.rerender();
+        reconcileLocalOrderMutation(updatedOrder, ctx, mutationWorkspaceVersion);
       } catch (err) {
         showToast(err.message, { error: true });
+        refreshFoodOrdersAfterMutationError(ctx);
       }
     });
   });
@@ -1800,12 +1912,13 @@ export function renderFoodOrders(container, ctx) {
   container.querySelectorAll('[data-reopen-order]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       try {
-        await api.foodOrders.reopen(btn.dataset.reopenOrder);
-        invalidateFoodOrderCache();
+        const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+        const updatedOrder = await api.foodOrders.reopen(btn.dataset.reopenOrder);
         showToast('Bestellung wieder geöffnet.');
-        ctx.rerender();
+        reconcileLocalOrderMutation(updatedOrder, ctx, mutationWorkspaceVersion);
       } catch (err) {
         showToast(err.message, { error: true });
+        refreshFoodOrdersAfterMutationError(ctx);
       }
     });
   });
@@ -1820,12 +1933,13 @@ export function renderFoodOrders(container, ctx) {
       )
         return;
       try {
-        await api.foodOrders.finalize(btn.dataset.finalizeOrder);
-        invalidateFoodOrderCache();
+        const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+        const updatedOrder = await api.foodOrders.finalize(btn.dataset.finalizeOrder);
         showToast('Bestellung geschlossen.');
-        ctx.rerender();
+        reconcileLocalOrderMutation(updatedOrder, ctx, mutationWorkspaceVersion);
       } catch (err) {
         showToast(err.message, { error: true });
+        refreshFoodOrdersAfterMutationError(ctx);
       }
     });
   });
@@ -1834,12 +1948,13 @@ export function renderFoodOrders(container, ctx) {
     btn.addEventListener('click', async () => {
       if (!(await confirmDialog('Bestellung endgültig löschen? Alle eingetragenen Positionen gehen dabei verloren.', { confirmText: 'Löschen', danger: true }))) return;
       try {
+        const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
         await api.foodOrders.remove(btn.dataset.deleteOrder);
-        invalidateFoodOrderCache();
         showToast('Bestellung gelöscht.');
-        ctx.rerender();
+        reconcileLocalOrderRemoval(btn.dataset.deleteOrder, ctx, mutationWorkspaceVersion);
       } catch (err) {
         showToast(err.message, { error: true });
+        refreshFoodOrdersAfterMutationError(ctx);
       }
     });
   });

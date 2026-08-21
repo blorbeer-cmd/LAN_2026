@@ -2091,11 +2091,49 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   await page.click('.global-search-result:has-text("Pizza bei Luigi")');
   await page.waitForSelector('[data-order-card].search-target-highlight');
 
-  await page.click('[data-close-order]');
-  await page.click('[data-confirm]');
-  await page.waitForSelector('[data-food-history]');
-  await page.click('[data-food-history] > summary');
-  await page.waitForSelector('.badge-paused >> text=Abgeschickt');
+  // Keep the realtime follow-up GET pending while the close response is
+  // applied. The lifecycle change must render from that response directly:
+  // no one-line loading frame, no scroll reset, and the moved order remains
+  // visible in the automatically opened history.
+  let releaseCloseRefresh!: () => void;
+  let closeRefreshSeen!: () => void;
+  let closeRefreshFinished!: () => void;
+  const closeRefreshRelease = new Promise<void>((resolve) => { releaseCloseRefresh = resolve; });
+  const closeRefreshStarted = new Promise<void>((resolve) => { closeRefreshSeen = resolve; });
+  const closeRefreshDone = new Promise<void>((resolve) => { closeRefreshFinished = resolve; });
+  let closeRefreshBlocked = false;
+  const closeRefreshRoute = async (route: import('playwright').Route) => {
+    if (route.request().method() === 'GET' && !closeRefreshBlocked) {
+      closeRefreshBlocked = true;
+      closeRefreshSeen();
+      await closeRefreshRelease;
+      const response = await route.fetch();
+      await route.fulfill({ response });
+      closeRefreshFinished();
+      return;
+    }
+    await route.continue();
+  };
+  await page.route('**/api/food-orders', closeRefreshRoute);
+  const foodScroller = page.locator('#view-container');
+  const scrollTopBeforeClose = await foodScroller.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    return element.scrollTop;
+  });
+  assert.ok(scrollTopBeforeClose > 0);
+  try {
+    await page.click('[data-close-order]');
+    await page.click('[data-confirm]');
+    await closeRefreshStarted;
+    await page.waitForSelector('[data-food-history][open] .badge-paused:has-text("Abgeschickt")');
+    assert.equal(await page.getByText('Lädt…', { exact: true }).count(), 0);
+    assert.equal(await page.locator('[data-closed-order]', { hasText: 'Pizza bei Luigi' }).isVisible(), true);
+    assert.ok(await foodScroller.evaluate((element) => element.scrollTop > 0));
+  } finally {
+    releaseCloseRefresh();
+    if (closeRefreshBlocked) await closeRefreshDone;
+    await page.unroute('**/api/food-orders', closeRefreshRoute);
+  }
   await page.click('[data-reopen-order]');
   await page.waitForSelector('.badge-playing >> text=Offen');
   await page.fill('[data-item-desc]', 'Vergessene Cola');
@@ -2535,8 +2573,8 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
   await cleanupScenario(deleteSnapshotScenario);
 
   // Promise.all deletion is deliberately partial-safe: if one DELETE fails,
-  // the successful sibling is gone, the failed one remains, and the cache is
-  // discarded so the next render comes from the server.
+  // the successful sibling is gone, the failed one remains, and the quiet
+  // authoritative refresh reconciles both without a loading frame.
   const partialScenario = await createScenario('Freshness Teil-Löschen', [
     { description: 'Teilweise entfernen', priceCents: 1_00 },
     { description: 'Teilweise behalten', priceCents: 1_50 },
@@ -2579,14 +2617,14 @@ flowTest('community', 'Essensbestellung: Bestellübersicht consolidates position
   // "Gruppen-Test-Bestellung" (from the previous test) is still open, so
   // there are now two open orders at once - each card gets its own
   // whole-order collapse toggle, independent of the per-orderer-group one.
-  // Collapsing one must not affect the other, and the collapsed state must
-  // survive a live re-render triggered elsewhere (the item adds below).
+  // The just-created order stays open while the older one starts collapsed;
+  // that state must survive a live re-render triggered elsewhere (the item
+  // adds below).
   const groupOrderCard = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' });
   await page.waitForSelector('.food-order-card-header-toggle');
   assert.equal(await groupOrderCard.locator('.food-order-card-header-toggle').count(), 1);
   assert.equal(await listOrderCard.locator('.food-order-card-header-toggle').count(), 1);
   assert.equal(await groupOrderCard.locator('.food-order-card-header-toggle .food-order-card-title').innerText(), 'Gruppen-Test-Bestellung');
-  await listOrderCard.locator('.food-order-card-header-toggle').click();
   assert.equal(await groupOrderCard.locator('.food-order-card-body').getAttribute('hidden'), '');
   assert.equal(await groupOrderCard.locator('.food-order-card-body').isVisible(), false);
   assert.equal(await listOrderCard.locator('.food-order-card-body').isVisible(), true);
@@ -2697,7 +2735,7 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   await page.click('#order-form button[type="submit"]');
   await page.waitForSelector('text=Vorschlags-Test');
   const suggestOrderCard = page.locator('[data-order-card]', { hasText: 'Vorschlags-Test' });
-  if (await suggestOrderCard.locator('.food-order-card-header-toggle').count()) {
+  if (await suggestOrderCard.locator('.food-order-card-body').getAttribute('hidden') !== null) {
     await suggestOrderCard.locator('.food-order-card-header-toggle').click();
   }
 
@@ -2902,7 +2940,7 @@ flowTest('community', 'Essensbestellung: marking a position paid does not scroll
   // their own orders open with their own live add-item forms on screen, so
   // bare page-level selectors here could hit the wrong order's form.
   const orderCard = page.locator('[data-order-card]', { hasText: 'Scroll-Test-Bestellung' });
-  if (await orderCard.locator('.food-order-card-header-toggle').count()) {
+  if (await orderCard.locator('.food-order-card-body').getAttribute('hidden') !== null) {
     await orderCard.locator('.food-order-card-header-toggle').click();
   }
 
