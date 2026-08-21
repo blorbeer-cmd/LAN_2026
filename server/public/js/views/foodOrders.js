@@ -38,6 +38,7 @@ const groupStartRuleApplied = new Set();
 const expandedOpenOrders = new Set();
 let orderStartRuleApplied = false;
 let pendingOrderTargetId = null;
+let activeOrderTargetId = null;
 
 // The consolidated-list dialog (AP4.7) keeps updating while it's open, so a
 // live re-render of the underlying view needs to be able to refresh it too.
@@ -49,7 +50,13 @@ let consolidatedListDialog = null; // { orderId, el, ctx } | null
 export function prepareFoodOrderTarget(orderId) {
   if (!orderId) return;
   pendingOrderTargetId = orderId;
+  activeOrderTargetId = orderId;
   if (cache !== null && !cache.some((order) => order.id === orderId)) cache = null;
+}
+
+export function clearFoodOrderTarget() {
+  pendingOrderTargetId = null;
+  activeOrderTargetId = null;
 }
 
 // Single-flight coordinator for GET /api/food-orders. load() (the first
@@ -90,7 +97,7 @@ async function fetchFoodOrders(ctx) {
       // or that follow-up refresh is silently lost until some unrelated event
       // happens to trigger another one.
       try {
-        const res = await api.foodOrders.list(pendingOrderTargetId);
+        const res = await api.foodOrders.list(activeOrderTargetId);
         cache = res.orders;
         succeeded = true;
       } catch (err) {

@@ -22,7 +22,7 @@ import { invalidateMatchmakingHistory, invalidateMatchmakingDraft, setDraftState
 import { invalidateBroadcasts } from './views/broadcast.js';
 import { invalidateInfoBoard, openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
-import { invalidateFoodOrders, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
+import { clearFoodOrderTarget, invalidateFoodOrders, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
 import { invalidateChecklist } from './views/checklist.js';
 import { invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
 import { invalidateArrivals } from './views/arrivals.js';
@@ -363,6 +363,7 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
   // palette, ...) to Essen, its former bottom-nav slot.
   if (sectionKeyForView(view) === 'insights' && !currentPlayerHasAdminRole()) view = 'foodOrders';
   const changed = view !== currentView;
+  if (view !== 'foodOrders') clearFoodOrderTarget();
   pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
   if (view === 'foodOrders' && searchTarget?.type === 'order') prepareFoodOrderTarget(searchTarget.id);
   currentView = view;
