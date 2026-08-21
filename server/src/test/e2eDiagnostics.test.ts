@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -8,6 +9,7 @@ import {
   deferE2EContextClose,
   e2eOwnerFileFromArgv,
   runWithE2EDiagnostics,
+  StatefulE2EDiagnosticGuard,
   trackE2EContext,
 } from './e2e/e2eDiagnostics';
 
@@ -170,4 +172,128 @@ test('capture and deferred cleanup failures never replace the original test fail
     );
     assert.ok(events.includes('close'), `${component} failure must still attempt context cleanup`);
   }
+});
+
+test('stateful diagnostics keep one primary failure and suppress poisoned sibling flows', async (context) => {
+  const artifactDirectory = await useDiagnosticArtifacts(context);
+  const events: string[] = [];
+  const { browser } = createFakeBrowser(events);
+  const guard = new StatefulE2EDiagnosticGuard(
+    () => ({ browser, ownerFile: 'flowsCommunity.e2e.test.ts' }),
+    { sharedState: 'server, browser context, and page' },
+  );
+  const skipped: string[] = [];
+  const testContext = {
+    skip: (message?: string) => skipped.push(message ?? ''),
+  } as Pick<TestContext, 'skip'>;
+  const primaryFailure = new Error('primary stateful failure');
+
+  await assert.rejects(
+    guard.run(testContext, 'primary flow', () => {
+      throw primaryFailure;
+    }),
+    (error) => error === primaryFailure,
+  );
+
+  let poisonedSiblingRan = false;
+  await guard.run(testContext, 'poisoned sibling flow', () => {
+    poisonedSiblingRan = true;
+  });
+
+  assert.equal(poisonedSiblingRan, false);
+  assert.deepEqual(skipped, ['blocked by earlier stateful failure: primary flow']);
+  const artifactEntries = await readdir(artifactDirectory, { withFileTypes: true });
+  const summaryDirectory = artifactEntries.find(
+    (entry) => entry.isDirectory() && entry.name.startsWith('stateful-flowscommunity-e2e-test-ts-'),
+  );
+  assert.ok(summaryDirectory, 'expected a stateful summary directory');
+  const summary = JSON.parse(
+    await readFile(
+      path.join(artifactDirectory, summaryDirectory.name, 'stateful-summary.json'),
+      'utf8',
+    ),
+  );
+  assert.equal(summary.ownerFile, 'flowsCommunity.e2e.test.ts');
+  assert.equal(summary.primaryFailure.testName, 'primary flow');
+  assert.match(summary.primaryFailure.error, /primary stateful failure/);
+  assert.deepEqual(summary.cascadeSuppressed, [
+    {
+      testName: 'poisoned sibling flow',
+      reason: 'blocked by earlier stateful failure: primary flow',
+    },
+  ]);
+  assert.deepEqual(summary.resetResult, {
+    status: 'unsafe',
+    action: 'skip-remaining-owner-tests',
+    reason: 'A generic reset cannot prove a clean server, browser context, and page state after a failed stateful flow.',
+  });
+});
+
+test('stateful diagnostics leave successful sibling flows unchanged', async (context) => {
+  const artifactDirectory = await useDiagnosticArtifacts(context);
+  const events: string[] = [];
+  const { browser } = createFakeBrowser(events);
+  const guard = new StatefulE2EDiagnosticGuard(
+    () => ({ browser, ownerFile: 'flowsShell.e2e.test.ts' }),
+    { sharedState: 'server, browser context, and page' },
+  );
+  const skipped: string[] = [];
+  const testContext = {
+    skip: (message?: string) => skipped.push(message ?? ''),
+  } as Pick<TestContext, 'skip'>;
+  const completed: string[] = [];
+
+  await guard.run(testContext, 'first successful flow', () => {
+    completed.push('first');
+  });
+  await guard.run(testContext, 'second successful flow', () => {
+    completed.push('second');
+  });
+
+  assert.deepEqual(completed, ['first', 'second']);
+  assert.deepEqual(skipped, []);
+  assert.deepEqual(await readdir(artifactDirectory), []);
+});
+
+test('the node test wrapper skips a poisoned sibling without waiting for its body', async (context) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'e2e-cascade-runner-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const artifactDirectory = path.join(root, 'artifacts');
+  const testFile = path.join(root, 'statefulCascade.e2e.test.js');
+  const diagnosticsModule = path.join(__dirname, 'e2e', 'e2eDiagnostics.js');
+  await writeFile(
+    testFile,
+    `const { createStatefulE2EDiagnosticTest } = require(${JSON.stringify(diagnosticsModule)});\n`
+      + `const browser = { contexts: () => [] };\n`
+      + `const test = createStatefulE2EDiagnosticTest(\n`
+      + `  () => ({ browser, ownerFile: 'statefulCascade.e2e.test.ts' }),\n`
+      + `  { sharedState: 'shared test state' },\n`
+      + `);\n`
+      + `test('primary flow', () => { throw new Error('intentional primary failure'); });\n`
+      + `test('poisoned 30 second flow', () => new Promise((resolve) => setTimeout(resolve, 30_000)));\n`,
+    'utf8',
+  );
+
+  const startedAt = Date.now();
+  const childEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    E2E_ARTIFACT_DIR: artifactDirectory,
+    E2E_TRACE: '0',
+  };
+  delete childEnv.NODE_TEST_CONTEXT;
+  const result = spawnSync(process.execPath, ['--test', testFile], {
+    env: childEnv,
+    encoding: 'utf8',
+    timeout: 15_000,
+  });
+  const durationMs = Date.now() - startedAt;
+  const output = `${result.stdout}\n${result.stderr}`;
+
+  assert.notEqual(result.status, 0, output);
+  assert.match(
+    output,
+    /skipped "poisoned 30 second flow": blocked by earlier stateful failure: primary flow/,
+  );
+  assert.match(output, /skipped 1/);
+  assert.ok(durationMs < 10_000, `poisoned sibling should not wait 30 seconds; took ${durationMs}ms`);
 });

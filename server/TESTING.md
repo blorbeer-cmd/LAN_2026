@@ -139,6 +139,14 @@ Wiederholungsfall ab.
   beschädigte Metadaten früherer Läufe und parallel gepflegte andere Partitionen beeinflussen die
   Auswahl daher nicht. Dadurch bleibt die gemessene Laufzeit unverfälscht und
   ein reproduzierbarer Fehler erhält zusätzlich Playwright-Traces kurzlebiger Browser-Kontexte.
+  Die absichtlich zustandsbehafteten Cross-View-Owner und der Event-Workspace-Switch teilen
+  innerhalb ihres Prozesses veränderlichen Server-, Browser- und Seitenzustand. Nach dem ersten
+  Testfehler werden ihre verbleibenden Geschwister deshalb sofort als durch den Primärfehler
+  blockiert übersprungen, statt mit einem nicht mehr beweisbar sauberen Zustand weitere Timeouts
+  zu erzeugen. Der Primärfehler bleibt rot und erhält die normalen Diagnoseartefakte;
+  `stateful-summary.json` hält zusätzlich `primaryFailure`, `cascadeSuppressed` und `resetResult`
+  maschinenlesbar fest. Der gezielte Owner-Retry startet die Datei in einem frischen Prozess und
+  läuft dadurch wieder mit einem unverbrauchten Circuit Breaker.
   Anschließend lädt CI das Diagnoseverzeichnis sieben Tage lang als
   `*-failure-diagnostics`-Artefakt hoch. Lokal landen Fehler standardmäßig im ignorierten
   Verzeichnis `test-results/e2e/runs/<lauf-id>`; mit `E2E_ARTIFACT_DIR=<pfad>` lässt sich dessen
