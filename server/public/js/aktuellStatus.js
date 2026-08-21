@@ -91,6 +91,31 @@ export function missingSkillAktuellId(gameId, livePlayers = state.live) {
   return `skill:${gameId}:${Math.min(...starts)}`;
 }
 
+// Food orders already have a stable Home identity. When the current player
+// still owes items, enrich that same entry instead of adding a second one for
+// the reminder push. A finalized order cannot be paid in the UI anymore, so
+// it does not become a payment nudge.
+export function foodOrderAktuellItem(order, myId) {
+  const unpaidOwnItems = myId
+    ? (order.items ?? []).filter((item) => item.playerId === myId && !item.paid)
+    : [];
+  const paymentDue = unpaidOwnItems.length > 0 && !order.finalizedAt;
+  if (!order.open && !paymentDue) return null;
+
+  return {
+    id: `food-order:${order.id}`,
+    iconName: domainIcon('foodOrders'),
+    title: paymentDue ? `Sammelbestellung „${order.title}" bezahlen` : `Sammelbestellung „${order.title}"`,
+    sub: paymentDue
+      ? `${unpaidOwnItems.length} ${unpaidOwnItems.length === 1 ? 'Position' : 'Positionen'} noch offen`
+      : order.sendAt
+        ? `Versand ${formatDateTime(order.sendAt)} Uhr`
+        : 'Zeitpunkt noch offen',
+    navigate: 'foodOrders',
+    target: { type: 'order', id: order.id },
+  };
+}
+
 // Fired whenever a (re)load completes, so Home can re-render without its own
 // poll loop.
 function notifyChanged() {
@@ -207,15 +232,10 @@ export function aktuellItems() {
     });
   }
 
-  for (const o of (statusCache?.foodOrders ?? []).filter((o) => o.open)) {
-    items.push({
-      id: `food-order:${o.id}`,
-      iconName: domainIcon('foodOrders'),
-      title: `Sammelbestellung „${o.title}"`,
-      sub: o.sendAt ? `Versand ${formatDateTime(o.sendAt)} Uhr` : 'Zeitpunkt noch offen',
-      navigate: 'foodOrders',
-      target: { type: 'order', id: o.id },
-    });
+  const myId = getMyId();
+  for (const o of statusCache?.foodOrders ?? []) {
+    const item = foodOrderAktuellItem(o, myId);
+    if (item) items.push(item);
   }
 
   for (const l of statusCache?.arcadeLobbies ?? []) {

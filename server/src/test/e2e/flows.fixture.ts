@@ -1929,7 +1929,14 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
   assert.match(await page.locator('.modal-body p').first().innerText(), /20,90 € für .* an PayPal übergeben \(paypal\.me\)\./);
   await page.waitForSelector('.food-order-confirm-list li:has-text("2 × Margherita groß")');
-  await page.locator('[data-confirm-copy]').click();
+  assert.equal(await page.locator('[data-confirm-copy]').count(), 2);
+  assert.equal(
+    await page.locator('[data-confirm-copy-kind="paypal"]').getAttribute('data-confirm-copy'),
+    'https://paypal.me/luigi',
+  );
+  await page.locator('[data-confirm-copy-kind="paypal"]').click();
+  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), 'https://paypal.me/luigi');
+  await page.locator('[data-confirm-copy-kind="total"]').click();
   assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
   assert.equal(await page.locator('.modal h2:has-text("Bezahlt?")').count(), 1);
   await page.click('[data-confirm-cancel]');

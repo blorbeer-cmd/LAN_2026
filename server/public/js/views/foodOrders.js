@@ -152,27 +152,32 @@ function formatCents(cents) {
   return euroFormatter.format(cents / 100);
 }
 
-async function copyFoodOrderTotal(value) {
+async function copyFoodOrderValue(value, label) {
   if (!navigator.clipboard?.writeText) {
     showToast('Kopieren ist in diesem Browser nicht verfügbar.', { error: true });
     return;
   }
   try {
     await navigator.clipboard.writeText(value);
-    showToast(`Summe kopiert: ${value}`);
+    showToast(`${label} kopiert: ${value}`);
   } catch {
-    showToast('Summe konnte nicht kopiert werden.', { error: true });
+    showToast(`${label} konnte nicht kopiert werden.`, { error: true });
   }
+}
+
+function copyFoodOrderTotal(value) {
+  return copyFoodOrderValue(value, 'Summe');
 }
 
 // PayPal has no link that pre-fills a recipient by email, so these links
 // only open PayPal's generic "send money" page - copying the address here is
 // what saves the actual step of typing it in by hand.
 function copyPaypalEmailToClipboard(email) {
-  navigator.clipboard?.writeText(email).then(
-    () => showToast(`E-Mail-Adresse kopiert: ${email}`),
-    () => {}
-  );
+  return copyFoodOrderValue(email, 'E-Mail-Adresse');
+}
+
+function copyPaypalAddressToClipboard(address) {
+  return copyFoodOrderValue(address, 'PayPal-Adresse');
 }
 
 export function addTipToCents(cents, tipPercent) {
@@ -867,7 +872,7 @@ function confirmWithList(
   title,
   message,
   items,
-  { note, copyValue = null, confirmText = 'Bestätigen', cancelText = 'Abbrechen', danger = false } = {}
+  { note, copyValue = null, paypalValue = null, confirmText = 'Bestätigen', cancelText = 'Abbrechen', danger = false } = {}
 ) {
   return new Promise((resolve) => {
     let settled = false;
@@ -884,16 +889,23 @@ function confirmWithList(
           )
           .join('')}</ul>`
       : '';
+    const copyActions = [
+      copyValue ? { value: copyValue, label: 'Summe kopieren', kind: 'total' } : null,
+      paypalValue ? { value: paypalValue, label: 'PayPal-Adresse kopieren', kind: 'paypal' } : null,
+    ].filter(Boolean);
     const { close } = openModal(
       escapeHtml(title),
       `
         <p style="margin:0 0 var(--space-3);">${escapeHtml(message)}</p>
         ${listHtml}
-        ${
-          copyValue
-            ? `<div style="margin-top:var(--space-3);"><button type="button" class="btn btn-sm" data-confirm-copy="${escapeHtml(copyValue)}">${icon('copy')} Summe kopieren</button></div>`
-            : ''
-        }
+        ${copyActions.length
+          ? `<div class="row" style="gap:var(--space-2);margin-top:var(--space-3);">${copyActions
+              .map(
+                (action) =>
+                  `<button type="button" class="btn btn-sm" data-confirm-copy="${escapeHtml(action.value)}" data-confirm-copy-kind="${action.kind}">${icon('copy')} ${action.label}</button>`,
+              )
+              .join('')}</div>`
+          : ''}
         ${note ? `<p class="muted" style="margin:var(--space-3) 0 0;">${escapeHtml(note)}</p>` : ''}
         <div class="row" style="gap:var(--space-2);justify-content:flex-end;margin-top:var(--space-4);">
           <button type="button" class="btn btn-sm btn-equal" data-confirm-cancel>${escapeHtml(cancelText)}</button>
@@ -902,8 +914,14 @@ function confirmWithList(
       `,
       {
         onMount: (el) => {
-          const copyButton = el.querySelector('[data-confirm-copy]');
-          copyButton?.addEventListener('click', () => copyFoodOrderTotal(copyButton.dataset.confirmCopy));
+          el.querySelectorAll('[data-confirm-copy]').forEach((copyButton) => {
+            copyButton.addEventListener('click', () => {
+              const value = copyButton.dataset.confirmCopy;
+              if (!value) return;
+              if (copyButton.dataset.confirmCopyKind === 'paypal') copyPaypalAddressToClipboard(value);
+              else copyFoodOrderTotal(value);
+            });
+          });
           el.querySelector('[data-confirm-cancel]').addEventListener('click', () => {
             finish(false);
             close();
@@ -1028,7 +1046,12 @@ async function handleGroupPay(order, playerId, ctx) {
       ? `${formatCents(payableCents)} für ${items[0].playerName} an PayPal übergeben (paypal.me).`
       : `PayPal geöffnet. Die Summe ${formatCents(payableCents)} für ${items[0].playerName} wird dort nicht vorausgefüllt.`,
     items.map((item) => ({ ...item, amount: formatCents(lineTotalCents(item, tipPercent)) })),
-    { copyValue: formatCents(payableCents), confirmText: 'Ja, bezahlt', cancelText: 'Noch nicht' },
+    {
+      copyValue: formatCents(payableCents),
+      paypalValue: paypalEmailFromLink(freshOrder.paypalLink) ?? freshOrder.paypalLink,
+      confirmText: 'Ja, bezahlt',
+      cancelText: 'Noch nicht',
+    },
   );
   if (!confirmed) {
     ctx.rerender();

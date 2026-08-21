@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   dismissAktuellItem,
+  foodOrderAktuellItem,
   filterDismissedAktuellItems,
   missingSkillAktuellId,
 } from './aktuellStatus.js';
@@ -77,4 +78,32 @@ test('a later live occurrence restores a dismissed missing-skill nudge', () => {
   assert.equal(dismissAktuellItem(firstId, options), true);
   assert.deepEqual(filterDismissedAktuellItems([{ id: firstId }], options), []);
   assert.deepEqual(filterDismissedAktuellItems([{ id: laterId }], options), [{ id: laterId }]);
+});
+
+test('an unpaid order reuses its existing Home item instead of creating a duplicate', () => {
+  const order = {
+    id: 'order-1',
+    title: 'Pizza',
+    open: false,
+    finalizedAt: null,
+    items: [
+      { playerId: 'alice', paid: false },
+      { playerId: 'bob', paid: false },
+    ],
+  };
+  const item = foodOrderAktuellItem(order, 'alice');
+  assert.equal(item.id, 'food-order:order-1');
+  assert.equal(item.title, 'Sammelbestellung „Pizza" bezahlen');
+  assert.equal(item.sub, '1 Position noch offen');
+  assert.equal(foodOrderAktuellItem({ ...order, items: [{ playerId: 'alice', paid: true }] }, 'alice'), null);
+});
+
+test('an open order without own unpaid items keeps the normal current entry', () => {
+  const item = foodOrderAktuellItem(
+    { id: 'order-2', title: 'Drinks', open: true, finalizedAt: null, sendAt: 123, items: [] },
+    'alice',
+  );
+  assert.equal(item.id, 'food-order:order-2');
+  assert.equal(item.title, 'Sammelbestellung „Drinks"');
+  assert.match(item.sub, /Versand/);
 });

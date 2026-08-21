@@ -699,6 +699,7 @@ function wireSocket() {
   // header notification center so new entries appear without a reload.
   socket.on('push:sent', () => {
     refreshNotificationBanner();
+    invalidateAktuellStatus();
   });
   // A short-lived push topic was closed, completed or reached its deadline.
   // Refresh the center so its server-backed state remains current.
