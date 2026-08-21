@@ -123,13 +123,19 @@ Wiederholungsfall ab.
   Agent-Server-Integrationstest unter `agent/` verwendet denselben `PORT=0`-Ablauf.
 - Die Browser-Fixtures sammeln bei einem Fehlschlag Browser-Konsole, Page- und Request-Fehler,
   den letzten Server-Output und Metadaten sowie Screenshots und DOM-Snapshots noch offener Seiten.
-  Nach einem roten Browserlauf wiederholt CI dieselbe Partition einmal
-  mit `E2E_TRACE=1`; dadurch bleibt die gemessene Laufzeit unverfälscht und ein reproduzierbarer
-  Fehler erhält zusätzlich Playwright-Traces kurzlebiger Browser-Kontexte. Anschließend lädt CI
-  das Diagnoseverzeichnis sieben Tage lang als `*-failure-diagnostics`-Artefakt hoch. Lokal landen
-  Fehler standardmäßig im ignorierten Verzeichnis `test-results/e2e`; mit
-  `E2E_ARTIFACT_DIR=<pfad>` lässt sich ein anderer Zielordner wählen. `E2E_TRACE=1` aktiviert dort
-  bei Bedarf dieselben Traces wie in CI. Erfolgreiche Tests entfernen ihre temporären Trace-Daten
+  Zusätzlich schreibt jeder fehlgeschlagene E2E-Testprozess seine Owner-Datei; dadurch bleiben auch
+  Fehler in Datei-Hooks und Einstiegspunkten ohne Diagnose-Wrapper dem richtigen Retry zugeordnet.
+  Nach einem roten Browserlauf setzt CI `E2E_RETRY_FAILED_ONLY=1` und wiederholt mit `E2E_TRACE=1`
+  ausschließlich die Owner-Dateien aus den Diagnosemetadaten. Mehrere Fehler werden dedupliziert,
+  die ursprüngliche Partitionsreihenfolge bleibt erhalten. Fehlende, ungültige oder nicht zur
+  gewählten Partition gehörende Metadaten brechen den Retry bewusst ab; es gibt keinen stillen
+  Fallback auf die vollständige Partition. Dadurch bleibt die gemessene Laufzeit unverfälscht und
+  ein reproduzierbarer Fehler erhält zusätzlich Playwright-Traces kurzlebiger Browser-Kontexte.
+  Anschließend lädt CI das Diagnoseverzeichnis sieben Tage lang als
+  `*-failure-diagnostics`-Artefakt hoch. Lokal landen Fehler standardmäßig im ignorierten
+  Verzeichnis `test-results/e2e`; mit `E2E_ARTIFACT_DIR=<pfad>` lässt sich ein anderer Zielordner
+  wählen. Derselbe Default gilt für einen lokalen gezielten Retry. `E2E_TRACE=1` aktiviert dort bei
+  Bedarf dieselben Traces wie in CI. Erfolgreiche Tests entfernen ihre temporären Trace-Daten
   wieder.
 - `npm run test:e2e` setzt `E2E_FAST_TIMERS=1`. Der Schnellmodus verkürzt Arcade- und
   Challenge-Rush-Countdowns nur zusammen mit `NODE_ENV=test`; in Produktion und bei allen anderen
