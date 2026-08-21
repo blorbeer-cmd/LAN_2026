@@ -113,6 +113,7 @@ test('GET /api/auth/invites lists active reusable codes without exposing revoked
   assert.equal(listed.playerId, null);
   assert.equal(listed.expiresAt, null);
   assert.equal(listed.reusable, true);
+  assert.equal(listed.usageCount, 0);
 });
 
 test('POST /api/auth/invites rejects a non-expiring code', async () => {
@@ -134,6 +135,7 @@ test('POST /api/auth/register rejects an empty password', async () => {
 
 let newPersonCookie: string;
 let newPersonId: string;
+let anotherPersonId: string;
 
 test('POST /api/auth/register creates a non-admin player and logs it in', async () => {
   const res = await request(app)
@@ -154,6 +156,19 @@ test('the register code can be reused for another new account', async () => {
     .post('/api/auth/register')
     .send({ code: registerCode, name: 'Another Person', password: 'another persons password' });
   assert.equal(res.status, 201, JSON.stringify(res.body));
+  anotherPersonId = res.body.id;
+
+  const auditRows = db
+    .prepare(
+      "SELECT target_id AS targetId, details FROM admin_log WHERE action = 'invite_used' AND target_type = 'registration' AND target_id IN (?, ?)",
+    )
+    .all(newPersonId, anotherPersonId) as Array<{ targetId: string; details: string }>;
+  assert.equal(auditRows.length, 2);
+  assert.ok(auditRows.every((row) => typeof JSON.parse(row.details).inviteFingerprint === 'string'));
+
+  const active = await request(app).get('/api/auth/invites').set('Cookie', adminCookie);
+  const listed = active.body.find((invite: { code: string }) => invite.code === registerCode);
+  assert.equal(listed.usageCount, 2);
 });
 
 test('registering with an already-taken name is rejected', async () => {

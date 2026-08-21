@@ -120,8 +120,8 @@ test('removing current participation preserves history and falls back to the bas
   });
 });
 
-test('registration rolls back completely when its invited event became unavailable', async () => {
-  const target = createEvent('Später abgesagtes Event', {
+test('event-bound reusable registration falls back to base when its target event ends', async () => {
+  const target = createEvent('Später beendetes Event', {
     startsAt: Date.now(),
     endsAt: Date.now() + 86_400_000,
   });
@@ -130,17 +130,19 @@ test('registration rolls back completely when its invited event became unavailab
     eventId: target.id,
     createdBy: TEST_ADMIN_ID,
   });
-  assert.ok(cancelEvent(target.id));
+  assert.ok(endEvent(target.id));
 
   const registered = await request(app)
     .post('/api/auth/register')
-    .send({ code: invite.code, name: 'Rolled Back Event Member', password: 'rollback event password' });
-  assert.equal(registered.status, 400);
-  assert.equal(db.prepare('SELECT id FROM players WHERE name = ?').get('Rolled Back Event Member'), undefined);
-  assert.deepEqual(db.prepare('SELECT used_at, used_by FROM invites WHERE code = ?').get(invite.code), {
-    used_at: null,
-    used_by: null,
+    .send({ code: invite.code, name: 'Fallback Event Member', password: 'fallback event password' });
+  assert.equal(registered.status, 201, JSON.stringify(registered.body));
+  const playerId = registered.body.id as string;
+  assert.equal(participantStatus(BASE_EVENT_ID, playerId), 'accepted');
+  assert.equal(participantStatus(target.id, playerId), undefined);
+  assert.deepEqual(db.prepare('SELECT active_event_id FROM player_event_contexts WHERE player_id = ?').get(playerId), {
+    active_event_id: BASE_EVENT_ID,
   });
+  assert.ok(db.prepare('SELECT 1 FROM invites WHERE code = ? AND revoked_at IS NULL').get(invite.code));
 });
 
 test('two parallel registrations can reuse an event-bound registration invite', async () => {

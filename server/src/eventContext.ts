@@ -63,13 +63,29 @@ function ensureBaseParticipation(playerId: string): EventContextEvent {
  * savepoints, so account, memberships, event participation, context and
  * invite consumption still commit or roll back together.
  */
-export function ensureAccountEventContext(playerId: string, preferredEventId = BASE_EVENT_ID): EventContextEvent {
+export interface EnsureAccountEventContextOptions {
+  // A reusable registration link stays valid after its target event is closed;
+  // in that case the new account gets the always-available base context.
+  fallbackToBase?: boolean;
+}
+
+export function ensureAccountEventContext(
+  playerId: string,
+  preferredEventId = BASE_EVENT_ID,
+  options: EnsureAccountEventContextOptions = {},
+): EventContextEvent {
   return db.transaction(() => {
     if (!getActivePlayer(playerId)) throw new Error('Active player required for event context.');
-    ensureBaseParticipation(playerId);
+    const baseEvent = ensureBaseParticipation(playerId);
 
     const preferredEvent = getSelectableEvent(preferredEventId);
-    if (!preferredEvent) throw new InvalidEventContextError();
+    if (!preferredEvent) {
+      if (options.fallbackToBase) {
+        storeActiveEvent(playerId, baseEvent.id);
+        return baseEvent;
+      }
+      throw new InvalidEventContextError();
+    }
     acceptEventParticipation(playerId, preferredEvent.id);
     storeActiveEvent(playerId, preferredEvent.id);
     return preferredEvent;

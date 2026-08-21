@@ -8,6 +8,7 @@
 // player, and changing a password voids outstanding reset codes the same way.
 
 import { nanoid } from 'nanoid';
+import { createHash } from 'node:crypto';
 import { BASE_EVENT_ID, db } from './db';
 
 // 'test_login' mints a one-time link that logs the browser in directly as an
@@ -24,6 +25,13 @@ export const MAX_INVITE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 // them. The existing expires_at column is kept non-null for compatibility;
 // zero is the explicit no-expiry sentinel and is never exposed as a date.
 export const NO_INVITE_EXPIRY = 0;
+
+// A registration redemption needs an audit trail, but the invite code itself
+// is a credential and must never be copied into admin_log. The fingerprint is
+// stable for correlating usages while remaining useless for redeeming the link.
+export function inviteFingerprint(code: string): string {
+  return createHash('sha256').update(code).digest('hex');
+}
 
 export interface InviteRow {
   code: string;

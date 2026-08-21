@@ -37,6 +37,7 @@ import {
   voidOutstandingInvites,
   revokeInvite,
   NO_INVITE_EXPIRY,
+  inviteFingerprint,
   type InvitePurpose,
 } from '../invites';
 import { DEFAULT_GROUP_ID, ensureDefaultGroupMembership } from '../groups';
@@ -188,7 +189,26 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
 
       if (invite && !markInviteUsed(invite.code, player.id, 'register')) throw new InvalidInviteError();
       ensureDefaultGroupMembership(player.id, { bootstrapAdmin: isBootstrap });
-      ensureAccountEventContext(player.id, invite?.event_id ?? BASE_EVENT_ID);
+      const selectedEvent = ensureAccountEventContext(player.id, invite?.event_id ?? BASE_EVENT_ID, {
+        // Reusable links must remain redeemable until revoked. If their target
+        // event was closed in the meantime, the account still gets the base
+        // event rather than failing registration with an apparently expired link.
+        fallbackToBase: Boolean(invite?.event_id && invite.purpose === 'register' && invite.event_id !== BASE_EVENT_ID),
+      });
+      if (invite) {
+        writeAdminAudit({
+          groupId: DEFAULT_GROUP_ID,
+          action: 'invite_used',
+          targetType: 'registration',
+          targetId: player.id,
+          details: {
+            inviteFingerprint: inviteFingerprint(invite.code),
+            createdBy: invite.created_by,
+            eventId: invite.event_id,
+            appliedEventId: selectedEvent.id,
+          },
+        });
+      }
       resetOnboardingForNewAccount(player.id);
     })();
   } catch (error) {
@@ -506,6 +526,28 @@ authRouter.post('/test-session', limitAnonymousAuthAttempts, (req, res) => {
 
 const INVITE_PURPOSES: InvitePurpose[] = ['register', 'claim', 'reset', 'test_login'];
 
+function inviteUseCounts(codes: string[]): Map<string, number> {
+  const codeByFingerprint = new Map(codes.map((code) => [inviteFingerprint(code), code]));
+  const counts = new Map<string, number>();
+  if (codeByFingerprint.size === 0) return counts;
+
+  const rows = db
+    .prepare("SELECT details FROM admin_log WHERE action = 'invite_used' AND target_type = 'registration'")
+    .all() as Array<{ details: string | null }>;
+  for (const row of rows) {
+    if (!row.details) continue;
+    try {
+      const details = JSON.parse(row.details) as { inviteFingerprint?: unknown };
+      if (typeof details.inviteFingerprint !== 'string') continue;
+      const code = codeByFingerprint.get(details.inviteFingerprint);
+      if (code) counts.set(code, (counts.get(code) ?? 0) + 1);
+    } catch {
+      // Ignore malformed legacy audit rows rather than failing the admin list.
+    }
+  }
+  return counts;
+}
+
 // GET /api/auth/invites - active, still-shareable links for the admin UI.
 // Used/revoked/expired codes stay in the DB audit trail but are not returned.
 authRouter.get('/invites', ...requireSessionAdmin, (_req, res) => {
@@ -531,11 +573,13 @@ authRouter.get('/invites', ...requireSessionAdmin, (_req, res) => {
       createdAt: number;
       expiresAt: number;
     }>;
+  const usageCounts = inviteUseCounts(rows.map((row) => row.code));
   res.json(
     rows.map((row) => ({
       ...row,
       expiresAt: row.expiresAt === NO_INVITE_EXPIRY ? null : row.expiresAt,
       reusable: row.purpose === 'register' && row.expiresAt === NO_INVITE_EXPIRY,
+      usageCount: usageCounts.get(row.code) ?? 0,
     })),
   );
 });
@@ -615,6 +659,7 @@ authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthenticatio
     eventName: inviteEvent?.name ?? null,
     expiresAt: invite.expires_at === NO_INVITE_EXPIRY ? null : invite.expires_at,
     reusable: invite.purpose === 'register' && invite.expires_at === NO_INVITE_EXPIRY,
+    usageCount: 0,
   });
 });
 

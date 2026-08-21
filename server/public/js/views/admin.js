@@ -12,6 +12,8 @@ import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { getMyId } from '../whoami.js';
 import { currentGroup, refreshGroupContext } from '../groupContext.js';
+import { eventSelectOptions } from '../eventStatus.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 
 const ONBOARDING_HELP = 'Neue Person: Registrierungslink. Bestehendes Profil: Claim-Link. Vergessenes Passwort: Reset-Link.';
 const TEST_DATA_HELP = 'Legt Test-Spieler mit Sitzplatz, Bewertungen und Spielzeit an; zwei spielen gerade. Nur im Admin-Modus sichtbar.';
@@ -54,6 +56,7 @@ function invitePurposeLabel(purpose) {
 function openInviteModal(invite) {
   const url = inviteUrl(invite);
   const target = invite.playerName ? ` für ${invite.playerName}` : '';
+  const usageCount = Number.isInteger(invite.usageCount) ? invite.usageCount : 0;
   const reusable = invite.reusable || (invite.purpose === 'register' && invite.expiresAt == null);
   const eventHint = invite.eventName
     ? `<div class="admin-invite-event"><span class="muted">Event</span><strong>${escapeHtml(invite.eventName)}</strong></div>`
@@ -72,7 +75,7 @@ function openInviteModal(invite) {
       </div>
       <button type="button" class="btn btn-sm" id="admin-invite-qr-toggle">${icon('scanQrCode')} QR-Code anzeigen</button>
       <div id="admin-invite-qr" style="text-align:center;" hidden></div>
-      <p class="muted" style="font-size:var(--font-size-xs);">${validityHint}</p>
+      <p class="muted" style="font-size:var(--font-size-xs);">${validityHint} ${usageCount}× genutzt.</p>
     </div>`
   );
   el.querySelector('#admin-invite-copy').addEventListener('click', async () => {
@@ -483,7 +486,7 @@ function renderPanel(container, ctx) {
       (invite) => `<div class="row-between" style="gap:var(--space-2);">
         <span>
           <strong>${escapeHtml(invite.playerName || invitePurposeLabel(invite.purpose))}</strong>
-          <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))}${invite.eventName ? ` · ${escapeHtml(invite.eventName)}` : ''} · ${invite.expiresAt == null ? 'unbegrenzt gültig' : `bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}`}</span>
+          <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))}${invite.eventName ? ` · ${escapeHtml(invite.eventName)}` : ''} · ${invite.usageCount ?? 0}× genutzt · ${invite.expiresAt == null ? 'unbegrenzt gültig' : `bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}`}</span>
         </span>
         <span class="row" style="gap:var(--space-2);">
           <button type="button" class="btn btn-sm" data-show-login-link="${invite.code}">Anzeigen</button>

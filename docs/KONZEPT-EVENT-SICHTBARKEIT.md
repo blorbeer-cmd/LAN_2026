@@ -119,12 +119,14 @@ Registrierungslink erfolgt in einer eigenen Transaktion:
 1. Konto beanspruchen beziehungsweise aktivieren,
 2. Instanzmitgliedschaft aktivieren,
 3. Teilnahme am Basis-Event auf `accepted` setzen,
-4. optional die Teilnahme am Ziel-Event auf `accepted` setzen,
+4. optional die Teilnahme am Ziel-Event auf `accepted` setzen; ist das Ziel-Event inzwischen
+   beendet oder abgesagt, bleibt der Registrierungslink gültig und es wird nur das Basis-Event
+   verwendet,
 5. persönliches Arbeits-Event auf das Ziel-Event, sonst auf das Basis-Event setzen,
 6. Registrierungslink weiter offen halten beziehungsweise den einmaligen Claim-Link verbrauchen.
 
 Damit existiert auch während des Onboardings kein aktives Konto ohne Event-Kontext. Scheitert ein
-Schritt, wird die gesamte Transaktion zurückgerollt.
+Schritt außerhalb dieses erwartbaren Event-Fallbacks, wird die gesamte Transaktion zurückgerollt.
 
 Bestehende Mitglieder erhalten weitere Events über persönliche Event-Einladungen. Erst die
 Annahme macht ein solches Event als Arbeitskontext wählbar.
