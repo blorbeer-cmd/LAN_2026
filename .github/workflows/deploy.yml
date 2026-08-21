@@ -193,7 +193,7 @@ jobs:
         run: npm run test:e2e:run:core -- "${{ needs.changes.outputs.e2e_core_scope }}"
       - name: Preserve Core E2E failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-core-failure-diagnostics
           path: ${{ runner.temp }}/e2e-artifacts
@@ -252,7 +252,7 @@ jobs:
         run: npm run test:e2e:run:arcade-smoke
       - name: Preserve Arcade smoke E2E failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-arcade-smoke-failure-diagnostics
           path: ${{ runner.temp }}/e2e-artifacts
@@ -311,7 +311,7 @@ jobs:
         run: npm run test:e2e:run:arcade
       - name: Preserve Arcade E2E failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-arcade-failure-diagnostics
           path: ${{ runner.temp }}/e2e-artifacts
@@ -382,7 +382,7 @@ jobs:
 
       - name: Preserve detector report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-performance-detection
           path: ${{ runner.temp }}/test-performance-detection.json
@@ -466,7 +466,7 @@ jobs:
 
       - name: Preserve confirmation report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-performance-confirm-${{ matrix.suite }}
           path: ${{ runner.temp }}/test-performance-${{ matrix.suite }}.json
@@ -493,7 +493,7 @@ jobs:
 
       - name: Preserve repeated E2E failure diagnostics
         if: failure() && matrix.suite != 'unit-integration'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-performance-${{ matrix.suite }}-e2e-failure-diagnostics
           path: ${{ runner.temp }}/e2e-artifacts
