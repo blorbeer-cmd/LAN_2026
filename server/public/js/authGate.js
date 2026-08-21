@@ -9,6 +9,7 @@ import { icon } from './icons.js';
 import { detachPushSubscription, rebindExistingPushSubscription } from './push.js';
 import { setAdmin } from './admin.js';
 import { setTestIdentity } from './testFilter.js';
+import { showToast } from './toast.js';
 
 const SESSION_ACCOUNT_KEY = 'respawn_session_account';
 
@@ -243,6 +244,9 @@ export async function ensureLogin() {
         }
         applySession(me);
         await rebindExistingPushSubscription(me.id).catch(() => {});
+        if (mode === 'register' && me.eventContext?.fallback) {
+          showToast(`Das Ziel-Event ist nicht mehr aktiv. Du startest in „${me.eventContext.name}“.`);
+        }
         // Drop the invite/claim/reset code from the URL once it's been used —
         // reloading the page must not re-attempt (and fail) the same
         // already-consumed code.

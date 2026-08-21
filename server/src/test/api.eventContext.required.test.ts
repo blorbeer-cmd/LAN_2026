@@ -132,10 +132,20 @@ test('event-bound reusable registration falls back to base when its target event
   });
   assert.ok(endEvent(target.id));
 
+  const listed = await request(app).get('/api/auth/invites');
+  const listedInvite = listed.body.find((entry: { code: string }) => entry.code === invite.code);
+  assert.equal(listedInvite.eventSelectable, false);
+
   const registered = await request(app)
     .post('/api/auth/register')
     .send({ code: invite.code, name: 'Fallback Event Member', password: 'fallback event password' });
   assert.equal(registered.status, 201, JSON.stringify(registered.body));
+  assert.deepEqual(registered.body.eventContext, {
+    id: BASE_EVENT_ID,
+    name: 'Allgemein',
+    isBase: true,
+    fallback: true,
+  });
   const playerId = registered.body.id as string;
   assert.equal(participantStatus(BASE_EVENT_ID, playerId), 'accepted');
   assert.equal(participantStatus(target.id, playerId), undefined);
@@ -143,6 +153,41 @@ test('event-bound reusable registration falls back to base when its target event
     active_event_id: BASE_EVENT_ID,
   });
   assert.ok(db.prepare('SELECT 1 FROM invites WHERE code = ? AND revoked_at IS NULL').get(invite.code));
+});
+
+test('event-bound reusable registration falls back to base when its target event is cancelled', async () => {
+  const target = createEvent('Später abgesagtes Event', {
+    startsAt: Date.now(),
+    endsAt: Date.now() + 86_400_000,
+  });
+  const invite = createInvite({
+    purpose: 'register',
+    eventId: target.id,
+    createdBy: TEST_ADMIN_ID,
+  });
+  assert.ok(cancelEvent(target.id));
+
+  const listed = await request(app).get('/api/auth/invites');
+  const listedInvite = listed.body.find((entry: { code: string }) => entry.code === invite.code);
+  assert.equal(listedInvite.eventSelectable, false);
+
+  const registered = await request(app)
+    .post('/api/auth/register')
+    .send({ code: invite.code, name: 'Cancelled Fallback Member', password: 'cancelled fallback password' });
+  assert.equal(registered.status, 201, JSON.stringify(registered.body));
+  assert.deepEqual(registered.body.eventContext, {
+    id: BASE_EVENT_ID,
+    name: 'Allgemein',
+    isBase: true,
+    fallback: true,
+  });
+  const playerId = registered.body.id as string;
+  assert.equal(participantStatus(BASE_EVENT_ID, playerId), 'accepted');
+  assert.equal(participantStatus(target.id, playerId), undefined);
+  assert.equal(
+    (await request(app).get('/api/me/active-event').set('Cookie', responseCookie(registered))).body.id,
+    BASE_EVENT_ID,
+  );
 });
 
 test('two parallel registrations can reuse an event-bound registration invite', async () => {

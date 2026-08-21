@@ -180,6 +180,7 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
     created_at: now,
   };
 
+  let eventContext: { id: string; name: string; isBase: boolean; fallback: boolean } | undefined;
   try {
     db.transaction(() => {
       db.prepare(
@@ -195,9 +196,14 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
         // event rather than failing registration with an apparently expired link.
         fallbackToBase: Boolean(invite?.event_id && invite.purpose === 'register' && invite.event_id !== BASE_EVENT_ID),
       });
+      eventContext = {
+        id: selectedEvent.id,
+        name: selectedEvent.name,
+        isBase: selectedEvent.id === BASE_EVENT_ID,
+        fallback: Boolean(invite?.event_id && invite.event_id !== BASE_EVENT_ID && selectedEvent.id === BASE_EVENT_ID),
+      };
       if (invite) {
         writeAdminAudit({
-          groupId: DEFAULT_GROUP_ID,
           action: 'invite_used',
           targetType: 'registration',
           targetId: player.id,
@@ -230,7 +236,7 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
   }
   const token = createSession(player.id);
   setSessionCookie(res, token);
-  res.status(201).json(toPublicAccount(player));
+  res.status(201).json({ ...toPublicAccount(player), eventContext });
 });
 
 // POST /api/auth/claim - sets a password on an existing, not-yet-claimed
@@ -579,6 +585,7 @@ authRouter.get('/invites', ...requireSessionAdmin, (_req, res) => {
       ...row,
       expiresAt: row.expiresAt === NO_INVITE_EXPIRY ? null : row.expiresAt,
       reusable: row.purpose === 'register' && row.expiresAt === NO_INVITE_EXPIRY,
+      eventSelectable: row.eventId ? Boolean(getSelectableEvent(row.eventId)) : true,
       usageCount: usageCounts.get(row.code) ?? 0,
     })),
   );
@@ -649,7 +656,12 @@ authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthenticatio
     action: 'invite_created',
     targetType: purpose === 'register' ? 'registration' : 'player',
     targetId: purpose === 'register' ? undefined : playerId,
-    details: { purpose, eventId: invite.event_id, expiresAt: invite.expires_at },
+    details: {
+      purpose,
+      eventId: invite.event_id,
+      expiresAt: invite.expires_at === NO_INVITE_EXPIRY ? null : invite.expires_at,
+      inviteFingerprint: inviteFingerprint(invite.code),
+    },
   });
   res.status(201).json({
     code: invite.code,
@@ -666,9 +678,19 @@ authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthenticatio
 // DELETE /api/auth/invites/:code - admin-only. Revoking an already-used or
 // already-revoked code is a no-op 404, not an error worth retrying.
 authRouter.delete('/invites/:code', ...requireSessionAdmin, requireRecentReauthentication, (req, res) => {
-  const invite = db.prepare('SELECT purpose, player_id FROM invites WHERE code = ?').get(req.params.code) as
-    | { purpose: InvitePurpose; player_id: string | null }
+  const invite = db
+    .prepare('SELECT code, purpose, player_id, event_id, created_by, expires_at FROM invites WHERE code = ?')
+    .get(req.params.code) as
+    | {
+        code: string;
+        purpose: InvitePurpose;
+        player_id: string | null;
+        event_id: string | null;
+        created_by: string | null;
+        expires_at: number;
+      }
     | undefined;
+  const usageCount = invite ? inviteUseCounts([invite.code]).get(invite.code) ?? 0 : 0;
   if (!revokeInvite(req.params.code)) {
     return res.status(404).json({ error: 'Einladungscode nicht gefunden oder bereits verbraucht.' });
   }
@@ -677,7 +699,14 @@ authRouter.delete('/invites/:code', ...requireSessionAdmin, requireRecentReauthe
     action: 'invite_revoked',
     targetType: invite?.player_id ? 'player' : 'registration',
     targetId: invite?.player_id ?? undefined,
-    details: { purpose: invite?.purpose },
+    details: {
+      purpose: invite?.purpose,
+      eventId: invite?.event_id ?? null,
+      createdBy: invite?.created_by ?? null,
+      expiresAt: invite && invite.expires_at !== NO_INVITE_EXPIRY ? invite.expires_at : null,
+      inviteFingerprint: invite ? inviteFingerprint(invite.code) : undefined,
+      usageCount,
+    },
   });
   res.status(204).end();
 });

@@ -205,8 +205,8 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal(registrationLink.body.eventId, linkedEvent.body.id);
       assert.equal(registrationLink.body.expiresAt, null);
       assert.equal(registrationLink.body.reusable, true);
-      const linkedAlice = await registerWithCode(registrationLink.body.code, 'Direct Link Alice');
       const linkedBob = await registerWithCode(registrationLink.body.code, 'Direct Link Bob');
+      const linkedAlice = await registerWithCode(registrationLink.body.code, 'Direct Link Alice');
       for (const linkedAccount of [linkedAlice, linkedBob]) {
         const active = await call(app, 'get', '/api/events/active', linkedAccount);
         assert.equal(active.status, 200, JSON.stringify(active.body));

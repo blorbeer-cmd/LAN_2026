@@ -58,9 +58,11 @@ function openInviteModal(invite) {
   const target = invite.playerName ? ` für ${invite.playerName}` : '';
   const usageCount = Number.isInteger(invite.usageCount) ? invite.usageCount : 0;
   const reusable = invite.reusable || (invite.purpose === 'register' && invite.expiresAt == null);
-  const eventHint = invite.eventName
-    ? `<div class="admin-invite-event"><span class="muted">Event</span><strong>${escapeHtml(invite.eventName)}</strong></div>`
-    : '';
+  const eventHint = invite.eventSelectable === false
+    ? `<div class="admin-invite-event"><span class="muted">Event</span><strong>${escapeHtml(invite.eventName || 'Ziel-Event')}</strong><span class="muted">Ziel-Event beendet oder abgesagt – neue Konten starten in Allgemein.</span></div>`
+    : invite.eventName
+      ? `<div class="admin-invite-event"><span class="muted">Event</span><strong>${escapeHtml(invite.eventName)}</strong></div>`
+      : '';
   const validityHint = reusable
     ? 'Unbegrenzt gültig, bis der Link widerrufen wird. Mehrfach nutzbar.'
     : `Gültig bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}. Der Link funktioniert nur einmal.`;
@@ -256,8 +258,10 @@ async function refreshAdminData(ctx) {
   ]);
 }
 
-function registerInviteEventOptions() {
-  const events = (state.managedEvents || []).filter((event) => !event.isOutsideEvents && !event.isBase && !event.isEnded);
+export function registerInviteEventOptions() {
+  const events = (state.managedEvents || []).filter(
+    (event) => !event.isOutsideEvents && !event.isBase && !event.isEnded && event.status === 'published',
+  );
   return eventSelectOptions(events, { allEntryLabel: 'Allgemein (kein zusätzliches Event)' });
 }
 
@@ -483,16 +487,23 @@ function renderPanel(container, ctx) {
 
   const inviteRows = (activeInvites || [])
     .map(
-      (invite) => `<div class="row-between" style="gap:var(--space-2);">
+      (invite) => {
+        const eventLabel = invite.eventSelectable === false
+          ? 'Ziel-Event beendet oder abgesagt – Start in Allgemein'
+          : invite.eventName
+            ? escapeHtml(invite.eventName)
+            : '';
+        return `<div class="row-between" style="gap:var(--space-2);">
         <span>
           <strong>${escapeHtml(invite.playerName || invitePurposeLabel(invite.purpose))}</strong>
-          <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))}${invite.eventName ? ` · ${escapeHtml(invite.eventName)}` : ''} · ${invite.usageCount ?? 0}× genutzt · ${invite.expiresAt == null ? 'unbegrenzt gültig' : `bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}`}</span>
+          <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))}${eventLabel ? ` · ${eventLabel}` : ''} · ${invite.usageCount ?? 0}× genutzt · ${invite.expiresAt == null ? 'unbegrenzt gültig' : `bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}`}</span>
         </span>
         <span class="row" style="gap:var(--space-2);">
           <button type="button" class="btn btn-sm" data-show-login-link="${invite.code}">Anzeigen</button>
           <button type="button" class="btn btn-sm btn-danger" data-revoke-login-link="${invite.code}">Widerrufen</button>
         </span>
-      </div>`
+      </div>`;
+      },
     )
     .join('');
 

@@ -147,3 +147,12 @@ export function voidOutstandingInvites(playerId: string, purpose: InvitePurpose)
     'UPDATE invites SET revoked_at = ? WHERE player_id = ? AND purpose = ? AND used_at IS NULL AND revoked_at IS NULL'
   ).run(Date.now(), playerId, purpose);
 }
+
+// Registration links are created by an account rather than targeting one.
+// They therefore need their own lifecycle rule when that creator is
+// deactivated or deleted; ON DELETE SET NULL must not keep the credential open.
+export function revokeRegistrationInvitesCreatedBy(playerId: string): void {
+  db.prepare(
+    "UPDATE invites SET revoked_at = ? WHERE created_by = ? AND purpose = 'register' AND used_at IS NULL AND revoked_at IS NULL",
+  ).run(Date.now(), playerId);
+}

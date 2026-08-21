@@ -254,7 +254,7 @@ export function getAcceptedEventParticipants(eventId: string): AcceptedEventPart
        FROM event_participants ep
        JOIN players p ON p.id = ep.player_id
        WHERE ep.event_id = ? AND ep.status = 'accepted' AND p.deactivated_at IS NULL
-       ORDER BY ep.rowid`,
+       ORDER BY p.name COLLATE NOCASE, p.id`,
     )
     .all(eventId) as AcceptedEventParticipantRow[];
 }
