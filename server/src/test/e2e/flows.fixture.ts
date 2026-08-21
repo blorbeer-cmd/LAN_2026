@@ -2586,9 +2586,20 @@ flowTest('community', 'Essensbestellung: Bestellübersicht consolidates position
   await page.keyboard.press('Escape');
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
 
+  // Sent orders live in the collapsed history. A reminder/push-style direct
+  // link must open that section so the requested order is immediately visible.
+  await page.goto(`${BASE_URL}/#foodOrders/${listOrderId}`);
+  await page.reload();
+  const directHistory = page.locator('[data-food-history]');
+  await directHistory.waitFor();
+  assert.equal(await directHistory.getAttribute('open'), '');
+  assert.equal(
+    await page.locator('[data-closed-order]', { hasText: 'Bestellübersicht-Test' }).isVisible(),
+    true,
+  );
+
   // The list is visible to everyone, including a non-creator on a closed order.
   await switchIdentityAndOpenFoodOrders('E2E Bob');
-  await page.click('[data-food-history] > summary');
   await page.waitForSelector('text=Bestellübersicht-Test');
   assert.equal(
     await page.locator('[data-closed-order]', { hasText: 'Bestellübersicht-Test' }).locator('[data-open-order-list]').count(),

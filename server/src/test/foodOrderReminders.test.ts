@@ -54,14 +54,30 @@ test('food-order payment reminders aggregate unpaid orders and deduplicate withi
     assert.equal(entry.audience, 'direct');
     assert.equal(entry.topicKey, topic);
 
-    assert.equal(runFoodOrderPaymentReminderOnce(now + 30 * 60 * 1000), 0);
+    const firstReminderAt = now + 60 * 60 * 1000;
     assert.equal(
-      (db.prepare('SELECT COUNT(*) AS count FROM push_log WHERE topic_key = ?').get(topic) as { count: number }).count,
-      1,
+      (
+        db
+          .prepare(
+            'SELECT last_sent_at AS lastSentAt FROM food_order_payment_reminders WHERE event_id = ? AND player_id = ?',
+          )
+          .get(BASE_EVENT_ID, playerId) as { lastSentAt: number }
+      ).lastSentAt,
+      firstReminderAt,
     );
 
+    // Home's push history is intentionally bounded. Even after its entry is
+    // gone, the dedicated reminder state must still suppress another send.
+    db.prepare('DELETE FROM push_log WHERE topic_key = ?').run(topic);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 119 * 60 * 1000), 0);
+    assert.equal(
+      (db.prepare('SELECT COUNT(*) AS count FROM push_log WHERE topic_key = ?').get(topic) as { count: number }).count,
+      0,
+    );
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 120 * 60 * 1000), 1);
+
     db.prepare('UPDATE food_order_items SET paid = 1 WHERE id IN (?, ?)').run(firstItemId, secondItemId);
-    assert.equal(runFoodOrderPaymentReminderOnce(now + 60 * 60 * 1000), 0);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 180 * 60 * 1000), 0);
   } finally {
     db.prepare('DELETE FROM food_orders WHERE id IN (?, ?)').run(firstOrderId, secondOrderId);
     db.prepare('DELETE FROM players WHERE id = ?').run(playerId);

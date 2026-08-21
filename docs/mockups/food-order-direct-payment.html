@@ -435,6 +435,8 @@ ul.doc-list li b { color: var(--ink); font-weight: 600; }
   background: var(--bg-elevated);
 }
 .food-order-group.is-all-paid { background: transparent; opacity: 0.78; }
+.food-order-item.is-paid .food-order-item-description,
+.food-order-item.is-paid .food-order-item-amount { text-decoration: line-through; }
 .food-order-group-header { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .food-order-group-toggle {
   display: flex;
@@ -578,6 +580,7 @@ ul.doc-list li b { color: var(--ink); font-weight: 600; }
 .rs-modal h3 { margin: 0; font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); }
 .rs-modal p { margin: 0; font-size: var(--font-size-sm); color: var(--text-muted); }
 .food-order-confirm-list { margin: 0; padding-left: var(--space-5); color: var(--text-muted); font-size: var(--font-size-xs); }
+.rs-modal-copy-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .rs-modal-actions { display: flex; justify-content: space-between; gap: var(--space-2); padding-top: var(--space-2); }
 
 /* ---------- Zustandsmatrix ---------- */
@@ -885,7 +888,8 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
         <p class="note is-key"><b>Positionszeile:</b><br>
           Menge&nbsp;×&nbsp;Bezeichnung │ Betrag │ Kopieren │ Löschen.<br>
           Keine Bezahlt-Marke, kein Bezahlen-Knopf, keine Trennlinie mehr. Was bleibt, ist die
-          Angabe selbst, ihr Betrag und — an eigenen Zeilen — das Entfernen.</p>
+          Angabe selbst, ihr Betrag und — an eigenen Zeilen — das Entfernen. Ist die Person bezahlt,
+          werden alle ihre Positionszeilen durchgestrichen.</p>
         <p class="note is-key"><b>Gruppenkopf:</b><br>
           Chevron&nbsp;· Punkt&nbsp;· Name über <i>„n Positionen“</i> │ Marke │ Summe │ Kopieren ·
           PayPal │ Löschen.<br>
@@ -960,9 +964,9 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
           „ich habe bezahlt“ oder „er hat mir bar gegeben“ —, sie ist mit einem Tipp umkehrbar und
           verliert nichts. Eine Rückfrage davor wäre reine Reibung. Damit fällt der Dialog weg, den
           die vorige Runde hier noch hatte.</p>
-        <p class="note is-warn"><b>Rückwärts mit Rückfrage.</b> Das Aufheben löscht eine Bestätigung,
-          die auch von jemand anderem stammen kann — der Dialog nennt dann den Namen. Es ist der
-          einzige Weg an dieser Marke, der etwas zerstört.</p>
+        <p class="note is-warn"><b>Rückwärts ebenfalls direkt.</b> Das Aufheben setzt alle Positionen
+          der Person mit einem Tipp wieder auf offen. Der Tooltip nennt vorher weiterhin, wer die
+          Zahlung bestätigt hat.</p>
         <p class="note"><b>Gemischte Daten kann es trotzdem geben</b>, auch wenn die Oberfläche sie
           nicht mehr erzeugt: eine Position, die nach dem Abhaken dazukam, oder Bestände aus der Zeit
           davor. Sie zählen schlicht als „noch nicht bezahlt“ — siehe Plate 07, dritte Karte.</p>
@@ -1012,12 +1016,11 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
 
   <section id="rueckfragen" class="plate">
     <div class="plate-head"><span class="plate-no">Plate 08</span><h2>Rückfragen</h2></div>
-    <p class="plate-intent">Vier. Gefragt wird nur, wo etwas verloren geht: eine fremde Bestätigung
-      oder eine Position. Abhaken und Kopieren laufen ohne Nachfrage durch — beides ist mit einem
-      Tipp umkehrbar.</p>
+    <p class="plate-intent">Drei. Gefragt wird nach dem externen PayPal-Schritt und vor dem
+      unwiderruflichen Löschen einer Position oder Personengruppe. Abhaken, Aufheben und Kopieren
+      laufen ohne Nachfrage durch.</p>
     <div class="stage">
       <div class="screen is-phone"><p class="screen-label">Nach dem PayPal-Klick</p><div class="rs" data-mock="dlg-paid"></div></div>
-      <div class="screen is-phone"><p class="screen-label">Person zurückdrehen · neu</p><div class="rs" data-mock="dlg-unmark"></div></div>
       <div class="screen is-phone"><p class="screen-label">Position löschen</p><div class="rs" data-mock="dlg-delete"></div></div>
       <div class="screen is-phone"><p class="screen-label">Ganze Personengruppe löschen · neu</p><div class="rs" data-mock="dlg-delete-group"></div></div>
     </div>
@@ -1130,7 +1133,7 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
             <td class="scenario-id">G</td>
             <td><b>Ich habe die falsche Person abgehakt.</b></td>
             <td>Jede Position einzeln zurückschalten</td><td class="num">n</td>
-            <td>Marke an der Person → Aufheben</td><td class="num win">2</td>
+            <td>Marke an der Person</td><td class="num win">1</td>
           </tr>
           <tr>
             <td class="scenario-id">H</td>
@@ -1149,9 +1152,9 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
     </div>
     <div class="stage" style="margin-top:24px;">
       <div class="side" style="flex:1 1 100%;">
-        <p class="note is-key"><b>Der Normalfall wird noch billiger.</b> Bar kassieren kostet jetzt
-          einen einzigen Klick, weil die Rückfrage vorm Abhaken weggefallen ist. Alles andere bleibt
-          bei zwei Klicks — der Boden ist erreicht: einmal bezahlen, einmal bestätigen.</p>
+        <p class="note is-key"><b>Der Normalfall wird noch billiger.</b> Bar kassieren und eine
+          falsche Markierung zurückdrehen kosten jetzt jeweils einen einzigen Klick. Der PayPal-Fluss
+          und die destruktiven Löschaktionen bleiben bewusst zweistufig.</p>
         <p class="note is-warn"><b>Zwei Dinge gehen verloren, beide bewusst.</b><br>
           <b>X:</b> Wer für jemand anderen mitbestellt, kann seinen eigenen Teil nicht mehr getrennt
           abhaken — die fremde Position steht unter seinem Namen und wird mitbezahlt. Wer das
@@ -1187,13 +1190,14 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
         <ul class="doc-list">
           <li><b>Bezahlen an der Position</b> samt Popup-Öffnung, Staleness-Prüfung und Rückfrage für
             den Einzelfall — es bleibt genau eine Stelle mit dieser Mechanik.</li>
-          <li><b>Bezahlt-Marke an der Position</b>, und damit der Zustand <code>is-paid</code> an der
-            Zeile: kein Durchstreichen, kein Sperren einzelner Zeilen über den Bezahlstatus.</li>
+          <li><b>Bezahlt-Marke an der Position</b>. Der abgeleitete Zustand <code>is-paid</code> bleibt
+            nur als visuelle Folge der Personenmarke: alle zugehörigen Zeilen werden gemeinsam
+            durchgestrichen und beim Aufheben wieder aktiviert.</li>
           <li><b>Der Zwischenzustand „Teilweise“</b> und mit ihm die Bernstein-Farbe
             (<code>--state-paused</code>) in dieser Komponente.</li>
           <li><b>Der Unterschied zwischen offenem Betrag und Gesamtsumme</b> je Person, und damit die
             kleine Wiederholungszeile <code>.food-order-group-total</code>.</li>
-          <li><b>Die Rückfrage vor dem Abhaken</b> einer Person — nur das Aufheben fragt noch.</li>
+          <li><b>Die Rückfragen an der Bezahlt-Marke</b> — beide Richtungen schalten direkt.</li>
           <li><b>„n bezahlt“ als Positionszahl</b> in der Zusammenfassung; gezählt werden Personen.</li>
           <li><b>Die Haarlinie</b> im Aktionscluster der Zeile: sie trennte Kopieren von den Aktionen,
             die die Zeile verändern — die gibt es dort nicht mehr.</li>
@@ -1211,7 +1215,8 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
           <li><b>Betrag und Trinkgeld-Aufschlüsselung je Zeile.</b> Ohne sie wäre nicht mehr
             nachvollziehbar, wie die Personensumme zustande kommt.</li>
           <li><b>Das <code>paid</code>-Feld je Position</b> in der Datenbank. Es bleibt der Speicher,
-            nur setzt die Oberfläche es künftig ausschließlich im Block. Keine Migration.</li>
+            nur setzt die Oberfläche es künftig ausschließlich im Block. <code>paid_by</code> und
+            <code>paid_at</code> ergänzen, wer wann bestätigt hat; ein eigenes Gruppenfeld entfällt.</li>
           <li><b>Die Bezahl-Härtung aus PR&nbsp;#444</b> — synchron geöffneter Tab,
             <code>popup.opener = null</code>, frischer Abgleich vor dem Navigieren. Sie wandert
             mit an die Personensumme, sie wird nicht neu geschrieben.</li>
@@ -1226,8 +1231,8 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
           darstellen, die hier bewusst entfallen ist. <b>Vorschlag: so belassen</b> und in der
           Bestellung mündlich klären.</p></div>
       <div><h3>Zurückdrehen an der Personenmarke</h3>
-        <p>Bleibt erlaubt, mit Rückfrage und Namensnennung, wenn die Bestätigung von jemand anderem
-          stammt. <b>Vorschlag: unverändert.</b></p></div>
+        <p>Bleibt direkt erlaubt, auch wenn die Bestätigung von jemand anderem stammt. Der Tooltip
+          nennt weiterhin die bestätigende Person; eine Rückfrage gibt es nicht.</p></div>
       <div><h3>Gefülltes Markenglyph im Strich-Icon-Satz</h3>
         <p>Das offizielle PayPal-Monogramm ist eine Fläche und die einzige Ausnahme in einem sonst
           einheitlichen Satz. Es steht jetzt an zwei Stellen: am Bezahlen-Knopf und am „PayPal
@@ -1369,9 +1374,8 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
 
   const spacer = '<span class="food-order-item-action-spacer" aria-hidden="true"></span>';
 
-  // Die Zeile trägt keinen Bezahlt-Zustand und keinen Bezahlen-Knopf mehr:
-  // bezahlt wird ausschließlich pro Person. Was bleibt, ist die Angabe selbst,
-  // ihr Betrag, das Kopieren dieses Betrags und – an eigenen Zeilen – Löschen.
+  // Die Zeile trägt keinen eigenen Bezahlt-Schalter und keinen Bezahlen-Knopf
+  // mehr. Ihr abgeleiteter Zustand macht nur die Personenmarke sichtbar.
   function itemRowHtml(order, it, ui) {
     const tip = order.tipPercent || 0;
     const total = lineTotal(it, tip);
@@ -1394,7 +1398,7 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
       ? `<button type="button" class="icon-btn food-order-item-action food-order-item-remove" data-delete-item="${it.id}" ${it.paid ? 'disabled' : ''} title="${it.paid ? 'Als bezahlt bestätigt – erst die Marke der Person zurückdrehen' : 'Position entfernen'}">${icon('trash')}</button>`
       : spacer;
 
-    return `<div class="food-order-item">
+    return `<div class="food-order-item ${it.paid ? 'is-paid' : ''}">
       <span class="food-order-item-description"><strong>${qty} ×</strong> ${esc(it.description)}</span>
       ${amount}
       <span class="food-order-item-action-cluster">${copy}</span>
@@ -1592,11 +1596,12 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
 
   /* ---------- Dialoge ---------- */
 
-  function modalHtml({ title, text, items = [], note, confirm = 'Bestätigen', cancel = 'Abbrechen', danger = false }) {
+  function modalHtml({ title, text, items = [], copies = [], note, confirm = 'Bestätigen', cancel = 'Abbrechen', danger = false }) {
     return `<div class="rs-modal">
       <h3>${esc(title)}</h3>
       <p>${text}</p>
       ${items.length ? `<ul class="food-order-confirm-list">${items.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
+      ${copies.length ? `<div class="rs-modal-copy-actions">${copies.map((copy) => `<button type="button" class="btn btn-sm" data-modal-copy="${esc(copy.value)}">${icon('copy')} ${esc(copy.label)}</button>`).join('')}</div>` : ''}
       ${note ? `<p>${esc(note)}</p>` : ''}
       <div class="rs-modal-actions">
         <button type="button" class="btn btn-sm" data-modal-close>${esc(cancel)}</button>
@@ -1635,6 +1640,9 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
       };
       overlay.querySelector('[data-modal-close]').addEventListener('click', () => close(false));
       overlay.querySelector('[data-modal-confirm]').addEventListener('click', () => close(true));
+      overlay.querySelectorAll('[data-modal-copy]').forEach((button) => {
+        button.addEventListener('click', () => toast(`Kopiert: ${button.dataset.modalCopy}`));
+      });
       overlay.addEventListener('click', onBackdrop);
       overlay.querySelector('[data-modal-close]').focus();
     });
@@ -1727,8 +1735,12 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
         const sum = totalCentsOf(items, tip);
         const ok = await confirmDialog({
           title: 'Bezahlt?',
-          text: `${eur(sum)} für ${PLAYERS[key].name} an PayPal übergeben.`,
+          text: `${eur(sum)} für ${PLAYERS[key].name} an PayPal übergeben (paypal.me).`,
           items: items.map((i) => `${i.quantity} × ${i.description} — ${eur(lineTotal(i, tip))}`),
+          copies: [
+            { label: 'Summe kopieren', value: eur(sum) },
+            { label: 'PayPal-Adresse kopieren', value: order.paypalLink },
+          ],
           confirm: 'Ja, bezahlt', cancel: 'Noch nicht',
         });
         if (!ok) return;
@@ -1739,25 +1751,11 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
         const key = t.dataset.groupPaid;
         const items = groupsOf(order).get(key);
         const allPaid = items.every((i) => i.paid);
-        // Vorwärts ohne Rückfrage: ein Tipp hin, ein Tipp zurück, nichts geht
-        // verloren. Zurück mit Rückfrage: das löscht eine Bestätigung, die auch
-        // von jemand anderem stammen kann.
-        if (!allPaid) {
-          items.forEach((i) => { i.paid = true; i.paidByName = PLAYERS[ME].name; });
-          return draw();
-        }
-        const byNames = [...new Set(items.map((i) => i.paidByName).filter(Boolean))];
-        const foreign = byNames.some((n) => n !== PLAYERS[ME].name);
-        const ok = await confirmDialog({
-          title: `Bezahlt-Markierung für ${PLAYERS[key].name} aufheben?`,
-          text: `${PLAYERS[key].name} wird wieder als offen geführt.`,
-          note: foreign
-            ? `Bestätigt hat ${byNames.join(', ')} — nicht du.`
-            : undefined,
-          confirm: 'Aufheben',
+        // Beide Richtungen schalten direkt: ein Tipp hin, ein Tipp zurück.
+        items.forEach((i) => {
+          i.paid = !allPaid;
+          i.paidByName = allPaid ? null : PLAYERS[ME].name;
         });
-        if (!ok) return;
-        items.forEach((i) => { i.paid = false; i.paidByName = null; });
         return draw();
       }
     });
@@ -1801,15 +1799,13 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
   /* Statische Dialogtafeln */
   pick('dlg-paid').innerHTML = modalHtml({
     title: 'Bezahlt?',
-    text: '16,94 € für Jasmin an PayPal übergeben.',
+    text: '16,94 € für Jasmin an PayPal übergeben (paypal.me).',
     items: ['1 × Pizza Funghi — 11,99 €', '1 × Tiramisu — 4,95 €'],
+    copies: [
+      { label: 'Summe kopieren', value: '16,94 €' },
+      { label: 'PayPal-Adresse kopieren', value: 'https://paypal.me/luigi' },
+    ],
     confirm: 'Ja, bezahlt', cancel: 'Noch nicht',
-  });
-  pick('dlg-unmark').innerHTML = modalHtml({
-    title: 'Bezahlt-Markierung für Tobi aufheben?',
-    text: 'Tobi wird wieder als offen geführt.',
-    note: 'Bestätigt hat Tobi — nicht du.',
-    confirm: 'Aufheben',
   });
   pick('dlg-delete').innerHTML = modalHtml({
     title: '2 × Knoblauchbrot löschen?',
@@ -1894,7 +1890,7 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
 
   pick('states-group').innerHTML = [
     cell('Offen', paidMarkerHtml(false, { title: 'Jasmin als bezahlt markieren' }), 'Klick bestätigt die ganze Person. Keine Rückfrage — ein Tipp zurück.'),
-    cell('Bezahlt', paidMarkerHtml(true, { title: 'Bezahlt, bestätigt von Tobi – Markierung aufheben' }), 'Tooltip nennt, wer bestätigt hat. Klick öffnet die Rückfrage zum Aufheben.'),
+    cell('Bezahlt', paidMarkerHtml(true, { title: 'Bezahlt, bestätigt von Tobi – Markierung aufheben' }), 'Tooltip nennt, wer bestätigt hat. Klick hebt die Markierung direkt auf.'),
     cell('Geschlossen', paidMarkerHtml(true, { disabled: true }), 'Erst „Geschlossen“ sperrt die Marke — „Abgeschickt“ nicht.'),
   ].join('');
 

@@ -49,7 +49,6 @@ let consolidatedListDialog = null; // { orderId, el, ctx } | null
 export function prepareFoodOrderTarget(orderId) {
   if (!orderId) return;
   pendingOrderTargetId = orderId;
-  if (orderStartRuleApplied) expandedOpenOrders.add(orderId);
 }
 
 // Single-flight coordinator for GET /api/food-orders. load() (the first
@@ -1470,9 +1469,14 @@ export function renderFoodOrders(container, ctx) {
   if (cache !== null && openOrders.length > 1 && !orderStartRuleApplied) {
     orderStartRuleApplied = true;
     expandedOpenOrders.clear();
-    if (pendingOrderTargetId && openOrders.some((order) => order.id === pendingOrderTargetId)) {
-      expandedOpenOrders.add(pendingOrderTargetId);
-    }
+  }
+
+  // A direct search/push/Home target must be visible regardless of whether
+  // the order is still open or already lives in the collapsed history.
+  if (cache !== null && pendingOrderTargetId) {
+    const targetOrder = orders.find((order) => order.id === pendingOrderTargetId);
+    if (targetOrder?.open && openOrders.length > 1) expandedOpenOrders.add(targetOrder.id);
+    if (targetOrder && !targetOrder.open) historyOpen = true;
     pendingOrderTargetId = null;
   }
 

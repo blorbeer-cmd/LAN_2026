@@ -66,18 +66,26 @@ function wasSentRecently(group: ReminderGroup, now: number): boolean {
   return Boolean(
     db
       .prepare(
-        `SELECT 1 FROM push_log
-         WHERE group_id = ? AND event_id = ? AND audience = 'direct'
-           AND topic_key = ? AND created_at > ?
+        `SELECT 1 FROM food_order_payment_reminders
+         WHERE group_id = ? AND event_id = ? AND player_id = ? AND last_sent_at > ?
          LIMIT 1`,
       )
       .get(
         group.groupId,
         group.eventId,
-        reminderTopicKey(group.playerId, group.eventId),
+        group.playerId,
         now - FOOD_ORDER_PAYMENT_REMINDER_INTERVAL_MS,
       ),
   );
+}
+
+function recordReminderSent(group: ReminderGroup, now: number): void {
+  db.prepare(
+    `INSERT INTO food_order_payment_reminders (group_id, event_id, player_id, last_sent_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(group_id, event_id, player_id)
+     DO UPDATE SET last_sent_at = excluded.last_sent_at`,
+  ).run(group.groupId, group.eventId, group.playerId, now);
 }
 
 function reminderBody(orders: UnpaidOrderRow[]): string {
@@ -92,8 +100,8 @@ function reminderBody(orders: UnpaidOrderRow[]): string {
 /**
  * Sends at most one payment reminder per player and event in a rolling hour.
  * An order only becomes eligible one hour after it was sent/closed.
- * The database log is the durable deduplication source, so a process restart
- * cannot immediately send the same hourly reminder again.
+ * A dedicated database row is the durable deduplication source, so push-log
+ * pruning or a process restart cannot immediately send the reminder again.
  */
 export function runFoodOrderPaymentReminderOnce(now = Date.now()): number {
   let sent = 0;
@@ -115,7 +123,10 @@ export function runFoodOrderPaymentReminderOnce(now = Date.now()): number {
       { key: topicKey, expiresAt: now + FOOD_ORDER_PAYMENT_REMINDER_INTERVAL_MS },
       { groupId: group.groupId, eventId: group.eventId },
     );
-    if (delivery) sent += 1;
+    if (delivery) {
+      recordReminderSent(group, now);
+      sent += 1;
+    }
   }
   return sent;
 }

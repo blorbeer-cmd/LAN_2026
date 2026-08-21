@@ -53,7 +53,9 @@ Zweigen. Der bestehende E2E-Test, dessen `window.open`-Stub `null` zurückgibt, 
 
 Links nach rechts: `Menge × Bezeichnung │ Betrag │ Kopieren │ Löschen`.
 
-- **Keine Bezahlt-Marke** mehr an der Zeile, kein `is-paid`-Zustand, kein Durchstreichen.
+- **Keine Bezahlt-Marke** mehr an der Zeile. Wird die Person als bezahlt markiert, erhalten alle
+  ihre Positionszeilen den abgeleiteten `is-paid`-Zustand und Beschreibung sowie Betrag werden
+  durchgestrichen; beim Zurücksetzen verschwindet das direkt wieder.
 - **Keine Haarlinie** im Aktionscluster — sie trennte Kopieren von Aktionen, die es dort nicht mehr
   gibt.
 - **Betrag** bleibt Anzeige: die trinkgeldhaltige Summe, darunter klein `Menge × Einzelpreis` und
@@ -81,8 +83,10 @@ Der Kopf ist ein Flex-Container mit Geschwistern, **kein Knopf im Knopf**: links
   **durchgestrichen** und auf `--text-muted` gesetzt — dieselbe Erledigt-Sprache, die vorher die
   bezahlte Einzelposition hatte. Fehlt ein Preis: „Betrag offen“ (bzw. die Teilsumme gedämpft, wenn
   wenigstens ein Preis vorhanden ist).
-- **Kopieren** kopiert diese Summe. **PayPal** überträgt sie. Gesperrt bei: bereits bezahlt, Preis
-  unvollständig, Bestellung geschlossen — jeweils mit dem Grund in `title`/`aria-label`.
+- **Kopieren** kopiert diese Summe. **PayPal** hängt sie nur an einen einfachen `paypal.me`-Link an;
+  bei anderen PayPal-/Zahlungslinks wird nur die hinterlegte Adresse geöffnet. Gesperrt bei: bereits
+  bezahlt, Preis unvollständig, Bestellung geschlossen — jeweils mit dem Grund in
+  `title`/`aria-label`.
 - **Löschen** entfernt alle Positionen dieser Person auf einmal. Nur an der **eigenen** Gruppe (der
   Server erlaubt ohnehin nur eigene Positionen, also keine Rechteerweiterung), nur bei offener
   Bestellung, und `disabled`, sobald **irgendeine** ihrer Positionen bezahlt ist. Umsetzung als
@@ -100,31 +104,31 @@ der Marke, der Tooltip nennt die Wirkung des Klicks und im Zustand „Bezahlt“
 - **Vorwärts (offen → bezahlt): ohne Rückfrage.** Das ist die alltägliche Aktion und mit einem Tipp
   umkehrbar. Setzt alle Positionen der Person auf bezahlt; bereits bezahlte bleiben unangetastet,
   ihre `paid_by`-Zuordnung geht nicht verloren.
-- **Rückwärts (bezahlt → offen): mit Rückfrage.** Titel „Bezahlt-Markierung für &lt;Name&gt;
-  aufheben?“, Text „&lt;Name&gt; wird wieder als offen geführt.“ Stammt mindestens eine Bestätigung
-  von jemand anderem, zusätzlich „Bestätigt hat &lt;Namen&gt; — nicht du.“ Bestätigen blau, nicht rot.
+- **Rückwärts (bezahlt → offen): ohne Rückfrage.** Ein Tipp setzt alle Positionen der Person direkt
+  wieder auf offen. Der Tooltip nennt vor dem Klick weiterhin, wer die Zahlung bestätigt hat.
 - Gesperrt ist die Marke nur bei **geschlossener** Bestellung. „Abgeschickt“ sperrt sie nicht —
   danach wird erst richtig kassiert.
 - Der Zustand wird bei jedem Rendern aus den Positionen abgeleitet, nie als eigenes Feld gespeichert.
-  Das `paid`-Feld je Position bleibt der Speicher, die Oberfläche setzt es nur noch im Block. **Keine
-  Migration.**
+  Das `paid`-Feld je Position bleibt der Speicher, die Oberfläche setzt es nur noch im Block. Für die
+  Anzeige der bestätigenden Person ergänzt Migration 76 `paid_by` und `paid_at`; ein eigenes
+  Gruppenzustandsfeld gibt es nicht.
 
-### 6. Rückfragen — es bleiben vier
+### 6. Rückfragen — es bleiben drei
 
-1. **„Bezahlt?“** unmittelbar nach dem Öffnen des PayPal-Tabs: „&lt;Summe&gt; für &lt;Name&gt; an
-   PayPal übergeben.“ plus Liste der Positionen mit Beträgen. „Ja, bezahlt“ setzt die Person auf
-   bezahlt; „Noch nicht“, Escape und Klick daneben ändern nichts. **Nie einen Erfolg behaupten** —
-   Respawn bekommt von PayPal keine Rückmeldung.
-2. **Marke zurückdrehen** (siehe 5).
-3. **Position löschen**: „&lt;Menge&gt; × &lt;Bezeichnung&gt; löschen?“, „Lässt sich nicht rückgängig
+1. **„Bezahlt?“** unmittelbar nach dem Öffnen des PayPal-Tabs: Bei `paypal.me` steht, dass die Summe
+   übergeben wurde; sonst, dass PayPal geöffnet, die Summe dort aber nicht vorausgefüllt wurde.
+   Darunter stehen die Positionen mit Beträgen sowie kopierbare Aktionen für Summe und hinterlegte
+   PayPal-Adresse. „Ja, bezahlt“ setzt die Person auf bezahlt; „Noch nicht“, Escape und Klick daneben
+   ändern nichts. **Nie einen Erfolg behaupten** — Respawn bekommt von PayPal keine Rückmeldung.
+2. **Position löschen**: „&lt;Menge&gt; × &lt;Bezeichnung&gt; löschen?“, „Lässt sich nicht rückgängig
    machen.“, rot.
-4. **Ganze eigene Gruppe löschen**: „Deine &lt;n&gt; Positionen löschen?“, „Lässt sich nicht
+3. **Ganze eigene Gruppe löschen**: „Deine &lt;n&gt; Positionen löschen?“, „Lässt sich nicht
    rückgängig machen.“, **mit vollständiger Liste der betroffenen Positionen**, rot. Die Liste ist
    Pflicht: es ist die einzige unumkehrbare Sammelaktion im Bereich.
 
 Alle Dialoge nutzen die bestehende Struktur aus `server/public/js/modal.js` bzw. das vorhandene
-`confirmWithList()`. Keine neue Komponente. Ohne Rückfrage bleiben: Vorwärts-Abhaken und jedes
-Kopieren.
+`confirmWithList()`. Keine neue Komponente. Ohne Rückfrage bleiben: die Bezahlt-Marke in beide
+Richtungen und jedes Kopieren.
 
 ### 7. Zusammenfassungszeile der Bestellung
 
@@ -162,7 +166,8 @@ Hinzufügen-Formular · Bestellaktionen.
   Zeile. Sie erscheint nur im ausgeklappten Zustand und nur bei mehr als einer Bestellergruppe.
 - **Mehrere offene Bestellungen starten eingeklappt.** Eine einzige offene Bestellung bekommt gar
   keine Klapp-Hülle.
-- **Ein Direktlink klappt genau die verlinkte Bestellung auf.**
+- **Ein Direktlink klappt genau die verlinkte offene Bestellung auf.** Liegt sie bereits in der
+  Historie, öffnet er die Historie, sodass das Ziel unmittelbar sichtbar ist.
 - Eingeklappt sind nur Bestellergruppen, Werkzeugleiste, Hinzufügen-Formular und Bestellaktionen.
   Sichtbar bleiben Titel, Badge, Ersteller, Erstellzeitpunkt, Infokasten (mit Versandzeit, Hinweis,
   Bestellübersicht, Speisekarte, PayPal) und Zusammenfassungszeile.
@@ -224,6 +229,17 @@ Ebenso bewusst weggefallen: Wer für jemand anderen mitbestellt, kann seinen eig
 getrennt abhaken — die fremde Position steht unter seinem Namen und wird mitbezahlt. Wer trennen
 will, lässt die andere Person selbst eintragen.
 
+### 13. Stündliche Zahlungserinnerung
+
+- Erst wenn eine Bestellung seit mindestens einer Stunde abgeschickt ist, werden aktive Personen
+  mit noch unbezahlten Positionen berücksichtigt. Finalisierte Bestellungen werden nicht erinnert.
+- Pro Person und Event gibt es höchstens eine direkte Push-Erinnerung innerhalb einer rollierenden
+  Stunde. Ein eigener, per Migration angelegter Datenbankzustand hält diese Sperre auch nach
+  Neustarts und unabhängig vom auf 50 Einträge begrenzten Push-Verlauf fest.
+- Eine einzelne betroffene Bestellung verlinkt direkt auf sie; bei mehreren führt der Link allgemein
+  in den Essen-Bereich. Unter Home → Aktuell wird die bestehende Bestellzeile zum Zahlungshinweis
+  erweitert, statt einen doppelten Eintrag anzulegen.
+
 ## Tests
 
 Neue und geänderte Logik bekommt Tests für Happy Path, Validierungsfehler und Zustandskonflikte:
@@ -231,13 +247,16 @@ Neue und geänderte Logik bekommt Tests für Happy Path, Validierungsfehler und 
 - **Bezahlen pro Person**: Happy Path, Abbruch über „Noch nicht“, eine Position inzwischen anderswo
   bezahlt, eine Position inzwischen gelöscht, PayPal-Link inzwischen entfernt, Bestellung ohne
   PayPal-Link.
-- **Marke**: vorwärts ohne Dialog, rückwärts mit Dialog, Abbruch im Dialog, fremde Bestätigung wird
-  im Text benannt, gesperrt bei geschlossener Bestellung, nicht gesperrt bei „Abgeschickt“.
+- **Marke**: in beide Richtungen ohne Dialog, alle Positionen gemeinsam durchgestrichen bzw. wieder
+  aktiviert, gesperrt bei geschlossener Bestellung, nicht gesperrt bei „Abgeschickt“.
 - **Gruppen-Löschen**: Happy Path, Abbruch, gesperrt sobald eine Position bezahlt ist, nicht
   vorhanden an fremden Gruppen, Teil-Fehlschlag beim parallelen Löschen (Cache verwerfen, neu laden).
-- **Klapp-Zustand**: mehrere offene Bestellungen starten zu, Direktlink klappt genau eine auf, ein
-  Realtime-Rerender ändert den Zustand nicht, eine einzige offene Bestellung hat keine Klapp-Hülle.
+- **Klapp-Zustand**: mehrere offene Bestellungen starten zu, Direktlink klappt genau eine auf bzw.
+  öffnet bei abgeschicktem Ziel die Historie, ein Realtime-Rerender ändert den Zustand nicht, eine
+  einzige offene Bestellung hat keine Klapp-Hülle.
 - **Bestellübersicht**: für eine Person erreichbar, die weder Aufgeberin noch Admin ist.
+- **Erinnerung**: frühestens eine Stunde nach dem Abschicken, Aggregation je Person/Event, dauerhafte
+  Stundensperre auch ohne Push-Log-Eintrag und Ende nach vollständiger Bezahlung.
 
 Der Essensbestellung-E2E-Flow in `server/src/test/e2e/flows.fixture.ts` wird mitgeführt, nicht am
 Ende nachgezogen. Tests nicht löschen, lockern oder mit Timeouts kaschieren.
@@ -251,6 +270,7 @@ Ende nachgezogen. Tests nicht löschen, lockern oder mit Timeouts kaschieren.
   `.food-order-add-button` anpassen.
 - `server/public/js/app.js` — `focusPendingSearchTarget()`.
 - `server/src/routes/foodOrders.ts` — Push-URL mit Bestell-ID.
+- `server/src/foodOrderReminders.ts` und `server/src/db.ts` — stündlicher Job und dauerhafte Sperre.
 - `server/src/test/e2e/flows.fixture.ts` und die Essen-Tests.
 - `server/DESIGN_SYSTEM.md` — Abschnitt „Food orders“ im selben PR nachziehen.
 - `docs/plans/food-order-direct-payment.md` — an den Zielzustand angleichen (steht auf Runde 6).

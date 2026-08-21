@@ -648,22 +648,26 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   tip-inclusive person sum, a copy action, a PayPal action when the order has a link, and one two-state
   paid marker. `Offen` uses a dashed circle; `Bezahlt` uses a green check and names the confirmer.
   The marker is derived from the group's items, is available to every authenticated member, and is
-  disabled only after finalization. A forward mark needs no confirmation; reversing it uses the shared
-  confirmation dialog and names existing confirmers. A group delete is available only for the current
-  member's open, entirely unpaid group and confirms the complete position list.
+  disabled only after finalization. Both marking and reversing happen directly without a confirmation;
+  the paid marker's tooltip names existing confirmers. A group delete is available only for the current
+  member's open, entirely unpaid group and confirms the complete position list. When a group is paid,
+  every one of its position descriptions and amounts is struck through; reversing removes that treatment.
 
   The PayPal button is the only payment handoff. It opens a blank tab synchronously, clears its opener,
   refreshes the order immediately before navigation, aborts when the order or any group item vanished,
   was paid elsewhere, lost its link, or has an incomplete price, and then navigates to the exact
-  PayPal URL. A `Bezahlt?` dialog opens immediately after navigation and lists every displayed
-  position amount; only the affirmative answer marks all group items paid. The local `paypal` icon
-  is the filled brand path in `icons.js`; other icons remain line icons.
+  stored URL, appending the amount only for a bare `paypal.me` recipient link. A `Bezahlt?` dialog
+  opens immediately after navigation, explains whether the amount was prefilled, lists every displayed
+  position amount, and offers copy actions for both the total and stored PayPal address; only the
+  affirmative answer marks all group items paid. The local `paypal` icon is the filled brand path in
+  `icons.js`; other icons remain line icons.
 
   Position rows contain only quantity × description, amount, copy and delete. The displayed amount
   includes quantity and tip; copy uses exactly that display string. There is no position-level paid
-  marker, strike-through, selection state or row divider. Own open positions can be deleted after the
-  existing confirmation; paid positions disable deletion. Foreign and unavailable actions keep their
-  reserved spacer so columns stay aligned. The order summary counts quantity-weighted positions,
+  marker, selection state or row divider; their strike-through is derived from the person-level paid
+  state. Own open positions can be deleted after the existing confirmation; paid positions disable
+  deletion. Foreign and unavailable actions keep their reserved spacer so columns stay aligned. The
+  order summary counts quantity-weighted positions,
   people, fully paid people and the open sum of people not fully confirmed. Missing prices show the
   actual priced subtotal with `Preise unvollständig`; the total is labeled `(unvollständig)`.
 
@@ -674,9 +678,15 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   add form and lifecycle actions in that order. The toolbar contains only
   `Alle ausklappen`/`Alle einklappen`, aligned left. When more than one order is open, each card
   starts collapsed; a sibling `aria-expanded` button controls its body, and a search/push target
-  expands exactly that card. A single open order has no card-collapse chrome. The expanded state lives
-  in module state and survives live re-renders; history remains its own initially collapsed section.
+  expands exactly that card. A target for a sent order opens the history section instead. A single open
+  order has no card-collapse chrome. The expanded state lives in module state and survives live
+  re-renders; history remains its own initially collapsed section without a target.
   The add action is a normal `.btn` spanning the last grid columns and stretching to field height.
+
+  One hour after an order is sent, unpaid active members become eligible for a direct hourly payment
+  reminder. Home's `Aktuell` list enriches the existing order row instead of adding a duplicate. The
+  reminder uses the same order deep link and a durable per-player/event send timestamp independent of
+  the bounded push history.
 - **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its four area tabs
   are sorted alphabetically by their German label: „An- & Abreise“, „Events“, „Packliste“ and
   „To-Do“ (the last two formerly the separate „Checkliste“ and „An- & Abreise“ areas;
