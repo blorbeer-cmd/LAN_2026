@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,6 +26,56 @@ export function selectedSourceFiles(partition, coreSelection = 'all') {
   return selectedE2EFiles(partition, coreSelection);
 }
 
+function metadataFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) return metadataFiles(entryPath);
+    return entry.isFile() && entry.name === 'metadata.json' ? [entryPath] : [];
+  });
+}
+
+export function failedE2EOwnerFiles(artifactDirectory) {
+  if (!artifactDirectory || !existsSync(artifactDirectory)) {
+    throw new Error('Gezielter E2E-Retry benötigt ein vorhandenes E2E_ARTIFACT_DIR.');
+  }
+
+  const files = metadataFiles(artifactDirectory);
+  if (files.length === 0) {
+    throw new Error('Gezielter E2E-Retry fand keine metadata.json im E2E_ARTIFACT_DIR.');
+  }
+
+  const owners = new Set();
+  for (const file of files) {
+    let metadata;
+    try {
+      metadata = JSON.parse(readFileSync(file, 'utf8'));
+    } catch (error) {
+      throw new Error(`Ungültige E2E-Diagnosemetadaten: ${file}`, { cause: error });
+    }
+    const ownerFile = metadata?.ownerFile;
+    if (
+      typeof ownerFile !== 'string'
+      || /[\\/]/.test(ownerFile)
+      || !ownerFile.endsWith('.e2e.test.ts')
+    ) {
+      throw new Error(`Ungültige E2E-Owner-Datei in ${file}: ${String(ownerFile)}`);
+    }
+    owners.add(ownerFile);
+  }
+  return [...owners];
+}
+
+export function selectedRetrySourceFiles(sourceFiles, artifactDirectory) {
+  const owners = new Set(failedE2EOwnerFiles(artifactDirectory));
+  const outsideSelection = [...owners].filter((file) => !sourceFiles.includes(file));
+  if (outsideSelection.length > 0) {
+    throw new Error(
+      `E2E-Retry-Owner liegt außerhalb der gewählten Partition: ${outsideSelection.join(', ')}`,
+    );
+  }
+  return sourceFiles.filter((file) => owners.has(file));
+}
+
 function main() {
   const partition = process.argv[2] ?? 'all';
   const coreSelection = process.argv[3] ?? 'all';
@@ -34,7 +84,11 @@ function main() {
     .sort();
   validateE2EPartitions(sourceFiles);
 
-  const compiledFiles = selectedSourceFiles(partition, coreSelection).map((file) =>
+  const selectedFiles = selectedSourceFiles(partition, coreSelection);
+  const filesToRun = process.env.E2E_RETRY_FAILED_ONLY === '1'
+    ? selectedRetrySourceFiles(selectedFiles, process.env.E2E_ARTIFACT_DIR)
+    : selectedFiles;
+  const compiledFiles = filesToRun.map((file) =>
     path.join(compiledDir, file.replace(/\.ts$/, '.js')),
   );
   const missingCompiled = compiledFiles.filter((file) => !existsSync(file));

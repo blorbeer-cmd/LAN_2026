@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 import {
   CORE_E2E_DOMAINS,
   E2E_PARTITIONS,
   E2E_SMOKE_FILES,
+  failedE2EOwnerFiles,
   selectedCoreDomains,
+  selectedRetrySourceFiles,
   selectedSourceFiles,
   validateE2EPartitions,
 } from './run-e2e-partition.mjs';
@@ -61,4 +66,46 @@ test('Core domains select stable, deduplicated fixture sets', () => {
   ]);
   assert.deepEqual(selectedSourceFiles('core'), E2E_PARTITIONS.core);
   assert.throws(() => selectedSourceFiles('core', 'unknown'), /Ungültige Core-E2E-Auswahl/);
+});
+
+test('targeted retries read, deduplicate, and preserve the selected partition order', (context) => {
+  const artifactDirectory = mkdtempSync(path.join(tmpdir(), 'e2e-retry-'));
+  context.after(() => rmSync(artifactDirectory, { recursive: true, force: true }));
+  const selected = E2E_PARTITIONS.arcade.slice(0, 3);
+  for (const [directory, ownerFile] of [
+    ['failure-a', selected[2]],
+    ['failure-b', selected[0]],
+    ['nested/failure-c', selected[2]],
+  ]) {
+    const target = path.join(artifactDirectory, directory);
+    mkdirSync(target, { recursive: true });
+    writeFileSync(path.join(target, 'metadata.json'), JSON.stringify({ ownerFile }));
+  }
+
+  assert.deepEqual(failedE2EOwnerFiles(artifactDirectory), [selected[2], selected[0]]);
+  assert.deepEqual(selectedRetrySourceFiles(selected, artifactDirectory), [selected[0], selected[2]]);
+});
+
+test('targeted retries fail closed without trustworthy in-scope owner metadata', (context) => {
+  const artifactDirectory = mkdtempSync(path.join(tmpdir(), 'e2e-retry-'));
+  context.after(() => rmSync(artifactDirectory, { recursive: true, force: true }));
+  assert.throws(
+    () => failedE2EOwnerFiles(path.join(artifactDirectory, 'missing')),
+    /vorhandenes E2E_ARTIFACT_DIR/,
+  );
+  assert.throws(() => failedE2EOwnerFiles(artifactDirectory), /keine metadata\.json/);
+
+  const failureDirectory = path.join(artifactDirectory, 'failure');
+  mkdirSync(failureDirectory);
+  writeFileSync(path.join(failureDirectory, 'metadata.json'), JSON.stringify({ ownerFile: '../bad.ts' }));
+  assert.throws(() => failedE2EOwnerFiles(artifactDirectory), /Ungültige E2E-Owner-Datei/);
+
+  writeFileSync(
+    path.join(failureDirectory, 'metadata.json'),
+    JSON.stringify({ ownerFile: E2E_PARTITIONS.arcade[0] }),
+  );
+  assert.throws(
+    () => selectedRetrySourceFiles(E2E_PARTITIONS.core, artifactDirectory),
+    /außerhalb der gewählten Partition/,
+  );
 });

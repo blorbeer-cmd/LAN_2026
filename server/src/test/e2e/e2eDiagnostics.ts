@@ -8,6 +8,7 @@ interface DiagnosticResources {
   testName: string;
   browser: Browser;
   server?: E2EServer;
+  ownerFile?: string;
 }
 
 interface TrackedContext {
@@ -15,6 +16,7 @@ interface TrackedContext {
   label: string;
   tracing: boolean;
   traceIndex: number;
+  closeAfterRun: boolean;
 }
 
 const MAX_BROWSER_LOG_LINES = 500;
@@ -33,6 +35,13 @@ function artifactSlug(value: string): string {
 function errorText(error: unknown): string {
   if (error instanceof Error) return error.stack ?? error.message;
   return String(error);
+}
+
+export function e2eOwnerFileFromArgv(argv: readonly string[] = process.argv): string | null {
+  const entryFile = path.basename(argv[1] ?? '');
+  if (entryFile.endsWith('.e2e.test.ts')) return entryFile;
+  if (entryFile.endsWith('.e2e.test.js')) return entryFile.replace(/\.js$/, '.ts');
+  return null;
 }
 
 class E2EDiagnosticRun {
@@ -74,6 +83,7 @@ class E2EDiagnosticRun {
       label: artifactSlug(label),
       tracing: false,
       traceIndex: this.contexts.size + 1,
+      closeAfterRun: false,
     };
     this.contexts.set(context, tracked);
     context.pages().forEach((page, index) => this.instrumentPage(page, `${tracked.label}-${index + 1}`));
@@ -96,6 +106,11 @@ class E2EDiagnosticRun {
         this.appendBrowserLog(`[${tracked.label}] trace start failed: ${errorText(error)}`);
       }
     }
+  }
+
+  async deferContextClose(context: BrowserContext): Promise<void> {
+    await this.trackContext(context, 'deferred-context');
+    this.contexts.get(context)!.closeAfterRun = true;
   }
 
   async trackExistingContexts(): Promise<void> {
@@ -166,6 +181,7 @@ class E2EDiagnosticRun {
         `${JSON.stringify(
           {
             testName: this.resources.testName,
+            ownerFile: this.resources.ownerFile ?? e2eOwnerFileFromArgv(),
             error: errorText(error),
             serverExit: serverDiagnostics.exit,
             pages: contexts.flatMap((context) =>
@@ -188,10 +204,31 @@ class E2EDiagnosticRun {
     // test is only staging data. Keep the artifact tree focused on failures.
     await rm(this.directory, { recursive: true, force: true });
   }
+
+  async closeDeferredContexts(): Promise<void> {
+    for (const tracked of this.contexts.values()) {
+      if (!tracked.closeAfterRun) continue;
+      try {
+        await tracked.context.close();
+      } catch (error) {
+        console.error(
+          `[e2e diagnostics] deferred context cleanup failed (${tracked.label}): ${errorText(error)}`,
+        );
+      }
+    }
+  }
 }
 
 export async function trackE2EContext(context: BrowserContext, label: string): Promise<void> {
   await activeRun?.trackContext(context, label);
+}
+
+export async function deferE2EContextClose(context: BrowserContext): Promise<void> {
+  if (activeRun) {
+    await activeRun.deferContextClose(context);
+    return;
+  }
+  await context.close();
 }
 
 export function createE2EDiagnosticTest(
@@ -220,7 +257,11 @@ export async function runWithE2EDiagnostics(
     }
     throw error;
   } finally {
-    await diagnosticRun.finish();
-    if (activeRun === diagnosticRun) activeRun = null;
+    try {
+      await diagnosticRun.finish();
+    } finally {
+      await diagnosticRun.closeDeferredContexts();
+      if (activeRun === diagnosticRun) activeRun = null;
+    }
   }
 }
