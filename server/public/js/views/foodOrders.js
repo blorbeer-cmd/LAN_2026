@@ -250,6 +250,10 @@ function lineTotalCents(item, tipPercent) {
   return addTipToCents(item.priceCents * (item.quantity ?? 1), tipPercent);
 }
 
+function sumLineTotals(items, tipPercent) {
+  return items.reduce((sum, item) => sum + (lineTotalCents(item, tipPercent) ?? 0), 0);
+}
+
 // AP3.6 startup rule, applied at most once per order per session (AP3.7):
 // the current identity's own group starts open, the creator sees every
 // group open, and a fully paid group always starts collapsed regardless.
@@ -345,7 +349,7 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
   const allPaid = groupPaymentState(items) === 'paid';
   const hasPaid = items.some((i) => i.paid);
   const allPriced = items.every((i) => i.priceCents !== null);
-  const totalCents = items.reduce((sum, i) => sum + (lineTotalCents(i, tipPercent) ?? 0), 0);
+  const totalCents = sumLineTotals(items, tipPercent);
   const meta = groupMetaLine(items);
 
   const headText = `
@@ -464,15 +468,11 @@ function renderOrderOverview(order) {
   const totalQty = order.items.reduce((s, i) => s + (i.quantity ?? 1), 0);
   const paidPeopleCount = [...itemsGroupedByPlayer(order).values()].filter((items) => items.every((i) => i.paid)).length;
   const allPriced = order.items.every((i) => i.priceCents !== null);
-  const totalCents = addTipToCents(order.totalCents, tipPercent);
-  const pricedTotalCents = addTipToCents(
-    order.items.reduce((sum, i) => sum + (i.priceCents === null ? 0 : i.priceCents * (i.quantity ?? 1)), 0),
-    tipPercent,
-  );
-  const totalLabel = allPriced ? formatCents(totalCents) : formatCents(pricedTotalCents);
+  const totalCents = sumLineTotals(order.items, tipPercent);
+  const totalLabel = formatCents(totalCents);
   const openCents = [...itemsGroupedByPlayer(order).values()]
     .filter((items) => !items.every((i) => i.paid))
-    .reduce((sum, items) => sum + items.reduce((groupSum, i) => groupSum + (lineTotalCents(i, tipPercent) ?? 0), 0), 0);
+    .reduce((sum, items) => sum + sumLineTotals(items, tipPercent), 0);
 
   const parts = [
     `${totalQty} ${totalQty === 1 ? 'Position' : 'Positionen'} von ${peopleCount} ${peopleCount === 1 ? 'Person' : 'Personen'}`,
@@ -491,7 +491,7 @@ function renderOrderOverview(order) {
 function renderOrderSummaryTotal(order) {
   if (order.items.length === 0) return '';
   const tipPercent = order.tipPercent || 0;
-  const totalCents = addTipToCents(order.totalCents, tipPercent);
+  const totalCents = sumLineTotals(order.items, tipPercent);
   const incomplete = order.items.some((item) => item.priceCents === null);
   const suffix = incomplete ? ' (unvollständig)' : '';
   const label = tipPercent > 0 ? `Gesamtsumme inkl. ${tipPercent}% Trinkgeld${suffix}` : `Gesamtsumme${suffix}`;
@@ -835,8 +835,8 @@ function renderClosedOrder(order, myId) {
         <span class="badge ${finalized ? 'badge-offline' : 'badge-paused'}">${finalized ? 'Geschlossen' : 'Abgeschickt'}</span>
       </div>
       ${renderDetails(order, { locked: finalized })}
-      ${renderCardToolbar(order)}
       ${renderOrderOverview(order)}
+      ${renderCardToolbar(order)}
       <div class="food-order-items">${itemsHtml}</div>
       ${renderOrderSummary(order)}
       ${
@@ -1138,18 +1138,18 @@ export function buildConsolidatedRows(items) {
   return [...rows.values()].sort((a, b) => a.description.localeCompare(b.description, 'de'));
 }
 
-function consolidatedTotals(rows, tipPercent) {
-  const pricedRows = rows.filter((r) => r.priceCents !== null);
-  const incomplete = rows.length > pricedRows.length;
-  const subtotalCents = pricedRows.reduce((sum, r) => sum + r.priceCents * r.quantity, 0);
-  const totalCents = addTipToCents(subtotalCents, tipPercent);
+function consolidatedTotals(items, tipPercent) {
+  const pricedItems = items.filter((item) => item.priceCents !== null);
+  const incomplete = items.length > pricedItems.length;
+  const subtotalCents = pricedItems.reduce((sum, item) => sum + item.priceCents * (item.quantity ?? 1), 0);
+  const totalCents = sumLineTotals(items, tipPercent);
   return { incomplete, subtotalCents, totalCents };
 }
 
 function renderConsolidatedListBody(order) {
   const rows = buildConsolidatedRows(order.items);
   const tipPercent = order.tipPercent || 0;
-  const { incomplete, subtotalCents, totalCents } = consolidatedTotals(rows, tipPercent);
+  const { incomplete, subtotalCents, totalCents } = consolidatedTotals(order.items, tipPercent);
   const rowsHtml = rows.length
     ? rows
         .map(

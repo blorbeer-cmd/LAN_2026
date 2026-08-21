@@ -213,6 +213,11 @@ test('PATCH /api/food-orders/:id/items/:itemId marks and unmarks an item as paid
   assert.equal(markedItem.paidByName, 'Hungriger Bob');
   assert.ok(typeof markedItem.paidAt === 'number' && markedItem.paidAt > 0);
 
+  const paidDelete = await request(app)
+    .delete(`/api/food-orders/${orderId}/items/${aliceItemId}`)
+    .send({ playerId: alice.id });
+  assert.equal(paidDelete.status, 409);
+
   // A stale second confirmation must not overwrite the first confirmer. The
   // route's conditional update turns the read-then-write race into a 409.
   const duplicateMark = await request(app)

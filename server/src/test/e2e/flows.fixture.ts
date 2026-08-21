@@ -2144,9 +2144,9 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
   type FoodScenario = { id: string; itemIds: string[]; title: string };
   type ScenarioItem = { description: string; priceCents?: number };
 
-  const createScenario = async (title: string, items: ScenarioItem[], paypalLink = 'https://paypal.me/fresh-test'): Promise<FoodScenario> => {
+  const createScenario = async (title: string, items: ScenarioItem[], paypalLink = 'https://paypal.me/fresh-test', tipPercent?: number): Promise<FoodScenario> => {
     const orderResponse = await page.request.post(`${BASE_URL}/api/food-orders`, {
-      data: { playerId: alice.id, title, paypalLink },
+      data: { playerId: alice.id, title, paypalLink, ...(tipPercent === undefined ? {} : { tipPercent }) },
     });
     assert.equal(orderResponse.status(), 201, await orderResponse.text());
     const order = await orderResponse.json() as { id: string };
@@ -2288,8 +2288,16 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
   const mixedDeleteRoute = async (route: import('playwright').Route) => {
     if (!mixedDeleteIntercepted && route.request().method() === 'GET') {
       mixedDeleteIntercepted = true;
-      const response = await page.request.delete(`${BASE_URL}/api/food-orders/${mixedDeleteScenario.id}/items/${mixedDeleteScenario.itemIds[0]}`, { data: { playerId: alice.id } });
-      assert.equal(response.status(), 200, await response.text());
+      // The real DELETE route correctly refuses paid positions. Simulate a
+      // stale server response instead, so this test still covers a previously
+      // paid legacy position disappearing from the complete initial group.
+      const response = await route.fetch();
+      const payload = await response.json() as { orders: Array<{ id: string; items: Array<{ id: string }> }> };
+      const targetOrder = payload.orders.find((order) => order.id === mixedDeleteScenario.id);
+      assert.ok(targetOrder);
+      targetOrder.items = targetOrder.items.filter((item) => item.id !== mixedDeleteScenario.itemIds[0]);
+      await route.fulfill({ response, json: payload });
+      return;
     }
     await route.continue();
   };
@@ -2319,6 +2327,19 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
   await page.waitForSelector('.food-order-paid-marker:has-text("Bezahlt")');
   assert.equal(await zeroGroup.locator('.food-order-group-amount').evaluate((el) => getComputedStyle(el).textDecorationLine), 'line-through');
   await cleanupScenario(zeroScenario);
+
+  // Tip rounding is defined per payable line, so the group sum, order
+  // overview, total row and PayPal handoff must agree even when aggregation
+  // would round differently (two 1-cent lines at 50% tip are 0,04 €).
+  const roundingScenario = await createScenario('Trinkgeld-Rundung', [
+    { description: 'Ein-Cent-Position A', priceCents: 1 },
+    { description: 'Ein-Cent-Position B', priceCents: 1 },
+  ], 'https://paypal.me/rounding-test', 50);
+  const { card: roundingCard, group: roundingGroup } = await openScenario(roundingScenario);
+  assert.equal(await roundingGroup.locator('.food-order-group-amount').innerText(), '0,04 €');
+  assert.match(await roundingCard.locator('.food-order-overview').innerText(), /Gesamt 0,04 €/);
+  assert.match(await roundingCard.locator('.food-order-total').innerText(), /0,04 €/);
+  await cleanupScenario(roundingScenario);
 
   // While the first fresh GET is paused, an item add triggers the realtime
   // refresh path. The shared single-flight coordinator must keep the PayPal

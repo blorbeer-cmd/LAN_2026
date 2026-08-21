@@ -391,11 +391,14 @@ foodOrdersRouter.delete('/:id/items/:itemId', ...withBodyPlayerIdentity, (req, r
 
   const { playerId } = req.body ?? {};
   const item = db
-    .prepare('SELECT id, player_id FROM food_order_items WHERE id = ? AND order_id = ?')
-    .get(req.params.itemId, order.id) as { id: string; player_id: string } | undefined;
+    .prepare('SELECT id, player_id, paid FROM food_order_items WHERE id = ? AND order_id = ?')
+    .get(req.params.itemId, order.id) as { id: string; player_id: string; paid: number } | undefined;
   if (!item) return res.status(404).json({ error: 'Position nicht gefunden.' });
   if (item.player_id !== playerId) {
     return res.status(403).json({ error: 'Nur eigene Positionen können entfernt werden.' });
+  }
+  if (item.paid) {
+    return res.status(409).json({ error: 'Bezahlte Positionen können nicht entfernt werden.' });
   }
 
   db.prepare('DELETE FROM food_order_items WHERE id = ?').run(item.id);
