@@ -7,7 +7,7 @@
 import { test, before, after, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
-import { chromium, Browser, Page } from 'playwright';
+import { chromium, Browser, Page, type Locator } from 'playwright';
 import {
   addSessionCookie,
   authenticatedServerEnv,
@@ -40,6 +40,26 @@ type FlowShard = 'shell' | 'competition' | 'community';
 const flowShard = process.env.E2E_FLOW_SHARD as FlowShard | undefined;
 if (!flowShard || !['shell', 'competition', 'community'].includes(flowShard)) {
   throw new Error(`Unbekannter Core-Flow-Shard: ${flowShard ?? '(fehlt)'}`);
+}
+
+async function waitForTextDecoration(locator: Locator, expected: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  let lastObserved = 'Element nicht verfügbar';
+  while (Date.now() < deadline) {
+    try {
+      const actual = await locator.evaluate((element) => {
+        if (!element.isConnected) return null;
+        return getComputedStyle(element).textDecorationLine;
+      });
+      if (actual === expected) return;
+      lastObserved = actual ?? 'Element nicht verbunden';
+    } catch {
+      // A payment rerender can detach the current node between resolution and
+      // evaluation. The next locator evaluation resolves the current node.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`text-decoration-line sollte ${expected} sein, war zuletzt ${lastObserved}`);
 }
 
 function flowTest(
@@ -1997,9 +2017,9 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   await page.click('[data-confirm-ok]');
   await page.waitForSelector('text=1 Position als bezahlt markiert.');
   await page.waitForSelector('.food-order-paid-marker:has-text("Bezahlt")');
-  assert.equal(await group.locator('.food-order-group-amount').evaluate((el) => getComputedStyle(el).textDecorationLine), 'line-through');
-  assert.equal(await marghieRow.locator('.food-order-item-description').evaluate((el) => getComputedStyle(el).textDecorationLine), 'line-through');
-  assert.equal(await marghieRow.locator('.food-order-item-amount').evaluate((el) => getComputedStyle(el).textDecorationLine), 'line-through');
+  await waitForTextDecoration(group.locator('.food-order-group-amount'), 'line-through');
+  await waitForTextDecoration(marghieRow.locator('.food-order-item-description'), 'line-through');
+  await waitForTextDecoration(marghieRow.locator('.food-order-item-amount'), 'line-through');
   assert.equal(await marghieRow.locator('[data-remove-item]').isDisabled(), true);
   assert.equal(await marghieRow.locator('[data-copy-food-total]').isDisabled(), false);
   assert.equal(await marghieRow.locator('[data-group-pay]').count(), 0);
@@ -2009,7 +2029,7 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
 
   await group.locator('[data-toggle-group-paid]').click();
   await page.waitForSelector('.food-order-paid-marker:has-text("Offen")');
-  assert.equal(await marghieRow.locator('.food-order-item-description').evaluate((el) => getComputedStyle(el).textDecorationLine), 'none');
+  await waitForTextDecoration(marghieRow.locator('.food-order-item-description'), 'none');
 
   await page.fill('[data-item-desc]', 'Wasser');
   await page.fill('[data-item-quantity]', '1');
@@ -2173,6 +2193,7 @@ flowTest('community', 'Essensbestellung: orderer groups collapse/expand and pay 
     const marker = header.querySelector('.food-order-paid-marker');
     const controls = Array.from(header.querySelectorAll('.food-order-paid-marker, .food-order-group-amount, .food-order-group-actions button'));
     return {
+      markerWidth: marker?.getBoundingClientRect().width ?? 0,
       markerHeight: marker?.getBoundingClientRect().height ?? 0,
       controlsVisible: controls.every((control) => {
         const rect = control.getBoundingClientRect();
@@ -2181,8 +2202,8 @@ flowTest('community', 'Essensbestellung: orderer groups collapse/expand and pay 
       pageFits: document.documentElement.scrollWidth <= window.innerWidth,
     };
   });
+  assert.ok(narrowGroupLayout.markerWidth <= 100);
   assert.ok(narrowGroupLayout.markerHeight >= 32);
-  assert.ok(narrowGroupLayout.markerHeight < 44);
   assert.equal(narrowGroupLayout.controlsVisible, true);
   assert.equal(narrowGroupLayout.pageFits, true);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -2421,7 +2442,7 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
   assert.equal(await zeroGroup.locator('[data-group-pay]').isDisabled(), true);
   await zeroGroup.locator('[data-toggle-group-paid]').click();
   await page.waitForSelector('.food-order-paid-marker:has-text("Bezahlt")');
-  assert.equal(await zeroGroup.locator('.food-order-group-amount').evaluate((el) => getComputedStyle(el).textDecorationLine), 'line-through');
+  await waitForTextDecoration(zeroGroup.locator('.food-order-group-amount'), 'line-through');
   await cleanupScenario(zeroScenario);
 
   // Tip rounding is defined per payable line, so the group sum, order

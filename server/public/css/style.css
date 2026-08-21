@@ -4318,6 +4318,7 @@ input[type='number'].tournament-score-input {
   }
   .food-order-paid-marker {
     grid-column: 1;
+    justify-self: start;
   }
   .food-order-group-amount-wrap {
     grid-column: 2;

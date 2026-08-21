@@ -1189,6 +1189,9 @@ async function handleRemoveGroup(order, playerId, myId, ctx) {
     // snapshot and must survive this bulk action.
     const initialItemIds = new Set(items.map((item) => item.id));
     const itemsToRemove = freshItems.filter((item) => initialItemIds.has(item.id));
+    // Invalidate GETs that may have started while the DELETEs are in flight.
+    // Otherwise an older response could reintroduce the deleted positions.
+    foodOrderScopeVersion += 1;
     await Promise.all(itemsToRemove.map((item) => api.foodOrders.removeItem(order.id, item.id, myId)));
     const currentOrder = cache?.find((candidate) => candidate.id === order.id);
     if (currentOrder) {
