@@ -1939,6 +1939,8 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   await page.waitForSelector('text=1 Position als bezahlt markiert.');
   await page.waitForSelector('.food-order-paid-marker:has-text("Bezahlt")');
   assert.equal(await group.locator('.food-order-group-amount').evaluate((el) => getComputedStyle(el).textDecorationLine), 'line-through');
+  assert.equal(await marghieRow.locator('.food-order-item-description').evaluate((el) => getComputedStyle(el).textDecorationLine), 'line-through');
+  assert.equal(await marghieRow.locator('.food-order-item-amount').evaluate((el) => getComputedStyle(el).textDecorationLine), 'line-through');
   assert.equal(await marghieRow.locator('[data-remove-item]').isDisabled(), true);
   assert.equal(await marghieRow.locator('[data-copy-food-total]').isDisabled(), false);
   assert.equal(await marghieRow.locator('[data-group-pay]').count(), 0);
@@ -1947,15 +1949,8 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   assert.match((await group.locator('.food-order-paid-marker').getAttribute('title')) ?? '', new RegExp('Bezahlt, bestätigt von ' + alice.name));
 
   await group.locator('[data-toggle-group-paid]').click();
-  await page.waitForSelector(`.modal h2:has-text("Bezahlt-Markierung für ${alice.name} aufheben?")`);
-  assert.equal(await page.locator('.food-order-confirm-list').count(), 1);
-  assert.match(await page.locator('.modal-body').innerText(), new RegExp(`${alice.name} wird wieder als offen geführt\\.`));
-  await page.click('[data-confirm-cancel]');
-  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
-  assert.equal(await group.locator('.food-order-paid-marker').getAttribute('aria-pressed'), 'true');
-  await group.locator('[data-toggle-group-paid]').click();
-  await page.click('[data-confirm-ok]');
   await page.waitForSelector('.food-order-paid-marker:has-text("Offen")');
+  assert.equal(await marghieRow.locator('.food-order-item-description').evaluate((el) => getComputedStyle(el).textDecorationLine), 'none');
 
   await page.fill('[data-item-desc]', 'Wasser');
   await page.fill('[data-item-quantity]', '1');
@@ -2107,14 +2102,15 @@ flowTest('community', 'Essensbestellung: orderer groups collapse/expand and pay 
   assert.equal(await bobGroupAfterLink.locator('.food-order-item .food-order-paid-marker').count(), 0);
   assert.equal(await bobGroupAfterLink.locator('[data-remove-group]').count(), 0);
 
-  // The group header has a deliberately wide payment marker plus three
-  // action slots. At the narrowest supported phone width every control must
-  // remain inside the header instead of being clipped by the card.
+  // The compact payment marker plus three action slots must remain inside the
+  // header at the narrowest supported phone width instead of being clipped.
   await page.setViewportSize({ width: 320, height: 720 });
   const narrowGroupLayout = await bobGroupAfterLink.locator('.food-order-group-header').evaluate((header) => {
     const box = header.getBoundingClientRect();
+    const marker = header.querySelector('.food-order-paid-marker');
     const controls = Array.from(header.querySelectorAll('.food-order-paid-marker, .food-order-group-amount, .food-order-group-actions button'));
     return {
+      markerHeight: marker?.getBoundingClientRect().height ?? 0,
       controlsVisible: controls.every((control) => {
         const rect = control.getBoundingClientRect();
         return rect.width > 0 && rect.left >= box.left - 1 && rect.right <= box.right + 1;
@@ -2122,20 +2118,17 @@ flowTest('community', 'Essensbestellung: orderer groups collapse/expand and pay 
       pageFits: document.documentElement.scrollWidth <= window.innerWidth,
     };
   });
+  assert.ok(narrowGroupLayout.markerHeight < 44);
   assert.equal(narrowGroupLayout.controlsVisible, true);
   assert.equal(narrowGroupLayout.pageFits, true);
   await page.setViewportSize({ width: 390, height: 844 });
 
-  // Bob sees Alice's confirmation as foreign: the rollback dialog names both
-  // the person whose mark is being changed and the confirmer who is not Bob.
+  // Bob can undo the paid marker directly; reopening the group is an explicit
+  // toggle and does not require a second confirmation dialog.
   await switchIdentityAndOpenFoodOrders('E2E Bob');
   const bobPaidGroup = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' }).locator('.food-order-group', { hasText: 'E2E Bob' });
   await bobPaidGroup.locator('[data-toggle-group-paid]').click();
-  await page.waitForSelector('.modal h2:has-text("Bezahlt-Markierung für E2E Bob aufheben?")');
-  await page.waitForSelector('.food-order-confirm-list');
-  assert.match(await page.locator('.modal-body').innerText(), /Bestätigt hat E2E Alice Pro — nicht du\./);
-  await page.click('[data-confirm-cancel]');
-  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+  await page.waitForSelector('.food-order-paid-marker:has-text("Offen")');
 });
 
 flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten und bleibt synchron', async () => {
@@ -2523,6 +2516,15 @@ flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for
   await page.goto(`${BASE_URL}/#foodOrders/${listOrderId}`);
   await page.reload();
   const directOrderCard = page.locator('[data-order-card]', { hasText: 'Bestellliste-Test' });
+  await directOrderCard.waitFor();
+  assert.equal(await directOrderCard.locator('.food-order-card-body').isVisible(), true);
+
+  // Home's Aktuell entry carries the same order target as a push/deep link,
+  // so tapping it also lands on the expanded card.
+  await page.click('.nav-btn[data-view="home"]');
+  const currentOrder = page.locator(`[data-current-item="food-order:${listOrderId}"]`);
+  await currentOrder.waitFor();
+  await currentOrder.locator('.home-current-navigate').click();
   await directOrderCard.waitFor();
   assert.equal(await directOrderCard.locator('.food-order-card-body').isVisible(), true);
 

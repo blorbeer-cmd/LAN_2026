@@ -309,7 +309,7 @@ function renderItemRow(order, item, myId, { locked = false } = {}) {
       : '<span class="food-order-item-action-spacer" aria-hidden="true"></span>';
 
   return `
-    <div class="row food-order-item">
+    <div class="row food-order-item${item.paid ? ' is-paid' : ''}">
       ${descriptionHtml}
       ${amountHtml}
       ${actionClusterHtml}
@@ -1030,19 +1030,6 @@ async function handleGroupPaid(orderId, playerId, paid, ctx) {
     showToast('Diese Personengruppe existiert nicht mehr.', { error: true });
     ctx.rerender();
     return;
-  }
-  const allPaid = items.every((item) => item.paid);
-  if (!paid && allPaid) {
-    const names = groupPaidNames(items);
-    const myName = state.players.find((player) => player.id === getMyId())?.name;
-    const foreignNames = names.filter((name) => name !== myName);
-    const confirmed = await confirmWithList(
-      `Bezahlt-Markierung für ${items[0].playerName} aufheben?`,
-      `${items[0].playerName} wird wieder als offen geführt.`,
-      items.map((item) => ({ ...item, amount: item.priceCents === null ? null : formatCents(lineTotalCents(item, order.tipPercent || 0)) })),
-      { note: foreignNames.length ? `Bestätigt hat ${foreignNames.join(', ')} — nicht du.` : undefined, confirmText: 'Aufheben', cancelText: 'Abbrechen' },
-    );
-    if (!confirmed) return;
   }
   const targets = items.filter((item) => item.paid !== paid);
   if (targets.length === 0) return;

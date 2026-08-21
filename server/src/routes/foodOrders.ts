@@ -244,6 +244,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     notify: {
       message: `Neue Sammelbestellung: ${row.title}${sendAtNote} – jetzt eintragen!`,
       excludePlayerId: playerId,
+      target: { type: 'order', id: row.id },
     },
   }, { groupId: row.group_id, eventId: eventScope });
   const allPlayerIds = communicationRecipientIds(row.group_id, eventScope);

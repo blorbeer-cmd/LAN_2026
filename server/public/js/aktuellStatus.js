@@ -214,6 +214,7 @@ export function aktuellItems() {
       title: `Sammelbestellung „${o.title}"`,
       sub: o.sendAt ? `Versand ${formatDateTime(o.sendAt)} Uhr` : 'Zeitpunkt noch offen',
       navigate: 'foodOrders',
+      target: { type: 'order', id: o.id },
     });
   }
 

@@ -477,7 +477,12 @@ function wireNav() {
       return;
     }
     const btn = e.target.closest('[data-navigate]');
-    if (btn) switchView(btn.dataset.navigate);
+    if (btn) {
+      const target = btn.dataset.navigateTargetId
+        ? { type: btn.dataset.navigateTargetType || 'order', id: btn.dataset.navigateTargetId }
+        : null;
+      switchView(btn.dataset.navigate, { searchTarget: target });
+    }
   });
 
   // Programmatic hooks for view modules that must drive navigation/redraws
@@ -772,7 +777,7 @@ function wireSocket() {
     if (payload?.notify && myId && myId !== payload.notify.excludePlayerId && currentView !== 'foodOrders') {
       showToast(payload.notify.message, {
         duration: 5000,
-        onClick: () => switchView('foodOrders'),
+        onClick: () => switchView('foodOrders', { searchTarget: payload.notify.target ?? null }),
       });
     }
   });

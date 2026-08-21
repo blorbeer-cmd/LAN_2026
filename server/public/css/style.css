@@ -4161,7 +4161,6 @@ input[type='number'].tournament-score-input {
   align-items: center;
   gap: var(--space-1);
   min-width: 84px;
-  min-height: var(--tap-target-size);
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -4293,6 +4292,10 @@ input[type='number'].tournament-score-input {
 .food-order-add-button {
   grid-column: -2 / -1;
   align-self: stretch;
+}
+.food-order-item.is-paid .food-order-item-description,
+.food-order-item.is-paid .food-order-item-amount {
+  text-decoration: line-through;
 }
 @media (max-width: 639px) { /* --bp-md */
   /* Keep the name row and its action row independent on narrow phones. The

@@ -68,10 +68,13 @@ window.addEventListener('respawn:aktuell-changed', () => lastCtx?.rerender());
 // Compact single-line row (the "Mehr" hub's list-row component, see
 // more.js). Navigation and dismissal are sibling buttons so both remain
 // semantic, keyboard-operable controls without nesting one button in another.
-function statusRowHtml({ id, iconName, title, sub, navigate }) {
+function statusRowHtml({ id, iconName, title, sub, navigate, target }) {
+  const targetAttrs = target?.type && target?.id
+    ? `data-navigate-target-type="${escapeHtml(target.type)}" data-navigate-target-id="${escapeHtml(target.id)}"`
+    : '';
   return `
     <article class="card list-row home-current-row" data-current-item="${id}">
-      <button type="button" class="home-current-navigate" data-navigate="${navigate}">
+      <button type="button" class="home-current-navigate" data-navigate="${navigate}" ${targetAttrs}>
         <span class="list-row-icon">${icon(iconName)}</span>
         <span class="home-current-copy">
           <span class="player-name">${title}</span>
@@ -91,6 +94,7 @@ function renderStatus() {
       title: escapeHtml(item.title),
       sub: item.sub ? escapeHtml(item.sub) : '',
       navigate: item.navigate,
+      target: item.target,
     })
   );
 
