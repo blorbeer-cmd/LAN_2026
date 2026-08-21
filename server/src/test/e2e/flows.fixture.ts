@@ -2697,7 +2697,7 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   const priceInput = suggestOrderCard.locator('[data-item-price]');
   await priceInput.fill('1,00');
   await descInput.fill('marg');
-  await page.click('.food-order-desc-field .search-select-option');
+  await descField.locator('.search-select-option', { hasText: 'Margherita groß' }).click();
   assert.equal(await descInput.inputValue(), 'Margherita groß');
   assert.equal(await priceInput.inputValue(), '8,50');
 
@@ -2713,7 +2713,7 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   assert.equal(await priceInput.inputValue(), '');
 
   await descInput.fill('marg');
-  await page.click('.food-order-desc-field .search-select-option');
+  await descField.locator('.search-select-option', { hasText: 'Margherita groß' }).click();
   assert.equal(await descInput.inputValue(), 'Margherita groß');
   assert.equal(await priceInput.inputValue(), '8,50');
   await suggestOrderCard.locator('[data-item-quantity]').fill('2');
