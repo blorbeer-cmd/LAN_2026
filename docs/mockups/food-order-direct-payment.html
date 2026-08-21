@@ -461,6 +461,8 @@ ul.doc-list li b { color: var(--ink); font-weight: 600; }
 .food-order-group-meta { font-size: var(--font-size-xs); color: var(--text-muted); }
 
 .food-order-group-end { display: inline-flex; align-items: center; gap: var(--space-2); flex: 0 0 auto; }
+.food-order-group-amount-wrap { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
+.food-order-group-tip { font-size: var(--font-size-2xs); white-space: nowrap; }
 .food-order-group-amount {
   font-weight: var(--font-weight-bold);
   font-variant-numeric: tabular-nums;
@@ -692,6 +694,7 @@ td b { font-weight: 600; color: var(--ink); }
   .food-order-group-items { padding-left: 0; }
   .food-order-item-amount { flex-basis: 100%; align-items: flex-start; }
   .food-order-group-end { flex: 1 1 100%; justify-content: flex-end; }
+  .food-order-group-amount-wrap { align-items: flex-end; }
   .food-order-total { flex-direction: column; align-items: flex-start; gap: var(--space-1); }
   .food-order-item-form { grid-template-columns: minmax(0, 1fr); }
   .food-order-item-form > .food-order-desc-field,
@@ -1441,7 +1444,7 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
     // Immer die volle Summe der Person, nie ein Restbetrag: Teilzahlungen gibt
     // es nicht mehr. Ist bestätigt, wird sie durchgestrichen.
     const amountLabel = total === null ? (partial > 0 ? `${eur(withTip(partial, tip))}` : 'Betrag offen') : eur(total);
-    const amountHtml = `<span class="food-order-group-amount${allPaid ? ' is-settled' : ''}${total === null ? ' is-partial' : ''}">${amountLabel}</span>`;
+    const amountHtml = `<span class="food-order-group-amount-wrap"><span class="food-order-group-amount${allPaid ? ' is-settled' : ''}${total === null ? ' is-partial' : ''}">${amountLabel}</span>${tip > 0 ? `<span class="muted food-order-group-tip">inkl. ${tip} % Trinkgeld</span>` : ''}</span>`;
 
     const copyValue = total === null && partial === 0 ? null : amountLabel;
     const copy = copyValue === null ? spacer : copyButtonHtml(copyValue, `Summe von ${PLAYERS[key].name} kopieren`);

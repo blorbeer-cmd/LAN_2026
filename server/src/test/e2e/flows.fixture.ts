@@ -1866,6 +1866,7 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   await page.waitForSelector('.food-order-item-amount:has-text("20,90 €")');
   await page.waitForSelector('.food-order-item-amount:has-text("2 × 9,50 €")');
   await page.waitForSelector('.food-order-item-amount:has-text("inkl. 10% Trinkgeld")');
+  await page.waitForSelector('.food-order-group-tip:has-text("inkl. 10 % Trinkgeld")');
   await page.waitForSelector('.food-order-total:has-text("Gesamtsumme inkl. 10% Trinkgeld")');
   await page.waitForSelector('.food-order-overview:has-text("2 Positionen von 1 Person")');
   await page.waitForSelector('.food-order-overview:has-text("0 von 1 bezahlt")');

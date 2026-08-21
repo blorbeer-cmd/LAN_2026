@@ -83,6 +83,8 @@ Der Kopf ist ein Flex-Container mit Geschwistern, **kein Knopf im Knopf**: links
   **durchgestrichen** und auf `--text-muted` gesetzt — dieselbe Erledigt-Sprache, die vorher die
   bezahlte Einzelposition hatte. Fehlt ein Preis: „Betrag offen“ (bzw. die Teilsumme gedämpft, wenn
   wenigstens ein Preis vorhanden ist).
+- Direkt unter der Summe steht bei gesetztem Trinkgeld `inkl. x % Trinkgeld` in kleiner, gedämpfter
+  Schrift. Ohne Trinkgeld entfällt die Zusatzzeile.
 - **Kopieren** kopiert diese Summe. **PayPal** hängt sie nur an einen einfachen `paypal.me`-Link an;
   bei anderen PayPal-/Zahlungslinks wird nur die hinterlegte Adresse geöffnet. Gesperrt bei: bereits
   bezahlt, Preis unvollständig, Bestellung geschlossen — jeweils mit dem Grund in

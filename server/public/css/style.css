@@ -4124,6 +4124,10 @@ input[type='number'].tournament-score-input {
   align-items: flex-end;
   flex-shrink: 0;
 }
+.food-order-group-tip {
+  font-size: var(--font-size-2xs);
+  white-space: nowrap;
+}
 .food-order-group-amount {
   font-weight: var(--font-weight-bold);
   font-variant-numeric: tabular-nums;
@@ -4314,7 +4318,7 @@ input[type='number'].tournament-score-input {
   .food-order-paid-marker {
     grid-column: 1;
   }
-  .food-order-group-amount {
+  .food-order-group-amount-wrap {
     grid-column: 2;
     justify-self: end;
   }

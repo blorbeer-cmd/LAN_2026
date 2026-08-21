@@ -645,7 +645,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 
   Payment is a per-person handoff, never a per-position action. Each orderer group shows the
   quantity-weighted meta line (`<n> Positionen`, plus `Preis fehlt` when necessary), the complete
-  tip-inclusive person sum, a copy action, a PayPal action when the order has a link, and one two-state
+  tip-inclusive person sum with a small `inkl. x % Trinkgeld` line when a tip is set, a copy action, a PayPal action when the order has a link, and one two-state
   paid marker. `Offen` uses a dashed circle; `Bezahlt` uses a green check and names the confirmer.
   The marker is derived from the group's items, is available to every authenticated member, and is
   disabled only after finalization. Both marking and reversing happen directly without a confirmation;

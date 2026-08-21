@@ -374,10 +374,10 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
   const partialTotal = hasPriced ? formatCents(totalCents) : null;
   const amountStateClass = allPaid ? ' is-paid' : '';
   const amountHtml = allPriced
-    ? `<span class="food-order-group-amount${amountStateClass}">${formatCents(totalCents)}</span>`
+    ? `<span class="food-order-group-amount-wrap"><span class="food-order-group-amount${amountStateClass}">${formatCents(totalCents)}</span>${tipPercent > 0 ? `<span class="muted food-order-group-tip">inkl. ${tipPercent} % Trinkgeld</span>` : ''}</span>`
     : partialTotal
-      ? `<span class="food-order-group-amount${amountStateClass} muted food-order-group-partial">${partialTotal}</span>`
-      : `<span class="food-order-group-amount${amountStateClass} muted">Betrag offen</span>`;
+      ? `<span class="food-order-group-amount-wrap"><span class="food-order-group-amount${amountStateClass} muted food-order-group-partial">${partialTotal}</span>${tipPercent > 0 ? `<span class="muted food-order-group-tip">inkl. ${tipPercent} % Trinkgeld</span>` : ''}</span>`
+      : `<span class="food-order-group-amount-wrap"><span class="food-order-group-amount${amountStateClass} muted">Betrag offen</span>${tipPercent > 0 ? `<span class="muted food-order-group-tip">inkl. ${tipPercent} % Trinkgeld</span>` : ''}</span>`;
 
   const paidNames = groupPaidNames(items);
   const paidTitle = allPaid
