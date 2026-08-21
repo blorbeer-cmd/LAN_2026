@@ -59,6 +59,7 @@ let currentView = 'home';
 // itself carries no content of its own to report feedback about.
 let lastSubstantiveView = 'home';
 let appReady = false;
+let playerDataReady = false;
 const viewContainer = document.getElementById('view-container');
 let pendingSearchTarget = null;
 let renderRevision = 0;
@@ -335,6 +336,18 @@ function focusPendingSearchTarget() {
   pendingSearchTarget = null;
 }
 
+function viewRequiresAdminRole(view) {
+  return sectionKeyForView(view) === 'insights' || ['adminFeatureUsage', 'adminFeedback'].includes(view);
+}
+
+function renderCurrentAfterPlayerDataLoad() {
+  if (playerDataReady && viewRequiresAdminRole(currentView) && !currentPlayerHasAdminRole()) {
+    switchView(currentView, { fromHistory: true, replace: true });
+    return;
+  }
+  renderCurrent();
+}
+
 // Every deliberate tab switch pushes a browser history entry (see main()'s
 // initial replaceState + the popstate listener below) — without this, the
 // device's back button has no in-app navigation to undo and just leaves the
@@ -351,8 +364,7 @@ function focusPendingSearchTarget() {
 function switchView(view, { fromHistory = false, replace = false, searchTarget = null } = {}) {
   // Admin-only areas stay reachable through Admin links and deep links alike,
   // but never render for an account whose role no longer permits them.
-  const adminOnlyView = ['adminFeatureUsage', 'adminFeedback'].includes(view);
-  if ((sectionKeyForView(view) === 'insights' || adminOnlyView) && !currentPlayerHasAdminRole()) view = 'foodOrders';
+  if (viewRequiresAdminRole(view) && playerDataReady && !currentPlayerHasAdminRole()) view = 'foodOrders';
   const changed = view !== currentView;
   pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
   currentView = view;
@@ -532,7 +544,8 @@ function wireSocket() {
       invalidateMusic();
       await refreshGroupContext({ throwOnError: true });
       await Promise.all([loadAll(), refreshNotificationBanner({ throwOnError: true })]);
-      if (appReady) renderCurrent();
+      playerDataReady = true;
+      if (appReady) renderCurrentAfterPlayerDataLoad();
     },
     onRecovered: () => {
       reconnectFailureNotified = false;
@@ -834,8 +847,9 @@ async function main() {
   // request fails temporarily (or keeps retrying in the background).
   const initialDataLoad = loadAll()
     .then(() => {
+      playerDataReady = true;
       renderEventContextSwitcher();
-      if (appReady) renderCurrent();
+      if (appReady) renderCurrentAfterPlayerDataLoad();
     })
     .catch((error) => {
       if (error?.status !== 401) showToast('Daten konnten noch nicht geladen werden – neuer Versuch läuft.', { error: true });
