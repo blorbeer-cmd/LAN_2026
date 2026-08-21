@@ -4063,6 +4063,7 @@ input[type='number'].tournament-score-input {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-wrap: wrap;
 }
 /* The group toggle is one sibling of the payment and delete controls. */
 .food-order-group-toggle {
@@ -4283,6 +4284,32 @@ input[type='number'].tournament-score-input {
   align-self: stretch;
 }
 @media (max-width: 639px) { /* --bp-md */
+  /* Keep the name row and its action row independent on narrow phones. The
+     group header has too many deliberate, fixed-width controls to compress
+     into one line without clipping the payment marker or action buttons. */
+  .food-order-group-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  .food-order-group-toggle,
+  .food-order-group-static {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .food-order-paid-marker {
+    grid-column: 1;
+  }
+  .food-order-group-amount {
+    grid-column: 2;
+    justify-self: end;
+  }
+  .food-order-group-actions {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-content: flex-end;
+    margin-left: 0;
+  }
   .food-order-group-items {
     padding-left: 0;
   }

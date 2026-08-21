@@ -1947,7 +1947,7 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   assert.match((await group.locator('.food-order-paid-marker').getAttribute('title')) ?? '', new RegExp('Bezahlt, bestätigt von ' + alice.name));
 
   await group.locator('[data-toggle-group-paid]').click();
-  await page.waitForSelector('.modal h2:has-text("Bezahlte Markierung aufheben?")');
+  await page.waitForSelector(`.modal h2:has-text("Bezahlt-Markierung für ${alice.name} aufheben?")`);
   assert.equal(await page.locator('.food-order-confirm-list').count(), 1);
   await page.click('[data-confirm-cancel]');
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
@@ -2076,7 +2076,250 @@ flowTest('community', 'Essensbestellung: orderer groups collapse/expand and pay 
   assert.equal(await bobGroupAfterLink.locator('[data-toggle-group-paid]').getAttribute('aria-pressed'), 'true');
   assert.equal(await bobGroupAfterLink.locator('.food-order-item .food-order-paid-marker').count(), 0);
   assert.equal(await bobGroupAfterLink.locator('[data-remove-group]').count(), 0);
+
+  // The group header has a deliberately wide payment marker plus three
+  // action slots. At the narrowest supported phone width every control must
+  // remain inside the header instead of being clipped by the card.
+  await page.setViewportSize({ width: 320, height: 720 });
+  const narrowGroupLayout = await bobGroupAfterLink.locator('.food-order-group-header').evaluate((header) => {
+    const box = header.getBoundingClientRect();
+    const controls = Array.from(header.querySelectorAll('.food-order-paid-marker, .food-order-group-amount, .food-order-group-actions button'));
+    return {
+      controlsVisible: controls.every((control) => {
+        const rect = control.getBoundingClientRect();
+        return rect.width > 0 && rect.left >= box.left - 1 && rect.right <= box.right + 1;
+      }),
+      pageFits: document.documentElement.scrollWidth <= window.innerWidth,
+    };
+  });
+  assert.equal(narrowGroupLayout.controlsVisible, true);
+  assert.equal(narrowGroupLayout.pageFits, true);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  // Bob sees Alice's confirmation as foreign: the rollback dialog names both
+  // the person whose mark is being changed and the confirmer who is not Bob.
+  await switchIdentityAndOpenFoodOrders('E2E Bob');
+  const bobPaidGroup = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' }).locator('.food-order-group', { hasText: 'E2E Bob' });
+  await bobPaidGroup.locator('[data-toggle-group-paid]').click();
+  await page.waitForSelector('.modal h2:has-text("Bezahlt-Markierung für E2E Bob aufheben?")');
+  await page.waitForSelector('.food-order-confirm-list');
+  assert.match(await page.locator('.modal-body').innerText(), /Bestätigt hat E2E Alice Pro — nicht du\./);
+  await page.click('[data-confirm-cancel]');
+  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
 });
+
+flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten und bleibt synchron', async () => {
+  await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
+
+  type FoodScenario = { id: string; itemIds: string[]; title: string };
+  type ScenarioItem = { description: string; priceCents?: number };
+
+  const createScenario = async (title: string, items: ScenarioItem[], paypalLink = 'https://paypal.me/fresh-test'): Promise<FoodScenario> => {
+    const orderResponse = await page.request.post(`${BASE_URL}/api/food-orders`, {
+      data: { playerId: alice.id, title, paypalLink },
+    });
+    assert.equal(orderResponse.status(), 201, await orderResponse.text());
+    const order = await orderResponse.json() as { id: string };
+    let itemIds: string[] = [];
+    for (const item of items) {
+      const itemResponse = await page.request.post(`${BASE_URL}/api/food-orders/${order.id}/items`, {
+        data: {
+          playerId: alice.id,
+          description: item.description,
+          quantity: 1,
+          ...(item.priceCents === undefined ? {} : { priceCents: item.priceCents }),
+        },
+      });
+      assert.equal(itemResponse.status(), 201, await itemResponse.text());
+      const serialized = await itemResponse.json() as { items: Array<{ id: string }> };
+      itemIds = serialized.items.map((entry) => entry.id);
+    }
+    return { id: order.id, itemIds, title };
+  };
+
+  const openScenario = async (scenario: FoodScenario) => {
+    await page.reload();
+    await page.waitForSelector('#app:not([hidden])');
+    await page.click('#nav-food-orders');
+    const card = page.locator('[data-order-card]', { hasText: scenario.title });
+    await card.waitFor();
+    if (await card.locator('.food-order-card-body').getAttribute('hidden') !== null) {
+      await card.locator('.food-order-card-header-toggle').click();
+    }
+    const group = card.locator('.food-order-group', { hasText: 'E2E Alice Pro' });
+    await group.locator('.food-order-group-header').waitFor();
+    return { card, group };
+  };
+
+  const cleanupScenario = async (scenario: FoodScenario) => {
+    const response = await page.request.delete(`${BASE_URL}/api/food-orders/${scenario.id}`);
+    assert.ok([204, 404].includes(response.status()), await response.text());
+  };
+
+  // Keep the popup synchronous with the click while making its opener
+  // harmless, exactly like the production handoff hardening requires.
+  await page.evaluate(() => {
+    const original = window.open;
+    (window as unknown as { __restoreFreshPopup?: () => void }).__restoreFreshPopup = () => { window.open = original; };
+    window.open = ((_url?: string, _target?: string, _features?: string) => {
+      const popup = {
+        opener: window as unknown as Window,
+        closed: false,
+        _location: '',
+        get location() { return this._location; },
+        set location(value: string) { this._location = value; },
+        close() { this.closed = true; },
+      };
+      (window as unknown as { __freshPopup?: typeof popup }).__freshPopup = popup;
+      return popup as unknown as Window;
+    }) as typeof window.open;
+  });
+
+  const runStalePayCase = async (
+    title: string,
+    mutate: (scenario: FoodScenario) => Promise<void>,
+    expectedMessage: string,
+  ) => {
+    const scenario = await createScenario(title, [{ description: `${title} Position`, priceCents: 5_00 }]);
+    const { group } = await openScenario(scenario);
+    let intercepted = false;
+    const routeHandler = async (route: import('playwright').Route) => {
+      if (!intercepted && route.request().method() === 'GET') {
+        intercepted = true;
+        await mutate(scenario);
+      }
+      await route.continue();
+    };
+    await page.route('**/api/food-orders', routeHandler);
+    try {
+      await group.locator('[data-group-pay]').click();
+      await page.waitForSelector(`.toast-error:has-text("${expectedMessage}")`);
+      assert.equal(intercepted, true);
+    } finally {
+      await page.unroute('**/api/food-orders', routeHandler);
+    }
+    await cleanupScenario(scenario);
+  };
+
+  await runStalePayCase(
+    'Freshness gelöschte Position',
+    async (scenario) => {
+      const response = await page.request.delete(`${BASE_URL}/api/food-orders/${scenario.id}/items/${scenario.itemIds[0]}`, { data: { playerId: alice.id } });
+      assert.equal(response.status(), 200, await response.text());
+    },
+    'Eine Position existiert nicht mehr. Bitte Betrag prüfen.',
+  );
+  await runStalePayCase(
+    'Freshness bezahlte Position',
+    async (scenario) => {
+      const response = await page.request.patch(`${BASE_URL}/api/food-orders/${scenario.id}/items/${scenario.itemIds[0]}`, { data: { paid: true } });
+      assert.equal(response.status(), 200, await response.text());
+    },
+    'Diese Person wurde inzwischen bereits als bezahlt markiert.',
+  );
+  await runStalePayCase(
+    'Freshness entfernter PayPal-Link',
+    async (scenario) => {
+      const response = await page.request.patch(`${BASE_URL}/api/food-orders/${scenario.id}`, { data: { paypalLink: null } });
+      assert.equal(response.status(), 200, await response.text());
+    },
+    'Für diese Bestellung ist kein PayPal-Link mehr hinterlegt.',
+  );
+  await runStalePayCase(
+    'Freshness gelöschte Bestellung',
+    async (scenario) => {
+      const response = await page.request.delete(`${BASE_URL}/api/food-orders/${scenario.id}`);
+      assert.equal(response.status(), 204, await response.text());
+    },
+    'Diese Bestellung existiert nicht mehr.',
+  );
+
+  // A zero-priced position is still a valid priced position. Together with a
+  // missing price it must expose the 0,00 € subtotal and keep its copy action.
+  const zeroScenario = await createScenario('Freshness Nullbetrag plus offen', [
+    { description: 'Nullbetrag', priceCents: 0 },
+    { description: 'Preis noch offen' },
+  ]);
+  const { group: zeroGroup } = await openScenario(zeroScenario);
+  assert.equal(await zeroGroup.locator('.food-order-group-meta').innerText(), '2 Positionen · Preis fehlt');
+  assert.equal(await zeroGroup.locator('.food-order-group-amount').innerText(), '0,00 €');
+  assert.equal(await zeroGroup.locator('.food-order-group-copy').getAttribute('data-copy-food-total'), '0,00 €');
+  assert.equal(await zeroGroup.locator('[data-group-pay]').isDisabled(), true);
+  await cleanupScenario(zeroScenario);
+
+  // While the first fresh GET is paused, an item add triggers the realtime
+  // refresh path. The shared single-flight coordinator must keep the PayPal
+  // handoff on a coherent response even while the app's independent Aktuell
+  // summary also refreshes after the same socket event.
+  const concurrencyScenario = await createScenario('Freshness parallele Aktualisierung', [{ description: 'Erster Betrag', priceCents: 2_50 }]);
+  const { group: concurrencyGroup } = await openScenario(concurrencyScenario);
+  let firstRequestSeen!: () => void;
+  let releaseFirstRequest!: () => void;
+  const firstSeen = new Promise<void>((resolve) => { firstRequestSeen = resolve; });
+  const release = new Promise<void>((resolve) => { releaseFirstRequest = resolve; });
+  let orderListGetCount = 0;
+  const concurrencyRoute = async (route: import('playwright').Route) => {
+    if (route.request().method() === 'GET') {
+      orderListGetCount += 1;
+      if (orderListGetCount === 1) {
+        firstRequestSeen();
+        await release;
+      }
+    }
+    await route.continue();
+  };
+  await page.route('**/api/food-orders', concurrencyRoute);
+  try {
+    await concurrencyGroup.locator('[data-group-pay]').click();
+    await firstSeen;
+    const addResponse = await page.request.post(`${BASE_URL}/api/food-orders/${concurrencyScenario.id}/items`, {
+      data: { playerId: alice.id, description: 'Nachtrag während Refresh', quantity: 1, priceCents: 1_00 },
+    });
+    assert.equal(addResponse.status(), 201, await addResponse.text());
+    await page.waitForTimeout(150);
+    assert.ok(orderListGetCount >= 1);
+    releaseFirstRequest();
+    await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
+    assert.ok(orderListGetCount >= 2);
+    await page.waitForSelector('.food-order-confirm-list li:has-text("Nachtrag während Refresh")');
+    await page.click('[data-confirm-cancel]');
+    await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+  } finally {
+    await page.unroute('**/api/food-orders', concurrencyRoute);
+  }
+  await cleanupScenario(concurrencyScenario);
+
+  // Promise.all deletion is deliberately partial-safe: if one DELETE fails,
+  // the successful sibling is gone, the failed one remains, and the cache is
+  // discarded so the next render comes from the server.
+  const partialScenario = await createScenario('Freshness Teil-Löschen', [
+    { description: 'Teilweise entfernen', priceCents: 1_00 },
+    { description: 'Teilweise behalten', priceCents: 1_50 },
+  ]);
+  const { card: partialCard, group: partialGroup } = await openScenario(partialScenario);
+  const failingItemId = partialScenario.itemIds[1];
+  const partialRoute = async (route: import('playwright').Route) => {
+    if (route.request().method() === 'DELETE' && route.request().url().endsWith(`/items/${failingItemId}`)) {
+      await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'Simulierter Teilfehler' }) });
+      return;
+    }
+    await route.continue();
+  };
+  await page.route(`**/api/food-orders/${partialScenario.id}/items/${failingItemId}`, partialRoute);
+  try {
+    await partialGroup.locator('[data-remove-group]').click();
+    await page.waitForSelector('.modal h2:has-text("Deine 2 Positionen löschen?")');
+    await page.click('[data-confirm-ok]');
+    await page.waitForSelector('.toast-error');
+    await partialCard.locator('.food-order-item', { hasText: 'Teilweise entfernen' }).waitFor({ state: 'detached' });
+    await partialCard.locator('.food-order-item', { hasText: 'Teilweise behalten' }).waitFor();
+  } finally {
+    await page.unroute(`**/api/food-orders/${partialScenario.id}/items/${failingItemId}`, partialRoute);
+  }
+  await cleanupScenario(partialScenario);
+  await page.evaluate(() => (window as unknown as { __restoreFreshPopup?: () => void }).__restoreFreshPopup?.());
+});
+
 flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for the creator/admin and can close the order', async () => {
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
   await page.click('#order-new-btn');

@@ -66,40 +66,49 @@ export function prepareFoodOrderTarget(orderId) {
 // shared lock instead: at most one GET is ever in flight, and every caller
 // that arrives while one is running just asks for one more round after it
 // settles rather than starting a second, independently-resolving request.
-let fetchInFlight = false;
+let fetchInFlight = null;
 let refetchPending = false;
 
 async function fetchFoodOrders(ctx) {
   if (fetchInFlight) {
     refetchPending = true;
-    return;
+    return fetchInFlight;
   }
-  fetchInFlight = true;
-  do {
-    refetchPending = false;
-    // `loading` (and the "Lädt…" placeholder it drives, see
-    // renderFoodOrders) only makes sense for a genuine first load - decided
-    // fresh on every iteration since a retry after `cache` was populated by
-    // an earlier iteration must stay silent.
-    const showPlaceholder = cache === null;
-    if (showPlaceholder) loading = true;
-    // Caught per iteration, not around the whole loop: a failed fetch must
-    // not swallow a `refetchPending` set by another caller that arrived
-    // while this one was in flight - the `while` below still has to see it,
-    // or that follow-up refresh is silently lost until some unrelated event
-    // happens to trigger another one.
-    try {
-      const res = await api.foodOrders.list();
-      cache = res.orders;
-    } catch (err) {
-      showToast(err.message, { error: true });
-      if (showPlaceholder) cache = [];
-    } finally {
-      if (showPlaceholder) loading = false;
-      ctx.rerender();
-    }
-  } while (refetchPending);
-  fetchInFlight = false;
+  const run = (async () => {
+    let succeeded = false;
+    do {
+      refetchPending = false;
+      // `loading` (and the "Lädt…" placeholder it drives, see
+      // renderFoodOrders) only makes sense for a genuine first load - decided
+      // fresh on every iteration since a retry after `cache` was populated by
+      // an earlier iteration must stay silent.
+      const showPlaceholder = cache === null;
+      if (showPlaceholder) loading = true;
+      // Caught per iteration, not around the whole loop: a failed fetch must
+      // not swallow a `refetchPending` set by another caller that arrived
+      // while this one was in flight - the `while` below still has to see it,
+      // or that follow-up refresh is silently lost until some unrelated event
+      // happens to trigger another one.
+      try {
+        const res = await api.foodOrders.list();
+        cache = res.orders;
+        succeeded = true;
+      } catch (err) {
+        succeeded = false;
+        showToast(err.message, { error: true });
+        if (showPlaceholder) cache = [];
+      } finally {
+        if (showPlaceholder) loading = false;
+        ctx.rerender();
+      }
+    } while (refetchPending);
+    return succeeded;
+  })();
+  fetchInFlight = run;
+  run.finally(() => {
+    if (fetchInFlight === run) fetchInFlight = null;
+  });
+  return run;
 }
 
 async function load(ctx) {
@@ -353,7 +362,8 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
        </button>`
     : `<div class="food-order-group-static">${headText}</div>`;
 
-  const partialTotal = totalCents > 0 ? formatCents(totalCents) : null;
+  const hasPriced = items.some((i) => i.priceCents !== null);
+  const partialTotal = hasPriced ? formatCents(totalCents) : null;
   const amountHtml = allPriced
     ? `<span class="food-order-group-amount ${allPaid ? 'is-paid' : ''}">${formatCents(totalCents)}</span>`
     : partialTotal
@@ -384,7 +394,7 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
     ? `<button type="button" class="icon-btn food-order-item-action food-order-group-pay" data-group-pay="${playerId}" data-order="${order.id}" ${payDisabledReason ? 'disabled' : ''} title="${escapeHtml(payTitle)}" aria-label="${escapeHtml(payTitle)}">${icon('paypal')}</button>`
     : '';
 
-  const copyValue = allPriced || partialTotal ? (allPriced ? formatCents(totalCents) : partialTotal) : null;
+  const copyValue = allPriced || hasPriced ? formatCents(totalCents) : null;
   const copyHtml = copyValue
     ? `<button type="button" class="icon-btn food-order-item-action food-order-group-copy" data-copy-food-total="${escapeHtml(copyValue)}" title="Summe von ${escapeHtml(items[0].playerName)} kopieren" aria-label="Summe von ${escapeHtml(items[0].playerName)} kopieren">${icon('copy')}</button>`
     : '<span class="food-order-item-action-spacer" aria-hidden="true"></span>';
@@ -895,34 +905,27 @@ function confirmWithList(title, message, items, { note, confirmText = 'Bestätig
 // state aligned with what is shown immediately before the PayPal handoff.
 async function markGroupItemsPaid(orderId, playerId, itemIds, ctx) {
   let targets;
-  try {
-    const res = await api.foodOrders.list();
-    cache = res.orders;
-    const order = cache.find((o) => o.id === orderId);
-    if (!order) {
-      showToast('Diese Bestellung existiert nicht mehr.', { error: true });
-      ctx.rerender();
-      return;
-    }
-    const groupItems = order.items.filter((i) => i.playerId === playerId);
-    const missing = itemIds.some((id) => !groupItems.some((i) => i.id === id));
-    if (missing) {
-      showToast('Eine Position existiert nicht mehr. Bitte Betrag prüfen.', { error: true });
-      ctx.rerender();
-      return;
-    }
-    const alreadyPaid = itemIds.some((id) => groupItems.some((i) => i.id === id && i.paid));
-    if (alreadyPaid) {
-      showToast('Eine Position wurde inzwischen bereits als bezahlt markiert.', { error: true });
-      ctx.rerender();
-      return;
-    }
-    targets = groupItems.filter((i) => itemIds.includes(i.id) && !i.paid);
-  } catch (err) {
-    showToast(err.message, { error: true });
+  if (!(await fetchFoodOrders(ctx))) return;
+  const order = cache?.find((o) => o.id === orderId);
+  if (!order) {
+    showToast('Diese Bestellung existiert nicht mehr.', { error: true });
     ctx.rerender();
     return;
   }
+  const groupItems = order.items.filter((i) => i.playerId === playerId);
+  const missing = itemIds.some((id) => !groupItems.some((i) => i.id === id));
+  if (missing) {
+    showToast('Eine Position existiert nicht mehr. Bitte Betrag prüfen.', { error: true });
+    ctx.rerender();
+    return;
+  }
+  const alreadyPaid = itemIds.some((id) => groupItems.some((i) => i.id === id && i.paid));
+  if (alreadyPaid) {
+    showToast('Eine Position wurde inzwischen bereits als bezahlt markiert.', { error: true });
+    ctx.rerender();
+    return;
+  }
+  targets = groupItems.filter((i) => itemIds.includes(i.id) && !i.paid);
   try {
     await Promise.all(targets.map((item) => api.foodOrders.setItemPaid(orderId, item.id, true)));
     applyLocalPaidState(targets, true);
@@ -947,30 +950,25 @@ async function handleGroupPay(order, playerId, ctx) {
 
   let freshOrder;
   let items;
-  try {
-    const res = await api.foodOrders.list();
-    cache = res.orders;
-    freshOrder = cache.find((candidate) => candidate.id === order.id);
-    if (!freshOrder) {
-      popup?.close();
-      showToast('Diese Bestellung existiert nicht mehr.', { error: true });
-      ctx.rerender();
-      return;
-    }
-    const freshGroupItems = freshOrder.items.filter((item) => item.playerId === playerId);
-    if (initialItemIds.some((id) => !freshGroupItems.some((item) => item.id === id))) {
-      popup?.close();
-      showToast('Eine Position existiert nicht mehr. Bitte Betrag prüfen.', { error: true });
-      ctx.rerender();
-      return;
-    }
-    items = freshGroupItems;
-  } catch (err) {
+  if (!(await fetchFoodOrders(ctx))) {
     popup?.close();
-    showToast(err.message, { error: true });
+    return;
+  }
+  freshOrder = cache?.find((candidate) => candidate.id === order.id);
+  if (!freshOrder) {
+    popup?.close();
+    showToast('Diese Bestellung existiert nicht mehr.', { error: true });
     ctx.rerender();
     return;
   }
+  const freshGroupItems = freshOrder.items.filter((item) => item.playerId === playerId);
+  if (initialItemIds.some((id) => !freshGroupItems.some((item) => item.id === id))) {
+    popup?.close();
+    showToast('Eine Position existiert nicht mehr. Bitte Betrag prüfen.', { error: true });
+    ctx.rerender();
+    return;
+  }
+  items = freshGroupItems;
 
   if (items.some((item) => item.paid)) {
     popup?.close();
@@ -1008,16 +1006,8 @@ async function handleGroupPay(order, playerId, ctx) {
 }
 
 async function handleGroupPaid(orderId, playerId, paid, ctx) {
-  let order;
-  try {
-    const res = await api.foodOrders.list();
-    cache = res.orders;
-    order = cache.find((candidate) => candidate.id === orderId);
-  } catch (err) {
-    showToast(err.message, { error: true });
-    ctx.rerender();
-    return;
-  }
+  if (!(await fetchFoodOrders(ctx))) return;
+  const order = cache?.find((candidate) => candidate.id === orderId);
   const items = order?.items.filter((item) => item.playerId === playerId) ?? [];
   if (!order || items.length === 0) {
     showToast('Diese Personengruppe existiert nicht mehr.', { error: true });
@@ -1027,11 +1017,13 @@ async function handleGroupPaid(orderId, playerId, paid, ctx) {
   const allPaid = items.every((item) => item.paid);
   if (!paid && allPaid) {
     const names = groupPaidNames(items);
+    const myName = state.players.find((player) => player.id === getMyId())?.name;
+    const foreignNames = names.filter((name) => name !== myName);
     const confirmed = await confirmWithList(
-      'Bezahlte Markierung aufheben?',
+      `Bezahlt-Markierung für ${items[0].playerName} aufheben?`,
       `${items[0].playerName} wird wieder als offen angezeigt.`,
       items.map((item) => ({ ...item, amount: item.priceCents === null ? null : formatCents(lineTotalCents(item, order.tipPercent || 0)) })),
-      { note: names.length ? `Bestätigt von ${names.join(', ')}.` : undefined, confirmText: 'Aufheben', cancelText: 'Abbrechen' },
+      { note: foreignNames.length ? `Bestätigt hat ${foreignNames.join(', ')} — nicht du.` : undefined, confirmText: 'Aufheben', cancelText: 'Abbrechen' },
     );
     if (!confirmed) return;
   }
@@ -1064,18 +1056,16 @@ async function handleRemoveGroup(order, playerId, myId, ctx) {
   );
   if (!confirmed) return;
   try {
-    const res = await api.foodOrders.list();
-    const freshOrder = res.orders.find((candidate) => candidate.id === order.id);
+    if (!(await fetchFoodOrders(ctx))) return;
+    const freshOrder = cache?.find((candidate) => candidate.id === order.id);
     const freshItems = freshOrder?.items.filter((item) => item.playerId === playerId) ?? [];
     if (!freshOrder || freshItems.some((item) => item.paid)) {
-      cache = res.orders;
       showToast('Eine Position wurde inzwischen bezahlt und bleibt erhalten.', { error: true });
       ctx.rerender();
       return;
     }
     await Promise.all(freshItems.map((item) => api.foodOrders.removeItem(order.id, item.id, myId)));
     freshOrder.items = freshOrder.items.filter((item) => !freshItems.some((removed) => removed.id === item.id));
-    cache = res.orders;
     showToast('Eigene Positionen entfernt.');
     ctx.rerender();
   } catch (err) {
