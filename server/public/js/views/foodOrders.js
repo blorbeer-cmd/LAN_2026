@@ -104,9 +104,9 @@ async function fetchFoodOrders(ctx) {
       // while this one was in flight - the `while` below still has to see it,
       // or that follow-up refresh is silently lost until some unrelated event
       // happens to trigger another one.
+      const requestTargetId = activeOrderTargetId;
+      const requestTargetStateVersion = orderTargetStateVersion;
       try {
-        const requestTargetId = activeOrderTargetId;
-        const requestTargetStateVersion = orderTargetStateVersion;
         const res = await api.foodOrders.list(requestTargetId);
         const responseIsCurrent =
           requestTargetStateVersion === orderTargetStateVersion && requestTargetId === activeOrderTargetId;
@@ -120,9 +120,15 @@ async function fetchFoodOrders(ctx) {
           succeeded = false;
         }
       } catch (err) {
+        const responseIsCurrent =
+          requestTargetStateVersion === orderTargetStateVersion && requestTargetId === activeOrderTargetId;
         succeeded = false;
-        showToast(err.message, { error: true });
-        if (showPlaceholder) cache = [];
+        if (responseIsCurrent) {
+          showToast(err.message, { error: true });
+          if (showPlaceholder) cache = [];
+        } else if (activeOrderTargetId !== null) {
+          refetchPending = true;
+        }
       } finally {
         if (showPlaceholder) loading = false;
         ctx.rerender();
@@ -998,7 +1004,7 @@ async function markGroupItemsPaid(orderId, playerId, itemIds, ctx) {
   }
   targets = groupItems.filter((i) => itemIds.includes(i.id) && !i.paid);
   try {
-    await Promise.all(targets.map((item) => api.foodOrders.setItemPaid(orderId, item.id, true)));
+    await api.foodOrders.setGroupPaid(orderId, targets.map((item) => item.id), true);
     applyLocalPaidState(targets, true);
     showToast(`${targets.length} ${targets.length === 1 ? 'Position' : 'Positionen'} als bezahlt markiert.`);
     ctx.rerender();
@@ -1046,7 +1052,9 @@ async function handleGroupPay(order, playerId, ctx) {
     ctx.rerender();
     return;
   }
-  items = freshGroupItems;
+  // Keep the original handoff snapshot. A position added while PayPal is
+  // opening must stay out of this payment and be settled separately later.
+  items = freshGroupItems.filter((item) => initialItemIds.includes(item.id));
 
   if (initialUnpaidItemIds.some((id) => freshGroupItems.some((item) => item.id === id && item.paid))) {
     popup?.close();
@@ -1106,7 +1114,7 @@ async function handleGroupPaid(orderId, playerId, paid, ctx) {
   const targets = items.filter((item) => item.paid !== paid);
   if (targets.length === 0) return;
   try {
-    await Promise.all(targets.map((item) => api.foodOrders.setItemPaid(orderId, item.id, paid)));
+    await api.foodOrders.setGroupPaid(orderId, targets.map((item) => item.id), paid);
     applyLocalPaidState(targets, paid);
     showToast(paid ? `${items[0].playerName} als bezahlt markiert.` : `${items[0].playerName} wieder als offen markiert.`);
     ctx.rerender();

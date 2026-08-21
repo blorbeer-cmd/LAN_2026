@@ -486,6 +486,11 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ paid }),
       }),
+    setGroupPaid: (orderId, itemIds, paid) =>
+      apiFetch(`/api/food-orders/${orderId}/items/bulk-paid`, {
+        method: 'PATCH',
+        body: JSON.stringify({ itemIds, paid }),
+      }),
     close: (orderId) => apiFetch(`/api/food-orders/${orderId}/close`, { method: 'POST' }),
     reopen: (orderId) => apiFetch(`/api/food-orders/${orderId}/reopen`, { method: 'POST' }),
     finalize: (orderId) => apiFetch(`/api/food-orders/${orderId}/finalize`, { method: 'POST' }),

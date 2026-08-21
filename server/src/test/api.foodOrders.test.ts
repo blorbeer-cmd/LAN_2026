@@ -236,6 +236,28 @@ test('PATCH /api/food-orders/:id/items/:itemId marks and unmarks an item as paid
   assert.equal(unmarkedItem.paidAt, null);
 });
 
+test('bulk payment applies atomically when one item has changed concurrently', async () => {
+  const current = await request(app).get(`/api/food-orders?orderId=${orderId}`);
+  assert.equal(current.status, 200);
+  const bobItemId = current.body.orders[0].items.find((item: { playerId: string }) => item.playerId === bob.id).id;
+
+  const marked = await request(app).patch(`/api/food-orders/${orderId}/items/${aliceItemId}`).send({ paid: true });
+  assert.equal(marked.status, 200);
+
+  const rejected = await request(app)
+    .patch(`/api/food-orders/${orderId}/items/bulk-paid`)
+    .send({ itemIds: [aliceItemId, bobItemId], paid: true });
+  assert.equal(rejected.status, 409);
+
+  const after = await request(app).get(`/api/food-orders?orderId=${orderId}`);
+  const afterItems = after.body.orders[0].items;
+  assert.equal(afterItems.find((item: { id: string }) => item.id === aliceItemId).paid, true);
+  assert.equal(afterItems.find((item: { id: string }) => item.id === bobItemId).paid, false);
+
+  const reset = await request(app).patch(`/api/food-orders/${orderId}/items/bulk-paid`).send({ itemIds: [aliceItemId], paid: false });
+  assert.equal(reset.status, 200);
+});
+
 test('closing freezes the order: no more items, no second close', async () => {
   const close = await request(app).post(`/api/food-orders/${orderId}/close`);
   assert.equal(close.status, 200);

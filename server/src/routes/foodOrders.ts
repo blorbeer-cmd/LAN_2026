@@ -37,6 +37,7 @@ const MAX_ITEM_QUANTITY = 99;
 const MAX_NOTES_LENGTH = 500;
 const MAX_LINK_LENGTH = 300;
 const HISTORY_LIMIT = 10;
+const MAX_GROUP_PAYMENT_ITEMS = 100;
 
 interface OrderRow {
   id: string;
@@ -437,6 +438,60 @@ foodOrdersRouter.delete('/:id/items/:itemId', ...withBodyPlayerIdentity, (req, r
   }
   broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
   res.json(serializeOrder(order));
+});
+
+// PATCH /api/food-orders/:id/items/bulk-paid - body: { itemIds, paid }. Apply a
+// person's payment state as one transaction. The precondition check and the
+// update live in the same transaction so a concurrent change cannot leave a
+// partially paid group behind.
+foodOrdersRouter.patch('/:id/items/bulk-paid', requireUser, (req, res) => {
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
+  if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
+  if (order.finalized_at !== null) {
+    return res.status(409).json({ error: 'Diese Bestellung ist geschlossen und kann nicht mehr geändert werden.' });
+  }
+
+  const { itemIds, paid } = req.body ?? {};
+  if (
+    !Array.isArray(itemIds) ||
+    itemIds.length === 0 ||
+    itemIds.length > MAX_GROUP_PAYMENT_ITEMS ||
+    itemIds.some((id: unknown) => typeof id !== 'string' || id.length === 0) ||
+    new Set(itemIds).size !== itemIds.length ||
+    typeof paid !== 'boolean'
+  ) {
+    return res.status(400).json({ error: 'itemIds muss eine eindeutige Liste sein und paid muss true oder false sein.' });
+  }
+
+  const placeholders = itemIds.map(() => '?').join(', ');
+  const expectedPaid = paid ? 0 : 1;
+  const result = db.transaction(() => {
+    const items = db
+      .prepare(`SELECT id, paid FROM food_order_items WHERE order_id = ? AND id IN (${placeholders})`)
+      .all(order.id, ...itemIds) as Array<{ id: string; paid: number }>;
+    if (items.length !== itemIds.length) {
+      return { status: 404, error: 'Eine Position wurde nicht gefunden.' } as const;
+    }
+    if (items.some((item) => item.paid !== expectedPaid)) {
+      return { status: 409, error: paid ? 'Eine Position wurde inzwischen bereits als bezahlt markiert.' : 'Eine Position ist bereits offen.' } as const;
+    }
+
+    const updated = db
+      .prepare(
+        `UPDATE food_order_items
+         SET paid = ?, paid_by = ?, paid_at = ?
+         WHERE order_id = ? AND paid = ? AND id IN (${placeholders})`,
+      )
+      .run(paid ? 1 : 0, paid ? req.player!.id : null, paid ? Date.now() : null, order.id, expectedPaid, ...itemIds);
+    if (updated.changes !== itemIds.length) {
+      return { status: 409, error: 'Die Positionen wurden inzwischen parallel geändert.' } as const;
+    }
+    return { status: 200 } as const;
+  })();
+
+  if (result.status !== 200) return res.status(result.status).json({ error: result.error });
+  broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
+  return res.json(serializeOrder(order));
 });
 
 // PATCH /api/food-orders/:id/items/:itemId - body: { paid }. Anyone who can
