@@ -2386,8 +2386,8 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
 
   // While the first fresh GET is paused, an item add triggers the realtime
   // refresh path. The shared single-flight coordinator must keep the PayPal
-  // handoff on a coherent response even while the app's independent Aktuell
-  // summary also refreshes after the same socket event.
+  // handoff on the original item snapshot: the new item remains open and is
+  // not silently included in the payment the user already started.
   const concurrencyScenario = await createScenario('Freshness parallele Aktualisierung', [{ description: 'Erster Betrag', priceCents: 2_50 }]);
   const { group: concurrencyGroup } = await openScenario(concurrencyScenario);
   let firstRequestSeen!: () => void;
@@ -2420,9 +2420,10 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
     releaseFirstRequest();
     await followUpGet;
     await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
-    await page.waitForSelector('.food-order-confirm-list li:has-text("Nachtrag während Refresh")');
+    assert.equal(await page.locator('.food-order-confirm-list li:has-text("Nachtrag während Refresh")').count(), 0);
     await page.click('[data-confirm-cancel]');
     await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+    await concurrencyGroup.locator('.food-order-item', { hasText: 'Nachtrag während Refresh' }).waitFor();
   } finally {
     await page.unroute('**/api/food-orders', concurrencyRoute);
   }
