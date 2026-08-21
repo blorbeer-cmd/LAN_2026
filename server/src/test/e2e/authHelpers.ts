@@ -93,6 +93,7 @@ export async function promoteE2EAdmin(baseUrl: string, adminCookie: string, play
 export async function addSessionCookie(context: BrowserContext, baseUrl: string, cookie: string): Promise<void> {
   const separator = cookie.indexOf('=');
   assert.ok(separator > 0, 'session cookie must contain a name and value');
+  await context.clearCookies({ name: cookie.slice(0, separator) });
   await context.addCookies([
     {
       name: cookie.slice(0, separator),

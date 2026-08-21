@@ -1927,8 +1927,11 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   assert.deepEqual(await lastPopup(), { location: 'https://paypal.me/luigi/20.90EUR', closed: false });
   assert.equal(await page.evaluate(() => (window as unknown as { __lastPopup?: { opener: unknown } }).__lastPopup?.opener), null);
   await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
-  assert.match(await page.locator('.modal-body p').first().innerText(), /20,90 € für/);
+  assert.match(await page.locator('.modal-body p').first().innerText(), /20,90 € für .* an PayPal übergeben \(paypal\.me\)\./);
   await page.waitForSelector('.food-order-confirm-list li:has-text("2 × Margherita groß")');
+  await page.locator('[data-confirm-copy]').click();
+  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
+  assert.equal(await page.locator('.modal h2:has-text("Bezahlt?")').count(), 1);
   await page.click('[data-confirm-cancel]');
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
   assert.equal(await group.locator('.food-order-paid-marker').getAttribute('aria-pressed'), 'false');
@@ -2266,6 +2269,45 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
     },
     'Bestellung geschlossen – keine Änderungen mehr möglich',
   );
+
+  const genericPaypalLink = 'https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=luigi%40example.com';
+  const genericPaypalScenario = await createScenario(
+    'Freshness allgemeiner PayPal-Link',
+    [{ description: 'Allgemeiner PayPal-Link Position', priceCents: 5_00 }],
+    genericPaypalLink,
+  );
+  const { group: genericPaypalGroup } = await openScenario(genericPaypalScenario);
+  await page.evaluate(() => {
+    window.open = ((_url?: string, _target?: string, _features?: string) => {
+      const popup = {
+        opener: window as unknown as Window,
+        closed: false,
+        _location: '',
+        get location() { return this._location; },
+        set location(value: string) { this._location = value; },
+        close() { this.closed = true; },
+      };
+      (window as unknown as { __freshPopup?: typeof popup }).__freshPopup = popup;
+      return popup as unknown as Window;
+    }) as typeof window.open;
+  });
+  await genericPaypalGroup.locator('[data-group-pay]').click();
+  await page.waitForFunction(() => (window as unknown as { __freshPopup?: { location: string } }).__freshPopup?.location);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const popup = (window as unknown as { __freshPopup?: { location: string; closed: boolean } }).__freshPopup;
+      return popup ? { location: popup.location, closed: popup.closed } : null;
+    }),
+    { location: genericPaypalLink, closed: false },
+  );
+  await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
+  assert.match(
+    await page.locator('.modal-body p').first().innerText(),
+    /PayPal geöffnet\. Die Summe 5,00 € für .* wird dort nicht vorausgefüllt\./,
+  );
+  await page.click('[data-confirm-cancel]');
+  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+  await cleanupScenario(genericPaypalScenario);
 
   // In a mixed group, a paid legacy position may be present after a new item
   // was added. It is still part of the initial group and its disappearance

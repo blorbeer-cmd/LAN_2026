@@ -863,7 +863,12 @@ function renderClosedOrder(order, myId) {
 // directly on openModal per modal.js's own guidance (no new component),
 // mirroring confirmDialog's own title/one-sentence/Abbrechen-links/
 // Bestätigen-rechts/focus-on-Abbrechen/Escape-cancels structure.
-function confirmWithList(title, message, items, { note, confirmText = 'Bestätigen', cancelText = 'Abbrechen', danger = false } = {}) {
+function confirmWithList(
+  title,
+  message,
+  items,
+  { note, copyValue = null, confirmText = 'Bestätigen', cancelText = 'Abbrechen', danger = false } = {}
+) {
   return new Promise((resolve) => {
     let settled = false;
     const finish = (result) => {
@@ -884,6 +889,11 @@ function confirmWithList(title, message, items, { note, confirmText = 'Bestätig
       `
         <p style="margin:0 0 var(--space-3);">${escapeHtml(message)}</p>
         ${listHtml}
+        ${
+          copyValue
+            ? `<div style="margin-top:var(--space-3);"><button type="button" class="btn btn-sm" data-confirm-copy="${escapeHtml(copyValue)}">${icon('copy')} Summe kopieren</button></div>`
+            : ''
+        }
         ${note ? `<p class="muted" style="margin:var(--space-3) 0 0;">${escapeHtml(note)}</p>` : ''}
         <div class="row" style="gap:var(--space-2);justify-content:flex-end;margin-top:var(--space-4);">
           <button type="button" class="btn btn-sm btn-equal" data-confirm-cancel>${escapeHtml(cancelText)}</button>
@@ -892,6 +902,8 @@ function confirmWithList(title, message, items, { note, confirmText = 'Bestätig
       `,
       {
         onMount: (el) => {
+          const copyButton = el.querySelector('[data-confirm-copy]');
+          copyButton?.addEventListener('click', () => copyFoodOrderTotal(copyButton.dataset.confirmCopy));
           el.querySelector('[data-confirm-cancel]').addEventListener('click', () => {
             finish(false);
             close();
@@ -1006,14 +1018,17 @@ async function handleGroupPay(order, playerId, ctx) {
   const tipPercent = freshOrder.tipPercent || 0;
   const payableCents = items.reduce((sum, item) => sum + lineTotalCents(item, tipPercent), 0);
   const payUrl = paypalPayUrl(freshOrder.paypalLink, payableCents);
+  const amountPassedToPaypal = payUrl !== freshOrder.paypalLink;
   if (popup) popup.location = payUrl;
   else window.open(payUrl, '_blank', 'noopener');
 
   const confirmed = await confirmWithList(
     'Bezahlt?',
-    `${formatCents(payableCents)} für ${items[0].playerName} an PayPal übergeben.`,
+    amountPassedToPaypal
+      ? `${formatCents(payableCents)} für ${items[0].playerName} an PayPal übergeben (paypal.me).`
+      : `PayPal geöffnet. Die Summe ${formatCents(payableCents)} für ${items[0].playerName} wird dort nicht vorausgefüllt.`,
     items.map((item) => ({ ...item, amount: formatCents(lineTotalCents(item, tipPercent)) })),
-    { confirmText: 'Ja, bezahlt', cancelText: 'Noch nicht' },
+    { copyValue: formatCents(payableCents), confirmText: 'Ja, bezahlt', cancelText: 'Noch nicht' },
   );
   if (!confirmed) {
     ctx.rerender();
