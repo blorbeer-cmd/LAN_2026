@@ -1949,6 +1949,7 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   await group.locator('[data-toggle-group-paid]').click();
   await page.waitForSelector(`.modal h2:has-text("Bezahlt-Markierung für ${alice.name} aufheben?")`);
   assert.equal(await page.locator('.food-order-confirm-list').count(), 1);
+  assert.match(await page.locator('.modal-body').innerText(), new RegExp(`${alice.name} wird wieder als offen geführt\\.`));
   await page.click('[data-confirm-cancel]');
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
   assert.equal(await group.locator('.food-order-paid-marker').getAttribute('aria-pressed'), 'true');
@@ -1967,6 +1968,7 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   await group.locator('[data-remove-group]').click();
   await page.waitForSelector('.modal h2:has-text("Deine 2 Positionen löschen?")');
   assert.equal(await page.locator('.food-order-confirm-list li').count(), 2);
+  assert.equal(await page.locator('.modal-body').getByText('Lässt sich nicht rückgängig machen.').count(), 1);
   await page.click('[data-confirm-cancel]');
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
   const wasserRow = page.locator('.food-order-item', { hasText: 'Wasser' });
@@ -2233,6 +2235,16 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
     },
     'Diese Bestellung existiert nicht mehr.',
   );
+  await runStalePayCase(
+    'Freshness abgeschlossene Bestellung',
+    async (scenario) => {
+      const closeResponse = await page.request.post(`${BASE_URL}/api/food-orders/${scenario.id}/close`);
+      assert.equal(closeResponse.status(), 200, await closeResponse.text());
+      const finalizeResponse = await page.request.post(`${BASE_URL}/api/food-orders/${scenario.id}/finalize`);
+      assert.equal(finalizeResponse.status(), 200, await finalizeResponse.text());
+    },
+    'Bestellung geschlossen – keine Änderungen mehr möglich',
+  );
 
   // A zero-priced position is still a valid priced position. Together with a
   // missing price it must expose the 0,00 € subtotal and keep its copy action.
@@ -2255,12 +2267,15 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
   const { group: concurrencyGroup } = await openScenario(concurrencyScenario);
   let firstRequestSeen!: () => void;
   let releaseFirstRequest!: () => void;
+  let followUpGetSeen!: () => void;
   const firstSeen = new Promise<void>((resolve) => { firstRequestSeen = resolve; });
   const release = new Promise<void>((resolve) => { releaseFirstRequest = resolve; });
+  const followUpGet = new Promise<void>((resolve) => { followUpGetSeen = resolve; });
   let orderListGetCount = 0;
   const concurrencyRoute = async (route: import('playwright').Route) => {
     if (route.request().method() === 'GET') {
       orderListGetCount += 1;
+      if (orderListGetCount === 2) followUpGetSeen();
       if (orderListGetCount === 1) {
         firstRequestSeen();
         await release;
@@ -2276,11 +2291,10 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
       data: { playerId: alice.id, description: 'Nachtrag während Refresh', quantity: 1, priceCents: 1_00 },
     });
     assert.equal(addResponse.status(), 201, await addResponse.text());
-    await page.waitForTimeout(150);
     assert.ok(orderListGetCount >= 1);
     releaseFirstRequest();
+    await followUpGet;
     await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
-    assert.ok(orderListGetCount >= 2);
     await page.waitForSelector('.food-order-confirm-list li:has-text("Nachtrag während Refresh")');
     await page.click('[data-confirm-cancel]');
     await page.waitForSelector('.modal-backdrop', { state: 'detached' });

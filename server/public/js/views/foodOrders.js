@@ -961,6 +961,12 @@ async function handleGroupPay(order, playerId, ctx) {
     ctx.rerender();
     return;
   }
+  if (freshOrder.finalizedAt) {
+    popup?.close();
+    showToast('Bestellung geschlossen – keine Änderungen mehr möglich', { error: true });
+    ctx.rerender();
+    return;
+  }
   const freshGroupItems = freshOrder.items.filter((item) => item.playerId === playerId);
   if (initialItemIds.some((id) => !freshGroupItems.some((item) => item.id === id))) {
     popup?.close();
@@ -1021,7 +1027,7 @@ async function handleGroupPaid(orderId, playerId, paid, ctx) {
     const foreignNames = names.filter((name) => name !== myName);
     const confirmed = await confirmWithList(
       `Bezahlt-Markierung für ${items[0].playerName} aufheben?`,
-      `${items[0].playerName} wird wieder als offen angezeigt.`,
+      `${items[0].playerName} wird wieder als offen geführt.`,
       items.map((item) => ({ ...item, amount: item.priceCents === null ? null : formatCents(lineTotalCents(item, order.tipPercent || 0)) })),
       { note: foreignNames.length ? `Bestätigt hat ${foreignNames.join(', ')} — nicht du.` : undefined, confirmText: 'Aufheben', cancelText: 'Abbrechen' },
     );
@@ -1050,7 +1056,7 @@ async function handleRemoveGroup(order, playerId, myId, ctx) {
   }
   const confirmed = await confirmWithList(
     `Deine ${items.length} ${items.length === 1 ? 'Position' : 'Positionen'} löschen?`,
-    'Alle eigenen Positionen dieser Person werden aus der Bestellung gelöscht.',
+    'Lässt sich nicht rückgängig machen.',
     items.map((item) => ({ ...item, amount: item.priceCents === null ? null : formatCents(lineTotalCents(item, order.tipPercent || 0)) })),
     { confirmText: 'Alle löschen', cancelText: 'Abbrechen', danger: true },
   );
