@@ -372,7 +372,21 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   // Auswertung (Rangliste/Statistiken/Hall of Fame) is reachable only from
   // here — it has no bottom-nav slot or "Mehr" entry of its own any more.
   assert.equal(await page.locator('[data-navigate="leaderboard"]').count(), 1);
-  assert.equal(await page.locator('.admin-tool-row').count(), 5);
+  assert.equal(await page.locator('[data-navigate="adminFeatureUsage"]').count(), 1);
+  assert.equal(await page.locator('[data-navigate="adminFeedback"]').count(), 1);
+  assert.equal(await page.locator('#admin-feature-usage-title').count(), 0);
+  assert.equal(await page.locator('#admin-feedback-title').count(), 0);
+  assert.equal(await page.locator('.admin-tool-row').count(), 7);
+  await page.click('[data-navigate="adminFeatureUsage"]');
+  await page.waitForSelector('#admin-feature-usage-title');
+  assert.equal(await page.locator('#admin-feedback-title').count(), 0);
+  await page.click('[data-navigate="admin"]');
+  await page.waitForSelector('#admin-tools-title');
+  await page.click('[data-navigate="adminFeedback"]');
+  await page.waitForSelector('#admin-feedback-title');
+  assert.equal(await page.locator('#admin-feature-usage-title').count(), 0);
+  await page.click('[data-navigate="admin"]');
+  await page.waitForSelector('#admin-tools-title');
   await page.click('[data-navigate="kiosk"]');
   await page.waitForSelector('a[href="/kiosk.html"]');
   assert.equal(await page.getByRole('heading', { name: 'TV-Kiosk' }).count(), 1);

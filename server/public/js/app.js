@@ -31,6 +31,7 @@ import { invalidateTournaments, focusTournament, showTournamentLanding } from '.
 import { invalidateHallOfFame } from './views/hallOfFame.js';
 import { invalidateSeating } from './views/seating.js';
 import { invalidateAdminMemberships, invalidateAdminReadiness } from './views/admin.js';
+import { invalidateAdminFeatureUsage } from './views/adminFeatureUsage.js';
 import { invalidateMusic } from './views/music.js';
 import { invalidateAnalytics } from './views/analytics.js';
 import { invalidateMyStats } from './views/myStats.js';
@@ -143,6 +144,7 @@ function invalidateEventScopedCaches() {
   invalidateMyStats();
   invalidateHallOfFame();
   invalidateAdminReadiness();
+  invalidateAdminFeatureUsage();
   invalidateSeatNeighbors();
   // Not a view cache but the same problem: a drawn lineup belongs to the
   // event it was drawn in, and nothing in loadAll() overwrites it.
@@ -347,11 +349,10 @@ function focusPendingSearchTarget() {
 // re-pushing would trap back/forward between the stale entry and its
 // redirect target).
 function switchView(view, { fromHistory = false, replace = false, searchTarget = null } = {}) {
-  // The entire Auswertung area (Rangliste/Statistiken/Hall of Fame) lives in
-  // Admin's Werkzeuge now, gated by the real admin role — redirect any
-  // attempt to reach it otherwise (deep link, restored history entry, search
-  // palette, ...) to Essen, its former bottom-nav slot.
-  if (sectionKeyForView(view) === 'insights' && !currentPlayerHasAdminRole()) view = 'foodOrders';
+  // Admin-only areas stay reachable through Admin links and deep links alike,
+  // but never render for an account whose role no longer permits them.
+  const adminOnlyView = ['adminFeatureUsage', 'adminFeedback'].includes(view);
+  if ((sectionKeyForView(view) === 'insights' || adminOnlyView) && !currentPlayerHasAdminRole()) view = 'foodOrders';
   const changed = view !== currentView;
   pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
   currentView = view;
@@ -444,7 +445,7 @@ function wireNav() {
   document.getElementById('info-btn').addEventListener('click', () => openInfoBoard());
 
   // Views can request navigation to a non-bottom-nav view (settings,
-  // analytics) by rendering a button with data-navigate="<view>", without
+  // analytics) by rendering a control with data-navigate="<view>", without
   // needing to import app.js themselves (would risk circular imports).
   viewContainer.addEventListener('click', (e) => {
     if (e.target.closest('[data-retry-arcade]')) {
@@ -466,7 +467,10 @@ function wireNav() {
       return;
     }
     const btn = e.target.closest('[data-navigate]');
-    if (btn) switchView(btn.dataset.navigate);
+    if (btn) {
+      if (btn instanceof HTMLAnchorElement) e.preventDefault();
+      switchView(btn.dataset.navigate);
+    }
   });
 
   // Programmatic hooks for view modules that must drive navigation/redraws
@@ -794,7 +798,7 @@ function wireSocket() {
   socket.on('groups:changed', async () => {
     await refreshGroupContext();
     invalidateAdminMemberships();
-    if (currentView === 'admin') renderCurrent();
+    if (['admin', 'adminFeatureUsage', 'adminFeedback'].includes(currentView)) renderCurrent();
   });
 }
 
