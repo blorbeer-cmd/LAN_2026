@@ -63,6 +63,10 @@ test('paypalEmailFromLink returns null for a paypal.me link or other input', () 
   assert.equal(paypalEmailFromLink(undefined), null);
 });
 
+test('paypalEmailFromLink treats malformed recipient encoding as a normal URL', () => {
+  assert.equal(paypalEmailFromLink('https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=%E0%A4%A'), null);
+});
+
 test('paypalPayUrl appends the amount to a bare paypal.me link', () => {
   assert.equal(paypalPayUrl('https://paypal.me/luigi', 2090), 'https://paypal.me/luigi/20.90EUR');
 });

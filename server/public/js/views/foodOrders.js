@@ -57,6 +57,10 @@ export function prepareFoodOrderTarget(orderId) {
 export function clearFoodOrderTarget() {
   pendingOrderTargetId = null;
   activeOrderTargetId = null;
+  // A target-aware response may contain an older order outside the normal
+  // window. Do not let that response become the next un-targeted view after
+  // navigating away and back to Essen.
+  cache = null;
 }
 
 // Single-flight coordinator for GET /api/food-orders. load() (the first
@@ -218,7 +222,15 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // isn't one of ours (a paypal.me link or some other payment page).
 export function paypalEmailFromLink(paypalLink) {
   const match = (paypalLink ?? '').match(PAYPAL_EMAIL_LINK_RE);
-  return match ? decodeURIComponent(match[1]) : null;
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    // The API accepts arbitrary HTTP(S) URLs. Treat malformed percent
+    // encoding as an ordinary PayPal URL instead of breaking Essen while it
+    // renders the order card.
+    return null;
+  }
 }
 
 // Lets people type just their paypal.me name ("blorbeer", "@blorbeer",
