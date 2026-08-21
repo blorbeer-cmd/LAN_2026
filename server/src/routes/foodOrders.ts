@@ -130,16 +130,20 @@ function serializeOrder(row: OrderRow) {
   };
 }
 
-function buildList(groupId: string, eventId: string | null) {
+function buildList(groupId: string, eventId: string | null, targetOrderId: string | null = null) {
   if (!eventId) return { orders: [] };
+  const orderBy = targetOrderId
+    ? 'ORDER BY CASE WHEN fo.id = ? THEN 0 ELSE 1 END, fo.created_at DESC'
+    : 'ORDER BY fo.created_at DESC';
+  const queryParams = targetOrderId ? [eventId, groupId, targetOrderId, HISTORY_LIMIT] : [eventId, groupId, HISTORY_LIMIT];
   const rows = db
     .prepare(
       `SELECT fo.*, e.group_id
        FROM food_orders fo JOIN events e ON e.id = fo.event_id
        WHERE fo.event_id = ? AND e.group_id = ?
-       ORDER BY fo.created_at DESC LIMIT ?`,
+       ${orderBy} LIMIT ?`,
     )
-    .all(eventId, groupId, HISTORY_LIMIT) as OrderRow[];
+    .all(...queryParams) as OrderRow[];
   return { orders: rows.map(serializeOrder) };
 }
 
@@ -161,7 +165,8 @@ function orderDeliveryScope(order: OrderRow): { groupId: string; eventId: string
 // GET /api/food-orders - current event's orders, newest first (open ones on
 // top by recency; the frontend splits open vs closed).
 foodOrdersRouter.get('/', (req, res) => {
-  res.json(buildList(req.group!.id, res.locals.storageEventId as string | null));
+  const targetOrderId = typeof req.query.orderId === 'string' ? req.query.orderId : null;
+  res.json(buildList(req.group!.id, res.locals.storageEventId as string | null, targetOrderId));
 });
 
 // POST /api/food-orders - body: { playerId, title, sendAt?, notes?, link?, paypalLink?, tipPercent? }.

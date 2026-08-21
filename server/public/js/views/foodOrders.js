@@ -49,6 +49,7 @@ let consolidatedListDialog = null; // { orderId, el, ctx } | null
 export function prepareFoodOrderTarget(orderId) {
   if (!orderId) return;
   pendingOrderTargetId = orderId;
+  if (cache !== null && !cache.some((order) => order.id === orderId)) cache = null;
 }
 
 // Single-flight coordinator for GET /api/food-orders. load() (the first
@@ -89,7 +90,7 @@ async function fetchFoodOrders(ctx) {
       // or that follow-up refresh is silently lost until some unrelated event
       // happens to trigger another one.
       try {
-        const res = await api.foodOrders.list();
+        const res = await api.foodOrders.list(pendingOrderTargetId);
         cache = res.orders;
         succeeded = true;
       } catch (err) {

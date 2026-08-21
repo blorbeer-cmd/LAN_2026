@@ -462,7 +462,7 @@ export const api = {
   },
 
   foodOrders: {
-    list: () => apiFetch('/api/food-orders'),
+    list: (orderId = null) => apiFetch(`/api/food-orders${orderId ? `?orderId=${encodeURIComponent(orderId)}` : ''}`),
     create: (playerId, title, { sendAt, notes, link, paypalLink, tipPercent } = {}) =>
       apiFetch('/api/food-orders', {
         method: 'POST',

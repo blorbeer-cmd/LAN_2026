@@ -314,6 +314,23 @@ test('GET /api/food-orders lists orders with items grouped data', async () => {
   assert.equal(order.items.length, 2);
 });
 
+test('GET /api/food-orders?orderId includes a targeted order outside the history limit', async () => {
+  for (let index = 0; index < 11; index += 1) {
+    const created = await request(app)
+      .post('/api/food-orders')
+      .send({ playerId: alice.id, title: `Neuere Bestellung ${index + 1}` });
+    assert.equal(created.status, 201);
+  }
+
+  const recent = await request(app).get('/api/food-orders');
+  assert.equal(recent.status, 200);
+  assert.equal(recent.body.orders.some((o: { id: string }) => o.id === orderId), false);
+
+  const targeted = await request(app).get(`/api/food-orders?orderId=${encodeURIComponent(orderId)}`);
+  assert.equal(targeted.status, 200);
+  assert.ok(targeted.body.orders.some((o: { id: string }) => o.id === orderId));
+});
+
 test('finalize requires the order to be closed first, and rejects an unknown order', async () => {
   const missing = await request(app).post('/api/food-orders/nope/finalize');
   assert.equal(missing.status, 404);
