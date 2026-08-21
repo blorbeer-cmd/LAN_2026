@@ -251,17 +251,19 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby warns and closes the owne
       await guestPage.click(`[data-game="${game}"]`);
       await guestPage.waitForSelector(`#${game}-create:not([disabled])`);
       await guestPage.click(`#${game}-create`);
-      const targetSelect = guestPage.locator(`.arcade-lobby-control-bar select[name="${game}-target"]:visible`);
-      await targetSelect.waitFor();
-      await guestPage.waitForFunction((gameName) => Array.from(
-        document.querySelectorAll(`.arcade-lobby-control-bar select[name="${gameName}-target"]`),
-      ).some((select) => Math.round(select.getBoundingClientRect().height) === 32), game);
-      assert.equal(
-        await targetSelect.inputValue(),
-        '7',
-      );
-      // Rounded: see the #admin-count assertion above for why.
-      assert.equal(await targetSelect.evaluate((select) => Math.round(select.getBoundingClientRect().height)), 32);
+      const targetStateHandle = await guestPage.waitForFunction((gameName) => {
+        const select = Array.from(document.querySelectorAll<HTMLSelectElement>(
+          `.arcade-lobby-control-bar select[name="${gameName}-target"]`,
+        )).find((candidate) => Math.round(candidate.getBoundingClientRect().height) === 32);
+        return select
+          ? { value: select.value, height: Math.round(select.getBoundingClientRect().height) }
+          : null;
+      }, game);
+      const targetState = await targetStateHandle.jsonValue();
+      await targetStateHandle.dispose();
+      // Snapshot value and geometry atomically: a realtime re-render can hide
+      // the matched select between two otherwise independent locator reads.
+      assert.deepEqual(targetState, { value: '7', height: 32 });
 
       await page.click(`[data-game="${game}"]`);
       await page.waitForSelector(`[data-${game}-join]`);
