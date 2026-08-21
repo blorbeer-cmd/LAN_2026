@@ -162,4 +162,3 @@ test('foodOrderDescriptionSuggestions sorts alphabetically with the German local
 test('foodOrderDescriptionSuggestions returns an empty list for an order without items', () => {
   assert.deepEqual(foodOrderDescriptionSuggestions([]), []);
 });
-
