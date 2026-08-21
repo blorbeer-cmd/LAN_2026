@@ -667,7 +667,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   people, fully paid people and the open sum of people not fully confirmed. Missing prices show the
   actual priced subtotal with `Preise unvollständig`; the total is labeled `(unvollständig)`.
 
-  The detail-links row always contains `Bestellliste`, visible to everyone, with `margin-left:auto`.
+  The detail-links row always contains `Bestellübersicht`, visible to everyone, with `margin-left:auto`.
   The list deliberately contains no names or paid state: it consolidates normalized descriptions by
   exact unit price and shows quantity, unit price, line total, subtotal and tip-inclusive total.
   The order card puts title/status, creator/time metadata, info, summary, toolbar, groups, total,

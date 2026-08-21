@@ -1844,7 +1844,7 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   await page.waitForSelector('text=Mindestbestellwert 15€, bar zahlen');
   await page.waitForSelector('a[href="https://luigis-pizza.example/karte"]');
   assert.equal(await page.locator('a[href="https://paypal.me/luigi"] .ui-icon').count(), 1);
-  await page.getByRole('button', { name: 'Bestellliste', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Bestellübersicht', exact: true }).waitFor();
 
   await page.click('[data-edit-details]');
   await page.getByLabel('Speisekarte', { exact: true }).waitFor();
@@ -2487,14 +2487,14 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
   await page.evaluate(() => (window as unknown as { __restoreFreshPopup?: () => void }).__restoreFreshPopup?.());
 });
 
-flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for the creator/admin and can close the order', async () => {
+flowTest('community', 'Essensbestellung: Bestellübersicht consolidates positions for the creator/admin and can close the order', async () => {
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
   await page.click('#order-new-btn');
-  await page.fill('#order-title', 'Bestellliste-Test');
+  await page.fill('#order-title', 'Bestellübersicht-Test');
   await page.fill('#order-tip', '10');
   await page.click('#order-form button[type="submit"]');
-  await page.waitForSelector('text=Bestellliste-Test');
-  const listOrderCard = page.locator('[data-order-card]', { hasText: 'Bestellliste-Test' });
+  await page.waitForSelector('text=Bestellübersicht-Test');
+  const listOrderCard = page.locator('[data-order-card]', { hasText: 'Bestellübersicht-Test' });
   const listOrderId = await listOrderCard.getAttribute('data-order-card');
   assert.ok(listOrderId);
 
@@ -2542,7 +2542,7 @@ flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for
   await page.waitForSelector('[data-order-card]:has-text("Gruppen-Test-Bestellung") .food-order-card-body:not([hidden])');
 
   await listOrderCard.locator('[data-open-order-list]').click();
-  await page.waitForSelector('.modal h2:has-text("Bestellliste – Bestellliste-Test")');
+  await page.waitForSelector('.modal h2:has-text("Bestellübersicht – Bestellübersicht-Test")');
   // Same normalized description + same price merges into one consolidated
   // row (AP4.2) — 1 + 2 = 3 × Margherita.
   await page.waitForSelector('.food-order-consolidated-row:has-text("3 × Margherita")');
@@ -2564,7 +2564,7 @@ flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
   await page.goto(`${BASE_URL}/#foodOrders/${listOrderId}`);
   await page.reload();
-  const directOrderCard = page.locator('[data-order-card]', { hasText: 'Bestellliste-Test' });
+  const directOrderCard = page.locator('[data-order-card]', { hasText: 'Bestellübersicht-Test' });
   await directOrderCard.waitFor();
   assert.equal(await directOrderCard.locator('.food-order-card-body').isVisible(), true);
 
@@ -2589,9 +2589,9 @@ flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for
   // The list is visible to everyone, including a non-creator on a closed order.
   await switchIdentityAndOpenFoodOrders('E2E Bob');
   await page.click('[data-food-history] > summary');
-  await page.waitForSelector('text=Bestellliste-Test');
+  await page.waitForSelector('text=Bestellübersicht-Test');
   assert.equal(
-    await page.locator('[data-closed-order]', { hasText: 'Bestellliste-Test' }).locator('[data-open-order-list]').count(),
+    await page.locator('[data-closed-order]', { hasText: 'Bestellübersicht-Test' }).locator('[data-open-order-list]').count(),
     1
   );
 
@@ -2743,7 +2743,7 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   assert.equal(await descInput.inputValue(), 'Wasser');
 
   // Picking a suggestion reuses its exact spelling instead of whatever was
-  // typed - the point being that the consolidated "Bestellliste" keeps
+  // typed - the point being that the consolidated "Bestellübersicht" keeps
   // merging repeat orders of the same item into one row instead of splitting
   // it because someone spelled it slightly differently. It also syncs the
   // price field to the picked suggestion, overwriting whatever price happens
@@ -2774,7 +2774,7 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   await suggestOrderCard.locator('[data-add-item-form] button[type="submit"]').click();
 
   await suggestOrderCard.locator('[data-open-order-list]').click();
-  await page.waitForSelector('.modal h2:has-text("Bestellliste – Vorschlags-Test")');
+  await page.waitForSelector('.modal h2:has-text("Bestellübersicht – Vorschlags-Test")');
   await page.waitForSelector('.food-order-consolidated-row:has-text("3 × Margherita groß")');
   await page.waitForSelector('.food-order-consolidated-row:has-text("1 × Wasser")');
   await page.waitForSelector('.food-order-consolidated-row:has-text("1 × Cola")');

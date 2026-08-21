@@ -31,7 +31,7 @@ keinen dreiwertigen Zahlungszustand.
   fehlenden Positionen, zwischenzeitlich bezahlten Positionen, fehlendem Link oder fehlenden
   Preisen ab. Danach öffnet sich sofort „Bezahlt?“; nur „Ja, bezahlt“ markiert alle Positionen
   dieses Blocks.
-- Die Bestellliste ist aus Menü, Speisekarte und PayPal-Link erreichbar und für alle sichtbar.
+- Die Bestellübersicht ist aus Menü, Speisekarte und PayPal-Link erreichbar und für alle sichtbar.
   Sie enthält keine Namen und keinen Bezahlstatus.
 - Die Übersicht zählt mengenbezogene Positionen, Personen und vollständig bezahlte Personen.
   Bei fehlenden Preisen zeigt sie den tatsächlich bepreisten Teilbetrag plus

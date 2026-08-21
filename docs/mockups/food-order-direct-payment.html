@@ -412,13 +412,13 @@ ul.doc-list li b { color: var(--ink); font-weight: 600; }
   white-space: pre-wrap;
 }
 .food-order-detail-links { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding-top: var(--space-3); }
-/* NEU: Die Bestellliste ist rechts verankert — sie ist als einzige der drei
+/* NEU: Die Bestellübersicht ist rechts verankert — sie ist als einzige der drei
    immer vorhanden, ihr Platz darf nicht davon abhängen, wie viele Links
    davor stehen. */
 .food-order-detail-links > .food-order-list-btn { margin-left: auto; }
 
 /* NEU: die Werkzeugleiste trägt nur noch "Alle ausklappen" und steht links,
-   unterhalb der Zusammenfassungszeile. Die Bestellliste ist in den Infokasten
+   unterhalb der Zusammenfassungszeile. Die Bestellübersicht ist in den Infokasten
    gewandert (.food-order-detail-links). */
 .food-order-card-toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .food-order-list-btn { display: inline-flex; align-items: center; gap: var(--space-2); }
@@ -775,9 +775,9 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
       <h3>Bestellungen starten eingeklappt</h3>
       <p>Bei mehreren offenen Bestellungen sind alle zu — außer der, auf die ein Direktlink zeigt.
         Der eingeklappte Kasten trägt Ersteller, Erstellzeitpunkt, Versandzeit, Hinweis,
-        Bestellliste und die Zusammenfassungszeile.</p></div></div>
+        Bestellübersicht und die Zusammenfassungszeile.</p></div></div>
     <div class="change"><span class="change-no">07</span><div>
-      <h3>Bestellliste rechts im Infokasten, für alle</h3>
+      <h3>Bestellübersicht rechts im Infokasten, für alle</h3>
       <p>Rechts verankert, damit ihr Platz nicht davon abhängt, wie viele Links davor stehen. Und
         für jede angemeldete Person zu öffnen, nicht nur für Aufgeber und Admins.</p></div></div>
     <div class="change"><span class="change-no">08</span><div>
@@ -806,9 +806,9 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
       </div>
       <div class="side">
         <p class="note is-key"><b>Sichtbar bleibt:</b> Titel und Status, „von &lt;Ersteller&gt; ·
-          &lt;Erstellzeitpunkt&gt;“, der Infokasten mit Versandzeit, Hinweis, Bestellliste,
+          &lt;Erstellzeitpunkt&gt;“, der Infokasten mit Versandzeit, Hinweis, Bestellübersicht,
           Speisekarte und PayPal — und darunter die Zusammenfassungszeile.</p>
-        <p class="note"><b>Die Bestellliste steht rechts im Infokasten</b>, verankert über
+        <p class="note"><b>Die Bestellübersicht steht rechts im Infokasten</b>, verankert über
           <code>margin-left: auto</code>. Sie ist als einzige der drei Knöpfe immer vorhanden, also
           darf ihr Platz nicht davon abhängen, wie viele Links davor stehen — bei „Frühstück Sonntag“
           ohne Speisekarte und ohne PayPal sitzt sie an genau derselben Stelle. Öffnen kann sie jede
@@ -997,7 +997,7 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
           Positionen eingefroren, Marken und Bezahlen weiterhin bedienbar — nach dem Abschicken wird
           ja erst richtig kassiert.</p>
         <p class="note"><b>Geschlossen</b> sperrt alles: Marke, Bezahlen und Löschen sind
-          <code>disabled</code>, Kopieren bleibt. Die Bestellliste ist weiter erreichbar, zum
+          <code>disabled</code>, Kopieren bleibt. Die Bestellübersicht ist weiter erreichbar, zum
           Abgleichen der Lieferung.</p>
         <p class="note is-warn"><b>Nachträglich eingetragen</b> ist der Preis dieser Vereinfachung.
           Tobi war bestätigt und trägt danach ein Tiramisu nach: Seine Marke springt zurück auf
@@ -1475,13 +1475,13 @@ td.lost { color: var(--danger); font-family: var(--font-mono); font-size: 12px; 
     const sendAt = order.sendAt
       ? `<span class="food-order-send-at">${icon('clock')}${legacy ? `Versand ${order.sendAt.replace('. ', '., ')}` : order.sendAt} Uhr</span>`
       : '<span class="food-order-send-at">Kein Zeitpunkt festgelegt</span>';
-    // Die Bestellliste ist rechts verankert (margin-left: auto): sie ist als
+    // Die Bestellübersicht ist rechts verankert (margin-left: auto): sie ist als
     // einzige der drei immer vorhanden, also darf ihr Platz nicht davon
     // abhängen, wie viele Links davor stehen.
     const links = `<div class="food-order-detail-links">
            ${order.link ? '<a class="btn btn-sm" href="#" onclick="return false;">Speisekarte</a>' : ''}
            ${order.paypalLink ? `<a class="btn btn-sm" href="#" onclick="return false;">${icon('paypal')} PayPal öffnen</a>` : ''}
-           <button type="button" class="btn btn-sm food-order-list-btn">${icon('listChecks')} Bestellliste</button>
+           <button type="button" class="btn btn-sm food-order-list-btn">Bestellübersicht</button>
          </div>`;
     return `<div class="food-order-details">
       <div class="food-order-details-head">${sendAt}${locked ? '' : '<button type="button" class="btn btn-sm">Bearbeiten</button>'}</div>

@@ -16,7 +16,7 @@ früheren Fassungen.
   und der Plan sich widersprechen, gilt dieses Dokument. Der Plan ist im Umsetzungs-PR an den
   Zielzustand anzugleichen.
 - `docs/plans/food-order-cart-concept.md` beschreibt den heutigen Warenkorb und wird abgelöst; seine
-  Abschnitte zur Bezahl-Härtung (#444), zur Bestellliste (AP4) und zu den Klapp-Regeln der
+  Abschnitte zur Bezahl-Härtung (#444), zur Bestellübersicht (AP4) und zu den Klapp-Regeln der
   Bestellergruppen (AP3.1–AP3.4, AP3.6–AP3.11) bleiben gültig.
 
 ## Branch
@@ -139,7 +139,7 @@ gezeigt und am Ende ` · Preise unvollständig` angehängt. Die Bestell-Gesamtsu
 
 ### 8. Infokasten
 
-- **Bestellliste rechts verankert** (`margin-left: auto`) in der Knopfreihe, hinter „Speisekarte“ und
+- **Bestellübersicht rechts verankert** (`margin-left: auto`) in der Knopfreihe, hinter „Speisekarte“ und
   „PayPal öffnen“. Sie ist als einzige der drei immer vorhanden; ihr Platz darf nicht davon abhängen,
   wie viele Links davor stehen. `renderOrderListButton()` und der Werkzeugleisten-Platz entfallen;
   die Knopfreihe wird auch dann gerendert, wenn weder Speisekarte noch PayPal hinterlegt sind.
@@ -165,7 +165,7 @@ Hinzufügen-Formular · Bestellaktionen.
 - **Ein Direktlink klappt genau die verlinkte Bestellung auf.**
 - Eingeklappt sind nur Bestellergruppen, Werkzeugleiste, Hinzufügen-Formular und Bestellaktionen.
   Sichtbar bleiben Titel, Badge, Ersteller, Erstellzeitpunkt, Infokasten (mit Versandzeit, Hinweis,
-  Bestellliste, Speisekarte, PayPal) und Zusammenfassungszeile.
+  Bestellübersicht, Speisekarte, PayPal) und Zusammenfassungszeile.
 - **Kein `<details>`/`<summary>` mehr** für die Karte: der immer sichtbare Teil enthält Knöpfe und
   Links, die dort nicht liegen dürfen. Stattdessen derselbe Aufbau wie beim Gruppenkopf — ein
   Umschalt-Button mit `aria-expanded` als Geschwister neben Badge und Rest.
@@ -237,7 +237,7 @@ Neue und geänderte Logik bekommt Tests für Happy Path, Validierungsfehler und 
   vorhanden an fremden Gruppen, Teil-Fehlschlag beim parallelen Löschen (Cache verwerfen, neu laden).
 - **Klapp-Zustand**: mehrere offene Bestellungen starten zu, Direktlink klappt genau eine auf, ein
   Realtime-Rerender ändert den Zustand nicht, eine einzige offene Bestellung hat keine Klapp-Hülle.
-- **Bestellliste**: für eine Person erreichbar, die weder Aufgeberin noch Admin ist.
+- **Bestellübersicht**: für eine Person erreichbar, die weder Aufgeberin noch Admin ist.
 
 Der Essensbestellung-E2E-Flow in `server/src/test/e2e/flows.fixture.ts` wird mitgeführt, nicht am
 Ende nachgezogen. Tests nicht löschen, lockern oder mit Timeouts kaschieren.

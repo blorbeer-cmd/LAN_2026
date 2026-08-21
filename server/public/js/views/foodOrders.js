@@ -558,7 +558,7 @@ function renderDetails(order, { locked = false } = {}) {
           })()
           : ''
       }
-      <button type="button" class="btn btn-sm" data-open-order-list="${order.id}">${icon('listChecks')} Bestellliste</button>
+      <button type="button" class="btn btn-sm" data-open-order-list="${order.id}">Bestellübersicht</button>
       </div>
     </div>`;
 }
@@ -1226,7 +1226,7 @@ function wireConsolidatedListActions(el, order) {
 function openConsolidatedListDialog(order, myId, ctx) {
   const orderWithFlag = { ...order, createdByCurrentUser: order.createdBy === myId };
   const { el, close } = openModal(
-    escapeHtml(`Bestellliste – ${order.title}`),
+    escapeHtml(`Bestellübersicht – ${order.title}`),
     `<div data-consolidated-body>${renderConsolidatedListBody(orderWithFlag)}</div>`,
     {
       onMount: (mountEl) => {
@@ -1241,7 +1241,7 @@ function openConsolidatedListDialog(order, myId, ctx) {
   return { el, close };
 }
 
-// Called at the end of every render pass so the open Bestellliste dialog
+// Called at the end of every render pass so the open Bestellübersicht dialog
 // (if any) reflects the latest realtime state instead of freezing at the
 // moment it was opened.
 function refreshConsolidatedListDialog(myId) {
