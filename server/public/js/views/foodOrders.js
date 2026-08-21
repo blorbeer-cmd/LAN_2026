@@ -122,9 +122,10 @@ async function fetchFoodOrders(ctx) {
         if (responseIsCurrent) {
           cache = res.orders;
           succeeded = true;
-        } else if (activeOrderTargetId !== null) {
-          // A navigation/deep-link target changed while this request was in
-          // flight. Discard the old response and fetch for the new target.
+        } else {
+          // A navigation/deep-link target or the cache scope changed while
+          // this request was in flight. Discard the old response and fetch
+          // for the current target/scope, including the global order list.
           refetchPending = true;
           succeeded = false;
         }
@@ -137,7 +138,7 @@ async function fetchFoodOrders(ctx) {
         if (responseIsCurrent) {
           showToast(err.message, { error: true });
           if (showPlaceholder) cache = [];
-        } else if (activeOrderTargetId !== null) {
+        } else {
           refetchPending = true;
         }
       } finally {
@@ -1166,7 +1167,18 @@ async function handleRemoveGroup(order, playerId, myId, ctx) {
     const initialItemIds = new Set(items.map((item) => item.id));
     const itemsToRemove = freshItems.filter((item) => initialItemIds.has(item.id));
     await Promise.all(itemsToRemove.map((item) => api.foodOrders.removeItem(order.id, item.id, myId)));
-    freshOrder.items = freshOrder.items.filter((item) => !itemsToRemove.some((removed) => removed.id === item.id));
+    const currentOrder = cache?.find((candidate) => candidate.id === order.id);
+    if (currentOrder) {
+      // Apply the successful deletes to whichever snapshot is current now.
+      // This preserves positions added during the confirmation dialog without
+      // writing through the stale `freshOrder` object used for validation.
+      currentOrder.items = currentOrder.items.filter((item) => !itemsToRemove.some((removed) => removed.id === item.id));
+    } else {
+      // A refresh left no current snapshot while the individual deletes were
+      // in flight. Discard the current generation and fetch authoritatively.
+      invalidateFoodOrderCache();
+      await fetchFoodOrders(ctx);
+    }
     showToast('Eigene Positionen entfernt.');
     ctx.rerender();
   } catch (err) {
