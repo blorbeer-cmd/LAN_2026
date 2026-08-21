@@ -3774,6 +3774,26 @@ registerMigration({
   up: migrateFoodOrderItemPaidByColumns,
 });
 
+// Hourly food-order payment reminders need deduplication that survives both
+// server restarts and the intentionally bounded push history. One row per
+// player/event is enough; it is overwritten after every successful reminder.
+function addFoodOrderPaymentReminderState(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS food_order_payment_reminders (
+      group_id    TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id    TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      last_sent_at INTEGER NOT NULL,
+      PRIMARY KEY (group_id, event_id, player_id)
+    );
+  `);
+}
+registerMigration({
+  version: 77,
+  name: 'add food order payment reminder state',
+  up: addFoodOrderPaymentReminderState,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
