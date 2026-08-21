@@ -18,6 +18,7 @@ let missingSkillsLoading = false;
 const DISMISSED_STORAGE_PREFIX = 'respawn_home_current_dismissed';
 const MAX_DISMISSED_ITEMS = 100;
 const MAX_ITEM_ID_LENGTH = 200;
+export const FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS = 60 * 60 * 1000;
 const memoryDismissals = new Map();
 
 function dismissalScope({ playerId = getMyId(), eventId = state.activeEvent?.id ?? 'base' } = {}) {
@@ -95,11 +96,16 @@ export function missingSkillAktuellId(gameId, livePlayers = state.live) {
 // still owes items, enrich that same entry instead of adding a second one for
 // the reminder push. A finalized order cannot be paid in the UI anymore, so
 // it does not become a payment nudge.
-export function foodOrderAktuellItem(order, myId) {
+export function foodOrderAktuellItem(order, myId, now = Date.now()) {
   const unpaidOwnItems = myId
     ? (order.items ?? []).filter((item) => item.playerId === myId && !item.paid)
     : [];
-  const paymentDue = unpaidOwnItems.length > 0 && !order.finalizedAt;
+  const paymentReminderDue =
+    unpaidOwnItems.length > 0 &&
+    !order.finalizedAt &&
+    Number.isFinite(order.closedAt) &&
+    now >= order.closedAt + FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS;
+  const paymentDue = paymentReminderDue;
   if (!order.open && !paymentDue) return null;
 
   return {

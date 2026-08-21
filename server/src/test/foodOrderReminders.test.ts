@@ -23,13 +23,13 @@ test('food-order payment reminders aggregate unpaid orders and deduplicate withi
     playerId,
   );
   db.prepare(
-    `INSERT INTO food_orders (id, event_id, title, created_by, created_at)
-     VALUES (?, ?, 'Reminder Pizza', ?, ?)`,
-  ).run(firstOrderId, BASE_EVENT_ID, playerId, now);
+    `INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at)
+     VALUES (?, ?, 'Reminder Pizza', ?, ?, ?)`,
+  ).run(firstOrderId, BASE_EVENT_ID, playerId, now, now);
   db.prepare(
-    `INSERT INTO food_orders (id, event_id, title, created_by, created_at)
-     VALUES (?, ?, 'Reminder Drinks', ?, ?)`,
-  ).run(secondOrderId, BASE_EVENT_ID, playerId, now + 1);
+    `INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at)
+     VALUES (?, ?, 'Reminder Drinks', ?, ?, ?)`,
+  ).run(secondOrderId, BASE_EVENT_ID, playerId, now + 1, now);
   db.prepare(
     `INSERT INTO food_order_items (id, order_id, player_id, description, quantity, created_at)
      VALUES (?, ?, ?, 'Pizza', 1, ?)`,
@@ -40,7 +40,9 @@ test('food-order payment reminders aggregate unpaid orders and deduplicate withi
   ).run(secondItemId, secondOrderId, playerId, now);
 
   try {
-    assert.equal(runFoodOrderPaymentReminderOnce(now), 1);
+    assert.equal(runFoodOrderPaymentReminderOnce(now), 0);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 59 * 60 * 1000), 0);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 60 * 60 * 1000), 1);
     const topic = `food-order-payment-reminder:${playerId}:${BASE_EVENT_ID}`;
     const entry = db
       .prepare('SELECT title, body, url, audience, topic_key AS topicKey FROM push_log WHERE topic_key = ?')

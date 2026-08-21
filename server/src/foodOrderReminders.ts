@@ -20,7 +20,7 @@ interface ReminderGroup {
   orders: UnpaidOrderRow[];
 }
 
-function reminderGroups(): ReminderGroup[] {
+function reminderGroups(now = Date.now()): ReminderGroup[] {
   const rows = db
     .prepare(
       `SELECT fo.id AS orderId, fo.event_id AS eventId, e.group_id AS groupId,
@@ -31,12 +31,14 @@ function reminderGroups(): ReminderGroup[] {
        JOIN food_order_items i ON i.order_id = fo.id
        JOIN players p ON p.id = i.player_id
        WHERE i.paid = 0
+         AND fo.closed_at IS NOT NULL
+         AND fo.closed_at <= ?
          AND fo.finalized_at IS NULL
          AND p.deactivated_at IS NULL
        GROUP BY fo.id, fo.event_id, e.group_id, fo.title, i.player_id, fo.created_at
        ORDER BY fo.created_at DESC`,
     )
-    .all() as UnpaidOrderRow[];
+    .all(now - FOOD_ORDER_PAYMENT_REMINDER_INTERVAL_MS) as UnpaidOrderRow[];
 
   const groups = new Map<string, ReminderGroup>();
   for (const row of rows) {
@@ -89,12 +91,13 @@ function reminderBody(orders: UnpaidOrderRow[]): string {
 
 /**
  * Sends at most one payment reminder per player and event in a rolling hour.
+ * An order only becomes eligible one hour after it was sent/closed.
  * The database log is the durable deduplication source, so a process restart
  * cannot immediately send the same hourly reminder again.
  */
 export function runFoodOrderPaymentReminderOnce(now = Date.now()): number {
   let sent = 0;
-  for (const group of reminderGroups()) {
+  for (const group of reminderGroups(now)) {
     if (wasSentRecently(group, now)) continue;
 
     const singleOrder = group.orders.length === 1 ? group.orders[0] : null;

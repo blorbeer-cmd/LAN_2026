@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   dismissAktuellItem,
+  FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS,
   foodOrderAktuellItem,
   filterDismissedAktuellItems,
   missingSkillAktuellId,
@@ -85,22 +86,40 @@ test('an unpaid order reuses its existing Home item instead of creating a duplic
     id: 'order-1',
     title: 'Pizza',
     open: false,
+    closedAt: 1_000,
     finalizedAt: null,
     items: [
       { playerId: 'alice', paid: false },
       { playerId: 'bob', paid: false },
     ],
   };
-  const item = foodOrderAktuellItem(order, 'alice');
+  const item = foodOrderAktuellItem(order, 'alice', 1_000 + FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS);
   assert.equal(item.id, 'food-order:order-1');
   assert.equal(item.title, 'Sammelbestellung „Pizza" bezahlen');
   assert.equal(item.sub, '1 Position noch offen');
-  assert.equal(foodOrderAktuellItem({ ...order, items: [{ playerId: 'alice', paid: true }] }, 'alice'), null);
+  assert.equal(
+    foodOrderAktuellItem({ ...order, items: [{ playerId: 'alice', paid: true }] }, 'alice', 1_000 + FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS),
+    null,
+  );
+});
+
+test('a closed order stays out of the payment nudge until one hour after dispatch', () => {
+  const closedAt = 10_000;
+  const order = {
+    id: 'order-3',
+    title: 'Late Pizza',
+    open: false,
+    closedAt,
+    finalizedAt: null,
+    items: [{ playerId: 'alice', paid: false }],
+  };
+  assert.equal(foodOrderAktuellItem(order, 'alice', closedAt + FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS - 1), null);
+  assert.equal(foodOrderAktuellItem(order, 'alice', closedAt + FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS)?.id, 'food-order:order-3');
 });
 
 test('an open order without own unpaid items keeps the normal current entry', () => {
   const item = foodOrderAktuellItem(
-    { id: 'order-2', title: 'Drinks', open: true, finalizedAt: null, sendAt: 123, items: [] },
+    { id: 'order-2', title: 'Drinks', open: true, closedAt: null, finalizedAt: null, sendAt: 123, items: [] },
     'alice',
   );
   assert.equal(item.id, 'food-order:order-2');
