@@ -21,6 +21,8 @@ export const VIEW_MANIFEST = Object.freeze({
   gameCatalog: { area: 'core' },
   arrivals: { area: 'core' },
   admin: { area: 'core' },
+  adminFeatureUsage: { area: 'core' },
+  adminFeedback: { area: 'core' },
   music: { area: 'core' },
   arcade: { area: 'arcade', module: './arcade/views/arcade.js', exportName: 'renderArcade' },
   arcadeWatch: { area: 'arcade', module: './arcade/views/arcadeWatch.js', exportName: 'renderArcadeWatch' },

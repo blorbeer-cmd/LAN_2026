@@ -14,6 +14,7 @@ import {
   createE2EAccount,
   E2E_ADMIN_PASSWORD,
   E2E_KIOSK_TOKEN,
+  finishE2EOnboarding,
   loginE2EAdmin,
   type E2EAccount,
 } from './authHelpers';
@@ -350,6 +351,39 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
     // test ends (same viewport-leak safety net as the Orga Events test).
     await page.setViewportSize({ width: 390, height: 844 });
   });
+  // The bootstrap admin is intentionally created before onboarding is
+  // completed. Finish it here so the deep-link assertions exercise the
+  // admin-role load race instead of the onboarding tour taking over the
+  // requested initial view.
+  await finishE2EOnboarding(BASE_URL, adminCookie);
+  await addSessionCookie(page.context(), BASE_URL, adminCookie);
+  await page.goto(`${BASE_URL}/#adminFeatureUsage`);
+  // Playwright may treat a hash-only goto as same-document navigation when
+  // the shared page is already on the app root. Reload to exercise the real
+  // startup path that a bookmarked hash link uses.
+  await page.reload();
+  await page.waitForSelector('#admin-feature-usage-title');
+  await page.goto(`${BASE_URL}/#adminFeedback`);
+  await page.reload();
+  await page.waitForSelector('#admin-feedback-title');
+  // A regular member must not see the admin content behind the same deep link.
+  const memberContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const memberPage = await memberContext.newPage();
+  try {
+    await addSessionCookie(memberContext, BASE_URL, bob.cookie);
+    await memberPage.goto(`${BASE_URL}/#adminFeatureUsage`);
+    await memberPage.waitForFunction(() => {
+      const container = document.querySelector('#view-container');
+      return Boolean(
+        container?.querySelector('#admin-feature-usage-title')
+        || container?.querySelector('#order-new-btn')
+        || container?.textContent?.includes('Dieses Konto hat keine Admin-Rechte.'),
+      );
+    });
+    assert.equal(await memberPage.locator('#admin-feature-usage-title').count(), 0);
+  } finally {
+    await memberContext.close();
+  }
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await ensureAdminMode();
@@ -372,7 +406,21 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   // Auswertung (Rangliste/Statistiken/Hall of Fame) is reachable only from
   // here — it has no bottom-nav slot or "Mehr" entry of its own any more.
   assert.equal(await page.locator('[data-navigate="leaderboard"]').count(), 1);
-  assert.equal(await page.locator('.admin-tool-row').count(), 5);
+  assert.equal(await page.locator('[data-navigate="adminFeatureUsage"]').count(), 1);
+  assert.equal(await page.locator('[data-navigate="adminFeedback"]').count(), 1);
+  assert.equal(await page.locator('#admin-feature-usage-title').count(), 0);
+  assert.equal(await page.locator('#admin-feedback-title').count(), 0);
+  assert.equal(await page.locator('.admin-tool-row').count(), 7);
+  await page.click('[data-navigate="adminFeatureUsage"]');
+  await page.waitForSelector('#admin-feature-usage-title');
+  assert.equal(await page.locator('#admin-feedback-title').count(), 0);
+  await page.click('[data-navigate="admin"]');
+  await page.waitForSelector('#admin-tools-title');
+  await page.click('[data-navigate="adminFeedback"]');
+  await page.waitForSelector('#admin-feedback-title');
+  assert.equal(await page.locator('#admin-feature-usage-title').count(), 0);
+  await page.click('[data-navigate="admin"]');
+  await page.waitForSelector('#admin-tools-title');
   await page.click('[data-navigate="kiosk"]');
   await page.waitForSelector('a[href="/kiosk.html"]');
   assert.equal(await page.getByRole('heading', { name: 'TV-Kiosk' }).count(), 1);
