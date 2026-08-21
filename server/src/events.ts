@@ -30,6 +30,11 @@ export interface EventParticipantRow {
   status: EventParticipationStatus;
 }
 
+export interface AcceptedEventParticipantRow {
+  playerId: string;
+  name: string;
+}
+
 // All currently trackable events. Tracking is independent per event and an
 // account report is attributed only to that account's active event.
 export function getTrackingEvents(now = Date.now()): EventRow[] {
@@ -236,6 +241,22 @@ export function getEventParticipants(eventId: string): EventParticipantRow[] {
        ORDER BY ep.rowid`,
     )
     .all(eventId) as EventParticipantRow[];
+}
+
+// Member-facing roster shape. It intentionally contains only accepted,
+// active participants: invited and declined statuses stay an admin-only
+// management concern, while accepted names are useful event context for
+// every participant.
+export function getAcceptedEventParticipants(eventId: string): AcceptedEventParticipantRow[] {
+  return db
+    .prepare(
+      `SELECT ep.player_id AS playerId, p.name
+       FROM event_participants ep
+       JOIN players p ON p.id = ep.player_id
+       WHERE ep.event_id = ? AND ep.status = 'accepted' AND p.deactivated_at IS NULL
+       ORDER BY ep.rowid`,
+    )
+    .all(eventId) as AcceptedEventParticipantRow[];
 }
 
 export function isParticipant(eventId: string, playerId: string): boolean {

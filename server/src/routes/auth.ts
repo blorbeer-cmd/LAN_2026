@@ -30,7 +30,15 @@ import {
   requireRecentReauthentication,
   markSessionReauthenticated,
 } from '../sessions';
-import { createInvite, findValidInvite, markInviteUsed, voidOutstandingInvites, revokeInvite, type InvitePurpose } from '../invites';
+import {
+  createInvite,
+  findValidInvite,
+  markInviteUsed,
+  voidOutstandingInvites,
+  revokeInvite,
+  NO_INVITE_EXPIRY,
+  type InvitePurpose,
+} from '../invites';
 import { DEFAULT_GROUP_ID, ensureDefaultGroupMembership } from '../groups';
 import {
   consumeGlobalAuthRequest,
@@ -509,15 +517,33 @@ authRouter.get('/invites', ...requireSessionAdmin, (_req, res) => {
        FROM invites i
        LEFT JOIN players p ON p.id = i.player_id
        LEFT JOIN events e ON e.id = i.event_id
-       WHERE i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > ?
+       WHERE i.used_at IS NULL AND i.revoked_at IS NULL
+         AND (i.expires_at = ? OR i.expires_at > ?)
        ORDER BY i.created_at DESC`
     )
-    .all(Date.now());
-  res.json(rows);
+    .all(NO_INVITE_EXPIRY, Date.now()) as Array<{
+      code: string;
+      purpose: InvitePurpose;
+      playerId: string | null;
+      playerName: string | null;
+      eventId: string | null;
+      eventName: string | null;
+      createdAt: number;
+      expiresAt: number;
+    }>;
+  res.json(
+    rows.map((row) => ({
+      ...row,
+      expiresAt: row.expiresAt === NO_INVITE_EXPIRY ? null : row.expiresAt,
+      reusable: row.purpose === 'register' && row.expiresAt === NO_INVITE_EXPIRY,
+    })),
+  );
 });
 
 // POST /api/auth/invites - admin-only.
 // Body: { purpose, playerId?, eventId?, expiresInMs? }
+// Registration links are reusable and have no expiry by default. Claim,
+// reset and test-session links retain their one-time, finite lifecycles.
 authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthentication, (req, res) => {
   const { purpose, playerId, eventId, expiresInMs } = req.body ?? {};
   if (typeof purpose !== 'string' || !INVITE_PURPOSES.includes(purpose as InvitePurpose)) {
@@ -587,7 +613,8 @@ authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthenticatio
     playerId: invite.player_id,
     eventId: invite.event_id,
     eventName: inviteEvent?.name ?? null,
-    expiresAt: invite.expires_at,
+    expiresAt: invite.expires_at === NO_INVITE_EXPIRY ? null : invite.expires_at,
+    reusable: invite.purpose === 'register' && invite.expires_at === NO_INVITE_EXPIRY,
   });
 });
 

@@ -3073,6 +3073,19 @@ button.card {
   height: var(--tap-target-size);
   white-space: nowrap;
 }
+.admin-invite-event {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.admin-register-invite-note {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
 .invite-qr-modal {
   display: flex;
   align-items: center;
@@ -3243,12 +3256,207 @@ button.card {
   gap: var(--space-2);
 }
 
-/* Divider between an event card's info block and its action buttons — keeps
-   the buttons from reading as glued to the text right above them, especially
-   once they wrap onto a second line. */
-.event-card-actions {
+/* ---------- Event cards ---------- */
+
+.event-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  height: 100%;
+  min-width: 0;
+}
+.event-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.event-card-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.event-card-kicker,
+.event-card-detail-label {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.event-card h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+.event-card-details {
+  display: grid;
+  gap: var(--space-3);
+}
+.event-card-detail {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+}
+.event-card-detail-icon {
+  display: inline-flex;
+  flex: 0 0 var(--font-size-lg);
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+.event-card-detail-icon .ui-icon {
+  width: 1em;
+  height: 1em;
+}
+.event-card-detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.event-card-detail-label {
+  color: var(--text-muted);
+  font-weight: var(--font-weight-medium);
+}
+.event-card-description .event-card-detail-content > span:last-child {
+  white-space: pre-wrap;
+}
+.event-location-link {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: var(--space-1);
+}
+.event-location-text {
+  overflow-wrap: anywhere;
+}
+.event-location-copy {
+  flex: 0 0 auto;
+  align-self: center;
+}
+.event-card-participants {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
+}
+.event-card-section-heading,
+.event-participants-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.event-participant-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.event-participant-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  overflow-wrap: anywhere;
+}
+.event-participant-check {
+  display: inline-flex;
+  flex: 0 0 var(--font-size-md);
+  color: var(--state-playing);
+}
+.event-participant-check .ui-icon {
+  width: 1em;
+  height: 1em;
+}
+.event-card-empty-copy,
+.event-participants-note {
+  margin: 0;
+  font-size: var(--font-size-xs);
+}
+.event-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--space-2);
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.event-card-actions .btn {
+  flex: 1 1 calc(50% - var(--space-2));
+  min-width: 0;
+}
+.event-participant-manager-list {
+  display: grid;
+  gap: var(--space-2);
+}
+.event-participant-manager-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.event-participant-manager-row > .player-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.event-participant-manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+.event-participants-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+@media (min-width: 640px) { /* --bp-md */
+  .event-participant-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 639px) {
+  .event-card-location {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .event-card-location .event-location-copy {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .event-participant-manager-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .event-participant-manager-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 /* ---------- Live board ---------- */

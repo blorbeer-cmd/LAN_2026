@@ -53,7 +53,10 @@ test('event-bound registration atomically joins base and target and selects the 
   assert.deepEqual(db.prepare('SELECT active_event_id FROM player_event_contexts WHERE player_id = ?').get(playerId), {
     active_event_id: target.id,
   });
-  assert.ok(db.prepare('SELECT used_at FROM invites WHERE code = ? AND used_at IS NOT NULL').get(issued.body.code));
+  assert.deepEqual(db.prepare('SELECT used_at, used_by FROM invites WHERE code = ?').get(issued.body.code), {
+    used_at: null,
+    used_by: null,
+  });
 
   const active = await request(app).get('/api/me/active-event').set('Cookie', cookie);
   assert.equal(active.status, 200);
@@ -140,7 +143,7 @@ test('registration rolls back completely when its invited event became unavailab
   });
 });
 
-test('two parallel registrations can consume an event invite only once', async () => {
+test('two parallel registrations can reuse an event-bound registration invite', async () => {
   const target = createEvent('Paralleles Einladungsziel', {
     startsAt: Date.now(),
     endsAt: Date.now() + 86_400_000,
@@ -158,20 +161,25 @@ test('two parallel registrations can consume an event invite only once', async (
 
   assert.deepEqual(
     responses.map((response) => response.status).sort((a, b) => a - b),
-    [201, 400],
+    [201, 201],
   );
-  const winner = responses.find((response) => response.status === 201)!;
-  assert.equal(participantStatus(BASE_EVENT_ID, winner.body.id), 'accepted');
-  assert.equal(participantStatus(target.id, winner.body.id), 'accepted');
-  assert.deepEqual(
-    db.prepare('SELECT active_event_id FROM player_event_contexts WHERE player_id = ?').get(winner.body.id),
-    {
-      active_event_id: target.id,
-    },
-  );
+  for (const response of responses) {
+    assert.equal(participantStatus(BASE_EVENT_ID, response.body.id), 'accepted');
+    assert.equal(participantStatus(target.id, response.body.id), 'accepted');
+    assert.deepEqual(
+      db.prepare('SELECT active_event_id FROM player_event_contexts WHERE player_id = ?').get(response.body.id),
+      {
+        active_event_id: target.id,
+      },
+    );
+  }
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM players WHERE name LIKE ?').get('Parallel %') as { count: number })
       .count,
-    1,
+    2,
   );
+  assert.deepEqual(db.prepare('SELECT used_at, used_by FROM invites WHERE code = ?').get(invite.code), {
+    used_at: null,
+    used_by: null,
+  });
 });

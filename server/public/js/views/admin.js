@@ -67,29 +67,37 @@ function invitePurposeLabel(purpose) {
   if (purpose === 'claim') return 'Konto übernehmen';
   if (purpose === 'reset') return 'Passwort zurücksetzen';
   if (purpose === 'test_login') return 'Testsitzung';
-  return 'Neue Person';
+  return 'Registrierungslink';
 }
 
 function openInviteModal(invite) {
   const url = inviteUrl(invite);
   const target = invite.playerName ? ` für ${invite.playerName}` : '';
+  const reusable = invite.reusable || (invite.purpose === 'register' && invite.expiresAt == null);
+  const eventHint = invite.eventName
+    ? `<div class="admin-invite-event"><span class="muted">Event</span><strong>${escapeHtml(invite.eventName)}</strong></div>`
+    : '';
+  const validityHint = reusable
+    ? 'Unbegrenzt gültig, bis der Link widerrufen wird. Mehrfach nutzbar.'
+    : `Gültig bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}. Der Link funktioniert nur einmal.`;
   const { el } = openModal(
     `${invitePurposeLabel(invite.purpose)}${escapeHtml(target)}`,
     `<div class="stack">
-      <label for="admin-invite-link">Einmal-Link</label>
-      <div class="row" style="gap:var(--space-2);">
+      <label for="admin-invite-link">Link</label>
+      ${eventHint}
+      <div class="invite-link-row">
         <input type="text" id="admin-invite-link" readonly value="${escapeHtml(url)}" style="flex:1;font-family:monospace;font-size:var(--font-size-xs);" />
         <button type="button" class="btn btn-sm" id="admin-invite-copy">Kopieren</button>
       </div>
       <button type="button" class="btn btn-sm" id="admin-invite-qr-toggle">${icon('scanQrCode')} QR-Code anzeigen</button>
       <div id="admin-invite-qr" style="text-align:center;" hidden></div>
-      <p class="muted" style="font-size:var(--font-size-xs);">Gültig bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}. Der Link funktioniert nur einmal.</p>
+      <p class="muted" style="font-size:var(--font-size-xs);">${validityHint}</p>
     </div>`
   );
   el.querySelector('#admin-invite-copy').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(url);
-      showToast('Einmal-Link kopiert.');
+      showToast('Link kopiert.');
     } catch {
       showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
     }
@@ -421,21 +429,64 @@ async function refreshAdminData(ctx) {
   ]);
 }
 
-async function createLoginInvite(purpose, player, ctx) {
+function registerInviteEventOptions() {
+  const events = (state.managedEvents || []).filter((event) => !event.isOutsideEvents && !event.isBase && !event.isEnded);
+  return eventSelectOptions(events, { allEntryLabel: 'Allgemein (kein zusätzliches Event)' });
+}
+
+function openRegisterInviteDialog(ctx) {
+  const eventOptions = registerInviteEventOptions();
+  const { el, close } = openModal(
+    'Registrierungslink erstellen',
+    `<form id="admin-register-invite-form" class="stack">
+      <p class="muted admin-register-invite-note">Der Link bleibt gültig, bis du ihn widerrufst, und kann von mehreren neuen Personen genutzt werden.</p>
+      <div>
+        <label for="admin-register-event-search" class="field-label">Direkte Event-Einladung (optional)</label>
+        ${searchSelectHtml('admin-register-event', eventOptions, '', {
+          placeholder: 'Event auswählen…',
+          ariaLabel: 'Event für neue Konten',
+          label: 'Events für die Einladung',
+        })}
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Registrierungslink erstellen</button>
+    </form>`,
+  );
+  wireSearchSelect(el, 'admin-register-event', eventOptions, {
+    emptyText: 'Kein offenes Event gefunden.',
+  });
+  el.querySelector('#admin-register-invite-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+      const eventId = el.querySelector('#admin-register-event').value;
+      const created = await createLoginInvite('register', null, ctx, eventId ? { eventId } : {});
+      if (created) close();
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
+async function createLoginInvite(purpose, player, ctx, options = {}) {
   try {
-    const invite = await withStepUp(() => api.auth.createInvite({ purpose, ...(player ? { playerId: player.id } : {}) }));
-    if (invite === undefined) return;
+    const invite = await withStepUp(() =>
+      api.auth.createInvite({ purpose, ...(player ? { playerId: player.id } : {}), ...options }),
+    );
+    if (invite === undefined) return false;
     const enriched = { ...invite, playerName: player?.name || null };
-    showToast('Einmal-Link erstellt.');
+    showToast(purpose === 'register' ? 'Registrierungslink erstellt.' : 'Link erstellt.');
     openInviteModal(enriched);
     await loadActiveInvites(ctx, true);
+    return true;
   } catch (error) {
     showToast(error.message, { error: true });
+    return false;
   }
 }
 
 async function revokeLoginInvite(invite, ctx) {
-  if (!(await confirmDialog('Diesen Einmal-Link wirklich widerrufen?', {
+  if (!(await confirmDialog('Diesen Einladungslink wirklich widerrufen?', {
     title: 'Link widerrufen',
     confirmText: 'Widerrufen',
     danger: true,
@@ -443,7 +494,7 @@ async function revokeLoginInvite(invite, ctx) {
   try {
     const result = await withStepUp(() => api.auth.revokeInvite(invite.code));
     if (result === undefined) return;
-    showToast('Einmal-Link widerrufen.');
+  showToast('Einladungslink widerrufen.');
     await loadActiveInvites(ctx, true);
   } catch (error) {
     showToast(error.message, { error: true });
@@ -610,7 +661,7 @@ function renderPanel(container, ctx) {
       (invite) => `<div class="row-between" style="gap:var(--space-2);">
         <span>
           <strong>${escapeHtml(invite.playerName || invitePurposeLabel(invite.purpose))}</strong>
-          <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))} · bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}</span>
+          <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))}${invite.eventName ? ` · ${escapeHtml(invite.eventName)}` : ''} · ${invite.expiresAt == null ? 'unbegrenzt gültig' : `bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}`}</span>
         </span>
         <span class="row" style="gap:var(--space-2);">
           <button type="button" class="btn btn-sm" data-show-login-link="${invite.code}">Anzeigen</button>
@@ -705,7 +756,7 @@ function renderPanel(container, ctx) {
         </div>
         <button type="button" class="btn btn-primary" id="admin-register-link">Link für neue Person erstellen</button>
         <div class="stack">${accountRows || '<span class="muted">Keine aktiven echten Konten vorhanden.</span>'}</div>
-        <div class="section-title">Aktive Einmal-Links</div>
+        <div class="section-title">Aktive Einladungslinks</div>
         <div class="stack">${activeInvitesLoading && activeInvites === null ? '<span class="muted">Links werden geladen…</span>' : inviteRows || '<span class="muted">Keine aktiven Links.</span>'}</div>
       </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-tools-title">
@@ -790,7 +841,7 @@ function renderPanel(container, ctx) {
     adminPlayers = null;
     setAdmin(true);
   });
-  container.querySelector('#admin-register-link')?.addEventListener('click', () => createLoginInvite('register', null, ctx));
+  container.querySelector('#admin-register-link')?.addEventListener('click', () => openRegisterInviteDialog(ctx));
   container.querySelectorAll('[data-create-login-link]').forEach((button) => {
     button.addEventListener('click', () => {
       const player = players.find((entry) => entry.id === button.dataset.playerId);

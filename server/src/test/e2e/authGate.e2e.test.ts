@@ -356,12 +356,15 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     );
     await adminPage.click('#admin-register-link');
 
+    await adminPage.waitForSelector('#admin-register-invite-form');
+    await adminPage.click('#admin-register-invite-form button[type="submit"]');
     await adminPage.waitForSelector('#reauth-form');
     await adminPage.fill('#reauth-password', 'e2e bootstrap password');
     await adminPage.click('#reauth-form button[type="submit"]');
     await adminPage.waitForSelector('#admin-invite-link');
     const link = await adminPage.inputValue('#admin-invite-link');
-    assert.equal(new URL(link).searchParams.has('invite'), true);
+    const inviteCode = new URL(link).searchParams.get('invite');
+    assert.ok(inviteCode);
 
     await adminPage.click('#admin-invite-qr-toggle');
     await adminPage.waitForSelector('#admin-invite-qr svg');
@@ -374,9 +377,9 @@ test('admin creates, displays and revokes a registration link in the UI', async 
       'desktop onboarding must not introduce horizontal page scrolling',
     );
 
-    const activeLink = adminPage.locator('[data-show-login-link]').first();
+    const activeLink = adminPage.locator(`[data-show-login-link="${inviteCode}"]`);
     await activeLink.waitFor();
-    await adminPage.locator('[data-revoke-login-link]').first().click();
+    await adminPage.locator(`[data-revoke-login-link="${inviteCode}"]`).click();
     await adminPage.click('[data-confirm]');
     await activeLink.waitFor({ state: 'detached' });
   } finally {

@@ -20,6 +20,10 @@ export const DEFAULT_INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 export const DEFAULT_RESET_TTL_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_TEST_LOGIN_TTL_MS = 15 * 60 * 1000;
 export const MAX_INVITE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+// Registration links are reusable and remain valid until an admin revokes
+// them. The existing expires_at column is kept non-null for compatibility;
+// zero is the explicit no-expiry sentinel and is never exposed as a date.
+export const NO_INVITE_EXPIRY = 0;
 
 export interface InviteRow {
   code: string;
@@ -45,6 +49,7 @@ export interface CreateInviteOptions {
 export function createInvite(options: CreateInviteOptions): InviteRow {
   const code = nanoid(24);
   const now = Date.now();
+  const isReusableRegistration = options.purpose === 'register' && options.expiresInMs === undefined;
   const defaultTtl =
     options.purpose === 'reset'
       ? DEFAULT_RESET_TTL_MS
@@ -55,7 +60,7 @@ export function createInvite(options: CreateInviteOptions): InviteRow {
   if (!Number.isFinite(requestedTtl) || requestedTtl <= 0) {
     throw new RangeError('Invite expiry must be a positive, finite duration.');
   }
-  const expiresAt = now + Math.min(requestedTtl, MAX_INVITE_TTL_MS);
+  const expiresAt = isReusableRegistration ? NO_INVITE_EXPIRY : now + Math.min(requestedTtl, MAX_INVITE_TTL_MS);
   const eventId =
     options.eventId ?? (options.purpose === 'register' || options.purpose === 'claim' ? BASE_EVENT_ID : null);
 
@@ -76,7 +81,7 @@ export function findValidInvite(code: string, purpose: InvitePurpose): InviteRow
   const invite = db.prepare('SELECT * FROM invites WHERE code = ?').get(code) as InviteRow | undefined;
   if (!invite || invite.purpose !== purpose) return undefined;
   if (invite.used_at || invite.revoked_at) return undefined;
-  if (invite.expires_at <= Date.now()) return undefined;
+  if (invite.expires_at !== NO_INVITE_EXPIRY && invite.expires_at <= Date.now()) return undefined;
   return invite;
 }
 
@@ -84,6 +89,23 @@ export function findValidInvite(code: string, purpose: InvitePurpose): InviteRow
 // safe even if a handler later becomes asynchronous and two requests race.
 export function markInviteUsed(code: string, usedByPlayerId: string, purpose?: InvitePurpose): boolean {
   const now = Date.now();
+  const invite = db.prepare('SELECT purpose, expires_at FROM invites WHERE code = ?').get(code) as
+    | { purpose: InvitePurpose; expires_at: number }
+    | undefined;
+  // A reusable registration link deliberately stays open after every
+  // redemption. The surrounding account transaction still calls this
+  // function so one-time and reusable links share the same validation seam.
+  if (invite?.purpose === 'register' && invite.expires_at === NO_INVITE_EXPIRY) {
+    return Boolean(
+      db
+        .prepare(
+          `SELECT 1 FROM invites
+           WHERE code = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at = ?
+             ${purpose ? 'AND purpose = ?' : ''}`,
+        )
+        .get(...(purpose ? [code, NO_INVITE_EXPIRY, purpose] : [code, NO_INVITE_EXPIRY])),
+    );
+  }
   const result = db
     .prepare(
       `UPDATE invites
@@ -91,10 +113,14 @@ export function markInviteUsed(code: string, usedByPlayerId: string, purpose?: I
        WHERE code = ?
          AND used_at IS NULL
          AND revoked_at IS NULL
-         AND expires_at > ?
+         AND (expires_at = ? OR expires_at > ?)
          ${purpose ? 'AND purpose = ?' : ''}`
     )
-    .run(...(purpose ? [now, usedByPlayerId, code, now, purpose] : [now, usedByPlayerId, code, now]));
+    .run(
+      ...(purpose
+        ? [now, usedByPlayerId, code, NO_INVITE_EXPIRY, now, purpose]
+        : [now, usedByPlayerId, code, NO_INVITE_EXPIRY, now]),
+    );
   return result.changes === 1;
 }
 

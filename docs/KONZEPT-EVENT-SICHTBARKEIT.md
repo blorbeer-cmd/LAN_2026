@@ -111,14 +111,17 @@ Teilnehmeransicht; vollständige Einladungs- und Ablehnungsstatus bleiben Admin/
 ### 3.3 Konto-Einladung
 
 Eine Konto-Einladung ist nie eventlos. Sie trägt mindestens das Basis-Event und optional ein
-zusätzliches Ziel-Event. Das Einlösen erfolgt in einer Transaktion:
+zusätzliches Ziel-Event. Ein Registrierungslink für neue Personen ist standardmäßig unbegrenzt
+gültig, mehrfach nutzbar und bleibt bis zum ausdrücklichen Widerruf aktiv. Claim-, Reset- und
+Test-Sitzungslinks bleiben dagegen einmalig und zeitlich begrenzt. Jede Registrierung über den
+Registrierungslink erfolgt in einer eigenen Transaktion:
 
 1. Konto beanspruchen beziehungsweise aktivieren,
 2. Instanzmitgliedschaft aktivieren,
 3. Teilnahme am Basis-Event auf `accepted` setzen,
 4. optional die Teilnahme am Ziel-Event auf `accepted` setzen,
 5. persönliches Arbeits-Event auf das Ziel-Event, sonst auf das Basis-Event setzen,
-6. Einladung verbrauchen.
+6. Registrierungslink weiter offen halten beziehungsweise den einmaligen Claim-Link verbrauchen.
 
 Damit existiert auch während des Onboardings kein aktives Konto ohne Event-Kontext. Scheitert ein
 Schritt, wird die gesamte Transaktion zurückgerollt.

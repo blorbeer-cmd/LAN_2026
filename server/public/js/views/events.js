@@ -44,63 +44,138 @@ function eventDateRange(e) {
     : `${new Date(e.startsAt).toLocaleDateString('de-DE')} – ${new Date(e.endsAt).toLocaleDateString('de-DE')}`;
 }
 
-// Read-only card for a member's own accepted events: same identity and dates
-// as the management card, without the admin-only actions, participant count
-// and tracking state a member never receives.
-function renderMemberEventCard(e) {
+function eventLocationUrl(location) {
+  const trimmed = location.trim();
+  const candidate = trimmed.startsWith('www.') ? `https://${trimmed}` : trimmed;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function renderEventLocation(location) {
+  if (!location) return '';
+  const href = eventLocationUrl(location);
+  const value = escapeHtml(location);
   return `
-    <div class="card stack" style="gap:var(--space-3);">
-      <div class="row-between">
-        <strong>${escapeHtml(e.name)}</strong>
+    <div class="event-card-detail event-card-location">
+      <span class="event-card-detail-icon" aria-hidden="true">${icon('mapPin')}</span>
+      <span class="event-card-detail-content">
+        <span class="event-card-detail-label">Ort</span>
+        ${href ? `<a class="event-location-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${value}</a>` : `<span class="event-location-text">${value}</span>`}
+      </span>
+      <button type="button" class="btn btn-sm event-location-copy" data-copy-event-location="${value}">Kopieren</button>
+    </div>`;
+}
+
+function acceptedParticipantNames(event) {
+  if (Array.isArray(event.acceptedParticipants)) return event.acceptedParticipants.map((participant) => participant.name);
+  const acceptedIds = new Set(
+    event.participantIds ??
+      (event.participants ?? [])
+        .filter((participant) => participant.status === 'accepted')
+        .map((participant) => participant.playerId),
+  );
+  return state.players.filter((player) => acceptedIds.has(player.id)).map((player) => player.name);
+}
+
+function renderAcceptedParticipants(event) {
+  const names = acceptedParticipantNames(event);
+  return `
+    <div class="event-card-participants">
+      <div class="event-card-section-heading">
+        <span class="event-card-detail-label">Zusagen</span>
+        <span class="badge badge-playing">${names.length}</span>
       </div>
-      <div class="stack" style="gap:var(--space-1);">
-        ${e.location ? `<div class="muted" style="font-size:var(--font-size-sm);">${icon('mapPin')} ${escapeHtml(e.location)}</div>` : ''}
-        <div class="muted" style="font-size:var(--font-size-sm);">${icon('calendar')} ${eventDateRange(e)}</div>
-        ${e.description ? `<div class="muted" style="font-size:var(--font-size-sm);">${escapeHtml(e.description)}</div>` : ''}
+      ${names.length
+        ? `<ul class="event-participant-list">${names
+            .map((name) => `<li class="event-participant-row"><span class="event-participant-check" aria-hidden="true">${icon('check')}</span><span>${escapeHtml(name)}</span></li>`)
+            .join('')}</ul>`
+        : '<p class="muted event-card-empty-copy">Noch niemand zugesagt.</p>'}
+    </div>`;
+}
+
+function renderEventDetails(event) {
+  return `
+    <div class="event-card-details">
+      <div class="event-card-detail">
+        <span class="event-card-detail-icon" aria-hidden="true">${icon('calendar')}</span>
+        <span class="event-card-detail-content">
+          <span class="event-card-detail-label">Zeitraum</span>
+          <span>${escapeHtml(eventDateRange(event))}</span>
+        </span>
       </div>
-    </div>
+      ${renderEventLocation(event.location)}
+      ${event.description
+        ? `<div class="event-card-detail event-card-description">
+             <span class="event-card-detail-icon" aria-hidden="true">${icon('file')}</span>
+             <span class="event-card-detail-content">
+               <span class="event-card-detail-label">Notiz</span>
+               <span>${escapeHtml(event.description)}</span>
+             </span>
+           </div>`
+        : ''}
+    </div>`;
+}
+
+// Read-only card for a member's own accepted events. The same information is
+// useful to admins, so both card variants share the detail and accepted-roster
+// blocks while only the management card receives lifecycle actions.
+function renderMemberEventCard(event) {
+  return `
+    <article class="card event-card event-card-member" data-event-card="${escapeHtml(event.id)}">
+      <div class="event-card-header">
+        <div class="event-card-title-group">
+          <span class="event-card-kicker">Event</span>
+          <h3>${escapeHtml(event.name)}</h3>
+        </div>
+        ${eventStatusBadgeHtml(event)}
+      </div>
+      ${renderEventDetails(event)}
+      ${renderAcceptedParticipants(event)}
+    </article>
   `;
 }
 
-function renderEventCard(e) {
-  const dateRange = eventDateRange(e);
-  const participantCount = e.participantIds?.length ?? 0;
-
-  const trackingBtn = e.isEnded
-    ? `<button type="button" class="btn btn-sm btn-primary" data-restart-event="${e.id}">Event wieder starten</button>`
-    : e.trackingEnabled
-      ? `<button type="button" class="btn btn-sm" data-stop-tracking="${e.id}">${icon('pause')} Tracking stoppen</button>`
-      : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${e.id}">Tracking starten</button>`;
-  const endBtn = e.isEnded
+function renderEventCard(event) {
+  const trackingBtn = event.isEnded
+    ? `<button type="button" class="btn btn-sm btn-primary" data-restart-event="${event.id}">Event wieder starten</button>`
+    : event.trackingEnabled
+      ? `<button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">${icon('pause')} Tracking stoppen</button>`
+      : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${event.id}">Tracking starten</button>`;
+  const endBtn = event.isEnded
     ? ''
-    : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${e.id}">Beenden</button>`;
+    : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
 
   return `
-    <div class="card stack" style="gap:var(--space-3);">
-      <div class="row-between">
-        <strong>${escapeHtml(e.name)}</strong>
-        ${eventStatusBadgeHtml(e)}
+    <article class="card event-card event-card-managed" data-event-card="${escapeHtml(event.id)}">
+      <div class="event-card-header">
+        <div class="event-card-title-group">
+          <span class="event-card-kicker">Eventverwaltung</span>
+          <h3>${escapeHtml(event.name)}</h3>
+        </div>
+        ${eventStatusBadgeHtml(event)}
       </div>
-      <div class="stack" style="gap:var(--space-1);">
-        ${e.location ? `<div class="muted" style="font-size:var(--font-size-sm);">${icon('mapPin')} ${escapeHtml(e.location)}</div>` : ''}
-        <div class="muted" style="font-size:var(--font-size-sm);">${icon('calendar')} ${dateRange} · ${icon('users')} ${participantCount} Teilnehmer</div>
-        ${e.description ? `<div class="muted" style="font-size:var(--font-size-sm);">${escapeHtml(e.description)}</div>` : ''}
-      </div>
-      <div class="row event-card-actions" style="gap:var(--space-2);flex-wrap:wrap;">
+      ${renderEventDetails(event)}
+      ${renderAcceptedParticipants(event)}
+      <div class="event-card-actions">
         ${trackingBtn}
         ${endBtn}
-        <button type="button" class="btn btn-sm" data-participants-event="${e.id}">${icon('users')} Teilnehmer</button>
-        <button type="button" class="btn btn-sm" data-edit-event="${e.id}">${icon('pencil')} Bearbeiten</button>
-        <button type="button" class="btn btn-sm" data-export-event="${e.id}" title="Als PDF exportieren">${icon('file')} PDF</button>
+        <button type="button" class="btn btn-sm" data-participants-event="${event.id}">${icon('users')} Teilnehmer verwalten</button>
+        <button type="button" class="btn btn-sm" data-edit-event="${event.id}">${icon('pencil')} Bearbeiten</button>
+        <button type="button" class="btn btn-sm" data-export-event="${event.id}" title="Als PDF exportieren">${icon('file')} PDF</button>
       </div>
-    </div>
+    </article>
   `;
 }
 
 function renderEventSection() {
   // Only owner/admin receive `managedEvents`; a member's own accepted events
-  // carry neither participants nor tracking state and must not be rendered
-  // through the management card, whose actions they cannot use anyway. The
+  // carry accepted participant names but no management roster/status data and
+  // must not be rendered through the management card, whose actions they cannot
+  // use anyway. The
   // base workspace is filtered out of both: it is not a LAN anyone manages or
   // joins, it is where everyone already is.
   const canManage = Array.isArray(state.managedEvents);
@@ -117,19 +192,20 @@ function renderEventSection() {
   const invitationRows = pendingInvitations
     .map(
       (event) => `
-        <div class="card stack" data-pending-invitation="${event.id}">
-          <div class="row-between">
-            <strong>${escapeHtml(event.name)}</strong>
+        <article class="card event-card event-card-invitation" data-pending-invitation="${event.id}">
+          <div class="event-card-header">
+            <div class="event-card-title-group">
+              <span class="event-card-kicker">Einladung</span>
+              <h3>${escapeHtml(event.name)}</h3>
+            </div>
             <span class="badge badge-paused">Eingeladen</span>
           </div>
-          <div class="muted" style="font-size:var(--font-size-sm);">
-            ${icon('calendar')} ${new Date(event.startsAt).toLocaleDateString('de-DE')}${event.endsAt == null ? '' : ` – ${new Date(event.endsAt).toLocaleDateString('de-DE')}`}
-          </div>
-          <div class="row" style="gap:var(--space-2);">
+          ${renderEventDetails(event)}
+          <div class="event-card-actions">
             <button type="button" class="btn btn-primary" data-accept-invitation="${event.id}">Annehmen</button>
             <button type="button" class="btn" data-decline-invitation="${event.id}">Ablehnen</button>
           </div>
-        </div>`,
+        </article>`,
     )
     .join('');
 
@@ -210,8 +286,8 @@ function openEventForm(ctx, existing) {
           </div>
         </div>
         <div>
-          <label for="event-location" class="field-label">Ort (optional)</label>
-          <input type="text" id="event-location" maxlength="80" placeholder="z.B. bei Tim" value="${escapeHtml(existing?.location ?? '')}" />
+          <label for="event-location" class="field-label">Ort oder Karten-Link (optional)</label>
+          <input type="text" id="event-location" maxlength="500" placeholder="z.B. https://maps.google.com/…" value="${escapeHtml(existing?.location ?? '')}" />
         </div>
         <div>
           <label for="event-description" class="field-label">Notiz (optional)</label>
@@ -282,17 +358,17 @@ function participationStatus(status) {
   return { label: 'Eingeladen', badge: 'badge-paused' };
 }
 
-function renderParticipantsBody(event) {
+function renderParticipantManagerRows(event) {
   const participants = new Map((event.participants ?? []).map((entry) => [entry.playerId, entry.status]));
   const inviteAllowed = !event.isEnded;
-  const rows = state.players
+  return state.players
     .map((p) => {
       const status = participants.get(p.id);
       const presentation = status ? participationStatus(status) : null;
       return `
-        <div class="card row-between">
-          <span class="player-name" style="min-width:0;">${escapeHtml(p.name)}</span>
-          <span class="row" style="gap:var(--space-2);flex-wrap:wrap;justify-content:flex-end;">
+        <div class="event-participant-manager-row">
+          <span class="player-name">${escapeHtml(p.name)}</span>
+          <span class="event-participant-manager-actions">
             ${presentation ? `<span class="badge ${presentation.badge}">${presentation.label}</span>` : ''}
             ${inviteAllowed && (!status || status === 'declined') ? `<button type="button" class="btn btn-sm" data-invite-participant="${p.id}">${status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>` : ''}
             ${status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${p.id}">Entfernen</button>` : ''}
@@ -300,45 +376,28 @@ function renderParticipantsBody(event) {
         </div>`;
     })
     .join('');
-  return `<div class="stack"><p class="muted" style="font-size:var(--font-size-xs);">Nur zugesagte Spieler erhalten Teilnehmerdaten und werden bei aktivem Event-Tracking berücksichtigt.</p>${event.isEnded ? '<p class="muted" style="font-size:var(--font-size-xs);">Für beendete Events sind keine neuen Einladungen mehr möglich.</p>' : ''}${state.players.length === 0 ? emptyStateHtml('Noch keine Spieler.') : rows}</div>`;
+}
+
+function renderParticipantsBody(event) {
+  const acceptedCount = event.participantIds?.length ?? (event.participants ?? []).filter((entry) => entry.status === 'accepted').length;
+  return `
+    <div class="event-participants-body">
+      <div class="event-participants-summary">
+        <span><strong>${acceptedCount}</strong> zugesagt</span>
+        <span class="muted">Einladungen und Absagen bleiben hier administrativ sichtbar.</span>
+      </div>
+      <p class="muted event-participants-note">Nur zugesagte Spieler erhalten Teilnehmerdaten und werden bei aktivem Event-Tracking berücksichtigt.</p>
+      ${event.isEnded ? '<p class="muted event-participants-note">Für beendete Events sind keine neuen Einladungen mehr möglich.</p>' : ''}
+      ${state.players.length === 0 ? emptyStateHtml('Noch keine Spieler.') : `<div class="event-participant-manager-list">${renderParticipantManagerRows(event)}</div>`}
+    </div>`;
 }
 
 // Event managers invite active group members here. Acceptance remains a
 // personal action; administrative removal stays available for every status.
 function openParticipantsForm(ctx, event) {
-  const participants = new Map((event.participants ?? []).map((entry) => [entry.playerId, entry.status]));
-  const inviteAllowed = !event.isEnded;
-  const rows = state.players
-    .map((p) => {
-      const status = participants.get(p.id);
-      const presentation = status ? participationStatus(status) : null;
-      return `
-        <div class="card row-between">
-          <span class="player-name" style="min-width:0;">${escapeHtml(p.name)}</span>
-          <span class="row" style="gap:var(--space-2);flex-wrap:wrap;justify-content:flex-end;">
-            ${presentation ? `<span class="badge ${presentation.badge}">${presentation.label}</span>` : ''}
-            ${
-              inviteAllowed && (!status || status === 'declined')
-                ? `<button type="button" class="btn btn-sm" data-invite-participant="${p.id}">${status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>`
-                : ''
-            }
-            ${status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${p.id}">Entfernen</button>` : ''}
-          </span>
-        </div>`;
-    })
-    .join('');
-
   const { close } = openModal(
     `Teilnehmer – ${escapeHtml(event.name)}`,
-    `
-      <div class="stack">
-        <p class="muted" style="font-size:var(--font-size-xs);">
-          Nur zugesagte Spieler erhalten Teilnehmerdaten und werden bei aktivem Event-Tracking berücksichtigt.
-        </p>
-        ${event.isEnded ? '<p class="muted" style="font-size:var(--font-size-xs);">Für beendete Events sind keine neuen Einladungen mehr möglich.</p>' : ''}
-        ${state.players.length === 0 ? emptyStateHtml('Noch keine Spieler.') : rows}
-      </div>
-    `,
+    renderParticipantsBody(event),
     {
       onMount: (modalEl) => {
         modalEl.addEventListener('click', async (clickEvent) => {
@@ -364,6 +423,15 @@ function openParticipantsForm(ctx, event) {
       },
     }
   );
+}
+
+async function copyEventLocation(button) {
+  try {
+    await navigator.clipboard.writeText(button.dataset.copyEventLocation ?? '');
+    showToast('Ort-Link kopiert.');
+  } catch {
+    showToast('Kopieren nicht möglich – bitte den Ort manuell markieren.', { error: true });
+  }
 }
 
 export function renderOrgaKiosk(container) {
@@ -400,6 +468,9 @@ export function renderOrgaEvents(container, ctx) {
 
   container.querySelectorAll('[data-export-event]').forEach((btn) => {
     btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
+  });
+  container.querySelectorAll('[data-copy-event-location]').forEach((btn) => {
+    btn.addEventListener('click', () => copyEventLocation(btn));
   });
   wireInfoTooltips(container);
 

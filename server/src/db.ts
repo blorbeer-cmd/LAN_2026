@@ -1284,11 +1284,11 @@ function migrateAccountsAuth(): void {
 
     CREATE TABLE IF NOT EXISTS invites (
       code        TEXT PRIMARY KEY,
-      purpose     TEXT NOT NULL, -- 'register' | 'claim' | 'reset'
+      purpose     TEXT NOT NULL, -- 'register' | 'claim' | 'reset' | 'test_login'
       player_id   TEXT REFERENCES players(id) ON DELETE CASCADE, -- set for claim/reset
       created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
       created_at  INTEGER NOT NULL,
-      expires_at  INTEGER NOT NULL,
+      expires_at  INTEGER NOT NULL, -- 0 = reusable registration link without expiry
       revoked_at  INTEGER,
       used_at     INTEGER,
       used_by     TEXT REFERENCES players(id) ON DELETE SET NULL
@@ -1319,7 +1319,7 @@ function repairInviteAuditForeignKeys(): void {
       player_id   TEXT REFERENCES players(id) ON DELETE CASCADE,
       created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
       created_at  INTEGER NOT NULL,
-      expires_at  INTEGER NOT NULL,
+      expires_at  INTEGER NOT NULL, -- 0 = reusable registration link without expiry
       revoked_at  INTEGER,
       used_at     INTEGER,
       used_by     TEXT REFERENCES players(id) ON DELETE SET NULL

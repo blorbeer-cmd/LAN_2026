@@ -105,13 +105,14 @@ test('POST /api/auth/invites creates a register code as admin', async () => {
   registerCode = res.body.code;
 });
 
-test('GET /api/auth/invites lists active codes without exposing used history', async () => {
+test('GET /api/auth/invites lists active reusable codes without exposing revoked history', async () => {
   const res = await request(app).get('/api/auth/invites').set('Cookie', adminCookie);
   assert.equal(res.status, 200);
   const listed = res.body.find((invite: { code: string }) => invite.code === registerCode);
   assert.equal(listed.purpose, 'register');
   assert.equal(listed.playerId, null);
-  assert.ok(listed.expiresAt > Date.now());
+  assert.equal(listed.expiresAt, null);
+  assert.equal(listed.reusable, true);
 });
 
 test('POST /api/auth/invites rejects a non-expiring code', async () => {
@@ -145,14 +146,14 @@ test('POST /api/auth/register creates a non-admin player and logs it in', async 
   newPersonCookie = sessionCookie(res);
 
   const active = await request(app).get('/api/auth/invites').set('Cookie', adminCookie);
-  assert.equal(active.body.some((invite: { code: string }) => invite.code === registerCode), false);
+  assert.equal(active.body.some((invite: { code: string }) => invite.code === registerCode), true);
 });
 
-test('the register code cannot be reused', async () => {
+test('the register code can be reused for another new account', async () => {
   const res = await request(app)
     .post('/api/auth/register')
     .send({ code: registerCode, name: 'Another Person', password: 'another persons password' });
-  assert.equal(res.status, 400);
+  assert.equal(res.status, 201, JSON.stringify(res.body));
 });
 
 test('registering with an already-taken name is rejected', async () => {

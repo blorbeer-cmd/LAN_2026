@@ -12,6 +12,7 @@ import {
   DEFAULT_TEST_LOGIN_TTL_MS,
   findValidInvite,
   markInviteUsed,
+  NO_INVITE_EXPIRY,
   revokeInvite,
   voidOutstandingInvites,
 } from './invites';
@@ -34,7 +35,21 @@ test('createInvite + findValidInvite round-trip for a register code', () => {
   assert.ok(found);
   assert.equal(found!.code, invite.code);
   assert.equal(found!.event_id, BASE_EVENT_ID);
-  assert.ok(invite.expires_at >= invite.created_at + DEFAULT_INVITE_TTL_MS);
+  assert.equal(invite.expires_at, NO_INVITE_EXPIRY);
+});
+
+test('a register invite stays valid and reusable after every redemption until revoked', () => {
+  const admin = makePlayer();
+  const first = makePlayer();
+  const second = makePlayer();
+  const invite = createInvite({ purpose: 'register', createdBy: admin });
+
+  assert.equal(markInviteUsed(invite.code, first, 'register'), true);
+  assert.ok(findValidInvite(invite.code, 'register'));
+  assert.equal(markInviteUsed(invite.code, second, 'register'), true);
+  assert.ok(findValidInvite(invite.code, 'register'));
+  assert.equal(revokeInvite(invite.code), true);
+  assert.equal(findValidInvite(invite.code, 'register'), undefined);
 });
 
 test('reset codes use a shorter default expiry and zero-length expiry is rejected', () => {
@@ -110,9 +125,10 @@ test('revokeInvite refuses to revoke an already-used code', () => {
 
 test('a code past its expiry is no longer valid', () => {
   const admin = makePlayer();
-  const invite = createInvite({ purpose: 'register', createdBy: admin, expiresInMs: 1000 });
+  const target = makePlayer();
+  const invite = createInvite({ purpose: 'claim', playerId: target, createdBy: admin, expiresInMs: 1000 });
   db.prepare('UPDATE invites SET expires_at = ? WHERE code = ?').run(Date.now() - 1, invite.code);
-  assert.equal(findValidInvite(invite.code, 'register'), undefined);
+  assert.equal(findValidInvite(invite.code, 'claim'), undefined);
 });
 
 test('voidOutstandingInvites revokes every open code of that purpose for the player, and no others', () => {
