@@ -85,6 +85,11 @@ let fetchInFlight = null;
 let refetchPending = false;
 let foodOrderScopeVersion = 0;
 
+function invalidateFoodOrderCache() {
+  foodOrderScopeVersion += 1;
+  cache = null;
+}
+
 async function fetchFoodOrders(ctx) {
   if (fetchInFlight) {
     refetchPending = true;
@@ -157,8 +162,7 @@ async function load(ctx) {
 // that isn't currently looking at this view - the next time it opens Essen,
 // load() runs its normal first-load fetch.
 export function invalidateFoodOrders() {
-  foodOrderScopeVersion += 1;
-  cache = null;
+  invalidateFoodOrderCache();
 }
 
 // Called from app.js instead of invalidateFoodOrders() while this view is
@@ -1016,7 +1020,7 @@ async function markGroupItemsPaid(orderId, playerId, itemIds, ctx) {
     showToast(`${targets.length} ${targets.length === 1 ? 'Position' : 'Positionen'} als bezahlt markiert.`);
     ctx.rerender();
   } catch (err) {
-    cache = null;
+    invalidateFoodOrderCache();
     showToast(err.message, { error: true });
     ctx.rerender();
   }
@@ -1127,7 +1131,7 @@ async function handleGroupPaid(orderId, playerId, paid, ctx) {
     showToast(paid ? `${items[0].playerName} als bezahlt markiert.` : `${items[0].playerName} wieder als offen markiert.`);
     ctx.rerender();
   } catch (err) {
-    cache = null;
+    invalidateFoodOrderCache();
     showToast(err.message, { error: true });
     ctx.rerender();
   }
@@ -1166,7 +1170,7 @@ async function handleRemoveGroup(order, playerId, myId, ctx) {
     showToast('Eigene Positionen entfernt.');
     ctx.rerender();
   } catch (err) {
-    cache = null;
+    invalidateFoodOrderCache();
     showToast(err.message, { error: true });
     ctx.rerender();
   }
@@ -1262,7 +1266,7 @@ function wireConsolidatedListActions(el, order) {
     if (!(await confirmDialog('Bestellung abschicken? Danach kann niemand mehr etwas eintragen.', { confirmText: 'Abschicken' }))) return;
     try {
       await api.foodOrders.close(order.id);
-      cache = null;
+      invalidateFoodOrderCache();
       showToast('Bestellung abgeschickt.');
       consolidatedListDialog?.ctx.rerender();
     } catch (err) {
@@ -1385,7 +1389,7 @@ function openNewOrderForm(ctx, myId) {
           try {
             await api.foodOrders.create(myId, title, { sendAt, notes, link, paypalLink, tipPercent });
             close();
-            cache = null;
+            invalidateFoodOrderCache();
             showToast('Bestellung geöffnet – alle wurden benachrichtigt.');
             ctx.rerender();
           } catch (err) {
@@ -1477,7 +1481,7 @@ function openDetailsForm(ctx, order) {
           try {
             await api.foodOrders.updateDetails(order.id, { sendAt, notes, link, paypalLink, tipPercent });
             close();
-            cache = null;
+            invalidateFoodOrderCache();
             showToast('Gespeichert.');
             ctx.rerender();
           } catch (err) {
@@ -1621,7 +1625,7 @@ export function renderFoodOrders(container, ctx) {
       submitBtn.disabled = true;
       try {
         await api.foodOrders.addItem(orderId, { playerId: myId, description, quantity, priceCents: priceCents ?? undefined });
-        cache = null;
+        invalidateFoodOrderCache();
         // AP3.8: adding an own position forces the own group open again, in
         // case it had been collapsed.
         const set = expandedGroups.get(orderId) ?? new Set();
@@ -1643,7 +1647,7 @@ export function renderFoodOrders(container, ctx) {
       if (!(await confirmDialog('Lässt sich nicht rückgängig machen.', { title, confirmText: 'Löschen', danger: true }))) return;
       try {
         await api.foodOrders.removeItem(btn.dataset.order, btn.dataset.removeItem, myId);
-        cache = null;
+        invalidateFoodOrderCache();
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });
@@ -1746,7 +1750,7 @@ export function renderFoodOrders(container, ctx) {
       if (!(await confirmDialog('Bestellung abschicken? Danach kann niemand mehr etwas eintragen.', { confirmText: 'Abschicken' }))) return;
       try {
         await api.foodOrders.close(btn.dataset.closeOrder);
-        cache = null;
+        invalidateFoodOrderCache();
         showToast('Bestellung abgeschickt.');
         ctx.rerender();
       } catch (err) {
@@ -1759,7 +1763,7 @@ export function renderFoodOrders(container, ctx) {
     btn.addEventListener('click', async () => {
       try {
         await api.foodOrders.reopen(btn.dataset.reopenOrder);
-        cache = null;
+        invalidateFoodOrderCache();
         showToast('Bestellung wieder geöffnet.');
         ctx.rerender();
       } catch (err) {
@@ -1779,7 +1783,7 @@ export function renderFoodOrders(container, ctx) {
         return;
       try {
         await api.foodOrders.finalize(btn.dataset.finalizeOrder);
-        cache = null;
+        invalidateFoodOrderCache();
         showToast('Bestellung geschlossen.');
         ctx.rerender();
       } catch (err) {
@@ -1793,7 +1797,7 @@ export function renderFoodOrders(container, ctx) {
       if (!(await confirmDialog('Bestellung endgültig löschen? Alle eingetragenen Positionen gehen dabei verloren.', { confirmText: 'Löschen', danger: true }))) return;
       try {
         await api.foodOrders.remove(btn.dataset.deleteOrder);
-        cache = null;
+        invalidateFoodOrderCache();
         showToast('Bestellung gelöscht.');
         ctx.rerender();
       } catch (err) {
