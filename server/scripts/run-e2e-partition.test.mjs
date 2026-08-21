@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -12,6 +13,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import artifactDirectoryModule from './e2e-artifact-directory.cjs';
 import {
   CORE_E2E_DOMAINS,
   E2E_PARTITIONS,
@@ -128,16 +130,10 @@ test('targeted retries fail closed without trustworthy in-scope owner metadata',
 });
 
 test('the retry environment variable controls the final files passed to the test runner', (context) => {
-  const artifactDirectory = mkdtempSync(path.join(tmpdir(), 'e2e-retry-contract-'));
-  context.after(() => rmSync(artifactDirectory, { recursive: true, force: true }));
-  const failureDirectory = path.join(artifactDirectory, 'failure');
-  mkdirSync(failureDirectory);
-  writeFileSync(
-    path.join(failureDirectory, 'metadata.json'),
-    JSON.stringify({ ownerFile: E2E_SMOKE_FILES[1] }),
-  );
+  const artifactRoot = mkdtempSync(path.join(tmpdir(), 'e2e-retry-contract-'));
+  context.after(() => rmSync(artifactRoot, { recursive: true, force: true }));
   const allSourceFiles = [...E2E_PARTITIONS.core, ...E2E_PARTITIONS.arcade].sort();
-  const compiledDirectory = path.join(artifactDirectory, 'compiled');
+  const compiledDirectory = path.join(artifactRoot, 'compiled');
   const spawnCalls = [];
   const spawn = (command, args, options) => {
     spawnCalls.push({ command, args, options });
@@ -152,26 +148,47 @@ test('the retry environment variable controls the final files passed to the test
     log: () => undefined,
   };
 
-  assert.equal(runE2EPartition({
-    ...common,
-    env: { E2E_ARTIFACT_DIR: artifactDirectory, E2E_RETRY_FAILED_ONLY: '1' },
-  }), 0);
+  assert.equal(runE2EPartition({ ...common, env: { E2E_ARTIFACT_DIR: artifactRoot } }), 0);
   assert.equal(spawnCalls[0].args[0], '--import');
   assert.match(spawnCalls[0].args[1], /e2e-owner-diagnostics\.mjs$/);
+  const currentRunDirectory = spawnCalls[0].options.env.E2E_ARTIFACT_DIR;
+  assert.equal(path.isAbsolute(currentRunDirectory), true);
+  assert.equal(path.dirname(currentRunDirectory), path.join(artifactRoot, 'runs'));
   assert.deepEqual(
     spawnCalls[0].args.slice(spawnCalls[0].args.indexOf('--test-concurrency=6') + 1),
-    [path.join(compiledDirectory, E2E_SMOKE_FILES[1].replace(/\.ts$/, '.js'))],
+    E2E_SMOKE_FILES.map((file) => path.join(compiledDirectory, file.replace(/\.ts$/, '.js'))),
   );
 
-  assert.equal(runE2EPartition({ ...common, env: {} }), 0);
+  const failureDirectory = path.join(currentRunDirectory, 'failure');
+  mkdirSync(failureDirectory);
+  writeFileSync(
+    path.join(failureDirectory, 'metadata.json'),
+    JSON.stringify({ ownerFile: E2E_SMOKE_FILES[1] }),
+  );
+  const staleDirectory = path.join(artifactRoot, 'stale-other-partition');
+  mkdirSync(staleDirectory);
+  writeFileSync(
+    path.join(staleDirectory, 'metadata.json'),
+    JSON.stringify({ ownerFile: E2E_PARTITIONS.core[0] }),
+  );
+  const brokenStaleDirectory = path.join(artifactRoot, 'stale-broken');
+  mkdirSync(brokenStaleDirectory);
+  writeFileSync(path.join(brokenStaleDirectory, 'metadata.json'), '{broken old metadata');
+
+  assert.equal(runE2EPartition({
+    ...common,
+    env: { E2E_ARTIFACT_DIR: artifactRoot, E2E_RETRY_FAILED_ONLY: '1' },
+  }), 0);
+  assert.equal(spawnCalls[1].options.env.E2E_ARTIFACT_DIR, currentRunDirectory);
   assert.deepEqual(
     spawnCalls[1].args.slice(spawnCalls[1].args.indexOf('--test-concurrency=6') + 1),
-    E2E_SMOKE_FILES.map((file) => path.join(compiledDirectory, file.replace(/\.ts$/, '.js'))),
+    [path.join(compiledDirectory, E2E_SMOKE_FILES[1].replace(/\.ts$/, '.js'))],
   );
 });
 
-test('targeted retries use the same local artifact default as E2E diagnostics', () => {
+test('runner and diagnostic producers share one cwd-independent local artifact default', () => {
   const serverDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  assert.equal(e2eArtifactDirectory, artifactDirectoryModule.e2eArtifactDirectory);
   assert.equal(
     e2eArtifactDirectory({}),
     path.join(serverDirectory, 'test-results', 'e2e'),
@@ -222,5 +239,57 @@ test('test-process failures persist owner metadata even when hooks fail outside 
     },
   );
   assert.equal(success.status, 0, `${success.stdout}\n${success.stderr}`);
-  assert.equal(readdirSync(root).includes('success-artifacts'), false);
+  const successfulMetadata = readdirSync(successArtifacts, { recursive: true })
+    .filter((file) => file.endsWith('metadata.json'));
+  assert.deepEqual(successfulMetadata, []);
+});
+
+async function waitForProcessMetadata(artifactDirectory) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (existsSync(artifactDirectory)) {
+      const files = readdirSync(artifactDirectory, { recursive: true })
+        .filter((file) => file.endsWith('metadata.json'));
+      if (files.length > 0) return path.join(artifactDirectory, files[0]);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for process metadata in ${artifactDirectory}`);
+}
+
+test('signal and forced termination retain pessimistic process owner metadata', async (context) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'e2e-process-signal-'));
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  const diagnosticsImport = pathToFileURL(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'e2e-owner-diagnostics.mjs'),
+  ).href;
+
+  for (const signal of ['SIGTERM', 'SIGKILL']) {
+    const artifactDirectory = path.join(root, signal.toLowerCase());
+    const testFile = path.join(root, `${signal.toLowerCase()}.e2e.test.js`);
+    writeFileSync(testFile, 'setInterval(() => undefined, 1000);\n');
+    const child = spawn(process.execPath, ['--import', diagnosticsImport, testFile], {
+      env: {
+        ...process.env,
+        E2E_ARTIFACT_DIR: artifactDirectory,
+        NODE_TEST_CONTEXT: 'child-v8',
+      },
+      stdio: 'pipe',
+    });
+    context.after(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    });
+
+    const metadataFile = await waitForProcessMetadata(artifactDirectory);
+    const childExit = new Promise((resolve, reject) => {
+      child.once('error', reject);
+      child.once('exit', resolve);
+    });
+    assert.equal(child.kill(signal), true);
+    await childExit;
+    const metadata = JSON.parse(readFileSync(metadataFile, 'utf8'));
+    assert.equal(metadata.ownerFile, `${signal.toLowerCase()}.e2e.test.ts`);
+    if (signal === 'SIGTERM' && process.platform !== 'win32') {
+      assert.match(metadata.error, /received SIGTERM/);
+    }
+  }
 });

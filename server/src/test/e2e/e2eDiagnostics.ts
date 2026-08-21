@@ -2,6 +2,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test as nodeTest } from 'node:test';
 import type { Browser, BrowserContext, Page } from 'playwright';
+import { e2eArtifactDirectory } from '../../../scripts/e2e-artifact-directory.cjs';
 import type { E2EServer } from './e2eServer';
 
 interface DiagnosticResources {
@@ -51,9 +52,7 @@ class E2EDiagnosticRun {
   private captured = false;
 
   constructor(private readonly resources: DiagnosticResources) {
-    const root = path.resolve(
-      process.env.E2E_ARTIFACT_DIR ?? path.join(process.cwd(), 'test-results', 'e2e'),
-    );
+    const root = e2eArtifactDirectory();
     this.directory = path.join(root, `${artifactSlug(resources.testName)}-${process.pid}`);
   }
 

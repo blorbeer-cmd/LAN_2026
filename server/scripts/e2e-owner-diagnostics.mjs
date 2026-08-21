@@ -1,5 +1,8 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import artifactDirectoryModule from './e2e-artifact-directory.cjs';
+
+const { e2eArtifactDirectory } = artifactDirectoryModule;
 
 function ownerFileFromArgv(argv) {
   const entryFile = path.basename(argv[1] ?? '');
@@ -19,21 +22,19 @@ function artifactSlug(value) {
 if (process.env.NODE_TEST_CONTEXT) {
   const ownerFile = ownerFileFromArgv(process.argv);
   if (ownerFile) {
-    process.once('exit', (exitCode) => {
-      if (exitCode === 0) return;
-      const root = path.resolve(
-        process.env.E2E_ARTIFACT_DIR ?? path.join(process.cwd(), 'test-results', 'e2e'),
-      );
-      const directory = path.join(root, `process-${artifactSlug(ownerFile)}-${process.pid}`);
+    const root = e2eArtifactDirectory();
+    const directory = path.join(root, `process-${artifactSlug(ownerFile)}-${process.pid}`);
+    const metadataFile = path.join(directory, 'metadata.json');
+    const persistOwner = (error) => {
       try {
         mkdirSync(directory, { recursive: true });
         writeFileSync(
-          path.join(directory, 'metadata.json'),
+          metadataFile,
           `${JSON.stringify(
             {
               testName: 'E2E test process failure',
               ownerFile,
-              error: `Node test process exited with code ${exitCode}.`,
+              error,
               serverExit: null,
               pages: [],
             },
@@ -42,9 +43,45 @@ if (process.env.NODE_TEST_CONTEXT) {
           )}\n`,
           'utf8',
         );
-      } catch (error) {
-        console.error(`[e2e diagnostics] could not persist process owner metadata: ${error}`);
+      } catch (writeError) {
+        console.error(`[e2e diagnostics] could not persist process owner metadata: ${writeError}`);
       }
+    };
+
+    // Start pessimistically: SIGKILL and host/OOM termination run no cleanup
+    // callbacks. A clean exit removes this marker; every other exit leaves the
+    // owner available to the targeted retry.
+    persistOwner('Node test process did not report a successful exit.');
+    process.once('exit', (exitCode) => {
+      if (exitCode === 0) {
+        try {
+          rmSync(directory, { recursive: true, force: true });
+        } catch (removeError) {
+          console.error(`[e2e diagnostics] could not remove successful process marker: ${removeError}`);
+        }
+        return;
+      }
+      persistOwner(`Node test process exited with code ${exitCode}.`);
     });
+
+    let terminatingForSignal = false;
+    for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
+      try {
+        process.once(signal, () => {
+          if (terminatingForSignal) return;
+          terminatingForSignal = true;
+          persistOwner(`Node test process received ${signal}.`);
+          process.removeAllListeners(signal);
+          try {
+            process.kill(process.pid, signal);
+          } catch {
+            process.exit(1);
+          }
+        });
+      } catch {
+        // Some signals are not available on every supported platform. The
+        // pessimistic startup marker still covers forced termination there.
+      }
+    }
   }
 }

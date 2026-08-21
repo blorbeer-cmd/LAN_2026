@@ -252,18 +252,23 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby warns and closes the owne
       await guestPage.waitForSelector(`#${game}-create:not([disabled])`);
       await guestPage.click(`#${game}-create`);
       const targetStateHandle = await guestPage.waitForFunction((gameName) => {
-        const select = Array.from(document.querySelectorAll<HTMLSelectElement>(
+        const visibleSelects = Array.from(document.querySelectorAll<HTMLSelectElement>(
           `.arcade-lobby-control-bar select[name="${gameName}-target"]`,
-        )).find((candidate) => Math.round(candidate.getBoundingClientRect().height) === 32);
-        return select
-          ? { value: select.value, height: Math.round(select.getBoundingClientRect().height) }
+        )).flatMap((select) => {
+          const bounds = select.getBoundingClientRect();
+          return bounds.width > 0 && bounds.height > 0
+            ? [{ value: select.value, height: Math.round(bounds.height) }]
+            : [];
+        });
+        return visibleSelects.length > 0
+          ? { visibleCount: visibleSelects.length, ...visibleSelects[0] }
           : null;
       }, game);
       const targetState = await targetStateHandle.jsonValue();
       await targetStateHandle.dispose();
       // Snapshot value and geometry atomically: a realtime re-render can hide
       // the matched select between two otherwise independent locator reads.
-      assert.deepEqual(targetState, { value: '7', height: 32 });
+      assert.deepEqual(targetState, { visibleCount: 1, value: '7', height: 32 });
 
       await page.click(`[data-game="${game}"]`);
       await page.waitForSelector(`[data-${game}-join]`);

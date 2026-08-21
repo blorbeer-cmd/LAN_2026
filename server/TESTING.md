@@ -123,20 +123,28 @@ Wiederholungsfall ab.
   Agent-Server-Integrationstest unter `agent/` verwendet denselben `PORT=0`-Ablauf.
 - Die Browser-Fixtures sammeln bei einem Fehlschlag Browser-Konsole, Page- und Request-Fehler,
   den letzten Server-Output und Metadaten sowie Screenshots und DOM-Snapshots noch offener Seiten.
-  Zusätzlich schreibt jeder fehlgeschlagene E2E-Testprozess seine Owner-Datei; dadurch bleiben auch
-  Fehler in Datei-Hooks und Einstiegspunkten ohne Diagnose-Wrapper dem richtigen Retry zugeordnet.
+  Zusätzlich legt jeder gestartete E2E-Testprozess zuerst einen konservativen Owner-Marker an und
+  entfernt ihn nur nach Exit-Code 0. Dadurch bleiben auch Fehler in Datei-Hooks und
+  Einstiegspunkten ohne Diagnose-Wrapper sowie Signal-, Timeout-, OOM- und SIGKILL-Abbrüche dem
+  richtigen Retry zugeordnet. Auf Plattformen, die reguläres `SIGTERM`, `SIGINT` oder `SIGHUP` an
+  Node ausliefern, wird der Marker vor der signalgerechten Beendigung noch um die konkrete Ursache
+  ergänzt.
   Nach einem roten Browserlauf setzt CI `E2E_RETRY_FAILED_ONLY=1` und wiederholt mit `E2E_TRACE=1`
   ausschließlich die Owner-Dateien aus den Diagnosemetadaten. Mehrere Fehler werden dedupliziert,
   die ursprüngliche Partitionsreihenfolge bleibt erhalten. Fehlende, ungültige oder nicht zur
-  gewählten Partition gehörende Metadaten brechen den Retry bewusst ab; es gibt keinen stillen
-  Fallback auf die vollständige Partition. Dadurch bleibt die gemessene Laufzeit unverfälscht und
+  gewählten Partition gehörende Metadaten des aktuellen Laufs brechen den Retry bewusst ab; es gibt
+  keinen stillen Fallback auf die vollständige Partition. Jeder Nicht-Retry-Lauf erhält ein eigenes
+  Unterverzeichnis und aktualisiert je Partition/Core-Auswahl einen kleinen Latest-Zeiger. Der
+  anschließende Retry liest ausschließlich dieses Unterverzeichnis; ältere lokale Artefakte,
+  beschädigte Metadaten früherer Läufe und parallel gepflegte andere Partitionen beeinflussen die
+  Auswahl daher nicht. Dadurch bleibt die gemessene Laufzeit unverfälscht und
   ein reproduzierbarer Fehler erhält zusätzlich Playwright-Traces kurzlebiger Browser-Kontexte.
   Anschließend lädt CI das Diagnoseverzeichnis sieben Tage lang als
   `*-failure-diagnostics`-Artefakt hoch. Lokal landen Fehler standardmäßig im ignorierten
-  Verzeichnis `test-results/e2e`; mit `E2E_ARTIFACT_DIR=<pfad>` lässt sich ein anderer Zielordner
-  wählen. Derselbe Default gilt für einen lokalen gezielten Retry. `E2E_TRACE=1` aktiviert dort bei
-  Bedarf dieselben Traces wie in CI. Erfolgreiche Tests entfernen ihre temporären Trace-Daten
-  wieder.
+  Verzeichnis `test-results/e2e/runs/<lauf-id>`; mit `E2E_ARTIFACT_DIR=<pfad>` lässt sich dessen
+  Wurzelverzeichnis wählen. Derselbe arbeitsverzeichnisunabhängige Default gilt für Produzenten und
+  einen lokalen gezielten Retry. `E2E_TRACE=1` aktiviert dort bei Bedarf dieselben Traces wie in CI.
+  Erfolgreiche Tests entfernen ihre temporären Trace-Daten und Prozessmarker wieder.
 - `npm run test:e2e` setzt `E2E_FAST_TIMERS=1`. Der Schnellmodus verkürzt Arcade- und
   Challenge-Rush-Countdowns nur zusammen mit `NODE_ENV=test`; in Produktion und bei allen anderen
   Aufrufen bleiben die regulären Zeiten aktiv. Challenge Rush verkürzt im E2E-Schnellmodus seine

@@ -1,7 +1,16 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import artifactDirectoryModule from './e2e-artifact-directory.cjs';
 import {
   CORE_E2E_DOMAINS,
   E2E_PARTITIONS,
@@ -18,8 +27,15 @@ const compiledDir = path.join(serverDir, 'dist-test', 'test', 'e2e');
 const ownerDiagnosticsImport = pathToFileURL(
   path.join(scriptDir, 'e2e-owner-diagnostics.mjs'),
 ).href;
+const { e2eArtifactDirectory } = artifactDirectoryModule;
 
-export { CORE_E2E_DOMAINS, E2E_PARTITIONS, E2E_SMOKE_FILES, selectedCoreDomains };
+export {
+  CORE_E2E_DOMAINS,
+  E2E_PARTITIONS,
+  E2E_SMOKE_FILES,
+  e2eArtifactDirectory,
+  selectedCoreDomains,
+};
 
 export function validateE2EPartitions(sourceFiles) {
   validateE2EManifest(sourceFiles);
@@ -37,8 +53,64 @@ function metadataFiles(directory) {
   });
 }
 
-export function e2eArtifactDirectory(env = process.env) {
-  return path.resolve(env.E2E_ARTIFACT_DIR ?? path.join(serverDir, 'test-results', 'e2e'));
+function selectionSlug(partition, coreSelection) {
+  return `${partition}-${coreSelection}`
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase();
+}
+
+function runStateFile(artifactRoot, partition, coreSelection) {
+  return path.join(artifactRoot, `.latest-${selectionSlug(partition, coreSelection)}.json`);
+}
+
+export function createE2EArtifactRun(
+  artifactRoot,
+  partition,
+  coreSelection,
+  selectedFiles,
+  runId = `${Date.now().toString(36)}-${process.pid}-${randomUUID()}`,
+) {
+  const runDirectory = path.join(artifactRoot, 'runs', runId);
+  mkdirSync(runDirectory, { recursive: true });
+  const stateFile = runStateFile(artifactRoot, partition, coreSelection);
+  const temporaryStateFile = `${stateFile}.${process.pid}.tmp`;
+  writeFileSync(
+    temporaryStateFile,
+    `${JSON.stringify({ version: 1, runId, partition, coreSelection, selectedFiles }, null, 2)}\n`,
+    'utf8',
+  );
+  renameSync(temporaryStateFile, stateFile);
+  return runDirectory;
+}
+
+export function retryE2EArtifactDirectory(artifactRoot, partition, coreSelection, selectedFiles) {
+  const stateFile = runStateFile(artifactRoot, partition, coreSelection);
+  if (!existsSync(stateFile)) {
+    throw new Error(`Gezielter E2E-Retry fand keinen aktuellen Laufzustand: ${stateFile}`);
+  }
+
+  let state;
+  try {
+    state = JSON.parse(readFileSync(stateFile, 'utf8'));
+  } catch (error) {
+    throw new Error(`Ungültiger E2E-Laufzustand: ${stateFile}`, { cause: error });
+  }
+  const validRunId = typeof state?.runId === 'string' && /^[a-zA-Z0-9-]+$/.test(state.runId);
+  const validSelection = state?.version === 1
+    && state?.partition === partition
+    && state?.coreSelection === coreSelection
+    && Array.isArray(state?.selectedFiles)
+    && JSON.stringify(state.selectedFiles) === JSON.stringify(selectedFiles);
+  if (!validRunId || !validSelection) {
+    throw new Error(`E2E-Laufzustand passt nicht zur gewählten Partition: ${stateFile}`);
+  }
+
+  const runDirectory = path.join(artifactRoot, 'runs', state.runId);
+  if (!existsSync(runDirectory)) {
+    throw new Error(`Gezielter E2E-Retry benötigt das Diagnoseverzeichnis des aktuellen Laufs: ${runDirectory}`);
+  }
+  return runDirectory;
 }
 
 export function failedE2EOwnerFiles(artifactDirectory = e2eArtifactDirectory()) {
@@ -100,10 +172,15 @@ export function runE2EPartition({
   validateE2EPartitions(availableSourceFiles);
 
   const selectedFiles = selectedSourceFiles(partition, coreSelection);
-  const filesToRun = env.E2E_RETRY_FAILED_ONLY === '1'
-    ? selectedRetrySourceFiles(selectedFiles, e2eArtifactDirectory(env))
+  const artifactRoot = e2eArtifactDirectory(env);
+  const retryFailedOnly = env.E2E_RETRY_FAILED_ONLY === '1';
+  const artifactDirectory = retryFailedOnly
+    ? retryE2EArtifactDirectory(artifactRoot, partition, coreSelection, selectedFiles)
+    : createE2EArtifactRun(artifactRoot, partition, coreSelection, selectedFiles);
+  const filesToRun = retryFailedOnly
+    ? selectedRetrySourceFiles(selectedFiles, artifactDirectory)
     : selectedFiles;
-  if (env.E2E_RETRY_FAILED_ONLY === '1') {
+  if (retryFailedOnly) {
     log(`[e2e retry] selected owner files: ${filesToRun.join(', ')}`);
   }
   const compiledFiles = filesToRun.map((file) =>
@@ -122,7 +199,9 @@ export function runE2EPartition({
     ...compiledFiles,
   ], {
     cwd: serverDir,
-    env,
+    // All producers receive the runner's one absolute per-run directory, so
+    // their standalone cwd-based fallback cannot diverge from retry lookup.
+    env: { ...env, E2E_ARTIFACT_DIR: artifactDirectory },
     stdio: 'inherit',
   });
   if (result.error) throw result.error;
