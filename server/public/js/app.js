@@ -22,7 +22,7 @@ import { invalidateMatchmakingHistory, invalidateMatchmakingDraft, setDraftState
 import { invalidateBroadcasts } from './views/broadcast.js';
 import { invalidateInfoBoard, openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
-import { invalidateFoodOrders, refreshFoodOrders } from './views/foodOrders.js';
+import { clearFoodOrderTarget, invalidateFoodOrders, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
 import { invalidateChecklist } from './views/checklist.js';
 import { invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
 import { invalidateArrivals } from './views/arrivals.js';
@@ -63,6 +63,17 @@ let playerDataReady = false;
 const viewContainer = document.getElementById('view-container');
 let pendingSearchTarget = null;
 let renderRevision = 0;
+
+function parseFoodOrderHash(hash) {
+  const parts = String(hash || '').replace(/^#/, '').split('/');
+  if (parts[0] !== 'foodOrders') return null;
+  if (!parts[1]) return { view: 'foodOrders', target: null };
+  try {
+    return { view: 'foodOrders', target: { type: 'order', id: decodeURIComponent(parts[1]) } };
+  } catch {
+    return { view: 'foodOrders', target: null };
+  }
+}
 
 function syncArcadeStylesheet(entry) {
   const linkId = 'arcade-stylesheet';
@@ -231,7 +242,7 @@ function renderEventContextSwitcher() {
 // independent of which one the reader actually picked last.
 let activateEventQueue = Promise.resolve();
 
-async function activateEvent(eventId, { navigate } = {}) {
+async function activateEvent(eventId, { navigate, searchTarget = null } = {}) {
   const run = async () => {
     // A missing eventId is not an error: a notification stored before this
     // release carries no event, and its destination is still the thing the
@@ -244,7 +255,7 @@ async function activateEvent(eventId, { navigate } = {}) {
       await refreshNotificationBanner();
       renderCurrent();
     }
-    if (navigate && isKnownView(navigate)) switchView(navigate);
+    if (navigate && isKnownView(navigate)) switchView(navigate, { searchTarget });
   };
   const queued = activateEventQueue.then(run, run);
   // A failure must not wedge every switch queued after it — only the caller
@@ -258,9 +269,9 @@ async function activateEvent(eventId, { navigate } = {}) {
 // withdrawn — and PUT /api/me/active-event answers 404 for all three. That is
 // an expected outcome of a stale link, not a startup failure: say so once and
 // still take the reader to the promised view in whatever workspace is active.
-async function followEventDeepLink(eventId, view) {
+async function followEventDeepLink(eventId, view, searchTarget = null) {
   try {
-    await activateEvent(eventId, { navigate: view });
+    await activateEvent(eventId, { navigate: view, searchTarget });
   } catch (error) {
     // Defensive on purpose: this catch runs during startup, so throwing a
     // second time here would reintroduce exactly the aborted-startup bug it
@@ -270,7 +281,7 @@ async function followEventDeepLink(eventId, view) {
     } else {
       showToast(error?.message ?? 'Der Eventwechsel ist fehlgeschlagen.', { error: true });
     }
-    if (view && isKnownView(view)) switchView(view);
+    if (view && isKnownView(view)) switchView(view, { searchTarget });
   }
 }
 
@@ -279,8 +290,8 @@ async function followEventDeepLink(eventId, view) {
 // deep-link listener belongs here: it outlives any single render.
 function wireEventContextSwitcher() {
   window.addEventListener('respawn:event-navigate', (event) => {
-    const { eventId, view } = event.detail ?? {};
-    void followEventDeepLink(eventId, view);
+    const { eventId, view, target } = event.detail ?? {};
+    void followEventDeepLink(eventId, view, target);
   });
 }
 
@@ -328,7 +339,6 @@ function focusPendingSearchTarget() {
   }[type] ?? [];
   const element = candidates[0];
   if (!element) return;
-  if (element instanceof HTMLDetailsElement) element.open = true;
   element.classList.add('search-target-highlight');
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   element.scrollIntoView({ block: 'center', behavior: reducedMotion ? 'auto' : 'smooth' });
@@ -366,7 +376,9 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
   // but never render for an account whose role no longer permits them.
   if (viewRequiresAdminRole(view) && playerDataReady && !currentPlayerHasAdminRole()) view = 'foodOrders';
   const changed = view !== currentView;
+  if (view !== 'foodOrders') clearFoodOrderTarget();
   pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
+  if (view === 'foodOrders' && searchTarget?.type === 'order') prepareFoodOrderTarget(searchTarget.id);
   currentView = view;
   if (view !== 'more') lastSubstantiveView = view;
   // Realtime game modules use this marker to ignore updates while another
@@ -481,7 +493,10 @@ function wireNav() {
     const btn = e.target.closest('[data-navigate]');
     if (btn) {
       if (btn instanceof HTMLAnchorElement) e.preventDefault();
-      switchView(btn.dataset.navigate);
+      const target = btn.dataset.navigateTargetId
+        ? { type: btn.dataset.navigateTargetType || 'order', id: btn.dataset.navigateTargetId }
+        : null;
+      switchView(btn.dataset.navigate, { searchTarget: target });
     }
   });
 
@@ -512,7 +527,7 @@ function wireNav() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (e) => {
       if (e.data?.type === 'navigate' && isKnownView(e.data.view)) {
-        void followEventDeepLink(e.data.eventId, e.data.view);
+        void followEventDeepLink(e.data.eventId, e.data.view, e.data.target ?? null);
       }
     });
   }
@@ -700,6 +715,7 @@ function wireSocket() {
   // header notification center so new entries appear without a reload.
   socket.on('push:sent', () => {
     refreshNotificationBanner();
+    invalidateAktuellStatus();
   });
   // A short-lived push topic was closed, completed or reached its deadline.
   // Refresh the center so its server-backed state remains current.
@@ -778,7 +794,7 @@ function wireSocket() {
     if (payload?.notify && myId && myId !== payload.notify.excludePlayerId && currentView !== 'foodOrders') {
       showToast(payload.notify.message, {
         duration: 5000,
-        onClick: () => switchView('foodOrders'),
+        onClick: () => switchView('foodOrders', { searchTarget: payload.notify.target ?? null }),
       });
     }
   });
@@ -876,7 +892,8 @@ async function main() {
   // A push notification's deep link (e.g. /#votes, opened by sw.js when no
   // app window existed yet) overrides that default so the tap actually lands
   // where the notification promised.
-  const hashView = location.hash.slice(1);
+  const hashTarget = parseFoodOrderHash(location.hash);
+  const hashView = hashTarget?.view ?? location.hash.slice(1);
   // A reload keeps the view the browser was on (stored on the history entry
   // by switchView) instead of bouncing back to Home mid-workflow.
   const restoredView = history.state?.view;
@@ -889,7 +906,7 @@ async function main() {
   // (replace, not push — this page load shouldn't cost an extra back-step)
   // before any tab switch starts pushing entries on top of it.
   history.replaceState({ view: initialView }, '');
-  switchView(initialView, { fromHistory: true });
+  switchView(initialView, { fromHistory: true, searchTarget: hashTarget?.target ?? null });
   // The core tour's step list depends on the admin role, which only exists
   // on state.players once initialDataLoad resolves (see loadAll() above).
   // The app itself stays interactive regardless - only starting the tour

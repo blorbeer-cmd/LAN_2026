@@ -6,7 +6,7 @@ import { api } from './api.js';
 import { getMyId } from './whoami.js';
 import { icon } from './icons.js';
 import { escapeHtml, formatDateTime } from './format.js';
-import { feedEntryIcon, feedEntryTitle, feedLinkView, FEED_LINK_LABELS } from './pushFeed.js';
+import { feedEntryIcon, feedEntryTitle, feedLinkTarget, feedLinkView, FEED_LINK_LABELS } from './pushFeed.js';
 import { showToast } from './toast.js';
 import { confirmDialog } from './modal.js';
 import { emptyStateHtml } from './emptyState.js';
@@ -59,6 +59,7 @@ function scheduleHighlightExpiry() {
 
 export function entryHtml(entry) {
   const view = feedLinkView(entry.url);
+  const target = feedLinkTarget(entry.url);
   const directBadge = entry.audience === 'direct' ? '<span class="badge badge-paused">Für dich</span>' : '';
   const eventBadge = entry.eventName
     ? `<span class="badge badge-event">${escapeHtml(entry.eventName)}</span>`
@@ -73,7 +74,7 @@ export function entryHtml(entry) {
     </div>
     <div class="muted notification-center-body">${escapeHtml(entry.body)}</div>
     <div class="notification-center-actions">
-      ${view ? `<button type="button" class="btn btn-sm" data-notification-navigate="${view}" data-notification-event-id="${escapeHtml(entry.eventId ?? '')}" data-notification-id="${entry.id}">${FEED_LINK_LABELS[view]}</button>` : ''}
+      ${view ? `<button type="button" class="btn btn-sm" data-notification-navigate="${view}" data-notification-target="${escapeHtml(target?.id ?? '')}" data-notification-event-id="${escapeHtml(entry.eventId ?? '')}" data-notification-id="${entry.id}">${FEED_LINK_LABELS[view]}</button>` : ''}
       <span class="notification-center-entry-tools">
         ${entry.seen ? '' : `<button type="button" class="icon-btn notification-center-seen" data-notification-seen="${entry.id}" aria-label="Als gelesen markieren" title="Als gelesen markieren">${icon('circleCheck')}</button>`}
         <button type="button" class="icon-btn notification-center-remove" data-notification-hide="${entry.id}" aria-label="Mitteilung entfernen" title="Mitteilung entfernen">${icon('trash')}</button>
@@ -98,7 +99,7 @@ function panelContentHtml(myId) {
   return `<div class="notification-center-list">${entries.slice(0, FEED_LIMIT).map(entryHtml).join('')}</div>`;
 }
 
-async function markSeen(entryId, { navigate, eventId } = {}) {
+async function markSeen(entryId, { navigate, eventId, target = null } = {}) {
   const playerId = getMyId();
   const entry = entries.find((item) => item.id === entryId);
   if (!playerId || !entry) return;
@@ -113,7 +114,7 @@ async function markSeen(entryId, { navigate, eventId } = {}) {
     await api.push.seen(entryId, playerId);
     if (navigate) {
       setOpen(false);
-      window.dispatchEvent(new CustomEvent('respawn:event-navigate', { detail: { view: navigate, eventId } }));
+      window.dispatchEvent(new CustomEvent('respawn:event-navigate', { detail: { view: navigate, eventId, target } }));
     }
   } catch (err) {
     entry.seen = false;
@@ -214,6 +215,7 @@ function renderHighlight() {
     markSeen(event.currentTarget.dataset.notificationId, {
       navigate: event.currentTarget.dataset.notificationHighlightNavigate,
       eventId: highlightEntry.eventId,
+      target: feedLinkTarget(highlightEntry.url),
     });
   });
   container.querySelector('[data-notification-highlight-open]')?.addEventListener('click', () => setOpen(true));
@@ -276,6 +278,7 @@ export function renderBanner() {
       markSeen(control.dataset.notificationId, {
         navigate: control.dataset.notificationNavigate,
         eventId: control.dataset.notificationEventId,
+        target: control.dataset.notificationTarget ? { type: 'order', id: control.dataset.notificationTarget } : null,
       })
     );
   });

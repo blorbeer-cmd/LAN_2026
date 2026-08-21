@@ -462,7 +462,7 @@ export const api = {
   },
 
   foodOrders: {
-    list: () => apiFetch('/api/food-orders'),
+    list: (orderId = null) => apiFetch(`/api/food-orders${orderId ? `?orderId=${encodeURIComponent(orderId)}` : ''}`),
     create: (playerId, title, { sendAt, notes, link, paypalLink, tipPercent } = {}) =>
       apiFetch('/api/food-orders', {
         method: 'POST',
@@ -485,6 +485,11 @@ export const api = {
       apiFetch(`/api/food-orders/${orderId}/items/${itemId}`, {
         method: 'PATCH',
         body: JSON.stringify({ paid }),
+      }),
+    setGroupPaid: (orderId, itemIds, paid) =>
+      apiFetch(`/api/food-orders/${orderId}/items/bulk-paid`, {
+        method: 'PATCH',
+        body: JSON.stringify({ itemIds, paid }),
       }),
     close: (orderId) => apiFetch(`/api/food-orders/${orderId}/close`, { method: 'POST' }),
     reopen: (orderId) => apiFetch(`/api/food-orders/${orderId}/reopen`, { method: 'POST' }),

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { bannerContentHtml, feedEntryIcon, feedEntryTitle } from './pushFeed.js';
+import { bannerContentHtml, feedEntryIcon, feedLinkTarget, feedEntryTitle } from './pushFeed.js';
 
 test('legacy notification emoji are removed from persisted titles', () => {
   assert.equal(feedEntryTitle({ title: '🍕 Neue Sammelbestellung' }), 'Neue Sammelbestellung');
@@ -11,6 +11,7 @@ test('legacy notification emoji are removed from persisted titles', () => {
 
 test('notification categories use the shared UI icon set', () => {
   assert.equal(feedEntryIcon({ url: '/#foodOrders' }), 'hamburger');
+  assert.deepEqual(feedLinkTarget('/#foodOrders/order-123'), { type: 'order', id: 'order-123' });
   assert.equal(feedEntryIcon({ url: '/#tournaments' }), 'swords');
   assert.equal(feedEntryIcon({ url: '/unbekannt' }), 'bell');
 });

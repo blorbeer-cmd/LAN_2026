@@ -11,6 +11,8 @@ import { domainIcon } from './domainIcons.js';
 
 let statusCache = null; // { tournaments, foodOrders, arcadeLobbies }
 let statusLoading = false;
+let statusRequest = null;
+let statusGeneration = 0;
 let missingSkillsCache = null;
 let missingSkillsLoadedForId = null;
 let missingSkillsLoading = false;
@@ -18,6 +20,7 @@ let missingSkillsLoading = false;
 const DISMISSED_STORAGE_PREFIX = 'respawn_home_current_dismissed';
 const MAX_DISMISSED_ITEMS = 100;
 const MAX_ITEM_ID_LENGTH = 200;
+export const FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS = 60 * 60 * 1000;
 const memoryDismissals = new Map();
 
 function dismissalScope({ playerId = getMyId(), eventId = state.activeEvent?.id ?? 'base' } = {}) {
@@ -91,31 +94,87 @@ export function missingSkillAktuellId(gameId, livePlayers = state.live) {
   return `skill:${gameId}:${Math.min(...starts)}`;
 }
 
+// Food orders already have a stable Home identity. When the current player
+// still owes items, enrich that same entry instead of adding a second one for
+// the reminder push. A finalized order cannot be paid in the UI anymore, so
+// it does not become a payment nudge.
+export function foodOrderAktuellItem(order, myId, now = Date.now()) {
+  const unpaidOwnItems = myId
+    ? (order.items ?? []).filter((item) => item.playerId === myId && !item.paid)
+    : [];
+  const unpaidOwnItemCount = unpaidOwnItems.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
+  const paymentReminderDue =
+    unpaidOwnItems.length > 0 &&
+    !order.finalizedAt &&
+    Number.isFinite(order.closedAt) &&
+    now >= order.closedAt + FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS;
+  const paymentDue = paymentReminderDue;
+  if (!order.open && !paymentDue) return null;
+
+  return {
+    id: paymentDue ? `food-order:${order.id}:payment` : `food-order:${order.id}`,
+    iconName: domainIcon('foodOrders'),
+    title: paymentDue ? `Sammelbestellung „${order.title}" bezahlen` : `Sammelbestellung „${order.title}"`,
+    sub: paymentDue
+      ? `${unpaidOwnItemCount} ${unpaidOwnItemCount === 1 ? 'Position' : 'Positionen'} noch offen`
+      : order.sendAt
+        ? `Versand ${formatDateTime(order.sendAt)} Uhr`
+        : 'Zeitpunkt noch offen',
+    navigate: 'foodOrders',
+    target: { type: 'order', id: order.id },
+  };
+}
+
 // Fired whenever a (re)load completes, so Home can re-render without its own
 // poll loop.
 function notifyChanged() {
   window.dispatchEvent(new CustomEvent('respawn:aktuell-changed'));
 }
 
-async function loadStatus() {
+function statusScopeKey() {
+  return state.activeEvent?.id ?? 'base';
+}
+
+function loadStatus() {
+  if (statusRequest) return statusRequest;
+
+  const requestGeneration = statusGeneration;
+  const requestScope = statusScopeKey();
+  const isCurrent = () => requestGeneration === statusGeneration && requestScope === statusScopeKey();
   statusLoading = true;
-  try {
-    const [tournaments, foodOrders, arcadeLobbies] = await Promise.all([
-      api.tournaments.list(),
-      api.foodOrders.list(),
-      api.arcade.lobbies(),
-    ]);
-    statusCache = {
-      tournaments,
-      foodOrders: foodOrders.orders ?? [],
-      arcadeLobbies: arcadeLobbies.lobbies ?? [],
-    };
-  } catch {
-    statusCache = { tournaments: [], foodOrders: [], arcadeLobbies: [] };
-  } finally {
-    statusLoading = false;
-    notifyChanged();
-  }
+  const run = (async () => {
+    try {
+      const [tournaments, foodOrders, arcadeLobbies] = await Promise.all([
+        api.tournaments.list(),
+        api.foodOrders.list(),
+        api.arcade.lobbies(),
+      ]);
+      if (isCurrent()) {
+        statusCache = {
+          tournaments,
+          foodOrders: foodOrders.orders ?? [],
+          arcadeLobbies: arcadeLobbies.lobbies ?? [],
+        };
+      }
+    } catch {
+      if (isCurrent()) statusCache = { tournaments: [], foodOrders: [], arcadeLobbies: [] };
+    } finally {
+      if (statusRequest === run) {
+        statusRequest = null;
+        statusLoading = false;
+        if (isCurrent()) {
+          notifyChanged();
+        } else if (statusCache === null) {
+          // The active event changed while this request was in flight. Start
+          // exactly one fresh request for the new scope after releasing the
+          // single-flight slot; stale data and stale failures stay discarded.
+          void loadStatus();
+        }
+      }
+    }
+  })();
+  statusRequest = run;
+  return run;
 }
 
 async function loadMissingSkills(myId) {
@@ -145,6 +204,7 @@ export function ensureAktuellLoaded() {
 // Called on socket events that change this data (see app.js). Refetching
 // right away keeps an already-open Home view current.
 export function invalidateAktuellStatus() {
+  statusGeneration += 1;
   statusCache = null;
   loadStatus();
 }
@@ -207,14 +267,10 @@ export function aktuellItems() {
     });
   }
 
-  for (const o of (statusCache?.foodOrders ?? []).filter((o) => o.open)) {
-    items.push({
-      id: `food-order:${o.id}`,
-      iconName: domainIcon('foodOrders'),
-      title: `Sammelbestellung „${o.title}"`,
-      sub: o.sendAt ? `Versand ${formatDateTime(o.sendAt)} Uhr` : 'Zeitpunkt noch offen',
-      navigate: 'foodOrders',
-    });
+  const myId = getMyId();
+  for (const o of statusCache?.foodOrders ?? []) {
+    const item = foodOrderAktuellItem(o, myId);
+    if (item) items.push(item);
   }
 
   for (const l of statusCache?.arcadeLobbies ?? []) {

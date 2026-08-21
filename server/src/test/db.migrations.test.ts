@@ -647,10 +647,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 76);
+  assert.equal(migrations.length, 77);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 76 }, (_, index) => index + 1),
+    Array.from({ length: 77 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1170,8 +1170,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 76 }, (_, index) => index + 1),
-    'every version 1..76 runs exactly once',
+    Array.from({ length: 77 }, (_, index) => index + 1),
+    'every version 1..77 runs exactly once',
   );
 });
 
@@ -2195,6 +2195,31 @@ test('migration 73 re-filters legacy agent diagnostics down to configured game p
   );
   assert.deepEqual(processNamesOf('legacy-diag-malformed'), [], 'unreadable JSON is normalized to an empty array, not left broken');
 
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 77 creates durable food-order reminder state and is restart-safe', () => {
+  const dbFile = makeTempDbPath('food-order-reminder-state');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.exec(`
+    DROP TABLE food_order_payment_reminders;
+    DELETE FROM schema_migrations WHERE version = 77;
+  `);
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the reminder-state migration must be restart-safe');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.ok(
+    migrated
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'food_order_payment_reminders'")
+      .get(),
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 77').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

@@ -8,7 +8,7 @@ import {
   normalizePaypalInput,
   paypalEmailFromLink,
   paypalPayUrl,
-  groupCartState,
+  groupPaymentState,
   buildConsolidatedRows,
   foodOrderDescriptionSuggestions,
 } from './views/foodOrders.js';
@@ -63,6 +63,10 @@ test('paypalEmailFromLink returns null for a paypal.me link or other input', () 
   assert.equal(paypalEmailFromLink(undefined), null);
 });
 
+test('paypalEmailFromLink treats malformed recipient encoding as a normal URL', () => {
+  assert.equal(paypalEmailFromLink('https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=%E0%A4%A'), null);
+});
+
 test('paypalPayUrl appends the amount to a bare paypal.me link', () => {
   assert.equal(paypalPayUrl('https://paypal.me/luigi', 2090), 'https://paypal.me/luigi/20.90EUR');
 });
@@ -72,26 +76,12 @@ test('paypalPayUrl leaves an email-based send-money link unchanged (no amount ca
   assert.equal(paypalPayUrl(link, 2090), link);
 });
 
-// --- AP3.5: group Warenkorb button state -----------------------------------
+// --- Per-person payment state ----------------------------------------------
 
-test('groupCartState returns null when the group has no unpaid positions', () => {
-  assert.equal(groupCartState([], new Set()), null);
-});
-
-test('groupCartState is "none" when nothing unpaid is in the cart', () => {
-  const items = [{ id: 'a' }, { id: 'b' }];
-  assert.equal(groupCartState(items, new Set()), 'none');
-  assert.equal(groupCartState(items, new Set(['other'])), 'none');
-});
-
-test('groupCartState is "all" once every unpaid position is in the cart', () => {
-  const items = [{ id: 'a' }, { id: 'b' }];
-  assert.equal(groupCartState(items, new Set(['a', 'b'])), 'all');
-});
-
-test('groupCartState is "some" for a mixed selection', () => {
-  const items = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
-  assert.equal(groupCartState(items, new Set(['a'])), 'some');
+test('groupPaymentState has exactly the two derived states', () => {
+  assert.equal(groupPaymentState([]), 'open');
+  assert.equal(groupPaymentState([{ paid: false }, { paid: true }]), 'open');
+  assert.equal(groupPaymentState([{ paid: true }, { paid: true }]), 'paid');
 });
 
 // --- AP4.2: consolidated order list -----------------------------------------
@@ -172,4 +162,3 @@ test('foodOrderDescriptionSuggestions sorts alphabetically with the German local
 test('foodOrderDescriptionSuggestions returns an empty list for an order without items', () => {
   assert.deepEqual(foodOrderDescriptionSuggestions([]), []);
 });
-
