@@ -38,7 +38,7 @@ function buildSteps() {
     },
     {
       title: 'Essen',
-      text: 'Hier organisiert ihr Sammelbestellungen mit Artikeln, Preisen und Bezahlstatus. Über den Warenkorb bezahlt ihr mehrere Positionen gebündelt per PayPal, statt jede einzeln abzuhaken.',
+      text: 'Hier organisiert ihr Sammelbestellungen mit Artikeln, Preisen und Bezahlstatus. Jede Person bezahlt ihren vollständigen Block über PayPal und bestätigt ihn anschließend mit „Bezahlt?“',
       view: 'foodOrders',
       target: '.nav-btn[data-view="foodOrders"]',
     },

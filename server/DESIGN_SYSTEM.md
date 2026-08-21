@@ -637,187 +637,56 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   persistent explanation below the form. Recent broadcasts live in one standard, initially
   collapsed „Historie“ section whose open state survives live re-renders; its entries use the
   responsive two-column row grid.
-- **Food orders** — Open and historical orders use one full-width nested card per row so their
-  metadata, orderer groups, Warenkorb, add-item form, total and actions stay aligned regardless of
-  content. Consecutive cards alternate blue and pink accent rails; orderer groups and item rows omit
-  decorative order, timer and link symbols, while the compact metadata row may use a clock icon
-  when a send time is present. The order itself is still a „Sammelbestellung“ throughout text, tooltips and the
-  push notification title — only the payment/selection mechanism inside it is called „Warenkorb“
-  (see below), replacing the earlier „Sammelzahlung“ naming. Payment goes exclusively through the
-  Warenkorb: there is no per-position „Bezahlen“ action any more, so there is exactly one place with
-  popup handling, staleness checks, confirmations and tests
-  (`docs/plans/food-order-cart-concept.md`). The responsive add-item row keeps description, explicit
-  quantity, unit price with euro suffix and the compact action together. Once the order already has
-  at least one position, the description field gains the same dark listbox chrome as `.search-select`
-  (a trailing toggle chevron plus an absolute dropdown), offering the order's own already entered
-  descriptions — deduplicated by normalized text so „Margherita“ and „ margherita “ collapse into one
-  suggestion — and narrowing that list while typing; a brand-new order's very first position stays a
-  plain text field with no suggestions to offer. Each suggestion also carries the price it was first
-  entered with as a trailing muted value; picking it always syncs the price field to match, filling in
-  that price alongside the description or clearing the field when the suggestion has none, so
-  reordering the same item never needs the price retyped and a price auto-filled by an earlier pick
-  can never silently survive picking a different, price-less suggestion afterwards. Unlike the shared `.search-select` combobox, picking
-  a suggestion is optional and typed text is never resolved against or reset to one of the listed
-  options: this stays free text so a genuinely new item can always be entered as typed, and the
-  dropdown only exists to make reusing an existing item's exact spelling easy, which is what keeps
-  the consolidated „Bestellliste“ from splitting one item into differently spelled rows. The card
-  itself clips its own content (`overflow: hidden`, so the accent rail below stays flush with the
-  rounded corners), which would otherwise cut this dropdown off or hide it under the next card
-  whenever it had less room below the input than the open list needed; while a suggestion list is
-  open, the card temporarily allows overflow so the list floats above the following content instead,
-  the same way `.search-select-list` already does everywhere else. Item totals
-  multiply unit price by quantity; clearly labeled subtotals per player and the order-wide total use consistent
-  German currency formatting. Quantity starts empty with the explicit placeholder „Anzahl“ instead of
-  implying one item. Quantity and price use the same wider field width. Quantity is a
-  `type="number"` field, so it is always enhanced app-wide by the shared number stepper (see „Number
-  stepper“ below); it carries no decorative suffix of its own (unlike price's euro suffix) since a
-  second, non-interactive × glyph in that same right-hand padding would sit underneath the stepper's
-  real +/- buttons and read as a third, broken control. An absent send time is plain text without a
-  misleading timer icon. Closing an order is the colorful full-width primary action below a divider;
-  the neutral „Hinzufügen“ action matches the adjacent fields' height instead of the shorter
-  `.btn-sm`. Closed orders live inside one standard, initially collapsed „Historie“ section whose
-  open state survives live re-renders. Every card — open, abgeschickt or geschlossen — carries a
-  stacked full-width „Bestellung löschen“ danger action below its other actions, since scrapping an
-  order stays possible at every lifecycle stage unlike the other, stage-gated mutations.
+- **Food orders** — Open and historical orders use one full-width nested card per row. Consecutive
+  open cards alternate blue and pink accent rails; orderer groups and position rows use no decorative
+  order, timer or link symbols. A send time is shown as `20.08. 19:30 Uhr`; without one the detail
+  line reads `Kein Zeitpunkt festgelegt`. The view keeps the existing free-text description suggestions,
+  quantity field, optional unit price with euro suffix, consolidated list and lifecycle actions.
 
-  An open order card itself becomes collapsible (native `<summary>`, chevron rotates on `[open]`,
-  no `.collapsible-section` reuse — that class stays reserved for historical/completed data, see
-  „Use one history pattern“ above) only once more than one order is open at the same time; a single
-  open order gets no collapse chrome, the same precedent the orderer-group toggle below already
-  sets. This is what lets someone marking several positions paid across multiple open orders fold
-  away the ones they're not currently working on instead of scrolling past their full item lists
-  each time; collapse state is per order, survives live re-renders and is not persisted beyond the
-  browser session.
+  Payment is a per-person handoff, never a per-position action. Each orderer group shows the
+  quantity-weighted meta line (`<n> Positionen`, plus `Preis fehlt` when necessary), the complete
+  tip-inclusive person sum with a small `inkl. x % Trinkgeld` line when a tip is set, a copy action, a PayPal action when the order has a link, and one two-state
+  paid marker. `Offen` uses a dashed circle; `Bezahlt` uses a green check and names the confirmer.
+  The marker is derived from the group's items, is available to every authenticated member, and is
+  disabled only after finalization. Both marking and reversing happen directly without a confirmation;
+  the paid marker's tooltip names existing confirmers. A group delete is available only for the current
+  member's open, entirely unpaid group and confirms the complete position list. When a group is paid,
+  every one of its position descriptions and amounts is struck through; reversing removes that treatment.
 
-  A card's toolbar (below its metadata, above the positions) holds up to two secondary actions: an
-  „Alle ausklappen“/„Alle einklappen“ toggle for its orderer groups (only rendered once the order has
-  more than one), and „Bestellliste“ (see below, only for the creator and admins). Both are right-
-  aligned as a group so „Bestellliste“ stays in the same spot whether or not the orderer-group toggle
-  renders beside it, instead of visibly jumping sides once a second orderer group appears. Neither
-  uses the primary gradient — they support the workflow, they do not compete with „Bestellung
-  abschicken“.
+  The PayPal button is the only payment handoff. It opens a blank tab synchronously, clears its opener,
+  refreshes the order immediately before navigation, aborts when the order or any group item vanished,
+  was paid elsewhere, lost its link, or has an incomplete price, and then navigates to the exact
+  stored URL, appending the amount only for a bare `paypal.me` recipient link. A `Bezahlt?` dialog
+  opens immediately after navigation, explains whether the amount was prefilled, lists every displayed
+  position amount, and offers copy actions for both the total and stored PayPal address; only the
+  affirmative answer marks all group items paid. The local `paypal` icon is the filled brand path in
+  `icons.js`; other icons remain line icons.
 
-  A muted one-line summary (`.food-order-overview`, reusing `.food-order-meta`'s small text size)
-  sits directly above the per-person Kästen, once the order has at least one position: total
-  positions across everyone and how many people ordered, how many are already marked bezahlt, and
-  the tip-inclusive total versus what's still open — the same at-a-glance numbers as the closed/
-  abgeschickt card's former plain position-count line, which this replaces there too.
+  Position rows contain only quantity × description, amount, copy and delete. The displayed amount
+  includes quantity and tip; copy uses exactly that display string. There is no position-level paid
+  marker, selection state or row divider; their strike-through is derived from the person-level paid
+  state. Own open positions can be deleted after the existing confirmation; paid positions disable
+  deletion. Foreign and unavailable actions keep their reserved spacer so columns stay aligned. The
+  order summary counts quantity-weighted positions,
+  people, fully paid people and the open sum of people not fully confirmed. Missing prices show the
+  actual priced subtotal with `Preise unvollständig`; the total is labeled `(unvollständig)`.
 
-  **Position row.** Left to right: the Bezahlt-Marke, quantity × description, the amount, then a
-  copy action, a hairline divider and the Warenkorb toggle grouped together, and finally remove —
-  the state marker leads, the amount is a plain value in the middle, and the two actions that change
-  the row (copy is read-only, so it sits outside that pairing) stay visually clustered while remove
-  stays a deliberate outlier at the far end. The description's own flex-grow pushes everything after
-  it toward the row's end; the row wraps onto further lines on narrow phones rather than overflowing,
-  and the copy/Warenkorb-toggle/remove slots each reserve their width even when empty (unpriced item,
-  no PayPal link, someone else's position) so rows stay aligned across the whole card.
-  - **Bezahlt-Marke** (`.food-order-paid-marker`) is a button, not a checkbox — the only way it could
-    show the German word in both states plus an icon. „Offen“ pairs a dashed-circle icon with muted
-    styling; „Bezahlt“ pairs a check icon with the green `--state-playing` treatment (the same green
-    already reused elsewhere for "done/winner/tracking", see the bracket/vote-winner and
-    seating-status precedents). A fixed `min-width` keeps the description behind it from shifting
-    when the label text changes length. It stays enabled even on an otherwise fully locked paid row —
-    it is that row's own reversing control — and is disabled only once the whole order is finalized.
-    Marking a position paid is not creator/admin-only: anyone who can pay into the order (any
-    authenticated group member) can mark it, since the automatic mark-paid-after-paying flows
-    through the Warenkorb would otherwise be useless for every participant but the creator. The
-    server records who last flipped the mark; the „Bezahlt“ state's tooltip/`aria-label` names that
-    person („Bezahlt von <Name> – Markierung aufheben“) instead of just repeating the state.
-  - **Amount** (`.food-order-item-amount`) is plain display text, not a button: the tip-inclusive sum,
-    with the quantity × unit price and „inkl. x% Trinkgeld“ breakdown muted underneath when either
-    applies. An unpriced position shows „Betrag offen“ instead.
-  - **Copy** (unchanged behavior) copies exactly the displayed amount.
-  - **Warenkorb toggle** (`.food-order-item-cart-toggle`, `shoppingCart` icon) only renders when the
-    order has a PayPal link — without one nothing in it can ever be paid. `aria-pressed` pairs with a
-    German `title`/`aria-label` naming the toggle's current effect; the pressed state uses an inset
-    accent ring (not a real border, so the button never changes size) plus the row's own accent rail
-    (`.food-order-item.is-in-cart`) — state never rests on the ring alone. A paid position disables it
-    (nothing left to add to the cart).
-  - **Remove** keeps its own danger color, trash icon and explicit „Position entfernen“ label/tooltip,
-    disabled on a paid position, and now needs a confirmation before it takes effect: title „<Menge> ×
-    <Bezeichnung> löschen?“, text „Lässt sich nicht rückgängig machen.“, red `.btn-danger` „Löschen“ —
-    it is the one irreversible action a member can trigger directly from their own row.
+  The detail-links row always contains `Bestellübersicht`, visible to everyone, with `margin-left:auto`.
+  The list deliberately contains no names or paid state: it consolidates normalized descriptions by
+  exact unit price and shows quantity, unit price, line total, subtotal and tip-inclusive total.
+  The order card puts title/status, creator/time metadata, info, summary, toolbar, groups, total,
+  add form and lifecycle actions in that order. The toolbar contains only
+  `Alle ausklappen`/`Alle einklappen`, aligned left. When more than one order is open, each card
+  starts collapsed; a sibling `aria-expanded` button controls its body, and a search/push target
+  expands exactly that card. A target for a sent order opens the history section instead. A single open
+  order has no card-collapse chrome. The expanded state lives in module state and survives live
+  re-renders; history remains its own initially collapsed section without a target.
+  The add action is a normal `.btn` spanning the last grid columns and stretching to field height.
 
-  Marking a position „Bezahlt“ automatically clears its own Warenkorb mark — a settled position has
-  nothing left to collect and cannot be re-added until „Bezahlt“ is unmarked again. „Gesamtsumme“
-  itself is set apart from the muted meta/info text around it (larger, bolder, default text color) so
-  it reads as a real total, with its own copy action directly beside the amount.
-
-  **Warenkorb-Kasten** (`.food-order-cart`) appears only once at least one position is in the cart —
-  no explanatory subtitle, no separate primary-gradient pill competing with it. It is deliberately
-  compact (a smaller header, `--font-size-xs` rows, tighter internal gaps and a `.btn-sm` „Bezahlen“
-  action) since it is a working selection layered on top of the already-detailed position rows
-  above it, not another full-size card. Its header names
-  „Warenkorb“ plus a count badge; each row below repeats the original orderer's color dot and name
-  next to quantity × description and the row's own amount, with its own X (`data-cart-remove`) to
-  take a single position back out — no confirmation needed there, a stray tap is one more tap to
-  undo. A „Summe“ row follows, then „Bezahlen · <Summe>“ (`wallet` icon — PayPal is not a card
-  payment, so `creditCard` was retired along with the old per-position pay button) and „Alle als
-  bezahlt markieren“ below it. „Bezahlen“ keeps the exact popup-blocking and staleness hardening from
-  the retired per-position action (synchronous blank tab, `popup.opener = null`, a fresh
-  `api.foodOrders.list()` re-check immediately before navigating it) — the tab only ever gets pointed
-  at PayPal once every cart position is confirmed to still exist and be unpaid. Immediately after
-  that navigation, a „Bezahlt?“ confirmation names the amount, position count and the position list
-  (with each orderer's name) plus „Der Warenkorb wird danach geleert.“; „Ja, bezahlt“ marks every
-  cart position paid and empties it, „Noch nicht“ (Escape, backdrop tap) changes nothing — no success
-  is ever claimed, since Respawn gets no callback from PayPal, only the member's own confirmation.
-  „Alle als bezahlt markieren“ skips PayPal entirely and asks the same kind of question (position
-  count, amount, „Der Warenkorb wird geleert.“) but keeps its confirm button blue rather than red: the
-  action is reversible by unmarking „Bezahlt“ again, unlike deleting a position. Both bulk paths share
-  one server contract: re-fetch first, skip anything already settled or gone elsewhere in the
-  meantime instead of double-marking it, PATCH the rest in parallel, and report the number of
-  positions actually changed rather than the number requested.
-
-  **Orderer groups.** Once an order has more than one orderer, each becomes its own bordered,
-  collapsible `.food-order-group` (a single-group order gets no collapse chrome at all — nothing to
-  fold). The header is one flex row, not a button wrapping other buttons: a toggle
-  (`.food-order-group-toggle`, `aria-expanded`, a rotating chevron, the orderer's color dot, name and
-  a meta line) on the left, the group's own open amount or green „Bezahlt“ badge in the middle, and a
-  three-state group Warenkorb button (`shoppingCart`, same icon in both directions — see below) as
-  siblings on the right. The meta line stays short: „<n> Positionen · <n> bezahlt · <n> im Korb“, the
-  last two segments only when they apply. The group's shown amount is exactly the sum of its own
-  still-open (unpaid) positions, tip included — the same amount its own Warenkorb button would add;
-  if any of those positions has no price, the amount shows „Betrag offen“ instead of a misleadingly
-  complete sum, the same fallback the Warenkorb cart box already uses. A small muted line
-  (`.food-order-group-total`) below that open amount repeats the group's whole lifetime total (paid
-  and unpaid positions, tip included) whenever every position in the group is priced, so a partially
-  settled group still shows what it originally added up to instead of only what remains. Once
-  every position in a group is paid, the amount is replaced by the green Bezahlt badge and the group
-  Warenkorb button disappears (nothing left to add) — that state is derived from the positions on
-  every render, never a separate stored flag. The group's own accent stays deliberately restrained —
-  a subtle border/background only, never the blue rail — because that rail is reserved for individual
-  position rows; a mixed cart selection inside a group shows amber (`--state-paused`, reusing the
-  existing "gemischt/pausiert" color) plus a small dot on the button instead of blue, so „some
-  selected“ never looks like „all selected“. The three states read: no open position in the cart
-  (plain, click adds every open position), some (amber, click fills in the rest), all (accent-pressed,
-  click clears the whole group back out) — deliberately symmetric in both directions since a Warenkorb
-  selection is never itself binding.
-
-  On first render of an order, its own group starts open and every other group starts closed; the
-  creator sees every non-fully-paid group open from the start; a fully paid group always starts
-  closed regardless of who is looking. That rule runs at most once per order per browser session —
-  afterward the expand/collapse state belongs to the person looking at it and a realtime re-render
-  (someone else adding a position, marking something paid) must never re-collapse or re-expand a
-  group out from under them. Adding one's own position is the one exception: it force-opens that
-  person's own group again even if they had just collapsed it, so a freshly typed item is never
-  hidden immediately after adding it. The card toolbar's „Alle ausklappen“/„Alle einklappen“ toggle
-  (its own label reflecting whether every group is currently open) exists for the rare case someone
-  wants to scan every group at once, e.g. before closing the order.
-
-  **Bestellliste** (`.food-order-consolidated-*`, via `data-open-order-list`) is a dialog reachable
-  from the card toolbar for the creator and for admins, on both open and closed orders — before
-  submitting (to read off what to actually type into the delivery order) and after (to reconcile the
-  delivery). It consolidates by normalized description (collapsed whitespace, case-insensitive) plus
-  exact unit price; the same name at a different price stays its own row rather than merging into a
-  total that would then be wrong. Rows show quantity, name, unit price and line total only — no
-  names, paid states or Warenkorb marks, since this list answers a different question (what was
-  ordered, not who owes what) and is sorted with `localeCompare('de')` so umlauts land where a German
-  reader expects them. Prices stay tip-free per row; a subtotal, „+ x% Trinkgeld“ and a tip-inclusive
-  total follow underneath, each labeled „(unvollständig)“ whenever any row has no price at all rather
-  than silently treating it as free. An open order is named
-  as such inside the dialog and can be submitted directly from there without leaving it; the dialog's
-  content keeps refreshing live while it stays open, since a frozen list would be the more dangerous
-  failure mode here.
+  One hour after an order is sent, unpaid active members become eligible for a direct hourly payment
+  reminder. Home's `Aktuell` list enriches the existing order row instead of adding a duplicate. The
+  reminder uses the same order deep link and a durable per-player/event send timestamp independent of
+  the bounded push history.
 - **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its four area tabs
   are sorted alphabetically by their German label: „An- & Abreise“, „Events“, „Packliste“ and
   „To-Do“ (the last two formerly the separate „Checkliste“ and „An- & Abreise“ areas;

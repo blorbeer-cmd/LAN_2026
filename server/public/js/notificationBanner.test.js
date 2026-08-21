@@ -16,6 +16,13 @@ test('a notification link carries its event id so the deep link can switch works
   assert.match(html, /data-notification-event-id="lan-2026"/);
 });
 
+test('a food-order notification carries its order target', () => {
+  const html = entryHtml({ ...baseEntry, url: '/#foodOrders/order-42' });
+
+  assert.match(html, /data-notification-navigate="foodOrders"/);
+  assert.match(html, /data-notification-target="order-42"/);
+});
+
 test('a notification without an event id yields an empty attribute, never the string "undefined"', () => {
   // The attribute is read back as control.dataset.notificationEventId and
   // handed to activateEvent(), which skips the workspace switch for a falsy

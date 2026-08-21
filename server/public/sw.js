@@ -47,7 +47,17 @@ self.addEventListener('notificationclick', (event) => {
         if ('focus' in client) {
           const hashIndex = url.indexOf('#');
           if (hashIndex !== -1) {
-            client.postMessage({ type: 'navigate', view: url.slice(hashIndex + 1), eventId });
+            const hash = url.slice(hashIndex + 1);
+            const [view, encodedOrderId] = hash.split('/');
+            let target = null;
+            if (view === 'foodOrders' && encodedOrderId) {
+              try {
+                target = { type: 'order', id: decodeURIComponent(encodedOrderId) };
+              } catch {
+                target = null;
+              }
+            }
+            client.postMessage({ type: 'navigate', view, target, eventId });
           }
           return client.focus();
         }

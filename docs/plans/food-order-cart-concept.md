@@ -3,7 +3,7 @@
 > **Teilweise überholt.** Der Warenkorb wird durch Direktzahlung an der Summe ersetzt; siehe
 > [`food-order-direct-payment.md`](food-order-direct-payment.md). Überholt sind dort benannt:
 > Leitentscheidungen 1–6, AP1.4, AP1.5, AP2.1–AP2.3 und AP3.5. Alles Übrige — insbesondere die
-> Bezahl-Härtung aus PR #444, die Bestellliste (AP4) und die Klapp-Regeln der Bestellergruppen —
+> Bezahl-Härtung aus PR #444, die Bestellübersicht (AP4) und die Klapp-Regeln der Bestellergruppen —
 > bleibt gültig. Bis zur Umsetzung beschreibt dieses Dokument weiterhin den Ist-Zustand von `main`.
 
 ## Ziel und Zuschnitt
@@ -11,7 +11,7 @@
 Die Sammelbestellung wird von „Sammelzahlung“ auf eine Warenkorb-Logik umgestellt: Positionen werden
 in einen Warenkorb gelegt, dort gemeinsam bezahlt und im Ganzen als bezahlt abgehakt. Dazu kommen
 die Rückfragen, die dieser Ablauf braucht, ausklappbare Besteller-Gruppen und eine konsolidierte
-Bestellliste für die Person, die die Bestellung aufgibt.
+Bestellübersicht für die Person, die die Bestellung aufgibt.
 
 Das Konzept wurde in vier Runden mit dem Nutzer erarbeitet und in zwei interaktiven Mockups
 festgehalten. Dieser Plan ist die verbindliche, selbsttragende Fassung: Er nennt alle Entscheidungen
@@ -156,9 +156,9 @@ sie später kommt: nur vorwärts wirkend (markiert alle offenen Positionen, gesp
 bezahlt ist), mit derselben Rückfrage wie AP2.3. Ein Umschalter würde sonst im Zustand „alles
 bezahlt“ fremde, längst erledigte Zahlungen zurückdrehen.
 
-## Arbeitspaket 4 — Konsolidierte Bestellliste
+## Arbeitspaket 4 — Konsolidierte Bestellübersicht
 
-- **AP4.1 Zugang**: Knopf „Bestellliste“ im Kartenkopf, sichtbar für die erstellende Person und für
+- **AP4.1 Zugang**: Knopf „Bestellübersicht“ im Kartenkopf, sichtbar für die erstellende Person und für
   Admins; für alle anderen existiert er nicht. Auch bei geschlossener Bestellung erreichbar — vor
   dem Aufgeben zum Abtippen, danach zum Abgleichen der Lieferung.
 - **AP4.2 Zusammenfassung**: Schlüssel ist die normalisierte Bezeichnung (Mehrfach-Leerzeichen
@@ -203,7 +203,7 @@ bezahlt“ fremde, längst erledigte Zahlungen zurückdrehen.
 - `server/public/css/style.css` — `.food-order-*`; neu: Gruppen-Kopf, Klapp-Zustand, Korbzeilen.
 - `server/public/js/modal.js` — bestehende Dialoge wiederverwenden, keine neue Komponente.
 - `server/src/test/e2e/flows.fixture.ts` — Essensbestellung-Flow je Arbeitspaket erweitern.
-- `server/DESIGN_SYSTEM.md` — Positionszeile, Warenkorb, Gruppen, Bestellliste.
+- `server/DESIGN_SYSTEM.md` — Positionszeile, Warenkorb, Gruppen, Bestellübersicht.
 
 ## Offene Entscheidungen
 
