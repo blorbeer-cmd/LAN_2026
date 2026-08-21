@@ -4165,6 +4165,7 @@ input[type='number'].tournament-score-input {
   align-items: center;
   gap: var(--space-1);
   min-width: 84px;
+  min-height: var(--space-7);
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);

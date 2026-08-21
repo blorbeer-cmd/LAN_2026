@@ -58,6 +58,7 @@ export function prepareFoodOrderTarget(orderId) {
 }
 
 export function clearFoodOrderTarget() {
+  if (activeOrderTargetId === null && pendingOrderTargetId === null) return;
   orderTargetStateVersion += 1;
   pendingOrderTargetId = null;
   activeOrderTargetId = null;
@@ -398,6 +399,24 @@ function applyLocalPaidState(items, paid) {
     item.paidByName = paid ? player?.name ?? item.paidByName : null;
     item.paidAt = paid ? Date.now() : null;
   }
+}
+
+// A successful payment mutation may overlap with the realtime echo's GET.
+// Version both sides of the PATCH and reconcile against whichever cache is
+// current when it resolves; mutating the pre-PATCH object would let a stale
+// response overwrite the local result (and invalidating to null would jump
+// the visible Essen view back to its loading placeholder).
+function reconcileLocalPaidMutation(orderId, itemIds, paid, ctx) {
+  foodOrderScopeVersion += 1;
+  const currentOrder = cache?.find((candidate) => candidate.id === orderId);
+  const currentItems = currentOrder?.items.filter((item) => itemIds.includes(item.id)) ?? [];
+  if (!currentOrder || currentItems.length !== itemIds.length) {
+    cache = null;
+  } else {
+    applyLocalPaidState(currentItems, paid);
+  }
+  ctx.rerender();
+  void refreshFoodOrders(ctx);
 }
 
 function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded, locked = false }) {
@@ -1016,10 +1035,13 @@ async function markGroupItemsPaid(orderId, playerId, itemIds, ctx) {
   }
   targets = groupItems.filter((i) => itemIds.includes(i.id) && !i.paid);
   try {
+    // Invalidate GETs that may start while this PATCH is in flight. The
+    // completion helper bumps the version once more before applying the
+    // result to the current cache.
+    foodOrderScopeVersion += 1;
     await api.foodOrders.setGroupPaid(orderId, targets.map((item) => item.id), true);
-    applyLocalPaidState(targets, true);
+    reconcileLocalPaidMutation(orderId, targets.map((item) => item.id), true, ctx);
     showToast(`${targets.length} ${targets.length === 1 ? 'Position' : 'Positionen'} als bezahlt markiert.`);
-    ctx.rerender();
   } catch (err) {
     invalidateFoodOrderCache();
     showToast(err.message, { error: true });
@@ -1064,10 +1086,11 @@ async function handleGroupPay(order, playerId, ctx) {
     ctx.rerender();
     return;
   }
-  // Keep the original unpaid handoff snapshot. A position added while PayPal
-  // is opening must stay out of this payment, and an already-paid legacy
-  // position must never be charged a second time.
-  items = freshGroupItems.filter((item) => initialUnpaidItemIds.includes(item.id));
+  // The handoff always charges the complete current sum for this person,
+  // including already-paid positions and positions added while PayPal was
+  // opening. Only the follow-up mark-paid mutation below remains limited to
+  // positions that are still open.
+  items = freshGroupItems;
 
   if (initialUnpaidItemIds.some((id) => freshGroupItems.some((item) => item.id === id && item.paid))) {
     popup?.close();
@@ -1127,10 +1150,10 @@ async function handleGroupPaid(orderId, playerId, paid, ctx) {
   const targets = items.filter((item) => item.paid !== paid);
   if (targets.length === 0) return;
   try {
+    foodOrderScopeVersion += 1;
     await api.foodOrders.setGroupPaid(orderId, targets.map((item) => item.id), paid);
-    applyLocalPaidState(targets, paid);
+    reconcileLocalPaidMutation(orderId, targets.map((item) => item.id), paid, ctx);
     showToast(paid ? `${items[0].playerName} als bezahlt markiert.` : `${items[0].playerName} wieder als offen markiert.`);
-    ctx.rerender();
   } catch (err) {
     invalidateFoodOrderCache();
     showToast(err.message, { error: true });

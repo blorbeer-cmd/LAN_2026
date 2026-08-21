@@ -24,7 +24,7 @@ function reminderGroups(now = Date.now()): ReminderGroup[] {
   const rows = db
     .prepare(
       `SELECT fo.id AS orderId, fo.event_id AS eventId, e.group_id AS groupId,
-              fo.title, i.player_id AS playerId, COUNT(i.id) AS itemCount,
+              fo.title, i.player_id AS playerId, COALESCE(SUM(i.quantity), 0) AS itemCount,
               fo.created_at AS createdAt
        FROM food_orders fo
        JOIN events e ON e.id = fo.event_id

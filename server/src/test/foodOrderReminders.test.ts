@@ -36,7 +36,7 @@ test('food-order payment reminders aggregate unpaid orders and deduplicate withi
   ).run(firstItemId, firstOrderId, playerId, now);
   db.prepare(
     `INSERT INTO food_order_items (id, order_id, player_id, description, quantity, created_at)
-     VALUES (?, ?, ?, 'Cola', 1, ?)`,
+     VALUES (?, ?, ?, 'Cola', 2, ?)`,
   ).run(secondItemId, secondOrderId, playerId, now);
 
   try {
@@ -49,7 +49,7 @@ test('food-order payment reminders aggregate unpaid orders and deduplicate withi
       .get(topic) as { title: string; body: string; url: string; audience: string; topicKey: string };
     assert.equal(entry.title, 'Offene Essenszahlung');
     assert.match(entry.body, /2 Sammelbestellungen/);
-    assert.match(entry.body, /2 unbezahlte Positionen/);
+    assert.match(entry.body, /3 unbezahlte Positionen/);
     assert.equal(entry.url, '/#foodOrders');
     assert.equal(entry.audience, 'direct');
     assert.equal(entry.topicKey, topic);
@@ -80,6 +80,107 @@ test('food-order payment reminders aggregate unpaid orders and deduplicate withi
     assert.equal(runFoodOrderPaymentReminderOnce(now + 180 * 60 * 1000), 0);
   } finally {
     db.prepare('DELETE FROM food_orders WHERE id IN (?, ?)').run(firstOrderId, secondOrderId);
+    db.prepare('DELETE FROM players WHERE id = ?').run(playerId);
+  }
+});
+
+test('food-order payment reminders use a direct order deep link for one order', () => {
+  const playerId = nanoid();
+  const orderId = nanoid();
+  const itemId = nanoid();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO players (id, name, api_key, created_at) VALUES (?, 'Single Reminder Tester', ?, ?)`,
+  ).run(playerId, nanoid(), now);
+  ensureDefaultGroupMembership(playerId);
+  db.prepare("INSERT OR IGNORE INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')").run(
+    BASE_EVENT_ID,
+    playerId,
+  );
+  db.prepare(
+    `INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at)
+     VALUES (?, ?, 'Single Reminder Pizza', ?, ?, ?)`,
+  ).run(orderId, BASE_EVENT_ID, playerId, now, now);
+  db.prepare(
+    `INSERT INTO food_order_items (id, order_id, player_id, description, quantity, created_at)
+     VALUES (?, ?, ?, 'Pizza', 1, ?)`,
+  ).run(itemId, orderId, playerId, now);
+
+  try {
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 60 * 60 * 1000), 1);
+    const entry = db
+      .prepare('SELECT url FROM push_log WHERE event_id = ? AND target_id = ?')
+      .get(BASE_EVENT_ID, orderId) as { url: string };
+    assert.equal(entry.url, `/#foodOrders/${orderId}`);
+  } finally {
+    db.prepare('DELETE FROM food_orders WHERE id = ?').run(orderId);
+    db.prepare('DELETE FROM players WHERE id = ?').run(playerId);
+  }
+});
+
+test('food-order payment reminders skip finalized orders', () => {
+  const playerId = nanoid();
+  const orderId = nanoid();
+  const itemId = nanoid();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO players (id, name, api_key, created_at) VALUES (?, 'Finalized Reminder Tester', ?, ?)`,
+  ).run(playerId, nanoid(), now);
+  ensureDefaultGroupMembership(playerId);
+  db.prepare("INSERT OR IGNORE INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')").run(
+    BASE_EVENT_ID,
+    playerId,
+  );
+  db.prepare(
+    `INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at, finalized_at)
+     VALUES (?, ?, 'Finalized Reminder Pizza', ?, ?, ?, ?)`,
+  ).run(orderId, BASE_EVENT_ID, playerId, now, now, now);
+  db.prepare(
+    `INSERT INTO food_order_items (id, order_id, player_id, description, quantity, created_at)
+     VALUES (?, ?, ?, 'Pizza', 1, ?)`,
+  ).run(itemId, orderId, playerId, now);
+
+  try {
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 60 * 60 * 1000), 0);
+  } finally {
+    db.prepare('DELETE FROM food_orders WHERE id = ?').run(orderId);
+    db.prepare('DELETE FROM players WHERE id = ?').run(playerId);
+  }
+});
+
+test('food-order payment reminders skip unpublished events', () => {
+  const playerId = nanoid();
+  const eventId = nanoid();
+  const orderId = nanoid();
+  const itemId = nanoid();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO players (id, name, api_key, created_at) VALUES (?, 'Draft Reminder Tester', ?, ?)`,
+  ).run(playerId, nanoid(), now);
+  ensureDefaultGroupMembership(playerId);
+  db.prepare(
+    `INSERT INTO events
+       (id, name, starts_at, tracking_enabled, ended_at, is_test, group_id, status, visibility_scope)
+     VALUES (?, 'Draft Reminder Event', ?, 0, NULL, 1, ?, 'draft', 'participants')`,
+  ).run(eventId, now, DEFAULT_GROUP_ID);
+  db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')").run(
+    eventId,
+    playerId,
+  );
+  db.prepare(
+    `INSERT INTO food_orders (id, event_id, title, created_by, created_at, closed_at)
+     VALUES (?, ?, 'Draft Reminder Pizza', ?, ?, ?)`,
+  ).run(orderId, eventId, playerId, now, now);
+  db.prepare(
+    `INSERT INTO food_order_items (id, order_id, player_id, description, quantity, created_at)
+     VALUES (?, ?, ?, 'Pizza', 1, ?)`,
+  ).run(itemId, orderId, playerId, now);
+
+  try {
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 60 * 60 * 1000), 0);
+  } finally {
+    db.prepare('DELETE FROM food_orders WHERE id = ?').run(orderId);
+    db.prepare('DELETE FROM events WHERE id = ?').run(eventId);
     db.prepare('DELETE FROM players WHERE id = ?').run(playerId);
   }
 });

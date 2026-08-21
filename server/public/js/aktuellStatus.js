@@ -102,6 +102,7 @@ export function foodOrderAktuellItem(order, myId, now = Date.now()) {
   const unpaidOwnItems = myId
     ? (order.items ?? []).filter((item) => item.playerId === myId && !item.paid)
     : [];
+  const unpaidOwnItemCount = unpaidOwnItems.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
   const paymentReminderDue =
     unpaidOwnItems.length > 0 &&
     !order.finalizedAt &&
@@ -111,11 +112,11 @@ export function foodOrderAktuellItem(order, myId, now = Date.now()) {
   if (!order.open && !paymentDue) return null;
 
   return {
-    id: `food-order:${order.id}`,
+    id: paymentDue ? `food-order:${order.id}:payment` : `food-order:${order.id}`,
     iconName: domainIcon('foodOrders'),
     title: paymentDue ? `Sammelbestellung „${order.title}" bezahlen` : `Sammelbestellung „${order.title}"`,
     sub: paymentDue
-      ? `${unpaidOwnItems.length} ${unpaidOwnItems.length === 1 ? 'Position' : 'Positionen'} noch offen`
+      ? `${unpaidOwnItemCount} ${unpaidOwnItemCount === 1 ? 'Position' : 'Positionen'} noch offen`
       : order.sendAt
         ? `Versand ${formatDateTime(order.sendAt)} Uhr`
         : 'Zeitpunkt noch offen',

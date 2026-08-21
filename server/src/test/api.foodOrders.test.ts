@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createTestApp } from './testApp';
+import { createTestApp, sessionCookie } from './testApp';
 
 const app = createTestApp();
 
@@ -239,7 +239,8 @@ test('PATCH /api/food-orders/:id/items/:itemId marks and unmarks an item as paid
 test('bulk payment applies atomically when one item has changed concurrently', async () => {
   const current = await request(app).get(`/api/food-orders?orderId=${orderId}`);
   assert.equal(current.status, 200);
-  const bobItemId = current.body.orders[0].items.find((item: { playerId: string }) => item.playerId === bob.id).id;
+  const currentOrder = current.body.orders.find((order: { id: string }) => order.id === orderId);
+  const bobItemId = currentOrder.items.find((item: { playerId: string }) => item.playerId === bob.id).id;
 
   const marked = await request(app).patch(`/api/food-orders/${orderId}/items/${aliceItemId}`).send({ paid: true });
   assert.equal(marked.status, 200);
@@ -250,12 +251,74 @@ test('bulk payment applies atomically when one item has changed concurrently', a
   assert.equal(rejected.status, 409);
 
   const after = await request(app).get(`/api/food-orders?orderId=${orderId}`);
-  const afterItems = after.body.orders[0].items;
+  const afterItems = after.body.orders.find((order: { id: string }) => order.id === orderId).items;
   assert.equal(afterItems.find((item: { id: string }) => item.id === aliceItemId).paid, true);
   assert.equal(afterItems.find((item: { id: string }) => item.id === bobItemId).paid, false);
 
   const reset = await request(app).patch(`/api/food-orders/${orderId}/items/bulk-paid`).send({ itemIds: [aliceItemId], paid: false });
   assert.equal(reset.status, 200);
+});
+
+test('bulk payment marks every selected item and records the authenticated confirmer', async () => {
+  const current = await request(app).get(`/api/food-orders?orderId=${orderId}`);
+  const currentOrder = current.body.orders.find((order: { id: string }) => order.id === orderId);
+  const bobItemId = currentOrder.items.find((item: { playerId: string }) => item.playerId === bob.id).id;
+
+  // The body identity is deliberately Alice, but the explicit session is Bob:
+  // paid_by must come from the authenticated session, never from request data.
+  const marked = await request(app)
+    .patch(`/api/food-orders/${orderId}/items/bulk-paid`)
+    .set('Cookie', sessionCookie(bob.id))
+    .send({ itemIds: [aliceItemId, bobItemId], paid: true, playerId: alice.id });
+  assert.equal(marked.status, 200);
+  for (const itemId of [aliceItemId, bobItemId]) {
+    const item = marked.body.items.find((candidate: { id: string }) => candidate.id === itemId);
+    assert.equal(item.paid, true);
+    assert.equal(item.paidBy, bob.id);
+    assert.equal(item.paidByName, 'Hungriger Bob');
+    assert.ok(typeof item.paidAt === 'number' && item.paidAt > 0);
+  }
+
+  const reset = await request(app)
+    .patch(`/api/food-orders/${orderId}/items/bulk-paid`)
+    .set('Cookie', sessionCookie(alice.id))
+    .send({ itemIds: [aliceItemId, bobItemId], paid: false, playerId: bob.id });
+  assert.equal(reset.status, 200);
+});
+
+test('bulk payment validates its item set and rejects cross-order and finalized mutations', async () => {
+  const invalidBodies = [
+    { itemIds: [], paid: true },
+    { itemIds: [aliceItemId, aliceItemId], paid: true },
+    { itemIds: [aliceItemId], paid: 'yes' },
+    { itemIds: Array.from({ length: 101 }, (_, index) => `too-many-${index}`), paid: true },
+  ];
+  for (const body of invalidBodies) {
+    const invalid = await request(app).patch(`/api/food-orders/${orderId}/items/bulk-paid`).send(body);
+    assert.equal(invalid.status, 400);
+  }
+
+  const foreign = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: 'Fremde Position' });
+  const foreignItem = await request(app)
+    .post(`/api/food-orders/${foreign.body.id}/items`)
+    .send({ playerId: bob.id, description: 'Nicht in dieser Bestellung' });
+  const crossOrder = await request(app)
+    .patch(`/api/food-orders/${orderId}/items/bulk-paid`)
+    .send({ itemIds: [foreignItem.body.items[0].id], paid: true });
+  assert.equal(crossOrder.status, 404);
+  assert.equal((await request(app).delete(`/api/food-orders/${foreign.body.id}`)).status, 204);
+
+  const finalized = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: 'Bereits geschlossen' });
+  const finalizedItem = await request(app)
+    .post(`/api/food-orders/${finalized.body.id}/items`)
+    .send({ playerId: bob.id, description: 'Nicht mehr bezahlbar' });
+  await request(app).post(`/api/food-orders/${finalized.body.id}/close`);
+  await request(app).post(`/api/food-orders/${finalized.body.id}/finalize`);
+  const finalizedPayment = await request(app)
+    .patch(`/api/food-orders/${finalized.body.id}/items/bulk-paid`)
+    .send({ itemIds: [finalizedItem.body.items[0].id], paid: true });
+  assert.equal(finalizedPayment.status, 409);
+  assert.equal((await request(app).delete(`/api/food-orders/${finalized.body.id}`)).status, 204);
 });
 
 test('closing freezes the order: no more items, no second close', async () => {
@@ -351,6 +414,13 @@ test('GET /api/food-orders?orderId includes a targeted order outside the history
   const targeted = await request(app).get(`/api/food-orders?orderId=${encodeURIComponent(orderId)}`);
   assert.equal(targeted.status, 200);
   assert.ok(targeted.body.orders.some((o: { id: string }) => o.id === orderId));
+  assert.notEqual(targeted.body.orders[0].id, orderId);
+  assert.ok(
+    targeted.body.orders.every(
+      (order: { createdAt: number }, index: number, orders: Array<{ createdAt: number }>) =>
+        index === 0 || orders[index - 1].createdAt >= order.createdAt,
+    ),
+  );
 });
 
 test('finalize requires the order to be closed first, and rejects an unknown order', async () => {

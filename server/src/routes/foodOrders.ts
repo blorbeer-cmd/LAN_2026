@@ -133,18 +133,19 @@ function serializeOrder(row: OrderRow) {
 
 function buildList(groupId: string, eventId: string | null, targetOrderId: string | null = null) {
   if (!eventId) return { orders: [] };
-  const orderBy = targetOrderId
-    ? 'ORDER BY CASE WHEN fo.id = ? THEN 0 ELSE 1 END, fo.created_at DESC'
-    : 'ORDER BY fo.created_at DESC';
-  const queryParams = targetOrderId ? [eventId, groupId, targetOrderId, HISTORY_LIMIT] : [eventId, groupId, HISTORY_LIMIT];
   const rows = db
     .prepare(
       `SELECT fo.*, e.group_id
        FROM food_orders fo JOIN events e ON e.id = fo.event_id
        WHERE fo.event_id = ? AND e.group_id = ?
-       ${orderBy} LIMIT ?`,
+       ORDER BY fo.created_at DESC LIMIT ?`,
     )
-    .all(...queryParams) as OrderRow[];
+    .all(eventId, groupId, HISTORY_LIMIT) as OrderRow[];
+  if (targetOrderId && !rows.some((row) => row.id === targetOrderId)) {
+    const target = getOrder(targetOrderId, groupId, eventId);
+    if (target) rows.push(target);
+  }
+  rows.sort((a, b) => b.created_at - a.created_at);
   return { orders: rows.map(serializeOrder) };
 }
 

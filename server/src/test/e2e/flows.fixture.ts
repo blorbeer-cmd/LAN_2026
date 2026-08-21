@@ -2036,9 +2036,9 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   await page.waitForSelector('.food-order-item:has-text("Wasser")', { state: 'detached' });
 
   // A previously paid group becomes payable again when a new priced position
-  // is added. The full group sum is shown, while the already-paid item stays
-  // assigned to its original confirmer when the new item is paid. The next
-  // PayPal handoff must charge only the newly added unpaid position.
+  // is added. The full group sum is shown and the already-paid item remains
+  // visible in the handoff. Only the newly added unpaid item is marked after
+  // confirmation.
   await group.locator('[data-group-pay]').click();
   await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
   await page.click('[data-confirm-ok]');
@@ -2053,8 +2053,9 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   assert.equal(await group.locator('[data-group-pay]').isDisabled(), false);
   await group.locator('[data-group-pay]').click();
   await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
-  assert.match(await page.locator('.modal-body p').first().innerText(), /4,40 € für/);
-  assert.equal(await page.locator('.food-order-confirm-list li').count(), 1);
+  assert.match(await page.locator('.modal-body p').first().innerText(), /25,30 € für/);
+  assert.equal(await page.locator('.food-order-confirm-list li').count(), 2);
+  await page.waitForSelector('.food-order-confirm-list li:has-text("2 × Margherita groß")');
   await page.waitForSelector('.food-order-confirm-list li:has-text("Nachtrag nach Bestätigung")');
   await page.click('[data-confirm-cancel]');
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
@@ -2180,6 +2181,7 @@ flowTest('community', 'Essensbestellung: orderer groups collapse/expand and pay 
       pageFits: document.documentElement.scrollWidth <= window.innerWidth,
     };
   });
+  assert.ok(narrowGroupLayout.markerHeight >= 32);
   assert.ok(narrowGroupLayout.markerHeight < 44);
   assert.equal(narrowGroupLayout.controlsVisible, true);
   assert.equal(narrowGroupLayout.pageFits, true);
@@ -2436,9 +2438,9 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
   await cleanupScenario(roundingScenario);
 
   // While the first fresh GET is paused, an item add triggers the realtime
-  // refresh path. The shared single-flight coordinator must keep the PayPal
-  // handoff on the original item snapshot: the new item remains open and is
-  // not silently included in the payment the user already started.
+  // refresh path. The shared single-flight coordinator must settle on the
+  // current group snapshot: the new item belongs in the complete handoff
+  // amount and list, but remains open until the confirmation is accepted.
   const concurrencyScenario = await createScenario('Freshness parallele Aktualisierung', [{ description: 'Erster Betrag', priceCents: 2_50 }]);
   const { group: concurrencyGroup } = await openScenario(concurrencyScenario);
   let firstRequestSeen!: () => void;
@@ -2471,7 +2473,9 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
     releaseFirstRequest();
     await followUpGet;
     await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
-    assert.equal(await page.locator('.food-order-confirm-list li:has-text("Nachtrag während Refresh")').count(), 0);
+    assert.match(await page.locator('.modal-body p').first().innerText(), /3,50 € für/);
+    assert.equal(await page.locator('.food-order-confirm-list li').count(), 2);
+    assert.equal(await page.locator('.food-order-confirm-list li:has-text("Nachtrag während Refresh")').count(), 1);
     await page.click('[data-confirm-cancel]');
     await page.waitForSelector('.modal-backdrop', { state: 'detached' });
     await concurrencyGroup.locator('.food-order-item', { hasText: 'Nachtrag während Refresh' }).waitFor();

@@ -89,14 +89,14 @@ test('an unpaid order reuses its existing Home item instead of creating a duplic
     closedAt: 1_000,
     finalizedAt: null,
     items: [
-      { playerId: 'alice', paid: false },
+      { playerId: 'alice', paid: false, quantity: 2 },
       { playerId: 'bob', paid: false },
     ],
   };
   const item = foodOrderAktuellItem(order, 'alice', 1_000 + FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS);
-  assert.equal(item.id, 'food-order:order-1');
+  assert.equal(item.id, 'food-order:order-1:payment');
   assert.equal(item.title, 'Sammelbestellung „Pizza" bezahlen');
-  assert.equal(item.sub, '1 Position noch offen');
+  assert.equal(item.sub, '2 Positionen noch offen');
   assert.equal(
     foodOrderAktuellItem({ ...order, items: [{ playerId: 'alice', paid: true }] }, 'alice', 1_000 + FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS),
     null,
@@ -114,7 +114,24 @@ test('a closed order stays out of the payment nudge until one hour after dispatc
     items: [{ playerId: 'alice', paid: false }],
   };
   assert.equal(foodOrderAktuellItem(order, 'alice', closedAt + FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS - 1), null);
-  assert.equal(foodOrderAktuellItem(order, 'alice', closedAt + FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS)?.id, 'food-order:order-3');
+  assert.equal(foodOrderAktuellItem(order, 'alice', closedAt + FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS)?.id, 'food-order:order-3:payment');
+});
+
+test('dismissing an open order does not hide its later payment reminder', () => {
+  const localStorage = storage();
+  const options = { playerId: 'erin', eventId: 'lan-2026', storage: localStorage };
+  const openOrder = { id: 'order-4', title: 'Open Pizza', open: true, closedAt: null, finalizedAt: null, items: [] };
+  const paymentOrder = {
+    ...openOrder,
+    open: false,
+    closedAt: 1_000,
+    items: [{ playerId: 'erin', paid: false }],
+  };
+
+  assert.equal(dismissAktuellItem('food-order:order-4', options), true);
+  const reminder = foodOrderAktuellItem(paymentOrder, 'erin', 1_000 + FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS);
+  assert.equal(reminder?.id, 'food-order:order-4:payment');
+  assert.deepEqual(filterDismissedAktuellItems([reminder], options), [reminder]);
 });
 
 test('an open order without own unpaid items keeps the normal current entry', () => {
