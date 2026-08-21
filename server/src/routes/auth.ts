@@ -37,6 +37,7 @@ import {
   voidOutstandingInvites,
   revokeInvite,
   NO_INVITE_EXPIRY,
+  DEFAULT_INVITE_TTL_MS,
   inviteFingerprint,
   type InvitePurpose,
 } from '../invites';
@@ -581,20 +582,25 @@ authRouter.get('/invites', ...requireSessionAdmin, (_req, res) => {
     }>;
   const usageCounts = inviteUseCounts(rows.map((row) => row.code));
   res.json(
-    rows.map((row) => ({
-      ...row,
-      expiresAt: row.expiresAt === NO_INVITE_EXPIRY ? null : row.expiresAt,
-      reusable: row.purpose === 'register' && row.expiresAt === NO_INVITE_EXPIRY,
-      eventSelectable: row.eventId ? Boolean(getSelectableEvent(row.eventId)) : true,
-      usageCount: usageCounts.get(row.code) ?? 0,
-    })),
+    rows.map((row) => {
+      const isBaseEvent = row.eventId === BASE_EVENT_ID;
+      return {
+        ...row,
+        eventId: isBaseEvent ? null : row.eventId,
+        eventName: isBaseEvent ? null : row.eventName,
+        expiresAt: row.expiresAt === NO_INVITE_EXPIRY ? null : row.expiresAt,
+        reusable: row.purpose === 'register',
+        eventSelectable: isBaseEvent || Boolean(row.eventId && getSelectableEvent(row.eventId)),
+        usageCount: usageCounts.get(row.code) ?? 0,
+      };
+    }),
   );
 });
 
 // POST /api/auth/invites - admin-only.
 // Body: { purpose, playerId?, eventId?, expiresInMs? }
-// Registration links are reusable and have no expiry by default. Claim,
-// reset and test-session links retain their one-time, finite lifecycles.
+// Registration links are reusable during their finite lifetime. Claim, reset
+// and test-session links retain their one-time lifecycles.
 authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthentication, (req, res) => {
   const { purpose, playerId, eventId, expiresInMs } = req.body ?? {};
   if (typeof purpose !== 'string' || !INVITE_PURPOSES.includes(purpose as InvitePurpose)) {
@@ -649,7 +655,7 @@ authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthenticatio
     playerId: purpose === 'register' ? undefined : playerId,
     eventId: inviteEventId,
     createdBy: req.player!.id,
-    expiresInMs,
+    expiresInMs: purpose === 'register' && expiresInMs === undefined ? DEFAULT_INVITE_TTL_MS : expiresInMs,
   });
   writeAdminAudit({
     actorPlayerId: req.player!.id,
@@ -667,10 +673,10 @@ authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthenticatio
     code: invite.code,
     purpose: invite.purpose,
     playerId: invite.player_id,
-    eventId: invite.event_id,
-    eventName: inviteEvent?.name ?? null,
+    eventId: invite.event_id === BASE_EVENT_ID ? null : invite.event_id,
+    eventName: invite.event_id === BASE_EVENT_ID ? null : inviteEvent?.name ?? null,
     expiresAt: invite.expires_at === NO_INVITE_EXPIRY ? null : invite.expires_at,
-    reusable: invite.purpose === 'register' && invite.expires_at === NO_INVITE_EXPIRY,
+    reusable: invite.purpose === 'register',
     usageCount: 0,
   });
 });

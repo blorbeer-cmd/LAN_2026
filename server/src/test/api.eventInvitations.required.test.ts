@@ -123,6 +123,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal(invitedEvent.participationStatus, 'invited');
       assert.equal('participantIds' in invitedEvent, false);
       assert.equal('participants' in invitedEvent, false);
+      assert.equal('acceptedParticipants' in invitedEvent, false);
       assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, bob)).status, 404);
       assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, owner)).status, 404);
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/tracking-consent', bob)).status, 409);
@@ -203,7 +204,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
         .send({ purpose: 'register', eventId: linkedEvent.body.id });
       assert.equal(registrationLink.status, 201, JSON.stringify(registrationLink.body));
       assert.equal(registrationLink.body.eventId, linkedEvent.body.id);
-      assert.equal(registrationLink.body.expiresAt, null);
+      assert.ok(registrationLink.body.expiresAt > Date.now());
       assert.equal(registrationLink.body.reusable, true);
       const linkedBob = await registerWithCode(registrationLink.body.code, 'Direct Link Bob');
       const linkedAlice = await registerWithCode(registrationLink.body.code, 'Direct Link Alice');

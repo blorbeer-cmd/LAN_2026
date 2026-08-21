@@ -20,6 +20,16 @@ const TEST_DATA_HELP = 'Legt Test-Spieler mit Sitzplatz, Bewertungen und Spielze
 const ADMIN_ROLE_HELP = 'Owner und Admins dürfen den Admin-Bereich verwalten. Mindestens ein aktiver Owner muss erhalten bleiben.';
 const AGENT_DIAGNOSTICS_HELP = 'Der Agent fragt den PC gezielt nur nach den hier hinterlegten Spiele-Prozessen. Andere laufende Programme sieht er gar nicht erst und sie verlassen den PC nie.';
 
+export const REGISTER_INVITE_DURATION_OPTIONS = Object.freeze([
+  { value: 24 * 60 * 60 * 1000, label: '24 Stunden' },
+  { value: 3 * 24 * 60 * 60 * 1000, label: '3 Tage' },
+  { value: 7 * 24 * 60 * 60 * 1000, label: '7 Tage' },
+  { value: 14 * 24 * 60 * 60 * 1000, label: '14 Tage' },
+  { value: 30 * 24 * 60 * 60 * 1000, label: '30 Tage' },
+  { value: 90 * 24 * 60 * 60 * 1000, label: '90 Tage' },
+]);
+export const DEFAULT_REGISTER_INVITE_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
 let seedBusy = false;
@@ -53,6 +63,23 @@ function invitePurposeLabel(purpose) {
   return 'Registrierungslink';
 }
 
+export function formatInviteRemaining(expiresAt, now = Date.now()) {
+  if (expiresAt == null) return 'Gültig bis zum Widerruf';
+  const remainingMs = Number(expiresAt) - now;
+  if (!Number.isFinite(remainingMs) || remainingMs <= 0) return 'abgelaufen';
+  const minutes = Math.ceil(remainingMs / 60_000);
+  if (minutes < 60) return `noch ${minutes} ${minutes === 1 ? 'Minute' : 'Minuten'} gültig`;
+  const hours = Math.ceil(minutes / 60);
+  if (hours < 24) return `noch ${hours} ${hours === 1 ? 'Stunde' : 'Stunden'} gültig`;
+  const days = Math.ceil(hours / 24);
+  return `noch ${days} ${days === 1 ? 'Tag' : 'Tage'} gültig`;
+}
+
+export function inviteValidityLabel(expiresAt, now = Date.now()) {
+  if (expiresAt == null) return 'Gültig bis zum Widerruf';
+  return `${formatInviteRemaining(expiresAt, now)} · bis ${formatDateTime(expiresAt)} Uhr`;
+}
+
 function openInviteModal(invite) {
   const url = inviteUrl(invite);
   const target = invite.playerName ? ` für ${invite.playerName}` : '';
@@ -63,9 +90,7 @@ function openInviteModal(invite) {
     : invite.eventName
       ? `<div class="admin-invite-event"><span class="muted">Event</span><strong>${escapeHtml(invite.eventName)}</strong></div>`
       : '';
-  const validityHint = reusable
-    ? 'Unbegrenzt gültig, bis der Link widerrufen wird. Mehrfach nutzbar.'
-    : `Gültig bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}. Der Link funktioniert nur einmal.`;
+  const validityHint = `${inviteValidityLabel(invite.expiresAt)}. ${reusable ? 'Mehrfach nutzbar.' : 'Der Link funktioniert nur einmal.'}`;
   const { el } = openModal(
     `${invitePurposeLabel(invite.purpose)}${escapeHtml(target)}`,
     `<div class="stack">
@@ -270,12 +295,17 @@ function openRegisterInviteDialog(ctx) {
   const { el, close } = openModal(
     'Registrierungslink erstellen',
     `<form id="admin-register-invite-form" class="stack">
-      <p class="muted admin-register-invite-note">Der Link bleibt gültig, bis du ihn widerrufst, und kann von mehreren neuen Personen genutzt werden.</p>
+      <p class="muted admin-register-invite-note">Der Link kann innerhalb der gewählten Dauer von mehreren neuen Personen genutzt werden.</p>
+      <div>
+        <label for="admin-register-expires" class="field-label">Gültig für</label>
+        <select id="admin-register-expires" required>
+          ${REGISTER_INVITE_DURATION_OPTIONS.map((option) => `<option value="${option.value}" ${option.value === DEFAULT_REGISTER_INVITE_DURATION_MS ? 'selected' : ''}>${option.label}</option>`).join('')}
+        </select>
+      </div>
       <div>
         <label for="admin-register-event-search" class="field-label">Direkte Event-Einladung (optional)</label>
         ${searchSelectHtml('admin-register-event', eventOptions, '', {
           placeholder: 'Event auswählen…',
-          ariaLabel: 'Event für neue Konten',
           label: 'Events für die Einladung',
         })}
       </div>
@@ -291,7 +321,8 @@ function openRegisterInviteDialog(ctx) {
     button.disabled = true;
     try {
       const eventId = el.querySelector('#admin-register-event').value;
-      const created = await createLoginInvite('register', null, ctx, eventId ? { eventId } : {});
+      const expiresInMs = Number(el.querySelector('#admin-register-expires').value);
+      const created = await createLoginInvite('register', null, ctx, { expiresInMs, ...(eventId ? { eventId } : {}) });
       if (created) close();
     } finally {
       button.disabled = false;
@@ -496,7 +527,7 @@ function renderPanel(container, ctx) {
         return `<div class="row-between" style="gap:var(--space-2);">
         <span>
           <strong>${escapeHtml(invite.playerName || invitePurposeLabel(invite.purpose))}</strong>
-          <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))}${eventLabel ? ` · ${eventLabel}` : ''} · ${invite.usageCount ?? 0}× genutzt · ${invite.expiresAt == null ? 'unbegrenzt gültig' : `bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}`}</span>
+          <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))}${eventLabel ? ` · ${eventLabel}` : ''} · ${invite.usageCount ?? 0}× genutzt · ${escapeHtml(inviteValidityLabel(invite.expiresAt))}</span>
         </span>
         <span class="row" style="gap:var(--space-2);">
           <button type="button" class="btn btn-sm" data-show-login-link="${invite.code}">Anzeigen</button>

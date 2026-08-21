@@ -55,10 +55,11 @@ function eventLocationUrl(location) {
   }
 }
 
-function renderEventLocation(location) {
+export function renderEventLocation(location, eventName = '') {
   if (!location) return '';
   const href = eventLocationUrl(location);
   const value = escapeHtml(location);
+  const copyLabel = eventName ? `Ort von ${eventName} kopieren` : 'Ort kopieren';
   return `
     <div class="event-card-detail event-card-location">
       <span class="event-card-detail-icon" aria-hidden="true">${icon('mapPin')}</span>
@@ -66,7 +67,7 @@ function renderEventLocation(location) {
         <span class="event-card-detail-label">Ort</span>
         ${href ? `<a class="event-location-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${value}</a>` : `<span class="event-location-text">${value}</span>`}
       </span>
-      <button type="button" class="btn btn-sm event-location-copy" data-copy-event-location="${value}">Kopieren</button>
+      <button type="button" class="btn btn-sm event-location-copy" data-copy-event-location="${value}" aria-label="${escapeHtml(copyLabel)}" title="${escapeHtml(copyLabel)}">Kopieren</button>
     </div>`;
 }
 
@@ -107,7 +108,7 @@ function renderEventDetails(event) {
           <span>${escapeHtml(eventDateRange(event))}</span>
         </span>
       </div>
-      ${renderEventLocation(event.location)}
+      ${renderEventLocation(event.location, event.name)}
       ${event.description
         ? `<div class="event-card-detail event-card-description">
              <span class="event-card-detail-icon" aria-hidden="true">${icon('file')}</span>

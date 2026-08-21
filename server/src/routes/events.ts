@@ -116,10 +116,10 @@ function activeContextPlayerIds(eventId: string): string[] {
   ).map((row) => row.player_id);
 }
 
-// `trackingEnabled`/`isEnded` are part of the summary rather than management
-// data: the workspace switcher shows the state of every event it offers, and
-// a member only ever receives this shape. They describe the event itself, not
-// anything about its participants, so an invitation teaser may carry them too.
+// The default summary is teaser-safe and contains no participant data. The
+// accepted-participant extension is only requested after the caller's admin
+// or accepted-member access check; invitation teasers must keep using the
+// default shape.
 function serializeEventSummary(event: EventRow, { includeAcceptedParticipants = false } = {}) {
   return {
     id: event.id,

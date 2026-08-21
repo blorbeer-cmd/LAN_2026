@@ -729,8 +729,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   invitation is a personal action. What it shows depends on the role: owner/admin receive the full
   management surface — anlegen/bearbeiten, Tracking starten/stoppen, Teilnehmer einladen/entfernen
   and the PDF „Andenken“-Export — while a member gets read-only cards for the events they take
-  part in, without the „+ Event“ action or the tracking state they never receive; the card still
-  shows the count and names of accepted participants. Pending invitations for the current identity
+  part in, without the „+ Event“ action or administrative invitation/decline controls; the card
+  includes the event-status badge plus the count and names of accepted participants. Pending invitations for the current identity
   lead the tab as a subsection for both. Event cards use the standard two-column nested-card grid,
   stable flex footers for management actions, and clickable/copyable location links when an event
   stores a web URL. TV-Kiosk (Admin's „Kioskverwaltung“

@@ -102,6 +102,10 @@ test('POST /api/auth/invites creates a register code as admin', async () => {
   assert.equal(res.status, 201);
   assert.equal(res.body.purpose, 'register');
   assert.ok(res.body.code);
+  assert.equal(res.body.eventId, null);
+  assert.equal(res.body.eventName, null);
+  assert.ok(res.body.expiresAt > Date.now());
+  assert.equal(res.body.reusable, true);
   registerCode = res.body.code;
 });
 
@@ -111,8 +115,10 @@ test('GET /api/auth/invites lists active reusable codes without exposing revoked
   const listed = res.body.find((invite: { code: string }) => invite.code === registerCode);
   assert.equal(listed.purpose, 'register');
   assert.equal(listed.playerId, null);
-  assert.equal(listed.expiresAt, null);
+  assert.ok(listed.expiresAt > Date.now());
   assert.equal(listed.reusable, true);
+  assert.equal(listed.eventId, null);
+  assert.equal(listed.eventName, null);
   assert.equal(listed.usageCount, 0);
 });
 
@@ -124,13 +130,13 @@ test('POST /api/auth/invites rejects a non-expiring code', async () => {
   assert.equal(res.status, 400);
 });
 
-test('POST /api/auth/invites keeps explicitly finite register links one-time at the API boundary', async () => {
+test('POST /api/auth/invites keeps explicitly finite register links reusable until expiry', async () => {
   const created = await request(app)
     .post('/api/auth/invites')
     .set('Cookie', adminCookie)
     .send({ purpose: 'register', expiresInMs: 60_000 });
   assert.equal(created.status, 201, JSON.stringify(created.body));
-  assert.equal(created.body.reusable, false);
+  assert.equal(created.body.reusable, true);
   assert.ok(created.body.expiresAt > Date.now());
 
   const first = await request(app)
@@ -140,10 +146,13 @@ test('POST /api/auth/invites keeps explicitly finite register links one-time at 
   const second = await request(app)
     .post('/api/auth/register')
     .send({ code: created.body.code, name: 'Second Finite', password: 'second finite password' });
-  assert.equal(second.status, 400);
+  assert.equal(second.status, 201, JSON.stringify(second.body));
 
   const active = await request(app).get('/api/auth/invites').set('Cookie', adminCookie);
-  assert.equal(active.body.some((invite: { code: string }) => invite.code === created.body.code), false);
+  const listed = active.body.find((invite: { code: string }) => invite.code === created.body.code);
+  assert.ok(listed);
+  assert.equal(listed.reusable, true);
+  assert.equal(listed.usageCount, 2);
 });
 
 // --- register ---
@@ -228,7 +237,7 @@ test('invite lifecycle audit stays correlated in the instance audit feed', async
       .sort(),
     [first.body.id, second.body.id].sort(),
   );
-  assert.equal(JSON.parse(matching[0].details).expiresAt, null);
+  assert.ok(JSON.parse(matching[0].details).expiresAt > Date.now());
   assert.equal(JSON.parse(matching[3].details).usageCount, 2);
 
   const audit = await request(app).get('/api/admin/audit?limit=500').set('Cookie', adminCookie);
@@ -485,6 +494,13 @@ test('deactivating or deleting a creator revokes its open registration links', a
   assert.equal(findValidInvite(invite.code, 'register'), undefined);
   const active = await request(app).get('/api/auth/invites').set('Cookie', adminCookie);
   assert.equal(active.body.some((entry: { code: string }) => entry.code === invite.code), false);
+  const deactivationAudit = db
+    .prepare("SELECT details FROM admin_log WHERE action = 'invite_revoked' AND target_type = 'registration'")
+    .all() as Array<{ details: string }>;
+  const deactivationDetails = deactivationAudit
+    .map((row) => JSON.parse(row.details) as { inviteFingerprint?: string; reason?: string })
+    .find((details) => details.inviteFingerprint === inviteFingerprint(invite.code));
+  assert.equal(deactivationDetails?.reason, 'creator_deactivated');
 
   const deletedCreator = await request(app)
     .post('/api/players')
@@ -498,4 +514,11 @@ test('deactivating or deleting a creator revokes its open registration links', a
     .set('Cookie', adminCookie);
   assert.equal(deleted.status, 204);
   assert.equal(findValidInvite(deletedInvite.code, 'register'), undefined);
+  const deletionDetails = db
+    .prepare("SELECT details FROM admin_log WHERE action = 'invite_revoked' AND target_type = 'registration'")
+    .all() as Array<{ details: string }>;
+  const deletedInviteDetails = deletionDetails
+    .map((row) => JSON.parse(row.details) as { inviteFingerprint?: string; reason?: string })
+    .find((details) => details.inviteFingerprint === inviteFingerprint(deletedInvite.code));
+  assert.equal(deletedInviteDetails?.reason, 'creator_deleted');
 });

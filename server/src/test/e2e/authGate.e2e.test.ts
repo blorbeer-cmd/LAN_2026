@@ -357,6 +357,11 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await adminPage.click('#admin-register-link');
 
     await adminPage.waitForSelector('#admin-register-invite-form');
+    assert.equal(await adminPage.locator('#admin-register-expires').inputValue(), String(7 * 24 * 60 * 60 * 1000));
+    assert.equal(
+      (await adminPage.locator('#admin-register-expires option').allTextContents()).some((label) => /unbegrenzt/i.test(label)),
+      false,
+    );
     await adminPage.click('#admin-register-invite-form button[type="submit"]');
     await adminPage.waitForSelector('#reauth-form');
     await adminPage.fill('#reauth-password', 'e2e bootstrap password');
@@ -365,6 +370,7 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     const link = await adminPage.inputValue('#admin-invite-link');
     const inviteCode = new URL(link).searchParams.get('invite');
     assert.ok(inviteCode);
+    assert.match((await adminPage.locator('.modal-backdrop p.muted').last().textContent()) ?? '', /noch .* gültig/);
 
     await adminPage.click('#admin-invite-qr-toggle');
     await adminPage.waitForSelector('#admin-invite-qr svg');

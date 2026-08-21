@@ -52,13 +52,13 @@ test('a register invite stays valid and reusable after every redemption until re
   assert.equal(findValidInvite(invite.code, 'register'), undefined);
 });
 
-test('an explicitly finite register invite remains one-time and expires', () => {
+test('an explicitly finite register invite stays reusable until it expires', () => {
   const admin = makePlayer();
   const first = makePlayer();
   const used = createInvite({ purpose: 'register', createdBy: admin, expiresInMs: 1000 });
   assert.notEqual(used.expires_at, NO_INVITE_EXPIRY);
   assert.equal(markInviteUsed(used.code, first, 'register'), true);
-  assert.equal(findValidInvite(used.code, 'register'), undefined);
+  assert.ok(findValidInvite(used.code, 'register'));
 
   const expired = createInvite({ purpose: 'register', createdBy: admin, expiresInMs: 1000 });
   db.prepare('UPDATE invites SET expires_at = ? WHERE code = ?').run(Date.now() - 1, expired.code);
