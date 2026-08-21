@@ -427,12 +427,19 @@ foodOrdersRouter.patch('/:id/items/:itemId', requireUser, (req, res) => {
     .get(req.params.itemId, order.id) as { id: string } | undefined;
   if (!item) return res.status(404).json({ error: 'Position nicht gefunden.' });
 
-  db.prepare('UPDATE food_order_items SET paid = ?, paid_by = ?, paid_at = ? WHERE id = ?').run(
+  const expectedPaid = paid ? 0 : 1;
+  const updated = db.prepare(
+    'UPDATE food_order_items SET paid = ?, paid_by = ?, paid_at = ? WHERE id = ? AND paid = ?',
+  ).run(
     paid ? 1 : 0,
     paid ? req.player!.id : null,
     paid ? Date.now() : null,
-    item.id
+    item.id,
+    expectedPaid,
   );
+  if (updated.changes === 0) {
+    return res.status(409).json({ error: paid ? 'Position wurde inzwischen bereits als bezahlt markiert.' : 'Position ist bereits offen.' });
+  }
   broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
   res.json(serializeOrder(order));
 });

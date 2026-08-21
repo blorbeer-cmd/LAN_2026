@@ -213,6 +213,13 @@ test('PATCH /api/food-orders/:id/items/:itemId marks and unmarks an item as paid
   assert.equal(markedItem.paidByName, 'Hungriger Bob');
   assert.ok(typeof markedItem.paidAt === 'number' && markedItem.paidAt > 0);
 
+  // A stale second confirmation must not overwrite the first confirmer. The
+  // route's conditional update turns the read-then-write race into a 409.
+  const duplicateMark = await request(app)
+    .patch(`/api/food-orders/${orderId}/items/${aliceItemId}`)
+    .send({ paid: true, playerId: alice.id });
+  assert.equal(duplicateMark.status, 409);
+
   // Unmarking clears the paid-by trail again, whoever does it.
   const unmarked = await request(app)
     .patch(`/api/food-orders/${orderId}/items/${aliceItemId}`)

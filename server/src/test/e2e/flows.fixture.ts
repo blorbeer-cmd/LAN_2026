@@ -1843,6 +1843,7 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   await page.waitForSelector('text=24.12. 20:00 Uhr');
   await page.waitForSelector('text=Mindestbestellwert 15€, bar zahlen');
   await page.waitForSelector('a[href="https://luigis-pizza.example/karte"]');
+  assert.equal(await page.locator('a[href="https://paypal.me/luigi"] .ui-icon').count(), 1);
   await page.getByRole('button', { name: 'Bestellliste', exact: true }).waitFor();
 
   await page.click('[data-edit-details]');
@@ -1942,6 +1943,7 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   assert.equal(await marghieRow.locator('[data-copy-food-total]').isDisabled(), false);
   assert.equal(await marghieRow.locator('[data-group-pay]').count(), 0);
   assert.equal(await group.locator('[data-group-pay]').isDisabled(), true);
+  assert.equal(await group.locator('[data-remove-group]').isDisabled(), true);
   assert.match((await group.locator('.food-order-paid-marker').getAttribute('title')) ?? '', new RegExp('Bezahlt, bestätigt von ' + alice.name));
 
   await group.locator('[data-toggle-group-paid]').click();
@@ -1959,7 +1961,14 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   await page.click('[data-add-item-form] button[type="submit"]');
   await page.waitForSelector('text=Wasser');
   assert.equal(await group.locator('.food-order-group-meta').innerText(), '3 Positionen · Preis fehlt');
+  assert.equal(await group.locator('.food-order-group-amount').innerText(), '20,90 €');
+  assert.equal(await group.locator('.food-order-group-copy').getAttribute('data-copy-food-total'), '20,90 €');
   assert.equal(await group.locator('[data-group-pay]').isDisabled(), true);
+  await group.locator('[data-remove-group]').click();
+  await page.waitForSelector('.modal h2:has-text("Deine 2 Positionen löschen?")');
+  assert.equal(await page.locator('.food-order-confirm-list li').count(), 2);
+  await page.click('[data-confirm-cancel]');
+  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
   const wasserRow = page.locator('.food-order-item', { hasText: 'Wasser' });
   await wasserRow.locator('[data-remove-item]').click();
   await page.waitForSelector('[data-confirm]');
@@ -2066,6 +2075,7 @@ flowTest('community', 'Essensbestellung: orderer groups collapse/expand and pay 
   assert.equal(await bobGroupAfterLink.locator('[data-group-pay]').isDisabled(), true);
   assert.equal(await bobGroupAfterLink.locator('[data-toggle-group-paid]').getAttribute('aria-pressed'), 'true');
   assert.equal(await bobGroupAfterLink.locator('.food-order-item .food-order-paid-marker').count(), 0);
+  assert.equal(await bobGroupAfterLink.locator('[data-remove-group]').count(), 0);
 });
 flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for the creator/admin and can close the order', async () => {
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
@@ -2137,7 +2147,18 @@ flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for
   // offers it at all.
   assert.equal(await page.locator('[data-copy-consolidated-list]').count(), 0);
 
+  // A direct food-order link expands the target before the first populated
+  // render, even though multiple open orders currently exist.
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+  await page.goto(`${BASE_URL}/#foodOrders/${listOrderId}`);
+  await page.reload();
+  const directOrderCard = page.locator('[data-order-card]', { hasText: 'Bestellliste-Test' });
+  await directOrderCard.waitFor();
+  assert.equal(await directOrderCard.locator('.food-order-card-body').isVisible(), true);
+
   // The dialog can close the still-open order directly (AP4.7).
+  await directOrderCard.locator('[data-open-order-list]').click();
   await page.click('[data-close-order-from-list]');
   await page.click('[data-confirm]');
   await page.waitForSelector('text=Bestellung ist noch offen.', { state: 'detached' });
@@ -2340,6 +2361,14 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   assert.equal(await page.locator('.food-order-consolidated-row').count(), 3);
   await page.keyboard.press('Escape');
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+
+  // The own-group delete is the only destructive bulk action and therefore
+  // shows the full list before it can be confirmed.
+  await suggestOrderCard.locator('[data-remove-group]').click();
+  await page.waitForSelector('.modal h2:has-text("Deine 4 Positionen löschen?")');
+  assert.equal(await page.locator('.food-order-confirm-list li').count(), 4);
+  await page.click('[data-confirm-ok]');
+  await page.waitForSelector('text=Noch nichts eingetragen.');
 });
 
 flowTest('community', 'Essensbestellung: marking a position paid does not scroll the Essen view back to the top', async () => {

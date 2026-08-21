@@ -353,16 +353,18 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
        </button>`
     : `<div class="food-order-group-static">${headText}</div>`;
 
+  const partialTotal = totalCents > 0 ? formatCents(totalCents) : null;
   const amountHtml = allPriced
     ? `<span class="food-order-group-amount ${allPaid ? 'is-paid' : ''}">${formatCents(totalCents)}</span>`
-    : `<span class="food-order-group-amount-wrap">
-         <span class="food-order-group-amount">Betrag offen</span>
-         ${totalCents > 0 ? `<span class="muted food-order-group-partial">Teilsumme ${formatCents(totalCents)}</span>` : ''}
-       </span>`;
+    : partialTotal
+      ? `<span class="food-order-group-amount muted food-order-group-partial">${partialTotal}</span>`
+      : '<span class="food-order-group-amount muted">Betrag offen</span>';
 
   const paidNames = groupPaidNames(items);
-  const paidTitle = paidNames.length
-    ? `Bezahlt, bestätigt von ${paidNames.join(', ')} – Markierung aufheben`
+  const paidTitle = allPaid
+    ? paidNames.length
+      ? `Bezahlt, bestätigt von ${paidNames.join(', ')} – Markierung aufheben`
+      : 'Bezahlt – Markierung aufheben'
     : 'Als bezahlt markieren';
   const paidMarkerHtml = `<button type="button" class="food-order-paid-marker ${allPaid ? 'is-paid' : ''}" data-toggle-group-paid="${playerId}" data-order="${order.id}" ${locked ? 'disabled' : ''} aria-pressed="${allPaid ? 'true' : 'false'}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}">
     ${icon(allPaid ? 'check' : 'circleDashed')}<span>${allPaid ? 'Bezahlt' : 'Offen'}</span>
@@ -382,8 +384,9 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
     ? `<button type="button" class="icon-btn food-order-item-action food-order-group-pay" data-group-pay="${playerId}" data-order="${order.id}" ${payDisabledReason ? 'disabled' : ''} title="${escapeHtml(payTitle)}" aria-label="${escapeHtml(payTitle)}">${icon('paypal')}</button>`
     : '';
 
-  const copyHtml = allPriced
-    ? `<button type="button" class="icon-btn food-order-item-action food-order-group-copy" data-copy-food-total="${escapeHtml(formatCents(totalCents))}" title="Summe von ${escapeHtml(items[0].playerName)} kopieren" aria-label="Summe von ${escapeHtml(items[0].playerName)} kopieren">${icon('copy')}</button>`
+  const copyValue = allPriced || partialTotal ? (allPriced ? formatCents(totalCents) : partialTotal) : null;
+  const copyHtml = copyValue
+    ? `<button type="button" class="icon-btn food-order-item-action food-order-group-copy" data-copy-food-total="${escapeHtml(copyValue)}" title="Summe von ${escapeHtml(items[0].playerName)} kopieren" aria-label="Summe von ${escapeHtml(items[0].playerName)} kopieren">${icon('copy')}</button>`
     : '<span class="food-order-item-action-spacer" aria-hidden="true"></span>';
   const canDelete = order.open && playerId === myId;
   const deleteReason = locked
@@ -536,7 +539,7 @@ function renderDetails(order, { locked = false } = {}) {
                 target="_blank"
                 rel="noopener"
                 ${email ? `data-copy-paypal-email="${escapeHtml(email)}" title="Öffnet PayPal und kopiert ${escapeHtml(email)} zum Einfügen."` : ''}
-              >PayPal öffnen</a>`;
+              >${icon('paypal')} PayPal öffnen</a>`;
           })()
           : ''
       }
@@ -936,7 +939,7 @@ async function handleGroupPay(order, playerId, ctx) {
   const groupItems = order.items.filter((item) => item.playerId === playerId);
   if (groupItems.length === 0 || !order.paypalLink) return;
 
-  const itemIds = groupItems.map((item) => item.id);
+  const initialItemIds = groupItems.map((item) => item.id);
   const email = paypalEmailFromLink(order.paypalLink);
   const popup = window.open('', '_blank');
   if (popup) popup.opener = null;
@@ -954,13 +957,14 @@ async function handleGroupPay(order, playerId, ctx) {
       ctx.rerender();
       return;
     }
-    items = freshOrder.items.filter((item) => itemIds.includes(item.id) && item.playerId === playerId);
-    if (items.length < itemIds.length) {
+    const freshGroupItems = freshOrder.items.filter((item) => item.playerId === playerId);
+    if (initialItemIds.some((id) => !freshGroupItems.some((item) => item.id === id))) {
       popup?.close();
       showToast('Eine Position existiert nicht mehr. Bitte Betrag prüfen.', { error: true });
       ctx.rerender();
       return;
     }
+    items = freshGroupItems;
   } catch (err) {
     popup?.close();
     showToast(err.message, { error: true });
@@ -1000,7 +1004,7 @@ async function handleGroupPay(order, playerId, ctx) {
     { confirmText: 'Ja, bezahlt', cancelText: 'Noch nicht' },
   );
   if (!confirmed) return;
-  await markGroupItemsPaid(order.id, playerId, itemIds, ctx);
+  await markGroupItemsPaid(order.id, playerId, items.map((item) => item.id), ctx);
 }
 
 async function handleGroupPaid(orderId, playerId, paid, ctx) {
@@ -1053,7 +1057,7 @@ async function handleRemoveGroup(order, playerId, myId, ctx) {
     return;
   }
   const confirmed = await confirmWithList(
-    `${items[0].playerName} vollständig entfernen?`,
+    `Deine ${items.length} ${items.length === 1 ? 'Position' : 'Positionen'} löschen?`,
     'Alle eigenen Positionen dieser Person werden aus der Bestellung gelöscht.',
     items.map((item) => ({ ...item, amount: item.priceCents === null ? null : formatCents(lineTotalCents(item, order.tipPercent || 0)) })),
     { confirmText: 'Alle löschen', cancelText: 'Abbrechen', danger: true },
