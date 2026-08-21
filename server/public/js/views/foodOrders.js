@@ -39,6 +39,7 @@ const expandedOpenOrders = new Set();
 let orderStartRuleApplied = false;
 let pendingOrderTargetId = null;
 let activeOrderTargetId = null;
+let orderTargetStateVersion = 0;
 
 // The consolidated-list dialog (AP4.7) keeps updating while it's open, so a
 // live re-render of the underlying view needs to be able to refresh it too.
@@ -49,12 +50,15 @@ let consolidatedListDialog = null; // { orderId, el, ctx } | null
 // on a card that is still collapsed for a moment.
 export function prepareFoodOrderTarget(orderId) {
   if (!orderId) return;
+  if (activeOrderTargetId !== orderId) orderTargetStateVersion += 1;
   pendingOrderTargetId = orderId;
   activeOrderTargetId = orderId;
   if (cache !== null && !cache.some((order) => order.id === orderId)) cache = null;
+  if (fetchInFlight) refetchPending = true;
 }
 
 export function clearFoodOrderTarget() {
+  orderTargetStateVersion += 1;
   pendingOrderTargetId = null;
   activeOrderTargetId = null;
   // A target-aware response may contain an older order outside the normal
@@ -101,9 +105,20 @@ async function fetchFoodOrders(ctx) {
       // or that follow-up refresh is silently lost until some unrelated event
       // happens to trigger another one.
       try {
-        const res = await api.foodOrders.list(activeOrderTargetId);
-        cache = res.orders;
-        succeeded = true;
+        const requestTargetId = activeOrderTargetId;
+        const requestTargetStateVersion = orderTargetStateVersion;
+        const res = await api.foodOrders.list(requestTargetId);
+        const responseIsCurrent =
+          requestTargetStateVersion === orderTargetStateVersion && requestTargetId === activeOrderTargetId;
+        if (responseIsCurrent) {
+          cache = res.orders;
+          succeeded = true;
+        } else if (activeOrderTargetId !== null) {
+          // A navigation/deep-link target changed while this request was in
+          // flight. Discard the old response and fetch for the new target.
+          refetchPending = true;
+          succeeded = false;
+        }
       } catch (err) {
         succeeded = false;
         showToast(err.message, { error: true });
