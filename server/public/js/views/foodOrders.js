@@ -384,11 +384,9 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
     ? 'Bestellung geschlossen – keine Änderungen mehr möglich'
     : allPaid
       ? 'Bereits bezahlt'
-      : hasPaid
-        ? 'Teilweise bestätigt – erst die Personenmarke prüfen'
-        : !allPriced
-          ? 'Betrag unvollständig – erst alle Preise eintragen'
-          : null;
+      : !allPriced
+        ? 'Betrag unvollständig – erst alle Preise eintragen'
+        : null;
   const payTitle = payDisabledReason || `${formatCents(totalCents)} für ${items[0].playerName} über PayPal bezahlen`;
   const payButtonHtml = order.paypalLink
     ? `<button type="button" class="icon-btn food-order-item-action food-order-group-pay" data-group-pay="${playerId}" data-order="${order.id}" ${payDisabledReason ? 'disabled' : ''} title="${escapeHtml(payTitle)}" aria-label="${escapeHtml(payTitle)}">${icon('paypal')}</button>`
@@ -477,10 +475,10 @@ function renderOrderOverview(order) {
 
   const parts = [
     `${totalQty} ${totalQty === 1 ? 'Position' : 'Positionen'} von ${peopleCount} ${peopleCount === 1 ? 'Person' : 'Personen'}`,
-    `${paidPeopleCount} ${paidPeopleCount === 1 ? 'Person' : 'Personen'} vollständig bezahlt`,
+    `${paidPeopleCount} von ${peopleCount} bezahlt`,
     `Gesamt ${totalLabel}`,
   ];
-  if (paidPeopleCount < peopleCount) parts.push(`offen ${formatCents(openCents)}`);
+  if (openCents > 0) parts.push(`offen ${formatCents(openCents)}`);
 
   return `<div class="muted food-order-overview">${parts.join(' · ')}</div>`;
 }
@@ -489,7 +487,7 @@ function renderOrderOverview(order) {
 // its own copy action directly beside the amount, so the sum sits left of
 // the copy button rather than trailing behind unrelated metadata.
 function renderOrderSummaryTotal(order) {
-  if (order.totalCents <= 0) return '';
+  if (order.items.length === 0) return '';
   const tipPercent = order.tipPercent || 0;
   const totalCents = addTipToCents(order.totalCents, tipPercent);
   const incomplete = order.items.some((item) => item.priceCents === null);
@@ -942,7 +940,7 @@ async function handleGroupPay(order, playerId, ctx) {
   const groupItems = order.items.filter((item) => item.playerId === playerId);
   if (groupItems.length === 0 || !order.paypalLink) return;
 
-  const initialItemIds = groupItems.map((item) => item.id);
+  const initialUnpaidItemIds = groupItems.filter((item) => !item.paid).map((item) => item.id);
   const email = paypalEmailFromLink(order.paypalLink);
   const popup = window.open('', '_blank');
   if (popup) popup.opener = null;
@@ -968,7 +966,7 @@ async function handleGroupPay(order, playerId, ctx) {
     return;
   }
   const freshGroupItems = freshOrder.items.filter((item) => item.playerId === playerId);
-  if (initialItemIds.some((id) => !freshGroupItems.some((item) => item.id === id))) {
+  if (initialUnpaidItemIds.some((id) => !freshGroupItems.some((item) => item.id === id))) {
     popup?.close();
     showToast('Eine Position existiert nicht mehr. Bitte Betrag prüfen.', { error: true });
     ctx.rerender();
@@ -976,7 +974,7 @@ async function handleGroupPay(order, playerId, ctx) {
   }
   items = freshGroupItems;
 
-  if (items.some((item) => item.paid)) {
+  if (initialUnpaidItemIds.some((id) => freshGroupItems.some((item) => item.id === id && item.paid))) {
     popup?.close();
     showToast('Diese Person wurde inzwischen bereits als bezahlt markiert.', { error: true });
     ctx.rerender();
@@ -1008,7 +1006,7 @@ async function handleGroupPay(order, playerId, ctx) {
     { confirmText: 'Ja, bezahlt', cancelText: 'Noch nicht' },
   );
   if (!confirmed) return;
-  await markGroupItemsPaid(order.id, playerId, items.map((item) => item.id), ctx);
+  await markGroupItemsPaid(order.id, playerId, items.filter((item) => !item.paid).map((item) => item.id), ctx);
 }
 
 async function handleGroupPaid(orderId, playerId, paid, ctx) {

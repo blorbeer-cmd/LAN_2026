@@ -1868,7 +1868,7 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   await page.waitForSelector('.food-order-item-amount:has-text("inkl. 10% Trinkgeld")');
   await page.waitForSelector('.food-order-total:has-text("Gesamtsumme inkl. 10% Trinkgeld")');
   await page.waitForSelector('.food-order-overview:has-text("2 Positionen von 1 Person")');
-  await page.waitForSelector('.food-order-overview:has-text("0 Personen vollständig bezahlt")');
+  await page.waitForSelector('.food-order-overview:has-text("0 von 1 bezahlt")');
   await page.waitForSelector('.food-order-overview:has-text("Gesamt 20,90")');
   await page.waitForSelector('.food-order-overview:has-text("offen 20,90")');
 
@@ -1980,6 +1980,32 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   await wasserRow.locator('[data-remove-item]').click();
   await page.click('[data-confirm]');
   await page.waitForSelector('.food-order-item:has-text("Wasser")', { state: 'detached' });
+
+  // A previously paid group becomes payable again when a new priced position
+  // is added. The full group sum is shown, while the already-paid item stays
+  // assigned to its original confirmer when the new item is paid.
+  await group.locator('[data-group-pay]').click();
+  await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
+  await page.click('[data-confirm-ok]');
+  await page.waitForSelector('.food-order-paid-marker:has-text("Bezahlt")');
+  await page.fill('[data-item-desc]', 'Nachtrag nach Bestätigung');
+  await page.fill('[data-item-quantity]', '1');
+  await page.fill('[data-item-price]', '4,00');
+  await page.click('[data-add-item-form] button[type="submit"]');
+  await page.waitForSelector('text=Nachtrag nach Bestätigung');
+  await page.waitForSelector('.food-order-paid-marker:has-text("Offen")');
+  assert.equal(await group.locator('.food-order-group-amount').innerText(), '25,30 €');
+  assert.equal(await group.locator('[data-group-pay]').isDisabled(), false);
+  await group.locator('[data-group-pay]').click();
+  await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
+  assert.match(await page.locator('.modal-body p').first().innerText(), /25,30 € für/);
+  await page.click('[data-confirm-cancel]');
+  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+  await group.locator('[data-group-pay]').click();
+  await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
+  await page.click('[data-confirm-ok]');
+  await page.waitForSelector('text=1 Position als bezahlt markiert.');
+  await page.waitForSelector('.food-order-paid-marker:has-text("Bezahlt")');
 
   await page.keyboard.press('Control+K');
   await page.fill('#global-search-input', 'Margherita groß');
@@ -2252,7 +2278,8 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
     { description: 'Nullbetrag', priceCents: 0 },
     { description: 'Preis noch offen' },
   ]);
-  const { group: zeroGroup } = await openScenario(zeroScenario);
+  const { card: zeroCard, group: zeroGroup } = await openScenario(zeroScenario);
+  assert.match(await zeroCard.locator('.food-order-total').innerText(), /Gesamtsumme.*unvollständig[\s\S]*0,00/);
   assert.equal(await zeroGroup.locator('.food-order-group-meta').innerText(), '2 Positionen · Preis fehlt');
   assert.equal(await zeroGroup.locator('.food-order-group-amount').innerText(), '0,00 €');
   assert.equal(await zeroGroup.locator('.food-order-group-copy').getAttribute('data-copy-food-total'), '0,00 €');

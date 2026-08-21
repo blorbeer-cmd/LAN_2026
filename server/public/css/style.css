@@ -4059,6 +4059,10 @@ input[type='number'].tournament-score-input {
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
 }
+.food-order-group.is-all-paid {
+  background: transparent;
+  opacity: 0.78;
+}
 .food-order-group-header {
   display: flex;
   align-items: center;
