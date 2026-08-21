@@ -2272,6 +2272,35 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
     'Bestellung geschlossen – keine Änderungen mehr möglich',
   );
 
+  // In a mixed group, a paid legacy position may be present after a new item
+  // was added. It is still part of the initial group and its disappearance
+  // must abort the handoff, while the paid-state race only covers open items.
+  const mixedDeleteScenario = await createScenario('Freshness gelöschte Altposition', [
+    { description: 'Bereits bezahlte Altposition', priceCents: 5_00 },
+    { description: 'Offener Nachtrag', priceCents: 4_00 },
+  ]);
+  const paidResponse = await page.request.patch(`${BASE_URL}/api/food-orders/${mixedDeleteScenario.id}/items/${mixedDeleteScenario.itemIds[0]}`, { data: { paid: true } });
+  assert.equal(paidResponse.status(), 200, await paidResponse.text());
+  const { group: mixedDeleteGroup } = await openScenario(mixedDeleteScenario);
+  let mixedDeleteIntercepted = false;
+  const mixedDeleteRoute = async (route: import('playwright').Route) => {
+    if (!mixedDeleteIntercepted && route.request().method() === 'GET') {
+      mixedDeleteIntercepted = true;
+      const response = await page.request.delete(`${BASE_URL}/api/food-orders/${mixedDeleteScenario.id}/items/${mixedDeleteScenario.itemIds[0]}`, { data: { playerId: alice.id } });
+      assert.equal(response.status(), 200, await response.text());
+    }
+    await route.continue();
+  };
+  await page.route('**/api/food-orders', mixedDeleteRoute);
+  try {
+    await mixedDeleteGroup.locator('[data-group-pay]').click();
+    await page.waitForSelector('.toast-error:has-text("Eine Position existiert nicht mehr. Bitte Betrag prüfen.")');
+    assert.equal(mixedDeleteIntercepted, true);
+  } finally {
+    await page.unroute('**/api/food-orders', mixedDeleteRoute);
+  }
+  await cleanupScenario(mixedDeleteScenario);
+
   // A zero-priced position is still a valid priced position. Together with a
   // missing price it must expose the 0,00 € subtotal and keep its copy action.
   const zeroScenario = await createScenario('Freshness Nullbetrag plus offen', [
@@ -2284,6 +2313,9 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
   assert.equal(await zeroGroup.locator('.food-order-group-amount').innerText(), '0,00 €');
   assert.equal(await zeroGroup.locator('.food-order-group-copy').getAttribute('data-copy-food-total'), '0,00 €');
   assert.equal(await zeroGroup.locator('[data-group-pay]').isDisabled(), true);
+  await zeroGroup.locator('[data-toggle-group-paid]').click();
+  await page.waitForSelector('.food-order-paid-marker:has-text("Bezahlt")');
+  assert.equal(await zeroGroup.locator('.food-order-group-amount').evaluate((el) => getComputedStyle(el).textDecorationLine), 'line-through');
   await cleanupScenario(zeroScenario);
 
   // While the first fresh GET is paused, an item add triggers the realtime
@@ -2381,6 +2413,7 @@ flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for
   await page.waitForSelector('.food-order-card-header-toggle');
   assert.equal(await groupOrderCard.locator('.food-order-card-header-toggle').count(), 1);
   assert.equal(await listOrderCard.locator('.food-order-card-header-toggle').count(), 1);
+  assert.equal(await groupOrderCard.locator('.food-order-card-header-toggle .food-order-card-title').innerText(), 'Gruppen-Test-Bestellung');
   await listOrderCard.locator('.food-order-card-header-toggle').click();
   assert.equal(await groupOrderCard.locator('.food-order-card-body').getAttribute('hidden'), '');
   assert.equal(await groupOrderCard.locator('.food-order-card-body').isVisible(), false);

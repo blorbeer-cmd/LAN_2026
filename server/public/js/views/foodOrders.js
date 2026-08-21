@@ -364,11 +364,12 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
 
   const hasPriced = items.some((i) => i.priceCents !== null);
   const partialTotal = hasPriced ? formatCents(totalCents) : null;
+  const amountStateClass = allPaid ? ' is-paid' : '';
   const amountHtml = allPriced
-    ? `<span class="food-order-group-amount ${allPaid ? 'is-paid' : ''}">${formatCents(totalCents)}</span>`
+    ? `<span class="food-order-group-amount${amountStateClass}">${formatCents(totalCents)}</span>`
     : partialTotal
-      ? `<span class="food-order-group-amount muted food-order-group-partial">${partialTotal}</span>`
-      : '<span class="food-order-group-amount muted">Betrag offen</span>';
+      ? `<span class="food-order-group-amount${amountStateClass} muted food-order-group-partial">${partialTotal}</span>`
+      : `<span class="food-order-group-amount${amountStateClass} muted">Betrag offen</span>`;
 
   const paidNames = groupPaidNames(items);
   const paidTitle = allPaid
@@ -802,10 +803,14 @@ function renderOpenOrder(order, myId, { collapsible = false } = {}) {
   return `
     <div class="card stack food-order-card" data-order-card="${order.id}">
       <div class="row-between food-order-card-header">
-        <strong class="food-order-card-title">${escapeHtml(order.title)}</strong>
+        ${collapsible
+          ? `<button type="button" class="food-order-card-header-toggle" data-order-toggle="${order.id}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="food-order-card-body-${order.id}" aria-label="Bestellung ${escapeHtml(order.title)} ${expanded ? 'einklappen' : 'ausklappen'}">
+               ${icon('chevronRight', { className: 'food-order-card-chevron' })}
+               <strong class="food-order-card-title">${escapeHtml(order.title)}</strong>
+             </button>`
+          : `<strong class="food-order-card-title">${escapeHtml(order.title)}</strong>`}
         <span class="food-order-card-header-end">
           <span class="badge badge-playing">Offen</span>
-          ${collapsible ? `<button type="button" class="food-order-card-header-toggle" data-order-toggle="${order.id}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="food-order-card-body-${order.id}" aria-label="Bestellung ${escapeHtml(order.title)} ${expanded ? 'einklappen' : 'ausklappen'}">${icon('chevronRight', { className: 'food-order-card-chevron' })}</button>` : ''}
         </span>
       </div>
       ${bodyHtml.replace('class="food-order-card-body stack"', `id="food-order-card-body-${order.id}" class="food-order-card-body stack"`)}
@@ -940,6 +945,7 @@ async function handleGroupPay(order, playerId, ctx) {
   const groupItems = order.items.filter((item) => item.playerId === playerId);
   if (groupItems.length === 0 || !order.paypalLink) return;
 
+  const initialItemIds = groupItems.map((item) => item.id);
   const initialUnpaidItemIds = groupItems.filter((item) => !item.paid).map((item) => item.id);
   const email = paypalEmailFromLink(order.paypalLink);
   const popup = window.open('', '_blank');
@@ -966,7 +972,7 @@ async function handleGroupPay(order, playerId, ctx) {
     return;
   }
   const freshGroupItems = freshOrder.items.filter((item) => item.playerId === playerId);
-  if (initialUnpaidItemIds.some((id) => !freshGroupItems.some((item) => item.id === id))) {
+  if (initialItemIds.some((id) => !freshGroupItems.some((item) => item.id === id))) {
     popup?.close();
     showToast('Eine Position existiert nicht mehr. Bitte Betrag prüfen.', { error: true });
     ctx.rerender();
