@@ -1982,11 +1982,25 @@ flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und
   assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
 
   const group = page.locator('.food-order-group', { hasText: alice.name });
-  await page.waitForSelector('.food-order-paid-marker:has-text("Offen")');
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt?")');
   assert.equal(await group.locator('.food-order-paid-marker').getAttribute('aria-pressed'), 'false');
+  const openMarkerGeometry = await group.locator('.food-order-paid-marker').evaluate((marker) => {
+    const rect = marker.getBoundingClientRect();
+    return { left: rect.left, width: rect.width };
+  });
   assert.equal(await group.locator('.food-order-group-amount').innerText(), '20,90 €');
   assert.equal(await group.locator('[data-group-pay]').count(), 1);
   assert.equal(await page.locator('.food-order-item [data-group-pay]').count(), 0);
+  const groupActionOrder = await group.locator('.food-order-group-actions').evaluate((actions) =>
+    Array.from(actions.children).map((child) => {
+      if (child.matches('[data-copy-food-total]')) return 'copy';
+      if (child.matches('[data-group-pay]')) return 'paypal';
+      if (child.matches('[data-toggle-group-paid]')) return 'paid';
+      if (child.matches('[data-remove-group]')) return 'remove';
+      return 'spacer';
+    })
+  );
+  assert.deepEqual(groupActionOrder, ['copy', 'paypal', 'paid', 'remove']);
 
   await page.evaluate(() => {
     const original = window.open;
@@ -2036,7 +2050,12 @@ flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und
   await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
   await page.click('[data-confirm-ok]');
   await page.waitForSelector('text=1 Position als bezahlt markiert.');
-  await page.waitForSelector('.food-order-paid-marker:has-text("Bezahlt")');
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="true"]:has-text("Bezahlt")');
+  const paidMarkerGeometry = await group.locator('.food-order-paid-marker').evaluate((marker) => {
+    const rect = marker.getBoundingClientRect();
+    return { left: rect.left, width: rect.width };
+  });
+  assert.deepEqual(paidMarkerGeometry, openMarkerGeometry);
   await waitForTextDecoration(group.locator('.food-order-group-amount'), 'line-through');
   await waitForTextDecoration(marghieRow.locator('.food-order-item-description'), 'line-through');
   await waitForTextDecoration(marghieRow.locator('.food-order-item-amount'), 'line-through');
@@ -2048,7 +2067,7 @@ flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und
   assert.match((await group.locator('.food-order-paid-marker').getAttribute('title')) ?? '', new RegExp('Bezahlt, bestätigt von ' + alice.name));
 
   await group.locator('[data-toggle-group-paid]').click();
-  await page.waitForSelector('.food-order-paid-marker:has-text("Offen")');
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt?")');
   await waitForTextDecoration(marghieRow.locator('.food-order-item-description'), 'none');
 
   await page.fill('[data-item-desc]', 'Wasser');
@@ -2082,14 +2101,19 @@ flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und
   await group.locator('[data-group-pay]').click();
   await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
   await page.click('[data-confirm-ok]');
-  await page.waitForSelector('.food-order-paid-marker:has-text("Bezahlt")');
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="true"]:has-text("Bezahlt")');
   await page.fill('[data-item-desc]', 'Nachtrag nach Bestätigung');
   await page.fill('[data-item-quantity]', '1');
   await page.fill('[data-item-price]', '4,00');
   await page.click('[data-add-item-form] button[type="submit"]');
   await page.waitForSelector('text=Nachtrag nach Bestätigung');
-  await page.waitForSelector('.food-order-paid-marker:has-text("Offen")');
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt?")');
   assert.equal(await group.locator('.food-order-group-amount').innerText(), '25,30 €');
+  const changedTotalMarkerGeometry = await group.locator('.food-order-paid-marker').evaluate((marker) => {
+    const rect = marker.getBoundingClientRect();
+    return { left: rect.left, width: rect.width };
+  });
+  assert.deepEqual(changedTotalMarkerGeometry, openMarkerGeometry);
   assert.equal(await group.locator('[data-group-pay]').isDisabled(), false);
   await group.locator('[data-group-pay]').click();
   await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
@@ -2103,7 +2127,7 @@ flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und
   await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
   await page.click('[data-confirm-ok]');
   await page.waitForSelector('text=1 Position als bezahlt markiert.');
-  await page.waitForSelector('.food-order-paid-marker:has-text("Bezahlt")');
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="true"]:has-text("Bezahlt")');
 
   await page.keyboard.press('Control+K');
   await page.fill('#global-search-input', 'Margherita groß');
@@ -2246,7 +2270,7 @@ flowTest('food-orders', 'Essensbestellung: orderer groups collapse/expand and pa
   const bobGroupAfterLink = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' }).locator('.food-order-group', { hasText: 'E2E Bob' });
   const bobMarker = bobGroupAfterLink.locator('[data-toggle-group-paid]');
   await bobMarker.click();
-  await page.waitForSelector('.food-order-group .food-order-paid-marker:has-text("Bezahlt")');
+  await bobGroupAfterLink.locator('.food-order-paid-marker[aria-pressed="true"]:has-text("Bezahlt")').waitFor();
   assert.equal(await bobGroupAfterLink.locator('[data-group-pay]').isDisabled(), true);
   assert.equal(await bobGroupAfterLink.locator('[data-toggle-group-paid]').getAttribute('aria-pressed'), 'true');
   assert.equal(await bobGroupAfterLink.locator('.food-order-item .food-order-paid-marker').count(), 0);
@@ -2262,6 +2286,16 @@ flowTest('food-orders', 'Essensbestellung: orderer groups collapse/expand and pa
     return {
       markerWidth: marker?.getBoundingClientRect().width ?? 0,
       markerHeight: marker?.getBoundingClientRect().height ?? 0,
+      controlBounds: controls.map((control) => {
+        const rect = control.getBoundingClientRect();
+        return {
+          name: control.getAttribute('aria-label') ?? control.textContent?.trim() ?? control.tagName,
+          left: rect.left,
+          right: rect.right,
+          width: rect.width,
+        };
+      }),
+      headerBounds: { left: box.left, right: box.right },
       controlsVisible: controls.every((control) => {
         const rect = control.getBoundingClientRect();
         return rect.width > 0 && rect.left >= box.left - 1 && rect.right <= box.right + 1;
@@ -2271,7 +2305,7 @@ flowTest('food-orders', 'Essensbestellung: orderer groups collapse/expand and pa
   });
   assert.ok(narrowGroupLayout.markerWidth <= 100);
   assert.ok(narrowGroupLayout.markerHeight >= 32);
-  assert.equal(narrowGroupLayout.controlsVisible, true);
+  assert.equal(narrowGroupLayout.controlsVisible, true, JSON.stringify(narrowGroupLayout));
   assert.equal(narrowGroupLayout.pageFits, true);
   await page.setViewportSize({ width: 390, height: 844 });
 
@@ -2280,7 +2314,7 @@ flowTest('food-orders', 'Essensbestellung: orderer groups collapse/expand and pa
   await switchIdentityAndOpenFoodOrders('E2E Bob');
   const bobPaidGroup = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' }).locator('.food-order-group', { hasText: 'E2E Bob' });
   await bobPaidGroup.locator('[data-toggle-group-paid]').click();
-  await page.waitForSelector('.food-order-paid-marker:has-text("Offen")');
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt?")');
 });
 
 flowTest('food-orders', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten und bleibt synchron', async () => {
@@ -2513,7 +2547,7 @@ flowTest('food-orders', 'Essensbestellung: PayPal-Handoff verwirft veraltete Dat
   assert.equal(await zeroGroup.locator('.food-order-group-copy').getAttribute('data-copy-food-total'), '0,00 €');
   assert.equal(await zeroGroup.locator('[data-group-pay]').isDisabled(), true);
   await zeroGroup.locator('[data-toggle-group-paid]').click();
-  await page.waitForSelector('.food-order-paid-marker:has-text("Bezahlt")');
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="true"]:has-text("Bezahlt")');
   await waitForTextDecoration(zeroGroup.locator('.food-order-group-amount'), 'line-through');
   await cleanupScenario(zeroScenario);
 
@@ -3097,7 +3131,7 @@ flowTest('food-orders', 'Essensbestellung: marking a position paid does not scro
   assert.ok(scrollTopBeforeToggle > 0);
 
   await lastRow.evaluate((row) => (row.closest('[data-order-card]')?.querySelector('[data-toggle-group-paid]') as HTMLElement | null)?.click());
-  await orderCard.locator('.food-order-paid-marker:has-text("Bezahlt")').waitFor();
+  await orderCard.locator('.food-order-paid-marker[aria-pressed="true"]:has-text("Bezahlt")').waitFor();
   // Give the realtime echo of this device's own change time to arrive and
   // (if the regression came back) trigger its reload.
   await page.waitForTimeout(300);

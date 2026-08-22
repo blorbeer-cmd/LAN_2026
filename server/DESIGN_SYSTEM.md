@@ -194,6 +194,8 @@ columns without making names or avatars too cramped.
 around the physical seating plan the same size; the compact size preserves that equality on phones.
 `--assignment-select-width` (112px) keeps repeated player-to-team selectors aligned independently
 of player-name length.
+`--payment-marker-width` (96px, 88px only below 360px) keeps the food-order payment toggle stable
+directly beside its PayPal action while the label, position count and amount change.
 `--notification-panel-width` (360px) caps the header notification center while it remains
 viewport-responsive on phones.
 `--search-panel-width` (640px) gives the global search palette enough room for titles and short
@@ -646,7 +648,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Payment is a per-person handoff, never a per-position action. Each orderer group shows the
   quantity-weighted meta line (`<n> Positionen`, plus `Preis fehlt` when necessary), the complete
   tip-inclusive person sum with a small `inkl. x % Trinkgeld` line when a tip is set, a copy action, a PayPal action when the order has a link, and one two-state
-  paid marker. `Offen` uses a dashed circle; `Bezahlt` uses a green check and names the confirmer.
+  paid marker. `Bezahlt?` uses a dashed circle; `Bezahlt` uses a green check and names the confirmer.
+  Its fixed-width slot follows directly to the right of the PayPal action in the group action
+  cluster, so label, position and total changes do not move it.
   The marker is derived from the group's items, is available to every authenticated member, and is
   disabled only after finalization. Both marking and reversing happen directly without a confirmation;
   the paid marker's tooltip names existing confirmers. A group delete is available only for the current
