@@ -46,12 +46,14 @@ import { isGroupAdmin } from '../groupContext.js';
 // from its own endpoint, not part of the main loadAll() round-trip.
 let historyCache = null;
 let historyLoading = false;
+let historyStale = false;
 let historyOpen = false;
 let historyRequestVersion = 0;
 
 async function loadHistory(ctx) {
   const requestVersion = ++historyRequestVersion;
   historyLoading = true;
+  historyStale = false;
   try {
     const res = await api.votes.history();
     if (requestVersion === historyRequestVersion) historyCache = res.history;
@@ -68,10 +70,11 @@ async function loadHistory(ctx) {
 // Called from app.js whenever a votes:changed event reports the round is no
 // longer open, so a freshly closed round shows up next time this view opens
 // instead of whatever the last fetch happened to see.
-export function invalidateVoteHistory() {
+export function invalidateVoteHistory({ hard = false } = {}) {
   historyRequestVersion += 1;
-  historyCache = null;
   historyLoading = false;
+  historyStale = true;
+  if (hard) historyCache = null;
 }
 
 // Switching the active event is a harder reset than a votes:changed refresh:
@@ -81,7 +84,7 @@ export function invalidateVoteHistory() {
 // someone is still working on), so the event switch needs its own entry
 // point rather than a stronger version of that one.
 export function invalidateVoteEventScope() {
-  invalidateVoteHistory();
+  invalidateVoteHistory({ hard: true });
   mineCache = null;
   mineCacheKey = null;
   mineLoading = false;
@@ -412,7 +415,7 @@ function renderVoteRanking(results, mode, winnerGameIds) {
 // ---------- current vote: the most recent closed round, straight from history ----------
 
 function renderCurrentVote({ allowRunoff = false } = {}) {
-  if (historyLoading || historyCache === null) {
+  if (historyCache === null) {
     return emptyStateHtml('Lädt…', { className: 'vote-empty-state', style: 'padding:var(--space-4);' });
   }
   if (historyCache.length === 0) {
@@ -446,7 +449,7 @@ function renderCurrentVote({ allowRunoff = false } = {}) {
 // ---------- history: list + reopen a past round's full detail ----------
 
 function renderHistory() {
-  if (historyLoading || historyCache === null) {
+  if (historyCache === null) {
     return emptyStateHtml('Lädt…', { className: 'vote-empty-state', style: 'padding:var(--space-4);' });
   }
   if (historyCache.length === 0) {
@@ -516,7 +519,7 @@ export function renderVotes(container, ctx) {
   if (!votes.open && lastRenderedRoundOpen) resetVoteGameSelection();
   lastRenderedRoundOpen = votes.open;
 
-  if (historyCache === null && !historyLoading) {
+  if ((historyCache === null || historyStale) && !historyLoading) {
     loadHistory(ctx);
   }
 

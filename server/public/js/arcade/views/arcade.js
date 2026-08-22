@@ -97,6 +97,7 @@ let quizOpponent = 'human';
 let match = null;
 let currentQuestion = null;
 let lastResult = null;
+let quizAnswerHadFocusBeforePause = false;
 let countdownInterval = null;
 let customTarget = '5';
 
@@ -124,9 +125,9 @@ function updateCountdownBadge() {
   const badge = document.querySelector('#quiz-countdown');
   if (!badge) return;
   const left = secondsLeft();
-  badge.textContent = `${left}s`;
-  badge.classList.toggle('badge-paused', left <= 5);
-  badge.classList.toggle('badge-playing', left > 5);
+  badge.textContent = match?.paused ? 'Pause' : `${left}s`;
+  badge.classList.toggle('badge-paused', match?.paused || left <= 5);
+  badge.classList.toggle('badge-playing', !match?.paused && left > 5);
   if (!match?.paused && left > 0 && left <= 5) playArcadeSound('quiz-tick');
 }
 
@@ -206,14 +207,15 @@ function ensureSocket(ctx) {
   });
   socket.on('arcade:match:paused', (payload) => {
     if (payload.scores) match = { ...(match ?? {}), scores: payload.scores, paused: true, remainingMs: payload.remainingMs };
+    quizAnswerHadFocusBeforePause = document.activeElement?.id === 'quiz-answer';
     stopCountdown();
-    rerenderIfView(ctx, 'quizRoom');
+    if (currentView() === 'quizRoom') updateQuizPauseUi();
   });
   socket.on('arcade:match:resumed', (payload) => {
     if (payload.scores) match = { ...(match ?? {}), scores: payload.scores, paused: false, remainingMs: null };
     if (currentQuestion && payload.expiresAt) currentQuestion = { ...currentQuestion, expiresAt: payload.expiresAt };
     startCountdown();
-    rerenderIfView(ctx, 'quizRoom');
+    if (currentView() === 'quizRoom') updateQuizPauseUi();
   });
   socket.on('arcade:match:opponent-left', () => {
     showToast('Ein Spieler hat das Match verlassen.', { error: true });
@@ -743,22 +745,12 @@ function wireQuizMatch(container) {
     input.focus();
   });
 
-  container.querySelector('#quiz-pause')?.addEventListener('click', async () => {
-    const res = await emitWithAck('arcade:match:pause', { matchId: match?.matchId, playerId: getMyId() });
-    if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
-  });
-
-  container.querySelector('#quiz-resume')?.addEventListener('click', async () => {
-    const res = await emitWithAck('arcade:match:resume', { matchId: match?.matchId, playerId: getMyId() });
-    if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
-  });
-
+  wireQuizPauseControl(container);
   container.querySelector('#quiz-finish')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
     const res = await emitWithAck('arcade:match:finish', { matchId: match?.matchId, playerId: getMyId() });
     if (!res?.ok) showToast(res?.error || 'Beenden fehlgeschlagen.', { error: true });
   });
-
   container.querySelector('#quiz-leave')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
     const res = await emitWithAck('arcade:match:leave', { matchId: match?.matchId, playerId: getMyId() });
@@ -772,4 +764,36 @@ function wireQuizMatch(container) {
     stopCountdown();
     navigate('arcade');
   });
+}
+
+function wireQuizPauseControl(container) {
+  container.querySelector('#quiz-pause')?.addEventListener('click', async () => {
+    const res = await emitWithAck('arcade:match:pause', { matchId: match?.matchId, playerId: getMyId() });
+    if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
+  });
+
+  container.querySelector('#quiz-resume')?.addEventListener('click', async () => {
+    const res = await emitWithAck('arcade:match:resume', { matchId: match?.matchId, playerId: getMyId() });
+    if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
+  });
+
+}
+
+function updateQuizPauseUi() {
+  updateCountdownBadge();
+  const answer = document.querySelector('#quiz-answer');
+  const submit = document.querySelector('#quiz-answer-form button[type="submit"]');
+  if (answer) answer.disabled = match.paused;
+  if (submit) submit.disabled = match.paused;
+  const button = document.querySelector('#quiz-pause, #quiz-resume');
+  if (button) {
+    button.outerHTML = match.paused
+      ? '<button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-resume">Fortsetzen</button>'
+      : '<button type="button" class="btn btn-sm btn-equal" id="quiz-pause">Pausieren</button>';
+    wireQuizPauseControl(document);
+  }
+  if (!match.paused && quizAnswerHadFocusBeforePause && answer) {
+    answer.focus();
+    quizAnswerHadFocusBeforePause = false;
+  }
 }
