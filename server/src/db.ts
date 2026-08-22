@@ -61,6 +61,10 @@ db.exec(`
     ends_at          INTEGER,
     location         TEXT,
     description      TEXT,
+    cost_cents       INTEGER CHECK (cost_cents IS NULL OR cost_cents > 0),
+    paypal_link      TEXT,
+    payment_due_at   INTEGER,
+    created_by       TEXT REFERENCES players(id) ON DELETE SET NULL,
     tracking_enabled INTEGER NOT NULL DEFAULT 0,
     ended_at         INTEGER,
     is_test          INTEGER NOT NULL DEFAULT 0 -- admin-generated historical fixture; removable without touching real LANs
@@ -73,6 +77,9 @@ db.exec(`
     event_id  TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     status    TEXT NOT NULL DEFAULT 'accepted' CHECK (status IN ('invited', 'accepted', 'declined')),
+    paid      INTEGER NOT NULL DEFAULT 0 CHECK (paid IN (0, 1)),
+    paid_by   TEXT REFERENCES players(id) ON DELETE SET NULL,
+    paid_at   INTEGER,
     PRIMARY KEY (event_id, player_id)
   );
 
@@ -3826,6 +3833,74 @@ registerMigration({
   version: 78,
   name: 'widen onboarding core step bound for event selection',
   up: widenOnboardingCoreStepBoundAgain,
+});
+
+// Events can collect one fixed contribution per accepted participant. The
+// creator is persisted explicitly because creator-only payment corrections
+// cannot be inferred safely for historical events; those rows intentionally
+// keep created_by NULL. Existing participants start unpaid.
+function addEventPaymentColumns(): void {
+  const eventColumns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  const hasEventColumn = (name: string) => eventColumns.some((column) => column.name === name);
+  if (!hasEventColumn('cost_cents')) {
+    db.exec('ALTER TABLE events ADD COLUMN cost_cents INTEGER CHECK (cost_cents IS NULL OR cost_cents > 0)');
+  }
+  if (!hasEventColumn('paypal_link')) db.exec('ALTER TABLE events ADD COLUMN paypal_link TEXT');
+  if (!hasEventColumn('created_by')) {
+    db.exec('ALTER TABLE events ADD COLUMN created_by TEXT REFERENCES players(id) ON DELETE SET NULL');
+  }
+
+  const participantColumns = db.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  if (!participantColumns.some((column) => column.name === 'paid')) {
+    db.exec('ALTER TABLE event_participants ADD COLUMN paid INTEGER NOT NULL DEFAULT 0 CHECK (paid IN (0, 1))');
+  }
+}
+registerMigration({
+  version: 79,
+  name: 'add event costs and participant payment state',
+  up: addEventPaymentColumns,
+});
+
+// Event contributions use the same durable two-hour reminder policy as food
+// orders. One row per participant/event is enough to survive restarts and
+// bounded push-log cleanup without sending too often.
+function addEventPaymentReminderState(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS event_payment_reminders (
+      group_id     TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id     TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      last_sent_at INTEGER NOT NULL,
+      PRIMARY KEY (group_id, event_id, player_id)
+    );
+  `);
+}
+registerMigration({
+  version: 80,
+  name: 'add event payment reminder state',
+  up: addEventPaymentReminderState,
+});
+
+// Payment provenance mirrors food-order confirmations, while an optional
+// due timestamp lets organizers defer reminders until the contribution is
+// actually due. Legacy paid rows stay valid with unknown confirmer/time.
+function addEventPaymentAuditAndDueDate(): void {
+  const eventColumns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  if (!eventColumns.some((column) => column.name === 'payment_due_at')) {
+    db.exec('ALTER TABLE events ADD COLUMN payment_due_at INTEGER');
+  }
+  const participantColumns = db.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  if (!participantColumns.some((column) => column.name === 'paid_by')) {
+    db.exec('ALTER TABLE event_participants ADD COLUMN paid_by TEXT REFERENCES players(id) ON DELETE SET NULL');
+  }
+  if (!participantColumns.some((column) => column.name === 'paid_at')) {
+    db.exec('ALTER TABLE event_participants ADD COLUMN paid_at INTEGER');
+  }
+}
+registerMigration({
+  version: 81,
+  name: 'add event payment audit and due date',
+  up: addEventPaymentAuditAndDueDate,
 });
 
 runRegisteredMigrations();

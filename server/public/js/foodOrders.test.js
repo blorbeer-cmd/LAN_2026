@@ -26,9 +26,11 @@ test('normalizePaypalInput returns null for empty input', () => {
   assert.equal(normalizePaypalInput(undefined), null);
 });
 
-test('normalizePaypalInput passes a full http(s) URL through unchanged', () => {
+test('normalizePaypalInput keeps full URLs and upgrades PayPal.me to HTTPS', () => {
   assert.equal(normalizePaypalInput('https://paypal.me/luigi'), 'https://paypal.me/luigi');
   assert.equal(normalizePaypalInput('http://example.com/pay'), 'http://example.com/pay');
+  assert.equal(normalizePaypalInput('http://paypal.me/luigi'), 'https://paypal.me/luigi');
+  assert.equal(normalizePaypalInput('http://www.paypal.me/luigi'), 'https://www.paypal.me/luigi');
 });
 
 test('normalizePaypalInput turns a bare PayPal.me name into a full link', () => {
@@ -69,6 +71,7 @@ test('paypalEmailFromLink treats malformed recipient encoding as a normal URL', 
 
 test('paypalPayUrl appends the amount to a bare paypal.me link', () => {
   assert.equal(paypalPayUrl('https://paypal.me/luigi', 2090), 'https://paypal.me/luigi/20.90EUR');
+  assert.equal(paypalPayUrl('http://paypal.me/luigi', 2090), 'https://paypal.me/luigi/20.90EUR');
 });
 
 test('paypalPayUrl leaves an email-based send-money link unchanged (no amount can be pre-filled)', () => {

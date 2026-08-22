@@ -305,12 +305,13 @@ export const api = {
 
   events: {
     list: () => apiFetch('/api/events'),
+    get: (id) => apiFetch(`/api/events/${id}`),
     active: () => apiFetch('/api/events/active'),
     activate: (eventId) =>
       apiFetch('/api/me/active-event', { method: 'PUT', body: JSON.stringify({ eventId }) }),
-    // data: { name, startsAt, endsAt, location?, description? }
+    // data: { name, startsAt, endsAt, location?, description?, costCents?, paypalLink?, paymentDueAt? }
     create: (data) => apiFetch('/api/events', { method: 'POST', body: JSON.stringify(data) }),
-    // fields: any subset of { name?, startsAt?, endsAt?, location?, description? }
+    // fields: any subset of { name?, startsAt?, endsAt?, location?, description?, costCents?, paypalLink?, paymentDueAt? }
     update: (id, fields) => apiFetch(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(fields) }),
     startTracking: (id) => apiFetch(`/api/events/${id}/tracking/start`, { method: 'POST' }),
     restart: (id) => apiFetch(`/api/events/${id}/restart`, { method: 'POST' }),
@@ -323,6 +324,16 @@ export const api = {
       apiFetch(`/api/events/${id}/invitations`, { method: 'POST', body: JSON.stringify({ playerId }) }),
     removeParticipant: (id, playerId) =>
       apiFetch(`/api/events/${id}/participants/${playerId}`, { method: 'DELETE' }),
+    setParticipantPaid: (id, playerId, paid) =>
+      apiFetch(`/api/events/${id}/participants/${playerId}/payment`, {
+        method: 'PATCH',
+        body: JSON.stringify({ paid }),
+      }),
+    setAllParticipantsPaid: (id) =>
+      apiFetch(`/api/events/${id}/participants/payment`, {
+        method: 'PATCH',
+        body: JSON.stringify({ paid: true }),
+      }),
     acceptInvitation: (id) => apiFetch(`/api/events/${id}/invitation/accept`, { method: 'POST' }),
     declineInvitation: (id) => apiFetch(`/api/events/${id}/invitation/decline`, { method: 'POST' }),
   },

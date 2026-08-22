@@ -21,6 +21,9 @@ import { icon } from '../icons.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { formatEuroCents as formatCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
+
+export { normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
 
 let cache = null;
 let loading = false;
@@ -255,12 +258,6 @@ export function parsePriceToCents(raw) {
   return Math.round(value * 100);
 }
 
-const euroFormatter = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-
-function formatCents(cents) {
-  return euroFormatter.format(cents / 100);
-}
-
 async function copyFoodOrderValue(value, label) {
   if (!navigator.clipboard?.writeText) {
     showToast('Kopieren ist in diesem Browser nicht verfügbar.', { error: true });
@@ -291,69 +288,6 @@ function copyPaypalAddressToClipboard(address) {
 
 export function addTipToCents(cents, tipPercent) {
   return Math.round(cents * (1 + (tipPercent || 0) / 100));
-}
-
-// Turns a stored PayPal(.me) link into a payable one: a bare
-// "paypal.me/name" link gets the exact owed amount appended so paying is one
-// tap; anything else (already has a path/amount, or some other payment page
-// entirely) opens unchanged rather than risk mangling a URL the creator
-// typed on purpose.
-export function paypalPayUrl(paypalLink, cents) {
-  const bareMatch = paypalLink.match(/^(https?:\/\/(?:www\.)?paypal\.me\/[^/?#]+)\/?$/i);
-  if (bareMatch && cents > 0) {
-    return `${bareMatch[1]}/${(cents / 100).toFixed(2)}EUR`;
-  }
-  return paypalLink;
-}
-
-// PayPal has no public URL that pre-fills a payment's recipient by email
-// (the old cmd=_send-money trick is long dead) — so an email address can't
-// become a one-tap payment link the way a paypal.me name can. The best we
-// can do is send people to PayPal's generic "send money" page and put the
-// address on the clipboard so they only have to paste it. The email is
-// tucked into the (otherwise unused by PayPal) recipient query param purely
-// so paypalEmailFromLink can recover it later for that clipboard copy.
-const PAYPAL_EMAIL_LINK_RE = /^https:\/\/www\.paypal\.com\/myaccount\/transfer\/homepage\/pay\?recipient=([^&]+)$/i;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// The email this order's PayPal link was built from, or null if the link
-// isn't one of ours (a paypal.me link or some other payment page).
-export function paypalEmailFromLink(paypalLink) {
-  const match = (paypalLink ?? '').match(PAYPAL_EMAIL_LINK_RE);
-  if (!match) return null;
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    // The API accepts arbitrary HTTP(S) URLs. Treat malformed percent
-    // encoding as an ordinary PayPal URL instead of breaking Essen while it
-    // renders the order card.
-    return null;
-  }
-}
-
-// Lets people type just their paypal.me name ("blorbeer", "@blorbeer",
-// pasted "paypal.me/blorbeer" without a scheme, …) instead of having to
-// paste the whole https://paypal.me/… URL, or their PayPal email address if
-// that's all they have (see paypalEmailFromLink for what that turns into).
-// A full http(s) link is passed through untouched so anyone who prefers a
-// different payment page can still use it. Returns null for empty input;
-// throws a user-facing message for input that's neither a link, an email,
-// nor a usable name.
-export function normalizePaypalInput(raw) {
-  const trimmed = (raw ?? '').trim();
-  if (!trimmed) return null;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  if (EMAIL_RE.test(trimmed)) {
-    return `https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=${encodeURIComponent(trimmed)}`;
-  }
-  const name = trimmed
-    .replace(/^@/, '')
-    .replace(/^(www\.)?paypal\.me\//i, '')
-    .replace(/\/+$/, '');
-  if (!name || /\s/.test(name)) {
-    throw new Error('PayPal-Link muss eine gültige URL, E-Mail-Adresse oder ein PayPal.me-Name ohne Leerzeichen sein.');
-  }
-  return `https://paypal.me/${name}`;
 }
 
 function itemsGroupedByPlayer(order) {
@@ -525,7 +459,7 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
       ? `Bezahlt, bestätigt von ${paidNames.join(', ')} – Markierung aufheben`
       : 'Bezahlt – Markierung aufheben'
     : `${items[0].playerName} als bezahlt markieren`;
-  const paidMarkerHtml = `<button type="button" class="food-order-paid-marker ${allPaid ? 'is-paid' : ''}" data-toggle-group-paid="${playerId}" data-order="${order.id}" ${locked ? 'disabled' : ''} aria-pressed="${allPaid ? 'true' : 'false'}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}">
+  const paidMarkerHtml = `<button type="button" class="payment-paid-marker food-order-paid-marker ${allPaid ? 'is-paid' : ''}" data-toggle-group-paid="${playerId}" data-order="${order.id}" ${locked ? 'disabled' : ''} aria-pressed="${allPaid ? 'true' : 'false'}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}">
     ${icon(allPaid ? 'check' : 'circleDashed')}<span>${allPaid ? 'Bezahlt' : 'Offen'}</span>
   </button>`;
 
@@ -538,7 +472,7 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
         : null;
   const payTitle = payDisabledReason || `${formatCents(totalCents)} für ${items[0].playerName} über PayPal bezahlen`;
   const payButtonHtml = order.paypalLink
-    ? `<button type="button" class="icon-btn food-order-item-action food-order-group-pay" data-group-pay="${playerId}" data-order="${order.id}" ${payDisabledReason ? 'disabled' : ''} title="${escapeHtml(payTitle)}" aria-label="${escapeHtml(payTitle)}">${icon('paypal')}</button>`
+    ? `<button type="button" class="icon-btn payment-paypal-button food-order-item-action food-order-group-pay" data-group-pay="${playerId}" data-order="${order.id}" ${payDisabledReason ? 'disabled' : ''} title="${escapeHtml(payTitle)}" aria-label="${escapeHtml(payTitle)}">${icon('paypal')}</button>`
     : '';
 
   const copyValue = allPriced || hasPriced ? formatCents(totalCents) : null;
