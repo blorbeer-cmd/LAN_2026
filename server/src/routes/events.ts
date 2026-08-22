@@ -116,9 +116,12 @@ function acceptedParticipantsForViewer(eventId: string, viewerId: string | undef
 }
 
 function eventParticipantsForViewer(eventId: string, viewerId: string | undefined, revealAllPayments: boolean) {
-  return getEventParticipants(eventId).map((participant) =>
-    paymentDetailsForViewer(participant, viewerId, revealAllPayments),
-  );
+  return getEventParticipants(eventId).map((participant) => ({
+    ...paymentDetailsForViewer(participant, viewerId, revealAllPayments),
+    // Administrative roster actions need to explain why removal is blocked,
+    // but non-payment managers must not receive amount, actor, or timestamp.
+    paymentLocked: Boolean(participant.paid),
+  }));
 }
 
 function canManageEventPayments(

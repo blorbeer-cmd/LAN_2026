@@ -373,6 +373,8 @@ test('manager invites a member who accepts and both open clients update', async 
   const creatorPaymentButton = memberRow.locator(`[data-modal-toggle-event-paid="${memberId}"]`);
   assert.equal(await creatorPaymentButton.getAttribute('aria-pressed'), 'true');
   assert.match((await memberRow.textContent()) ?? '', new RegExp(`Bezahlt von ${MEMBER_NAME}`));
+  assert.match((await memberRow.textContent()) ?? '', /Zahlung zuerst zurücksetzen/);
+  assert.equal(await memberRow.locator('[data-remove-participant]').isDisabled(), true);
   await creatorPaymentButton.click();
   await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member .badge-paused`, { hasText: 'Noch zu bezahlen' }).waitFor();
   assert.equal(await ownerPage.locator('.modal-backdrop [data-mark-all-event-paid]').count(), 0);

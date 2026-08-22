@@ -759,17 +759,18 @@ function renderParticipantManagerRows(event) {
       const participant = participants.get(p.id);
       const status = participant?.status;
       const presentation = status ? participationStatus(status) : null;
+      const paymentLocked = Boolean(participant?.paymentLocked ?? participant?.paid);
       const paidTitle = participant?.paid
         ? `${p.name}: Bezahlt – Markierung aufheben`
         : `${p.name} als bezahlt markieren`;
       return `
         <div class="event-participant-manager-row">
-          <span class="player-name"><span>${escapeHtml(p.name)}</span>${participant?.paid ? `<small class="event-payment-proof">${escapeHtml(paymentProof({ ...participant, playerId: p.id }))}</small>` : ''}</span>
+          <span class="player-name"><span>${escapeHtml(p.name)}</span>${participant?.paid ? `<small class="event-payment-proof">${escapeHtml(paymentProof({ ...participant, playerId: p.id }))}</small>` : ''}${paymentLocked ? '<small class="muted">Zahlung zuerst zurücksetzen</small>' : ''}</span>
           <span class="event-participant-manager-actions">
             ${presentation ? `<span class="badge ${presentation.badge}">${presentation.label}</span>` : ''}
             ${status === 'accepted' && canSetAnyPaid ? `<button type="button" class="payment-paid-marker ${participant.paid ? 'is-paid' : ''}" data-modal-toggle-event-paid="${p.id}" aria-pressed="${Boolean(participant.paid)}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}">${icon(participant.paid ? 'check' : 'circleDashed')}<span>${participant.paid ? 'Bezahlt' : 'Offen'}</span></button>` : ''}
             ${inviteAllowed && (!status || status === 'declined') ? `<button type="button" class="btn btn-sm" data-invite-participant="${p.id}">${status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>` : ''}
-            ${status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${p.id}" ${participant?.paid ? 'disabled title="Zahlung zuerst zurücksetzen"' : ''}>Entfernen</button>` : ''}
+            ${status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${p.id}" ${paymentLocked ? 'disabled' : ''}>Entfernen</button>` : ''}
           </span>
         </div>`;
     })

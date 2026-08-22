@@ -38,7 +38,11 @@ test('POST /api/food-orders validates title, player, sendAt, notes, link, paypal
     .post('/api/food-orders')
     .send({ playerId: alice.id, title: 'Pizza', paypalLink: 'javascript:alert(1)' });
   assert.equal(badPaypalLink.status, 400);
-  for (const paypalLink of ['http://paypal.me/luigi', 'https://payments.example/luigi']) {
+  for (const paypalLink of [
+    'http://paypal.me/luigi',
+    'https://payments.example/luigi',
+    'https://paypal.me/luigi/500EUR',
+  ]) {
     const unsafePaypalLink = await request(app)
       .post('/api/food-orders')
       .send({ playerId: alice.id, title: 'Pizza', paypalLink });

@@ -3922,17 +3922,9 @@ function addEventAccommodationAccounting(): void {
     db.exec(
       'ALTER TABLE event_participants ADD COLUMN paid_amount_cents INTEGER CHECK (paid_amount_cents IS NULL OR paid_amount_cents > 0)',
     );
-    db.exec(`
-      UPDATE event_participants
-      SET paid_amount_cents = (
-        SELECT events.cost_cents FROM events WHERE events.id = event_participants.event_id
-      )
-      WHERE paid = 1
-        AND EXISTS (
-          SELECT 1 FROM events
-          WHERE events.id = event_participants.event_id AND events.cost_cents IS NOT NULL
-        )
-    `);
+    // Existing paid markers predate amount snapshots. The contribution may
+    // have changed since payment, so using today's event price would invent
+    // accounting data. NULL keeps that uncertainty visible in the summary.
   }
 }
 registerMigration({

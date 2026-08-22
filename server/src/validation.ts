@@ -34,6 +34,17 @@ export function isValidUrl(value: unknown, maxLength = 300): value is string {
 
 const PAYPAL_HOSTS = new Set(['paypal.me', 'www.paypal.me', 'paypal.com', 'www.paypal.com']);
 
+function isBarePaypalMeDestination(url: URL): boolean {
+  const host = url.hostname.toLowerCase();
+  if (host !== 'paypal.me' && host !== 'www.paypal.me') return true;
+  if (url.search || url.hash) return false;
+  try {
+    return /^\/[^/]+\/?$/.test(decodeURIComponent(url.pathname));
+  } catch {
+    return false;
+  }
+}
+
 // Payment destinations are more sensitive than ordinary menu/location links:
 // keep them encrypted and on a PayPal-owned host. This validator is shared by
 // Events and food orders so both payment flows enforce the same API boundary.
@@ -47,7 +58,8 @@ export function isValidPaypalUrl(value: unknown, maxLength = 300): value is stri
       url.protocol === 'https:' &&
       PAYPAL_HOSTS.has(url.hostname.toLowerCase()) &&
       url.username === '' &&
-      url.password === ''
+      url.password === '' &&
+      isBarePaypalMeDestination(url)
     );
   } catch {
     return false;

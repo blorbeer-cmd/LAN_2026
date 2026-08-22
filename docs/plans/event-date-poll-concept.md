@@ -105,8 +105,13 @@ Der Hinweis `Beste Abdeckung` ist eine Empfehlung. Nur der Ersteller kann `Termi
   berechnet. Bereits versendete Pushs bleiben im Verlauf, verhindern aber die neuen Friststufen nicht.
 - Nach Fristablauf werden Antworten gesperrt, die Abstimmung bleibt aber sichtbar. Schreibversuche
   beantwortet die API mit `409`.
-- Der Ersteller kann nur eine `closed`-Abstimmung ohne Terminwahl wieder öffnen; dabei wird
-  `selected_option_id` geleert. `scheduled` wird bewusst nicht wieder geöffnet.
+- Der Ersteller kann eine `closed`-Abstimmung ohne Terminwahl wieder öffnen. `reopen` akzeptiert
+  dafür optional eine neue `responseDueAt`; ist die gespeicherte Frist bereits abgelaufen, ist ein
+  neuer zukünftiger Wert verpflichtend und wird atomar mit dem Statuswechsel gespeichert.
+- Scheitert die Unterkunftsbuchung nach der Terminwahl, hebt `Terminwahl aufheben` den Zustand
+  `scheduled` auf: Die Abstimmung wechselt zurück nach `closed`, `selected_option_id` wird geleert,
+  die Aktion wird auditiert und alle Eingeladenen werden benachrichtigt. Danach kann direkt eine
+  andere bestehende Option gewählt oder die Abstimmung mit neuer Frist wieder geöffnet werden.
 - `Termin auswählen` setzt genau eine Option als gewählt und schließt die Abstimmung atomar.
 
 ### 5. Nach der Unterkunftsbuchung als Event übernehmen
@@ -157,14 +162,15 @@ Erlaubte Übergänge:
 | Ausgang | Aktion | Ziel | Berechtigung | Konflikt |
 |---|---|---|---|---|
 | `open` | Frist oder `close` | `closed` | Ersteller/Vertretung | wiederholte oder konkurrierende Änderung: `409` |
-| `closed` | `reopen` | `open` | Ersteller/Vertretung | Terminwahl vorhanden oder Frist unverändert abgelaufen: `409` |
+| `closed` | `reopen` mit optionaler `responseDueAt` | `open` | Ersteller/Vertretung | Terminwahl vorhanden oder gespeicherte Frist ohne neue Frist abgelaufen: `409`; ungültige neue Frist: `400` |
 | `open`, `closed` | `schedule` | `scheduled` | Ersteller/Vertretung | Option fremd/gelöscht oder Status inzwischen geändert: `409` |
+| `scheduled` | `unschedule` | `closed` | Ersteller/Vertretung | `converted_event_id` bereits gesetzt oder Status inzwischen geändert: `409` |
 | `scheduled` | `convert-to-event` | `converted` | Ersteller/Vertretung | paralleler Request erhält das bereits erzeugte Event, nie ein zweites |
 | `open`, `closed`, `scheduled` | `DELETE`/Absagen | `cancelled` | Ersteller/Vertretung | terminaler Zustand: `409` |
 
-`converted` und `cancelled` sind terminal und für alle fachlichen Schreibendpunkte gesperrt. Ein
-Wiederöffnen nach einer Terminwahl oder Konvertierung ist nicht erlaubt; Änderungen erfordern eine
-neue Abstimmung. Wird das verknüpfte Event später abgesagt, bleibt die Abstimmung `converted`, zeigt
+`converted` und `cancelled` sind terminal und für alle fachlichen Schreibendpunkte gesperrt. Eine
+Terminwahl darf nur vor der Konvertierung über `unschedule` aufgehoben werden; danach bleibt sie
+historisch unveränderlich. Wird das verknüpfte Event später abgesagt, bleibt die Abstimmung `converted`, zeigt
 den Status des verknüpften Events und dient als Historie. Sie wird weder zurückgesetzt noch hart
 gelöscht. `DELETE` ist deshalb fachlich eine Absage und kein physisches Löschen.
 
@@ -245,15 +251,20 @@ POST   /api/event-date-polls/:id/reminders
 POST   /api/event-date-polls/:id/close
 POST   /api/event-date-polls/:id/reopen
 POST   /api/event-date-polls/:id/schedule
+POST   /api/event-date-polls/:id/unschedule
 POST   /api/event-date-polls/:id/convert-to-event
 DELETE /api/event-date-polls/:id
 ```
 
-`PATCH` akzeptiert nur `title`, `description` und `responseDueAt`. Die vier Options-/Einladungsrouten
-setzen die oben beschriebenen Änderungsregeln um. `DELETE /:id` setzt `cancelled`; ein physisches
-Löschen ist nur für einen nie veröffentlichten, antwortlosen Entwurf als interne Aufräumoperation
-zulässig. Unpassende Zustände liefern einheitlich `409`, unbekannte oder nicht sichtbare Ressourcen
-`404` und ungültige Eingaben `400`.
+`PATCH` akzeptiert nur in `open` die Felder `title`, `description` und `responseDueAt`; in allen
+anderen Zuständen folgt `409`. `POST /:id/reopen` akzeptiert ausschließlich ein optionales
+`responseDueAt`, das bei bereits abgelaufener gespeicherter Frist verpflichtend und zukünftig sein
+muss. Die vier Options-/Einladungsrouten setzen die oben beschriebenen Änderungsregeln um.
+`POST /:id/unschedule` ist ausschließlich in `scheduled` vor einer Konvertierung zulässig, leert die
+Auswahl atomar und erzeugt Audit- sowie persönliche Änderungsbenachrichtigungen. `DELETE /:id` setzt
+`cancelled`; ein physisches Löschen ist nur für einen nie veröffentlichten, antwortlosen Entwurf als
+interne Aufräumoperation zulässig. Unpassende Zustände liefern einheitlich `409`, unbekannte oder
+nicht sichtbare Ressourcen `404` und ungültige Eingaben `400`.
 
 Alle Mutationen senden nach erfolgreichem Commit ein gruppengebundenes Realtime-Signal. Die API
 liefert fremde Antworten nur innerhalb der eingeladenen Gruppe; Push-Nachrichten bleiben persönlich.
@@ -324,6 +335,11 @@ beschriebenen LAN-Wochenendprozess wesentlich zu verbessern.
 - Gleichzeitiges Finalisieren wählt genau eine Option; konkurrierende Requests erhalten `409`.
 - Die Event-Konvertierung ist idempotent und erzeugt höchstens ein Event.
 - `converted` und `cancelled` sind terminal; alle unzulässigen Zustandswechsel liefern `409`.
+- Eine fristbedingt geschlossene Abstimmung kann mit einer neuen zukünftigen Frist atomar wieder
+  geöffnet werden; ohne neue Frist bleibt sie nach Fristablauf mit `409` geschlossen.
+- Eine noch nicht konvertierte Terminwahl kann nach gescheiterter Unterkunftsbuchung nach `closed`
+  zurückgesetzt werden, ohne Optionen, Einladungen oder Antworten zu verlieren; Auswahl, Audit und
+  Benachrichtigungen werden dabei konsistent aktualisiert.
 - Optionen und Eingeladene lassen sich während `open` nach den festgelegten Kaskaden-, Audit- und
   Benachrichtigungsregeln ergänzen oder entfernen.
 - Nur `Kann` und optional `Wenn nötig` werden als Einladungsvorschlag übernommen.

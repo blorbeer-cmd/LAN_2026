@@ -118,7 +118,11 @@ test('event creation and editing validate and expose contribution and accommodat
     ).status,
     400,
   );
-  for (const paypalLink of ['http://paypal.me/respawn', 'https://payments.example/respawn']) {
+  for (const paypalLink of [
+    'http://paypal.me/respawn',
+    'https://payments.example/respawn',
+    'https://paypal.me/respawn/500EUR',
+  ]) {
     const unsafePaypalLink = await request(app).post('/api/events').send({
       name: 'Unsicheres PayPal-Ziel',
       startsAt,
@@ -272,6 +276,7 @@ test('participants may update only themselves while the event creator may update
     (candidate: { playerId: string }) => candidate.playerId !== memberOneId,
   )) {
     assert.equal('paid' in participant, false, 'members must not receive another participant payment state');
+    assert.equal('paymentLocked' in participant, false, 'member rosters must not reveal another payment lock');
     assert.equal('paidBy' in participant, false);
     assert.equal('paidAt' in participant, false);
     assert.equal('paidAmountCents' in participant, false);
@@ -316,6 +321,17 @@ test('participants may update only themselves while the event creator may update
     assert.equal('paid' in participant, false, 'management rows must apply the same privacy boundary');
     assert.equal('paidAmountCents' in participant, false);
   }
+  assert.equal(
+    managedEvent.participants.find((participant: { playerId: string }) => participant.playerId === memberOneId)
+      .paymentLocked,
+    true,
+    'non-payment managers receive only the removal lock, not foreign payment details',
+  );
+  assert.equal(
+    managedEvent.participants.find((participant: { playerId: string }) => participant.playerId === memberThreeId)
+      .paymentLocked,
+    false,
+  );
 
   assert.equal(
     (
@@ -384,6 +400,12 @@ test('payment snapshots survive price, roster, status, and account changes', asy
     .put(`/api/events/${created.body.id}/participants`)
     .send({ playerIds: [firstId] });
   assert.equal(rosterReplacement.status, 409);
+  const accountDeletion = await request(app).delete(`/api/players/${secondId}`);
+  assert.equal(accountDeletion.status, 409);
+  assert.match(accountDeletion.body.error, /Event-Zahlung.*zurückgesetzt/);
+  assert.ok(db.prepare('SELECT 1 FROM players WHERE id = ?').get(secondId));
+  settlement = await creatorEvent();
+  assert.equal(settlement.settlementPaidCents, 6550, 'a blocked account deletion preserves the settlement');
 
   db.prepare('UPDATE players SET deactivated_at = ? WHERE id = ?').run(Date.now(), secondId);
   db.prepare("UPDATE event_participants SET status = 'declined' WHERE event_id = ? AND player_id = ?").run(
@@ -416,6 +438,7 @@ test('payment snapshots survive price, roster, status, and account changes', asy
   assert.equal(reset.status, 200);
   assert.equal(reset.body.paidAmountCents, null);
   assert.equal((await request(app).delete(`/api/events/${created.body.id}/participants/${secondId}`)).status, 204);
+  assert.equal((await request(app).delete(`/api/players/${secondId}`)).status, 204);
 });
 
 test('the group owner takes over payment management when the event creator is inactive or missing', async () => {
@@ -439,12 +462,43 @@ test('the group owner takes over payment management when the event creator is in
     });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   accept(created.body.id, attendeeId);
-  db.prepare('UPDATE players SET deactivated_at = ? WHERE id = ?').run(Date.now(), creatorId);
+  assert.equal(
+    (
+      await request(app)
+        .patch(`/api/events/${created.body.id}/participants/${attendeeId}/payment`)
+        .set('x-test-player-id', creatorId)
+        .send({ paid: true })
+    ).status,
+    200,
+  );
 
   let ownerEvent = (await request(app).get('/api/events')).body.managedEvents.find(
     (event: { id: string }) => event.id === created.body.id,
   );
+  assert.equal(ownerEvent.canManagePayments, false, 'an active creator keeps the owner fallback closed');
+  assert.equal('settlementPaidCents' in ownerEvent, false);
+  for (const collection of [ownerEvent.acceptedParticipants, ownerEvent.participants]) {
+    const attendee = collection.find((participant: { playerId: string }) => participant.playerId === attendeeId);
+    assert.equal('paid' in attendee, false);
+    assert.equal('paidAmountCents' in attendee, false);
+  }
+  assert.equal(
+    (
+      await request(app)
+        .patch(`/api/events/${created.body.id}/participants/${attendeeId}/payment`)
+        .send({ paid: false })
+    ).status,
+    403,
+    'the owner cannot change a foreign event payment while its creator is active',
+  );
+
+  db.prepare('UPDATE players SET deactivated_at = ? WHERE id = ?').run(Date.now(), creatorId);
+
+  ownerEvent = (await request(app).get('/api/events')).body.managedEvents.find(
+    (event: { id: string }) => event.id === created.body.id,
+  );
   assert.equal(ownerEvent.canManagePayments, true);
+  assert.equal(ownerEvent.settlementPaidCents, 3000);
   assert.equal(
     (
       await request(app)

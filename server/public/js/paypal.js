@@ -21,7 +21,15 @@ const PAYPAL_HOSTS = new Set(['paypal.me', 'www.paypal.me', 'paypal.com', 'www.p
 function isAllowedPaypalUrl(value) {
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' && PAYPAL_HOSTS.has(url.hostname.toLowerCase()) && !url.username && !url.password;
+    const host = url.hostname.toLowerCase();
+    if (url.protocol !== 'https:' || !PAYPAL_HOSTS.has(host) || url.username || url.password) return false;
+    if (host !== 'paypal.me' && host !== 'www.paypal.me') return true;
+    if (url.search || url.hash) return false;
+    try {
+      return /^\/[^/]+\/?$/.test(decodeURIComponent(url.pathname));
+    } catch {
+      return false;
+    }
   } catch {
     return false;
   }
@@ -44,9 +52,9 @@ export function normalizePaypalInput(raw) {
   const trimmed = (raw ?? '').trim();
   if (!trimmed) return null;
   const insecurePaypalMe = trimmed.match(/^http:\/\/((?:www\.)?paypal\.me\/.*)$/i);
-  if (insecurePaypalMe) return `https://${insecurePaypalMe[1]}`;
-  if (/^https?:\/\//i.test(trimmed)) {
-    if (isAllowedPaypalUrl(trimmed)) return trimmed;
+  const urlCandidate = insecurePaypalMe ? `https://${insecurePaypalMe[1]}` : trimmed;
+  if (/^https?:\/\//i.test(urlCandidate)) {
+    if (isAllowedPaypalUrl(urlCandidate)) return urlCandidate;
     throw new Error('PayPal-Link muss HTTPS verwenden und zu paypal.me oder paypal.com führen.');
   }
   if (EMAIL_RE.test(trimmed)) {
@@ -56,7 +64,7 @@ export function normalizePaypalInput(raw) {
     .replace(/^@/, '')
     .replace(/^(www\.)?paypal\.me\//i, '')
     .replace(/\/+$/, '');
-  if (!name || /\s/.test(name)) {
+  if (!name || /[\s/?#]/.test(name)) {
     throw new Error('PayPal-Link muss eine gültige URL, E-Mail-Adresse oder ein PayPal.me-Name ohne Leerzeichen sein.');
   }
   return `https://paypal.me/${name}`;

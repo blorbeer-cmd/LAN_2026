@@ -2431,7 +2431,7 @@ test('migration 81 preserves event payment audit and due dates and is restart-sa
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migration 82 adds accommodation accounting, backfills paid amounts and is restart-safe', () => {
+test('migration 82 adds accommodation accounting, leaves legacy paid amounts unknown and is restart-safe', () => {
   const dbFile = makeTempDbPath('event-accommodation-accounting');
   runMigrations(dbFile);
 
@@ -2467,7 +2467,7 @@ test('migration 82 adds accommodation accounting, backfills paid amounts and is 
     firstMigration
       .prepare('SELECT paid_amount_cents AS paidAmountCents FROM event_participants WHERE event_id = ?')
       .get('accommodation-event'),
-    { paidAmountCents: 2550 },
+    { paidAmountCents: null },
   );
   firstMigration.prepare('UPDATE events SET accommodation_cost_cents = 120000 WHERE id = ?').run('accommodation-event');
   firstMigration.prepare('DELETE FROM schema_migrations WHERE version = 82').run();
@@ -2486,7 +2486,7 @@ test('migration 82 adds accommodation accounting, backfills paid amounts and is 
     migrated
       .prepare('SELECT paid_amount_cents AS paidAmountCents FROM event_participants WHERE event_id = ?')
       .get('accommodation-event'),
-    { paidAmountCents: 2550 },
+    { paidAmountCents: null },
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 82').get());
   migrated.close();

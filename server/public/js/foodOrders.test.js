@@ -30,6 +30,9 @@ test('normalizePaypalInput keeps PayPal URLs, upgrades PayPal.me, and rejects fo
   assert.equal(normalizePaypalInput('https://paypal.me/luigi'), 'https://paypal.me/luigi');
   assert.throws(() => normalizePaypalInput('http://example.com/pay'), /HTTPS/);
   assert.throws(() => normalizePaypalInput('https://example.com/pay'), /paypal\.me/);
+  assert.throws(() => normalizePaypalInput('https://paypal.me/luigi/500EUR'), /paypal\.me/);
+  assert.throws(() => normalizePaypalInput('http://paypal.me/luigi/500EUR'), /paypal\.me/);
+  assert.throws(() => normalizePaypalInput('paypal.me/luigi/500EUR'), /gültige URL/);
   assert.equal(normalizePaypalInput('http://paypal.me/luigi'), 'https://paypal.me/luigi');
   assert.equal(normalizePaypalInput('http://www.paypal.me/luigi'), 'https://www.paypal.me/luigi');
 });
