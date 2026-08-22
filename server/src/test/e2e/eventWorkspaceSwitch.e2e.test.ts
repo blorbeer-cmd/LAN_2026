@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
 import { authenticatedServerEnv, loginE2EAdmin, finishE2EOnboarding, E2E_ADMIN_NAME, E2E_ADMIN_PASSWORD } from './authHelpers';
-import { createE2EDiagnosticTest } from './e2eDiagnostics';
+import { createStatefulE2EDiagnosticTest } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
@@ -25,7 +25,10 @@ let cookie: string;
 let eventA: string;
 let eventB: string;
 
-const test = createE2EDiagnosticTest(() => ({ browser, server: e2eServer }));
+const test = createStatefulE2EDiagnosticTest(
+  () => ({ browser, server: e2eServer }),
+  { sharedState: 'server, browser context, and page' },
+);
 
 async function api(path: string, init: RequestInit = {}): Promise<{ status: number; body: any }> {
   const res = await fetch(`${BASE_URL}${path}`, {
