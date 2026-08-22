@@ -236,6 +236,79 @@ test('an invite link registers a new account and logs it straight in', async () 
   assert.equal(await page.locator('.game-table-row.onboarding-required').count(), 0);
 });
 
+test('admin onboarding reaches the event filter and the rating handoff', async () => {
+  const reset = await fetch(`${BASE_URL}/api/me/onboarding`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ status: 'pending', lastCoreStep: 0, ratingStatus: 'pending' }),
+  });
+  assert.equal(reset.status, 200, await reset.text());
+
+  const adminPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(adminPage.context(), 'auth-onboarding-admin');
+  try {
+    await adminPage.goto(BASE_URL);
+    await adminPage.waitForSelector('#auth-screen:not([hidden])');
+    await adminPage.fill('#auth-name', 'E2E Bootstrap Admin');
+    await adminPage.fill('#auth-password', 'e2e bootstrap password');
+    await adminPage.click('#auth-form button[type="submit"]');
+    await adminPage.waitForSelector('#app:not([hidden])');
+    await adminPage.waitForSelector('#onboarding-root [role="dialog"]');
+
+    await adminPage.waitForFunction(() =>
+      document.querySelector('.onboarding-progress')?.textContent?.includes('von 13') ?? false,
+      undefined,
+      { timeout: 10_000 },
+    );
+    const totalCoreSteps = await adminPage.locator('.onboarding-progress').evaluate((element) => {
+      const match = element.textContent?.match(/von (\d+)/);
+      if (!match) throw new Error('onboarding progress text is missing the step count');
+      return Number(match[1]);
+    });
+    assert.equal(totalCoreSteps, 13, 'admins must get the event-selection step before ratings');
+
+    let sawEventSelection = false;
+    for (let step = 0; step < totalCoreSteps; step += 1) {
+      const title = await adminPage.locator('#onboarding-title').textContent();
+      if (title === 'Event-Auswahl') {
+        sawEventSelection = true;
+        await adminPage.waitForSelector('#view-container[data-view="analytics"]');
+        await adminPage.waitForSelector('section[aria-label="Ansicht"] .search-select-control');
+        await adminPage.waitForSelector('.onboarding-target-ring');
+        const waitForSpotlightAlignment = async () => {
+          await adminPage.waitForFunction(() => {
+            const target = document.querySelector('section[aria-label="Ansicht"] .search-select-control')?.getBoundingClientRect();
+            const ring = document.querySelector('.onboarding-target-ring')?.getBoundingClientRect();
+            return Boolean(target && ring)
+              && Math.abs(target!.left - ring!.left) < 1
+              && Math.abs(target!.top - ring!.top) < 1
+              && Math.abs(target!.width - ring!.width) < 1
+              && Math.abs(target!.height - ring!.height) < 1;
+          }, undefined, { timeout: 5_000 });
+        };
+        await waitForSpotlightAlignment();
+
+        await adminPage.setViewportSize({ width: 420, height: 800 });
+        await waitForSpotlightAlignment();
+      }
+      await adminPage.click('[data-onboarding-next]');
+      if (step + 1 < totalCoreSteps) {
+        await adminPage.waitForFunction(
+          (previousTitle) => document.querySelector('#onboarding-title')?.textContent !== previousTitle,
+          title,
+          { timeout: 5_000 },
+        );
+      }
+    }
+    assert.equal(sawEventSelection, true);
+    await adminPage.waitForSelector('.game-table-row.onboarding-required input[type="range"]');
+    await adminPage.click('[data-onboarding-later]');
+    await adminPage.waitForFunction(() => !document.querySelector('#onboarding-root [role="dialog"]'));
+  } finally {
+    await adminPage.close();
+  }
+});
+
 test('logging out drops back to the login gate, and logging back in works', async () => {
   await page.click('.nav-btn[data-view="more"]');
 

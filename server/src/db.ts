@@ -3801,6 +3801,40 @@ registerMigration({
   up: addFoodOrderPaymentReminderState,
 });
 
+// The admin onboarding tour now includes the event filter inside the
+// admin-only analytics area. Its highest persisted step index therefore grew
+// from 11 to 12. Migration history is immutable, so widen the existing CHECK
+// through another SQLite rebuild instead of editing migration 75.
+function widenOnboardingCoreStepBoundAgain(): void {
+  db.exec(`
+    ALTER TABLE player_onboarding RENAME TO player_onboarding_migration_78;
+    CREATE TABLE player_onboarding (
+      player_id                 TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+      version                   INTEGER NOT NULL DEFAULT 1,
+      status                    TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (status IN ('pending', 'active', 'completed', 'skipped')),
+      last_core_step            INTEGER NOT NULL DEFAULT 9 CHECK (last_core_step BETWEEN 0 AND 12),
+      rating_status             TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (rating_status IN ('pending', 'active', 'completed', 'deferred')),
+      rating_candidate_ids_json TEXT NOT NULL DEFAULT '[]',
+      seen_views_json           TEXT NOT NULL DEFAULT '[]',
+      completed_at              INTEGER,
+      updated_at                INTEGER NOT NULL
+    );
+    INSERT INTO player_onboarding
+      (player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at)
+    SELECT player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at
+    FROM player_onboarding_migration_78;
+    DROP TABLE player_onboarding_migration_78;
+    CREATE INDEX IF NOT EXISTS idx_player_onboarding_status ON player_onboarding(status, rating_status);
+  `);
+}
+registerMigration({
+  version: 78,
+  name: 'widen onboarding core step bound for event selection',
+  up: widenOnboardingCoreStepBoundAgain,
+});
+
 // Events can collect one fixed contribution per accepted participant. The
 // creator is persisted explicitly because creator-only payment corrections
 // cannot be inferred safely for historical events; those rows intentionally
@@ -3822,7 +3856,7 @@ function addEventPaymentColumns(): void {
   }
 }
 registerMigration({
-  version: 78,
+  version: 79,
   name: 'add event costs and participant payment state',
   up: addEventPaymentColumns,
 });
@@ -3842,7 +3876,7 @@ function addEventPaymentReminderState(): void {
   `);
 }
 registerMigration({
-  version: 79,
+  version: 80,
   name: 'add event payment reminder state',
   up: addEventPaymentReminderState,
 });
@@ -3864,7 +3898,7 @@ function addEventPaymentAuditAndDueDate(): void {
   }
 }
 registerMigration({
-  version: 80,
+  version: 81,
   name: 'add event payment audit and due date',
   up: addEventPaymentAuditAndDueDate,
 });
