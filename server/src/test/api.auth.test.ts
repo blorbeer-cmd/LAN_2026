@@ -122,6 +122,23 @@ test('GET /api/auth/invites lists active reusable codes without exposing revoked
   assert.equal(listed.usageCount, 0);
 });
 
+test('GET /api/auth/invites keeps eventless reset and test-session links selectable', async () => {
+  const testPlayer = await request(app).post('/api/players').set('Cookie', adminCookie).send({ name: 'Eventless Test Player' });
+  assert.equal(testPlayer.status, 201, JSON.stringify(testPlayer.body));
+  db.prepare('UPDATE players SET is_test = 1 WHERE id = ?').run(testPlayer.body.id);
+  const reset = createInvite({ purpose: 'reset', playerId: adminId, createdBy: adminId });
+  const testLogin = createInvite({ purpose: 'test_login', playerId: testPlayer.body.id, createdBy: adminId });
+
+  const res = await request(app).get('/api/auth/invites').set('Cookie', adminCookie);
+  for (const code of [reset.code, testLogin.code]) {
+    const listed = res.body.find((invite: { code: string }) => invite.code === code);
+    assert.ok(listed, `invite ${code} should be listed`);
+    assert.equal(listed.eventId, null);
+    assert.equal(listed.eventName, null);
+    assert.equal(listed.eventSelectable, true);
+  }
+});
+
 test('POST /api/auth/invites rejects a non-expiring code', async () => {
   const res = await request(app)
     .post('/api/auth/invites')

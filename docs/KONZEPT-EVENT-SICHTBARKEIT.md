@@ -111,9 +111,10 @@ Teilnehmeransicht; vollständige Einladungs- und Ablehnungsstatus bleiben Admin/
 ### 3.3 Konto-Einladung
 
 Eine Konto-Einladung ist nie eventlos. Sie trägt mindestens das Basis-Event und optional ein
-zusätzliches Ziel-Event. Ein Registrierungslink für neue Personen ist standardmäßig unbegrenzt
-gültig, mehrfach nutzbar und bleibt bis zum ausdrücklichen Widerruf aktiv. Claim-, Reset- und
-Test-Sitzungslinks bleiben dagegen einmalig und zeitlich begrenzt. Jede Registrierung über den
+zusätzliches Ziel-Event. Ein Registrierungslink für neue Personen ist mehrfach nutzbar, aber immer
+zeitlich begrenzt (24 Stunden bis 90 Tage, standardmäßig 7 Tage in der Oberfläche) und kann vor
+dem Ablauf ausdrücklich widerrufen werden. Claim-, Reset- und Test-Sitzungslinks bleiben dagegen
+einmalig und zeitlich begrenzt. Jede Registrierung über den
 Registrierungslink erfolgt in einer eigenen Transaktion:
 
 1. Konto beanspruchen beziehungsweise aktivieren,

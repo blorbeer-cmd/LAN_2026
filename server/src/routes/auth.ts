@@ -584,13 +584,14 @@ authRouter.get('/invites', ...requireSessionAdmin, (_req, res) => {
   res.json(
     rows.map((row) => {
       const isBaseEvent = row.eventId === BASE_EVENT_ID;
+      const eventCanBeTargeted = row.purpose === 'register' || row.purpose === 'claim';
       return {
         ...row,
         eventId: isBaseEvent ? null : row.eventId,
         eventName: isBaseEvent ? null : row.eventName,
         expiresAt: row.expiresAt === NO_INVITE_EXPIRY ? null : row.expiresAt,
         reusable: row.purpose === 'register',
-        eventSelectable: isBaseEvent || Boolean(row.eventId && getSelectableEvent(row.eventId)),
+        eventSelectable: !eventCanBeTargeted || isBaseEvent || Boolean(row.eventId && getSelectableEvent(row.eventId)),
         usageCount: usageCounts.get(row.code) ?? 0,
       };
     }),

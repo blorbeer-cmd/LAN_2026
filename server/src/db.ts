@@ -1288,7 +1288,7 @@ function migrateAccountsAuth(): void {
       player_id   TEXT REFERENCES players(id) ON DELETE CASCADE, -- set for claim/reset
       created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
       created_at  INTEGER NOT NULL,
-      expires_at  INTEGER NOT NULL, -- 0 = reusable registration link without expiry
+      expires_at  INTEGER NOT NULL, -- finite lifetime; 0 is a legacy no-expiry sentinel
       revoked_at  INTEGER,
       used_at     INTEGER,
       used_by     TEXT REFERENCES players(id) ON DELETE SET NULL
@@ -1319,7 +1319,7 @@ function repairInviteAuditForeignKeys(): void {
       player_id   TEXT REFERENCES players(id) ON DELETE CASCADE,
       created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
       created_at  INTEGER NOT NULL,
-      expires_at  INTEGER NOT NULL, -- 0 = reusable registration link without expiry
+      expires_at  INTEGER NOT NULL, -- finite lifetime; 0 is a legacy no-expiry sentinel
       revoked_at  INTEGER,
       used_at     INTEGER,
       used_by     TEXT REFERENCES players(id) ON DELETE SET NULL

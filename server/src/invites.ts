@@ -22,9 +22,9 @@ export const DEFAULT_INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 export const DEFAULT_RESET_TTL_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_TEST_LOGIN_TTL_MS = 15 * 60 * 1000;
 export const MAX_INVITE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
-// Registration links are reusable and remain valid until an admin revokes
-// them. The existing expires_at column is kept non-null for compatibility;
-// zero is the explicit no-expiry sentinel and is never exposed as a date.
+// New invites always receive a finite expiry. Zero remains readable as a
+// backwards-compatible sentinel for registration rows created before invite
+// lifetimes became configurable; it is never emitted for newly created rows.
 export const NO_INVITE_EXPIRY = 0;
 
 // A registration redemption needs an audit trail, but the invite code itself
@@ -63,7 +63,6 @@ export type RegistrationInviteRevocationReason =
 export function createInvite(options: CreateInviteOptions): InviteRow {
   const code = nanoid(24);
   const now = Date.now();
-  const isReusableRegistration = options.purpose === 'register' && options.expiresInMs === undefined;
   const defaultTtl =
     options.purpose === 'reset'
       ? DEFAULT_RESET_TTL_MS
@@ -74,7 +73,7 @@ export function createInvite(options: CreateInviteOptions): InviteRow {
   if (!Number.isFinite(requestedTtl) || requestedTtl <= 0) {
     throw new RangeError('Invite expiry must be a positive, finite duration.');
   }
-  const expiresAt = isReusableRegistration ? NO_INVITE_EXPIRY : now + Math.min(requestedTtl, MAX_INVITE_TTL_MS);
+  const expiresAt = now + Math.min(requestedTtl, MAX_INVITE_TTL_MS);
   const eventId =
     options.eventId ?? (options.purpose === 'register' || options.purpose === 'claim' ? BASE_EVENT_ID : null);
 

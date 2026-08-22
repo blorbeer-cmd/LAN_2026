@@ -98,9 +98,10 @@ Rev. 5 nicht neu bewertet:
 - Cookie `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, im HTTPS-Modus mit `__Host-`-Präfix;
   Session-Tokens erscheinen nie in URLs oder Logs.
 - Claim und Passwort-Reset laufen nur über atomar einmal nutzbare, ablaufende und widerrufbare
-  Codes. Registrierungslinks sind standardmäßig unbegrenzt gültig, mehrfach nutzbar und enden erst
-  mit dem Widerruf (siehe KONZEPT-EVENT-SICHTBARKEIT.md, Abschnitt 3.3). Passwortänderung und Reset
-  invalidieren alte Sessions und Sockets.
+  Codes. Registrierungslinks sind mehrfach nutzbar, aber immer zeitlich begrenzt: Die Gültigkeit
+  wird bei der Erstellung zwischen 24 Stunden und 90 Tagen gewählt (Standard in der Oberfläche:
+  7 Tage) und kann zusätzlich jederzeit widerrufen werden (siehe KONZEPT-EVENT-SICHTBARKEIT.md,
+  Abschnitt 3.3). Passwortänderung und Reset invalidieren alte Sessions und Sockets.
 - Konto- und globales Auth-Rate-Limit, konstante Passwortprüfung auch für unbekannte Konten,
   `Retry-After` bei Sperren.
 - Fünf Minuten gültige, sessiongebundene Step-up-Reauthentifizierung für kritische Admin-Aktionen.

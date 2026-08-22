@@ -82,6 +82,10 @@ function acceptedParticipantNames(event) {
   return state.players.filter((player) => acceptedIds.has(player.id)).map((player) => player.name);
 }
 
+export function acceptedParticipantCount(event) {
+  return acceptedParticipantNames(event).length;
+}
+
 function renderAcceptedParticipants(event) {
   const names = acceptedParticipantNames(event);
   return `
@@ -380,7 +384,7 @@ function renderParticipantManagerRows(event) {
 }
 
 function renderParticipantsBody(event) {
-  const acceptedCount = event.participantIds?.length ?? (event.participants ?? []).filter((entry) => entry.status === 'accepted').length;
+  const acceptedCount = acceptedParticipantCount(event);
   return `
     <div class="event-participants-body">
       <div class="event-participants-summary">

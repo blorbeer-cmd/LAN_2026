@@ -35,7 +35,7 @@ test('createInvite + findValidInvite round-trip for a register code', () => {
   assert.ok(found);
   assert.equal(found!.code, invite.code);
   assert.equal(found!.event_id, BASE_EVENT_ID);
-  assert.equal(invite.expires_at, NO_INVITE_EXPIRY);
+  assert.ok(invite.expires_at >= invite.created_at + DEFAULT_INVITE_TTL_MS);
 });
 
 test('a register invite stays valid and reusable after every redemption until revoked', () => {
