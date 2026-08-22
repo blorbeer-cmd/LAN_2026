@@ -558,7 +558,7 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
       : 'Bezahlt – Markierung aufheben'
     : `${items[0].playerName} als bezahlt markieren`;
   const paidMarkerHtml = `<button type="button" class="payment-paid-marker food-order-paid-marker ${allPaid ? 'is-paid' : ''}" data-toggle-group-paid="${playerId}" data-order="${order.id}" ${locked ? 'disabled' : ''} aria-pressed="${allPaid ? 'true' : 'false'}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}">
-    ${icon(allPaid ? 'check' : 'circleDashed')}<span>${allPaid ? 'Bezahlt' : 'Offen'}</span>
+    ${icon(allPaid ? 'check' : 'circleDashed')}<span>${allPaid ? 'Bezahlt' : 'Bezahlt?'}</span>
   </button>`;
 
   const payDisabledReason = locked
@@ -590,9 +590,8 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
   return `
     <div class="row food-order-group-header">
       ${leftHtml}
-      ${paidMarkerHtml}
       ${amountHtml}
-      <span class="food-order-group-actions">${copyHtml}${payButtonHtml}${deleteHtml}</span>
+      <span class="food-order-group-actions">${copyHtml}${payButtonHtml}${paidMarkerHtml}${deleteHtml}</span>
     </div>`;
 }
 
