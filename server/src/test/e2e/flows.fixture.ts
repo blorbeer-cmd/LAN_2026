@@ -2734,7 +2734,15 @@ flowTest('food-orders', 'Essensbestellung: Bestellübersicht consolidates positi
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
 });
 
-flowTest('food-orders', "Essensbestellung: the description field suggests the order's own existing positions while typing", async () => {
+flowTest('food-orders', "Essensbestellung: the description field suggests the order's own existing positions while typing", async (t) => {
+  const realtimeProbeOrderIds: string[] = [];
+  t.after(async () => {
+    for (const probeOrderId of realtimeProbeOrderIds) {
+      const response = await page.request.delete(`${BASE_URL}/api/food-orders/${probeOrderId}`);
+      assert.ok([204, 404].includes(response.status()), await response.text());
+    }
+  });
+
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
   await page.click('#order-new-btn');
   await page.fill('#order-title', 'Vorschlags-Test');
@@ -2841,43 +2849,64 @@ flowTest('food-orders', "Essensbestellung: the description field suggests the or
   await page.waitForSelector('.food-order-desc-field .search-select-option:has-text("Margherita groß")');
   assert.equal(await descField.locator('.search-select-option').count(), 1);
 
-  // A socket refresh used to rebuild the open combobox continuously. The
-  // option therefore detached between Playwright's actionability check and
-  // click until the 30-second test timeout expired. Create and remove an
-  // unrelated order while this list is open: both broadcasts must refresh
-  // the cache without replacing the active wrapper, and the latest cache is
-  // rendered once the selection closes it.
-  await descField.evaluate((element) => { element.dataset.e2eInstance = 'active'; });
-  const createRefresh = page.waitForResponse(
-    (response) => new URL(response.url()).pathname === '/api/food-orders' && response.request().method() === 'GET',
-  );
-  const probeResponse = await page.request.post(`${BASE_URL}/api/food-orders`, {
-    data: { playerId: alice.id, title: 'Realtime-Render-Probe' },
-  });
-  assert.equal(probeResponse.status(), 201, await probeResponse.text());
-  const probe = await probeResponse.json() as { id: string };
-  const createRefreshResponse = await createRefresh;
-  assert.equal(createRefreshResponse.status(), 200);
-  await createRefreshResponse.finished();
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  assert.equal(await descField.getAttribute('data-e2e-instance'), 'active');
+  // Socket refreshes used to rebuild the open combobox continuously. Keep a
+  // probe order in the newest cache until after the deferred render so the
+  // test verifies both DOM stability and that the flush renders real data.
+  const createRealtimeProbe = async (title: string) => {
+    const refresh = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/api/food-orders' && response.request().method() === 'GET',
+    );
+    const response = await page.request.post(`${BASE_URL}/api/food-orders`, {
+      data: { playerId: alice.id, title },
+    });
+    assert.equal(response.status(), 201, await response.text());
+    const probe = await response.json() as { id: string };
+    realtimeProbeOrderIds.push(probe.id);
+    const refreshResponse = await refresh;
+    assert.equal(refreshResponse.status(), 200);
+    await refreshResponse.finished();
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    return probe.id;
+  };
 
-  const deleteRefresh = page.waitForResponse(
-    (response) => new URL(response.url()).pathname === '/api/food-orders' && response.request().method() === 'GET',
-  );
-  const deleteProbeResponse = await page.request.delete(`${BASE_URL}/api/food-orders/${probe.id}`);
-  assert.equal(deleteProbeResponse.status(), 204, await deleteProbeResponse.text());
-  const deleteRefreshResponse = await deleteRefresh;
-  assert.equal(deleteRefreshResponse.status(), 200);
-  await deleteRefreshResponse.finished();
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  assert.equal(await descField.getAttribute('data-e2e-instance'), 'active');
+  await descField.evaluate((element) => { element.dataset.e2eInstance = 'outside-pointer'; });
+  await createRealtimeProbe('Realtime-Render-Probe A');
+  assert.equal(await descField.getAttribute('data-e2e-instance'), 'outside-pointer');
+
+  // A realistic press must not let the pointerdown-close flush detach the
+  // card toggle before pointerup/click. The first tap must collapse the card.
+  const cardToggle = suggestOrderCard.locator('.food-order-card-header-toggle');
+  await cardToggle.scrollIntoViewIfNeeded();
+  const cardToggleBox = await cardToggle.boundingBox();
+  assert.ok(cardToggleBox);
+  await page.mouse.move(cardToggleBox.x + cardToggleBox.width / 2, cardToggleBox.y + cardToggleBox.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(80);
+  await page.mouse.up();
+  await suggestOrderCard.locator('.food-order-card-body').waitFor({ state: 'hidden' });
+  await page.waitForFunction(() => document.querySelector('[data-desc-suggest][data-e2e-instance="outside-pointer"]') === null);
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe A' }).waitFor();
+
+  await cardToggle.click();
+  await suggestOrderCard.locator('.food-order-card-body').waitFor({ state: 'visible' });
+  await descField.locator('[data-item-desc]').fill('marg');
+  await descField.evaluate((element) => { element.dataset.e2eInstance = 'suggestion-click'; });
+  await createRealtimeProbe('Realtime-Render-Probe B');
+  assert.equal(await descField.getAttribute('data-e2e-instance'), 'suggestion-click');
   assert.equal(await descField.locator('.search-select-option').count(), 1);
 
   await descField.locator('.search-select-option', { hasText: 'Margherita groß' }).click();
   assert.equal(await descField.locator('[data-item-desc]').inputValue(), 'Margherita groß');
   assert.equal(await suggestOrderCard.locator('[data-item-price]').inputValue(), '8,50');
-  await page.waitForFunction(() => document.querySelector('[data-desc-suggest][data-e2e-instance="active"]') === null);
+  await page.waitForFunction(() => document.querySelector('[data-desc-suggest][data-e2e-instance="suggestion-click"]') === null);
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe B' }).waitFor();
+
+  for (const probeOrderId of realtimeProbeOrderIds) {
+    const response = await page.request.delete(`${BASE_URL}/api/food-orders/${probeOrderId}`);
+    assert.equal(response.status(), 204, await response.text());
+  }
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe A' }).waitFor({ state: 'detached' });
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe B' }).waitFor({ state: 'detached' });
 
   // This field is free text (the main supported case per the PR description
   // is typing something genuinely new), so an unmatched query keeps the list

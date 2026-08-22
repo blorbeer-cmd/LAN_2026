@@ -35,6 +35,7 @@ let historyOpen = false;
 let deferredInteractiveRender = null; // { container, ctx } | null
 let deferredInteractiveRenderScheduled = false;
 let forceInteractiveRender = false;
+let outsidePointerInteractionPending = false;
 
 function flushDeferredInteractiveRender() {
   if (!deferredInteractiveRender || deferredInteractiveRenderScheduled) return;
@@ -53,6 +54,46 @@ function flushDeferredInteractiveRender() {
     deferredInteractiveRender = null;
     pending.ctx.rerender();
   }, 0);
+}
+
+function flushDeferredInteractiveRenderAfterPointer(pointerId) {
+  outsidePointerInteractionPending = true;
+  let pointerReleased = false;
+  let fallbackTimer = null;
+
+  const cleanup = () => {
+    document.removeEventListener('pointerup', onPointerUp, true);
+    document.removeEventListener('pointercancel', onPointerCancel, true);
+    document.removeEventListener('click', onClick, true);
+    window.removeEventListener('blur', onWindowBlur);
+    if (fallbackTimer !== null) clearTimeout(fallbackTimer);
+  };
+  const finish = () => {
+    cleanup();
+    outsidePointerInteractionPending = false;
+    flushDeferredInteractiveRender();
+  };
+  const onPointerUp = (event) => {
+    if (event.pointerId !== pointerId) return;
+    pointerReleased = true;
+    document.removeEventListener('pointerup', onPointerUp, true);
+    // Normal taps emit click immediately after pointerup. A drag or another
+    // gesture may not emit one at all, so release the deferred render after a
+    // bounded fallback without racing a delayed touch click.
+    fallbackTimer = setTimeout(finish, 500);
+  };
+  const onPointerCancel = (event) => {
+    if (event.pointerId === pointerId) finish();
+  };
+  const onClick = () => {
+    if (pointerReleased) finish();
+  };
+  const onWindowBlur = () => finish();
+
+  document.addEventListener('pointerup', onPointerUp, true);
+  document.addEventListener('pointercancel', onPointerCancel, true);
+  document.addEventListener('click', onClick, true);
+  window.addEventListener('blur', onWindowBlur, { once: true });
 }
 
 function rerenderLocalMutation(ctx) {
@@ -853,13 +894,13 @@ function wireDescSuggest(wrapper) {
     updateExpanded(true);
     renderOptions();
   };
-  const close = () => {
+  const close = ({ flush = true } = {}) => {
     const wasOpen = isOpen();
     list.hidden = true;
     updateExpanded(false);
     input.removeAttribute('aria-activedescendant');
     activeIndex = -1;
-    if (wasOpen) flushDeferredInteractiveRender();
+    if (wasOpen && flush) flushDeferredInteractiveRender();
   };
   const selectSuggestion = (suggestion) => {
     input.value = suggestion.label;
@@ -940,7 +981,10 @@ function wireDescSuggest(wrapper) {
       document.removeEventListener('pointerdown', closeFromOutsidePointer);
       return;
     }
-    if (isOpen() && !wrapper.contains(event.target)) close();
+    if (isOpen() && !wrapper.contains(event.target)) {
+      close({ flush: false });
+      flushDeferredInteractiveRenderAfterPointer(event.pointerId);
+    }
   };
   document.addEventListener('pointerdown', closeFromOutsidePointer);
 }
@@ -1677,7 +1721,10 @@ function restoreOrderViewportAnchor(container, anchors, previousScrollTop) {
 }
 
 export function renderFoodOrders(container, ctx) {
-  if (!forceInteractiveRender && container.querySelector('[data-desc-suggest].is-open')) {
+  if (
+    !forceInteractiveRender &&
+    (outsidePointerInteractionPending || container.querySelector('[data-desc-suggest].is-open'))
+  ) {
     deferredInteractiveRender = { container, ctx };
     return;
   }
@@ -1812,6 +1859,10 @@ export function renderFoodOrders(container, ctx) {
       }
       const submitBtn = form.querySelector('button[type="submit"]');
       if (submitBtn.disabled) return;
+      // A submit started by the pointer interaction that just closed the
+      // dropdown will reconcile and render from its own response. Do not let
+      // the older deferred background render replace the form mid-request.
+      deferredInteractiveRender = null;
       submitBtn.disabled = true;
       try {
         const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
