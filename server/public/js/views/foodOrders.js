@@ -1685,6 +1685,79 @@ function restoreOrderViewportAnchor(container, anchors, previousScrollTop) {
   }
 }
 
+const FOOD_ORDER_FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function visibleFoodOrderFocusTargets(scope) {
+  return [...scope.querySelectorAll(FOOD_ORDER_FOCUSABLE_SELECTOR)].filter(
+    (element) => !element.closest('[hidden]') && element.getClientRects().length > 0
+  );
+}
+
+function foodOrderFocusScope(container, element) {
+  const card = element.closest('[data-order-card], [data-closed-order]');
+  if (!card || !container.contains(card)) return { kind: 'view', id: null, element: container };
+  if (card.dataset.orderCard) return { kind: 'open', id: card.dataset.orderCard, element: card };
+  return { kind: 'closed', id: card.dataset.closedOrder, element: card };
+}
+
+function captureFoodOrderFocus(container) {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !container.contains(active)) return null;
+  const scope = foodOrderFocusScope(container, active);
+  const attributes = [...active.attributes]
+    .filter(
+      ({ name }) =>
+        name === 'id' ||
+        name === 'class' ||
+        name === 'name' ||
+        name === 'type' ||
+        name === 'href' ||
+        name === 'aria-label' ||
+        (name.startsWith('data-') && !name.startsWith('data-e2e-'))
+    )
+    .map(({ name, value }) => [name, value]);
+  const targets = visibleFoodOrderFocusTargets(scope.element);
+  return {
+    scopeKind: scope.kind,
+    scopeId: scope.id,
+    tagName: active.tagName,
+    attributes,
+    text: active.textContent?.trim() ?? '',
+    index: targets.indexOf(active),
+  };
+}
+
+function restoreFoodOrderFocus(container, anchor) {
+  if (!anchor) return;
+  const scope =
+    anchor.scopeKind === 'view'
+      ? container
+      : [...container.querySelectorAll('[data-order-card], [data-closed-order]')].find((card) =>
+          anchor.scopeKind === 'open' ? card.dataset.orderCard === anchor.scopeId : card.dataset.closedOrder === anchor.scopeId
+        );
+  if (!scope) return;
+  const targets = visibleFoodOrderFocusTargets(scope);
+  let target = targets.find(
+    (element) =>
+      element.tagName === anchor.tagName &&
+      anchor.attributes.every(([name, value]) => element.getAttribute(name) === value)
+  );
+  if (!target && anchor.attributes.length === 0) {
+    const indexedTarget = targets[anchor.index];
+    if (indexedTarget?.tagName === anchor.tagName && indexedTarget.textContent?.trim() === anchor.text) {
+      target = indexedTarget;
+    }
+  }
+  target?.focus({ preventScroll: true });
+}
+
 export function renderFoodOrders(container, ctx) {
   if (
     !forceInteractiveRender &&
@@ -1759,6 +1832,7 @@ export function renderFoodOrders(container, ctx) {
   // whole view back to the top after every single toggle.
   const scrollTop = container.scrollTop;
   const viewportAnchors = visibleOrderViewportAnchors(container);
+  const focusAnchor = captureFoodOrderFocus(container);
 
   container.innerHTML = `
     <div class="row-between">
@@ -2038,5 +2112,6 @@ export function renderFoodOrders(container, ctx) {
     });
   });
 
+  restoreFoodOrderFocus(container, focusAnchor);
   refreshConsolidatedListDialog(myId);
 }

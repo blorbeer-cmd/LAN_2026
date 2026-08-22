@@ -2901,7 +2901,8 @@ flowTest('food-orders', "Essensbestellung: the description field suggests the or
 
   await cardToggle.click();
   await suggestOrderCard.locator('.food-order-card-body').waitFor({ state: 'visible' });
-  await descField.locator('[data-item-desc]').fill('marg');
+  const descInput = descField.locator('[data-item-desc]');
+  await descInput.fill('marg');
   await descField.evaluate((element) => { element.dataset.e2eInstance = 'suggestion-click'; });
   await createRealtimeProbe('Realtime-Render-Probe B');
   assert.equal(await descField.getAttribute('data-e2e-instance'), 'suggestion-click');
@@ -2913,12 +2914,29 @@ flowTest('food-orders', "Essensbestellung: the description field suggests the or
   await page.waitForFunction(() => document.querySelector('[data-desc-suggest][data-e2e-instance="suggestion-click"]') === null);
   await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe B' }).waitFor();
 
+  // Shift+Tab closes the list in keydown, then moves focus before the deferred
+  // render replaces the card. The logically focused control must survive that
+  // replacement instead of dropping focus back to the document body.
+  await descInput.fill('marg');
+  await descField.evaluate((element) => { element.dataset.e2eInstance = 'keyboard-tab'; });
+  await createRealtimeProbe('Realtime-Render-Probe C');
+  assert.equal(await descField.getAttribute('data-e2e-instance'), 'keyboard-tab');
+  await descInput.press('Shift+Tab');
+  await page.waitForFunction(() => document.querySelector('[data-desc-suggest][data-e2e-instance="keyboard-tab"]') === null);
+  assert.equal(
+    await page.evaluate(() => document.activeElement !== document.body && document.querySelector('#view-container')?.contains(document.activeElement)),
+    true,
+    'the deferred render must restore the meaningful food-order control reached by Shift+Tab'
+  );
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe C' }).waitFor();
+
   for (const probeOrderId of realtimeProbeOrderIds) {
     const response = await page.request.delete(`${BASE_URL}/api/food-orders/${probeOrderId}`);
     assert.equal(response.status(), 204, await response.text());
   }
   await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe A' }).waitFor({ state: 'detached' });
   await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe B' }).waitFor({ state: 'detached' });
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe C' }).waitFor({ state: 'detached' });
 
   // This field is free text (the main supported case per the PR description
   // is typing something genuinely new), so an unmatched query keeps the list
@@ -2936,7 +2954,6 @@ flowTest('food-orders', "Essensbestellung: the description field suggests the or
   // activates the first option and sets aria-activedescendant; typing
   // further re-filters and must not leave that attribute pointing at an
   // option id that may no longer be in the (rebuilt) list.
-  const descInput = descField.locator('[data-item-desc]');
   await descInput.fill('');
   await page.waitForSelector('.food-order-desc-field .search-select-option');
   await descInput.press('ArrowDown');
