@@ -5,8 +5,10 @@
 // nochmal was?" round through the room becomes one glance at the screen —
 // but stays reversible: the creator/an admin can reopen it to add a
 // forgotten item or fix a price, and paid status/metadata stay editable
-// throughout. Only once they close it for good ("Geschlossen") does it lock
-// permanently.
+// throughout. Once they lock it for good ("Geschlossen"), no items, paid or
+// metadata changes are possible any more — but even that lock itself stays
+// reversible through the same "Wieder öffnen" action, one step back at a
+// time (Geschlossen -> Abgeschickt -> Offen).
 //
 // Payment happens at the orderer group: each person sees one complete amount,
 // pays it through the order's PayPal link and confirms the whole group.
@@ -21,6 +23,7 @@ import { icon } from '../icons.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { currentPlayerHasAdminRole } from '../adminAccess.js';
 import { formatEuroCents as formatCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
 
 export { normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
@@ -119,6 +122,12 @@ const groupStartRuleApplied = new Set();
 // gets no collapse chrome at all. Not persisted beyond the session.
 const expandedOpenOrders = new Set();
 let orderStartRuleApplied = false;
+
+// Same collapse pattern, mirrored for Historie: only meaningful once more
+// than one closed/finalized order exists. A single history entry gets no
+// collapse chrome either.
+const expandedClosedOrders = new Set();
+let closedOrderStartRuleApplied = false;
 let pendingOrderTargetId = null;
 let activeOrderTargetId = null;
 let orderTargetStateVersion = 0;
@@ -299,10 +308,19 @@ function reconcileLocalOrderMutation(nextOrder, ctx, mutationWorkspaceVersion) {
       expandedOpenOrders.add(nextOrder.id);
     }
   } else {
-    // Closing an order moves its card into Historie. Keep the same card on
-    // screen instead of making it disappear into a newly collapsed section.
+    // Closing/finalizing/unfinalizing an order keeps (or moves) its card in
+    // Historie. Keep the same card on screen instead of making it disappear
+    // into a newly collapsed section or card.
     historyOpen = true;
     expandedOpenOrders.delete(nextOrder.id);
+    const closedCount = cache.filter((order) => !order.open).length;
+    if (closedCount > 1) {
+      if (!closedOrderStartRuleApplied) {
+        closedOrderStartRuleApplied = true;
+        expandedClosedOrders.clear();
+      }
+      expandedClosedOrders.add(nextOrder.id);
+    }
   }
 
   rerenderLocalMutation(ctx);
@@ -319,6 +337,7 @@ function reconcileLocalOrderRemoval(orderId, ctx, mutationWorkspaceVersion) {
   expandedGroups.delete(orderId);
   groupStartRuleApplied.delete(orderId);
   expandedOpenOrders.delete(orderId);
+  expandedClosedOrders.delete(orderId);
   rerenderLocalMutation(ctx);
   void refreshFoodOrders(ctx);
 }
@@ -983,40 +1002,52 @@ function renderOpenOrder(order, myId, { collapsible = false } = {}) {
 // The "Abgeschickt" (submitted) state — items are frozen for others, but the
 // creator/an admin can still reopen it and edit metadata, and any group
 // member can still toggle paid status — is deliberately kept visually and
-// textually distinct from "Geschlossen" (finalized, fully locked): a
-// different badge color (badge-paused vs badge-offline, matching the
-// amber/gray "pausiert"/"offline" state language used elsewhere) plus
-// different wording.
-function renderClosedOrder(order, myId) {
+// textually distinct from "Geschlossen" (finalized): a different badge color
+// (badge-paused vs badge-offline, matching the amber/gray
+// "pausiert"/"offline" state language used elsewhere) plus different
+// wording. Both states are reversible through the same "Wieder öffnen"
+// action (finalized -> abgeschickt -> offen, one step per tap), mirroring
+// renderOpenOrder's own collapsible-card pattern once more than one history
+// entry exists.
+function renderClosedOrder(order, myId, { collapsible = false } = {}) {
   const finalized = Boolean(order.finalizedAt);
   const itemsHtml = renderItems(order, myId, { locked: finalized });
-  return `
-    <article class="card stack food-order-card" data-closed-order="${order.id}">
-      <div class="row-between">
-        <strong>${escapeHtml(order.title)}</strong>
-        <span class="badge ${finalized ? 'badge-offline' : 'badge-paused'}">${finalized ? 'Geschlossen' : 'Abgeschickt'}</span>
-      </div>
-      <div class="muted food-order-meta">
-        von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
-      </div>
-      ${renderDetails(order, { locked: finalized })}
-      ${renderOrderOverview(order)}
+  const expanded = !collapsible || expandedClosedOrders.has(order.id);
+  const bodyHtml = `
+    <div class="muted food-order-meta">
+      von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
+    </div>
+    ${renderDetails(order, { locked: finalized })}
+    ${renderOrderOverview(order)}
+    <div class="food-order-card-body stack" ${expanded ? '' : 'hidden'}>
       ${renderCardToolbar(order)}
       <div class="food-order-items">${itemsHtml}</div>
       ${renderOrderSummary(order)}
       ${
-        order.createdBy === myId
+        order.createdBy === myId || currentPlayerHasAdminRole()
           ? `<div class="food-order-close-action stack" style="gap:var(--space-2);">
-               ${
-                 finalized
-                   ? ''
-                   : `<button type="button" class="btn btn-sm btn-block" data-reopen-order="${order.id}">Wieder öffnen</button>
-                      <button type="button" class="btn btn-danger btn-sm btn-block" data-finalize-order="${order.id}">Bestellung schließen</button>`
-               }
+               <button type="button" class="btn btn-sm btn-block" data-reopen-order="${order.id}">Wieder öffnen</button>
+               ${finalized ? '' : `<button type="button" class="btn btn-danger btn-sm btn-block" data-finalize-order="${order.id}">Bestellung schließen</button>`}
                <button type="button" class="btn btn-danger btn-sm btn-block" data-delete-order="${order.id}">Bestellung löschen</button>
              </div>`
           : ''
       }
+    </div>`;
+
+  return `
+    <article class="card stack food-order-card" data-closed-order="${order.id}">
+      <div class="row-between food-order-card-header">
+        ${collapsible
+          ? `<button type="button" class="food-order-card-header-toggle" data-order-toggle="${order.id}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="food-order-card-body-${order.id}" aria-label="Bestellung ${escapeHtml(order.title)} ${expanded ? 'einklappen' : 'ausklappen'}">
+               ${icon('chevronRight', { className: 'food-order-card-chevron' })}
+               <strong class="food-order-card-title">${escapeHtml(order.title)}</strong>
+             </button>`
+          : `<strong class="food-order-card-title">${escapeHtml(order.title)}</strong>`}
+        <span class="food-order-card-header-end">
+          <span class="badge ${finalized ? 'badge-offline' : 'badge-paused'}">${finalized ? 'Geschlossen' : 'Abgeschickt'}</span>
+        </span>
+      </div>
+      ${bodyHtml.replace('class="food-order-card-body stack"', `id="food-order-card-body-${order.id}" class="food-order-card-body stack"`)}
     </article>`;
 }
 
@@ -1695,13 +1726,21 @@ export function renderFoodOrders(container, ctx) {
     orderStartRuleApplied = true;
     expandedOpenOrders.clear();
   }
+  // Same rule, mirrored for Historie entries.
+  if (cache !== null && closedOrders.length > 1 && !closedOrderStartRuleApplied) {
+    closedOrderStartRuleApplied = true;
+    expandedClosedOrders.clear();
+  }
 
   // A direct search/push/Home target must be visible regardless of whether
   // the order is still open or already lives in the collapsed history.
   if (cache !== null && pendingOrderTargetId) {
     const targetOrder = orders.find((order) => order.id === pendingOrderTargetId);
     if (targetOrder?.open && openOrders.length > 1) expandedOpenOrders.add(targetOrder.id);
-    if (targetOrder && !targetOrder.open) historyOpen = true;
+    if (targetOrder && !targetOrder.open) {
+      historyOpen = true;
+      if (closedOrders.length > 1) expandedClosedOrders.add(targetOrder.id);
+    }
     pendingOrderTargetId = null;
   }
 
@@ -1742,7 +1781,7 @@ export function renderFoodOrders(container, ctx) {
                  </span>
                </summary>
                <div class="collapsible-section-content">
-                 <div class="two-column-card-grid food-order-grid">${closedOrders.map((o) => renderClosedOrder(o, myId)).join('')}</div>
+                 <div class="two-column-card-grid food-order-grid">${closedOrders.map((o) => renderClosedOrder(o, myId, { collapsible: closedOrders.length > 1 })).join('')}</div>
                </div>
              </details>`
           : ''
@@ -1893,8 +1932,10 @@ export function renderFoodOrders(container, ctx) {
   container.querySelectorAll('[data-order-toggle]').forEach((button) => {
     button.addEventListener('click', () => {
       const orderId = button.dataset.orderToggle;
-      if (expandedOpenOrders.has(orderId)) expandedOpenOrders.delete(orderId);
-      else expandedOpenOrders.add(orderId);
+      const order = orders.find((o) => o.id === orderId);
+      const set = order?.open ? expandedOpenOrders : expandedClosedOrders;
+      if (set.has(orderId)) set.delete(orderId);
+      else set.add(orderId);
       ctx.rerender();
     });
   });
@@ -1942,14 +1983,21 @@ export function renderFoodOrders(container, ctx) {
 
   container.querySelectorAll('[data-reopen-order]').forEach((btn) => {
     btn.addEventListener('click', async () => {
+      // Reopening steps back exactly one lock level per request (see the route
+      // comment in routes/foodOrders.ts); disabling here stops a fast double-
+      // click/tap from firing a second request before the first response
+      // re-renders this button, which would otherwise skip a level.
+      btn.disabled = true;
       try {
         const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
         const updatedOrder = await api.foodOrders.reopen(btn.dataset.reopenOrder);
-        showToast('Bestellung wieder geöffnet.');
+        showToast(updatedOrder.open ? 'Bestellung wieder geöffnet.' : 'Bestellung wieder freigegeben (Abgeschickt).');
         reconcileLocalOrderMutation(updatedOrder, ctx, mutationWorkspaceVersion);
       } catch (err) {
         showToast(err.message, { error: true });
         refreshFoodOrdersAfterMutationError(ctx);
+      } finally {
+        btn.disabled = false;
       }
     });
   });
@@ -1958,7 +2006,7 @@ export function renderFoodOrders(container, ctx) {
     btn.addEventListener('click', async () => {
       if (
         !(await confirmDialog(
-          'Bestellung schließen? Danach sind keine Änderungen mehr möglich – auch nicht durch erneutes Öffnen.',
+          'Bestellung schließen? Danach sind keine Änderungen mehr möglich, bis sie wieder geöffnet wird.',
           { confirmText: 'Schließen' }
         ))
       )

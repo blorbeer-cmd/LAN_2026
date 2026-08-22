@@ -569,7 +569,7 @@ db.exec(`
     created_by   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     created_at   INTEGER NOT NULL,
     closed_at    INTEGER,
-    finalized_at INTEGER, -- set by the creator/admin once closed; a terminal lock, never cleared
+    finalized_at INTEGER, -- set by the creator/admin once closed; reversible via /reopen, which clears it back to closed
     send_at      INTEGER, -- optional, editable: when the order will actually be placed/picked up
     notes        TEXT,    -- optional, editable: free-text info (e.g. "bar zahlen", "Mindestbestellwert 15€")
     link         TEXT,    -- optional, editable: URL to the menu/delivery service
@@ -2738,9 +2738,10 @@ function migrateFoodOrderItemPaidColumn(): void {
 }
 registerMigration({ version: 41, name: 'add food order item paid flag', up: migrateFoodOrderItemPaidColumn });
 
-// finalized_at lets the creator/admin permanently lock a closed order (no
-// more reopening, items or paid edits); paypal_link is the co-orderers'
-// "Bezahlen" target, edited the same way as notes/link.
+// finalized_at lets the creator/admin lock a closed order (no more items
+// or paid edits while set) - reversible via /reopen, which clears it back
+// to closed; paypal_link is the co-orderers' "Bezahlen" target, edited the
+// same way as notes/link.
 function migrateFoodOrderFinalizeAndPaypalColumns(): void {
   const columns = db.prepare('PRAGMA table_info(food_orders)').all() as Array<{ name: string }>;
   const has = (name: string) => columns.some((c) => c.name === name);
