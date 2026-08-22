@@ -647,10 +647,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 77);
+  assert.equal(migrations.length, 80);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 77 }, (_, index) => index + 1),
+    Array.from({ length: 80 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -701,8 +701,15 @@ test('records the complete migration history and does not duplicate it on restar
   const eventColumns = migrated.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
   assert.ok(eventColumns.some((column) => column.name === 'group_id'));
   assert.ok(eventColumns.some((column) => column.name === 'status'));
+  for (const column of ['cost_cents', 'paypal_link', 'payment_due_at', 'created_by']) {
+    assert.ok(eventColumns.some((entry) => entry.name === column), `${column} should be added to events`);
+  }
   const participantColumns = migrated.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
   assert.ok(participantColumns.some((column) => column.name === 'status'));
+  assert.ok(participantColumns.some((column) => column.name === 'paid'));
+  assert.ok(participantColumns.some((column) => column.name === 'paid_by'));
+  assert.ok(participantColumns.some((column) => column.name === 'paid_at'));
+  assert.ok(migrated.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'event_payment_reminders'").get());
   const arcadeResultColumns = migrated.prepare('PRAGMA table_info(arcade_results)').all() as Array<{ name: string }>;
   assert.ok(arcadeResultColumns.some((column) => column.name === 'source_match_id'));
   const scribbleDrawingColumns = migrated.prepare('PRAGMA table_info(scribble_drawings)').all() as Array<{ name: string }>;
@@ -1170,8 +1177,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 77 }, (_, index) => index + 1),
-    'every version 1..77 runs exactly once',
+    Array.from({ length: 80 }, (_, index) => index + 1),
+    'every version 1..80 runs exactly once',
   );
 });
 
@@ -2220,6 +2227,130 @@ test('migration 77 creates durable food-order reminder state and is restart-safe
       .get(),
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 77').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 78 preserves event payment data and is restart-safe', () => {
+  const dbFile = makeTempDbPath('event-payment-columns');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture
+    .prepare(
+      `INSERT INTO players (id, name, color, api_key, created_at)
+       VALUES ('event-payment-creator', 'Event Payment Creator', '#4f9dff', 'event-payment-key', ?)`,
+    )
+    .run(now);
+  fixture
+    .prepare(
+      `INSERT INTO events
+         (id, name, starts_at, ends_at, group_id, status, visibility_scope, cost_cents, paypal_link, created_by)
+       VALUES ('event-payment-event', 'Payment Event', ?, ?, 'default-group', 'published', 'participants', 2550,
+               'https://paypal.me/creator', 'event-payment-creator')`,
+    )
+    .run(now, now + 60_000);
+  fixture
+    .prepare(
+      `INSERT INTO group_memberships (group_id, player_id, role, status, joined_at)
+       VALUES ('default-group', 'event-payment-creator', 'member', 'active', ?)`,
+    )
+    .run(now);
+  fixture
+    .prepare(
+      `INSERT INTO event_participants (event_id, player_id, status, paid)
+       VALUES ('event-payment-event', 'event-payment-creator', 'accepted', 1)`,
+    )
+    .run();
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 78').run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the event payment migration must be restart-safe');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT cost_cents AS costCents, paypal_link AS paypalLink, created_by AS createdBy FROM events WHERE id = ?')
+      .get('event-payment-event'),
+    { costCents: 2550, paypalLink: 'https://paypal.me/creator', createdBy: 'event-payment-creator' },
+  );
+  assert.equal(
+    (migrated
+      .prepare('SELECT paid FROM event_participants WHERE event_id = ? AND player_id = ?')
+      .get('event-payment-event', 'event-payment-creator') as { paid: number }).paid,
+    1,
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 78').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 79 creates durable event payment reminder state and is restart-safe', () => {
+  const dbFile = makeTempDbPath('event-payment-reminders');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.exec(`
+    DROP TABLE event_payment_reminders;
+    DELETE FROM schema_migrations WHERE version = 79;
+  `);
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the event reminder-state migration must be restart-safe');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.ok(
+    migrated
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'event_payment_reminders'")
+      .get(),
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 79').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 80 preserves event payment audit and due dates and is restart-safe', () => {
+  const dbFile = makeTempDbPath('event-payment-audit');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture.exec(`
+    INSERT INTO players (id, name, api_key, created_at)
+      VALUES ('payment-audit-player', 'Payment Audit Player', 'payment-audit-key', ${now});
+    INSERT INTO group_memberships (group_id, player_id, role, status, joined_at)
+      VALUES ('default-group', 'payment-audit-player', 'member', 'active', ${now});
+    INSERT INTO events
+      (id, name, starts_at, ends_at, cost_cents, payment_due_at, created_by, group_id, status, visibility_scope)
+      VALUES ('payment-audit-event', 'Payment Audit Event', ${now}, ${now + 60_000}, 2550, ${now + 30_000},
+              'payment-audit-player', 'default-group', 'published', 'participants');
+    INSERT INTO event_participants (event_id, player_id, status, paid, paid_by, paid_at)
+      VALUES ('payment-audit-event', 'payment-audit-player', 'accepted', 1, 'payment-audit-player', ${now});
+    DELETE FROM schema_migrations WHERE version = 80;
+  `);
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the event payment audit migration must be restart-safe');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  const eventColumns = migrated.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  const participantColumns = migrated.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  assert.ok(eventColumns.some((column) => column.name === 'payment_due_at'));
+  assert.ok(participantColumns.some((column) => column.name === 'paid_by'));
+  assert.ok(participantColumns.some((column) => column.name === 'paid_at'));
+  assert.deepEqual(
+    migrated.prepare('SELECT payment_due_at AS paymentDueAt FROM events WHERE id = ?').get('payment-audit-event'),
+    { paymentDueAt: now + 30_000 },
+  );
+  assert.deepEqual(
+    migrated.prepare('SELECT paid, paid_by AS paidBy, paid_at AS paidAt FROM event_participants WHERE event_id = ?').get('payment-audit-event'),
+    { paid: 1, paidBy: 'payment-audit-player', paidAt: now },
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 80').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

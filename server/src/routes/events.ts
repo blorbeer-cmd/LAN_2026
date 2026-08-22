@@ -29,7 +29,7 @@ import { BASE_EVENT_ID, db } from '../db';
 import { broadcast, Events, switchPlayerEventScope } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { notifyPlayers, resolvePushTopic } from '../push';
-import { isNonEmptyString } from '../validation';
+import { isNonEmptyString, isValidUrl } from '../validation';
 import { requireConfiguredGroupMembership, requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
@@ -94,9 +94,13 @@ const resolveEvent = resolveGroupResource<EventRow>({
 function serializeEvent(event: ReturnType<typeof getEvent>) {
   if (!event) return undefined;
   return {
-    ...serializeEventSummary(event as EventRow, { includeAcceptedParticipants: true }),
+    ...serializeEventSummary(event as EventRow, {
+      includeAcceptedParticipants: true,
+      includePaymentDetails: true,
+    }),
     endedAt: event.ended_at,
     groupId: event.group_id,
+    createdBy: event.created_by,
     visibilityScope: event.visibility_scope,
     isOutsideEvents: event.id === OUTSIDE_EVENTS_ID,
     participantIds: event.id === OUTSIDE_EVENTS_ID ? undefined : getParticipantIds(event.id),
@@ -120,7 +124,10 @@ function activeContextPlayerIds(eventId: string): string[] {
 // accepted-participant extension is only requested after the caller's admin
 // or accepted-member access check; invitation teasers must keep using the
 // default shape.
-function serializeEventSummary(event: EventRow, { includeAcceptedParticipants = false } = {}) {
+function serializeEventSummary(
+  event: EventRow,
+  { includeAcceptedParticipants = false, includePaymentDetails = false } = {},
+) {
   return {
     id: event.id,
     name: event.name,
@@ -128,6 +135,9 @@ function serializeEventSummary(event: EventRow, { includeAcceptedParticipants = 
     endsAt: event.ends_at,
     location: event.location,
     description: event.description,
+    costCents: event.cost_cents,
+    paymentDueAt: event.payment_due_at,
+    ...(includePaymentDetails ? { paypalLink: event.paypal_link } : {}),
     status: event.status,
     isBase: event.id === BASE_EVENT_ID,
     trackingEnabled: Boolean(event.tracking_enabled),
@@ -206,7 +216,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
       participantIds: getParticipantIds(activeEvent.id),
     },
     availableEvents: availableEvents.map((event) =>
-      serializeEventSummary(event, { includeAcceptedParticipants: true }),
+      serializeEventSummary(event, { includeAcceptedParticipants: true, includePaymentDetails: true }),
     ),
     historicalEvents: historicalEvents.map((event) => serializeEventSummary(event)),
     invitations: invitations.map((event) => ({ ...serializeEventSummary(event), participationStatus: 'invited' })),
@@ -229,7 +239,7 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
   }
   if (access === 'participant') {
     return res.json({
-      ...serializeEventSummary(event),
+      ...serializeEventSummary(event, { includePaymentDetails: true }),
       participantIds: getParticipantIds(event.id),
       acceptedParticipants: getAcceptedEventParticipants(event.id),
     });
@@ -321,7 +331,10 @@ eventsRouter.post('/:id/invitations', resolveEvent, requireGroupRole('admin'), (
       { groupId: req.group!.id, eventId: BASE_EVENT_ID },
     );
   }
-  res.status(result.changed ? 201 : 200).json(result.participant);
+  res.status(result.changed ? 201 : 200).json({
+    playerId: result.participant.playerId,
+    status: result.participant.status,
+  });
 });
 
 function answerEventInvitation(response: 'accepted' | 'declined') {
@@ -359,12 +372,89 @@ function answerEventInvitation(response: 'accepted' | 'declined') {
       groupId: req.group!.id,
       eventId: BASE_EVENT_ID,
     });
-    return res.json(result.participant);
+    return res.json({ playerId: result.participant.playerId, status: result.participant.status });
   };
 }
 
 eventsRouter.post('/:id/invitation/accept', resolveEvent, answerEventInvitation('accepted'));
 eventsRouter.post('/:id/invitation/decline', resolveEvent, answerEventInvitation('declined'));
+
+// PATCH /api/events/:id/participants/:playerId/payment - an accepted
+// participant may correct only their own state. The recorded event creator
+// may additionally correct every accepted participant, without granting that
+// authority to unrelated admins.
+eventsRouter.patch('/:id/participants/:playerId/payment', resolveEvent, (req, res) => {
+  const event = req.groupResource as EventRow;
+  if (!event || event.id === OUTSIDE_EVENTS_ID || event.id === BASE_EVENT_ID) {
+    return res.status(404).json({ error: 'Event nicht gefunden.' });
+  }
+  if (event.cost_cents === null) return res.status(409).json({ error: 'Für dieses Event sind keine Kosten hinterlegt.' });
+  const actorId = requestPlayerId(req);
+  const targetPlayerId = req.params.playerId;
+  const { paid } = req.body ?? {};
+  if (!actorId) return res.status(401).json({ error: 'Anmeldung erforderlich.' });
+  if (typeof paid !== 'boolean') return res.status(400).json({ error: 'paid muss ein Boolean sein.' });
+  if (targetPlayerId !== actorId && event.created_by !== actorId) {
+    return res.status(403).json({ error: 'Du kannst nur deinen eigenen Bezahlstatus ändern.' });
+  }
+
+  const paidAt = paid ? Date.now() : null;
+  const updated = db
+    .prepare(
+      `UPDATE event_participants SET paid = ?, paid_by = ?, paid_at = ?
+       WHERE event_id = ? AND player_id = ? AND status = 'accepted'`,
+    )
+    .run(paid ? 1 : 0, paid ? actorId : null, paidAt, event.id, targetPlayerId);
+  if (updated.changes !== 1) {
+    return res.status(404).json({ error: 'Zugesagter Event-Teilnehmer nicht gefunden.' });
+  }
+
+  if (paid) {
+    resolvePushTopic(`event-payment-reminder:${targetPlayerId}:${event.id}`, false, {
+      groupId: req.group!.id,
+      eventId: event.id,
+    });
+  }
+
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  return res.json({ playerId: targetPlayerId, paid, paidBy: paid ? actorId : null, paidAt });
+});
+
+// PATCH /api/events/:id/participants/payment - creator-only convenience
+// action. Existing confirmations keep their original provenance; only open
+// accepted participants are stamped by this action.
+eventsRouter.patch('/:id/participants/payment', resolveEvent, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const actorId = requestPlayerId(req);
+  if (!event || event.id === OUTSIDE_EVENTS_ID || event.id === BASE_EVENT_ID) {
+    return res.status(404).json({ error: 'Event nicht gefunden.' });
+  }
+  if (event.cost_cents === null) return res.status(409).json({ error: 'Für dieses Event sind keine Kosten hinterlegt.' });
+  if (!actorId || event.created_by !== actorId) {
+    return res.status(403).json({ error: 'Nur der Event-Ersteller kann alle als bezahlt markieren.' });
+  }
+
+  const unpaidPlayerIds = (
+    db.prepare(
+      `SELECT player_id AS playerId FROM event_participants
+       WHERE event_id = ? AND status = 'accepted' AND paid = 0`,
+    ).all(event.id) as Array<{ playerId: string }>
+  ).map((row) => row.playerId);
+  const paidAt = Date.now();
+  const updated = db.prepare(
+    `UPDATE event_participants SET paid = 1, paid_by = ?, paid_at = ?
+     WHERE event_id = ? AND status = 'accepted' AND paid = 0`,
+  ).run(actorId, paidAt, event.id);
+
+  for (const playerId of unpaidPlayerIds) {
+    resolvePushTopic(`event-payment-reminder:${playerId}:${event.id}`, false, {
+      groupId: req.group!.id,
+      eventId: event.id,
+    });
+  }
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  return res.json({ updated: updated.changes, paidAt });
+});
 
 // DELETE /api/events/:id/participants/:playerId - administrative removal
 // remains distinct from a member declining their own invitation.
@@ -442,12 +532,39 @@ function parseRequiredTimestamp(
   return { ok: true, value };
 }
 
+const MAX_EVENT_COST_CENTS = 1_000_000;
+const MAX_PAYPAL_LINK_LENGTH = 300;
+const BARE_PAYPAL_ME_RE = /^https:\/\/(?:www\.)?paypal\.me\/[^/?#]+\/?$/i;
+
+function parseOptionalCostCents(
+  value: unknown,
+): { ok: true; value: number | null } | { ok: false; error: string } {
+  if (value === undefined || value === null || value === '') return { ok: true, value: null };
+  if (!Number.isInteger(value) || (value as number) <= 0 || (value as number) > MAX_EVENT_COST_CENTS) {
+    return { ok: false, error: 'costCents muss zwischen 1 und 1000000 Cent liegen.' };
+  }
+  return { ok: true, value: value as number };
+}
+
+function parseOptionalPaypalLink(
+  value: unknown,
+): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (value === undefined || value === null || value === '') return { ok: true, value: null };
+  if (!isValidUrl(value, MAX_PAYPAL_LINK_LENGTH) || !BARE_PAYPAL_ME_RE.test(value.trim())) {
+    return {
+      ok: false,
+      error: 'paypalLink muss ein vollständiger PayPal.me-Link ohne bereits eingetragenen Betrag sein.',
+    };
+  }
+  return { ok: true, value: value.trim().replace(/\/$/, '') };
+}
+
 // POST /api/events - create a new event. Tracking starts OFF — several
 // events can exist side by side, so creating one never touches whichever
 // event (if any) is currently tracking.
-// Body: { name, startsAt, endsAt, location?, description? }
+// Body: { name, startsAt, endsAt, location?, description?, costCents?, paypalLink?, paymentDueAt? }
 eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin'), (req, res) => {
-  const { name, startsAt, endsAt, location, description, visibilityScope } = req.body ?? {};
+  const { name, startsAt, endsAt, location, description, costCents, paypalLink, paymentDueAt, visibilityScope } = req.body ?? {};
   if (!isNonEmptyString(name, 80)) {
     return res.status(400).json({ error: 'Name ist erforderlich (1-80 Zeichen).' });
   }
@@ -463,6 +580,18 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
   if (!parsedLocation.ok) return res.status(400).json({ error: parsedLocation.error });
   const parsedDescription = parseOptionalText(description, 500, 'description');
   if (!parsedDescription.ok) return res.status(400).json({ error: parsedDescription.error });
+  const parsedCostCents = parseOptionalCostCents(costCents);
+  if (!parsedCostCents.ok) return res.status(400).json({ error: parsedCostCents.error });
+  const parsedPaypalLink = parseOptionalPaypalLink(paypalLink);
+  if (!parsedPaypalLink.ok) return res.status(400).json({ error: parsedPaypalLink.error });
+  const parsedPaymentDueAt = parseOptionalTimestamp(paymentDueAt, 'paymentDueAt');
+  if (!parsedPaymentDueAt.ok) return res.status(400).json({ error: parsedPaymentDueAt.error });
+  if (parsedPaypalLink.value && parsedCostCents.value === null) {
+    return res.status(400).json({ error: 'Für einen PayPal-Link müssen Kosten pro Person angegeben werden.' });
+  }
+  if (parsedPaymentDueAt.value !== null && parsedCostCents.value === null) {
+    return res.status(400).json({ error: 'Für ein Zahlungsziel müssen Kosten pro Person angegeben werden.' });
+  }
   if (visibilityScope !== undefined && visibilityScope !== 'participants') {
     return res.status(400).json({ error: 'Events sind ausschließlich für angenommene Teilnehmende sichtbar.' });
   }
@@ -473,6 +602,10 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
     endsAt: parsedEndsAt.value,
     location: parsedLocation.value,
     description: parsedDescription.value,
+    costCents: parsedCostCents.value,
+    paypalLink: parsedPaypalLink.value,
+    paymentDueAt: parsedPaymentDueAt.value,
+    createdBy: req.player?.id ?? null,
   });
 
   writeAdminAudit({
@@ -487,8 +620,8 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
 });
 
 // PATCH /api/events/:id - metadata correction only (name/dates/location/
-// description); never touches tracking state or live status.
-// Body: any subset of { name?, startsAt?, endsAt?, location?, description? }
+// description/payment details); never touches tracking state or live status.
+// Body: any subset of { name?, startsAt?, endsAt?, location?, description?, costCents?, paypalLink?, paymentDueAt? }
 eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) => {
   const existing = req.groupResource as EventRow;
   if (!existing || existing.id === OUTSIDE_EVENTS_ID) {
@@ -498,7 +631,7 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     return res.status(409).json({ error: 'Das dauerhaft offene Basis-Event kann nicht bearbeitet werden.' });
   }
 
-  const { name, startsAt, endsAt, location, description, visibilityScope } = req.body ?? {};
+  const { name, startsAt, endsAt, location, description, costCents, paypalLink, paymentDueAt, visibilityScope } = req.body ?? {};
   const fields: UpdateEventFields = {};
 
   if (name !== undefined) {
@@ -534,6 +667,30 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     const parsed = parseOptionalText(description, 500, 'description');
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
     fields.description = parsed.value;
+  }
+  if (costCents !== undefined) {
+    const parsed = parseOptionalCostCents(costCents);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    fields.costCents = parsed.value;
+  }
+  if (paypalLink !== undefined) {
+    const parsed = parseOptionalPaypalLink(paypalLink);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    fields.paypalLink = parsed.value;
+  }
+  if (paymentDueAt !== undefined) {
+    const parsed = parseOptionalTimestamp(paymentDueAt, 'paymentDueAt');
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    fields.paymentDueAt = parsed.value;
+  }
+  const effectiveCostCents = fields.costCents !== undefined ? fields.costCents : existing.cost_cents;
+  const effectivePaypalLink = fields.paypalLink !== undefined ? fields.paypalLink : existing.paypal_link;
+  const effectivePaymentDueAt = fields.paymentDueAt !== undefined ? fields.paymentDueAt : existing.payment_due_at;
+  if (effectivePaypalLink && effectiveCostCents === null) {
+    return res.status(400).json({ error: 'Für einen PayPal-Link müssen Kosten pro Person angegeben werden.' });
+  }
+  if (effectivePaymentDueAt !== null && effectiveCostCents === null) {
+    return res.status(400).json({ error: 'Für ein Zahlungsziel müssen Kosten pro Person angegeben werden.' });
   }
   if (visibilityScope !== undefined) {
     if (visibilityScope !== 'participants') {

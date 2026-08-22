@@ -25,6 +25,7 @@ import { getMyId } from '../whoami.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { eventStatusBadgeHtml } from '../eventStatus.js';
 import { isGroupAdmin } from '../groupContext.js';
+import { formatEuroCents, normalizePaypalInput, paypalPayUrl } from '../paypal.js';
 
 const EVENT_HELP = 'Nur ein Event gleichzeitig erfasst Live-Status und Spielzeit.';
 const KIOSK_HELP = 'Zeigt Live-Status, Vote, Rang und Turnier; ein eigener Token ist erforderlich.';
@@ -55,11 +56,10 @@ function eventLocationUrl(location) {
   }
 }
 
-export function renderEventLocation(location, eventName = '') {
+export function renderEventLocation(location) {
   if (!location) return '';
   const href = eventLocationUrl(location);
   const value = escapeHtml(location);
-  const copyLabel = eventName ? `Ort von ${eventName} kopieren` : 'Ort kopieren';
   return `
     <div class="event-card-detail event-card-location">
       <span class="event-card-detail-icon" aria-hidden="true">${icon('mapPin')}</span>
@@ -67,39 +67,143 @@ export function renderEventLocation(location, eventName = '') {
         <span class="event-card-detail-label">Ort</span>
         ${href ? `<a class="event-location-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${value}</a>` : `<span class="event-location-text">${value}</span>`}
       </span>
-      <button type="button" class="btn btn-sm event-location-copy" data-copy-event-location="${value}" aria-label="${escapeHtml(copyLabel)}" title="${escapeHtml(copyLabel)}">Kopieren</button>
     </div>`;
 }
 
-function acceptedParticipantNames(event) {
-  if (Array.isArray(event.acceptedParticipants)) return event.acceptedParticipants.map((participant) => participant.name);
+function acceptedParticipants(event) {
+  if (Array.isArray(event.acceptedParticipants)) return event.acceptedParticipants;
   const acceptedIds = new Set(
     event.participantIds ??
       (event.participants ?? [])
         .filter((participant) => participant.status === 'accepted')
         .map((participant) => participant.playerId),
   );
-  return state.players.filter((player) => acceptedIds.has(player.id)).map((player) => player.name);
+  const paidById = new Map((event.participants ?? []).map((participant) => [participant.playerId, Boolean(participant.paid)]));
+  return state.players
+    .filter((player) => acceptedIds.has(player.id))
+    .map((player) => ({ playerId: player.id, name: player.name, paid: paidById.get(player.id) ?? false }));
 }
 
 export function acceptedParticipantCount(event) {
-  return acceptedParticipantNames(event).length;
+  return acceptedParticipants(event).length;
+}
+
+function paymentProof(participant) {
+  if (!participant.paid) return '';
+  const confirmer = participant.paidByName || (participant.paidBy === participant.playerId ? 'selbst' : 'unbekannt');
+  const when = participant.paidAt
+    ? ` · ${new Date(participant.paidAt).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}`
+    : '';
+  return `Bezahlt von ${confirmer}${when}`;
 }
 
 function renderAcceptedParticipants(event) {
-  const names = acceptedParticipantNames(event);
+  const participants = acceptedParticipants(event);
   return `
     <div class="event-card-participants">
       <div class="event-card-section-heading">
         <span class="event-card-detail-label">Zusagen</span>
-        <span class="badge badge-playing">${names.length}</span>
+        <span class="badge badge-playing">${participants.length}</span>
       </div>
-      ${names.length
-        ? `<ul class="event-participant-list">${names
-            .map((name) => `<li class="event-participant-row"><span class="event-participant-check" aria-hidden="true">${icon('check')}</span><span>${escapeHtml(name)}</span></li>`)
+      ${participants.length
+        ? `<ul class="event-participant-list">${participants
+            .map((participant) => `<li class="event-participant-row"><span class="event-participant-check" aria-hidden="true">${icon('check')}</span><span class="event-participant-name"><span>${escapeHtml(participant.name)}</span>${participant.paid ? `<small class="event-payment-proof">${escapeHtml(paymentProof(participant))}</small>` : ''}</span>${participant.paid ? '<span class="badge badge-playing">Bezahlt</span>' : ''}</li>`)
             .join('')}</ul>`
         : '<p class="muted event-card-empty-copy">Noch niemand zugesagt.</p>'}
     </div>`;
+}
+
+export function parseEventCostCents(raw) {
+  const trimmed = (raw ?? '').trim().replace('€', '').trim();
+  if (!trimmed) return null;
+  const value = Number(trimmed.replace(',', '.'));
+  if (!Number.isFinite(value) || value <= 0 || value > 10_000) return NaN;
+  return Math.round(value * 100);
+}
+
+function renderEventPayment(event) {
+  if (!event.costCents) return '';
+  const myId = getMyId();
+  const myParticipation = acceptedParticipants(event).find((participant) => participant.playerId === myId);
+  const participants = acceptedParticipants(event);
+  const paidCount = participants.filter((participant) => participant.paid).length;
+  const openCount = participants.length - paidCount;
+  const amount = formatEuroCents(event.costCents);
+  const paidTitle = myParticipation?.paid ? 'Bezahlt – Markierung aufheben' : 'Als bezahlt markieren';
+  const payTitle = `${amount} über PayPal bezahlen`;
+  return `
+    <div class="event-card-payment">
+      <div class="event-card-detail">
+        <span class="event-card-detail-icon" aria-hidden="true">${icon('paypal')}</span>
+        <span class="event-card-detail-content">
+          <span class="event-card-detail-label">Kosten pro Person</span>
+          <strong>${escapeHtml(amount)}</strong>
+        </span>
+      </div>
+      <div class="event-payment-summary">
+        <span><strong>${paidCount} von ${participants.length}</strong> bezahlt</span>
+        <span class="muted">${openCount} offen · ${escapeHtml(formatEuroCents(openCount * event.costCents))}</span>
+      </div>
+      ${event.paymentDueAt ? `<span class="muted event-payment-due">Zahlungsziel: ${escapeHtml(new Date(event.paymentDueAt).toLocaleDateString('de-DE'))}</span>` : ''}
+      ${myParticipation
+        ? `<div class="event-payment-actions">
+             <button type="button" class="payment-paid-marker ${myParticipation.paid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(myId)}" aria-pressed="${myParticipation.paid}" title="${paidTitle}" aria-label="${paidTitle}">
+               ${icon(myParticipation.paid ? 'check' : 'circleDashed')}<span>${myParticipation.paid ? 'Bezahlt' : 'Offen'}</span>
+             </button>
+             ${event.paypalLink ? `<button type="button" class="icon-btn payment-paypal-button event-paypal-button" data-pay-event="${escapeHtml(event.id)}" ${myParticipation.paid ? 'disabled' : ''} title="${escapeHtml(payTitle)}" aria-label="${escapeHtml(payTitle)}">${icon('paypal')}</button>` : ''}
+             ${myParticipation.paid ? `<span class="event-payment-proof">${escapeHtml(paymentProof(myParticipation))}</span>` : ''}
+           </div>`
+        : ''}
+    </div>`;
+}
+
+async function handleEventPay(eventId, ctx) {
+  const popup = window.open('', '_blank');
+  if (popup) popup.opener = null;
+  let handedOff = false;
+
+  try {
+    // Match the food-order handoff: re-read the amount and payment state
+    // immediately before opening PayPal so a stale card cannot charge an old
+    // contribution or overwrite a payment somebody just recorded.
+    const event = await api.events.get(eventId);
+    const myId = getMyId();
+    const participation = acceptedParticipants(event).find((participant) => participant.playerId === myId);
+    if (!participation) {
+      popup?.close();
+      showToast('Du nimmst an diesem Event nicht mehr teil.', { error: true });
+      return ctx.refresh();
+    }
+    if (participation.paid) {
+      popup?.close();
+      showToast('Dein Event-Beitrag wurde inzwischen als bezahlt markiert.');
+      return ctx.refresh();
+    }
+    if (!event.paypalLink || !event.costCents) {
+      popup?.close();
+      showToast('PayPal-Link oder Betrag wurde inzwischen entfernt.', { error: true });
+      return ctx.refresh();
+    }
+
+    const amount = formatEuroCents(event.costCents);
+    const payUrl = paypalPayUrl(event.paypalLink, event.costCents);
+    if (popup) popup.location = payUrl;
+    else window.open(payUrl, '_blank', 'noopener');
+    handedOff = true;
+
+    const confirmed = await confirmDialog(`${amount} wurden an PayPal übergeben.`, {
+      title: 'Bezahlt?',
+      confirmText: 'Ja, bezahlt',
+      cancelText: 'Noch nicht',
+    });
+    if (!confirmed) return;
+    await api.events.setParticipantPaid(event.id, myId, true);
+    await ctx.refresh();
+    showToast('Event-Beitrag als bezahlt markiert.');
+  } catch (err) {
+    if (!handedOff) popup?.close();
+    showToast(err.message, { error: true });
+  }
 }
 
 function renderEventDetails(event) {
@@ -112,7 +216,7 @@ function renderEventDetails(event) {
           <span>${escapeHtml(eventDateRange(event))}</span>
         </span>
       </div>
-      ${renderEventLocation(event.location, event.name)}
+      ${renderEventLocation(event.location)}
       ${event.description
         ? `<div class="event-card-detail event-card-description">
              <span class="event-card-detail-icon" aria-hidden="true">${icon('file')}</span>
@@ -139,6 +243,7 @@ function renderMemberEventCard(event) {
         ${eventStatusBadgeHtml(event)}
       </div>
       ${renderEventDetails(event)}
+      ${renderEventPayment(event)}
       ${renderAcceptedParticipants(event)}
     </article>
   `;
@@ -164,6 +269,7 @@ function renderEventCard(event) {
         ${eventStatusBadgeHtml(event)}
       </div>
       ${renderEventDetails(event)}
+      ${renderEventPayment(event)}
       ${renderAcceptedParticipants(event)}
       <div class="event-card-actions">
         ${trackingBtn}
@@ -298,6 +404,26 @@ function openEventForm(ctx, existing) {
           <label for="event-description" class="field-label">Notiz (optional)</label>
           <textarea id="event-description" maxlength="500" rows="2" placeholder="z.B. Fokus: AoE2-Turnier">${escapeHtml(existing?.description ?? '')}</textarea>
         </div>
+        <div class="field-row">
+          <div>
+            <label for="event-cost" class="field-label">Kosten pro Person (optional)</label>
+            <input type="text" id="event-cost" inputmode="decimal" placeholder="z.B. 25,00" value="${existing?.costCents ? escapeHtml((existing.costCents / 100).toFixed(2).replace('.', ',')) : ''}" />
+          </div>
+          <div>
+            <span class="event-payment-label">
+              <label for="event-paypal" class="field-label">PayPal.me-Link (optional)</label>
+              ${infoTooltipHtml('event-paypal-help', 'PayPal.me-Link', 'Ein PayPal.me-Name oder ein vollständiger PayPal.me-Link. Beim Bezahlen werden die Kosten pro Person automatisch vorausgefüllt.')}
+            </span>
+            <input type="text" id="event-paypal" maxlength="300" placeholder="z.B. paypal.me/name" value="${escapeHtml(existing?.paypalLink ?? '')}" />
+          </div>
+        </div>
+        <div>
+          <span class="event-payment-label">
+            <label for="event-payment-due" class="field-label">Zahlungsziel (optional)</label>
+            ${infoTooltipHtml('event-payment-due-help', 'Zahlungsziel', 'Ist ein Datum gesetzt, beginnen Erinnerungen an diesem Tag. Ohne Zahlungsziel beginnen sie zwei Stunden nach der Zusage.')}
+          </span>
+          ${dateTimeFieldHtml('event-payment-due', existing?.paymentDueAt ?? null, { clearable: true, dateOnly: true, label: 'Zahlungsziel' })}
+        </div>
         <button type="submit" class="btn btn-primary btn-block">${isEdit ? 'Speichern' : 'Event anlegen'}</button>
       </form>
     `,
@@ -307,17 +433,26 @@ function openEventForm(ctx, existing) {
         const name = capturedEl.querySelector('#event-name').value.trim();
         const location = capturedEl.querySelector('#event-location').value.trim();
         const description = capturedEl.querySelector('#event-description').value.trim();
+        const cost = capturedEl.querySelector('#event-cost').value.trim();
+        const paypal = capturedEl.querySelector('#event-paypal').value.trim();
+        const paymentDueAt = capturedEl.querySelector('#event-payment-due').value;
+        const paymentDueChanged = (paymentDueAt ? new Date(paymentDueAt).getTime() : null) !== (existing?.paymentDueAt ?? null);
         const dirty = isEdit
           ? name !== (existing.name ?? '') ||
             location !== (existing.location ?? '') ||
-            description !== (existing.description ?? '')
-          : Boolean(name || location || description);
-        return dirty ? 'Die Event-Daten (Name, Zeitraum, Ort, Notiz) gehen verloren.' : null;
+            description !== (existing.description ?? '') ||
+            cost !== (existing.costCents ? (existing.costCents / 100).toFixed(2).replace('.', ',') : '') ||
+            paypal !== (existing.paypalLink ?? '') ||
+            paymentDueChanged
+          : Boolean(name || location || description || cost || paypal || paymentDueAt);
+        return dirty ? 'Die Event-Daten (Name, Zeitraum, Ort, Notiz, Kosten, PayPal-Link und Zahlungsziel) gehen verloren.' : null;
       },
       onMount: (modalEl) => {
         capturedEl = modalEl;
         wireDateTimeField(modalEl, 'event-starts');
         wireDateTimeField(modalEl, 'event-ends');
+        wireDateTimeField(modalEl, 'event-payment-due');
+        wireInfoTooltips(modalEl);
 
         modalEl.querySelector('#event-form').addEventListener('submit', async (e) => {
           e.preventDefault();
@@ -327,6 +462,28 @@ function openEventForm(ctx, existing) {
           const endsVal = modalEl.querySelector('#event-ends').value;
           const location = modalEl.querySelector('#event-location').value.trim();
           const description = modalEl.querySelector('#event-description').value.trim();
+          const paymentDueVal = modalEl.querySelector('#event-payment-due').value;
+          const paymentDueAt = paymentDueVal ? new Date(paymentDueVal).getTime() : null;
+          const costCents = parseEventCostCents(modalEl.querySelector('#event-cost').value);
+          if (Number.isNaN(costCents)) {
+            showToast('Kosten müssen zwischen 0,01 € und 10.000,00 € liegen.', { error: true });
+            return;
+          }
+          let paypalLink;
+          try {
+            paypalLink = normalizePaypalInput(modalEl.querySelector('#event-paypal').value);
+          } catch (err) {
+            showToast(err.message, { error: true });
+            return;
+          }
+          if (paypalLink && (!costCents || paypalPayUrl(paypalLink, costCents) === paypalLink)) {
+            showToast('Für einen vorausgefüllten Betrag bitte einen PayPal.me-Link und Kosten pro Person angeben.', { error: true });
+            return;
+          }
+          if (paymentDueAt && !costCents) {
+            showToast('Für ein Zahlungsziel müssen Kosten pro Person angegeben werden.', { error: true });
+            return;
+          }
 
           const payload = {
             name,
@@ -334,6 +491,9 @@ function openEventForm(ctx, existing) {
             endsAt: endsVal ? new Date(endsVal).getTime() : null,
             location: location || null,
             description: description || null,
+            costCents,
+            paypalLink,
+            paymentDueAt,
           };
 
           try {
@@ -364,17 +524,24 @@ function participationStatus(status) {
 }
 
 function renderParticipantManagerRows(event) {
-  const participants = new Map((event.participants ?? []).map((entry) => [entry.playerId, entry.status]));
+  const participants = new Map((event.participants ?? []).map((entry) => [entry.playerId, entry]));
   const inviteAllowed = !event.isEnded;
+  const canSetAnyPaid = Boolean(event.costCents) && event.createdBy === getMyId();
   return state.players
     .map((p) => {
-      const status = participants.get(p.id);
+      const participant = participants.get(p.id);
+      const status = participant?.status;
       const presentation = status ? participationStatus(status) : null;
+      const paidTitle = participant?.paid
+        ? `${p.name}: Bezahlt – Markierung aufheben`
+        : `${p.name} als bezahlt markieren`;
       return `
         <div class="event-participant-manager-row">
-          <span class="player-name">${escapeHtml(p.name)}</span>
+          <span class="player-name"><span>${escapeHtml(p.name)}</span>${participant?.paid ? `<small class="event-payment-proof">${escapeHtml(paymentProof({ ...participant, playerId: p.id }))}</small>` : ''}</span>
           <span class="event-participant-manager-actions">
             ${presentation ? `<span class="badge ${presentation.badge}">${presentation.label}</span>` : ''}
+            ${status === 'accepted' && canSetAnyPaid ? `<button type="button" class="payment-paid-marker ${participant.paid ? 'is-paid' : ''}" data-modal-toggle-event-paid="${p.id}" aria-pressed="${Boolean(participant.paid)}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}">${icon(participant.paid ? 'check' : 'circleDashed')}<span>${participant.paid ? 'Bezahlt' : 'Offen'}</span></button>` : ''}
+            ${event.costCents && status === 'accepted' && !canSetAnyPaid && participant.paid ? '<span class="badge badge-playing">Bezahlt</span>' : ''}
             ${inviteAllowed && (!status || status === 'declined') ? `<button type="button" class="btn btn-sm" data-invite-participant="${p.id}">${status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>` : ''}
             ${status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${p.id}">Entfernen</button>` : ''}
           </span>
@@ -384,13 +551,17 @@ function renderParticipantManagerRows(event) {
 }
 
 function renderParticipantsBody(event) {
-  const acceptedCount = acceptedParticipantCount(event);
+  const accepted = acceptedParticipants(event);
+  const acceptedCount = accepted.length;
+  const unpaidCount = accepted.filter((participant) => !participant.paid).length;
+  const canSetAllPaid = Boolean(event.costCents) && event.createdBy === getMyId() && unpaidCount > 0;
   return `
     <div class="event-participants-body">
       <div class="event-participants-summary">
         <span><strong>${acceptedCount}</strong> zugesagt</span>
         <span class="muted">Einladungen und Absagen bleiben hier administrativ sichtbar.</span>
       </div>
+      ${canSetAllPaid ? `<button type="button" class="btn btn-sm" data-mark-all-event-paid>${icon('check')} Alle ${unpaidCount} offenen Beiträge als bezahlt markieren</button>` : ''}
       <p class="muted event-participants-note">Nur zugesagte Spieler erhalten Teilnehmerdaten und werden bei aktivem Event-Tracking berücksichtigt.</p>
       ${event.isEnded ? '<p class="muted event-participants-note">Für beendete Events sind keine neuen Einladungen mehr möglich.</p>' : ''}
       ${state.players.length === 0 ? emptyStateHtml('Noch keine Spieler.') : `<div class="event-participant-manager-list">${renderParticipantManagerRows(event)}</div>`}
@@ -406,20 +577,25 @@ function openParticipantsForm(ctx, event) {
     {
       onMount: (modalEl) => {
         modalEl.addEventListener('click', async (clickEvent) => {
-          const button = clickEvent.target.closest('[data-invite-participant], [data-remove-participant]');
+          const button = clickEvent.target.closest('[data-invite-participant], [data-remove-participant], [data-modal-toggle-event-paid], [data-mark-all-event-paid]');
           if (!button) return;
-          const playerId = button.dataset.inviteParticipant || button.dataset.removeParticipant;
+          const playerId = button.dataset.inviteParticipant || button.dataset.removeParticipant || button.dataset.modalToggleEventPaid;
           const isInvite = Boolean(button.dataset.inviteParticipant);
+          const isPayment = Boolean(button.dataset.modalToggleEventPaid);
+          const isAllPaid = button.hasAttribute('data-mark-all-event-paid');
+          if (isAllPaid && !(await confirmDialog('Alle offenen Beiträge werden mit deinem Namen und dem aktuellen Zeitpunkt als bezahlt markiert.', { title: 'Alle als bezahlt markieren?', confirmText: 'Alle markieren' }))) return;
           button.disabled = true;
           try {
-            if (isInvite) await api.events.inviteParticipant(event.id, playerId);
+            if (isAllPaid) await api.events.setAllParticipantsPaid(event.id);
+            else if (isPayment) await api.events.setParticipantPaid(event.id, playerId, button.getAttribute('aria-pressed') !== 'true');
+            else if (isInvite) await api.events.inviteParticipant(event.id, playerId);
             else await api.events.removeParticipant(event.id, playerId);
             await ctx.refresh();
             const updatedEvent = (state.managedEvents || []).find((candidate) => candidate.id === event.id);
             if (!updatedEvent) return close();
             modalEl.querySelector('.modal-body').innerHTML = renderParticipantsBody(updatedEvent);
-            modalEl.querySelector('[data-invite-participant], [data-remove-participant]')?.focus();
-            showToast(isInvite ? 'Einladung gesendet.' : 'Event-Teilnahme entfernt.');
+            if (playerId) modalEl.querySelector(`[data-modal-toggle-event-paid="${CSS.escape(playerId)}"], [data-invite-participant="${CSS.escape(playerId)}"], [data-remove-participant="${CSS.escape(playerId)}"]`)?.focus();
+            showToast(isAllPaid ? 'Alle offenen Beiträge als bezahlt markiert.' : isPayment ? 'Bezahlstatus aktualisiert.' : isInvite ? 'Einladung gesendet.' : 'Event-Teilnahme entfernt.');
           } catch (err) {
             button.disabled = false;
             showToast(err.message, { error: true });
@@ -428,15 +604,6 @@ function openParticipantsForm(ctx, event) {
       },
     }
   );
-}
-
-async function copyEventLocation(button) {
-  try {
-    await navigator.clipboard.writeText(button.dataset.copyEventLocation ?? '');
-    showToast('Ort-Link kopiert.');
-  } catch {
-    showToast('Kopieren nicht möglich – bitte den Ort manuell markieren.', { error: true });
-  }
 }
 
 export function renderOrgaKiosk(container) {
@@ -474,10 +641,34 @@ export function renderOrgaEvents(container, ctx) {
   container.querySelectorAll('[data-export-event]').forEach((btn) => {
     btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
   });
-  container.querySelectorAll('[data-copy-event-location]').forEach((btn) => {
-    btn.addEventListener('click', () => copyEventLocation(btn));
-  });
   wireInfoTooltips(container);
+
+  container.querySelectorAll('[data-toggle-event-paid]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await api.events.setParticipantPaid(
+          btn.dataset.toggleEventPaid,
+          btn.dataset.paymentPlayer,
+          btn.getAttribute('aria-pressed') !== 'true',
+        );
+        await ctx.refresh();
+        showToast('Bezahlstatus aktualisiert.');
+      } catch (err) {
+        btn.disabled = false;
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-pay-event]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      btn.disabled = true;
+      handleEventPay(btn.dataset.payEvent, ctx).finally(() => {
+        btn.disabled = false;
+      });
+    });
+  });
 
   // Absent for a member: only owner/admin get the create action.
   container.querySelector('#new-event-btn')?.addEventListener('click', () => openEventForm(ctx, null));

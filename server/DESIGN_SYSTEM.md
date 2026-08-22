@@ -683,8 +683,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   re-renders; history remains its own initially collapsed section without a target.
   The add action is a normal `.btn` spanning the last grid columns and stretching to field height.
 
-  One hour after an order is sent, unpaid active members become eligible for a direct hourly payment
-  reminder. Home's `Aktuell` list enriches the existing order row instead of adding a duplicate. The
+  Two hours after an order is sent, unpaid active members become eligible for a direct payment
+  reminder, repeated at most once per rolling two-hour window. Home's `Aktuell` list enriches the
+  existing order row instead of adding a duplicate. The
   reminder uses the same order deep link and a durable per-player/event send timestamp independent of
   the bounded push history.
 - **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its four area tabs
@@ -732,8 +733,18 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   part in, without the „+ Event“ action or administrative invitation/decline controls; the card
   includes the event-status badge plus the count and names of accepted participants. Pending invitations for the current identity
   lead the tab as a subsection for both. Event cards use the standard two-column nested-card grid,
-  stable flex footers for management actions, and clickable/copyable location links when an event
-  stores a web URL. TV-Kiosk (Admin's „Kioskverwaltung“
+  stable flex footers for management actions, and clickable location links without a separate copy
+  action when an event stores a web URL; plain locations remain text. Event creation and editing may
+  add one optional per-person cost plus a bare PayPal.me link. Accepted participants receive the same
+  PayPal icon action and `Offen`/`Bezahlt` marker as food-order groups. The handoff refreshes the event
+  before opening PayPal with the EUR amount prefilled and asks „Bezahlt?“ afterwards; only an
+  affirmative answer records the payment. Every confirmation shows who recorded it and when. The
+  payment block summarizes paid participants and the count plus total value of open contributions.
+  A participant may otherwise change only their own state, while the recorded event creator may
+  correct every accepted participant or mark all still-open contributions paid after one confirmation.
+  An optional date-only payment deadline starts reminders on that day; without one, contributions
+  become eligible two hours after acceptance. Further reminders run at most once per rolling two-hour
+  window, using durable reminder state independent of push history. TV-Kiosk (Admin's „Kioskverwaltung“
   card, not an Orga tab) is deliberately minimal — one grouped-page-section with a single
   full-width link that opens `/kiosk.html` in a new tab.
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
