@@ -104,17 +104,57 @@ test('group roles, event resources and audit stay isolated inside the one real g
         .send({ role: 'admin' });
       assert.equal(promoteBob.status, 200, JSON.stringify(promoteBob.body));
       assert.ok(realtimeSignals.some((signal) => signal.event === Events.playersChanged));
-      const deactivateBeforeReauth = await request(app)
-        .post('/api/players/' + alice.account.id + '/deactivate')
-        .set('Cookie', bob.cookie);
-      assert.equal(deactivateBeforeReauth.status, 403);
       assert.equal(
         (await request(app).post('/api/auth/reauth').set('Cookie', bob.cookie).send({ password: bob.password })).status,
         204,
       );
+      const bobRegistrationInvite = await request(app)
+        .post('/api/auth/invites')
+        .set('Cookie', bob.cookie)
+        .send({ purpose: 'register' });
+      assert.equal(bobRegistrationInvite.status, 201, JSON.stringify(bobRegistrationInvite.body));
+      const demoteBob = await request(app)
+        .patch('/api/groups/' + DEFAULT_GROUP_ID + '/members/' + bob.account.id)
+        .set('Cookie', alice.cookie)
+        .send({ role: 'member' });
+      assert.equal(demoteBob.status, 200, JSON.stringify(demoteBob.body));
+      assert.equal(db.prepare('SELECT is_admin FROM players WHERE id = ?').get(bob.account.id).is_admin, 0);
+      assert.equal(
+        (await request(app).post('/api/auth/register').send({
+          code: bobRegistrationInvite.body.code,
+          name: 'Demotion Must Block Registration',
+          password: 'demotion blocked password',
+        })).status,
+        400,
+      );
+      assert.equal(
+        (await request(app).get('/api/auth/invites').set('Cookie', alice.cookie)).body.some(
+          (invite) => invite.code === bobRegistrationInvite.body.code,
+        ),
+        false,
+      );
+      const rePromoteBob = await request(app)
+        .patch('/api/groups/' + DEFAULT_GROUP_ID + '/members/' + bob.account.id)
+        .set('Cookie', alice.cookie)
+        .send({ role: 'admin' });
+      assert.equal(rePromoteBob.status, 200, JSON.stringify(rePromoteBob.body));
+      const bobFreshLogin = await request(app).post('/api/auth/login').send({
+        name: 'Matrix Bob',
+        password: 'matrix bob secure passphrase',
+      });
+      assert.equal(bobFreshLogin.status, 200, JSON.stringify(bobFreshLogin.body));
+      const bobFreshCookie = cookie(bobFreshLogin);
+      const deactivateBeforeReauth = await request(app)
+        .post('/api/players/' + alice.account.id + '/deactivate')
+        .set('Cookie', bobFreshCookie);
+      assert.equal(deactivateBeforeReauth.status, 403);
+      assert.equal(
+        (await request(app).post('/api/auth/reauth').set('Cookie', bobFreshCookie).send({ password: bob.password })).status,
+        204,
+      );
       const deactivateLastClaimedOwner = await request(app)
         .post('/api/players/' + alice.account.id + '/deactivate')
-        .set('Cookie', bob.cookie);
+        .set('Cookie', bobFreshCookie);
       assert.equal(deactivateLastClaimedOwner.status, 409);
       assert.equal(db.prepare('SELECT deactivated_at FROM players WHERE id = ?').get(alice.account.id).deactivated_at, null);
       const demoteLastClaimedOwner = await request(app)

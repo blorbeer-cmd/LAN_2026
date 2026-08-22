@@ -60,7 +60,11 @@ test("every browser E2E owner participates in failure diagnostics", () => {
   assert.ok(owners.length > 0, "expected browser E2E owners");
   for (const owner of owners) {
     const source = readFileSync(new URL(owner, directory), "utf8");
-    assert.match(source, /runWithE2EDiagnostics|createE2EDiagnosticTest/, owner);
+    assert.match(
+      source,
+      /runWithE2EDiagnostics|createE2EDiagnosticTest|StatefulE2EDiagnosticGuard|createStatefulE2EDiagnosticTest/,
+      owner,
+    );
   }
 });
 
