@@ -18,6 +18,10 @@ export interface EventRow {
   ends_at: number | null;
   location: string | null;
   description: string | null;
+  cost_cents: number | null;
+  paypal_link: string | null;
+  payment_due_at: number | null;
+  created_by: string | null;
   tracking_enabled: number;
   ended_at: number | null;
   group_id: string | null;
@@ -28,11 +32,19 @@ export interface EventRow {
 export interface EventParticipantRow {
   playerId: string;
   status: EventParticipationStatus;
+  paid: boolean;
+  paidBy?: string | null;
+  paidByName?: string | null;
+  paidAt?: number | null;
 }
 
 export interface AcceptedEventParticipantRow {
   playerId: string;
   name: string;
+  paid: boolean;
+  paidBy: string | null;
+  paidByName: string | null;
+  paidAt: number | null;
 }
 
 // All currently trackable events. Tracking is independent per event and an
@@ -65,6 +77,10 @@ export interface CreateEventOptions {
   endsAt: number | null;
   location?: string | null;
   description?: string | null;
+  costCents?: number | null;
+  paypalLink?: string | null;
+  paymentDueAt?: number | null;
+  createdBy?: string | null;
 }
 
 // Just creates the event — tracking starts off, so this never wipes live
@@ -75,8 +91,8 @@ export function createEvent(name: string, options: CreateEventOptions): EventRow
   db.prepare(
     `INSERT INTO events
        (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at,
-        group_id, status, visibility_scope)
-     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, 'published', 'participants')`
+        group_id, status, visibility_scope, cost_cents, paypal_link, payment_due_at, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, 'published', 'participants', ?, ?, ?, ?)`
   ).run(
     id,
     name,
@@ -84,7 +100,11 @@ export function createEvent(name: string, options: CreateEventOptions): EventRow
     options.endsAt,
     options.location ?? null,
     options.description ?? null,
-    options.groupId ?? DEFAULT_GROUP_ID
+    options.groupId ?? DEFAULT_GROUP_ID,
+    options.costCents ?? null,
+    options.paypalLink ?? null,
+    options.paymentDueAt ?? null,
+    options.createdBy ?? null,
   );
   return getEvent(id)!;
 }
@@ -95,6 +115,9 @@ export interface UpdateEventFields {
   endsAt?: number | null;
   location?: string | null;
   description?: string | null;
+  costCents?: number | null;
+  paypalLink?: string | null;
+  paymentDueAt?: number | null;
 }
 
 // Metadata-only correction — never touches tracking state or live status.
@@ -111,11 +134,24 @@ export function updateEvent(id: string, fields: UpdateEventFields): EventRow | u
     ends_at: fields.endsAt !== undefined ? fields.endsAt : existing.ends_at,
     location: fields.location !== undefined ? fields.location : existing.location,
     description: fields.description !== undefined ? fields.description : existing.description,
+    cost_cents: fields.costCents !== undefined ? fields.costCents : existing.cost_cents,
+    paypal_link: fields.paypalLink !== undefined ? fields.paypalLink : existing.paypal_link,
+    payment_due_at: fields.paymentDueAt !== undefined ? fields.paymentDueAt : existing.payment_due_at,
   };
 
   db.prepare(
-    'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ? WHERE id = ?'
-  ).run(next.name, next.starts_at, next.ends_at, next.location, next.description, next.id);
+    'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ?, cost_cents = ?, paypal_link = ?, payment_due_at = ? WHERE id = ?'
+  ).run(
+    next.name,
+    next.starts_at,
+    next.ends_at,
+    next.location,
+    next.description,
+    next.cost_cents,
+    next.paypal_link,
+    next.payment_due_at,
+    next.id,
+  );
 
   return next;
 }
@@ -233,14 +269,17 @@ export function getParticipantIds(eventId: string): string[] {
 }
 
 export function getEventParticipants(eventId: string): EventParticipantRow[] {
-  return db
+  return (db
     .prepare(
-      `SELECT ep.player_id AS playerId, ep.status
+      `SELECT ep.player_id AS playerId, ep.status, ep.paid,
+              ep.paid_by AS paidBy, confirmer.name AS paidByName, ep.paid_at AS paidAt
        FROM event_participants ep
+       LEFT JOIN players confirmer ON confirmer.id = ep.paid_by
        WHERE ep.event_id = ?
        ORDER BY ep.rowid`,
     )
-    .all(eventId) as EventParticipantRow[];
+    .all(eventId) as Array<Omit<EventParticipantRow, 'paid'> & { paid: number }>)
+    .map((participant) => ({ ...participant, paid: Boolean(participant.paid) }));
 }
 
 // Member-facing roster shape. It intentionally contains only accepted,
@@ -248,15 +287,18 @@ export function getEventParticipants(eventId: string): EventParticipantRow[] {
 // management concern, while accepted names are useful event context for
 // every participant.
 export function getAcceptedEventParticipants(eventId: string): AcceptedEventParticipantRow[] {
-  return db
+  return (db
     .prepare(
-      `SELECT ep.player_id AS playerId, p.name
+      `SELECT ep.player_id AS playerId, p.name, ep.paid,
+              ep.paid_by AS paidBy, confirmer.name AS paidByName, ep.paid_at AS paidAt
        FROM event_participants ep
        JOIN players p ON p.id = ep.player_id
+       LEFT JOIN players confirmer ON confirmer.id = ep.paid_by
        WHERE ep.event_id = ? AND ep.status = 'accepted' AND p.deactivated_at IS NULL
        ORDER BY p.name COLLATE NOCASE, p.id`,
     )
-    .all(eventId) as AcceptedEventParticipantRow[];
+    .all(eventId) as Array<Omit<AcceptedEventParticipantRow, 'paid'> & { paid: number }>)
+    .map((participant) => ({ ...participant, paid: Boolean(participant.paid) }));
 }
 
 export function isParticipant(eventId: string, playerId: string): boolean {
@@ -284,16 +326,19 @@ export function inviteParticipant(eventId: string, playerId: string): InvitePart
         eventId,
         playerId,
       );
-      return { participant: { playerId, status: 'invited' }, changed: true };
+      return { participant: { playerId, status: 'invited', paid: false }, changed: true };
     }
     if (existing.status === 'declined') {
       db.prepare("UPDATE event_participants SET status = 'invited' WHERE event_id = ? AND player_id = ?").run(
         eventId,
         playerId,
       );
-      return { participant: { playerId, status: 'invited' }, changed: true };
+      return { participant: { playerId, status: 'invited', paid: false }, changed: true };
     }
-    return { participant: { playerId, status: existing.status }, changed: false };
+    const paid = db
+      .prepare('SELECT paid FROM event_participants WHERE event_id = ? AND player_id = ?')
+      .get(eventId, playerId) as { paid: number };
+    return { participant: { playerId, status: existing.status, paid: Boolean(paid.paid) }, changed: false };
   });
   return transaction();
 }
@@ -313,7 +358,10 @@ export function respondToEventInvitation(
       .get(eventId, playerId) as { status: EventParticipationStatus } | undefined;
     if (!existing) return { ok: false, currentStatus: null };
     if (existing.status === response) {
-      return { ok: true, participant: { playerId, status: response }, changed: false };
+      const paid = db
+        .prepare('SELECT paid FROM event_participants WHERE event_id = ? AND player_id = ?')
+        .get(eventId, playerId) as { paid: number };
+      return { ok: true, participant: { playerId, status: response, paid: Boolean(paid.paid) }, changed: false };
     }
     if (existing.status !== 'invited') return { ok: false, currentStatus: existing.status };
 
@@ -324,7 +372,7 @@ export function respondToEventInvitation(
       )
       .run(response, eventId, playerId);
     if (updated.changes === 1) {
-      return { ok: true, participant: { playerId, status: response }, changed: true };
+      return { ok: true, participant: { playerId, status: response, paid: false }, changed: true };
     }
 
     // The conditional write is the database-side race guard. Re-read the
@@ -334,7 +382,10 @@ export function respondToEventInvitation(
       .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
       .get(eventId, playerId) as { status: EventParticipationStatus } | undefined;
     if (current?.status === response) {
-      return { ok: true, participant: { playerId, status: response }, changed: false };
+      const paid = db
+        .prepare('SELECT paid FROM event_participants WHERE event_id = ? AND player_id = ?')
+        .get(eventId, playerId) as { paid: number };
+      return { ok: true, participant: { playerId, status: response, paid: Boolean(paid.paid) }, changed: false };
     }
     return { ok: false, currentStatus: current?.status ?? null };
   });

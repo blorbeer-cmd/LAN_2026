@@ -95,6 +95,10 @@ before(async () => {
       startsAt: now,
       endsAt: now + 60_000,
       visibilityScope: 'participants',
+      location: 'https://maps.example.test/respawn',
+      costCents: 2550,
+      paypalLink: 'https://paypal.me/respawn-e2e',
+      paymentDueAt: now + 24 * 60 * 60 * 1000,
     }),
   });
   assert.equal(event.status, 201);
@@ -182,6 +186,11 @@ test('manager invites a member who accepts and both open clients update', async 
   await memberPage.click('#notifications-btn');
   assert.match((await pending.textContent()) ?? '', new RegExp(EVENT_NAME));
   assert.match((await pending.textContent()) ?? '', /Eingeladen/);
+  assert.match(
+    (await pending.textContent()) ?? '',
+    /25,50/,
+    'the invitation discloses the per-person cost before acceptance',
+  );
   assert.equal(
     await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     true,
@@ -199,6 +208,48 @@ test('manager invites a member who accepts and both open clients update', async 
   const memberEventCard = memberPage.locator(`[data-event-card="${eventId}"]`);
   await memberEventCard.waitFor();
   assert.match((await memberEventCard.textContent()) ?? '', new RegExp(MEMBER_NAME));
+  assert.equal(
+    await memberEventCard.locator('a.event-location-link').getAttribute('href'),
+    'https://maps.example.test/respawn',
+  );
+  assert.equal(await memberEventCard.locator('[data-copy-event-location]').count(), 0);
+  const paypalButton = memberEventCard.locator(`[data-pay-event="${eventId}"]`);
+  assert.match((await memberEventCard.textContent()) ?? '', /0 von 1 bezahlt/);
+  assert.match((await memberEventCard.textContent()) ?? '', /1 offen/);
+  assert.match((await memberEventCard.textContent()) ?? '', /Zahlungsziel/);
+  assert.match((await paypalButton.getAttribute('aria-label')) ?? '', /25,50.*PayPal bezahlen/);
+  const memberPaidButton = memberEventCard.locator(`[data-toggle-event-paid="${eventId}"]`);
+  assert.equal(await memberPaidButton.getAttribute('aria-pressed'), 'false');
+  await memberPage.evaluate(() => {
+    window.open = (() => {
+      const fake = {
+        opener: window,
+        closed: false,
+        _location: '',
+        get location() { return this._location; },
+        set location(value: string) { this._location = value; },
+        close() { this.closed = true; },
+      };
+      (window as unknown as { __eventPaymentPopup: typeof fake }).__eventPaymentPopup = fake;
+      return fake as unknown as Window;
+    }) as typeof window.open;
+  });
+  await paypalButton.click();
+  await memberPage.waitForFunction(
+    () => (window as unknown as { __eventPaymentPopup?: { location: string } }).__eventPaymentPopup?.location,
+  );
+  assert.deepEqual(
+    await memberPage.evaluate(() => {
+      const popup = (window as unknown as { __eventPaymentPopup: { location: string; opener: unknown } }).__eventPaymentPopup;
+      return { location: popup.location, opener: popup.opener };
+    }),
+    { location: 'https://paypal.me/respawn-e2e/25.50EUR', opener: null },
+  );
+  await memberPage.locator('.modal-backdrop', { hasText: 'Bezahlt?' }).waitFor();
+  await memberPage.click('[data-confirm]');
+  await memberPage.locator(`[data-event-card="${eventId}"] [data-toggle-event-paid][aria-pressed="true"]`).waitFor();
+  assert.match((await memberEventCard.textContent()) ?? '', /1 von 1 bezahlt/);
+  assert.match((await memberEventCard.textContent()) ?? '', new RegExp(`Bezahlt von ${MEMBER_NAME}`));
 
   const optionSelector = `#event-context-switcher-list [data-search-select-value="${eventId}"]`;
   await memberPage.locator(optionSelector).waitFor({ state: 'attached' });
@@ -238,6 +289,16 @@ test('manager invites a member who accepts and both open clients update', async 
   const memberRow = ownerPage.locator('.modal-backdrop .event-participant-manager-row', { hasText: MEMBER_NAME });
   await memberRow.waitFor();
   assert.match((await memberRow.textContent()) ?? '', /Zugesagt/);
+  const creatorPaymentButton = memberRow.locator(`[data-modal-toggle-event-paid="${memberId}"]`);
+  assert.equal(await creatorPaymentButton.getAttribute('aria-pressed'), 'true');
+  assert.match((await memberRow.textContent()) ?? '', new RegExp(`Bezahlt von ${MEMBER_NAME}`));
+  await creatorPaymentButton.click();
+  await memberPage.locator(`[data-event-card="${eventId}"] [data-toggle-event-paid][aria-pressed="false"]`).waitFor();
+
+  await ownerPage.locator('.modal-backdrop [data-mark-all-event-paid]').click();
+  await ownerPage.locator('.modal-backdrop', { hasText: 'Alle als bezahlt markieren?' }).locator('[data-confirm]').click();
+  await memberPage.locator(`[data-event-card="${eventId}"] [data-toggle-event-paid][aria-pressed="true"]`).waitFor();
+  assert.match((await memberEventCard.textContent()) ?? '', new RegExp(`Bezahlt von ${OWNER_NAME}`));
 
   await ownerPage.locator('.modal-backdrop [data-close]').click();
   await ownerPage.click(`[data-end-event="${eventId}"]`);

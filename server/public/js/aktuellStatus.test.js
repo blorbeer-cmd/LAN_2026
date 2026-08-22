@@ -103,7 +103,7 @@ test('an unpaid order reuses its existing Home item instead of creating a duplic
   );
 });
 
-test('a closed order stays out of the payment nudge until one hour after dispatch', () => {
+test('a closed order stays out of the payment nudge until two hours after dispatch', () => {
   const closedAt = 10_000;
   const order = {
     id: 'order-3',
