@@ -7,6 +7,7 @@ test('unrelated event lifecycle changes do not redraw interactive catalog views'
   assert.equal(realtimeEventAffectsView('events:changed', 'foodOrders'), false);
   assert.equal(realtimeEventAffectsView('events:changed', 'events'), true);
   assert.equal(realtimeEventAffectsView('events:changed', 'hallOfFame'), true);
+  assert.equal(realtimeEventAffectsView('events:changed', 'profile'), true);
 });
 
 test('shared entity changes redraw only views that consume them', () => {

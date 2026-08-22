@@ -32,7 +32,10 @@ export const CORE_REALTIME_VIEW_DEPENDENCIES = Object.freeze({
   ]),
   'skills:changed': Object.freeze(['home', 'matchmaking', 'profile', 'tournaments', 'gameCatalog']),
   'leaderboard:changed': Object.freeze(['home', 'matchmaking', 'leaderboard', 'analytics', 'hallOfFame', 'myStats', 'gameCatalog']),
-  'events:changed': Object.freeze(['home', 'events', 'analytics', 'hallOfFame', 'myStats', 'admin']),
+  // 'profile' is included because pending invitations now live in its own
+  // "Einladungen" section (see events.js/profile.js) instead of the Events
+  // tab, so an invitation arriving while Profile is open must redraw it too.
+  'events:changed': Object.freeze(['home', 'events', 'profile', 'analytics', 'hallOfFame', 'myStats', 'admin']),
 });
 
 export function realtimeEventAffectsView(eventName, view) {
