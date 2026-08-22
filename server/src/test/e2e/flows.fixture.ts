@@ -119,6 +119,10 @@ async function ensureAdminMode(): Promise<void> {
   const activateButton = page.locator('#admin-mode-activate');
   if (await activateButton.count()) await activateButton.click();
   await page.waitForSelector('#admin-banner:not([hidden])');
+  // setAdmin(true) exposes the persistent banner synchronously, while the
+  // admin view itself is rebuilt only after ctx.refresh() has finished. Wait
+  // for that second state as well so callers never inspect the old panel.
+  await page.waitForSelector('#admin-test-players-title');
 }
 
 // Orga is reached through "Mehr" rather than the bottom nav, opening on its
