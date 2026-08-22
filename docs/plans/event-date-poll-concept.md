@@ -1,355 +1,463 @@
-# Konzept: Terminfindung vor einem Event
+# Konzept: Integrierte Terminabstimmung im Event
 
-## Ziel und Einordnung
+## Entscheidung und Ziel
 
-Die Terminfindung ist ein eigener vorgelagerter Ablauf und noch kein Event. Sie beantwortet zuerst
-„An welchem Wochenende können möglichst viele teilnehmen?“. Erst nach der Entscheidung und der
-Unterkunftsbuchung wird daraus ein Event mit festem Zeitraum, Einladungen und Abrechnung.
+Die Terminfindung ist kein separates Objekt mehr, das später in ein Event konvertiert wird. Das
+Event entsteht bereits zu Beginn als gemeinsamer Planungskontext und enthält eine oder mehrere
+Terminabstimmungsrunden. Damit bleiben Terminfindung, Unterkunft, Einladungen, Zusagen, Zahlungen
+und Abrechnung dauerhaft an derselben Event-ID gebündelt.
 
-Der Ablauf soll den typischen Prozess abbilden:
+Der Ablauf entspricht damit dem tatsächlichen Vorgehen:
 
-1. Ersteller schlägt mehrere Zeiträume vor.
-2. Eingeladene Mitglieder antworten je Zeitraum.
-3. Ersteller entscheidet sich bewusst für einen Zeitraum.
-4. Unterkunft wird außerhalb von Respawn gebucht.
-5. Aus der abgeschlossenen Abstimmung wird ein Event angelegt; Zeitraum, Personen und optional die
-   Unterkunftskosten werden übernommen.
+1. Ein Ersteller legt ein Event zunächst ohne festen Termin als „In Planung“ an.
+2. Im Event wird eine Terminabstimmung mit mehreren Zeiträumen gestartet.
+3. Der Ersteller wählt nach der Abstimmung bewusst einen Termin.
+4. Die Unterkunft wird außerhalb von Respawn gebucht und anschließend im Event hinterlegt.
+5. Personen können noch zu- oder absagen oder später ergänzt werden.
+6. Falls der Termin nachträglich nicht mehr möglich ist, startet im selben Event eine neue
+   Abstimmungsrunde. Frühere Runden und Entscheidungen bleiben als Historie sichtbar.
+7. Nach dem Event erfolgt die Abrechnung weiterhin im selben Event.
+
+Die Event-ID ändert sich in diesem Ablauf nie. Eine Aktion „In Event umwandeln“ und eine
+converted_event_id an der Abstimmung entfallen.
 
 ## Erkenntnisse aus bestehenden Terminfindungswerkzeugen
 
-- Doodle und Framadate verwenden drei aussagekräftige Verfügbarkeitsstufen: Ja, wenn nötig und Nein.
-  Das ist für mehrtägige LAN-Termine hilfreicher als ein binärer Vote, weil ein Notfalltermin nicht
-  gleichwertig mit einem bevorzugten Wochenende behandelt wird.
-- Doodle macht Antwortfrist, Erinnerungen an noch nicht antwortende Personen und optional verborgene
-  Teilnehmerantworten zu expliziten Einstellungen. Für Respawn sollten Frist und gezielte Erinnerung
-  Bestandteil des Kernablaufs sein; eine verborgene Abstimmung ist für die feste Freundesgruppe kein
-  MVP-Bedarf.
-- Rallly trennt Abstimmung und Terminentscheidung: Der Organisator prüft das Ergebnis, wählt einen
-  Termin und schließt damit weitere Stimmen. Das passt besser als eine automatische Auswahl, weil
-  Preis und Verfügbarkeit einer Unterkunft ebenfalls in die Entscheidung eingehen.
-- Rallly stellt Ergebnisse je Option auf einen Blick dar und konvertiert Uhrzeiten in die Zeitzone
-  der Teilnehmenden. Für LAN-Wochenenden sollte Respawn in Version 1 bewusst kalendarische Zeiträume
-  ohne Uhrzeit verwenden. Sie werden als ISO-Datum gespeichert; erst die Event-Konvertierung bildet
-  sie nach einer festgelegten lokalen Zeitzonenregel auf die UTC-Zeitpunkte des Events ab.
-- Framadate erlaubt die nachträgliche Änderung der eigenen Antwort, solange die Abstimmung offen ist.
-  Das ist wichtig, weil sich private Termine während einer mehrwöchigen Suche verändern können.
+- Doodle und Framadate verwenden drei aussagekräftige Verfügbarkeitsstufen: Ja, wenn nötig und
+  Nein. Das ist für mehrtägige LAN-Termine hilfreicher als ein binärer Vote.
+- Doodle behandelt Antwortfrist und Erinnerungen an noch nicht antwortende Personen als explizite
+  Einstellungen. Beides gehört in Respawn zum Kernablauf.
+- Rallly trennt Ergebnis und Entscheidung: Das System empfiehlt, aber der Organisator wählt den
+  Termin. Das ist wichtig, weil Unterkunftspreis und Buchbarkeit ebenfalls einfließen.
+- Framadate erlaubt das Ändern der eigenen Antwort, solange die Abstimmung offen ist.
+- Für LAN-Wochenenden verwendet Respawn im MVP kalendarische Zeiträume ohne Uhrzeit.
 
 Quellen:
 
 - [Doodle: Group Poll erstellen](https://help.doodle.com/en/articles/9457353-how-do-i-create-a-group-poll)
-- [Doodle: Fristen, Erinnerungen und verborgene Teilnehmerliste](https://help.doodle.com/en/articles/9457346-how-do-i-set-a-deadline-limit-participants-send-automatic-reminders-or-make-my-group-poll-hidden)
+- [Doodle: Fristen und Erinnerungen](https://help.doodle.com/en/articles/9457346-how-do-i-set-a-deadline-limit-participants-send-automatic-reminders-or-make-my-group-poll-hidden)
 - [Rallly: Abstimmung anlegen](https://support.rallly.co/workflow/create)
-- [Rallly: Termin auswählen und Abstimmung schließen](https://support.rallly.co/workflow/schedule)
+- [Rallly: Termin auswählen](https://support.rallly.co/workflow/schedule)
 - [Framadate: Antworten und Ergebnisse](https://docs.framasoft.org/en/framadate/prise-en-main.html)
 - [Framadate: Eigene Antwort bearbeiten](https://docs.framasoft.org/fr/framadate/fonctionnalites.html)
 
-## Empfohlener Produktablauf
+## Produktablauf
 
-### 1. Abstimmung anlegen
+### 1. Event in Planung anlegen
 
-Im Tab `Orga → Events` steht oberhalb der Eventliste eine zunächst eingeklappte Gruppe
-`Terminfindung`. Der Ersteller gibt ein:
+Im Bereich „Orga -> Events“ wird ein Event mit Arbeitstitel und optionaler Beschreibung angelegt.
+Ein Zeitraum ist in dieser Phase nicht erforderlich. Das Event erhält den bestehenden Status
+draft und wird in der Oberfläche als „In Planung“ dargestellt.
 
-- Arbeitstitel, zum Beispiel „LAN Herbst 2027“
-- optionale kurze Notiz
-- zwei bis acht Zeiträume, jeweils `Beginn` und `Ende` als lokales Datum
-- Antwortfrist
-- einzuladende Mitglieder; standardmäßig sind alle aktiven Mitglieder vorausgewählt
+Ein Planungs-Event ist sichtbar für:
 
-Ein Zeitraum darf nicht rückwärts laufen oder einen anderen vorgeschlagenen Zeitraum exakt
-duplizieren. Überschneidungen sind erlaubt, weil benachbarte Wochenendvarianten sinnvoll sein können.
+- seinen Ersteller und dessen definierte Vertretung,
+- aktive Mitglieder, die zu mindestens einer Abstimmungsrunde eingeladen sind,
+- später zusätzlich die regulären Eventteilnehmer.
 
-### 2. Antworten
+Andere Gruppenmitglieder erhalten für Detailzugriffe 404. Bestehende Eventlisten, Tracking,
+Statistiken und Agentenzuordnung müssen Planungs-Events ohne Termin ausdrücklich ignorieren oder
+korrekt als Planung darstellen; sie dürfen kein ungültiges Datum rendern.
 
-Jede eingeladene Person sieht pro Zeitraum genau eine Auswahl:
+### 2. Erste Abstimmungsrunde starten
 
-- `Kann` – regulär verfügbar
-- `Wenn nötig` – möglich, aber nicht bevorzugt
-- `Kann nicht`
+Im Event wählt der Ersteller „Termin abstimmen“ und gibt ein:
 
-Ein vierter Zustand `Offen` wird nicht aktiv gewählt, sondern bedeutet „noch keine Antwort“. Die
-eigene Antwort kann bis zur Frist oder manuellen Schließung geändert werden. Eine Schaltfläche
-`Antwort speichern` sichert die ganze Zeile atomar, damit kein teilweise gespeicherter Stand entsteht.
+- zwei bis acht Zeiträume mit Beginn und Ende als lokale Kalenderdaten,
+- eine Antwortfrist,
+- einzuladende aktive Mitglieder; standardmäßig sind alle aktiven Mitglieder vorausgewählt,
+- optional eine kurze Notiz speziell für diese Runde.
 
-### 3. Ergebnis bewerten
+Ein Zeitraum darf nicht rückwärts laufen oder einen anderen Zeitraum derselben Runde exakt
+duplizieren. Überschneidungen sind erlaubt. Pro Event darf höchstens eine offene oder geschlossene,
+noch nicht entschiedene Runde existieren.
+
+### 3. Antworten
+
+Jede eingeladene Person beantwortet jede Option mit genau einem Wert:
+
+- „Kann“
+- „Wenn nötig“
+- „Kann nicht“
+
+„Offen“ ist kein wählbarer Wert, sondern bedeutet noch nicht beantwortet. „Antwort speichern“
+sichert alle Antworten der Person für die Runde atomar. Die eigene Antwort kann bis zur Frist oder
+manuellen Schließung geändert werden.
+
+### 4. Ergebnis bewerten und Termin festlegen
 
 Der Ersteller sieht pro Zeitraum:
 
-- Anzahl `Kann`
-- Anzahl `Wenn nötig`
-- Anzahl `Kann nicht`
-- Anzahl ausstehender Antworten
-- die Namen je Kategorie in einer einklappbaren Detailansicht
+- Anzahl „Kann“, „Wenn nötig“, „Kann nicht“ und „Offen“,
+- die Namen je Kategorie in einer einklappbaren Detailansicht,
+- eine nachvollziehbare Empfehlung „Beste Abdeckung“.
 
-Die Sortierung hebt Optionen nach folgenden Regeln hervor, entscheidet aber nie automatisch:
+Die Sortierung entscheidet nie automatisch und verwendet stabil:
 
-1. höchste Anzahl `Kann`
-2. höchste Summe aus `Kann` und `Wenn nötig`
-3. geringste Anzahl `Kann nicht`
-4. frühester Beginn
-5. frühestes Ende
-6. niedrigste gespeicherte Position
-7. niedrigste ID als absolut letzter, stabiler Gleichstand
+1. höchste Anzahl „Kann“,
+2. höchste Summe aus „Kann“ und „Wenn nötig“,
+3. geringste Anzahl „Kann nicht“,
+4. frühester Beginn,
+5. frühestes Ende,
+6. niedrigste gespeicherte Position,
+7. niedrigste ID als letzter Gleichstand.
 
-Der Hinweis `Beste Abdeckung` ist eine Empfehlung. Nur der Ersteller kann `Termin auswählen`.
+„Termin festlegen“ markiert genau eine Option als gewählt und übernimmt ihren Zeitraum atomar in
+das Event. Bei der ersten Auswahl steigt schedule_revision des Events von 0 auf 1. Das Event bleibt
+draft, bis der Ersteller die regulären Einladungen bzw. Veröffentlichung bestätigt.
 
-### 4. Erinnern, schließen und wieder öffnen
+### 5. Unterkunft und reguläre Einladungen
 
-- Noch nicht antwortende Personen erhalten automatisch eine persönliche Erinnerung 48 Stunden vor
-  der Frist und eine zweite am Kalendertag der Frist. Liegt die Erstellung bereits innerhalb eines
-  Fensters, wird nur die nächste noch sinnvolle Stufe versendet.
-- Der Ersteller kann zusätzlich `Offene erinnern` auslösen; die Aktion nennt vorab die betroffenen
-  Personen. Pro Person gilt über automatische und manuelle Erinnerungen hinweg ein rollierender
-  Mindestabstand von 24 Stunden.
-- Wird die Frist verlängert, wird der automatische Erinnerungsplan auf die neue Frist bezogen neu
-  berechnet. Bereits versendete Pushs bleiben im Verlauf, verhindern aber die neuen Friststufen nicht.
-- Nach Fristablauf werden Antworten gesperrt, die Abstimmung bleibt aber sichtbar. Schreibversuche
-  beantwortet die API mit `409`.
-- Der Ersteller kann eine `closed`-Abstimmung ohne Terminwahl wieder öffnen. `reopen` akzeptiert
-  dafür optional eine neue `responseDueAt`; ist die gespeicherte Frist bereits abgelaufen, ist ein
-  neuer zukünftiger Wert verpflichtend und wird atomar mit dem Statuswechsel gespeichert.
-- Scheitert die Unterkunftsbuchung nach der Terminwahl, hebt `Terminwahl aufheben` den Zustand
-  `scheduled` auf: Die Abstimmung wechselt zurück nach `closed`, `selected_option_id` wird geleert,
-  die Aktion wird auditiert und alle Eingeladenen werden benachrichtigt. Danach kann direkt eine
-  andere bestehende Option gewählt oder die Abstimmung mit neuer Frist wieder geöffnet werden.
-- `Termin auswählen` setzt genau eine Option als gewählt und schließt die Abstimmung atomar.
+Nach der Terminwahl ergänzt der Ersteller im selben Event optional:
 
-### 5. Nach der Unterkunftsbuchung als Event übernehmen
+- Unterkunft, Ort oder Kartenlink,
+- Gesamtpreis der Unterkunft,
+- Beitrag pro Person,
+- PayPal-Adresse bzw. PayPal.me-Link,
+- Zahlungsziel.
 
-Eine entschiedene Abstimmung zeigt die primäre Aktion `Event anlegen`. Der vorausgefüllte Dialog
-übernimmt:
+Für die reguläre Eventeinladung schlägt die Oberfläche alle Personen mit „Kann“ und optional die
+Personen mit „Wenn nötig“ vor. Erst nach Bestätigung werden sie in event_participants als invited
+übernommen und das Event wird nach dem bestehenden Veröffentlichungsablauf sichtbar. Eine Antwort
+in der Terminabstimmung ist noch keine verbindliche Eventzusage.
 
-- Titel und gewählten Zeitraum
-- als Einladungsvorschlag alle Personen mit `Kann`
-- optional zusätzlich Personen mit `Wenn nötig`
-- optional Unterkunft, Ort/Kartenlink und Gesamtpreis der Unterkunft
-- Beitrag pro Person, PayPal und Zahlungsziel
+Nur Teilnehmende, die den aktuell gültigen Termin angenommen haben, zählen für den aktuellen Preis
+pro Kopf. Der Gesamtpreis der Unterkunft bleibt davon unabhängig und bildet gemeinsam mit den
+tatsächlich verbuchten Zahlungen die Abrechnungsdifferenz.
 
-Das Event wird erst nach Bestätigung angelegt. Die Abstimmung speichert anschließend die erzeugte
-Event-ID; ein Doppelklick oder Request-Retry darf kein zweites Event erzeugen. Die eingeladenen
-Personen bleiben im Event zunächst `Einladung offen` und zählen erst nach ihrer Zusage in den
-rechnerischen Unterkunftspreis pro Kopf.
+### 6. Spätere Neuabstimmung im selben Event
 
-### Änderungen während einer offenen Abstimmung
+Solange das Event weder läuft noch beendet ist, kann der Ersteller „Neuen Termin abstimmen“
+starten. Das gilt auch für ein bereits veröffentlichtes Event. Dabei:
 
-`PATCH /api/event-date-polls/:id` ändert ausschließlich Titel, Beschreibung und Antwortfrist. Für
-Optionen und Eingeladene gibt es eigene Aktionen:
+- bleibt der bisher festgelegte Termin als „Bisheriger Termin“ sichtbar und vorläufig gültig,
+- bleibt die zuvor ausgewählte Runde unverändert in der Historie,
+- beginnt eine neue Runde mit neuen oder bewusst übernommenen Optionen,
+- sind standardmäßig alle bisherigen Eventteilnehmer und bisherigen Abstimmungsteilnehmer
+  vorausgewählt,
+- beginnen alle Antworten der neuen Runde mit „Offen“; alte Antworten werden nur als Historie
+  angezeigt und niemals als aktuelle Antwort kopiert,
+- kann die neue Runde abgebrochen werden, ohne den bisherigen Termin zu verändern.
 
-- Ein Zeitraum mit vorhandenen Antworten darf nicht inhaltlich geändert werden (`409`); stattdessen
-  wird eine neue Option ergänzt und die alte nach Bestätigung entfernt.
-- Das Entfernen einer Option löscht ihre Antworten per Fremdschlüssel-Kaskade, wird auditiert und
-  informiert alle Eingeladenen. Mindestens zwei Optionen müssen verbleiben.
-- Eine neu ergänzte Option beginnt für alle bisherigen Personen mit `Offen`; diese Personen erhalten
-  eine persönliche Änderungsbenachrichtigung.
-- Später hinzugefügte aktive Mitglieder beginnen für alle Optionen mit `Offen`; `invited_at` macht in
-  Auswertung und Erinnerung sichtbar, dass sie erst später hinzugekommen sind.
-- Das Entfernen einer eingeladenen Person löscht ihre Antworten kaskadierend, wird auditiert und
-  entzieht den Detailzugriff. Vorher zeigt ein Bestätigungsdialog die betroffenen Antworten.
-- Optionen und Eingeladene dürfen nur in `open` geändert werden; in jedem anderen Zustand folgt `409`.
+Wählt der Ersteller in der neuen Runde einen Termin, läuft eine gemeinsame Transaktion:
 
-## Zustände und Berechtigungen
+1. Die bisher ausgewählte Runde wird superseded.
+2. Die neue Runde wird scheduled.
+3. starts_at und ends_at des Events werden aktualisiert.
+4. schedule_revision wird erhöht.
+5. Audit-Eintrag, Realtime-Ereignis und persönliche Benachrichtigungen werden erzeugt.
 
-Abstimmungszustände:
+Alle bisherigen Zu- und Absagen bleiben historisch erhalten, gelten aber nicht automatisch für die
+neue Revision. Betroffene Personen sehen „Erneute Bestätigung erforderlich“ und müssen für den
+neuen Termin erneut zu- oder absagen. Eine alte Zusage darf in Abrechnung, Teilnehmerzahl, Tracking
+oder anderen fachlichen Abfragen nicht als aktuelle Zusage zählen.
 
-- `open` – Antworten möglich
-- `closed` – Frist abgelaufen oder manuell geschlossen, noch kein Termin entschieden
-- `scheduled` – Termin gewählt, Event kann angelegt werden
-- `converted` – Event wurde angelegt
-- `cancelled` – Terminfindung verworfen
+Bereits gespeicherte Zahlungen werden bei einem Terminwechsel niemals gelöscht oder zurückgesetzt.
+Der Ersteller sieht stattdessen:
 
-Erlaubte Übergänge:
+- „Bezahlt, Teilnahme für neuen Termin offen“,
+- die weiterhin verbuchte Summe,
+- die Differenz zu den Unterkunftsausgaben,
+- einen Hinweis, mögliche Rückzahlung oder Nachforderung manuell zu prüfen.
 
-| Ausgang | Aktion | Ziel | Berechtigung | Konflikt |
-|---|---|---|---|---|
-| `open` | Frist oder `close` | `closed` | Ersteller/Vertretung | wiederholte oder konkurrierende Änderung: `409` |
-| `closed` | `reopen` mit optionaler `responseDueAt` | `open` | Ersteller/Vertretung | Terminwahl vorhanden oder gespeicherte Frist ohne neue Frist abgelaufen: `409`; ungültige neue Frist: `400` |
-| `open`, `closed` | `schedule` | `scheduled` | Ersteller/Vertretung | Option fremd/gelöscht oder Status inzwischen geändert: `409` |
-| `scheduled` | `unschedule` | `closed` | Ersteller/Vertretung | `converted_event_id` bereits gesetzt oder Status inzwischen geändert: `409` |
-| `scheduled` | `convert-to-event` | `converted` | Ersteller/Vertretung | paralleler Request erhält das bereits erzeugte Event, nie ein zweites |
-| `open`, `closed`, `scheduled` | `DELETE`/Absagen | `cancelled` | Ersteller/Vertretung | terminaler Zustand: `409` |
+Sind Unterkunftskosten, Zahlungen oder bestätigte Teilnehmende vorhanden, zeigt die Aktion vor dem
+Start und nochmals vor der Auswahl des neuen Termins einen Bestätigungsdialog mit den betroffenen
+Zahlen. Ein Terminwechsel nach aktiviertem Tracking oder nach Eventende ist gesperrt.
 
-`converted` und `cancelled` sind terminal und für alle fachlichen Schreibendpunkte gesperrt. Eine
-Terminwahl darf nur vor der Konvertierung über `unschedule` aufgehoben werden; danach bleibt sie
-historisch unveränderlich. Wird das verknüpfte Event später abgesagt, bleibt die Abstimmung `converted`, zeigt
-den Status des verknüpften Events und dient als Historie. Sie wird weder zurückgesetzt noch hart
-gelöscht. `DELETE` ist deshalb fachlich eine Absage und kein physisches Löschen.
+## Erinnerungen und Fristablauf
 
-Berechtigungen:
+- Offene Personen erhalten automatisch eine persönliche Erinnerung 48 Stunden vor der Frist und
+  eine zweite am Kalendertag der Frist. Bei später Erstellung wird nur die nächste sinnvolle Stufe
+  versendet.
+- „Offene erinnern“ zeigt vorab die betroffenen Personen. Über automatische und manuelle
+  Erinnerungen gilt pro Person ein rollierender Mindestabstand von 24 Stunden.
+- Eine verlängerte Frist berechnet den Plan neu. Bereits versendete Pushs bleiben im Verlauf,
+  verhindern die neuen Friststufen aber nicht.
+- Automatische und manuelle Erinnerungen sind ausschließlich in open zulässig. Jeder Übergang aus
+  open, insbesondere close, schedule oder cancel, leert alle noch ausstehenden
+  automatic_reminder_due_at-Werte; bereits versendete Erinnerungen bleiben nur im Verlauf. Ein
+  späteres reopen legt für die neue Frist einen frischen Plan an. „Offene erinnern“ liefert
+  außerhalb von open 409.
+- Der erste authentifizierte Zugriff nach Fristablauf materialisiert open -> closed lazy,
+  idempotent und transaktional. Genau ein konkurrierender Zugriff schreibt Status und Audit,
+  verwirft ausstehende Erinnerungen und sendet genau ein Realtime-Signal, aber keine persönliche
+  Push-Nachricht. Ein Hintergrundjob darf diesen Übergang vorwegnehmen, ist aber nicht erforderlich.
+- Ab der fachlich abgelaufenen Frist liefern Antworten und andere Schreibaktionen 409, auch wenn
+  der lazy Statusübergang noch nicht gespeichert war.
+- reopen verlangt eine neue zukünftige Frist, wenn die gespeicherte Frist bereits abgelaufen ist,
+  und berechnet die Erinnerungen atomar neu.
 
-- Owner/Admin dürfen Abstimmungen anlegen und die nicht entscheidenden Metadaten verwalten.
-- Der gespeicherte Ersteller entscheidet, öffnet wieder, sagt ab und konvertiert. Wird dieses Konto
-  deaktiviert, gelöscht oder verliert seine aktive Gruppenmitgliedschaft, übernimmt der Gruppen-Owner
-  diese Aktionen als dokumentierte Vertretung. Solange der Ersteller aktiv ist, erhalten andere
-  Admins dadurch keine zusätzlichen Rechte.
-- Eingeladene aktive Mitglieder dürfen nur ihre eigene Antwort schreiben.
-- Die Abstimmung ist nur für eingeladene Mitglieder und berechtigte Verwalter lesbar.
+## Zustände und Übergänge
+
+### Eventstatus
+
+Die bestehenden Eventzustände bleiben maßgeblich:
+
+- draft - Event wird geplant; ein fester Termin kann noch fehlen.
+- published - Termin und reguläre Einladungen sind veröffentlicht.
+- cancelled - Event wurde abgesagt.
+- ended - Event ist beendet.
+
+cancelled und ended sperren neue Abstimmungsrunden. Tracking darf nur für published mit festem
+Zeitraum aktiviert werden.
+
+### Abstimmungsrunden
+
+- open - Antworten möglich.
+- closed - Frist abgelaufen oder manuell geschlossen, noch keine Auswahl.
+- scheduled - aktuell für das Event ausgewählte Runde.
+- superseded - frühere Auswahl, die durch eine neue Auswahl ersetzt wurde.
+- cancelled - Runde verworfen; der zuvor gültige Eventtermin bleibt unverändert.
+
+| Ausgang | Aktion | Ziel | Auswirkung |
+|---|---|---|---|
+| open | Frist oder close | closed | Antworten und Erinnerungen werden gesperrt |
+| closed | reopen | open | zukünftige Frist und Erinnerungsplan werden atomar gesetzt |
+| open, closed | schedule | scheduled | Eventtermin wird gesetzt oder ersetzt |
+| open, closed | cancel | cancelled | bestehender Eventtermin bleibt bestehen |
+| scheduled | neue Runde wird gewählt | superseded | historische Auswahl bleibt lesbar |
+
+Wiederholte oder konkurrierende Zustandswechsel liefern 409. Ein idempotenter Retry derselben
+erfolgreichen Terminwahl liefert den bereits erreichten Zustand, erzeugt aber keine zweite Revision
+und keine doppelten Benachrichtigungen.
+
+## Änderungen während einer offenen Runde
+
+Metadaten wie Notiz und Antwortfrist können per PATCH geändert werden. Optionen und Eingeladene
+verwenden eigene Aktionen:
+
+- Eine Option mit Antworten darf nicht inhaltlich geändert werden (409). Stattdessen wird eine neue
+  Option ergänzt und die alte nach Bestätigung entfernt.
+- Das Entfernen einer Option löscht deren Antworten kaskadierend, wird auditiert und benachrichtigt
+  alle Eingeladenen. Mindestens zwei Optionen müssen verbleiben.
+- Neue Optionen und später hinzugefügte Personen beginnen überall mit „Offen“.
+- Das Entfernen einer Person löscht ihre Antworten dieser Runde kaskadierend, entzieht ihren
+  Rundenzugriff und zeigt vorher einen Bestätigungsdialog.
+- Diese Änderungen sind nur in open erlaubt; sonst folgt 409.
+
+## Berechtigungen
+
+- Owner und Admins dürfen Planungs-Events und Abstimmungsrunden anlegen.
+- Der gespeicherte Eventersteller entscheidet, öffnet wieder, bricht Runden ab und startet eine
+  Neuabstimmung.
+- Wird der Ersteller deaktiviert, gelöscht oder verliert seine aktive Gruppenmitgliedschaft,
+  übernimmt ausschließlich der Gruppen-Owner diese Aktionen als auditierte Vertretung.
+- Solange der Ersteller aktiv ist, erhalten andere Admins keine zusätzlichen Entscheidungsrechte.
+- Eingeladene aktive Mitglieder dürfen nur ihre eigenen Antworten schreiben.
+- Runden sind nur für ihre Eingeladenen, Eventteilnehmer und berechtigte Verwalter lesbar. Nicht
+  sichtbare Ressourcen liefern 404 statt Berechtigungsdetails offenzulegen.
 
 ## Datenmodell
 
-```text
-event_date_polls
-  id, group_id, title, description, created_by, response_due_at,
-  status, selected_option_id, converted_event_id, created_at, updated_at
+Das bestehende Event bleibt der fachliche Parent:
 
-event_date_poll_options
-  id, poll_id, starts_on TEXT, ends_on TEXT, position
+    events
+      ...
+      starts_at NULLABLE
+      ends_at NULLABLE
+      schedule_revision INTEGER NOT NULL DEFAULT 0
 
-event_date_poll_invitees
-  poll_id, player_id, invited_at, last_reminder_at,
-  automatic_reminder_stage, automatic_reminder_due_at
+    event_date_polls
+      id, event_id, round_number, note, created_by, response_due_at,
+      status, selected_option_id, created_at, updated_at
 
-event_date_poll_responses
-  poll_id, option_id, player_id, response, updated_at
-  response ∈ can | if_needed | cannot
-```
+    event_date_poll_options
+      id, poll_id, starts_on TEXT, ends_on TEXT, position
+
+    event_date_poll_invitees
+      poll_id, player_id, invited_at, last_reminder_at,
+      automatic_reminder_stage, automatic_reminder_due_at
+
+    event_date_poll_responses
+      poll_id, option_id, player_id, response, updated_at
+      response in can | if_needed | cannot
+
+    event_participants
+      ...
+      confirmed_schedule_revision INTEGER
+
+event_participants.status enthält weiterhin die Antwort auf die Eventeinladung. Eine Teilnahme ist
+fachlich nur aktuell bestätigt, wenn zusätzlich
+confirmed_schedule_revision = events.schedule_revision gilt. Bei Annahme oder Ablehnung wird die
+aktuelle Revision gespeichert. Alle bestehenden SQL-Abfragen und Guards für Teilnehmerzahl, Kosten,
+Sichtbarkeit, Tracking und aktive Eventauswahl müssen auf dieses gemeinsame Prädikat geprüft und
+zentralisiert werden.
 
 Wichtige Constraints:
 
-- eindeutige Option pro Poll und Zeitraum
-- eindeutige Antwort pro Poll, Option und Person
-- ausgewählte Option muss zur Abstimmung gehören
-- erzeugtes Event ist höchstens einer Abstimmung zugeordnet
-- Finalisierung und Event-Konvertierung laufen jeweils in einer Transaktion
+- fortlaufende, eindeutige round_number pro Event,
+- höchstens eine unentschiedene Runde (open oder closed) pro Event,
+- höchstens eine scheduled-Runde pro Event,
+- eindeutige Option pro Runde und Zeitraum,
+- eindeutige Antwort pro Runde, Option und Person,
+- ausgewählte Option muss zur Runde gehören,
+- Antworten referenzieren zusätzlich eine Einladung derselben Runde,
+- Auswahl, Eventzeitraum und Terminrevision werden in einer Transaktion geändert.
 
-`starts_on` und `ends_on` sind streng validierte ISO-Kalenderdaten (`YYYY-MM-DD`) und bewusst keine
-Zeitpunkte. `response_due_at`, `invited_at`, `last_reminder_at`, `automatic_reminder_due_at` sowie
-alle übrigen Zeitpunkte folgen der Repository-Regel und werden als UTC-Timestamps in Millisekunden
-gespeichert. Die im Gruppenprofil konfigurierte Zeitzone (MVP-Fallback `Europe/Berlin`) bestimmt die
-Abbildung bei der Event-Konvertierung:
+starts_on und ends_on sind streng validierte ISO-Kalenderdaten (YYYY-MM-DD). Zeitpunkte wie Fristen
+und Erinnerungen werden als UTC-Millisekunden gespeichert. Die Gruppenzeitzone mit MVP-Fallback
+Europe/Berlin bildet die gewählte Option auf das Event ab:
 
-- `events.starts_at` ist der lokale Tagesbeginn von `starts_on`, in UTC-ms umgerechnet.
-- `events.ends_at` ist der Beginn des Tages nach `ends_on`, in UTC-ms umgerechnet; der Eventzeitraum
-  bleibt damit halb-offen und umfasst den vollständigen Endtag.
-- Eine als Datum eingegebene Antwortfrist endet lokal um 23:59:59,999 und wird als UTC-ms gespeichert.
+- starts_at ist der lokale Tagesbeginn von starts_on in UTC-ms.
+- ends_at ist der Beginn des Tages nach ends_on in UTC-ms; der Eventzeitraum umfasst damit den
+  vollständigen Endtag.
+- Eine als Datum eingegebene Frist endet lokal um 23:59:59,999.
 
-Die Umrechnung verwendet eine zeitzonenfähige Bibliothek und wird ausdrücklich über Sommer- und
-Winterzeitwechsel getestet; Browser-Parsing von `new Date('YYYY-MM-DD')` ist dafür nicht zulässig.
-
-Fremdschlüsselregeln:
-
-- Optionen, Eingeladene und Antworten werden beim physischen Löschen einer noch nie veröffentlichten
-  Poll-Zeile per `ON DELETE CASCADE` entfernt.
-- Antworten referenzieren zusätzlich Poll, Option und eingeladene Person; eine entfernte Option oder
-  Einladung entfernt die zugehörigen Antworten per Kaskade.
-- `created_by` verwendet `ON DELETE SET NULL`, damit die Owner-Vertretung übernehmen kann.
-- `converted_event_id` verwendet `ON DELETE SET NULL`; eine fachliche Event-Absage löscht das Event
-  jedoch nicht und lässt die historische Verknüpfung bestehen.
+Die Umrechnung verwendet eine zeitzonenfähige Bibliothek und wird über Sommer- und
+Winterzeitwechsel getestet. Browser-Parsing mit new Date('YYYY-MM-DD') ist dafür nicht zulässig.
 
 ## API-Skizze
 
-```text
-GET    /api/event-date-polls
-POST   /api/event-date-polls
-GET    /api/event-date-polls/:id
-PATCH  /api/event-date-polls/:id
-POST   /api/event-date-polls/:id/options
-DELETE /api/event-date-polls/:id/options/:optionId
-POST   /api/event-date-polls/:id/invitees
-DELETE /api/event-date-polls/:id/invitees/:playerId
-PUT    /api/event-date-polls/:id/my-responses
-POST   /api/event-date-polls/:id/reminders
-POST   /api/event-date-polls/:id/close
-POST   /api/event-date-polls/:id/reopen
-POST   /api/event-date-polls/:id/schedule
-POST   /api/event-date-polls/:id/unschedule
-POST   /api/event-date-polls/:id/convert-to-event
-DELETE /api/event-date-polls/:id
-```
+Die Event-ID ist Bestandteil jeder Route:
 
-`PATCH` akzeptiert nur in `open` die Felder `title`, `description` und `responseDueAt`; in allen
-anderen Zuständen folgt `409`. `POST /:id/reopen` akzeptiert ausschließlich ein optionales
-`responseDueAt`, das bei bereits abgelaufener gespeicherter Frist verpflichtend und zukünftig sein
-muss. Die vier Options-/Einladungsrouten setzen die oben beschriebenen Änderungsregeln um.
-`POST /:id/unschedule` ist ausschließlich in `scheduled` vor einer Konvertierung zulässig, leert die
-Auswahl atomar und erzeugt Audit- sowie persönliche Änderungsbenachrichtigungen. `DELETE /:id` setzt
-`cancelled`; ein physisches Löschen ist nur für einen nie veröffentlichten, antwortlosen Entwurf als
-interne Aufräumoperation zulässig. Unpassende Zustände liefern einheitlich `409`, unbekannte oder
-nicht sichtbare Ressourcen `404` und ungültige Eingaben `400`.
+    POST   /api/events/planning
+    GET    /api/events/:eventId/date-polls
+    POST   /api/events/:eventId/date-polls
+    GET    /api/events/:eventId/date-polls/:pollId
+    PATCH  /api/events/:eventId/date-polls/:pollId
+    POST   /api/events/:eventId/date-polls/:pollId/options
+    DELETE /api/events/:eventId/date-polls/:pollId/options/:optionId
+    POST   /api/events/:eventId/date-polls/:pollId/invitees
+    DELETE /api/events/:eventId/date-polls/:pollId/invitees/:playerId
+    PUT    /api/events/:eventId/date-polls/:pollId/my-responses
+    POST   /api/events/:eventId/date-polls/:pollId/reminders
+    POST   /api/events/:eventId/date-polls/:pollId/close
+    POST   /api/events/:eventId/date-polls/:pollId/reopen
+    POST   /api/events/:eventId/date-polls/:pollId/schedule
+    POST   /api/events/:eventId/date-polls/:pollId/cancel
 
-Alle Mutationen senden nach erfolgreichem Commit ein gruppengebundenes Realtime-Signal. Die API
-liefert fremde Antworten nur innerhalb der eingeladenen Gruppe; Push-Nachrichten bleiben persönlich.
+Es gibt keinen convert-to-event-Endpunkt. Das Anlegen eines Planungs-Events und seiner ersten Runde
+kann optional in einem transaktionalen Request kombiniert werden, damit kein verwaistes leeres
+Event entsteht.
+
+Unpassende Zustände liefern 409, ungültige Eingaben 400 und unbekannte oder nicht sichtbare
+Ressourcen 404. Alle Mutationen senden erst nach erfolgreichem Commit ein gruppengebundenes
+Realtime-Signal. Push-Nachrichten bleiben persönlich.
 
 ## UI-Struktur
 
-Die Oberfläche folgt der bestehenden Essen-/Event-Hierarchie:
+Terminfindung erscheint innerhalb der bestehenden Eventkarte bzw. Eventdetailansicht:
 
-1. kompakter Titel-/Statuskopf
-2. ein gemeinsamer Infokasten mit Frist und Antwortfortschritt
-3. darunter die Terminoptionen als stabile Zeilen
-4. je Option eine einklappbare Personenliste
-5. Erstelleraktionen in einem getrennten Footer
+1. kompakter Eventkopf mit Planungs- oder Eventstatus,
+2. gemeinsamer Infokasten mit aktuellem bzw. bisherigem Termin, Frist und Antwortfortschritt,
+3. darunter die aktuelle Abstimmungsrunde mit stabilen Terminzeilen,
+4. je Option eine standardmäßig eingeklappte Personenliste,
+5. getrennte Erstelleraktionen im Footer,
+6. einklappbarer Bereich „Frühere Abstimmungen“ für abgeschlossene, ersetzte oder abgebrochene
+   Runden,
+7. danach die bestehenden Bereiche für Teilnehmer, Unterkunft, Bezahlung und Abrechnung.
 
-Auf dem Telefon stehen die Optionen untereinander. Auf breiten Ansichten kann die Ergebnisübersicht
-zwei Spalten nutzen; die Namen bleiben einspaltige Zeilen. Antworten sind immer textlich beschriftet
-und nicht nur über Farbe erkennbar.
+Bei einer Neuabstimmung unterscheidet die UI klar:
 
-## Migration und Tests
+- „Bisheriger Termin“,
+- „Neuabstimmung läuft“,
+- „Erneute Bestätigung erforderlich“,
+- „Aktueller Termin“ nach der neuen Auswahl.
 
-Die vier Poll-Tabellen werden gemeinsam in der nächsten freien, fortlaufenden Migration angelegt
-(auf Basis dieses Konzepts Version 83 nach der bestehenden 82). Die Migration ist idempotent,
-historisch sortiert und enthält alle oben festgelegten Fremdschlüssel und Indizes. Eine Legacy-Fixture
-ohne Poll-Tabellen belegt den ersten Lauf; ein zweiter Start belegt die Wiederholbarkeit. Ein gezielt
-injizierter Fehler muss die gesamte Migration einschließlich aller vier Tabellen zurückrollen.
+Die Oberfläche verwendet Felder, Toggles, Statuschips, einklappbare Listen und Abstände des
+Essen-Bestellbereichs. Auf dem Telefon stehen Optionen untereinander; Namen bleiben auch auf breiten
+Ansichten einspaltig. Status sind textlich beschriftet und nicht nur über Farbe erkennbar.
+
+## Migration und Kompatibilität
+
+Die Umsetzung verwendet die nächste zum Implementierungszeitpunkt freie, fortlaufende Migration.
+Sie muss:
+
+- events.starts_at für draft-Planungs-Events nullable machen,
+- events.schedule_revision ergänzen,
+- event_participants.confirmed_schedule_revision ergänzen und bestehende Teilnahmen auf eine
+  konsistente Ausgangsrevision migrieren,
+- die vier Poll-Tabellen mit Fremdschlüsseln, Indizes und partiellen Eindeutigkeiten anlegen,
+- bestehende veröffentlichte und beendete Events unverändert lauffähig halten.
+
+Bestands-Events mit festem Zeitraum erhalten schedule_revision 1. Für bereits angenommene oder
+abgelehnte Teilnahmen wird confirmed_schedule_revision ebenfalls auf 1 gesetzt; weiterhin offene
+Einladungen bleiben unbestätigt. Die permanenten Basis- und Außerhalb-Events behalten ihre
+Sonderbehandlung, dürfen keine Terminabstimmungen erhalten und werden nicht versehentlich zu
+Planungs-Events umgedeutet.
+
+Da SQLite das Entfernen eines NOT-NULL-Constraints einen Tabellenneuaufbau erfordern kann, muss die
+Migration alle bestehenden Spalten, Constraints, Indizes und Fremdschlüssel explizit bewahren.
+Legacy-Fixture, Wiederholung und injizierter Fehler belegen idempotenten Lauf und vollständigen
+Rollback.
+
+## Tests
 
 Die spätere Umsetzung umfasst mindestens:
 
-- Integrationstests für Berechtigungen, Statusübergänge, spätere Optionen/Eingeladene, Frist und
-  Erinnerungsfenster sowie Event-Absage nach Konvertierung,
-- parallele Requests per `Promise.all` für `schedule`, `convert-to-event`, `close`/`reopen` und jede
-  weitere race-relevante Mutation; genau ein Request gewinnt, die übrigen erhalten `409` oder beim
-  idempotenten Konvertieren dieselbe Event-ID,
-- Migrationstests für Legacy-DB, Wiederholung, Fremdschlüssel-Kaskaden und Rollback bei Fehler,
-- E2E-Tests in zwei Browsern für Realtime, Tastatur/Touch, Vertretung, mobile Breite und die
-  Konvertierung einschließlich Sommer-/Winterzeitwechsel.
+- Integrationstests für Sichtbarkeit, Berechtigungen, Statusübergänge, Frist, Erinnerungen,
+  spätere Optionen und Eingeladene,
+- Tests für ein Planungs-Event ohne Datum in sämtlichen Eventlisten und Serializern,
+- Paralleltests per Promise.all für Schließen, Wiederöffnen, Terminwahl und konkurrierende
+  Terminrevisionen,
+- Paralleltest für zwei erste Zugriffe nach Fristablauf: genau ein lazy close, ein Audit-Eintrag und
+  ein Realtime-Signal,
+- Erinnerungstests, die nach close, schedule und cancel keine weitere Zustellung zulassen und nach
+  reopen einen neuen Plan für die neue Frist belegen,
+- Regressionstests, dass genau eine Runde scheduled ist und ein Retry keine zweite Revision
+  erzeugt,
+- Tests für Neuabstimmung mit bestehenden Zusagen, Absagen, Unterkunftskosten und Zahlungen,
+- Tests, dass alte Zusagen nach einem Terminwechsel weder Preis pro Kopf noch Tracking oder aktive
+  Teilnehmerzahl beeinflussen,
+- Migrationstests für Legacy-Datenbank, Wiederholung, Kaskaden und Rollback,
+- E2E-Tests in zwei Browsern für Realtime, Tastatur, Touch, Owner-Vertretung, mobile Breite sowie
+  Sommer- und Winterzeitwechsel.
 
-Vor Abschluss laufen im `server`-Bereich `npm run lint`, `npm run build`, `npm test`,
-`npm run check:tokens` nach dem Staging und `npm run test:e2e`.
+Vor Abschluss laufen im Serverbereich mindestens npm run lint, npm run build, npm test,
+npm run check:tokens nach dem Staging und npm run test:e2e sowie der vorgeschriebene
+Testlauf-Performance-Check.
 
 ## MVP und spätere Erweiterungen
 
 MVP:
 
-- Zeiträume anlegen
-- feste Respawn-Mitglieder einladen
-- `Kann` / `Wenn nötig` / `Kann nicht`
-- Antwortfrist und Erinnerung an offene Antworten
-- Ergebnisübersicht, manuelle Terminauswahl und Umwandlung in ein Event
+- Planungs-Event ohne festen Termin anlegen,
+- eine oder mehrere aufeinanderfolgende Abstimmungsrunden im selben Event,
+- feste Respawn-Mitglieder einladen,
+- „Kann“, „Wenn nötig“ und „Kann nicht“,
+- Frist und Erinnerungen,
+- Ergebnisübersicht und manuelle Terminauswahl,
+- spätere Neuabstimmung mit Historie und erneuter Teilnahmebestätigung,
+- nahtloser Übergang zu Unterkunft, Einladungen, Zahlungen und Abrechnung im selben Event.
 
 Später, nur bei tatsächlichem Bedarf:
 
-- Kalenderexport nach der Entscheidung
-- externe Gäste ohne Respawn-Konto
-- private/verborgene Antworten
-- Kommentarspalte pro Person oder Zeitraum
-- mehrere gewählte Termine aus einer Abstimmung
+- Kalenderexport nach der Entscheidung,
+- externe Gäste ohne Respawn-Konto,
+- private oder verborgene Antworten,
+- Kommentarspalte pro Person oder Zeitraum,
+- mehrere gleichzeitig gewählte Termine.
 
-Bewusst nicht im MVP: Kalender-Synchronisation, Uhrzeit-Slots, anonyme öffentliche Links und eine
-vollautomatische Terminentscheidung. Sie erhöhen Sicherheits- und Bedienkomplexität, ohne den
-beschriebenen LAN-Wochenendprozess wesentlich zu verbessern.
+Bewusst nicht im MVP sind Kalender-Synchronisation, Uhrzeit-Slots, anonyme öffentliche Links und
+eine vollautomatische Terminentscheidung.
 
-## Abnahmekriterien für eine spätere Umsetzung
+## Abnahmekriterien
 
+- Das Event besitzt vom Beginn der Planung bis zur Abrechnung dieselbe ID.
+- Ein Planungs-Event ohne Datum verursacht in keiner Eventansicht „Invalid Date“ und kann weder
+  Tracking noch aktive Eventzuordnung auslösen.
 - Eine eingeladene Person kann jede Option per Tastatur und Touch beantworten und bis zum Schließen
   ändern.
-- Nicht eingeladene Konten erhalten für Detail- und Schreibzugriffe `404`.
-- Gleichzeitiges Finalisieren wählt genau eine Option; konkurrierende Requests erhalten `409`.
-- Die Event-Konvertierung ist idempotent und erzeugt höchstens ein Event.
-- `converted` und `cancelled` sind terminal; alle unzulässigen Zustandswechsel liefern `409`.
-- Eine fristbedingt geschlossene Abstimmung kann mit einer neuen zukünftigen Frist atomar wieder
-  geöffnet werden; ohne neue Frist bleibt sie nach Fristablauf mit `409` geschlossen.
-- Eine noch nicht konvertierte Terminwahl kann nach gescheiterter Unterkunftsbuchung nach `closed`
-  zurückgesetzt werden, ohne Optionen, Einladungen oder Antworten zu verlieren; Auswahl, Audit und
-  Benachrichtigungen werden dabei konsistent aktualisiert.
-- Optionen und Eingeladene lassen sich während `open` nach den festgelegten Kaskaden-, Audit- und
-  Benachrichtigungsregeln ergänzen oder entfernen.
-- Nur `Kann` und optional `Wenn nötig` werden als Einladungsvorschlag übernommen.
-- Der erzeugte Eventzeitraum entspricht nach der festgelegten lokalen Kalenderdatum-zu-UTC-Regel
-  exakt der ausgewählten Option, auch über Sommer-/Winterzeitwechsel.
-- Automatische und manuelle Erinnerungen respektieren pro Person den Mindestabstand; eine verlängerte
-  Frist erzeugt einen neuen, nachvollziehbaren automatischen Erinnerungsplan.
+- Nicht eingeladene Konten erhalten für Detail- und Schreibzugriffe 404.
+- Gleichzeitiges Festlegen wählt genau eine Option; konkurrierende Requests erhalten 409.
+- Eine neue Terminrunde überschreibt oder löscht keine frühere Runde und kann ohne Änderung des
+  bisherigen Eventtermins abgebrochen werden.
+- Die Auswahl eines neuen Termins aktualisiert Runde, Eventzeitraum und Revision genau einmal und
+  atomar.
+- Nach einem Terminwechsel müssen frühere Zu- und Absagen für die neue Revision erneut bestätigt
+  werden. Bis dahin zählen sie nicht als aktuelle Teilnahme.
+- Zahlungen und Zahlungs-Snapshots bleiben bei einem Terminwechsel erhalten; der Ersteller sieht
+  offene Bestätigungen und die Abrechnungsdifferenz.
+- Nur „Kann“ und optional „Wenn nötig“ werden für die erste reguläre Eventeinladung vorgeschlagen.
+- Optionen und Eingeladene lassen sich während open nach den festgelegten Kaskaden-, Audit- und
+  Benachrichtigungsregeln ändern.
+- Erinnerungen respektieren den Mindestabstand und werden nach Friständerung nachvollziehbar neu
+  geplant.
 - Deaktivierte oder gelöschte Ersteller blockieren die Abstimmung nicht; ausschließlich der Owner
-  erhält dann die definierte Vertretungsberechtigung.
-- Die Migration läuft auf einer bestehenden Datenbank wiederholbar und rollt bei Fehler vollständig zurück.
-- Offene Antworten, Frist, Empfehlung und endgültige Auswahl aktualisieren sich in zwei offenen
-  Browsern ohne Reload.
+  erhält die definierte Vertretungsberechtigung.
+- Die Datumsumrechnung bleibt auch über Sommer- und Winterzeitwechsel exakt.
+- Die Migration erhält alle Bestandsdaten, läuft wiederholbar und rollt bei Fehler vollständig
+  zurück.
+- Frist, Antworten, Empfehlung, Terminwahl und erneute Bestätigung aktualisieren sich in zwei
+  offenen Browsern ohne Reload.
 - Telefon- und Laptopansicht verursachen keinen horizontalen Seiten-Scroll.
