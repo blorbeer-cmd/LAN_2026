@@ -372,6 +372,7 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.match((await memberRow.textContent()) ?? '', /Zugesagt/);
   const creatorPaymentButton = memberRow.locator(`[data-modal-toggle-event-paid="${memberId}"]`);
   assert.equal(await creatorPaymentButton.getAttribute('aria-pressed'), 'true');
+  assert.equal(await creatorPaymentButton.textContent(), 'Bezahlt');
   assert.match((await memberRow.textContent()) ?? '', new RegExp(`Bezahlt von ${MEMBER_NAME}`));
   assert.doesNotMatch((await memberRow.textContent()) ?? '', /Zahlung zuerst zurücksetzen/);
   const lockedRemoveButton = memberRow.locator('[data-remove-participant]');
@@ -412,6 +413,7 @@ test('manager invites a member who accepts and both open clients update', async 
   );
   cardPaymentButton = ownerParticipantList.locator(`[data-toggle-event-paid="${eventId}"][data-payment-player="${memberId}"]`);
   assert.equal(await cardPaymentButton.getAttribute('aria-pressed'), 'true');
+  assert.equal(await cardPaymentButton.textContent(), 'Bezahlt');
   assert.equal(
     await cardPaymentButton.evaluate((button) => document.activeElement === button),
     true,
@@ -419,6 +421,10 @@ test('manager invites a member who accepts and both open clients update', async 
   );
   await cardPaymentButton.click();
   await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member [data-toggle-event-paid][aria-pressed="false"]`).waitFor();
+  assert.equal(
+    await ownerParticipantList.locator(`[data-toggle-event-paid="${eventId}"][data-payment-player="${memberId}"]`).textContent(),
+    'Bezahlt?',
+  );
 
   const noPaypalRefresh = memberPage.waitForResponse(
     (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
