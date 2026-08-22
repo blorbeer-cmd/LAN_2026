@@ -320,7 +320,8 @@ function renderEventPayment(event) {
   const isPaid = Boolean(myParticipation?.paid);
   return `
     <div class="event-card-payment event-card-payment-member">
-      <div class="event-payment-heading">
+      <div class="event-payment-member-actions">
+        <div class="event-payment-member-main">
         <div class="event-card-detail">
           <span class="event-card-detail-icon" aria-hidden="true">${icon('paypal')}</span>
           <span class="event-card-detail-content">
@@ -328,12 +329,12 @@ function renderEventPayment(event) {
             <strong class="event-payment-amount">${escapeHtml(amount)}</strong>
           </span>
         </div>
-        ${myParticipation ? `<span class="badge ${isPaid ? 'badge-playing' : 'badge-paused'}">${isPaid ? 'Bezahlt' : 'Noch zu bezahlen'}</span>` : ''}
+        ${myParticipation ? `<button type="button" class="payment-paid-marker ${isPaid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(myParticipation.playerId)}" aria-pressed="${isPaid}" title="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}" aria-label="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}">${icon(isPaid ? 'check' : 'circleDashed')}<span>${isPaid ? 'Bezahlt' : 'Bezahlt?'}</span></button>` : ''}
+        </div>
+        ${myParticipation && !isPaid && event.paypalLink ? `<button type="button" class="btn btn-primary btn-sm event-paypal-button" data-pay-event="${escapeHtml(event.id)}" title="${escapeHtml(payTitle)}" aria-label="${escapeHtml(payTitle)}">Bezahlen</button>` : ''}
       </div>
       ${myParticipation && !isPaid && event.paymentDueAt ? `<span class="muted event-payment-due">Bitte bis ${escapeHtml(new Date(event.paymentDueAt).toLocaleDateString('de-DE'))} bezahlen.</span>` : ''}
       ${myParticipation && isPaid ? `<small class="event-payment-proof">${escapeHtml(paymentProof(myParticipation))}</small>` : ''}
-      ${myParticipation && !isPaid && event.paypalLink ? `<button type="button" class="btn btn-primary btn-block event-paypal-button" data-pay-event="${escapeHtml(event.id)}" title="${escapeHtml(payTitle)}" aria-label="${escapeHtml(payTitle)}">Bezahlen</button>` : ''}
-      ${myParticipation ? `<button type="button" class="payment-paid-marker ${isPaid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(myParticipation.playerId)}" aria-pressed="${isPaid}" title="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}" aria-label="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}">${icon(isPaid ? 'check' : 'circleDashed')}<span>${isPaid ? 'Doch nicht bezahlt' : 'Als bezahlt markieren'}</span></button>` : ''}
     </div>`;
 }
 
