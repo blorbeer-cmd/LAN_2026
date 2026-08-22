@@ -77,6 +77,9 @@
   --seating-seat-width-compact: calc(var(--avatar-size-lg) + var(--space-4));
   --seating-seat-height-compact: calc(var(--row-min-h) + var(--space-5));
   --assignment-select-width: 112px;
+  /* Fixed width keeps the food-order payment toggle stable beside the PayPal
+     action while its label, position count and amount change. */
+  --payment-marker-width: 96px;
   /* Stable Arcade creation geometry: mode-capable and fixed-mode games keep
      the primary lobby action in the same column while switching tiles. */
   --arcade-lobby-mode-width: 134px;
@@ -4315,16 +4318,15 @@ input[type='number'].tournament-score-input {
   opacity: 0.78;
 }
 .food-order-group-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
 }
 /* The group toggle is one sibling of the payment and delete controls. */
 .food-order-group-toggle {
   display: flex;
   min-width: 0;
-  flex: 1;
   align-items: center;
   gap: var(--space-2);
   background: none;
@@ -4338,7 +4340,6 @@ input[type='number'].tournament-score-input {
 .food-order-group-static {
   display: flex;
   min-width: 0;
-  flex: 1;
   align-items: center;
   gap: var(--space-2);
 }
@@ -4411,8 +4412,9 @@ input[type='number'].tournament-score-input {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
+  justify-content: center;
   gap: var(--space-1);
-  min-width: 84px;
+  width: var(--payment-marker-width);
   min-height: var(--space-7);
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border);
@@ -4555,25 +4557,24 @@ input[type='number'].tournament-score-input {
      group header has too many deliberate, fixed-width controls to compress
      into one line without clipping the payment marker or action buttons. */
   .food-order-group-header {
-    display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
   }
   .food-order-group-toggle,
   .food-order-group-static {
     grid-column: 1 / -1;
+    grid-row: 1;
     width: 100%;
-  }
-  .food-order-paid-marker {
-    grid-column: 1;
-    justify-self: start;
   }
   .food-order-group-amount-wrap {
     grid-column: 2;
+    grid-row: 2;
     justify-self: end;
   }
   .food-order-group-actions {
     grid-column: 1 / -1;
+    grid-row: 3;
+    min-width: 0;
     width: 100%;
     justify-content: flex-end;
     margin-left: 0;
@@ -4600,6 +4601,14 @@ input[type='number'].tournament-score-input {
   }
   .food-order-add-button {
     width: 100%;
+  }
+}
+@media (max-width: 359px) {
+  /* At the narrowest supported width all four payment actions still fit in
+     one line; both payment states retain the same compact marker width. */
+  .food-order-group-actions {
+    --payment-marker-width: 88px;
+    gap: 0;
   }
 }
 .food-order-quantity-field {
