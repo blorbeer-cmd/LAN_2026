@@ -23,7 +23,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { loadConfig } = require('./config');
-const { probeSystem } = require('./systemProbe');
+const systemProbe = require('./systemProbe');
 const { reportToServer, syncTrackingPaused, fetchAllowedProcessNames } = require('./report');
 const { loadState, setPaused, setTrackActivity } = require('./state');
 const { getStartupShortcutPath, isAutostartEnabled, enableAutostart, disableAutostart } = require('./autostart');
@@ -103,7 +103,7 @@ async function tick(config, stateFilePath) {
     const trackActivity = !state.paused && state.trackActivity;
     const probe = state.paused
       ? { processNames: [], foregroundProcessName: null, idleSeconds: null }
-      : await probeSystem({ allowedProcessNames, includeActivity: trackActivity });
+      : await systemProbe.probeSystem({ allowedProcessNames, includeActivity: trackActivity });
     const matchedProcessNames = matchAllowedProcessNames(probe.processNames, allowedProcessNames);
     // The probe already refuses to name a focused window that isn't a
     // configured game; re-checking here keeps that invariant in one place and
