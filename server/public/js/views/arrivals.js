@@ -39,8 +39,9 @@ async function load(ctx) {
   }
 }
 
-export function invalidateArrivals() {
+export function invalidateArrivals({ hard = false } = {}) {
   dirty = true;
+  if (hard) cache = null;
 }
 
 function parseDatetimeValue(value) {

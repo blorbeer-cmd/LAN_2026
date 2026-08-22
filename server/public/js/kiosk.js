@@ -459,7 +459,8 @@ function renderBroadcastBanner(entry) {
     const delay = Math.max(0, Math.min(entry.expiresAt - Date.now() + 50, 2_147_483_647));
     pushBannerExpiryTimer = setTimeout(refreshPushBanner, delay);
   }
-  el.innerHTML = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time">${formatDateTime(entry.createdAt)} Uhr</span>`;
+  const html = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time">${formatDateTime(entry.createdAt)} Uhr</span>`;
+  if (el.innerHTML !== html) el.innerHTML = html;
   el.hidden = false;
   updateAlertLayout();
 }
@@ -531,6 +532,7 @@ function renderMusicBar(payload) {
   if (!session) {
     element.hidden = true;
     element.innerHTML = '';
+    delete element.dataset.renderKey;
     return;
   }
   const track = session.currentTrack;
@@ -540,7 +542,14 @@ function renderMusicBar(payload) {
   const request = (session.requests || []).find(
     (entry) => entry.status === 'playing' && entry.trackUri === track?.uri,
   );
-  element.innerHTML = track ? `
+  const renderKey = JSON.stringify({
+    track: track?.uri ?? null,
+    playing: session.isPlaying,
+    device: session.deviceName,
+    requester: request?.requestedByName ?? null,
+    next: queued[0]?.id ?? queued[0]?.trackUri ?? null,
+  });
+  const html = track ? `
     <span class="kiosk-music-current">
       ${track.imageUrl ? `<img class="kiosk-music-cover" src="${escapeHtml(track.imageUrl)}" alt="" />` : `<span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span>`}
       <span class="kiosk-music-copy">
@@ -563,6 +572,10 @@ function renderMusicBar(payload) {
         </span>` : `<span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span><span class="kiosk-music-copy"><span class="muted kiosk-music-next-label">${icon('music')} Als Nächstes</span><strong>Noch keine Wünsche</strong></span>`}
     </span>` : `
       <span class="kiosk-music-current kiosk-music-empty"><span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span><span class="kiosk-music-copy"><strong>Jam aktiv</strong><span class="muted">Auf ${escapeHtml(session.deviceName)} läuft gerade kein Titel.</span></span></span>`;
+  if (element.dataset.renderKey !== renderKey) {
+    element.innerHTML = html;
+    element.dataset.renderKey = renderKey;
+  }
   element.hidden = false;
   scheduleMusicBarProgress();
 }
@@ -578,41 +591,72 @@ async function refreshMusic() {
   }
 }
 
-let refreshVersion = 0;
+function updateHtml(id, html) {
+  const element = document.getElementById(id);
+  if (element.innerHTML !== html) element.innerHTML = html;
+}
 
-async function refreshAll() {
-  const requestVersion = ++refreshVersion;
+function logRefreshFailure(scope, error) {
+  // A kiosk has nobody to dismiss a toast; keep the last-known card and let
+  // the next scoped signal retry it.
+  // eslint-disable-next-line no-console
+  console.error(`Kiosk ${scope} refresh failed:`, error);
+}
+
+async function refreshLive() {
   try {
-    const [live, votes, leaderboard, tournaments, lastPush, music] = await Promise.all([
-      api.live.board(),
-      api.votes.kiosk(),
-      api.leaderboard.get(),
-      api.tournaments.list(),
-      api.push.last(),
-      api.music.kiosk(),
-    ]);
-    if (requestVersion !== refreshVersion) return;
-    document.getElementById('kiosk-live').innerHTML = renderLive(live);
-    document.getElementById('kiosk-votes').innerHTML = renderVotes(votes);
-    document.getElementById('kiosk-leaderboard').innerHTML = renderLeaderboard(leaderboard.standings);
-    renderBroadcastBanner(lastPush.entry);
-    renderMusicBar(music);
+    updateHtml('kiosk-live', renderLive(await api.live.board()));
+  } catch (error) {
+    logRefreshFailure('live', error);
+  }
+}
 
+async function refreshVotes() {
+  try {
+    updateHtml('kiosk-votes', renderVotes(await api.votes.kiosk()));
+  } catch (error) {
+    logRefreshFailure('vote', error);
+  }
+}
+
+async function refreshLeaderboard() {
+  try {
+    const leaderboard = await api.leaderboard.get();
+    updateHtml('kiosk-leaderboard', renderLeaderboard(leaderboard.standings));
+  } catch (error) {
+    logRefreshFailure('leaderboard', error);
+  }
+}
+
+let tournamentRefreshVersion = 0;
+async function refreshTournament() {
+  const requestVersion = ++tournamentRefreshVersion;
+  try {
+    const tournaments = await api.tournaments.list();
+    if (requestVersion !== tournamentRefreshVersion) return;
     const active = tournaments.find((t) => t.status === 'active') || tournaments[0] || null;
-    document.getElementById('kiosk-tournament-title').innerHTML = `${icon(domainIcon('tournaments'))} ${active ? escapeHtml(active.name) : 'Turnier'}`;
+    updateHtml('kiosk-tournament-title', `${icon(domainIcon('tournaments'))} ${active ? escapeHtml(active.name) : 'Turnier'}`);
     if (active) {
       const detail = await api.tournaments.get(active.id);
-      if (requestVersion !== refreshVersion) return;
-      document.getElementById('kiosk-tournament').innerHTML = renderTournament(detail);
+      if (requestVersion !== tournamentRefreshVersion) return;
+      updateHtml('kiosk-tournament', renderTournament(detail));
     } else {
-      document.getElementById('kiosk-tournament').innerHTML = emptyStateHtml('Kein offenes Turnier.');
+      updateHtml('kiosk-tournament', emptyStateHtml('Kein offenes Turnier.'));
     }
   } catch (err) {
-    // A kiosk screen has nobody to dismiss a toast — log and try again on
-    // the next event/poll instead of leaving a stuck error state.
-    // eslint-disable-next-line no-console
-    console.error('Kiosk refresh failed:', err);
+    logRefreshFailure('tournament', err);
   }
+}
+
+async function refreshAll() {
+  await Promise.all([
+    refreshLive(),
+    refreshVotes(),
+    refreshLeaderboard(),
+    refreshTournament(),
+    refreshPushBanner(),
+    refreshMusic(),
+  ]);
 }
 
 // Kiosk screens are set up once (someone opens the browser, maybe clicks
@@ -683,19 +727,14 @@ async function main() {
   socket.on('arcade:kiosk:game', renderArcadeStream);
   socket.emit('kiosk:subscribe');
 
-  [
-    'live:changed',
-    // Player-lifecycle changes (rename, deactivation, tracking pause) can
-    // clear live rows without a follow-up live:changed for this group, so the
-    // shared screen refreshes on the roster signal too.
-    'players:changed',
-    'votes:changed',
-    'leaderboard:changed',
-    'tournaments:changed',
-    'matchmaking:generated',
-    'foodOrders:changed',
-    'music:changed',
-  ].forEach((event) => socket.on(event, refreshAll));
+  socket.on('live:changed', refreshLive);
+  // A rename can affect every card that contains a player snapshot. Each
+  // updater still patches only when its rendered HTML actually changed.
+  socket.on('players:changed', () => Promise.all([refreshLive(), refreshLeaderboard(), refreshTournament()]));
+  socket.on('votes:changed', refreshVotes);
+  socket.on('leaderboard:changed', refreshLeaderboard);
+  socket.on('tournaments:changed', refreshTournament);
+  socket.on('music:changed', refreshMusic);
 
   // Last-push banner: a big banner across the top of the shared screen — the
   // whole point of putting it on the kiosk is that people look up from their

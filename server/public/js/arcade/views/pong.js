@@ -91,8 +91,8 @@ export function ensurePongSocket() {
     flashPoint(payload.scorer?.name);
     playArcadeSound('pong-score');
   });
-  socket.on('pong:match:paused', () => { if (match) { match.paused = true; if (currentView() === 'pong') rerender(); } });
-  socket.on('pong:match:resumed', () => { if (match) { match.paused = false; if (currentView() === 'pong') rerender(); } });
+  socket.on('pong:match:paused', () => { if (match) { match.paused = true; if (currentView() === 'pong') updatePauseUi(); } });
+  socket.on('pong:match:resumed', () => { if (match) { match.paused = false; if (currentView() === 'pong') updatePauseUi(); } });
   socket.on('pong:match:end', (payload) => {
     if (!match) return;
     match.ended = true;
@@ -518,14 +518,7 @@ export function renderPong(container) {
 
 function wireGame(container) {
   wireTouchControls(container.querySelector('#pong-canvas'));
-  container.querySelector('#pong-pause')?.addEventListener('click', async () => {
-    const result = await emitAck('pong:match:pause', { matchId: match.matchId, playerId: myId() });
-    if (!result?.ok) showToast(result?.error || 'Pausieren fehlgeschlagen.', { error: true });
-  });
-  container.querySelector('#pong-resume')?.addEventListener('click', async () => {
-    const result = await emitAck('pong:match:resume', { matchId: match.matchId, playerId: myId() });
-    if (!result?.ok) showToast(result?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
-  });
+  wirePauseControl(container);
   container.querySelector('#pong-finish')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
     await emitAck('pong:match:finish', { matchId: match.matchId, playerId: myId() });
@@ -542,6 +535,30 @@ function wireGame(container) {
     stopAnimation();
     navigate('arcade');
   });
+}
+
+function wirePauseControl(container) {
+  container.querySelector('#pong-pause')?.addEventListener('click', async () => {
+    const result = await emitAck('pong:match:pause', { matchId: match.matchId, playerId: myId() });
+    if (!result?.ok) showToast(result?.error || 'Pausieren fehlgeschlagen.', { error: true });
+  });
+  container.querySelector('#pong-resume')?.addEventListener('click', async () => {
+    const result = await emitAck('pong:match:resume', { matchId: match.matchId, playerId: myId() });
+    if (!result?.ok) showToast(result?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
+  });
+}
+
+function updatePauseUi() {
+  const arena = document.querySelector('.pong-arena');
+  if (!arena) return;
+  arena.querySelector('.pong-overlay')?.remove();
+  if (match?.paused) arena.insertAdjacentHTML('beforeend', '<div class="pong-overlay">Pause</div>');
+  const button = document.querySelector('#pong-pause, #pong-resume');
+  if (!button) return;
+  button.outerHTML = match.paused
+    ? '<button class="btn btn-sm btn-equal btn-primary" id="pong-resume">Fortsetzen</button>'
+    : '<button class="btn btn-sm btn-equal" id="pong-pause">Pausieren</button>';
+  wirePauseControl(document);
 }
 
 function wireTouchControls(canvas) {
