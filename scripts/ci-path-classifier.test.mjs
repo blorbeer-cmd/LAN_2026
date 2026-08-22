@@ -274,6 +274,7 @@ test("E2E trace retries have bounded time and job-level upload headroom", () => 
     assert.ok(retry, `the ${job} trace retry is missing`);
     assert.match(retry, new RegExp(`^        timeout-minutes: ${retryTimeout}$`, "m"));
     assert.match(retry, /^        continue-on-error: true$/m);
+    assert.match(retry, /^          E2E_RETRY_FAILED_ONLY: "1"$/m);
   }
 });
 

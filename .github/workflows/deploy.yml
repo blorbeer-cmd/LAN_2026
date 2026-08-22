@@ -189,6 +189,7 @@ jobs:
         timeout-minutes: 10
         env:
           E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+          E2E_RETRY_FAILED_ONLY: "1"
           E2E_TRACE: "1"
         run: npm run test:e2e:run:core -- "${{ needs.changes.outputs.e2e_core_scope }}"
       - name: Preserve Core E2E failure diagnostics
@@ -248,6 +249,7 @@ jobs:
         timeout-minutes: 5
         env:
           E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+          E2E_RETRY_FAILED_ONLY: "1"
           E2E_TRACE: "1"
         run: npm run test:e2e:run:arcade-smoke
       - name: Preserve Arcade smoke E2E failure diagnostics
@@ -307,6 +309,7 @@ jobs:
         timeout-minutes: 10
         env:
           E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+          E2E_RETRY_FAILED_ONLY: "1"
           E2E_TRACE: "1"
         run: npm run test:e2e:run:arcade
       - name: Preserve Arcade E2E failure diagnostics
@@ -479,6 +482,7 @@ jobs:
         timeout-minutes: 10
         env:
           E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+          E2E_RETRY_FAILED_ONLY: "1"
           E2E_TRACE: "1"
           SUITE: ${{ matrix.suite }}
         shell: bash
