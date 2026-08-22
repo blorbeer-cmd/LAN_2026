@@ -2,6 +2,10 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertSupportedNode,
+  bootstrapWorktree,
+} from "./worktree-bootstrap.mjs";
 
 const scopes = new Set([
   "root",
@@ -212,16 +216,49 @@ if (!branch) {
 }
 
 writeSection("Laufzeit");
+let runtimeFailure = false;
+
+try {
+  assertSupportedNode();
+} catch (error) {
+  console.error(`SICHERHEITSSTOPP: ${error.message}`);
+  runtimeFailure = true;
+}
+
 if (["server", "frontend"].includes(scope)) {
   console.log(`Node: ${process.version}`);
-  console.log(
-    `server/node_modules: ${existsSync(join(repoRoot, "server", "node_modules")) ? "vorhanden" : "fehlt"}`,
-  );
+  if (unsafeBranch) {
+    console.log(
+      `server/node_modules: ${existsSync(join(repoRoot, "server", "node_modules")) ? "vorhanden" : "fehlt"}`,
+    );
+    console.log("Bootstrap: wegen Branch-Sicherheitsstopp uebersprungen");
+  } else if (!runtimeFailure) {
+    try {
+      bootstrapWorktree({ repoRoot, scope });
+    } catch (error) {
+      console.error(
+        `SICHERHEITSSTOPP: Worktree-Bootstrap fehlgeschlagen: ${error.message}`,
+      );
+      runtimeFailure = true;
+    }
+  }
 } else if (scope === "agent") {
   console.log(`Node: ${process.version}`);
-  console.log(
-    `agent/node_modules:  ${existsSync(join(repoRoot, "agent", "node_modules")) ? "vorhanden" : "fehlt"}`,
-  );
+  if (unsafeBranch) {
+    console.log(
+      `agent/node_modules:  ${existsSync(join(repoRoot, "agent", "node_modules")) ? "vorhanden" : "fehlt"}`,
+    );
+    console.log("Bootstrap: wegen Branch-Sicherheitsstopp uebersprungen");
+  } else if (!runtimeFailure) {
+    try {
+      bootstrapWorktree({ repoRoot, scope });
+    } catch (error) {
+      console.error(
+        `SICHERHEITSSTOPP: Worktree-Bootstrap fehlgeschlagen: ${error.message}`,
+      );
+      runtimeFailure = true;
+    }
+  }
   console.log(
     `server/node_modules (fuer E2E): ${existsSync(join(repoRoot, "server", "node_modules")) ? "vorhanden" : "fehlt"}`,
   );
@@ -311,3 +348,4 @@ console.log(
 );
 
 if (unsafeBranch) process.exit(3);
+if (runtimeFailure) process.exit(4);
