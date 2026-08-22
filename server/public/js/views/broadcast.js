@@ -13,29 +13,38 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let historyCache = null;
 let historyLoading = false;
+let historyStale = false;
+let historyRequestVersion = 0;
 let historyOpen = false;
 
 async function loadHistory(ctx) {
+  const version = ++historyRequestVersion;
   historyLoading = true;
+  historyStale = false;
   try {
     const res = await api.broadcasts.list();
-    historyCache = res.broadcasts;
+    if (version === historyRequestVersion) historyCache = res.broadcasts;
   } catch {
-    historyCache = [];
+    if (version === historyRequestVersion && historyCache === null) historyCache = [];
   } finally {
-    historyLoading = false;
-    ctx.rerender();
+    if (version === historyRequestVersion) {
+      historyLoading = false;
+      ctx.rerender();
+    }
   }
 }
 
 // Called from app.js on every broadcast lifecycle event so the history list
 // is fresh next time this view renders.
-export function invalidateBroadcasts() {
-  historyCache = null;
+export function invalidateBroadcasts({ hard = false } = {}) {
+  historyRequestVersion += 1;
+  historyLoading = false;
+  historyStale = true;
+  if (hard) historyCache = null;
 }
 
 function renderHistory(myId) {
-  if (historyLoading || historyCache === null) {
+  if (historyCache === null) {
     return emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' });
   }
   if (historyCache.length === 0) {
@@ -64,7 +73,7 @@ function renderHistory(myId) {
 }
 
 export function renderBroadcast(container, ctx) {
-  if (historyCache === null && !historyLoading) loadHistory(ctx);
+  if ((historyCache === null || historyStale) && !historyLoading) loadHistory(ctx);
 
   const myId = getMyId();
 
@@ -150,7 +159,7 @@ export function renderBroadcast(container, ctx) {
       const currentEndsAtInput = container.querySelector('#broadcast-ends-at');
       if (currentInput) currentInput.value = '';
       if (currentEndsAtInput) currentEndsAtInput.value = '';
-      historyCache = null;
+      invalidateBroadcasts();
       showToast('Durchsage gesendet.');
       ctx.rerender();
     } catch (err) {
@@ -165,7 +174,7 @@ export function renderBroadcast(container, ctx) {
       button.disabled = true;
       try {
         await api.broadcasts.end(button.dataset.endBroadcast, myId);
-        historyCache = null;
+        invalidateBroadcasts();
         showToast('Durchsage beendet.');
         ctx.rerender();
       } catch (err) {

@@ -717,8 +717,16 @@ arcadeTest('multiplayer', 'Tetris Arena supports four ready players with one lar
     assert.ok(layout.primaryWidth > layout.opponentWidth);
     assert.ok(layout.scrollWidth <= layout.clientWidth);
 
+    await host.page.locator('.tetris-primary-board .tetris-canvas').evaluate((canvas) => {
+      canvas.dataset.renderIdentity = 'before-pause';
+    });
     await host.page.click('#tetris-pause');
     await host.page.waitForSelector('#tetris-resume');
+    assert.equal(
+      await host.page.locator('.tetris-primary-board .tetris-canvas').getAttribute('data-render-identity'),
+      'before-pause',
+      'pausing must update controls/overlay without replacing the live canvas',
+    );
     await host.context.close();
     hostClosed = true;
     await guests[0].page.waitForSelector('#tetris-resume');
