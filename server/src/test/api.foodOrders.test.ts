@@ -432,7 +432,7 @@ test('finalize requires the order to be closed first, and rejects an unknown ord
   assert.equal(notYetClosed.status, 409);
 });
 
-test('finalizing permanently locks the order: no reopen, items, paid or metadata changes, and no re-finalizing', async () => {
+test('finalizing locks items, paid and metadata changes while finalized, and rejects re-finalizing', async () => {
   const created = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: 'Getränke-Runde' });
   const finalizeOrderId = created.body.id;
   const item = await request(app)
@@ -445,9 +445,6 @@ test('finalizing permanently locks the order: no reopen, items, paid or metadata
   const finalized = await request(app).post(`/api/food-orders/${finalizeOrderId}/finalize`);
   assert.equal(finalized.status, 200);
   assert.ok(finalized.body.finalizedAt);
-
-  const reopenAfterFinalize = await request(app).post(`/api/food-orders/${finalizeOrderId}/reopen`);
-  assert.equal(reopenAfterFinalize.status, 409);
 
   const addAfterFinalize = await request(app)
     .post(`/api/food-orders/${finalizeOrderId}/items`)
@@ -466,6 +463,61 @@ test('finalizing permanently locks the order: no reopen, items, paid or metadata
 
   const secondFinalize = await request(app).post(`/api/food-orders/${finalizeOrderId}/finalize`);
   assert.equal(secondFinalize.status, 409);
+});
+
+test('reopening a finalized order undoes exactly the lock: paid marking and metadata work again, items stay frozen until fully reopened', async () => {
+  const created = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: 'Zweite Getränke-Runde' });
+  const finalizeOrderId = created.body.id;
+  const item = await request(app)
+    .post(`/api/food-orders/${finalizeOrderId}/items`)
+    .send({ playerId: bob.id, description: 'Cola', priceCents: 200 });
+  const itemId = item.body.items[0].id;
+
+  await request(app).post(`/api/food-orders/${finalizeOrderId}/close`);
+  await request(app).post(`/api/food-orders/${finalizeOrderId}/finalize`);
+
+  // Reopening a finalized order clears the lock but only steps back one
+  // level: it lands back on "abgeschickt" (closed_at stays set), not fully
+  // open.
+  const unfinalized = await request(app).post(`/api/food-orders/${finalizeOrderId}/reopen`);
+  assert.equal(unfinalized.status, 200);
+  assert.equal(unfinalized.body.finalizedAt, null);
+  assert.equal(unfinalized.body.open, false);
+  assert.ok(unfinalized.body.closedAt);
+
+  const addStillFrozen = await request(app)
+    .post(`/api/food-orders/${finalizeOrderId}/items`)
+    .send({ playerId: bob.id, description: 'Immer noch zu spät' });
+  assert.equal(addStillFrozen.status, 409);
+
+  const paidAfterUnfinalize = await request(app)
+    .patch(`/api/food-orders/${finalizeOrderId}/items/${itemId}`)
+    .send({ paid: true });
+  assert.equal(paidAfterUnfinalize.status, 200);
+  assert.equal(paidAfterUnfinalize.body.items.find((i: { id: string }) => i.id === itemId).paid, true);
+
+  const metadataAfterUnfinalize = await request(app)
+    .patch(`/api/food-orders/${finalizeOrderId}`)
+    .send({ notes: 'doch noch bearbeitbar' });
+  assert.equal(metadataAfterUnfinalize.status, 200);
+  assert.equal(metadataAfterUnfinalize.body.notes, 'doch noch bearbeitbar');
+
+  // A second reopen steps back the remaining level, all the way to open.
+  const reopened = await request(app).post(`/api/food-orders/${finalizeOrderId}/reopen`);
+  assert.equal(reopened.status, 200);
+  assert.equal(reopened.body.open, true);
+  assert.equal(reopened.body.closedAt, null);
+
+  const addNowWorks = await request(app)
+    .post(`/api/food-orders/${finalizeOrderId}/items`)
+    .send({ playerId: bob.id, description: 'Jetzt geht es wieder' });
+  assert.equal(addNowWorks.status, 201);
+
+  // The order can be closed and finalized again from scratch.
+  await request(app).post(`/api/food-orders/${finalizeOrderId}/close`);
+  const refinalized = await request(app).post(`/api/food-orders/${finalizeOrderId}/finalize`);
+  assert.equal(refinalized.status, 200);
+  assert.ok(refinalized.body.finalizedAt);
 });
 
 test('DELETE /api/food-orders/:id removes an open order and its items, and rejects an unknown id', async () => {

@@ -652,6 +652,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the paid marker's tooltip names existing confirmers. A group delete is available only for the current
   member's open, entirely unpaid group and confirms the complete position list. When a group is paid,
   every one of its position descriptions and amounts is struck through; reversing removes that treatment.
+  Finalization itself is not permanent: the creator/an admin can reopen a finalized ("Geschlossen") order
+  back to the closed/"Abgeschickt" state through the same `Wieder öffnen` action shown for a merely closed
+  order, which restores paid marking and metadata edits (items stay frozen until a further reopen).
 
   The PayPal button is the only payment handoff. It opens a blank tab synchronously, clears its opener,
   refreshes the order immediately before navigation, aborts when the order or any group item vanished,
@@ -678,9 +681,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   add form and lifecycle actions in that order. The toolbar contains only
   `Alle ausklappen`/`Alle einklappen`, aligned left. When more than one order is open, each card
   starts collapsed; a sibling `aria-expanded` button controls its body, and a search/push target
-  expands exactly that card. A target for a sent order opens the history section instead. A single open
-  order has no card-collapse chrome. The expanded state lives in module state and survives live
-  re-renders; history remains its own initially collapsed section without a target.
+  expands exactly that card. A single open order has no card-collapse chrome. The same rule applies
+  independently inside Historie: once it holds more than one closed/finalized order, each of its
+  cards gets the identical collapsible header/chevron and starts collapsed too, while a single
+  history entry stays chrome-free. A target for a sent order opens the history section and expands
+  that specific card within it (when Historie holds more than one entry) instead of only the section
+  itself. Both expanded-state sets live in module state and survive live re-renders.
   The add action is a normal `.btn` spanning the last grid columns and stretching to field height.
 
   Two hours after an order is sent, unpaid active members become eligible for a direct payment
