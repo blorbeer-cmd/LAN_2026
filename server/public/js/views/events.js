@@ -164,7 +164,8 @@ function participantSummary(participants, includeInvitationStatuses) {
 
 function renderAcceptedParticipants(event, { includeInvitationStatuses = false } = {}) {
   const participants = eventRoster(event, includeInvitationStatuses);
-  const canManagePayments = Boolean(event.costCents) && canManageEventPayments(event);
+  const canManagePayments = canManageEventPayments(event)
+    && (event.costCents !== null || participants.some((participant) => participant.paid));
   const isExpanded = expandedEventParticipants.has(event.id);
   const participantCountLabel = participantSummary(participants, includeInvitationStatuses);
   return `
@@ -280,9 +281,14 @@ function renderEventSettlement(event) {
 
 function renderEventPayment(event) {
   const creator = canManageEventPayments(event);
-  if (!event.costCents && !(creator && event.accommodationCostCents)) return '';
   const myId = getMyId();
   const myParticipation = acceptedParticipants(event).find((participant) => participant.playerId === myId);
+  const hasRecordedPayments = Number(event.paymentSummary?.paidCount ?? 0) > 0;
+  if (
+    !event.costCents
+    && !(creator && (event.accommodationCostCents || hasRecordedPayments))
+    && !myParticipation?.paid
+  ) return '';
   const amount = event.costCents ? formatEuroCents(event.costCents) : 'Nicht festgelegt';
   const payTitle = `${amount} über PayPal bezahlen`;
   if (creator) {
@@ -368,7 +374,11 @@ async function handleEventPay(eventId, ctx) {
         await navigator.clipboard.writeText(paypalEmail);
         showToast(`PayPal-Adresse kopiert: ${paypalEmail}`);
       } catch {
-        showToast('PayPal-Adresse konnte nicht kopiert werden.', { error: true });
+        // Opening the placeholder tab can move focus away from this document,
+        // which makes Clipboard.writeText reject in otherwise successful
+        // payment handoffs. Copying is only a convenience: keep the recipient
+        // visible and let the PayPal/confirmation flow continue normally.
+        showToast(`PayPal-Adresse nicht kopiert. Empfänger: ${paypalEmail}`);
       }
     }
     if (popup) popup.location = payUrl;
@@ -378,7 +388,7 @@ async function handleEventPay(eventId, ctx) {
     const confirmed = await confirmDialog(
       amountPassedToPaypal
         ? `${amount} wurden an PayPal übergeben.`
-        : `PayPal wurde geöffnet. ${amount} musst du dort selbst eintragen.`,
+        : `PayPal wurde geöffnet.${paypalEmail ? ` Empfänger: ${paypalEmail}.` : ''} ${amount} musst du dort selbst eintragen.`,
       {
       title: 'Bezahlt?',
       confirmText: 'Ja, bezahlt',
@@ -753,7 +763,8 @@ function participationStatus(status) {
 function renderParticipantManagerRows(event) {
   const participants = new Map((event.participants ?? []).map((entry) => [entry.playerId, entry]));
   const inviteAllowed = !event.isEnded;
-  const canSetAnyPaid = Boolean(event.costCents) && canManageEventPayments(event);
+  const canSetAnyPaid = canManageEventPayments(event)
+    && (event.costCents !== null || [...participants.values()].some((participant) => participant.paid));
   return state.players
     .map((p) => {
       const participant = participants.get(p.id);
@@ -765,12 +776,12 @@ function renderParticipantManagerRows(event) {
         : `${p.name} als bezahlt markieren`;
       return `
         <div class="event-participant-manager-row">
-          <span class="player-name"><span>${escapeHtml(p.name)}</span>${participant?.paid ? `<small class="event-payment-proof">${escapeHtml(paymentProof({ ...participant, playerId: p.id }))}</small>` : ''}${paymentLocked ? '<small class="muted">Zahlung zuerst zurücksetzen</small>' : ''}</span>
+          <span class="player-name"><span>${escapeHtml(p.name)}</span>${participant?.paid ? `<small class="event-payment-proof">${escapeHtml(paymentProof({ ...participant, playerId: p.id }))}</small>` : ''}${paymentLocked ? `<small class="muted" id="event-payment-lock-${escapeHtml(p.id)}">Zahlung zuerst zurücksetzen</small>` : ''}</span>
           <span class="event-participant-manager-actions">
             ${presentation ? `<span class="badge ${presentation.badge}">${presentation.label}</span>` : ''}
             ${status === 'accepted' && canSetAnyPaid ? `<button type="button" class="payment-paid-marker ${participant.paid ? 'is-paid' : ''}" data-modal-toggle-event-paid="${p.id}" aria-pressed="${Boolean(participant.paid)}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}">${icon(participant.paid ? 'check' : 'circleDashed')}<span>${participant.paid ? 'Bezahlt' : 'Offen'}</span></button>` : ''}
             ${inviteAllowed && (!status || status === 'declined') ? `<button type="button" class="btn btn-sm" data-invite-participant="${p.id}">${status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>` : ''}
-            ${status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${p.id}" ${paymentLocked ? 'disabled' : ''}>Entfernen</button>` : ''}
+            ${status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${p.id}" ${paymentLocked ? `aria-disabled="true" aria-describedby="event-payment-lock-${escapeHtml(p.id)}"` : ''}>Entfernen</button>` : ''}
           </span>
         </div>`;
     })
@@ -780,6 +791,7 @@ function renderParticipantManagerRows(event) {
 function renderParticipantsBody(event) {
   return `
     <div class="event-participants-body">
+      ${event.isEnded ? '<div class="muted event-participants-note" role="status">Für beendete Events sind keine neuen Einladungen mehr möglich.</div>' : ''}
       ${state.players.length === 0 ? emptyStateHtml('Noch keine Spieler.') : `<div class="event-participant-manager-list">${renderParticipantManagerRows(event)}</div>`}
     </div>`;
 }
@@ -798,6 +810,7 @@ function openParticipantsForm(ctx, event) {
           const playerId = button.dataset.inviteParticipant || button.dataset.removeParticipant || button.dataset.modalToggleEventPaid;
           const isInvite = Boolean(button.dataset.inviteParticipant);
           const isPayment = Boolean(button.dataset.modalToggleEventPaid);
+          if (!isInvite && !isPayment && button.getAttribute('aria-disabled') === 'true') return;
           if (!isInvite && !isPayment) {
             const participant = (event.participants ?? []).find((candidate) => candidate.playerId === playerId);
             const confirmed = await confirmDialog(

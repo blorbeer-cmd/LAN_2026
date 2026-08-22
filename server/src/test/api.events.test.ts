@@ -122,6 +122,8 @@ test('event creation and editing validate and expose contribution and accommodat
     'http://paypal.me/respawn',
     'https://payments.example/respawn',
     'https://paypal.me/respawn/500EUR',
+    'https://www.paypal.com/paypalme/respawn/500EUR',
+    'https://www.paypal.com/paypalme/respawn/500EUR?locale.x=de_DE',
   ]) {
     const unsafePaypalLink = await request(app).post('/api/events').send({
       name: 'Unsicheres PayPal-Ziel',
@@ -132,6 +134,11 @@ test('event creation and editing validate and expose contribution and accommodat
     });
     assert.equal(unsafePaypalLink.status, 400);
   }
+  const canonicalPaypalMe = await request(app)
+    .patch(`/api/events/${created.body.id}`)
+    .send({ paypalLink: 'https://www.paypal.com/paypalme/respawn' });
+  assert.equal(canonicalPaypalMe.status, 200, JSON.stringify(canonicalPaypalMe.body));
+  assert.equal(canonicalPaypalMe.body.paypalLink, 'https://www.paypal.com/paypalme/respawn');
   const emailBasedPaypal = await request(app).post('/api/events').send({
     name: 'PayPal per E-Mail-Adresse',
     startsAt,
@@ -439,6 +446,43 @@ test('payment snapshots survive price, roster, status, and account changes', asy
   assert.equal(reset.body.paidAmountCents, null);
   assert.equal((await request(app).delete(`/api/events/${created.body.id}/participants/${secondId}`)).status, 204);
   assert.equal((await request(app).delete(`/api/players/${secondId}`)).status, 204);
+});
+
+test('a paid participant can reset after the contribution is cleared', async () => {
+  const memberId = '__event-payment-reset-without-cost__';
+  createMember(memberId, 'Reset Without Cost');
+  const created = await createEvent('Zahlung ohne aktuellen Beitrag', 60_000, {
+    costCents: 2550,
+    accommodationCostCents: 10000,
+  });
+  accept(created.body.id, memberId);
+
+  assert.equal(
+    (
+      await request(app)
+        .patch(`/api/events/${created.body.id}/participants/${memberId}/payment`)
+        .set('x-test-player-id', memberId)
+        .send({ paid: true })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await request(app)
+        .patch(`/api/events/${created.body.id}`)
+        .send({ costCents: null, accommodationCostCents: null, paypalLink: null, paymentDueAt: null })
+    ).status,
+    200,
+  );
+
+  const reset = await request(app)
+    .patch(`/api/events/${created.body.id}/participants/${memberId}/payment`)
+    .set('x-test-player-id', memberId)
+    .send({ paid: false });
+  assert.equal(reset.status, 200, JSON.stringify(reset.body));
+  assert.equal(reset.body.paidAmountCents, null);
+  assert.equal((await request(app).delete(`/api/events/${created.body.id}/participants/${memberId}`)).status, 204);
+  assert.equal((await request(app).delete(`/api/players/${memberId}`)).status, 204);
 });
 
 test('the group owner takes over payment management when the event creator is inactive or missing', async () => {

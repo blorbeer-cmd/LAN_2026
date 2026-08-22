@@ -42,6 +42,8 @@ test('POST /api/food-orders validates title, player, sendAt, notes, link, paypal
     'http://paypal.me/luigi',
     'https://payments.example/luigi',
     'https://paypal.me/luigi/500EUR',
+    'https://www.paypal.com/paypalme/luigi/500EUR',
+    'https://www.paypal.com/paypalme/luigi/500EUR?locale.x=de_DE',
   ]) {
     const unsafePaypalLink = await request(app)
       .post('/api/food-orders')
@@ -125,6 +127,12 @@ test('PATCH /api/food-orders/:id sets, updates and clears send time, notes, link
   assert.equal(withNotesAndLink.body.tipPercent, 15);
   // sendAt untouched by a request that only mentions notes/link/paypalLink/tipPercent.
   assert.equal(withNotesAndLink.body.sendAt, laterSendAt);
+
+  const canonicalPaypalMe = await request(app)
+    .patch(`/api/food-orders/${orderId}`)
+    .send({ paypalLink: 'https://www.paypal.com/paypalme/alice' });
+  assert.equal(canonicalPaypalMe.status, 200, JSON.stringify(canonicalPaypalMe.body));
+  assert.equal(canonicalPaypalMe.body.paypalLink, 'https://www.paypal.com/paypalme/alice');
 
   const cleared = await request(app)
     .patch(`/api/food-orders/${orderId}`)

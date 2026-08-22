@@ -757,9 +757,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   and its optional deadline before acceptance, without offering payment actions yet. Accepted
   non-creators see only their own contribution and `Noch zu bezahlen`/`Bezahlt` state, the confirmer
   and timestamp of their own payment, plus a personal toggle for recording or correcting it; foreign
-  payment states and aggregates are absent from both UI and API payload. The visible full-width
+  payment states and aggregates are absent from both UI and API payload. A managing non-creator who
+  lacks payment-management rights receives only the boolean `paymentLocked` removal guard on roster
+  rows, without amount, actor or timestamp, so the blocked action has an explicit reason; this is
+  the sole administrative exception to the foreign-payment privacy rule. The visible full-width
   PayPal action says `Bezahlen`. The handoff refreshes the event before opening PayPal,
-  prefills the EUR amount for PayPal.me, copies an e-mail recipient for the generic PayPal flow and
+  prefills the EUR amount for PayPal.me, attempts to copy an e-mail recipient for the generic PayPal
+  flow and keeps that recipient visible in the confirmation if clipboard access is unavailable. It
   asks „Bezahlt?“ afterwards; only an affirmative answer records the payment. The recorded event
   creator instead receives the aggregate overview and the same `Offen`/`Bezahlt` toggle used by food
   orders on every accepted participant row. There is no bulk-payment action. The edit form can also
@@ -770,15 +774,19 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   or is deleted, the group owner becomes the payment manager. The box shows the
   current surplus/deficit, the projected result after every accepted person pays and the rounded
   accommodation price per current acceptance; pending and declined invitations never enter that
-  per-head calculation. Their card-level list
+  per-head calculation. Payment controls keep the reset action visible for an already recorded
+  payment even if the current contribution was subsequently cleared, so roster and account-removal
+  guards never create a dead end. The card-level list
   includes every invited account and labels each row as `Zugesagt`, `Einladung offen` or
   `Abgelehnt`; its summary separates accepted and still-open invitation counts. Member cards remain
   accepted-only and expose neither pending/declined identities nor that management status. Participant lists use
   the shared collapsible-section behavior plus Food orders' leading chevron/name/meta header pattern,
   start closed and preserve their open state across live re-renders. Their people remain one full-width
   row per line at every breakpoint so payment proof and the creator's toggle have predictable room;
-  the separate management dialog proceeds directly to its rows without repeated counts or explanatory
-  paragraphs.
+  the separate management dialog proceeds directly to its rows without repeated counts or general
+  explanatory paragraphs. State-specific blockers remain explicit: an ended event shows once that
+  new invitations are unavailable, and a paid row associates its removal action with the instruction
+  to reset the payment first.
   An optional date-only payment deadline starts reminders on that day; without one, contributions
   become eligible two hours after acceptance. Further reminders run at most once per rolling two-hour
   window, using durable reminder state independent of push history. TV-Kiosk (Admin's „Kioskverwaltung“

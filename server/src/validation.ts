@@ -36,10 +36,19 @@ const PAYPAL_HOSTS = new Set(['paypal.me', 'www.paypal.me', 'paypal.com', 'www.p
 
 function isBarePaypalMeDestination(url: URL): boolean {
   const host = url.hostname.toLowerCase();
-  if (host !== 'paypal.me' && host !== 'www.paypal.me') return true;
-  if (url.search || url.hash) return false;
   try {
-    return /^\/[^/]+\/?$/.test(decodeURIComponent(url.pathname));
+    const pathname = decodeURIComponent(url.pathname);
+    if (host === 'paypal.me' || host === 'www.paypal.me') {
+      if (url.search || url.hash) return false;
+      return /^\/[^/]+\/?$/.test(pathname);
+    }
+    if (host === 'paypal.com' || host === 'www.paypal.com') {
+      if (/^\/paypalme(?:\/|$)/i.test(pathname)) {
+        if (url.search || url.hash) return false;
+        return /^\/paypalme\/[^/]+\/?$/i.test(pathname);
+      }
+    }
+    return true;
   } catch {
     return false;
   }

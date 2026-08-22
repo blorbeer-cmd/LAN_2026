@@ -511,8 +511,10 @@ eventsRouter.patch('/:id/participants/:playerId/payment', resolveEvent, (req, re
   if ((access === 'none' || access === 'teaser') && event.created_by !== actorId) {
     return res.status(404).json({ error: 'Event nicht gefunden.' });
   }
-  if (event.cost_cents === null) return res.status(409).json({ error: 'Für dieses Event sind keine Kosten hinterlegt.' });
   if (typeof paid !== 'boolean') return res.status(400).json({ error: 'paid muss ein Boolean sein.' });
+  if (paid && event.cost_cents === null) {
+    return res.status(409).json({ error: 'Für dieses Event sind keine Kosten hinterlegt.' });
+  }
   if (targetPlayerId !== actorId && !canManageEventPayments(event, actorId, req.groupMembership?.role)) {
     return res.status(403).json({ error: 'Du kannst nur deinen eigenen Bezahlstatus ändern.' });
   }

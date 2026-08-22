@@ -374,7 +374,19 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.equal(await creatorPaymentButton.getAttribute('aria-pressed'), 'true');
   assert.match((await memberRow.textContent()) ?? '', new RegExp(`Bezahlt von ${MEMBER_NAME}`));
   assert.match((await memberRow.textContent()) ?? '', /Zahlung zuerst zurücksetzen/);
-  assert.equal(await memberRow.locator('[data-remove-participant]').isDisabled(), true);
+  const lockedRemoveButton = memberRow.locator('[data-remove-participant]');
+  assert.equal(await lockedRemoveButton.getAttribute('disabled'), null);
+  assert.equal(await lockedRemoveButton.isDisabled(), true);
+  assert.equal(await lockedRemoveButton.getAttribute('aria-disabled'), 'true');
+  const describedBy = await lockedRemoveButton.getAttribute('aria-describedby');
+  assert.ok(describedBy);
+  assert.equal(await ownerPage.locator(`#${describedBy}`).textContent(), 'Zahlung zuerst zurücksetzen');
+  await lockedRemoveButton.evaluate((button) => (button as HTMLButtonElement).click());
+  assert.equal(
+    await ownerPage.locator('.modal-backdrop', { hasText: 'Teilnehmer entfernen' }).count(),
+    0,
+    'the aria-disabled removal action does not open its destructive confirmation',
+  );
   await creatorPaymentButton.click();
   await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member .badge-paused`, { hasText: 'Noch zu bezahlen' }).waitFor();
   assert.equal(await ownerPage.locator('.modal-backdrop [data-mark-all-event-paid]').count(), 0);
@@ -475,13 +487,66 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.match((await memberPage.locator('.modal-body').textContent()) ?? '', /25,50.*selbst eintragen/);
   await memberPage.locator('.modal-backdrop [data-cancel]').last().click();
 
+  await memberPage.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText() {
+          return Promise.reject(new DOMException('Document is not focused', 'NotAllowedError'));
+        },
+      },
+    });
+  });
+  await memberEventCard.locator(`[data-pay-event="${eventId}"]`).click();
+  const clipboardFallbackToast = memberPage.locator('.toast', {
+    hasText: 'PayPal-Adresse nicht kopiert. Empfänger: orga@example.com',
+  }).last();
+  await clipboardFallbackToast.waitFor();
+  assert.equal(await clipboardFallbackToast.evaluate((toast) => toast.classList.contains('toast-error')), false);
+  const clipboardFallbackDialog = memberPage.locator('.modal-backdrop', { hasText: 'Bezahlt?' });
+  await clipboardFallbackDialog.waitFor();
+  assert.match((await clipboardFallbackDialog.locator('.modal-body').textContent()) ?? '', /Empfänger:\s*orga@example\.com/);
+  assert.match((await clipboardFallbackDialog.locator('.modal-body').textContent()) ?? '', /25,50.*selbst eintragen/);
+  await clipboardFallbackDialog.locator('[data-cancel]', { hasText: 'Noch nicht' }).click();
+
+  const ownPaidToggle = memberEventCard.locator('.event-card-payment-member [data-toggle-event-paid]');
+  await ownPaidToggle.click();
+  await memberEventCard.locator('.event-card-payment-member .badge-playing', { hasText: 'Bezahlt' }).waitFor();
+  const clearedContributionRefresh = memberPage.waitForResponse(
+    (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
+  );
+  const clearedContribution = await ownerPage.request.patch(`${BASE_URL}/api/events/${eventId}`, {
+    data: { costCents: null, paypalLink: null, paymentDueAt: null },
+  });
+  assert.equal(clearedContribution.status(), 200, await clearedContribution.text());
+  await clearedContributionRefresh;
+  const paidWithoutContribution = memberEventCard.locator('.event-card-payment-member');
+  await paidWithoutContribution.waitFor();
+  assert.match((await paidWithoutContribution.textContent()) ?? '', /Nicht festgelegt/);
+  const resetWithoutContribution = paidWithoutContribution.locator('[data-toggle-event-paid]');
+  assert.equal(await resetWithoutContribution.getAttribute('aria-pressed'), 'true');
+  await resetWithoutContribution.click();
+  await paidWithoutContribution.waitFor({ state: 'detached' });
+
+  const restoredContributionRefresh = memberPage.waitForResponse(
+    (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
+  );
+  const restoredContribution = await ownerPage.request.patch(`${BASE_URL}/api/events/${eventId}`, {
+    data: { costCents: 2550, paypalLink: genericPaypalLink },
+  });
+  assert.equal(restoredContribution.status(), 200, await restoredContribution.text());
+  await restoredContributionRefresh;
+  await memberEventCard.locator('.event-card-payment-member .badge-paused', { hasText: 'Noch zu bezahlen' }).waitFor();
+
   await ownerPage.click(`[data-end-event="${eventId}"]`);
   await ownerPage.click('[data-confirm]');
   await ownerPage.waitForSelector(`[data-restart-event="${eventId}"]`);
 
   await ownerPage.click(`[data-participants-event="${eventId}"]`);
   assert.equal(await ownerPage.locator('.modal-backdrop [data-invite-participant]').count(), 0);
-  assert.equal(await ownerPage.locator('.modal-backdrop .event-participants-note').count(), 0);
+  const endedEventNote = ownerPage.locator('.modal-backdrop .event-participants-note');
+  assert.equal(await endedEventNote.count(), 1);
+  assert.match((await endedEventNote.textContent()) ?? '', /keine neuen Einladungen mehr möglich/);
   await ownerPage.locator('.modal-backdrop [data-close]').click();
 
   await ownerPage.click(`[data-restart-event="${eventId}"]`);

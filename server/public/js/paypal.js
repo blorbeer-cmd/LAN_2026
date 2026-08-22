@@ -7,9 +7,11 @@ export function formatEuroCents(cents) {
 // A bare PayPal.me URL accepts an amount in its path. Other URLs are left
 // untouched so callers never rewrite a destination they did not create.
 export function paypalPayUrl(paypalLink, cents) {
-  const bareMatch = (paypalLink ?? '').match(/^https?:\/\/(?:www\.)?paypal\.me\/([^/?#]+)\/?$/i);
+  const bareMatch = (paypalLink ?? '').match(
+    /^https?:\/\/(?:www\.)?(?:paypal\.me\/([^/?#]+)|paypal\.com\/paypalme\/([^/?#]+))\/?$/i,
+  );
   if (bareMatch && cents > 0) {
-    return `https://paypal.me/${bareMatch[1]}/${(cents / 100).toFixed(2)}EUR`;
+    return `https://paypal.me/${bareMatch[1] ?? bareMatch[2]}/${(cents / 100).toFixed(2)}EUR`;
   }
   return paypalLink;
 }
@@ -23,10 +25,19 @@ function isAllowedPaypalUrl(value) {
     const url = new URL(value);
     const host = url.hostname.toLowerCase();
     if (url.protocol !== 'https:' || !PAYPAL_HOSTS.has(host) || url.username || url.password) return false;
-    if (host !== 'paypal.me' && host !== 'www.paypal.me') return true;
-    if (url.search || url.hash) return false;
     try {
-      return /^\/[^/]+\/?$/.test(decodeURIComponent(url.pathname));
+      const pathname = decodeURIComponent(url.pathname);
+      if (host === 'paypal.me' || host === 'www.paypal.me') {
+        if (url.search || url.hash) return false;
+        return /^\/[^/]+\/?$/.test(pathname);
+      }
+      if (host === 'paypal.com' || host === 'www.paypal.com') {
+        if (/^\/paypalme(?:\/|$)/i.test(pathname)) {
+          if (url.search || url.hash) return false;
+          return /^\/paypalme\/[^/]+\/?$/i.test(pathname);
+        }
+      }
+      return true;
     } catch {
       return false;
     }
