@@ -512,7 +512,13 @@ function renderEventSection() {
   // joins, it is where everyone already is.
   const canManage = Array.isArray(state.managedEvents);
   const realEvents = (canManage ? state.managedEvents : []).filter((e) => !e.isOutsideEvents && !e.isBase);
-  const memberEvents = canManage ? [] : (state.availableEvents || []).filter((e) => !e.isBase);
+  // A member's own ended events live in their own field (state.endedEvents)
+  // rather than state.availableEvents, which deliberately excludes them (see
+  // routes/events.ts) — merge both here so the split below can sort them into
+  // the active list and the collapsed Historie the same way managedEvents does.
+  const memberEvents = canManage
+    ? []
+    : [...(state.availableEvents || []), ...(state.endedEvents || [])].filter((e) => !e.isBase);
   const events = (canManage ? realEvents : memberEvents).slice().sort(byStartsAtDescending);
   const renderCard = canManage ? renderEventCard : renderMemberEventCard;
   const activeEvents = events.filter((e) => !e.isEnded);
@@ -581,6 +587,12 @@ export function pendingEventInvitations() {
   return getMyId() ? state.eventInvitations || [] : [];
 }
 
+// Reused only by Profile's "Einladungen" section today, so it targets that
+// page's own headings directly (the same direct-ID pattern the previous
+// Events-tab handler used for #orga-invitations-title/#orga-events-title):
+// the refresh below replaces the invitation button's own DOM, so focus needs
+// an explicit, still-present target instead of being left to fall back to
+// <body>.
 export function wirePendingInvitationActions(container, ctx) {
   container.querySelectorAll('[data-accept-invitation], [data-decline-invitation]').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -591,6 +603,7 @@ export function wirePendingInvitationActions(container, ctx) {
         if (accept) await api.events.acceptInvitation(eventId);
         else await api.events.declineInvitation(eventId);
         await ctx.refresh();
+        (container.querySelector('#profile-invitations-title') || container.querySelector('#profile-view-title'))?.focus();
         showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
       } catch (err) {
         btn.disabled = false;

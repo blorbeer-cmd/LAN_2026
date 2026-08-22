@@ -302,14 +302,14 @@ export function renderProfile(container, ctx) {
 
   container.innerHTML = `
     <div class="row-between profile-page-header">
-      <h1 class="view-title">Mein Profil</h1>
+      <h1 class="view-title" id="profile-view-title" tabindex="-1">Mein Profil</h1>
       <button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>
     </div>
     <div class="grouped-page-sections">
       ${
         pendingInvitations.length > 0
           ? `<section class="card stack grouped-page-section" aria-labelledby="profile-invitations-title">
-               <div class="grouped-page-section-title"><h2 id="profile-invitations-title">Einladungen</h2></div>
+               <div class="grouped-page-section-title"><h2 id="profile-invitations-title" tabindex="-1">Einladungen</h2></div>
                <div class="stack orga-event-grid">${pendingInvitations.map(renderInvitationCard).join('')}</div>
              </section>`
           : ''

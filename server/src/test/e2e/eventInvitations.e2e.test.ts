@@ -559,6 +559,9 @@ test('manager invites a member who accepts and both open clients update', async 
   await restoredContributionRefresh;
   await memberEventCard.locator('.event-card-payment-member [data-toggle-event-paid][aria-pressed="false"]').waitFor();
 
+  const memberEndedRefresh = memberPage.waitForResponse(
+    (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
+  );
   await ownerPage.click(`[data-end-event="${eventId}"]`);
   await ownerPage.click('[data-confirm]');
   // A finished event moves into the collapsed "Historie" section (see
@@ -566,6 +569,13 @@ test('manager invites a member who accepts and both open clients update', async 
   // now-hidden card actions.
   await ownerPage.locator('[data-event-history] > summary').click();
   await ownerPage.waitForSelector(`[data-restart-event="${eventId}"]`);
+
+  // The same Historie collapse applies to a plain member's own event list —
+  // sourced from its own `endedEvents` field (see routes/events.ts) since
+  // `availableEvents` deliberately excludes ended events entirely.
+  await memberEndedRefresh;
+  await memberPage.locator('[data-event-history] > summary').click();
+  await memberEventCard.waitFor();
 
   await ownerPage.click(`[data-participants-event="${eventId}"]`);
   assert.equal(await ownerPage.locator('.modal-backdrop [data-invite-participant]').count(), 0);

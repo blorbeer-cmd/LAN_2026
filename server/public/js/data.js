@@ -28,6 +28,12 @@ export function normalizeEventContext(eventContext = {}) {
     managedEvents: canManage ? managedEvents : null,
     activeEvent: eventContext.activeEvent ?? null,
     availableEvents,
+    // This account's own accepted events that have since ended. Deliberately
+    // absent from `availableEvents` (that list answers "where can I switch
+    // to", see routes/events.ts), but the Events tab's own Historie section
+    // renders it for a member the same way `managedEvents` already does for
+    // owner/admin.
+    endedEvents: eventContext.endedEvents ?? [],
     // Personal participation history: the allowlist the analytics endpoints
     // accept, so an event filter can never offer something they answer with
     // a 404. Falls back to the switchable workspaces so an older server

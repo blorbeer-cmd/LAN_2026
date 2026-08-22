@@ -246,6 +246,29 @@ function serializeEventSummary(
   };
 }
 
+// Shared shape for a single accepted event in a member's own list — used for
+// both the switchable workspaces (`availableEvents`) and this account's own
+// ended-but-accepted events (`endedEvents`), which need the identical
+// accepted-participant/payment detail to render the same card component.
+function serializeEventForMemberList(
+  event: EventRow,
+  viewerId: string | undefined,
+  viewerRole: GroupRole | undefined,
+) {
+  const managementFields = paymentManagementFields(event, viewerId, viewerRole);
+  return {
+    ...serializeEventSummary(event, {
+      includeAcceptedParticipants: true,
+      includePaymentDetails: true,
+      paymentViewerId: viewerId,
+      revealAllParticipantPayments: managementFields.canManagePayments,
+    }),
+    createdBy: event.created_by,
+    ...managementFields,
+    ...(managementFields.canManagePayments ? { accommodationCostCents: event.accommodation_cost_cents } : {}),
+  };
+}
+
 // GET /api/events - the account's active workspace, accepted workspaces and
 // invitation teasers. Admins additionally receive the full management list.
 eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
@@ -269,6 +292,23 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        WHERE ep.player_id = ? AND ep.status = 'invited'
          AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
        ORDER BY e.starts_at, e.name COLLATE NOCASE`,
+    )
+    .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
+  // A member's own accepted events that have since ended. `availableEvents`
+  // deliberately excludes these — it answers "where can I switch to right
+  // now", not "what did I finish" (see the dedicated test below) — but the
+  // Events tab's own collapsed "Historie" section needs the same rich
+  // accepted-participant/payment detail `availableEvents` carries, which the
+  // lighter `historicalEvents` summary (built for the analytics event filter)
+  // does not. Hence its own query rather than reusing either.
+  const endedEvents = db
+    .prepare(
+      `SELECT e.*
+       FROM events e
+       JOIN event_participants ep ON ep.event_id = e.id
+       WHERE ep.player_id = ? AND ep.status = 'accepted'
+         AND e.id != ? AND e.group_id = ? AND e.status = 'ended'
+       ORDER BY e.starts_at DESC, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
   // The personal-analytics allowlist, mirroring resolveAnalyticsEvents on the
@@ -315,20 +355,8 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
       // wired up to this field yet — see the PR's own follow-up note.
       participantIds: getParticipantIds(activeEvent.id),
     },
-    availableEvents: availableEvents.map((event) => {
-      const managementFields = paymentManagementFields(event, playerId, req.groupMembership?.role);
-      return {
-        ...serializeEventSummary(event, {
-          includeAcceptedParticipants: true,
-          includePaymentDetails: true,
-          paymentViewerId: playerId,
-          revealAllParticipantPayments: managementFields.canManagePayments,
-        }),
-        createdBy: event.created_by,
-        ...managementFields,
-        ...(managementFields.canManagePayments ? { accommodationCostCents: event.accommodation_cost_cents } : {}),
-      };
-    }),
+    availableEvents: availableEvents.map((event) => serializeEventForMemberList(event, playerId, req.groupMembership?.role)),
+    endedEvents: endedEvents.map((event) => serializeEventForMemberList(event, playerId, req.groupMembership?.role)),
     historicalEvents: historicalEvents.map((event) => serializeEventSummary(event)),
     invitations: invitations.map((event) => ({ ...serializeEventSummary(event), participationStatus: 'invited' })),
     ...(managedEvents ? { managedEvents } : {}),
