@@ -270,27 +270,21 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
         await adminPage.waitForSelector('#view-container[data-view="analytics"]');
         await adminPage.waitForSelector('section[aria-label="Ansicht"] .search-select-control');
         await adminPage.waitForSelector('.onboarding-target-ring');
-        await adminPage.waitForTimeout(500);
-        const aligned = await adminPage.evaluate(() => {
-          const target = document.querySelector('section[aria-label="Ansicht"] .search-select-control')?.getBoundingClientRect();
-          const ring = document.querySelector('.onboarding-target-ring')?.getBoundingClientRect();
-          if (!target || !ring) return false;
-          return Math.abs(target.left - ring.left) < 1
-            && Math.abs(target.top - ring.top) < 1
-            && Math.abs(target.width - ring.width) < 1
-            && Math.abs(target.height - ring.height) < 1;
-        });
-        assert.equal(aligned, true, 'the event dropdown control must be fully highlighted');
+        const waitForSpotlightAlignment = async () => {
+          await adminPage.waitForFunction(() => {
+            const target = document.querySelector('section[aria-label="Ansicht"] .search-select-control')?.getBoundingClientRect();
+            const ring = document.querySelector('.onboarding-target-ring')?.getBoundingClientRect();
+            return Boolean(target && ring)
+              && Math.abs(target!.left - ring!.left) < 1
+              && Math.abs(target!.top - ring!.top) < 1
+              && Math.abs(target!.width - ring!.width) < 1
+              && Math.abs(target!.height - ring!.height) < 1;
+          }, undefined, { timeout: 5_000 });
+        };
+        await waitForSpotlightAlignment();
 
         await adminPage.setViewportSize({ width: 420, height: 800 });
-        await adminPage.waitForTimeout(100);
-        const followsAfterResize = await adminPage.evaluate(() => {
-          const target = document.querySelector('section[aria-label="Ansicht"] .search-select-control')?.getBoundingClientRect();
-          const ring = document.querySelector('.onboarding-target-ring')?.getBoundingClientRect();
-          if (!target || !ring) return false;
-          return Math.abs(target.left - ring.left) < 1 && Math.abs(target.top - ring.top) < 1;
-        });
-        assert.equal(followsAfterResize, true, 'the spotlight must follow the dropdown after a resize');
+        await waitForSpotlightAlignment();
       }
       await adminPage.click('[data-onboarding-next]');
       await adminPage.waitForSelector('#onboarding-root [role="dialog"]');

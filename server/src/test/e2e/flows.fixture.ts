@@ -3285,6 +3285,10 @@ flowTest('community', 'Aktuell: an open vote can be dismissed without hiding the
   await currentVote.waitFor();
   const dismissButton = currentVote.locator('[data-dismiss-current]');
   assert.equal(await dismissButton.getAttribute('aria-label'), 'Freitagabend-Runde ausblenden');
+  await page.waitForFunction(() => {
+    const box = document.querySelector('[data-current-item] [data-dismiss-current]')?.getBoundingClientRect();
+    return Boolean(box && box.width >= 44 && box.height >= 44);
+  });
   const mobileDismissBox = await dismissButton.boundingBox();
   assert.ok(mobileDismissBox && mobileDismissBox.width >= 44 && mobileDismissBox.height >= 44);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
