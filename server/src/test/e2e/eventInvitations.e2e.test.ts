@@ -416,6 +416,7 @@ test('manager invites a member who accepts and both open clients update', async 
     200,
   );
   await noPaypalRefresh;
+  await memberEventCard.locator('[data-pay-event]').waitFor({ state: 'detached' });
   assert.equal(await memberEventCard.locator('[data-pay-event]').count(), 0);
   const ownPaymentToggle = memberEventCard.locator('.event-card-payment-member [data-toggle-event-paid]');
   assert.equal(await ownPaymentToggle.count(), 1, 'payment can still be recorded without a PayPal destination');
