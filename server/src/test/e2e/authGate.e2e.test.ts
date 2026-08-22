@@ -255,6 +255,11 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
     await adminPage.waitForSelector('#app:not([hidden])');
     await adminPage.waitForSelector('#onboarding-root [role="dialog"]');
 
+    await adminPage.waitForFunction(() =>
+      document.querySelector('.onboarding-progress')?.textContent?.includes('von 13') ?? false,
+      undefined,
+      { timeout: 10_000 },
+    );
     const totalCoreSteps = await adminPage.locator('.onboarding-progress').evaluate((element) => {
       const match = element.textContent?.match(/von (\d+)/);
       if (!match) throw new Error('onboarding progress text is missing the step count');
@@ -287,7 +292,13 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
         await waitForSpotlightAlignment();
       }
       await adminPage.click('[data-onboarding-next]');
-      await adminPage.waitForSelector('#onboarding-root [role="dialog"]');
+      if (step + 1 < totalCoreSteps) {
+        await adminPage.waitForFunction(
+          (previousTitle) => document.querySelector('#onboarding-title')?.textContent !== previousTitle,
+          title,
+          { timeout: 5_000 },
+        );
+      }
     }
     assert.equal(sawEventSelection, true);
     await adminPage.waitForSelector('.game-table-row.onboarding-required input[type="range"]');

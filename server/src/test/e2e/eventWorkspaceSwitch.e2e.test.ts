@@ -335,6 +335,10 @@ test('the workspace switcher keeps event names concise and shows state through i
 test('the switcher disables itself while a workspace switch is in flight', async () => {
   await switchWorkspaceInBrowser(eventB);
   await page.click('#event-context .search-select-toggle');
+  await page.route(`${BASE_URL}/api/me/active-event`, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.continue();
+  }, { times: 1 });
   await page.click(`#event-context-switcher-list [data-search-select-value="${eventA}"]`);
   // The onChange handler disables both elements synchronously, before its
   // first await — so by the time the click above has resolved, the disabled
@@ -343,6 +347,8 @@ test('the switcher disables itself while a workspace switch is in flight', async
   // polls avoids a race against an in-memory-DB switch that can complete
   // (and re-enable the rebuilt control) between the two separate round
   // trips a pair of waitForSelector calls would need.
+  await page.waitForSelector('#event-context-switcher-search[disabled]');
+  await page.waitForSelector('#event-context .search-select-toggle[disabled]');
   const disabledDuringSwitch = await page.evaluate(() => ({
     search: (document.getElementById('event-context-switcher-search') as HTMLInputElement | null)?.disabled,
     toggle: (document.querySelector('#event-context .search-select-toggle') as HTMLButtonElement | null)?.disabled,
