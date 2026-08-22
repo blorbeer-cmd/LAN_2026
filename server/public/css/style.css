@@ -3338,9 +3338,47 @@ button.card {
 .event-location-text {
   overflow-wrap: anywhere;
 }
-.event-location-copy {
+.event-card-payment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.event-payment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.event-payment-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.event-payment-due,
+.event-payment-proof {
+  font-size: var(--font-size-xs);
+}
+.event-payment-proof {
+  color: var(--text-muted);
+}
+.payment-paypal-button {
+  width: var(--space-7);
+  height: var(--space-7);
+  padding: var(--space-1);
+}
+.event-payment-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.event-payment-label .info-tooltip {
   flex: 0 0 auto;
-  align-self: center;
 }
 .event-card-participants {
   display: flex;
@@ -3374,6 +3412,13 @@ button.card {
   border-radius: var(--radius-sm);
   background: var(--bg-elevated-2);
   overflow-wrap: anywhere;
+}
+.event-participant-name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .event-participant-check {
   display: inline-flex;
@@ -3418,6 +3463,9 @@ button.card {
   background: var(--bg-elevated-2);
 }
 .event-participant-manager-row > .player-name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -3441,14 +3489,6 @@ button.card {
 }
 
 @media (max-width: 639px) {
-  .event-card-location {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-  .event-card-location .event-location-copy {
-    grid-column: 2;
-    justify-self: start;
-  }
   .event-participant-manager-row {
     align-items: flex-start;
     flex-direction: column;
@@ -4367,7 +4407,7 @@ input[type='number'].tournament-score-input {
   font-size: var(--font-size-sm);
 }
 /* The person's two-state payment marker stays stable as its label changes. */
-.food-order-paid-marker {
+.payment-paid-marker {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
@@ -4383,12 +4423,12 @@ input[type='number'].tournament-score-input {
   font-weight: var(--font-weight-medium);
   cursor: pointer;
 }
-.food-order-paid-marker.is-paid {
+.payment-paid-marker.is-paid {
   border-color: var(--state-playing);
   background: var(--state-playing-bg);
   color: var(--state-playing);
 }
-.food-order-paid-marker:disabled {
+.payment-paid-marker:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

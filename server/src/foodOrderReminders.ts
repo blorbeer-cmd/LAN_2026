@@ -1,7 +1,8 @@
 import { db } from './db';
 import { notifyPlayers } from './push';
+import { PAYMENT_REMINDER_INTERVAL_MS } from './paymentReminders';
 
-export const FOOD_ORDER_PAYMENT_REMINDER_INTERVAL_MS = 60 * 60 * 1000;
+export const FOOD_ORDER_PAYMENT_REMINDER_INTERVAL_MS = PAYMENT_REMINDER_INTERVAL_MS;
 
 interface UnpaidOrderRow {
   orderId: string;
@@ -100,8 +101,8 @@ function reminderBody(orders: UnpaidOrderRow[]): string {
 }
 
 /**
- * Sends at most one payment reminder per player and event in a rolling hour.
- * An order only becomes eligible one hour after it was sent/closed.
+ * Sends at most one payment reminder per player and event in a rolling two-hour window.
+ * An order only becomes eligible two hours after it was sent/closed.
  * A dedicated database row is the durable deduplication source, so push-log
  * pruning or a process restart cannot immediately send the reminder again.
  */
@@ -138,7 +139,7 @@ export function startFoodOrderPaymentReminder(): NodeJS.Timeout {
     try {
       runFoodOrderPaymentReminderOnce();
     } catch (error) {
-      // A reminder failure must not take down the LAN server. The next hourly
+      // A reminder failure must not take down the LAN server. The next scheduled
       // run gets another chance, while the error remains visible in logs.
       // eslint-disable-next-line no-console
       console.error('Food-order payment reminder failed:', error);

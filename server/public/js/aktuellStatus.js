@@ -20,7 +20,7 @@ let missingSkillsLoading = false;
 const DISMISSED_STORAGE_PREFIX = 'respawn_home_current_dismissed';
 const MAX_DISMISSED_ITEMS = 100;
 const MAX_ITEM_ID_LENGTH = 200;
-export const FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS = 60 * 60 * 1000;
+export const FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS = 2 * 60 * 60 * 1000;
 const memoryDismissals = new Map();
 
 function dismissalScope({ playerId = getMyId(), eventId = state.activeEvent?.id ?? 'base' } = {}) {
