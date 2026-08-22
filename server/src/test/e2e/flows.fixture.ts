@@ -89,7 +89,7 @@ async function setDateTimeField(id: string, value: string): Promise<void> {
 
 async function openMatchmakingHistory(): Promise<void> {
   const details = page.locator('details.history-details:has(summary:has-text("Historie"))');
-  if (!(await details.getAttribute('open'))) await details.locator('summary').click();
+  if ((await details.getAttribute('open')) === null) await details.locator('summary').click();
 }
 
 // Merged areas (see public/js/sectionNav.js): the bottom nav opens the area on
@@ -3654,6 +3654,61 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   assert.equal(await page.getByText('LAN auswählen', { exact: true }).count(), 0);
   assert.equal(await page.locator('.hall-of-fame-event-section').count(), 2);
   assert.equal(await page.locator('.hall-of-fame-event-section.is-tournaments .hall-of-fame-tournament-row').count(), 3);
+
+  // A lifecycle change for an unrelated event used to hard-invalidate the
+  // Hall-of-Fame cache. The long result list collapsed to "Lädt…", clamped
+  // the shared scroll container to the top and rebuilt the focused picker.
+  // Cover the invariant at laptop and phone widths.
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    const viewContainer = page.locator('#view-container');
+    const before = await viewContainer.evaluate((element) => {
+      const picker = document.querySelector('#hall-event-select-search') as HTMLInputElement;
+      picker.focus({ preventScroll: true });
+      element.scrollTop = Math.min(1200, element.scrollHeight - element.clientHeight);
+      const probe = { mutations: 0, loadingFrames: 0 };
+      (window as any).__renderStabilityProbe?.observer?.disconnect();
+      const observer = new MutationObserver(() => {
+        probe.mutations += 1;
+        if (element.textContent?.includes('Lädt…')) probe.loadingFrames += 1;
+      });
+      observer.observe(element, { childList: true, subtree: true });
+      (window as any).__renderStabilityProbe = { probe, observer };
+      return element.scrollTop;
+    });
+    assert.ok(before > 100, `Hall of Fame must scroll at ${viewport.width}x${viewport.height}`);
+
+    const suffix = `${viewport.width}-${Date.now()}`;
+    const createdResponse = await page.request.post(`${BASE_URL}/api/events`, {
+      data: {
+        name: `Render-Stabilität ${suffix}`,
+        startsAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+        endsAt: Date.now() + 31 * 24 * 60 * 60 * 1000,
+      },
+    });
+    const createdText = await createdResponse.text();
+    assert.equal(createdResponse.status(), 201, createdText);
+    const created = JSON.parse(createdText) as { id: string };
+    await page.waitForFunction(() => (window as any).__renderStabilityProbe?.probe.mutations > 0);
+
+    const after = await viewContainer.evaluate((element) => ({
+      scrollTop: element.scrollTop,
+      activeId: (document.activeElement as HTMLElement | null)?.id ?? null,
+      loadingFrames: (window as any).__renderStabilityProbe.probe.loadingFrames,
+    }));
+    assert.ok(Math.abs(after.scrollTop - before) < 4, `scroll changed from ${before} to ${after.scrollTop}`);
+    assert.equal(after.activeId, 'hall-event-select-search');
+    assert.equal(after.loadingFrames, 0);
+
+    const mutationsBeforeCancel = await page.evaluate(() => (window as any).__renderStabilityProbe.probe.mutations);
+    const cancelled = await page.request.delete(`${BASE_URL}/api/events/${created.id}`);
+    assert.ok(cancelled.ok(), await cancelled.text());
+    await page.waitForFunction(
+      (previous) => (window as any).__renderStabilityProbe?.probe.mutations > previous,
+      mutationsBeforeCancel,
+    );
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   // The shared seating plan exposes the real live state compactly after the
   // gamer name: seeded players cover playing + paused while the regular

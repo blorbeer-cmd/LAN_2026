@@ -77,8 +77,8 @@ export function ensureBlobbySocket() {
     flashPoint(payload.scorer?.name);
     playArcadeSound('blobby-score');
   });
-  socket.on('blobby:match:paused', () => { if (match) { match.paused = true; if (currentView() === 'blobby') rerender(); } });
-  socket.on('blobby:match:resumed', () => { if (match) { match.paused = false; if (currentView() === 'blobby') rerender(); } });
+  socket.on('blobby:match:paused', () => { if (match) { match.paused = true; if (currentView() === 'blobby') updatePauseUi(); } });
+  socket.on('blobby:match:resumed', () => { if (match) { match.paused = false; if (currentView() === 'blobby') updatePauseUi(); } });
   socket.on('blobby:match:end', (payload) => {
     if (!match) return;
     match.ended = true;
@@ -418,14 +418,7 @@ export function renderBlobby(container) {
 }
 function wireGame(container) {
   wireCanvasControls(container.querySelector('#blobby-canvas'));
-  container.querySelector('#blobby-pause')?.addEventListener('click', async () => {
-    const res = await emitAck('blobby:match:pause', { matchId: match.matchId, playerId: myId() });
-    if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
-  });
-  container.querySelector('#blobby-resume')?.addEventListener('click', async () => {
-    const res = await emitAck('blobby:match:resume', { matchId: match.matchId, playerId: myId() });
-    if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
-  });
+  wirePauseControl(container);
   container.querySelector('#blobby-finish')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
     await emitAck('blobby:match:finish', { matchId: match.matchId, playerId: myId() });
@@ -436,6 +429,30 @@ function wireGame(container) {
     if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
   });
   container.querySelector('#blobby-back')?.addEventListener('click', () => { match = null; previous = latest = null; stopAnimation(); navigate('arcade'); });
+}
+
+function wirePauseControl(container) {
+  container.querySelector('#blobby-pause')?.addEventListener('click', async () => {
+    const res = await emitAck('blobby:match:pause', { matchId: match.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
+  });
+  container.querySelector('#blobby-resume')?.addEventListener('click', async () => {
+    const res = await emitAck('blobby:match:resume', { matchId: match.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
+  });
+}
+
+function updatePauseUi() {
+  const court = document.querySelector('.blobby-court');
+  if (!court) return;
+  court.querySelector('.blobby-pause-overlay')?.remove();
+  if (match?.paused) court.insertAdjacentHTML('beforeend', '<div class="blobby-pause-overlay">Pause</div>');
+  const button = document.querySelector('#blobby-pause, #blobby-resume');
+  if (!button) return;
+  button.outerHTML = match.paused
+    ? '<button class="btn btn-sm btn-equal btn-primary" id="blobby-resume">Fortsetzen</button>'
+    : '<button class="btn btn-sm btn-equal" id="blobby-pause">Pausieren</button>';
+  wirePauseControl(document);
 }
 function wireCanvasControls(canvas) {
   if (!canvas) return;

@@ -74,27 +74,43 @@ export function setDraftState(payload) {
 let historyCache = null;
 let historyLoading = false;
 let historyForGameId = null;
+let historyStale = false;
+let historyRequestVersion = 0;
 
 async function loadHistory(gameId, ctx) {
+  const version = ++historyRequestVersion;
   historyLoading = true;
+  historyStale = false;
   try {
     const res = await api.matchmaking.history(gameId);
-    historyCache = res.history;
-    historyForGameId = gameId;
+    if (version === historyRequestVersion) {
+      historyCache = res.history;
+      historyForGameId = gameId;
+    }
   } catch {
-    historyCache = [];
-    historyForGameId = gameId;
+    if (version === historyRequestVersion) {
+      if (historyForGameId !== gameId) historyCache = [];
+      historyForGameId = gameId;
+    }
   } finally {
-    historyLoading = false;
-    ctx.rerender();
+    if (version === historyRequestVersion) {
+      historyLoading = false;
+      ctx.rerender();
+    }
   }
 }
 
 // Called from app.js whenever a matchmaking:generated or
 // matchmaking:draws-changed event arrives, so history is never more than one
 // re-render stale.
-export function invalidateMatchmakingHistory() {
-  historyForGameId = null;
+export function invalidateMatchmakingHistory({ hard = false } = {}) {
+  historyRequestVersion += 1;
+  historyLoading = false;
+  historyStale = true;
+  if (hard) {
+    historyCache = null;
+    historyForGameId = null;
+  }
 }
 
 // A running captain draft belongs to exactly one event, so switching the
@@ -263,7 +279,7 @@ function openDrawResultEdit(draw, ctx) {
         teams,
         winnerTeamIndex: winnerRaw === '' ? null : Number(winnerRaw),
       });
-      historyForGameId = null;
+      invalidateMatchmakingHistory();
       close();
       await ctx.refresh();
       showToast('Ergebnis aktualisiert.');
@@ -422,8 +438,8 @@ function renderHistoryDetails(title, count, content) {
   </details>`;
 }
 
-function renderHistory() {
-  if (historyLoading || historyCache === null) {
+function renderHistory(selectedGameId) {
+  if (historyForGameId !== selectedGameId || historyCache === null) {
     return renderHistoryDetails(
       'Historie',
       0,
@@ -574,7 +590,7 @@ export function renderMatchmaking(container, ctx) {
     avoidAdjacentOpponents = Boolean(gameById(selectedGameId)?.considerSeatNeighborsDefault);
   }
 
-  if (historyForGameId !== selectedGameId && !historyLoading) {
+  if ((historyForGameId !== selectedGameId || historyStale) && !historyLoading) {
     loadHistory(selectedGameId, ctx);
   }
 
@@ -738,7 +754,7 @@ export function renderMatchmaking(container, ctx) {
     </div>
     <div id="mm-result">${renderResult(state.lastMatchmaking)}</div>
 
-    ${renderHistory()}
+    ${renderHistory(selectedGameId)}
   `;
 
   wireInfoTooltips(container);
