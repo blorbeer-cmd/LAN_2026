@@ -373,14 +373,12 @@ test('manager invites a member who accepts and both open clients update', async 
   const creatorPaymentButton = memberRow.locator(`[data-modal-toggle-event-paid="${memberId}"]`);
   assert.equal(await creatorPaymentButton.getAttribute('aria-pressed'), 'true');
   assert.match((await memberRow.textContent()) ?? '', new RegExp(`Bezahlt von ${MEMBER_NAME}`));
-  assert.match((await memberRow.textContent()) ?? '', /Zahlung zuerst zurücksetzen/);
+  assert.doesNotMatch((await memberRow.textContent()) ?? '', /Zahlung zuerst zurücksetzen/);
   const lockedRemoveButton = memberRow.locator('[data-remove-participant]');
   assert.equal(await lockedRemoveButton.getAttribute('disabled'), null);
   assert.equal(await lockedRemoveButton.isDisabled(), true);
   assert.equal(await lockedRemoveButton.getAttribute('aria-disabled'), 'true');
-  const describedBy = await lockedRemoveButton.getAttribute('aria-describedby');
-  assert.ok(describedBy);
-  assert.equal(await ownerPage.locator(`#${describedBy}`).textContent(), 'Zahlung zuerst zurücksetzen');
+  assert.equal(await lockedRemoveButton.getAttribute('aria-describedby'), null);
   await lockedRemoveButton.evaluate((button) => (button as HTMLButtonElement).click());
   assert.equal(
     await ownerPage.locator('.modal-backdrop', { hasText: 'Teilnehmer entfernen' }).count(),
