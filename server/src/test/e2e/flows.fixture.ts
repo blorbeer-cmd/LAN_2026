@@ -2288,11 +2288,16 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
     await page.reload();
     await page.waitForSelector('#app:not([hidden])');
     await page.click('#nav-food-orders');
-    const card = page.locator('[data-order-card]', { hasText: scenario.title });
+    // Use the generated id instead of the title: a failed/retried scenario
+    // can leave an older card with the same title in the shared test event.
+    // Matching that card makes the following group wait hang even though the
+    // newly created scenario has already rendered correctly.
+    const card = page.locator(`[data-order-card="${scenario.id}"]`);
     await card.waitFor();
     if (await card.locator('.food-order-card-body').getAttribute('hidden') !== null) {
       await card.locator('.food-order-card-header-toggle').click();
     }
+    await card.locator('.food-order-card-body').waitFor({ state: 'visible' });
     const group = card.locator('.food-order-group', { hasText: 'E2E Alice Pro' });
     await group.locator('.food-order-group-header').waitFor();
     return { card, group };
@@ -3323,6 +3328,10 @@ flowTest('community', 'Aktuell: an open vote can be dismissed without hiding the
   await currentVote.waitFor();
   const dismissButton = currentVote.locator('[data-dismiss-current]');
   assert.equal(await dismissButton.getAttribute('aria-label'), 'Freitagabend-Runde ausblenden');
+  await page.waitForFunction(() => {
+    const box = document.querySelector('[data-current-item] [data-dismiss-current]')?.getBoundingClientRect();
+    return Boolean(box && box.width >= 44 && box.height >= 44);
+  });
   const mobileDismissBox = await dismissButton.boundingBox();
   assert.ok(mobileDismissBox && mobileDismissBox.width >= 44 && mobileDismissBox.height >= 44);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);

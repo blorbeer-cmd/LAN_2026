@@ -647,10 +647,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 77);
+  assert.equal(migrations.length, 78);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 77 }, (_, index) => index + 1),
+    Array.from({ length: 78 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1170,8 +1170,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 77 }, (_, index) => index + 1),
-    'every version 1..77 runs exactly once',
+    Array.from({ length: 78 }, (_, index) => index + 1),
+    'every version 1..78 runs exactly once',
   );
 });
 
@@ -1275,6 +1275,82 @@ test('migration 75 widens the onboarding core step bound and is restart-safe', (
     'the widened CHECK must still reject anything past the new maximum',
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 75').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 78 widens the onboarding core step bound for event selection and is restart-safe', () => {
+  const dbFile = makeTempDbPath('onboarding-event-selection-step-bound');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('legacy-event-step-bound-player', 'Legacy Event Step Bound Player', 'legacy-event-step-bound-key', Date.now());
+  fixture.exec(`
+    ALTER TABLE player_onboarding RENAME TO player_onboarding_legacy_78;
+    CREATE TABLE player_onboarding (
+      player_id                 TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+      version                   INTEGER NOT NULL DEFAULT 1,
+      status                    TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (status IN ('pending', 'active', 'completed', 'skipped')),
+      last_core_step            INTEGER NOT NULL DEFAULT 9 CHECK (last_core_step BETWEEN 0 AND 11),
+      rating_status             TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (rating_status IN ('pending', 'active', 'completed', 'deferred')),
+      rating_candidate_ids_json TEXT NOT NULL DEFAULT '[]',
+      seen_views_json           TEXT NOT NULL DEFAULT '[]',
+      completed_at              INTEGER,
+      updated_at                INTEGER NOT NULL
+    );
+    INSERT INTO player_onboarding
+      (player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at)
+    SELECT player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at
+    FROM player_onboarding_legacy_78;
+    DROP TABLE player_onboarding_legacy_78;
+  `);
+  fixture
+    .prepare(
+      `INSERT INTO player_onboarding
+         (player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at)
+       VALUES (?, 1, 'active', 11, 'pending', '[]', '[]', NULL, ?)`,
+    )
+    .run('legacy-event-step-bound-player', Date.now());
+  assert.throws(
+    () =>
+      fixture
+        .prepare('UPDATE player_onboarding SET last_core_step = 12 WHERE player_id = ?')
+        .run('legacy-event-step-bound-player'),
+    /CHECK constraint failed/,
+    'the pre-migration table must still reject the event-selection step',
+  );
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 78').run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'a second start must skip the recorded migration');
+
+  const migrated = new Database(dbFile);
+  assert.deepEqual(
+    migrated.prepare('SELECT last_core_step FROM player_onboarding WHERE player_id = ?').get('legacy-event-step-bound-player'),
+    { last_core_step: 11 },
+    'the pre-existing row survives the rebuild unchanged',
+  );
+  assert.doesNotThrow(
+    () =>
+      migrated
+        .prepare('UPDATE player_onboarding SET last_core_step = 12 WHERE player_id = ?')
+        .run('legacy-event-step-bound-player'),
+    'the event-selection step is accepted after migration',
+  );
+  assert.throws(
+    () =>
+      migrated
+        .prepare('UPDATE player_onboarding SET last_core_step = 13 WHERE player_id = ?')
+        .run('legacy-event-step-bound-player'),
+    /CHECK constraint failed/,
+    'the widened CHECK must still reject anything past the new maximum',
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 78').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
