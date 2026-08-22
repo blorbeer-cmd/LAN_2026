@@ -2149,10 +2149,19 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   await page.click('[data-confirm]');
   await page.waitForSelector('.badge-offline >> text=Geschlossen');
   const closedOrder = page.locator('[data-closed-order]', { hasText: 'Pizza bei Luigi' });
-  assert.equal(await closedOrder.locator('[data-reopen-order]').count(), 0);
+  assert.equal(await closedOrder.locator('[data-reopen-order]').count(), 1);
   assert.equal(await closedOrder.locator('[data-edit-details]').count(), 0);
   assert.equal(await closedOrder.locator('[data-toggle-group-paid]').first().isDisabled(), true);
   assert.equal(await closedOrder.locator('[data-group-pay]').first().isDisabled(), true);
+
+  // Finalizing is reversible one lock step at a time: reopening a finalized
+  // order drops it back to "Abgeschickt", unlocking payment marking and
+  // metadata edits again while items stay frozen.
+  await closedOrder.locator('[data-reopen-order]').click();
+  await page.waitForSelector('.badge-paused >> text=Abgeschickt');
+  assert.equal(await closedOrder.locator('[data-edit-details]').count(), 1);
+  assert.equal(await closedOrder.locator('[data-toggle-group-paid]').first().isDisabled(), false);
+
   await page.evaluate(() => (window as unknown as { __restoreWindowOpen: () => void }).__restoreWindowOpen());
 });
 flowTest('community', 'Essensbestellung: orderer groups collapse/expand and pay as a group', async () => {
