@@ -15,22 +15,34 @@ import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 
 let cache = null;
 let loading = false;
+let cacheStale = false;
+let requestVersion = 0;
 let selectedEventId = null;
 
-export function invalidateHallOfFame() {
-  cache = null;
+export function invalidateHallOfFame({ hard = false } = {}) {
+  requestVersion += 1;
+  loading = false;
+  cacheStale = true;
+  if (hard) cache = null;
 }
 
 async function load(ctx) {
+  const version = ++requestVersion;
   loading = true;
+  cacheStale = false;
   try {
-    cache = await api.hallOfFame.get();
+    const result = await api.hallOfFame.get();
+    if (version === requestVersion) cache = result;
   } catch (err) {
-    showToast(err.message, { error: true });
-    cache = { events: [], allTime: { mostOverallWins: [], mostTournamentWins: [] } };
+    if (version === requestVersion) {
+      showToast(err.message, { error: true });
+      if (cache === null) cache = { events: [], allTime: { mostOverallWins: [], mostTournamentWins: [] } };
+    }
   } finally {
-    loading = false;
-    ctx.rerender();
+    if (version === requestVersion) {
+      loading = false;
+      ctx.rerender();
+    }
   }
 }
 
@@ -120,14 +132,14 @@ function eventPickerOptions(events) {
 }
 
 export function renderHallOfFame(container, ctx) {
-  if (cache === null && !loading) load(ctx);
+  if ((cache === null || cacheStale) && !loading) load(ctx);
   const events = cache?.events ?? [];
   if (!events.some((event) => event.eventId === selectedEventId)) selectedEventId = events[0]?.eventId ?? null;
   const selectedEvent = events.find((event) => event.eventId === selectedEventId) ?? null;
 
   container.innerHTML = `
     ${
-      loading || cache === null
+      cache === null
         ? emptyStateHtml('Lädt…')
         : `
       <div class="grouped-page-sections">

@@ -22,37 +22,50 @@ const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
 
 let seatingCache = null;
 let seatingLoading = false;
+let seatingStale = false;
+let seatingRequestVersion = 0;
+let seatingLoadError = false;
 
 window.addEventListener('seating:changed', () => {
-  seatingCache = null;
+  invalidateHomeSeating();
 });
 
 // A player's name/real name/avatar can change (players:changed) without the
 // seating layout itself changing — the cached board would otherwise keep
 // showing the old real name for the rest of the session on any device that
 // already loaded it (CLAUDE.md: realtime by default, no manual reload).
-export function invalidateHomeSeating() {
-  seatingCache = null;
+export function invalidateHomeSeating({ hard = false } = {}) {
+  seatingRequestVersion += 1;
+  seatingLoading = false;
+  seatingStale = true;
+  seatingLoadError = false;
+  if (hard) seatingCache = null;
 }
 
 async function loadSeating(ctx) {
+  const version = ++seatingRequestVersion;
   seatingLoading = true;
+  seatingStale = false;
+  seatingLoadError = false;
   try {
-    seatingCache = await api.seating.layout();
+    const result = await api.seating.layout();
+    if (version === seatingRequestVersion) seatingCache = result;
   } catch {
-    seatingCache = null;
+    if (version === seatingRequestVersion) seatingLoadError = seatingCache === null;
   } finally {
-    seatingLoading = false;
-    ctx.rerender();
+    if (version === seatingRequestVersion) {
+      seatingLoading = false;
+      ctx.rerender();
+    }
   }
 }
 
 function renderHomeSeating(ctx) {
-  if (seatingCache === null && !seatingLoading) loadSeating(ctx);
+  if ((seatingCache === null || seatingStale) && !seatingLoading && !seatingLoadError) loadSeating(ctx);
   return `<section class="card grouped-page-section live-seating stack" aria-labelledby="home-seating-title">
     <div class="grouped-page-section-title"><h2 id="home-seating-title">Sitzplan</h2></div>
-    ${seatingLoading || seatingCache === null
-      ? emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' })
+    ${seatingCache === null
+      ? emptyStateHtml(seatingLoadError ? 'Sitzplan konnte nicht geladen werden.' : 'Lädt…', { style: 'padding:var(--space-4);' })
       : renderSeatingPlan(seatingCache.layout, seatingCache.players)}
   </section>`;
 }

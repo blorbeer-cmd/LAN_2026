@@ -136,15 +136,12 @@ export function ensureTetrisSocket() {
 
   socket.on('tetris:match:paused', () => {
     if (match) match.paused = true;
-    // Rerender (not just the overlay) so the host's button flips to
-    // "Fortsetzen" — otherwise it stays "Pausieren" and re-clicking just
-    // re-sends pause, leaving you stuck.
-    if (tetrisViewMounted()) rerender();
+    if (tetrisViewMounted()) updatePauseUi();
   });
 
   socket.on('tetris:match:resumed', () => {
     if (match) match.paused = false;
-    if (tetrisViewMounted()) rerender();
+    if (tetrisViewMounted()) updatePauseUi();
   });
 
   socket.on('tetris:match:end', (payload) => {
@@ -681,14 +678,7 @@ export function renderTetris(container, _ctx) {
 function wireMatch(container) {
   bindTouchGestures(container.querySelector('#tetris-mine'));
 
-  container.querySelector('#tetris-pause')?.addEventListener('click', async () => {
-    const res = await emitWithAck('tetris:match:pause', { matchId: match?.matchId, playerId: myId() });
-    if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
-  });
-  container.querySelector('#tetris-resume')?.addEventListener('click', async () => {
-    const res = await emitWithAck('tetris:match:resume', { matchId: match?.matchId, playerId: myId() });
-    if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
-  });
+  wirePauseControl(container);
   container.querySelector('#tetris-finish')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
     const res = await emitWithAck('tetris:match:finish', { matchId: match?.matchId, playerId: myId() });
@@ -712,6 +702,28 @@ function wireMatch(container) {
     cancelCountdown();
     navigate('arcade');
   });
+}
+
+function wirePauseControl(container) {
+
+  container.querySelector('#tetris-pause')?.addEventListener('click', async () => {
+    const res = await emitWithAck('tetris:match:pause', { matchId: match?.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
+  });
+  container.querySelector('#tetris-resume')?.addEventListener('click', async () => {
+    const res = await emitWithAck('tetris:match:resume', { matchId: match?.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
+  });
+}
+
+function updatePauseUi() {
+  paint();
+  const button = document.querySelector('#tetris-pause, #tetris-resume');
+  if (!button) return;
+  button.outerHTML = match.paused
+    ? '<button type="button" class="btn btn-sm btn-equal btn-primary" id="tetris-resume">Fortsetzen</button>'
+    : '<button type="button" class="btn btn-sm btn-equal" id="tetris-pause">Pausieren</button>';
+  wirePauseControl(document);
 }
 
 // Touch controls without on-screen buttons: drag left/right across your board
