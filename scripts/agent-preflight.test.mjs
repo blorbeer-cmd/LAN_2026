@@ -1,13 +1,23 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test, { after, before } from "node:test";
 import { fileURLToPath } from "node:url";
+import { assertSupportedNode } from "./worktree-bootstrap.mjs";
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const sourceScriptPath = resolve(scriptsDir, "agent-preflight.mjs");
+const sourceBootstrapPath = resolve(scriptsDir, "worktree-bootstrap.mjs");
 const scopes = ["root", "server", "frontend", "agent", "docs", "infra"];
 let fixtureRoot;
 let fixtureWorktree;
@@ -29,7 +39,31 @@ before(() => {
   fixtureWorktree = join(fixtureRoot, "feature");
   mkdirSync(fixtureScripts);
   cpSync(sourceScriptPath, join(fixtureScripts, "agent-preflight.mjs"));
+  cpSync(sourceBootstrapPath, join(fixtureScripts, "worktree-bootstrap.mjs"));
   writeFileSync(join(fixtureRoot, "README.md"), "preflight fixture\n");
+  writeFileSync(join(fixtureRoot, ".gitignore"), "node_modules/\n");
+
+  for (const target of ["server", "agent"]) {
+    const targetRoot = join(fixtureRoot, target);
+    mkdirSync(targetRoot);
+    writeFileSync(
+      join(targetRoot, "package.json"),
+      `${JSON.stringify({ name: `preflight-${target}`, private: true }, null, 2)}\n`,
+    );
+    writeFileSync(
+      join(targetRoot, "package-lock.json"),
+      `${JSON.stringify(
+        {
+          name: `preflight-${target}`,
+          lockfileVersion: 3,
+          requires: true,
+          packages: { "": { name: `preflight-${target}` } },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  }
 
   run("git", ["init", "--initial-branch=main"], fixtureRoot);
   run("git", ["config", "user.name", "Preflight Test"], fixtureRoot);
@@ -78,7 +112,7 @@ function gitStatus() {
   return result.stdout;
 }
 
-test("runs every supported scope without changing the worktree", () => {
+test("runs every supported scope without tracked worktree changes", () => {
   const before = gitStatus();
 
   for (const scope of scopes) {
@@ -124,6 +158,103 @@ test("reports the worktree and branch safety check", () => {
     result.stdout,
     /GitHub-Pruefung: fuer den lokalen Skripttest deaktiviert/,
   );
+});
+
+test("bootstraps scoped dependencies once and reuses the lockfile stamp", () => {
+  const modulesPath = join(fixtureWorktree, "server", "node_modules");
+  rmSync(modulesPath, { recursive: true, force: true });
+
+  const first = runPreflight(["--scope", "server"]);
+  assert.equal(first.status, 0, first.stderr);
+  assert.match(
+    first.stdout,
+    /server\/node_modules: npm ci \(node_modules fehlt\)/,
+  );
+  assert.match(first.stdout, /server\/node_modules: installiert/);
+
+  const stampPath = join(modulesPath, ".respawn-worktree-bootstrap.json");
+  assert.equal(existsSync(stampPath), true);
+  const firstStamp = readFileSync(stampPath, "utf8");
+
+  const second = runPreflight(["--scope", "frontend"]);
+  assert.equal(second.status, 0, second.stderr);
+  assert.match(second.stdout, /server\/node_modules: aktuell/);
+  assert.equal(readFileSync(stampPath, "utf8"), firstStamp);
+});
+
+test("refreshes dependencies after the scoped lockfile changes", () => {
+  const lockfilePath = join(fixtureWorktree, "agent", "package-lock.json");
+  const first = runPreflight(["--scope", "agent"]);
+  assert.equal(first.status, 0, first.stderr);
+
+  const lockfile = JSON.parse(readFileSync(lockfilePath, "utf8"));
+  lockfile.version = "1.0.0";
+  lockfile.packages[""].version = "1.0.0";
+  writeFileSync(lockfilePath, `${JSON.stringify(lockfile, null, 2)}\n`);
+
+  const second = runPreflight(["--scope", "agent"]);
+  assert.equal(second.status, 0, second.stderr);
+  assert.match(
+    second.stdout,
+    /agent\/node_modules: npm ci \(package-lock\.json hat sich geaendert\)/,
+  );
+  assert.match(second.stdout, /agent\/node_modules: installiert/);
+});
+
+test("the standalone bootstrap rejects unsupported scopes", () => {
+  const bootstrapPath = join(
+    fixtureWorktree,
+    "scripts",
+    "worktree-bootstrap.mjs",
+  );
+  const result = spawnSync(
+    process.execPath,
+    [bootstrapPath, "--scope", "unknown"],
+    { cwd: fixtureWorktree, encoding: "utf8", windowsHide: true },
+  );
+
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Unknown scope: unknown/);
+  assert.match(result.stderr, /Usage:/);
+});
+
+test("requires exactly the repository Node.js major version", () => {
+  assert.doesNotThrow(() => assertSupportedNode("24.99.0"));
+  assert.throws(
+    () => assertSupportedNode("22.17.1"),
+    /Node\.js 24 is required/,
+  );
+  assert.throws(() => assertSupportedNode("25.0.0"), /Node\.js 24 is required/);
+});
+
+test("does not bootstrap dependencies after a branch safety stop", () => {
+  const mainModulesPath = join(fixtureRoot, "server", "node_modules");
+  rmSync(mainModulesPath, { recursive: true, force: true });
+
+  const result = spawnSync(
+    process.execPath,
+    [join(fixtureRoot, "scripts", "agent-preflight.mjs"), "--scope", "server"],
+    {
+      cwd: fixtureRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        AGENT_PREFLIGHT_DISABLE_GITHUB_CHECK: "1",
+      },
+      windowsHide: true,
+    },
+  );
+
+  assert.equal(result.status, 3);
+  assert.match(
+    result.stderr,
+    /SICHERHEITSSTOPP: main ist nur Integrationsbasis/,
+  );
+  assert.match(
+    result.stdout,
+    /Bootstrap: wegen Branch-Sicherheitsstopp uebersprungen/,
+  );
+  assert.equal(existsSync(mainModulesPath), false);
 });
 
 test("names the agent-pipeline test for infrastructure work", () => {

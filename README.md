@@ -107,21 +107,34 @@ Respawn/
 
 ## Schnellstart (lokal / Entwicklung)
 
-Das Projekt verwendet Node.js 24. Die Version steht in `.nvmrc`; mit `nvm use` wird sie automatisch
-ausgewählt. Server und Agent deklarieren Node 24 zusätzlich über `engines`.
+Das Projekt verwendet ausschließlich Node.js 24. Die Laufzeit wird einmal auf dem Rechner
+installiert beziehungsweise von der Entwicklungsumgebung bereitgestellt, nicht pro Branch oder
+Worktree. `.nvmrc` beschreibt die benötigte Hauptversion; ein vorhandener Versionsmanager kann sie
+mit `nvm use` auswählen. Ohne Versionsmanager muss `node --version` bereits `v24...` ausgeben.
+
+Ein neuer Git-Worktree enthält absichtlich keine `node_modules`. Der gemeinsame Bootstrap
+installiert Server- und Agent-Abhängigkeiten beim ersten Lauf mit `npm ci` und wiederholt das nur,
+wenn das jeweilige `package-lock.json` geändert wurde:
 
 ```bash
-# Server
+# einmal im Repository-/Worktree-Stamm
+node scripts/worktree-bootstrap.mjs --scope all
+
+# danach Server starten
 cd server
-npm install
 npm run dev          # startet auf http://localhost:3000
 
 # Agent (auf einem Spieler-PC)
-cd agent
-npm install
+cd ../agent
 # agent.config.json anpassen (Server-URL + eigener API-Key)
 npm start
 ```
+
+Für einen einzelnen Bereich sind außerdem `--scope server`, `--scope frontend` und
+`--scope agent` verfügbar. Coding-Agenten müssen keinen separaten Installationsschritt ausführen:
+Der vorgeschriebene bereichsspezifische Preflight startet denselben idempotenten Bootstrap erst
+nach bestandener Branch-Sicherheitsprüfung automatisch. Nur bei einer vermuteten beschädigten
+Installation erzwingt `--force` einen erneuten sauberen Lauf.
 
 Danach im Browser `http://localhost:3000` öffnen. Auf einer frischen lokalen Datenbank erzeugen
 `npm run dev` und `npm start` automatisch einen temporären Recovery-Code und geben den vollständigen
@@ -231,7 +244,7 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
 
 Der Server ist weiterhin ein normaler Node.js-Prozess mit einer SQLite-Datei und läuft genauso gut
 auf jedem beliebigen kleinen Linux-Server/VPS ohne Docker – für die LAN-Party selbst reicht wie
-bisher `npm install && npm run build && npm start` auf einem Laptop im WLAN. Ist die Datenbank leer
+bisher `npm ci && npm run build && npm start` auf einem Laptop im WLAN. Ist die Datenbank leer
 und kein Erstzugang konfiguriert, zeigt `npm start` den einmalig für diesen Prozess erzeugten
 `/?claim=...`-Link an; der direkte Aufruf `node dist/index.js` verlangt dagegen explizit einen
 Recovery-Code oder ein bereits beanspruchtes Admin-Konto.
@@ -278,7 +291,7 @@ Windows-Login.
    kopieren**.
 2. `agent/agent.config.example.json` zu `agent.config.json` kopieren, Server-URL + den kopierten
    Key eintragen.
-3. `npm install && npm start`.
+3. `npm ci && npm start`.
 
 Der Agent braucht sonst nichts zu wissen – neue Spiele bzw. neue Prozessname-Zuordnungen werden
 zentral im Web-Tool unter „⚙️ Spiele verwalten" gepflegt und wirken sofort, ohne den Agent

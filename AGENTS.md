@@ -22,7 +22,10 @@ Vor Analyse, Planung oder Änderung
 - Bei Änderungsaufträgen den gemeinsamen Preflight genau einmal mit dem passendsten Bereich
   (`root`, `server`, `frontend`, `agent`, `docs` oder `infra`) ausführen, zum Beispiel
   `node ./scripts/agent-preflight.mjs --scope frontend`. Seine Ausgabe ersetzt getrennte
-  Einstiegsaufrufe für Git-Status, Laufzeit, Abhängigkeiten und Standardprüfungen.
+  Einstiegsaufrufe für Git-Status, Laufzeit, Abhängigkeiten und Standardprüfungen. Auf einem
+  branch-sicheren Worktree prüft er Node.js 24 und installiert fehlende oder durch ein geändertes
+  Lockfile veraltete Abhängigkeiten für `server`, `frontend` oder `agent` automatisch. Bei einem
+  Sicherheitsstopp bleibt der Arbeitsbaum einschließlich `node_modules` unangetastet.
 - Mit genannten Pfaden beginnen. Ohne Pfadangabe anhand der untenstehenden Landkarte gezielt
   suchen; keine vorsorgliche repositoryweite Volltextsuche und keine Lektüre von Dokumentation,
   die weder vorgeschrieben noch für den Auftrag relevant ist.
