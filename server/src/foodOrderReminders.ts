@@ -123,7 +123,10 @@ export function runFoodOrderPaymentReminderOnce(now = Date.now()): number {
         targetId: singleOrder?.orderId ?? 'foodOrders',
       },
       'direct',
-      { key: topicKey, expiresAt: now + FOOD_ORDER_PAYMENT_REMINDER_INTERVAL_MS },
+      {
+        key: topicKey,
+        expiresAt: now + FOOD_ORDER_PAYMENT_REMINDER_INTERVAL_MS,
+      },
       { groupId: group.groupId, eventId: group.eventId },
     );
     if (delivery) {
