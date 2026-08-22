@@ -16,6 +16,8 @@ import {
   getParticipantIds,
   getEventParticipants,
   getAcceptedEventParticipants,
+  getEventPaymentSummary,
+  getPaidEventParticipantIds,
   inviteParticipant,
   isParticipant,
   removeEventParticipant,
@@ -29,7 +31,8 @@ import { BASE_EVENT_ID, db } from '../db';
 import { broadcast, Events, switchPlayerEventScope } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { notifyPlayers, resolvePushTopic } from '../push';
-import { isNonEmptyString, isValidUrl } from '../validation';
+import { isNonEmptyString, isValidPaypalUrl } from '../validation';
+import type { GroupRole } from '../groups';
 import { requireConfiguredGroupMembership, requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
@@ -91,20 +94,99 @@ const resolveEvent = resolveGroupResource<EventRow>({
 // reader never has to know which of the two it got: both name the same value
 // the same way. Before that, `starts_at` here versus `startsAt` there made
 // every member-visible event render as "Invalid Date".
-function serializeEvent(event: ReturnType<typeof getEvent>) {
+function paymentDetailsForViewer<T extends { playerId: string }>(
+  participant: T,
+  viewerId: string | undefined,
+  revealAllPayments: boolean,
+) {
+  if (revealAllPayments || participant.playerId === viewerId) return participant;
+  const safeParticipant = { ...participant } as T & Record<string, unknown>;
+  delete safeParticipant.paid;
+  delete safeParticipant.paidBy;
+  delete safeParticipant.paidByName;
+  delete safeParticipant.paidAt;
+  delete safeParticipant.paidAmountCents;
+  return safeParticipant;
+}
+
+function acceptedParticipantsForViewer(eventId: string, viewerId: string | undefined, revealAllPayments: boolean) {
+  return getAcceptedEventParticipants(eventId).map((participant) =>
+    paymentDetailsForViewer(participant, viewerId, revealAllPayments),
+  );
+}
+
+function eventParticipantsForViewer(eventId: string, viewerId: string | undefined, revealAllPayments: boolean) {
+  return getEventParticipants(eventId).map((participant) => ({
+    ...paymentDetailsForViewer(participant, viewerId, revealAllPayments),
+    // Administrative roster actions need to explain why removal is blocked,
+    // but non-payment managers must not receive amount, actor, or timestamp.
+    paymentLocked: Boolean(participant.paid),
+  }));
+}
+
+function canManageEventPayments(
+  event: EventRow,
+  viewerId: string | undefined,
+  viewerRole: GroupRole | undefined,
+): boolean {
+  if (!viewerId) return false;
+  if (event.created_by === viewerId) return true;
+  if (viewerRole !== 'owner') return false;
+  if (!event.created_by) return true;
+  const activeCreator = db
+    .prepare(
+      `SELECT 1
+       FROM players p
+       JOIN group_memberships gm ON gm.player_id = p.id
+       WHERE p.id = ? AND p.deactivated_at IS NULL
+         AND gm.group_id = ? AND gm.status = 'active'`,
+    )
+    .get(event.created_by, event.group_id);
+  return !activeCreator;
+}
+
+function paymentManagementFields(
+  event: EventRow,
+  viewerId: string | undefined,
+  viewerRole: GroupRole | undefined,
+) {
+  const canManagePayments = canManageEventPayments(event, viewerId, viewerRole);
+  if (!canManagePayments) return { canManagePayments: false };
+  const summary = getEventPaymentSummary(event.id);
+  return {
+    canManagePayments: true,
+    settlementPaidCents: summary.paidCents,
+    settlementPaidCount: summary.paidCount,
+    settlementMissingAmountCount: summary.missingAmountCount,
+  };
+}
+
+function serializeEvent(
+  event: ReturnType<typeof getEvent>,
+  viewerId: string | undefined,
+  viewerRole?: GroupRole,
+) {
   if (!event) return undefined;
+  const revealAllPayments = canManageEventPayments(event, viewerId, viewerRole);
   return {
     ...serializeEventSummary(event as EventRow, {
       includeAcceptedParticipants: true,
       includePaymentDetails: true,
+      paymentViewerId: viewerId,
+      revealAllParticipantPayments: revealAllPayments,
     }),
     endedAt: event.ended_at,
     groupId: event.group_id,
     createdBy: event.created_by,
+    ...paymentManagementFields(event, viewerId, viewerRole),
+    accommodationCostCents: event.accommodation_cost_cents,
     visibilityScope: event.visibility_scope,
     isOutsideEvents: event.id === OUTSIDE_EVENTS_ID,
     participantIds: event.id === OUTSIDE_EVENTS_ID ? undefined : getParticipantIds(event.id),
-    participants: event.id === OUTSIDE_EVENTS_ID ? undefined : getEventParticipants(event.id),
+    participants:
+      event.id === OUTSIDE_EVENTS_ID
+        ? undefined
+        : eventParticipantsForViewer(event.id, viewerId, revealAllPayments),
   };
 }
 
@@ -126,7 +208,17 @@ function activeContextPlayerIds(eventId: string): string[] {
 // default shape.
 function serializeEventSummary(
   event: EventRow,
-  { includeAcceptedParticipants = false, includePaymentDetails = false } = {},
+  {
+    includeAcceptedParticipants = false,
+    includePaymentDetails = false,
+    paymentViewerId,
+    revealAllParticipantPayments = false,
+  }: {
+    includeAcceptedParticipants?: boolean;
+    includePaymentDetails?: boolean;
+    paymentViewerId?: string;
+    revealAllParticipantPayments?: boolean;
+  } = {},
 ) {
   return {
     id: event.id,
@@ -142,7 +234,15 @@ function serializeEventSummary(
     isBase: event.id === BASE_EVENT_ID,
     trackingEnabled: Boolean(event.tracking_enabled),
     isEnded: Boolean(event.ended_at),
-    ...(includeAcceptedParticipants ? { acceptedParticipants: getAcceptedEventParticipants(event.id) } : {}),
+    ...(includeAcceptedParticipants
+      ? {
+          acceptedParticipants: acceptedParticipantsForViewer(
+            event.id,
+            paymentViewerId,
+            revealAllParticipantPayments,
+          ),
+        }
+      : {}),
   };
 }
 
@@ -200,7 +300,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
   const managedEvents = canManage
     ? listEvents(req.group!.id)
         .filter((event) => event.id !== BASE_EVENT_ID)
-        .map((event) => serializeEvent(event))
+        .map((event) => serializeEvent(event, playerId, req.groupMembership?.role))
     : undefined;
   res.json({
     activeEvent: {
@@ -215,9 +315,20 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
       // wired up to this field yet — see the PR's own follow-up note.
       participantIds: getParticipantIds(activeEvent.id),
     },
-    availableEvents: availableEvents.map((event) =>
-      serializeEventSummary(event, { includeAcceptedParticipants: true, includePaymentDetails: true }),
-    ),
+    availableEvents: availableEvents.map((event) => {
+      const managementFields = paymentManagementFields(event, playerId, req.groupMembership?.role);
+      return {
+        ...serializeEventSummary(event, {
+          includeAcceptedParticipants: true,
+          includePaymentDetails: true,
+          paymentViewerId: playerId,
+          revealAllParticipantPayments: managementFields.canManagePayments,
+        }),
+        createdBy: event.created_by,
+        ...managementFields,
+        ...(managementFields.canManagePayments ? { accommodationCostCents: event.accommodation_cost_cents } : {}),
+      };
+    }),
     historicalEvents: historicalEvents.map((event) => serializeEventSummary(event)),
     invitations: invitations.map((event) => ({ ...serializeEventSummary(event), participationStatus: 'invited' })),
     ...(managedEvents ? { managedEvents } : {}),
@@ -238,13 +349,17 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
     return res.json({ ...serializeEventSummary(event), participationStatus: 'invited' });
   }
   if (access === 'participant') {
+    const managementFields = paymentManagementFields(event, req.player!.id, req.groupMembership?.role);
     return res.json({
       ...serializeEventSummary(event, { includePaymentDetails: true }),
+      createdBy: event.created_by,
+      ...managementFields,
+      ...(managementFields.canManagePayments ? { accommodationCostCents: event.accommodation_cost_cents } : {}),
       participantIds: getParticipantIds(event.id),
-      acceptedParticipants: getAcceptedEventParticipants(event.id),
+      acceptedParticipants: acceptedParticipantsForViewer(event.id, req.player!.id, managementFields.canManagePayments),
     });
   }
-  return res.json(serializeEvent(event));
+  return res.json(serializeEvent(event, req.player!.id, req.groupMembership?.role));
 });
 
 // Event tracking is an explicit personal decision, separate from an
@@ -381,8 +496,8 @@ eventsRouter.post('/:id/invitation/decline', resolveEvent, answerEventInvitation
 
 // PATCH /api/events/:id/participants/:playerId/payment - an accepted
 // participant may correct only their own state. The recorded event creator
-// may additionally correct every accepted participant, without granting that
-// authority to unrelated admins.
+// may additionally correct every accepted participant. If that account no
+// longer exists or is inactive, the group owner becomes the explicit fallback.
 eventsRouter.patch('/:id/participants/:playerId/payment', resolveEvent, (req, res) => {
   const event = req.groupResource as EventRow;
   if (!event || event.id === OUTSIDE_EVENTS_ID || event.id === BASE_EVENT_ID) {
@@ -398,17 +513,17 @@ eventsRouter.patch('/:id/participants/:playerId/payment', resolveEvent, (req, re
   }
   if (event.cost_cents === null) return res.status(409).json({ error: 'Für dieses Event sind keine Kosten hinterlegt.' });
   if (typeof paid !== 'boolean') return res.status(400).json({ error: 'paid muss ein Boolean sein.' });
-  if (targetPlayerId !== actorId && event.created_by !== actorId) {
+  if (targetPlayerId !== actorId && !canManageEventPayments(event, actorId, req.groupMembership?.role)) {
     return res.status(403).json({ error: 'Du kannst nur deinen eigenen Bezahlstatus ändern.' });
   }
 
   const paidAt = paid ? Date.now() : null;
   const updated = db
     .prepare(
-      `UPDATE event_participants SET paid = ?, paid_by = ?, paid_at = ?
+      `UPDATE event_participants SET paid = ?, paid_by = ?, paid_at = ?, paid_amount_cents = ?
        WHERE event_id = ? AND player_id = ? AND status = 'accepted'`,
     )
-    .run(paid ? 1 : 0, paid ? actorId : null, paidAt, event.id, targetPlayerId);
+    .run(paid ? 1 : 0, paid ? actorId : null, paidAt, paid ? event.cost_cents : null, event.id, targetPlayerId);
   if (updated.changes !== 1) {
     return res.status(404).json({ error: 'Zugesagter Event-Teilnehmer nicht gefunden.' });
   }
@@ -421,49 +536,13 @@ eventsRouter.patch('/:id/participants/:playerId/payment', resolveEvent, (req, re
   }
 
   broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
-  return res.json({ playerId: targetPlayerId, paid, paidBy: paid ? actorId : null, paidAt });
-});
-
-// PATCH /api/events/:id/participants/payment - creator-only convenience
-// action. Existing confirmations keep their original provenance; only open
-// accepted participants are stamped by this action.
-eventsRouter.patch('/:id/participants/payment', resolveEvent, (req, res) => {
-  const event = req.groupResource as EventRow;
-  const actorId = requestPlayerId(req);
-  if (!event || event.id === OUTSIDE_EVENTS_ID || event.id === BASE_EVENT_ID) {
-    return res.status(404).json({ error: 'Event nicht gefunden.' });
-  }
-  if (!actorId) return res.status(401).json({ error: 'Anmeldung erforderlich.' });
-  const access = eventAccessLevel(event.id, actorId, req.groupMembership!.role);
-  if ((access === 'none' || access === 'teaser') && event.created_by !== actorId) {
-    return res.status(404).json({ error: 'Event nicht gefunden.' });
-  }
-  if (event.cost_cents === null) return res.status(409).json({ error: 'Für dieses Event sind keine Kosten hinterlegt.' });
-  if (req.body?.paid !== true) return res.status(400).json({ error: 'paid muss true sein.' });
-  if (event.created_by !== actorId) {
-    return res.status(403).json({ error: 'Nur der Event-Ersteller kann alle als bezahlt markieren.' });
-  }
-
-  const unpaidPlayerIds = (
-    db.prepare(
-      `SELECT player_id AS playerId FROM event_participants
-       WHERE event_id = ? AND status = 'accepted' AND paid = 0`,
-    ).all(event.id) as Array<{ playerId: string }>
-  ).map((row) => row.playerId);
-  const paidAt = Date.now();
-  const updated = db.prepare(
-    `UPDATE event_participants SET paid = 1, paid_by = ?, paid_at = ?
-     WHERE event_id = ? AND status = 'accepted' AND paid = 0`,
-  ).run(actorId, paidAt, event.id);
-
-  for (const playerId of unpaidPlayerIds) {
-    resolvePushTopic(`event-payment-reminder:${playerId}:${event.id}`, false, {
-      groupId: req.group!.id,
-      eventId: event.id,
-    });
-  }
-  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
-  return res.json({ updated: updated.changes, paidAt });
+  return res.json({
+    playerId: targetPlayerId,
+    paid,
+    paidBy: paid ? actorId : null,
+    paidAt,
+    paidAmountCents: paid ? event.cost_cents : null,
+  });
 });
 
 // DELETE /api/events/:id/participants/:playerId - administrative removal
@@ -473,6 +552,11 @@ eventsRouter.delete('/:id/participants/:playerId', resolveEvent, requireGroupRol
   if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
   if (event.id === BASE_EVENT_ID) {
     return res.status(409).json({ error: 'Teilnehmer des Basis-Events können nicht entfernt werden.' });
+  }
+  if (getPaidEventParticipantIds(event.id).includes(req.params.playerId)) {
+    return res.status(409).json({
+      error: 'Eine bestätigte Zahlung muss zuerst zurückgesetzt werden, bevor die Teilnahme entfernt werden kann.',
+    });
   }
   const wasActiveContext = activeContextPlayerIds(event.id).includes(req.params.playerId);
   const previousStatus = removeEventParticipant(event.id, req.params.playerId);
@@ -543,8 +627,8 @@ function parseRequiredTimestamp(
 }
 
 const MAX_EVENT_COST_CENTS = 1_000_000;
+const MAX_ACCOMMODATION_COST_CENTS = 10_000_000;
 const MAX_PAYPAL_LINK_LENGTH = 300;
-const BARE_PAYPAL_ME_RE = /^https:\/\/(?:www\.)?paypal\.me\/[^/?#]+\/?$/i;
 
 function parseOptionalCostCents(
   value: unknown,
@@ -556,25 +640,46 @@ function parseOptionalCostCents(
   return { ok: true, value: value as number };
 }
 
+function parseOptionalAccommodationCostCents(
+  value: unknown,
+): { ok: true; value: number | null } | { ok: false; error: string } {
+  if (value === undefined || value === null || value === '') return { ok: true, value: null };
+  if (!Number.isInteger(value) || (value as number) <= 0 || (value as number) > MAX_ACCOMMODATION_COST_CENTS) {
+    return { ok: false, error: 'accommodationCostCents muss zwischen 1 und 10000000 Cent liegen.' };
+  }
+  return { ok: true, value: value as number };
+}
+
 function parseOptionalPaypalLink(
   value: unknown,
 ): { ok: true; value: string | null } | { ok: false; error: string } {
   if (value === undefined || value === null || value === '') return { ok: true, value: null };
-  if (!isValidUrl(value, MAX_PAYPAL_LINK_LENGTH) || !BARE_PAYPAL_ME_RE.test(value.trim())) {
+  if (!isValidPaypalUrl(value, MAX_PAYPAL_LINK_LENGTH)) {
     return {
       ok: false,
-      error: 'paypalLink muss ein vollständiger PayPal.me-Link ohne bereits eingetragenen Betrag sein.',
+      error: 'paypalLink muss eine sichere PayPal-Adresse mit https:// sein.',
     };
   }
-  return { ok: true, value: value.trim().replace(/\/$/, '') };
+  return { ok: true, value: value.trim() };
 }
 
 // POST /api/events - create a new event. Tracking starts OFF — several
 // events can exist side by side, so creating one never touches whichever
 // event (if any) is currently tracking.
-// Body: { name, startsAt, endsAt, location?, description?, costCents?, paypalLink?, paymentDueAt? }
+// Body: { name, startsAt, endsAt, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
 eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin'), (req, res) => {
-  const { name, startsAt, endsAt, location, description, costCents, paypalLink, paymentDueAt, visibilityScope } = req.body ?? {};
+  const {
+    name,
+    startsAt,
+    endsAt,
+    location,
+    description,
+    costCents,
+    accommodationCostCents,
+    paypalLink,
+    paymentDueAt,
+    visibilityScope,
+  } = req.body ?? {};
   if (!isNonEmptyString(name, 80)) {
     return res.status(400).json({ error: 'Name ist erforderlich (1-80 Zeichen).' });
   }
@@ -592,6 +697,10 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
   if (!parsedDescription.ok) return res.status(400).json({ error: parsedDescription.error });
   const parsedCostCents = parseOptionalCostCents(costCents);
   if (!parsedCostCents.ok) return res.status(400).json({ error: parsedCostCents.error });
+  const parsedAccommodationCostCents = parseOptionalAccommodationCostCents(accommodationCostCents);
+  if (!parsedAccommodationCostCents.ok) {
+    return res.status(400).json({ error: parsedAccommodationCostCents.error });
+  }
   const parsedPaypalLink = parseOptionalPaypalLink(paypalLink);
   if (!parsedPaypalLink.ok) return res.status(400).json({ error: parsedPaypalLink.error });
   const parsedPaymentDueAt = parseOptionalTimestamp(paymentDueAt, 'paymentDueAt');
@@ -613,6 +722,7 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
     location: parsedLocation.value,
     description: parsedDescription.value,
     costCents: parsedCostCents.value,
+    accommodationCostCents: parsedAccommodationCostCents.value,
     paypalLink: parsedPaypalLink.value,
     paymentDueAt: parsedPaymentDueAt.value,
     createdBy: req.player?.id ?? null,
@@ -626,12 +736,12 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
     targetId: event.id,
   });
   broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
-  res.status(201).json(serializeEvent(event));
+  res.status(201).json(serializeEvent(event, req.player?.id, req.groupMembership?.role));
 });
 
 // PATCH /api/events/:id - metadata correction only (name/dates/location/
 // description/payment details); never touches tracking state or live status.
-// Body: any subset of { name?, startsAt?, endsAt?, location?, description?, costCents?, paypalLink?, paymentDueAt? }
+// Body: any subset of { name?, startsAt?, endsAt?, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
 eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) => {
   const existing = req.groupResource as EventRow;
   if (!existing || existing.id === OUTSIDE_EVENTS_ID) {
@@ -641,7 +751,18 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     return res.status(409).json({ error: 'Das dauerhaft offene Basis-Event kann nicht bearbeitet werden.' });
   }
 
-  const { name, startsAt, endsAt, location, description, costCents, paypalLink, paymentDueAt, visibilityScope } = req.body ?? {};
+  const {
+    name,
+    startsAt,
+    endsAt,
+    location,
+    description,
+    costCents,
+    accommodationCostCents,
+    paypalLink,
+    paymentDueAt,
+    visibilityScope,
+  } = req.body ?? {};
   const fields: UpdateEventFields = {};
 
   if (name !== undefined) {
@@ -683,6 +804,11 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
     fields.costCents = parsed.value;
   }
+  if (accommodationCostCents !== undefined) {
+    const parsed = parseOptionalAccommodationCostCents(accommodationCostCents);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    fields.accommodationCostCents = parsed.value;
+  }
   if (paypalLink !== undefined) {
     const parsed = parseOptionalPaypalLink(paypalLink);
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
@@ -717,7 +843,7 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     targetId: req.params.id,
   });
   broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
-  res.json(serializeEvent(updated));
+  res.json(serializeEvent(updated, req.player?.id, req.groupMembership?.role));
 });
 
 // POST /api/events/:id/tracking/start - starts this event's independent
@@ -747,7 +873,7 @@ eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin')
     groupId: req.group!.id,
     eventId: req.params.id,
   });
-  res.json(serializeEvent(result.event));
+  res.json(serializeEvent(result.event, req.player?.id, req.groupMembership?.role));
 });
 
 // POST /api/events/:id/restart - reopens an ended event and starts tracking.
@@ -776,7 +902,7 @@ eventsRouter.post('/:id/restart', resolveEvent, requireGroupRole('admin'), async
     groupId: req.group!.id,
     eventId: req.params.id,
   });
-  res.json(serializeEvent(result.event));
+  res.json(serializeEvent(result.event, req.player?.id, req.groupMembership?.role));
 });
 
 // POST /api/events/:id/tracking/stop - pauses tracking without ending the
@@ -796,7 +922,7 @@ eventsRouter.post('/:id/tracking/stop', resolveEvent, requireGroupRole('admin'),
     groupId: req.group!.id,
     eventId: req.params.id,
   });
-  res.json(serializeEvent(updated));
+  res.json(serializeEvent(updated, req.player?.id, req.groupMembership?.role));
 });
 
 // POST /api/events/:id/end - closes the event for good (stops tracking
@@ -823,7 +949,7 @@ eventsRouter.post('/:id/end', resolveEvent, requireGroupRole('admin'), async (re
     groupId: req.group!.id,
     eventId: req.params.id,
   });
-  res.json(serializeEvent(updated));
+  res.json(serializeEvent(updated, req.player?.id, req.groupMembership?.role));
 });
 
 // PUT /api/events/:id/participants - replace the whole roster.
@@ -859,6 +985,13 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
   }
 
   const previousIds = new Set(getParticipantIds(req.params.id));
+  const paidRemovedIds = getPaidEventParticipantIds(req.params.id).filter((playerId) => !uniqueIds.includes(playerId));
+  if (paidRemovedIds.length > 0) {
+    return res.status(409).json({
+      error: 'Bestätigte Zahlungen müssen zuerst zurückgesetzt werden, bevor Teilnehmende entfernt werden können.',
+      playerIds: paidRemovedIds,
+    });
+  }
   const activeBefore = new Set(activeContextPlayerIds(req.params.id));
   setParticipants(req.params.id, uniqueIds);
   const rosterRemovedIds = [...previousIds].filter((playerId) => !uniqueIds.includes(playerId));
@@ -891,7 +1024,7 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
       eventId: event.id,
     });
   }
-  res.json(serializeEvent(getEvent(req.params.id)));
+  res.json(serializeEvent(getEvent(req.params.id), req.player?.id, req.groupMembership?.role));
 });
 
 eventsRouter.delete('/:id', resolveEvent, requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
@@ -910,5 +1043,5 @@ eventsRouter.delete('/:id', resolveEvent, requireGroupRole('admin'), requireRece
     targetId: req.params.id,
   });
   broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
-  res.json(serializeEvent(cancelled));
+  res.json(serializeEvent(cancelled, req.player?.id, req.groupMembership?.role));
 });

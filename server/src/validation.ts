@@ -32,6 +32,40 @@ export function isValidUrl(value: unknown, maxLength = 300): value is string {
   }
 }
 
+const PAYPAL_HOSTS = new Set(['paypal.me', 'www.paypal.me', 'paypal.com', 'www.paypal.com']);
+
+function isBarePaypalMeDestination(url: URL): boolean {
+  const host = url.hostname.toLowerCase();
+  if (host !== 'paypal.me' && host !== 'www.paypal.me') return true;
+  if (url.search || url.hash) return false;
+  try {
+    return /^\/[^/]+\/?$/.test(decodeURIComponent(url.pathname));
+  } catch {
+    return false;
+  }
+}
+
+// Payment destinations are more sensitive than ordinary menu/location links:
+// keep them encrypted and on a PayPal-owned host. This validator is shared by
+// Events and food orders so both payment flows enforce the same API boundary.
+export function isValidPaypalUrl(value: unknown, maxLength = 300): value is string {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > maxLength) return false;
+  try {
+    const url = new URL(trimmed);
+    return (
+      url.protocol === 'https:' &&
+      PAYPAL_HOSTS.has(url.hostname.toLowerCase()) &&
+      url.username === '' &&
+      url.password === '' &&
+      isBarePaypalMeDestination(url)
+    );
+  } catch {
+    return false;
+  }
+}
+
 // Profile pictures are stored inline as data: URLs (no separate file storage
 // needed for ~15 people). Capped well above what a client-side-resized
 // thumbnail needs, to keep the SQLite file small.

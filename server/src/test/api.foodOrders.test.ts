@@ -38,6 +38,16 @@ test('POST /api/food-orders validates title, player, sendAt, notes, link, paypal
     .post('/api/food-orders')
     .send({ playerId: alice.id, title: 'Pizza', paypalLink: 'javascript:alert(1)' });
   assert.equal(badPaypalLink.status, 400);
+  for (const paypalLink of [
+    'http://paypal.me/luigi',
+    'https://payments.example/luigi',
+    'https://paypal.me/luigi/500EUR',
+  ]) {
+    const unsafePaypalLink = await request(app)
+      .post('/api/food-orders')
+      .send({ playerId: alice.id, title: 'Pizza', paypalLink });
+    assert.equal(unsafePaypalLink.status, 400);
+  }
   const tipTooHigh = await request(app)
     .post('/api/food-orders')
     .send({ playerId: alice.id, title: 'Pizza', tipPercent: 101 });
@@ -135,6 +145,10 @@ test('PATCH /api/food-orders/:id sets, updates and clears send time, notes, link
 
   const invalidPaypalLink = await request(app).patch(`/api/food-orders/${orderId}`).send({ paypalLink: 'not-a-url' });
   assert.equal(invalidPaypalLink.status, 400);
+  assert.equal(
+    (await request(app).patch(`/api/food-orders/${orderId}`).send({ paypalLink: 'https://payments.example/pay' })).status,
+    400,
+  );
 
   const invalidTipPercent = await request(app).patch(`/api/food-orders/${orderId}`).send({ tipPercent: 200 });
   assert.equal(invalidTipPercent.status, 400);
