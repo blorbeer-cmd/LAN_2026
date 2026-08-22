@@ -39,10 +39,10 @@ const flowDiagnostics = new StatefulE2EDiagnosticGuard(
   { sharedState: 'server, browser context, and page' },
 );
 
-type FlowShard = 'shell' | 'competition' | 'community';
+type FlowShard = 'shell' | 'competition' | 'community' | 'food-orders';
 
 const flowShard = process.env.E2E_FLOW_SHARD as FlowShard | undefined;
-if (!flowShard || !['shell', 'competition', 'community'].includes(flowShard)) {
+if (!flowShard || !['shell', 'competition', 'community', 'food-orders'].includes(flowShard)) {
   throw new Error(`Unbekannter Core-Flow-Shard: ${flowShard ?? '(fehlt)'}`);
 }
 
@@ -119,6 +119,10 @@ async function ensureAdminMode(): Promise<void> {
   const activateButton = page.locator('#admin-mode-activate');
   if (await activateButton.count()) await activateButton.click();
   await page.waitForSelector('#admin-banner:not([hidden])');
+  // setAdmin(true) exposes the persistent banner synchronously, while the
+  // admin view itself is rebuilt only after ctx.refresh() has finished. Wait
+  // for that second state as well so callers never inspect the old panel.
+  await page.waitForSelector('#admin-test-players-title');
 }
 
 // Orga is reached through "Mehr" rather than the bottom nav, opening on its
@@ -194,7 +198,7 @@ before(async () => {
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   adminCookie = await loginE2EAdmin(BASE_URL);
-  alice = await bootstrapAdminAccount(flowShard === 'community' ? 'E2E Alice Pro' : 'E2E Alice');
+  alice = await bootstrapAdminAccount(['community', 'food-orders'].includes(flowShard) ? 'E2E Alice Pro' : 'E2E Alice');
   bob = await createE2EAccount(BASE_URL, adminCookie, 'E2E Bob');
   accountsByName.set(alice.name, alice);
   accountsByName.set(bob.name, bob);
@@ -1899,7 +1903,7 @@ flowTest('community', 'Info: a long entry scrolls within a bounded box instead o
   await page.waitForSelector('.info-board-modal', { state: 'detached' });
 });
 
-flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus', async () => {
+flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus', async () => {
   await page.click('#nav-food-orders');
   await page.waitForSelector('#order-new-btn');
   await page.click('#order-new-btn');
@@ -2167,7 +2171,7 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
 
   await page.evaluate(() => (window as unknown as { __restoreWindowOpen: () => void }).__restoreWindowOpen());
 });
-flowTest('community', 'Essensbestellung: orderer groups collapse/expand and pay as a group', async () => {
+flowTest('food-orders', 'Essensbestellung: orderer groups collapse/expand and pay as a group', async () => {
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
   await page.click('#order-new-btn');
   await page.fill('#order-title', 'Gruppen-Test-Bestellung');
@@ -2267,7 +2271,7 @@ flowTest('community', 'Essensbestellung: orderer groups collapse/expand and pay 
   await page.waitForSelector('.food-order-paid-marker:has-text("Offen")');
 });
 
-flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten und bleibt synchron', async () => {
+flowTest('food-orders', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten und bleibt synchron', async () => {
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
 
   type FoodScenario = { id: string; itemIds: string[]; title: string };
@@ -2621,7 +2625,7 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
   await page.evaluate(() => (window as unknown as { __restoreFreshPopup?: () => void }).__restoreFreshPopup?.());
 });
 
-flowTest('community', 'Essensbestellung: Bestellübersicht consolidates positions for the creator/admin and can close the order', async () => {
+flowTest('food-orders', 'Essensbestellung: Bestellübersicht consolidates positions for the creator/admin and can close the order', async () => {
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
   await page.click('#order-new-btn');
   await page.fill('#order-title', 'Bestellübersicht-Test');
@@ -2746,7 +2750,15 @@ flowTest('community', 'Essensbestellung: Bestellübersicht consolidates position
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
 });
 
-flowTest('community', "Essensbestellung: the description field suggests the order's own existing positions while typing", async () => {
+flowTest('food-orders', "Essensbestellung: the description field suggests the order's own existing positions while typing", async (t) => {
+  const realtimeProbeOrderIds: string[] = [];
+  t.after(async () => {
+    for (const probeOrderId of realtimeProbeOrderIds) {
+      const response = await page.request.delete(`${BASE_URL}/api/food-orders/${probeOrderId}`);
+      assert.ok([204, 404].includes(response.status()), await response.text());
+    }
+  });
+
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
   await page.click('#order-new-btn');
   await page.fill('#order-title', 'Vorschlags-Test');
@@ -2853,6 +2865,83 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   await page.waitForSelector('.food-order-desc-field .search-select-option:has-text("Margherita groß")');
   assert.equal(await descField.locator('.search-select-option').count(), 1);
 
+  // Socket refreshes used to rebuild the open combobox continuously. Keep a
+  // probe order in the newest cache until after the deferred render so the
+  // test verifies both DOM stability and that the flush renders real data.
+  const createRealtimeProbe = async (title: string) => {
+    const refresh = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/api/food-orders' && response.request().method() === 'GET',
+    );
+    const response = await page.request.post(`${BASE_URL}/api/food-orders`, {
+      data: { playerId: alice.id, title },
+    });
+    assert.equal(response.status(), 201, await response.text());
+    const probe = await response.json() as { id: string };
+    realtimeProbeOrderIds.push(probe.id);
+    const refreshResponse = await refresh;
+    assert.equal(refreshResponse.status(), 200);
+    await refreshResponse.finished();
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    return probe.id;
+  };
+
+  await descField.evaluate((element) => { element.dataset.e2eInstance = 'outside-pointer'; });
+  await createRealtimeProbe('Realtime-Render-Probe A');
+  assert.equal(await descField.getAttribute('data-e2e-instance'), 'outside-pointer');
+
+  // A realistic press must not let the pointerdown-close flush detach the
+  // card toggle before pointerup/click. The first tap must collapse the card.
+  const cardToggle = suggestOrderCard.locator('.food-order-card-header-toggle');
+  await cardToggle.scrollIntoViewIfNeeded();
+  const cardToggleBox = await cardToggle.boundingBox();
+  assert.ok(cardToggleBox);
+  await page.mouse.move(cardToggleBox.x + cardToggleBox.width / 2, cardToggleBox.y + cardToggleBox.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(80);
+  await page.mouse.up();
+  await suggestOrderCard.locator('.food-order-card-body').waitFor({ state: 'hidden' });
+  await page.waitForFunction(() => document.querySelector('[data-desc-suggest][data-e2e-instance="outside-pointer"]') === null);
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe A' }).waitFor();
+
+  await cardToggle.click();
+  await suggestOrderCard.locator('.food-order-card-body').waitFor({ state: 'visible' });
+  const descInput = descField.locator('[data-item-desc]');
+  await descInput.fill('marg');
+  await descField.evaluate((element) => { element.dataset.e2eInstance = 'suggestion-click'; });
+  await createRealtimeProbe('Realtime-Render-Probe B');
+  assert.equal(await descField.getAttribute('data-e2e-instance'), 'suggestion-click');
+  assert.equal(await descField.locator('.search-select-option').count(), 1);
+
+  await descField.locator('.search-select-option', { hasText: 'Margherita groß' }).click();
+  assert.equal(await descField.locator('[data-item-desc]').inputValue(), 'Margherita groß');
+  assert.equal(await suggestOrderCard.locator('[data-item-price]').inputValue(), '8,50');
+  await page.waitForFunction(() => document.querySelector('[data-desc-suggest][data-e2e-instance="suggestion-click"]') === null);
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe B' }).waitFor();
+
+  // Shift+Tab closes the list in keydown, then moves focus before the deferred
+  // render replaces the card. The logically focused control must survive that
+  // replacement instead of dropping focus back to the document body.
+  await descInput.fill('marg');
+  await descField.evaluate((element) => { element.dataset.e2eInstance = 'keyboard-tab'; });
+  await createRealtimeProbe('Realtime-Render-Probe C');
+  assert.equal(await descField.getAttribute('data-e2e-instance'), 'keyboard-tab');
+  await descInput.press('Shift+Tab');
+  await page.waitForFunction(() => document.querySelector('[data-desc-suggest][data-e2e-instance="keyboard-tab"]') === null);
+  assert.equal(
+    await page.evaluate(() => document.activeElement !== document.body && document.querySelector('#view-container')?.contains(document.activeElement)),
+    true,
+    'the deferred render must restore the meaningful food-order control reached by Shift+Tab'
+  );
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe C' }).waitFor();
+
+  for (const probeOrderId of realtimeProbeOrderIds) {
+    const response = await page.request.delete(`${BASE_URL}/api/food-orders/${probeOrderId}`);
+    assert.equal(response.status(), 204, await response.text());
+  }
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe A' }).waitFor({ state: 'detached' });
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe B' }).waitFor({ state: 'detached' });
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe C' }).waitFor({ state: 'detached' });
+
   // This field is free text (the main supported case per the PR description
   // is typing something genuinely new), so an unmatched query keeps the list
   // closed instead of showing an empty-state box - on a phone that box would
@@ -2869,7 +2958,6 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   // activates the first option and sets aria-activedescendant; typing
   // further re-filters and must not leave that attribute pointing at an
   // option id that may no longer be in the (rebuilt) list.
-  const descInput = descField.locator('[data-item-desc]');
   await descInput.fill('');
   await page.waitForSelector('.food-order-desc-field .search-select-option');
   await descInput.press('ArrowDown');
@@ -2936,7 +3024,7 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   await page.waitForSelector('text=Noch nichts eingetragen.');
 });
 
-flowTest('community', 'Essensbestellung: marking a position paid does not scroll the Essen view back to the top', async () => {
+flowTest('food-orders', 'Essensbestellung: marking a position paid does not scroll the Essen view back to the top', async () => {
   // Regression for the socket race behind the reported bug: PATCHing a
   // position's paid state makes the server broadcast foodOrders:changed to
   // every connected client, including the very device that just made the
@@ -2953,7 +3041,7 @@ flowTest('community', 'Essensbestellung: marking a position paid does not scroll
   await page.click('#order-form button[type="submit"]');
   await page.waitForSelector('text=Scroll-Test-Bestellung');
 
-  // Scoped to this order's own card throughout: earlier community-shard
+  // Scoped to this order's own card throughout: earlier food-order-shard
   // tests in this same file (shared page/session, see flowTest above) leave
   // their own orders open with their own live add-item forms on screen, so
   // bare page-level selectors here could hit the wrong order's form.

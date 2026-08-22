@@ -32,6 +32,85 @@ let cache = null;
 let loading = false;
 let historyOpen = false;
 
+// Realtime updates may arrive several times while a suggestion option is
+// being targeted. Replacing the complete view in that window detaches the
+// option between pointerdown and click, so Playwright (and a quick real user)
+// can chase an element that never stays connected long enough to select.
+// Keep applying responses to the cache, but defer that one DOM replacement
+// until the active suggestion interaction has closed.
+let deferredInteractiveRender = null; // { container, ctx } | null
+let deferredInteractiveRenderScheduled = false;
+let forceInteractiveRender = false;
+let outsidePointerInteractionPending = false;
+
+function flushDeferredInteractiveRender() {
+  if (!deferredInteractiveRender || deferredInteractiveRenderScheduled) return;
+  deferredInteractiveRenderScheduled = true;
+  // A macrotask lets the click/default action that closed the dropdown finish
+  // before the form containing its target is replaced.
+  setTimeout(() => {
+    deferredInteractiveRenderScheduled = false;
+    const pending = deferredInteractiveRender;
+    if (!pending) return;
+    if (!pending.container.isConnected) {
+      deferredInteractiveRender = null;
+      return;
+    }
+    if (pending.container.querySelector('[data-desc-suggest].is-open')) return;
+    deferredInteractiveRender = null;
+    pending.ctx.rerender();
+  }, 0);
+}
+
+function flushDeferredInteractiveRenderAfterPointer(pointerId) {
+  outsidePointerInteractionPending = true;
+  let pointerReleased = false;
+  let fallbackTimer = null;
+
+  const cleanup = () => {
+    document.removeEventListener('pointerup', onPointerUp, true);
+    document.removeEventListener('pointercancel', onPointerCancel, true);
+    document.removeEventListener('click', onClick, true);
+    window.removeEventListener('blur', onWindowBlur);
+    if (fallbackTimer !== null) clearTimeout(fallbackTimer);
+  };
+  const finish = () => {
+    cleanup();
+    outsidePointerInteractionPending = false;
+    flushDeferredInteractiveRender();
+  };
+  const onPointerUp = (event) => {
+    if (event.pointerId !== pointerId) return;
+    pointerReleased = true;
+    document.removeEventListener('pointerup', onPointerUp, true);
+    // Normal taps emit click immediately after pointerup. A drag or another
+    // gesture may not emit one at all, so release the deferred render after a
+    // bounded fallback without racing a delayed touch click.
+    fallbackTimer = setTimeout(finish, 500);
+  };
+  const onPointerCancel = (event) => {
+    if (event.pointerId === pointerId) finish();
+  };
+  const onClick = () => {
+    if (pointerReleased) finish();
+  };
+  const onWindowBlur = () => finish();
+
+  document.addEventListener('pointerup', onPointerUp, true);
+  document.addEventListener('pointercancel', onPointerCancel, true);
+  document.addEventListener('click', onClick, true);
+  window.addEventListener('blur', onWindowBlur, { once: true });
+}
+
+function rerenderLocalMutation(ctx) {
+  forceInteractiveRender = true;
+  try {
+    ctx.rerender();
+  } finally {
+    forceInteractiveRender = false;
+  }
+}
+
 // Orderer-group expand/collapse state: `orderId -> Set<playerId>` of currently
 // expanded groups. Deliberately module state, not persisted; the start rule
 // runs at most once per order and session and realtime renders never reset it.
@@ -244,7 +323,7 @@ function reconcileLocalOrderMutation(nextOrder, ctx, mutationWorkspaceVersion) {
     }
   }
 
-  ctx.rerender();
+  rerenderLocalMutation(ctx);
   void refreshFoodOrders(ctx);
 }
 
@@ -259,7 +338,7 @@ function reconcileLocalOrderRemoval(orderId, ctx, mutationWorkspaceVersion) {
   groupStartRuleApplied.delete(orderId);
   expandedOpenOrders.delete(orderId);
   expandedClosedOrders.delete(orderId);
-  ctx.rerender();
+  rerenderLocalMutation(ctx);
   void refreshFoodOrders(ctx);
 }
 
@@ -768,11 +847,13 @@ function wireDescSuggest(wrapper) {
     updateExpanded(true);
     renderOptions();
   };
-  const close = () => {
+  const close = ({ flush = true } = {}) => {
+    const wasOpen = isOpen();
     list.hidden = true;
     updateExpanded(false);
     input.removeAttribute('aria-activedescendant');
     activeIndex = -1;
+    if (wasOpen && flush) flushDeferredInteractiveRender();
   };
   const selectSuggestion = (suggestion) => {
     input.value = suggestion.label;
@@ -853,7 +934,10 @@ function wireDescSuggest(wrapper) {
       document.removeEventListener('pointerdown', closeFromOutsidePointer);
       return;
     }
-    if (isOpen() && !wrapper.contains(event.target)) close();
+    if (isOpen() && !wrapper.contains(event.target)) {
+      close({ flush: false });
+      flushDeferredInteractiveRenderAfterPointer(event.pointerId);
+    }
   };
   document.addEventListener('pointerdown', closeFromOutsidePointer);
 }
@@ -1601,7 +1685,89 @@ function restoreOrderViewportAnchor(container, anchors, previousScrollTop) {
   }
 }
 
+const FOOD_ORDER_FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function visibleFoodOrderFocusTargets(scope) {
+  return [...scope.querySelectorAll(FOOD_ORDER_FOCUSABLE_SELECTOR)].filter(
+    (element) => !element.closest('[hidden]') && element.getClientRects().length > 0
+  );
+}
+
+function foodOrderFocusScope(container, element) {
+  const card = element.closest('[data-order-card], [data-closed-order]');
+  if (!card || !container.contains(card)) return { kind: 'view', id: null, element: container };
+  if (card.dataset.orderCard) return { kind: 'open', id: card.dataset.orderCard, element: card };
+  return { kind: 'closed', id: card.dataset.closedOrder, element: card };
+}
+
+function captureFoodOrderFocus(container) {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !container.contains(active)) return null;
+  const scope = foodOrderFocusScope(container, active);
+  const attributes = [...active.attributes]
+    .filter(
+      ({ name }) =>
+        name === 'id' ||
+        name === 'class' ||
+        name === 'name' ||
+        name === 'type' ||
+        name === 'href' ||
+        name === 'aria-label' ||
+        (name.startsWith('data-') && !name.startsWith('data-e2e-'))
+    )
+    .map(({ name, value }) => [name, value]);
+  const targets = visibleFoodOrderFocusTargets(scope.element);
+  return {
+    scopeKind: scope.kind,
+    scopeId: scope.id,
+    tagName: active.tagName,
+    attributes,
+    text: active.textContent?.trim() ?? '',
+    index: targets.indexOf(active),
+  };
+}
+
+function restoreFoodOrderFocus(container, anchor) {
+  if (!anchor) return;
+  const scope =
+    anchor.scopeKind === 'view'
+      ? container
+      : [...container.querySelectorAll('[data-order-card], [data-closed-order]')].find((card) =>
+          anchor.scopeKind === 'open' ? card.dataset.orderCard === anchor.scopeId : card.dataset.closedOrder === anchor.scopeId
+        );
+  if (!scope) return;
+  const targets = visibleFoodOrderFocusTargets(scope);
+  let target = targets.find(
+    (element) =>
+      element.tagName === anchor.tagName &&
+      anchor.attributes.every(([name, value]) => element.getAttribute(name) === value)
+  );
+  if (!target && anchor.attributes.length === 0) {
+    const indexedTarget = targets[anchor.index];
+    if (indexedTarget?.tagName === anchor.tagName && indexedTarget.textContent?.trim() === anchor.text) {
+      target = indexedTarget;
+    }
+  }
+  target?.focus({ preventScroll: true });
+}
+
 export function renderFoodOrders(container, ctx) {
+  if (
+    !forceInteractiveRender &&
+    (outsidePointerInteractionPending || container.querySelector('[data-desc-suggest].is-open'))
+  ) {
+    deferredInteractiveRender = { container, ctx };
+    return;
+  }
+  if (deferredInteractiveRender?.container === container) deferredInteractiveRender = null;
+
   if (cache === null && !loading) load(ctx);
 
   const myId = getMyId();
@@ -1666,6 +1832,7 @@ export function renderFoodOrders(container, ctx) {
   // whole view back to the top after every single toggle.
   const scrollTop = container.scrollTop;
   const viewportAnchors = visibleOrderViewportAnchors(container);
+  const focusAnchor = captureFoodOrderFocus(container);
 
   container.innerHTML = `
     <div class="row-between">
@@ -1739,6 +1906,10 @@ export function renderFoodOrders(container, ctx) {
       }
       const submitBtn = form.querySelector('button[type="submit"]');
       if (submitBtn.disabled) return;
+      // A submit started by the pointer interaction that just closed the
+      // dropdown will reconcile and render from its own response. Do not let
+      // the older deferred background render replace the form mid-request.
+      deferredInteractiveRender = null;
       submitBtn.disabled = true;
       try {
         const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
@@ -1941,5 +2112,6 @@ export function renderFoodOrders(container, ctx) {
     });
   });
 
+  restoreFoodOrderFocus(container, focusAnchor);
   refreshConsolidatedListDialog(myId);
 }
