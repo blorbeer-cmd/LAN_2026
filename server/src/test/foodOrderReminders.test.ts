@@ -4,8 +4,9 @@ import { nanoid } from 'nanoid';
 import { BASE_EVENT_ID, DEFAULT_GROUP_ID, db } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
 import { runFoodOrderPaymentReminderOnce } from '../foodOrderReminders';
+import { getPushLogEntriesFor } from '../push';
 
-test('food-order payment reminders aggregate unpaid orders and deduplicate within one hour', () => {
+test('food-order payment reminders aggregate unpaid orders and refresh one feed entry', () => {
   const playerId = nanoid();
   const firstOrderId = nanoid();
   const secondOrderId = nanoid();
@@ -45,8 +46,8 @@ test('food-order payment reminders aggregate unpaid orders and deduplicate withi
     assert.equal(runFoodOrderPaymentReminderOnce(now + 60 * 60 * 1000), 1);
     const topic = `food-order-payment-reminder:${playerId}:${BASE_EVENT_ID}`;
     const entry = db
-      .prepare('SELECT title, body, url, audience, topic_key AS topicKey FROM push_log WHERE topic_key = ?')
-      .get(topic) as { title: string; body: string; url: string; audience: string; topicKey: string };
+      .prepare('SELECT id, title, body, url, audience, topic_key AS topicKey FROM push_log WHERE topic_key = ?')
+      .get(topic) as { id: string; title: string; body: string; url: string; audience: string; topicKey: string };
     assert.equal(entry.title, 'Offene Essenszahlung');
     assert.match(entry.body, /2 Sammelbestellungen/);
     assert.match(entry.body, /3 unbezahlte Positionen/);
@@ -54,7 +55,23 @@ test('food-order payment reminders aggregate unpaid orders and deduplicate withi
     assert.equal(entry.audience, 'direct');
     assert.equal(entry.topicKey, topic);
 
-    const firstReminderAt = now + 60 * 60 * 1000;
+    db.prepare('INSERT INTO push_log_seen (push_id, player_id, seen_at) VALUES (?, ?, ?)').run(entry.id, playerId, now);
+    db.prepare('INSERT INTO push_log_hidden (push_id, player_id, hidden_at) VALUES (?, ?, ?)').run(entry.id, playerId, now);
+    db.prepare('UPDATE food_order_items SET paid = 1 WHERE id = ?').run(firstItemId);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 120 * 60 * 1000), 1);
+    const refreshed = db
+      .prepare('SELECT id, body, url FROM push_log WHERE topic_key = ?')
+      .get(topic) as { id: string; body: string; url: string };
+    assert.equal(refreshed.id, entry.id, 'recurring reminders must keep one stable feed entry');
+    assert.match(refreshed.body, /Reminder Drinks/);
+    assert.equal(refreshed.url, `/#foodOrders/${secondOrderId}`);
+    const feedEntry = getPushLogEntriesFor(DEFAULT_GROUP_ID, BASE_EVENT_ID, playerId).find(
+      (candidate) => candidate.notificationType === 'food-order-payment',
+    );
+    assert.ok(feedEntry, 'the refreshed reminder must remain visible in the feed');
+    assert.equal(feedEntry.seen, false, 'a recurring reminder must become unread again');
+
+    const latestReminderAt = now + 120 * 60 * 1000;
     assert.equal(
       (
         db
@@ -63,21 +80,21 @@ test('food-order payment reminders aggregate unpaid orders and deduplicate withi
           )
           .get(BASE_EVENT_ID, playerId) as { lastSentAt: number }
       ).lastSentAt,
-      firstReminderAt,
+      latestReminderAt,
     );
 
     // Home's push history is intentionally bounded. Even after its entry is
     // gone, the dedicated reminder state must still suppress another send.
     db.prepare('DELETE FROM push_log WHERE topic_key = ?').run(topic);
-    assert.equal(runFoodOrderPaymentReminderOnce(now + 119 * 60 * 1000), 0);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 179 * 60 * 1000), 0);
     assert.equal(
       (db.prepare('SELECT COUNT(*) AS count FROM push_log WHERE topic_key = ?').get(topic) as { count: number }).count,
       0,
     );
-    assert.equal(runFoodOrderPaymentReminderOnce(now + 120 * 60 * 1000), 1);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 180 * 60 * 1000), 1);
 
-    db.prepare('UPDATE food_order_items SET paid = 1 WHERE id IN (?, ?)').run(firstItemId, secondItemId);
-    assert.equal(runFoodOrderPaymentReminderOnce(now + 180 * 60 * 1000), 0);
+    db.prepare('UPDATE food_order_items SET paid = 1 WHERE id = ?').run(secondItemId);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 240 * 60 * 1000), 0);
   } finally {
     db.prepare('DELETE FROM food_orders WHERE id IN (?, ?)').run(firstOrderId, secondOrderId);
     db.prepare('DELETE FROM players WHERE id = ?').run(playerId);

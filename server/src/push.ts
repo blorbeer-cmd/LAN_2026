@@ -86,6 +86,7 @@ export interface PushPayload {
 export interface PushTopic {
   key: string;
   expiresAt?: number | null;
+  deduplicate?: boolean;
 }
 
 interface SubscriptionRow {
@@ -322,7 +323,7 @@ export function getPushLogEntriesFor(
     .prepare(
       `SELECT id, group_id AS groupId, event_id AS eventId, event_name_snapshot AS eventName,
               notification_type AS notificationType, target_id AS targetId, title, body, url, audience,
-              player_ids AS playerIds, expires_at AS expiresAt,
+              player_ids AS playerIds, topic_key AS topicKey, expires_at AS expiresAt,
               created_at AS createdAt,
               EXISTS (
                 SELECT 1 FROM push_log_seen
@@ -336,11 +337,12 @@ export function getPushLogEntriesFor(
          )
        ORDER BY created_at DESC`
     )
-    .all(playerId, groupId, eventId ?? BASE_EVENT_ID, playerId) as Array<PushLogEntry & { playerIds: string; seen: number }>;
-  return rows
+    .all(playerId, groupId, eventId ?? BASE_EVENT_ID, playerId) as Array<PushLogEntry & { playerIds: string; topicKey: string | null; seen: number }>;
+  return collapsePaymentReminderRows(rows
     .filter((row) => row.playerIds === null || (JSON.parse(row.playerIds) as string[]).includes(playerId))
+  )
     .slice(0, limit)
-    .map(({ playerIds: _playerIds, seen, ...entry }) => ({ ...entry, seen: seen === 1 }));
+    .map(({ playerIds: _playerIds, topicKey: _topicKey, seen, ...entry }) => ({ ...entry, seen: seen === 1 }));
 }
 
 export function getPushLogEntriesForPlayer(
@@ -351,7 +353,7 @@ export function getPushLogEntriesForPlayer(
     .prepare(
       `SELECT id, group_id AS groupId, event_id AS eventId, event_name_snapshot AS eventName,
               notification_type AS notificationType, target_id AS targetId, title, body, url, audience,
-              player_ids AS playerIds, expires_at AS expiresAt, created_at AS createdAt,
+              player_ids AS playerIds, topic_key AS topicKey, expires_at AS expiresAt, created_at AS createdAt,
               EXISTS (
                 SELECT 1 FROM push_log_seen
                 WHERE push_log_seen.push_id = push_log.id AND push_log_seen.player_id = ?
@@ -364,11 +366,24 @@ export function getPushLogEntriesForPlayer(
          )
        ORDER BY created_at DESC`,
     )
-    .all(playerId, playerId) as Array<PushLogEntry & { playerIds: string; seen: number }>;
-  return rows
+    .all(playerId, playerId) as Array<PushLogEntry & { playerIds: string; topicKey: string | null; seen: number }>;
+  return collapsePaymentReminderRows(rows
     .filter((row) => row.playerIds !== null && (JSON.parse(row.playerIds) as string[]).includes(playerId))
+  )
     .slice(0, limit)
-    .map(({ playerIds: _playerIds, seen, ...entry }) => ({ ...entry, seen: seen === 1 }));
+    .map(({ playerIds: _playerIds, topicKey: _topicKey, seen, ...entry }) => ({ ...entry, seen: seen === 1 }));
+}
+
+function collapsePaymentReminderRows<
+  T extends { notificationType: string; topicKey: string | null },
+>(rows: T[]): T[] {
+  const topics = new Set<string>();
+  return rows.filter((row) => {
+    if (row.notificationType !== 'food-order-payment' || !row.topicKey) return true;
+    if (topics.has(row.topicKey)) return false;
+    topics.add(row.topicKey);
+    return true;
+  });
 }
 
 export function markAllPushSeenForPlayer(playerId: string): number {
@@ -536,8 +551,17 @@ export function recordPushLog(
   // Logged regardless of how many subscriptions actually exist: this is a
   // record of "the app told these players something", for the Kiosk banner
   // and the Home feed, not a delivery receipt.
+  const existing = topic?.deduplicate
+    ? db
+        .prepare(
+          `SELECT id FROM push_log
+           WHERE group_id = ? AND event_id IS ? AND topic_key = ?
+           ORDER BY created_at DESC LIMIT 1`,
+        )
+        .get(normalizedScope.groupId, normalizedScope.eventId, topic.key) as { id: string } | undefined
+    : undefined;
   const entry: PushLogEntry = {
-    id: nanoid(),
+    id: existing?.id ?? nanoid(),
     groupId: normalizedScope.groupId,
     eventId: normalizedScope.eventId,
     eventName: normalizedScope.eventName,
@@ -550,33 +574,66 @@ export function recordPushLog(
     expiresAt: topic?.expiresAt ?? null,
     createdAt: Date.now(),
   };
-  db.prepare(
-    `INSERT INTO push_log
-       (id, group_id, event_id, event_name_snapshot, notification_type, target_id,
-        title, body, url, audience, player_ids, topic_key, expires_at, resolved_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`
-  ).run(
-    entry.id,
-    entry.groupId,
-    entry.eventId,
-    entry.eventName,
-    entry.notificationType,
-    entry.targetId,
-    entry.title,
-    entry.body,
-    entry.url,
-    entry.audience,
-    JSON.stringify(playerIds),
-    topic?.key ?? null,
-    entry.expiresAt,
-    entry.createdAt
-  );
-  db.prepare(
-    `DELETE FROM push_log
-     WHERE group_id = ? AND id NOT IN (
-       SELECT id FROM push_log WHERE group_id = ? ORDER BY created_at DESC LIMIT ${PUSH_LOG_LIMIT}
-     )`,
-  ).run(entry.groupId, entry.groupId);
+  db.transaction(() => {
+    if (existing) {
+      db.prepare(
+        `UPDATE push_log SET
+           event_name_snapshot = ?, notification_type = ?, target_id = ?, title = ?, body = ?, url = ?,
+           audience = ?, player_ids = ?, topic_key = ?, expires_at = ?, resolved_at = NULL, created_at = ?
+         WHERE id = ?`,
+      ).run(
+        entry.eventName,
+        entry.notificationType,
+        entry.targetId,
+        entry.title,
+        entry.body,
+        entry.url,
+        entry.audience,
+        JSON.stringify(playerIds),
+        topic?.key ?? null,
+        entry.expiresAt,
+        entry.createdAt,
+        entry.id,
+      );
+      // A recurring reminder is a new occurrence of the same feed item.
+      // Make it visible and unread again for the current recipient.
+      db.prepare('DELETE FROM push_log_seen WHERE push_id = ?').run(entry.id);
+      db.prepare('DELETE FROM push_log_hidden WHERE push_id = ?').run(entry.id);
+      // Remove duplicates written by older versions before this topic was
+      // marked as deduplicated. The newest row remains the stable identity.
+      db.prepare(
+        'DELETE FROM push_log WHERE group_id = ? AND event_id IS ? AND topic_key = ? AND id <> ?',
+      ).run(entry.groupId, entry.eventId, topic?.key ?? null, entry.id);
+    } else {
+      db.prepare(
+        `INSERT INTO push_log
+           (id, group_id, event_id, event_name_snapshot, notification_type, target_id,
+            title, body, url, audience, player_ids, topic_key, expires_at, resolved_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+      ).run(
+        entry.id,
+        entry.groupId,
+        entry.eventId,
+        entry.eventName,
+        entry.notificationType,
+        entry.targetId,
+        entry.title,
+        entry.body,
+        entry.url,
+        entry.audience,
+        JSON.stringify(playerIds),
+        topic?.key ?? null,
+        entry.expiresAt,
+        entry.createdAt,
+      );
+    }
+    db.prepare(
+      `DELETE FROM push_log
+       WHERE group_id = ? AND id NOT IN (
+         SELECT id FROM push_log WHERE group_id = ? ORDER BY created_at DESC LIMIT ${PUSH_LOG_LIMIT}
+       )`,
+    ).run(entry.groupId, entry.groupId);
+  })();
   return entry;
 }
 
