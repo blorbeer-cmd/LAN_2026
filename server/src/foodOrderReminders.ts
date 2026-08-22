@@ -125,7 +125,6 @@ export function runFoodOrderPaymentReminderOnce(now = Date.now()): number {
       {
         key: topicKey,
         expiresAt: now + FOOD_ORDER_PAYMENT_REMINDER_INTERVAL_MS,
-        deduplicate: true,
       },
       { groupId: group.groupId, eventId: group.eventId },
     );

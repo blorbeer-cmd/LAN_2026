@@ -86,7 +86,12 @@ export interface PushPayload {
 export interface PushTopic {
   key: string;
   expiresAt?: number | null;
-  deduplicate?: boolean;
+}
+
+export const FOOD_ORDER_PAYMENT_REMINDER_TOPIC_PREFIX = 'food-order-payment-reminder:';
+
+export function isDeduplicatedPushTopic(topicKey: string): boolean {
+  return topicKey.startsWith(FOOD_ORDER_PAYMENT_REMINDER_TOPIC_PREFIX);
 }
 
 interface SubscriptionRow {
@@ -328,21 +333,27 @@ export function getPushLogEntriesFor(
               EXISTS (
                 SELECT 1 FROM push_log_seen
                 WHERE push_log_seen.push_id = push_log.id AND push_log_seen.player_id = ?
-              ) AS seen
+              ) AS seen,
+              EXISTS (
+                SELECT 1 FROM push_log_hidden
+                WHERE push_log_hidden.push_id = push_log.id AND push_log_hidden.player_id = ?
+              ) AS hidden
        FROM push_log
        WHERE group_id = ? AND event_id IS ?
-         AND NOT EXISTS (
-           SELECT 1 FROM push_log_hidden
-           WHERE push_log_hidden.push_id = push_log.id AND push_log_hidden.player_id = ?
-         )
        ORDER BY created_at DESC`
     )
-    .all(playerId, groupId, eventId ?? BASE_EVENT_ID, playerId) as Array<PushLogEntry & { playerIds: string; topicKey: string | null; seen: number }>;
-  return collapsePaymentReminderRows(rows
-    .filter((row) => row.playerIds === null || (JSON.parse(row.playerIds) as string[]).includes(playerId))
+    .all(playerId, playerId, groupId, eventId ?? BASE_EVENT_ID) as Array<
+    PushLogEntry & { playerIds: string; topicKey: string | null; seen: number; hidden: number }
+  >;
+  return collapsePaymentReminderRows(
+    rows.filter((row) => row.playerIds === null || (JSON.parse(row.playerIds) as string[]).includes(playerId)),
   )
+    .filter((row) => row.hidden === 0)
     .slice(0, limit)
-    .map(({ playerIds: _playerIds, topicKey: _topicKey, seen, ...entry }) => ({ ...entry, seen: seen === 1 }));
+    .map(({ playerIds: _playerIds, topicKey: _topicKey, hidden: _hidden, seen, ...entry }) => ({
+      ...entry,
+      seen: seen === 1,
+    }));
 }
 
 export function getPushLogEntriesForPlayer(
@@ -357,21 +368,27 @@ export function getPushLogEntriesForPlayer(
               EXISTS (
                 SELECT 1 FROM push_log_seen
                 WHERE push_log_seen.push_id = push_log.id AND push_log_seen.player_id = ?
-              ) AS seen
+              ) AS seen,
+              EXISTS (
+                SELECT 1 FROM push_log_hidden
+                WHERE push_log_hidden.push_id = push_log.id AND push_log_hidden.player_id = ?
+              ) AS hidden
        FROM push_log
        WHERE event_id IS NOT NULL
-         AND NOT EXISTS (
-           SELECT 1 FROM push_log_hidden
-           WHERE push_log_hidden.push_id = push_log.id AND push_log_hidden.player_id = ?
-         )
        ORDER BY created_at DESC`,
     )
-    .all(playerId, playerId) as Array<PushLogEntry & { playerIds: string; topicKey: string | null; seen: number }>;
-  return collapsePaymentReminderRows(rows
-    .filter((row) => row.playerIds !== null && (JSON.parse(row.playerIds) as string[]).includes(playerId))
+    .all(playerId, playerId) as Array<
+    PushLogEntry & { playerIds: string; topicKey: string | null; seen: number; hidden: number }
+  >;
+  return collapsePaymentReminderRows(
+    rows.filter((row) => row.playerIds !== null && (JSON.parse(row.playerIds) as string[]).includes(playerId)),
   )
+    .filter((row) => row.hidden === 0)
     .slice(0, limit)
-    .map(({ playerIds: _playerIds, topicKey: _topicKey, seen, ...entry }) => ({ ...entry, seen: seen === 1 }));
+    .map(({ playerIds: _playerIds, topicKey: _topicKey, hidden: _hidden, seen, ...entry }) => ({
+      ...entry,
+      seen: seen === 1,
+    }));
 }
 
 function collapsePaymentReminderRows<
@@ -379,7 +396,7 @@ function collapsePaymentReminderRows<
 >(rows: T[]): T[] {
   const topics = new Set<string>();
   return rows.filter((row) => {
-    if (row.notificationType !== 'food-order-payment' || !row.topicKey) return true;
+    if (!row.topicKey || !isDeduplicatedPushTopic(row.topicKey)) return true;
     if (topics.has(row.topicKey)) return false;
     topics.add(row.topicKey);
     return true;
@@ -551,7 +568,7 @@ export function recordPushLog(
   // Logged regardless of how many subscriptions actually exist: this is a
   // record of "the app told these players something", for the Kiosk banner
   // and the Home feed, not a delivery receipt.
-  const existing = topic?.deduplicate
+  const existing = topic && isDeduplicatedPushTopic(topic.key)
     ? db
         .prepare(
           `SELECT id FROM push_log
@@ -596,9 +613,20 @@ export function recordPushLog(
         entry.id,
       );
       // A recurring reminder is a new occurrence of the same feed item.
-      // Make it visible and unread again for the current recipient.
-      db.prepare('DELETE FROM push_log_seen WHERE push_id = ?').run(entry.id);
-      db.prepare('DELETE FROM push_log_hidden WHERE push_id = ?').run(entry.id);
+      // Reset only the current recipients' personal state. The feed row and
+      // resolved state are shared, so a new occurrence reopens the item for
+      // the current recipient set without affecting other recipients.
+      if (playerIds.length > 0) {
+        const recipientPlaceholders = playerIds.map(() => '?').join(',');
+        db.prepare(`DELETE FROM push_log_seen WHERE push_id = ? AND player_id IN (${recipientPlaceholders})`).run(
+          entry.id,
+          ...playerIds,
+        );
+        db.prepare(`DELETE FROM push_log_hidden WHERE push_id = ? AND player_id IN (${recipientPlaceholders})`).run(
+          entry.id,
+          ...playerIds,
+        );
+      }
       // Remove duplicates written by older versions before this topic was
       // marked as deduplicated. The newest row remains the stable identity.
       db.prepare(
