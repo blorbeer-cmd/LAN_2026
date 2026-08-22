@@ -26,6 +26,44 @@ let cache = null;
 let loading = false;
 let historyOpen = false;
 
+// Realtime updates may arrive several times while a suggestion option is
+// being targeted. Replacing the complete view in that window detaches the
+// option between pointerdown and click, so Playwright (and a quick real user)
+// can chase an element that never stays connected long enough to select.
+// Keep applying responses to the cache, but defer that one DOM replacement
+// until the active suggestion interaction has closed.
+let deferredInteractiveRender = null; // { container, ctx } | null
+let deferredInteractiveRenderScheduled = false;
+let forceInteractiveRender = false;
+
+function flushDeferredInteractiveRender() {
+  if (!deferredInteractiveRender || deferredInteractiveRenderScheduled) return;
+  deferredInteractiveRenderScheduled = true;
+  // A macrotask lets the click/default action that closed the dropdown finish
+  // before the form containing its target is replaced.
+  setTimeout(() => {
+    deferredInteractiveRenderScheduled = false;
+    const pending = deferredInteractiveRender;
+    if (!pending) return;
+    if (!pending.container.isConnected) {
+      deferredInteractiveRender = null;
+      return;
+    }
+    if (pending.container.querySelector('[data-desc-suggest].is-open')) return;
+    deferredInteractiveRender = null;
+    pending.ctx.rerender();
+  }, 0);
+}
+
+function rerenderLocalMutation(ctx) {
+  forceInteractiveRender = true;
+  try {
+    ctx.rerender();
+  } finally {
+    forceInteractiveRender = false;
+  }
+}
+
 // Orderer-group expand/collapse state: `orderId -> Set<playerId>` of currently
 // expanded groups. Deliberately module state, not persisted; the start rule
 // runs at most once per order and session and realtime renders never reset it.
@@ -223,7 +261,7 @@ function reconcileLocalOrderMutation(nextOrder, ctx, mutationWorkspaceVersion) {
     expandedOpenOrders.delete(nextOrder.id);
   }
 
-  ctx.rerender();
+  rerenderLocalMutation(ctx);
   void refreshFoodOrders(ctx);
 }
 
@@ -237,7 +275,7 @@ function reconcileLocalOrderRemoval(orderId, ctx, mutationWorkspaceVersion) {
   expandedGroups.delete(orderId);
   groupStartRuleApplied.delete(orderId);
   expandedOpenOrders.delete(orderId);
-  ctx.rerender();
+  rerenderLocalMutation(ctx);
   void refreshFoodOrders(ctx);
 }
 
@@ -816,10 +854,12 @@ function wireDescSuggest(wrapper) {
     renderOptions();
   };
   const close = () => {
+    const wasOpen = isOpen();
     list.hidden = true;
     updateExpanded(false);
     input.removeAttribute('aria-activedescendant');
     activeIndex = -1;
+    if (wasOpen) flushDeferredInteractiveRender();
   };
   const selectSuggestion = (suggestion) => {
     input.value = suggestion.label;
@@ -1637,6 +1677,12 @@ function restoreOrderViewportAnchor(container, anchors, previousScrollTop) {
 }
 
 export function renderFoodOrders(container, ctx) {
+  if (!forceInteractiveRender && container.querySelector('[data-desc-suggest].is-open')) {
+    deferredInteractiveRender = { container, ctx };
+    return;
+  }
+  if (deferredInteractiveRender?.container === container) deferredInteractiveRender = null;
+
   if (cache === null && !loading) load(ctx);
 
   const myId = getMyId();

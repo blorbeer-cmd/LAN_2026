@@ -39,10 +39,10 @@ const flowDiagnostics = new StatefulE2EDiagnosticGuard(
   { sharedState: 'server, browser context, and page' },
 );
 
-type FlowShard = 'shell' | 'competition' | 'community';
+type FlowShard = 'shell' | 'competition' | 'community' | 'food-orders';
 
 const flowShard = process.env.E2E_FLOW_SHARD as FlowShard | undefined;
-if (!flowShard || !['shell', 'competition', 'community'].includes(flowShard)) {
+if (!flowShard || !['shell', 'competition', 'community', 'food-orders'].includes(flowShard)) {
   throw new Error(`Unbekannter Core-Flow-Shard: ${flowShard ?? '(fehlt)'}`);
 }
 
@@ -194,7 +194,7 @@ before(async () => {
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   adminCookie = await loginE2EAdmin(BASE_URL);
-  alice = await bootstrapAdminAccount(flowShard === 'community' ? 'E2E Alice Pro' : 'E2E Alice');
+  alice = await bootstrapAdminAccount(['community', 'food-orders'].includes(flowShard) ? 'E2E Alice Pro' : 'E2E Alice');
   bob = await createE2EAccount(BASE_URL, adminCookie, 'E2E Bob');
   accountsByName.set(alice.name, alice);
   accountsByName.set(bob.name, bob);
@@ -1896,7 +1896,7 @@ flowTest('community', 'Info: a long entry scrolls within a bounded box instead o
   await page.waitForSelector('.info-board-modal', { state: 'detached' });
 });
 
-flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus', async () => {
+flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus', async () => {
   await page.click('#nav-food-orders');
   await page.waitForSelector('#order-new-btn');
   await page.click('#order-new-btn');
@@ -2155,7 +2155,7 @@ flowTest('community', 'Essensbestellung: direkte Zahlung pro Personenblock und L
   assert.equal(await closedOrder.locator('[data-group-pay]').first().isDisabled(), true);
   await page.evaluate(() => (window as unknown as { __restoreWindowOpen: () => void }).__restoreWindowOpen());
 });
-flowTest('community', 'Essensbestellung: orderer groups collapse/expand and pay as a group', async () => {
+flowTest('food-orders', 'Essensbestellung: orderer groups collapse/expand and pay as a group', async () => {
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
   await page.click('#order-new-btn');
   await page.fill('#order-title', 'Gruppen-Test-Bestellung');
@@ -2255,7 +2255,7 @@ flowTest('community', 'Essensbestellung: orderer groups collapse/expand and pay 
   await page.waitForSelector('.food-order-paid-marker:has-text("Offen")');
 });
 
-flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten und bleibt synchron', async () => {
+flowTest('food-orders', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten und bleibt synchron', async () => {
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
 
   type FoodScenario = { id: string; itemIds: string[]; title: string };
@@ -2609,7 +2609,7 @@ flowTest('community', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten
   await page.evaluate(() => (window as unknown as { __restoreFreshPopup?: () => void }).__restoreFreshPopup?.());
 });
 
-flowTest('community', 'Essensbestellung: Bestellübersicht consolidates positions for the creator/admin and can close the order', async () => {
+flowTest('food-orders', 'Essensbestellung: Bestellübersicht consolidates positions for the creator/admin and can close the order', async () => {
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
   await page.click('#order-new-btn');
   await page.fill('#order-title', 'Bestellübersicht-Test');
@@ -2734,7 +2734,7 @@ flowTest('community', 'Essensbestellung: Bestellübersicht consolidates position
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
 });
 
-flowTest('community', "Essensbestellung: the description field suggests the order's own existing positions while typing", async () => {
+flowTest('food-orders', "Essensbestellung: the description field suggests the order's own existing positions while typing", async () => {
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
   await page.click('#order-new-btn');
   await page.fill('#order-title', 'Vorschlags-Test');
@@ -2841,6 +2841,44 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   await page.waitForSelector('.food-order-desc-field .search-select-option:has-text("Margherita groß")');
   assert.equal(await descField.locator('.search-select-option').count(), 1);
 
+  // A socket refresh used to rebuild the open combobox continuously. The
+  // option therefore detached between Playwright's actionability check and
+  // click until the 30-second test timeout expired. Create and remove an
+  // unrelated order while this list is open: both broadcasts must refresh
+  // the cache without replacing the active wrapper, and the latest cache is
+  // rendered once the selection closes it.
+  await descField.evaluate((element) => { element.dataset.e2eInstance = 'active'; });
+  const createRefresh = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/api/food-orders' && response.request().method() === 'GET',
+  );
+  const probeResponse = await page.request.post(`${BASE_URL}/api/food-orders`, {
+    data: { playerId: alice.id, title: 'Realtime-Render-Probe' },
+  });
+  assert.equal(probeResponse.status(), 201, await probeResponse.text());
+  const probe = await probeResponse.json() as { id: string };
+  const createRefreshResponse = await createRefresh;
+  assert.equal(createRefreshResponse.status(), 200);
+  await createRefreshResponse.finished();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(await descField.getAttribute('data-e2e-instance'), 'active');
+
+  const deleteRefresh = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/api/food-orders' && response.request().method() === 'GET',
+  );
+  const deleteProbeResponse = await page.request.delete(`${BASE_URL}/api/food-orders/${probe.id}`);
+  assert.equal(deleteProbeResponse.status(), 204, await deleteProbeResponse.text());
+  const deleteRefreshResponse = await deleteRefresh;
+  assert.equal(deleteRefreshResponse.status(), 200);
+  await deleteRefreshResponse.finished();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(await descField.getAttribute('data-e2e-instance'), 'active');
+  assert.equal(await descField.locator('.search-select-option').count(), 1);
+
+  await descField.locator('.search-select-option', { hasText: 'Margherita groß' }).click();
+  assert.equal(await descField.locator('[data-item-desc]').inputValue(), 'Margherita groß');
+  assert.equal(await suggestOrderCard.locator('[data-item-price]').inputValue(), '8,50');
+  await page.waitForFunction(() => document.querySelector('[data-desc-suggest][data-e2e-instance="active"]') === null);
+
   // This field is free text (the main supported case per the PR description
   // is typing something genuinely new), so an unmatched query keeps the list
   // closed instead of showing an empty-state box - on a phone that box would
@@ -2924,7 +2962,7 @@ flowTest('community', "Essensbestellung: the description field suggests the orde
   await page.waitForSelector('text=Noch nichts eingetragen.');
 });
 
-flowTest('community', 'Essensbestellung: marking a position paid does not scroll the Essen view back to the top', async () => {
+flowTest('food-orders', 'Essensbestellung: marking a position paid does not scroll the Essen view back to the top', async () => {
   // Regression for the socket race behind the reported bug: PATCHing a
   // position's paid state makes the server broadcast foodOrders:changed to
   // every connected client, including the very device that just made the
@@ -2941,7 +2979,7 @@ flowTest('community', 'Essensbestellung: marking a position paid does not scroll
   await page.click('#order-form button[type="submit"]');
   await page.waitForSelector('text=Scroll-Test-Bestellung');
 
-  // Scoped to this order's own card throughout: earlier community-shard
+  // Scoped to this order's own card throughout: earlier food-order-shard
   // tests in this same file (shared page/session, see flowTest above) leave
   // their own orders open with their own live add-item forms on screen, so
   // bare page-level selectors here could hit the wrong order's form.

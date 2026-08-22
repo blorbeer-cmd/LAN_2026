@@ -104,9 +104,11 @@ Wiederholungsfall ab.
   CI kann `core` und `arcade` unabhängig starten.
 - Core enthält die gezielt auswählbaren Domänen `auth`, `checklist`, `invitations` und `flows`.
   Gemeinsame oder unbekannte Änderungen verwenden `all`; manuelle und tägliche Läufe führen immer
-  alle vier Domänen aus. Die ehemals monolithischen Cross-View-Flows registrieren ihre Tests in drei
-  unabhängigen, laufzeitbalancierten Prozessen für Shell, Wettbewerb und Community. Arcade enthält
-  die Arcade-, Stream-Renderer-,
+  alle vier Domänen aus. Die ehemals monolithischen Cross-View-Flows registrieren ihre Tests in vier
+  unabhängigen Prozessen für Shell, Wettbewerb, Community und Essensbestellungen. Der eigene
+  Food-Order-Owner hält deren umfangreiche, zustandsbehaftete Lebenszyklus-Szenarien aus dem
+  Community-Prozess heraus und startet sie mit einem frischen Server, Browser und Datenbestand.
+  Arcade enthält die Arcade-, Stream-Renderer-,
   Battleship- und Challenge-Rush-Suiten sowie den eigenständig authentifizierten Arcade-Auth-Pfad
   und die Arcade-Partition der Cross-View-Flows. Der vollständige Challenge-Rush-Lifecycle, die
   Snake-Arena-Legenden sowie Navigation, Multiplayer-Layouts und Scribble laufen in getrennten
