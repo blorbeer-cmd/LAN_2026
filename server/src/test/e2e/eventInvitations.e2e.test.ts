@@ -257,7 +257,7 @@ test('manager invites a member who accepts and both open clients update', async 
   const paypalButton = memberEventCard.locator(`[data-pay-event="${eventId}"]`);
   assert.equal(await memberEventCard.locator('.event-card-info.food-order-details .event-card-payment-member').count(), 1);
   assert.match((await memberEventCard.textContent()) ?? '', /Dein Beitrag/);
-  assert.match((await memberEventCard.textContent()) ?? '', /Noch zu bezahlen/);
+  assert.doesNotMatch((await memberEventCard.textContent()) ?? '', /Noch zu bezahlen/);
   assert.doesNotMatch((await memberEventCard.textContent()) ?? '', /\d+ von \d+ bezahlt/);
   assert.match((await paypalButton.textContent()) ?? '', /Bezahlen/);
   assert.match((await paypalButton.getAttribute('aria-label')) ?? '', /25,50.*PayPal bezahlen/);
@@ -324,7 +324,7 @@ test('manager invites a member who accepts and both open clients update', async 
   );
   await memberPage.locator('.modal-backdrop', { hasText: 'Bezahlt?' }).waitFor();
   await memberPage.click('[data-confirm]');
-  await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member .badge-playing`, { hasText: 'Bezahlt' }).waitFor();
+  await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member [data-toggle-event-paid][aria-pressed="true"]`).waitFor();
   await memberEventCard.locator('.event-card-payment-member .event-payment-proof', { hasText: `Bezahlt von ${MEMBER_NAME}` }).waitFor();
   assert.doesNotMatch((await memberEventCard.textContent()) ?? '', /\d+ von \d+ bezahlt/);
   const ownerSettlement = ownerEventCard.locator('.event-settlement', { hasText: 'Fehlbetrag 74,50' });
@@ -386,15 +386,15 @@ test('manager invites a member who accepts and both open clients update', async 
     'the aria-disabled removal action does not open its destructive confirmation',
   );
   await creatorPaymentButton.click();
-  await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member .badge-paused`, { hasText: 'Noch zu bezahlen' }).waitFor();
+  await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member [data-toggle-event-paid][aria-pressed="false"]`).waitFor();
   assert.equal(await ownerPage.locator('.modal-backdrop [data-mark-all-event-paid]').count(), 0);
   await creatorPaymentButton.click();
-  await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member .badge-playing`, { hasText: 'Bezahlt' }).waitFor();
+  await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member [data-toggle-event-paid][aria-pressed="true"]`).waitFor();
   await memberRow.locator('.event-payment-proof', { hasText: `Bezahlt von ${OWNER_NAME}` }).waitFor();
   assert.match((await memberRow.textContent()) ?? '', new RegExp(`Bezahlt von ${OWNER_NAME}`));
 
   await creatorPaymentButton.click();
-  await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member .badge-paused`, { hasText: 'Noch zu bezahlen' }).waitFor();
+  await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member [data-toggle-event-paid][aria-pressed="false"]`).waitFor();
   await ownerPage.locator('.modal-backdrop [data-close]').click();
 
   if ((await ownerParticipantList.getAttribute('open')) === null) await ownerParticipantList.locator('summary').click();
@@ -418,7 +418,7 @@ test('manager invites a member who accepts and both open clients update', async 
     'the card payment toggle restores focus after its realtime rerender',
   );
   await cardPaymentButton.click();
-  await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member .badge-paused`, { hasText: 'Noch zu bezahlen' }).waitFor();
+  await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member [data-toggle-event-paid][aria-pressed="false"]`).waitFor();
 
   const noPaypalRefresh = memberPage.waitForResponse(
     (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
@@ -433,9 +433,9 @@ test('manager invites a member who accepts and both open clients update', async 
   const ownPaymentToggle = memberEventCard.locator('.event-card-payment-member [data-toggle-event-paid]');
   assert.equal(await ownPaymentToggle.count(), 1, 'payment can still be recorded without a PayPal destination');
   await ownPaymentToggle.click();
-  await memberEventCard.locator('.badge-playing', { hasText: 'Bezahlt' }).waitFor();
+  await memberEventCard.locator('.event-card-payment-member [data-toggle-event-paid][aria-pressed="true"]').waitFor();
   await memberEventCard.locator('.event-card-payment-member [data-toggle-event-paid]').click();
-  await memberEventCard.locator('.badge-paused', { hasText: 'Noch zu bezahlen' }).waitFor();
+  await memberEventCard.locator('.event-card-payment-member [data-toggle-event-paid][aria-pressed="false"]').waitFor();
 
   const genericPaypalLink = 'https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=orga%40example.com';
   const memberPaymentRefresh = memberPage.waitForResponse(
@@ -509,7 +509,7 @@ test('manager invites a member who accepts and both open clients update', async 
 
   const ownPaidToggle = memberEventCard.locator('.event-card-payment-member [data-toggle-event-paid]');
   await ownPaidToggle.click();
-  await memberEventCard.locator('.event-card-payment-member .badge-playing', { hasText: 'Bezahlt' }).waitFor();
+  await memberEventCard.locator('.event-card-payment-member [data-toggle-event-paid][aria-pressed="true"]').waitFor();
   const clearedContributionRefresh = memberPage.waitForResponse(
     (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
   );
@@ -534,7 +534,7 @@ test('manager invites a member who accepts and both open clients update', async 
   });
   assert.equal(restoredContribution.status(), 200, await restoredContribution.text());
   await restoredContributionRefresh;
-  await memberEventCard.locator('.event-card-payment-member .badge-paused', { hasText: 'Noch zu bezahlen' }).waitFor();
+  await memberEventCard.locator('.event-card-payment-member [data-toggle-event-paid][aria-pressed="false"]').waitFor();
 
   await ownerPage.click(`[data-end-event="${eventId}"]`);
   await ownerPage.click('[data-confirm]');
