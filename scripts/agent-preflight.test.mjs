@@ -251,8 +251,8 @@ test("refreshes dependencies after the scoped lockfile changes", () => {
   assert.equal(first.status, 0, first.stderr);
 
   const lockfile = JSON.parse(readFileSync(lockfilePath, "utf8"));
-  lockfile.version = "1.0.0";
-  lockfile.packages[""].version = "1.0.0";
+  lockfile.version = "2.0.0";
+  lockfile.packages[""].version = "2.0.0";
   writeFileSync(lockfilePath, `${JSON.stringify(lockfile, null, 2)}\n`);
 
   const second = runPreflight(["--scope", "agent"]);
