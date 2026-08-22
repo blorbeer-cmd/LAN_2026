@@ -182,8 +182,8 @@ test('food-order payment reminders aggregate unpaid orders and deduplicate withi
       (db.prepare('SELECT COUNT(*) AS count FROM push_log WHERE topic_key = ?').get(topic) as { count: number }).count,
       0,
     );
-    db.prepare('UPDATE food_order_items SET paid = 1 WHERE id IN (?, ?)').run(firstItemId, secondItemId);
     assert.equal(runFoodOrderPaymentReminderOnce(now + 360 * 60 * 1000), 1);
+    db.prepare('UPDATE food_order_items SET paid = 1 WHERE id IN (?, ?)').run(firstItemId, secondItemId);
     assert.equal(runFoodOrderPaymentReminderOnce(now + 480 * 60 * 1000), 0);
   } finally {
     db.prepare('DELETE FROM food_orders WHERE id IN (?, ?)').run(firstOrderId, secondOrderId);
