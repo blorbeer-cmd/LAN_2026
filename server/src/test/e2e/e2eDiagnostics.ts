@@ -1,6 +1,6 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { test as nodeTest, type TestContext } from 'node:test';
+import { test as nodeTest, type TestContext, type TestContextHookFn } from 'node:test';
 import type { Browser, BrowserContext, Page } from 'playwright';
 import { e2eArtifactDirectory } from '../../../scripts/e2e-artifact-directory.cjs';
 import type { E2EServer } from './e2eServer';
@@ -26,6 +26,8 @@ interface SuppressedCascade {
   testName: string;
   reason: string;
 }
+
+type StatefulTestContext = Pick<TestContext, 'skip'> & Partial<Pick<TestContext, 'after'>>;
 
 interface TrackedContext {
   context: BrowserContext;
@@ -258,6 +260,7 @@ export class StatefulE2EDiagnosticGuard {
   private primaryFailure: StatefulPrimaryFailure | null = null;
   private readonly cascadeSuppressed: SuppressedCascade[] = [];
   private summaryFile: string | null = null;
+  private pendingSummaryWrite: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly resources: () => Omit<DiagnosticResources, 'testName'>,
@@ -278,10 +281,11 @@ export class StatefulE2EDiagnosticGuard {
   private async persistSummary(resources: Omit<DiagnosticResources, 'testName'>): Promise<void> {
     if (!this.primaryFailure) return;
     const summaryFile = this.resolveSummaryFile(resources);
+    const temporaryFile = `${summaryFile}.${process.pid}.tmp`;
     try {
       await mkdir(path.dirname(summaryFile), { recursive: true });
       await writeFile(
-        summaryFile,
+        temporaryFile,
         `${JSON.stringify(
           {
             version: 1,
@@ -299,13 +303,90 @@ export class StatefulE2EDiagnosticGuard {
         )}\n`,
         'utf8',
       );
+      await rename(temporaryFile, summaryFile);
     } catch (error) {
+      try {
+        await rm(temporaryFile, { force: true });
+      } catch (cleanupError) {
+        console.error(
+          `[e2e diagnostics] stateful summary temp cleanup failed: ${errorText(cleanupError)}`,
+        );
+      }
       console.error(`[e2e diagnostics] stateful summary failed: ${errorText(error)}`);
     }
   }
 
+  private queueSummaryWrite(resources: Omit<DiagnosticResources, 'testName'>): Promise<void> {
+    this.pendingSummaryWrite = this.pendingSummaryWrite.then(() => this.persistSummary(resources));
+    return this.pendingSummaryWrite;
+  }
+
+  private recordPrimaryFailure(
+    testName: string,
+    error: unknown,
+    resources: Omit<DiagnosticResources, 'testName'>,
+  ): Promise<void> {
+    if (!this.primaryFailure) {
+      this.primaryFailure = {
+        testName,
+        error: errorText(error),
+        recordedAt: new Date().toISOString(),
+      };
+      return this.queueSummaryWrite(resources);
+    }
+    return this.pendingSummaryWrite;
+  }
+
+  private wrapAfterHooks(
+    context: StatefulTestContext,
+    testName: string,
+    resources: Omit<DiagnosticResources, 'testName'>,
+  ): () => void {
+    if (!context.after) return () => undefined;
+    const originalAfter = context.after;
+    context.after = (fn, options) => {
+      if (!fn) {
+        originalAfter.call(context, fn, options);
+        return;
+      }
+      const wrappedHook: TestContextHookFn = (hookContext, done) => {
+        let settled = false;
+        const finish = (result?: unknown): void => {
+          if (settled) return;
+          settled = true;
+          if (result === undefined || result === null) {
+            done(result);
+            return;
+          }
+          void this.recordPrimaryFailure(testName, result, resources).then(
+            () => done(result),
+            () => done(result),
+          );
+        };
+
+        let hookResult: unknown;
+        try {
+          hookResult = fn(hookContext, finish);
+        } catch (error) {
+          finish(error);
+          return;
+        }
+
+        if (fn.length < 2) {
+          void Promise.resolve(hookResult).then(() => finish(), finish);
+        } else if (hookResult && typeof (hookResult as PromiseLike<unknown>).then === 'function') {
+          void Promise.resolve(hookResult).catch(finish);
+        }
+      };
+      originalAfter.call(context, wrappedHook, options);
+    };
+    return () => {
+      context.after = originalAfter;
+    };
+  }
+
   async run(
-    context: Pick<TestContext, 'skip'>,
+    context: StatefulTestContext,
     testName: string,
     run: () => void | Promise<void>,
   ): Promise<void> {
@@ -313,28 +394,39 @@ export class StatefulE2EDiagnosticGuard {
     if (this.primaryFailure) {
       const reason = `blocked by earlier stateful failure: ${this.primaryFailure.testName}`;
       this.cascadeSuppressed.push({ testName, reason });
-      await this.persistSummary(resources);
+      await this.queueSummaryWrite(resources);
       console.error(`[e2e cascade] skipped "${testName}": ${reason}`);
       context.skip(reason);
       return;
     }
 
-    await runWithE2EDiagnostics(
-      { testName, ...resources },
-      async () => {
-        try {
-          await run();
-        } catch (error) {
-          this.primaryFailure = {
-            testName,
-            error: errorText(error),
-            recordedAt: new Date().toISOString(),
-          };
-          await this.persistSummary(resources);
-          throw error;
-        }
-      },
-    );
+    let observedAsyncFailure = false;
+    let asyncFailure: unknown;
+    const observeAsyncFailure = (error: unknown): void => {
+      if (!observedAsyncFailure) {
+        observedAsyncFailure = true;
+        asyncFailure = error;
+      }
+      void this.recordPrimaryFailure(testName, error, resources);
+    };
+    const onUncaughtException = (error: Error): void => observeAsyncFailure(error);
+    const onUnhandledRejection = (reason: unknown): void => observeAsyncFailure(reason);
+    process.on('uncaughtExceptionMonitor', onUncaughtException);
+    process.on('unhandledRejection', onUnhandledRejection);
+    const restoreAfterHooks = this.wrapAfterHooks(context, testName, resources);
+    await runWithE2EDiagnostics({ testName, ...resources }, async () => {
+      try {
+        await run();
+        if (observedAsyncFailure) throw asyncFailure;
+      } catch (error) {
+        await this.recordPrimaryFailure(testName, error, resources);
+        throw error;
+      }
+    }).finally(() => {
+      restoreAfterHooks();
+      process.off('uncaughtExceptionMonitor', onUncaughtException);
+      process.off('unhandledRejection', onUnhandledRejection);
+    });
   }
 }
 
