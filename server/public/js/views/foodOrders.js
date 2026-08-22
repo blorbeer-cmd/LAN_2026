@@ -23,6 +23,7 @@ import { icon } from '../icons.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { currentPlayerHasAdminRole } from '../adminAccess.js';
 import { formatEuroCents as formatCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
 
 export { normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
@@ -939,7 +940,7 @@ function renderClosedOrder(order, myId, { collapsible = false } = {}) {
       <div class="food-order-items">${itemsHtml}</div>
       ${renderOrderSummary(order)}
       ${
-        order.createdBy === myId
+        order.createdBy === myId || currentPlayerHasAdminRole()
           ? `<div class="food-order-close-action stack" style="gap:var(--space-2);">
                <button type="button" class="btn btn-sm btn-block" data-reopen-order="${order.id}">Wieder öffnen</button>
                ${finalized ? '' : `<button type="button" class="btn btn-danger btn-sm btn-block" data-finalize-order="${order.id}">Bestellung schließen</button>`}
@@ -1885,6 +1886,11 @@ export function renderFoodOrders(container, ctx) {
 
   container.querySelectorAll('[data-reopen-order]').forEach((btn) => {
     btn.addEventListener('click', async () => {
+      // Reopening steps back exactly one lock level per request (see the route
+      // comment in routes/foodOrders.ts); disabling here stops a fast double-
+      // click/tap from firing a second request before the first response
+      // re-renders this button, which would otherwise skip a level.
+      btn.disabled = true;
       try {
         const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
         const updatedOrder = await api.foodOrders.reopen(btn.dataset.reopenOrder);
@@ -1893,6 +1899,8 @@ export function renderFoodOrders(container, ctx) {
       } catch (err) {
         showToast(err.message, { error: true });
         refreshFoodOrdersAfterMutationError(ctx);
+      } finally {
+        btn.disabled = false;
       }
     });
   });
