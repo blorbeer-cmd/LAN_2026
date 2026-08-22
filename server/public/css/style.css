@@ -3011,9 +3011,8 @@ button.card {
 @media (min-width: 640px) { /* --bp-md */
   .two-column-card-grid.arrivals-carpool-grid > :only-child,
   .two-column-card-grid.arrivals-carpool-grid > :last-child:nth-child(odd),
-  .two-column-card-grid.orga-event-grid > :last-child:nth-child(odd),
   .two-column-card-grid.home-live-grid > :last-child:nth-child(odd) {
-    /* Entity cards (carpools, events, player status) keep sibling width; an
+    /* Entity cards (carpools, player status) keep sibling width; an
        odd final card must not stretch across the full row. */
     grid-column: auto;
   }
@@ -3269,18 +3268,8 @@ button.card {
   min-width: 0;
 }
 .event-card-header {
-  display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
 }
-.event-card-title-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 0;
-}
-.event-card-kicker,
 .event-card-detail-label {
   color: var(--text-muted);
   font-size: var(--font-size-xs);
@@ -3294,9 +3283,14 @@ button.card {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
 }
-.event-card-details {
+.event-card-info-details {
   display: grid;
   gap: var(--space-3);
+  padding-top: var(--space-3);
+}
+.event-card-info > .food-order-details-head:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 .event-card-detail {
   display: flex;
@@ -3345,62 +3339,82 @@ button.card {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  padding-top: var(--space-3);
+}
+.event-card-info-details + .event-card-payment {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.event-payment-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.event-payment-amount {
+  font-size: var(--font-size-lg);
+  font-variant-numeric: tabular-nums;
+}
+.event-payment-due,
+.event-payment-proof,
+.event-payment-overview {
+  font-size: var(--font-size-xs);
+}
+.event-payment-proof {
+  color: var(--text-muted);
+}
+.event-settlement {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.event-settlement-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.event-settlement-metric {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
   padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-elevated-2);
 }
-.event-payment-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-.event-payment-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-.event-payment-due,
-.event-payment-proof {
+.event-settlement-metric small,
+.event-settlement-metric > span {
+  color: var(--text-muted);
   font-size: var(--font-size-xs);
 }
-.event-payment-proof {
-  color: var(--text-muted);
+.event-settlement-metric strong {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.event-settlement-balance {
+  align-items: center;
 }
 .payment-paypal-button {
   width: var(--space-7);
   height: var(--space-7);
   padding: var(--space-1);
 }
-.event-payment-label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-.event-payment-label .info-tooltip {
-  flex: 0 0 auto;
-}
 .event-card-participants {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
+  display: block;
 }
-.event-card-section-heading,
-.event-participants-summary {
-  display: flex;
+.event-participant-toggle {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-2);
+  min-width: 0;
+}
+.event-card-participants .collapsible-section-content {
+  padding-top: 0;
 }
 .event-participant-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-1);
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -3408,13 +3422,15 @@ button.card {
 .event-participant-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
   min-width: 0;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
   overflow-wrap: anywhere;
+}
+.event-participant-row:first-child {
+  border-top: 0;
 }
 .event-participant-name {
   display: flex;
@@ -3423,17 +3439,7 @@ button.card {
   flex: 1 1 auto;
   min-width: 0;
 }
-.event-participant-check {
-  display: inline-flex;
-  flex: 0 0 var(--font-size-md);
-  color: var(--state-playing);
-}
-.event-participant-check .ui-icon {
-  width: 1em;
-  height: 1em;
-}
-.event-card-empty-copy,
-.event-participants-note {
+.event-card-empty-copy {
   margin: 0;
   font-size: var(--font-size-xs);
 }
@@ -3485,13 +3491,10 @@ button.card {
   gap: var(--space-3);
 }
 
-@media (min-width: 640px) { /* --bp-md */
-  .event-participant-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 639px) {
+  .event-payment-heading {
+    align-items: flex-start;
+  }
   .event-participant-manager-row {
     align-items: flex-start;
     flex-direction: column;
@@ -4184,7 +4187,8 @@ input[type='number'].tournament-score-input {
 .leaderboard-list-grid > .empty-state {
   grid-column: 1 / -1;
 }
-.food-order-card {
+.food-order-card,
+.event-card {
   position: relative;
   align-content: start;
   overflow: hidden;
@@ -4198,7 +4202,8 @@ input[type='number'].tournament-score-input {
 .food-order-card:has(.search-select.is-open) {
   overflow: visible;
 }
-.food-order-card::before {
+.food-order-card::before,
+.event-card::before {
   content: '';
   position: absolute;
   inset: var(--space-3) auto var(--space-3) 0;
@@ -4209,6 +4214,12 @@ input[type='number'].tournament-score-input {
   background: var(--accent);
 }
 .food-order-grid > .food-order-card:nth-child(even)::before {
+  background: var(--accent-3);
+}
+.orga-event-grid > .event-card:nth-child(odd)::before {
+  background: var(--accent);
+}
+.orga-event-grid > .event-card:nth-child(even)::before {
   background: var(--accent-3);
 }
 .food-order-meta,

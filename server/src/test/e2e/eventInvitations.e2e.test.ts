@@ -97,6 +97,7 @@ before(async () => {
       visibilityScope: 'participants',
       location: 'https://maps.example.test/respawn',
       costCents: 2550,
+      accommodationCostCents: 10000,
       paypalLink: 'https://paypal.me/respawn-e2e',
       paymentDueAt: now + 24 * 60 * 60 * 1000,
     }),
@@ -151,6 +152,31 @@ test('manager invites a member who accepts and both open clients update', async 
   await ownerPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
   await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
   await ownerPage.waitForSelector(`[data-participants-event="${eventId}"]`);
+  const ownerEventCard = ownerPage.locator(`[data-event-card="${eventId}"]`);
+  assert.equal(await ownerEventCard.locator(`[data-event-participants="${eventId}"]`).getAttribute('open'), null);
+  assert.equal(await ownerEventCard.locator('.event-card-info.food-order-details').count(), 1);
+  assert.equal(await ownerEventCard.locator('.event-card-info .event-card-payment-creator').count(), 1);
+  assert.match((await ownerEventCard.locator('.event-settlement').textContent()) ?? '', /Unterkunft gesamt/);
+  assert.match((await ownerEventCard.locator('.event-settlement').textContent()) ?? '', /100,00/);
+  assert.equal(await ownerEventCard.locator('.event-card-info [data-edit-event]').count(), 1);
+  assert.equal(await ownerEventCard.locator('.event-card-actions [data-edit-event]').count(), 0);
+  assert.equal(await ownerEventCard.locator('.event-card-kicker').count(), 0, 'event cards do not repeat their type above the title');
+  assert.equal(
+    await ownerEventCard.evaluate((card) => {
+      const info = card.querySelector('.event-card-info')?.getBoundingClientRect();
+      const participants = card.querySelector('[data-event-participants]')?.getBoundingClientRect();
+      return Boolean(info && participants && participants.top >= info.bottom);
+    }),
+    true,
+    'the collapsible participant list follows the shared information box',
+  );
+  assert.deepEqual(
+    await ownerPage.locator('.orga-event-grid').last().evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { display: style.display, flexDirection: style.flexDirection };
+    }),
+    { display: 'flex', flexDirection: 'column' },
+  );
   assert.equal(
     await memberPage.locator(`[data-participants-event="${eventId}"]`).count(),
     0,
@@ -167,6 +193,16 @@ test('manager invites a member who accepts and both open clients update', async 
   await inviteButton.click();
   await memberRefresh;
   assert.equal(await ownerPage.locator('.modal-backdrop').count(), 1, 'participant dialog stays open after inviting');
+  const ownerParticipantList = ownerEventCard.locator(`[data-event-participants="${eventId}"]`);
+  const invitedRosterRow = ownerParticipantList.locator('[data-event-participation-status="invited"]', { hasText: MEMBER_NAME });
+  await invitedRosterRow.waitFor({ state: 'attached' });
+  assert.match((await ownerParticipantList.locator('.food-order-group-meta').textContent()) ?? '', /1 Einladung offen/);
+  assert.match((await invitedRosterRow.textContent()) ?? '', /Einladung offen/);
+  assert.equal(
+    await invitedRosterRow.locator('[data-toggle-event-paid]').count(),
+    0,
+    'an open invitation cannot receive a payment state',
+  );
 
   const pending = memberPage.locator(`[data-pending-invitation="${eventId}"]`);
   await pending.waitFor();
@@ -191,6 +227,8 @@ test('manager invites a member who accepts and both open clients update', async 
     /25,50/,
     'the invitation discloses the per-person cost before acceptance',
   );
+  assert.match((await pending.textContent()) ?? '', /Zahlungsziel/);
+  assert.equal(await pending.locator('.event-card-info.food-order-details .event-invitation-payment').count(), 1);
   assert.equal(
     await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     true,
@@ -205,6 +243,9 @@ test('manager invites a member who accepts and both open clients update', async 
   await acceptButton.press('Enter');
   await pending.waitFor({ state: 'detached' });
   await ownerRefresh;
+  const acceptedRosterRow = ownerParticipantList.locator('[data-event-participation-status="accepted"]', { hasText: MEMBER_NAME });
+  await acceptedRosterRow.waitFor({ state: 'attached' });
+  assert.match((await ownerParticipantList.locator('.food-order-group-meta').textContent()) ?? '', /1 Zusage/);
   const memberEventCard = memberPage.locator(`[data-event-card="${eventId}"]`);
   await memberEventCard.waitFor();
   assert.match((await memberEventCard.textContent()) ?? '', new RegExp(MEMBER_NAME));
@@ -214,12 +255,48 @@ test('manager invites a member who accepts and both open clients update', async 
   );
   assert.equal(await memberEventCard.locator('[data-copy-event-location]').count(), 0);
   const paypalButton = memberEventCard.locator(`[data-pay-event="${eventId}"]`);
-  assert.match((await memberEventCard.textContent()) ?? '', /0 von 1 bezahlt/);
-  assert.match((await memberEventCard.textContent()) ?? '', /1 offen/);
-  assert.match((await memberEventCard.textContent()) ?? '', /Zahlungsziel/);
+  assert.equal(await memberEventCard.locator('.event-card-info.food-order-details .event-card-payment-member').count(), 1);
+  assert.match((await memberEventCard.textContent()) ?? '', /Dein Beitrag/);
+  assert.match((await memberEventCard.textContent()) ?? '', /Noch zu bezahlen/);
+  assert.doesNotMatch((await memberEventCard.textContent()) ?? '', /\d+ von \d+ bezahlt/);
+  assert.match((await paypalButton.textContent()) ?? '', /Bezahlen/);
   assert.match((await paypalButton.getAttribute('aria-label')) ?? '', /25,50.*PayPal bezahlen/);
-  const memberPaidButton = memberEventCard.locator(`[data-toggle-event-paid="${eventId}"]`);
-  assert.equal(await memberPaidButton.getAttribute('aria-pressed'), 'false');
+  const participantList = memberEventCard.locator(`[data-event-participants="${eventId}"]`);
+  assert.equal(await participantList.getAttribute('open'), null, 'participant lists start collapsed');
+  assert.match((await participantList.locator('.food-order-group-meta').textContent()) ?? '', /1 Person/);
+  assert.equal(
+    await participantList.locator('.event-participant-toggle').evaluate((toggle) => {
+      return toggle.firstElementChild?.classList.contains('collapsible-section-chevron') ?? false;
+    }),
+    true,
+    'the participant disclosure follows the food-order pattern with a leading chevron',
+  );
+  assert.equal(
+    await participantList.locator('[data-toggle-event-paid]').count(),
+    0,
+    'members do not see payment controls on roster rows',
+  );
+  assert.equal(
+    await memberEventCard.locator('.event-card-payment-member [data-toggle-event-paid]').count(),
+    1,
+    'members can correct only their own payment state',
+  );
+  assert.equal(
+    await memberEventCard.locator('[data-event-participation-status]').count(),
+    0,
+    'members receive only accepted people and no invitation-status roster',
+  );
+  await participantList.locator('summary').click();
+  assert.equal(
+    await participantList.locator('.event-participant-list').evaluate((list) => getComputedStyle(list).gridTemplateColumns.split(' ').length),
+    1,
+    'participant rows keep one full-width column like orderer groups',
+  );
+  assert.equal(
+    await memberEventCard.evaluate((card) => card.scrollWidth <= card.clientWidth),
+    true,
+    'the combined information box and participant list fit the phone card',
+  );
   await memberPage.evaluate(() => {
     window.open = (() => {
       const fake = {
@@ -247,9 +324,13 @@ test('manager invites a member who accepts and both open clients update', async 
   );
   await memberPage.locator('.modal-backdrop', { hasText: 'Bezahlt?' }).waitFor();
   await memberPage.click('[data-confirm]');
-  await memberPage.locator(`[data-event-card="${eventId}"] [data-toggle-event-paid][aria-pressed="true"]`).waitFor();
-  assert.match((await memberEventCard.textContent()) ?? '', /1 von 1 bezahlt/);
-  assert.match((await memberEventCard.textContent()) ?? '', new RegExp(`Bezahlt von ${MEMBER_NAME}`));
+  await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member .badge-playing`, { hasText: 'Bezahlt' }).waitFor();
+  await memberEventCard.locator('.event-card-payment-member .event-payment-proof', { hasText: `Bezahlt von ${MEMBER_NAME}` }).waitFor();
+  assert.doesNotMatch((await memberEventCard.textContent()) ?? '', /\d+ von \d+ bezahlt/);
+  const ownerSettlement = ownerEventCard.locator('.event-settlement', { hasText: 'Fehlbetrag 74,50' });
+  await ownerSettlement.waitFor();
+  assert.match((await ownerSettlement.textContent()) ?? '', /Rechnerisch pro Zusage\s*100,00/);
+  assert.match((await ownerSettlement.textContent()) ?? '', /Bereits eingegangen\s*25,50/);
 
   const optionSelector = `#event-context-switcher-list [data-search-select-value="${eventId}"]`;
   await memberPage.locator(optionSelector).waitFor({ state: 'attached' });
@@ -292,22 +373,180 @@ test('manager invites a member who accepts and both open clients update', async 
   const creatorPaymentButton = memberRow.locator(`[data-modal-toggle-event-paid="${memberId}"]`);
   assert.equal(await creatorPaymentButton.getAttribute('aria-pressed'), 'true');
   assert.match((await memberRow.textContent()) ?? '', new RegExp(`Bezahlt von ${MEMBER_NAME}`));
+  assert.match((await memberRow.textContent()) ?? '', /Zahlung zuerst zurücksetzen/);
+  const lockedRemoveButton = memberRow.locator('[data-remove-participant]');
+  assert.equal(await lockedRemoveButton.getAttribute('disabled'), null);
+  assert.equal(await lockedRemoveButton.isDisabled(), true);
+  assert.equal(await lockedRemoveButton.getAttribute('aria-disabled'), 'true');
+  const describedBy = await lockedRemoveButton.getAttribute('aria-describedby');
+  assert.ok(describedBy);
+  assert.equal(await ownerPage.locator(`#${describedBy}`).textContent(), 'Zahlung zuerst zurücksetzen');
+  await lockedRemoveButton.evaluate((button) => (button as HTMLButtonElement).click());
+  assert.equal(
+    await ownerPage.locator('.modal-backdrop', { hasText: 'Teilnehmer entfernen' }).count(),
+    0,
+    'the aria-disabled removal action does not open its destructive confirmation',
+  );
   await creatorPaymentButton.click();
-  await memberPage.locator(`[data-event-card="${eventId}"] [data-toggle-event-paid][aria-pressed="false"]`).waitFor();
+  await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member .badge-paused`, { hasText: 'Noch zu bezahlen' }).waitFor();
+  assert.equal(await ownerPage.locator('.modal-backdrop [data-mark-all-event-paid]').count(), 0);
+  await creatorPaymentButton.click();
+  await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member .badge-playing`, { hasText: 'Bezahlt' }).waitFor();
+  await memberRow.locator('.event-payment-proof', { hasText: `Bezahlt von ${OWNER_NAME}` }).waitFor();
+  assert.match((await memberRow.textContent()) ?? '', new RegExp(`Bezahlt von ${OWNER_NAME}`));
 
-  await ownerPage.locator('.modal-backdrop [data-mark-all-event-paid]').click();
-  await ownerPage.locator('.modal-backdrop', { hasText: 'Alle als bezahlt markieren?' }).locator('[data-confirm]').click();
-  await memberPage.locator(`[data-event-card="${eventId}"] [data-toggle-event-paid][aria-pressed="true"]`).waitFor();
-  assert.match((await memberEventCard.textContent()) ?? '', new RegExp(`Bezahlt von ${OWNER_NAME}`));
-
+  await creatorPaymentButton.click();
+  await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member .badge-paused`, { hasText: 'Noch zu bezahlen' }).waitFor();
   await ownerPage.locator('.modal-backdrop [data-close]').click();
+
+  if ((await ownerParticipantList.getAttribute('open')) === null) await ownerParticipantList.locator('summary').click();
+  let cardPaymentButton = ownerParticipantList.locator(`[data-toggle-event-paid="${eventId}"][data-payment-player="${memberId}"]`);
+  await cardPaymentButton.click();
+  await ownerPage.waitForFunction(
+    ([expectedEventId, expectedPlayerId]) => {
+      const button = Array.from(document.querySelectorAll<HTMLElement>('[data-toggle-event-paid]')).find(
+        (candidate) =>
+          candidate.dataset.toggleEventPaid === expectedEventId && candidate.dataset.paymentPlayer === expectedPlayerId,
+      );
+      return button?.getAttribute('aria-pressed') === 'true' && document.activeElement === button;
+    },
+    [eventId, memberId],
+  );
+  cardPaymentButton = ownerParticipantList.locator(`[data-toggle-event-paid="${eventId}"][data-payment-player="${memberId}"]`);
+  assert.equal(await cardPaymentButton.getAttribute('aria-pressed'), 'true');
+  assert.equal(
+    await cardPaymentButton.evaluate((button) => document.activeElement === button),
+    true,
+    'the card payment toggle restores focus after its realtime rerender',
+  );
+  await cardPaymentButton.click();
+  await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member .badge-paused`, { hasText: 'Noch zu bezahlen' }).waitFor();
+
+  const noPaypalRefresh = memberPage.waitForResponse(
+    (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
+  );
+  assert.equal(
+    (await ownerPage.request.patch(`${BASE_URL}/api/events/${eventId}`, { data: { paypalLink: null } })).status(),
+    200,
+  );
+  await noPaypalRefresh;
+  await memberEventCard.locator('[data-pay-event]').waitFor({ state: 'detached' });
+  assert.equal(await memberEventCard.locator('[data-pay-event]').count(), 0);
+  const ownPaymentToggle = memberEventCard.locator('.event-card-payment-member [data-toggle-event-paid]');
+  assert.equal(await ownPaymentToggle.count(), 1, 'payment can still be recorded without a PayPal destination');
+  await ownPaymentToggle.click();
+  await memberEventCard.locator('.badge-playing', { hasText: 'Bezahlt' }).waitFor();
+  await memberEventCard.locator('.event-card-payment-member [data-toggle-event-paid]').click();
+  await memberEventCard.locator('.badge-paused', { hasText: 'Noch zu bezahlen' }).waitFor();
+
+  const genericPaypalLink = 'https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=orga%40example.com';
+  const memberPaymentRefresh = memberPage.waitForResponse(
+    (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
+  );
+  const genericPaypalUpdate = await ownerPage.request.patch(`${BASE_URL}/api/events/${eventId}`, {
+    data: { paypalLink: genericPaypalLink },
+  });
+  assert.equal(genericPaypalUpdate.status(), 200, await genericPaypalUpdate.text());
+  await memberPaymentRefresh;
+  await memberPage.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText(value: string) {
+          (window as unknown as { __copiedEventPaypal?: string }).__copiedEventPaypal = value;
+          return Promise.resolve();
+        },
+      },
+    });
+    window.open = (() => {
+      const fake = {
+        opener: window,
+        closed: false,
+        _location: '',
+        get location() { return this._location; },
+        set location(value: string) { this._location = value; },
+        close() { this.closed = true; },
+      };
+      (window as unknown as { __eventPaymentPopup: typeof fake }).__eventPaymentPopup = fake;
+      return fake as unknown as Window;
+    }) as typeof window.open;
+  });
+  await memberEventCard.locator(`[data-pay-event="${eventId}"]`).click();
+  await memberPage.locator('.modal-backdrop', { hasText: 'Bezahlt?' }).waitFor();
+  assert.equal(
+    await memberPage.evaluate(() => (window as unknown as { __copiedEventPaypal?: string }).__copiedEventPaypal),
+    'orga@example.com',
+  );
+  assert.deepEqual(
+    await memberPage.evaluate(() => {
+      const popup = (window as unknown as { __eventPaymentPopup: { location: string; opener: unknown } }).__eventPaymentPopup;
+      return { location: popup.location, opener: popup.opener };
+    }),
+    { location: genericPaypalLink, opener: null },
+  );
+  assert.match((await memberPage.locator('.modal-body').textContent()) ?? '', /25,50.*selbst eintragen/);
+  await memberPage.locator('.modal-backdrop [data-cancel]').last().click();
+
+  await memberPage.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText() {
+          return Promise.reject(new DOMException('Document is not focused', 'NotAllowedError'));
+        },
+      },
+    });
+  });
+  await memberEventCard.locator(`[data-pay-event="${eventId}"]`).click();
+  const clipboardFallbackToast = memberPage.locator('.toast', {
+    hasText: 'PayPal-Adresse nicht kopiert. Empfänger: orga@example.com',
+  }).last();
+  await clipboardFallbackToast.waitFor();
+  assert.equal(await clipboardFallbackToast.evaluate((toast) => toast.classList.contains('toast-error')), false);
+  const clipboardFallbackDialog = memberPage.locator('.modal-backdrop', { hasText: 'Bezahlt?' });
+  await clipboardFallbackDialog.waitFor();
+  assert.match((await clipboardFallbackDialog.locator('.modal-body').textContent()) ?? '', /Empfänger:\s*orga@example\.com/);
+  assert.match((await clipboardFallbackDialog.locator('.modal-body').textContent()) ?? '', /25,50.*selbst eintragen/);
+  await clipboardFallbackDialog.locator('[data-cancel]', { hasText: 'Noch nicht' }).click();
+
+  const ownPaidToggle = memberEventCard.locator('.event-card-payment-member [data-toggle-event-paid]');
+  await ownPaidToggle.click();
+  await memberEventCard.locator('.event-card-payment-member .badge-playing', { hasText: 'Bezahlt' }).waitFor();
+  const clearedContributionRefresh = memberPage.waitForResponse(
+    (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
+  );
+  const clearedContribution = await ownerPage.request.patch(`${BASE_URL}/api/events/${eventId}`, {
+    data: { costCents: null, paypalLink: null, paymentDueAt: null },
+  });
+  assert.equal(clearedContribution.status(), 200, await clearedContribution.text());
+  await clearedContributionRefresh;
+  const paidWithoutContribution = memberEventCard.locator('.event-card-payment-member');
+  await paidWithoutContribution.waitFor();
+  assert.match((await paidWithoutContribution.textContent()) ?? '', /Nicht festgelegt/);
+  const resetWithoutContribution = paidWithoutContribution.locator('[data-toggle-event-paid]');
+  assert.equal(await resetWithoutContribution.getAttribute('aria-pressed'), 'true');
+  await resetWithoutContribution.click();
+  await paidWithoutContribution.waitFor({ state: 'detached' });
+
+  const restoredContributionRefresh = memberPage.waitForResponse(
+    (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
+  );
+  const restoredContribution = await ownerPage.request.patch(`${BASE_URL}/api/events/${eventId}`, {
+    data: { costCents: 2550, paypalLink: genericPaypalLink },
+  });
+  assert.equal(restoredContribution.status(), 200, await restoredContribution.text());
+  await restoredContributionRefresh;
+  await memberEventCard.locator('.event-card-payment-member .badge-paused', { hasText: 'Noch zu bezahlen' }).waitFor();
+
   await ownerPage.click(`[data-end-event="${eventId}"]`);
   await ownerPage.click('[data-confirm]');
   await ownerPage.waitForSelector(`[data-restart-event="${eventId}"]`);
 
   await ownerPage.click(`[data-participants-event="${eventId}"]`);
   assert.equal(await ownerPage.locator('.modal-backdrop [data-invite-participant]').count(), 0);
-  assert.match((await ownerPage.locator('.modal-backdrop').textContent()) ?? '', /keine neuen Einladungen mehr möglich/);
+  const endedEventNote = ownerPage.locator('.modal-backdrop .event-participants-note');
+  assert.equal(await endedEventNote.count(), 1);
+  assert.match((await endedEventNote.textContent()) ?? '', /keine neuen Einladungen mehr möglich/);
   await ownerPage.locator('.modal-backdrop [data-close]').click();
 
   await ownerPage.click(`[data-restart-event="${eventId}"]`);

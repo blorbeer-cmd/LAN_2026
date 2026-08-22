@@ -435,6 +435,10 @@ playersRouter.delete('/:id', requireAdmin, (req, res) => {
            AND other.role = 'owner' AND p.deactivated_at IS NULL) LIMIT 1`,
     ).get(target.id);
     if (soleOwnedGroup) return 'last_group_owner' as const;
+    const confirmedEventPayment = db
+      .prepare('SELECT 1 FROM event_participants WHERE player_id = ? AND paid = 1 LIMIT 1')
+      .get(target.id);
+    if (confirmedEventPayment) return 'confirmed_event_payment' as const;
     const membershipGroups = db.prepare('SELECT group_id FROM group_memberships WHERE player_id = ?').all(target.id) as Array<{ group_id: string }>;
     const groupIds = membershipGroups.map((row) => row.group_id);
     if (groupIds.length > 0) {
@@ -460,6 +464,9 @@ playersRouter.delete('/:id', requireAdmin, (req, res) => {
   if (deleted === 'missing') return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   if (deleted === 'last_admin') return res.status(409).json({ error: 'Der letzte Admin kann nicht gelöscht werden.' });
   if (deleted === 'last_group_owner') return res.status(409).json({ error: 'Der letzte aktive Owner einer Gruppe kann nicht gelöscht werden.' });
+  if (deleted === 'confirmed_event_payment') {
+    return res.status(409).json({ error: 'Eine bestätigte Event-Zahlung muss vor dem Löschen zurückgesetzt werden.' });
+  }
   disconnectPlayerSockets(req.params.id);
   writeAdminAudit({
     actorPlayerId: req.player?.id,
