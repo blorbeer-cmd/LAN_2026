@@ -110,6 +110,18 @@ test('event creation and editing validate and expose per-person PayPal costs', a
   assert.equal(
     (
       await request(app).post('/api/events').send({
+        name: 'Unsicherer PayPal-Link',
+        startsAt,
+        endsAt: startsAt + 60_000,
+        costCents: 2550,
+        paypalLink: 'http://paypal.me/respawn',
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(app).post('/api/events').send({
         name: 'Zahlungsziel ohne Kosten',
         startsAt,
         endsAt: startsAt + 60_000,
@@ -148,15 +160,39 @@ test('participants may update only themselves while the event creator may update
   const memberOneId = '__event-payment-member-one__';
   const memberTwoId = '__event-payment-member-two__';
   const memberThreeId = '__event-payment-member-three__';
+  const uninvitedMemberId = '__event-payment-uninvited__';
+  const invitedMemberId = '__event-payment-invited__';
   createMember(memberOneId, 'Payment Member One');
   createMember(memberTwoId, 'Payment Member Two');
   createMember(memberThreeId, 'Payment Member Three');
+  createMember(uninvitedMemberId, 'Payment Uninvited');
+  createMember(invitedMemberId, 'Payment Invited');
 
   const created = await createEvent('Bezahlstatus Berechtigung', 60_000, { costCents: 2550 });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   accept(created.body.id, memberOneId);
   accept(created.body.id, memberTwoId);
   accept(created.body.id, memberThreeId);
+  db.prepare(`INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'invited')`).run(
+    created.body.id,
+    invitedMemberId,
+  );
+
+  for (const hiddenMemberId of [uninvitedMemberId, invitedMemberId]) {
+    const ownPayment = await request(app)
+      .patch(`/api/events/${created.body.id}/participants/${hiddenMemberId}/payment`)
+      .set('x-test-player-id', hiddenMemberId)
+      .send({ paid: true });
+    assert.equal(ownPayment.status, 404);
+    assert.equal(ownPayment.body.error, 'Event nicht gefunden.');
+
+    const allPayments = await request(app)
+      .patch(`/api/events/${created.body.id}/participants/payment`)
+      .set('x-test-player-id', hiddenMemberId)
+      .send({ paid: true });
+    assert.equal(allPayments.status, 404);
+    assert.equal(allPayments.body.error, 'Event nicht gefunden.');
+  }
   const reminderTopic = `event-payment-reminder:${memberOneId}:${created.body.id}`;
   recordPushLog(
     [memberOneId],
@@ -199,6 +235,10 @@ test('participants may update only themselves while the event creator may update
     .set('x-test-player-id', memberTwoId)
     .send({ paid: true });
   assert.equal(cannotMarkAll.status, 403);
+  const cannotMarkAllOpen = await request(app)
+    .patch(`/api/events/${created.body.id}/participants/payment`)
+    .send({ paid: false });
+  assert.equal(cannotMarkAllOpen.status, 400);
   const markAll = await request(app).patch(`/api/events/${created.body.id}/participants/payment`).send({ paid: true });
   assert.equal(markAll.status, 200, JSON.stringify(markAll.body));
   assert.equal(markAll.body.updated, 1);

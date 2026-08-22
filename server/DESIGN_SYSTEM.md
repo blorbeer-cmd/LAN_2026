@@ -735,9 +735,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   lead the tab as a subsection for both. Event cards use the standard two-column nested-card grid,
   stable flex footers for management actions, and clickable location links without a separate copy
   action when an event stores a web URL; plain locations remain text. Event creation and editing may
-  add one optional per-person cost plus a bare PayPal.me link. Accepted participants receive the same
-  PayPal icon action and `Offen`/`Bezahlt` marker as food-order groups. The handoff refreshes the event
-  before opening PayPal with the EUR amount prefilled and asks „Bezahlt?“ afterwards; only an
+  add one optional per-person cost plus a bare PayPal.me link. Invitation cards disclose that cost
+  and its optional deadline before acceptance, without offering payment actions yet. Accepted
+  participants receive the same PayPal icon action and `Offen`/`Bezahlt` marker as food-order groups.
+  The handoff refreshes the event before opening PayPal with the EUR amount prefilled and asks
+  „Bezahlt?“ afterwards; only an
   affirmative answer records the payment. Every confirmation shows who recorded it and when. The
   payment block summarizes paid participants and the count plus total value of open contributions.
   A participant may otherwise change only their own state, while the recorded event creator may

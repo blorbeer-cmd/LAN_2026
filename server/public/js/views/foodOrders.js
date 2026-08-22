@@ -290,11 +290,6 @@ export function addTipToCents(cents, tipPercent) {
   return Math.round(cents * (1 + (tipPercent || 0) / 100));
 }
 
-// Turns a stored PayPal(.me) link into a payable one: a bare
-// "paypal.me/name" link gets the exact owed amount appended so paying is one
-// tap; anything else (already has a path/amount, or some other payment page
-// entirely) opens unchanged rather than risk mangling a URL the creator
-// typed on purpose.
 function itemsGroupedByPlayer(order) {
   const byPlayer = new Map();
   for (const item of order.items) {

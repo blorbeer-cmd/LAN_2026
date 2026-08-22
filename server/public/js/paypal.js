@@ -7,9 +7,9 @@ export function formatEuroCents(cents) {
 // A bare PayPal.me URL accepts an amount in its path. Other URLs are left
 // untouched so callers never rewrite a destination they did not create.
 export function paypalPayUrl(paypalLink, cents) {
-  const bareMatch = (paypalLink ?? '').match(/^(https?:\/\/(?:www\.)?paypal\.me\/[^/?#]+)\/?$/i);
+  const bareMatch = (paypalLink ?? '').match(/^https?:\/\/(?:www\.)?paypal\.me\/([^/?#]+)\/?$/i);
   if (bareMatch && cents > 0) {
-    return `${bareMatch[1]}/${(cents / 100).toFixed(2)}EUR`;
+    return `https://paypal.me/${bareMatch[1]}/${(cents / 100).toFixed(2)}EUR`;
   }
   return paypalLink;
 }
@@ -33,6 +33,8 @@ export function paypalEmailFromLink(paypalLink) {
 export function normalizePaypalInput(raw) {
   const trimmed = (raw ?? '').trim();
   if (!trimmed) return null;
+  const insecurePaypalMe = trimmed.match(/^http:\/\/((?:www\.)?paypal\.me\/.*)$/i);
+  if (insecurePaypalMe) return `https://${insecurePaypalMe[1]}`;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   if (EMAIL_RE.test(trimmed)) {
     return `https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=${encodeURIComponent(trimmed)}`;

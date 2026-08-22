@@ -249,6 +249,24 @@ function renderMemberEventCard(event) {
   `;
 }
 
+// An invitation discloses the contribution before acceptance, but it does
+// not offer payment actions until the account is an accepted participant.
+function renderInvitationPayment(event) {
+  if (!event.costCents) return '';
+  const amount = formatEuroCents(event.costCents);
+  return `
+    <div class="event-card-payment event-invitation-payment">
+      <div class="event-card-detail">
+        <span class="event-card-detail-icon" aria-hidden="true">${icon('paypal')}</span>
+        <span class="event-card-detail-content">
+          <span class="event-card-detail-label">Kosten pro Person</span>
+          <strong>${escapeHtml(amount)}</strong>
+        </span>
+      </div>
+      ${event.paymentDueAt ? `<span class="muted event-payment-due">Zahlungsziel: ${escapeHtml(new Date(event.paymentDueAt).toLocaleDateString('de-DE'))}</span>` : ''}
+    </div>`;
+}
+
 function renderEventCard(event) {
   const trackingBtn = event.isEnded
     ? `<button type="button" class="btn btn-sm btn-primary" data-restart-event="${event.id}">Event wieder starten</button>`
@@ -312,6 +330,7 @@ function renderEventSection() {
             <span class="badge badge-paused">Eingeladen</span>
           </div>
           ${renderEventDetails(event)}
+          ${renderInvitationPayment(event)}
           <div class="event-card-actions">
             <button type="button" class="btn btn-primary" data-accept-invitation="${event.id}">Annehmen</button>
             <button type="button" class="btn" data-decline-invitation="${event.id}">Ablehnen</button>

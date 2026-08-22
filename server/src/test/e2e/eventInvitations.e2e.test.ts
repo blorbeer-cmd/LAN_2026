@@ -186,6 +186,11 @@ test('manager invites a member who accepts and both open clients update', async 
   await memberPage.click('#notifications-btn');
   assert.match((await pending.textContent()) ?? '', new RegExp(EVENT_NAME));
   assert.match((await pending.textContent()) ?? '', /Eingeladen/);
+  assert.match(
+    (await pending.textContent()) ?? '',
+    /25,50/,
+    'the invitation discloses the per-person cost before acceptance',
+  );
   assert.equal(
     await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     true,

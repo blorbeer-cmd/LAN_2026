@@ -388,11 +388,15 @@ eventsRouter.patch('/:id/participants/:playerId/payment', resolveEvent, (req, re
   if (!event || event.id === OUTSIDE_EVENTS_ID || event.id === BASE_EVENT_ID) {
     return res.status(404).json({ error: 'Event nicht gefunden.' });
   }
-  if (event.cost_cents === null) return res.status(409).json({ error: 'Für dieses Event sind keine Kosten hinterlegt.' });
   const actorId = requestPlayerId(req);
   const targetPlayerId = req.params.playerId;
   const { paid } = req.body ?? {};
   if (!actorId) return res.status(401).json({ error: 'Anmeldung erforderlich.' });
+  const access = eventAccessLevel(event.id, actorId, req.groupMembership!.role);
+  if ((access === 'none' || access === 'teaser') && event.created_by !== actorId) {
+    return res.status(404).json({ error: 'Event nicht gefunden.' });
+  }
+  if (event.cost_cents === null) return res.status(409).json({ error: 'Für dieses Event sind keine Kosten hinterlegt.' });
   if (typeof paid !== 'boolean') return res.status(400).json({ error: 'paid muss ein Boolean sein.' });
   if (targetPlayerId !== actorId && event.created_by !== actorId) {
     return res.status(403).json({ error: 'Du kannst nur deinen eigenen Bezahlstatus ändern.' });
@@ -429,8 +433,14 @@ eventsRouter.patch('/:id/participants/payment', resolveEvent, (req, res) => {
   if (!event || event.id === OUTSIDE_EVENTS_ID || event.id === BASE_EVENT_ID) {
     return res.status(404).json({ error: 'Event nicht gefunden.' });
   }
+  if (!actorId) return res.status(401).json({ error: 'Anmeldung erforderlich.' });
+  const access = eventAccessLevel(event.id, actorId, req.groupMembership!.role);
+  if ((access === 'none' || access === 'teaser') && event.created_by !== actorId) {
+    return res.status(404).json({ error: 'Event nicht gefunden.' });
+  }
   if (event.cost_cents === null) return res.status(409).json({ error: 'Für dieses Event sind keine Kosten hinterlegt.' });
-  if (!actorId || event.created_by !== actorId) {
+  if (req.body?.paid !== true) return res.status(400).json({ error: 'paid muss true sein.' });
+  if (event.created_by !== actorId) {
     return res.status(403).json({ error: 'Nur der Event-Ersteller kann alle als bezahlt markieren.' });
   }
 
