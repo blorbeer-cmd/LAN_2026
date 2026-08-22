@@ -5,7 +5,7 @@ import { BASE_EVENT_ID, DEFAULT_GROUP_ID, db } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
 import { runFoodOrderPaymentReminderOnce } from '../foodOrderReminders';
 
-test('food-order payment reminders aggregate unpaid orders and deduplicate within one hour', () => {
+test('food-order payment reminders aggregate unpaid orders and deduplicate within two hours', () => {
   const playerId = nanoid();
   const firstOrderId = nanoid();
   const secondOrderId = nanoid();
@@ -41,8 +41,8 @@ test('food-order payment reminders aggregate unpaid orders and deduplicate withi
 
   try {
     assert.equal(runFoodOrderPaymentReminderOnce(now), 0);
-    assert.equal(runFoodOrderPaymentReminderOnce(now + 59 * 60 * 1000), 0);
-    assert.equal(runFoodOrderPaymentReminderOnce(now + 60 * 60 * 1000), 1);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 119 * 60 * 1000), 0);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 120 * 60 * 1000), 1);
     const topic = `food-order-payment-reminder:${playerId}:${BASE_EVENT_ID}`;
     const entry = db
       .prepare('SELECT title, body, url, audience, topic_key AS topicKey FROM push_log WHERE topic_key = ?')
@@ -54,7 +54,7 @@ test('food-order payment reminders aggregate unpaid orders and deduplicate withi
     assert.equal(entry.audience, 'direct');
     assert.equal(entry.topicKey, topic);
 
-    const firstReminderAt = now + 60 * 60 * 1000;
+    const firstReminderAt = now + 120 * 60 * 1000;
     assert.equal(
       (
         db
@@ -69,15 +69,15 @@ test('food-order payment reminders aggregate unpaid orders and deduplicate withi
     // Home's push history is intentionally bounded. Even after its entry is
     // gone, the dedicated reminder state must still suppress another send.
     db.prepare('DELETE FROM push_log WHERE topic_key = ?').run(topic);
-    assert.equal(runFoodOrderPaymentReminderOnce(now + 119 * 60 * 1000), 0);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 239 * 60 * 1000), 0);
     assert.equal(
       (db.prepare('SELECT COUNT(*) AS count FROM push_log WHERE topic_key = ?').get(topic) as { count: number }).count,
       0,
     );
-    assert.equal(runFoodOrderPaymentReminderOnce(now + 120 * 60 * 1000), 1);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 240 * 60 * 1000), 1);
 
     db.prepare('UPDATE food_order_items SET paid = 1 WHERE id IN (?, ?)').run(firstItemId, secondItemId);
-    assert.equal(runFoodOrderPaymentReminderOnce(now + 180 * 60 * 1000), 0);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 360 * 60 * 1000), 0);
   } finally {
     db.prepare('DELETE FROM food_orders WHERE id IN (?, ?)').run(firstOrderId, secondOrderId);
     db.prepare('DELETE FROM players WHERE id = ?').run(playerId);
@@ -107,7 +107,7 @@ test('food-order payment reminders use a direct order deep link for one order', 
   ).run(itemId, orderId, playerId, now);
 
   try {
-    assert.equal(runFoodOrderPaymentReminderOnce(now + 60 * 60 * 1000), 1);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 120 * 60 * 1000), 1);
     const entry = db
       .prepare('SELECT url FROM push_log WHERE event_id = ? AND target_id = ?')
       .get(BASE_EVENT_ID, orderId) as { url: string };
@@ -141,7 +141,7 @@ test('food-order payment reminders skip finalized orders', () => {
   ).run(itemId, orderId, playerId, now);
 
   try {
-    assert.equal(runFoodOrderPaymentReminderOnce(now + 60 * 60 * 1000), 0);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 120 * 60 * 1000), 0);
   } finally {
     db.prepare('DELETE FROM food_orders WHERE id = ?').run(orderId);
     db.prepare('DELETE FROM players WHERE id = ?').run(playerId);
@@ -177,7 +177,7 @@ test('food-order payment reminders skip unpublished events', () => {
   ).run(itemId, orderId, playerId, now);
 
   try {
-    assert.equal(runFoodOrderPaymentReminderOnce(now + 60 * 60 * 1000), 0);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 120 * 60 * 1000), 0);
   } finally {
     db.prepare('DELETE FROM food_orders WHERE id = ?').run(orderId);
     db.prepare('DELETE FROM events WHERE id = ?').run(eventId);
@@ -216,7 +216,7 @@ test('food-order payment reminders skip ended events', () => {
   ).run(itemId, orderId, playerId, now);
 
   try {
-    assert.equal(runFoodOrderPaymentReminderOnce(now + 60 * 60 * 1000), 0);
+    assert.equal(runFoodOrderPaymentReminderOnce(now + 120 * 60 * 1000), 0);
     assert.equal(
       (db.prepare('SELECT COUNT(*) AS count FROM push_log WHERE event_id = ?').get(eventId) as { count: number }).count,
       0,

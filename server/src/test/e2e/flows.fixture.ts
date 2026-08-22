@@ -276,6 +276,9 @@ flowTest('shell', 'Orga Events tab and Profil use grouped help while admin tools
   await page.click('[aria-label="Mehr Informationen zu Events"]');
   await page.click('#new-event-btn');
   assert.equal(await page.getByText('Tracking', { exact: true }).count(), 0);
+  assert.equal(await page.locator('#event-cost').count(), 1);
+  assert.equal(await page.locator('#event-paypal').count(), 1);
+  assert.equal(await page.locator('#event-payment-due').count(), 1);
   await page.click('.modal[aria-label="Neues Event"] [data-close]');
   // TV-Kiosk is not an Orga tab (only "Kioskverwaltung" in Admin reaches it,
   // see "the authenticated admin role owns the seating editor and backup
