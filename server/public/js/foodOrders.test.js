@@ -26,9 +26,10 @@ test('normalizePaypalInput returns null for empty input', () => {
   assert.equal(normalizePaypalInput(undefined), null);
 });
 
-test('normalizePaypalInput keeps full URLs and upgrades PayPal.me to HTTPS', () => {
+test('normalizePaypalInput keeps PayPal URLs, upgrades PayPal.me, and rejects foreign hosts', () => {
   assert.equal(normalizePaypalInput('https://paypal.me/luigi'), 'https://paypal.me/luigi');
-  assert.equal(normalizePaypalInput('http://example.com/pay'), 'http://example.com/pay');
+  assert.throws(() => normalizePaypalInput('http://example.com/pay'), /HTTPS/);
+  assert.throws(() => normalizePaypalInput('https://example.com/pay'), /paypal\.me/);
   assert.equal(normalizePaypalInput('http://paypal.me/luigi'), 'https://paypal.me/luigi');
   assert.equal(normalizePaypalInput('http://www.paypal.me/luigi'), 'https://www.paypal.me/luigi');
 });

@@ -19,6 +19,7 @@ export interface EventRow {
   location: string | null;
   description: string | null;
   cost_cents: number | null;
+  accommodation_cost_cents: number | null;
   paypal_link: string | null;
   payment_due_at: number | null;
   created_by: string | null;
@@ -31,11 +32,13 @@ export interface EventRow {
 
 export interface EventParticipantRow {
   playerId: string;
+  name?: string;
   status: EventParticipationStatus;
   paid: boolean;
   paidBy?: string | null;
   paidByName?: string | null;
   paidAt?: number | null;
+  paidAmountCents?: number | null;
 }
 
 export interface AcceptedEventParticipantRow {
@@ -45,6 +48,13 @@ export interface AcceptedEventParticipantRow {
   paidBy: string | null;
   paidByName: string | null;
   paidAt: number | null;
+  paidAmountCents: number | null;
+}
+
+export interface EventPaymentSummary {
+  paidCount: number;
+  paidCents: number;
+  missingAmountCount: number;
 }
 
 // All currently trackable events. Tracking is independent per event and an
@@ -78,6 +88,7 @@ export interface CreateEventOptions {
   location?: string | null;
   description?: string | null;
   costCents?: number | null;
+  accommodationCostCents?: number | null;
   paypalLink?: string | null;
   paymentDueAt?: number | null;
   createdBy?: string | null;
@@ -91,8 +102,8 @@ export function createEvent(name: string, options: CreateEventOptions): EventRow
   db.prepare(
     `INSERT INTO events
        (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at,
-        group_id, status, visibility_scope, cost_cents, paypal_link, payment_due_at, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, 'published', 'participants', ?, ?, ?, ?)`
+        group_id, status, visibility_scope, cost_cents, accommodation_cost_cents, paypal_link, payment_due_at, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, 'published', 'participants', ?, ?, ?, ?, ?)`
   ).run(
     id,
     name,
@@ -102,6 +113,7 @@ export function createEvent(name: string, options: CreateEventOptions): EventRow
     options.description ?? null,
     options.groupId ?? DEFAULT_GROUP_ID,
     options.costCents ?? null,
+    options.accommodationCostCents ?? null,
     options.paypalLink ?? null,
     options.paymentDueAt ?? null,
     options.createdBy ?? null,
@@ -116,6 +128,7 @@ export interface UpdateEventFields {
   location?: string | null;
   description?: string | null;
   costCents?: number | null;
+  accommodationCostCents?: number | null;
   paypalLink?: string | null;
   paymentDueAt?: number | null;
 }
@@ -135,12 +148,14 @@ export function updateEvent(id: string, fields: UpdateEventFields): EventRow | u
     location: fields.location !== undefined ? fields.location : existing.location,
     description: fields.description !== undefined ? fields.description : existing.description,
     cost_cents: fields.costCents !== undefined ? fields.costCents : existing.cost_cents,
+    accommodation_cost_cents:
+      fields.accommodationCostCents !== undefined ? fields.accommodationCostCents : existing.accommodation_cost_cents,
     paypal_link: fields.paypalLink !== undefined ? fields.paypalLink : existing.paypal_link,
     payment_due_at: fields.paymentDueAt !== undefined ? fields.paymentDueAt : existing.payment_due_at,
   };
 
   db.prepare(
-    'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ?, cost_cents = ?, paypal_link = ?, payment_due_at = ? WHERE id = ?'
+    'UPDATE events SET name = ?, starts_at = ?, ends_at = ?, location = ?, description = ?, cost_cents = ?, accommodation_cost_cents = ?, paypal_link = ?, payment_due_at = ? WHERE id = ?'
   ).run(
     next.name,
     next.starts_at,
@@ -148,6 +163,7 @@ export function updateEvent(id: string, fields: UpdateEventFields): EventRow | u
     next.location,
     next.description,
     next.cost_cents,
+    next.accommodation_cost_cents,
     next.paypal_link,
     next.payment_due_at,
     next.id,
@@ -271,9 +287,11 @@ export function getParticipantIds(eventId: string): string[] {
 export function getEventParticipants(eventId: string): EventParticipantRow[] {
   return (db
     .prepare(
-      `SELECT ep.player_id AS playerId, ep.status, ep.paid,
-              ep.paid_by AS paidBy, confirmer.name AS paidByName, ep.paid_at AS paidAt
+      `SELECT ep.player_id AS playerId, p.name, ep.status, ep.paid,
+              ep.paid_by AS paidBy, confirmer.name AS paidByName, ep.paid_at AS paidAt,
+              ep.paid_amount_cents AS paidAmountCents
        FROM event_participants ep
+       JOIN players p ON p.id = ep.player_id
        LEFT JOIN players confirmer ON confirmer.id = ep.paid_by
        WHERE ep.event_id = ?
        ORDER BY ep.rowid`,
@@ -290,7 +308,8 @@ export function getAcceptedEventParticipants(eventId: string): AcceptedEventPart
   return (db
     .prepare(
       `SELECT ep.player_id AS playerId, p.name, ep.paid,
-              ep.paid_by AS paidBy, confirmer.name AS paidByName, ep.paid_at AS paidAt
+              ep.paid_by AS paidBy, confirmer.name AS paidByName, ep.paid_at AS paidAt,
+              ep.paid_amount_cents AS paidAmountCents
        FROM event_participants ep
        JOIN players p ON p.id = ep.player_id
        LEFT JOIN players confirmer ON confirmer.id = ep.paid_by
@@ -299,6 +318,30 @@ export function getAcceptedEventParticipants(eventId: string): AcceptedEventPart
     )
     .all(eventId) as Array<Omit<AcceptedEventParticipantRow, 'paid'> & { paid: number }>)
     .map((participant) => ({ ...participant, paid: Boolean(participant.paid) }));
+}
+
+// Accounting intentionally has a wider lifetime than the visible roster.
+// Paid rows remain part of the settlement after a decline or account
+// deactivation; deleting such rows is rejected by the management routes.
+export function getEventPaymentSummary(eventId: string): EventPaymentSummary {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS paidCount,
+              COALESCE(SUM(COALESCE(paid_amount_cents, 0)), 0) AS paidCents,
+              COALESCE(SUM(CASE WHEN paid_amount_cents IS NULL THEN 1 ELSE 0 END), 0) AS missingAmountCount
+       FROM event_participants
+       WHERE event_id = ? AND paid = 1`,
+    )
+    .get(eventId) as EventPaymentSummary;
+  return row;
+}
+
+export function getPaidEventParticipantIds(eventId: string): string[] {
+  return (
+    db
+      .prepare('SELECT player_id AS playerId FROM event_participants WHERE event_id = ? AND paid = 1 ORDER BY rowid')
+      .all(eventId) as Array<{ playerId: string }>
+  ).map((row) => row.playerId);
 }
 
 export function isParticipant(eventId: string, playerId: string): boolean {

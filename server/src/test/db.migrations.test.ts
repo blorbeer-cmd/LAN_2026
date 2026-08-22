@@ -647,10 +647,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 81);
+  assert.equal(migrations.length, 82);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 81 }, (_, index) => index + 1),
+    Array.from({ length: 82 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1177,8 +1177,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 81 }, (_, index) => index + 1),
-    'every version 1..81 runs exactly once',
+    Array.from({ length: 82 }, (_, index) => index + 1),
+    'every version 1..82 runs exactly once',
   );
 });
 
@@ -2427,6 +2427,68 @@ test('migration 81 preserves event payment audit and due dates and is restart-sa
     { paid: 1, paidBy: 'payment-audit-player', paidAt: now },
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 81').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 82 adds accommodation accounting, backfills paid amounts and is restart-safe', () => {
+  const dbFile = makeTempDbPath('event-accommodation-accounting');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture.exec(`
+    INSERT INTO players (id, name, api_key, created_at)
+      VALUES ('accommodation-player', 'Accommodation Player', 'accommodation-key', ${now});
+    INSERT INTO group_memberships (group_id, player_id, role, status, joined_at)
+      VALUES ('default-group', 'accommodation-player', 'member', 'active', ${now});
+    INSERT INTO events
+      (id, name, starts_at, ends_at, cost_cents, created_by, group_id, status, visibility_scope)
+      VALUES ('accommodation-event', 'Accommodation Event', ${now}, ${now + 60_000}, 2550,
+              'accommodation-player', 'default-group', 'published', 'participants');
+    INSERT INTO event_participants (event_id, player_id, status, paid)
+      VALUES ('accommodation-event', 'accommodation-player', 'accepted', 1);
+    ALTER TABLE events DROP COLUMN accommodation_cost_cents;
+    ALTER TABLE event_participants DROP COLUMN paid_amount_cents;
+    DELETE FROM schema_migrations WHERE version = 82;
+  `);
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+
+  const firstMigration = new Database(dbFile);
+  assert.deepEqual(
+    firstMigration
+      .prepare('SELECT accommodation_cost_cents AS accommodationCostCents FROM events WHERE id = ?')
+      .get('accommodation-event'),
+    { accommodationCostCents: null },
+  );
+  assert.deepEqual(
+    firstMigration
+      .prepare('SELECT paid_amount_cents AS paidAmountCents FROM event_participants WHERE event_id = ?')
+      .get('accommodation-event'),
+    { paidAmountCents: 2550 },
+  );
+  firstMigration.prepare('UPDATE events SET accommodation_cost_cents = 120000 WHERE id = ?').run('accommodation-event');
+  firstMigration.prepare('DELETE FROM schema_migrations WHERE version = 82').run();
+  firstMigration.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the accommodation-accounting migration must be restart-safe');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT accommodation_cost_cents AS accommodationCostCents FROM events WHERE id = ?')
+      .get('accommodation-event'),
+    { accommodationCostCents: 120000 },
+  );
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT paid_amount_cents AS paidAmountCents FROM event_participants WHERE event_id = ?')
+      .get('accommodation-event'),
+    { paidAmountCents: 2550 },
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 82').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

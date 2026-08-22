@@ -62,6 +62,7 @@ db.exec(`
     location         TEXT,
     description      TEXT,
     cost_cents       INTEGER CHECK (cost_cents IS NULL OR cost_cents > 0),
+    accommodation_cost_cents INTEGER CHECK (accommodation_cost_cents IS NULL OR accommodation_cost_cents > 0),
     paypal_link      TEXT,
     payment_due_at   INTEGER,
     created_by       TEXT REFERENCES players(id) ON DELETE SET NULL,
@@ -80,6 +81,7 @@ db.exec(`
     paid      INTEGER NOT NULL DEFAULT 0 CHECK (paid IN (0, 1)),
     paid_by   TEXT REFERENCES players(id) ON DELETE SET NULL,
     paid_at   INTEGER,
+    paid_amount_cents INTEGER CHECK (paid_amount_cents IS NULL OR paid_amount_cents > 0),
     PRIMARY KEY (event_id, player_id)
   );
 
@@ -3902,6 +3904,41 @@ registerMigration({
   version: 81,
   name: 'add event payment audit and due date',
   up: addEventPaymentAuditAndDueDate,
+});
+
+// The accommodation invoice is separate from the fixed contribution each
+// accepted participant is asked to pay. Snapshotting that contribution when
+// it is confirmed keeps the final balance correct if the organizer adjusts
+// the contribution for people who pay later.
+function addEventAccommodationAccounting(): void {
+  const eventColumns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  if (!eventColumns.some((column) => column.name === 'accommodation_cost_cents')) {
+    db.exec(
+      'ALTER TABLE events ADD COLUMN accommodation_cost_cents INTEGER CHECK (accommodation_cost_cents IS NULL OR accommodation_cost_cents > 0)',
+    );
+  }
+  const participantColumns = db.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  if (!participantColumns.some((column) => column.name === 'paid_amount_cents')) {
+    db.exec(
+      'ALTER TABLE event_participants ADD COLUMN paid_amount_cents INTEGER CHECK (paid_amount_cents IS NULL OR paid_amount_cents > 0)',
+    );
+    db.exec(`
+      UPDATE event_participants
+      SET paid_amount_cents = (
+        SELECT events.cost_cents FROM events WHERE events.id = event_participants.event_id
+      )
+      WHERE paid = 1
+        AND EXISTS (
+          SELECT 1 FROM events
+          WHERE events.id = event_participants.event_id AND events.cost_cents IS NOT NULL
+        )
+    `);
+  }
+}
+registerMigration({
+  version: 82,
+  name: 'add event accommodation accounting',
+  up: addEventAccommodationAccounting,
 });
 
 runRegisteredMigrations();

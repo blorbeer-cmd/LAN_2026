@@ -738,18 +738,43 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   and the PDF „Andenken“-Export — while a member gets read-only cards for the events they take
   part in, without the „+ Event“ action or administrative invitation/decline controls; the card
   includes the event-status badge plus the count and names of accepted participants. Pending invitations for the current identity
-  lead the tab as a subsection for both. Event cards use the standard two-column nested-card grid,
-  stable flex footers for management actions, and clickable location links without a separate copy
+  lead the tab as a subsection for both. Event cards and invitations stay in one vertical column at
+  phone and laptop widths so payment and participant controls keep enough room. Their card hierarchy
+  deliberately mirrors Food orders: alternating accent rails and a concise title/status header lead
+  into one shared `.food-order-details` information box, followed by the separately collapsible
+  participant list. Date, location, note and payment information therefore never form competing
+  sibling boxes; an editable management card places „Bearbeiten“ in the information-box header like
+  an order does. The remaining management actions stay in a stable flex footer, and location links
+  are clickable without a separate copy
   action when an event stores a web URL; plain locations remain text. Event creation and editing may
-  add one optional per-person cost plus a bare PayPal.me link. Invitation cards disclose that cost
+  add one optional per-person cost plus the same PayPal input as food orders: either an e-mail address
+  or a complete HTTPS address on `paypal.me`/`paypal.com`. Cost and PayPal controls reuse the food-order price suffix
+  and contextual label layout so both fields stay aligned. Invitation cards disclose that cost
   and its optional deadline before acceptance, without offering payment actions yet. Accepted
-  participants receive the same PayPal icon action and `Offen`/`Bezahlt` marker as food-order groups.
-  The handoff refreshes the event before opening PayPal with the EUR amount prefilled and asks
-  „Bezahlt?“ afterwards; only an
-  affirmative answer records the payment. Every confirmation shows who recorded it and when. The
-  payment block summarizes paid participants and the count plus total value of open contributions.
-  A participant may otherwise change only their own state, while the recorded event creator may
-  correct every accepted participant or mark all still-open contributions paid after one confirmation.
+  non-creators see only their own contribution and `Noch zu bezahlen`/`Bezahlt` state, the confirmer
+  and timestamp of their own payment, plus a personal toggle for recording or correcting it; foreign
+  payment states and aggregates are absent from both UI and API payload. The visible full-width
+  PayPal action says `Bezahlen`. The handoff refreshes the event before opening PayPal,
+  prefills the EUR amount for PayPal.me, copies an e-mail recipient for the generic PayPal flow and
+  asks „Bezahlt?“ afterwards; only an affirmative answer records the payment. The recorded event
+  creator instead receives the aggregate overview and the same `Offen`/`Bezahlt` toggle used by food
+  orders on every accepted participant row. There is no bulk-payment action. The edit form can also
+  record the accommodation's total invoice separately from the fixed contribution per person. The
+  creator's payment box compares snapshotted received contributions with that invoice. Confirmed
+  payments remain in the received total after a decline or account deactivation; a paid roster row
+  cannot be removed until its payment is explicitly reset. If the creator account becomes inactive
+  or is deleted, the group owner becomes the payment manager. The box shows the
+  current surplus/deficit, the projected result after every accepted person pays and the rounded
+  accommodation price per current acceptance; pending and declined invitations never enter that
+  per-head calculation. Their card-level list
+  includes every invited account and labels each row as `Zugesagt`, `Einladung offen` or
+  `Abgelehnt`; its summary separates accepted and still-open invitation counts. Member cards remain
+  accepted-only and expose neither pending/declined identities nor that management status. Participant lists use
+  the shared collapsible-section behavior plus Food orders' leading chevron/name/meta header pattern,
+  start closed and preserve their open state across live re-renders. Their people remain one full-width
+  row per line at every breakpoint so payment proof and the creator's toggle have predictable room;
+  the separate management dialog proceeds directly to its rows without repeated counts or explanatory
+  paragraphs.
   An optional date-only payment deadline starts reminders on that day; without one, contributions
   become eligible two hours after acceptance. Further reminders run at most once per rolling two-hour
   window, using durable reminder state independent of push history. TV-Kiosk (Admin's „Kioskverwaltung“

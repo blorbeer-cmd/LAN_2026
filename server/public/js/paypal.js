@@ -16,6 +16,16 @@ export function paypalPayUrl(paypalLink, cents) {
 
 const PAYPAL_EMAIL_LINK_RE = /^https:\/\/www\.paypal\.com\/myaccount\/transfer\/homepage\/pay\?recipient=([^&]+)$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PAYPAL_HOSTS = new Set(['paypal.me', 'www.paypal.me', 'paypal.com', 'www.paypal.com']);
+
+function isAllowedPaypalUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && PAYPAL_HOSTS.has(url.hostname.toLowerCase()) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
 
 export function paypalEmailFromLink(paypalLink) {
   const match = (paypalLink ?? '').match(PAYPAL_EMAIL_LINK_RE);
@@ -35,7 +45,10 @@ export function normalizePaypalInput(raw) {
   if (!trimmed) return null;
   const insecurePaypalMe = trimmed.match(/^http:\/\/((?:www\.)?paypal\.me\/.*)$/i);
   if (insecurePaypalMe) return `https://${insecurePaypalMe[1]}`;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^https?:\/\//i.test(trimmed)) {
+    if (isAllowedPaypalUrl(trimmed)) return trimmed;
+    throw new Error('PayPal-Link muss HTTPS verwenden und zu paypal.me oder paypal.com führen.');
+  }
   if (EMAIL_RE.test(trimmed)) {
     return `https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=${encodeURIComponent(trimmed)}`;
   }

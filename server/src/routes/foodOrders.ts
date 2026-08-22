@@ -19,7 +19,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { requireGroupEventAccess, resolveRequestGroupEventScope, resolveRequestGroupEventStorageId } from '../groupEventScope';
-import { isIntInRange, isNonEmptyString, isValidUrl } from '../validation';
+import { isIntInRange, isNonEmptyString, isValidPaypalUrl, isValidUrl } from '../validation';
 import { notifyPlayers, resolvePushTopic, updatePushTopicExpiry } from '../push';
 import { requireUser, withBodyPlayerIdentity } from '../sessions';
 import { communicationRecipientIds } from '../communicationRecipients';
@@ -79,6 +79,10 @@ function isValidNotes(value: unknown): boolean {
 
 function isValidLink(value: unknown): boolean {
   return value === null || isValidUrl(value, MAX_LINK_LENGTH);
+}
+
+function isValidPaypalLink(value: unknown): boolean {
+  return value === null || isValidPaypalUrl(value, MAX_LINK_LENGTH);
 }
 
 // Whole percent, 0-100 — a decimal-point tip is more precision than anyone
@@ -200,7 +204,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   if (link !== undefined && link !== null && !isValidLink(link)) {
     return res.status(400).json({ error: 'Speisekarte muss eine gültige http(s)-URL sein.' });
   }
-  if (paypalLink !== undefined && paypalLink !== null && !isValidLink(paypalLink)) {
+  if (paypalLink !== undefined && paypalLink !== null && !isValidPaypalLink(paypalLink)) {
     return res.status(400).json({ error: 'PayPal-Link muss eine gültige http(s)-URL sein.' });
   }
   if (tipPercent !== undefined && tipPercent !== null && !isValidTipPercent(tipPercent)) {
@@ -301,7 +305,7 @@ foodOrdersRouter.patch('/:id', requireUser, (req, res) => {
   if (link !== undefined && !isValidLink(link)) {
     return res.status(400).json({ error: 'Speisekarte muss eine gültige http(s)-URL sein (oder null zum Entfernen).' });
   }
-  if (paypalLink !== undefined && !isValidLink(paypalLink)) {
+  if (paypalLink !== undefined && !isValidPaypalLink(paypalLink)) {
     return res.status(400).json({ error: 'PayPal-Link muss eine gültige http(s)-URL sein (oder null zum Entfernen).' });
   }
   if (tipPercent !== undefined && !isValidTipPercent(tipPercent)) {
