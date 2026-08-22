@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test, { after, before } from "node:test";
 import { fileURLToPath } from "node:url";
-import { assertSupportedNode } from "./worktree-bootstrap.mjs";
+import { assertSupportedNode, npmInvocation } from "./worktree-bootstrap.mjs";
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const sourceScriptPath = resolve(scriptsDir, "agent-preflight.mjs");
@@ -43,26 +43,51 @@ before(() => {
   writeFileSync(join(fixtureRoot, "README.md"), "preflight fixture\n");
   writeFileSync(join(fixtureRoot, ".gitignore"), "node_modules/\n");
 
+  const dependencyName = "preflight-fixture-dependency";
+  const dependencyRoot = join(fixtureRoot, "fixture-dependency");
+  mkdirSync(dependencyRoot);
+  writeFileSync(
+    join(dependencyRoot, "package.json"),
+    `${JSON.stringify(
+      { name: dependencyName, version: "1.0.0", private: true },
+      null,
+      2,
+    )}\n`,
+  );
+
   for (const target of ["server", "agent"]) {
     const targetRoot = join(fixtureRoot, target);
     mkdirSync(targetRoot);
+    const dependencySpec = { [dependencyName]: "file:../fixture-dependency" };
     writeFileSync(
       join(targetRoot, "package.json"),
-      `${JSON.stringify({ name: `preflight-${target}`, private: true }, null, 2)}\n`,
-    );
-    writeFileSync(
-      join(targetRoot, "package-lock.json"),
       `${JSON.stringify(
         {
           name: `preflight-${target}`,
-          lockfileVersion: 3,
-          requires: true,
-          packages: { "": { name: `preflight-${target}` } },
+          version: "1.0.0",
+          private: true,
+          dependencies: dependencySpec,
         },
         null,
         2,
       )}\n`,
     );
+    writeFileSync(join(targetRoot, "package-lock.json"), "");
+
+    const invocation = npmInvocation([
+      "install",
+      "--package-lock-only",
+      "--ignore-scripts",
+      "--no-audit",
+      "--prefix",
+      targetRoot,
+    ]);
+    const lockResult = spawnSync(invocation.command, invocation.args, {
+      cwd: fixtureRoot,
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    assert.equal(lockResult.status, 0, lockResult.stderr);
   }
 
   run("git", ["init", "--initial-branch=main"], fixtureRoot);
@@ -173,13 +198,51 @@ test("bootstraps scoped dependencies once and reuses the lockfile stamp", () => 
   assert.match(first.stdout, /server\/node_modules: installiert/);
 
   const stampPath = join(modulesPath, ".respawn-worktree-bootstrap.json");
+  const dependencyPackagePath = join(
+    modulesPath,
+    "preflight-fixture-dependency",
+    "package.json",
+  );
   assert.equal(existsSync(stampPath), true);
+  assert.equal(existsSync(dependencyPackagePath), true);
   const firstStamp = readFileSync(stampPath, "utf8");
 
   const second = runPreflight(["--scope", "frontend"]);
   assert.equal(second.status, 0, second.stderr);
   assert.match(second.stdout, /server\/node_modules: aktuell/);
   assert.equal(readFileSync(stampPath, "utf8"), firstStamp);
+  assert.equal(existsSync(dependencyPackagePath), true);
+});
+
+test("refreshes dependencies when the runtime stamp does not match", () => {
+  const targetRoot = join(fixtureWorktree, "agent");
+  const modulesPath = join(targetRoot, "node_modules");
+  const stampPath = join(modulesPath, ".respawn-worktree-bootstrap.json");
+  const originalStamp = JSON.parse(readFileSync(stampPath, "utf8"));
+  const mismatches = {
+    nodeAbi: `${originalStamp.nodeAbi}-foreign`,
+    platform: originalStamp.platform === "win32" ? "linux" : "win32",
+    arch: originalStamp.arch === "x64" ? "arm64" : "x64",
+  };
+
+  for (const [field, value] of Object.entries(mismatches)) {
+    writeFileSync(
+      stampPath,
+      `${JSON.stringify({ ...originalStamp, [field]: value }, null, 2)}\n`,
+    );
+
+    const result = runPreflight(["--scope", "agent"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(
+      result.stdout,
+      /agent\/node_modules: npm ci \(Laufzeitplattform hat sich geaendert\)/,
+    );
+
+    const refreshedStamp = JSON.parse(readFileSync(stampPath, "utf8"));
+    assert.equal(refreshedStamp.nodeAbi, process.versions.modules);
+    assert.equal(refreshedStamp.platform, process.platform);
+    assert.equal(refreshedStamp.arch, process.arch);
+  }
 });
 
 test("refreshes dependencies after the scoped lockfile changes", () => {

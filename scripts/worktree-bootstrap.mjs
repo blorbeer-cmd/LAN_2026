@@ -80,7 +80,7 @@ function writeStamp(path, contents) {
   renameSync(temporaryPath, path);
 }
 
-function npmInvocation(args) {
+export function npmInvocation(args) {
   const configuredCli = process.env.npm_execpath;
   if (configuredCli && existsSync(configuredCli)) {
     return { command: process.execPath, args: [configuredCli, ...args] };

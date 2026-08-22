@@ -136,6 +136,11 @@ Der vorgeschriebene bereichsspezifische Preflight startet denselben idempotenten
 nach bestandener Branch-Sicherheitsprüfung automatisch. Nur bei einer vermuteten beschädigten
 Installation erzwingt `--force` einen erneuten sauberen Lauf.
 
+Beim Server-Bootstrap läuft der vorhandene npm-`prepare`-Lifecycle mit. Dadurch setzt
+`server/scripts/setup-git-hooks.js` `core.hooksPath` auf `.githooks` in der gemeinsamen Git-
+Konfiguration; die Einstellung gilt für alle verlinkten Worktrees dieses Repositorys und aktiviert
+den vorgesehenen Pre-Commit-Hook zentral.
+
 Danach im Browser `http://localhost:3000` öffnen. Auf einer frischen lokalen Datenbank erzeugen
 `npm run dev` und `npm start` automatisch einen temporären Recovery-Code und geben den vollständigen
 `/?claim=...`-Link in der Konsole aus. Für einen dauerhaften lokalen Zugang stattdessen
