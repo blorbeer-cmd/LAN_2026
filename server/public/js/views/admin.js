@@ -12,11 +12,23 @@ import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { getMyId } from '../whoami.js';
 import { currentGroup, refreshGroupContext } from '../groupContext.js';
+import { eventSelectOptions } from '../eventStatus.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 
 const ONBOARDING_HELP = 'Neue Person: Registrierungslink. Bestehendes Profil: Claim-Link. Vergessenes Passwort: Reset-Link.';
 const TEST_DATA_HELP = 'Legt Test-Spieler mit Sitzplatz, Bewertungen und Spielzeit an; zwei spielen gerade. Nur im Admin-Modus sichtbar.';
 const ADMIN_ROLE_HELP = 'Owner und Admins dürfen den Admin-Bereich verwalten. Mindestens ein aktiver Owner muss erhalten bleiben.';
 const AGENT_DIAGNOSTICS_HELP = 'Der Agent fragt den PC gezielt nur nach den hier hinterlegten Spiele-Prozessen. Andere laufende Programme sieht er gar nicht erst und sie verlassen den PC nie.';
+
+export const REGISTER_INVITE_DURATION_OPTIONS = Object.freeze([
+  { value: 24 * 60 * 60 * 1000, label: '24 Stunden' },
+  { value: 3 * 24 * 60 * 60 * 1000, label: '3 Tage' },
+  { value: 7 * 24 * 60 * 60 * 1000, label: '7 Tage' },
+  { value: 14 * 24 * 60 * 60 * 1000, label: '14 Tage' },
+  { value: 30 * 24 * 60 * 60 * 1000, label: '30 Tage' },
+  { value: 90 * 24 * 60 * 60 * 1000, label: '90 Tage' },
+]);
+export const DEFAULT_REGISTER_INVITE_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
@@ -48,29 +60,55 @@ function invitePurposeLabel(purpose) {
   if (purpose === 'claim') return 'Konto übernehmen';
   if (purpose === 'reset') return 'Passwort zurücksetzen';
   if (purpose === 'test_login') return 'Testsitzung';
-  return 'Neue Person';
+  return 'Registrierungslink';
+}
+
+export function formatInviteRemaining(expiresAt, now = Date.now()) {
+  if (expiresAt == null) return 'Gültig bis zum Widerruf';
+  const remainingMs = Number(expiresAt) - now;
+  if (!Number.isFinite(remainingMs) || remainingMs <= 0) return 'abgelaufen';
+  const minutes = Math.ceil(remainingMs / 60_000);
+  if (minutes < 60) return `noch ${minutes} ${minutes === 1 ? 'Minute' : 'Minuten'} gültig`;
+  const hours = Math.ceil(minutes / 60);
+  if (hours < 24) return `noch ${hours} ${hours === 1 ? 'Stunde' : 'Stunden'} gültig`;
+  const days = Math.ceil(hours / 24);
+  return `noch ${days} ${days === 1 ? 'Tag' : 'Tage'} gültig`;
+}
+
+export function inviteValidityLabel(expiresAt, now = Date.now()) {
+  if (expiresAt == null) return 'Gültig bis zum Widerruf';
+  return `${formatInviteRemaining(expiresAt, now)} · bis ${formatDateTime(expiresAt)} Uhr`;
 }
 
 function openInviteModal(invite) {
   const url = inviteUrl(invite);
   const target = invite.playerName ? ` für ${invite.playerName}` : '';
+  const usageCount = Number.isInteger(invite.usageCount) ? invite.usageCount : 0;
+  const reusable = invite.reusable || (invite.purpose === 'register' && invite.expiresAt == null);
+  const eventHint = invite.eventSelectable === false
+    ? `<div class="admin-invite-event"><span class="muted">Event</span><strong>${escapeHtml(invite.eventName || 'Ziel-Event')}</strong><span class="muted">Ziel-Event beendet oder abgesagt – neue Konten starten in Allgemein.</span></div>`
+    : invite.eventName
+      ? `<div class="admin-invite-event"><span class="muted">Event</span><strong>${escapeHtml(invite.eventName)}</strong></div>`
+      : '';
+  const validityHint = `${inviteValidityLabel(invite.expiresAt)}. ${reusable ? 'Mehrfach nutzbar.' : 'Der Link funktioniert nur einmal.'}`;
   const { el } = openModal(
     `${invitePurposeLabel(invite.purpose)}${escapeHtml(target)}`,
     `<div class="stack">
-      <label for="admin-invite-link">Einmal-Link</label>
-      <div class="row" style="gap:var(--space-2);">
+      <label for="admin-invite-link">Link</label>
+      ${eventHint}
+      <div class="invite-link-row">
         <input type="text" id="admin-invite-link" readonly value="${escapeHtml(url)}" style="flex:1;font-family:monospace;font-size:var(--font-size-xs);" />
         <button type="button" class="btn btn-sm" id="admin-invite-copy">Kopieren</button>
       </div>
       <button type="button" class="btn btn-sm" id="admin-invite-qr-toggle">${icon('scanQrCode')} QR-Code anzeigen</button>
       <div id="admin-invite-qr" style="text-align:center;" hidden></div>
-      <p class="muted" style="font-size:var(--font-size-xs);">Gültig bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}. Der Link funktioniert nur einmal.</p>
+      <p class="muted" style="font-size:var(--font-size-xs);">${validityHint} ${usageCount}× genutzt.</p>
     </div>`
   );
   el.querySelector('#admin-invite-copy').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(url);
-      showToast('Einmal-Link kopiert.');
+      showToast('Link kopiert.');
     } catch {
       showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
     }
@@ -245,21 +283,72 @@ async function refreshAdminData(ctx) {
   ]);
 }
 
-async function createLoginInvite(purpose, player, ctx) {
+export function registerInviteEventOptions() {
+  const events = (state.managedEvents || []).filter(
+    (event) => !event.isOutsideEvents && !event.isBase && !event.isEnded && event.status === 'published',
+  );
+  return eventSelectOptions(events, { allEntryLabel: 'Allgemein (kein zusätzliches Event)' });
+}
+
+function openRegisterInviteDialog(ctx) {
+  const eventOptions = registerInviteEventOptions();
+  const { el, close } = openModal(
+    'Registrierungslink erstellen',
+    `<form id="admin-register-invite-form" class="stack">
+      <p class="muted admin-register-invite-note">Der Link kann innerhalb der gewählten Dauer von mehreren neuen Personen genutzt werden.</p>
+      <div>
+        <label for="admin-register-expires" class="field-label">Gültig für</label>
+        <select id="admin-register-expires" required>
+          ${REGISTER_INVITE_DURATION_OPTIONS.map((option) => `<option value="${option.value}" ${option.value === DEFAULT_REGISTER_INVITE_DURATION_MS ? 'selected' : ''}>${option.label}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label for="admin-register-event-search" class="field-label">Direkte Event-Einladung (optional)</label>
+        ${searchSelectHtml('admin-register-event', eventOptions, '', {
+          placeholder: 'Event auswählen…',
+          label: 'Events für die Einladung',
+        })}
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Registrierungslink erstellen</button>
+    </form>`,
+  );
+  wireSearchSelect(el, 'admin-register-event', eventOptions, {
+    emptyText: 'Kein offenes Event gefunden.',
+  });
+  el.querySelector('#admin-register-invite-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+      const eventId = el.querySelector('#admin-register-event').value;
+      const expiresInMs = Number(el.querySelector('#admin-register-expires').value);
+      const created = await createLoginInvite('register', null, ctx, { expiresInMs, ...(eventId ? { eventId } : {}) });
+      if (created) close();
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
+async function createLoginInvite(purpose, player, ctx, options = {}) {
   try {
-    const invite = await withStepUp(() => api.auth.createInvite({ purpose, ...(player ? { playerId: player.id } : {}) }));
-    if (invite === undefined) return;
+    const invite = await withStepUp(() =>
+      api.auth.createInvite({ purpose, ...(player ? { playerId: player.id } : {}), ...options }),
+    );
+    if (invite === undefined) return false;
     const enriched = { ...invite, playerName: player?.name || null };
-    showToast('Einmal-Link erstellt.');
+    showToast(purpose === 'register' ? 'Registrierungslink erstellt.' : 'Link erstellt.');
     openInviteModal(enriched);
     await loadActiveInvites(ctx, true);
+    return true;
   } catch (error) {
     showToast(error.message, { error: true });
+    return false;
   }
 }
 
 async function revokeLoginInvite(invite, ctx) {
-  if (!(await confirmDialog('Diesen Einmal-Link wirklich widerrufen?', {
+  if (!(await confirmDialog('Diesen Einladungslink wirklich widerrufen?', {
     title: 'Link widerrufen',
     confirmText: 'Widerrufen',
     danger: true,
@@ -267,7 +356,7 @@ async function revokeLoginInvite(invite, ctx) {
   try {
     const result = await withStepUp(() => api.auth.revokeInvite(invite.code));
     if (result === undefined) return;
-    showToast('Einmal-Link widerrufen.');
+  showToast('Einladungslink widerrufen.');
     await loadActiveInvites(ctx, true);
   } catch (error) {
     showToast(error.message, { error: true });
@@ -429,16 +518,23 @@ function renderPanel(container, ctx) {
 
   const inviteRows = (activeInvites || [])
     .map(
-      (invite) => `<div class="row-between" style="gap:var(--space-2);">
+      (invite) => {
+        const eventLabel = invite.eventSelectable === false
+          ? 'Ziel-Event beendet oder abgesagt – Start in Allgemein'
+          : invite.eventName
+            ? escapeHtml(invite.eventName)
+            : '';
+        return `<div class="row-between" style="gap:var(--space-2);">
         <span>
           <strong>${escapeHtml(invite.playerName || invitePurposeLabel(invite.purpose))}</strong>
-          <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))} · bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}</span>
+          <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))}${eventLabel ? ` · ${eventLabel}` : ''} · ${invite.usageCount ?? 0}× genutzt · ${escapeHtml(inviteValidityLabel(invite.expiresAt))}</span>
         </span>
         <span class="row" style="gap:var(--space-2);">
           <button type="button" class="btn btn-sm" data-show-login-link="${invite.code}">Anzeigen</button>
           <button type="button" class="btn btn-sm btn-danger" data-revoke-login-link="${invite.code}">Widerrufen</button>
         </span>
-      </div>`
+      </div>`;
+      },
     )
     .join('');
 
@@ -527,7 +623,7 @@ function renderPanel(container, ctx) {
         </div>
         <button type="button" class="btn btn-primary" id="admin-register-link">Link für neue Person erstellen</button>
         <div class="stack">${accountRows || '<span class="muted">Keine aktiven echten Konten vorhanden.</span>'}</div>
-        <div class="section-title">Aktive Einmal-Links</div>
+        <div class="section-title">Aktive Einladungslinks</div>
         <div class="stack">${activeInvitesLoading && activeInvites === null ? '<span class="muted">Links werden geladen…</span>' : inviteRows || '<span class="muted">Keine aktiven Links.</span>'}</div>
       </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-tools-title">
@@ -618,7 +714,7 @@ function renderPanel(container, ctx) {
     adminPlayers = null;
     setAdmin(true);
   });
-  container.querySelector('#admin-register-link')?.addEventListener('click', () => createLoginInvite('register', null, ctx));
+  container.querySelector('#admin-register-link')?.addEventListener('click', () => openRegisterInviteDialog(ctx));
   container.querySelectorAll('[data-create-login-link]').forEach((button) => {
     button.addEventListener('click', () => {
       const player = players.find((entry) => entry.id === button.dataset.playerId);
