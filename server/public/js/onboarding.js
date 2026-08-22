@@ -13,10 +13,12 @@ import { sectionEntryView } from './sectionNav.js';
 // Ordered to match the bottom nav (Home, Match, Vote, Essen), then the
 // individual areas under "Mehr" (which itself sits after Essen in the nav),
 // and finally the game catalog last since its own step is what hands off
-// into the mandatory rating mode below (see nextCoreStep()).
+// into the mandatory rating mode below (see nextCoreStep()). Admin-only
+// insights are appended only for admins, after the Admin step has introduced
+// their entry point.
 const MEHR_TARGET = '.nav-btn[data-view="more"]';
 
-function buildSteps() {
+export function buildOnboardingSteps(isAdmin = currentPlayerHasAdminRole()) {
   const steps = [
     {
       title: 'Home',
@@ -78,19 +80,19 @@ function buildSteps() {
       view: sectionEntryView('orga'),
       target: MEHR_TARGET,
     },
-    {
-      title: 'Event-Auswahl',
-      text: 'In den Auswertungen kannst du Spielzeit, Matches, Turniere und Arcade-Ergebnisse nach Event filtern. Achte vor jeder Auswertung darauf, welches Event im Dropdown ausgewählt ist – sonst siehst du möglicherweise die Daten einer anderen LAN oder aller Events.',
-      view: 'analytics',
-      target: '#an-event-search',
-    },
   ];
-  if (currentPlayerHasAdminRole()) {
+  if (isAdmin) {
     steps.push({
       title: 'Admin',
       text: 'Hier behältst du als Admin die LAN-Bereitschaft im Blick und verwaltest Nutzer, Sitzplan und Backups. Über den Werkzeug-Eintrag „Auswertung“ erreichst du außerdem Rangliste, Statistiken und Hall of Fame, die sonst nirgends verlinkt sind.',
       view: 'admin',
       target: MEHR_TARGET,
+    });
+    steps.push({
+      title: 'Event-Auswahl',
+      text: 'In den Auswertungen kannst du Spielzeit, Matches, Turniere und Arcade-Ergebnisse nach Event filtern. Achte vor jeder Auswertung darauf, welches Event im Dropdown ausgewählt ist – sonst siehst du möglicherweise die Daten einer anderen LAN oder aller Events.',
+      view: 'analytics',
+      target: 'section[aria-label="Ansicht"] .search-select-control',
     });
   }
   steps.push({
@@ -99,6 +101,10 @@ function buildSteps() {
     view: 'gameCatalog',
   });
   return steps;
+}
+
+function buildSteps() {
+  return buildOnboardingSteps();
 }
 
 let runtime = null;
@@ -171,9 +177,15 @@ function clearTargetHighlight() {
 }
 
 function positionTargetRing() {
-  const target = runtime?.targetElement;
+  let target = runtime?.targetElement;
   const ring = runtime?.targetRing;
-  if (!target || !ring || !document.contains(target)) return;
+  if (!ring) return;
+  if (!target || !document.contains(target)) {
+    const step = runtime?.mode === 'core' ? runtime.steps[runtime.step] : null;
+    target = step?.target ? document.querySelector(step.target) : null;
+    if (!target) return;
+    runtime.targetElement = target;
+  }
   const rect = target.getBoundingClientRect();
   ring.style.left = `${rect.left}px`;
   ring.style.top = `${rect.top}px`;
