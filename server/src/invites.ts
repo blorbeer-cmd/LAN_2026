@@ -8,7 +8,9 @@
 // player, and changing a password voids outstanding reset codes the same way.
 
 import { nanoid } from 'nanoid';
+import { createHash } from 'node:crypto';
 import { BASE_EVENT_ID, db } from './db';
+import { writeAdminAudit } from './adminAudit';
 
 // 'test_login' mints a one-time link that logs the browser in directly as an
 // admin-seeded is_test player (no password) — see docs/KONZEPT-TEST-USER.md
@@ -20,6 +22,17 @@ export const DEFAULT_INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 export const DEFAULT_RESET_TTL_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_TEST_LOGIN_TTL_MS = 15 * 60 * 1000;
 export const MAX_INVITE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+// New invites always receive a finite expiry. Zero remains readable as a
+// backwards-compatible sentinel for registration rows created before invite
+// lifetimes became configurable; it is never emitted for newly created rows.
+export const NO_INVITE_EXPIRY = 0;
+
+// A registration redemption needs an audit trail, but the invite code itself
+// is a credential and must never be copied into admin_log. The fingerprint is
+// stable for correlating usages while remaining useless for redeeming the link.
+export function inviteFingerprint(code: string): string {
+  return createHash('sha256').update(code).digest('hex');
+}
 
 export interface InviteRow {
   code: string;
@@ -41,6 +54,11 @@ export interface CreateInviteOptions {
   createdBy: string;
   expiresInMs?: number;
 }
+
+export type RegistrationInviteRevocationReason =
+  | 'creator_deactivated'
+  | 'creator_deleted'
+  | 'creator_demoted';
 
 export function createInvite(options: CreateInviteOptions): InviteRow {
   const code = nanoid(24);
@@ -76,7 +94,7 @@ export function findValidInvite(code: string, purpose: InvitePurpose): InviteRow
   const invite = db.prepare('SELECT * FROM invites WHERE code = ?').get(code) as InviteRow | undefined;
   if (!invite || invite.purpose !== purpose) return undefined;
   if (invite.used_at || invite.revoked_at) return undefined;
-  if (invite.expires_at <= Date.now()) return undefined;
+  if (invite.expires_at !== NO_INVITE_EXPIRY && invite.expires_at <= Date.now()) return undefined;
   return invite;
 }
 
@@ -84,6 +102,25 @@ export function findValidInvite(code: string, purpose: InvitePurpose): InviteRow
 // safe even if a handler later becomes asynchronous and two requests race.
 export function markInviteUsed(code: string, usedByPlayerId: string, purpose?: InvitePurpose): boolean {
   const now = Date.now();
+  const invite = db.prepare('SELECT purpose, expires_at FROM invites WHERE code = ?').get(code) as
+    | { purpose: InvitePurpose; expires_at: number }
+    | undefined;
+  // Registration links deliberately stay open after every redemption, while
+  // their expiry still limits how long they can be used. The surrounding
+  // account transaction therefore shares this validation seam with the
+  // one-time claim/reset/test-session links.
+  if (invite?.purpose === 'register') {
+    return Boolean(
+      db
+        .prepare(
+          `SELECT 1 FROM invites
+           WHERE code = ? AND used_at IS NULL AND revoked_at IS NULL
+             AND (expires_at = ? OR expires_at > ?)
+             ${purpose ? 'AND purpose = ?' : ''}`,
+        )
+        .get(...(purpose ? [code, NO_INVITE_EXPIRY, Date.now(), purpose] : [code, NO_INVITE_EXPIRY, Date.now()])),
+    );
+  }
   const result = db
     .prepare(
       `UPDATE invites
@@ -91,10 +128,14 @@ export function markInviteUsed(code: string, usedByPlayerId: string, purpose?: I
        WHERE code = ?
          AND used_at IS NULL
          AND revoked_at IS NULL
-         AND expires_at > ?
+         AND (expires_at = ? OR expires_at > ?)
          ${purpose ? 'AND purpose = ?' : ''}`
     )
-    .run(...(purpose ? [now, usedByPlayerId, code, now, purpose] : [now, usedByPlayerId, code, now]));
+    .run(
+      ...(purpose
+        ? [now, usedByPlayerId, code, NO_INVITE_EXPIRY, now, purpose]
+        : [now, usedByPlayerId, code, NO_INVITE_EXPIRY, now]),
+    );
   return result.changes === 1;
 }
 
@@ -112,4 +153,69 @@ export function voidOutstandingInvites(playerId: string, purpose: InvitePurpose)
   db.prepare(
     'UPDATE invites SET revoked_at = ? WHERE player_id = ? AND purpose = ? AND used_at IS NULL AND revoked_at IS NULL'
   ).run(Date.now(), playerId, purpose);
+}
+
+// Registration links are created by an account rather than targeting one.
+// They therefore need their own lifecycle rule when that creator is
+// deactivated, deleted, or demoted; ON DELETE SET NULL must not keep the
+// credential open. Each automatic revocation gets the same fingerprinted
+// audit record as a manual revocation, so the complete link lifecycle remains
+// visible without ever storing the credential itself.
+export function revokeRegistrationInvitesCreatedBy(
+  playerId: string,
+  reason: RegistrationInviteRevocationReason,
+  actorPlayerId?: string,
+): number {
+  return db.transaction(() => {
+    const invites = db
+      .prepare(
+        `SELECT code, event_id AS eventId, created_by AS createdBy, expires_at AS expiresAt
+         FROM invites
+         WHERE created_by = ? AND purpose = 'register' AND used_at IS NULL AND revoked_at IS NULL`,
+      )
+      .all(playerId) as Array<{
+      code: string;
+      eventId: string | null;
+      createdBy: string | null;
+      expiresAt: number;
+    }>;
+    const now = Date.now();
+    const revoke = db.prepare(
+      `UPDATE invites SET revoked_at = ?
+       WHERE code = ? AND used_at IS NULL AND revoked_at IS NULL`,
+    );
+    let revoked = 0;
+    for (const invite of invites) {
+      if (revoke.run(now, invite.code).changes !== 1) continue;
+      const fingerprint = inviteFingerprint(invite.code);
+      const usageRows = db
+        .prepare("SELECT details FROM admin_log WHERE action = 'invite_used' AND target_type = 'registration'")
+        .all() as Array<{ details: string | null }>;
+      const usageCount = usageRows.reduce((count, row) => {
+        if (!row.details) return count;
+        try {
+          const details = JSON.parse(row.details) as { inviteFingerprint?: unknown };
+          return details.inviteFingerprint === fingerprint ? count + 1 : count;
+        } catch {
+          return count;
+        }
+      }, 0);
+      writeAdminAudit({
+        actorPlayerId,
+        action: 'invite_revoked',
+        targetType: 'registration',
+        details: {
+          purpose: 'register',
+          eventId: invite.eventId,
+          createdBy: invite.createdBy,
+          expiresAt: invite.expiresAt === NO_INVITE_EXPIRY ? null : invite.expiresAt,
+          inviteFingerprint: fingerprint,
+          usageCount,
+          reason,
+        },
+      });
+      revoked += 1;
+    }
+    return revoked;
+  })();
 }

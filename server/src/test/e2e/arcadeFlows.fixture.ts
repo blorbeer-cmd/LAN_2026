@@ -18,7 +18,7 @@ import {
   loginE2EAdmin,
   type E2EAccount,
 } from './authHelpers';
-import { runWithE2EDiagnostics, trackE2EContext } from './e2eDiagnostics';
+import { StatefulE2EDiagnosticGuard, trackE2EContext } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
@@ -35,6 +35,10 @@ let alice: E2EAccount;
 let bob: E2EAccount;
 let analyticsPlayer: E2EAccount | undefined;
 const accountsByName = new Map<string, E2EAccount>();
+const flowDiagnostics = new StatefulE2EDiagnosticGuard(
+  () => ({ browser, server: e2eServer }),
+  { sharedState: 'server, browser context, and page' },
+);
 
 type ArcadeFlowShard = 'smoke' | 'full';
 
@@ -49,11 +53,8 @@ function arcadeFlowTest(
   fn: (context: TestContext) => void | Promise<void>,
 ): void {
   if (arcadeFlowShard === shard) {
-    test(name, (context) =>
-      runWithE2EDiagnostics(
-        { testName: name, browser, server: e2eServer },
-        () => fn(context),
-      ),
+    test(name, { concurrency: false }, (context) =>
+      flowDiagnostics.run(context, name, () => fn(context)),
     );
   }
 }

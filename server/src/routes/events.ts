@@ -15,6 +15,7 @@ import {
   endEvent,
   getParticipantIds,
   getEventParticipants,
+  getAcceptedEventParticipants,
   inviteParticipant,
   isParticipant,
   removeEventParticipant,
@@ -93,7 +94,7 @@ const resolveEvent = resolveGroupResource<EventRow>({
 function serializeEvent(event: ReturnType<typeof getEvent>) {
   if (!event) return undefined;
   return {
-    ...serializeEventSummary(event as EventRow),
+    ...serializeEventSummary(event as EventRow, { includeAcceptedParticipants: true }),
     endedAt: event.ended_at,
     groupId: event.group_id,
     visibilityScope: event.visibility_scope,
@@ -115,11 +116,11 @@ function activeContextPlayerIds(eventId: string): string[] {
   ).map((row) => row.player_id);
 }
 
-// `trackingEnabled`/`isEnded` are part of the summary rather than management
-// data: the workspace switcher shows the state of every event it offers, and
-// a member only ever receives this shape. They describe the event itself, not
-// anything about its participants, so an invitation teaser may carry them too.
-function serializeEventSummary(event: EventRow) {
+// The default summary is teaser-safe and contains no participant data. The
+// accepted-participant extension is only requested after the caller's admin
+// or accepted-member access check; invitation teasers must keep using the
+// default shape.
+function serializeEventSummary(event: EventRow, { includeAcceptedParticipants = false } = {}) {
   return {
     id: event.id,
     name: event.name,
@@ -131,6 +132,7 @@ function serializeEventSummary(event: EventRow) {
     isBase: event.id === BASE_EVENT_ID,
     trackingEnabled: Boolean(event.tracking_enabled),
     isEnded: Boolean(event.ended_at),
+    ...(includeAcceptedParticipants ? { acceptedParticipants: getAcceptedEventParticipants(event.id) } : {}),
   };
 }
 
@@ -203,8 +205,10 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
       // wired up to this field yet — see the PR's own follow-up note.
       participantIds: getParticipantIds(activeEvent.id),
     },
-    availableEvents: availableEvents.map(serializeEventSummary),
-    historicalEvents: historicalEvents.map(serializeEventSummary),
+    availableEvents: availableEvents.map((event) =>
+      serializeEventSummary(event, { includeAcceptedParticipants: true }),
+    ),
+    historicalEvents: historicalEvents.map((event) => serializeEventSummary(event)),
     invitations: invitations.map((event) => ({ ...serializeEventSummary(event), participationStatus: 'invited' })),
     ...(managedEvents ? { managedEvents } : {}),
   });
@@ -227,6 +231,7 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
     return res.json({
       ...serializeEventSummary(event),
       participantIds: getParticipantIds(event.id),
+      acceptedParticipants: getAcceptedEventParticipants(event.id),
     });
   }
   return res.json(serializeEvent(event));
@@ -454,7 +459,7 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
   if (parsedEndsAt.value <= parsedStartsAt.value) {
     return res.status(400).json({ error: 'endsAt muss nach startsAt liegen.' });
   }
-  const parsedLocation = parseOptionalText(location, 80, 'location');
+  const parsedLocation = parseOptionalText(location, 500, 'location');
   if (!parsedLocation.ok) return res.status(400).json({ error: parsedLocation.error });
   const parsedDescription = parseOptionalText(description, 500, 'description');
   if (!parsedDescription.ok) return res.status(400).json({ error: parsedDescription.error });
@@ -521,7 +526,7 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     return res.status(400).json({ error: 'endsAt muss nach startsAt liegen.' });
   }
   if (location !== undefined) {
-    const parsed = parseOptionalText(location, 80, 'location');
+    const parsed = parseOptionalText(location, 500, 'location');
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
     fields.location = parsed.value;
   }

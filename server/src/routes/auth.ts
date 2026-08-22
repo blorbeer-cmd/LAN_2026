@@ -30,7 +30,17 @@ import {
   requireRecentReauthentication,
   markSessionReauthenticated,
 } from '../sessions';
-import { createInvite, findValidInvite, markInviteUsed, voidOutstandingInvites, revokeInvite, type InvitePurpose } from '../invites';
+import {
+  createInvite,
+  findValidInvite,
+  markInviteUsed,
+  voidOutstandingInvites,
+  revokeInvite,
+  NO_INVITE_EXPIRY,
+  DEFAULT_INVITE_TTL_MS,
+  inviteFingerprint,
+  type InvitePurpose,
+} from '../invites';
 import { DEFAULT_GROUP_ID, ensureDefaultGroupMembership } from '../groups';
 import {
   consumeGlobalAuthRequest,
@@ -171,6 +181,7 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
     created_at: now,
   };
 
+  let eventContext: { id: string; name: string; isBase: boolean; fallback: boolean } | undefined;
   try {
     db.transaction(() => {
       db.prepare(
@@ -180,7 +191,31 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
 
       if (invite && !markInviteUsed(invite.code, player.id, 'register')) throw new InvalidInviteError();
       ensureDefaultGroupMembership(player.id, { bootstrapAdmin: isBootstrap });
-      ensureAccountEventContext(player.id, invite?.event_id ?? BASE_EVENT_ID);
+      const selectedEvent = ensureAccountEventContext(player.id, invite?.event_id ?? BASE_EVENT_ID, {
+        // Reusable links must remain redeemable until revoked. If their target
+        // event was closed in the meantime, the account still gets the base
+        // event rather than failing registration with an apparently expired link.
+        fallbackToBase: Boolean(invite?.event_id && invite.purpose === 'register' && invite.event_id !== BASE_EVENT_ID),
+      });
+      eventContext = {
+        id: selectedEvent.id,
+        name: selectedEvent.name,
+        isBase: selectedEvent.id === BASE_EVENT_ID,
+        fallback: Boolean(invite?.event_id && invite.event_id !== BASE_EVENT_ID && selectedEvent.id === BASE_EVENT_ID),
+      };
+      if (invite) {
+        writeAdminAudit({
+          action: 'invite_used',
+          targetType: 'registration',
+          targetId: player.id,
+          details: {
+            inviteFingerprint: inviteFingerprint(invite.code),
+            createdBy: invite.created_by,
+            eventId: invite.event_id,
+            appliedEventId: selectedEvent.id,
+          },
+        });
+      }
       resetOnboardingForNewAccount(player.id);
     })();
   } catch (error) {
@@ -202,7 +237,7 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
   }
   const token = createSession(player.id);
   setSessionCookie(res, token);
-  res.status(201).json(toPublicAccount(player));
+  res.status(201).json({ ...toPublicAccount(player), eventContext });
 });
 
 // POST /api/auth/claim - sets a password on an existing, not-yet-claimed
@@ -498,6 +533,28 @@ authRouter.post('/test-session', limitAnonymousAuthAttempts, (req, res) => {
 
 const INVITE_PURPOSES: InvitePurpose[] = ['register', 'claim', 'reset', 'test_login'];
 
+function inviteUseCounts(codes: string[]): Map<string, number> {
+  const codeByFingerprint = new Map(codes.map((code) => [inviteFingerprint(code), code]));
+  const counts = new Map<string, number>();
+  if (codeByFingerprint.size === 0) return counts;
+
+  const rows = db
+    .prepare("SELECT details FROM admin_log WHERE action = 'invite_used' AND target_type = 'registration'")
+    .all() as Array<{ details: string | null }>;
+  for (const row of rows) {
+    if (!row.details) continue;
+    try {
+      const details = JSON.parse(row.details) as { inviteFingerprint?: unknown };
+      if (typeof details.inviteFingerprint !== 'string') continue;
+      const code = codeByFingerprint.get(details.inviteFingerprint);
+      if (code) counts.set(code, (counts.get(code) ?? 0) + 1);
+    } catch {
+      // Ignore malformed legacy audit rows rather than failing the admin list.
+    }
+  }
+  return counts;
+}
+
 // GET /api/auth/invites - active, still-shareable links for the admin UI.
 // Used/revoked/expired codes stay in the DB audit trail but are not returned.
 authRouter.get('/invites', ...requireSessionAdmin, (_req, res) => {
@@ -509,15 +566,42 @@ authRouter.get('/invites', ...requireSessionAdmin, (_req, res) => {
        FROM invites i
        LEFT JOIN players p ON p.id = i.player_id
        LEFT JOIN events e ON e.id = i.event_id
-       WHERE i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > ?
+       WHERE i.used_at IS NULL AND i.revoked_at IS NULL
+         AND (i.expires_at = ? OR i.expires_at > ?)
        ORDER BY i.created_at DESC`
     )
-    .all(Date.now());
-  res.json(rows);
+    .all(NO_INVITE_EXPIRY, Date.now()) as Array<{
+      code: string;
+      purpose: InvitePurpose;
+      playerId: string | null;
+      playerName: string | null;
+      eventId: string | null;
+      eventName: string | null;
+      createdAt: number;
+      expiresAt: number;
+    }>;
+  const usageCounts = inviteUseCounts(rows.map((row) => row.code));
+  res.json(
+    rows.map((row) => {
+      const isBaseEvent = row.eventId === BASE_EVENT_ID;
+      const eventCanBeTargeted = row.purpose === 'register' || row.purpose === 'claim';
+      return {
+        ...row,
+        eventId: isBaseEvent ? null : row.eventId,
+        eventName: isBaseEvent ? null : row.eventName,
+        expiresAt: row.expiresAt === NO_INVITE_EXPIRY ? null : row.expiresAt,
+        reusable: row.purpose === 'register',
+        eventSelectable: !eventCanBeTargeted || isBaseEvent || Boolean(row.eventId && getSelectableEvent(row.eventId)),
+        usageCount: usageCounts.get(row.code) ?? 0,
+      };
+    }),
+  );
 });
 
 // POST /api/auth/invites - admin-only.
 // Body: { purpose, playerId?, eventId?, expiresInMs? }
+// Registration links are reusable during their finite lifetime. Claim, reset
+// and test-session links retain their one-time lifecycles.
 authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthentication, (req, res) => {
   const { purpose, playerId, eventId, expiresInMs } = req.body ?? {};
   if (typeof purpose !== 'string' || !INVITE_PURPOSES.includes(purpose as InvitePurpose)) {
@@ -572,31 +656,48 @@ authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthenticatio
     playerId: purpose === 'register' ? undefined : playerId,
     eventId: inviteEventId,
     createdBy: req.player!.id,
-    expiresInMs,
+    expiresInMs: purpose === 'register' && expiresInMs === undefined ? DEFAULT_INVITE_TTL_MS : expiresInMs,
   });
   writeAdminAudit({
     actorPlayerId: req.player!.id,
     action: 'invite_created',
     targetType: purpose === 'register' ? 'registration' : 'player',
     targetId: purpose === 'register' ? undefined : playerId,
-    details: { purpose, eventId: invite.event_id, expiresAt: invite.expires_at },
+    details: {
+      purpose,
+      eventId: invite.event_id,
+      expiresAt: invite.expires_at === NO_INVITE_EXPIRY ? null : invite.expires_at,
+      inviteFingerprint: inviteFingerprint(invite.code),
+    },
   });
   res.status(201).json({
     code: invite.code,
     purpose: invite.purpose,
     playerId: invite.player_id,
-    eventId: invite.event_id,
-    eventName: inviteEvent?.name ?? null,
-    expiresAt: invite.expires_at,
+    eventId: invite.event_id === BASE_EVENT_ID ? null : invite.event_id,
+    eventName: invite.event_id === BASE_EVENT_ID ? null : inviteEvent?.name ?? null,
+    expiresAt: invite.expires_at === NO_INVITE_EXPIRY ? null : invite.expires_at,
+    reusable: invite.purpose === 'register',
+    usageCount: 0,
   });
 });
 
 // DELETE /api/auth/invites/:code - admin-only. Revoking an already-used or
 // already-revoked code is a no-op 404, not an error worth retrying.
 authRouter.delete('/invites/:code', ...requireSessionAdmin, requireRecentReauthentication, (req, res) => {
-  const invite = db.prepare('SELECT purpose, player_id FROM invites WHERE code = ?').get(req.params.code) as
-    | { purpose: InvitePurpose; player_id: string | null }
+  const invite = db
+    .prepare('SELECT code, purpose, player_id, event_id, created_by, expires_at FROM invites WHERE code = ?')
+    .get(req.params.code) as
+    | {
+        code: string;
+        purpose: InvitePurpose;
+        player_id: string | null;
+        event_id: string | null;
+        created_by: string | null;
+        expires_at: number;
+      }
     | undefined;
+  const usageCount = invite ? inviteUseCounts([invite.code]).get(invite.code) ?? 0 : 0;
   if (!revokeInvite(req.params.code)) {
     return res.status(404).json({ error: 'Einladungscode nicht gefunden oder bereits verbraucht.' });
   }
@@ -605,7 +706,14 @@ authRouter.delete('/invites/:code', ...requireSessionAdmin, requireRecentReauthe
     action: 'invite_revoked',
     targetType: invite?.player_id ? 'player' : 'registration',
     targetId: invite?.player_id ?? undefined,
-    details: { purpose: invite?.purpose },
+    details: {
+      purpose: invite?.purpose,
+      eventId: invite?.event_id ?? null,
+      createdBy: invite?.created_by ?? null,
+      expiresAt: invite && invite.expires_at !== NO_INVITE_EXPIRY ? invite.expires_at : null,
+      inviteFingerprint: invite ? inviteFingerprint(invite.code) : undefined,
+      usageCount,
+    },
   });
   res.status(204).end();
 });

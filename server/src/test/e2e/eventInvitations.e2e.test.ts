@@ -196,6 +196,9 @@ test('manager invites a member who accepts and both open clients update', async 
   await acceptButton.press('Enter');
   await pending.waitFor({ state: 'detached' });
   await ownerRefresh;
+  const memberEventCard = memberPage.locator(`[data-event-card="${eventId}"]`);
+  await memberEventCard.waitFor();
+  assert.match((await memberEventCard.textContent()) ?? '', new RegExp(MEMBER_NAME));
 
   const optionSelector = `#event-context-switcher-list [data-search-select-value="${eventId}"]`;
   await memberPage.locator(optionSelector).waitFor({ state: 'attached' });
@@ -232,7 +235,7 @@ test('manager invites a member who accepts and both open clients update', async 
 
   await ownerPage.locator('.modal-backdrop [data-close]').click();
   await ownerPage.click(`[data-participants-event="${eventId}"]`);
-  const memberRow = ownerPage.locator('.modal-backdrop .card', { hasText: MEMBER_NAME });
+  const memberRow = ownerPage.locator('.modal-backdrop .event-participant-manager-row', { hasText: MEMBER_NAME });
   await memberRow.waitFor();
   assert.match((await memberRow.textContent()) ?? '', /Zugesagt/);
 

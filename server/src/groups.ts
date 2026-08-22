@@ -1,6 +1,7 @@
 import { db, DEFAULT_GROUP_ID } from './db';
 import { writeAdminAudit } from './adminAudit';
 import { ensureAccountEventContext } from './eventContext';
+import { revokeRegistrationInvitesCreatedBy } from './invites';
 
 export { DEFAULT_GROUP_ID };
 
@@ -222,6 +223,9 @@ export function syncInstanceAdminForRole(
   const nextIsAdmin = role === 'member' ? 0 : 1;
   if (nextIsAdmin === player.is_admin) return false;
   db.prepare('UPDATE players SET is_admin = ? WHERE id = ?').run(nextIsAdmin, playerId);
+  if (!nextIsAdmin) {
+    revokeRegistrationInvitesCreatedBy(playerId, 'creator_demoted', actorPlayerId);
+  }
   writeAdminAudit({
     actorPlayerId,
     action: nextIsAdmin ? 'admin_granted' : 'admin_revoked',
