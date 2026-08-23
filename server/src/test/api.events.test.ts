@@ -5,6 +5,7 @@ import { createTestApp, enableTestTracking, TEST_ADMIN_ID } from './testApp';
 import { BASE_EVENT_ID, DEFAULT_GROUP_ID, db } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
 import { recordPushLog } from '../push';
+import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 
 const app = createTestApp();
 
@@ -34,6 +35,9 @@ test('every account starts in the permanent base event', async () => {
   assert.equal(active.status, 200);
   assert.equal(active.body.id, BASE_EVENT_ID);
   assert.equal(active.body.isBase, true);
+  assert.equal(active.body.eventType, 'lan');
+  assert.equal(active.body.presetVersion, 1);
+  assert.deepEqual(active.body.enabledFeatures, [...EVENT_FEATURE_KEYS]);
 
   const list = await request(app).get('/api/events');
   assert.equal(list.status, 200);
@@ -45,6 +49,29 @@ test('every account starts in the permanent base event', async () => {
     list.body.managedEvents.some((event: { id: string }) => event.id === BASE_EVENT_ID),
     false,
     'the immutable base workspace is not rendered as a manageable LAN event',
+  );
+});
+
+test('new events persist and expose the complete backwards-compatible LAN feature snapshot', async () => {
+  const created = await createEvent('LAN-Default mit Bereichen');
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.eventType, 'lan');
+  assert.equal(created.body.presetVersion, 1);
+  assert.deepEqual(created.body.enabledFeatures, [...EVENT_FEATURE_KEYS]);
+
+  const persistedEvent = db
+    .prepare('SELECT event_type_key AS eventType, preset_version AS presetVersion FROM events WHERE id = ?')
+    .get(created.body.id);
+  assert.deepEqual(persistedEvent, { eventType: 'lan', presetVersion: 1 });
+  const persistedFeatures = db
+    .prepare(
+      `SELECT feature_key AS featureKey, enabled, changed_by AS changedBy
+       FROM event_features WHERE event_id = ? ORDER BY rowid`,
+    )
+    .all(created.body.id);
+  assert.deepEqual(
+    persistedFeatures,
+    EVENT_FEATURE_KEYS.map((featureKey) => ({ featureKey, enabled: 1, changedBy: TEST_ADMIN_ID })),
   );
 });
 

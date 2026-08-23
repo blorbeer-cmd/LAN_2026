@@ -40,6 +40,7 @@ import { setEventTrackingConsent } from '../trackingContexts';
 import { activeGroupPlayers } from '../groupPlayers';
 import { createPersistentBackup } from '../backupService';
 import { eventAccessLevel, getOrRepairActiveEvent } from '../eventContext';
+import { getEnabledEventFeatures } from '../eventFeatures';
 
 export const eventsRouter = Router();
 
@@ -232,6 +233,9 @@ function serializeEventSummary(
     ...(includePaymentDetails ? { paypalLink: event.paypal_link } : {}),
     status: event.status,
     isBase: event.id === BASE_EVENT_ID,
+    eventType: event.event_type_key,
+    presetVersion: event.preset_version,
+    enabledFeatures: getEnabledEventFeatures(event.id),
     trackingEnabled: Boolean(event.tracking_enabled),
     isEnded: Boolean(event.ended_at),
     ...(includeAcceptedParticipants
@@ -273,7 +277,7 @@ function serializeEventForMemberList(
 // invitation teasers. Admins additionally receive the full management list.
 eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
   const playerId = req.player!.id;
-  const activeEvent = getOrRepairActiveEvent(playerId);
+  const activeEvent = getEvent(getOrRepairActiveEvent(playerId).id)!;
   const availableEvents = db
     .prepare(
       `SELECT e.*
@@ -365,7 +369,8 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
 
 // GET /api/events/active - this account's persisted workspace.
 eventsRouter.get('/active', requireConfiguredGroupMembership, (req, res) => {
-  res.json(serializeEventSummary(getOrRepairActiveEvent(req.player!.id) as EventRow));
+  const activeEvent = getEvent(getOrRepairActiveEvent(req.player!.id).id)!;
+  res.json(serializeEventSummary(activeEvent));
 });
 
 eventsRouter.get('/:id', resolveEvent, (req, res) => {

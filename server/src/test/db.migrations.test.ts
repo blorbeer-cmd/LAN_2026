@@ -15,6 +15,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import Database from 'better-sqlite3';
+import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
 const BOOTSTRAP_ADMINS_JS_PATH = path.join(__dirname, '..', 'bootstrapAdmins.js');
@@ -647,10 +648,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 82);
+  assert.equal(migrations.length, 83);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 82 }, (_, index) => index + 1),
+    Array.from({ length: 83 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1177,8 +1178,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 82 }, (_, index) => index + 1),
-    'every version 1..82 runs exactly once',
+    Array.from({ length: 83 }, (_, index) => index + 1),
+    'every version 1..83 runs exactly once',
   );
 });
 
@@ -2489,6 +2490,72 @@ test('migration 82 adds accommodation accounting, leaves legacy paid amounts unk
     { paidAmountCents: null },
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 82').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 83 adds event feature snapshots with a complete LAN default and is restart-safe', () => {
+  const dbFile = makeTempDbPath('event-feature-snapshots');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture
+    .prepare(
+      `INSERT INTO events (id, name, starts_at, ends_at, group_id, status, visibility_scope)
+       VALUES (?, ?, ?, ?, 'default-group', 'published', 'participants')`,
+    )
+    .run('legacy-feature-event', 'Legacy Feature Event', now, now + 60_000);
+  fixture.exec(`
+    DROP TABLE event_features;
+    ALTER TABLE events DROP COLUMN event_type_key;
+    ALTER TABLE events DROP COLUMN preset_version;
+    DELETE FROM schema_migrations WHERE version = 83;
+  `);
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+
+  const firstMigration = new Database(dbFile);
+  assert.deepEqual(
+    firstMigration
+      .prepare('SELECT event_type_key AS eventType, preset_version AS presetVersion FROM events WHERE id = ?')
+      .get('legacy-feature-event'),
+    { eventType: 'lan', presetVersion: 1 },
+  );
+  const featureRows = firstMigration
+    .prepare('SELECT feature_key AS featureKey, enabled FROM event_features WHERE event_id = ? ORDER BY rowid')
+    .all('legacy-feature-event');
+  assert.deepEqual(
+    featureRows,
+    EVENT_FEATURE_KEYS.map((featureKey) => ({ featureKey, enabled: 1 })),
+  );
+  assert.equal(
+    (firstMigration.prepare('SELECT COUNT(*) AS count FROM event_features WHERE event_id = ?').get('instance-base-event') as { count: number }).count,
+    EVENT_FEATURE_KEYS.length,
+  );
+  assert.equal(
+    (firstMigration.prepare('SELECT COUNT(*) AS count FROM event_features WHERE event_id = ?').get('outside-events') as { count: number }).count,
+    0,
+  );
+
+  firstMigration
+    .prepare('UPDATE event_features SET enabled = 0 WHERE event_id = ? AND feature_key = ?')
+    .run('legacy-feature-event', 'arcade');
+  firstMigration.prepare('DELETE FROM schema_migrations WHERE version = 83').run();
+  firstMigration.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the event feature migration must be restart-safe');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT enabled FROM event_features WHERE event_id = ? AND feature_key = ?')
+      .get('legacy-feature-event', 'arcade'),
+    { enabled: 0 },
+    'a restart must not overwrite an existing event snapshot',
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 83').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

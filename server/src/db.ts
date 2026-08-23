@@ -9,6 +9,7 @@ import { nanoid } from 'nanoid';
 import { config } from './config';
 import { DEFAULT_QUIZ_QUESTIONS } from './arcade/quizQuestions';
 import { DEFAULT_SCRIBBLE_WORDS } from './arcade/scribbleWords';
+import { DEFAULT_EVENT_PRESET_VERSION, DEFAULT_EVENT_TYPE_KEY, EVENT_FEATURE_KEYS } from './eventFeatureCatalog';
 
 // Ensure the data directory exists before opening a file-based DB. Skipped for
 // the in-memory database used in tests.
@@ -38,7 +39,7 @@ db.exec(`
     created_at      INTEGER NOT NULL
   );
 
-  -- LAN events (e.g. "LAN Party Sommer 2026"). Several can exist and even
+  -- Event workspaces (e.g. "LAN Party Sommer 2026"). Several can exist and even
   -- overlap in time — the thing that must stay exclusive is *tracking*
   -- (live status / playtime), not the events themselves: at most one event
   -- has tracking_enabled = 1 at any moment (enforced in events.ts, not by
@@ -66,6 +67,8 @@ db.exec(`
     paypal_link      TEXT,
     payment_due_at   INTEGER,
     created_by       TEXT REFERENCES players(id) ON DELETE SET NULL,
+    event_type_key   TEXT NOT NULL DEFAULT '${DEFAULT_EVENT_TYPE_KEY}',
+    preset_version   INTEGER NOT NULL DEFAULT ${DEFAULT_EVENT_PRESET_VERSION} CHECK (preset_version > 0),
     tracking_enabled INTEGER NOT NULL DEFAULT 0,
     ended_at         INTEGER,
     is_test          INTEGER NOT NULL DEFAULT 0 -- admin-generated historical fixture; removable without touching real LANs
@@ -83,6 +86,18 @@ db.exec(`
     paid_at   INTEGER,
     paid_amount_cents INTEGER CHECK (paid_amount_cents IS NULL OR paid_amount_cents > 0),
     PRIMARY KEY (event_id, player_id)
+  );
+
+  -- Whole optional product areas selected for one event. Every event keeps
+  -- its own snapshot so later preset changes cannot silently change existing
+  -- workspaces. Area-specific settings remain in their domain tables.
+  CREATE TABLE IF NOT EXISTS event_features (
+    event_id    TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    feature_key TEXT NOT NULL,
+    enabled     INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+    changed_at  INTEGER NOT NULL,
+    changed_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
+    PRIMARY KEY (event_id, feature_key)
   );
 
   -- Every game the group could play lives here — from a bare tracked entry
@@ -3931,6 +3946,52 @@ registerMigration({
   version: 82,
   name: 'add event accommodation accounting',
   up: addEventAccommodationAccounting,
+});
+
+// Establishes the behavior-neutral foundation for flexible event types. Every
+// existing selectable event receives the complete LAN preset, preserving all
+// current functionality. The historical outside-events sentinel is not a
+// workspace and therefore intentionally receives no feature snapshot.
+function addEventTypesAndFeatureSnapshots(): void {
+  const eventColumns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  if (!eventColumns.some((column) => column.name === 'event_type_key')) {
+    db.exec(`ALTER TABLE events ADD COLUMN event_type_key TEXT NOT NULL DEFAULT '${DEFAULT_EVENT_TYPE_KEY}'`);
+  }
+  if (!eventColumns.some((column) => column.name === 'preset_version')) {
+    db.exec(
+      `ALTER TABLE events ADD COLUMN preset_version INTEGER NOT NULL DEFAULT ${DEFAULT_EVENT_PRESET_VERSION} CHECK (preset_version > 0)`,
+    );
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS event_features (
+      event_id    TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      feature_key TEXT NOT NULL,
+      enabled     INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+      changed_at  INTEGER NOT NULL,
+      changed_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
+      PRIMARY KEY (event_id, feature_key)
+    );
+  `);
+
+  const eventIds = db
+    .prepare('SELECT id FROM events WHERE id != ?')
+    .all(OUTSIDE_EVENTS_ID) as Array<{ id: string }>;
+  const insertFeature = db.prepare(
+    `INSERT OR IGNORE INTO event_features (event_id, feature_key, enabled, changed_at, changed_by)
+     VALUES (?, ?, 1, ?, NULL)`,
+  );
+  const migratedAt = Date.now();
+  for (const event of eventIds) {
+    for (const featureKey of EVENT_FEATURE_KEYS) {
+      insertFeature.run(event.id, featureKey, migratedAt);
+    }
+  }
+}
+registerMigration({
+  version: 83,
+  name: 'add event types and feature snapshots',
+  up: addEventTypesAndFeatureSnapshots,
 });
 
 runRegisteredMigrations();
