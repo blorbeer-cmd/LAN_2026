@@ -3,10 +3,11 @@
 ## Entscheidung und Ziel
 
 Respawn erhält keinen eigenen Typ „Planungs-Event“ und keinen separaten Erstellungsweg dafür.
-Stattdessen wird jedes Event über „Event anlegen“ erstellt und besitzt von Beginn an einen Bereich
-„Abstimmungen“. Noch ungeklärte Angaben wie Termin, Ort, Dauer oder Preis dürfen beim Anlegen
-fehlen. `draft` bleibt dafür ein interner Lebenszykluszustand desselben regulären Events und wird in
-der Oberfläche als „In Planung“ dargestellt.
+Stattdessen wird jedes Event über „Event anlegen“ erstellt. Unter „Orga“ gibt es einen eigenen Tab
+„Abstimmungen“, in dem die zugehörigen Eventumfragen angelegt, beantwortet und entschieden werden.
+Noch ungeklärte Angaben wie Termin, Ort, Dauer oder Preis dürfen beim Anlegen fehlen. `draft` bleibt
+dafür ein interner Lebenszykluszustand desselben regulären Events und wird in der Oberfläche als
+„In Planung“ dargestellt.
 
 Innerhalb eines Events können mehrere voneinander unabhängige Umfragen laufen, beispielsweise zu:
 
@@ -33,6 +34,8 @@ werden nur gezeigt, wenn sie für das Event verwendet werden.
 
 - Ein Event besitzt vom ersten Entwurf bis zur Abrechnung genau eine ID.
 - Es gibt nur einen Erstellungsweg „Event anlegen“, nicht zusätzlich „Planungs-Event anlegen“.
+- „Abstimmungen“ ist ein eigener Tab direkt unter „Orga“. Jede Abstimmung bleibt trotzdem genau
+  einem Event zugeordnet.
 - Eine Umfrage sammelt Meinungen oder Verfügbarkeiten; sie ist weder eine Eventzusage noch bereits
   eine Entscheidung.
 - Das System empfiehlt nachvollziehbar, entscheidet aber nie automatisch. Die Eventverwaltung
@@ -154,8 +157,9 @@ darstellen und dürfen kein ungültiges Datum rendern.
 
 ### 2. Abstimmung starten
 
-Im Event öffnet die Verwaltung „Abstimmungen“ und wählt eine Vorlage oder „Eigene Abstimmung“.
-Erfasst werden:
+Im Tab „Orga -> Abstimmungen“ wählt die Verwaltung zuerst das zugehörige Event und danach eine
+Vorlage oder „Eigene Abstimmung“. Ein Aufruf aus einer Eventansicht darf direkt in diesen Tab
+springen und das Event vorauswählen. Erfasst werden:
 
 - Thema und verständlicher Titel,
 - mindestens zwei Optionen,
@@ -163,8 +167,7 @@ Erfasst werden:
 - eine Antwortfrist,
 - einzuladende aktive Mitglieder; standardmäßig sind bisherige Teilnehmende und bereits an der
   Planung beteiligte Personen vorausgewählt,
-- optional eine Notiz und die Information, ob das Thema für eine Teilnahmebestätigung wesentlich
-  ist.
+- optional eine Notiz.
 
 Vorlagen validieren ihre Optionen fachlich:
 
@@ -234,7 +237,7 @@ Sobald eine Person das Event sehen darf, kann sie ihren persönlichen Teilnahmez
 
 - „Noch offen“ (`invited`) - Einladung gesehen oder noch unbeantwortet,
 - „Interessiert / unter Vorbehalt“ (`interested`) - grundsätzliches Interesse, Details noch offen,
-- „Fest zugesagt“ (`accepted`) - belastbare Zusage für den aktuellen Planungsstand,
+- „Fest zugesagt“ (`accepted`) - belastbare Zusage für den aktuellen Termin,
 - „Abgesagt“ (`declined`) - nimmt nach aktuellem Stand nicht teil.
 
 Die Oberfläche erklärt direkt bei „Interessiert“: Dieser Zustand hilft der Planung, ist aber keine
@@ -242,7 +245,7 @@ feste Zusage. Gründe wie Preis, Ort, Dauer oder Termin müssen nicht in einem F
 werden. Optional kann die Person eine nur für die Eventverwaltung sichtbare kurze Notiz angeben;
 sie ist nicht erforderlich.
 
-Nur eine feste, für den aktuellen Planungsstand bestätigte Zusage zählt für:
+Nur eine feste, für die aktuelle Terminrevision bestätigte Zusage zählt für:
 
 - sichere Teilnehmerzahl und Kapazität,
 - Beitrag pro Kopf und Zahlungsaufforderung,
@@ -271,7 +274,7 @@ Teilnehmer festgehalten werden, nur weil eine Rückzahlung organisatorisch noch 
 
 Eine spätere Absage läuft atomar:
 
-1. Teilnahmezustand und Bestätigungsrevision werden aktualisiert.
+1. Teilnahmezustand und bestätigte Terminrevision werden aktualisiert.
 2. Die Person zählt sofort nicht mehr als aktuelle feste Teilnahme.
 3. Eine aktive Eventzuordnung und laufendes Tracking für dieses Event werden sicher beendet.
 4. Bereits gespeicherte Zahlungen und Zahlungssnapshots bleiben erhalten.
@@ -282,35 +285,48 @@ Abstimmungsantworten werden bei einer Absage nicht gelöscht. Sie bleiben als hi
 Planungsinformation erhalten. Ein Eventabbruch oder Eventende sperrt neue Zusagen, lässt den eigenen
 historischen Zustand aber lesbar.
 
-### 7. Wesentliche Entscheidungen und erneute Bestätigung
+### 7. Terminwechsel, andere Planänderungen und Information
 
-Das Event besitzt eine `participation_revision`. Sie beschreibt den Planungsstand, auf den sich
-eine feste Zu- oder Absage bezieht. Die folgenden Änderungen erhöhen diese Revision genau einmal,
-unabhängig davon, ob sie aus einer Abstimmungsentscheidung oder einer direkten Eventbearbeitung
-entstehen:
+Nur ein neuer oder geänderter Termin macht eine frühere feste Zu- oder Absage fachlich veraltet.
+Das gilt unabhängig davon, ob der Termin aus einer Abstimmungsentscheidung oder einer direkten
+Eventbearbeitung stammt. Dafür bleibt die bestehende `schedule_revision` maßgeblich:
 
-- neuer oder geänderter Termin,
-- ein anderer ausgewählter Ort; reine Korrekturen an Schreibweise, Notiz oder Link zählen nicht,
-- geänderte Dauer,
-- erstmals festgelegter oder erhöhter verpflichtender Beitrag; eine Verringerung zählt nicht,
-- eine andere, beim Anlegen der Abstimmung ausdrücklich als teilnahmerelevant markierte
-  Entscheidung.
-
-Reine Textkorrekturen, Abstimmungsergebnisse ohne Übernahme, optionale Programmpunkte oder ein
-niedrigerer Preis erhöhen die Revision nicht automatisch.
-
-Nach einer Erhöhung bleiben alle bisherigen Antworten historisch erhalten:
-
+- ein Terminwechsel erhöht `schedule_revision` genau einmal,
 - eine frühere feste Zusage wird zu „Erneute Bestätigung erforderlich“ und zählt bis zur neuen
   Antwort nicht mehr als feste Teilnahme,
-- eine frühere Absage wird als „Antwort vor Planänderung“ dargestellt und kann neu beantwortet
+- eine frühere Absage wird als „Antwort vor Terminänderung“ dargestellt und kann neu beantwortet
   werden,
-- „Interessiert“ bleibt interessiert, weil dieser Zustand bewusst noch keine Bindung ausdrückt,
+- „Interessiert“ bleibt interessiert,
 - Zahlungen werden niemals gelöscht oder zurückgesetzt.
 
-Vor einer revisionsauslösenden Entscheidung zeigt die Oberfläche, wie viele Zusagen und Absagen
-dadurch veralten und welche Zahlungen betroffen sind. Die Verwaltung kann anschließend gezielt an
-alle Personen mit offener erneuter Bestätigung erinnern.
+Andere Planänderungen machen eine Zu- oder Absage nicht ungültig. Das gilt insbesondere für:
+
+- Ort, Unterkunft, Adresse oder Kartenlink,
+- Dauer,
+- Preis, Budget oder verpflichtenden Beitrag,
+- Programm, Verpflegung, Anreise und Ausstattung,
+- eigene als Entscheidung übernommene Abstimmungen.
+
+Bei diesen Änderungen bleibt eine feste Zusage fest und wird weiterhin in Teilnehmerzahl, Preis
+pro Kopf und Tracking berücksichtigt. Betroffene Personen müssen jedoch persönlich informiert
+werden. Die Information wird sowohl bei einer übernommenen Abstimmungsentscheidung als auch bei
+einer direkten Änderung derselben Eventdaten ausgelöst und enthält:
+
+- verständlich, was sich geändert hat,
+- bei Ort, Dauer und Preis den bisherigen und den neuen Stand,
+- einen direkten Link zum Event beziehungsweise zum Tab „Abstimmungen“,
+- die sichtbare Möglichkeit, die eigene Teilnahme anschließend auf „Interessiert“ oder „Abgesagt“
+  zu ändern.
+
+Informiert werden mindestens alle aktuell fest zugesagten und interessierten Personen sowie offene
+Eventeingeladene, die von der Entscheidung betroffen sind. Bereits abgesagte Personen erhalten
+diese Planänderungen standardmäßig nicht. Eingeladene einer konkreten Abstimmung erhalten deren
+Entscheidungsnachricht unabhängig vom Teilnahmezustand.
+
+Benachrichtigung, Audit-Eintrag und Realtime-Aktualisierung werden genau einmal an die erfolgreiche
+Änderung gebunden. Schlägt die persönliche Zustellung vorübergehend fehl, bleibt die Änderung
+gespeichert und die Benachrichtigung wird idempotent erneut versucht. Eine Änderung an
+Schreibweise oder Notiz ohne fachlich neuen Wert darf keine unnötige Änderungsnachricht erzeugen.
 
 ### 8. Neue Abstimmungsrunde und Historie
 
@@ -384,10 +400,10 @@ Die gespeicherten Zustände sind `invited`, `interested`, `accepted` und `declin
 aus Status und Revision der abgeleitete UI-Zustand `needs_confirmation` gebildet. Er ist kein
 fünfter frei wählbarer Status.
 
-Nur `accepted` mit
-`confirmed_participation_revision = events.participation_revision` ist aktuell fest zugesagt.
-Diese Bedingung wird als gemeinsames Prädikat zentralisiert und in Preis, Tracking, Sichtbarkeit,
-Teilnehmerzahl und aktiver Eventauswahl wiederverwendet.
+Nur `accepted` mit `confirmed_schedule_revision = events.schedule_revision` ist aktuell fest
+zugesagt. Diese Bedingung wird als gemeinsames Prädikat zentralisiert und in Preis, Tracking,
+Sichtbarkeit, Teilnehmerzahl und aktiver Eventauswahl wiederverwendet. Änderungen außerhalb des
+Termins verändern diese Revisionen nicht.
 
 ## Änderungen während einer offenen Abstimmung
 
@@ -402,8 +418,7 @@ verwenden eigene Aktionen:
 - Das Entfernen einer Person löscht ihre Antworten dieser Runde kaskadierend, entzieht ihren
   Rundenzugriff und zeigt vorher einen Bestätigungsdialog. Ihr Event-Teilnahmezustand bleibt davon
   unberührt.
-- Antwortmodus, Thema und Kennzeichnung „teilnahmerelevant“ sind nach der ersten abgegebenen
-  Antwort unveränderlich.
+- Antwortmodus und Thema sind nach der ersten abgegebenen Antwort unveränderlich.
 - Diese Änderungen sind nur in `open` erlaubt; sonst folgt 409.
 
 ## Berechtigungen und Sichtbarkeit
@@ -432,12 +447,11 @@ werden in ein allgemeines Modell überführt, ohne Historie zu verlieren:
       ...
       starts_at NULLABLE
       ends_at NULLABLE
-      participation_revision INTEGER NOT NULL DEFAULT 0
+      schedule_revision INTEGER NOT NULL DEFAULT 0
 
     event_polls
       id, event_id, topic, decision_key, round_number, title, description,
-      response_mode, participation_relevant, response_due_at,
-      status, created_by, created_at, updated_at
+      response_mode, response_due_at, status, created_by, created_at, updated_at
 
     event_poll_options
       id, poll_id, label, description, position,
@@ -462,7 +476,7 @@ werden in ein allgemeines Modell überführt, ohne Historie zu verlieren:
     event_participants
       ...
       status in invited | interested | accepted | declined
-      confirmed_participation_revision INTEGER
+      confirmed_schedule_revision INTEGER
       participation_note TEXT NULL
 
 `topic` verwendet eine interne Allow-List wie `date_range`, `location`, `duration`, `budget`,
@@ -494,7 +508,8 @@ Wichtige Constraints:
 - Antworten referenzieren eine Einladung derselben Runde,
 - Entscheidungsoptionen referenzieren Optionen derselben Runde und beachten Einzel- oder
   Mehrfachwahl,
-- Entscheidung, Eventfelder und Teilnahme-Revision werden in einer Transaktion geändert.
+- Entscheidung und Eventfelder werden in einer Transaktion geändert; nur eine Terminentscheidung
+  erhöht dabei zusätzlich die `schedule_revision`.
 
 Terminoptionen verwenden weiterhin streng validierte lokale ISO-Kalenderdaten (`YYYY-MM-DD`).
 Zeitpunkte wie Fristen und Erinnerungen werden als UTC-Millisekunden gespeichert. Die
@@ -541,16 +556,26 @@ Realtime-Signal. Push-Nachrichten bleiben persönlich.
 
 ## UI-Struktur
 
-Die Eventdetailansicht folgt dieser Reihenfolge:
+„Abstimmungen“ ist ein eigener Tab direkt unter „Orga“, auf derselben Navigationsebene wie
+„Events“. Die Zuordnung zum Event wird nicht über verschachtelte Eventkarten versteckt, sondern im
+Tab selbst deutlich gezeigt:
 
-1. kompakter Eventkopf mit Status und bekannten Eckdaten,
-2. Teilnahmebereich mit eigener Auswahl „Interessiert“, „Fest zusagen“ und „Absagen“,
-3. Zusammenfassung „fest / interessiert / offen / abgesagt“,
-4. Bereich „Abstimmungen“ mit offenen Abstimmungen zuerst,
-5. je Abstimmung Frist, Fortschritt, eigene Antwort und einklappbares Ergebnis,
-6. getrennte Verwaltungsaktionen „Abstimmung starten“, „Schließen“, „Entscheiden“ und „Erinnern“,
-7. einklappbare Historie früherer Abstimmungen und Entscheidungen,
-8. optionale Bereiche für Teilnehmende, Unterkunft, Bezahlung, Programm und Abrechnung.
+1. Eventauswahl beziehungsweise Eventfilter im Kopf,
+2. „Meine offenen Abstimmungen“ mit noch fehlenden eigenen Antworten,
+3. offene Abstimmungen des gewählten Events,
+4. je Abstimmung Frist, Fortschritt, eigene Antwort und einklappbares Ergebnis,
+5. Verwaltungsaktionen „Abstimmung starten“, „Schließen“, „Entscheiden“ und „Erinnern“,
+6. entschiedene und abgebrochene Abstimmungen in einer einklappbaren Historie.
+
+Der Tab ist für alle aktiven Personen sichtbar, die mindestens eine Abstimmung sehen dürfen. Seine
+Position unter „Orga“ verleiht keine zusätzlichen Verwaltungsrechte; Erstellen und Entscheiden
+bleiben serverseitig geschützt. Ein Link aus Event, Benachrichtigung oder Startseite öffnet den Tab
+mit vorausgewähltem Event und fokussierter Abstimmung.
+
+Die Eventdetailansicht behält Teilnahmeauswahl, Zusammenfassung „fest / interessiert / offen /
+abgesagt“ und die optionalen Eventmodule. Sie zeigt nur eine kompakte Abstimmungszusammenfassung mit
+Anzahl offener eigener Antworten und einen Link „Zu den Abstimmungen“, nicht den vollständigen
+Abstimmungsbereich.
 
 Beim Anlegen einer Abstimmung zeigt die UI zuerst die fünf häufigsten Vorlagen:
 
@@ -568,13 +593,14 @@ Design-System-Abstände. Auf dem Telefon stehen Optionen untereinander. Status s
 beschriftet und nicht nur über Farbe erkennbar. „Interessiert“ und „Fest zugesagt“ müssen auch ohne
 Farben eindeutig unterscheidbar sein.
 
-Bei neuen wesentlichen Entscheidungen unterscheidet die UI klar:
+Bei Entscheidungen und Änderungen unterscheidet die UI klar:
 
 - „Bisheriger Stand“,
 - „Abstimmung läuft“,
 - „Entscheidung übernommen“,
-- „Erneute Bestätigung erforderlich“,
-- „Für aktuellen Stand fest zugesagt“.
+- bei Terminänderung „Erneute Bestätigung erforderlich“,
+- bei anderen Änderungen „Deine Zusage bleibt gültig“ mit sichtbarer Möglichkeit zur Änderung,
+- „Für aktuellen Termin fest zugesagt“.
 
 ## Migration und Kompatibilität
 
@@ -588,10 +614,8 @@ Generalisierung erfolgt in einer neuen fortlaufenden Migration und bewahrt alle 
 - `scheduled` wird im allgemeinen Modell zu `decided`, ohne die ausgewählte Terminoption zu
   verlieren,
 - eine Submission wird für jede Person erzeugt, deren bisherige Terminantwort vollständig ist,
-- `events.schedule_revision` wird in `participation_revision` überführt oder während einer klar
-  begrenzten Kompatibilitätsphase synchron gehalten,
-- `event_participants.confirmed_schedule_revision` wird entsprechend nach
-  `confirmed_participation_revision` migriert,
+- `events.schedule_revision` und `event_participants.confirmed_schedule_revision` bleiben als
+  terminbezogene Bestätigungslogik unverändert erhalten,
 - `interested` wird dem Status-Constraint hinzugefügt; Bestandszeilen behalten ihren bisherigen
   Zustand,
 - der bisherige `POST /api/events/planning` wird durch den allgemeinen Event-Endpunkt ersetzt und
@@ -618,21 +642,24 @@ Die Umsetzung umfasst mindestens:
   können, aber pro `decision_key` nur eine unentschiedene Runde existiert,
 - Tests für vollständige Submission, explizite Enthaltung und atomare Änderung der eigenen Antwort,
 - Tests für stabile Empfehlungen, sichtbare Gleichstände und bewusste Entscheidungen,
-- Paralleltests für Schließen, Wiederöffnen, Entscheiden und konkurrierende Revisionsänderungen,
+- Paralleltests für Schließen, Wiederöffnen, Entscheiden und konkurrierende Terminrevisionen,
 - Tests für `interested`, alle erlaubten Selbstwechsel und insbesondere spätere Absage nach fester
   Zusage,
 - Tests, dass Interessierte und veraltete Zusagen weder Preis pro Kopf noch Tracking, Kapazität oder
   aktive Teilnehmerzahl beeinflussen,
 - Tests, dass eine Absage aktives Tracking und Eventzuordnung beendet, Zahlungen aber erhält,
-- Tests, dass wesentliche Entscheidungen genau eine Teilnahme-Revision erzeugen und harmlose
-  Änderungen keine,
-- Tests für erneute Bestätigung nach Termin-, Orts-, Dauer- und relevanter Preisänderung,
+- Tests, dass nur ein Terminwechsel genau eine neue `schedule_revision` erzeugt und eine erneute
+  Bestätigung verlangt,
+- Tests, dass Änderungen an Ort, Dauer, Preis und anderen Planungswerten die Zusage gültig lassen,
+  aber genau eine persönliche Änderungsnachricht pro betroffener Person erzeugen,
+- Tests für idempotente Wiederholung fehlgeschlagener Änderungsnachrichten und für die
+  Unterdrückung rein redaktioneller Benachrichtigungen,
 - Tests für Owner-Vertretung und dafür, dass Verwalter keine fremde feste Zusage stillschweigend
   erzeugen,
 - Migrationstests für bestehende Terminrunden, Bestandsstatus, Legacy-Datenbank, Wiederholung,
   Kaskaden und Rollback,
-- E2E-Tests in zwei Browsern für Realtime, Tastatur, Touch, mobile Breite und Änderung der eigenen
-  Teilnahme,
+- E2E-Tests in zwei Browsern für den eigenen Orga-Tab, vorausgewählte Event-Deep-Links, Realtime,
+  Tastatur, Touch, mobile Breite und Änderung der eigenen Teilnahme,
 - Zeitzonentests für Terminoptionen über Sommer- und Winterzeitwechsel.
 
 Vor Abschluss laufen im Serverbereich mindestens `npm run lint`, `npm run build`, `npm test`,
@@ -644,6 +671,7 @@ Testlauf-Performance-Check.
 ### MVP des allgemeinen Abstimmungsbereichs
 
 - ein einheitlicher Erstellungsweg für reguläre Events mit optional noch fehlenden Eckdaten,
+- ein eigener Tab „Abstimmungen“ direkt unter „Orga“ mit Eventfilter und offenen eigenen Antworten,
 - mehrere parallele Abstimmungen pro Event, aber höchstens eine offene Runde je
   Entscheidungsstrang,
 - Vorlagen für Termin, Ort, Dauer und Budget sowie eine eigene Abstimmung,
@@ -651,7 +679,8 @@ Testlauf-Performance-Check.
 - Frist, Erinnerungen, Ergebnisübersicht, bewusste Entscheidung und Historie,
 - Teilnahmezustände offen, interessiert, fest zugesagt und abgesagt,
 - jederzeitige eigene Änderung einschließlich späterer Absage,
-- allgemeine Teilnahme-Revision für wesentliche Planänderungen,
+- erneute Teilnahmebestätigung nur nach einem Terminwechsel,
+- persönliche Information bei Änderungen an Ort, Dauer, Preis und anderen Planungsentscheidungen,
 - Erhalt bestehender Zahlungen und Abstimmungshistorie,
 - Migration der bereits gebauten Terminabstimmung in das allgemeine Modell.
 
@@ -674,6 +703,8 @@ Kalender-Synchronisation und vollautomatische Entscheidungen.
 
 - Es gibt nur „Event anlegen“; weder Oberfläche noch Ziel-API erzeugen einen separaten
   Planungs-Event-Typ.
+- Unter „Orga“ gibt es einen eigenen Tab „Abstimmungen“; ein Eventlink öffnet ihn mit dem richtigen
+  Event und der richtigen Abstimmung.
 - Das Event besitzt vom Beginn der Planung bis zur Abrechnung dieselbe ID.
 - Ein Event ohne Termin, Ort oder Preis verursacht in keiner Ansicht ungültige Werte und kann weder
   Tracking noch aktive Eventzuordnung auslösen.
@@ -687,10 +718,10 @@ Kalender-Synchronisation und vollautomatische Entscheidungen.
 - Eine Person kann nach einer festen Zusage selbst auf „Interessiert“ oder „Abgesagt“ wechseln.
 - Eine Absage entfernt die Person sofort aus aktuellen Teilnehmer-, Preis- und Trackingabfragen,
   ohne Zahlungen oder Abstimmungshistorie zu löschen.
-- Eine wesentliche Entscheidung aktualisiert Abstimmung, Eventfelder und Teilnahme-Revision genau
-  einmal und atomar.
-- Nach einer wesentlichen Änderung müssen frühere feste Zusagen erneut bestätigt werden; bis dahin
-  zählen sie nicht als aktuelle Teilnahme.
+- Ein Terminwechsel aktualisiert Abstimmung, Eventzeitraum und `schedule_revision` genau einmal und
+  atomar; frühere feste Zusagen müssen nur dann erneut bestätigt werden.
+- Änderungen an Ort, Dauer, Preis oder anderen Planungswerten lassen feste Zusagen gültig und
+  informieren die betroffenen Personen persönlich über den alten und neuen Stand.
 - Eine neue Runde überschreibt keine frühere Runde und kann ohne Änderung des bisherigen
   Eventstands abgebrochen werden.
 - Gleichzeitiges Entscheiden erzeugt genau ein Ergebnis; konkurrierende Requests erhalten 409.
