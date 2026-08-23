@@ -228,10 +228,14 @@ test('planning event: creator starts a poll, a normal member votes by keyboard/t
   await inviteButton.click();
   await ownerPage.locator('.toast', { hasText: 'Einladung gesendet' }).waitFor();
   await ownerPage.click('.modal-backdrop [data-close]');
+  // Invitations are answered from Profile's own "Einladungen" section, not
+  // inline in the Events tab.
+  await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'profile' })));
   const memberAccept = memberPage.locator(`[data-accept-invitation="${eventId}"]`);
   await memberAccept.waitFor();
   await memberAccept.click();
-  await memberEventCard.locator('[data-accept-invitation]').waitFor({ state: 'detached' });
+  await memberAccept.waitFor({ state: 'detached' });
+  await goToEvents(memberPage);
 
   // --- Reschedule: the creator starts a new round; the previous acceptance
   // is kept but goes stale until reconfirmed. ---
