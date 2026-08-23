@@ -226,11 +226,13 @@ feste Zusage. Gründe wie Preis, Ort, Dauer oder Termin müssen nicht in einem F
 werden. Optional kann die Person eine nur für die Eventverwaltung sichtbare kurze Notiz angeben;
 sie ist nicht erforderlich.
 
-Nur eine feste, für die aktuelle Terminrevision bestätigte Zusage zählt für:
+„Interessiert“ reicht aus, um das Event oben rechts als Planungskontext auszuwählen und seine
+Abstimmungen zu beantworten. Die übrigen Regeln bleiben bewusst strenger: Nur eine feste, für die
+aktuelle Terminrevision bestätigte Zusage zählt für:
 
 - sichere Teilnehmerzahl und Kapazität,
 - Beitrag pro Kopf und Zahlungsaufforderung,
-- aktive Eventauswahl und Tracking,
+- bestätigte Teilnehmerzahl sowie Tracking- und Abrechnungszuordnung,
 - Auswertungen, die tatsächliche Teilnahme voraussetzen.
 
 „Interessiert“ wird separat als Planungspotenzial angezeigt, beispielsweise „8 fest, 4
@@ -384,9 +386,11 @@ aus Status und Revision der abgeleitete UI-Zustand `needs_confirmation` gebildet
 fünfter frei wählbarer Status.
 
 Nur `accepted` mit `confirmed_schedule_revision = events.schedule_revision` ist aktuell fest
-zugesagt. Diese Bedingung wird als gemeinsames Prädikat zentralisiert und in Preis, Tracking,
-Sichtbarkeit, Teilnehmerzahl und aktiver Eventauswahl wiederverwendet. Änderungen außerhalb des
-Termins verändern diese Revisionen nicht.
+zugesagt. Diese Bedingung wird als gemeinsames Prädikat zentralisiert und in Preis, Tracking und
+Teilnehmerzahl wiederverwendet. Für Sichtbarkeit und die aktive Eventauswahl gilt zusätzlich
+`interested`, damit eine Person unter Vorbehalt im gewählten Event an der Planung teilnehmen kann,
+ohne in belastbare Zusagen einzufließen. Änderungen außerhalb des Termins verändern diese
+Revisionen nicht.
 
 ## Änderungen während einer offenen Abstimmung
 

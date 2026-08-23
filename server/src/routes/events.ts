@@ -35,7 +35,7 @@ import { broadcast, Events, switchPlayerEventScope } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { isNonEmptyString, isValidPaypalUrl } from '../validation';
-import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
+import { EVENT_WORKSPACE_PARTICIPANT_SQL } from '../eventParticipation';
 import type { GroupRole } from '../groups';
 import { requireConfiguredGroupMembership, requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { requireRecentReauthentication } from '../sessions';
@@ -286,8 +286,9 @@ function serializeEventSummary(
   };
 }
 
-// GET /api/events - the account's active workspace, accepted workspaces and
-// invitation teasers. Admins additionally receive the full management list.
+// GET /api/events - the account's active workspace, accepted/interested
+// workspaces and invitation teasers. Admins additionally receive the full
+// management list.
 eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
   const playerId = req.player!.id;
   const canManage = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
@@ -297,7 +298,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
       `SELECT e.*
        FROM events e
        JOIN event_participants ep ON ep.event_id = e.id
-       WHERE ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
+       WHERE ep.player_id = ? AND ${EVENT_WORKSPACE_PARTICIPANT_SQL}
          AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
        ORDER BY e.id = ? DESC, e.starts_at DESC, e.name COLLATE NOCASE`,
     )
@@ -307,7 +308,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
       `SELECT e.*
        FROM events e
        JOIN event_participants ep ON ep.event_id = e.id
-       WHERE ep.player_id = ? AND ep.status IN ('invited', 'interested')
+       WHERE ep.player_id = ? AND ep.status = 'invited'
          AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
        ORDER BY e.starts_at, e.name COLLATE NOCASE`,
     )

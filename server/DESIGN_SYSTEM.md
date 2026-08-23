@@ -741,7 +741,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   workspace switcher: neither the tab nor its create dialog contains a second event picker. With
   „Allgemein“ active it shows an explicit select-an-event empty state. Open rounds and their result
   history stay together, and the surface offers the reversible personal states „Interessiert“,
-  „Zugesagt“ and „Abgesagt“. Event cards do not embed or link to poll controls. Documenting a poll
+  „Zugesagt“ and „Abgesagt“. „Interessiert“ makes the event selectable in that top-right switcher
+  for planning without counting as confirmed attendance. Event cards do not embed or link to poll controls. Documenting a poll
   result changes no event field, schedule revision or participation state; the confirmation dialog
   and result notification say this explicitly. A future explicit „apply to event“ interaction is
   outside the current UI.

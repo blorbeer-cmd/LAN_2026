@@ -67,8 +67,10 @@ export function accessibleEvents() {
   return state.historicalEvents ?? [];
 }
 
-// The workspaces the account can actually switch into right now. The topbar
-// switcher is its only consumer; everything historical belongs above.
+// The workspaces the account can actually switch into right now. Besides
+// confirmed participation this includes an explicit "Interesse", so planning
+// polls remain reachable before a final commitment. The topbar switcher is
+// its only consumer; everything historical belongs above.
 export function selectableEventWorkspaces() {
   return state.availableEvents ?? [];
 }

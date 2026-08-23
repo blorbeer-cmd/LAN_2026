@@ -251,6 +251,12 @@ test('generic poll results stay separate from event data and participation', asy
     .send({ status: 'interested' });
   assert.equal(interested.status, 200, JSON.stringify(interested.body));
   assert.equal(interested.body.status, 'interested');
+  const selectedWhileInterested = await request(app)
+    .put('/api/me/active-event')
+    .set('x-test-player-id', member)
+    .send({ eventId });
+  assert.equal(selectedWhileInterested.status, 200, JSON.stringify(selectedWhileInterested.body));
+  assert.equal(selectedWhileInterested.body.id, eventId);
   const accepted = await request(app)
     .put(`/api/events/${eventId}/my-participation`)
     .set('x-test-player-id', member)

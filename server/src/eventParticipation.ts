@@ -17,3 +17,11 @@ export type EventParticipationStatus = 'invited' | 'interested' | 'accepted' | '
 // clause.
 export const ACCEPTED_EVENT_PARTICIPANT_SQL =
   "ep.status = 'accepted' AND ep.confirmed_schedule_revision = (SELECT e_rev.schedule_revision FROM events e_rev WHERE e_rev.id = ep.event_id)";
+
+// Workspace access is intentionally broader than confirmed attendance. A
+// person who answered "Interesse" needs to select the event in the global
+// switcher in order to take part in its planning polls. They still do not
+// satisfy ACCEPTED_EVENT_PARTICIPANT_SQL, so headcounts, costs and confirmed
+// rosters remain accepted-only.
+export const EVENT_WORKSPACE_PARTICIPANT_SQL =
+  `(ep.status = 'interested' OR (${ACCEPTED_EVENT_PARTICIPANT_SQL}))`;

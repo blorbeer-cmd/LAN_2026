@@ -176,8 +176,8 @@ test('the Orga poll tab uses the top-right active event and documents results wi
   await eventCard.waitFor();
   const eventId = (await eventCard.getAttribute('data-event-card')) as string;
 
-  // Join both accounts to make the existing global workspace switcher offer
-  // the event. The member first uses the provisional invitation state.
+  // Join the owner and let the member stay in the provisional interest state.
+  // Both states make the existing global workspace switcher offer the event.
   const ownerId = await currentPlayerId(ownerPage);
   const memberId = await currentPlayerId(memberPage);
   await invitePlayer(ownerPage, eventId, ownerId);
@@ -187,8 +187,6 @@ test('the Orga poll tab uses the top-right active event and documents results wi
   await invitation.waitFor();
   await invitation.locator('[data-interest-invitation]').tap();
   await memberPage.locator('.toast', { hasText: 'Interesse vermerkt' }).waitFor();
-  await memberPage.locator('[data-pending-invitation]', { hasText: EVENT_NAME }).locator('[data-accept-invitation]').tap();
-  await memberPage.locator('.toast', { hasText: 'Zugesagt' }).waitFor();
   await acceptEvent(ownerPage, eventId);
 
   // The event is selected once in the top-right global control. The poll tab
