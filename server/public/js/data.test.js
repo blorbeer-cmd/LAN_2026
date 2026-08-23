@@ -21,6 +21,7 @@ test('event context keeps the personal workspace separate from invitations', () 
     normalizeEventContext({
       activeEvent: lan,
       availableEvents: [base, lan],
+      endedEvents: [past],
       historicalEvents: [base, lan, past],
       invitations: [invitation],
     }),
@@ -30,6 +31,7 @@ test('event context keeps the personal workspace separate from invitations', () 
       activeEvent: lan,
       availableEvents: [base, lan],
       plannedEvents: [],
+      endedEvents: [past],
       historicalEvents: [base, lan, past],
       eventInvitations: [invitation],
     },
@@ -45,6 +47,12 @@ test('plannedEvents (draft/stale date-poll events outside the workspace list) pa
     [planning],
   );
   assert.deepEqual(normalizeEventContext({ availableEvents: [base] }).plannedEvents, [], 'defaults to empty');
+});
+
+test("a member's own ended events default to an empty list", () => {
+  const available = [{ id: 'base', name: 'Allgemein' }];
+
+  assert.deepEqual(normalizeEventContext({ availableEvents: available }).endedEvents, []);
 });
 
 test('the participation history falls back to the switchable workspaces', () => {

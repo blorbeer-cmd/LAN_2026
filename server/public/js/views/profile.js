@@ -19,6 +19,7 @@ import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { confirmDialog, openModal } from '../modal.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { pendingEventInvitations, renderInvitationCard, wirePendingInvitationActions } from './events.js';
 
 const TRACKING_PAUSE_HELP = 'Pausiert Live-Status und Spielzeit. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
 const ACTIVITY_TRACKING_HELP = 'Erfasst zusätzlich, ob das Spielfenster im Vordergrund ist. Der Wert lässt sich später in der Agent-Steuerung ändern.';
@@ -293,12 +294,26 @@ export function renderProfile(container, ctx) {
   const hasAnyRating =
     state.skills.some((s) => s.player_id === myId) || state.preferences.some((p) => p.player_id === myId);
 
+  // Event invitations lead the page: they need a response and would
+  // otherwise sit unnoticed above Orga's Events cards (see events.js's
+  // renderInvitationCard/pendingEventInvitations, also linked from Home's
+  // "Aktuell" list in aktuellStatus.js).
+  const pendingInvitations = pendingEventInvitations();
+
   container.innerHTML = `
     <div class="row-between profile-page-header">
-      <h1 class="view-title">Mein Profil</h1>
+      <h1 class="view-title" id="profile-view-title" tabindex="-1">Mein Profil</h1>
       <button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>
     </div>
     <div class="grouped-page-sections">
+      ${
+        pendingInvitations.length > 0
+          ? `<section class="card stack grouped-page-section" aria-labelledby="profile-invitations-title">
+               <div class="grouped-page-section-title"><h2 id="profile-invitations-title" tabindex="-1">Einladungen</h2></div>
+               <div class="stack orga-event-grid">${pendingInvitations.map(renderInvitationCard).join('')}</div>
+             </section>`
+          : ''
+      }
       <section class="card stack grouped-page-section" aria-label="Profildaten">
         <div class="profile-identity-editor">
           <div class="profile-identity-fields">
@@ -423,6 +438,7 @@ export function renderProfile(container, ctx) {
   `;
 
   wireInfoTooltips(container);
+  wirePendingInvitationActions(container, ctx);
 
   container.querySelector('#profile-logout').addEventListener('click', () => logout());
   container.querySelectorAll('[data-password-toggle]').forEach((button) => {

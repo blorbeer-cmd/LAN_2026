@@ -175,9 +175,13 @@ function paymentManagementFields(
   };
 }
 
-// Shared shape for a plain member's own event card, used both by the normal
-// `availableEvents` workspace list and by `plannedEvents` (drafts/stale
-// acceptances that stay outside that workspace list — see its comment above).
+// Shared shape for a plain member's own event card — the normal
+// `availableEvents` workspace list, `plannedEvents` (drafts/stale acceptances
+// that stay outside that workspace list — see its comment below) and
+// `endedEvents` (this account's own finished events, kept out of
+// availableEvents for the same "not a switchable workspace" reason) all need
+// the identical accepted-participant/payment/myParticipation detail to render
+// the same card component.
 function serializeMemberEvent(event: EventRow, playerId: string, viewerRole: GroupRole | undefined) {
   const managementFields = paymentManagementFields(event, playerId, viewerRole);
   return {
@@ -307,6 +311,23 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        ORDER BY e.starts_at, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
+  // A member's own accepted events that have since ended. `availableEvents`
+  // deliberately excludes these — it answers "where can I switch to right
+  // now", not "what did I finish" (see the dedicated test below) — but the
+  // Events tab's own collapsed "Historie" section needs the same rich
+  // accepted-participant/payment detail `availableEvents` carries, which the
+  // lighter `historicalEvents` summary (built for the analytics event filter)
+  // does not. Hence its own query rather than reusing either.
+  const endedEvents = db
+    .prepare(
+      `SELECT e.*
+       FROM events e
+       JOIN event_participants ep ON ep.event_id = e.id
+       WHERE ep.player_id = ? AND ep.status = 'accepted'
+         AND e.id != ? AND e.group_id = ? AND e.status = 'ended'
+       ORDER BY e.starts_at DESC, e.name COLLATE NOCASE`,
+    )
+    .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
   // Two cases where a plain member needs to see an event's card outside the
   // normal `availableEvents` workspace list, both centered on the date poll:
   //   1. A planning event has no event_participants row at all until a date
@@ -392,6 +413,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
     // its own cost/PayPal/payment box are still relevant while the member
     // decides whether to reconfirm — so this reuses the identical serializer.
     plannedEvents: plannedEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
+    endedEvents: endedEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
     historicalEvents: historicalEvents.map((event) => serializeEventSummary(event)),
     invitations: invitations.map((event) => ({ ...serializeEventSummary(event), participationStatus: 'invited' })),
     ...(managedEvents ? { managedEvents } : {}),
@@ -508,7 +530,7 @@ eventsRouter.post('/:id/invitations', resolveEvent, requireGroupRole('admin'), (
       {
         title: 'Event-Einladung',
         body: `${event.name}: Du wurdest eingeladen.`,
-        url: '/#events',
+        url: '/#profile',
       },
       'direct',
       { key: eventInvitationTopicKey(event.id, playerId) },

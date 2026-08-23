@@ -822,6 +822,43 @@ test('the participation history keeps a finished event available to personal ana
   assert.equal(scoped.body.eventId, eventId);
 });
 
+test("a member's own ended event moves into their Historie with full card detail", async () => {
+  // availableEvents intentionally excludes an ended event (see the test
+  // above); the Events tab's own collapsed "Historie" for a plain member
+  // needs the same rich accepted-participant/payment detail an active member
+  // card has, which the lighter historicalEvents summary does not carry.
+  // That is what `endedEvents` exists for (see events.js's renderEventSection).
+  const memberId = 'historie-member';
+  createMember(memberId, 'Historie Member');
+  const created = await createEvent('Historie LAN');
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const eventId = created.body.id as string;
+  accept(eventId, memberId);
+
+  const beforeEnd = await request(app).get('/api/events').set('x-test-player-id', memberId);
+  assert.equal(beforeEnd.status, 200);
+  assert.ok(beforeEnd.body.availableEvents.some((event: { id: string }) => event.id === eventId));
+  assert.equal(beforeEnd.body.endedEvents.length, 0);
+
+  assert.equal((await request(app).post(`/api/events/${eventId}/end`)).status, 200);
+
+  const afterEnd = await request(app).get('/api/events').set('x-test-player-id', memberId);
+  assert.equal(afterEnd.status, 200);
+  assert.equal(
+    afterEnd.body.availableEvents.some((event: { id: string }) => event.id === eventId),
+    false,
+    'still not a switchable workspace',
+  );
+  const ended = afterEnd.body.endedEvents.find((event: { id: string }) => event.id === eventId);
+  assert.ok(ended, 'the ended event reaches the member through its own field');
+  assert.equal(ended.isEnded, true);
+  assert.ok(
+    Array.isArray(ended.acceptedParticipants) &&
+      ended.acceptedParticipants.some((p: { playerId: string }) => p.playerId === memberId),
+    'the card needs the same accepted-participant detail an active member card has',
+  );
+});
+
 test('the participation history drops an event that was called off', async () => {
   // Cancelling only flips events.status; roster and history rows survive, and
   // the server-side allowlist in historicallyParticipatedEventIds() does not

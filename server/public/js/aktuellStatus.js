@@ -246,6 +246,20 @@ export function aktuellItems() {
     });
   }
 
+  // Pending event invitations need a response, so they get the same personal
+  // nudge as an unrated skill. The full card with Annehmen/Ablehnen lives in
+  // Profile now (see events.js's renderInvitationCard) rather than sitting
+  // directly above the Events tab's own cards.
+  for (const invitation of state.eventInvitations ?? []) {
+    items.push({
+      id: `event-invitation:${invitation.id}`,
+      iconName: domainIcon('events'),
+      title: `Einladung: ${invitation.name}`,
+      sub: 'Annehmen oder ablehnen im Profil',
+      navigate: 'profile',
+    });
+  }
+
   if (state.votes?.open) {
     const voters = state.votes.totalVoters ?? 0;
     items.push({

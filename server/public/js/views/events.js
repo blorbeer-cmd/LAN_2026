@@ -33,6 +33,9 @@ export { invalidateEventDatePolls };
 const EVENT_HELP = 'Nur ein Event gleichzeitig erfasst Live-Status und Spielzeit.';
 const KIOSK_HELP = 'Zeigt Live-Status, Vote, Rang und Turnier; ein eigener Token ist erforderlich.';
 const expandedEventParticipants = new Set();
+// Mirrors foodOrders.js's Historie collapse: ended events start collapsed and
+// this survives the section's own live re-renders.
+let eventHistoryOpen = false;
 
 function renderKioskSection() {
   return `
@@ -517,6 +520,12 @@ function renderEventCard(event, ctx) {
   `;
 }
 
+// Newest first, independent of whatever order the API happens to return —
+// both the active list and the collapsed Historie read top-to-bottom by date.
+function byStartsAtDescending(a, b) {
+  return (b.startsAt ?? 0) - (a.startsAt ?? 0);
+}
+
 function renderEventSection(ctx) {
   // Only owner/admin receive `managedEvents`; a member's own accepted events
   // carry accepted participant names but no management roster/status data and
@@ -526,36 +535,28 @@ function renderEventSection(ctx) {
   // joins, it is where everyone already is.
   const canManage = Array.isArray(state.managedEvents);
   const realEvents = (canManage ? state.managedEvents : []).filter((e) => !e.isOutsideEvents && !e.isBase);
+  // A member's own ended events live in their own field (state.endedEvents)
+  // rather than state.availableEvents, which deliberately excludes them (see
+  // routes/events.ts) — merge both here so the split below can sort them into
+  // the active list and the collapsed Historie the same way managedEvents does.
   // A draft event a member is only invited to via a date poll round (not yet
-  // an accepted participant) lives in plannedEvents, kept separate from
-  // availableEvents so it never appears as a switchable workspace.
+  // an accepted participant), or a published event whose prior acceptance
+  // just went stale on reschedule, lives in plannedEvents instead — kept
+  // separate from availableEvents so it never appears as a switchable
+  // workspace, but still merged in here so its card is visible and sorts
+  // alongside everything else.
   const memberEvents = canManage
     ? []
-    : [...(state.availableEvents || []).filter((e) => !e.isBase), ...(state.plannedEvents || [])];
-  const cards = canManage
-    ? realEvents.map((event) => renderEventCard(event, ctx)).join('')
-    : memberEvents.map((event) => renderMemberEventCard(event, ctx)).join('');
-  const visibleEventCount = canManage ? realEvents.length : memberEvents.length;
-  const myId = getMyId();
-  // A teaser is all an invited account receives, so the invitation list comes
-  // from its own payload instead of a participant roster it never sees.
-  const pendingInvitations = myId ? state.eventInvitations || [] : [];
-  const invitationRows = pendingInvitations
-    .map(
-      (event) => `
-        <article class="card stack event-card event-card-invitation" data-pending-invitation="${event.id}">
-          <div class="row-between food-order-card-header event-card-header">
-            <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
-            <span class="badge badge-paused">Eingeladen</span>
-          </div>
-          ${renderEventInfo(event, { invitation: true })}
-          <div class="event-card-actions">
-            <button type="button" class="btn btn-primary" data-accept-invitation="${event.id}">Annehmen</button>
-            <button type="button" class="btn" data-decline-invitation="${event.id}">Ablehnen</button>
-          </div>
-        </article>`,
-    )
-    .join('');
+    : [...(state.availableEvents || []), ...(state.endedEvents || []), ...(state.plannedEvents || [])].filter(
+        (e) => !e.isBase,
+      );
+  const events = (canManage ? realEvents : memberEvents).slice().sort(byStartsAtDescending);
+  const renderCard = (event) => (canManage ? renderEventCard(event, ctx) : renderMemberEventCard(event, ctx));
+  const activeEvents = events.filter((e) => !e.isEnded);
+  const endedEvents = events.filter((e) => e.isEnded);
+  const activeEmptyText = events.length === 0
+    ? (canManage ? 'Noch keine Events angelegt.' : 'Du nimmst noch an keinem eigenen Event teil.')
+    : (canManage ? 'Keine laufenden Events.' : 'Aktuell kein laufendes Event.');
 
   return `
     <section class="card stack grouped-page-section" aria-labelledby="orga-events-title">
@@ -574,23 +575,80 @@ function renderEventSection(ctx) {
         }
       </div>
       ${
-        pendingInvitations.length > 0
-          ? `<div class="stack" aria-labelledby="orga-invitations-title">
-               <div class="section-title" id="orga-invitations-title" tabindex="-1">Ausstehende Einladungen</div>
-               <div class="stack orga-event-grid">${invitationRows}</div>
-             </div>`
-          : ''
+        activeEvents.length === 0
+          ? emptyStateHtml(activeEmptyText, { icon: icon('calendar') })
+          : `<div class="stack orga-event-grid">${activeEvents.map(renderCard).join('')}</div>`
       }
       ${
-        visibleEventCount === 0
-          ? emptyStateHtml(
-              canManage ? 'Noch keine Events angelegt.' : 'Du nimmst noch an keinem eigenen Event teil.',
-              { icon: icon('calendar') },
-            )
-          : `<div class="stack orga-event-grid">${cards}</div>`
+        endedEvents.length > 0
+          ? `<details class="card grouped-page-section collapsible-section" data-event-history ${eventHistoryOpen ? 'open' : ''}>
+               <summary class="collapsible-section-header">
+                 <h2>Historie</h2>
+                 <span class="collapsible-section-summary-end">
+                   <span class="badge badge-offline">${endedEvents.length}</span>
+                   <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+                 </span>
+               </summary>
+               <div class="collapsible-section-content">
+                 <div class="stack orga-event-grid">${endedEvents.map(renderCard).join('')}</div>
+               </div>
+             </details>`
+          : ''
       }
     </section>
   `;
+}
+
+// Single invitation card: cost/deadline disclosure plus accept/decline.
+// Rendered from Profile's own "Einladungen" section rather than here — a
+// teaser sitting directly above the Events cards made it too easy to miss and
+// cluttered the tab (see DESIGN_SYSTEM.md's "Orga" entry). Home's "Aktuell"
+// list gets a lightweight linking nudge instead (see aktuellStatus.js).
+export function renderInvitationCard(event) {
+  return `
+    <article class="card stack event-card event-card-invitation" data-pending-invitation="${event.id}">
+      <div class="row-between food-order-card-header event-card-header">
+        <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
+        <span class="badge badge-paused">Eingeladen</span>
+      </div>
+      ${renderEventInfo(event, { invitation: true })}
+      <div class="event-card-actions">
+        <button type="button" class="btn btn-primary" data-accept-invitation="${event.id}">Annehmen</button>
+        <button type="button" class="btn" data-decline-invitation="${event.id}">Ablehnen</button>
+      </div>
+    </article>`;
+}
+
+// A teaser is all an invited account receives, so the invitation list comes
+// from its own payload instead of a participant roster it never sees.
+export function pendingEventInvitations() {
+  return getMyId() ? state.eventInvitations || [] : [];
+}
+
+// Reused only by Profile's "Einladungen" section today, so it targets that
+// page's own headings directly (the same direct-ID pattern the previous
+// Events-tab handler used for #orga-invitations-title/#orga-events-title):
+// the refresh below replaces the invitation button's own DOM, so focus needs
+// an explicit, still-present target instead of being left to fall back to
+// <body>.
+export function wirePendingInvitationActions(container, ctx) {
+  container.querySelectorAll('[data-accept-invitation], [data-decline-invitation]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const accept = Boolean(btn.dataset.acceptInvitation);
+      const eventId = btn.dataset.acceptInvitation || btn.dataset.declineInvitation;
+      btn.disabled = true;
+      try {
+        if (accept) await api.events.acceptInvitation(eventId);
+        else await api.events.declineInvitation(eventId);
+        await ctx.refresh();
+        (container.querySelector('#profile-invitations-title') || container.querySelector('#profile-view-title'))?.focus();
+        showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
+      } catch (err) {
+        btn.disabled = false;
+        showToast(err.message, { error: true });
+      }
+    });
+  });
 }
 
 // Triggers a browser download of the event's PDF "Andenken" — a designed
@@ -971,6 +1029,10 @@ export function renderOrgaEvents(container, ctx) {
     });
   });
 
+  container.querySelector('[data-event-history]')?.addEventListener('toggle', (e) => {
+    eventHistoryOpen = e.currentTarget.open;
+  });
+
   container.querySelectorAll('[data-export-event]').forEach((btn) => {
     btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
   });
@@ -1028,23 +1090,6 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', () => {
       const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.participantsEvent);
       if (event) openParticipantsForm(ctx, event);
-    });
-  });
-  container.querySelectorAll('[data-accept-invitation], [data-decline-invitation]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const accept = Boolean(btn.dataset.acceptInvitation);
-      const eventId = btn.dataset.acceptInvitation || btn.dataset.declineInvitation;
-      btn.disabled = true;
-      try {
-        if (accept) await api.events.acceptInvitation(eventId);
-        else await api.events.declineInvitation(eventId);
-        await ctx.refresh();
-        (document.querySelector('#orga-invitations-title') || document.querySelector('#orga-events-title'))?.focus();
-        showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
-      } catch (err) {
-        btn.disabled = false;
-        showToast(err.message, { error: true });
-      }
     });
   });
   container.querySelectorAll('[data-start-tracking]').forEach((btn) => {

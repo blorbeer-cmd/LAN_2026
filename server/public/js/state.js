@@ -19,6 +19,7 @@ export const state = {
   activeEvent: null,
   availableEvents: [],
   plannedEvents: [], // draft events (date poll running) this member is invited to but hasn't joined as a participant yet
+  endedEvents: [], // this account's own accepted events that have since ended (member Historie)
   historicalEvents: [], // every event this account accepted at some point, ended ones included
   eventInvitations: [],
   selectedGameId: null, // remembers the last game picked in Teams/Turniere/Rangliste
