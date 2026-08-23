@@ -29,10 +29,22 @@ test('event context keeps the personal workspace separate from invitations', () 
       managedEvents: null,
       activeEvent: lan,
       availableEvents: [base, lan],
+      plannedEvents: [],
       historicalEvents: [base, lan, past],
       eventInvitations: [invitation],
     },
   );
+});
+
+test('plannedEvents (draft/stale date-poll events outside the workspace list) passes through', () => {
+  const base = { id: 'base', name: 'Allgemein' };
+  const planning = { id: 'planning', name: 'LAN Winter 2027', status: 'draft' };
+
+  assert.deepEqual(
+    normalizeEventContext({ availableEvents: [base], plannedEvents: [planning] }).plannedEvents,
+    [planning],
+  );
+  assert.deepEqual(normalizeEventContext({ availableEvents: [base] }).plannedEvents, [], 'defaults to empty');
 });
 
 test('the participation history falls back to the switchable workspaces', () => {

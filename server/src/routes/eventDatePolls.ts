@@ -1,0 +1,702 @@
+// Event date poll routes (docs/plans/event-date-poll-concept.md), nested
+// under /api/events/:eventId/date-polls. HTTP/validation/auth layer only —
+// the actual state machine lives in eventDatePolls.ts.
+
+import { Router, type Request, type Response } from 'express';
+import { db, BASE_EVENT_ID } from '../db';
+import { getEvent, type EventRow } from '../events';
+import { resolveGroupResource } from '../groupAuthorization';
+import { writeAdminAudit } from '../adminAudit';
+import { broadcast, Events } from '../realtime';
+import { notifyPlayers } from '../push';
+import { activeGroupPlayers } from '../groupPlayers';
+import { listGroupMembers } from '../groups';
+import { isValidIsoDate } from '../localDate';
+import type { GroupRole } from '../groups';
+import {
+  MIN_OPTIONS,
+  MAX_OPTIONS,
+  RESPONSE_VALUES,
+  canManageDatePolls,
+  materializeExpiredPollIfNeeded,
+  getDatePolls,
+  getDatePollForEvent,
+  getDatePollOptions,
+  getDatePollInvitees,
+  getDatePollResponses,
+  isDatePollInvitee,
+  hasAnsweredDatePoll,
+  createDatePoll,
+  updateDatePollMeta,
+  addDatePollOption,
+  removeDatePollOption,
+  addDatePollInvitee,
+  removeDatePollInvitee,
+  submitMyResponses,
+  closeDatePoll,
+  reopenDatePoll,
+  cancelDatePoll,
+  scheduleDatePoll,
+  reminderCandidates,
+  markReminderSent,
+  optionCounts,
+  recommendedOptionId,
+  type DatePollRow,
+  type DatePollResponseValue,
+} from '../eventDatePolls';
+
+export const eventDatePollsRouter = Router({ mergeParams: true });
+
+const resolveEventForPolls = resolveGroupResource<EventRow>({
+  resourceType: 'Event',
+  paramName: 'eventId',
+  load: (id) => {
+    const event = getEvent(id);
+    return event ? { resource: event, groupId: event.group_id } : undefined;
+  },
+});
+
+interface PlayerNameRow {
+  id: string;
+  name: string;
+}
+
+function playerNames(playerIds: string[]): Map<string, string> {
+  if (playerIds.length === 0) return new Map();
+  const uniqueIds = [...new Set(playerIds)];
+  const placeholders = uniqueIds.map(() => '?').join(',');
+  const rows = db.prepare(`SELECT id, name FROM players WHERE id IN (${placeholders})`).all(...uniqueIds) as PlayerNameRow[];
+  return new Map(rows.map((row) => [row.id, row.name]));
+}
+
+// Visibility for round-reading (and reconfirmation) must survive a
+// reschedule, unlike the revision-gated headcount/pricing predicate — a
+// stale accepted participant still needs to see the new round to reconfirm.
+function hasAnyAcceptedParticipation(eventId: string, playerId: string): boolean {
+  return Boolean(
+    db.prepare("SELECT 1 FROM event_participants WHERE event_id = ? AND player_id = ? AND status = 'accepted'").get(
+      eventId,
+      playerId,
+    ),
+  );
+}
+
+function canReadPoll(event: EventRow, pollId: string, viewerId: string, viewerRole: GroupRole | undefined): boolean {
+  if (canManageDatePolls(event, viewerId, viewerRole)) return true;
+  if (isDatePollInvitee(pollId, viewerId)) return true;
+  return hasAnyAcceptedParticipation(event.id, viewerId);
+}
+
+function canReadAnyPoll(event: EventRow, viewerId: string, viewerRole: GroupRole | undefined): boolean {
+  if (canManageDatePolls(event, viewerId, viewerRole)) return true;
+  if (hasAnyAcceptedParticipation(event.id, viewerId)) return true;
+  return Boolean(
+    db
+      .prepare(
+        `SELECT 1 FROM event_date_poll_invitees edpi
+         JOIN event_date_polls edp ON edp.id = edpi.poll_id
+         WHERE edp.event_id = ? AND edpi.player_id = ? LIMIT 1`,
+      )
+      .get(event.id, viewerId),
+  );
+}
+
+function serializeOption(
+  option: { id: string; poll_id: string; starts_on: string; ends_on: string; position: number },
+  responses: ReturnType<typeof getDatePollResponses>,
+  inviteeCount: number,
+  names: Map<string, string>,
+  isRecommended: boolean,
+) {
+  const forOption = responses.filter((r) => r.option_id === option.id);
+  const byResponse = (value: DatePollResponseValue) =>
+    forOption
+      .filter((r) => r.response === value)
+      .map((r) => ({ playerId: r.player_id, name: names.get(r.player_id) ?? r.player_id }));
+  const answeredIds = new Set(forOption.map((r) => r.player_id));
+  const counts = optionCounts(option, responses, inviteeCount);
+  return {
+    id: option.id,
+    startsOn: option.starts_on,
+    endsOn: option.ends_on,
+    position: option.position,
+    counts: { can: counts.can, ifNeeded: counts.ifNeeded, cannot: counts.cannot, open: counts.open },
+    people: {
+      can: byResponse('can'),
+      ifNeeded: byResponse('if_needed'),
+      cannot: byResponse('cannot'),
+    },
+    isRecommended,
+    _answeredIds: answeredIds,
+  };
+}
+
+function serializeDatePoll(
+  poll: DatePollRow,
+  event: EventRow,
+  viewerId: string,
+  viewerRole: GroupRole | undefined,
+) {
+  const options = getDatePollOptions(poll.id);
+  const invitees = getDatePollInvitees(poll.id);
+  const responses = getDatePollResponses(poll.id);
+  const names = playerNames([
+    ...invitees.map((i) => i.player_id),
+    ...(poll.created_by ? [poll.created_by] : []),
+  ]);
+  const recommendedId = recommendedOptionId(options, responses, invitees.length);
+
+  const serializedOptions = options.map((option) =>
+    serializeOption(option, responses, invitees.length, names, option.id === recommendedId),
+  );
+  const answeredPlayerIds = new Set(responses.map((r) => r.player_id));
+
+  const myResponses: Record<string, DatePollResponseValue> = {};
+  for (const response of responses) {
+    if (response.player_id === viewerId) myResponses[response.option_id] = response.response;
+  }
+
+  return {
+    id: poll.id,
+    eventId: poll.event_id,
+    roundNumber: poll.round_number,
+    note: poll.note,
+    createdBy: poll.created_by,
+    createdByName: poll.created_by ? names.get(poll.created_by) ?? null : null,
+    responseDueAt: poll.response_due_at,
+    status: poll.status,
+    selectedOptionId: poll.selected_option_id,
+    createdAt: poll.created_at,
+    updatedAt: poll.updated_at,
+    options: serializedOptions.map(({ _answeredIds, ...rest }) => rest),
+    invitees: invitees.map((invitee) => ({
+      playerId: invitee.player_id,
+      name: names.get(invitee.player_id) ?? invitee.player_id,
+      invitedAt: invitee.invited_at,
+      hasAnswered: answeredPlayerIds.has(invitee.player_id) && hasAnsweredDatePoll(poll.id, invitee.player_id),
+      lastReminderAt: invitee.last_reminder_at,
+    })),
+    isInvitee: isDatePollInvitee(poll.id, viewerId),
+    myResponses: isDatePollInvitee(poll.id, viewerId) ? myResponses : null,
+    canManage: canManageDatePolls(event, viewerId, viewerRole),
+  };
+}
+
+function requirePlayerId(req: Request, res: Response): string | undefined {
+  const playerId = req.player?.id;
+  if (!playerId) {
+    res.status(401).json({ error: 'Anmeldung erforderlich.' });
+    return undefined;
+  }
+  return playerId;
+}
+
+// Every route below first resolves the event, then materializes an expired
+// round's lazy close (idempotent, cheap when nothing changed) and audits +
+// broadcasts only when this exact request performed the transition.
+function loadPollOr404(
+  req: Request,
+  res: Response,
+  event: EventRow,
+): DatePollRow | undefined {
+  const poll = getDatePollForEvent(event.id, req.params.pollId);
+  if (!poll) {
+    res.status(404).json({ error: 'Terminabstimmung nicht gefunden.' });
+    return undefined;
+  }
+  const materialized = materializeExpiredPollIfNeeded(poll.id);
+  if (!materialized) {
+    res.status(404).json({ error: 'Terminabstimmung nicht gefunden.' });
+    return undefined;
+  }
+  if (materialized.transitioned) {
+    writeAdminAudit({
+      groupId: event.group_id ?? undefined,
+      action: 'event_date_poll_deadline_closed',
+      targetType: 'event_date_poll',
+      targetId: poll.id,
+      details: { eventId: event.id },
+    });
+    broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+  }
+  return materialized.poll;
+}
+
+function notifyInvitees(groupId: string, playerIds: string[], title: string, body: string, url: string): void {
+  if (playerIds.length === 0) return;
+  notifyPlayers(playerIds, { title, body, url }, 'direct', undefined, { groupId, eventId: BASE_EVENT_ID });
+}
+
+// GET /api/events/:eventId/date-polls
+eventDatePollsRouter.get('/', resolveEventForPolls, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requirePlayerId(req, res);
+  if (!playerId) return;
+  if (!canReadAnyPoll(event, playerId, req.groupMembership?.role)) {
+    return res.status(404).json({ error: 'Event nicht gefunden.' });
+  }
+  const polls = getDatePolls(event.id).map((poll) => {
+    const materialized = materializeExpiredPollIfNeeded(poll.id)!;
+    return materialized.poll;
+  });
+  res.json(polls.map((poll) => serializeDatePoll(poll, event, playerId, req.groupMembership?.role)));
+});
+
+// POST /api/events/:eventId/date-polls
+eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requirePlayerId(req, res);
+  if (!playerId) return;
+  if (!canManageDatePolls(event, playerId, req.groupMembership?.role)) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann Runden anlegen.' });
+  }
+  if (event.status === 'cancelled' || event.status === 'ended') {
+    return res.status(409).json({ error: 'Für ein abgesagtes oder beendetes Event kann keine Runde gestartet werden.' });
+  }
+  if (event.tracking_enabled) {
+    return res.status(409).json({ error: 'Nach aktiviertem Tracking kann keine neue Terminrunde gestartet werden.' });
+  }
+
+  const { options, responseDueOn, note, inviteePlayerIds } = req.body ?? {};
+  if (!Array.isArray(options) || options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) {
+    return res.status(400).json({ error: `${MIN_OPTIONS} bis ${MAX_OPTIONS} Zeiträume sind erforderlich.` });
+  }
+  const parsedOptions: Array<{ startsOn: string; endsOn: string }> = [];
+  for (const raw of options) {
+    const startsOn = raw?.startsOn;
+    const endsOn = raw?.endsOn;
+    if (!isValidIsoDate(startsOn) || !isValidIsoDate(endsOn)) {
+      return res.status(400).json({ error: 'Jeder Zeitraum benötigt gültige Kalenderdaten (Beginn/Ende).' });
+    }
+    if (endsOn < startsOn) {
+      return res.status(400).json({ error: 'Ein Zeitraum darf nicht rückwärts laufen.' });
+    }
+    parsedOptions.push({ startsOn, endsOn });
+  }
+  const duplicateKey = new Set<string>();
+  for (const option of parsedOptions) {
+    const key = `${option.startsOn}:${option.endsOn}`;
+    if (duplicateKey.has(key)) {
+      return res.status(400).json({ error: 'Zeiträume dürfen sich nicht exakt duplizieren.' });
+    }
+    duplicateKey.add(key);
+  }
+  if (!isValidIsoDate(responseDueOn)) {
+    return res.status(400).json({ error: 'responseDueOn muss ein gültiges Kalenderdatum sein.' });
+  }
+  if (note !== undefined && note !== null && (typeof note !== 'string' || note.trim().length > 500)) {
+    return res.status(400).json({ error: 'note darf höchstens 500 Zeichen lang sein.' });
+  }
+
+  let inviteeIds: string[];
+  if (inviteePlayerIds === undefined) {
+    inviteeIds = listGroupMembers(event.group_id!).map((member) => member.player_id);
+  } else {
+    if (!Array.isArray(inviteePlayerIds) || !inviteePlayerIds.every((id) => typeof id === 'string')) {
+      return res.status(400).json({ error: 'inviteePlayerIds muss ein String-Array sein.' });
+    }
+    const found = activeGroupPlayers(event.group_id!, inviteePlayerIds);
+    if (found.size !== new Set(inviteePlayerIds).size) {
+      return res.status(404).json({ error: 'Mindestens ein eingeladener Spieler wurde nicht gefunden.' });
+    }
+    inviteeIds = inviteePlayerIds;
+  }
+
+  const result = createDatePoll(
+    event,
+    { options: parsedOptions, responseDueOn, note: note?.trim() || null, inviteePlayerIds: inviteeIds },
+    playerId,
+  );
+  if (!result.ok) {
+    return res.status(result.code === 'conflict' ? 409 : 400).json({ error: result.error });
+  }
+
+  writeAdminAudit({
+    actorPlayerId: playerId,
+    groupId: event.group_id ?? undefined,
+    action: 'event_date_poll_created',
+    targetType: 'event_date_poll',
+    targetId: result.poll.id,
+    details: { eventId: event.id, roundNumber: result.poll.round_number },
+  });
+  broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+  notifyInvitees(
+    event.group_id!,
+    inviteeIds.filter((id) => id !== playerId),
+    'Terminabstimmung',
+    `${event.name}: Neue Terminabstimmung, bitte antworten.`,
+    '/#events',
+  );
+  res.status(201).json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
+});
+
+// GET /api/events/:eventId/date-polls/:pollId
+eventDatePollsRouter.get('/:pollId', resolveEventForPolls, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requirePlayerId(req, res);
+  if (!playerId) return;
+  const poll = loadPollOr404(req, res, event);
+  if (!poll) return;
+  if (!canReadPoll(event, poll.id, playerId, req.groupMembership?.role)) {
+    return res.status(404).json({ error: 'Terminabstimmung nicht gefunden.' });
+  }
+  res.json(serializeDatePoll(poll, event, playerId, req.groupMembership?.role));
+});
+
+// PATCH /api/events/:eventId/date-polls/:pollId
+eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requirePlayerId(req, res);
+  if (!playerId) return;
+  const poll = loadPollOr404(req, res, event);
+  if (!poll) return;
+  if (!canManageDatePolls(event, playerId, req.groupMembership?.role)) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann die Runde bearbeiten.' });
+  }
+  const { note, responseDueOn } = req.body ?? {};
+  const fields: { note?: string | null; responseDueOn?: string } = {};
+  if (note !== undefined) {
+    if (note !== null && (typeof note !== 'string' || note.trim().length > 500)) {
+      return res.status(400).json({ error: 'note darf höchstens 500 Zeichen lang sein.' });
+    }
+    fields.note = typeof note === 'string' ? note.trim() || null : null;
+  }
+  if (responseDueOn !== undefined) {
+    if (!isValidIsoDate(responseDueOn)) {
+      return res.status(400).json({ error: 'responseDueOn muss ein gültiges Kalenderdatum sein.' });
+    }
+    fields.responseDueOn = responseDueOn;
+  }
+  const result = updateDatePollMeta(poll, fields);
+  if (!result.ok) return res.status(409).json({ error: result.error });
+
+  writeAdminAudit({
+    actorPlayerId: playerId,
+    groupId: event.group_id ?? undefined,
+    action: 'event_date_poll_updated',
+    targetType: 'event_date_poll',
+    targetId: poll.id,
+    details: { eventId: event.id },
+  });
+  broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+  res.json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
+});
+
+// POST /api/events/:eventId/date-polls/:pollId/options
+eventDatePollsRouter.post('/:pollId/options', resolveEventForPolls, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requirePlayerId(req, res);
+  if (!playerId) return;
+  const poll = loadPollOr404(req, res, event);
+  if (!poll) return;
+  if (!canManageDatePolls(event, playerId, req.groupMembership?.role)) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann Optionen ergänzen.' });
+  }
+  const { startsOn, endsOn } = req.body ?? {};
+  if (!isValidIsoDate(startsOn) || !isValidIsoDate(endsOn)) {
+    return res.status(400).json({ error: 'startsOn und endsOn müssen gültige Kalenderdaten sein.' });
+  }
+  if (endsOn < startsOn) return res.status(400).json({ error: 'Ein Zeitraum darf nicht rückwärts laufen.' });
+
+  const result = addDatePollOption(poll, { startsOn, endsOn });
+  if (!result.ok) return res.status(result.code === 'not_open' ? 409 : 400).json({ error: result.error });
+
+  writeAdminAudit({
+    actorPlayerId: playerId,
+    groupId: event.group_id ?? undefined,
+    action: 'event_date_poll_option_added',
+    targetType: 'event_date_poll_option',
+    targetId: result.option.id,
+    details: { eventId: event.id, pollId: poll.id },
+  });
+  broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+  const invitees = getDatePollInvitees(poll.id).map((i) => i.player_id).filter((id) => id !== playerId);
+  notifyInvitees(event.group_id!, invitees, 'Terminabstimmung', `${event.name}: Eine neue Option wurde ergänzt.`, '/#events');
+  res.status(201).json(serializeDatePoll(getDatePollForEvent(event.id, poll.id)!, event, playerId, req.groupMembership?.role));
+});
+
+// DELETE /api/events/:eventId/date-polls/:pollId/options/:optionId
+eventDatePollsRouter.delete('/:pollId/options/:optionId', resolveEventForPolls, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requirePlayerId(req, res);
+  if (!playerId) return;
+  const poll = loadPollOr404(req, res, event);
+  if (!poll) return;
+  if (!canManageDatePolls(event, playerId, req.groupMembership?.role)) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann Optionen entfernen.' });
+  }
+  const invitees = getDatePollInvitees(poll.id).map((i) => i.player_id).filter((id) => id !== playerId);
+  const result = removeDatePollOption(poll, req.params.optionId);
+  if (!result.ok) {
+    return res.status(result.code === 'not_found' ? 404 : result.code === 'not_open' ? 409 : 400).json({ error: result.error });
+  }
+
+  writeAdminAudit({
+    actorPlayerId: playerId,
+    groupId: event.group_id ?? undefined,
+    action: 'event_date_poll_option_removed',
+    targetType: 'event_date_poll_option',
+    targetId: req.params.optionId,
+    details: { eventId: event.id, pollId: poll.id },
+  });
+  broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+  notifyInvitees(event.group_id!, invitees, 'Terminabstimmung', `${event.name}: Eine Option wurde entfernt.`, '/#events');
+  res.status(204).end();
+});
+
+// POST /api/events/:eventId/date-polls/:pollId/invitees
+eventDatePollsRouter.post('/:pollId/invitees', resolveEventForPolls, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requirePlayerId(req, res);
+  if (!playerId) return;
+  const poll = loadPollOr404(req, res, event);
+  if (!poll) return;
+  if (!canManageDatePolls(event, playerId, req.groupMembership?.role)) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann Personen einladen.' });
+  }
+  const { playerId: invitedId } = req.body ?? {};
+  if (typeof invitedId !== 'string' || !invitedId) {
+    return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  if (!activeGroupPlayers(event.group_id!, [invitedId]).has(invitedId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+  const result = addDatePollInvitee(poll, invitedId);
+  if (!result.ok) return res.status(409).json({ error: result.error });
+
+  writeAdminAudit({
+    actorPlayerId: playerId,
+    groupId: event.group_id ?? undefined,
+    action: 'event_date_poll_invitee_added',
+    targetType: 'event_date_poll_invitee',
+    targetId: `${poll.id}:${invitedId}`,
+    details: { eventId: event.id },
+  });
+  broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+  if (invitedId !== playerId) {
+    notifyInvitees(event.group_id!, [invitedId], 'Terminabstimmung', `${event.name}: Du wurdest zur Terminabstimmung eingeladen.`, '/#events');
+  }
+  res.status(201).json(serializeDatePoll(getDatePollForEvent(event.id, poll.id)!, event, playerId, req.groupMembership?.role));
+});
+
+// DELETE /api/events/:eventId/date-polls/:pollId/invitees/:playerId
+eventDatePollsRouter.delete('/:pollId/invitees/:playerId', resolveEventForPolls, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requirePlayerId(req, res);
+  if (!playerId) return;
+  const poll = loadPollOr404(req, res, event);
+  if (!poll) return;
+  if (!canManageDatePolls(event, playerId, req.groupMembership?.role)) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann Personen entfernen.' });
+  }
+  const result = removeDatePollInvitee(poll, req.params.playerId);
+  if (!result.ok) {
+    return res.status(result.code === 'not_found' ? 404 : 409).json({ error: result.error });
+  }
+
+  writeAdminAudit({
+    actorPlayerId: playerId,
+    groupId: event.group_id ?? undefined,
+    action: 'event_date_poll_invitee_removed',
+    targetType: 'event_date_poll_invitee',
+    targetId: `${poll.id}:${req.params.playerId}`,
+    details: { eventId: event.id },
+  });
+  broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+  res.status(204).end();
+});
+
+// PUT /api/events/:eventId/date-polls/:pollId/my-responses
+eventDatePollsRouter.put('/:pollId/my-responses', resolveEventForPolls, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requirePlayerId(req, res);
+  if (!playerId) return;
+  const poll = loadPollOr404(req, res, event);
+  if (!poll) return;
+  if (!isDatePollInvitee(poll.id, playerId)) {
+    return res.status(404).json({ error: 'Terminabstimmung nicht gefunden.' });
+  }
+  const { responses } = req.body ?? {};
+  if (!Array.isArray(responses)) {
+    return res.status(400).json({ error: 'responses muss ein Array sein.' });
+  }
+  for (const entry of responses) {
+    if (typeof entry?.optionId !== 'string' || !RESPONSE_VALUES.includes(entry?.response)) {
+      return res.status(400).json({ error: 'Jede Antwort benötigt optionId und einen gültigen Wert.' });
+    }
+  }
+  const result = submitMyResponses(poll, playerId, responses);
+  if (!result.ok) {
+    return res.status(result.code === 'not_open' ? 409 : result.code === 'not_invitee' ? 404 : 400).json({ error: result.error });
+  }
+  broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+  res.json(serializeDatePoll(getDatePollForEvent(event.id, poll.id)!, event, playerId, req.groupMembership?.role));
+});
+
+// POST /api/events/:eventId/date-polls/:pollId/reminders
+eventDatePollsRouter.post('/:pollId/reminders', resolveEventForPolls, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requirePlayerId(req, res);
+  if (!playerId) return;
+  const poll = loadPollOr404(req, res, event);
+  if (!poll) return;
+  if (!canManageDatePolls(event, playerId, req.groupMembership?.role)) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann erinnern.' });
+  }
+  if (poll.status !== 'open') {
+    return res.status(409).json({ error: 'Erinnerungen sind nur während einer offenen Runde möglich.' });
+  }
+  const candidates = reminderCandidates(poll.id);
+  const now = Date.now();
+  for (const candidate of candidates) markReminderSent(poll.id, candidate.playerId, now);
+  writeAdminAudit({
+    actorPlayerId: playerId,
+    groupId: event.group_id ?? undefined,
+    action: 'event_date_poll_reminder_sent',
+    targetType: 'event_date_poll',
+    targetId: poll.id,
+    details: { eventId: event.id, playerCount: candidates.length },
+  });
+  notifyInvitees(
+    event.group_id!,
+    candidates.map((c) => c.playerId),
+    'Erinnerung: Terminabstimmung',
+    `${event.name}: Bitte antworte auf die Terminabstimmung.`,
+    '/#events',
+  );
+  res.json({ remindedPlayerIds: candidates.map((c) => c.playerId) });
+});
+
+// POST /api/events/:eventId/date-polls/:pollId/close
+eventDatePollsRouter.post('/:pollId/close', resolveEventForPolls, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requirePlayerId(req, res);
+  if (!playerId) return;
+  const poll = loadPollOr404(req, res, event);
+  if (!poll) return;
+  if (!canManageDatePolls(event, playerId, req.groupMembership?.role)) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann schließen.' });
+  }
+  const result = closeDatePoll(poll);
+  if (!result.ok) return res.status(409).json({ error: result.error });
+
+  writeAdminAudit({
+    actorPlayerId: playerId,
+    groupId: event.group_id ?? undefined,
+    action: 'event_date_poll_closed',
+    targetType: 'event_date_poll',
+    targetId: poll.id,
+    details: { eventId: event.id },
+  });
+  broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+  res.json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
+});
+
+// POST /api/events/:eventId/date-polls/:pollId/reopen
+eventDatePollsRouter.post('/:pollId/reopen', resolveEventForPolls, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requirePlayerId(req, res);
+  if (!playerId) return;
+  const poll = loadPollOr404(req, res, event);
+  if (!poll) return;
+  if (!canManageDatePolls(event, playerId, req.groupMembership?.role)) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann wieder öffnen.' });
+  }
+  const { responseDueOn } = req.body ?? {};
+  if (responseDueOn !== undefined && !isValidIsoDate(responseDueOn)) {
+    return res.status(400).json({ error: 'responseDueOn muss ein gültiges Kalenderdatum sein.' });
+  }
+  const result = reopenDatePoll(poll, responseDueOn);
+  if (!result.ok) {
+    return res.status(result.code === 'not_closed' ? 409 : 400).json({ error: result.error });
+  }
+
+  writeAdminAudit({
+    actorPlayerId: playerId,
+    groupId: event.group_id ?? undefined,
+    action: 'event_date_poll_reopened',
+    targetType: 'event_date_poll',
+    targetId: poll.id,
+    details: { eventId: event.id },
+  });
+  broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+  const invitees = getDatePollInvitees(poll.id).map((i) => i.player_id).filter((id) => id !== playerId);
+  notifyInvitees(event.group_id!, invitees, 'Terminabstimmung', `${event.name}: Die Terminabstimmung wurde wieder geöffnet.`, '/#events');
+  res.json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
+});
+
+// POST /api/events/:eventId/date-polls/:pollId/cancel
+eventDatePollsRouter.post('/:pollId/cancel', resolveEventForPolls, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requirePlayerId(req, res);
+  if (!playerId) return;
+  const poll = loadPollOr404(req, res, event);
+  if (!poll) return;
+  if (!canManageDatePolls(event, playerId, req.groupMembership?.role)) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann abbrechen.' });
+  }
+  const result = cancelDatePoll(poll);
+  if (!result.ok) return res.status(409).json({ error: result.error });
+
+  writeAdminAudit({
+    actorPlayerId: playerId,
+    groupId: event.group_id ?? undefined,
+    action: 'event_date_poll_cancelled',
+    targetType: 'event_date_poll',
+    targetId: poll.id,
+    details: { eventId: event.id },
+  });
+  broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+  res.json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
+});
+
+// POST /api/events/:eventId/date-polls/:pollId/schedule
+eventDatePollsRouter.post('/:pollId/schedule', resolveEventForPolls, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requirePlayerId(req, res);
+  if (!playerId) return;
+  const poll = loadPollOr404(req, res, event);
+  if (!poll) return;
+  if (!canManageDatePolls(event, playerId, req.groupMembership?.role)) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann den Termin festlegen.' });
+  }
+  const { optionId } = req.body ?? {};
+  if (typeof optionId !== 'string' || !optionId) {
+    return res.status(400).json({ error: 'optionId ist erforderlich.' });
+  }
+  const result = scheduleDatePoll(event, poll, optionId);
+  if (!result.ok) {
+    return res
+      .status(result.code === 'invalid' ? 400 : result.code === 'locked' ? 409 : 409)
+      .json({ error: result.error });
+  }
+
+  if (result.changed) {
+    writeAdminAudit({
+      actorPlayerId: playerId,
+      groupId: event.group_id ?? undefined,
+      action: 'event_date_poll_scheduled',
+      targetType: 'event_date_poll',
+      targetId: poll.id,
+      details: { eventId: event.id, optionId, scheduleRevision: result.event.schedule_revision },
+    });
+    broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+    const roster = db
+      .prepare("SELECT player_id AS playerId FROM event_participants WHERE event_id = ? AND status = 'accepted'")
+      .all(event.id) as Array<{ playerId: string }>;
+    const invitees = getDatePollInvitees(poll.id).map((i) => i.player_id);
+    const toNotify = new Set([...roster.map((r) => r.playerId), ...invitees]);
+    toNotify.delete(playerId);
+    notifyInvitees(
+      event.group_id!,
+      [...toNotify],
+      'Termin festgelegt',
+      `${event.name}: Ein Termin wurde festgelegt — bitte erneut bestätigen.`,
+      '/#events',
+    );
+  }
+  res.json({
+    poll: serializeDatePoll(result.poll, result.event, playerId, req.groupMembership?.role),
+    event: { id: result.event.id, startsAt: result.event.starts_at, endsAt: result.event.ends_at, scheduleRevision: result.event.schedule_revision },
+  });
+});

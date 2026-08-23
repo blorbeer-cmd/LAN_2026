@@ -28,6 +28,12 @@ export function normalizeEventContext(eventContext = {}) {
     managedEvents: canManage ? managedEvents : null,
     activeEvent: eventContext.activeEvent ?? null,
     availableEvents,
+    // Draft events (date poll running) a member is invited to but hasn't
+    // joined as a participant of yet — kept separate from availableEvents so
+    // a dateless draft never becomes an offered workspace (see
+    // routes/events.ts's plannedEvents comment). Always empty for
+    // owner/admin, who already see drafts through managedEvents.
+    plannedEvents: eventContext.plannedEvents ?? [],
     // Personal participation history: the allowlist the analytics endpoints
     // accept, so an event filter can never offer something they answer with
     // a 404. Falls back to the switchable workspaces so an older server

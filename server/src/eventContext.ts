@@ -1,4 +1,5 @@
 import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 
 export interface EventContextEvent {
   id: string;
@@ -7,6 +8,7 @@ export interface EventContextEvent {
   ends_at: number | null;
   status: 'draft' | 'published' | 'cancelled' | 'ended';
   group_id: string | null;
+  schedule_revision: number;
 }
 
 export type EventAccessLevel = 'none' | 'teaser' | 'participant' | 'admin';
@@ -26,19 +28,25 @@ export function getSelectableEvent(eventId: string): EventContextEvent | undefin
   if (eventId === OUTSIDE_EVENTS_ID) return undefined;
   return db
     .prepare(
-      `SELECT id, name, starts_at, ends_at, status, group_id
+      `SELECT id, name, starts_at, ends_at, status, group_id, schedule_revision
        FROM events
        WHERE id = ? AND group_id = ? AND status = 'published' AND ended_at IS NULL`,
     )
     .get(eventId, DEFAULT_GROUP_ID) as EventContextEvent | undefined;
 }
 
-function acceptEventParticipation(playerId: string, eventId: string): void {
+// Takes the event's schedule_revision (not just its id) so the roster row
+// this writes is immediately a CURRENT confirmed participation, not just an
+// 'accepted' status — see eventParticipation.ts's ACCEPTED_EVENT_PARTICIPANT_SQL.
+// Every caller already has the event from getSelectableEvent() (which only
+// ever returns published, i.e. dated, events), so this never needs to look
+// the revision up separately.
+function acceptEventParticipation(playerId: string, event: EventContextEvent): void {
   db.prepare(
-    `INSERT INTO event_participants (event_id, player_id, status)
-     VALUES (?, ?, 'accepted')
-     ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted'`,
-  ).run(eventId, playerId);
+    `INSERT INTO event_participants (event_id, player_id, status, confirmed_schedule_revision)
+     VALUES (?, ?, 'accepted', ?)
+     ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted', confirmed_schedule_revision = excluded.confirmed_schedule_revision`,
+  ).run(event.id, playerId, event.schedule_revision);
 }
 
 function storeActiveEvent(playerId: string, eventId: string): void {
@@ -53,7 +61,7 @@ function storeActiveEvent(playerId: string, eventId: string): void {
 function ensureBaseParticipation(playerId: string): EventContextEvent {
   const baseEvent = getSelectableEvent(BASE_EVENT_ID);
   if (!baseEvent) throw new Error('Configured base event is missing or unavailable.');
-  acceptEventParticipation(playerId, BASE_EVENT_ID);
+  acceptEventParticipation(playerId, baseEvent);
   return baseEvent;
 }
 
@@ -86,7 +94,7 @@ export function ensureAccountEventContext(
       }
       throw new InvalidEventContextError();
     }
-    acceptEventParticipation(playerId, preferredEvent.id);
+    acceptEventParticipation(playerId, preferredEvent);
     storeActiveEvent(playerId, preferredEvent.id);
     return preferredEvent;
   })();
@@ -102,7 +110,7 @@ export function getOrRepairActiveEvent(playerId: string): EventContextEvent {
          FROM player_event_contexts pec
          JOIN events e ON e.id = pec.active_event_id
          JOIN event_participants ep
-           ON ep.event_id = e.id AND ep.player_id = pec.player_id AND ep.status = 'accepted'
+           ON ep.event_id = e.id AND ep.player_id = pec.player_id AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          WHERE pec.player_id = ? AND e.id != ? AND e.group_id = ?
            AND e.status = 'published' AND e.ended_at IS NULL`,
       )
@@ -123,7 +131,7 @@ export function setActiveEventForPlayer(playerId: string, eventId: string): Even
         `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id
          FROM events e
          JOIN event_participants ep
-           ON ep.event_id = e.id AND ep.player_id = ? AND ep.status = 'accepted'
+           ON ep.event_id = e.id AND ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          WHERE e.id = ? AND e.id != ? AND e.group_id = ?
            AND e.status = 'published' AND e.ended_at IS NULL`,
       )
@@ -187,14 +195,27 @@ export function eventAccessLevel(
   instanceRole: 'owner' | 'admin' | 'member' = 'member',
 ): EventAccessLevel {
   const event = db
-    .prepare('SELECT id FROM events WHERE id = ? AND id != ? AND group_id = ?')
-    .get(eventId, OUTSIDE_EVENTS_ID, DEFAULT_GROUP_ID);
+    .prepare('SELECT id, created_by FROM events WHERE id = ? AND id != ? AND group_id = ?')
+    .get(eventId, OUTSIDE_EVENTS_ID, DEFAULT_GROUP_ID) as { id: string; created_by: string | null } | undefined;
   if (!event) return 'none';
   if (instanceRole === 'owner' || instanceRole === 'admin') return 'admin';
   const participation = db
     .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
     .get(eventId, playerId) as { status: 'invited' | 'accepted' | 'declined' } | undefined;
   if (participation?.status === 'accepted') return 'participant';
+  // A planning event (draft, no fixed date yet) has no event_participants row
+  // at all until the regular invitations are sent after a date is chosen —
+  // its creator and anyone invited to one of its date poll rounds still need
+  // to see it (docs/plans/event-date-poll-concept.md's visibility rule).
+  if (event.created_by === playerId) return 'participant';
+  const pollInvited = db
+    .prepare(
+      `SELECT 1 FROM event_date_poll_invitees edpi
+       JOIN event_date_polls edp ON edp.id = edpi.poll_id
+       WHERE edp.event_id = ? AND edpi.player_id = ? LIMIT 1`,
+    )
+    .get(eventId, playerId);
+  if (pollInvited) return 'participant';
   if (participation?.status === 'invited') return 'teaser';
   return 'none';
 }

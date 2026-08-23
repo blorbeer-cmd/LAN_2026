@@ -23,6 +23,7 @@ import { invalidateBroadcasts } from './views/broadcast.js';
 import { invalidateInfoBoard, openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
 import { clearFoodOrderTarget, invalidateFoodOrders, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
+import { invalidateEventDatePolls } from './views/events.js';
 import { invalidateChecklist } from './views/checklist.js';
 import { invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
 import { invalidateArrivals } from './views/arrivals.js';
@@ -180,6 +181,7 @@ function invalidateEventScopedCaches() {
   invalidateBroadcasts({ hard: true });
   invalidateInfoBoard();
   invalidateFoodOrders();
+  invalidateEventDatePolls();
   invalidateChecklist(undefined, { hard: true });
   invalidateArrivals({ hard: true });
   invalidateMusic({ hard: true });
@@ -649,7 +651,10 @@ function wireSocket() {
         invalidateHallOfFame();
         invalidateTournaments();
       }
-      if (event === 'events:changed') invalidateAdminReadiness();
+      if (event === 'events:changed') {
+        invalidateAdminReadiness();
+        invalidateEventDatePolls();
+      }
       void queueSharedRefresh({ render: realtimeEventAffectsView(event, currentView) });
     })
   );

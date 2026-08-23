@@ -8,6 +8,8 @@ import {
   listEvents,
   getEvent,
   createEvent,
+  createPlanningEvent,
+  publishPlanningEventIfScheduled,
   updateEvent,
   startTracking,
   restartEvent,
@@ -32,6 +34,7 @@ import { broadcast, Events, switchPlayerEventScope } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { isNonEmptyString, isValidPaypalUrl } from '../validation';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
 import type { GroupRole } from '../groups';
 import { requireConfiguredGroupMembership, requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { requireRecentReauthentication } from '../sessions';
@@ -115,6 +118,17 @@ function acceptedParticipantsForViewer(eventId: string, viewerId: string | undef
   );
 }
 
+// The viewer's own raw participation row, independent of the centralized
+// "currently confirmed" predicate — acceptedParticipants deliberately hides a
+// stale (pre-reschedule, unconfirmed) row, but the date poll UI needs exactly
+// that row to tell the affected member they must reconfirm.
+function myParticipationField(eventId: string, viewerId: string) {
+  const row = db
+    .prepare('SELECT status, confirmed_schedule_revision AS confirmedScheduleRevision FROM event_participants WHERE event_id = ? AND player_id = ?')
+    .get(eventId, viewerId) as { status: 'invited' | 'accepted' | 'declined'; confirmedScheduleRevision: number | null } | undefined;
+  return { myParticipation: row ? { status: row.status, confirmedScheduleRevision: row.confirmedScheduleRevision } : null };
+}
+
 function eventParticipantsForViewer(eventId: string, viewerId: string | undefined, revealAllPayments: boolean) {
   return getEventParticipants(eventId).map((participant) => ({
     ...paymentDetailsForViewer(participant, viewerId, revealAllPayments),
@@ -161,6 +175,25 @@ function paymentManagementFields(
   };
 }
 
+// Shared shape for a plain member's own event card, used both by the normal
+// `availableEvents` workspace list and by `plannedEvents` (drafts/stale
+// acceptances that stay outside that workspace list — see its comment above).
+function serializeMemberEvent(event: EventRow, playerId: string, viewerRole: GroupRole | undefined) {
+  const managementFields = paymentManagementFields(event, playerId, viewerRole);
+  return {
+    ...serializeEventSummary(event, {
+      includeAcceptedParticipants: true,
+      includePaymentDetails: true,
+      paymentViewerId: playerId,
+      revealAllParticipantPayments: managementFields.canManagePayments,
+    }),
+    createdBy: event.created_by,
+    ...managementFields,
+    ...(managementFields.canManagePayments ? { accommodationCostCents: event.accommodation_cost_cents } : {}),
+    ...myParticipationField(event.id, playerId),
+  };
+}
+
 function serializeEvent(
   event: ReturnType<typeof getEvent>,
   viewerId: string | undefined,
@@ -187,6 +220,7 @@ function serializeEvent(
       event.id === OUTSIDE_EVENTS_ID
         ? undefined
         : eventParticipantsForViewer(event.id, viewerId, revealAllPayments),
+    ...(event.id === OUTSIDE_EVENTS_ID || !viewerId ? {} : myParticipationField(event.id, viewerId)),
   };
 }
 
@@ -225,6 +259,7 @@ function serializeEventSummary(
     name: event.name,
     startsAt: event.starts_at,
     endsAt: event.ends_at,
+    scheduleRevision: event.schedule_revision,
     location: event.location,
     description: event.description,
     costCents: event.cost_cents,
@@ -250,13 +285,14 @@ function serializeEventSummary(
 // invitation teasers. Admins additionally receive the full management list.
 eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
   const playerId = req.player!.id;
+  const canManage = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
   const activeEvent = getOrRepairActiveEvent(playerId);
   const availableEvents = db
     .prepare(
       `SELECT e.*
        FROM events e
        JOIN event_participants ep ON ep.event_id = e.id
-       WHERE ep.player_id = ? AND ep.status = 'accepted'
+       WHERE ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
        ORDER BY e.id = ? DESC, e.starts_at DESC, e.name COLLATE NOCASE`,
     )
@@ -271,6 +307,43 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        ORDER BY e.starts_at, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
+  // Two cases where a plain member needs to see an event's card outside the
+  // normal `availableEvents` workspace list, both centered on the date poll:
+  //   1. A planning event has no event_participants row at all until a date
+  //      is chosen (see eventAccessLevel) — a poll invitee would otherwise
+  //      never see the draft they're voting in.
+  //   2. After a reschedule, `availableEvents`' join requires a
+  //      revision-matched confirmation (ACCEPTED_EVENT_PARTICIPANT_SQL) so
+  //      pricing/tracking/headcount never count a stale acceptance — but that
+  //      same join also means a stale member's card would vanish entirely,
+  //      leaving them no way to discover or act on "please reconfirm".
+  // Both are deliberately kept out of `availableEvents` itself (which doubles
+  // as the switchable-workspace list): neither a dateless draft nor a stale,
+  // unconfirmed acceptance may become the active tracking workspace.
+  const plannedEvents = canManage
+    ? []
+    : [
+        ...(db
+          .prepare(
+            `SELECT DISTINCT e.*
+             FROM events e
+             JOIN event_date_polls edp ON edp.event_id = e.id
+             JOIN event_date_poll_invitees edpi ON edpi.poll_id = edp.id
+             WHERE edpi.player_id = ? AND e.status = 'draft' AND e.group_id = ?`,
+          )
+          .all(playerId, req.group!.id) as EventRow[]),
+        ...(db
+          .prepare(
+            `SELECT e.*
+             FROM events e
+             JOIN event_participants ep ON ep.event_id = e.id
+             WHERE ep.player_id = ? AND ep.status = 'accepted'
+               AND ep.confirmed_schedule_revision IS NOT NULL
+               AND ep.confirmed_schedule_revision != e.schedule_revision
+               AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL`,
+          )
+          .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[]),
+      ].sort((a, b) => a.name.localeCompare(b.name, 'de'));
   // The personal-analytics allowlist, mirroring resolveAnalyticsEvents on the
   // server: every event this account accepted at some point, ended ones
   // included. `availableEvents` cannot serve that purpose because it is the
@@ -296,7 +369,6 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        ORDER BY e.starts_at DESC, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
-  const canManage = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
   const managedEvents = canManage
     ? listEvents(req.group!.id)
         .filter((event) => event.id !== BASE_EVENT_ID)
@@ -315,20 +387,11 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
       // wired up to this field yet — see the PR's own follow-up note.
       participantIds: getParticipantIds(activeEvent.id),
     },
-    availableEvents: availableEvents.map((event) => {
-      const managementFields = paymentManagementFields(event, playerId, req.groupMembership?.role);
-      return {
-        ...serializeEventSummary(event, {
-          includeAcceptedParticipants: true,
-          includePaymentDetails: true,
-          paymentViewerId: playerId,
-          revealAllParticipantPayments: managementFields.canManagePayments,
-        }),
-        createdBy: event.created_by,
-        ...managementFields,
-        ...(managementFields.canManagePayments ? { accommodationCostCents: event.accommodation_cost_cents } : {}),
-      };
-    }),
+    availableEvents: availableEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
+    // A stale (case 2) entry needs the same full shape as availableEvents —
+    // its own cost/PayPal/payment box are still relevant while the member
+    // decides whether to reconfirm — so this reuses the identical serializer.
+    plannedEvents: plannedEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
     historicalEvents: historicalEvents.map((event) => serializeEventSummary(event)),
     invitations: invitations.map((event) => ({ ...serializeEventSummary(event), participationStatus: 'invited' })),
     ...(managedEvents ? { managedEvents } : {}),
@@ -405,6 +468,11 @@ eventsRouter.post('/:id/invitations', resolveEvent, requireGroupRole('admin'), (
   if (event.ended_at || event.status === 'ended') {
     return res.status(409).json({ error: 'Für beendete Events können keine neuen Einladungen gesendet werden.' });
   }
+  if (event.status === 'draft' && event.starts_at === null) {
+    return res.status(409).json({
+      error: 'Für ein Planungs-Event ohne festen Termin können noch keine regulären Einladungen gesendet werden.',
+    });
+  }
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId || playerId.length > 200) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -414,6 +482,7 @@ eventsRouter.post('/:id/invitations', resolveEvent, requireGroupRole('admin'), (
   }
 
   const result = inviteParticipant(event.id, playerId);
+  if (result.changed) publishPlanningEventIfScheduled(event.id);
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.group!.id,
@@ -741,6 +810,39 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
   res.status(201).json(serializeEvent(event, req.player?.id, req.groupMembership?.role));
 });
 
+// POST /api/events/planning - a planning event ("In Planung", status draft)
+// with a working title but no fixed date yet. The date poll that later fixes
+// it lives inside this same event/id (see routes/eventDatePolls.ts) — there
+// is no separate "convert to event" step and no second id.
+// Body: { name, location?, description? }
+eventsRouter.post('/planning', requireConfiguredGroupMembership, requireGroupRole('admin'), (req, res) => {
+  const { name, location, description } = req.body ?? {};
+  if (!isNonEmptyString(name, 80)) {
+    return res.status(400).json({ error: 'Name ist erforderlich (1-80 Zeichen).' });
+  }
+  const parsedLocation = parseOptionalText(location, 500, 'location');
+  if (!parsedLocation.ok) return res.status(400).json({ error: parsedLocation.error });
+  const parsedDescription = parseOptionalText(description, 500, 'description');
+  if (!parsedDescription.ok) return res.status(400).json({ error: parsedDescription.error });
+
+  const event = createPlanningEvent(name.trim(), {
+    groupId: req.group!.id,
+    location: parsedLocation.value,
+    description: parsedDescription.value,
+    createdBy: req.player!.id,
+  });
+
+  writeAdminAudit({
+    actorPlayerId: req.player?.id,
+    groupId: req.group!.id,
+    action: 'event_planning_created',
+    targetType: 'event',
+    targetId: event.id,
+  });
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  res.status(201).json(serializeEvent(event, req.player?.id, req.groupMembership?.role));
+});
+
 // PATCH /api/events/:id - metadata correction only (name/dates/location/
 // description/payment details); never touches tracking state or live status.
 // Body: any subset of { name?, startsAt?, endsAt?, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
@@ -771,6 +873,15 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     if (!isNonEmptyString(name, 80)) return res.status(400).json({ error: 'Name muss 1-80 Zeichen lang sein.' });
     fields.name = name.trim();
   }
+  // A planning event's date is set exclusively through its date poll's
+  // schedule action (see routes/eventDatePolls.ts) — never through this
+  // generic metadata PATCH, so there is only ever one place that writes
+  // starts_at/ends_at/schedule_revision together in a single transaction.
+  if (existing.status === 'draft' && (startsAt !== undefined || endsAt !== undefined)) {
+    return res.status(409).json({
+      error: 'Der Termin eines Planungs-Events wird ausschließlich über die Terminabstimmung festgelegt.',
+    });
+  }
   if (startsAt !== undefined) {
     const parsed = parseOptionalTimestamp(startsAt, 'startsAt');
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
@@ -785,11 +896,13 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
   // Validated against the EFFECTIVE start/end (existing values merged with
   // whatever this request is changing), so e.g. patching just endsAt on an
   // event whose existing startsAt is later still gets caught. endsAt is
-  // required at creation and remains required during PATCH.
+  // required for any non-draft event and remains required during PATCH.
   const effectiveStartsAt = fields.startsAt ?? existing.starts_at;
   const effectiveEndsAt = fields.endsAt !== undefined ? fields.endsAt : existing.ends_at;
-  if (effectiveEndsAt === null || effectiveEndsAt <= effectiveStartsAt) {
-    return res.status(400).json({ error: 'endsAt muss nach startsAt liegen.' });
+  if (effectiveStartsAt !== null) {
+    if (effectiveEndsAt === null || effectiveEndsAt <= effectiveStartsAt) {
+      return res.status(400).json({ error: 'endsAt muss nach startsAt liegen.' });
+    }
   }
   if (location !== undefined) {
     const parsed = parseOptionalText(location, 500, 'location');
@@ -962,6 +1075,11 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
   if (event.id === BASE_EVENT_ID) {
     return res.status(409).json({ error: 'Die Teilnehmerliste des Basis-Events wird automatisch gepflegt.' });
   }
+  if (event.status === 'draft' && event.starts_at === null && Array.isArray(req.body?.playerIds) && req.body.playerIds.length > 0) {
+    return res.status(409).json({
+      error: 'Für ein Planungs-Event ohne festen Termin können noch keine regulären Einladungen gesendet werden.',
+    });
+  }
 
   const { playerIds } = req.body ?? {};
   if (!Array.isArray(playerIds) || !playerIds.every((p) => typeof p === 'string')) {
@@ -996,6 +1114,7 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
   }
   const activeBefore = new Set(activeContextPlayerIds(req.params.id));
   setParticipants(req.params.id, uniqueIds);
+  if (uniqueIds.length > 0) publishPlanningEventIfScheduled(event.id);
   const rosterRemovedIds = [...previousIds].filter((playerId) => !uniqueIds.includes(playerId));
   for (const playerId of rosterRemovedIds) {
     if (activeBefore.has(playerId)) switchPlayerEventScope(playerId, req.group!.id, BASE_EVENT_ID);

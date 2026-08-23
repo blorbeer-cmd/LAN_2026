@@ -331,6 +331,42 @@ export const api = {
       }),
     acceptInvitation: (id) => apiFetch(`/api/events/${id}/invitation/accept`, { method: 'POST' }),
     declineInvitation: (id) => apiFetch(`/api/events/${id}/invitation/decline`, { method: 'POST' }),
+    // data: { name, location?, description? } — a draft "In Planung" event
+    // with no fixed date; the date poll below is what later fixes one.
+    createPlanning: (data) => apiFetch('/api/events/planning', { method: 'POST', body: JSON.stringify(data) }),
+  },
+
+  eventDatePolls: {
+    list: (eventId) => apiFetch(`/api/events/${eventId}/date-polls`),
+    get: (eventId, pollId) => apiFetch(`/api/events/${eventId}/date-polls/${pollId}`),
+    // data: { options: [{startsOn, endsOn}], responseDueOn, note?, inviteePlayerIds? }
+    create: (eventId, data) =>
+      apiFetch(`/api/events/${eventId}/date-polls`, { method: 'POST', body: JSON.stringify(data) }),
+    // fields: { note?, responseDueOn? }
+    update: (eventId, pollId, fields) =>
+      apiFetch(`/api/events/${eventId}/date-polls/${pollId}`, { method: 'PATCH', body: JSON.stringify(fields) }),
+    addOption: (eventId, pollId, option) =>
+      apiFetch(`/api/events/${eventId}/date-polls/${pollId}/options`, { method: 'POST', body: JSON.stringify(option) }),
+    removeOption: (eventId, pollId, optionId) =>
+      apiFetch(`/api/events/${eventId}/date-polls/${pollId}/options/${optionId}`, { method: 'DELETE' }),
+    addInvitee: (eventId, pollId, playerId) =>
+      apiFetch(`/api/events/${eventId}/date-polls/${pollId}/invitees`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    removeInvitee: (eventId, pollId, playerId) =>
+      apiFetch(`/api/events/${eventId}/date-polls/${pollId}/invitees/${playerId}`, { method: 'DELETE' }),
+    // responses: [{ optionId, response }] — always the complete set for the round.
+    submitMyResponses: (eventId, pollId, responses) =>
+      apiFetch(`/api/events/${eventId}/date-polls/${pollId}/my-responses`, { method: 'PUT', body: JSON.stringify({ responses }) }),
+    sendReminders: (eventId, pollId) =>
+      apiFetch(`/api/events/${eventId}/date-polls/${pollId}/reminders`, { method: 'POST' }),
+    close: (eventId, pollId) => apiFetch(`/api/events/${eventId}/date-polls/${pollId}/close`, { method: 'POST' }),
+    reopen: (eventId, pollId, responseDueOn) =>
+      apiFetch(`/api/events/${eventId}/date-polls/${pollId}/reopen`, {
+        method: 'POST',
+        body: JSON.stringify(responseDueOn ? { responseDueOn } : {}),
+      }),
+    cancel: (eventId, pollId) => apiFetch(`/api/events/${eventId}/date-polls/${pollId}/cancel`, { method: 'POST' }),
+    schedule: (eventId, pollId, optionId) =>
+      apiFetch(`/api/events/${eventId}/date-polls/${pollId}/schedule`, { method: 'POST', body: JSON.stringify({ optionId }) }),
   },
 
   tournaments: {

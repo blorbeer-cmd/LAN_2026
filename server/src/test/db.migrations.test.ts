@@ -647,10 +647,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 82);
+  assert.equal(migrations.length, 83);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 82 }, (_, index) => index + 1),
+    Array.from({ length: 83 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1177,8 +1177,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 82 }, (_, index) => index + 1),
-    'every version 1..82 runs exactly once',
+    Array.from({ length: 83 }, (_, index) => index + 1),
+    'every version 1..83 runs exactly once',
   );
 });
 
@@ -2489,6 +2489,243 @@ test('migration 82 adds accommodation accounting, leaves legacy paid amounts unk
     { paidAmountCents: null },
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 82').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+// Reverts a fully migrated events/event_participants pair back to their
+// pre-83 shape: starts_at NOT NULL again, no schedule_revision/
+// confirmed_schedule_revision, no poll tables. Mirrors the DROP+CREATE+
+// copy-back rebuild migration 83 itself uses (see db.ts's addEventDatePolls),
+// which is what keeps this legacy fixture faithful to what an actual
+// pre-migration installation's schema looked like. better-sqlite3 defaults
+// new connections to foreign_keys=ON, so — exactly like the real migration —
+// this must disable it first: push_log's composite FK to events(group_id,
+// id) is otherwise validated the moment the rebuilt events table is written
+// to (the INSERT ... SELECT below), before this helper has even reached the
+// statement that recreates that composite unique index, which SQLite reports
+// as "foreign key mismatch" despite the finished schema being perfectly
+// valid a few statements later.
+function downgradeToPre83Shape(fixture: Database.Database): void {
+  fixture.pragma('foreign_keys = OFF');
+  fixture.exec(`
+    CREATE TABLE events_legacy_stage AS SELECT * FROM events;
+    DROP TABLE events;
+    CREATE TABLE events (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      starts_at INTEGER NOT NULL,
+      ends_at INTEGER,
+      location TEXT,
+      description TEXT,
+      cost_cents INTEGER CHECK (cost_cents IS NULL OR cost_cents > 0),
+      accommodation_cost_cents INTEGER CHECK (accommodation_cost_cents IS NULL OR accommodation_cost_cents > 0),
+      paypal_link TEXT,
+      payment_due_at INTEGER,
+      created_by TEXT REFERENCES players(id) ON DELETE SET NULL,
+      tracking_enabled INTEGER NOT NULL DEFAULT 0,
+      ended_at INTEGER,
+      is_test INTEGER NOT NULL DEFAULT 0,
+      group_id TEXT REFERENCES groups(id) ON DELETE RESTRICT,
+      status TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('draft', 'published', 'cancelled', 'ended')),
+      visibility_scope TEXT NOT NULL DEFAULT 'participants' CHECK (visibility_scope IN ('group', 'participants', 'public'))
+    );
+    INSERT INTO events
+      (id, name, starts_at, ends_at, location, description, cost_cents, accommodation_cost_cents,
+       paypal_link, payment_due_at, created_by, tracking_enabled, ended_at, is_test, group_id, status, visibility_scope)
+    SELECT id, name, starts_at, ends_at, location, description, cost_cents, accommodation_cost_cents,
+           paypal_link, payment_due_at, created_by, tracking_enabled, ended_at, is_test, group_id, status, visibility_scope
+    FROM events_legacy_stage;
+    DROP TABLE events_legacy_stage;
+    CREATE INDEX IF NOT EXISTS idx_events_group_start ON events(group_id, starts_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_events_group_pk ON events(group_id, id);
+
+    DROP TRIGGER IF EXISTS trg_event_participants_confirm_revision_insert;
+    DROP TRIGGER IF EXISTS trg_event_participants_confirm_revision_update;
+    ALTER TABLE event_participants DROP COLUMN confirmed_schedule_revision;
+
+    DROP TABLE IF EXISTS event_date_poll_responses;
+    DROP TABLE IF EXISTS event_date_poll_invitees;
+    DROP TABLE IF EXISTS event_date_poll_options;
+    DROP TABLE IF EXISTS event_date_polls;
+
+    DELETE FROM schema_migrations WHERE version = 83;
+  `);
+  assert.deepEqual(fixture.pragma('foreign_key_check'), [], 'the downgraded legacy fixture itself must stay referentially consistent');
+  fixture.pragma('foreign_keys = ON');
+}
+
+test('migration 83 makes starts_at nullable for drafts, adds schedule revisions, and creates the date poll tables', () => {
+  const dbFile = makeTempDbPath('event-date-polls');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture.exec(`
+    INSERT INTO players (id, name, api_key, created_at) VALUES ('poll-legacy-creator', 'Legacy Creator', 'poll-legacy-creator-key', ${now});
+    INSERT INTO players (id, name, api_key, created_at) VALUES ('poll-legacy-accepted', 'Legacy Accepted', 'poll-legacy-accepted-key', ${now});
+    INSERT INTO players (id, name, api_key, created_at) VALUES ('poll-legacy-declined', 'Legacy Declined', 'poll-legacy-declined-key', ${now});
+    INSERT INTO players (id, name, api_key, created_at) VALUES ('poll-legacy-invited', 'Legacy Invited', 'poll-legacy-invited-key', ${now});
+    INSERT INTO group_memberships (group_id, player_id, role, status, joined_at)
+      VALUES ('default-group', 'poll-legacy-creator', 'member', 'active', ${now});
+    INSERT INTO events (id, name, starts_at, ends_at, created_by, group_id, status, visibility_scope)
+      VALUES ('poll-legacy-event', 'Legacy Dated Event', ${now}, ${now + 60_000}, 'poll-legacy-creator', 'default-group', 'published', 'participants');
+    INSERT INTO event_participants (event_id, player_id, status) VALUES ('poll-legacy-event', 'poll-legacy-accepted', 'accepted');
+    INSERT INTO event_participants (event_id, player_id, status) VALUES ('poll-legacy-event', 'poll-legacy-declined', 'declined');
+    INSERT INTO event_participants (event_id, player_id, status) VALUES ('poll-legacy-event', 'poll-legacy-invited', 'invited');
+  `);
+  downgradeToPre83Shape(fixture);
+  // The legacy schema must genuinely still reject what migration 83 is about
+  // to relax, so this fixture is proven pre-migration rather than merely
+  // missing a version marker.
+  assert.throws(
+    () =>
+      fixture
+        .prepare("INSERT INTO events (id, name, starts_at, group_id, status, visibility_scope) VALUES ('should-fail', 'x', NULL, 'default-group', 'draft', 'participants')")
+        .run(),
+    /NOT NULL constraint failed/,
+  );
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'a second start must skip the already-recorded migration');
+
+  const migrated = new Database(dbFile);
+  const event = migrated.prepare('SELECT starts_at, schedule_revision FROM events WHERE id = ?').get('poll-legacy-event') as {
+    starts_at: number;
+    schedule_revision: number;
+  };
+  assert.equal(event.starts_at, now, 'existing dated event keeps its exact starts_at');
+  assert.equal(event.schedule_revision, 1, 'a pre-existing dated event is backfilled to revision 1');
+
+  const participants = migrated
+    .prepare('SELECT player_id AS playerId, status, confirmed_schedule_revision AS confirmedRevision FROM event_participants WHERE event_id = ? ORDER BY player_id')
+    .all('poll-legacy-event') as Array<{ playerId: string; status: string; confirmedRevision: number | null }>;
+  const byId = new Map(participants.map((p) => [p.playerId, p]));
+  assert.equal(byId.get('poll-legacy-accepted')?.confirmedRevision, 1, 'accepted rows are backfilled to revision 1');
+  assert.equal(byId.get('poll-legacy-declined')?.confirmedRevision, 1, 'declined rows are backfilled to revision 1');
+  assert.equal(byId.get('poll-legacy-invited')?.confirmedRevision, null, 'a still-open invitation stays unconfirmed');
+
+  // A draft planning event is now representable at the schema level.
+  assert.doesNotThrow(() =>
+    migrated
+      .prepare(
+        "INSERT INTO events (id, name, starts_at, group_id, status, visibility_scope, schedule_revision) VALUES ('poll-legacy-draft', 'Draft', NULL, 'default-group', 'draft', 'participants', 0)",
+      )
+      .run(),
+  );
+  assert.throws(
+    () =>
+      migrated
+        .prepare(
+          "INSERT INTO events (id, name, starts_at, group_id, status, visibility_scope, schedule_revision) VALUES ('poll-legacy-bad', 'Bad', NULL, 'default-group', 'published', 'participants', 0)",
+        )
+        .run(),
+    /CHECK constraint failed/,
+    'a non-draft event still requires a date',
+  );
+
+  // Cascades: a poll's options/invitees/responses are removed once its event
+  // (or, one level down, its round/option/invitee) is deleted.
+  const pollNow = Date.now();
+  migrated
+    .prepare(
+      `INSERT INTO event_date_polls (id, event_id, round_number, response_due_at, status, created_at, updated_at)
+       VALUES ('poll-legacy-round', 'poll-legacy-draft', 1, ?, 'open', ?, ?)`,
+    )
+    .run(pollNow + 1000, pollNow, pollNow);
+  migrated
+    .prepare(
+      `INSERT INTO event_date_poll_options (id, poll_id, starts_on, ends_on, position) VALUES ('poll-legacy-option', 'poll-legacy-round', '2027-01-01', '2027-01-03', 0)`,
+    )
+    .run();
+  migrated
+    .prepare(
+      `INSERT INTO event_date_poll_invitees (poll_id, player_id, invited_at) VALUES ('poll-legacy-round', 'poll-legacy-accepted', ?)`,
+    )
+    .run(pollNow);
+  migrated
+    .prepare(
+      `INSERT INTO event_date_poll_responses (poll_id, option_id, player_id, response, updated_at)
+       VALUES ('poll-legacy-round', 'poll-legacy-option', 'poll-legacy-accepted', 'can', ?)`,
+    )
+    .run(pollNow);
+  migrated.prepare('DELETE FROM events WHERE id = ?').run('poll-legacy-draft');
+  assert.equal((migrated.prepare('SELECT COUNT(*) AS n FROM event_date_polls WHERE id = ?').get('poll-legacy-round') as { n: number }).n, 0);
+  assert.equal((migrated.prepare('SELECT COUNT(*) AS n FROM event_date_poll_options WHERE id = ?').get('poll-legacy-option') as { n: number }).n, 0);
+  assert.equal(
+    (migrated.prepare("SELECT COUNT(*) AS n FROM event_date_poll_invitees WHERE poll_id = 'poll-legacy-round'").get() as { n: number }).n,
+    0,
+  );
+  assert.equal(
+    (migrated.prepare("SELECT COUNT(*) AS n FROM event_date_poll_responses WHERE poll_id = 'poll-legacy-round'").get() as { n: number }).n,
+    0,
+    'cascading from events all the way down to responses',
+  );
+
+  assert.deepEqual(migrated.pragma('foreign_key_check'), []);
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 83 rolls back completely if it fails partway through, and is retryable afterward', () => {
+  const dbFile = makeTempDbPath('event-date-polls-rollback');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture.exec(`
+    INSERT INTO players (id, name, api_key, created_at) VALUES ('poll-rollback-player', 'Rollback Player', 'poll-rollback-player-key', ${now});
+    INSERT INTO events (id, name, starts_at, ends_at, group_id, status, visibility_scope)
+      VALUES ('poll-rollback-event', 'Rollback Event', ${now}, ${now + 60_000}, 'default-group', 'published', 'participants');
+    INSERT INTO event_participants (event_id, player_id, status) VALUES ('poll-rollback-event', 'poll-rollback-player', 'accepted');
+  `);
+  downgradeToPre83Shape(fixture);
+  // Forces the migration's very first statement (staging the pre-rebuild
+  // events rows) to fail: CREATE TABLE events_staging_83 AS SELECT ... hits a
+  // name collision, so nothing about the rebuild — or anything later in the
+  // same migration body, since it's one transaction — ever runs.
+  fixture.exec('CREATE TABLE events_staging_83 (blocking INTEGER)');
+  fixture.close();
+
+  assert.throws(() => runMigrations(dbFile), /events_staging_83/);
+
+  const afterFailure = new Database(dbFile);
+  assert.equal(
+    afterFailure.prepare('SELECT 1 FROM schema_migrations WHERE version = 83').get(),
+    undefined,
+    'the failed migration must not be recorded as applied',
+  );
+  const columns = afterFailure.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  assert.equal(
+    columns.some((c) => c.name === 'schedule_revision'),
+    false,
+    'the events table must still be in its pre-migration shape after a rolled-back attempt',
+  );
+  assert.equal(
+    afterFailure.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'event_date_polls'").get(),
+    undefined,
+    'no poll table may exist after a rolled-back migration',
+  );
+  assert.deepEqual(
+    afterFailure.prepare('SELECT starts_at FROM events WHERE id = ?').get('poll-rollback-event'),
+    { starts_at: now },
+    'pre-existing data survives the rollback untouched',
+  );
+  afterFailure.close();
+
+  // Clear the blocker and retry — the migration must succeed cleanly now.
+  const retry = new Database(dbFile);
+  retry.exec('DROP TABLE events_staging_83');
+  retry.close();
+  assert.doesNotThrow(() => runMigrations(dbFile), 'after removing the blocker, the migration must succeed');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 83').get());
+  assert.deepEqual(
+    migrated.prepare('SELECT starts_at, schedule_revision FROM events WHERE id = ?').get('poll-rollback-event'),
+    { starts_at: now, schedule_revision: 1 },
+  );
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

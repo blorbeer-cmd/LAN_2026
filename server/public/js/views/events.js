@@ -26,6 +26,9 @@ import { emptyStateHtml } from '../emptyState.js';
 import { eventStatusBadgeHtml } from '../eventStatus.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { formatEuroCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
+import { renderDatePollSection, wireDatePollSection, invalidateEventDatePolls } from './eventDatePoll.js';
+
+export { invalidateEventDatePolls };
 
 const EVENT_HELP = 'Nur ein Event gleichzeitig erfasst Live-Status und Spielzeit.';
 const KIOSK_HELP = 'Zeigt Live-Status, Vote, Rang und Turnier; ein eigener Token ist erforderlich.';
@@ -39,11 +42,15 @@ function renderKioskSection() {
   `;
 }
 
-// The base workspace is permanently open, so it has no end date to print.
+// A planning event ("In Planung") has neither startsAt nor endsAt yet — its
+// date poll section (eventDatePoll.js) is what actually explains that state,
+// this is just the safe fallback so no view ever renders "Invalid Date" for
+// it. The base workspace is permanently open (startsAt set, endsAt null), so
+// it has no end date to print either, but for a different reason.
 function eventDateRange(e) {
-  return e.endsAt == null
-    ? 'Dauerhaft geöffnet'
-    : `${new Date(e.startsAt).toLocaleDateString('de-DE')} – ${new Date(e.endsAt).toLocaleDateString('de-DE')}`;
+  if (e.startsAt == null) return 'Termin wird noch abgestimmt';
+  if (e.endsAt == null) return 'Dauerhaft geöffnet';
+  return `${new Date(e.startsAt).toLocaleDateString('de-DE')} – ${new Date(e.endsAt).toLocaleDateString('de-DE')}`;
 }
 
 function eventLocationUrl(location) {
@@ -418,13 +425,20 @@ function renderEventInfo(event, { editable = false, invitation = false } = {}) {
          </div>`
       : ''
   }`;
+  // A draft ("In Planung") event's date is shown by the date poll section
+  // instead (eventDatePoll.js's info box) — showing this plain line too
+  // would just repeat "Termin wird noch abgestimmt" right above it.
+  const dateLine =
+    event.status === 'draft'
+      ? ''
+      : `<span class="food-order-send-at">
+           <span class="food-order-detail-icon" aria-hidden="true">${icon('calendar')}</span>
+           ${escapeHtml(eventDateRange(event))}
+         </span>`;
   return `
     <div class="food-order-details event-card-info">
       <div class="food-order-details-head">
-        <span class="food-order-send-at">
-          <span class="food-order-detail-icon" aria-hidden="true">${icon('calendar')}</span>
-          ${escapeHtml(eventDateRange(event))}
-        </span>
+        ${dateLine}
         ${editable ? `<button type="button" class="btn btn-sm" data-edit-event="${escapeHtml(event.id)}">Bearbeiten</button>` : ''}
       </div>
       ${additionalDetails ? `<div class="event-card-info-details">${additionalDetails}</div>` : ''}
@@ -435,13 +449,14 @@ function renderEventInfo(event, { editable = false, invitation = false } = {}) {
 // Read-only card for a member's own accepted events. The same information is
 // useful to admins, so both card variants share the detail and accepted-roster
 // blocks while only the management card receives lifecycle actions.
-function renderMemberEventCard(event) {
+function renderMemberEventCard(event, ctx) {
   return `
     <article class="card stack event-card event-card-member" data-event-card="${escapeHtml(event.id)}">
       <div class="row-between food-order-card-header event-card-header">
         <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
         ${eventStatusBadgeHtml(event)}
       </div>
+      ${renderDatePollSection(event, ctx)}
       ${renderEventInfo(event)}
       ${renderAcceptedParticipants(event)}
     </article>
@@ -466,13 +481,20 @@ function renderInvitationPayment(event) {
     </div>`;
 }
 
-function renderEventCard(event) {
-  const trackingBtn = event.isEnded
-    ? `<button type="button" class="btn btn-sm btn-primary" data-restart-event="${event.id}">Event wieder starten</button>`
-    : event.trackingEnabled
-      ? `<button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">${icon('pause')} Tracking stoppen</button>`
-      : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${event.id}">Tracking starten</button>`;
-  const endBtn = event.isEnded
+function renderEventCard(event, ctx) {
+  // Nothing about tracking, ending, the regular roster or the PDF keepsake is
+  // meaningful before this event has an actual date — the date poll section
+  // above already covers what to do instead ("Termin abstimmen"/"Termin
+  // festlegen").
+  const hasDate = event.startsAt != null;
+  const trackingBtn = !hasDate
+    ? ''
+    : event.isEnded
+      ? `<button type="button" class="btn btn-sm btn-primary" data-restart-event="${event.id}">Event wieder starten</button>`
+      : event.trackingEnabled
+        ? `<button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">${icon('pause')} Tracking stoppen</button>`
+        : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${event.id}">Tracking starten</button>`;
+  const endBtn = !hasDate || event.isEnded
     ? ''
     : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
 
@@ -482,19 +504,20 @@ function renderEventCard(event) {
         <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
         ${eventStatusBadgeHtml(event)}
       </div>
+      ${renderDatePollSection(event, ctx)}
       ${renderEventInfo(event, { editable: true })}
       ${renderAcceptedParticipants(event, { includeInvitationStatuses: true })}
       <div class="event-card-actions">
         ${trackingBtn}
         ${endBtn}
-        <button type="button" class="btn btn-sm" data-participants-event="${event.id}">${icon('users')} Teilnehmer verwalten</button>
-        <button type="button" class="btn btn-sm" data-export-event="${event.id}" title="Als PDF exportieren">${icon('file')} PDF</button>
+        ${hasDate ? `<button type="button" class="btn btn-sm" data-participants-event="${event.id}">${icon('users')} Teilnehmer verwalten</button>` : ''}
+        ${hasDate ? `<button type="button" class="btn btn-sm" data-export-event="${event.id}" title="Als PDF exportieren">${icon('file')} PDF</button>` : ''}
       </div>
     </article>
   `;
 }
 
-function renderEventSection() {
+function renderEventSection(ctx) {
   // Only owner/admin receive `managedEvents`; a member's own accepted events
   // carry accepted participant names but no management roster/status data and
   // must not be rendered through the management card, whose actions they cannot
@@ -503,10 +526,15 @@ function renderEventSection() {
   // joins, it is where everyone already is.
   const canManage = Array.isArray(state.managedEvents);
   const realEvents = (canManage ? state.managedEvents : []).filter((e) => !e.isOutsideEvents && !e.isBase);
-  const memberEvents = canManage ? [] : (state.availableEvents || []).filter((e) => !e.isBase);
+  // A draft event a member is only invited to via a date poll round (not yet
+  // an accepted participant) lives in plannedEvents, kept separate from
+  // availableEvents so it never appears as a switchable workspace.
+  const memberEvents = canManage
+    ? []
+    : [...(state.availableEvents || []).filter((e) => !e.isBase), ...(state.plannedEvents || [])];
   const cards = canManage
-    ? realEvents.map(renderEventCard).join('')
-    : memberEvents.map(renderMemberEventCard).join('');
+    ? realEvents.map((event) => renderEventCard(event, ctx)).join('')
+    : memberEvents.map((event) => renderMemberEventCard(event, ctx)).join('');
   const visibleEventCount = canManage ? realEvents.length : memberEvents.length;
   const myId = getMyId();
   // A teaser is all an invited account receives, so the invitation list comes
@@ -536,7 +564,14 @@ function renderEventSection() {
           <h2 id="orga-events-title">Events</h2>
           ${infoTooltipHtml('orga-events-help', 'Events', EVENT_HELP)}
         </span>
-        ${canManage ? `<button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>` : ''}
+        ${
+          canManage
+            ? `<span class="row" style="gap:var(--space-2);">
+                 <button type="button" class="btn btn-sm" id="new-planning-event-btn">+ Planungs-Event</button>
+                 <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>
+               </span>`
+            : ''
+        }
       </div>
       ${
         pendingInvitations.length > 0
@@ -576,6 +611,62 @@ async function downloadExport(eventId) {
   } catch (err) {
     showToast(err.message, { error: true });
   }
+}
+
+// A planning event ("In Planung") starts with just a working title and
+// optional location/notes — no date at all yet. Its date poll (started from
+// the resulting event card, see eventDatePoll.js's "Termin abstimmen") is
+// what later fixes one; there is no separate "convert to event" step and no
+// second id.
+function openPlanningEventForm(ctx) {
+  let capturedEl;
+  const { close } = openModal(
+    'Planungs-Event',
+    `
+      <form id="planning-event-form" class="stack">
+        <div>
+          <label for="planning-event-name" class="field-label">Arbeitstitel</label>
+          <input type="text" id="planning-event-name" maxlength="80" required autofocus placeholder="z.B. LAN Winter 2027" />
+        </div>
+        <div>
+          <label for="planning-event-location" class="field-label">Ort (optional)</label>
+          <input type="text" id="planning-event-location" maxlength="500" placeholder="z.B. bei Tim" />
+        </div>
+        <div>
+          <label for="planning-event-description" class="field-label">Notiz (optional)</label>
+          <textarea id="planning-event-description" maxlength="500" rows="2"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Planungs-Event anlegen</button>
+      </form>
+    `,
+    {
+      confirmClose: () => {
+        if (!capturedEl) return null;
+        const name = capturedEl.querySelector('#planning-event-name').value.trim();
+        const location = capturedEl.querySelector('#planning-event-location').value.trim();
+        const description = capturedEl.querySelector('#planning-event-description').value.trim();
+        return name || location || description ? 'Die eingegebenen Angaben gehen verloren.' : null;
+      },
+      onMount: (modalEl) => {
+        capturedEl = modalEl;
+        modalEl.querySelector('#planning-event-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const name = modalEl.querySelector('#planning-event-name').value.trim();
+          if (!name) return;
+          const location = modalEl.querySelector('#planning-event-location').value.trim();
+          const description = modalEl.querySelector('#planning-event-description').value.trim();
+          try {
+            await api.events.createPlanning({ name, location: location || null, description: description || null });
+            close();
+            await ctx.refresh();
+            showToast('Planungs-Event angelegt.');
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+      },
+    },
+  );
 }
 
 // existing === null: create a new (not-yet-tracking) event. existing !==
@@ -869,7 +960,7 @@ export function renderOrgaKiosk(container) {
 export function renderOrgaEvents(container, ctx) {
   container.innerHTML = `
     <div class="grouped-page-sections">
-      ${renderEventSection()}
+      ${renderEventSection(ctx)}
     </div>
   `;
 
@@ -884,6 +975,13 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
   });
   wireInfoTooltips(container);
+  wireDatePollSection(
+    container,
+    () => [...(state.managedEvents || []), ...(state.availableEvents || []), ...(state.plannedEvents || [])],
+    ctx,
+  );
+
+  container.querySelector('#new-planning-event-btn')?.addEventListener('click', () => openPlanningEventForm(ctx));
 
   container.querySelectorAll('[data-toggle-event-paid]').forEach((btn) => {
     btn.addEventListener('click', async () => {

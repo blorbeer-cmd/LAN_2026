@@ -14,7 +14,9 @@ export { OUTSIDE_EVENTS_ID };
 export interface EventRow {
   id: string;
   name: string;
-  starts_at: number;
+  // Only NULL while status is 'draft' (a planning event whose date poll
+  // hasn't been scheduled yet) — enforced by a DB CHECK, not just this type.
+  starts_at: number | null;
   ends_at: number | null;
   location: string | null;
   description: string | null;
@@ -28,6 +30,7 @@ export interface EventRow {
   group_id: string | null;
   status: 'draft' | 'published' | 'cancelled' | 'ended';
   visibility_scope: 'group' | 'participants' | 'public';
+  schedule_revision: number;
 }
 
 export interface EventParticipantRow {
@@ -39,6 +42,7 @@ export interface EventParticipantRow {
   paidByName?: string | null;
   paidAt?: number | null;
   paidAmountCents?: number | null;
+  confirmedScheduleRevision?: number | null;
 }
 
 export interface AcceptedEventParticipantRow {
@@ -49,6 +53,7 @@ export interface AcceptedEventParticipantRow {
   paidByName: string | null;
   paidAt: number | null;
   paidAmountCents: number | null;
+  confirmedScheduleRevision: number | null;
 }
 
 export interface EventPaymentSummary {
@@ -96,14 +101,19 @@ export interface CreateEventOptions {
 
 // Just creates the event — tracking starts off, so this never wipes live
 // status or conflicts with an already-tracking event. Call startTracking
-// separately once you actually want this event to go live.
+// separately once you actually want this event to go live. A fixed date is
+// known from the start (no date poll involved), so this counts as schedule
+// revision 1 right away — the same revision a poll's first "Termin
+// festlegen" would produce, and what existing accept/decline writes compare
+// against (see ACCEPTED_EVENT_PARTICIPANT_SQL).
 export function createEvent(name: string, options: CreateEventOptions): EventRow {
   const id = nanoid();
   db.prepare(
     `INSERT INTO events
        (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at,
-        group_id, status, visibility_scope, cost_cents, accommodation_cost_cents, paypal_link, payment_due_at, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, 'published', 'participants', ?, ?, ?, ?, ?)`
+        group_id, status, visibility_scope, cost_cents, accommodation_cost_cents, paypal_link, payment_due_at, created_by,
+        schedule_revision)
+     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, 'published', 'participants', ?, ?, ?, ?, ?, 1)`
   ).run(
     id,
     name,
@@ -116,6 +126,37 @@ export function createEvent(name: string, options: CreateEventOptions): EventRow
     options.accommodationCostCents ?? null,
     options.paypalLink ?? null,
     options.paymentDueAt ?? null,
+    options.createdBy ?? null,
+  );
+  return getEvent(id)!;
+}
+
+export interface CreatePlanningEventOptions {
+  groupId?: string;
+  location?: string | null;
+  description?: string | null;
+  createdBy?: string | null;
+}
+
+// A planning event ("In Planung") starts without any fixed date at all —
+// starts_at/ends_at stay NULL and schedule_revision stays 0 until a date poll
+// round is scheduled inside it (see eventDatePolls.ts's scheduleDatePoll,
+// which is the only place schedule_revision ever moves off 0). status stays
+// 'draft' the whole time this is true; nothing else in the app may create a
+// draft event any other way.
+export function createPlanningEvent(name: string, options: CreatePlanningEventOptions = {}): EventRow {
+  const id = nanoid();
+  db.prepare(
+    `INSERT INTO events
+       (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at,
+        group_id, status, visibility_scope, created_by, schedule_revision)
+     VALUES (?, ?, NULL, NULL, ?, ?, 0, NULL, ?, 'draft', 'participants', ?, 0)`
+  ).run(
+    id,
+    name,
+    options.location ?? null,
+    options.description ?? null,
+    options.groupId ?? DEFAULT_GROUP_ID,
     options.createdBy ?? null,
   );
   return getEvent(id)!;
@@ -202,6 +243,13 @@ function startTrackingInternal(id: string, reopenEnded: boolean): StartTrackingR
   if (event.status === 'cancelled') {
     return { ok: false, code: 'invalid', error: 'Ein abgesagtes Event kann nicht getrackt werden.' };
   }
+  if (event.status === 'draft') {
+    return {
+      ok: false,
+      code: 'invalid',
+      error: 'Ein Planungs-Event ohne festen Termin kann nicht getrackt werden.',
+    };
+  }
   if (event.tracking_enabled) return { ok: true, event };
 
   closeEventContexts(id);
@@ -255,6 +303,16 @@ export function endEvent(id: string): EventRow | undefined {
   return getEvent(id);
 }
 
+// A planning event stays draft — even after its date poll schedules a date —
+// until the creator actually invites people, matching the concept's "Das
+// Event bleibt draft, bis der Ersteller die regulären Einladungen ...
+// bestätigt". Called from the first successful invite on such an event;
+// guarded by starts_at IS NOT NULL so it can only fire once a date exists
+// (routes/events.ts separately rejects inviting before that).
+export function publishPlanningEventIfScheduled(id: string): void {
+  db.prepare("UPDATE events SET status = 'published' WHERE id = ? AND status = 'draft' AND starts_at IS NOT NULL").run(id);
+}
+
 export function cancelEvent(id: string): EventRow | undefined {
   const event = getEvent(id);
   if (
@@ -289,7 +347,7 @@ export function getEventParticipants(eventId: string): EventParticipantRow[] {
     .prepare(
       `SELECT ep.player_id AS playerId, p.name, ep.status, ep.paid,
               ep.paid_by AS paidBy, confirmer.name AS paidByName, ep.paid_at AS paidAt,
-              ep.paid_amount_cents AS paidAmountCents
+              ep.paid_amount_cents AS paidAmountCents, ep.confirmed_schedule_revision AS confirmedScheduleRevision
        FROM event_participants ep
        JOIN players p ON p.id = ep.player_id
        LEFT JOIN players confirmer ON confirmer.id = ep.paid_by
@@ -313,7 +371,7 @@ export function getAcceptedEventParticipants(eventId: string): AcceptedEventPart
        FROM event_participants ep
        JOIN players p ON p.id = ep.player_id
        LEFT JOIN players confirmer ON confirmer.id = ep.paid_by
-       WHERE ep.event_id = ? AND ep.status = 'accepted' AND p.deactivated_at IS NULL
+       WHERE ep.event_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL} AND p.deactivated_at IS NULL
        ORDER BY p.name COLLATE NOCASE, p.id`,
     )
     .all(eventId) as Array<Omit<AcceptedEventParticipantRow, 'paid'> & { paid: number }>)
@@ -372,10 +430,15 @@ export function inviteParticipant(eventId: string, playerId: string): InvitePart
       return { participant: { playerId, status: 'invited', paid: false }, changed: true };
     }
     if (existing.status === 'declined') {
-      db.prepare("UPDATE event_participants SET status = 'invited' WHERE event_id = ? AND player_id = ?").run(
-        eventId,
-        playerId,
-      );
+      // Reopening as 'invited' must also clear confirmed_schedule_revision:
+      // otherwise a re-invited person whose stale value already equals the
+      // event's current revision would find respondToEventInvitation's
+      // guard permanently closed (it only reopens for a revision mismatch),
+      // even though their actual status is 'invited' and clearly not yet
+      // answered again.
+      db.prepare(
+        "UPDATE event_participants SET status = 'invited', confirmed_schedule_revision = NULL WHERE event_id = ? AND player_id = ?",
+      ).run(eventId, playerId);
       return { participant: { playerId, status: 'invited', paid: false }, changed: true };
     }
     const paid = db
@@ -390,37 +453,49 @@ export type RespondToEventInvitationResult =
   | { ok: true; participant: EventParticipantRow; changed: boolean }
   | { ok: false; currentStatus: EventParticipationStatus | null };
 
+// A participant "confirms" (accepts or declines) for the event's CURRENT
+// schedule revision — not just its raw status column. Two situations both
+// count as "not yet confirmed for this revision" and are therefore open to a
+// fresh answer: a brand new invitation (status 'invited',
+// confirmed_schedule_revision NULL) and a stale accepted/declined row left
+// over from before a reschedule (confirmed_schedule_revision < the event's
+// current schedule_revision — see docs/plans/event-date-poll-concept.md's
+// "Erneute Bestätigung erforderlich"). Once confirmed_schedule_revision
+// matches the current revision, the answer is locked the same way it always
+// was: an identical resubmit is a no-op, a flip to the other answer is 409.
 export function respondToEventInvitation(
   eventId: string,
   playerId: string,
   response: 'accepted' | 'declined',
 ): RespondToEventInvitationResult {
   const transaction = db.transaction((): RespondToEventInvitationResult => {
+    const event = db.prepare('SELECT schedule_revision FROM events WHERE id = ?').get(eventId) as
+      | { schedule_revision: number }
+      | undefined;
     const existing = db
-      .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
-      .get(eventId, playerId) as { status: EventParticipationStatus } | undefined;
-    if (!existing) return { ok: false, currentStatus: null };
-    if (existing.status === response) {
+      .prepare('SELECT status, confirmed_schedule_revision AS confirmedRevision FROM event_participants WHERE event_id = ? AND player_id = ?')
+      .get(eventId, playerId) as { status: EventParticipationStatus; confirmedRevision: number | null } | undefined;
+    if (!existing || !event) return { ok: false, currentStatus: existing?.status ?? null };
+
+    // The conditional write is the database-side race guard: only a row that
+    // is still unconfirmed for the current revision can be claimed by either
+    // response, and only one of two concurrent requests can win it.
+    const updated = db
+      .prepare(
+        `UPDATE event_participants SET status = ?, confirmed_schedule_revision = ?
+         WHERE event_id = ? AND player_id = ?
+           AND (confirmed_schedule_revision IS NULL OR confirmed_schedule_revision != ?)`,
+      )
+      .run(response, event.schedule_revision, eventId, playerId, event.schedule_revision);
+    if (updated.changes === 1) {
       const paid = db
         .prepare('SELECT paid FROM event_participants WHERE event_id = ? AND player_id = ?')
         .get(eventId, playerId) as { paid: number };
-      return { ok: true, participant: { playerId, status: response, paid: Boolean(paid.paid) }, changed: false };
-    }
-    if (existing.status !== 'invited') return { ok: false, currentStatus: existing.status };
-
-    const updated = db
-      .prepare(
-        `UPDATE event_participants SET status = ?
-         WHERE event_id = ? AND player_id = ? AND status = 'invited'`,
-      )
-      .run(response, eventId, playerId);
-    if (updated.changes === 1) {
-      return { ok: true, participant: { playerId, status: response, paid: false }, changed: true };
+      return { ok: true, participant: { playerId, status: response, paid: Boolean(paid.paid) }, changed: true };
     }
 
-    // The conditional write is the database-side race guard. Re-read the
-    // winner if another request changed the row before this one acquired the
-    // write lock, then preserve idempotency only for an identical outcome.
+    // Already confirmed for this revision (or lost the race above) — re-read
+    // and preserve idempotency only for an identical outcome.
     const current = db
       .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
       .get(eventId, playerId) as { status: EventParticipationStatus } | undefined;
@@ -449,17 +524,23 @@ export function removeEventParticipant(eventId: string, playerId: string): Event
 }
 
 // Replaces the whole roster in one go — simpler for the UI than incremental
-// add/remove calls, mirroring how a tournament's team roster is set.
+// add/remove calls, mirroring how a tournament's team roster is set. An
+// admin setting someone 'accepted' here is a direct, explicit acceptance
+// decision for the event's CURRENT schedule revision, exactly like answering
+// an invitation — so it stamps confirmed_schedule_revision the same way.
 export function setParticipants(eventId: string, playerIds: string[]): void {
   if (eventId === BASE_EVENT_ID) throw new Error('The base event roster cannot be replaced.');
   const tx = db.transaction(() => {
     const previousIds = getParticipantIds(eventId);
     const desired = new Set(playerIds);
+    const event = db.prepare('SELECT schedule_revision FROM events WHERE id = ?').get(eventId) as
+      | { schedule_revision: number }
+      | undefined;
     const upsert = db.prepare(
-      `INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')
-       ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted'`,
+      `INSERT INTO event_participants (event_id, player_id, status, confirmed_schedule_revision) VALUES (?, ?, 'accepted', ?)
+       ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted', confirmed_schedule_revision = excluded.confirmed_schedule_revision`,
     );
-    for (const playerId of desired) upsert.run(eventId, playerId);
+    for (const playerId of desired) upsert.run(eventId, playerId, event?.schedule_revision ?? 0);
 
     const existing = db
       .prepare('SELECT player_id FROM event_participants WHERE event_id = ?')
