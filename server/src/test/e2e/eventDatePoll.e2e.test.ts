@@ -108,7 +108,7 @@ async function createPoll(
   await page.fill('#poll-title', title);
   if (mode !== 'feasibility') await page.click(`[data-create-poll-mode="${mode}"]`);
   if (maxSelections !== undefined) await page.fill('#poll-max', String(maxSelections));
-  while ((await page.locator('[data-poll-option-input]').count()) < options.length) await page.click('#add-poll-option');
+  while ((await page.locator('[data-poll-option-input]').count()) < options.length) await page.click('#poll-add-option');
   for (let index = 0; index < options.length; index += 1) {
     await page.locator('[data-poll-option-input]').nth(index).fill(options[index]);
   }
