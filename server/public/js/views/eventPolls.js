@@ -88,6 +88,12 @@ function formatDate(timestamp) {
   return new Date(timestamp).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function formatDateTime(timestamp) {
+  return new Date(timestamp).toLocaleString('de-DE', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
 function pollStatusInfo(status) {
   if (status === 'open') return { label: 'Abstimmung läuft', badge: 'badge-playing' };
   if (status === 'closed') return { label: 'Abstimmung beendet', badge: 'badge-paused' };
@@ -175,7 +181,7 @@ function optionUrl(option) {
 
 function responsePeopleGroups(poll, option) {
   if (poll.responseMode === 'rating_1_5') {
-    return RATING_VALUES.map((value) => ({ label: `${value} von 5`, people: option.people.ratings?.[value] ?? [] }));
+    return [...RATING_VALUES].reverse().map((value) => ({ label: `${value} von 5`, people: option.people.ratings?.[value] ?? [] }));
   }
   if (poll.responseMode === 'feasibility') {
     return [
@@ -187,27 +193,55 @@ function responsePeopleGroups(poll, option) {
   return [{ label: 'Gewählt', people: option.people.can }];
 }
 
-function renderResponseDetails(poll, option) {
-  if (!poll.responseDetailsVisible || poll.anonymous || poll.status === 'open') return '';
-  const groups = responsePeopleGroups(poll, option).filter((group) => group.people?.length);
-  if (!groups.length) return '';
-  const count = groups.reduce((sum, group) => sum + group.people.length, 0);
-  return `
-    <details class="event-poll-response-details">
-      <summary>Antworten (${count})</summary>
-      <div class="stack event-poll-response-groups">
-        ${groups.map((group) => `
-          <div class="stack event-poll-response-group">
-            <strong>${escapeHtml(group.label)}</strong>
-            <ul class="event-participant-list">
-              ${group.people.map((person) => {
-                const player = state.players?.find((entry) => entry.id === person.playerId) ?? person;
-                return `<li class="event-participant-row"><span class="player-name">${avatarHtml(player, 20)}${escapeHtml(person.name)}</span></li>`;
-              }).join('')}
-            </ul>
-          </div>`).join('')}
-      </div>
-    </details>`;
+function resultSortValues(poll, option) {
+  if (poll.responseMode === 'rating_1_5') return [option.counts.average ?? -1, -option.counts.open];
+  if (poll.responseMode === 'feasibility') return [option.counts.can, option.counts.ifNeeded, -option.counts.cannot];
+  return [option.counts.can, -option.counts.open];
+}
+
+function optionsByResult(poll) {
+  return [...poll.options].sort((left, right) => {
+    const leftValues = resultSortValues(poll, left);
+    const rightValues = resultSortValues(poll, right);
+    for (let index = 0; index < Math.max(leftValues.length, rightValues.length); index += 1) {
+      if ((rightValues[index] ?? 0) !== (leftValues[index] ?? 0)) return (rightValues[index] ?? 0) - (leftValues[index] ?? 0);
+    }
+    return left.position - right.position;
+  });
+}
+
+function bestResultLabel(poll) {
+  if (poll.status === 'open') return '';
+  const best = poll.options.find((option) => option.isRecommended);
+  return best ? optionLabel(best) : '';
+}
+
+function openVoteDetails(poll) {
+  if (!poll.responseDetailsVisible || poll.anonymous || poll.status === 'open') return;
+  const options = optionsByResult(poll);
+  const hasResponses = options.some((option) => responsePeopleGroups(poll, option).some((group) => group.people?.length));
+  openModal(`Stimmen · ${poll.title}`, hasResponses ? `
+    <div class="stack event-poll-vote-details">
+      ${options.map((option, index) => {
+        const groups = responsePeopleGroups(poll, option).filter((group) => group.people?.length);
+        if (!groups.length) return '';
+        return `
+          <section class="event-poll-vote-option stack">
+            <div class="row-between"><strong>${index + 1}. ${escapeHtml(optionLabel(option))}</strong><span class="muted">${escapeHtml(renderCounts(poll, option))}</span></div>
+            ${groups.map((group) => `
+              <div class="event-poll-vote-group stack">
+                <span class="muted">${escapeHtml(group.label)}</span>
+                ${group.people
+                  .slice()
+                  .sort((left, right) => right.updatedAt - left.updatedAt)
+                  .map((person) => {
+                    const player = state.players?.find((entry) => entry.id === person.playerId) ?? person;
+                    return `<div class="event-poll-vote-person row-between"><span class="player-name">${avatarHtml(player, 20)}${escapeHtml(person.name)}</span><time class="muted" datetime="${new Date(person.updatedAt).toISOString()}">${escapeHtml(formatDateTime(person.updatedAt))}</time></div>`;
+                  }).join('')}
+              </div>`).join('')}
+          </section>`;
+      }).join('')}
+    </div>` : '<p class="muted">Für diese Runde wurden keine Stimmen abgegeben.</p>');
 }
 
 function renderResponseControl(poll, option) {
@@ -215,7 +249,7 @@ function renderResponseControl(poll, option) {
   const draft = responseDraftFor(poll);
   if (poll.responseMode === 'rating_1_5') {
     return `
-      <div class="selection-toolbar event-poll-response-toolbar" role="group" aria-label="Bewertung für ${escapeHtml(optionLabel(option))}">
+      <div class="selection-toolbar event-poll-response-toolbar event-poll-rating-toolbar" role="group" aria-label="Bewertung für ${escapeHtml(optionLabel(option))}">
         ${RATING_VALUES.map((value) => `
           <button type="button" class="btn btn-sm${draft[option.id] === value ? ' btn-primary' : ''}"
             data-poll-response="${value}" data-poll-id="${escapeHtml(poll.id)}" data-option-id="${escapeHtml(option.id)}"
@@ -262,12 +296,12 @@ function renderOption(poll, option) {
     ? `<span class="badge badge-online">${['feasibility', 'rating_1_5'].includes(poll.responseMode) ? 'Beste Bewertung' : 'Meiste Stimmen'}</span>`
     : '';
   return `
-    <div class="event-poll-option" data-poll-option="${escapeHtml(option.id)}">
+    <div class="event-poll-option${recommendation ? ' has-recommendation' : ''}" data-poll-option="${escapeHtml(option.id)}">
       <div class="row-between event-poll-option-header">
         <span class="event-poll-option-title-row">
           <strong>${escapeHtml(label)}</strong>
-          ${link ? `<a class="icon-btn event-poll-option-link" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" aria-label="Link zu ${escapeHtml(label)} öffnen" title="Link öffnen">${icon('squareArrowOutUpRight')}</a>` : ''}
           ${option.description ? infoTooltipHtml(`poll-option-note-${poll.id}-${option.id}`, `Notiz zu ${label}`, option.description) : ''}
+          ${link ? `<a class="icon-btn event-poll-option-link" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer" aria-label="Link zu ${escapeHtml(label)} öffnen" title="Link öffnen">${icon('squareArrowOutUpRight')}</a>` : ''}
         </span>
         <span class="row event-poll-option-badges">
           ${recommendation}
@@ -276,31 +310,36 @@ function renderOption(poll, option) {
       <div class="event-poll-option-response-row">
         <span class="muted event-poll-counts">${renderCounts(poll, option)}</span>
         ${renderResponseControl(poll, option)}
-        ${renderResponseDetails(poll, option)}
       </div>
     </div>`;
 }
 
-function renderManagerHeaderActions(poll) {
-  if (!poll.canManage) return '';
+function renderPollActions(poll) {
   const unanswered = poll.invitees.filter((invitee) => !invitee.hasAnswered).length;
+  const actions = [];
   if (poll.status === 'open') {
-    return `
-      <div class="event-poll-header-actions">
-        <button type="button" class="btn btn-sm" data-edit-poll="${escapeHtml(poll.id)}">Bearbeiten</button>
-        <button type="button" class="btn btn-sm" data-remind-poll="${escapeHtml(poll.id)}" ${unanswered === 0 ? 'disabled' : ''}>Erinnerung versenden (${unanswered})</button>
-        <button type="button" class="btn btn-sm" data-close-poll="${escapeHtml(poll.id)}">Beenden</button>
-        <button type="button" class="btn btn-sm btn-danger" data-cancel-poll="${escapeHtml(poll.id)}">Abbrechen</button>
-      </div>`;
+    if (poll.canManage) {
+      actions.push(`<button type="button" data-edit-poll="${escapeHtml(poll.id)}">Bearbeiten</button>`);
+      actions.push(`<button type="button" data-remind-poll="${escapeHtml(poll.id)}" ${unanswered === 0 ? 'disabled' : ''}>Erinnerung versenden (${unanswered})</button>`);
+      actions.push(`<button type="button" data-close-poll="${escapeHtml(poll.id)}">Beenden</button>`);
+      actions.push(`<button type="button" class="is-danger" data-delete-poll="${escapeHtml(poll.id)}">Löschen</button>`);
+    }
+  } else {
+    if (poll.responseDetailsVisible && !poll.anonymous) {
+      actions.push(`<button type="button" data-view-poll-votes="${escapeHtml(poll.id)}">Stimmen ansehen</button>`);
+    }
+    if (poll.canManage) {
+      actions.push(`<button type="button" data-reopen-poll="${escapeHtml(poll.id)}">Wieder öffnen</button>`);
+      actions.push(`<button type="button" data-new-poll-round="${escapeHtml(poll.id)}">Erneut abstimmen</button>`);
+      actions.push(`<button type="button" class="is-danger" data-delete-poll="${escapeHtml(poll.id)}">Löschen</button>`);
+    }
   }
-  if (poll.status === 'closed') {
-    return `
-      <div class="event-poll-header-actions">
-        <button type="button" class="btn btn-sm" data-reopen-poll="${escapeHtml(poll.id)}">Wieder öffnen</button>
-        <button type="button" class="btn btn-sm btn-danger" data-cancel-poll="${escapeHtml(poll.id)}">Abbrechen</button>
-      </div>`;
-  }
-  return '';
+  if (!actions.length) return '';
+  return `
+    <details class="event-poll-action-menu">
+      <summary class="btn btn-sm">Aktion</summary>
+      <div class="event-poll-action-menu-panel">${actions.join('')}</div>
+    </details>`;
 }
 
 function renderRound(poll) {
@@ -308,9 +347,10 @@ function renderRound(poll) {
   const mode = MODE_INFO[poll.responseMode] ?? MODE_INFO.feasibility;
   const maxCopy = poll.responseMode === 'multiple_choice' && poll.maxSelections ? ` · höchstens ${poll.maxSelections}` : '';
   const anonymousCopy = poll.anonymous ? ' · Anonym' : '';
+  const modeCopy = poll.responseMode === 'rating_1_5' ? (poll.anonymous ? 'Anonym' : '') : `${mode.label}${maxCopy}${anonymousCopy}`;
   return `
     <section class="stack event-poll-round" data-poll-round="${escapeHtml(poll.id)}">
-      <span class="muted">${escapeHtml(mode.label)}${maxCopy}${anonymousCopy}</span>
+      ${modeCopy ? `<span class="muted">${escapeHtml(modeCopy)}</span>` : ''}
       ${poll.note ? `<p class="event-poll-note">${escapeHtml(poll.note)}</p>` : ''}
       <div class="event-poll-progress row-between">
         <span>${answered} von ${poll.invitees.length} haben abgestimmt</span><span>Frist: ${formatDate(poll.responseDueAt)}</span>
@@ -343,9 +383,21 @@ function renderHistory(group) {
   return `
     <details class="collapsible-section event-poll-history" data-poll-history="${escapeHtml(key)}" ${expandedHistories.has(key) ? 'open' : ''}>
       <summary class="collapsible-section-header">
-        <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span><span>Frühere Runden (${history.length})</span>
+        <span class="row"><span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span><span>Frühere Runden (${history.length})</span></span>
       </summary>
       <div class="collapsible-section-content stack">${history.map(renderHistoryRound).join('')}</div>
+    </details>`;
+}
+
+function renderEndedPolls(groups, eventId) {
+  if (!groups.length) return '';
+  const key = `${eventId}:ended-polls`;
+  return `
+    <details class="collapsible-section event-poll-ended-history" data-poll-history="${escapeHtml(key)}" ${expandedHistories.has(key) ? 'open' : ''}>
+      <summary class="collapsible-section-header">
+        <span class="row"><span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span><span>Beendete Abstimmungen (${groups.length})</span></span>
+      </summary>
+      <div class="collapsible-section-content stack event-poll-list">${groups.map(renderPollGroup).join('')}</div>
     </details>`;
 }
 
@@ -353,21 +405,22 @@ function renderPollGroup(group) {
   const latest = group.rounds[0];
   const status = pollStatusInfo(latest.status);
   const answered = latest.invitees.filter((invitee) => invitee.hasAnswered).length;
-  const canStartRound = latest.canManage && ['closed', 'scheduled', 'superseded', 'cancelled'].includes(latest.status);
   const expanded = expandedPolls.has(group.key);
+  const bestResult = bestResultLabel(latest);
   return `
-    <article class="card event-poll-card" data-poll-group="${escapeHtml(group.key)}">
+    <article class="card event-poll-card" data-poll-group="${escapeHtml(group.key)}" data-poll-card="${escapeHtml(latest.id)}">
       <header class="event-poll-card-header">
         <button type="button" class="event-poll-card-toggle" data-toggle-poll="${escapeHtml(group.key)}" aria-expanded="${expanded}">
           <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
-          <span class="event-poll-card-title"><strong>${escapeHtml(latest.title)}</strong><span class="muted">von ${escapeHtml(latest.createdByName ?? 'Unbekannt')} · Runde ${latest.roundNumber}</span></span>
-          <span class="event-poll-card-meta"><span class="badge ${status.badge}">${status.label}</span><span class="muted">${answered}/${latest.invitees.length} abgestimmt</span></span>
+          <span class="event-poll-card-title"><strong>${escapeHtml(latest.title)}</strong><span class="muted">von ${escapeHtml(latest.createdByName ?? 'Unbekannt')} · Runde ${latest.roundNumber}</span><span class="muted">Gestartet: ${formatDate(latest.createdAt)} · Frist: ${formatDate(latest.responseDueAt)}</span></span>
         </button>
-        ${renderManagerHeaderActions(latest)}
+        <div class="event-poll-card-side">
+          <span class="event-poll-card-meta"><span class="badge ${status.badge}">${status.label}</span><span class="muted">${answered}/${latest.invitees.length} abgestimmt</span>${bestResult ? `<span class="event-poll-best-result" title="Bestes Ergebnis: ${escapeHtml(bestResult)}">Ergebnis: ${escapeHtml(bestResult)}</span>` : ''}</span>
+          ${renderPollActions(latest)}
+        </div>
       </header>
       <div class="stack event-poll-card-content" ${expanded ? '' : 'hidden'}>
         ${renderRound(latest)}
-        ${canStartRound ? `<button type="button" class="btn btn-sm" data-new-poll-round="${escapeHtml(latest.id)}">Neue Runde starten</button>` : ''}
         ${renderHistory(group)}
       </div>
     </article>`;
@@ -423,7 +476,7 @@ function openPollForm(event, ctx, previousRound = null) {
   let nextOptionIndex = initialOptions.length;
   let dirty = false;
   let capturedModal;
-  const { close } = openModal(previousRound ? `Neue Runde · ${previousRound.title}` : 'Abstimmung starten', `
+  const { close } = openModal(previousRound ? `Erneut abstimmen · ${previousRound.title}` : 'Abstimmung starten', `
     <form id="event-poll-form" class="stack">
       <div><label for="poll-title" class="field-label">Titel</label><input type="text" id="poll-title" maxlength="100" required value="${escapeHtml(previousRound?.title ?? '')}" placeholder="Worüber möchtet ihr abstimmen?" autofocus /></div>
       <div><label for="poll-note" class="field-label">Beschreibung (optional)</label><textarea id="poll-note" maxlength="500" rows="2" placeholder="Kurzer Kontext für alle Teilnehmer">${escapeHtml(previousRound?.note ?? '')}</textarea></div>
@@ -459,7 +512,7 @@ function openPollForm(event, ctx, previousRound = null) {
         </div>
         ${dateTimeFieldHtml('poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: false, label: 'Abstimmungsfrist' })}
       </div>
-      <button type="submit" class="btn btn-primary btn-block">${previousRound ? 'Neue Runde starten' : 'Abstimmung starten'}</button>
+      <button type="submit" class="btn btn-primary btn-block">${previousRound ? 'Erneut abstimmen' : 'Abstimmung starten'}</button>
     </form>`, {
     confirmClose: () => (dirty && capturedModal ? 'Die eingegebenen Angaben gehen verloren.' : null),
     onMount: (modal) => {
@@ -505,7 +558,7 @@ function openPollForm(event, ctx, previousRound = null) {
         submitButton.disabled = true;
         try {
           const createdPoll = await api.eventPolls.create(event.id, {
-            topic: 'custom', ...(previousRound ? { decisionKey: previousRound.decisionKey } : {}), title,
+            topic: 'custom', ...(previousRound ? { previousPollId: previousRound.id } : {}), title,
             note: modal.querySelector('#poll-note').value.trim() || null, responseMode, maxSelections,
             anonymous: modal.querySelector('#poll-anonymous').checked,
             options: options.map((option) => ({
@@ -518,7 +571,7 @@ function openPollForm(event, ctx, previousRound = null) {
           await replaceCachedPoll(event.id, createdPoll, ctx);
           dirty = false;
           close();
-          showToast(previousRound ? 'Neue Runde gestartet.' : 'Abstimmung gestartet.');
+          showToast(previousRound ? 'Neue Abstimmungsrunde gestartet.' : 'Abstimmung gestartet.');
         } catch (error) {
           submitButton.disabled = false;
           showToast(error.message, { error: true });
@@ -669,7 +722,24 @@ function replaceCachedPoll(eventId, updatedPoll, ctx, { resetResponses = false }
   return refreshPolls(eventId, ctx);
 }
 
+function removeCachedPollSeries(eventId, decisionKey, ctx) {
+  pollCacheVersions.set(eventId, (pollCacheVersions.get(eventId) ?? 0) + 1);
+  const cached = pollCache.get(eventId);
+  pollCache.set(eventId, {
+    loading: false,
+    loaded: true,
+    polls: (cached?.polls ?? []).filter((poll) => poll.decisionKey !== decisionKey),
+    error: null,
+  });
+  expandedPolls.delete(decisionKey);
+  ctx.rerender();
+  return refreshPolls(eventId, ctx);
+}
+
 function wirePollActions(container, event, polls, ctx) {
+  container.querySelectorAll('.event-poll-action-menu-panel button').forEach((button) => button.addEventListener('click', () => {
+    button.closest('.event-poll-action-menu').open = false;
+  }));
   container.querySelectorAll('[data-toggle-poll]').forEach((button) => button.addEventListener('click', () => {
     const key = button.dataset.togglePoll;
     if (expandedPolls.has(key)) expandedPolls.delete(key);
@@ -753,19 +823,20 @@ function wirePollActions(container, event, polls, ctx) {
     const poll = findPoll(polls, button.dataset.reopenPoll);
     if (poll) openReopenForm(event, poll, ctx);
   }));
-  container.querySelectorAll('[data-cancel-poll]').forEach((button) => button.addEventListener('click', async () => {
-    const poll = findPoll(polls, button.dataset.cancelPoll);
+  container.querySelectorAll('[data-view-poll-votes]').forEach((button) => button.addEventListener('click', () => {
+    const poll = findPoll(polls, button.dataset.viewPollVotes);
+    if (poll) openVoteDetails(poll);
+  }));
+  container.querySelectorAll('[data-delete-poll]').forEach((button) => button.addEventListener('click', async () => {
+    const poll = findPoll(polls, button.dataset.deletePoll);
     if (!poll) return;
-    const responseCopy = poll.anonymous
-      ? 'Die abgegebenen Stimmen bleiben anonym.'
-      : 'Nach dem Abbruch ist sichtbar, wer wie abgestimmt hat.';
-    const confirmed = await confirmDialog(`Die Abstimmung wird als abgebrochen in der Historie gespeichert. ${responseCopy}`, { title: 'Abstimmung abbrechen?', confirmText: 'Abbrechen', danger: true });
+    const confirmed = await confirmDialog('Die Abstimmung wird einschließlich aller Runden und abgegebenen Stimmen dauerhaft gelöscht.', { title: 'Abstimmung löschen?', confirmText: 'Löschen', danger: true });
     if (!confirmed) return;
     button.disabled = true;
     try {
-      const updatedPoll = await api.eventPolls.cancel(event.id, poll.id);
-      await replaceCachedPoll(event.id, updatedPoll, ctx);
-      showToast('Abstimmung abgebrochen.');
+      await api.eventPolls.remove(event.id, poll.id);
+      await removeCachedPollSeries(event.id, poll.decisionKey, ctx);
+      showToast('Abstimmung gelöscht.');
     } catch (error) {
       button.disabled = false;
       showToast(error.message, { error: true });
@@ -814,16 +885,20 @@ export function renderEventPolls(container, ctx) {
   const cached = pollCache.get(event.id);
   const polls = cached?.polls ?? [];
   const groups = groupPolls(polls);
+  const activeGroups = groups.filter((group) => group.rounds[0]?.status === 'open');
+  const endedGroups = groups.filter((group) => group.rounds[0]?.status !== 'open');
   if (cached?.loaded && !initializedEvents.has(event.id)) {
     initializedEvents.add(event.id);
-    const preferred = groups.find((group) => ['open', 'closed'].includes(group.rounds[0]?.status)) ?? groups[0];
+    const preferred = activeGroups[0];
     if (preferred) expandedPolls.add(preferred.key);
   }
   let content;
   if (cached?.loading && !groups.length) content = emptyStateHtml('Abstimmungen werden geladen…');
   else if (cached?.error) content = `<div class="card stack"><p class="muted">${escapeHtml(cached.error)}</p><button type="button" class="btn btn-sm" id="retry-event-polls">Erneut versuchen</button></div>`;
   else if (!groups.length) content = emptyStateHtml('<h2>Noch keine Abstimmung</h2><p class="muted">Starte eine Abstimmung mit freien Optionen. Sie verändert das Event nicht.</p>', { icon: icon('vote') });
-  else content = `<div class="stack event-poll-list">${groups.map(renderPollGroup).join('')}</div>`;
+  else content = `
+    ${activeGroups.length ? `<div class="stack event-poll-list">${activeGroups.map(renderPollGroup).join('')}</div>` : ''}
+    ${renderEndedPolls(endedGroups, event.id)}`;
   const scrollTop = container.scrollTop;
   const viewportAnchors = visiblePollViewportAnchors(container);
   container.innerHTML = `

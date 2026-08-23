@@ -348,7 +348,7 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(responseDueOn ? { responseDueOn } : {}),
       }),
-    cancel: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}/cancel`, { method: 'POST' }),
+    remove: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}`, { method: 'DELETE' }),
   },
 
   tournaments: {

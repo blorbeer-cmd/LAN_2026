@@ -36,7 +36,7 @@ import {
   submitMyResponses,
   closeDatePoll,
   reopenDatePoll,
-  cancelDatePoll,
+  deleteDatePollSeries,
   reminderCandidates,
   markReminderSent,
   optionCounts,
@@ -127,7 +127,7 @@ function serializeOption(
   const byResponse = (value: DatePollResponseValue) =>
     includeResponsePeople ? forOption
       .filter((r) => r.response === value)
-      .map((r) => ({ playerId: r.player_id, name: names.get(r.player_id) ?? r.player_id })) : [];
+      .map((r) => ({ playerId: r.player_id, name: names.get(r.player_id) ?? r.player_id, updatedAt: r.updated_at })) : [];
   const answeredIds = new Set(forOption.map((r) => r.player_id));
   const counts = optionCounts(option, responses, inviteeCount);
   return {
@@ -366,6 +366,7 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
     inviteePlayerIds,
     topic = 'custom',
     decisionKey,
+    previousPollId,
     title,
     responseMode = 'feasibility',
     maxSelections,
@@ -386,8 +387,14 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
   if (title !== undefined && (typeof title !== 'string' || !title.trim() || title.trim().length > 100)) {
     return res.status(400).json({ error: 'title muss 1-100 Zeichen lang sein.' });
   }
-  if (decisionKey !== undefined && (typeof decisionKey !== 'string' || !/^[a-z0-9_-]{1,60}$/.test(decisionKey))) {
+  if (decisionKey !== undefined && (typeof decisionKey !== 'string' || !/^[A-Za-z0-9_-]{1,60}$/.test(decisionKey))) {
     return res.status(400).json({ error: 'decisionKey ist ungültig.' });
+  }
+  if (previousPollId !== undefined && (typeof previousPollId !== 'string' || !previousPollId.trim())) {
+    return res.status(400).json({ error: 'previousPollId ist ungültig.' });
+  }
+  if (previousPollId !== undefined && decisionKey !== undefined) {
+    return res.status(400).json({ error: 'Eine vorherige Runde darf nicht zusammen mit decisionKey angegeben werden.' });
   }
   if (!Array.isArray(options) || options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) {
     return res.status(400).json({ error: `${MIN_OPTIONS} bis ${MAX_OPTIONS} Optionen sind erforderlich.` });
@@ -453,6 +460,26 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
     return res.status(400).json({ error: 'Der Teilnehmerkreis wird automatisch aus den bestätigten Eventteilnehmern gebildet.' });
   }
   const inviteeIds = acceptedParticipantIds(event.id);
+  let resolvedDecisionKey = decisionKey as string | undefined;
+  if (previousPollId !== undefined) {
+    const previousPoll = getDatePollForEvent(event.id, previousPollId);
+    if (!previousPoll) return res.status(404).json({ error: 'Vorherige Abstimmungsrunde nicht gefunden.' });
+    if (!canManageDatePoll(previousPoll, event, playerId, req.groupMembership?.role)) {
+      return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann erneut abstimmen.' });
+    }
+    const latestRound = getDatePolls(event.id)
+      .filter((poll) => poll.decision_key === previousPoll.decision_key)
+      .sort((a, b) => b.round_number - a.round_number)[0];
+    if (latestRound?.id !== previousPoll.id) {
+      return res.status(409).json({ error: 'Eine neue Runde kann nur von der letzten Runde aus gestartet werden.' });
+    }
+    resolvedDecisionKey = previousPoll.decision_key;
+  } else if (resolvedDecisionKey !== undefined) {
+    const existingSeries = getDatePolls(event.id).find((poll) => poll.decision_key === resolvedDecisionKey);
+    if (existingSeries && !canManageDatePoll(existingSeries, event, playerId, req.groupMembership?.role)) {
+      return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann erneut abstimmen.' });
+    }
+  }
 
   const result = createDatePoll(
     event,
@@ -462,7 +489,7 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
       note: note?.trim() || null,
       inviteePlayerIds: inviteeIds,
       topic,
-      decisionKey,
+      decisionKey: resolvedDecisionKey,
       title: title?.trim(),
       responseMode,
       maxSelections: responseMode === 'multiple_choice' ? (maxSelections ?? null) : null,
@@ -743,6 +770,12 @@ eventDatePollsRouter.post('/:pollId/reopen', resolveEventForPolls, (req, res) =>
   if (!canManageDatePoll(poll, event, playerId, req.groupMembership?.role)) {
     return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann wieder öffnen.' });
   }
+  const latestRound = getDatePolls(event.id)
+    .filter((entry) => entry.decision_key === poll.decision_key)
+    .sort((left, right) => right.round_number - left.round_number)[0];
+  if (latestRound?.id !== poll.id) {
+    return res.status(409).json({ error: 'Nur die letzte Runde einer Abstimmung kann wieder geöffnet werden.' });
+  }
   const { responseDueOn } = req.body ?? {};
   if (responseDueOn !== undefined && !isValidIsoDate(responseDueOn)) {
     return res.status(400).json({ error: 'responseDueOn muss ein gültiges Kalenderdatum sein.' });
@@ -766,28 +799,39 @@ eventDatePollsRouter.post('/:pollId/reopen', resolveEventForPolls, (req, res) =>
   res.json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
 });
 
-// POST /api/events/:eventId/polls/:pollId/cancel
-eventDatePollsRouter.post('/:pollId/cancel', resolveEventForPolls, (req, res) => {
+// DELETE /api/events/:eventId/polls/:pollId
+// A card represents one decision including all its rounds, so deleting it
+// removes that complete series rather than leaving orphaned history behind.
+eventDatePollsRouter.delete('/:pollId', resolveEventForPolls, (req, res) => {
   const event = req.groupResource as EventRow;
   const playerId = requirePlayerId(req, res);
   if (!playerId) return;
   const poll = loadPollOr404(req, res, event);
   if (!poll) return;
   if (!canManageDatePoll(poll, event, playerId, req.groupMembership?.role)) {
-    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann abbrechen.' });
+    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann löschen.' });
   }
-  const result = cancelDatePoll(poll);
-  if (!result.ok) return res.status(409).json({ error: result.error });
-  resolvePollReminders(event, poll.id);
+  const series = getDatePolls(event.id).filter((entry) => entry.decision_key === poll.decision_key);
+  const inviteesByPoll = new Map(series.map((entry) => [entry.id, getDatePollInvitees(entry.id)]));
+  const deletedPollIds = deleteDatePollSeries(poll);
+  for (const deletedPollId of deletedPollIds) {
+    resolvePollReminders(event, deletedPollId);
+    for (const invitee of inviteesByPoll.get(deletedPollId) ?? []) {
+      resolvePushTopic(pollUpdateTopicKey(deletedPollId, invitee.player_id), false, {
+        groupId: event.group_id!,
+        eventId: event.id,
+      });
+    }
+  }
 
   writeAdminAudit({
     actorPlayerId: playerId,
     groupId: event.group_id ?? undefined,
-    action: 'event_date_poll_cancelled',
+    action: 'event_date_poll_deleted',
     targetType: 'event_date_poll',
     targetId: poll.id,
-    details: { eventId: event.id },
+    details: { eventId: event.id, deletedPollIds },
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
-  res.json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
+  res.status(204).end();
 });

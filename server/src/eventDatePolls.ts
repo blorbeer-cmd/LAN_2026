@@ -637,7 +637,7 @@ export function closeDatePoll(poll: DatePollRow): PollMutationResult {
 
 export type ReopenResult =
   | { ok: true; poll: DatePollRow }
-  | { ok: false; code: 'not_closed' | 'invalid'; error: string };
+  | { ok: false; code: 'not_closed' | 'conflict' | 'invalid'; error: string };
 
 export function reopenDatePoll(poll: DatePollRow, responseDueOn: string | undefined): ReopenResult {
   const now = Date.now();
@@ -653,8 +653,18 @@ export function reopenDatePoll(poll: DatePollRow, responseDueOn: string | undefi
     };
   }
   return db.transaction((): ReopenResult => {
+    const existingOpenRound = db
+      .prepare(`SELECT 1 FROM event_date_polls WHERE event_id = ? AND decision_key = ? AND status = 'open' AND id <> ?`)
+      .get(poll.event_id, poll.decision_key, poll.id);
+    if (existingOpenRound) {
+      return { ok: false, code: 'conflict', error: 'Für diese Abstimmung läuft bereits eine andere Runde.' };
+    }
     const updated = db
-      .prepare(`UPDATE event_date_polls SET status = 'open', response_due_at = ?, updated_at = ? WHERE id = ? AND status = 'closed'`)
+      .prepare(
+        `UPDATE event_date_polls
+         SET status = 'open', response_due_at = ?, updated_at = ?
+         WHERE id = ? AND status IN ('closed', 'scheduled', 'superseded', 'cancelled')`,
+      )
       .run(responseDueAt, now, poll.id);
     if (updated.changes !== 1) {
       return { ok: false, code: 'not_closed', error: 'Die Abstimmung ist nicht beendet.' };
@@ -664,21 +674,14 @@ export function reopenDatePoll(poll: DatePollRow, responseDueOn: string | undefi
   })();
 }
 
-export type CancelResult =
-  | { ok: true; poll: DatePollRow }
-  | { ok: false; code: 'not_open_or_closed'; error: string };
-
-export function cancelDatePoll(poll: DatePollRow): CancelResult {
-  const now = Date.now();
-  return db.transaction((): CancelResult => {
-    const updated = db
-      .prepare(`UPDATE event_date_polls SET status = 'cancelled', updated_at = ? WHERE id = ? AND status IN ('open', 'closed')`)
-      .run(now, poll.id);
-    if (updated.changes !== 1) {
-      return { ok: false, code: 'not_open_or_closed', error: 'Die Abstimmung kann in diesem Zustand nicht abgebrochen werden.' };
-    }
-    clearAutomaticReminders(poll.id);
-    return { ok: true, poll: getDatePoll(poll.id)! };
+export function deleteDatePollSeries(poll: DatePollRow): string[] {
+  return db.transaction(() => {
+    const rows = db
+      .prepare('SELECT id FROM event_date_polls WHERE event_id = ? AND decision_key = ?')
+      .all(poll.event_id, poll.decision_key) as Array<{ id: string }>;
+    db.prepare('DELETE FROM event_date_polls WHERE event_id = ? AND decision_key = ?')
+      .run(poll.event_id, poll.decision_key);
+    return rows.map((row) => row.id);
   })();
 }
 

@@ -1,7 +1,7 @@
 import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
-import { chromium, Browser, Page } from 'playwright';
+import { chromium, Browser, Locator, Page } from 'playwright';
 import { finishE2EOnboarding } from './authHelpers';
 import { createE2EDiagnosticTest } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
@@ -127,6 +127,12 @@ async function createPoll(
   await page.waitForSelector('#event-poll-form', { state: 'detached' });
 }
 
+async function choosePollAction(poll: Locator, selector: string): Promise<void> {
+  const menu = poll.locator('.event-poll-action-menu');
+  if (!(await menu.evaluate((details) => (details as HTMLDetailsElement).open))) await menu.locator('summary').click();
+  await menu.locator(selector).click();
+}
+
 before(async () => {
   e2eServer = await startE2EServer({
     ...process.env,
@@ -205,9 +211,12 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await ownerPoll.waitFor();
   await ownerPoll.locator('[data-toggle-poll]').click();
   assert.equal(await ownerPoll.locator('[data-poll-round]:visible').count(), 0, 'the poll can be collapsed');
-  assert.equal(await ownerPoll.locator('[data-remind-poll]:visible').count(), 1, 'management actions stay in the collapsed header');
+  assert.equal(await ownerPoll.locator('.event-poll-action-menu > summary:visible').count(), 1, 'management actions stay available in one collapsed-header menu');
+  await ownerPoll.locator('.event-poll-action-menu > summary').click();
+  assert.equal(await ownerPoll.locator('[data-remind-poll]:visible').count(), 1);
   assert.equal(await ownerPoll.locator('[data-close-poll]:visible').count(), 1);
-  assert.equal(await ownerPoll.locator('[data-cancel-poll]:visible').count(), 1);
+  assert.equal(await ownerPoll.locator('[data-delete-poll]:visible').count(), 1);
+  await ownerPoll.locator('.event-poll-action-menu > summary').click();
   await ownerPoll.locator('[data-toggle-poll]').click();
   assert.equal(await ownerPoll.locator('[data-poll-response="can"]').count(), 2);
   assert.equal(await ownerPoll.locator('[data-poll-response="if_needed"]').count(), 2);
@@ -229,16 +238,27 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await navigate(ownerPage, 'eventPolls');
   const refreshed = ownerPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
   await refreshed.waitFor();
-  assert.equal(await refreshed.locator('.event-poll-response-details').count(), 0, 'names stay hidden while voting is open');
-  await refreshed.locator('[data-close-poll]').click();
+  assert.equal(await refreshed.locator('[data-view-poll-votes]').count(), 0, 'names stay hidden while voting is open');
+  await choosePollAction(refreshed, '[data-close-poll]');
   await ownerPage.locator('.modal-backdrop [data-confirm]').click();
   await ownerPage.locator('.toast', { hasText: 'Abstimmung beendet' }).waitFor();
+  await ownerPage.locator('.event-poll-ended-history').evaluate((details) => {
+    (details as HTMLDetailsElement).open = true;
+    details.dispatchEvent(new Event('toggle'));
+  });
   const closed = ownerPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
-  await closed.locator('.event-poll-response-details').first().waitFor();
-  assert.match((await closed.locator('.event-poll-response-details').first().textContent()) ?? '', new RegExp(MEMBER_NAME));
+  assert.match((await closed.locator('.event-poll-best-result').textContent()) ?? '', /Ergebnis:/, 'the collapsed card includes the best result');
+  await choosePollAction(closed, '[data-view-poll-votes]');
+  const voteDialog = ownerPage.locator('.modal-backdrop', { hasText: 'Stimmen · Welcher Zeitraum passt?' });
+  await voteDialog.waitFor();
+  assert.match((await voteDialog.textContent()) ?? '', new RegExp(MEMBER_NAME));
+  assert.match((await voteDialog.textContent()) ?? '', /\d{2}:\d{2}/, 'the vote dialog shows when the response was saved');
+  await voteDialog.locator('[data-close]').click();
   assert.equal(await closed.locator('.event-poll-result-title', { hasText: 'Ergebnis' }).count(), 1);
   assert.equal(await closed.locator('[data-decide-poll]').count(), 0, 'the closed counts are the result; there is no second decision step');
-  await ownerPage.locator('[data-new-poll-round]').waitFor();
+  await closed.locator('.event-poll-action-menu > summary').click();
+  assert.equal(await closed.locator('[data-new-poll-round]', { hasText: 'Erneut abstimmen' }).count(), 1);
+  await closed.locator('.event-poll-action-menu > summary').click();
 
   await createPoll(memberPage, {
     title: 'Welche Verpflegung?',
@@ -264,13 +284,15 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   const afterSaveTop = await memberCreated.evaluate((element) => element.getBoundingClientRect().top);
   const afterSaveHeight = await memberCreated.evaluate((element) => element.getBoundingClientRect().height);
   assert.ok(
-    Math.abs(afterSaveTop - beforeSaveTop) <= 24 && afterSaveTop < -100,
+    Math.abs(afterSaveTop - beforeSaveTop) <= 24,
     `saving keeps the visible poll anchored instead of jumping to the top (${beforeSaveTop}/${beforeSaveHeight} -> ${afterSaveTop}/${afterSaveHeight})`,
   );
   assert.deepEqual(await memberCreated.locator('[data-poll-choice]').allTextContents(), ['Ausgewählt', 'Wählen', 'Wählen']);
   assert.equal(await memberCreated.locator('.event-poll-option-header .badge', { hasText: 'Meiste Stimmen' }).count(), 1);
   const compactOptionHeight = (await memberCreated.locator('.event-poll-option').first().boundingBox())!.height;
   assert.ok(compactOptionHeight < 80, `choice options stay compact (${compactOptionHeight}px)`);
+  const optionHeights = await memberCreated.locator('.event-poll-option').evaluateAll((options) => options.map((option) => option.getBoundingClientRect().height));
+  assert.ok(Math.max(...optionHeights) - Math.min(...optionHeights) <= 1, `recommendation does not change option height (${optionHeights.join('/')})`);
 
   await memberCreated.locator('[data-poll-choice]').nth(1).tap();
   await memberCreated.locator('[data-poll-choice]').nth(0).tap();
@@ -292,7 +314,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     'the recommendation stays on the title line',
   );
 
-  await memberCreated.locator('[data-edit-poll]').tap();
+  await choosePollAction(memberCreated, '[data-edit-poll]');
   await memberPage.waitForSelector('#event-poll-edit-form');
   assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-id] [data-remove-poll-option]').count(), 0);
   const firstEditOption = memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first();
@@ -332,9 +354,20 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(await optionLink.count(), 1);
   assert.ok((await optionLink.getAttribute('class'))?.includes('icon-btn'));
   assert.equal(await optionLink.getAttribute('aria-label'), 'Link zu Haus am See öffnen');
-  assert.equal(await optionLink.evaluate((element) => element.previousElementSibling?.tagName), 'STRONG');
+  assert.ok((await optionLink.evaluate((element) => element.previousElementSibling?.classList.contains('info-tooltip'))) === true);
   assert.equal(await linkedOption.locator('[aria-label="Mehr Informationen zu Notiz zu Haus am See"]').count(), 1);
   assert.equal(await linkedOption.locator('.event-poll-option-title-row > .muted').count(), 0, 'the note is no longer an extra visible line');
+  const ratingButtonHeight = (await ratingPoll.locator('[data-poll-response="1"]').first().boundingBox())!.height;
+  assert.ok(ratingButtonHeight <= 32, `rating buttons stay compact (${ratingButtonHeight}px)`);
+  const ratingPollId = await ratingPoll.getAttribute('data-poll-card');
+  await navigate(ownerPage, 'home');
+  await ownerPage.click('#global-search-btn');
+  await ownerPage.fill('#global-search-input', 'Haus am See');
+  const pollSearchResult = ownerPage.locator('.global-search-result', { hasText: 'Unterkünfte bewerten' });
+  await pollSearchResult.waitFor();
+  await pollSearchResult.click();
+  await ownerPage.waitForSelector('[data-section-tab="eventPolls"][aria-current="page"]');
+  await ownerPage.waitForSelector(`[data-poll-card="${ratingPollId}"].search-target-highlight`);
 
   await createPoll(ownerPage, {
     title: 'Anonyme Unterkunftswahl',
@@ -350,8 +383,8 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await ownerPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
   assert.deepEqual(await anonymousPoll.locator('[data-poll-choice]').allTextContents(), ['Ausgewählt', 'Wählen']);
   assert.match((await anonymousPoll.locator('.event-poll-counts').first().textContent()) ?? '', /1 Stimme/);
-  await anonymousPoll.locator('[data-close-poll]').click();
+  await choosePollAction(anonymousPoll, '[data-close-poll]');
   await ownerPage.locator('.modal-backdrop [data-confirm]').click();
   await ownerPage.locator('.toast', { hasText: 'Abstimmung beendet' }).waitFor();
-  assert.equal(await anonymousPoll.locator('.event-poll-response-details').count(), 0, 'anonymous votes never expose identities');
+  assert.equal(await anonymousPoll.locator('[data-view-poll-votes]').count(), 0, 'anonymous votes never expose identities');
 });

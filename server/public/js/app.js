@@ -376,6 +376,11 @@ function focusPendingSearchTarget() {
   }[type] ?? [];
   const element = candidates[0];
   if (!element) return;
+  let enclosingDetails = element.closest('details');
+  while (enclosingDetails) {
+    enclosingDetails.open = true;
+    enclosingDetails = enclosingDetails.parentElement?.closest('details') ?? null;
+  }
   element.classList.add('search-target-highlight');
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   element.scrollIntoView({ block: 'center', behavior: reducedMotion ? 'auto' : 'smooth' });

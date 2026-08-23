@@ -161,6 +161,20 @@ export function createContentSearchEntries(appState, content = {}) {
     aliases: entry.body,
     priority: 74,
   }));
+  const latestPolls = new Map();
+  for (const poll of content.polls ?? []) {
+    const current = latestPolls.get(poll.decisionKey);
+    if (!current || poll.roundNumber > current.roundNumber) latestPolls.set(poll.decisionKey, poll);
+  }
+  const pollEntries = [...latestPolls.values()].map((poll) => ({
+    view: 'eventPolls',
+    title: poll.title,
+    category: 'Abstimmung',
+    description: `${poll.status === 'open' ? 'Läuft' : 'Beendet'}${poll.createdByName ? ` · von ${poll.createdByName}` : ''}`,
+    aliases: `${poll.note ?? ''} ${(poll.options ?? []).map((option) => `${option.label ?? ''} ${option.description ?? ''}`).join(' ')}`,
+    priority: 90,
+    target: { type: 'poll', id: poll.id },
+  }));
 
   return [
     ...playerEntries,
@@ -172,6 +186,7 @@ export function createContentSearchEntries(appState, content = {}) {
     ...carpools,
     ...tournamentEntries,
     ...notificationEntries,
+    ...pollEntries,
   ];
 }
 
@@ -184,8 +199,11 @@ async function loadContentSearchEntries() {
     api.arrivals.list(),
     api.tournaments.list(),
     myId ? api.push.log(myId) : Promise.resolve({ entries: [] }),
+    state.activeEvent && !state.activeEvent.isBase && state.activeEvent.id !== 'base'
+      ? api.eventPolls.list(state.activeEvent.id)
+      : Promise.resolve([]),
   ];
-  const [orders, info, broadcasts, arrivals, tournaments, notifications] = await Promise.allSettled(requests);
+  const [orders, info, broadcasts, arrivals, tournaments, notifications, polls] = await Promise.allSettled(requests);
   const value = (result, fallback) => (result.status === 'fulfilled' ? result.value : fallback);
 
   return createContentSearchEntries(state, {
@@ -195,6 +213,7 @@ async function loadContentSearchEntries() {
     carpools: value(arrivals, { carpools: {} }).carpools ?? {},
     tournaments: value(tournaments, []),
     notifications: value(notifications, { entries: [] }).entries ?? [],
+    polls: value(polls, []),
   });
 }
 

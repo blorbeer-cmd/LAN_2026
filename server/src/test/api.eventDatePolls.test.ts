@@ -47,6 +47,7 @@ interface PollOverrides {
   responseMode?: 'feasibility' | 'single_choice' | 'multiple_choice' | 'rating_1_5';
   maxSelections?: number | null;
   decisionKey?: string;
+  previousPollId?: string;
   options?: Array<{ label: string; description?: string; payload?: { url?: string } }>;
   responseDueOn?: string;
   anonymous?: boolean;
@@ -62,6 +63,7 @@ async function createPoll(eventId: string, creatorId: string, overrides: PollOve
       responseMode: overrides.responseMode ?? 'feasibility',
       maxSelections: overrides.maxSelections,
       decisionKey: overrides.decisionKey,
+      previousPollId: overrides.previousPollId,
       responseDueOn: overrides.responseDueOn ?? isoDate(5),
       anonymous: overrides.anonymous,
       options: overrides.options ?? [{ label: 'Köln' }, { label: 'Hamburg' }],
@@ -262,6 +264,7 @@ test('voter identities appear only after a non-anonymous poll has ended', async 
     closedPublicPoll.body.options[0].people.can.map((person: { playerId: string }) => person.playerId),
     [bob],
   );
+  assert.equal(typeof closedPublicPoll.body.options[0].people.can[0].updatedAt, 'number');
 
   const anonymousPoll = await createPoll(eventId, alice, {
     title: 'Anonyme Abstimmung',
@@ -366,7 +369,7 @@ test('rounds are numbered per poll and earlier rounds remain in history', async 
   const alice = 'poll-rounds-alice';
   createMember(alice, 'Poll Rounds Alice');
   const eventId = await createEvent('Poll Rounds Event', [alice]);
-  const key = 'poll_round_history';
+  const key = 'Poll_Round_History';
 
   const first = await createPoll(eventId, alice, { decisionKey: key, title: 'Unterkunft' });
   assert.equal(first.status, 201, JSON.stringify(first.body));
@@ -378,7 +381,7 @@ test('rounds are numbered per poll and earlier rounds remain in history', async 
   assert.equal(unrelated.body.roundNumber, 1, 'a different poll starts with its own round 1');
 
   const second = await createPoll(eventId, alice, {
-    decisionKey: key,
+    previousPollId: first.body.id,
     title: 'Unterkunft',
     options: [{ label: 'Haus A' }, { label: 'Haus B' }],
   });
@@ -392,6 +395,49 @@ test('rounds are numbered per poll and earlier rounds remain in history', async 
   assert.deepEqual(rounds.map((poll: { roundNumber: number }) => poll.roundNumber), [2, 1]);
   assert.equal(rounds[0].status, 'closed');
   assert.equal(rounds[1].status, 'closed');
+});
+
+test('only a series manager can repeat it, legacy ended states reopen, and deleting removes every round', async () => {
+  const alice = 'poll-lifecycle-alice';
+  const bob = 'poll-lifecycle-bob';
+  createMember(alice, 'Poll Lifecycle Alice');
+  createMember(bob, 'Poll Lifecycle Bob');
+  const eventId = await createEvent('Poll Lifecycle Event', [alice, bob]);
+  const first = await createPoll(eventId, alice, { decisionKey: 'Legacy_Key_AbC', title: 'Gemeinsames Ziel' });
+  assert.equal(first.status, 201, JSON.stringify(first.body));
+  assert.equal((await request(app).post(`/api/events/${eventId}/polls/${first.body.id}/close`).set('x-test-player-id', alice)).status, 200);
+
+  const forbiddenRepeat = await createPoll(eventId, bob, { previousPollId: first.body.id, title: 'Fremde Wiederholung' });
+  assert.equal(forbiddenRepeat.status, 403);
+  const second = await createPoll(eventId, alice, { previousPollId: first.body.id, title: 'Gemeinsames Ziel' });
+  assert.equal(second.status, 201, JSON.stringify(second.body));
+  assert.equal(second.body.decisionKey, 'Legacy_Key_AbC');
+  assert.equal(second.body.roundNumber, 2);
+  const reopenOldRound = await request(app)
+    .post(`/api/events/${eventId}/polls/${first.body.id}/reopen`)
+    .set('x-test-player-id', alice)
+    .send({ responseDueOn: isoDate(7) });
+  assert.equal(reopenOldRound.status, 409, 'only the latest round can be reopened');
+  assert.equal((await request(app).post(`/api/events/${eventId}/polls/${second.body.id}/close`).set('x-test-player-id', alice)).status, 200);
+
+  db.prepare("UPDATE event_date_polls SET status = 'scheduled' WHERE id = ?").run(second.body.id);
+  const reopenedLegacy = await request(app)
+    .post(`/api/events/${eventId}/polls/${second.body.id}/reopen`)
+    .set('x-test-player-id', alice)
+    .send({ responseDueOn: isoDate(7) });
+  assert.equal(reopenedLegacy.status, 200, JSON.stringify(reopenedLegacy.body));
+  assert.equal(reopenedLegacy.body.status, 'open');
+
+  const forbiddenDelete = await request(app)
+    .delete(`/api/events/${eventId}/polls/${second.body.id}`)
+    .set('x-test-player-id', bob);
+  assert.equal(forbiddenDelete.status, 403);
+  const deleted = await request(app)
+    .delete(`/api/events/${eventId}/polls/${second.body.id}`)
+    .set('x-test-player-id', alice);
+  assert.equal(deleted.status, 204, JSON.stringify(deleted.body));
+  const rows = db.prepare('SELECT id FROM event_date_polls WHERE event_id = ? AND decision_key = ?').all(eventId, 'Legacy_Key_AbC');
+  assert.deepEqual(rows, []);
 });
 
 test('an open poll can update option notes and links, add options and notify only previous voters', async () => {
