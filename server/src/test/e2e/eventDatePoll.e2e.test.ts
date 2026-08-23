@@ -96,17 +96,19 @@ async function selectActiveEvent(page: Page, eventId: string): Promise<void> {
 
 async function createPoll(
   page: Page,
-  { title, options, mode = 'feasibility', maxSelections }: {
+  { title, options, mode = 'feasibility', maxSelections, anonymous = false }: {
     title: string;
     options: Array<string | { label: string; description?: string; url?: string }>;
     mode?: 'feasibility' | 'single_choice' | 'multiple_choice' | 'rating_1_5';
     maxSelections?: number;
+    anonymous?: boolean;
   },
 ): Promise<void> {
   await page.click('#new-event-poll');
   await page.waitForSelector('#event-poll-form');
   await page.fill('#poll-title', title);
   await page.selectOption('#poll-mode', mode);
+  if (anonymous) await page.check('#poll-anonymous');
   if (maxSelections !== undefined) await page.fill('#poll-max', String(maxSelections));
   while ((await page.locator('[data-poll-option-input]').count()) < options.length) await page.click('#poll-add-option');
   for (let index = 0; index < options.length; index += 1) {
@@ -227,10 +229,13 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await navigate(ownerPage, 'eventPolls');
   const refreshed = ownerPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
   await refreshed.waitFor();
+  assert.equal(await refreshed.locator('.event-poll-response-details').count(), 0, 'names stay hidden while voting is open');
   await refreshed.locator('[data-close-poll]').click();
   await ownerPage.locator('.modal-backdrop [data-confirm]').click();
   await ownerPage.locator('.toast', { hasText: 'Abstimmung beendet' }).waitFor();
   const closed = ownerPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
+  await closed.locator('.event-poll-response-details').first().waitFor();
+  assert.match((await closed.locator('.event-poll-response-details').first().textContent()) ?? '', new RegExp(MEMBER_NAME));
   await closed.locator('[data-result-option]').first().click();
   await closed.locator('[data-decide-poll]').click();
   await ownerPage.locator('.modal-backdrop [data-confirm]').click();
@@ -246,6 +251,20 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   const memberCreated = memberPage.locator('[data-poll-group]', { hasText: 'Welche Verpflegung?' });
   await memberCreated.waitFor();
   assert.equal(await memberCreated.locator('[data-poll-choice]').count(), 3, 'a regular participant can create a poll');
+  assert.deepEqual(
+    await memberCreated.locator('[data-poll-choice]').allTextContents(),
+    ['Wählen', 'Wählen', 'Wählen'],
+  );
+  await memberCreated.locator('[data-poll-choice]').first().tap();
+  const pollViewport = memberPage.locator('#view-container');
+  await pollViewport.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  const beforeSaveTop = await memberCreated.evaluate((element) => element.getBoundingClientRect().top);
+  await memberCreated.locator('[data-save-poll]').tap();
+  await memberPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
+  await memberPage.waitForTimeout(300);
+  const afterSaveTop = await memberCreated.evaluate((element) => element.getBoundingClientRect().top);
+  assert.ok(Math.abs(afterSaveTop - beforeSaveTop) <= 2, 'saving keeps the visible poll anchored instead of jumping to the top');
+  assert.equal(await memberCreated.locator('.event-poll-choice-control .badge', { hasText: 'Meiste Stimmen' }).count(), 1);
   assert.equal(
     await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     true,
@@ -264,6 +283,29 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await ratingPoll.waitFor();
   assert.equal(await ratingPoll.locator('[data-poll-response="1"]').count(), 2);
   assert.equal(await ratingPoll.locator('[data-poll-response="5"]').count(), 2);
-  assert.equal(await ratingPoll.locator('a[href="https://example.com/haus"]').count(), 1);
-  assert.match((await ratingPoll.textContent()) ?? '', /Mit Sauna/);
+  const linkedOption = ratingPoll.locator('.event-poll-option').first();
+  const optionLink = linkedOption.locator('a[href="https://example.com/haus"]');
+  assert.equal(await optionLink.count(), 1);
+  assert.ok((await optionLink.getAttribute('class'))?.includes('icon-btn'));
+  assert.equal(await optionLink.getAttribute('aria-label'), 'Link zu Haus am See öffnen');
+  assert.equal(await optionLink.evaluate((element) => element.previousElementSibling?.tagName), 'STRONG');
+  assert.equal(await linkedOption.locator('[aria-label="Mehr Informationen zu Notiz zu Haus am See"]').count(), 1);
+  assert.equal(await linkedOption.locator('.event-poll-option-title-row > .muted').count(), 0, 'the note is no longer an extra visible line');
+
+  await createPoll(ownerPage, {
+    title: 'Anonyme Unterkunftswahl',
+    mode: 'single_choice',
+    anonymous: true,
+    options: ['Haus', 'Hotel'],
+  });
+  const anonymousPoll = ownerPage.locator('[data-poll-group]', { hasText: 'Anonyme Unterkunftswahl' });
+  await anonymousPoll.waitFor();
+  assert.match((await anonymousPoll.locator('[data-poll-round]').textContent()) ?? '', /Anonym/);
+  await anonymousPoll.locator('[data-poll-choice]').first().click();
+  await anonymousPoll.locator('[data-save-poll]').click();
+  await ownerPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
+  await anonymousPoll.locator('[data-close-poll]').click();
+  await ownerPage.locator('.modal-backdrop [data-confirm]').click();
+  await ownerPage.locator('.toast', { hasText: 'Abstimmung beendet' }).waitFor();
+  assert.equal(await anonymousPoll.locator('.event-poll-response-details').count(), 0, 'anonymous votes never expose identities');
 });

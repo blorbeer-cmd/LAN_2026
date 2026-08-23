@@ -647,10 +647,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 86);
+  assert.equal(migrations.length, 87);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 86 }, (_, index) => index + 1),
+    Array.from({ length: 87 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1177,8 +1177,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 86 }, (_, index) => index + 1),
-    'every version 1..86 runs exactly once',
+    Array.from({ length: 87 }, (_, index) => index + 1),
+    'every version 1..87 runs exactly once',
   );
 });
 
@@ -2867,14 +2867,17 @@ test('migration 85 restores accepted-only participation and enables independent 
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migration 86 preserves poll history and enables 1-5 option ratings', () => {
+test('migrations 86 and 87 preserve poll history and add ratings plus anonymous polls', () => {
   const dbFile = makeTempDbPath('event-poll-ratings');
   runMigrations(dbFile);
 
   const fixture = new Database(dbFile);
   fixture.pragma('foreign_keys = OFF');
   fixture.exec(`
-    CREATE TABLE event_date_polls_before_86 AS SELECT * FROM event_date_polls;
+    CREATE TABLE event_date_polls_before_86 AS
+      SELECT id, event_id, round_number, note, created_by, response_due_at, status, selected_option_id,
+             created_at, updated_at, topic, decision_key, title, response_mode, decision_note, max_selections
+      FROM event_date_polls;
     DROP TABLE event_date_polls;
     CREATE TABLE event_date_polls (
       id TEXT PRIMARY KEY,
@@ -2937,7 +2940,7 @@ test('migration 86 preserves poll history and enables 1-5 option ratings', () =>
       VALUES ('migration-86-poll', 'migration-86-player', 1);
     INSERT INTO event_date_poll_responses (poll_id, option_id, player_id, response, updated_at)
       VALUES ('migration-86-poll', 'migration-86-option', 'migration-86-player', 'can', 1);
-    DELETE FROM schema_migrations WHERE version = 86;
+    DELETE FROM schema_migrations WHERE version IN (86, 87);
   `);
   fixture.close();
 
@@ -2956,6 +2959,16 @@ test('migration 86 preserves poll history and enables 1-5 option ratings', () =>
   assert.equal(
     (migrated.prepare('SELECT response FROM event_date_poll_responses WHERE poll_id = ?').get('migration-86-poll') as { response: string }).response,
     '5',
+  );
+  assert.equal(
+    (migrated.prepare('SELECT is_anonymous AS anonymous FROM event_date_polls WHERE id = ?').get('migration-86-poll') as { anonymous: number }).anonymous,
+    0,
+    'existing polls remain non-anonymous by default',
+  );
+  migrated.prepare('UPDATE event_date_polls SET is_anonymous = 1 WHERE id = ?').run('migration-86-poll');
+  assert.throws(
+    () => migrated.prepare('UPDATE event_date_polls SET is_anonymous = 2 WHERE id = ?').run('migration-86-poll'),
+    /CHECK constraint failed/,
   );
   assert.deepEqual(migrated.pragma('foreign_key_check'), []);
   migrated.close();

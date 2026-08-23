@@ -123,12 +123,13 @@ function serializeOption(
   inviteeCount: number,
   names: Map<string, string>,
   isRecommended: boolean,
+  includeResponsePeople: boolean,
 ) {
   const forOption = responses.filter((r) => r.option_id === option.id);
   const byResponse = (value: DatePollResponseValue) =>
-    forOption
+    includeResponsePeople ? forOption
       .filter((r) => r.response === value)
-      .map((r) => ({ playerId: r.player_id, name: names.get(r.player_id) ?? r.player_id }));
+      .map((r) => ({ playerId: r.player_id, name: names.get(r.player_id) ?? r.player_id })) : [];
   const answeredIds = new Set(forOption.map((r) => r.player_id));
   const counts = optionCounts(option, responses, inviteeCount);
   return {
@@ -186,9 +187,11 @@ function serializeDatePoll(
     ...(poll.created_by ? [poll.created_by] : []),
   ]);
   const recommendedId = recommendedOptionId(options, responses, invitees.length, poll.response_mode);
+  const anonymous = Boolean(poll.is_anonymous);
+  const responseDetailsVisible = poll.status !== 'open' && !anonymous;
 
   const serializedOptions = options.map((option) =>
-    serializeOption(option, responses, invitees.length, names, option.id === recommendedId),
+    serializeOption(option, responses, invitees.length, names, option.id === recommendedId, responseDetailsVisible),
   );
   const answeredPlayerIds = new Set(responses.map((r) => r.player_id));
   const selectedOptionIds = (
@@ -211,6 +214,8 @@ function serializeDatePoll(
     title: poll.title,
     responseMode: poll.response_mode,
     maxSelections: poll.max_selections,
+    anonymous,
+    responseDetailsVisible,
     decisionNote: poll.decision_note,
     note: poll.note,
     createdBy: poll.created_by,
@@ -230,7 +235,9 @@ function serializeDatePoll(
       lastReminderAt: invitee.last_reminder_at,
     })),
     isInvitee: invitees.some((invitee) => invitee.player_id === viewerId),
-    myResponses: invitees.some((invitee) => invitee.player_id === viewerId) ? myResponses : null,
+    myResponses: invitees.some((invitee) => invitee.player_id === viewerId) && (!anonymous || poll.status === 'open')
+      ? myResponses
+      : null,
     canManage: canManageDatePoll(poll, event, viewerId, viewerRole),
   };
 }
@@ -351,11 +358,13 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
     title,
     responseMode = 'feasibility',
     maxSelections,
+    anonymous = false,
   } = req.body ?? {};
   const topics: EventPollTopic[] = ['date_range', 'location', 'duration', 'budget', 'custom'];
   const responseModes: EventPollResponseMode[] = ['feasibility', 'single_choice', 'multiple_choice', 'rating_1_5'];
   if (!topics.includes(topic)) return res.status(400).json({ error: 'Ungültiges Abstimmungsthema.' });
   if (!responseModes.includes(responseMode)) return res.status(400).json({ error: 'Ungültiger Antwortmodus.' });
+  if (typeof anonymous !== 'boolean') return res.status(400).json({ error: 'anonymous muss ein boolescher Wert sein.' });
   if (
     maxSelections !== undefined &&
     maxSelections !== null &&
@@ -446,6 +455,7 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
       title: title?.trim(),
       responseMode,
       maxSelections: responseMode === 'multiple_choice' ? (maxSelections ?? null) : null,
+      anonymous,
     },
     playerId,
   );

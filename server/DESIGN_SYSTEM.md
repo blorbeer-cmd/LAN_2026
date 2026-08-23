@@ -743,23 +743,29 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   voting all require confirmed participation in that event; being Owner/Admin or merely invited
   never bypasses this boundary. Every confirmed participant may start a poll, while the creator of
   that poll manages its deadline, reminders and rounds. The create dialog uses labelled fields,
-  repeatable free-text option rows and three explicit response modes: per-option „Passt / Wenn nötig
-  / Passt nicht / Offen“, exactly one choice, or multiple choices with an optional maximum. It never exposes
+  repeatable free-text option rows and four explicit response modes: per-option „Passt / Wenn nötig
+  / Passt nicht / Offen“, exactly one choice, multiple choices with an optional maximum, or a
+  per-option rating from 1 to 5. It never exposes
   a participant picker because the accepted event roster is the single source of truth.
   The tab adds no own page heading or explanatory subtitle below the Orga tabs because the active
   event is already visible in the top-right workspace switcher. Its compact „Abstimmung starten“
   action has no decorative plus sign. The create dialog uses ordinary global text fields, one native
   select for the four response modes (per-option feasibility, single choice, multiple choice and
   per-option 1–5 rating), and contextual info beside response mode and deadline. Every free option
-  may additionally carry a short note and a validated HTTP-/HTTPS-link.
+  may additionally carry a short note and a validated HTTP-/HTTPS-link. A poll can be marked
+  anonymous in the same dialog; this permanently suppresses voter-to-answer mappings.
   Each poll is one collapsible card. Its current round and response progress stay together; the
   creator's compact „Erinnerung versenden (N)“, „Beenden“ and „Abbrechen“
   actions remain in the card header while collapsed. Earlier rounds live in a nested, initially
   collapsed history. „Offen“ is both an explicit way to clear a per-option feasibility rating and
   the resulting incomplete-response count. Repeated reminders reuse one stable notification-center
   entry per poll and recipient, moving it to the top; automatic sends run 48 hours and 2 hours before
-  the deadline. Option rows keep title/note/link, counts, compact response controls and one optional
-  response-details disclosure within a shallow two-row layout. Choosing a result is offered only
+  the deadline. Option rows keep the title with a note info-tooltip and an icon-only link immediately
+  beside it, counts and compact response controls within a shallow two-row layout. Single- and
+  multiple-choice controls say „Wählen“; their „Meiste Stimmen“ badge sits directly above the
+  control. An optional response-details disclosure is rendered only after a non-anonymous round has
+  ended; the server withholds those identities while a poll is open and for anonymous polls at every
+  status. Poll re-renders preserve the visible card's scroll anchor. Choosing a result is offered only
   after voting ends. Event cards do not embed or link to poll controls. A recorded poll result changes
   no event field, schedule revision or participation state; the confirmation says this explicitly.
   A future explicit „apply to event“ interaction is outside the current UI.

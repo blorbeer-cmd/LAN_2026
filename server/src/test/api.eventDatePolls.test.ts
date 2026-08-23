@@ -49,6 +49,7 @@ interface PollOverrides {
   decisionKey?: string;
   options?: Array<{ label: string; description?: string; payload?: { url?: string } }>;
   responseDueOn?: string;
+  anonymous?: boolean;
 }
 
 async function createPoll(eventId: string, creatorId: string, overrides: PollOverrides = {}) {
@@ -62,6 +63,7 @@ async function createPoll(eventId: string, creatorId: string, overrides: PollOve
       maxSelections: overrides.maxSelections,
       decisionKey: overrides.decisionKey,
       responseDueOn: overrides.responseDueOn ?? isoDate(5),
+      anonymous: overrides.anonymous,
       options: overrides.options ?? [{ label: 'Köln' }, { label: 'Hamburg' }],
     });
 }
@@ -228,6 +230,76 @@ test('feasibility, choice and 1-5 rating modes enforce their distinct response s
     options: [{ label: 'Unsicher', payload: { url: 'javascript:alert(1)' } }, { label: 'Sicher' }],
   });
   assert.equal(unsafeLink.status, 400);
+});
+
+test('voter identities appear only after a non-anonymous poll has ended', async () => {
+  const alice = 'poll-privacy-alice';
+  const bob = 'poll-privacy-bob';
+  createMember(alice, 'Poll Privacy Alice');
+  createMember(bob, 'Poll Privacy Bob');
+  const eventId = await createEvent('Poll Privacy Event', [alice, bob]);
+
+  const publicPoll = await createPoll(eventId, alice, {
+    title: 'Nicht anonyme Abstimmung',
+    responseMode: 'single_choice',
+  });
+  assert.equal(publicPoll.status, 201, JSON.stringify(publicPoll.body));
+  const publicAnswer = await request(app)
+    .put(`/api/events/${eventId}/polls/${publicPoll.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: responsesFor(publicPoll.body, ['can', 'cannot']) });
+  assert.equal(publicAnswer.status, 200, JSON.stringify(publicAnswer.body));
+  assert.equal(publicAnswer.body.responseDetailsVisible, false);
+  assert.deepEqual(publicAnswer.body.options[0].people.can, [], 'an open poll never reveals voter identities');
+  assert.deepEqual(publicAnswer.body.myResponses, { [publicPoll.body.options[0].id]: 'can', [publicPoll.body.options[1].id]: 'cannot' });
+
+  const closedPublicPoll = await request(app)
+    .post(`/api/events/${eventId}/polls/${publicPoll.body.id}/close`)
+    .set('x-test-player-id', alice);
+  assert.equal(closedPublicPoll.status, 200, JSON.stringify(closedPublicPoll.body));
+  assert.equal(closedPublicPoll.body.responseDetailsVisible, true);
+  assert.deepEqual(
+    closedPublicPoll.body.options[0].people.can.map((person: { playerId: string }) => person.playerId),
+    [bob],
+  );
+
+  const anonymousPoll = await createPoll(eventId, alice, {
+    title: 'Anonyme Abstimmung',
+    responseMode: 'single_choice',
+    anonymous: true,
+  });
+  assert.equal(anonymousPoll.status, 201, JSON.stringify(anonymousPoll.body));
+  assert.equal(anonymousPoll.body.anonymous, true);
+  const anonymousAnswer = await request(app)
+    .put(`/api/events/${eventId}/polls/${anonymousPoll.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: responsesFor(anonymousPoll.body, ['cannot', 'can']) });
+  assert.equal(anonymousAnswer.status, 200, JSON.stringify(anonymousAnswer.body));
+  assert.deepEqual(anonymousAnswer.body.myResponses, {
+    [anonymousPoll.body.options[0].id]: 'cannot',
+    [anonymousPoll.body.options[1].id]: 'can',
+  }, 'participants can still edit their own anonymous response while voting is open');
+
+  const closedAnonymousPoll = await request(app)
+    .post(`/api/events/${eventId}/polls/${anonymousPoll.body.id}/close`)
+    .set('x-test-player-id', alice);
+  assert.equal(closedAnonymousPoll.status, 200, JSON.stringify(closedAnonymousPoll.body));
+  assert.equal(closedAnonymousPoll.body.responseDetailsVisible, false);
+  assert.equal(closedAnonymousPoll.body.myResponses, null);
+  assert.deepEqual(closedAnonymousPoll.body.options[1].people.can, []);
+
+  const invalidAnonymous = await request(app)
+    .post(`/api/events/${eventId}/polls`)
+    .set('x-test-player-id', alice)
+    .send({
+      topic: 'custom',
+      title: 'Ungültige Anonymität',
+      responseMode: 'single_choice',
+      anonymous: 'ja',
+      responseDueOn: isoDate(5),
+      options: [{ label: 'A' }, { label: 'B' }],
+    });
+  assert.equal(invalidAnonymous.status, 400);
 });
 
 test('poll results never modify event data or participation and the old schedule action is unavailable', async () => {

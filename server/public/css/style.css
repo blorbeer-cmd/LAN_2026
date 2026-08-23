@@ -737,16 +737,18 @@ textarea {
   flex-wrap: wrap;
   gap: var(--space-1);
 }
-.event-poll-option-copy {
+.event-poll-option-title-row {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-1);
   min-width: 0;
 }
-.event-poll-option-copy .muted {
-  font-size: var(--font-size-sm);
+.event-poll-option-title-row strong {
+  overflow-wrap: anywhere;
 }
 .event-poll-option-link {
-  align-items: center;
-  gap: var(--space-1);
+  flex: none;
 }
 .event-poll-option-response-row {
   display: flex;
@@ -766,6 +768,13 @@ textarea {
 .event-poll-response-toolbar .btn:not(.btn-primary) {
   min-width: var(--tap-target-size);
   background: var(--bg-elevated);
+}
+.event-poll-choice-control {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-left: auto;
 }
 .event-poll-response-details {
   font-size: var(--font-size-sm);
@@ -806,6 +815,13 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+.event-poll-history-details > summary {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.event-poll-history-details > .event-poll-options {
+  padding-top: var(--space-2);
 }
 .event-poll-form-option {
   display: flex;

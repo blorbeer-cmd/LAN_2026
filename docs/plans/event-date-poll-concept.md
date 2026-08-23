@@ -50,6 +50,7 @@ Eine **Runde** ist ein konkreter Durchlauf dieser Abstimmung mit:
 - optionaler kurzer Notiz und HTTP-/HTTPS-Link je Option,
 - Antwortmodus,
 - optionaler maximaler Stimmenzahl bei Mehrfachauswahl,
+- optional dauerhaft anonyme Stimmabgabe,
 - Abstimmungsfrist,
 - Antworten und Erinnerungsstatus,
 - optional festgehaltenem Ergebnis.
@@ -75,14 +76,14 @@ offen ist, gilt die Person als noch nicht vollständig abgestimmt und bleibt eri
 
 #### Eine Option wählen (`single_choice`)
 
-Jede Person wählt genau eine Option. Die Oberfläche beschriftet den Button an jeder Option eindeutig
-mit „Diese Option wählen“ beziehungsweise „Ausgewählt“.
+Jede Person wählt genau eine Option. Die Oberfläche beschriftet den Button an jeder Option kompakt
+mit „Wählen“ beziehungsweise „Ausgewählt“.
 
 #### Mehrere Optionen wählen (`multiple_choice`)
 
 Jede Person wählt mindestens eine Option. Optional kann der Ersteller „höchstens N Optionen“
 festlegen. Ohne Wert dürfen alle Optionen gewählt werden. Auch hier sind die Aktionen an jeder
-Option klar mit „Option auswählen“ beziehungsweise „Ausgewählt“ beschriftet.
+Option klar mit „Wählen“ beziehungsweise „Ausgewählt“ beschriftet.
 
 #### Jede Option von 1 bis 5 bewerten (`rating_1_5`)
 
@@ -116,6 +117,12 @@ Neu bestätigte Teilnehmer werden einer offenen Runde beim nächsten Zugriff aut
 und können sofort abstimmen. Verlässt eine Person den bestätigten Teilnehmerkreis, verliert sie den
 Zugriff und wird nicht mehr erinnert. Bereits gespeicherte Antworten abgeschlossener Runden bleiben
 als Historie erhalten.
+
+Solange eine Runde läuft, liefert die API keine Zuordnung von Stimmen zu Personen aus. Nach Ende
+einer nicht-anonymen Runde können bestätigte Teilnehmer diese Zuordnung in der Optionshistorie
+einsehen. Wird die Runde beim Erstellen als anonym markiert, bleibt die Zuordnung dauerhaft
+verborgen; auch nach Ende, Abbruch oder Ergebnisfesthaltung wird sie nicht ausgeliefert. Die eigene
+anonyme Auswahl bleibt während einer offenen Runde sichtbar, damit sie geändert werden kann.
 
 ### 4.2 Erstellen und Verwalten
 
@@ -168,7 +175,10 @@ Der Bereich verwendet ausschließlich die vorhandenen Designbausteine und Tokens
   Ersteller ebenfalls im Kopf erreichbar, auch wenn die Karte eingeklappt ist.
 - Beim ersten Laden wird eine laufende Abstimmung geöffnet; weitere Karten bleiben eingeklappt.
 - In der Karte stehen aktuelle Runde und Optionen zuerst. Frühere Runden liegen in einer eigenen,
-  zunächst eingeklappten „Frühere Runden (N)“-Sektion.
+  zunächst eingeklappten „Frühere Runden (N)“-Sektion; Optionen und zulässige Antwortdetails jeder
+  früheren Runde lassen sich dort wiederum kompakt aufklappen.
+- Realtime-Aktualisierungen und lokale Aktionen wie „Speichern“ verankern die bisher sichtbare
+  Abstimmung im Scrollbereich, statt die Ansicht an den Seitenanfang springen zu lassen.
 - Auf Mobilgeräten werden Kopf, Fortschritt und Aktionsleisten untereinander angeordnet, ohne
   horizontalen Überlauf.
 
@@ -180,8 +190,11 @@ Optionen sind kompakte, stabile Zeilen. Jede Option zeigt:
 - Ergebnis-/Empfehlungsbadge, falls zutreffend,
 - verständliche Zählwerte,
 - die passenden kompakten Antwortbuttons in derselben Inhaltszeile,
-- optional eine kurze Notiz und einen direkt aufrufbaren Link,
-- eine gemeinsame einklappbare Namensliste der abgegebenen Antworten.
+- optional eine kurze Notiz ausschließlich im Info-Tooltip direkt am Titel,
+- optional ein reines, zugängliches Link-Icon direkt rechts neben dem Titel,
+- bei Einzel- und Mehrfachauswahl die Empfehlung „Meiste Stimmen“ direkt oberhalb der Auswahlaktion,
+- nach Ende einer nicht-anonymen Runde eine gemeinsame einklappbare Namensliste der abgegebenen
+  Antworten; während der Abstimmung und bei anonymen Runden keine Namen.
 
 Das Speichern erfolgt bewusst gesammelt über die kompakte Aktion „Speichern“. So werden nie unbemerkte
 Teilantworten erzeugt.
@@ -194,11 +207,12 @@ Der Dialog enthält in dieser Reihenfolge:
 2. optionale Beschreibung,
 3. ein normales Auswahlfeld mit vier Antwortarten und einem angrenzenden Info-Popover,
 4. bei Mehrfachauswahl optional „Stimmen pro Person“,
-5. strukturierte, einzeln entfernbare Freitext-Optionszeilen mit optional einklappbarer kurzer Notiz
+5. die Option „Anonyme Abstimmung“ mit einem Info-Popover, das die dauerhafte Wirkung erklärt,
+6. strukturierte, einzeln entfernbare Freitext-Optionszeilen mit optional einklappbarer kurzer Notiz
    und Link sowie „+ Option hinzufügen“,
-6. themenkonforme Datumsauswahl für die Frist; die Erinnerungserklärung sitzt ausschließlich im
+7. themenkonforme Datumsauswahl für die Frist; die Erinnerungserklärung sitzt ausschließlich im
    angrenzenden Info-Popover,
-7. die volle Primäraktion „Abstimmung starten“.
+8. die volle Primäraktion „Abstimmung starten“.
 
 Ein Themen-Dropdown, Datumssyntax in einem Freitextfeld und eine lange Teilnehmer-Checkboxliste gibt
 es nicht. Beim Schließen warnt der Dialog nur, wenn tatsächlich Eingaben geändert wurden.
@@ -247,6 +261,7 @@ Die historischen Tabellennamen bleiben eine interne Implementierungsentscheidung
 - `max_selections`,
 - `decision_note` und mehrere Ergebnisoptionen.
 - Antwortmodus `rating_1_5` und Antwortwerte `1` bis `5` über Migration 86.
+- `is_anonymous` als nicht-nullfähiges Flag mit sicherem Standard `0` über Migration 87.
 - Optionsnotiz und Link verwenden die bereits vorhandenen Felder `description` und `payload_json`.
 
 Eine zwischenzeitlich auf dem Feature-Branch eingeführte Teilnahmeform `interested` wird migriert:
@@ -270,6 +285,8 @@ Basis: `/api/events/:eventId/polls`
 
 `inviteePlayerIds` wird bei der generischen Erstellung nicht akzeptiert. Eine Ergebnisantwort liefert
 das Event höchstens als unveränderte Vergleichsdarstellung zurück.
+Personenzuordnungen werden nur bei beendeten, nicht-anonymen Runden serialisiert; diese
+Zugriffsgrenze wird nicht lediglich im Browser ausgeblendet.
 
 ## 10. Abnahmekriterien
 
@@ -280,11 +297,14 @@ das Event höchstens als unveränderte Vergleichsdarstellung zurück.
 - Der Dialog ist auf Mobil- und Desktopbreite übersichtlich und folgt dem Designsystem.
 - Freie Optionen mit optionaler Notiz/Link, alle vier Antwortmodi und ein optionales
   Mehrfachwahl-Limit funktionieren.
+- Anonyme Runden verbergen Personenzuordnungen dauerhaft; nicht-anonyme Runden zeigen sie erst nach
+  Ende der Abstimmung.
 - Bei Bewertung stehen je Option **Passt / Wenn nötig / Passt nicht / Offen** bereit.
 - Alternativ können alle Optionen unabhängig mit **1 bis 5** bewertet werden.
 - Fristen schließen Runden, Erinnerungen beachten Antwortstatus, Teilnehmerstatus und Cooldown.
 - Mehrere unabhängige Abstimmungen und mehrere Runden je Abstimmung haben korrekte Nummern und
   einklappbare Historien.
 - Ergebnis, Abbruch und ältere Runden bleiben nachvollziehbar.
+- Antworten lassen sich ohne Scrollsprung auswählen und speichern.
 - Keine Poll-Aktion ändert Eventdaten oder Teilnahmestatus.
 - Direkte Eventänderungen informieren Teilnehmer, ohne ihre Zusage zu invalidieren.

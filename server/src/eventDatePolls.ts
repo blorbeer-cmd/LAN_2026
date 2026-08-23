@@ -42,6 +42,7 @@ export interface DatePollRow {
   title: string;
   response_mode: EventPollResponseMode;
   max_selections: number | null;
+  is_anonymous: number;
   decision_note: string | null;
   created_at: number;
   updated_at: number;
@@ -219,6 +220,7 @@ export interface CreateDatePollInput {
   title?: string;
   responseMode?: EventPollResponseMode;
   maxSelections?: number | null;
+  anonymous?: boolean;
 }
 
 export type CreateDatePollResult =
@@ -256,8 +258,8 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
     db.prepare(
       `INSERT INTO event_date_polls
          (id, event_id, round_number, note, created_by, response_due_at, status, created_at, updated_at,
-          topic, decision_key, title, response_mode, max_selections)
-       VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)`,
+          topic, decision_key, title, response_mode, max_selections, is_anonymous)
+       VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       pollId,
       event.id,
@@ -272,6 +274,7 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
       title,
       responseMode,
       maxSelections,
+      input.anonymous ? 1 : 0,
     );
 
     const insertOption = db.prepare(

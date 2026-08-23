@@ -4428,6 +4428,21 @@ registerMigration({
   disableForeignKeysForRebuild: true,
 });
 
+function addAnonymousEventPolls(): void {
+  const columns = db.prepare('PRAGMA table_info(event_date_polls)').all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === 'is_anonymous')) return;
+  db.exec(`
+    ALTER TABLE event_date_polls
+      ADD COLUMN is_anonymous INTEGER NOT NULL DEFAULT 0
+      CHECK (is_anonymous IN (0, 1));
+  `);
+}
+registerMigration({
+  version: 87,
+  name: 'add anonymous event polls',
+  up: addAnonymousEventPolls,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
