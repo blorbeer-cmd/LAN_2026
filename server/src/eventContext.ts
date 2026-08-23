@@ -203,7 +203,7 @@ export function eventAccessLevel(
   if (instanceRole === 'owner' || instanceRole === 'admin') return 'admin';
   const participation = db
     .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
-    .get(eventId, playerId) as { status: 'invited' | 'accepted' | 'declined' } | undefined;
+    .get(eventId, playerId) as { status: 'invited' | 'interested' | 'accepted' | 'declined' } | undefined;
   if (participation?.status === 'accepted') return 'participant';
   // A planning event (draft, no fixed date yet) has no event_participants row
   // at all until the regular invitations are sent after a date is chosen —
@@ -227,6 +227,6 @@ export function eventAccessLevel(
       .get(eventId, playerId);
     if (pollInvited) return 'participant';
   }
-  if (participation?.status === 'invited') return 'teaser';
+  if (participation?.status === 'invited' || participation?.status === 'interested') return 'teaser';
   return 'none';
 }

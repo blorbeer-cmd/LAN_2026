@@ -331,6 +331,8 @@ export const api = {
       }),
     acceptInvitation: (id) => apiFetch(`/api/events/${id}/invitation/accept`, { method: 'POST' }),
     declineInvitation: (id) => apiFetch(`/api/events/${id}/invitation/decline`, { method: 'POST' }),
+    setMyParticipation: (id, status) =>
+      apiFetch(`/api/events/${id}/my-participation`, { method: 'PUT', body: JSON.stringify({ status }) }),
     // data: { name, location?, description? } — a draft "In Planung" event
     // with no fixed date; the date poll below is what later fixes one.
     createPlanning: (data) => apiFetch('/api/events/planning', { method: 'POST', body: JSON.stringify(data) }),
@@ -367,6 +369,27 @@ export const api = {
     cancel: (eventId, pollId) => apiFetch(`/api/events/${eventId}/date-polls/${pollId}/cancel`, { method: 'POST' }),
     schedule: (eventId, pollId, optionId) =>
       apiFetch(`/api/events/${eventId}/date-polls/${pollId}/schedule`, { method: 'POST', body: JSON.stringify({ optionId }) }),
+  },
+
+  eventPolls: {
+    list: (eventId) => apiFetch(`/api/events/${eventId}/polls`),
+    get: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}`),
+    create: (eventId, data) => apiFetch(`/api/events/${eventId}/polls`, { method: 'POST', body: JSON.stringify(data) }),
+    submitMyResponses: (eventId, pollId, responses) =>
+      apiFetch(`/api/events/${eventId}/polls/${pollId}/my-responses`, { method: 'PUT', body: JSON.stringify({ responses }) }),
+    sendReminders: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}/reminders`, { method: 'POST' }),
+    close: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}/close`, { method: 'POST' }),
+    reopen: (eventId, pollId, responseDueOn) =>
+      apiFetch(`/api/events/${eventId}/polls/${pollId}/reopen`, {
+        method: 'POST',
+        body: JSON.stringify(responseDueOn ? { responseDueOn } : {}),
+      }),
+    cancel: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}/cancel`, { method: 'POST' }),
+    decide: (eventId, pollId, optionIds, decisionNote) =>
+      apiFetch(`/api/events/${eventId}/polls/${pollId}/decide`, {
+        method: 'POST',
+        body: JSON.stringify({ optionIds, decisionNote }),
+      }),
   },
 
   tournaments: {

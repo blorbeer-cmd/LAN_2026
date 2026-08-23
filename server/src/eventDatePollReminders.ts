@@ -31,9 +31,9 @@ export function runEventDatePollReminderSweepOnce(now = Date.now()): { reminded:
     const delivery = notifyPlayers(
       [due.playerId],
       {
-        title: 'Erinnerung: Terminabstimmung',
-        body: `${event.name}: Bitte antworte auf die Terminabstimmung.`,
-        url: '/#events',
+        title: 'Erinnerung: Abstimmung',
+        body: `${event.name}: Bitte antworte auf die Abstimmung.`,
+        url: `/#eventPolls/${due.pollId}`,
       },
       'direct',
       undefined,

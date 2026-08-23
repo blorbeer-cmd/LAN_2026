@@ -23,7 +23,8 @@ import { invalidateBroadcasts } from './views/broadcast.js';
 import { invalidateInfoBoard, openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
 import { clearFoodOrderTarget, invalidateFoodOrders, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
-import { invalidateEventDatePolls } from './views/events.js';
+import { invalidateEventPolls } from './views/eventPolls.js';
+import { invalidateEventDatePolls } from './views/eventDatePoll.js';
 import { invalidateChecklist } from './views/checklist.js';
 import { invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
 import { invalidateArrivals } from './views/arrivals.js';
@@ -72,12 +73,12 @@ let sharedRefreshShouldRender = false;
 
 function parseFoodOrderHash(hash) {
   const parts = String(hash || '').replace(/^#/, '').split('/');
-  if (parts[0] !== 'foodOrders') return null;
-  if (!parts[1]) return { view: 'foodOrders', target: null };
+  if (!['foodOrders', 'eventPolls'].includes(parts[0])) return null;
+  if (!parts[1]) return { view: parts[0], target: null };
   try {
-    return { view: 'foodOrders', target: { type: 'order', id: decodeURIComponent(parts[1]) } };
+    return { view: parts[0], target: { type: parts[0] === 'foodOrders' ? 'order' : 'poll', id: decodeURIComponent(parts[1]) } };
   } catch {
-    return { view: 'foodOrders', target: null };
+    return { view: parts[0], target: null };
   }
 }
 
@@ -181,6 +182,7 @@ function invalidateEventScopedCaches() {
   invalidateBroadcasts({ hard: true });
   invalidateInfoBoard();
   invalidateFoodOrders();
+  invalidateEventPolls();
   invalidateEventDatePolls();
   invalidateChecklist(undefined, { hard: true });
   invalidateArrivals({ hard: true });
@@ -372,6 +374,7 @@ function focusPendingSearchTarget() {
     ].filter((el) => el.dataset.orderCard === id || el.dataset.closedOrder === id),
     broadcast: [...viewContainer.querySelectorAll('[data-broadcast]')].filter((el) => el.dataset.broadcast === id),
     carpool: [...viewContainer.querySelectorAll('[data-carpool]')].filter((el) => el.dataset.carpool === id),
+    poll: [...viewContainer.querySelectorAll('[data-poll-card]')].filter((el) => el.dataset.pollCard === id),
   }[type] ?? [];
   const element = candidates[0];
   if (!element) return;
@@ -653,7 +656,7 @@ function wireSocket() {
       }
       if (event === 'events:changed') {
         invalidateAdminReadiness();
-        invalidateEventDatePolls();
+        invalidateEventPolls();
       }
       void queueSharedRefresh({ render: realtimeEventAffectsView(event, currentView) });
     })

@@ -698,8 +698,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   existing order row instead of adding a duplicate. The
   reminder uses the same order deep link and a durable per-player/event send timestamp independent of
   the bounded push history.
-- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its four area tabs
-  are sorted alphabetically by their German label: „An- & Abreise“, „Events“, „Packliste“ and
+- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its five area tabs
+  are sorted alphabetically by their German label: „Abstimmungen“, „An- & Abreise“, „Events“, „Packliste“ and
   „To-Do“ (the last two formerly the separate „Checkliste“ and „An- & Abreise“ areas;
   docs/KONZEPT-PACKLISTE-TICKETS.md Abschnitt 9 records the earlier „Packliste“→„Checkliste“
   rename — „Events“ is the former standalone „Einstellungen“ view, moved here because it is setup
@@ -707,7 +707,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   settings icon). TV-Kiosk is deliberately not an Orga tab — it lives only behind Admin's
   „Kioskverwaltung“ tool card (see „Admin tools“) since opening the shared-screen dashboard is an
   admin task, not something every member needs from Orga. „Mehr“ opens Orga on its first tab,
-  „An- & Abreise“, like every other area (`sectionEntryView()` in `sectionNav.js`), so the tab row's
+  „Abstimmungen“, like every other area (`sectionEntryView()` in `sectionNav.js`), so the tab row's
   top-left tab is the one actually selected on arrival; the already persisted push url `/#checklist`
   is unaffected and still lands directly on To-Do. That tab label carries
   the live count of the current identity's own open+taken items. The checklist's former in-view
@@ -736,6 +736,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   zugewiesen“ with „Freigeben“/„Erledigt“ actions instead. Completed To-Dos live in one standard,
   initially collapsed „Historie“ section whose open state survives live re-renders, same as Food
   orders.
+  The „Abstimmungen“ tab is the event-centric planning surface for Zeitraum, Ort/Unterkunft,
+  Dauer, Budget and free questions. It starts with an event selector, keeps open rounds and their
+  result history together, and offers the reversible personal states „Interessiert“, „Zugesagt“
+  and „Abgesagt“. Event cards only link into this surface; they do not embed the complete poll UI.
+  A non-date decision never invalidates an existing acceptance. Affected invitees, interested
+  people and accepted participants are notified with the changed value and a poll deep link.
   The „Events“ tab is reachable by every member, not only by owner/admin, because answering an
   invitation is a personal action. What it shows depends on the role: owner/admin receive the full
   management surface — anlegen/bearbeiten, Tracking starten/stoppen, Teilnehmer einladen/entfernen

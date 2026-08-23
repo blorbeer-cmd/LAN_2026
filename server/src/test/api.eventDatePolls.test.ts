@@ -216,6 +216,78 @@ test('planning event lifecycle: create, poll, respond, schedule, reconfirm', asy
   });
 });
 
+test('generic location poll reuses invitations and keeps accepted participation valid', async () => {
+  const member = 'generic-poll-member';
+  createMember(member, 'Generic Poll Member');
+  const eventResponse = await request(app).post('/api/events').send({ name: 'Offen geplantes Event' });
+  assert.equal(eventResponse.status, 201, JSON.stringify(eventResponse.body));
+  assert.equal(eventResponse.body.status, 'draft');
+  const eventId = eventResponse.body.id as string;
+
+  const pollResponse = await request(app)
+    .post(`/api/events/${eventId}/polls`)
+    .send({
+      topic: 'location',
+      decisionKey: 'location',
+      title: 'Wo treffen wir uns?',
+      responseMode: 'single_choice',
+      responseDueOn: isoDate(4),
+      inviteePlayerIds: [member],
+      options: [{ label: 'Köln' }, { label: 'Hamburg' }],
+    });
+  assert.equal(pollResponse.status, 201, JSON.stringify(pollResponse.body));
+  assert.equal(pollResponse.body.topic, 'location');
+  assert.equal(pollResponse.body.title, 'Wo treffen wir uns?');
+  const pollId = pollResponse.body.id as string;
+  const selectedId = pollResponse.body.options[0].id as string;
+
+  const interested = await request(app)
+    .put(`/api/events/${eventId}/my-participation`)
+    .set('x-test-player-id', member)
+    .send({ status: 'interested' });
+  assert.equal(interested.status, 200, JSON.stringify(interested.body));
+  assert.equal(interested.body.status, 'interested');
+  const accepted = await request(app)
+    .put(`/api/events/${eventId}/my-participation`)
+    .set('x-test-player-id', member)
+    .send({ status: 'accepted' });
+  assert.equal(accepted.status, 200);
+
+  const before = db.prepare('SELECT schedule_revision AS revision FROM events WHERE id = ?').get(eventId) as { revision: number };
+  const decided = await request(app)
+    .post(`/api/events/${eventId}/polls/${pollId}/decide`)
+    .send({ optionIds: [selectedId] });
+  assert.equal(decided.status, 200, JSON.stringify(decided.body));
+  assert.equal(decided.body.event.location, 'Köln');
+  assert.equal(decided.body.event.scheduleRevision, before.revision, 'a location decision must not invalidate acceptance');
+  const participant = db
+    .prepare('SELECT status, confirmed_schedule_revision AS revision FROM event_participants WHERE event_id = ? AND player_id = ?')
+    .get(eventId, member) as { status: string; revision: number };
+  assert.equal(participant.status, 'accepted');
+  assert.equal(participant.revision, before.revision);
+  const decisionPush = db
+    .prepare("SELECT body, url, player_ids AS playerIds FROM push_log WHERE title = 'Planung aktualisiert' ORDER BY created_at DESC LIMIT 1")
+    .get() as { body: string; url: string; playerIds: string };
+  assert.match(decisionPush.body, /Teilnahmestatus bleibt unverändert/);
+  assert.equal(decisionPush.url, `/#eventPolls/${pollId}`);
+  assert.ok((JSON.parse(decisionPush.playerIds) as string[]).includes(member));
+
+  const directChange = await request(app).patch(`/api/events/${eventId}`).send({ location: 'Berlin' });
+  assert.equal(directChange.status, 200, JSON.stringify(directChange.body));
+  const directChangePush = db
+    .prepare("SELECT body FROM push_log WHERE title = 'Eventplanung geändert' ORDER BY created_at DESC LIMIT 1")
+    .get() as { body: string };
+  assert.match(directChangePush.body, /Ort: Köln → Berlin/);
+  assert.match(directChangePush.body, /Deine Zusage bleibt bestehen/);
+
+  const declined = await request(app)
+    .put(`/api/events/${eventId}/my-participation`)
+    .set('x-test-player-id', member)
+    .send({ status: 'declined' });
+  assert.equal(declined.status, 200);
+  assert.equal(declined.body.status, 'declined');
+});
+
 test('a reschedule leaves existing payments and accommodation accounting untouched', async () => {
   const payer = 'poll-payer';
   createMember(payer, 'Poll Payer');

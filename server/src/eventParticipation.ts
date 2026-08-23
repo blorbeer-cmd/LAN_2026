@@ -1,4 +1,4 @@
-export type EventParticipationStatus = 'invited' | 'accepted' | 'declined';
+export type EventParticipationStatus = 'invited' | 'interested' | 'accepted' | 'declined';
 
 // Every direct SQL consumer aliases event_participants as `ep` and reuses
 // this condition. That keeps invited/declined rows from drifting into normal

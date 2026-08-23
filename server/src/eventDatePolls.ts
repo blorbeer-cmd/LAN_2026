@@ -16,6 +16,8 @@ import {
 
 export type DatePollStatus = 'open' | 'closed' | 'scheduled' | 'superseded' | 'cancelled';
 export type DatePollResponseValue = 'can' | 'if_needed' | 'cannot';
+export type EventPollTopic = 'date_range' | 'location' | 'duration' | 'budget' | 'custom';
+export type EventPollResponseMode = 'feasibility' | 'single_choice' | 'multiple_choice';
 
 export const RESPONSE_VALUES: DatePollResponseValue[] = ['can', 'if_needed', 'cannot'];
 export const MIN_OPTIONS = 2;
@@ -36,6 +38,11 @@ export interface DatePollRow {
   response_due_at: number;
   status: DatePollStatus;
   selected_option_id: string | null;
+  topic: EventPollTopic;
+  decision_key: string;
+  title: string;
+  response_mode: EventPollResponseMode;
+  decision_note: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -45,6 +52,9 @@ export interface DatePollOptionRow {
   poll_id: string;
   starts_on: string;
   ends_on: string;
+  label: string | null;
+  description: string | null;
+  payload_json: string;
   position: number;
 }
 
@@ -187,8 +197,11 @@ function clearAutomaticReminders(pollId: string): void {
 // ---------- creating a round ----------
 
 export interface DatePollOptionInput {
-  startsOn: string;
-  endsOn: string;
+  startsOn?: string;
+  endsOn?: string;
+  label?: string;
+  description?: string | null;
+  payload?: Record<string, unknown>;
 }
 
 export interface CreateDatePollInput {
@@ -196,6 +209,10 @@ export interface CreateDatePollInput {
   responseDueOn: string;
   note?: string | null;
   inviteePlayerIds: string[];
+  topic?: EventPollTopic;
+  decisionKey?: string;
+  title?: string;
+  responseMode?: EventPollResponseMode;
 }
 
 export type CreateDatePollResult =
@@ -209,11 +226,15 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
     return { ok: false, code: 'invalid', error: 'responseDueOn muss in der Zukunft liegen.' };
   }
   return db.transaction((): CreateDatePollResult => {
+    const topic = input.topic ?? 'date_range';
+    const decisionKey = input.decisionKey ?? (topic === 'date_range' ? 'date' : topic);
+    const title = input.title?.trim() || (topic === 'date_range' ? 'Termin / Zeitraum' : 'Abstimmung');
+    const responseMode = input.responseMode ?? 'feasibility';
     const existingUndecided = db
-      .prepare(`SELECT 1 FROM event_date_polls WHERE event_id = ? AND status IN ('open', 'closed')`)
-      .get(event.id);
+      .prepare(`SELECT 1 FROM event_date_polls WHERE event_id = ? AND decision_key = ? AND status IN ('open', 'closed')`)
+      .get(event.id, decisionKey);
     if (existingUndecided) {
-      return { ok: false, code: 'conflict', error: 'Für dieses Event läuft bereits eine Terminabstimmung.' };
+      return { ok: false, code: 'conflict', error: 'Für diese Entscheidung läuft bereits eine Abstimmung.' };
     }
     const nextRound = (
       db.prepare('SELECT COALESCE(MAX(round_number), 0) + 1 AS n FROM event_date_polls WHERE event_id = ?').get(
@@ -223,15 +244,36 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
 
     const pollId = nanoid();
     db.prepare(
-      `INSERT INTO event_date_polls (id, event_id, round_number, note, created_by, response_due_at, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?)`,
-    ).run(pollId, event.id, nextRound, input.note ?? null, createdBy, responseDueAt, now, now);
+      `INSERT INTO event_date_polls
+         (id, event_id, round_number, note, created_by, response_due_at, status, created_at, updated_at,
+          topic, decision_key, title, response_mode)
+       VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      pollId,
+      event.id,
+      nextRound,
+      input.note ?? null,
+      createdBy,
+      responseDueAt,
+      now,
+      now,
+      topic,
+      decisionKey,
+      title,
+      responseMode,
+    );
 
     const insertOption = db.prepare(
-      'INSERT INTO event_date_poll_options (id, poll_id, starts_on, ends_on, position) VALUES (?, ?, ?, ?, ?)',
+      `INSERT INTO event_date_poll_options
+         (id, poll_id, starts_on, ends_on, position, label, description, payload_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     input.options.forEach((option, index) => {
-      insertOption.run(nanoid(), pollId, option.startsOn, option.endsOn, index);
+      const startsOn = option.startsOn ?? `0001-01-${String(index + 1).padStart(2, '0')}`;
+      const endsOn = option.endsOn ?? startsOn;
+      const label = option.label?.trim() || (startsOn === endsOn ? startsOn : `${startsOn} – ${endsOn}`);
+      const payload = topic === 'date_range' ? { startsOn, endsOn, ...option.payload } : (option.payload ?? {});
+      insertOption.run(nanoid(), pollId, startsOn, endsOn, index, label, option.description ?? null, JSON.stringify(payload));
     });
 
     insertInvitees(pollId, input.inviteePlayerIds, now, responseDueAt);
@@ -347,17 +389,27 @@ export function addDatePollOption(poll: DatePollRow, input: DatePollOptionInput)
   if (existing.length >= MAX_OPTIONS) {
     return { ok: false, code: 'invalid', error: `Höchstens ${MAX_OPTIONS} Zeiträume je Runde.` };
   }
-  if (existing.some((o) => o.starts_on === input.startsOn && o.ends_on === input.endsOn)) {
-    return { ok: false, code: 'invalid', error: 'Dieser Zeitraum ist bereits als Option vorhanden.' };
+  const position = existing.reduce((max, o) => Math.max(max, o.position), -1) + 1;
+  const startsOn = input.startsOn ?? `0001-01-${String(position + 1).padStart(2, '0')}`;
+  const endsOn = input.endsOn ?? startsOn;
+  const label = input.label?.trim() || (startsOn === endsOn ? startsOn : `${startsOn} – ${endsOn}`);
+  if (existing.some((o) => (o.label ?? '').toLocaleLowerCase('de') === label.toLocaleLowerCase('de'))) {
+    return { ok: false, code: 'invalid', error: 'Diese Option ist bereits vorhanden.' };
   }
   const id = nanoid();
-  const position = existing.reduce((max, o) => Math.max(max, o.position), -1) + 1;
-  db.prepare('INSERT INTO event_date_poll_options (id, poll_id, starts_on, ends_on, position) VALUES (?, ?, ?, ?, ?)').run(
+  db.prepare(
+    `INSERT INTO event_date_poll_options
+       (id, poll_id, starts_on, ends_on, position, label, description, payload_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
     id,
     poll.id,
-    input.startsOn,
-    input.endsOn,
+    startsOn,
+    endsOn,
     position,
+    label,
+    input.description ?? null,
+    JSON.stringify(input.payload ?? {}),
   );
   db.prepare('UPDATE event_date_polls SET updated_at = ? WHERE id = ?').run(Date.now(), poll.id);
   return { ok: true, option: db.prepare('SELECT * FROM event_date_poll_options WHERE id = ?').get(id) as DatePollOptionRow };
@@ -440,6 +492,12 @@ export function submitMyResponses(
     !responses.every((r) => RESPONSE_VALUES.includes(r.response))
   ) {
     return { ok: false, code: 'invalid', error: 'Es muss für jede Option genau eine gültige Antwort angegeben werden.' };
+  }
+  if (poll.response_mode === 'single_choice' && responses.filter((response) => response.response === 'can').length !== 1) {
+    return { ok: false, code: 'invalid', error: 'Bei dieser Abstimmung muss genau eine Option ausgewählt werden.' };
+  }
+  if (poll.response_mode === 'multiple_choice' && responses.some((response) => response.response === 'if_needed')) {
+    return { ok: false, code: 'invalid', error: 'Mehrfachauswahlen verwenden nur ausgewählt oder nicht ausgewählt.' };
   }
 
   const now = Date.now();
@@ -531,6 +589,9 @@ export type ScheduleResult =
 // without a second revision bump or duplicate notifications; racing against a
 // different option (or a state that already moved on) is a 409.
 export function scheduleDatePoll(event: EventRow, poll: DatePollRow, optionId: string): ScheduleResult {
+  if (poll.topic !== 'date_range') {
+    return { ok: false, code: 'invalid', error: 'Nur eine Zeitraum-Abstimmung kann den Eventtermin ändern.' };
+  }
   if (event.tracking_enabled || event.status === 'ended') {
     return {
       ok: false,
@@ -563,13 +624,21 @@ export function scheduleDatePoll(event: EventRow, poll: DatePollRow, optionId: s
       return { ok: false, code: 'not_open_or_closed', error: 'Die Runde ist nicht mehr offen oder geschlossen.' };
     }
 
-    db.prepare(`UPDATE event_date_polls SET status = 'superseded' WHERE event_id = ? AND status = 'scheduled' AND id != ?`).run(
+    db.prepare(
+      `UPDATE event_date_polls SET status = 'superseded'
+       WHERE event_id = ? AND decision_key = ? AND status = 'scheduled' AND id != ?`,
+    ).run(
       event.id,
+      poll.decision_key,
       poll.id,
     );
     db.prepare(
       `UPDATE event_date_polls SET status = 'scheduled', selected_option_id = ?, updated_at = ? WHERE id = ?`,
     ).run(optionId, now, poll.id);
+    db.prepare('DELETE FROM event_poll_selected_options WHERE poll_id = ?').run(poll.id);
+    db.prepare(
+      'INSERT INTO event_poll_selected_options (poll_id, option_id, position) VALUES (?, ?, 0)',
+    ).run(poll.id, optionId);
     clearAutomaticReminders(poll.id);
 
     const startsAt = startOfIsoDateUtcMs(option.starts_on);
@@ -582,6 +651,83 @@ export function scheduleDatePoll(event: EventRow, poll: DatePollRow, optionId: s
 
     const updatedEvent = db.prepare('SELECT * FROM events WHERE id = ?').get(event.id) as EventRow;
     return { ok: true, poll: getDatePoll(poll.id)!, event: updatedEvent, changed: true };
+  })();
+}
+
+export type DecidePollResult =
+  | { ok: true; poll: DatePollRow; event: EventRow; changed: boolean; previousValue: string | null; nextValue: string }
+  | { ok: false; code: 'not_open_or_closed' | 'invalid' | 'locked'; error: string };
+
+// Records a non-date planning decision while preserving the event's existing
+// acceptance revision. Location is the only generic topic backed by a native
+// event field today; duration, budget and custom decisions remain explicit
+// poll history until their respective event models gain dedicated fields.
+export function decideEventPoll(
+  event: EventRow,
+  poll: DatePollRow,
+  optionIds: string[],
+  decisionNote?: string | null,
+): DecidePollResult {
+  if (poll.topic === 'date_range') {
+    if (optionIds.length !== 1) {
+      return { ok: false, code: 'invalid', error: 'Für den Termin muss genau eine Option gewählt werden.' };
+    }
+    const result = scheduleDatePoll(event, poll, optionIds[0]);
+    if (!result.ok) return result;
+    const option = getDatePollOptions(poll.id).find((entry) => entry.id === optionIds[0])!;
+    return {
+      ...result,
+      previousValue: event.starts_at === null ? null : `${event.starts_at}`,
+      nextValue: option.label ?? `${option.starts_on} – ${option.ends_on}`,
+    };
+  }
+  if (event.tracking_enabled || event.status === 'ended') {
+    return { ok: false, code: 'locked', error: 'Nach aktiviertem Tracking oder Eventende kann diese Entscheidung nicht geändert werden.' };
+  }
+  const uniqueIds = [...new Set(optionIds)];
+  if (uniqueIds.length === 0 || (poll.response_mode !== 'multiple_choice' && uniqueIds.length !== 1)) {
+    return { ok: false, code: 'invalid', error: 'Bitte eine gültige Auswahl festlegen.' };
+  }
+  const options = getDatePollOptions(poll.id);
+  if (!uniqueIds.every((id) => options.some((option) => option.id === id))) {
+    return { ok: false, code: 'invalid', error: 'Mindestens eine Option gehört nicht zu dieser Abstimmung.' };
+  }
+  const nextValue = uniqueIds
+    .map((id) => options.find((option) => option.id === id)?.label ?? id)
+    .join(', ');
+  const previousValue = poll.topic === 'location' ? event.location : null;
+  const now = Date.now();
+  return db.transaction((): DecidePollResult => {
+    const current = getDatePoll(poll.id)!;
+    const selected = db
+      .prepare('SELECT option_id AS optionId FROM event_poll_selected_options WHERE poll_id = ? ORDER BY position')
+      .all(poll.id) as Array<{ optionId: string }>;
+    if (current.status === 'scheduled' && selected.map((row) => row.optionId).join(',') === uniqueIds.join(',')) {
+      return { ok: true, poll: current, event, changed: false, previousValue, nextValue };
+    }
+    if (current.status !== 'open' && current.status !== 'closed') {
+      return { ok: false, code: 'not_open_or_closed', error: 'Die Abstimmung ist nicht mehr offen oder geschlossen.' };
+    }
+    db.prepare(
+      `UPDATE event_date_polls SET status = 'superseded'
+       WHERE event_id = ? AND decision_key = ? AND status = 'scheduled' AND id != ?`,
+    ).run(event.id, poll.decision_key, poll.id);
+    db.prepare(
+      `UPDATE event_date_polls
+       SET status = 'scheduled', selected_option_id = ?, decision_note = ?, updated_at = ?
+       WHERE id = ?`,
+    ).run(uniqueIds[0], decisionNote?.trim() || null, now, poll.id);
+    db.prepare('DELETE FROM event_poll_selected_options WHERE poll_id = ?').run(poll.id);
+    const insertSelected = db.prepare(
+      'INSERT INTO event_poll_selected_options (poll_id, option_id, position) VALUES (?, ?, ?)',
+    );
+    uniqueIds.forEach((id, position) => insertSelected.run(poll.id, id, position));
+    clearAutomaticReminders(poll.id);
+    if (poll.topic === 'location') {
+      db.prepare('UPDATE events SET location = ? WHERE id = ?').run(nextValue, event.id);
+    }
+    const updatedEvent = db.prepare('SELECT * FROM events WHERE id = ?').get(event.id) as EventRow;
+    return { ok: true, poll: getDatePoll(poll.id)!, event: updatedEvent, changed: true, previousValue, nextValue };
   })();
 }
 

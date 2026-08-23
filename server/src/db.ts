@@ -4173,6 +4173,87 @@ registerMigration({
   disableForeignKeysForRebuild: true,
 });
 
+// Generalize the date-poll foundation without throwing away any round,
+// response, reminder or audit history created by migration 83. The historical
+// table names deliberately remain an implementation detail; callers use the
+// generic /polls API from this migration onward.
+function generalizeEventPollsAndParticipation(): void {
+  const participantColumns = db.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  if (participantColumns.some((column) => column.name === 'confirmed_schedule_revision')) {
+    const participantTriggers = db
+      .prepare(
+        `SELECT sql FROM sqlite_master
+         WHERE type = 'trigger' AND tbl_name = 'event_participants' AND sql IS NOT NULL`,
+      )
+      .all() as Array<{ sql: string }>;
+    db.exec(`
+      CREATE TABLE event_participants_staging_84 AS SELECT * FROM event_participants;
+      DROP TABLE event_participants;
+      CREATE TABLE event_participants (
+        event_id                     TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        player_id                    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+        status                       TEXT NOT NULL DEFAULT 'accepted'
+                                     CHECK (status IN ('invited', 'interested', 'accepted', 'declined')),
+        paid                         INTEGER NOT NULL DEFAULT 0 CHECK (paid IN (0, 1)),
+        paid_by                      TEXT REFERENCES players(id) ON DELETE SET NULL,
+        paid_at                      INTEGER,
+        paid_amount_cents            INTEGER CHECK (paid_amount_cents IS NULL OR paid_amount_cents > 0),
+        confirmed_schedule_revision INTEGER,
+        PRIMARY KEY (event_id, player_id)
+      );
+      INSERT INTO event_participants
+        (event_id, player_id, status, paid, paid_by, paid_at, paid_amount_cents, confirmed_schedule_revision)
+      SELECT event_id, player_id, status, paid, paid_by, paid_at, paid_amount_cents, confirmed_schedule_revision
+      FROM event_participants_staging_84;
+      DROP TABLE event_participants_staging_84;
+    `);
+    for (const trigger of participantTriggers) db.exec(trigger.sql);
+  }
+
+  const pollColumns = db.prepare('PRAGMA table_info(event_date_polls)').all() as Array<{ name: string }>;
+  if (!pollColumns.some((column) => column.name === 'topic')) {
+    db.exec(`
+      ALTER TABLE event_date_polls ADD COLUMN topic TEXT NOT NULL DEFAULT 'date_range'
+        CHECK (topic IN ('date_range', 'location', 'duration', 'budget', 'custom'));
+      ALTER TABLE event_date_polls ADD COLUMN decision_key TEXT NOT NULL DEFAULT 'date';
+      ALTER TABLE event_date_polls ADD COLUMN title TEXT NOT NULL DEFAULT 'Termin / Zeitraum';
+      ALTER TABLE event_date_polls ADD COLUMN response_mode TEXT NOT NULL DEFAULT 'feasibility'
+        CHECK (response_mode IN ('feasibility', 'single_choice', 'multiple_choice'));
+      ALTER TABLE event_date_polls ADD COLUMN decision_note TEXT;
+      DROP INDEX IF EXISTS idx_event_date_polls_undecided;
+      DROP INDEX IF EXISTS idx_event_date_polls_scheduled;
+      CREATE UNIQUE INDEX idx_event_polls_undecided
+        ON event_date_polls(event_id, decision_key) WHERE status IN ('open', 'closed');
+      CREATE UNIQUE INDEX idx_event_polls_decided
+        ON event_date_polls(event_id, decision_key) WHERE status = 'scheduled';
+
+      ALTER TABLE event_date_poll_options ADD COLUMN label TEXT;
+      ALTER TABLE event_date_poll_options ADD COLUMN description TEXT;
+      ALTER TABLE event_date_poll_options ADD COLUMN payload_json TEXT NOT NULL DEFAULT '{}';
+      UPDATE event_date_poll_options
+      SET label = CASE WHEN starts_on = ends_on THEN starts_on ELSE starts_on || ' – ' || ends_on END,
+          payload_json = json_object('startsOn', starts_on, 'endsOn', ends_on)
+      WHERE label IS NULL;
+
+      CREATE TABLE event_poll_selected_options (
+        poll_id   TEXT NOT NULL REFERENCES event_date_polls(id) ON DELETE CASCADE,
+        option_id TEXT NOT NULL,
+        position  INTEGER NOT NULL,
+        PRIMARY KEY (poll_id, option_id),
+        FOREIGN KEY (poll_id, option_id) REFERENCES event_date_poll_options(poll_id, id) ON DELETE CASCADE
+      );
+      INSERT OR IGNORE INTO event_poll_selected_options (poll_id, option_id, position)
+      SELECT id, selected_option_id, 0 FROM event_date_polls WHERE selected_option_id IS NOT NULL;
+    `);
+  }
+}
+registerMigration({
+  version: 84,
+  name: 'generalize event polls and add interested participation',
+  up: generalizeEventPollsAndParticipation,
+  disableForeignKeysForRebuild: true,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

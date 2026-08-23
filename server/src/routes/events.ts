@@ -24,6 +24,7 @@ import {
   isParticipant,
   removeEventParticipant,
   respondToEventInvitation,
+  changeMyEventParticipation,
   setParticipants,
   OUTSIDE_EVENTS_ID,
   type UpdateEventFields,
@@ -125,7 +126,7 @@ function acceptedParticipantsForViewer(eventId: string, viewerId: string | undef
 function myParticipationField(eventId: string, viewerId: string) {
   const row = db
     .prepare('SELECT status, confirmed_schedule_revision AS confirmedScheduleRevision FROM event_participants WHERE event_id = ? AND player_id = ?')
-    .get(eventId, viewerId) as { status: 'invited' | 'accepted' | 'declined'; confirmedScheduleRevision: number | null } | undefined;
+    .get(eventId, viewerId) as { status: 'invited' | 'interested' | 'accepted' | 'declined'; confirmedScheduleRevision: number | null } | undefined;
   return { myParticipation: row ? { status: row.status, confirmedScheduleRevision: row.confirmedScheduleRevision } : null };
 }
 
@@ -258,6 +259,11 @@ function serializeEventSummary(
     revealAllParticipantPayments?: boolean;
   } = {},
 ) {
+  const openPollCount = (
+    db
+      .prepare("SELECT COUNT(*) AS count FROM event_date_polls WHERE event_id = ? AND status IN ('open', 'closed')")
+      .get(event.id) as { count: number }
+  ).count;
   return {
     id: event.id,
     name: event.name,
@@ -273,6 +279,7 @@ function serializeEventSummary(
     isBase: event.id === BASE_EVENT_ID,
     trackingEnabled: Boolean(event.tracking_enabled),
     isEnded: Boolean(event.ended_at),
+    openPollCount,
     ...(includeAcceptedParticipants
       ? {
           acceptedParticipants: acceptedParticipantsForViewer(
@@ -306,7 +313,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
       `SELECT e.*
        FROM events e
        JOIN event_participants ep ON ep.event_id = e.id
-       WHERE ep.player_id = ? AND ep.status = 'invited'
+       WHERE ep.player_id = ? AND ep.status IN ('invited', 'interested')
          AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
        ORDER BY e.starts_at, e.name COLLATE NOCASE`,
     )
@@ -415,7 +422,12 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
     plannedEvents: plannedEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
     endedEvents: endedEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
     historicalEvents: historicalEvents.map((event) => serializeEventSummary(event)),
-    invitations: invitations.map((event) => ({ ...serializeEventSummary(event), participationStatus: 'invited' })),
+    invitations: invitations.map((event) => {
+      const participation = db
+        .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
+        .get(event.id, playerId) as { status: 'invited' | 'interested' };
+      return { ...serializeEventSummary(event), participationStatus: participation.status };
+    }),
     ...(managedEvents ? { managedEvents } : {}),
   });
 });
@@ -431,7 +443,10 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
   const access = eventAccessLevel(event.id, req.player!.id, req.groupMembership!.role);
   if (access === 'none') return res.status(404).json({ error: 'Event nicht gefunden.' });
   if (access === 'teaser') {
-    return res.json({ ...serializeEventSummary(event), participationStatus: 'invited' });
+    const participation = db
+      .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
+      .get(event.id, req.player!.id) as { status: 'invited' | 'interested' } | undefined;
+    return res.json({ ...serializeEventSummary(event), participationStatus: participation?.status ?? 'invited' });
   }
   if (access === 'participant') {
     const managementFields = paymentManagementFields(event, req.player!.id, req.groupMembership?.role);
@@ -584,6 +599,51 @@ function answerEventInvitation(response: 'accepted' | 'declined') {
 
 eventsRouter.post('/:id/invitation/accept', resolveEvent, answerEventInvitation('accepted'));
 eventsRouter.post('/:id/invitation/decline', resolveEvent, answerEventInvitation('declined'));
+
+// PUT /api/events/:id/my-participation — personal, reversible participation
+// choice. This also lets a poll invitee express interest before all planning
+// details have been decided.
+eventsRouter.put('/:id/my-participation', resolveEvent, (req, res) => {
+  const event = req.groupResource as EventRow;
+  if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
+  if (event.id === BASE_EVENT_ID) {
+    return res.status(409).json({ error: 'Die Teilnahme am Basis-Event kann nicht geändert werden.' });
+  }
+  const playerId = requestPlayerId(req);
+  if (!playerId) return res.status(401).json({ error: 'Anmeldung erforderlich.' });
+  const { status } = req.body ?? {};
+  if (!['interested', 'accepted', 'declined'].includes(status)) {
+    return res.status(400).json({ error: 'status muss interested, accepted oder declined sein.' });
+  }
+  const hasAccess = Boolean(
+    db.prepare('SELECT 1 FROM event_participants WHERE event_id = ? AND player_id = ?').get(event.id, playerId) ||
+      db
+        .prepare(
+          `SELECT 1 FROM event_date_poll_invitees i
+           JOIN event_date_polls p ON p.id = i.poll_id
+           WHERE p.event_id = ? AND i.player_id = ? LIMIT 1`,
+        )
+        .get(event.id, playerId) ||
+      event.created_by === playerId,
+  );
+  if (!hasAccess) return res.status(404).json({ error: 'Event nicht gefunden.' });
+  const result = changeMyEventParticipation(event.id, playerId, status);
+  if (!result.ok) return res.status(result.code === 'not_found' ? 404 : 409).json({ error: result.error });
+  writeAdminAudit({
+    actorPlayerId: playerId,
+    groupId: req.group!.id,
+    action: 'event_participation_changed',
+    targetType: 'event_participant',
+    targetId: `${event.id}:${playerId}`,
+    details: { eventId: event.id, playerId, previousStatus: result.previousStatus, status, changed: result.changed },
+  });
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  resolvePushTopic(eventInvitationTopicKey(event.id, playerId), false, {
+    groupId: req.group!.id,
+    eventId: BASE_EVENT_ID,
+  });
+  return res.json({ playerId, status: result.participant.status });
+});
 
 // PATCH /api/events/:id/participants/:playerId/payment - an accepted
 // participant may correct only their own state. The recorded event creator
@@ -777,11 +837,15 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
     return res.status(400).json({ error: 'Name ist erforderlich (1-80 Zeichen).' });
   }
 
-  const parsedStartsAt = parseRequiredTimestamp(startsAt, 'startsAt');
-  if (!parsedStartsAt.ok) return res.status(400).json({ error: parsedStartsAt.error });
-  const parsedEndsAt = parseRequiredTimestamp(endsAt, 'endsAt');
-  if (!parsedEndsAt.ok) return res.status(400).json({ error: parsedEndsAt.error });
-  if (parsedEndsAt.value <= parsedStartsAt.value) {
+  const hasFixedSchedule = startsAt !== undefined && startsAt !== null;
+  if (hasFixedSchedule !== (endsAt !== undefined && endsAt !== null)) {
+    return res.status(400).json({ error: 'Beginn und Ende müssen entweder beide gesetzt oder beide offen sein.' });
+  }
+  const parsedStartsAt = hasFixedSchedule ? parseRequiredTimestamp(startsAt, 'startsAt') : null;
+  if (parsedStartsAt && !parsedStartsAt.ok) return res.status(400).json({ error: parsedStartsAt.error });
+  const parsedEndsAt = hasFixedSchedule ? parseRequiredTimestamp(endsAt, 'endsAt') : null;
+  if (parsedEndsAt && !parsedEndsAt.ok) return res.status(400).json({ error: parsedEndsAt.error });
+  if (parsedStartsAt?.ok && parsedEndsAt?.ok && parsedEndsAt.value <= parsedStartsAt.value) {
     return res.status(400).json({ error: 'endsAt muss nach startsAt liegen.' });
   }
   const parsedLocation = parseOptionalText(location, 500, 'location');
@@ -808,18 +872,33 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
     return res.status(400).json({ error: 'Events sind ausschließlich für angenommene Teilnehmende sichtbar.' });
   }
 
-  const event = createEvent(name.trim(), {
-    groupId: req.player ? req.group!.id : undefined,
-    startsAt: parsedStartsAt.value,
-    endsAt: parsedEndsAt.value,
-    location: parsedLocation.value,
-    description: parsedDescription.value,
-    costCents: parsedCostCents.value,
-    accommodationCostCents: parsedAccommodationCostCents.value,
-    paypalLink: parsedPaypalLink.value,
-    paymentDueAt: parsedPaymentDueAt.value,
-    createdBy: req.player?.id ?? null,
-  });
+  const event = hasFixedSchedule && parsedStartsAt?.ok && parsedEndsAt?.ok
+    ? createEvent(name.trim(), {
+        groupId: req.player ? req.group!.id : undefined,
+        startsAt: parsedStartsAt.value,
+        endsAt: parsedEndsAt.value,
+        location: parsedLocation.value,
+        description: parsedDescription.value,
+        costCents: parsedCostCents.value,
+        accommodationCostCents: parsedAccommodationCostCents.value,
+        paypalLink: parsedPaypalLink.value,
+        paymentDueAt: parsedPaymentDueAt.value,
+        createdBy: req.player?.id ?? null,
+      })
+    : updateEvent(
+        createPlanningEvent(name.trim(), {
+          groupId: req.group!.id,
+          location: parsedLocation.value,
+          description: parsedDescription.value,
+          createdBy: req.player!.id,
+        }).id,
+        {
+          costCents: parsedCostCents.value,
+          accommodationCostCents: parsedAccommodationCostCents.value,
+          paypalLink: parsedPaypalLink.value,
+          paymentDueAt: parsedPaymentDueAt.value,
+        },
+      )!;
 
   writeAdminAudit({
     actorPlayerId: req.player?.id,
@@ -971,7 +1050,14 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     }
   }
 
-  const updated = updateEvent(req.params.id, fields);
+  let updated = updateEvent(req.params.id, fields)!;
+  const scheduleChanged =
+    (fields.startsAt !== undefined && fields.startsAt !== existing.starts_at) ||
+    (fields.endsAt !== undefined && fields.endsAt !== existing.ends_at);
+  if (scheduleChanged) {
+    db.prepare('UPDATE events SET schedule_revision = schedule_revision + 1 WHERE id = ?').run(existing.id);
+    updated = getEvent(existing.id)!;
+  }
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.player ? req.group!.id : undefined,
@@ -980,6 +1066,47 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     targetId: req.params.id,
   });
   broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  const relevantChanges: string[] = [];
+  if (fields.location !== undefined && fields.location !== existing.location) {
+    relevantChanges.push(`Ort: ${existing.location || 'offen'} → ${updated.location || 'offen'}`);
+  }
+  if (fields.costCents !== undefined && fields.costCents !== existing.cost_cents) {
+    const money = (value: number | null) => (value === null ? 'offen' : `${(value / 100).toFixed(2).replace('.', ',')} €`);
+    relevantChanges.push(`Preis: ${money(existing.cost_cents)} → ${money(updated.cost_cents)}`);
+  }
+  if (
+    fields.accommodationCostCents !== undefined &&
+    fields.accommodationCostCents !== existing.accommodation_cost_cents
+  ) {
+    const money = (value: number | null) => (value === null ? 'offen' : `${(value / 100).toFixed(2).replace('.', ',')} €`);
+    relevantChanges.push(
+      `Unterkunft: ${money(existing.accommodation_cost_cents)} → ${money(updated.accommodation_cost_cents)}`,
+    );
+  }
+  if (fields.endsAt !== undefined && fields.endsAt !== existing.ends_at) {
+    relevantChanges.push('Dauer/Ende wurde geändert');
+  }
+  if (scheduleChanged || relevantChanges.length > 0) {
+    const recipients = db
+      .prepare(
+        `SELECT player_id AS playerId FROM event_participants
+         WHERE event_id = ? AND status IN ('invited', 'interested', 'accepted')`,
+      )
+      .all(existing.id) as Array<{ playerId: string }>;
+    notifyPlayers(
+      recipients.map((row) => row.playerId).filter((id) => id !== req.player?.id),
+      {
+        title: scheduleChanged ? 'Eventtermin geändert' : 'Eventplanung geändert',
+        body: scheduleChanged
+          ? `${updated.name}: Der Termin wurde geändert${relevantChanges.length ? `; ${relevantChanges.join('; ')}` : ''}. Bitte bestätige deine Teilnahme erneut.`
+          : `${updated.name}: ${relevantChanges.join('; ')}. Deine Zusage bleibt bestehen.`,
+        url: '/#events',
+      },
+      'direct',
+      undefined,
+      { groupId: req.group!.id, eventId: BASE_EVENT_ID },
+    );
+  }
   res.json(serializeEvent(updated, req.player?.id, req.groupMembership?.role));
 });
 

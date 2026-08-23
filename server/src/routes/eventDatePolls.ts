@@ -37,12 +37,15 @@ import {
   reopenDatePoll,
   cancelDatePoll,
   scheduleDatePoll,
+  decideEventPoll,
   reminderCandidates,
   markReminderSent,
   optionCounts,
   recommendedOptionId,
   type DatePollRow,
   type DatePollResponseValue,
+  type EventPollTopic,
+  type EventPollResponseMode,
 } from '../eventDatePolls';
 
 export const eventDatePollsRouter = Router({ mergeParams: true });
@@ -102,7 +105,16 @@ function canReadAnyPoll(event: EventRow, viewerId: string, viewerRole: GroupRole
 }
 
 function serializeOption(
-  option: { id: string; poll_id: string; starts_on: string; ends_on: string; position: number },
+  option: {
+    id: string;
+    poll_id: string;
+    starts_on: string;
+    ends_on: string;
+    position: number;
+    label: string | null;
+    description: string | null;
+    payload_json: string;
+  },
   responses: ReturnType<typeof getDatePollResponses>,
   inviteeCount: number,
   names: Map<string, string>,
@@ -117,6 +129,9 @@ function serializeOption(
   const counts = optionCounts(option, responses, inviteeCount);
   return {
     id: option.id,
+    label: option.label,
+    description: option.description,
+    payload: JSON.parse(option.payload_json || '{}') as unknown,
     startsOn: option.starts_on,
     endsOn: option.ends_on,
     position: option.position,
@@ -150,6 +165,11 @@ function serializeDatePoll(
     serializeOption(option, responses, invitees.length, names, option.id === recommendedId),
   );
   const answeredPlayerIds = new Set(responses.map((r) => r.player_id));
+  const selectedOptionIds = (
+    db
+      .prepare('SELECT option_id AS optionId FROM event_poll_selected_options WHERE poll_id = ? ORDER BY position')
+      .all(poll.id) as Array<{ optionId: string }>
+  ).map((row) => row.optionId);
 
   const myResponses: Record<string, DatePollResponseValue> = {};
   for (const response of responses) {
@@ -160,12 +180,18 @@ function serializeDatePoll(
     id: poll.id,
     eventId: poll.event_id,
     roundNumber: poll.round_number,
+    topic: poll.topic,
+    decisionKey: poll.decision_key,
+    title: poll.title,
+    responseMode: poll.response_mode,
+    decisionNote: poll.decision_note,
     note: poll.note,
     createdBy: poll.created_by,
     createdByName: poll.created_by ? names.get(poll.created_by) ?? null : null,
     responseDueAt: poll.response_due_at,
     status: poll.status,
     selectedOptionId: poll.selected_option_id,
+    selectedOptionIds,
     createdAt: poll.created_at,
     updatedAt: poll.updated_at,
     options: serializedOptions.map(({ _answeredIds, ...rest }) => rest),
@@ -257,27 +283,63 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
     return res.status(409).json({ error: 'Nach aktiviertem Tracking kann keine neue Terminrunde gestartet werden.' });
   }
 
-  const { options, responseDueOn, note, inviteePlayerIds } = req.body ?? {};
-  if (!Array.isArray(options) || options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) {
-    return res.status(400).json({ error: `${MIN_OPTIONS} bis ${MAX_OPTIONS} Zeiträume sind erforderlich.` });
+  const {
+    options,
+    responseDueOn,
+    note,
+    inviteePlayerIds,
+    topic = 'date_range',
+    decisionKey,
+    title,
+    responseMode = 'feasibility',
+  } = req.body ?? {};
+  const topics: EventPollTopic[] = ['date_range', 'location', 'duration', 'budget', 'custom'];
+  const responseModes: EventPollResponseMode[] = ['feasibility', 'single_choice', 'multiple_choice'];
+  if (!topics.includes(topic)) return res.status(400).json({ error: 'Ungültiges Abstimmungsthema.' });
+  if (!responseModes.includes(responseMode)) return res.status(400).json({ error: 'Ungültiger Antwortmodus.' });
+  if (title !== undefined && (typeof title !== 'string' || !title.trim() || title.trim().length > 100)) {
+    return res.status(400).json({ error: 'title muss 1-100 Zeichen lang sein.' });
   }
-  const parsedOptions: Array<{ startsOn: string; endsOn: string }> = [];
+  if (decisionKey !== undefined && (typeof decisionKey !== 'string' || !/^[a-z0-9_-]{1,60}$/.test(decisionKey))) {
+    return res.status(400).json({ error: 'decisionKey ist ungültig.' });
+  }
+  if (!Array.isArray(options) || options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) {
+    return res.status(400).json({ error: `${MIN_OPTIONS} bis ${MAX_OPTIONS} Optionen sind erforderlich.` });
+  }
+  const parsedOptions: Array<{
+    startsOn?: string;
+    endsOn?: string;
+    label: string;
+    description?: string | null;
+    payload?: Record<string, unknown>;
+  }> = [];
   for (const raw of options) {
-    const startsOn = raw?.startsOn;
-    const endsOn = raw?.endsOn;
-    if (!isValidIsoDate(startsOn) || !isValidIsoDate(endsOn)) {
-      return res.status(400).json({ error: 'Jeder Zeitraum benötigt gültige Kalenderdaten (Beginn/Ende).' });
+    if (topic === 'date_range') {
+      const startsOn = raw?.startsOn;
+      const endsOn = raw?.endsOn;
+      if (!isValidIsoDate(startsOn) || !isValidIsoDate(endsOn)) {
+        return res.status(400).json({ error: 'Jeder Zeitraum benötigt gültige Kalenderdaten (Beginn/Ende).' });
+      }
+      if (endsOn < startsOn) return res.status(400).json({ error: 'Ein Zeitraum darf nicht rückwärts laufen.' });
+      parsedOptions.push({ startsOn, endsOn, label: raw?.label?.trim() || `${startsOn} – ${endsOn}`, payload: raw?.payload });
+      continue;
     }
-    if (endsOn < startsOn) {
-      return res.status(400).json({ error: 'Ein Zeitraum darf nicht rückwärts laufen.' });
+    if (typeof raw?.label !== 'string' || !raw.label.trim() || raw.label.trim().length > 120) {
+      return res.status(400).json({ error: 'Jede Option benötigt eine Bezeichnung mit höchstens 120 Zeichen.' });
     }
-    parsedOptions.push({ startsOn, endsOn });
+    if (raw.description !== undefined && raw.description !== null && (typeof raw.description !== 'string' || raw.description.length > 500)) {
+      return res.status(400).json({ error: 'Eine Optionsbeschreibung darf höchstens 500 Zeichen lang sein.' });
+    }
+    if (raw.payload !== undefined && (typeof raw.payload !== 'object' || raw.payload === null || Array.isArray(raw.payload))) {
+      return res.status(400).json({ error: 'payload muss ein Objekt sein.' });
+    }
+    parsedOptions.push({ label: raw.label.trim(), description: raw.description?.trim() || null, payload: raw.payload });
   }
   const duplicateKey = new Set<string>();
   for (const option of parsedOptions) {
-    const key = `${option.startsOn}:${option.endsOn}`;
+    const key = topic === 'date_range' ? `${option.startsOn}:${option.endsOn}` : option.label.toLocaleLowerCase('de');
     if (duplicateKey.has(key)) {
-      return res.status(400).json({ error: 'Zeiträume dürfen sich nicht exakt duplizieren.' });
+      return res.status(400).json({ error: 'Optionen dürfen sich nicht duplizieren.' });
     }
     duplicateKey.add(key);
   }
@@ -304,7 +366,16 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
 
   const result = createDatePoll(
     event,
-    { options: parsedOptions, responseDueOn, note: note?.trim() || null, inviteePlayerIds: inviteeIds },
+    {
+      options: parsedOptions,
+      responseDueOn,
+      note: note?.trim() || null,
+      inviteePlayerIds: inviteeIds,
+      topic,
+      decisionKey,
+      title: title?.trim(),
+      responseMode,
+    },
     playerId,
   );
   if (!result.ok) {
@@ -314,8 +385,8 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
   writeAdminAudit({
     actorPlayerId: playerId,
     groupId: event.group_id ?? undefined,
-    action: 'event_date_poll_created',
-    targetType: 'event_date_poll',
+    action: 'event_poll_created',
+    targetType: 'event_poll',
     targetId: result.poll.id,
     details: { eventId: event.id, roundNumber: result.poll.round_number },
   });
@@ -323,9 +394,9 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
   notifyInvitees(
     event.group_id!,
     inviteeIds.filter((id) => id !== playerId),
-    'Terminabstimmung',
-    `${event.name}: Neue Terminabstimmung, bitte antworten.`,
-    '/#events',
+    'Neue Abstimmung',
+    `${event.name}: ${(title?.trim() || 'Termin / Zeitraum')} — bitte antworten.`,
+    `/#eventPolls/${result.poll.id}`,
   );
   res.status(201).json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
 });
@@ -392,13 +463,17 @@ eventDatePollsRouter.post('/:pollId/options', resolveEventForPolls, (req, res) =
   if (!canManageDatePolls(event, playerId, req.groupMembership?.role)) {
     return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann Optionen ergänzen.' });
   }
-  const { startsOn, endsOn } = req.body ?? {};
-  if (!isValidIsoDate(startsOn) || !isValidIsoDate(endsOn)) {
-    return res.status(400).json({ error: 'startsOn und endsOn müssen gültige Kalenderdaten sein.' });
+  const { startsOn, endsOn, label, description, payload } = req.body ?? {};
+  if (poll.topic === 'date_range') {
+    if (!isValidIsoDate(startsOn) || !isValidIsoDate(endsOn)) {
+      return res.status(400).json({ error: 'startsOn und endsOn müssen gültige Kalenderdaten sein.' });
+    }
+    if (endsOn < startsOn) return res.status(400).json({ error: 'Ein Zeitraum darf nicht rückwärts laufen.' });
+  } else if (typeof label !== 'string' || !label.trim() || label.trim().length > 120) {
+    return res.status(400).json({ error: 'label muss 1-120 Zeichen lang sein.' });
   }
-  if (endsOn < startsOn) return res.status(400).json({ error: 'Ein Zeitraum darf nicht rückwärts laufen.' });
 
-  const result = addDatePollOption(poll, { startsOn, endsOn });
+  const result = addDatePollOption(poll, { startsOn, endsOn, label, description, payload });
   if (!result.ok) return res.status(result.code === 'not_open' ? 409 : 400).json({ error: result.error });
 
   writeAdminAudit({
@@ -411,7 +486,7 @@ eventDatePollsRouter.post('/:pollId/options', resolveEventForPolls, (req, res) =
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
   const invitees = getDatePollInvitees(poll.id).map((i) => i.player_id).filter((id) => id !== playerId);
-  notifyInvitees(event.group_id!, invitees, 'Terminabstimmung', `${event.name}: Eine neue Option wurde ergänzt.`, '/#events');
+  notifyInvitees(event.group_id!, invitees, 'Abstimmung geändert', `${event.name}: Eine neue Option wurde ergänzt.`, `/#eventPolls/${poll.id}`);
   res.status(201).json(serializeDatePoll(getDatePollForEvent(event.id, poll.id)!, event, playerId, req.groupMembership?.role));
 });
 
@@ -440,7 +515,7 @@ eventDatePollsRouter.delete('/:pollId/options/:optionId', resolveEventForPolls, 
     details: { eventId: event.id, pollId: poll.id },
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
-  notifyInvitees(event.group_id!, invitees, 'Terminabstimmung', `${event.name}: Eine Option wurde entfernt.`, '/#events');
+  notifyInvitees(event.group_id!, invitees, 'Abstimmung geändert', `${event.name}: Eine Option wurde entfernt.`, `/#eventPolls/${poll.id}`);
   res.status(204).end();
 });
 
@@ -474,7 +549,7 @@ eventDatePollsRouter.post('/:pollId/invitees', resolveEventForPolls, (req, res) 
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
   if (invitedId !== playerId) {
-    notifyInvitees(event.group_id!, [invitedId], 'Terminabstimmung', `${event.name}: Du wurdest zur Terminabstimmung eingeladen.`, '/#events');
+    notifyInvitees(event.group_id!, [invitedId], 'Abstimmung', `${event.name}: Du wurdest zu einer Abstimmung eingeladen.`, `/#eventPolls/${poll.id}`);
   }
   res.status(201).json(serializeDatePoll(getDatePollForEvent(event.id, poll.id)!, event, playerId, req.groupMembership?.role));
 });
@@ -560,9 +635,9 @@ eventDatePollsRouter.post('/:pollId/reminders', resolveEventForPolls, (req, res)
   notifyInvitees(
     event.group_id!,
     candidates.map((c) => c.playerId),
-    'Erinnerung: Terminabstimmung',
-    `${event.name}: Bitte antworte auf die Terminabstimmung.`,
-    '/#events',
+    'Erinnerung: Abstimmung',
+    `${event.name}: Bitte antworte auf die Abstimmung.`,
+    `/#eventPolls/${poll.id}`,
   );
   res.json({ remindedPlayerIds: candidates.map((c) => c.playerId) });
 });
@@ -621,7 +696,7 @@ eventDatePollsRouter.post('/:pollId/reopen', resolveEventForPolls, (req, res) =>
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
   const invitees = getDatePollInvitees(poll.id).map((i) => i.player_id).filter((id) => id !== playerId);
-  notifyInvitees(event.group_id!, invitees, 'Terminabstimmung', `${event.name}: Die Terminabstimmung wurde wieder geöffnet.`, '/#events');
+  notifyInvitees(event.group_id!, invitees, 'Abstimmung', `${event.name}: Die Abstimmung wurde wieder geöffnet.`, `/#eventPolls/${poll.id}`);
   res.json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
 });
 
@@ -648,6 +723,91 @@ eventDatePollsRouter.post('/:pollId/cancel', resolveEventForPolls, (req, res) =>
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
   res.json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
+});
+
+// POST /api/events/:eventId/polls/:pollId/decide
+eventDatePollsRouter.post('/:pollId/decide', resolveEventForPolls, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requirePlayerId(req, res);
+  if (!playerId) return;
+  const poll = loadPollOr404(req, res, event);
+  if (!poll) return;
+  if (!canManageDatePolls(event, playerId, req.groupMembership?.role)) {
+    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann entscheiden.' });
+  }
+  const optionIds = Array.isArray(req.body?.optionIds)
+    ? req.body.optionIds
+    : typeof req.body?.optionId === 'string'
+      ? [req.body.optionId]
+      : [];
+  if (!optionIds.every((id: unknown) => typeof id === 'string')) {
+    return res.status(400).json({ error: 'optionIds muss ein String-Array sein.' });
+  }
+  const decisionNote = req.body?.decisionNote;
+  if (decisionNote !== undefined && decisionNote !== null && (typeof decisionNote !== 'string' || decisionNote.length > 500)) {
+    return res.status(400).json({ error: 'decisionNote darf höchstens 500 Zeichen lang sein.' });
+  }
+  const result = decideEventPoll(event, poll, optionIds as string[], decisionNote);
+  if (!result.ok) return res.status(result.code === 'invalid' ? 400 : 409).json({ error: result.error });
+
+  if (result.changed) {
+    writeAdminAudit({
+      actorPlayerId: playerId,
+      groupId: event.group_id ?? undefined,
+      action: 'event_poll_decided',
+      targetType: 'event_poll',
+      targetId: poll.id,
+      details: { eventId: event.id, topic: poll.topic, optionIds, previousValue: result.previousValue, nextValue: result.nextValue },
+    });
+    broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+    const participants = db
+      .prepare(
+        `SELECT player_id AS playerId, status FROM event_participants
+         WHERE event_id = ? AND status IN ('invited', 'interested', 'accepted')`,
+      )
+      .all(event.id) as Array<{ playerId: string; status: 'invited' | 'interested' | 'accepted' }>;
+    const invitees = getDatePollInvitees(poll.id).map((invitee) => invitee.player_id);
+    const dateChanged = poll.topic === 'date_range';
+    if (dateChanged) {
+      const accepted = participants.filter((row) => row.status === 'accepted').map((row) => row.playerId);
+      const acceptedSet = new Set(accepted);
+      notifyInvitees(
+        event.group_id!,
+        accepted.filter((id) => id !== playerId),
+        'Termin festgelegt',
+        `${event.name}: Ein Termin wurde festgelegt — bitte erneut bestätigen.`,
+        `/#eventPolls/${poll.id}`,
+      );
+      const informed = [...new Set([...participants.map((row) => row.playerId), ...invitees])]
+        .filter((id) => id !== playerId && !acceptedSet.has(id));
+      notifyInvitees(
+        event.group_id!,
+        informed,
+        'Termin festgelegt',
+        `${event.name}: ${result.nextValue} wurde als Termin festgelegt.`,
+        `/#eventPolls/${poll.id}`,
+      );
+    } else {
+      const recipients = [...new Set([...participants.map((row) => row.playerId), ...invitees])].filter((id) => id !== playerId);
+      notifyInvitees(
+        event.group_id!,
+        recipients,
+        'Planung aktualisiert',
+        `${event.name}: ${poll.title} wurde entschieden: ${result.nextValue}. Dein Teilnahmestatus bleibt unverändert.`,
+        `/#eventPolls/${poll.id}`,
+      );
+    }
+  }
+  res.json({
+    poll: serializeDatePoll(result.poll, result.event, playerId, req.groupMembership?.role),
+    event: {
+      id: result.event.id,
+      startsAt: result.event.starts_at,
+      endsAt: result.event.ends_at,
+      location: result.event.location,
+      scheduleRevision: result.event.schedule_revision,
+    },
+  });
 });
 
 // POST /api/events/:eventId/date-polls/:pollId/schedule
@@ -692,7 +852,7 @@ eventDatePollsRouter.post('/:pollId/schedule', resolveEventForPolls, (req, res) 
       [...toNotify],
       'Termin festgelegt',
       `${event.name}: Ein Termin wurde festgelegt — bitte erneut bestätigen.`,
-      '/#events',
+      `/#eventPolls/${poll.id}`,
     );
   }
   res.json({
