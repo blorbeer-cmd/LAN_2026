@@ -627,6 +627,219 @@ textarea {
   }
 }
 
+/* Event polls — follows the same card, accent-panel, selection-toolbar and
+   collapsible-section vocabulary used by Events, Essen and Checkliste. */
+.event-polls-page-header,
+.event-poll-round-header,
+.event-poll-option-header {
+  align-items: flex-start;
+}
+.event-polls-page-header h1,
+.event-poll-card-title strong {
+  margin: 0;
+}
+.event-polls-page-intro {
+  margin: calc(-1 * var(--space-2)) 0 var(--space-2);
+}
+.event-poll-list {
+  gap: var(--space-3);
+}
+.event-poll-card {
+  padding: 0;
+  overflow: hidden;
+}
+.event-poll-card > summary {
+  list-style: none;
+}
+.event-poll-card > summary::-webkit-details-marker {
+  display: none;
+}
+.event-poll-card-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-target-size);
+  padding: var(--card-padding);
+  cursor: pointer;
+}
+.event-poll-card-summary:hover {
+  background: var(--bg-elevated-2);
+}
+.event-poll-card[open] > .event-poll-card-summary .collapsible-section-chevron {
+  transform: rotate(90deg);
+}
+.event-poll-card-title,
+.event-poll-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.event-poll-card-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.event-poll-card-meta {
+  align-items: flex-end;
+  text-align: right;
+}
+.event-poll-card-content {
+  gap: var(--space-4);
+  padding: 0 var(--space-4) var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.event-poll-round {
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+}
+.event-poll-note {
+  margin: 0;
+}
+.event-poll-progress {
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.event-poll-options {
+  gap: var(--space-3);
+}
+.event-poll-option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.event-poll-option-badges {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.event-poll-counts {
+  font-size: var(--font-size-sm);
+}
+.event-poll-response-toolbar {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: var(--space-1);
+}
+.event-poll-response-toolbar .btn {
+  min-height: var(--tap-target-size);
+}
+.event-poll-people-lists {
+  gap: var(--space-1);
+}
+.event-poll-people .collapsible-section-header,
+.event-poll-more-actions .collapsible-section-header {
+  min-height: auto;
+  padding: var(--space-2) 0;
+  font-size: var(--font-size-sm);
+}
+.event-poll-manager-actions,
+.event-poll-management {
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.event-poll-management {
+  border-top-color: var(--accent);
+}
+.event-poll-management-copy {
+  gap: var(--space-1);
+}
+.event-poll-result-options {
+  gap: var(--space-2);
+}
+.event-poll-result-option {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+}
+.event-poll-history-round {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.event-poll-mode-choices {
+  gap: var(--space-2);
+}
+.event-poll-mode-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-height: var(--tap-target-size);
+  padding: var(--space-3);
+  text-align: left;
+  white-space: normal;
+}
+.event-poll-mode-choice span {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+}
+.event-poll-mode-choice.btn-primary span {
+  color: var(--accent-text);
+  opacity: 0.85;
+}
+.event-poll-form-option .row {
+  align-items: center;
+  gap: var(--space-2);
+}
+.event-poll-form-option input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.event-poll-max-field {
+  grid-template-columns: minmax(0, 112px) minmax(0, 1fr);
+  align-items: center;
+}
+.event-poll-participant-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+@media (max-width: 639px) { /* --bp-md */
+  .event-polls-page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .event-polls-page-header .btn {
+    width: 100%;
+  }
+  .event-poll-card-summary {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .event-poll-card-meta {
+    grid-column: 2;
+    align-items: flex-start;
+    text-align: left;
+  }
+  .event-poll-progress {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .event-poll-response-toolbar {
+    width: 100%;
+  }
+  .event-poll-response-toolbar .btn {
+    flex: 1 1 0;
+  }
+  .event-poll-max-field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Workspace switcher. Deliberately *not* its own control shape: it is the
    shared `.search-select` every other event and game dropdown uses, so it
    reads as the same kind of dropdown as the rest of the app. This wrapper

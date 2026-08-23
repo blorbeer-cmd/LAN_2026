@@ -7,11 +7,11 @@
 import { nanoid } from 'nanoid';
 import { db } from './db';
 import type { EventRow } from './events';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 import {
   endOfIsoDateUtcMs,
   isoDateInTimeZone,
   startOfIsoDateUtcMs,
-  startOfNextIsoDateUtcMs,
 } from './localDate';
 
 export type DatePollStatus = 'open' | 'closed' | 'scheduled' | 'superseded' | 'cancelled';
@@ -42,6 +42,7 @@ export interface DatePollRow {
   decision_key: string;
   title: string;
   response_mode: EventPollResponseMode;
+  max_selections: number | null;
   decision_note: string | null;
   created_at: number;
   updated_at: number;
@@ -112,9 +113,9 @@ export function isDatePollInvitee(pollId: string, playerId: string): boolean {
   );
 }
 
-// A person "has answered" a round once and only once they have a response
-// for every one of its options — submitMyResponses always writes all of them
-// together, so partial coverage never happens through the normal API.
+// A person "has answered" a round once they have a concrete response for
+// every option. In feasibility mode an explicitly selected "Offen" is stored
+// as no response, so the person remains incomplete and eligible for reminders.
 export function hasAnsweredDatePoll(pollId: string, playerId: string): boolean {
   const row = db
     .prepare(
@@ -128,20 +129,25 @@ export function hasAnsweredDatePoll(pollId: string, playerId: string): boolean {
 
 // ---------- permissions ----------
 
-// Mirrors routes/events.ts's canManageEventPayments: the recorded creator
-// always decides; if that account is gone/inactive, the group owner is the
-// sole, audited fallback. Solving this once here keeps the invariant
-// identical for every date-poll management action instead of re-deriving it
-// per route.
-export function canManageDatePolls(
+// The poll's recorded creator manages its rounds; if that account is gone or
+// inactive, the group owner is the sole, audited fallback.
+export function canManageDatePoll(
+  poll: DatePollRow,
   event: EventRow,
   viewerId: string | undefined,
   viewerRole: 'owner' | 'admin' | 'member' | undefined,
 ): boolean {
   if (!viewerId) return false;
-  if (event.created_by === viewerId) return true;
+  const isParticipant = db
+    .prepare(
+      `SELECT 1 FROM event_participants ep
+       WHERE ep.event_id = ? AND ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}`,
+    )
+    .get(event.id, viewerId);
+  if (!isParticipant) return false;
+  if (poll.created_by === viewerId) return true;
   if (viewerRole !== 'owner') return false;
-  if (!event.created_by) return true;
+  if (!poll.created_by) return true;
   const activeCreator = db
     .prepare(
       `SELECT 1
@@ -150,7 +156,7 @@ export function canManageDatePolls(
        WHERE p.id = ? AND p.deactivated_at IS NULL
          AND gm.group_id = ? AND gm.status = 'active'`,
     )
-    .get(event.created_by, event.group_id);
+    .get(poll.created_by, event.group_id);
   return !activeCreator;
 }
 
@@ -213,6 +219,7 @@ export interface CreateDatePollInput {
   decisionKey?: string;
   title?: string;
   responseMode?: EventPollResponseMode;
+  maxSelections?: number | null;
 }
 
 export type CreateDatePollResult =
@@ -227,9 +234,10 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
   }
   return db.transaction((): CreateDatePollResult => {
     const topic = input.topic ?? 'date_range';
-    const decisionKey = input.decisionKey ?? (topic === 'date_range' ? 'date' : topic);
+    const decisionKey = input.decisionKey ?? (topic === 'date_range' ? 'date' : nanoid(12));
     const title = input.title?.trim() || (topic === 'date_range' ? 'Termin / Zeitraum' : 'Abstimmung');
     const responseMode = input.responseMode ?? 'feasibility';
+    const maxSelections = responseMode === 'multiple_choice' ? (input.maxSelections ?? null) : null;
     const existingUndecided = db
       .prepare(`SELECT 1 FROM event_date_polls WHERE event_id = ? AND decision_key = ? AND status IN ('open', 'closed')`)
       .get(event.id, decisionKey);
@@ -237,8 +245,11 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
       return { ok: false, code: 'conflict', error: 'Für diese Entscheidung läuft bereits eine Abstimmung.' };
     }
     const nextRound = (
-      db.prepare('SELECT COALESCE(MAX(round_number), 0) + 1 AS n FROM event_date_polls WHERE event_id = ?').get(
+      db.prepare(
+        'SELECT COALESCE(MAX(round_number), 0) + 1 AS n FROM event_date_polls WHERE event_id = ? AND decision_key = ?',
+      ).get(
         event.id,
+        decisionKey,
       ) as { n: number }
     ).n;
 
@@ -246,8 +257,8 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
     db.prepare(
       `INSERT INTO event_date_polls
          (id, event_id, round_number, note, created_by, response_due_at, status, created_at, updated_at,
-          topic, decision_key, title, response_mode)
-       VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)`,
+          topic, decision_key, title, response_mode, max_selections)
+       VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       pollId,
       event.id,
@@ -261,6 +272,7 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
       decisionKey,
       title,
       responseMode,
+      maxSelections,
     );
 
     const insertOption = db.prepare(
@@ -486,11 +498,13 @@ export function submitMyResponses(
   const optionIds = new Set(options.map((o) => o.id));
   const providedIds = new Set(responses.map((r) => r.optionId));
   if (
-    responses.length !== options.length ||
-    providedIds.size !== options.length ||
+    providedIds.size !== responses.length ||
     ![...providedIds].every((id) => optionIds.has(id)) ||
     !responses.every((r) => RESPONSE_VALUES.includes(r.response))
   ) {
+    return { ok: false, code: 'invalid', error: 'Jede übermittelte Option benötigt genau eine gültige Antwort.' };
+  }
+  if (poll.response_mode !== 'feasibility' && responses.length !== options.length) {
     return { ok: false, code: 'invalid', error: 'Es muss für jede Option genau eine gültige Antwort angegeben werden.' };
   }
   if (poll.response_mode === 'single_choice' && responses.filter((response) => response.response === 'can').length !== 1) {
@@ -498,6 +512,15 @@ export function submitMyResponses(
   }
   if (poll.response_mode === 'multiple_choice' && responses.some((response) => response.response === 'if_needed')) {
     return { ok: false, code: 'invalid', error: 'Mehrfachauswahlen verwenden nur ausgewählt oder nicht ausgewählt.' };
+  }
+  if (poll.response_mode === 'multiple_choice') {
+    const selectedCount = responses.filter((response) => response.response === 'can').length;
+    if (selectedCount < 1) {
+      return { ok: false, code: 'invalid', error: 'Bitte mindestens eine Option auswählen.' };
+    }
+    if (poll.max_selections !== null && selectedCount > poll.max_selections) {
+      return { ok: false, code: 'invalid', error: `Höchstens ${poll.max_selections} Optionen dürfen ausgewählt werden.` };
+    }
   }
 
   const now = Date.now();
@@ -507,6 +530,7 @@ export function submitMyResponses(
      ON CONFLICT(poll_id, option_id, player_id) DO UPDATE SET response = excluded.response, updated_at = excluded.updated_at`,
   );
   db.transaction(() => {
+    db.prepare('DELETE FROM event_date_poll_responses WHERE poll_id = ? AND player_id = ?').run(poll.id, playerId);
     for (const r of responses) upsert.run(poll.id, r.optionId, playerId, r.response, now);
   })();
   return { ok: true };
@@ -576,100 +600,18 @@ export function cancelDatePoll(poll: DatePollRow): CancelResult {
   })();
 }
 
-export type ScheduleResult =
-  | { ok: true; poll: DatePollRow; event: EventRow; changed: boolean }
-  | { ok: false; code: 'not_open_or_closed' | 'invalid' | 'locked'; error: string };
-
-// The core transactional action: choosing a date. Supersedes any previously
-// scheduled round for this event, marks this round scheduled, and atomically
-// updates the event's starts_at/ends_at/schedule_revision — all in one
-// transaction, exactly per docs/plans/event-date-poll-concept.md's "Wählt
-// der Ersteller ... einen Termin, läuft eine gemeinsame Transaktion". An
-// idempotent retry of the SAME already-scheduled option returns changed:false
-// without a second revision bump or duplicate notifications; racing against a
-// different option (or a state that already moved on) is a 409.
-export function scheduleDatePoll(event: EventRow, poll: DatePollRow, optionId: string): ScheduleResult {
-  if (poll.topic !== 'date_range') {
-    return { ok: false, code: 'invalid', error: 'Nur eine Zeitraum-Abstimmung kann den Eventtermin ändern.' };
-  }
-  if (event.tracking_enabled || event.status === 'ended') {
-    return {
-      ok: false,
-      code: 'locked',
-      error: 'Nach aktiviertem Tracking oder Eventende kann kein neuer Termin festgelegt werden.',
-    };
-  }
-  const option = db
-    .prepare('SELECT * FROM event_date_poll_options WHERE id = ? AND poll_id = ?')
-    .get(optionId, poll.id) as DatePollOptionRow | undefined;
-  if (!option) return { ok: false, code: 'invalid', error: 'Option gehört nicht zu dieser Runde.' };
-
-  const now = Date.now();
-  return db.transaction((): ScheduleResult => {
-    // better-sqlite3 transactions run fully synchronously (Node's single
-    // thread never interleaves two db.transaction() bodies), so a plain
-    // read-then-decide here carries no TOCTOU risk — unlike the guarded
-    // conditional UPDATEs used elsewhere in this codebase to defend against
-    // genuinely concurrent connections/processes. That matters here because
-    // mutating anything before this decision would be wrong to have done at
-    // all once it turns out this call can't succeed: the partial unique index
-    // (at most one 'scheduled' row per event) is checked immediately, even
-    // mid-transaction, so any previously scheduled round can only be
-    // superseded once we already know this poll is about to take its place.
-    const current = getDatePoll(poll.id)!;
-    if (current.status === 'scheduled' && current.selected_option_id === optionId) {
-      return { ok: true, poll: current, event, changed: false };
-    }
-    if (current.status !== 'open' && current.status !== 'closed') {
-      return { ok: false, code: 'not_open_or_closed', error: 'Die Runde ist nicht mehr offen oder geschlossen.' };
-    }
-
-    db.prepare(
-      `UPDATE event_date_polls SET status = 'superseded'
-       WHERE event_id = ? AND decision_key = ? AND status = 'scheduled' AND id != ?`,
-    ).run(
-      event.id,
-      poll.decision_key,
-      poll.id,
-    );
-    db.prepare(
-      `UPDATE event_date_polls SET status = 'scheduled', selected_option_id = ?, updated_at = ? WHERE id = ?`,
-    ).run(optionId, now, poll.id);
-    db.prepare('DELETE FROM event_poll_selected_options WHERE poll_id = ?').run(poll.id);
-    db.prepare(
-      'INSERT INTO event_poll_selected_options (poll_id, option_id, position) VALUES (?, ?, 0)',
-    ).run(poll.id, optionId);
-    clearAutomaticReminders(poll.id);
-
-    const startsAt = startOfIsoDateUtcMs(option.starts_on);
-    const endsAt = startOfNextIsoDateUtcMs(option.ends_on);
-    db.prepare('UPDATE events SET starts_at = ?, ends_at = ?, schedule_revision = schedule_revision + 1 WHERE id = ?').run(
-      startsAt,
-      endsAt,
-      event.id,
-    );
-
-    const updatedEvent = db.prepare('SELECT * FROM events WHERE id = ?').get(event.id) as EventRow;
-    return { ok: true, poll: getDatePoll(poll.id)!, event: updatedEvent, changed: true };
-  })();
-}
-
 export type DecidePollResult =
-  | { ok: true; poll: DatePollRow; event: EventRow; changed: boolean; previousValue: string | null; nextValue: string }
-  | { ok: false; code: 'not_open_or_closed' | 'invalid' | 'locked'; error: string };
+  | { ok: true; poll: DatePollRow; changed: boolean; previousValue: string | null; nextValue: string }
+  | { ok: false; code: 'not_open_or_closed' | 'invalid'; error: string };
 
 // Records a planning result without changing the event itself. Poll results
 // deliberately stay separate from dates, location, costs and participation;
 // a future explicit "apply to event" workflow can bridge that boundary.
 export function decideEventPoll(
-  event: EventRow,
   poll: DatePollRow,
   optionIds: string[],
   decisionNote?: string | null,
 ): DecidePollResult {
-  if (event.tracking_enabled || event.status === 'ended') {
-    return { ok: false, code: 'locked', error: 'Nach aktiviertem Tracking oder Eventende kann diese Entscheidung nicht geändert werden.' };
-  }
   const uniqueIds = [...new Set(optionIds)];
   if (
     uniqueIds.length === 0 ||
@@ -677,6 +619,9 @@ export function decideEventPoll(
     (poll.response_mode !== 'multiple_choice' && uniqueIds.length !== 1)
   ) {
     return { ok: false, code: 'invalid', error: 'Bitte eine gültige Auswahl festlegen.' };
+  }
+  if (poll.max_selections !== null && uniqueIds.length > poll.max_selections) {
+    return { ok: false, code: 'invalid', error: `Höchstens ${poll.max_selections} Optionen dürfen festgehalten werden.` };
   }
   const options = getDatePollOptions(poll.id);
   if (!uniqueIds.every((id) => options.some((option) => option.id === id))) {
@@ -703,15 +648,15 @@ export function decideEventPoll(
       .prepare('SELECT option_id AS optionId FROM event_poll_selected_options WHERE poll_id = ? ORDER BY position')
       .all(poll.id) as Array<{ optionId: string }>;
     if (current.status === 'scheduled' && selected.map((row) => row.optionId).join(',') === uniqueIds.join(',')) {
-      return { ok: true, poll: current, event, changed: false, previousValue, nextValue };
+      return { ok: true, poll: current, changed: false, previousValue, nextValue };
     }
-    if (current.status !== 'open' && current.status !== 'closed') {
-      return { ok: false, code: 'not_open_or_closed', error: 'Die Abstimmung ist nicht mehr offen oder geschlossen.' };
+    if (current.status !== 'closed') {
+      return { ok: false, code: 'not_open_or_closed', error: 'Vor dem Festhalten eines Ergebnisses muss die Abgabe beendet werden.' };
     }
     db.prepare(
       `UPDATE event_date_polls SET status = 'superseded'
        WHERE event_id = ? AND decision_key = ? AND status = 'scheduled' AND id != ?`,
-    ).run(event.id, poll.decision_key, poll.id);
+    ).run(poll.event_id, poll.decision_key, poll.id);
     db.prepare(
       `UPDATE event_date_polls
        SET status = 'scheduled', selected_option_id = ?, decision_note = ?, updated_at = ?
@@ -723,7 +668,7 @@ export function decideEventPoll(
     );
     uniqueIds.forEach((id, position) => insertSelected.run(poll.id, id, position));
     clearAutomaticReminders(poll.id);
-    return { ok: true, poll: getDatePoll(poll.id)!, event, changed: true, previousValue, nextValue };
+    return { ok: true, poll: getDatePoll(poll.id)!, changed: true, previousValue, nextValue };
   })();
 }
 
@@ -769,7 +714,9 @@ export function dueAutomaticReminders(now = Date.now()): DueAutomaticReminder[] 
               edpi.last_reminder_at AS lastReminderAt
        FROM event_date_poll_invitees edpi
        JOIN event_date_polls edp ON edp.id = edpi.poll_id
+       JOIN event_participants ep ON ep.event_id = edp.event_id AND ep.player_id = edpi.player_id
        WHERE edp.status = 'open'
+         AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          AND edpi.automatic_reminder_due_at IS NOT NULL
          AND edpi.automatic_reminder_due_at <= ?`,
     )

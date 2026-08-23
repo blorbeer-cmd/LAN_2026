@@ -647,10 +647,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 84);
+  assert.equal(migrations.length, 85);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 84 }, (_, index) => index + 1),
+    Array.from({ length: 85 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1177,8 +1177,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 84 }, (_, index) => index + 1),
-    'every version 1..84 runs exactly once',
+    Array.from({ length: 85 }, (_, index) => index + 1),
+    'every version 1..85 runs exactly once',
   );
 });
 
@@ -2804,6 +2804,64 @@ test('migration 83 rolls back completely if it leaves a dangling foreign key, an
 
   const migrated = new Database(dbFile, { readonly: true });
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 83').get());
+  assert.deepEqual(migrated.pragma('foreign_key_check'), []);
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 85 restores accepted-only participation and enables independent round numbering', () => {
+  const dbFile = makeTempDbPath('generic-event-polls');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  const participantTriggers = fixture
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'event_participants'")
+    .all() as Array<{ sql: string }>;
+  fixture.exec(`
+    CREATE TABLE event_participants_before_85 AS SELECT * FROM event_participants;
+    DROP TABLE event_participants;
+    CREATE TABLE event_participants (
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'accepted'
+             CHECK (status IN ('invited', 'interested', 'accepted', 'declined')),
+      paid INTEGER NOT NULL DEFAULT 0 CHECK (paid IN (0, 1)),
+      paid_by TEXT REFERENCES players(id) ON DELETE SET NULL,
+      paid_at INTEGER,
+      paid_amount_cents INTEGER CHECK (paid_amount_cents IS NULL OR paid_amount_cents > 0),
+      confirmed_schedule_revision INTEGER,
+      PRIMARY KEY (event_id, player_id)
+    );
+    INSERT INTO event_participants SELECT * FROM event_participants_before_85;
+    DROP TABLE event_participants_before_85;
+    INSERT INTO players (id, name, api_key, created_at)
+      VALUES ('migration-85-interested', 'Migration 85 Interested', 'migration-85-key', 1);
+    INSERT INTO event_participants (event_id, player_id, status)
+      VALUES ('instance-base-event', 'migration-85-interested', 'interested');
+    DELETE FROM schema_migrations WHERE version = 85;
+  `);
+  for (const trigger of participantTriggers) fixture.exec(trigger.sql);
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile);
+  assert.equal(
+    (migrated.prepare('SELECT status FROM event_participants WHERE player_id = ?').get('migration-85-interested') as { status: string }).status,
+    'invited',
+  );
+  assert.throws(
+    () => migrated.prepare("UPDATE event_participants SET status = 'interested' WHERE player_id = ?").run('migration-85-interested'),
+    /CHECK constraint failed/,
+  );
+  const pollColumns = migrated.prepare('PRAGMA table_info(event_date_polls)').all() as Array<{ name: string }>;
+  assert.ok(pollColumns.some((column) => column.name === 'max_selections'));
+  const pollSql = (migrated
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'event_date_polls'")
+    .get() as { sql: string }).sql;
+  assert.match(pollSql, /UNIQUE\s*\(event_id,\s*decision_key,\s*round_number\)/i);
   assert.deepEqual(migrated.pragma('foreign_key_check'), []);
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });

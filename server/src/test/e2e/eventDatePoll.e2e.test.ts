@@ -12,7 +12,7 @@ const OWNER_NAME = 'E2E Poll Owner';
 const OWNER_PASSWORD = 'e2e poll owner secure passphrase';
 const MEMBER_NAME = 'E2E Poll Member';
 const MEMBER_PASSWORD = 'e2e poll member secure passphrase';
-const EVENT_NAME = 'LAN Planung E2E';
+const EVENT_NAME = 'LAN Abstimmungen E2E';
 
 let serverProcess: ChildProcess;
 let e2eServer: E2EServer;
@@ -77,12 +77,7 @@ async function invitePlayer(page: Page, eventId: string, playerId: string): Prom
 
 async function acceptEvent(page: Page, eventId: string): Promise<void> {
   const status = await page.evaluate(
-    async (selectedEventId) =>
-      (await fetch(`/api/events/${selectedEventId}/my-participation`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'accepted' }),
-      })).status,
+    async (selectedEventId) => (await fetch(`/api/events/${selectedEventId}/invitation/accept`, { method: 'POST' })).status,
     eventId,
   );
   assert.equal(status, 200);
@@ -99,21 +94,24 @@ async function selectActiveEvent(page: Page, eventId: string): Promise<void> {
   );
 }
 
-function isoDate(daysFromNow: number): string {
-  return new Date(Date.now() + daysFromNow * 86_400_000).toISOString().slice(0, 10);
-}
-
 async function createPoll(
   page: Page,
-  { topic, title, options, mode = 'feasibility' }: { topic: string; title: string; options: string[]; mode?: string },
+  { title, options, mode = 'feasibility', maxSelections }: {
+    title: string;
+    options: string[];
+    mode?: 'feasibility' | 'single_choice' | 'multiple_choice';
+    maxSelections?: number;
+  },
 ): Promise<void> {
   await page.click('#new-event-poll');
   await page.waitForSelector('#event-poll-form');
-  await page.selectOption('#poll-topic', topic);
   await page.fill('#poll-title', title);
-  await page.selectOption('#poll-mode', mode);
-  await page.fill('#poll-options', options.join('\n'));
-  await page.fill('#poll-due', isoDate(5));
+  if (mode !== 'feasibility') await page.click(`[data-create-poll-mode="${mode}"]`);
+  if (maxSelections !== undefined) await page.fill('#poll-max', String(maxSelections));
+  while ((await page.locator('[data-poll-option-input]').count()) < options.length) await page.click('#add-poll-option');
+  for (let index = 0; index < options.length; index += 1) {
+    await page.locator('[data-poll-option-input]').nth(index).fill(options[index]);
+  }
   await page.click('#event-poll-form button[type="submit"]');
   await page.waitForSelector('#event-poll-form', { state: 'detached' });
 }
@@ -126,7 +124,6 @@ before(async () => {
   });
   serverProcess = e2eServer.process;
   BASE_URL = e2eServer.baseUrl;
-
   const ownerRegistration = await fetch(`${BASE_URL}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -136,17 +133,14 @@ before(async () => {
   const ownerCookie = sessionCookie(ownerRegistration);
   await finishE2EOnboarding(BASE_URL, ownerCookie);
   assert.equal(
-    (
-      await fetch(`${BASE_URL}/api/auth/reauth`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
-        body: JSON.stringify({ password: OWNER_PASSWORD }),
-      })
-    ).status,
+    (await fetch(`${BASE_URL}/api/auth/reauth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
+      body: JSON.stringify({ password: OWNER_PASSWORD }),
+    })).status,
     204,
   );
   await registerMember(ownerCookie);
-
   browser = await chromium.launch();
   ownerPage = await browser.newPage({ viewport: { width: 1024, height: 800 } });
   memberPage = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -159,96 +153,86 @@ after(async () => {
   serverProcess?.kill();
 });
 
-test('the Orga poll tab uses the top-right active event and documents results without changing it', async () => {
+test('confirmed participants use clear poll modes, finish a round and keep results separate from the event', async () => {
   await navigate(ownerPage, 'events');
   await ownerPage.waitForSelector('#orga-events-title');
-
-  // Polls belong to an already-created regular event. There is no separate
-  // planning-event action and no schedule-less branch in the event form.
-  assert.equal(await ownerPage.locator('#new-planning-event-btn').count(), 0);
   await ownerPage.click('#new-event-btn');
   await ownerPage.waitForSelector('#event-form');
   await ownerPage.fill('#event-name', EVENT_NAME);
-  assert.equal(await ownerPage.locator('#event-has-schedule').count(), 0);
   await ownerPage.fill('#event-location', 'Bestehender Ort');
   await ownerPage.click('#event-form button[type="submit"]');
   const eventCard = ownerPage.locator('.event-card', { hasText: EVENT_NAME });
   await eventCard.waitFor();
   const eventId = (await eventCard.getAttribute('data-event-card')) as string;
 
-  // Join the owner and let the member stay in the provisional interest state.
-  // Both states make the existing global workspace switcher offer the event.
   const ownerId = await currentPlayerId(ownerPage);
   const memberId = await currentPlayerId(memberPage);
   await invitePlayer(ownerPage, eventId, ownerId);
   await invitePlayer(ownerPage, eventId, memberId);
+  await acceptEvent(ownerPage, eventId);
   await navigate(memberPage, 'profile');
   const invitation = memberPage.locator('[data-pending-invitation]', { hasText: EVENT_NAME });
   await invitation.waitFor();
-  await invitation.locator('[data-interest-invitation]').tap();
-  await memberPage.locator('.toast', { hasText: 'Interesse vermerkt' }).waitFor();
-  await acceptEvent(ownerPage, eventId);
+  assert.equal(await invitation.locator('[data-interest-invitation]').count(), 0);
+  await invitation.locator('[data-accept-invitation]').tap();
+  await memberPage.locator('.toast', { hasText: 'Einladung angenommen' }).waitFor();
 
-  // The event is selected once in the top-right global control. The poll tab
-  // contains no second event picker and the event card does not embed polls.
   await selectActiveEvent(ownerPage, eventId);
   await selectActiveEvent(memberPage, eventId);
-  assert.equal(await eventCard.locator('[data-poll-id]').count(), 0);
+  assert.equal(await eventCard.locator('[data-poll-round]').count(), 0, 'event cards do not embed polls');
   await navigate(ownerPage, 'eventPolls');
   await ownerPage.waitForSelector('[data-section-tab="eventPolls"][aria-current="page"]');
   assert.equal(await ownerPage.locator('#poll-event-select').count(), 0);
   await ownerPage.getByRole('heading', { name: EVENT_NAME, exact: true }).waitFor();
 
   await createPoll(ownerPage, {
-    topic: 'date_range',
     title: 'Welcher Zeitraum passt?',
-    options: [`${isoDate(10)} bis ${isoDate(12)}`, `${isoDate(17)} bis ${isoDate(19)}`],
+    options: ['Erstes Wochenende', 'Zweites Wochenende'],
   });
-  const datePoll = ownerPage.locator('[data-poll-card]', { hasText: 'Welcher Zeitraum passt?' });
-  await datePoll.waitFor();
+  const ownerPoll = ownerPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
+  await ownerPoll.waitFor();
+  assert.equal(await ownerPoll.locator('[data-poll-response="can"]').count(), 2);
+  assert.equal(await ownerPoll.locator('[data-poll-response="if_needed"]').count(), 2);
+  assert.equal(await ownerPoll.locator('[data-poll-response="cannot"]').count(), 2);
+  assert.equal(await ownerPoll.locator('[data-poll-response="open"]').count(), 2);
 
-  // The member reaches the same active-event tab on a touch-sized viewport.
   await navigate(memberPage, 'eventPolls');
-  const memberDatePoll = memberPage.locator('[data-poll-card]', { hasText: 'Welcher Zeitraum passt?' });
-  await memberDatePoll.waitFor();
-
-  const memberOptions = memberDatePoll.locator('[data-poll-option-card]');
+  const memberPoll = memberPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
+  await memberPoll.waitFor();
+  const memberOptions = memberPoll.locator('.event-poll-option');
   await memberOptions.nth(0).locator('[data-poll-response="can"]').tap();
   await memberOptions.nth(1).locator('[data-poll-response="cannot"]').tap();
-  await memberDatePoll.locator('[data-save-poll]').tap();
+  await memberPoll.locator('[data-save-poll]').tap();
   await memberPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
+  assert.equal(await memberPage.locator('[data-participation]').count(), 0, 'attendance is not managed in the poll tab');
 
-  // Selecting a poll result only documents it. It does not update the event
-  // date or invalidate the member's current acceptance.
   await ownerPage.reload();
   await ownerPage.waitForSelector('#app:not([hidden])');
   await navigate(ownerPage, 'eventPolls');
-  const refreshedDatePoll = ownerPage.locator('[data-poll-card]', { hasText: 'Welcher Zeitraum passt?' });
-  await refreshedDatePoll.waitFor();
-  await refreshedDatePoll.locator('[data-decision-option]').first().check();
-  await refreshedDatePoll.locator('[data-decide-poll]').click();
+  const refreshed = ownerPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
+  await refreshed.waitFor();
+  await refreshed.locator('[data-close-poll]').click();
   await ownerPage.locator('.modal-backdrop [data-confirm]').click();
-  await ownerPage.locator('.toast', { hasText: 'Ergebnis dokumentiert' }).waitFor();
+  await ownerPage.locator('.toast', { hasText: 'Abgabe beendet' }).waitFor();
+  const closed = ownerPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
+  await closed.locator('[data-result-option]').first().click();
+  await closed.locator('[data-decide-poll]').click();
+  await ownerPage.locator('.modal-backdrop [data-confirm]').click();
+  await ownerPage.locator('.toast', { hasText: 'Rundenhistorie' }).waitFor();
+  await ownerPage.locator('[data-new-poll-round]').waitFor();
 
-  // A second, parallel stream records a location result without applying it
-  // to the event. The member can still decline later.
-  await createPoll(ownerPage, {
-    topic: 'location',
-    title: 'Wo findet die LAN statt?',
-    mode: 'single_choice',
-    options: ['Vereinsheim', 'Ferienhaus'],
+  await createPoll(memberPage, {
+    title: 'Welche Verpflegung?',
+    mode: 'multiple_choice',
+    maxSelections: 2,
+    options: ['Pizza', 'Curry', 'Salat'],
   });
-  const locationPoll = ownerPage.locator('[data-poll-card]', { hasText: 'Wo findet die LAN statt?' });
-  await locationPoll.locator('[data-decision-option]').first().check();
-  await locationPoll.locator('[data-decide-poll]').click();
-  await ownerPage.locator('.modal-backdrop [data-confirm]').click();
-  await ownerPage.locator('.toast', { hasText: 'Ergebnis dokumentiert' }).waitFor();
-
-  await memberPage.locator('[data-participation="declined"]').tap();
-  await memberPage.locator('.toast', { hasText: 'Teilnahmestatus aktualisiert' }).last().waitFor();
+  const memberCreated = memberPage.locator('[data-poll-group]', { hasText: 'Welche Verpflegung?' });
+  await memberCreated.waitFor();
+  assert.equal(await memberCreated.locator('[data-poll-choice]').count(), 3, 'a regular participant can create a poll');
   assert.equal(
     await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     true,
-    'the poll tab stays within the phone viewport',
+    'the redesigned poll tab stays within the phone viewport',
   );
 });

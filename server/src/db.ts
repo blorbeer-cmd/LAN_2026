@@ -4110,8 +4110,7 @@ function addEventDatePolls(): void {
       -- composite (poll_id, id) one: that would need a circular forward
       -- reference between this table and event_date_poll_options (defined
       -- below, itself referencing event_date_polls). "Belongs to this same
-      -- round" is instead checked transactionally wherever this is written
-      -- (scheduleDatePoll in eventDatePolls.ts), which is the only writer.
+      -- round" is instead checked transactionally by the poll result writer.
       selected_option_id TEXT REFERENCES event_date_poll_options(id) ON DELETE SET NULL,
       created_at         INTEGER NOT NULL,
       updated_at         INTEGER NOT NULL,
@@ -4177,7 +4176,7 @@ registerMigration({
 // response, reminder or audit history created by migration 83. The historical
 // table names deliberately remain an implementation detail; callers use the
 // generic /polls API from this migration onward.
-function generalizeEventPollsAndParticipation(): void {
+function generalizeEventPolls(): void {
   const participantColumns = db.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
   if (participantColumns.some((column) => column.name === 'confirmed_schedule_revision')) {
     const participantTriggers = db
@@ -4193,7 +4192,7 @@ function generalizeEventPollsAndParticipation(): void {
         event_id                     TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
         player_id                    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
         status                       TEXT NOT NULL DEFAULT 'accepted'
-                                     CHECK (status IN ('invited', 'interested', 'accepted', 'declined')),
+                                     CHECK (status IN ('invited', 'accepted', 'declined')),
         paid                         INTEGER NOT NULL DEFAULT 0 CHECK (paid IN (0, 1)),
         paid_by                      TEXT REFERENCES players(id) ON DELETE SET NULL,
         paid_at                      INTEGER,
@@ -4249,8 +4248,103 @@ function generalizeEventPollsAndParticipation(): void {
 }
 registerMigration({
   version: 84,
-  name: 'generalize event polls and add interested participation',
-  up: generalizeEventPollsAndParticipation,
+  name: 'generalize event polls',
+  up: generalizeEventPolls,
+  disableForeignKeysForRebuild: true,
+});
+
+// Keep general polls independent from event attendance. Migration 84 briefly
+// introduced an "interested" roster state while the feature branch was under
+// review; convert those rows back to ordinary pending invitations and restore
+// the established three-state participation contract. The additional poll
+// column belongs here as the first schema needed by the revised generic UI.
+function separateEventPollsFromParticipation(): void {
+  const participantTriggers = db
+    .prepare(
+      `SELECT sql FROM sqlite_master
+       WHERE type = 'trigger' AND tbl_name = 'event_participants' AND sql IS NOT NULL`,
+    )
+    .all() as Array<{ sql: string }>;
+  db.exec(`
+    CREATE TABLE event_participants_staging_85 AS SELECT * FROM event_participants;
+    DROP TABLE event_participants;
+    CREATE TABLE event_participants (
+      event_id                     TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id                    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      status                       TEXT NOT NULL DEFAULT 'accepted'
+                                   CHECK (status IN ('invited', 'accepted', 'declined')),
+      paid                         INTEGER NOT NULL DEFAULT 0 CHECK (paid IN (0, 1)),
+      paid_by                      TEXT REFERENCES players(id) ON DELETE SET NULL,
+      paid_at                      INTEGER,
+      paid_amount_cents            INTEGER CHECK (paid_amount_cents IS NULL OR paid_amount_cents > 0),
+      confirmed_schedule_revision INTEGER,
+      PRIMARY KEY (event_id, player_id)
+    );
+    INSERT INTO event_participants
+      (event_id, player_id, status, paid, paid_by, paid_at, paid_amount_cents, confirmed_schedule_revision)
+    SELECT event_id, player_id, CASE WHEN status = 'interested' THEN 'invited' ELSE status END,
+           paid, paid_by, paid_at, paid_amount_cents, confirmed_schedule_revision
+    FROM event_participants_staging_85;
+    DROP TABLE event_participants_staging_85;
+  `);
+  for (const trigger of participantTriggers) db.exec(trigger.sql);
+
+  const pollColumns = db.prepare('PRAGMA table_info(event_date_polls)').all() as Array<{ name: string }>;
+  if (!pollColumns.some((column) => column.name === 'max_selections')) {
+    db.exec(`
+      ALTER TABLE event_date_polls ADD COLUMN max_selections INTEGER
+        CHECK (max_selections IS NULL OR max_selections >= 1);
+    `);
+  }
+
+  const pollTable = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'event_date_polls'")
+    .get() as { sql: string };
+  if (/UNIQUE\s*\(event_id,\s*round_number\)/i.test(pollTable.sql)) {
+    db.exec(`
+      CREATE TABLE event_date_polls_rebuilt_85 (
+        id                 TEXT PRIMARY KEY,
+        event_id           TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        round_number       INTEGER NOT NULL,
+        note               TEXT,
+        created_by         TEXT REFERENCES players(id) ON DELETE SET NULL,
+        response_due_at    INTEGER NOT NULL,
+        status             TEXT NOT NULL DEFAULT 'open'
+                            CHECK (status IN ('open', 'closed', 'scheduled', 'superseded', 'cancelled')),
+        selected_option_id TEXT REFERENCES event_date_poll_options(id) ON DELETE SET NULL,
+        created_at         INTEGER NOT NULL,
+        updated_at         INTEGER NOT NULL,
+        topic              TEXT NOT NULL DEFAULT 'custom'
+                            CHECK (topic IN ('date_range', 'location', 'duration', 'budget', 'custom')),
+        decision_key       TEXT NOT NULL,
+        title              TEXT NOT NULL,
+        response_mode      TEXT NOT NULL DEFAULT 'feasibility'
+                            CHECK (response_mode IN ('feasibility', 'single_choice', 'multiple_choice')),
+        decision_note      TEXT,
+        max_selections     INTEGER CHECK (max_selections IS NULL OR max_selections >= 1),
+        UNIQUE (event_id, decision_key, round_number)
+      );
+      INSERT INTO event_date_polls_rebuilt_85
+        (id, event_id, round_number, note, created_by, response_due_at, status, selected_option_id,
+         created_at, updated_at, topic, decision_key, title, response_mode, decision_note, max_selections)
+      SELECT id, event_id, round_number, note, created_by, response_due_at, status, selected_option_id,
+             created_at, updated_at, topic, decision_key, title, response_mode, decision_note, max_selections
+      FROM event_date_polls;
+      DROP TABLE event_date_polls;
+      ALTER TABLE event_date_polls_rebuilt_85 RENAME TO event_date_polls;
+      CREATE UNIQUE INDEX idx_event_polls_undecided
+        ON event_date_polls(event_id, decision_key) WHERE status IN ('open', 'closed');
+      CREATE UNIQUE INDEX idx_event_polls_decided
+        ON event_date_polls(event_id, decision_key) WHERE status = 'scheduled';
+      CREATE INDEX idx_event_date_polls_event
+        ON event_date_polls(event_id, decision_key, round_number);
+    `);
+  }
+}
+registerMigration({
+  version: 85,
+  name: 'separate event polls from participation',
+  up: separateEventPollsFromParticipation,
   disableForeignKeysForRebuild: true,
 });
 

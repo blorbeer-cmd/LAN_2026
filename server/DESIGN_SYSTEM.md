@@ -736,16 +736,23 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   zugewiesen“ with „Freigeben“/„Erledigt“ actions instead. Completed To-Dos live in one standard,
   initially collapsed „Historie“ section whose open state survives live re-renders, same as Food
   orders.
-  The „Abstimmungen“ tab is the event-centric planning surface for Zeitraum, Ort/Unterkunft,
-  Dauer, Budget and free questions. It always uses the active event from the existing top-right
+  The „Abstimmungen“ tab is the event-centric planning surface for free questions such as dates,
+  locations, duration or budget. It always uses the active event from the existing top-right
   workspace switcher: neither the tab nor its create dialog contains a second event picker. With
-  „Allgemein“ active it shows an explicit select-an-event empty state. Open rounds and their result
-  history stay together, and the surface offers the reversible personal states „Interessiert“,
-  „Zugesagt“ and „Abgesagt“. „Interessiert“ makes the event selectable in that top-right switcher
-  for planning without counting as confirmed attendance. Event cards do not embed or link to poll controls. Documenting a poll
-  result changes no event field, schedule revision or participation state; the confirmation dialog
-  and result notification say this explicitly. A future explicit „apply to event“ interaction is
-  outside the current UI.
+  „Allgemein“ active it shows an explicit select-an-event empty state. Visibility, creation and
+  voting all require confirmed participation in that event; being Owner/Admin or merely invited
+  never bypasses this boundary. Every confirmed participant may start a poll, while the creator of
+  that poll manages its deadline, reminders and rounds. The create dialog uses labelled fields,
+  repeatable free-text option rows and three explicit response modes: per-option „Passt / Wenn nötig
+  / Passt nicht / Offen“, exactly one choice, or multiple choices with an optional maximum. It never exposes
+  a participant picker because the accepted event roster is the single source of truth.
+  Each poll is one collapsible card. Its current round, response progress and clearly named actions
+  stay together; earlier rounds live in a nested, initially collapsed history. „Offen“ is both an
+  explicit way to clear a per-option rating and the resulting incomplete-response count. „Abgabe beenden“, „offene Antworten erinnern“ and
+  „Ergebnis festhalten“ each explain their concrete effect, and choosing a result is offered only
+  after voting ends. Event cards do not embed or link to poll controls. A recorded poll result changes
+  no event field, schedule revision or participation state; the confirmation says this explicitly.
+  A future explicit „apply to event“ interaction is outside the current UI.
   The „Events“ tab is reachable by every member, not only by owner/admin, because answering an
   invitation is a personal action. What it shows depends on the role: owner/admin receive the full
   management surface — anlegen/bearbeiten, Tracking starten/stoppen, Teilnehmer einladen/entfernen

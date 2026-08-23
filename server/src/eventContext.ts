@@ -1,5 +1,5 @@
 import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
-import { EVENT_WORKSPACE_PARTICIPANT_SQL } from './eventParticipation';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 
 export interface EventContextEvent {
   id: string;
@@ -110,7 +110,7 @@ export function getOrRepairActiveEvent(playerId: string): EventContextEvent {
          FROM player_event_contexts pec
          JOIN events e ON e.id = pec.active_event_id
          JOIN event_participants ep
-           ON ep.event_id = e.id AND ep.player_id = pec.player_id AND ${EVENT_WORKSPACE_PARTICIPANT_SQL}
+           ON ep.event_id = e.id AND ep.player_id = pec.player_id AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          WHERE pec.player_id = ? AND e.id != ? AND e.group_id = ?
            AND e.status = 'published' AND e.ended_at IS NULL`,
       )
@@ -131,7 +131,7 @@ export function setActiveEventForPlayer(playerId: string, eventId: string): Even
         `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id
          FROM events e
          JOIN event_participants ep
-           ON ep.event_id = e.id AND ep.player_id = ? AND ${EVENT_WORKSPACE_PARTICIPANT_SQL}
+           ON ep.event_id = e.id AND ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          WHERE e.id = ? AND e.id != ? AND e.group_id = ?
            AND e.status = 'published' AND e.ended_at IS NULL`,
       )
@@ -203,30 +203,8 @@ export function eventAccessLevel(
   if (instanceRole === 'owner' || instanceRole === 'admin') return 'admin';
   const participation = db
     .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
-    .get(eventId, playerId) as { status: 'invited' | 'interested' | 'accepted' | 'declined' } | undefined;
-  if (participation?.status === 'accepted' || participation?.status === 'interested') return 'participant';
-  // A planning event (draft, no fixed date yet) has no event_participants row
-  // at all until the regular invitations are sent after a date is chosen —
-  // its creator and anyone invited to one of its date poll rounds still need
-  // to see it (docs/plans/event-date-poll-concept.md's visibility rule).
-  if (event.created_by === playerId) return 'participant';
-  // Restricted to the draft phase (mirrors routes/events.ts's plannedEvents
-  // query): once the event is published, real event_participants rows are
-  // the only source of truth. Without this, a stale invitee row from any
-  // past round — including one on an event that has since been scheduled —
-  // would outrank a since-recorded 'declined'/'invited' status and leak
-  // participant-only fields (payments, accepted-roster names) to someone who
-  // isn't actually confirmed.
-  if (event.status === 'draft') {
-    const pollInvited = db
-      .prepare(
-        `SELECT 1 FROM event_date_poll_invitees edpi
-         JOIN event_date_polls edp ON edp.id = edpi.poll_id
-         WHERE edp.event_id = ? AND edpi.player_id = ? LIMIT 1`,
-      )
-      .get(eventId, playerId);
-    if (pollInvited) return 'participant';
-  }
+    .get(eventId, playerId) as { status: 'invited' | 'accepted' | 'declined' } | undefined;
+  if (participation?.status === 'accepted') return 'participant';
   if (participation?.status === 'invited') return 'teaser';
   return 'none';
 }

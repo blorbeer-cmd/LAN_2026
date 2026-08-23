@@ -24,7 +24,6 @@ import { invalidateInfoBoard, openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
 import { clearFoodOrderTarget, invalidateFoodOrders, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
 import { invalidateEventPolls } from './views/eventPolls.js';
-import { invalidateEventDatePolls } from './views/eventDatePoll.js';
 import { invalidateChecklist } from './views/checklist.js';
 import { invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
 import { invalidateArrivals } from './views/arrivals.js';
@@ -183,7 +182,6 @@ function invalidateEventScopedCaches() {
   invalidateInfoBoard();
   invalidateFoodOrders();
   invalidateEventPolls();
-  invalidateEventDatePolls();
   invalidateChecklist(undefined, { hard: true });
   invalidateArrivals({ hard: true });
   invalidateMusic({ hard: true });

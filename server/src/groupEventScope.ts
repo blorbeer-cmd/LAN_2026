@@ -1,6 +1,6 @@
 import { BASE_EVENT_ID, db, OUTSIDE_EVENTS_ID } from './db';
 import type { Request, Response } from 'express';
-import { EVENT_WORKSPACE_PARTICIPANT_SQL } from './eventParticipation';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 import { getOrRepairActiveEvent } from './eventContext';
 
 export type GroupEventScope = string | null;
@@ -46,9 +46,7 @@ export function resolveRequestGroupEventScope(req: Request, requestedEventId: un
   return { ok: true, eventId: activeEvent.id };
 }
 
-// Accepted participation or an explicit "interested" response is the normal
-// workspace visibility contract. Interest grants planning access but remains
-// excluded from every accepted-only count and payment calculation.
+// Confirmed participation is the normal workspace visibility contract.
 // Administrative event management uses its own role-guarded routes; it never
 // turns into a read bypass for operational event data.
 //
@@ -69,7 +67,7 @@ export function requestCanUseEventWorkspace(req: Request, eventId: GroupEventSco
         `SELECT 1 FROM event_participants ep
          JOIN events e ON e.id = ep.event_id
          WHERE ep.event_id = ? AND ep.player_id = ? AND e.group_id = ?
-           AND ${EVENT_WORKSPACE_PARTICIPANT_SQL}`,
+           AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}`,
       )
       .get(eventId, req.player.id, req.group.id),
   );

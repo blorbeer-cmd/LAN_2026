@@ -18,7 +18,7 @@ export const state = {
   managedEvents: null, // owner/admin only; null means "no management rights"
   activeEvent: null,
   availableEvents: [],
-  plannedEvents: [], // draft events (date poll running) this member is invited to but hasn't joined as a participant yet
+  plannedEvents: [], // compatibility field; generic polls never add event visibility
   endedEvents: [], // this account's own accepted events that have since ended (member Historie)
   historicalEvents: [], // every event this account accepted at some point, ended ones included
   eventInvitations: [],

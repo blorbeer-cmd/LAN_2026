@@ -42,11 +42,10 @@ function renderKioskSection() {
   `;
 }
 
-// A planning event ("In Planung") has neither startsAt nor endsAt yet — its
-// date poll section (eventDatePoll.js) is what actually explains that state,
-// this is just the safe fallback so no view ever renders "Invalid Date" for
-// it. The base workspace is permanently open (startsAt set, endsAt null), so
-// it has no end date to print either, but for a different reason.
+// Legacy planning events may have neither startsAt nor endsAt. Keep the
+// fallback explicit so no view ever renders "Invalid Date" for them. The base
+// workspace is permanently open (startsAt set, endsAt null), so it has no end
+// date to print either, but for a different reason.
 function eventDateRange(e) {
   if (e.startsAt == null) return 'Termin wird noch abgestimmt';
   if (e.endsAt == null) return 'Dauerhaft geöffnet';
@@ -425,16 +424,10 @@ function renderEventInfo(event, { editable = false, invitation = false } = {}) {
          </div>`
       : ''
   }`;
-  // A draft ("In Planung") event's date is shown by the date poll section
-  // instead (eventDatePoll.js's info box) — showing this plain line too
-  // would just repeat "Termin wird noch abgestimmt" right above it.
-  const dateLine =
-    event.status === 'draft'
-      ? ''
-      : `<span class="food-order-send-at">
-           <span class="food-order-detail-icon" aria-hidden="true">${icon('calendar')}</span>
-           ${escapeHtml(eventDateRange(event))}
-         </span>`;
+  const dateLine = `<span class="food-order-send-at">
+      <span class="food-order-detail-icon" aria-hidden="true">${icon('calendar')}</span>
+      ${escapeHtml(eventDateRange(event))}
+    </span>`;
   return `
     <div class="food-order-details event-card-info">
       <div class="food-order-details-head">
@@ -534,12 +527,8 @@ function renderEventSection() {
   // rather than state.availableEvents, which deliberately excludes them (see
   // routes/events.ts) — merge both here so the split below can sort them into
   // the active list and the collapsed Historie the same way managedEvents does.
-  // A draft event a member is only invited to via a date poll round (not yet
-  // an accepted participant), or a published event whose prior acceptance
-  // just went stale on reschedule, lives in plannedEvents instead — kept
-  // separate from availableEvents so it never appears as a switchable
-  // workspace, but still merged in here so its card is visible and sorts
-  // alongside everything else.
+  // plannedEvents is retained as an empty compatibility field. Only accepted
+  // participation controls whether a member sees an event here.
   const memberEvents = canManage
     ? []
     : [...(state.availableEvents || []), ...(state.endedEvents || []), ...(state.plannedEvents || [])].filter(
@@ -599,18 +588,16 @@ function renderEventSection() {
 // cluttered the tab (see DESIGN_SYSTEM.md's "Orga" entry). Home's "Aktuell"
 // list gets a lightweight linking nudge instead (see aktuellStatus.js).
 export function renderInvitationCard(event) {
-  const interested = event.participationStatus === 'interested';
   return `
     <article class="card stack event-card event-card-invitation" data-pending-invitation="${event.id}">
       <div class="row-between food-order-card-header event-card-header">
         <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
-        <span class="badge badge-paused">${interested ? 'Interessiert' : 'Eingeladen'}</span>
+        <span class="badge badge-paused">Eingeladen</span>
       </div>
       ${renderEventInfo(event, { invitation: true })}
       <div class="event-card-actions">
-        <button type="button" class="btn" data-interest-invitation="${event.id}">Interessiert</button>
-        <button type="button" class="btn btn-primary" data-accept-invitation="${event.id}">Zusagen</button>
-        <button type="button" class="btn" data-decline-invitation="${event.id}">Absagen</button>
+        <button type="button" class="btn btn-primary" data-accept-invitation="${event.id}">Annehmen</button>
+        <button type="button" class="btn" data-decline-invitation="${event.id}">Ablehnen</button>
       </div>
     </article>`;
 }
@@ -628,17 +615,17 @@ export function pendingEventInvitations() {
 // an explicit, still-present target instead of being left to fall back to
 // <body>.
 export function wirePendingInvitationActions(container, ctx) {
-  container.querySelectorAll('[data-accept-invitation], [data-interest-invitation], [data-decline-invitation]').forEach((btn) => {
+  container.querySelectorAll('[data-accept-invitation], [data-decline-invitation]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const accept = Boolean(btn.dataset.acceptInvitation);
-      const interested = Boolean(btn.dataset.interestInvitation);
-      const eventId = btn.dataset.acceptInvitation || btn.dataset.interestInvitation || btn.dataset.declineInvitation;
+      const eventId = btn.dataset.acceptInvitation || btn.dataset.declineInvitation;
       btn.disabled = true;
       try {
-        await api.events.setMyParticipation(eventId, accept ? 'accepted' : interested ? 'interested' : 'declined');
+        if (accept) await api.events.acceptInvitation(eventId);
+        else await api.events.declineInvitation(eventId);
         await ctx.refresh();
         (container.querySelector('#profile-invitations-title') || container.querySelector('#profile-view-title'))?.focus();
-        showToast(accept ? 'Zugesagt.' : interested ? 'Interesse vermerkt.' : 'Abgesagt.');
+        showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
       } catch (err) {
         btn.disabled = false;
         showToast(err.message, { error: true });
@@ -845,7 +832,6 @@ function openEventForm(ctx, existing) {
 
 function participationStatus(status) {
   if (status === 'accepted') return { label: 'Zugesagt', badge: 'badge-playing' };
-  if (status === 'interested') return { label: 'Interessiert', badge: 'badge-paused' };
   if (status === 'declined') return { label: 'Abgelehnt', badge: 'badge-offline' };
   return { label: 'Einladung offen', badge: 'badge-paused' };
 }

@@ -34,10 +34,9 @@ export function formatDate(timestampMs) {
   return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
 }
 
-// An event's `endsAt` scheduled through the date poll (see eventDatePolls.ts's
-// scheduleDatePoll / localDate.ts's startOfNextIsoDateUtcMs) is an EXCLUSIVE
-// boundary — local midnight of the day AFTER the event's real last day, not
-// that last day itself — so it must never be formatted for display as-is.
+// Historical event `endsAt` values may be an EXCLUSIVE boundary — local
+// midnight of the day AFTER the event's real last day, not that last day
+// itself — so they must never be formatted for display as-is.
 // Subtracting exactly one millisecond lands back inside that real last day in
 // whatever timezone the caller then formats with; subtracting a fixed 24h
 // instead (as this used to) is one hour short or long on a DST transition day

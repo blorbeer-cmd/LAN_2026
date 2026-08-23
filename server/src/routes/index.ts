@@ -193,7 +193,6 @@ apiRouter.use('/leaderboard', leaderboardRouter);
 apiRouter.use('/stats', statsRouter);
 apiRouter.use('/analytics', analyticsRouter);
 apiRouter.use('/events', eventsRouter);
-apiRouter.use('/events/:eventId/date-polls', eventDatePollsRouter);
 apiRouter.use('/events/:eventId/polls', eventDatePollsRouter);
 apiRouter.use('/tournaments', tournamentsRouter);
 apiRouter.use('/qrcode', qrcodeRouter);

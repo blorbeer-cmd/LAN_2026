@@ -28,11 +28,8 @@ export function normalizeEventContext(eventContext = {}) {
     managedEvents: canManage ? managedEvents : null,
     activeEvent: eventContext.activeEvent ?? null,
     availableEvents,
-    // Draft events (date poll running) a member is invited to but hasn't
-    // joined as a participant of yet — kept separate from availableEvents so
-    // a dateless draft never becomes an offered workspace (see
-    // routes/events.ts's plannedEvents comment). Always empty for
-    // owner/admin, who already see drafts through managedEvents.
+    // Retained as an empty compatibility field for clients predating generic
+    // polls. Polls never grant event visibility or require reconfirmation.
     plannedEvents: eventContext.plannedEvents ?? [],
     // This account's own accepted events that have since ended. Deliberately
     // absent from `availableEvents` (that list answers "where can I switch

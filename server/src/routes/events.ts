@@ -8,7 +8,6 @@ import {
   listEvents,
   getEvent,
   createEvent,
-  createPlanningEvent,
   publishPlanningEventIfScheduled,
   updateEvent,
   startTracking,
@@ -24,7 +23,6 @@ import {
   isParticipant,
   removeEventParticipant,
   respondToEventInvitation,
-  changeMyEventParticipation,
   setParticipants,
   OUTSIDE_EVENTS_ID,
   type UpdateEventFields,
@@ -35,7 +33,7 @@ import { broadcast, Events, switchPlayerEventScope } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { isNonEmptyString, isValidPaypalUrl } from '../validation';
-import { EVENT_WORKSPACE_PARTICIPANT_SQL } from '../eventParticipation';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
 import type { GroupRole } from '../groups';
 import { requireConfiguredGroupMembership, requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { requireRecentReauthentication } from '../sessions';
@@ -126,7 +124,7 @@ function acceptedParticipantsForViewer(eventId: string, viewerId: string | undef
 function myParticipationField(eventId: string, viewerId: string) {
   const row = db
     .prepare('SELECT status, confirmed_schedule_revision AS confirmedScheduleRevision FROM event_participants WHERE event_id = ? AND player_id = ?')
-    .get(eventId, viewerId) as { status: 'invited' | 'interested' | 'accepted' | 'declined'; confirmedScheduleRevision: number | null } | undefined;
+    .get(eventId, viewerId) as { status: 'invited' | 'accepted' | 'declined'; confirmedScheduleRevision: number | null } | undefined;
   return { myParticipation: row ? { status: row.status, confirmedScheduleRevision: row.confirmedScheduleRevision } : null };
 }
 
@@ -177,10 +175,9 @@ function paymentManagementFields(
 }
 
 // Shared shape for a plain member's own event card — the normal
-// `availableEvents` workspace list, `plannedEvents` (drafts/stale acceptances
-// that stay outside that workspace list — see its comment below) and
-// `endedEvents` (this account's own finished events, kept out of
-// availableEvents for the same "not a switchable workspace" reason) all need
+// `availableEvents` workspace list and `endedEvents` (this account's own
+// finished events, kept out of availableEvents for the same "not a switchable
+// workspace" reason) both need
 // the identical accepted-participant/payment/myParticipation detail to render
 // the same card component.
 function serializeMemberEvent(event: EventRow, playerId: string, viewerRole: GroupRole | undefined) {
@@ -286,8 +283,8 @@ function serializeEventSummary(
   };
 }
 
-// GET /api/events - the account's active workspace, accepted/interested
-// workspaces and invitation teasers. Admins additionally receive the full
+// GET /api/events - the account's active workspace, accepted workspaces and
+// invitation teasers. Admins additionally receive the full
 // management list.
 eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
   const playerId = req.player!.id;
@@ -298,7 +295,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
       `SELECT e.*
        FROM events e
        JOIN event_participants ep ON ep.event_id = e.id
-       WHERE ep.player_id = ? AND ${EVENT_WORKSPACE_PARTICIPANT_SQL}
+       WHERE ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
        ORDER BY e.id = ? DESC, e.starts_at DESC, e.name COLLATE NOCASE`,
     )
@@ -330,43 +327,10 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        ORDER BY e.starts_at DESC, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
-  // Two cases where a plain member needs to see an event's card outside the
-  // normal `availableEvents` workspace list, both centered on the date poll:
-  //   1. A planning event has no event_participants row at all until a date
-  //      is chosen (see eventAccessLevel) — a poll invitee would otherwise
-  //      never see the draft they're voting in.
-  //   2. After a reschedule, `availableEvents`' join requires a
-  //      revision-matched confirmation (ACCEPTED_EVENT_PARTICIPANT_SQL) so
-  //      pricing/tracking/headcount never count a stale acceptance — but that
-  //      same join also means a stale member's card would vanish entirely,
-  //      leaving them no way to discover or act on "please reconfirm".
-  // Both are deliberately kept out of `availableEvents` itself (which doubles
-  // as the switchable-workspace list): neither a dateless draft nor a stale,
-  // unconfirmed acceptance may become the active tracking workspace.
-  const plannedEvents = canManage
-    ? []
-    : [
-        ...(db
-          .prepare(
-            `SELECT DISTINCT e.*
-             FROM events e
-             JOIN event_date_polls edp ON edp.event_id = e.id
-             JOIN event_date_poll_invitees edpi ON edpi.poll_id = edp.id
-             WHERE edpi.player_id = ? AND e.status = 'draft' AND e.group_id = ?`,
-          )
-          .all(playerId, req.group!.id) as EventRow[]),
-        ...(db
-          .prepare(
-            `SELECT e.*
-             FROM events e
-             JOIN event_participants ep ON ep.event_id = e.id
-             WHERE ep.player_id = ? AND ep.status = 'accepted'
-               AND ep.confirmed_schedule_revision IS NOT NULL
-               AND ep.confirmed_schedule_revision != e.schedule_revision
-               AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL`,
-          )
-          .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[]),
-      ].sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  // Compatibility field for older clients. Generic polls never grant event
+  // visibility, and accepted invitations never become stale because of a
+  // poll, so there are no poll-only or reconfirmation-only event cards.
+  const plannedEvents: EventRow[] = [];
   // The personal-analytics allowlist, mirroring resolveAnalyticsEvents on the
   // server: every event this account accepted at some point, ended ones
   // included. `availableEvents` cannot serve that purpose because it is the
@@ -411,18 +375,11 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
       participantIds: getParticipantIds(activeEvent.id),
     },
     availableEvents: availableEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
-    // A stale (case 2) entry needs the same full shape as availableEvents —
-    // its own cost/PayPal/payment box are still relevant while the member
-    // decides whether to reconfirm — so this reuses the identical serializer.
+    // Retained as an empty compatibility field for older clients.
     plannedEvents: plannedEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
     endedEvents: endedEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
     historicalEvents: historicalEvents.map((event) => serializeEventSummary(event)),
-    invitations: invitations.map((event) => {
-      const participation = db
-        .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
-        .get(event.id, playerId) as { status: 'invited' | 'interested' };
-      return { ...serializeEventSummary(event), participationStatus: participation.status };
-    }),
+    invitations: invitations.map((event) => ({ ...serializeEventSummary(event), participationStatus: 'invited' })),
     ...(managedEvents ? { managedEvents } : {}),
   });
 });
@@ -437,12 +394,7 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
   if (event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
   const access = eventAccessLevel(event.id, req.player!.id, req.groupMembership!.role);
   if (access === 'none') return res.status(404).json({ error: 'Event nicht gefunden.' });
-  if (access === 'teaser') {
-    const participation = db
-      .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
-      .get(event.id, req.player!.id) as { status: 'invited' | 'interested' } | undefined;
-    return res.json({ ...serializeEventSummary(event), participationStatus: participation?.status ?? 'invited' });
-  }
+  if (access === 'teaser') return res.json({ ...serializeEventSummary(event), participationStatus: 'invited' });
   if (access === 'participant') {
     const managementFields = paymentManagementFields(event, req.player!.id, req.groupMembership?.role);
     return res.json({
@@ -594,51 +546,6 @@ function answerEventInvitation(response: 'accepted' | 'declined') {
 
 eventsRouter.post('/:id/invitation/accept', resolveEvent, answerEventInvitation('accepted'));
 eventsRouter.post('/:id/invitation/decline', resolveEvent, answerEventInvitation('declined'));
-
-// PUT /api/events/:id/my-participation — personal, reversible participation
-// choice. This also lets a poll invitee express interest before all planning
-// details have been decided.
-eventsRouter.put('/:id/my-participation', resolveEvent, (req, res) => {
-  const event = req.groupResource as EventRow;
-  if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
-  if (event.id === BASE_EVENT_ID) {
-    return res.status(409).json({ error: 'Die Teilnahme am Basis-Event kann nicht geändert werden.' });
-  }
-  const playerId = requestPlayerId(req);
-  if (!playerId) return res.status(401).json({ error: 'Anmeldung erforderlich.' });
-  const { status } = req.body ?? {};
-  if (!['interested', 'accepted', 'declined'].includes(status)) {
-    return res.status(400).json({ error: 'status muss interested, accepted oder declined sein.' });
-  }
-  const hasAccess = Boolean(
-    db.prepare('SELECT 1 FROM event_participants WHERE event_id = ? AND player_id = ?').get(event.id, playerId) ||
-      db
-        .prepare(
-          `SELECT 1 FROM event_date_poll_invitees i
-           JOIN event_date_polls p ON p.id = i.poll_id
-           WHERE p.event_id = ? AND i.player_id = ? LIMIT 1`,
-        )
-        .get(event.id, playerId) ||
-      event.created_by === playerId,
-  );
-  if (!hasAccess) return res.status(404).json({ error: 'Event nicht gefunden.' });
-  const result = changeMyEventParticipation(event.id, playerId, status);
-  if (!result.ok) return res.status(result.code === 'not_found' ? 404 : 409).json({ error: result.error });
-  writeAdminAudit({
-    actorPlayerId: playerId,
-    groupId: req.group!.id,
-    action: 'event_participation_changed',
-    targetType: 'event_participant',
-    targetId: `${event.id}:${playerId}`,
-    details: { eventId: event.id, playerId, previousStatus: result.previousStatus, status, changed: result.changed },
-  });
-  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
-  resolvePushTopic(eventInvitationTopicKey(event.id, playerId), false, {
-    groupId: req.group!.id,
-    eventId: BASE_EVENT_ID,
-  });
-  return res.json({ playerId, status: result.participant.status });
-});
 
 // PATCH /api/events/:id/participants/:playerId/payment - an accepted
 // participant may correct only their own state. The recorded event creator
@@ -887,39 +794,6 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
   res.status(201).json(serializeEvent(event, req.player?.id, req.groupMembership?.role));
 });
 
-// POST /api/events/planning - a planning event ("In Planung", status draft)
-// with a working title but no fixed date yet. The date poll that later fixes
-// it lives inside this same event/id (see routes/eventDatePolls.ts) — there
-// is no separate "convert to event" step and no second id.
-// Body: { name, location?, description? }
-eventsRouter.post('/planning', requireConfiguredGroupMembership, requireGroupRole('admin'), (req, res) => {
-  const { name, location, description } = req.body ?? {};
-  if (!isNonEmptyString(name, 80)) {
-    return res.status(400).json({ error: 'Name ist erforderlich (1-80 Zeichen).' });
-  }
-  const parsedLocation = parseOptionalText(location, 500, 'location');
-  if (!parsedLocation.ok) return res.status(400).json({ error: parsedLocation.error });
-  const parsedDescription = parseOptionalText(description, 500, 'description');
-  if (!parsedDescription.ok) return res.status(400).json({ error: parsedDescription.error });
-
-  const event = createPlanningEvent(name.trim(), {
-    groupId: req.group!.id,
-    location: parsedLocation.value,
-    description: parsedDescription.value,
-    createdBy: req.player!.id,
-  });
-
-  writeAdminAudit({
-    actorPlayerId: req.player?.id,
-    groupId: req.group!.id,
-    action: 'event_planning_created',
-    targetType: 'event',
-    targetId: event.id,
-  });
-  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
-  res.status(201).json(serializeEvent(event, req.player?.id, req.groupMembership?.role));
-});
-
 // PATCH /api/events/:id - metadata correction only (name/dates/location/
 // description/payment details); never touches tracking state or live status.
 // Body: any subset of { name?, startsAt?, endsAt?, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
@@ -1026,13 +900,9 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     }
   }
 
-  let updated = updateEvent(req.params.id, fields)!;
+  const updated = updateEvent(req.params.id, fields)!;
   const startChanged = fields.startsAt !== undefined && fields.startsAt !== existing.starts_at;
   const endChanged = fields.endsAt !== undefined && fields.endsAt !== existing.ends_at;
-  if (startChanged) {
-    db.prepare('UPDATE events SET schedule_revision = schedule_revision + 1 WHERE id = ?').run(existing.id);
-    updated = getEvent(existing.id)!;
-  }
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.player ? req.group!.id : undefined,
@@ -1065,16 +935,14 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     const recipients = db
       .prepare(
         `SELECT player_id AS playerId FROM event_participants
-         WHERE event_id = ? AND status IN ('invited', 'interested', 'accepted')`,
+         WHERE event_id = ? AND status IN ('invited', 'accepted')`,
       )
       .all(existing.id) as Array<{ playerId: string }>;
     notifyPlayers(
       recipients.map((row) => row.playerId).filter((id) => id !== req.player?.id),
       {
         title: startChanged ? 'Eventtermin geändert' : 'Eventplanung geändert',
-        body: startChanged
-          ? `${updated.name}: Der Termin wurde geändert${relevantChanges.length ? `; ${relevantChanges.join('; ')}` : ''}. Bitte bestätige deine Teilnahme erneut.`
-          : `${updated.name}: ${relevantChanges.join('; ')}. Deine Zusage bleibt bestehen.`,
+        body: `${updated.name}: ${startChanged ? 'Der Termin wurde geändert' : relevantChanges.join('; ')}${startChanged && relevantChanges.length ? `; ${relevantChanges.join('; ')}` : ''}. Deine Zusage bleibt bestehen.`,
         url: '/#events',
       },
       'direct',

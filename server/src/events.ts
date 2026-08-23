@@ -131,37 +131,6 @@ export function createEvent(name: string, options: CreateEventOptions): EventRow
   return getEvent(id)!;
 }
 
-export interface CreatePlanningEventOptions {
-  groupId?: string;
-  location?: string | null;
-  description?: string | null;
-  createdBy?: string | null;
-}
-
-// A planning event ("In Planung") starts without any fixed date at all —
-// starts_at/ends_at stay NULL and schedule_revision stays 0 until a date poll
-// round is scheduled inside it (see eventDatePolls.ts's scheduleDatePoll,
-// which is the only place schedule_revision ever moves off 0). status stays
-// 'draft' the whole time this is true; nothing else in the app may create a
-// draft event any other way.
-export function createPlanningEvent(name: string, options: CreatePlanningEventOptions = {}): EventRow {
-  const id = nanoid();
-  db.prepare(
-    `INSERT INTO events
-       (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at,
-        group_id, status, visibility_scope, created_by, schedule_revision)
-     VALUES (?, ?, NULL, NULL, ?, ?, 0, NULL, ?, 'draft', 'participants', ?, 0)`
-  ).run(
-    id,
-    name,
-    options.location ?? null,
-    options.description ?? null,
-    options.groupId ?? DEFAULT_GROUP_ID,
-    options.createdBy ?? null,
-  );
-  return getEvent(id)!;
-}
-
 export interface UpdateEventFields {
   name?: string;
   startsAt?: number;
@@ -508,62 +477,6 @@ export function respondToEventInvitation(
     return { ok: false, currentStatus: current?.status ?? null };
   });
   return transaction();
-}
-
-export type ChangeMyEventParticipationResult =
-  | { ok: true; participant: EventParticipantRow; previousStatus: EventParticipationStatus | null; changed: boolean }
-  | { ok: false; code: 'not_found' | 'ended'; error: string };
-
-// A personal participation choice is deliberately reversible. "interested"
-// is a reservation rather than an accepted roster seat; only "accepted"
-// stamps the current schedule revision and therefore unlocks tracking.
-export function changeMyEventParticipation(
-  eventId: string,
-  playerId: string,
-  status: 'interested' | 'accepted' | 'declined',
-): ChangeMyEventParticipationResult {
-  return db.transaction((): ChangeMyEventParticipationResult => {
-    const event = db
-      .prepare('SELECT status, ended_at AS endedAt, schedule_revision AS scheduleRevision FROM events WHERE id = ?')
-      .get(eventId) as { status: string; endedAt: number | null; scheduleRevision: number } | undefined;
-    if (!event) return { ok: false, code: 'not_found', error: 'Event nicht gefunden.' };
-    if (event.status === 'ended' || event.status === 'cancelled' || event.endedAt !== null) {
-      return { ok: false, code: 'ended', error: 'Bei einem abgesagten oder beendeten Event kann die Teilnahme nicht geändert werden.' };
-    }
-    const existing = db
-      .prepare(
-        `SELECT status, paid, confirmed_schedule_revision AS confirmedRevision
-         FROM event_participants WHERE event_id = ? AND player_id = ?`,
-      )
-      .get(eventId, playerId) as
-      | { status: EventParticipationStatus; paid: number; confirmedRevision: number | null }
-      | undefined;
-    if (existing?.status === status && (status !== 'accepted' || existing.confirmedRevision === event.scheduleRevision)) {
-      return {
-        ok: true,
-        participant: { playerId, status, paid: Boolean(existing.paid) },
-        previousStatus: existing.status,
-        changed: false,
-      };
-    }
-    const revision = status === 'accepted' ? event.scheduleRevision : null;
-    db.prepare(
-      `INSERT INTO event_participants (event_id, player_id, status, confirmed_schedule_revision)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(event_id, player_id) DO UPDATE
-       SET status = excluded.status, confirmed_schedule_revision = excluded.confirmed_schedule_revision`,
-    ).run(eventId, playerId, status, revision);
-    if (existing?.status === 'accepted' && status !== 'accepted') fallbackPlayerEventContext(playerId, eventId);
-    const paid = db
-      .prepare('SELECT paid FROM event_participants WHERE event_id = ? AND player_id = ?')
-      .get(eventId, playerId) as { paid: number };
-    return {
-      ok: true,
-      participant: { playerId, status, paid: Boolean(paid.paid) },
-      previousStatus: existing?.status ?? null,
-      changed: true,
-    };
-  })();
 }
 
 export function removeEventParticipant(eventId: string, playerId: string): EventParticipationStatus | null {

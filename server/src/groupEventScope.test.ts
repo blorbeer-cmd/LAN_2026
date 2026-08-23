@@ -81,17 +81,6 @@ test('an invited but not yet accepted participant may not use the workspace', ()
   assert.equal(requestCanUseEventWorkspace(playerRequest(player), eventId), false);
 });
 
-test('an interested participant may use the workspace for event planning', () => {
-  const player = createPlayer('Workspace Interested');
-  const eventId = createEvent('Interested Workspace');
-  db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'interested')").run(
-    eventId,
-    player,
-  );
-
-  assert.equal(requestCanUseEventWorkspace(playerRequest(player), eventId), true);
-});
-
 test('participation alone does not carry across the group boundary', () => {
   // The guard is shared by call sites that resolve their event id in very
   // different ways. If it only asked "is this account a participant?", a

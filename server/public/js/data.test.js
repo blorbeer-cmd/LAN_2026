@@ -38,7 +38,7 @@ test('event context keeps the personal workspace separate from invitations', () 
   );
 });
 
-test('plannedEvents (draft/stale date-poll events outside the workspace list) passes through', () => {
+test('legacy plannedEvents compatibility field passes through', () => {
   const base = { id: 'base', name: 'Allgemein' };
   const planning = { id: 'planning', name: 'LAN Winter 2027', status: 'draft' };
 
