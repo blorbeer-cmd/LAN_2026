@@ -629,6 +629,12 @@ textarea {
 
 /* Event polls — follows the same card, compact row, selection-toolbar and
    collapsible-section vocabulary used by Events, Essen, Vote and Checkliste. */
+.event-polls-page {
+  /* The view restores its own card anchor after live re-renders. Native scroll
+     anchoring would otherwise move the container a second time when the
+     focused response button is replaced. */
+  overflow-anchor: none;
+}
 .event-poll-round-header,
 .event-poll-option-header {
   align-items: flex-start;
@@ -640,8 +646,12 @@ textarea {
   gap: var(--space-3);
 }
 .event-poll-card {
+  position: relative;
   padding: 0;
   overflow: visible;
+}
+.event-poll-card.has-open-action-menu {
+  z-index: 20;
 }
 .event-poll-card-header {
   display: flex;
@@ -710,6 +720,9 @@ textarea {
   position: relative;
   z-index: 4;
 }
+.event-poll-action-menu[open] {
+  z-index: 21;
+}
 .event-poll-action-menu > summary {
   list-style: none;
   white-space: nowrap;
@@ -766,14 +779,6 @@ textarea {
 }
 .event-poll-note {
   margin: 0;
-}
-.event-poll-progress {
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated-2);
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
 }
 .event-poll-options {
   gap: var(--space-2);
@@ -878,6 +883,10 @@ textarea {
   flex-direction: column;
   gap: var(--space-2);
 }
+.event-poll-history-result {
+  color: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
 .event-poll-history-details > summary {
   color: var(--text-muted);
   cursor: pointer;
@@ -904,6 +913,16 @@ textarea {
 .event-poll-vote-person {
   gap: var(--space-3);
   min-height: 28px;
+}
+.event-poll-vote-person .player-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.event-poll-voter-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .event-poll-vote-person time {
   flex: none;
@@ -950,10 +969,6 @@ textarea {
   }
   .event-poll-best-result {
     max-width: 8rem;
-  }
-  .event-poll-progress {
-    align-items: flex-start;
-    flex-direction: column;
   }
   .event-poll-max-field {
     grid-template-columns: minmax(0, 1fr);

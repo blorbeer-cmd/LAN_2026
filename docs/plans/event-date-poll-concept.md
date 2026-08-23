@@ -175,9 +175,13 @@ Der Bereich verwendet ausschließlich die vorhandenen Designbausteine und Tokens
   zusätzlich das beste Ergebnis.
 - Sämtliche zustandsabhängigen Befehle liegen im Kopfmenü **Aktion**. Status und Fortschritt sind
   einheitlich direkt links davon ausgerichtet; das Menü bleibt auch bei eingeklappter Karte erreichbar.
+  Es ist immer nur ein Aktionsmenü geöffnet, ein Klick außerhalb oder Escape schließt es, und die
+  geöffnete Karte liegt vollständig über nachfolgenden Karten.
 - Beim ersten Laden wird eine laufende Abstimmung geöffnet; weitere Karten bleiben eingeklappt.
 - Beendete Abstimmungen liegen in einer eigenen einklappbaren **Beendete Abstimmungen (N)**-Sektion.
-  Innerhalb einer Abstimmung liegen frühere Runden zusätzlich in **Frühere Runden (N)**.
+  Innerhalb einer Abstimmung liegen frühere Runden zusätzlich in **Frühere Runden (N)**. Jede
+  frühere Runde nennt ihr bestes Ergebnis sowie Startzeit, Ersteller und Endzeit bereits vor den
+  einklappbaren Ergebnisdetails.
 - Die globale Suche indexiert je aktiver Event-Arbeitsfläche Titel, Beschreibung, Optionen und
   Optionsnotizen und öffnet die gefundene Karte auch aus einer eingeklappten Historie heraus.
 - Realtime-Aktualisierungen und lokale Aktionen wie „Speichern“ verankern die bisher sichtbare
@@ -199,6 +203,10 @@ Optionen sind kompakte, stabile Zeilen. Jede Option zeigt:
 - nach Ende einer nicht-anonymen Runde eine gemeinsame Aufschlüsselung der abgegebenen
   Antworten ausschließlich über den gemeinsamen Stimmen-Dialog; während der Abstimmung und bei
   anonymen Runden keine Namen.
+
+Antwortfortschritt und Frist stehen ausschließlich im Kartenkopf und werden oberhalb der Optionen
+nicht wiederholt. Im Stimmen-Dialog bilden Avatar, Name und Speicherzeitpunkt je Person eine
+gemeinsam ausgerichtete Zeile.
 
 Die Optionszeile selbst ist nicht aufklappbar. Das Info-Icon der Notiz steht direkt rechts vom Titel,
 danach folgt gegebenenfalls das Link-Icon. Empfehlungsbadges reservieren denselben Zeilenraum wie

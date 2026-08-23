@@ -755,9 +755,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   may additionally carry a short note and a validated HTTP-/HTTPS-link. A poll can be marked
   anonymous in the same dialog; this permanently suppresses voter-to-answer mappings.
   Each poll is one collapsible card. Its current round and response progress stay together; the
-  creator's compact „Bearbeiten“, „Erinnerung versenden (N)“, „Beenden“ and „Abbrechen“
-  actions remain in the card header while collapsed. Earlier rounds live in a nested, initially
-  collapsed history. „Offen“ is both an explicit way to clear a per-option feasibility rating and
+  creator's compact „Bearbeiten“, „Erinnerung versenden (N)“, „Beenden“ and „Löschen“
+  actions remain in the card header while collapsed. They share one „Aktion“ menu; opening one
+  poll's menu closes every other poll menu, clicking outside or pressing Escape closes it, and its
+  card is raised above later siblings while the menu is open. Earlier rounds live in a nested,
+  initially collapsed history and show their best result, start time, creator and end time before
+  the detailed options. „Offen“ is both an explicit way to clear a per-option feasibility rating and
   the resulting incomplete-response count. Repeated reminders reuse one stable notification-center
   entry per poll and recipient, moving it to the top; automatic sends run 48 hours and 2 hours before
   the deadline. While a round is open, its creator can edit title, description, deadline, option
@@ -769,7 +772,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   „Meiste Stimmen“ badge stays on the same title line as the option name. An optional
   response-details disclosure is rendered only after a non-anonymous round has
   ended; the server withholds those identities while a poll is open and for anonymous polls at every
-  status. Poll re-renders preserve the visible card's scroll anchor. Ending a round immediately turns
+  status. Avatar, name and response timestamp share one vertically aligned voter row. Progress and
+  deadline appear once in the card header, not again above the option rows. Poll re-renders preserve
+  the visible card's scroll anchor. Ending a round immediately turns
   its counts into the read-only result overview; there is no separate result-recording action. Event
   cards do not embed or link to poll controls. A poll result changes no event field, schedule revision
   or participation state.

@@ -39,6 +39,8 @@ const dirtyResponseDrafts = new Set();
 const expandedPolls = new Set();
 const expandedHistories = new Set();
 const initializedEvents = new Set();
+let actionMenuController;
+let pendingAnchorFrame;
 
 export function invalidateEventPolls() {
   for (const [eventId, cached] of pollCache) {
@@ -236,7 +238,7 @@ function openVoteDetails(poll) {
                   .sort((left, right) => right.updatedAt - left.updatedAt)
                   .map((person) => {
                     const player = state.players?.find((entry) => entry.id === person.playerId) ?? person;
-                    return `<div class="event-poll-vote-person row-between"><span class="player-name">${avatarHtml(player, 20)}${escapeHtml(person.name)}</span><time class="muted" datetime="${new Date(person.updatedAt).toISOString()}">${escapeHtml(formatDateTime(person.updatedAt))}</time></div>`;
+                    return `<div class="event-poll-vote-person row-between"><span class="player-name">${avatarHtml(player, 20)}<span class="event-poll-voter-name">${escapeHtml(person.name)}</span></span><time class="muted" datetime="${new Date(person.updatedAt).toISOString()}">${escapeHtml(formatDateTime(person.updatedAt))}</time></div>`;
                   }).join('')}
               </div>`).join('')}
           </section>`;
@@ -343,7 +345,6 @@ function renderPollActions(poll) {
 }
 
 function renderRound(poll) {
-  const answered = poll.invitees.filter((invitee) => invitee.hasAnswered).length;
   const mode = MODE_INFO[poll.responseMode] ?? MODE_INFO.feasibility;
   const maxCopy = poll.responseMode === 'multiple_choice' && poll.maxSelections ? ` · höchstens ${poll.maxSelections}` : '';
   const anonymousCopy = poll.anonymous ? ' · Anonym' : '';
@@ -352,9 +353,6 @@ function renderRound(poll) {
     <section class="stack event-poll-round" data-poll-round="${escapeHtml(poll.id)}">
       ${modeCopy ? `<span class="muted">${escapeHtml(modeCopy)}</span>` : ''}
       ${poll.note ? `<p class="event-poll-note">${escapeHtml(poll.note)}</p>` : ''}
-      <div class="event-poll-progress row-between">
-        <span>${answered} von ${poll.invitees.length} haben abgestimmt</span><span>Frist: ${formatDate(poll.responseDueAt)}</span>
-      </div>
       ${poll.status !== 'open' && poll.status !== 'cancelled' ? '<div class="section-title event-poll-result-title">Ergebnis</div>' : ''}
       <div class="stack event-poll-options">${poll.options.map((option) => renderOption(poll, option)).join('')}</div>
       ${poll.isInvitee && poll.status === 'open'
@@ -365,12 +363,16 @@ function renderRound(poll) {
 
 function renderHistoryRound(poll) {
   const status = pollStatusInfo(poll.status);
+  const bestResult = bestResultLabel(poll);
+  const answered = poll.invitees.filter((entry) => entry.hasAnswered).length;
   return `
     <div class="tournament-section-panel event-poll-history-round">
       <div class="row-between"><strong>Runde ${poll.roundNumber}</strong><span class="badge ${status.badge}">${status.label}</span></div>
-      <span class="muted">Frist: ${formatDate(poll.responseDueAt)} · ${poll.invitees.filter((entry) => entry.hasAnswered).length} von ${poll.invitees.length} abgestimmt${poll.anonymous ? ' · Anonym' : ''}</span>
+      <span class="event-poll-history-result">${bestResult ? `Sieger: ${escapeHtml(bestResult)}` : 'Ergebnis: Keine Stimmen'}</span>
+      <span class="muted">Gestartet: ${formatDateTime(poll.createdAt)} · von ${escapeHtml(poll.createdByName ?? 'Unbekannt')}</span>
+      <span class="muted">Beendet: ${formatDateTime(poll.updatedAt)} · Frist: ${formatDate(poll.responseDueAt)} · ${answered} von ${poll.invitees.length} abgestimmt${poll.anonymous ? ' · Anonym' : ''}</span>
       <details class="event-poll-history-details">
-        <summary>Optionen und Antworten</summary>
+        <summary>Ergebnisdetails</summary>
         <div class="stack event-poll-options">${poll.options.map((option) => renderOption(poll, option)).join('')}</div>
       </details>
     </div>`;
@@ -736,7 +738,46 @@ function removeCachedPollSeries(eventId, decisionKey, ctx) {
   return refreshPolls(eventId, ctx);
 }
 
+function wirePollActionMenus(container) {
+  actionMenuController?.abort();
+  actionMenuController = new AbortController();
+  const { signal } = actionMenuController;
+  const menus = [...container.querySelectorAll('.event-poll-action-menu')];
+  const markCard = (menu, open) => menu.closest('.event-poll-card')?.classList.toggle('has-open-action-menu', open);
+  const closeMenu = (menu) => {
+    if (!menu.open) return;
+    menu.open = false;
+    markCard(menu, false);
+  };
+
+  menus.forEach((menu) => menu.addEventListener('toggle', () => {
+    if (!menu.open) {
+      markCard(menu, false);
+      return;
+    }
+    menus.forEach((other) => {
+      if (other !== menu) closeMenu(other);
+    });
+    markCard(menu, true);
+  }, { signal }));
+
+  document.addEventListener('pointerdown', (event) => {
+    if (event.target instanceof Element && event.target.closest('.event-poll-action-menu')) return;
+    menus.forEach(closeMenu);
+  }, { signal });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    const openMenu = menus.find((menu) => menu.open);
+    if (!openMenu) return;
+    event.preventDefault();
+    closeMenu(openMenu);
+    openMenu.querySelector('summary')?.focus();
+  }, { signal });
+}
+
 function wirePollActions(container, event, polls, ctx) {
+  wirePollActionMenus(container);
   container.querySelectorAll('.event-poll-action-menu-panel button').forEach((button) => button.addEventListener('click', () => {
     button.closest('.event-poll-action-menu').open = false;
   }));
@@ -775,6 +816,7 @@ function wirePollActions(container, event, polls, ctx) {
   container.querySelectorAll('[data-save-poll]').forEach((button) => button.addEventListener('click', async () => {
     const poll = findPoll(polls, button.dataset.savePoll);
     if (!poll || !responseDraftIsValid(poll)) return showToast('Bitte die Abstimmung vollständig beantworten.', { error: true });
+    const viewportAnchor = pollViewportAnchor(container, button.closest('[data-poll-group]')?.dataset.pollGroup);
     button.disabled = true;
     const draft = responseDraftFor(poll);
     try {
@@ -785,6 +827,9 @@ function wirePollActions(container, event, polls, ctx) {
       );
       const updatedPoll = await api.eventPolls.submitMyResponses(event.id, poll.id, responses);
       await replaceCachedPoll(event.id, updatedPoll, ctx, { resetResponses: true });
+      if (viewportAnchor) {
+        schedulePollViewportAnchorRestore(container, [viewportAnchor], pollScrollContainer(container).scrollTop);
+      }
       showToast('Antwort gespeichert.');
     } catch (error) {
       button.disabled = false;
@@ -849,7 +894,7 @@ function wirePollActions(container, event, polls, ctx) {
 }
 
 function visiblePollViewportAnchors(container) {
-  const viewport = container.getBoundingClientRect();
+  const viewport = pollScrollContainer(container).getBoundingClientRect();
   return [...container.querySelectorAll('[data-poll-group]')]
     .map((element) => {
       const rect = element.getBoundingClientRect();
@@ -863,16 +908,41 @@ function visiblePollViewportAnchors(container) {
     .sort((a, b) => Math.abs(a.offset) - Math.abs(b.offset));
 }
 
+function pollScrollContainer(container) {
+  return container.closest('.view-container') ?? container;
+}
+
 function restorePollViewportAnchor(container, anchors, previousScrollTop) {
-  container.scrollTop = previousScrollTop;
-  const viewportTop = container.getBoundingClientRect().top;
+  const scrollContainer = pollScrollContainer(container);
+  scrollContainer.scrollTop = previousScrollTop;
+  const viewportTop = scrollContainer.getBoundingClientRect().top;
   const cards = [...container.querySelectorAll('[data-poll-group]')];
   for (const anchor of anchors) {
     const element = cards.find((card) => card.dataset.pollGroup === anchor.id);
     if (!element || element.getClientRects().length === 0) continue;
-    container.scrollTop += element.getBoundingClientRect().top - viewportTop - anchor.offset;
+    scrollContainer.scrollTop += element.getBoundingClientRect().top - viewportTop - anchor.offset;
     return;
   }
+}
+
+function pollViewportAnchor(container, decisionKey) {
+  if (!decisionKey) return null;
+  const viewportTop = pollScrollContainer(container).getBoundingClientRect().top;
+  const element = [...container.querySelectorAll('[data-poll-group]')]
+    .find((card) => card.dataset.pollGroup === decisionKey);
+  if (!element) return null;
+  return { id: decisionKey, offset: element.getBoundingClientRect().top - viewportTop };
+}
+
+function schedulePollViewportAnchorRestore(container, anchors, previousScrollTop) {
+  restorePollViewportAnchor(container, anchors, previousScrollTop);
+  if (pendingAnchorFrame) cancelAnimationFrame(pendingAnchorFrame);
+  pendingAnchorFrame = requestAnimationFrame(() => {
+    pendingAnchorFrame = requestAnimationFrame(() => {
+      pendingAnchorFrame = undefined;
+      if (container.isConnected) restorePollViewportAnchor(container, anchors, previousScrollTop);
+    });
+  });
 }
 
 export function renderEventPolls(container, ctx) {
@@ -899,7 +969,7 @@ export function renderEventPolls(container, ctx) {
   else content = `
     ${activeGroups.length ? `<div class="stack event-poll-list">${activeGroups.map(renderPollGroup).join('')}</div>` : ''}
     ${renderEndedPolls(endedGroups, event.id)}`;
-  const scrollTop = container.scrollTop;
+  const scrollTop = pollScrollContainer(container).scrollTop;
   const viewportAnchors = visiblePollViewportAnchors(container);
   container.innerHTML = `
     <div class="stack event-polls-page" data-event-polls-event="${escapeHtml(event.id)}">
@@ -908,7 +978,7 @@ export function renderEventPolls(container, ctx) {
       </div>
       ${content}
     </div>`;
-  restorePollViewportAnchor(container, viewportAnchors, scrollTop);
+  schedulePollViewportAnchorRestore(container, viewportAnchors, scrollTop);
   wireInfoTooltips(container);
   container.querySelector('#new-event-poll')?.addEventListener('click', () => openPollForm(event, ctx));
   container.querySelector('#retry-event-polls')?.addEventListener('click', () => {

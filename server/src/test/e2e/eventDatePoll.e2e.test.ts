@@ -222,6 +222,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(await ownerPoll.locator('[data-poll-response="if_needed"]').count(), 2);
   assert.equal(await ownerPoll.locator('[data-poll-response="cannot"]').count(), 2);
   assert.equal(await ownerPoll.locator('[data-poll-response="open"]').count(), 2);
+  assert.equal(await ownerPoll.locator('.event-poll-progress').count(), 0, 'progress and deadline are not repeated above the options');
 
   await navigate(memberPage, 'eventPolls');
   const memberPoll = memberPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
@@ -253,12 +254,33 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await voteDialog.waitFor();
   assert.match((await voteDialog.textContent()) ?? '', new RegExp(MEMBER_NAME));
   assert.match((await voteDialog.textContent()) ?? '', /\d{2}:\d{2}/, 'the vote dialog shows when the response was saved');
+  const voterAvatar = voteDialog.locator('.event-poll-vote-person .avatar-dot, .event-poll-vote-person .avatar-img').first();
+  const voterName = voteDialog.locator('.event-poll-voter-name').first();
+  const voterAlignment = await voteDialog.locator('.event-poll-vote-person .player-name').first().evaluate((element) => {
+    const styles = getComputedStyle(element);
+    return { display: styles.display, alignItems: styles.alignItems };
+  });
+  assert.ok(voterAlignment.display.includes('flex') && voterAlignment.alignItems === 'center', 'the voter identity uses a centered flex row');
+  assert.equal(await voterAvatar.count(), 1);
+  assert.equal(await voterName.count(), 1);
   await voteDialog.locator('[data-close]').click();
   assert.equal(await closed.locator('.event-poll-result-title', { hasText: 'Ergebnis' }).count(), 1);
   assert.equal(await closed.locator('[data-decide-poll]').count(), 0, 'the closed counts are the result; there is no second decision step');
-  await closed.locator('.event-poll-action-menu > summary').click();
-  assert.equal(await closed.locator('[data-new-poll-round]', { hasText: 'Erneut abstimmen' }).count(), 1);
-  await closed.locator('.event-poll-action-menu > summary').click();
+  await choosePollAction(closed, '[data-new-poll-round]');
+  await ownerPage.waitForSelector('#event-poll-form');
+  await ownerPage.click('#event-poll-form button[type="submit"]');
+  await ownerPage.waitForSelector('#event-poll-form', { state: 'detached' });
+  await ownerPage.waitForFunction(() => {
+    const poll = Array.from(document.querySelectorAll('[data-poll-group]')).find((element) => element.textContent?.includes('Welcher Zeitraum passt?'));
+    return poll?.textContent?.includes('Runde 2');
+  });
+  const repeated = ownerPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
+  const previousRounds = repeated.locator('.event-poll-history');
+  if (!(await previousRounds.evaluate((details) => (details as HTMLDetailsElement).open))) await previousRounds.locator(':scope > summary').click();
+  const previousRoundText = (await previousRounds.locator('.event-poll-history-round').textContent()) ?? '';
+  assert.match(previousRoundText, /Sieger: Erstes Wochenende/, 'the earlier round exposes its winner directly');
+  assert.match(previousRoundText, /Gestartet: .* von E2E Poll Owner/, 'the earlier round exposes when and by whom it started');
+  assert.match(previousRoundText, /Beendet:/, 'the earlier round exposes when it ended');
 
   await createPoll(memberPage, {
     title: 'Welche Verpflegung?',
@@ -268,6 +290,10 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   });
   const memberCreated = memberPage.locator('[data-poll-group]', { hasText: 'Welche Verpflegung?' });
   await memberCreated.waitFor();
+  await memberPage.waitForFunction(() => {
+    const poll = Array.from(document.querySelectorAll('[data-poll-group]')).find((element) => element.textContent?.includes('Welcher Zeitraum passt?'));
+    return poll?.textContent?.includes('Runde 2');
+  });
   assert.equal(await memberCreated.locator('[data-poll-choice]').count(), 3, 'a regular participant can create a poll');
   assert.deepEqual(
     await memberCreated.locator('[data-poll-choice]').allTextContents(),
@@ -276,16 +302,27 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await memberCreated.locator('[data-poll-choice]').first().tap();
   const pollViewport = memberPage.locator('#view-container');
   await pollViewport.evaluate((element) => { element.scrollTop = element.scrollHeight; });
-  const beforeSaveTop = await memberCreated.evaluate((element) => element.getBoundingClientRect().top);
-  const beforeSaveHeight = await memberCreated.evaluate((element) => element.getBoundingClientRect().height);
-  await memberCreated.locator('[data-save-poll]').tap();
+  const savePollButton = memberCreated.locator('[data-save-poll]');
+  await savePollButton.evaluate((button) => button.addEventListener('pointerdown', () => {
+    const card = button.closest('[data-poll-group]');
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    const testWindow = window as typeof window & { __eventPollBeforeSave?: { top: number; height: number } };
+    testWindow.__eventPollBeforeSave = { top: rect.top, height: rect.height };
+  }, { once: true }));
+  await savePollButton.tap();
   await memberPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
+  const beforeSave = await memberPage.evaluate(() => {
+    const testWindow = window as typeof window & { __eventPollBeforeSave?: { top: number; height: number } };
+    return testWindow.__eventPollBeforeSave;
+  });
+  assert.ok(beforeSave, 'the poll position was captured at the actual tap');
   await memberPage.waitForTimeout(300);
   const afterSaveTop = await memberCreated.evaluate((element) => element.getBoundingClientRect().top);
   const afterSaveHeight = await memberCreated.evaluate((element) => element.getBoundingClientRect().height);
   assert.ok(
-    Math.abs(afterSaveTop - beforeSaveTop) <= 24,
-    `saving keeps the visible poll anchored instead of jumping to the top (${beforeSaveTop}/${beforeSaveHeight} -> ${afterSaveTop}/${afterSaveHeight})`,
+    Math.abs(afterSaveTop - beforeSave.top) <= 24,
+    `saving keeps the visible poll anchored instead of jumping to the top (${beforeSave.top}/${beforeSave.height} -> ${afterSaveTop}/${afterSaveHeight})`,
   );
   assert.deepEqual(await memberCreated.locator('[data-poll-choice]').allTextContents(), ['Ausgewählt', 'Wählen', 'Wählen']);
   assert.equal(await memberCreated.locator('.event-poll-option-header .badge', { hasText: 'Meiste Stimmen' }).count(), 1);
@@ -377,6 +414,21 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   });
   const anonymousPoll = ownerPage.locator('[data-poll-group]', { hasText: 'Anonyme Unterkunftswahl' });
   await anonymousPoll.waitFor();
+  const ratingActionMenu = ratingPoll.locator('.event-poll-action-menu');
+  const anonymousActionMenu = anonymousPoll.locator('.event-poll-action-menu');
+  await ratingActionMenu.locator('summary').click();
+  await ownerPage.waitForFunction(() => document.querySelector('.event-poll-action-menu[open]')?.closest('.event-poll-card')?.classList.contains('has-open-action-menu'));
+  assert.equal(await ratingPoll.evaluate((element) => element.classList.contains('has-open-action-menu')), true);
+  await anonymousActionMenu.evaluate((details) => { (details as HTMLDetailsElement).open = true; });
+  await ownerPage.waitForFunction(() => document.querySelectorAll('.event-poll-action-menu[open]').length === 1);
+  assert.equal(await ratingActionMenu.evaluate((details) => (details as HTMLDetailsElement).open), false, 'opening another action menu closes the previous one');
+  assert.equal(await anonymousActionMenu.evaluate((details) => (details as HTMLDetailsElement).open), true);
+  assert.equal(await anonymousPoll.evaluate((element) => element.classList.contains('has-open-action-menu')), true, 'the open menu raises only its own card');
+  await ownerPage.keyboard.press('Escape');
+  assert.equal(await anonymousActionMenu.evaluate((details) => (details as HTMLDetailsElement).open), false, 'Escape closes the action menu');
+  await anonymousActionMenu.locator('summary').click();
+  await ownerPage.locator('.event-polls-page-actions').click({ position: { x: 1, y: 1 } });
+  assert.equal(await anonymousActionMenu.evaluate((details) => (details as HTMLDetailsElement).open), false, 'clicking outside closes the action menu');
   assert.match((await anonymousPoll.locator('[data-poll-round]').textContent()) ?? '', /Anonym/);
   await anonymousPoll.locator('[data-poll-choice]').first().click();
   await anonymousPoll.locator('[data-save-poll]').click();
