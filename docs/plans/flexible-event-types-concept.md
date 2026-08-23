@@ -23,7 +23,14 @@ Die zentralen Entscheidungen sind:
    Benachrichtigungen und neuen Schreibaktionen. Bestehende Daten werden nie automatisch gelöscht.
 7. Die Navigation richtet sich nach dem aktuell gewählten Event. Eine Gartenparty zeigt also weder
    „Match“ noch „Spiele“ noch Trackingkarten; eine LAN bleibt in der heutigen Struktur vertraut.
-8. Die separat konzipierte Terminfindung bleibt ein eigener Planungsfluss am Event. Sie wird weder
+8. Der **Adminbereich steuert zentral**, welche Bereiche instanzweit verfügbar sind und welche
+   Position sie je Eventtyp standardmäßig erhalten: Hauptnavigation oder „Mehr“. Die
+   Eventerstellung wählt daraus nur die für das einzelne Event aktiven Bereiche.
+9. Nicht nur ganze Seiten, sondern auch eingebettete Funktionen auf Home, Profil, Admin,
+   Onboarding, Suche und Kiosk folgen derselben effektiven Bereichskonfiguration. Ein Sitzplan darf
+   beispielsweise auf einer Feier erscheinen, ein Live-Status-Agent dagegen nur bei aktiviertem
+   Tracking.
+10. Die separat konzipierte Terminfindung bleibt ein eigener Planungsfluss am Event. Sie wird weder
    dupliziert noch als allgemeines Umfragetool in dieses Konzept aufgenommen.
 
 Damit wird kein zweites Eventprodukt neben Respawn gebaut. Die vorhandenen Funktionen werden zu
@@ -67,6 +74,7 @@ Das Ziel ist erreicht, wenn:
 - eine LAN-Party den heutigen Funktionsumfang ohne zusätzliche Einrichtungsarbeit behält,
 - eine benutzerdefinierte Auswahl jederzeit möglich ist,
 - Eventtyp und Bereichsauswahl später gefahrlos angepasst werden können,
+- ein Admin Verfügbarkeit und Navigationsort ohne Codeänderung zentral pflegen kann,
 - deaktivierte Bereiche keine leeren Navigationseinträge oder irreführenden Hinweise hinterlassen,
 - die Oberfläche auf Telefon und Laptop weiterhin schnell erfassbar bleibt.
 
@@ -89,6 +97,9 @@ unter anderem ab:
 | Teams, Captain Draft, Matches und Turniere | vorhanden | optionaler Wettkampfbereich |
 | Arcade, Jam/Musik und Kiosk | vorhanden | optionale Erlebnisbereiche |
 | Sitzplan, Durchsagen, Infoboard und PDF-Andenken | vorhanden | teils Kern, teils optional |
+| Home mit Live-Status, Rangliste und Sitzplan | fest kombiniert | muss in bereichsabhängige Home-Bausteine zerlegt werden |
+| Profil mit Agent, Monitoren und Statistik | fest kombiniert | Identität bleibt Kern; LAN-spezifische Abschnitte werden optional |
+| Admin mit LAN-Bereitschaft, Agent-Diagnose und festen Werkzeugen | fest kombiniert | wird zum dynamischen Event-Cockpit plus zentraler Bereichssteuerung |
 | Dynamische Bereiche pro Event | nicht vorhanden | zentrale strukturelle Lücke |
 | Ablauf/Agenda und Programmpunkte | nicht vorhanden | hohe eventübergreifende Lücke |
 | Individuelle RSVP-Fragen | nicht vorhanden | hohe eventübergreifende Lücke |
@@ -107,6 +118,13 @@ Relevante technische Ausgangspunkte für eine spätere Umsetzung sind insbesonde
 
 - `server/public/index.html`: feste Hauptnavigation,
 - `server/public/js/sectionNav.js`: feste Bereichs- und Tabzuordnung,
+- `server/public/js/views/home.js`: fest eingebettete Live-, Ranglisten- und Sitzplanabschnitte,
+- `server/public/js/views/profile.js`: fest eingebettete Agent-, Tracking-, Monitor- und
+  Statistikabschnitte,
+- `server/public/js/views/admin.js`: fest eingebettete LAN-Bereitschaft, Agent-Diagnose und
+  Werkzeugliste,
+- `server/public/js/views/more.js`, `searchPalette.js`, `onboarding.js` und `aktuellStatus.js`:
+  weitere heute statische oder LAN-bezogene Einstiegspunkte,
 - `server/public/js/viewManifest.js`: vollständiges View-Register,
 - `server/public/js/views/events.js`: heutiger Event-Anlege- und Bearbeitungsfluss,
 - `server/src/routes/events.ts` und `server/src/events.ts`: Eventvertrag und Lebenszyklus,
@@ -195,6 +213,41 @@ Drei Zustände dürfen nicht miteinander vermischt werden:
 Das Aktivieren von „Tracking & Auswertung“ startet deshalb niemals automatisch Tracking. Das
 Aktivieren von „Vote“ eröffnet keine Abstimmung.
 
+### 5.5 Vier Steuerungsebenen
+
+Damit „zentral gesteuert“ und „pro Event individuell“ nicht in Konflikt geraten, wird die
+wirksame Oberfläche aus vier Ebenen gebildet:
+
+1. **Produktkatalog:** Der Code kennt verfügbare Bereiche, Abhängigkeiten und die Oberflächen, auf
+   denen ein Bereich Inhalte beisteuern kann.
+2. **Adminrichtlinie:** Ein Instanzadmin gibt Bereiche grundsätzlich frei oder sperrt sie und legt
+   je Eventtyp deren Standardaktivierung, Navigationsort und Reihenfolge fest.
+3. **Eventkonfiguration:** Ersteller oder Mitorganisator aktivieren für ein einzelnes Event nur
+   Bereiche, die der Admin freigegeben hat. Diese Auswahl bleibt eine Eventmomentaufnahme.
+4. **Rolle und Zustand:** Innerhalb eines aktiven Bereichs entscheiden Berechtigung und Zustand,
+   ob eine konkrete Aktion sichtbar oder erlaubt ist. Ein Adminwerkzeug bleibt beispielsweise
+   admin-only; ein Tracking-Start bleibt bis zu einem festen Termin gesperrt.
+
+Kurzform:
+
+`sichtbar = im Produkt vorhanden ∧ vom Admin freigegeben ∧ im Event aktiviert ∧ für Rolle erlaubt`
+
+Die **Position** eines sichtbaren Bereichs kommt dagegen aus der Adminrichtlinie. Eventersteller
+können in der ersten Ausbaustufe Bereiche an- oder abwählen, aber nicht für alle Teilnehmer
+beliebig umsortieren.
+
+Die Adminrichtlinie unterscheidet drei Änderungen mit bewusst verschiedener Wirkung:
+
+| Adminänderung | Wirkung |
+|---|---|
+| Standardaktivierung eines Eventtyps ändern | gilt nur als Empfehlung für neu angelegte Events; bestehende Eventmomentaufnahmen bleiben gleich |
+| Hauptnavigation/„Mehr“ oder Reihenfolge ändern | gilt sofort für bestehende Events dieses Typs; verändert keine Fachdaten |
+| Bereich instanzweit sperren | nimmt ihn nach Sicherheitsprüfung aus allen Events; Daten und bisherige Eventauswahl bleiben erhalten und werden bei erneuter Freigabe wieder wirksam |
+
+Eine instanzweite Sperre ist damit ein bewusster administrativer Eingriff und kein schneller
+Layoutschalter. Laufende Vorgänge müssen wie beim Deaktivieren eines Eventbereichs zuerst beendet
+werden.
+
 ## 6. Vorgeschlagene Eventtypen
 
 Die Vorauswahl bleibt bewusst klein. Zu viele spezialisierte Typen machen den ersten Schritt
@@ -235,10 +288,11 @@ Später besonders wertvoll:
 - RSVP-Fragen zu Essen/Allergien,
 - Mitbringposten mit benötigter Menge,
 - Plus-1 und Kapazität,
+- optional Tisch-/Sitzordnung für gesetztes Essen oder größere Feier,
 - Schlechtwetter-/Alternativplan,
 - Fotos.
 
-Gaming, Match, Turniere, Arcade, Sitzplan und Tracking sind standardmäßig aus.
+Gaming, Match, Turniere, Arcade, Sitz-/Tischplan und Tracking sind standardmäßig aus.
 
 ### 6.3 Spieleabend
 
@@ -312,7 +366,7 @@ aus. Kernfunktionen sind nicht Teil der Matrix, da sie immer vorhanden sind.
 | Spiele & Spiele-Vote | ● | – | ● | ○ | – | – |
 | Match & Turniere | ● | – | ○ | – | – | – |
 | Arcade | ● | – | ○ | – | – | – |
-| Sitzplan | ● | – | – | ○ | ○ | – |
+| Sitz-/Tischplan | ● | ○ | – | ○ | ○ | – |
 | Tracking & Auswertung | ● | – | – | – | – | – |
 | Kiosk | ● | – | – | – | ○ | – |
 
@@ -335,7 +389,7 @@ Diese Ausbaustufe nutzt fast ausschließlich vorhandene Funktionen.
 | Spiele & Spiele-Vote | Spielekatalog, Bock/Skill, spielbezogene Abstimmung | Katalog bleibt gruppenweit; seine Eventnavigation ist optional |
 | Match & Turniere | Teams, Draft, Matches und Turniere | aktiviert „Spiele“ als harte Abhängigkeit mit |
 | Arcade | Lobbys, Spiele und eventbezogene Ergebnisse | unabhängig von Desktop-Tracking |
-| Sitzplan | Sitzplan und Zuordnung | Teilnehmer erforderlich |
+| Sitz-/Tischplan | Tisch-, Raum-, Zimmer- oder Platzzuordnung; LAN optional mit Arbeitsplätzen | Teilnehmer erforderlich; Monitorbeziehungen nur im LAN-/Arbeitsplatzmodus |
 | Tracking & Auswertung | Agent-Tracking, Live-Status, Spielzeit, Ranglisten und Auswertung | fester Zeitraum, Einwilligung und Agent nötig; Start bleibt separate Aktion |
 | Kiosk | read-only Eventanzeige | Adminzugang und eventgebundener Token; Inhalt richtet sich nach aktivierten Bereichen |
 
@@ -427,6 +481,9 @@ Nach feststehendem Termin:
   darf aber bereits vorher konfiguriert werden.
 - „Sitzplan“, „An- & Abreise“ und Check-in benötigen Teilnehmerdaten, aber keinen eigenen
   Teilnehmerbereich in der Navigation.
+- „Sitzplan“ ist **nicht** grundsätzlich LAN-spezifisch. Er kann bei Feier, Workshop oder Dinner
+  als Tisch-, Raum- oder Platzzuordnung dienen. Die heutige Funktion „Sichtbare Monitore“ ist
+  dagegen eine LAN-Unterfunktion und setzt zusätzlich den Arbeitsplatz-/LAN-Modus voraus.
 - „Kosten“ und „Essen“ sind unabhängig. Eventbeitrag und einzelne Sammelbestellungen dürfen nicht
   miteinander vermischt werden.
 
@@ -453,26 +510,66 @@ Ein Typwechsel öffnet eine Vergleichsansicht:
 
 Nichts wird automatisch abgeschaltet. Der Typ kann geändert werden, während die bestehende
 Bereichsmomentaufnahme unverändert bleibt, oder die organisierende Person übernimmt einzelne
-Empfehlungen bewusst.
+Empfehlungen bewusst. Vor dem Speichern zeigt die Vorschau zusätzlich, wie die vom Admin für den
+neuen Typ festgelegte Hauptnavigation aussehen wird; diese Positionsänderung folgt dem neuen Typ,
+auch wenn die aktive Bereichsauswahl unverändert bleibt.
 
 ## 9. Informationsarchitektur und Navigation
 
 ### 9.1 Grundregel
 
 Der aktive Eventkontext bleibt die zentrale Arbeitsraumgrenze. Die Navigation wird aus den für
-dieses Event aktivierten Bereichen abgeleitet.
+dieses Event aktivierten Bereichen abgeleitet und anschließend mit der zentralen Adminrichtlinie
+geschnitten. Ein Eintrag kann daher nicht allein deshalb erscheinen, weil eine View technisch
+existiert oder historische Daten vorhanden sind.
 
-### 9.2 Telefon-Navigation
+### 9.2 Admin: „Bereiche & Navigation“
+
+Die Steuerung erhält im Adminbereich einen eigenen, immer verfügbaren Einstieg. Sie soll keine
+technische Feature-Flag-Tabelle sein, sondern eine verständliche Vorschau der späteren App.
+
+Der empfohlene Aufbau:
+
+1. **Instanzweite Freigabe:** Liste aller Produktbereiche mit „Verfügbar“ oder „Gesperrt“.
+   Kernfunktionen stehen sichtbar auf „Immer verfügbar“ und können nicht abgeschaltet werden.
+2. **Navigation je Eventtyp:** Auswahl von LAN, Gartenparty, Spieleabend, Trip, Workshop oder
+   Benutzerdefiniert. Pro Bereich legt der Admin „Hauptnavigation“ oder „Mehr“ und eine stabile
+   Reihenfolge fest.
+3. **Standardbereiche je Eventtyp:** Im selben Kontext markiert der Admin, welche freigegebenen
+   Bereiche bei neuen Events empfohlen aktiv sind. Das überschreibt keine bestehenden Events.
+4. **Live-Vorschau:** Telefonvorschau mit Home, bis zu vier Bereichen und Mehr sowie einer Liste
+   der Ziele unter Mehr. Desktop und Rollenfilter brauchen keine eigene Konfiguration.
+5. **Auswirkungsprüfung:** Vor einer instanzweiten Sperre nennt die Oberfläche betroffene Events,
+   laufende Vorgänge und offene Aktionen. Eine reine Positionsänderung kann direkt gespeichert
+   werden.
+
+„Generell im Admin steuern“ bedeutet damit **zentral verwaltet**, aber nicht zwangsläufig „für
+jeden Eventtyp identisch“. Eine einzige globale Reihenfolge wäre zu grob: Für eine LAN sind Match
+und Spiele primär, für einen Trip dagegen Ablauf und Anreise. Die Administration bleibt trotzdem
+an einer Stelle; der gewählte Eventtyp ist lediglich der Konfigurationskontext.
+
+Für die erste Ausbaustufe gelten folgende Grenzen:
+
+- Home und Mehr sind fest und nicht verschiebbar.
+- Pro Eventtyp können höchstens vier Bereiche als Hauptnavigation markiert werden. Der Adminscreen
+  verhindert einen ungültigen fünften Eintrag und zeigt den Engpass direkt in der Vorschau.
+- Ein als „Mehr“ konfigurierter Bereich rückt nicht automatisch nach oben, nur weil andere
+  Hauptbereiche im konkreten Event deaktiviert sind. Dadurch bleibt „Mehr“ eine verlässliche
+  Entscheidung und die Navigation darf bewusst kürzer sein.
+- Eventersteller wählen nur Aktivität, nicht Platzierung. Eine abweichende Position für ein
+  einzelnes Event ist zunächst nicht vorgesehen.
+- Rollenfilter wirken nach der Platzierung: Adminziele erscheinen normalen Teilnehmern weiterhin
+  nicht.
+
+### 9.3 Telefon-Navigation
 
 Die feste Obergrenze von sechs Zielen bleibt erhalten:
 
 1. **Home** ist immer das erste Ziel.
-2. Bis zu vier primäre Eventbereiche folgen in einer produktseitig festgelegten Reihenfolge.
+2. Bis zu vier aktive, vom Admin für den Eventtyp als primär festgelegte Bereiche folgen in der
+   administrierten Reihenfolge.
 3. **Mehr** ist immer das letzte Ziel und enthält die übrigen aktivierten Bereiche sowie Profil und
    berechtigte Adminfunktionen.
-
-Die erste Ausbaustufe bietet keine freie Drag-and-drop-Sortierung. Eine stabile, presetabhängige
-Reihenfolge ist leichter zu erlernen, zu testen und zwischen Teilnehmern zu erklären.
 
 Beispiele:
 
@@ -483,7 +580,10 @@ Beispiele:
 | Wochenendtrip | Home · Ablauf · Orga · Kosten · Mehr |
 | Workshop | Home · Ablauf · Orga · Mehr |
 
-### 9.3 Bereiche mit Tabs
+Das sind auslieferungsseitige Startwerte. Ein Admin kann sie zentral anpassen; alle Personen sehen
+innerhalb desselben Eventtyps dieselbe Platzierung.
+
+### 9.4 Bereiche mit Tabs
 
 Nur aktivierte Tabs werden angezeigt. Besitzt ein Bereich danach nur noch einen Tab, entfällt die
 Tabzeile vollständig. Beispiele:
@@ -492,7 +592,7 @@ Tabzeile vollständig. Beispiele:
 - Match erscheint nur, wenn Teams oder Turniere aktiv sind.
 - Auswertung erscheint nur bei Tracking/Auswertung und bleibt rollenabhängig.
 
-### 9.4 Home als Event-Cockpit
+### 9.5 Home als Event-Cockpit
 
 Home zeigt keine leeren Standardkarten, sondern relevante Zustände in vier Prioritätsstufen:
 
@@ -505,7 +605,89 @@ Home zeigt keine leeren Standardkarten, sondern relevante Zustände in vier Prio
 
 Eine deaktivierte Funktion erzeugt weder eine Homekarte noch einen leeren Zustand.
 
-### 9.5 Suche, Push und Deep Links
+Die heutige Home-Seite muss dafür in unabhängige Beiträge zerlegt werden:
+
+| Home-Baustein | Wann sichtbar? | Zielbild |
+|---|---|---|
+| Eventüberblick mit Termin, Ort, Status und Teilnehmerzahl | immer | neutraler Kern statt LAN-Begriffen wie „Spieler“ |
+| „Du musst handeln“ und „Als Nächstes“ | Container nur bei Inhalt | sammelt ausschließlich Aktionen aktiver Bereiche |
+| Teilnehmer/Gäste | immer erreichbar; kompakte Home-Vorschau, wenn Platz | statische Teilnahme darf nicht vom Agent-Live-Status abhängen |
+| Live-Status, „Dein Status“, aktive Spiele | nur Tracking & Auswertung | vollständig ausblenden, wenn kein Tracking vorgesehen ist |
+| Ranglistenvorschau | nur Tracking/Auswertung oder Wettkampfergebnisse und passende Rolle | kein leerer Adminlink bei Feier oder Workshop |
+| Sitz-/Tischplanvorschau | nur Sitzplan | für Feier und Workshop ebenso zulässig wie für LAN |
+| nächster Ablaufpunkt | nur Ablauf | für Workshop, Trip und Feier hoher Home-Rang |
+| offene Zusage/Teilnahmefragen | Einladung beziehungsweise Teilnahmefragen | persönlich und vor allgemeinen Hinweisen |
+| Mitbring-, Helfer- und Aufgabenstatus | Aufgaben/Slots | nur persönliche oder zeitkritische Einträge zeigen |
+| Essen, Zahlung, Vote, Turnier, Arcade, Musik | jeweiliger Bereich | bestehende „Aktuell“-Karten einzeln an den Bereich koppeln |
+| Anreise, Check-in oder Kapazität | jeweiliger Bereich | nur Abweichungen und Handlungsbedarf, keine dauerhaften Leerstände |
+
+Der zentrale Teilnehmerüberblick und der technische Live-Status werden ausdrücklich getrennt.
+Heute ersetzt der Live-Status faktisch die Teilnehmerliste; das funktioniert ohne Tracking nicht.
+
+### 9.6 Profil, Admin und weitere Querschnittsflächen
+
+Bereiche bestehen nicht nur aus Navigationszielen. Jeder Bereich beschreibt, ob er Beiträge zu
+Home, Profil, Admin, Suche, Kiosk, Onboarding und Benachrichtigungen liefert. Diese Zuordnung ist
+Teil des Produktkatalogs und wird nicht als Sammlung dutzender unabhängiger Adminschalter
+angeboten. So genügt beispielsweise „Tracking deaktiviert“, um Agent-Setup, Monitorlogik,
+Statistikhinweise und LAN-Onboarding konsistent zu entfernen.
+
+#### Profil
+
+Das Profil bleibt kurz und trennt globale Kontodaten von eventbezogenen Angaben:
+
+| Profilfunktion | Einordnung |
+|---|---|
+| Profilbild, Anzeigename/Name, Farbe, Passwort, Abmelden | immer sichtbar; globale Identität und Sicherheit |
+| offene Eventeinladungen | immer, wenn vorhanden |
+| Push-Grundaktivierung | immer; Themenkanäle nur für aktive Bereiche des gewählten Events |
+| „Für dieses Event“ mit eigener Zusage, Antworten, Plus-1, Beitrag, Anreise, Slot oder Sitzplatz | nur die jeweils aktivierten Bereiche; sensible Antworten bleiben eventbezogen und werden nicht ungefragt als globale Präferenz gespeichert |
+| Bock-/Skill-Hinweis | nur Spiele; niemals Pflicht-Onboarding bei Feier, Trip oder Workshop |
+| Live-Status-Agent, Trackingpause, Aktivitätstracking, Download und API-Key | nur Tracking & Auswertung; technische Details optional unter „Erweitert“ |
+| „Sichtbare Monitore“ | nur Sitzplan **und** LAN-/Arbeitsplatzmodus; nicht bei einem Tischplan für Dinner oder Workshop |
+| „Meine Statistiken“ | nur bei persönlichen Ergebnissen aus Tracking, Match oder Arcade; bei leerer Historie kein leerer Link |
+| Benachrichtigungseinstellungen pro Event | sobald mindestens ein optionaler Bereich Mitteilungen erzeugt |
+
+Hat eine Person Zugriff auf ein anderes Tracking-Event, bleibt die Agentkonfiguration dort
+erreichbar. Sie muss nicht im Profil einer aktuell gewählten Gartenparty sichtbar bleiben.
+
+#### Admin
+
+Der Adminbereich wird selbst modular:
+
+| Adminfunktion | Einordnung |
+|---|---|
+| Bereiche & Navigation | immer; zentrale Instanz- und Eventtypsteuerung |
+| Eventverwaltung, Konten/Rollen, Einladungslinks, Backup, Sicherheit, Feedback | immer |
+| „Event-Bereitschaft“ | immer als Hülle, aber aus Prüfungen aktiver Bereiche zusammengesetzt; Bezeichnung nicht fest „LAN-Bereitschaft“ |
+| Agent-Diagnose und Trackingbereitschaft | nur Tracking & Auswertung |
+| Spiele-/Prozessdiagnose und spielbezogene Testdaten | nur Spiele beziehungsweise Tracking |
+| Sitz-/Tischplan-Werkzeug | nur Sitzplan |
+| Kioskverwaltung | nur Kiosk |
+| Rangliste, Statistik und Hall of Fame | nur Tracking/Auswertung oder passende Wettkampfergebnisse |
+| Zahlungs-/Abrechnungswerkzeuge | nur Kosten |
+| Datenschutz-/Aufbewahrungsprüfung | sobald sensible Teilnahmefragen oder Check-in-Daten genutzt werden |
+| Nutzungsauswertung | instanzweites Produktwerkzeug, unabhängig vom Eventtyp |
+
+Zusätzlich ist eine Adminaktion „Als Teilnehmer ansehen“ sinnvoll. Sie zeigt die effektive
+Navigation und Home ohne Adminziele und verhindert, dass eine scheinbar aufgeräumte
+Administratorenansicht eine unpassende Teilnehmeroberfläche verdeckt.
+
+#### Mehr, Suche, Onboarding, Info und Kiosk
+
+- „Mehr“ enthält nur aktive, dort platzierte Bereiche sowie Profil und rollenberechtigte
+  Adminziele. Es ist kein Ablageort für deaktivierte Funktionen.
+- Suche indexiert nur aktive Bereiche und deren erlaubte Inhalte. Beschreibungstexte passen sich
+  an; „Profil, Agent und Push“ darf ohne Tracking nicht weiter den Agent bewerben.
+- Onboarding wird aus den aktiven Bereichen zusammengesetzt. Die heutige Pflichtbewertung von
+  Bock/Skill entfällt vollständig, wenn Spiele deaktiviert sind.
+- Eventinfo bleibt Kern, seine Inhalte werden aber neutral: WLAN, Discord, Gameserver und
+  Monitorhinweise erscheinen nur, wenn sie für das Event gepflegt beziehungsweise relevant sind;
+  Anfahrt, Barrierefreiheit, Parken oder Schlechtwetterplan funktionieren unabhängig davon.
+- Der Kiosk rendert nur freigegebene Eventbausteine. Ein Feier-Kiosk kann Ablauf, Hinweise und
+  Sitz-/Tischplan zeigen, ohne Rang, Vote oder Live-Tracking zu erwähnen.
+
+### 9.7 Suche, Push und Deep Links
 
 - Die globale Suche listet nur Ziele aktiver Bereiche.
 - Ein Deep Link in einen deaktivierten Bereich führt zum Event-Home mit der knappen Erklärung
@@ -523,7 +705,8 @@ Eine deaktivierte Funktion erzeugt weder eine Homekarte noch einen leeren Zustan
 1. Organisierende Person wählt „Event anlegen“.
 2. Sie wählt unter „Was planst du?“ einen Eventtyp.
 3. Sie gibt Name, Terminstrategie, Zeitraum, Ort und optionale Notiz ein.
-4. Eine kompakte Zusammenfassung zeigt „Empfohlene Bereiche“.
+4. Eine kompakte Zusammenfassung zeigt die vom Admin freigegebenen und für diesen Typ empfohlenen
+   Bereiche.
 5. Mit „Event anlegen“ wird die Empfehlung übernommen.
 6. Home öffnet das neue Event und zeigt die nächsten sinnvollen Schritte: Termin klären,
    Teilnehmer einladen, Ort ergänzen oder relevante Bereiche einrichten.
@@ -537,18 +720,37 @@ Der schnelle Weg darf keine vollständige Funktionsmatrix erzwingen.
 3. Kernfunktionen sind sichtbar als „Immer dabei“, aber nicht als deaktivierbare Checkboxen.
 4. Empfohlene Bereiche sind bereits gewählt und mit „Empfohlen“ gekennzeichnet.
 5. Das Aktivieren einer harten Abhängigkeit erklärt und aktiviert diese sofort.
-6. Eine kleine Navigationsvorschau zeigt, wie der Event-Arbeitsraum aussehen wird.
+6. Eine kleine Navigationsvorschau zeigt, wie der Event-Arbeitsraum mit der administrierten
+   Platzierung aussehen wird. Die Vorschau ist hier informativ, nicht umsortierbar.
 7. Das Event wird mit dieser Momentaufnahme angelegt.
 
 ### 10.3 Bestehendes Event anpassen
 
 1. Unter Eventdetails öffnet ein Organisator „Bereiche verwalten“.
-2. Die Oberfläche zeigt aktiv, empfohlen und zusätzlich verfügbar.
+2. Die Oberfläche zeigt aktiv, empfohlen und zusätzlich vom Admin verfügbar. Instanzweit
+   gesperrte Bereiche werden nicht als scheinbar aktivierbare Option angeboten.
 3. Das Ausschalten eines unbenutzten Bereichs wirkt direkt nach Bestätigung.
 4. Bei vorhandenen Daten nennt die Oberfläche offene Vorgänge und verlangt deren Abschluss.
 5. Nach dem Speichern aktualisieren sich Navigation, Suche, Home und offene Clients in Echtzeit.
 
-### 10.4 Einladung aus Teilnehmersicht
+### 10.4 Admin ändert Bereiche und Navigation
+
+1. Admin öffnet „Bereiche & Navigation“ und wählt einen Eventtyp.
+2. Die Vorschau zeigt dessen Standardbereiche, vier mögliche Hauptplätze und die Liste unter
+   „Mehr“.
+3. Admin ändert Standardaktivierung, Platzierung oder Reihenfolge.
+4. Die Oberfläche unterscheidet klar: „gilt für neue Events“ bei Empfehlungen und „ändert die
+   Navigation bestehender Events“ bei Platzierung.
+5. Speichern verteilt die neue Position in Echtzeit an geöffnete Events dieses Typs. Die aktive
+   Bereichsauswahl und Fachdaten bleiben unverändert.
+6. Bei einer instanzweiten Sperre folgt stattdessen eine Auswirkungsansicht. Sie blockiert, solange
+   betroffene Events laufendes Tracking, offene Abstimmungen oder andere nicht sicher
+   unterbrechbare Vorgänge besitzen.
+
+Ein Bereich, der für ein konkretes Event nicht aktiviert ist, erscheint trotz Hauptplatzierung
+nicht. Sind dadurch nur zwei primäre Bereiche aktiv, bleibt die Navigation bewusst kürzer.
+
+### 10.5 Einladung aus Teilnehmersicht
 
 1. Die Einladung zeigt ausschließlich Eventkern, Kostenhinweis und gegebenenfalls relevante
    Teilnahmefragen.
@@ -558,7 +760,7 @@ Der schnelle Weg darf keine vollständige Funktionsmatrix erzwingen.
 5. Eine spätere wesentliche Änderung an Termin, Ort oder Kosten erzeugt eine klare persönliche
    Aktualisierung.
 
-### 10.5 Event kopieren
+### 10.6 Event kopieren
 
 „Als Vorlage verwenden“ übernimmt:
 
@@ -566,6 +768,9 @@ Der schnelle Weg darf keine vollständige Funktionsmatrix erzwingen.
 - aktivierte Bereiche,
 - nicht personenbezogene Bereichseinstellungen,
 - optional wiederverwendbare Aufgaben- und Beitragsvorlagen.
+
+Die Navigationsposition wird nicht in die Eventkopie eingebrannt; sie folgt weiterhin der aktuellen
+Adminrichtlinie für den Eventtyp.
 
 Nicht übernommen werden:
 
@@ -577,7 +782,7 @@ Nicht übernommen werden:
 - Matches, Turniere und Arcade-Ergebnisse,
 - sensible Teilnahmefragen-Antworten.
 
-### 10.6 Live- und Abschlussphase
+### 10.7 Live- und Abschlussphase
 
 Während des Events priorisiert Home laufende Bereiche und nächste Programmpunkte. Nach dem Ende
 wechseln die Schwerpunkte auf:
@@ -698,15 +903,43 @@ Pro Event und Bereich:
 - stabiler `feature_key`,
 - aktiviert/deaktiviert,
 - Zeitpunkt und Akteur der letzten Änderung,
-- optional eine produktseitige Navigationspriorität,
 - keine beliebige unvalidierte Geschäftslogik in einem universellen JSON-Feld.
 
 Bereichsspezifische Einstellungen bleiben in ihren fachlichen Tabellen oder validierten
 Konfigurationen. Die Bereichstabelle beantwortet nur, ob die Fähigkeit zum Event gehört.
 
+### Produktkatalog
+
+Jeder Bereich besitzt einen versionierten Produktdeskriptor:
+
+- stabiler Schlüssel, Titel, Icon und Beschreibung,
+- Kern oder optional,
+- harte und weiche Abhängigkeiten,
+- mögliche Views und Tabs,
+- Beiträge zu Home, Profil, Admin, Suche, Kiosk, Onboarding und Benachrichtigungen,
+- zulässige Rollen und Bereichszustände,
+- sichere Prüfregel vor Deaktivierung beziehungsweise instanzweitem Sperren.
+
+Dieser Deskriptor verhindert verstreute Sonderprüfungen wie „wenn Gartenparty, dann Agent
+verstecken“. Oberflächen fragen stattdessen die wirksame Fähigkeit ab.
+
+### Adminrichtlinie
+
+Persistiert werden mindestens:
+
+- instanzweite Freigabe je `feature_key`,
+- pro `event_type_key` die Standardaktivierung für neue Events,
+- pro `event_type_key` die Platzierung `primary` oder `more`,
+- pro `event_type_key` eine eindeutige Reihenfolge,
+- Änderungszeitpunkt und Adminakteur.
+
+Kernfunktionen können gespeichert angezeigt, aber nicht auf „gesperrt“ gesetzt werden. Für die
+Hauptnavigation validiert das System maximal vier primäre optionale Bereiche pro Eventtyp. Die
+Adminrichtlinie verändert keine Berechtigungsregeln und enthält keine fachlichen Bereichsdaten.
+
 ### Preset-Register
 
-Die Presets liegen versioniert im Anwendungscode:
+Die Produktpresets liegen versioniert im Anwendungscode und dienen als sichere Startwerte:
 
 - Titel und Beschreibung,
 - empfohlene Bereiche,
@@ -714,8 +947,10 @@ Die Presets liegen versioniert im Anwendungscode:
 - Navigationspriorität,
 - Abhängigkeiten.
 
-Das Event speichert beim Anlegen die tatsächliche Auswahl. Dadurch ist ein Preset-Update für neue
-Events risikolos und bestehende Events bleiben reproduzierbar.
+Beim ersten Einsatz werden daraus Adminrichtlinien vorbelegt. Danach kann ein Admin die
+Standardaktivierung und Platzierung ohne Codeänderung anpassen. Das Event speichert beim Anlegen
+weiterhin die tatsächliche Bereichsauswahl. Dadurch ändern neue Empfehlungen keine bestehenden
+Eventmomentaufnahmen; zentrale Platzierungsänderungen bleiben dennoch bewusst sofort wirksam.
 
 ## 15. Zustände und Randfälle
 
@@ -728,6 +963,13 @@ Events risikolos und bestehende Events bleiben reproduzierbar.
 | Event hat noch keinen Termin | Ablauf mit absoluten Zeiten, Tracking und Kalenderexport bleiben gesperrt; Terminfindung ist möglich. |
 | Trackingbereich ist aktiviert, Tracking aber aus | Bereich zeigt Einrichtungs-/Pausenzustand, nicht „läuft“. |
 | Ein Preset wird im Produkt geändert | Nur neu angelegte Events erhalten die neue Empfehlung. |
+| Admin ändert die Standardaktivierung eines Typs | Nur neue Events erhalten die Empfehlung; bestehende Momentaufnahmen bleiben gleich. |
+| Admin verschiebt einen Bereich zwischen Hauptnavigation und Mehr | Geöffnete Events dieses Typs aktualisieren die Navigation in Echtzeit; die aktuelle View bleibt offen, sofern der Bereich aktiv und erlaubt ist. |
+| Admin markiert einen fünften Hauptbereich | Speichern wird mit konkretem Hinweis blockiert; kein stiller Überlauf nach Mehr. |
+| Als primär markierter Bereich ist im Event aus | Eintrag fehlt; kein anderer Mehr-Bereich rückt ungefragt nach. |
+| Admin will einen Bereich instanzweit sperren | Betroffene Events und offene Vorgänge werden geprüft; Sperre löscht keine Daten und darf laufende Vorgänge nicht unsauber abbrechen. |
+| Sitzplan ist aktiv, Tracking aber aus | Allgemeine Tisch-/Platzzuordnung bleibt sichtbar; Monitorbeziehungen und Agentfunktionen fehlen. |
+| Aktives Event hat kein Tracking | Profil zeigt keinen Agentzwang, keine Monitorangaben, keine leeren persönlichen Trackingstatistiken und kein Spiele-Pflichtonboarding. |
 | Letzter sichtbarer Tab wird deaktiviert | Tabzeile verschwindet, verbleibende View wird direkt geöffnet. |
 | Alle optionalen Bereiche sind aus | Home, Eventdetails, Teilnehmer, Benachrichtigungen und Mehr bleiben vollständig nutzbar. |
 | Event wird beendet | Operative Mutationen stoppen, Historie/Abrechnung/Export bleiben zugänglich. |
@@ -740,9 +982,10 @@ Ziel: andere Eventtypen mit vorhandenen Fähigkeiten sinnvoll nutzbar machen.
 
 - Eventtyp im Anlege-/Bearbeitungsfluss,
 - Presets und benutzerdefinierte Bereichsauswahl,
+- Adminseite „Bereiche & Navigation“ mit Freigabe, typabhängiger Platzierung und Vorschau,
 - Bereichsmomentaufnahme pro Event,
 - Abhängigkeitsregeln,
-- dynamische Hauptnavigation, Bereichstabs, Home, Suche und Kiosk,
+- dynamische Hauptnavigation, Bereichstabs, Home, Profil, Admin, Suche, Onboarding und Kiosk,
 - serverseitige Bereichsprüfung für neue Aktionen und Hintergrundprozesse,
 - nichtdestruktives Aktivieren/Deaktivieren,
 - LAN-Preset als vollständige Rückwärtskompatibilität.
@@ -780,9 +1023,10 @@ werden.
 
 - Eventtyp mit kleiner Vorauswahl,
 - Empfehlung plus „Bereiche anpassen“,
+- zentrale Adminfreigabe sowie Hauptnavigation/Mehr je Eventtyp,
 - eigener Bereichssnapshot je Event,
 - LAN, Gartenparty, Spieleabend, Trip, Workshop und Benutzerdefiniert,
-- dynamische Navigation/Home/Suche,
+- dynamische Navigation/Home/Profil/Admin/Suche/Onboarding,
 - klare Abhängigkeiten und nichtdestruktives Deaktivieren,
 - Integration der Terminfindung nur über die definierte Schnittstelle,
 - Telefon- und Laptopverhalten.
@@ -821,14 +1065,32 @@ werden.
 - Eventtyp ist mit Tastatur, Touch und Screenreader verständlich wählbar.
 - Die empfohlene Auswahl ist ohne weitere Konfiguration übernehmbar.
 - „Bereiche anpassen“ zeigt Kernfunktionen, Empfehlungen und Abhängigkeiten nachvollziehbar.
-- Eine Navigationsvorschau passt sich sofort an.
+- Eine Navigationsvorschau passt sich sofort an und zeigt die vom Admin vorgegebene, im
+  Anlegefluss nicht frei umsortierbare Platzierung.
 - Der LAN-Typ erzeugt den heutigen sichtbaren Funktionsumfang.
+
+### Admin konfigurieren
+
+- Kernfunktionen sind als „Immer verfügbar“ erkennbar und nicht deaktivierbar.
+- Ein Admin kann optionale Bereiche instanzweit freigeben oder nach Auswirkungsprüfung sperren.
+- Standardaktivierung und Hauptnavigation/Mehr sind je Eventtyp an einer zentralen Stelle
+  pflegbar.
+- Mehr als vier Hauptbereiche können nicht gespeichert werden; die Vorschau erklärt den Konflikt.
+- Standardänderungen verändern bestehende Eventauswahlen nicht, Positionsänderungen aktualisieren
+  bestehende Events desselben Typs.
+- Eine Teilnehmer-Vorschau enthält keine Adminziele.
 
 ### Event nutzen
 
 - Gartenparty und Workshop zeigen keine Gaming- oder Trackingoberfläche, solange diese nicht
   bewusst aktiviert wurde.
 - Deaktivierte Bereiche fehlen in Navigation, Mehr, Suche, Home, Kiosk und Benachrichtigungen.
+- Ohne Tracking fehlen auf Home Live-Status und Rangliste sowie im Profil Agent, Trackingpause,
+  sichtbare Monitore und leere Trackingstatistiken.
+- Ein aktivierter Sitzplan kann als Tisch-/Platzplan ohne Tracking funktionieren; die
+  Monitorfunktion bleibt dabei verborgen.
+- Profil- und Onboardingtexte verlangen Bock/Skill nur bei aktivem Spielebereich.
+- Admin-Bereitschaft und Werkzeugliste enthalten nur Prüfungen und Ziele wirksamer Bereiche.
 - Direkte API- und Deep-Link-Zugriffe umgehen die Bereichsprüfung nicht.
 - Eventwechsel baut den sichtbaren Arbeitsraum ohne Reload und ohne übrig gebliebene Daten des
   vorherigen Events neu auf.
@@ -863,11 +1125,14 @@ Information sichtbar. Der Eventname bleibt dominant.
 Mitorganisatoren oder Adminvertretung. Inhalte innerhalb freigegebener Bereiche dürfen weiterhin
 nach deren normalen Rollenregeln bearbeitet werden.
 
-### 19.3 Freie Navigationssortierung?
+### 19.3 Abweichende Navigation je einzelnes Event?
 
-**Empfehlung:** Nicht in der ersten Ausbaustufe. Preset- und produktgesteuerte Priorität verhindert
-unterschiedliche oder schwer testbare Navigationen. Später kann „In Hauptnavigation anheften“ für
-maximal vier Bereiche ergänzt werden.
+**Empfehlung:** Nicht in der ersten Ausbaustufe. Der Admin pflegt eine globale Freigabe und je
+Eventtyp eine einheitliche Hauptnavigation/Mehr-Zuordnung. Das einzelne Event wählt nur aktive
+Bereiche. So bleibt die Oberfläche zentral beherrschbar und trotzdem passend für LAN, Feier oder
+Trip. Ein Event-Override sollte erst ergänzt werden, wenn reale Sonderfälle die zusätzliche Ebene
+rechtfertigen; auch dann ausschließlich für Admin oder Mitorganisatoren mit ausdrücklicher
+Strukturberechtigung.
 
 ### 19.4 Plus-1 ohne Konto?
 
@@ -903,10 +1168,17 @@ Abruf: 2026-08-23. Verwendet wurden offizielle Produkt- und Hilfeseiten:
 Die richtige Erweiterung ist kein universelles „alles kann alles“-Eventsystem, sondern ein
 **fokussierter Eventbaukasten mit guten Voreinstellungen**. Der Eventtyp macht den Start schnell;
 die Bereichsauswahl verhindert unnötige Oberfläche; der Eventkontext hält Daten und
-Berechtigungen sauber getrennt.
+Berechtigungen sauber getrennt. Die zentrale Adminrichtlinie ergänzt die fehlende Governance:
+Admins entscheiden über Verfügbarkeit und Platzierung, ohne Eventerstellern die sinnvolle
+Bereichsauswahl für ihr konkretes Event zu nehmen.
 
 Mit Stufe A kann Respawn Gartenpartys, Spieleabende, Trips und Workshops bereits deutlich besser
 abbilden, ohne neue große Fachmodule zu bauen. Ablauf, Teilnahmefragen und verbindliche Slots sind
 danach die wertvollsten Ergänzungen, weil sie bei fast allen neuen Eventtypen wiederkehren. Alles,
 was Respawn in Richtung öffentlicher Ticketplattform oder Enterprise-Venue-Software ziehen würde,
 sollte bewusst außerhalb des Produkts bleiben.
+
+Entscheidend für die Umsetzung ist, Modularität nicht auf die Bottom-Navigation zu reduzieren.
+Home, Profil, Admin, Suche, Onboarding, Push und Kiosk müssen denselben wirksamen Bereichszustand
+verwenden. Erst dann fühlt sich eine Gartenparty tatsächlich wie ein passendes Eventtool an und
+nicht wie eine LAN-Oberfläche mit ausgeblendeten Menüpunkten.
