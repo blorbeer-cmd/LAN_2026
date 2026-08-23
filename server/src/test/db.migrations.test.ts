@@ -2729,3 +2729,82 @@ test('migration 83 rolls back completely if it fails partway through, and is ret
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
+
+test('migration 83 rolls back completely if it leaves a dangling foreign key, and is retryable afterward', () => {
+  // The rollback test above only forces the very first statement of up() to
+  // fail, so it never exercises the post-check that catches a foreign key
+  // left dangling by the rebuild itself. This one instead lets up() run to
+  // completion untouched, but pre-seeds a row that up() never revisits, so
+  // `PRAGMA foreign_key_check` finds a violation once the rebuild is done —
+  // proving that check still rolls the whole migration back (including the
+  // schema_migrations insert) instead of leaving it recorded as applied.
+  const dbFile = makeTempDbPath('event-date-polls-fk-violation');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture.exec(`
+    INSERT INTO players (id, name, api_key, created_at) VALUES ('poll-fk-player', 'FK Player', 'poll-fk-player-key', ${now});
+  `);
+  // downgradeToPre83Shape asserts the fixture it produces is itself
+  // referentially clean, so the dangling row is seeded afterward instead.
+  downgradeToPre83Shape(fixture);
+  fixture.pragma('foreign_keys = OFF');
+  fixture.exec(
+    `INSERT INTO event_participants (event_id, player_id, status) VALUES ('poll-fk-ghost-event', 'poll-fk-player', 'accepted')`,
+  );
+  // This dangling row references an event id that never exists in either
+  // shape, so it survives migration 83's own rebuild of `events` untouched
+  // and is still dangling once that rebuild finishes.
+  assert.deepEqual(
+    fixture.prepare('SELECT event_id AS eventId FROM event_participants WHERE player_id = ?').all('poll-fk-player'),
+    [{ eventId: 'poll-fk-ghost-event' }],
+  );
+  fixture.close();
+
+  assert.throws(() => runMigrations(dbFile), /dangling foreign keys/);
+
+  const afterFailure = new Database(dbFile);
+  assert.equal(
+    afterFailure.prepare('SELECT 1 FROM schema_migrations WHERE version = 83').get(),
+    undefined,
+    'a migration that leaves a dangling foreign key must not be recorded as applied',
+  );
+  const columns = afterFailure.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  assert.equal(
+    columns.some((c) => c.name === 'schedule_revision'),
+    false,
+    'the events table must still be in its pre-migration shape after the rolled-back attempt',
+  );
+  assert.equal(
+    afterFailure.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'event_date_polls'").get(),
+    undefined,
+    'no poll table may exist after a rolled-back migration',
+  );
+  assert.deepEqual(
+    afterFailure.prepare('SELECT event_id AS eventId FROM event_participants WHERE player_id = ?').all('poll-fk-player'),
+    [{ eventId: 'poll-fk-ghost-event' }],
+    'the pre-existing dangling row itself is untouched by the rollback',
+  );
+  afterFailure.close();
+
+  // Clear the dangling rows and retry — the migration must succeed cleanly
+  // now. event_participation_history also needs clearing: the insert above
+  // fired the existing accepted-participation trigger, and that history
+  // table is append-only rather than kept in sync by a cascade.
+  const retry = new Database(dbFile);
+  retry.pragma('foreign_keys = OFF');
+  retry.exec(`
+    DELETE FROM event_participants WHERE event_id = 'poll-fk-ghost-event';
+    DELETE FROM event_participation_history WHERE event_id = 'poll-fk-ghost-event';
+  `);
+  assert.deepEqual(retry.pragma('foreign_key_check'), []);
+  retry.close();
+  assert.doesNotThrow(() => runMigrations(dbFile), 'after removing the dangling row, the migration must succeed');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 83').get());
+  assert.deepEqual(migrated.pragma('foreign_key_check'), []);
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});

@@ -205,6 +205,9 @@ export type CreateDatePollResult =
 export function createDatePoll(event: EventRow, input: CreateDatePollInput, createdBy: string): CreateDatePollResult {
   const now = Date.now();
   const responseDueAt = endOfIsoDateUtcMs(input.responseDueOn);
+  if (responseDueAt <= now) {
+    return { ok: false, code: 'invalid', error: 'responseDueOn muss in der Zukunft liegen.' };
+  }
   return db.transaction((): CreateDatePollResult => {
     const existingUndecided = db
       .prepare(`SELECT 1 FROM event_date_polls WHERE event_id = ? AND status IN ('open', 'closed')`)
@@ -295,6 +298,9 @@ export function updateDatePollMeta(poll: DatePollRow, fields: UpdateDatePollFiel
     return { ok: false, code: 'not_open', error: 'Metadaten können nur während einer offenen Runde geändert werden.' };
   }
   const now = Date.now();
+  if (fields.responseDueOn !== undefined && endOfIsoDateUtcMs(fields.responseDueOn) <= now) {
+    return { ok: false, code: 'invalid', error: 'responseDueOn muss in der Zukunft liegen.' };
+  }
   return db.transaction((): PollMutationResult => {
     const note = fields.note !== undefined ? fields.note : poll.note;
     const responseDueAt = fields.responseDueOn !== undefined ? endOfIsoDateUtcMs(fields.responseDueOn) : poll.response_due_at;

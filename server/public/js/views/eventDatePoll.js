@@ -7,7 +7,7 @@
 
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { escapeHtml, avatarHtml } from '../format.js';
+import { escapeHtml, avatarHtml, lastInclusiveDayMs } from '../format.js';
 import { showToast } from '../toast.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { state } from '../state.js';
@@ -87,7 +87,7 @@ export function renderDatePollInfoBox(event, polls) {
   if (needsReconfirmation(event)) chips.push(statusChip('Erneute Bestätigung erforderlich', 'badge-paused'));
 
   const dateLine = event.startsAt
-    ? `${new Date(event.startsAt).toLocaleDateString('de-DE')} – ${new Date(event.endsAt - 86_400_000).toLocaleDateString('de-DE')}`
+    ? `${new Date(event.startsAt).toLocaleDateString('de-DE')} – ${new Date(lastInclusiveDayMs(event.endsAt)).toLocaleDateString('de-DE')}`
     : 'Noch kein Termin festgelegt';
 
   let progressLine = '';
@@ -409,6 +409,14 @@ export function renderDatePollSection(event, ctx) {
     fetchPolls(event.id, ctx);
     return event.status === 'draft' ? '<p class="muted event-card-empty-copy">Lädt Terminabstimmung…</p>' : '';
   }
+  if (entry.error) {
+    return `
+      <div class="stack" style="gap:var(--space-2);">
+        <p class="muted event-card-empty-copy">Terminabstimmung konnte nicht geladen werden.</p>
+        <button type="button" class="btn btn-sm" data-retry-date-polls="${escapeHtml(event.id)}">Erneut versuchen</button>
+      </div>
+    `;
+  }
   const polls = entry.polls ?? [];
   const current = currentUndecidedRound(polls);
   const canManageAny = current?.canManage ?? polls[0]?.canManage ?? false;
@@ -432,6 +440,13 @@ export function renderDatePollSection(event, ctx) {
 }
 
 export function wireDatePollSection(container, eventsProvider, ctx) {
+  container.querySelectorAll('[data-retry-date-polls]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      pollCache.delete(btn.dataset.retryDatePolls);
+      ctx.rerender();
+    });
+  });
+
   container.querySelectorAll('[data-reconfirm-event]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const eventId = btn.dataset.reconfirmEvent;

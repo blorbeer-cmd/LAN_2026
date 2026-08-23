@@ -216,6 +216,74 @@ test('planning event lifecycle: create, poll, respond, schedule, reconfirm', asy
   });
 });
 
+test('a reschedule leaves existing payments and accommodation accounting untouched', async () => {
+  const payer = 'poll-payer';
+  createMember(payer, 'Poll Payer');
+
+  const planning = await request(app).post('/api/events/planning').send({ name: 'LAN mit Kosten' });
+  const eventId = planning.body.id;
+  const withCosts = await request(app)
+    .patch(`/api/events/${eventId}`)
+    .send({ costCents: 5000, accommodationCostCents: 40000 });
+  assert.equal(withCosts.status, 200, JSON.stringify(withCosts.body));
+
+  const round1 = await request(app)
+    .post(`/api/events/${eventId}/date-polls`)
+    .send({
+      options: [{ startsOn: isoDate(5), endsOn: isoDate(6) }, { startsOn: isoDate(8), endsOn: isoDate(9) }],
+      responseDueOn: isoDate(3),
+      inviteePlayerIds: [payer],
+    });
+  await request(app).post(`/api/events/${eventId}/date-polls/${round1.body.id}/schedule`).send({ optionId: round1.body.options[0].id });
+
+  // Regular invitation, acceptance and a recorded payment for revision 1.
+  assert.equal(
+    (await request(app).post(`/api/events/${eventId}/invitations`).set('x-test-player-id', TEST_ADMIN_ID).send({ playerId: payer })).status,
+    201,
+  );
+  assert.equal((await request(app).post(`/api/events/${eventId}/invitation/accept`).set('x-test-player-id', payer)).status, 200);
+  const paymentRecord = await request(app)
+    .patch(`/api/events/${eventId}/participants/${payer}/payment`)
+    .set('x-test-player-id', payer)
+    .send({ paid: true });
+  assert.equal(paymentRecord.status, 200, JSON.stringify(paymentRecord.body));
+
+  const beforeReschedule = await request(app).get(`/api/events/${eventId}`).set('x-test-player-id', TEST_ADMIN_ID);
+  assert.equal(beforeReschedule.body.settlementPaidCents, 5000);
+  assert.equal(beforeReschedule.body.settlementPaidCount, 1);
+  assert.equal(beforeReschedule.body.accommodationCostCents, 40000);
+  const payerRowBefore = beforeReschedule.body.participants.find((p: { playerId: string }) => p.playerId === payer);
+  assert.equal(payerRowBefore.paid, true);
+  assert.equal(payerRowBefore.paidAmountCents, 5000);
+
+  // Reschedule: a new round supersedes the old one and bumps schedule_revision.
+  const round2 = await request(app)
+    .post(`/api/events/${eventId}/date-polls`)
+    .send({
+      options: [{ startsOn: isoDate(24), endsOn: isoDate(26) }, { startsOn: isoDate(31), endsOn: isoDate(33) }],
+      responseDueOn: isoDate(20),
+      inviteePlayerIds: [payer],
+    });
+  await request(app).post(`/api/events/${eventId}/date-polls/${round2.body.id}/schedule`).send({ optionId: round2.body.options[0].id });
+
+  const afterReschedule = await request(app).get(`/api/events/${eventId}`).set('x-test-player-id', TEST_ADMIN_ID);
+  assert.equal(afterReschedule.body.scheduleRevision, 2);
+  // The roster view that only shows currently-confirmed participants hides
+  // the now-stale payer (unrelated to payments — this is the same visibility
+  // rule the reconfirmation flow relies on elsewhere in this file)...
+  assert.equal(afterReschedule.body.acceptedParticipants.length, 0);
+  // ...but the payment itself and the accommodation figures are untouched:
+  // scheduleDatePoll() never writes to event_participants, so nothing about
+  // a reschedule can reset paid/paidAmountCents.
+  assert.equal(afterReschedule.body.settlementPaidCents, 5000, 'the recorded payment still counts toward the settlement total');
+  assert.equal(afterReschedule.body.settlementPaidCount, 1);
+  assert.equal(afterReschedule.body.accommodationCostCents, 40000, 'accommodation accounting survives the reschedule');
+  const payerRowAfter = afterReschedule.body.participants.find((p: { playerId: string }) => p.playerId === payer);
+  assert.equal(payerRowAfter.paid, true, 'the payer\'s own roster row keeps its paid state');
+  assert.equal(payerRowAfter.paidAmountCents, 5000);
+  assert.equal(payerRowAfter.confirmedScheduleRevision, 1, 'stale for the new revision, but the row itself is untouched');
+});
+
 test('creating a second undecided round while one is open is rejected with 409', async () => {
   const planning = await request(app).post('/api/events/planning').send({ name: 'Doppel-Runde' });
   const eventId = planning.body.id;
@@ -249,6 +317,28 @@ test('options require 2-8 entries, no backwards or duplicate ranges', async () =
       responseDueOn: isoDate(3),
     });
   assert.equal(dup.status, 400);
+});
+
+test('responseDueOn must be in the future both on creation and when editing an open round', async () => {
+  const planning = await request(app).post('/api/events/planning').send({ name: 'Frist-Validierung' });
+  const eventId = planning.body.id;
+  const options = [{ startsOn: isoDate(20), endsOn: isoDate(21) }, { startsOn: isoDate(25), endsOn: isoDate(26) }];
+
+  // A round created with an already-past deadline could never be answered
+  // and would get lazily (and silently) closed on first read.
+  const pastCreate = await request(app).post(`/api/events/${eventId}/date-polls`).send({ options, responseDueOn: isoDate(-1) });
+  assert.equal(pastCreate.status, 400);
+
+  const created = await request(app).post(`/api/events/${eventId}/date-polls`).send({ options, responseDueOn: isoDate(3) });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const pollId = created.body.id;
+
+  const pastPatch = await request(app).patch(`/api/events/${eventId}/date-polls/${pollId}`).send({ responseDueOn: isoDate(-1) });
+  assert.equal(pastPatch.status, 400);
+
+  // The round itself must remain untouched by the rejected edit.
+  const unchanged = await request(app).get(`/api/events/${eventId}/date-polls/${pollId}`);
+  assert.equal(unchanged.body.responseDueAt, created.body.responseDueAt);
 });
 
 test('concurrent schedule requests: exactly one wins, no double revision bump', async () => {
@@ -470,4 +560,72 @@ test('manual reminders skip people who already answered and respect the 24h mini
   );
   const thirdRemind = await request(app).post(`/api/events/${eventId}/date-polls/${pollId}/reminders`);
   assert.deepEqual(thirdRemind.body.remindedPlayerIds, [carol]);
+});
+
+test('a stale poll-invitee row on a published event never outranks a declined or still-pending regular invitation', async () => {
+  const dave = 'poll-declined-dave';
+  const erin = 'poll-invited-erin';
+  const finn = 'poll-accepted-finn';
+  createMember(dave, 'Poll Dave');
+  createMember(erin, 'Poll Erin');
+  createMember(finn, 'Poll Finn');
+
+  const planning = await request(app).post('/api/events/planning').send({ name: 'LAN Winter Sicherheit' });
+  const eventId = planning.body.id;
+
+  const round1 = await request(app)
+    .post(`/api/events/${eventId}/date-polls`)
+    .send({
+      options: [{ startsOn: isoDate(5), endsOn: isoDate(6) }, { startsOn: isoDate(8), endsOn: isoDate(9) }],
+      responseDueOn: isoDate(3),
+      inviteePlayerIds: [dave, erin, finn],
+    });
+  assert.equal(round1.status, 201);
+  const schedule = await request(app)
+    .post(`/api/events/${eventId}/date-polls/${round1.body.id}/schedule`)
+    .send({ optionId: round1.body.options[0].id });
+  assert.equal(schedule.status, 200);
+
+  // Regular invitations publish the event; Dave declines, Erin never
+  // responds, Finn accepts.
+  for (const id of [dave, erin, finn]) {
+    assert.equal(
+      (await request(app).post(`/api/events/${eventId}/invitations`).set('x-test-player-id', TEST_ADMIN_ID).send({ playerId: id })).status,
+      201,
+    );
+  }
+  assert.equal((await request(app).post(`/api/events/${eventId}/invitation/decline`).set('x-test-player-id', dave)).status, 200);
+  assert.equal((await request(app).post(`/api/events/${eventId}/invitation/accept`).set('x-test-player-id', finn)).status, 200);
+
+  const publishedEvent = await request(app).get(`/api/events/${eventId}`).set('x-test-player-id', TEST_ADMIN_ID);
+  assert.equal(publishedEvent.body.status, 'published');
+
+  // A reschedule round is opened afterwards, keeping Dave and Erin as
+  // invitees of a *currently open* round on the now-published event.
+  const round2 = await request(app)
+    .post(`/api/events/${eventId}/date-polls`)
+    .send({
+      options: [{ startsOn: isoDate(24), endsOn: isoDate(26) }, { startsOn: isoDate(31), endsOn: isoDate(33) }],
+      responseDueOn: isoDate(20),
+      inviteePlayerIds: [dave, erin, finn],
+    });
+  assert.equal(round2.status, 201);
+  assert.equal(round2.body.status, 'open');
+
+  // (a) Declined stays hidden even while listed as an open-round invitee.
+  const daveGet = await request(app).get(`/api/events/${eventId}`).set('x-test-player-id', dave);
+  assert.equal(daveGet.status, 404, 'a declined member must not regain participant visibility via a poll-invitee row');
+
+  // (b) Merely invited (never responded) gets the teaser shape only.
+  const erinGet = await request(app).get(`/api/events/${eventId}`).set('x-test-player-id', erin);
+  assert.equal(erinGet.status, 200);
+  assert.equal(erinGet.body.participationStatus, 'invited');
+  assert.equal(erinGet.body.acceptedParticipants, undefined, 'teaser shape must not leak accepted-participant details');
+  assert.equal(erinGet.body.createdBy, undefined, 'teaser shape must not leak the creator field');
+  assert.equal(erinGet.body.paypalLink, undefined, 'teaser shape must not leak payment fields');
+
+  // Sanity: Finn (accepted) still gets the full participant shape.
+  const finnGet = await request(app).get(`/api/events/${eventId}`).set('x-test-player-id', finn);
+  assert.equal(finnGet.status, 200);
+  assert.ok(Array.isArray(finnGet.body.acceptedParticipants));
 });

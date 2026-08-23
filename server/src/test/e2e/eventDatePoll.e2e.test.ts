@@ -269,8 +269,12 @@ test('planning event: creator starts a poll, a normal member votes by keyboard/t
   await memberPage.locator('.toast', { hasText: 'Termin bestätigt' }).waitFor();
   await memberEventCard.locator('.badge', { hasText: 'Erneute Bestätigung erforderlich' }).waitFor({ state: 'detached' });
 
-  // Payments/accommodation from before the reschedule are untouched by any
-  // of this — the settlement box still reads the same event id, no reset.
+  // The card itself survives the reschedule intact (still exports, no reset
+  // to some "no event" empty state). The actual claim that payments and
+  // accommodation accounting from before a reschedule stay untouched is
+  // covered at the API level, where it can assert on the real settlement
+  // figures instead of just a button's presence — see api.eventDatePolls.test.ts's
+  // "a reschedule leaves existing payments and accommodation accounting untouched".
   assert.equal(await ownerEventCard.locator('[data-export-event]').count(), 1);
 });
 

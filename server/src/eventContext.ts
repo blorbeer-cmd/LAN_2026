@@ -195,8 +195,10 @@ export function eventAccessLevel(
   instanceRole: 'owner' | 'admin' | 'member' = 'member',
 ): EventAccessLevel {
   const event = db
-    .prepare('SELECT id, created_by FROM events WHERE id = ? AND id != ? AND group_id = ?')
-    .get(eventId, OUTSIDE_EVENTS_ID, DEFAULT_GROUP_ID) as { id: string; created_by: string | null } | undefined;
+    .prepare('SELECT id, created_by, status FROM events WHERE id = ? AND id != ? AND group_id = ?')
+    .get(eventId, OUTSIDE_EVENTS_ID, DEFAULT_GROUP_ID) as
+    | { id: string; created_by: string | null; status: string }
+    | undefined;
   if (!event) return 'none';
   if (instanceRole === 'owner' || instanceRole === 'admin') return 'admin';
   const participation = db
@@ -208,14 +210,23 @@ export function eventAccessLevel(
   // its creator and anyone invited to one of its date poll rounds still need
   // to see it (docs/plans/event-date-poll-concept.md's visibility rule).
   if (event.created_by === playerId) return 'participant';
-  const pollInvited = db
-    .prepare(
-      `SELECT 1 FROM event_date_poll_invitees edpi
-       JOIN event_date_polls edp ON edp.id = edpi.poll_id
-       WHERE edp.event_id = ? AND edpi.player_id = ? LIMIT 1`,
-    )
-    .get(eventId, playerId);
-  if (pollInvited) return 'participant';
+  // Restricted to the draft phase (mirrors routes/events.ts's plannedEvents
+  // query): once the event is published, real event_participants rows are
+  // the only source of truth. Without this, a stale invitee row from any
+  // past round — including one on an event that has since been scheduled —
+  // would outrank a since-recorded 'declined'/'invited' status and leak
+  // participant-only fields (payments, accepted-roster names) to someone who
+  // isn't actually confirmed.
+  if (event.status === 'draft') {
+    const pollInvited = db
+      .prepare(
+        `SELECT 1 FROM event_date_poll_invitees edpi
+         JOIN event_date_polls edp ON edp.id = edpi.poll_id
+         WHERE edp.event_id = ? AND edpi.player_id = ? LIMIT 1`,
+      )
+      .get(eventId, playerId);
+    if (pollInvited) return 'participant';
+  }
   if (participation?.status === 'invited') return 'teaser';
   return 'none';
 }

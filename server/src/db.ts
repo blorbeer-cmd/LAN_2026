@@ -678,9 +678,10 @@ type Migration = {
   // inside the shared per-migration transaction below; this flag makes
   // runRegisteredMigrations() run this one migration in its own transaction
   // with foreign keys off, then verify referential integrity with
-  // `PRAGMA foreign_key_check` before committing, and always restore
-  // `foreign_keys = ON` afterwards (success or failure) since the rest of the
-  // app relies on it staying enforced.
+  // `PRAGMA foreign_key_check` inside the same transaction, before recording
+  // the migration as applied, and always restore `foreign_keys = ON`
+  // afterwards (success or failure) since the rest of the app relies on it
+  // staying enforced.
   disableForeignKeysForRebuild?: boolean;
 };
 
@@ -745,14 +746,18 @@ function runMigrationWithForeignKeysDisabled(migration: Migration): void {
   try {
     db.transaction(() => {
       migration.up();
+      // Checked inside the transaction, before recording the migration as
+      // applied: throwing here rolls the migration's own DDL back right
+      // alongside the schema_migrations insert, so a violation can never
+      // leave a broken schema recorded as a successfully applied version.
+      const orphans = db.pragma('foreign_key_check') as unknown[];
+      if (orphans.length > 0) {
+        throw new Error(
+          `Migration ${migration.version} (${migration.name}) left dangling foreign keys: ${JSON.stringify(orphans)}`,
+        );
+      }
       recordMigration.run(migration.version, migration.name, Date.now());
     })();
-    const orphans = db.pragma('foreign_key_check') as unknown[];
-    if (orphans.length > 0) {
-      throw new Error(
-        `Migration ${migration.version} (${migration.name}) left dangling foreign keys: ${JSON.stringify(orphans)}`,
-      );
-    }
   } finally {
     // Restored unconditionally: on success this simply re-enables the pragma
     // the app expects for the rest of its lifetime; on failure the throw above

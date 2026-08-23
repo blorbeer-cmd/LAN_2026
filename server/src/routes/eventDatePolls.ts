@@ -368,7 +368,7 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
     fields.responseDueOn = responseDueOn;
   }
   const result = updateDatePollMeta(poll, fields);
-  if (!result.ok) return res.status(409).json({ error: result.error });
+  if (!result.ok) return res.status(result.code === 'invalid' ? 400 : 409).json({ error: result.error });
 
   writeAdminAudit({
     actorPlayerId: playerId,

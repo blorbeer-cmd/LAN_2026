@@ -3,7 +3,17 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { escapeHtml, formatSince, formatDateTime, formatDate, toDatetimeLocal, stateLabel, avatarHtml, gameChipsHtml } from './format.js';
+import {
+  escapeHtml,
+  formatSince,
+  formatDateTime,
+  formatDate,
+  toDatetimeLocal,
+  stateLabel,
+  avatarHtml,
+  gameChipsHtml,
+  lastInclusiveDayMs,
+} from './format.js';
 
 test('escapeHtml neutralizes all five HTML-significant characters', () => {
   assert.equal(escapeHtml(`<b>"Tom & Jerry's"</b>`), '&lt;b&gt;&quot;Tom &amp; Jerry&#39;s&quot;&lt;/b&gt;');
@@ -104,4 +114,29 @@ test('gameChipsHtml with a single game never shows the foreground/background dis
   const html = gameChipsHtml(games, true);
   assert.doesNotMatch(html, /chip-foreground/);
   assert.doesNotMatch(html, /aktiv/);
+});
+
+test('lastInclusiveDayMs rolls an exclusive next-midnight boundary back by exactly one millisecond', () => {
+  const nextMidnightUtc = Date.UTC(2026, 5, 15, 0, 0, 0, 0);
+  assert.equal(lastInclusiveDayMs(nextMidnightUtc), nextMidnightUtc - 1);
+});
+
+test('lastInclusiveDayMs stays correct across a DST transition, unlike a fixed 24h subtraction', () => {
+  // Europe/Berlin's 2026 spring-forward transition (server-side verified in
+  // src/localDate.test.ts): 2026-03-29 02:00 CET jumps to 03:00 CEST, so
+  // 2026-03-30T00:00 local time is only 23h after 2026-03-29T00:00 local
+  // time. A date poll option with ends_on '2026-03-29' schedules `endsAt` as
+  // that next local midnight, i.e. 2026-03-29T22:00:00Z (UTC+2 already in
+  // effect by then).
+  const exclusiveEnd = Date.UTC(2026, 2, 29, 22, 0, 0, 0);
+
+  assert.equal(
+    new Date(lastInclusiveDayMs(exclusiveEnd)).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' }),
+    '29.3.2026',
+  );
+
+  // The bug this replaces: subtracting a fixed 24h instead of 1ms crosses
+  // back over the DST transition itself and lands a full day too early.
+  const buggyFixed24hResult = new Date(exclusiveEnd - 86_400_000).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' });
+  assert.notEqual(buggyFixed24hResult, '29.3.2026', 'a fixed 24h subtraction is wrong on the 23h-long spring-forward day');
 });
