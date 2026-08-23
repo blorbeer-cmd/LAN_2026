@@ -647,10 +647,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 87);
+  assert.equal(migrations.length, 88);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 87 }, (_, index) => index + 1),
+    Array.from({ length: 88 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1177,8 +1177,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 87 }, (_, index) => index + 1),
-    'every version 1..87 runs exactly once',
+    Array.from({ length: 88 }, (_, index) => index + 1),
+    'every version 1..88 runs exactly once',
   );
 });
 
@@ -2867,7 +2867,7 @@ test('migration 85 restores accepted-only participation and enables independent 
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migrations 86 and 87 preserve poll history and add ratings plus anonymous polls', () => {
+test('migrations 86 through 88 preserve poll history and allow a new round after close', () => {
   const dbFile = makeTempDbPath('event-poll-ratings');
   runMigrations(dbFile);
 
@@ -2940,7 +2940,7 @@ test('migrations 86 and 87 preserve poll history and add ratings plus anonymous 
       VALUES ('migration-86-poll', 'migration-86-player', 1);
     INSERT INTO event_date_poll_responses (poll_id, option_id, player_id, response, updated_at)
       VALUES ('migration-86-poll', 'migration-86-option', 'migration-86-player', 'can', 1);
-    DELETE FROM schema_migrations WHERE version IN (86, 87);
+    DELETE FROM schema_migrations WHERE version IN (86, 87, 88);
   `);
   fixture.close();
 
@@ -2969,6 +2969,29 @@ test('migrations 86 and 87 preserve poll history and add ratings plus anonymous 
   assert.throws(
     () => migrated.prepare('UPDATE event_date_polls SET is_anonymous = 2 WHERE id = ?').run('migration-86-poll'),
     /CHECK constraint failed/,
+  );
+  const openIndexSql = (migrated
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_event_polls_undecided'")
+    .get() as { sql: string }).sql;
+  assert.match(openIndexSql, /WHERE status = 'open'\s*$/i);
+  assert.doesNotMatch(openIndexSql, /closed/i);
+  migrated.prepare("UPDATE event_date_polls SET status = 'closed' WHERE id = ?").run('migration-86-poll');
+  migrated.prepare(
+    `INSERT INTO event_date_polls
+       (id, event_id, round_number, response_due_at, status, created_at, updated_at,
+        topic, decision_key, title, response_mode, is_anonymous)
+     VALUES ('migration-88-round-2', 'instance-base-event', 2, 9999999999999, 'open', 2, 2,
+             'custom', 'migration-86', 'Migration 88 Round 2', 'feasibility', 0)`,
+  ).run();
+  assert.throws(
+    () => migrated.prepare(
+      `INSERT INTO event_date_polls
+         (id, event_id, round_number, response_due_at, status, created_at, updated_at,
+          topic, decision_key, title, response_mode, is_anonymous)
+       VALUES ('migration-88-round-3', 'instance-base-event', 3, 9999999999999, 'open', 3, 3,
+               'custom', 'migration-86', 'Migration 88 Round 3', 'feasibility', 0)`,
+    ).run(),
+    /UNIQUE constraint failed/,
   );
   assert.deepEqual(migrated.pragma('foreign_key_check'), []);
   migrated.close();

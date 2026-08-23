@@ -32,34 +32,52 @@ const MODE_INFO = {
 };
 
 const pollCache = new Map();
+const pollCacheVersions = new Map();
 const responseDrafts = new Map();
-const resultDrafts = new Map();
+const responseDraftSources = new Map();
+const dirtyResponseDrafts = new Set();
 const expandedPolls = new Set();
 const expandedHistories = new Set();
 const initializedEvents = new Set();
 
 export function invalidateEventPolls() {
   for (const [eventId, cached] of pollCache) {
+    pollCacheVersions.set(eventId, (pollCacheVersions.get(eventId) ?? 0) + 1);
     pollCache.set(eventId, { ...cached, loading: false, loaded: false, error: null });
   }
-  responseDrafts.clear();
-  resultDrafts.clear();
 }
 
 function loadPolls(eventId, ctx) {
   const cached = pollCache.get(eventId);
   if (cached?.loading || cached?.loaded) return;
+  const requestVersion = pollCacheVersions.get(eventId) ?? 0;
   pollCache.set(eventId, { loading: true, loaded: false, polls: cached?.polls ?? [] });
   api.eventPolls
     .list(eventId)
     .then((polls) => {
+      if ((pollCacheVersions.get(eventId) ?? 0) !== requestVersion) return;
       pollCache.set(eventId, { loading: false, loaded: true, polls, error: null });
       ctx.rerender();
     })
     .catch((error) => {
+      if ((pollCacheVersions.get(eventId) ?? 0) !== requestVersion) return;
       pollCache.set(eventId, { loading: false, loaded: true, polls: [], error: error.message });
       ctx.rerender();
     });
+}
+
+async function refreshPolls(eventId, ctx) {
+  const requestVersion = (pollCacheVersions.get(eventId) ?? 0) + 1;
+  pollCacheVersions.set(eventId, requestVersion);
+  try {
+    const polls = await api.eventPolls.list(eventId);
+    if ((pollCacheVersions.get(eventId) ?? 0) !== requestVersion) return;
+    pollCache.set(eventId, { loading: false, loaded: true, polls, error: null });
+    ctx.rerender();
+  } catch (error) {
+    if ((pollCacheVersions.get(eventId) ?? 0) !== requestVersion) return;
+    showToast(error.message, { error: true });
+  }
 }
 
 function optionLabel(option) {
@@ -73,7 +91,7 @@ function formatDate(timestamp) {
 function pollStatusInfo(status) {
   if (status === 'open') return { label: 'Abstimmung läuft', badge: 'badge-playing' };
   if (status === 'closed') return { label: 'Abstimmung beendet', badge: 'badge-paused' };
-  if (status === 'scheduled') return { label: 'Ergebnis festgehalten', badge: 'badge-online' };
+  if (status === 'scheduled') return { label: 'Abstimmung beendet', badge: 'badge-paused' };
   if (status === 'superseded') return { label: 'Frühere Runde', badge: 'badge-offline' };
   return { label: 'Abstimmung abgebrochen', badge: 'badge-offline' };
 }
@@ -89,19 +107,45 @@ function groupPolls(polls) {
     .sort((a, b) => (b.rounds[0]?.updatedAt ?? 0) - (a.rounds[0]?.updatedAt ?? 0));
 }
 
+function responseDraftSource(poll) {
+  return JSON.stringify(poll.options.map((option) => [option.id, poll.myResponses?.[option.id] ?? null]));
+}
+
+function defaultResponseValue(poll) {
+  if (poll.responseMode === 'feasibility') return 'open';
+  if (poll.responseMode === 'rating_1_5') return '';
+  return 'cannot';
+}
+
+function freshResponseDraft(poll) {
+  const initial = { ...(poll.myResponses ?? {}) };
+  for (const option of poll.options) initial[option.id] ??= defaultResponseValue(poll);
+  return initial;
+}
+
+function resetResponseDraft(poll) {
+  const draft = freshResponseDraft(poll);
+  responseDrafts.set(poll.id, draft);
+  responseDraftSources.set(poll.id, responseDraftSource(poll));
+  dirtyResponseDrafts.delete(poll.id);
+  return draft;
+}
+
 function responseDraftFor(poll) {
-  if (!responseDrafts.has(poll.id)) {
-    const initial = { ...(poll.myResponses ?? {}) };
-    if (poll.responseMode === 'feasibility') {
-      for (const option of poll.options) initial[option.id] ??= 'open';
-    } else if (poll.responseMode === 'rating_1_5') {
-      for (const option of poll.options) initial[option.id] ??= '';
-    } else {
-      for (const option of poll.options) initial[option.id] ??= 'cannot';
-    }
-    responseDrafts.set(poll.id, initial);
+  const source = responseDraftSource(poll);
+  if (
+    !responseDrafts.has(poll.id) ||
+    (!dirtyResponseDrafts.has(poll.id) && responseDraftSources.get(poll.id) !== source)
+  ) {
+    return resetResponseDraft(poll);
   }
-  return responseDrafts.get(poll.id);
+  const draft = responseDrafts.get(poll.id);
+  const optionIds = new Set(poll.options.map((option) => option.id));
+  for (const option of poll.options) draft[option.id] ??= defaultResponseValue(poll);
+  for (const optionId of Object.keys(draft)) {
+    if (!optionIds.has(optionId)) delete draft[optionId];
+  }
+  return draft;
 }
 
 function selectedResponseCount(poll) {
@@ -122,11 +166,6 @@ function responseDraftIsValid(poll) {
     return selected >= 1 && (poll.maxSelections === null || selected <= poll.maxSelections);
   }
   return true;
-}
-
-function resultDraftFor(poll) {
-  if (!resultDrafts.has(poll.id)) resultDrafts.set(poll.id, new Set(poll.selectedOptionIds ?? []));
-  return resultDrafts.get(poll.id);
 }
 
 function optionUrl(option) {
@@ -195,15 +234,11 @@ function renderResponseControl(poll, option) {
   }
   const selected = draft[option.id] === 'can';
   const label = selected ? 'Ausgewählt' : 'Wählen';
-  const recommendation = option.isRecommended && poll.status !== 'cancelled'
-    ? '<span class="badge badge-online">Meiste Stimmen</span>'
-    : '';
   return `
     <div class="event-poll-choice-control">
-      ${recommendation}
       <div class="selection-toolbar event-poll-response-toolbar">
-        <button type="button" class="btn btn-sm${selected ? ' btn-primary' : ''}" data-poll-choice="${escapeHtml(poll.id)}"
-          data-option-id="${escapeHtml(option.id)}" aria-pressed="${selected}">${selected ? `${icon('check')} ` : ''}${label}</button>
+        <button type="button" class="btn btn-sm event-poll-choice-btn${selected ? ' btn-primary' : ''}" data-poll-choice="${escapeHtml(poll.id)}"
+          data-option-id="${escapeHtml(option.id)}" aria-pressed="${selected}">${label}</button>
       </div>
     </div>`;
 }
@@ -220,14 +255,10 @@ function renderCounts(poll, option) {
   return `${option.counts.can} ${option.counts.can === 1 ? 'Stimme' : 'Stimmen'} · ${option.counts.open} offen`;
 }
 
-function renderOption(poll, option, selectedResults) {
-  const isResult = selectedResults.has(option.id);
+function renderOption(poll, option) {
   const link = optionUrl(option);
   const label = optionLabel(option);
-  const choiceRecommendationMovesToControl = ['single_choice', 'multiple_choice'].includes(poll.responseMode)
-    && poll.status === 'open'
-    && poll.isInvitee;
-  const recommendation = option.isRecommended && poll.status !== 'cancelled' && !choiceRecommendationMovesToControl
+  const recommendation = option.isRecommended && poll.status !== 'cancelled'
     ? `<span class="badge badge-online">${['feasibility', 'rating_1_5'].includes(poll.responseMode) ? 'Beste Bewertung' : 'Meiste Stimmen'}</span>`
     : '';
   return `
@@ -239,7 +270,6 @@ function renderOption(poll, option, selectedResults) {
           ${option.description ? infoTooltipHtml(`poll-option-note-${poll.id}-${option.id}`, `Notiz zu ${label}`, option.description) : ''}
         </span>
         <span class="row event-poll-option-badges">
-          ${isResult ? '<span class="badge badge-playing">Ergebnis</span>' : ''}
           ${recommendation}
         </span>
       </div>
@@ -251,34 +281,13 @@ function renderOption(poll, option, selectedResults) {
     </div>`;
 }
 
-function renderResultPicker(poll) {
-  const selected = resultDraftFor(poll);
-  const multiple = poll.responseMode === 'multiple_choice';
-  return `
-    <div class="event-poll-management tournament-section-panel stack">
-      <div class="stack event-poll-management-copy">
-        <strong>Ergebnis dieser Runde festhalten</strong>
-        <span class="muted">Wähle ${multiple ? 'die Ergebnisoptionen' : 'eine Ergebnisoption'} für die Historie. Eventdaten werden dadurch nicht geändert.</span>
-      </div>
-      <div class="stack event-poll-result-options">
-        ${poll.options.map((option) => {
-          const active = selected.has(option.id);
-          return `<button type="button" class="btn event-poll-result-option${active ? ' btn-primary' : ''}"
-            data-result-poll="${escapeHtml(poll.id)}" data-result-option="${escapeHtml(option.id)}" aria-pressed="${active}">
-            <span>${escapeHtml(optionLabel(option))}</span><span>${active ? icon('check') : ''}</span>
-          </button>`;
-        }).join('')}
-      </div>
-      <button type="button" class="btn btn-primary btn-block" data-decide-poll="${escapeHtml(poll.id)}">Ergebnis festhalten</button>
-    </div>`;
-}
-
 function renderManagerHeaderActions(poll) {
   if (!poll.canManage) return '';
   const unanswered = poll.invitees.filter((invitee) => !invitee.hasAnswered).length;
   if (poll.status === 'open') {
     return `
       <div class="event-poll-header-actions">
+        <button type="button" class="btn btn-sm" data-edit-poll="${escapeHtml(poll.id)}">Bearbeiten</button>
         <button type="button" class="btn btn-sm" data-remind-poll="${escapeHtml(poll.id)}" ${unanswered === 0 ? 'disabled' : ''}>Erinnerung versenden (${unanswered})</button>
         <button type="button" class="btn btn-sm" data-close-poll="${escapeHtml(poll.id)}">Beenden</button>
         <button type="button" class="btn btn-sm btn-danger" data-cancel-poll="${escapeHtml(poll.id)}">Abbrechen</button>
@@ -294,13 +303,8 @@ function renderManagerHeaderActions(poll) {
   return '';
 }
 
-function renderManagerContent(poll) {
-  return poll.canManage && poll.status === 'closed' ? renderResultPicker(poll) : '';
-}
-
 function renderRound(poll) {
   const answered = poll.invitees.filter((invitee) => invitee.hasAnswered).length;
-  const selectedResults = new Set(poll.selectedOptionIds ?? (poll.selectedOptionId ? [poll.selectedOptionId] : []));
   const mode = MODE_INFO[poll.responseMode] ?? MODE_INFO.feasibility;
   const maxCopy = poll.responseMode === 'multiple_choice' && poll.maxSelections ? ` · höchstens ${poll.maxSelections}` : '';
   const anonymousCopy = poll.anonymous ? ' · Anonym' : '';
@@ -311,27 +315,23 @@ function renderRound(poll) {
       <div class="event-poll-progress row-between">
         <span>${answered} von ${poll.invitees.length} haben abgestimmt</span><span>Frist: ${formatDate(poll.responseDueAt)}</span>
       </div>
-      <div class="stack event-poll-options">${poll.options.map((option) => renderOption(poll, option, selectedResults)).join('')}</div>
+      ${poll.status !== 'open' && poll.status !== 'cancelled' ? '<div class="section-title event-poll-result-title">Ergebnis</div>' : ''}
+      <div class="stack event-poll-options">${poll.options.map((option) => renderOption(poll, option)).join('')}</div>
       ${poll.isInvitee && poll.status === 'open'
         ? `<div class="row event-poll-save-row"><button type="button" class="btn btn-primary btn-sm" data-save-poll="${escapeHtml(poll.id)}" ${responseDraftIsValid(poll) ? '' : 'disabled'}>Speichern</button></div>`
         : ''}
-      ${poll.decisionNote ? `<p class="muted">Notiz zum Ergebnis: ${escapeHtml(poll.decisionNote)}</p>` : ''}
-      ${renderManagerContent(poll)}
     </section>`;
 }
 
 function renderHistoryRound(poll) {
   const status = pollStatusInfo(poll.status);
-  const selected = new Set(poll.selectedOptionIds ?? []);
-  const result = poll.options.filter((option) => selected.has(option.id)).map(optionLabel).join(', ');
   return `
     <div class="tournament-section-panel event-poll-history-round">
       <div class="row-between"><strong>Runde ${poll.roundNumber}</strong><span class="badge ${status.badge}">${status.label}</span></div>
       <span class="muted">Frist: ${formatDate(poll.responseDueAt)} · ${poll.invitees.filter((entry) => entry.hasAnswered).length} von ${poll.invitees.length} abgestimmt${poll.anonymous ? ' · Anonym' : ''}</span>
-      ${result ? `<span>Ergebnis: <strong>${escapeHtml(result)}</strong></span>` : ''}
       <details class="event-poll-history-details">
         <summary>Optionen und Antworten</summary>
-        <div class="stack event-poll-options">${poll.options.map((option) => renderOption(poll, option, selected)).join('')}</div>
+        <div class="stack event-poll-options">${poll.options.map((option) => renderOption(poll, option)).join('')}</div>
       </details>
     </div>`;
 }
@@ -353,7 +353,7 @@ function renderPollGroup(group) {
   const latest = group.rounds[0];
   const status = pollStatusInfo(latest.status);
   const answered = latest.invitees.filter((invitee) => invitee.hasAnswered).length;
-  const canStartRound = latest.canManage && ['scheduled', 'superseded', 'cancelled'].includes(latest.status);
+  const canStartRound = latest.canManage && ['closed', 'scheduled', 'superseded', 'cancelled'].includes(latest.status);
   const expanded = expandedPolls.has(group.key);
   return `
     <article class="card event-poll-card" data-poll-group="${escapeHtml(group.key)}">
@@ -367,7 +367,7 @@ function renderPollGroup(group) {
       </header>
       <div class="stack event-poll-card-content" ${expanded ? '' : 'hidden'}>
         ${renderRound(latest)}
-        ${canStartRound ? `<button type="button" class="btn btn-sm" data-new-poll-round="${escapeHtml(latest.id)}">+ Neue Runde starten</button>` : ''}
+        ${canStartRound ? `<button type="button" class="btn btn-sm" data-new-poll-round="${escapeHtml(latest.id)}">Neue Runde starten</button>` : ''}
         ${renderHistory(group)}
       </div>
     </article>`;
@@ -376,20 +376,37 @@ function renderPollGroup(group) {
 function optionRowHtml(index, value = {}) {
   const showDetails = Boolean(value.description || value.url);
   return `
-    <div class="event-poll-form-option" data-poll-option-row="${index}">
+    <div class="event-poll-form-option" data-poll-option-row="${index}"${value.id ? ` data-poll-option-id="${escapeHtml(value.id)}"` : ''}>
       <div class="row-between">
         <label for="poll-option-${index}" class="field-label">Option ${index + 1}</label>
-        <button type="button" class="icon-btn" data-remove-poll-option aria-label="Option entfernen" title="Option entfernen">${icon('trash')}</button>
+        ${value.id ? '' : `<button type="button" class="icon-btn" data-remove-poll-option aria-label="Option entfernen" title="Option entfernen">${icon('trash')}</button>`}
       </div>
       <input type="text" id="poll-option-${index}" data-poll-option-input maxlength="120" required value="${escapeHtml(value.label ?? '')}" placeholder="z. B. Ferienhaus am See" />
       <details class="event-poll-form-option-details" ${showDetails ? 'open' : ''}>
         <summary>Notiz oder Link hinzufügen</summary>
         <div class="field-row event-poll-option-extra-fields">
-          <div><label for="poll-option-note-${index}" class="field-label">Kurze Notiz (optional)</label><input type="text" id="poll-option-note-${index}" data-poll-option-note maxlength="240" value="${escapeHtml(value.description ?? '')}" placeholder="Zusätzliche Information" /></div>
+          <div><label for="poll-option-note-${index}" class="field-label">Kurze Notiz (optional)</label><input type="text" id="poll-option-note-${index}" data-poll-option-note maxlength="500" value="${escapeHtml(value.description ?? '')}" placeholder="Zusätzliche Information" /></div>
           <div><label for="poll-option-url-${index}" class="field-label">Link (optional)</label><input type="url" id="poll-option-url-${index}" data-poll-option-url maxlength="500" value="${escapeHtml(value.url ?? '')}" placeholder="https://…" /></div>
         </div>
       </details>
     </div>`;
+}
+
+function optionValuesFromForm(modal) {
+  return [...modal.querySelectorAll('[data-poll-option-row]')].map((row) => ({
+    ...(row.dataset.pollOptionId ? { id: row.dataset.pollOptionId } : {}),
+    label: row.querySelector('[data-poll-option-input]').value.trim(),
+    description: row.querySelector('[data-poll-option-note]').value.trim() || null,
+    url: row.querySelector('[data-poll-option-url]').value.trim(),
+  }));
+}
+
+function validateOptionValues(options) {
+  const labels = options.map((option) => option.label);
+  if (labels.some((label) => !label)) return 'Bitte alle Optionen benennen.';
+  if (new Set(labels.map((label) => label.toLocaleLowerCase('de'))).size !== labels.length) return 'Optionen dürfen nicht doppelt vorkommen.';
+  if (options.some((option) => option.url && !/^https?:\/\/[^\s]+$/i.test(option.url))) return 'Links müssen mit http:// oder https:// beginnen.';
+  return null;
 }
 
 function readIsoDate(modal, id) {
@@ -433,7 +450,7 @@ function openPollForm(event, ctx, previousRound = null) {
       <div class="stack">
         <div class="row-between"><span class="field-label">Optionen</span><span class="muted">2 bis 8</span></div>
         <div class="stack" id="poll-option-rows">${initialOptions.map((value, index) => optionRowHtml(index, value)).join('')}</div>
-        <button type="button" class="btn btn-sm" id="poll-add-option">+ Option hinzufügen</button>
+        <button type="button" class="btn btn-sm" id="poll-add-option">Option hinzufügen</button>
       </div>
       <div>
         <div class="title-with-info">
@@ -474,17 +491,11 @@ function openPollForm(event, ctx, previousRound = null) {
         submitEvent.preventDefault();
         const submitButton = submitEvent.submitter;
         const title = modal.querySelector('#poll-title').value.trim();
-        const optionRows = [...modal.querySelectorAll('[data-poll-option-row]')];
-        const options = optionRows.map((row) => ({
-          label: row.querySelector('[data-poll-option-input]').value.trim(),
-          description: row.querySelector('[data-poll-option-note]').value.trim() || null,
-          url: row.querySelector('[data-poll-option-url]').value.trim(),
-        }));
+        const options = optionValuesFromForm(modal);
         const labels = options.map((option) => option.label);
         if (!title) return showToast('Bitte einen Titel eingeben.', { error: true });
-        if (labels.some((label) => !label)) return showToast('Bitte alle Optionen benennen.', { error: true });
-        if (new Set(labels.map((label) => label.toLocaleLowerCase('de'))).size !== labels.length) return showToast('Optionen dürfen nicht doppelt vorkommen.', { error: true });
-        if (options.some((option) => option.url && !/^https?:\/\/[^\s]+$/i.test(option.url))) return showToast('Links müssen mit http:// oder https:// beginnen.', { error: true });
+        const optionError = validateOptionValues(options);
+        if (optionError) return showToast(optionError, { error: true });
         const responseDueOn = readIsoDate(modal, 'poll-due');
         if (!responseDueOn) return showToast('Bitte eine Abstimmungsfrist wählen.', { error: true });
         const responseMode = modal.querySelector('#poll-mode').value;
@@ -504,13 +515,104 @@ function openPollForm(event, ctx, previousRound = null) {
             })), responseDueOn,
           });
           expandedPolls.add(createdPoll.decisionKey);
+          await replaceCachedPoll(event.id, createdPoll, ctx);
           dirty = false;
-          invalidateEventPolls();
           close();
-          await ctx.refresh();
           showToast(previousRound ? 'Neue Runde gestartet.' : 'Abstimmung gestartet.');
         } catch (error) {
           submitButton.disabled = false;
+          showToast(error.message, { error: true });
+        }
+      });
+    },
+  });
+}
+
+function openEditPollForm(event, poll, ctx) {
+  const initialOptions = poll.options.map((option) => ({
+    id: option.id,
+    label: optionLabel(option),
+    description: option.description ?? '',
+    url: optionUrl(option) ?? '',
+  }));
+  let nextOptionIndex = initialOptions.length;
+  let dirty = false;
+  let capturedModal;
+  const mode = MODE_INFO[poll.responseMode] ?? MODE_INFO.feasibility;
+  const { close } = openModal('Abstimmung bearbeiten', `
+    <form id="event-poll-edit-form" class="stack">
+      <div><label for="poll-edit-title" class="field-label">Titel</label><input type="text" id="poll-edit-title" maxlength="100" required value="${escapeHtml(poll.title)}" autofocus /></div>
+      <div><label for="poll-edit-note" class="field-label">Beschreibung (optional)</label><textarea id="poll-edit-note" maxlength="500" rows="2" placeholder="Kurzer Kontext für alle Teilnehmer">${escapeHtml(poll.note ?? '')}</textarea></div>
+      <div class="stack event-poll-edit-mode">
+        <span class="field-label">Antwortart</span>
+        <span class="muted">${escapeHtml(mode.label)}${poll.anonymous ? ' · Anonym' : ''}</span>
+      </div>
+      <div class="stack">
+        <div class="row-between"><span class="field-label">Optionen</span><span class="muted">2 bis 8</span></div>
+        <div class="stack" id="poll-option-rows">${initialOptions.map((value, index) => optionRowHtml(index, value)).join('')}</div>
+        <button type="button" class="btn btn-sm" id="poll-add-option">Option hinzufügen</button>
+      </div>
+      <div>
+        <div class="title-with-info">
+          <label for="poll-edit-due" class="field-label">Abstimmungsfrist</label>
+          ${infoTooltipHtml(`poll-edit-due-help-${poll.id}`, 'Abstimmungsfrist', 'Teilnehmer mit noch offener Antwort werden automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
+        </div>
+        ${dateTimeFieldHtml('poll-edit-due', poll.responseDueAt, { dateOnly: true, clearable: false, label: 'Abstimmungsfrist' })}
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Speichern</button>
+    </form>`, {
+    confirmClose: () => (dirty && capturedModal ? 'Die Änderungen gehen verloren.' : null),
+    onMount: (modal) => {
+      capturedModal = modal;
+      wireDateTimeField(modal, 'poll-edit-due');
+      wireInfoTooltips(modal);
+      const markDirty = () => { dirty = true; };
+      modal.querySelector('#event-poll-edit-form').addEventListener('input', markDirty);
+      modal.querySelector('#event-poll-edit-form').addEventListener('change', markDirty);
+      modal.querySelector('#poll-add-option').addEventListener('click', () => {
+        if (modal.querySelectorAll('[data-poll-option-row]').length >= 8) return showToast('Höchstens acht Optionen sind möglich.', { error: true });
+        dirty = true;
+        modal.querySelector('#poll-option-rows').insertAdjacentHTML('beforeend', optionRowHtml(nextOptionIndex));
+        modal.querySelector(`#poll-option-${nextOptionIndex}`)?.focus();
+        nextOptionIndex += 1;
+      });
+      modal.querySelector('#poll-option-rows').addEventListener('click', (eventClick) => {
+        const button = eventClick.target.closest('[data-remove-poll-option]');
+        if (!button) return;
+        dirty = true;
+        button.closest('[data-poll-option-row]').remove();
+      });
+      modal.querySelector('#event-poll-edit-form').addEventListener('submit', async (submitEvent) => {
+        submitEvent.preventDefault();
+        const title = modal.querySelector('#poll-edit-title').value.trim();
+        const options = optionValuesFromForm(modal);
+        if (!title) return showToast('Bitte einen Titel eingeben.', { error: true });
+        const optionError = validateOptionValues(options);
+        if (optionError) return showToast(optionError, { error: true });
+        const responseDueOn = readIsoDate(modal, 'poll-edit-due');
+        if (!responseDueOn) return showToast('Bitte eine Abstimmungsfrist wählen.', { error: true });
+        submitEvent.submitter.disabled = true;
+        try {
+          const updatedPoll = await api.eventPolls.update(event.id, poll.id, {
+            title,
+            note: modal.querySelector('#poll-edit-note').value.trim() || null,
+            responseDueOn,
+            options: options.map((option) => ({
+              ...(option.id ? { id: option.id } : {}),
+              label: option.label,
+              description: option.description,
+              payload: option.url ? { url: option.url } : {},
+            })),
+          });
+          const addedOptionCount = updatedPoll.options.length - poll.options.length;
+          await replaceCachedPoll(event.id, updatedPoll, ctx);
+          dirty = false;
+          close();
+          showToast(addedOptionCount > 0
+            ? 'Abstimmung gespeichert. Bereits abgestimmte Teilnehmer wurden informiert.'
+            : 'Abstimmung gespeichert.');
+        } catch (error) {
+          submitEvent.submitter.disabled = false;
           showToast(error.message, { error: true });
         }
       });
@@ -536,11 +638,10 @@ function openReopenForm(event, poll, ctx) {
         if (!responseDueOn) return;
         eventSubmit.submitter.disabled = true;
         try {
-          await api.eventPolls.reopen(event.id, poll.id, responseDueOn);
+          const updatedPoll = await api.eventPolls.reopen(event.id, poll.id, responseDueOn);
+          await replaceCachedPoll(event.id, updatedPoll, ctx);
           dirty = false;
-          invalidateEventPolls();
           close();
-          await ctx.refresh();
           showToast('Abstimmung wieder geöffnet.');
         } catch (error) {
           eventSubmit.submitter.disabled = false;
@@ -555,14 +656,17 @@ function findPoll(polls, pollId) {
   return polls.find((poll) => poll.id === pollId);
 }
 
-function replaceCachedPoll(eventId, updatedPoll, ctx) {
+function replaceCachedPoll(eventId, updatedPoll, ctx, { resetResponses = false } = {}) {
+  pollCacheVersions.set(eventId, (pollCacheVersions.get(eventId) ?? 0) + 1);
   const cached = pollCache.get(eventId);
-  if (!cached?.loaded) return false;
-  const index = cached.polls.findIndex((poll) => poll.id === updatedPoll.id);
-  if (index === -1) return false;
-  cached.polls[index] = updatedPoll;
+  const polls = [...(cached?.polls ?? [])];
+  const index = polls.findIndex((poll) => poll.id === updatedPoll.id);
+  if (index === -1) polls.push(updatedPoll);
+  else polls[index] = updatedPoll;
+  pollCache.set(eventId, { loading: false, loaded: true, polls, error: null });
+  if (resetResponses) resetResponseDraft(updatedPoll);
   ctx.rerender();
-  return true;
+  return refreshPolls(eventId, ctx);
 }
 
 function wirePollActions(container, event, polls, ctx) {
@@ -580,6 +684,7 @@ function wirePollActions(container, event, polls, ctx) {
     const poll = findPoll(polls, button.dataset.pollId);
     if (!poll) return;
     responseDraftFor(poll)[button.dataset.optionId] = button.dataset.pollResponse;
+    dirtyResponseDrafts.add(poll.id);
     ctx.rerender();
   }));
   container.querySelectorAll('[data-poll-choice]').forEach((button) => button.addEventListener('click', () => {
@@ -594,6 +699,7 @@ function wirePollActions(container, event, polls, ctx) {
       if (nextSelected && poll.maxSelections !== null && selectedResponseCount(poll) >= poll.maxSelections) return showToast(`Du kannst höchstens ${poll.maxSelections} Optionen auswählen.`, { error: true });
       draft[optionId] = nextSelected ? 'can' : 'cannot';
     }
+    dirtyResponseDrafts.add(poll.id);
     ctx.rerender();
   }));
   container.querySelectorAll('[data-save-poll]').forEach((button) => button.addEventListener('click', async () => {
@@ -608,54 +714,24 @@ function wirePollActions(container, event, polls, ctx) {
           : [{ optionId: option.id, response: draft[option.id] }]
       );
       const updatedPoll = await api.eventPolls.submitMyResponses(event.id, poll.id, responses);
-      responseDrafts.delete(poll.id);
-      if (!replaceCachedPoll(event.id, updatedPoll, ctx)) await ctx.refresh();
+      await replaceCachedPoll(event.id, updatedPoll, ctx, { resetResponses: true });
       showToast('Antwort gespeichert.');
     } catch (error) {
       button.disabled = false;
       showToast(error.message, { error: true });
     }
   }));
-  container.querySelectorAll('[data-result-option]').forEach((button) => button.addEventListener('click', () => {
-    const poll = findPoll(polls, button.dataset.resultPoll);
-    if (!poll) return;
-    const selected = resultDraftFor(poll);
-    const optionId = button.dataset.resultOption;
-    if (poll.responseMode !== 'multiple_choice') {
-      selected.clear();
-      selected.add(optionId);
-    } else if (selected.has(optionId)) selected.delete(optionId);
-    else {
-      if (poll.maxSelections !== null && selected.size >= poll.maxSelections) return showToast(`Höchstens ${poll.maxSelections} Ergebnisoptionen sind möglich.`, { error: true });
-      selected.add(optionId);
-    }
-    ctx.rerender();
-  }));
-  container.querySelectorAll('[data-decide-poll]').forEach((button) => button.addEventListener('click', async () => {
-    const poll = findPoll(polls, button.dataset.decidePoll);
-    const optionIds = poll ? [...resultDraftFor(poll)] : [];
-    if (!poll || !optionIds.length) return showToast('Bitte mindestens eine Ergebnisoption auswählen.', { error: true });
-    const confirmed = await confirmDialog('Das Ergebnis wird nur in der Rundenhistorie gespeichert. Ort, Termin, Kosten und andere Eventdaten bleiben unverändert.', { title: 'Ergebnis festhalten?', confirmText: 'Ergebnis festhalten' });
-    if (!confirmed) return;
-    button.disabled = true;
-    try {
-      await api.eventPolls.decide(event.id, poll.id, optionIds);
-      invalidateEventPolls();
-      await ctx.refresh();
-      showToast('Ergebnis in der Rundenhistorie festgehalten.');
-    } catch (error) {
-      button.disabled = false;
-      showToast(error.message, { error: true });
-    }
+  container.querySelectorAll('[data-edit-poll]').forEach((button) => button.addEventListener('click', () => {
+    const poll = findPoll(polls, button.dataset.editPoll);
+    if (poll) openEditPollForm(event, poll, ctx);
   }));
   container.querySelectorAll('[data-close-poll]').forEach((button) => button.addEventListener('click', async () => {
-    const confirmed = await confirmDialog('Danach können keine Stimmen mehr abgegeben werden. Du kannst die Abstimmung später mit einer neuen Frist wieder öffnen oder ein Ergebnis festhalten.', { title: 'Abstimmung beenden?', confirmText: 'Beenden' });
+    const confirmed = await confirmDialog('Danach können keine Stimmen mehr abgegeben werden. Das Ergebnis bleibt in dieser Runde sichtbar und die Abstimmung kann später wieder geöffnet werden.', { title: 'Abstimmung beenden?', confirmText: 'Beenden' });
     if (!confirmed) return;
     button.disabled = true;
     try {
-      await api.eventPolls.close(event.id, button.dataset.closePoll);
-      invalidateEventPolls();
-      await ctx.refresh();
+      const updatedPoll = await api.eventPolls.close(event.id, button.dataset.closePoll);
+      await replaceCachedPoll(event.id, updatedPoll, ctx);
       showToast('Abstimmung beendet.');
     } catch (error) {
       button.disabled = false;
@@ -687,9 +763,8 @@ function wirePollActions(container, event, polls, ctx) {
     if (!confirmed) return;
     button.disabled = true;
     try {
-      await api.eventPolls.cancel(event.id, poll.id);
-      invalidateEventPolls();
-      await ctx.refresh();
+      const updatedPoll = await api.eventPolls.cancel(event.id, poll.id);
+      await replaceCachedPoll(event.id, updatedPoll, ctx);
       showToast('Abstimmung abgebrochen.');
     } catch (error) {
       button.disabled = false;

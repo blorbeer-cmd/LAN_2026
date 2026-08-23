@@ -337,6 +337,8 @@ export const api = {
     list: (eventId) => apiFetch(`/api/events/${eventId}/polls`),
     get: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}`),
     create: (eventId, data) => apiFetch(`/api/events/${eventId}/polls`, { method: 'POST', body: JSON.stringify(data) }),
+    update: (eventId, pollId, data) =>
+      apiFetch(`/api/events/${eventId}/polls/${pollId}`, { method: 'PATCH', body: JSON.stringify(data) }),
     submitMyResponses: (eventId, pollId, responses) =>
       apiFetch(`/api/events/${eventId}/polls/${pollId}/my-responses`, { method: 'PUT', body: JSON.stringify({ responses }) }),
     sendReminders: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}/reminders`, { method: 'POST' }),
@@ -347,11 +349,6 @@ export const api = {
         body: JSON.stringify(responseDueOn ? { responseDueOn } : {}),
       }),
     cancel: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}/cancel`, { method: 'POST' }),
-    decide: (eventId, pollId, optionIds, decisionNote) =>
-      apiFetch(`/api/events/${eventId}/polls/${pollId}/decide`, {
-        method: 'POST',
-        body: JSON.stringify({ optionIds, decisionNote }),
-      }),
   },
 
   tournaments: {

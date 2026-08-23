@@ -30,15 +30,13 @@ import {
   isDatePollInvitee,
   hasAnsweredDatePoll,
   createDatePoll,
-  updateDatePollMeta,
+  updateDatePoll,
   addDatePollOption,
-  removeDatePollOption,
   addDatePollInvitee,
   submitMyResponses,
   closeDatePoll,
   reopenDatePoll,
   cancelDatePoll,
-  decideEventPoll,
   reminderCandidates,
   markReminderSent,
   optionCounts,
@@ -194,12 +192,6 @@ function serializeDatePoll(
     serializeOption(option, responses, invitees.length, names, option.id === recommendedId, responseDetailsVisible),
   );
   const answeredPlayerIds = new Set(responses.map((r) => r.player_id));
-  const selectedOptionIds = (
-    db
-      .prepare('SELECT option_id AS optionId FROM event_poll_selected_options WHERE poll_id = ? ORDER BY position')
-      .all(poll.id) as Array<{ optionId: string }>
-  ).map((row) => row.optionId);
-
   const myResponses: Record<string, DatePollResponseValue> = {};
   for (const response of responses) {
     if (response.player_id === viewerId) myResponses[response.option_id] = response.response;
@@ -216,14 +208,11 @@ function serializeDatePoll(
     maxSelections: poll.max_selections,
     anonymous,
     responseDetailsVisible,
-    decisionNote: poll.decision_note,
     note: poll.note,
     createdBy: poll.created_by,
     createdByName: poll.created_by ? names.get(poll.created_by) ?? null : null,
     responseDueAt: poll.response_due_at,
     status: poll.status,
-    selectedOptionId: poll.selected_option_id,
-    selectedOptionIds,
     createdAt: poll.created_at,
     updatedAt: poll.updated_at,
     options: serializedOptions.map(({ _answeredIds, ...rest }) => rest),
@@ -294,6 +283,28 @@ function notifyInvitees(groupId: string, eventId: string, playerIds: string[], t
 function pollReminderTopicKey(pollId: string, playerId?: string): string {
   const base = `${EVENT_POLL_REMINDER_TOPIC_PREFIX}${pollId}`;
   return playerId ? `${base}:${playerId}` : base;
+}
+
+function pollUpdateTopicKey(pollId: string, playerId: string): string {
+  return `event-poll-updated:${pollId}:${playerId}`;
+}
+
+function notifyPreviouslyAnsweredPlayers(event: EventRow, poll: DatePollRow, playerIds: string[]): void {
+  for (const playerId of playerIds) {
+    notifyPlayers(
+      [playerId],
+      {
+        title: 'Abstimmung ergänzt',
+        body: `${event.name}: Bei „${poll.title}“ wurden neue Optionen ergänzt. Bitte prüfe deine Antwort.`,
+        url: `/#eventPolls/${poll.id}`,
+        type: 'event-poll-updated',
+        targetId: poll.id,
+      },
+      'direct',
+      { key: pollUpdateTopicKey(poll.id, playerId), expiresAt: poll.response_due_at },
+      { groupId: event.group_id!, eventId: event.id },
+    );
+  }
 }
 
 function notifyPollReminder(event: EventRow, poll: DatePollRow, playerId: string): boolean {
@@ -506,8 +517,14 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
   if (!canManageDatePoll(poll, event, playerId, req.groupMembership?.role)) {
     return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann die Runde bearbeiten.' });
   }
-  const { note, responseDueOn } = req.body ?? {};
-  const fields: { note?: string | null; responseDueOn?: string } = {};
+  const { title, note, responseDueOn, options } = req.body ?? {};
+  const fields: Parameters<typeof updateDatePoll>[1] = {};
+  if (title !== undefined) {
+    if (typeof title !== 'string' || !title.trim() || title.trim().length > 100) {
+      return res.status(400).json({ error: 'title muss 1-100 Zeichen lang sein.' });
+    }
+    fields.title = title.trim();
+  }
   if (note !== undefined) {
     if (note !== null && (typeof note !== 'string' || note.trim().length > 500)) {
       return res.status(400).json({ error: 'note darf höchstens 500 Zeichen lang sein.' });
@@ -520,18 +537,58 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
     }
     fields.responseDueOn = responseDueOn;
   }
-  const result = updateDatePollMeta(poll, fields);
+  if (options !== undefined) {
+    if (!Array.isArray(options) || options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) {
+      return res.status(400).json({ error: `${MIN_OPTIONS} bis ${MAX_OPTIONS} Optionen sind erforderlich.` });
+    }
+    const parsedOptions: NonNullable<Parameters<typeof updateDatePoll>[1]['options']> = [];
+    for (const raw of options) {
+      if (raw?.id !== undefined && (typeof raw.id !== 'string' || !raw.id)) {
+        return res.status(400).json({ error: 'Eine bestehende Option benötigt eine gültige id.' });
+      }
+      if (typeof raw?.label !== 'string' || !raw.label.trim() || raw.label.trim().length > 120) {
+        return res.status(400).json({ error: 'Jede Option benötigt eine Bezeichnung mit höchstens 120 Zeichen.' });
+      }
+      if (raw.description !== undefined && raw.description !== null && (typeof raw.description !== 'string' || raw.description.length > 500)) {
+        return res.status(400).json({ error: 'Eine Optionsbeschreibung darf höchstens 500 Zeichen lang sein.' });
+      }
+      if (raw.payload !== undefined && (typeof raw.payload !== 'object' || raw.payload === null || Array.isArray(raw.payload))) {
+        return res.status(400).json({ error: 'payload muss ein Objekt sein.' });
+      }
+      const optionUrl = raw.payload?.url;
+      if (
+        optionUrl !== undefined &&
+        (typeof optionUrl !== 'string' || optionUrl.length > 500 || !/^https?:\/\/[^\s]+$/i.test(optionUrl))
+      ) {
+        return res.status(400).json({ error: 'Ein Optionslink muss eine vollständige HTTP- oder HTTPS-Adresse sein.' });
+      }
+      parsedOptions.push({
+        ...(raw.id ? { id: raw.id } : {}),
+        label: raw.label.trim(),
+        description: raw.description?.trim() || null,
+        payload: raw.payload ?? {},
+      });
+    }
+    if (new Set(parsedOptions.map((option) => option.label.toLocaleLowerCase('de'))).size !== parsedOptions.length) {
+      return res.status(400).json({ error: 'Optionen dürfen sich nicht duplizieren.' });
+    }
+    fields.options = parsedOptions;
+  }
+  const result = updateDatePoll(poll, fields);
   if (!result.ok) return res.status(result.code === 'invalid' ? 400 : 409).json({ error: result.error });
 
   writeAdminAudit({
     actorPlayerId: playerId,
     groupId: event.group_id ?? undefined,
-    action: 'event_date_poll_updated',
-    targetType: 'event_date_poll',
+    action: 'event_poll_updated',
+    targetType: 'event_poll',
     targetId: poll.id,
-    details: { eventId: event.id },
+    details: { eventId: event.id, addedOptionCount: result.addedOptionCount },
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+  if (result.addedOptionCount > 0) {
+    notifyPreviouslyAnsweredPlayers(event, result.poll, result.previouslyAnsweredPlayerIds);
+  }
   res.json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
 });
 
@@ -567,6 +624,9 @@ eventDatePollsRouter.post('/:pollId/options', resolveEventForPolls, (req, res) =
     return res.status(400).json({ error: 'Ein Optionslink muss eine vollständige HTTP- oder HTTPS-Adresse sein.' });
   }
 
+  const previouslyAnsweredPlayerIds = getDatePollInvitees(poll.id)
+    .filter((invitee) => hasAnsweredDatePoll(poll.id, invitee.player_id))
+    .map((invitee) => invitee.player_id);
   const result = addDatePollOption(poll, { startsOn, endsOn, label, description, payload });
   if (!result.ok) return res.status(result.code === 'not_open' ? 409 : 400).json({ error: result.error });
 
@@ -579,38 +639,9 @@ eventDatePollsRouter.post('/:pollId/options', resolveEventForPolls, (req, res) =
     details: { eventId: event.id, pollId: poll.id },
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
-  const invitees = acceptedParticipantIds(event.id).filter((id) => id !== playerId);
-  notifyInvitees(event.group_id!, event.id, invitees, 'Abstimmung geändert', `${event.name}: Eine neue Option wurde ergänzt.`, `/#eventPolls/${poll.id}`);
-  res.status(201).json(serializeDatePoll(getDatePollForEvent(event.id, poll.id)!, event, playerId, req.groupMembership?.role));
-});
-
-// DELETE /api/events/:eventId/polls/:pollId/options/:optionId
-eventDatePollsRouter.delete('/:pollId/options/:optionId', resolveEventForPolls, (req, res) => {
-  const event = req.groupResource as EventRow;
-  const playerId = requirePlayerId(req, res);
-  if (!playerId) return;
-  const poll = loadPollOr404(req, res, event);
-  if (!poll) return;
-  if (!canManageDatePoll(poll, event, playerId, req.groupMembership?.role)) {
-    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann Optionen entfernen.' });
-  }
-  const invitees = acceptedParticipantIds(event.id).filter((id) => id !== playerId);
-  const result = removeDatePollOption(poll, req.params.optionId);
-  if (!result.ok) {
-    return res.status(result.code === 'not_found' ? 404 : result.code === 'not_open' ? 409 : 400).json({ error: result.error });
-  }
-
-  writeAdminAudit({
-    actorPlayerId: playerId,
-    groupId: event.group_id ?? undefined,
-    action: 'event_date_poll_option_removed',
-    targetType: 'event_date_poll_option',
-    targetId: req.params.optionId,
-    details: { eventId: event.id, pollId: poll.id },
-  });
-  broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
-  notifyInvitees(event.group_id!, event.id, invitees, 'Abstimmung geändert', `${event.name}: Eine Option wurde entfernt.`, `/#eventPolls/${poll.id}`);
-  res.status(204).end();
+  const updatedPoll = getDatePollForEvent(event.id, poll.id)!;
+  notifyPreviouslyAnsweredPlayers(event, updatedPoll, previouslyAnsweredPlayerIds);
+  res.status(201).json(serializeDatePoll(updatedPoll, event, playerId, req.groupMembership?.role));
 });
 
 // PUT /api/events/:eventId/polls/:pollId/my-responses
@@ -759,53 +790,4 @@ eventDatePollsRouter.post('/:pollId/cancel', resolveEventForPolls, (req, res) =>
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
   res.json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
-});
-
-// POST /api/events/:eventId/polls/:pollId/decide
-eventDatePollsRouter.post('/:pollId/decide', resolveEventForPolls, (req, res) => {
-  const event = req.groupResource as EventRow;
-  const playerId = requirePlayerId(req, res);
-  if (!playerId) return;
-  const poll = loadPollOr404(req, res, event);
-  if (!poll) return;
-  if (!canManageDatePoll(poll, event, playerId, req.groupMembership?.role)) {
-    return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann entscheiden.' });
-  }
-  const optionIds = Array.isArray(req.body?.optionIds)
-    ? req.body.optionIds
-    : typeof req.body?.optionId === 'string'
-      ? [req.body.optionId]
-      : [];
-  if (!optionIds.every((id: unknown) => typeof id === 'string')) {
-    return res.status(400).json({ error: 'optionIds muss ein String-Array sein.' });
-  }
-  const decisionNote = req.body?.decisionNote;
-  if (decisionNote !== undefined && decisionNote !== null && (typeof decisionNote !== 'string' || decisionNote.length > 500)) {
-    return res.status(400).json({ error: 'decisionNote darf höchstens 500 Zeichen lang sein.' });
-  }
-  const result = decideEventPoll(poll, optionIds as string[], decisionNote);
-  if (!result.ok) return res.status(result.code === 'invalid' ? 400 : 409).json({ error: result.error });
-
-  if (result.changed) {
-    writeAdminAudit({
-      actorPlayerId: playerId,
-      groupId: event.group_id ?? undefined,
-      action: 'event_poll_decided',
-      targetType: 'event_poll',
-      targetId: poll.id,
-      details: { eventId: event.id, topic: poll.topic, optionIds, previousValue: result.previousValue, nextValue: result.nextValue },
-    });
-    resolvePollReminders(event, poll.id);
-    broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
-    const recipients = acceptedParticipantIds(event.id).filter((id) => id !== playerId);
-    notifyInvitees(
-      event.group_id!,
-      event.id,
-      recipients,
-      'Abstimmung entschieden',
-      `${event.name}: ${poll.title} – Ergebnis: ${result.nextValue}. Eventdaten und Teilnahmestatus bleiben unverändert.`,
-      `/#eventPolls/${poll.id}`,
-    );
-  }
-  res.json({ poll: serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role) });
 });

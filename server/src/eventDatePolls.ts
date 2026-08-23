@@ -240,7 +240,7 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
     const responseMode = input.responseMode ?? 'feasibility';
     const maxSelections = responseMode === 'multiple_choice' ? (input.maxSelections ?? null) : null;
     const existingUndecided = db
-      .prepare(`SELECT 1 FROM event_date_polls WHERE event_id = ? AND decision_key = ? AND status IN ('open', 'closed')`)
+      .prepare(`SELECT 1 FROM event_date_polls WHERE event_id = ? AND decision_key = ? AND status = 'open'`)
       .get(event.id, decisionKey);
     if (existingUndecided) {
       return { ok: false, code: 'conflict', error: 'Für diese Entscheidung läuft bereits eine Abstimmung.' };
@@ -345,31 +345,113 @@ export type PollMutationResult =
   | { ok: false; code: 'not_open' | 'invalid'; error: string };
 
 export interface UpdateDatePollFields {
+  title?: string;
   note?: string | null;
   responseDueOn?: string;
+  options?: Array<{
+    id?: string;
+    label: string;
+    description?: string | null;
+    payload?: Record<string, unknown>;
+  }>;
 }
 
-export function updateDatePollMeta(poll: DatePollRow, fields: UpdateDatePollFields): PollMutationResult {
+export type UpdateDatePollResult =
+  | {
+      ok: true;
+      poll: DatePollRow;
+      addedOptionCount: number;
+      previouslyAnsweredPlayerIds: string[];
+    }
+  | { ok: false; code: 'not_open' | 'invalid'; error: string };
+
+export function updateDatePoll(poll: DatePollRow, fields: UpdateDatePollFields): UpdateDatePollResult {
   if (poll.status !== 'open') {
-    return { ok: false, code: 'not_open', error: 'Metadaten können nur während einer offenen Runde geändert werden.' };
+    return { ok: false, code: 'not_open', error: 'Nur eine laufende Abstimmung kann bearbeitet werden.' };
   }
   const now = Date.now();
   if (fields.responseDueOn !== undefined && endOfIsoDateUtcMs(fields.responseDueOn) <= now) {
     return { ok: false, code: 'invalid', error: 'responseDueOn muss in der Zukunft liegen.' };
   }
-  return db.transaction((): PollMutationResult => {
-    const note = fields.note !== undefined ? fields.note : poll.note;
-    const responseDueAt = fields.responseDueOn !== undefined ? endOfIsoDateUtcMs(fields.responseDueOn) : poll.response_due_at;
-    db.prepare('UPDATE event_date_polls SET note = ?, response_due_at = ?, updated_at = ? WHERE id = ?').run(
+  return db.transaction((): UpdateDatePollResult => {
+    const current = getDatePoll(poll.id);
+    if (!current || current.status !== 'open') {
+      return { ok: false, code: 'not_open', error: 'Die Abstimmung läuft nicht mehr.' };
+    }
+    const existingOptions = getDatePollOptions(poll.id);
+    const nextOptions = fields.options;
+    let addedOptionCount = 0;
+    let previouslyAnsweredPlayerIds: string[] = [];
+    if (nextOptions !== undefined) {
+      if (nextOptions.length < MIN_OPTIONS || nextOptions.length > MAX_OPTIONS) {
+        return { ok: false, code: 'invalid', error: `${MIN_OPTIONS} bis ${MAX_OPTIONS} Optionen sind erforderlich.` };
+      }
+      const existingIds = new Set(existingOptions.map((option) => option.id));
+      const suppliedExistingIds = nextOptions.flatMap((option) => option.id ? [option.id] : []);
+      if (
+        new Set(suppliedExistingIds).size !== suppliedExistingIds.length ||
+        suppliedExistingIds.length !== existingIds.size ||
+        suppliedExistingIds.some((id) => !existingIds.has(id))
+      ) {
+        return { ok: false, code: 'invalid', error: 'Bestehende Optionen dürfen beim Bearbeiten nicht entfernt werden.' };
+      }
+      const labels = nextOptions.map((option) => option.label.trim());
+      if (labels.some((label) => !label)) {
+        return { ok: false, code: 'invalid', error: 'Jede Option benötigt eine Bezeichnung.' };
+      }
+      if (new Set(labels.map((label) => label.toLocaleLowerCase('de'))).size !== labels.length) {
+        return { ok: false, code: 'invalid', error: 'Optionen dürfen sich nicht duplizieren.' };
+      }
+      addedOptionCount = nextOptions.length - existingOptions.length;
+      if (addedOptionCount > 0) {
+        previouslyAnsweredPlayerIds = getDatePollInvitees(poll.id)
+          .filter((invitee) => hasAnsweredDatePoll(poll.id, invitee.player_id))
+          .map((invitee) => invitee.player_id);
+      }
+    }
+
+    const title = fields.title !== undefined ? fields.title : current.title;
+    const note = fields.note !== undefined ? fields.note : current.note;
+    const responseDueAt = fields.responseDueOn !== undefined ? endOfIsoDateUtcMs(fields.responseDueOn) : current.response_due_at;
+    db.prepare('UPDATE event_date_polls SET title = ?, note = ?, response_due_at = ?, updated_at = ? WHERE id = ?').run(
+      title,
       note,
       responseDueAt,
       now,
       poll.id,
     );
-    if (fields.responseDueOn !== undefined && responseDueAt !== poll.response_due_at) {
+
+    if (nextOptions !== undefined) {
+      const updateOption = db.prepare(
+        `UPDATE event_date_poll_options
+         SET label = ?, description = ?, payload_json = ?, position = ?
+         WHERE id = ? AND poll_id = ?`,
+      );
+      const insertOption = db.prepare(
+        `INSERT INTO event_date_poll_options
+           (id, poll_id, starts_on, ends_on, position, label, description, payload_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      nextOptions.forEach((option, position) => {
+        const label = option.label.trim();
+        const description = option.description?.trim() || null;
+        const payloadJson = JSON.stringify(option.payload ?? {});
+        if (option.id) {
+          updateOption.run(label, description, payloadJson, position, option.id, poll.id);
+          return;
+        }
+        const placeholderDate = `0001-01-${String(position + 1).padStart(2, '0')}`;
+        insertOption.run(nanoid(), poll.id, placeholderDate, placeholderDate, position, label, description, payloadJson);
+      });
+    }
+
+    if (
+      (fields.responseDueOn !== undefined && responseDueAt !== current.response_due_at) ||
+      addedOptionCount > 0
+    ) {
       rescheduleRemindersForStillOpenInvitees(poll.id, responseDueAt, now);
     }
-    return { ok: true, poll: getDatePoll(poll.id)! };
+    return { ok: true, poll: getDatePoll(poll.id)!, addedOptionCount, previouslyAnsweredPlayerIds };
   })();
 }
 
@@ -410,45 +492,38 @@ export function addDatePollOption(poll: DatePollRow, input: DatePollOptionInput)
   if (existing.some((o) => (o.label ?? '').toLocaleLowerCase('de') === label.toLocaleLowerCase('de'))) {
     return { ok: false, code: 'invalid', error: 'Diese Option ist bereits vorhanden.' };
   }
-  const id = nanoid();
-  db.prepare(
-    `INSERT INTO event_date_poll_options
-       (id, poll_id, starts_on, ends_on, position, label, description, payload_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    id,
-    poll.id,
-    startsOn,
-    endsOn,
-    position,
-    label,
-    input.description ?? null,
-    JSON.stringify(input.payload ?? {}),
-  );
-  db.prepare('UPDATE event_date_polls SET updated_at = ? WHERE id = ?').run(Date.now(), poll.id);
-  return { ok: true, option: db.prepare('SELECT * FROM event_date_poll_options WHERE id = ?').get(id) as DatePollOptionRow };
-}
-
-export type RemoveOptionResult =
-  | { ok: true }
-  | { ok: false; code: 'not_open' | 'not_found' | 'invalid'; error: string };
-
-export function removeDatePollOption(poll: DatePollRow, optionId: string): RemoveOptionResult {
-  if (poll.status !== 'open') {
-    return { ok: false, code: 'not_open', error: 'Optionen können nur während einer offenen Runde entfernt werden.' };
-  }
-  const options = getDatePollOptions(poll.id);
-  if (!options.some((o) => o.id === optionId)) {
-    return { ok: false, code: 'not_found', error: 'Option nicht gefunden.' };
-  }
-  if (options.length <= MIN_OPTIONS) {
-    return { ok: false, code: 'invalid', error: `Mindestens ${MIN_OPTIONS} Optionen müssen erhalten bleiben.` };
-  }
-  db.transaction(() => {
-    db.prepare('DELETE FROM event_date_poll_options WHERE id = ?').run(optionId);
-    db.prepare('UPDATE event_date_polls SET updated_at = ? WHERE id = ?').run(Date.now(), poll.id);
+  return db.transaction((): OptionMutationResult => {
+    const current = getDatePoll(poll.id);
+    if (!current || current.status !== 'open') {
+      return { ok: false, code: 'not_open', error: 'Die Abstimmung läuft nicht mehr.' };
+    }
+    const currentOptions = getDatePollOptions(poll.id);
+    if (currentOptions.length >= MAX_OPTIONS) {
+      return { ok: false, code: 'invalid', error: `Höchstens ${MAX_OPTIONS} Optionen je Abstimmung.` };
+    }
+    if (currentOptions.some((option) => (option.label ?? '').toLocaleLowerCase('de') === label.toLocaleLowerCase('de'))) {
+      return { ok: false, code: 'invalid', error: 'Diese Option ist bereits vorhanden.' };
+    }
+    const id = nanoid();
+    db.prepare(
+      `INSERT INTO event_date_poll_options
+         (id, poll_id, starts_on, ends_on, position, label, description, payload_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      poll.id,
+      startsOn,
+      endsOn,
+      position,
+      label,
+      input.description ?? null,
+      JSON.stringify(input.payload ?? {}),
+    );
+    const now = Date.now();
+    db.prepare('UPDATE event_date_polls SET updated_at = ? WHERE id = ?').run(now, poll.id);
+    rescheduleRemindersForStillOpenInvitees(poll.id, current.response_due_at, now);
+    return { ok: true, option: db.prepare('SELECT * FROM event_date_poll_options WHERE id = ?').get(id) as DatePollOptionRow };
   })();
-  return { ok: true };
 }
 
 // ---------- invitees ----------
@@ -604,78 +679,6 @@ export function cancelDatePoll(poll: DatePollRow): CancelResult {
     }
     clearAutomaticReminders(poll.id);
     return { ok: true, poll: getDatePoll(poll.id)! };
-  })();
-}
-
-export type DecidePollResult =
-  | { ok: true; poll: DatePollRow; changed: boolean; previousValue: string | null; nextValue: string }
-  | { ok: false; code: 'not_open_or_closed' | 'invalid'; error: string };
-
-// Records a planning result without changing the event itself. Poll results
-// deliberately stay separate from dates, location, costs and participation;
-// a future explicit "apply to event" workflow can bridge that boundary.
-export function decideEventPoll(
-  poll: DatePollRow,
-  optionIds: string[],
-  decisionNote?: string | null,
-): DecidePollResult {
-  const uniqueIds = [...new Set(optionIds)];
-  if (
-    uniqueIds.length === 0 ||
-    (poll.topic === 'date_range' && uniqueIds.length !== 1) ||
-    (poll.response_mode !== 'multiple_choice' && uniqueIds.length !== 1)
-  ) {
-    return { ok: false, code: 'invalid', error: 'Bitte eine gültige Auswahl festlegen.' };
-  }
-  if (poll.max_selections !== null && uniqueIds.length > poll.max_selections) {
-    return { ok: false, code: 'invalid', error: `Höchstens ${poll.max_selections} Optionen dürfen festgehalten werden.` };
-  }
-  const options = getDatePollOptions(poll.id);
-  if (!uniqueIds.every((id) => options.some((option) => option.id === id))) {
-    return { ok: false, code: 'invalid', error: 'Mindestens eine Option gehört nicht zu dieser Abstimmung.' };
-  }
-  const nextValue = uniqueIds
-    .map((id) => options.find((option) => option.id === id)?.label ?? id)
-    .join(', ');
-  const previousSelection = db
-    .prepare(
-      `SELECT edpo.label, edpo.starts_on AS startsOn, edpo.ends_on AS endsOn
-       FROM event_poll_selected_options epso
-       JOIN event_date_poll_options edpo ON edpo.id = epso.option_id
-       WHERE epso.poll_id = ? ORDER BY epso.position`,
-    )
-    .all(poll.id) as Array<{ label: string | null; startsOn: string; endsOn: string }>;
-  const previousValue = previousSelection.length
-    ? previousSelection.map((option) => option.label ?? `${option.startsOn} – ${option.endsOn}`).join(', ')
-    : null;
-  const now = Date.now();
-  return db.transaction((): DecidePollResult => {
-    const current = getDatePoll(poll.id)!;
-    const selected = db
-      .prepare('SELECT option_id AS optionId FROM event_poll_selected_options WHERE poll_id = ? ORDER BY position')
-      .all(poll.id) as Array<{ optionId: string }>;
-    if (current.status === 'scheduled' && selected.map((row) => row.optionId).join(',') === uniqueIds.join(',')) {
-      return { ok: true, poll: current, changed: false, previousValue, nextValue };
-    }
-    if (current.status !== 'closed') {
-      return { ok: false, code: 'not_open_or_closed', error: 'Vor dem Festhalten eines Ergebnisses muss die Abstimmung beendet werden.' };
-    }
-    db.prepare(
-      `UPDATE event_date_polls SET status = 'superseded'
-       WHERE event_id = ? AND decision_key = ? AND status = 'scheduled' AND id != ?`,
-    ).run(poll.event_id, poll.decision_key, poll.id);
-    db.prepare(
-      `UPDATE event_date_polls
-       SET status = 'scheduled', selected_option_id = ?, decision_note = ?, updated_at = ?
-       WHERE id = ?`,
-    ).run(uniqueIds[0], decisionNote?.trim() || null, now, poll.id);
-    db.prepare('DELETE FROM event_poll_selected_options WHERE poll_id = ?').run(poll.id);
-    const insertSelected = db.prepare(
-      'INSERT INTO event_poll_selected_options (poll_id, option_id, position) VALUES (?, ?, ?)',
-    );
-    uniqueIds.forEach((id, position) => insertSelected.run(poll.id, id, position));
-    clearAutomaticReminders(poll.id);
-    return { ok: true, poll: getDatePoll(poll.id)!, changed: true, previousValue, nextValue };
   })();
 }
 

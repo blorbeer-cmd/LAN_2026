@@ -725,8 +725,8 @@ textarea {
 .event-poll-option {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3);
+  gap: var(--space-1);
+  padding: var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-elevated-2);
@@ -736,6 +736,9 @@ textarea {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: var(--space-1);
+}
+.event-poll-option-header {
+  align-items: center;
 }
 .event-poll-option-title-row {
   display: inline-flex;
@@ -772,11 +775,15 @@ textarea {
 .event-poll-choice-control {
   display: flex;
   align-items: center;
-  flex-direction: column;
-  gap: var(--space-1);
   margin-left: auto;
 }
+.event-poll-choice-control .selection-toolbar .event-poll-choice-btn {
+  height: auto;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+}
 .event-poll-response-details {
+  flex: 1 0 100%;
   font-size: var(--font-size-sm);
 }
 .event-poll-response-details > summary,
@@ -794,22 +801,11 @@ textarea {
 .event-poll-save-row {
   justify-content: flex-end;
 }
-.event-poll-management {
-  gap: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--accent);
+.event-poll-result-title {
+  margin: 0;
 }
-.event-poll-management-copy {
+.event-poll-edit-mode {
   gap: var(--space-1);
-}
-.event-poll-result-options {
-  gap: var(--space-2);
-}
-.event-poll-result-option {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  text-align: left;
 }
 .event-poll-history-round {
   display: flex;
@@ -848,9 +844,6 @@ textarea {
   align-items: center;
 }
 @media (max-width: 639px) { /* --bp-md */
-  .event-polls-page-actions .btn {
-    flex: 1 1 auto;
-  }
   .event-poll-card-header {
     align-items: stretch;
     flex-direction: column;

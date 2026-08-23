@@ -10,7 +10,8 @@ aktiven Events voneinander unabhängige Abstimmungen starten, beantworten und in
 fortführen. Typische Fragen sind Termin/Zeitraum, Ort, Dauer, Budget, Verpflegung oder eine freie
 Entscheidung.
 
-Eine Abstimmung dokumentiert ausschließlich Meinungen und ein optional festgehaltenes Ergebnis.
+Eine Abstimmung dokumentiert ausschließlich Meinungen und zeigt nach ihrem Ende das daraus
+entstandene Ergebnis.
 Sie verändert niemals automatisch den Termin, Ort, Preis, die Dauer, Teilnahme oder andere Daten
 des Events. Eine spätere Funktion „Ergebnis ins Event übernehmen“ ist ausdrücklich nicht Teil dieses
 Umfangs.
@@ -52,8 +53,7 @@ Eine **Runde** ist ein konkreter Durchlauf dieser Abstimmung mit:
 - optionaler maximaler Stimmenzahl bei Mehrfachauswahl,
 - optional dauerhaft anonyme Stimmabgabe,
 - Abstimmungsfrist,
-- Antworten und Erinnerungsstatus,
-- optional festgehaltenem Ergebnis.
+- Antworten und Erinnerungsstatus.
 
 Eine neue, unabhängige Abstimmung beginnt immer mit Runde 1. Eine Folgerunde übernimmt als
 Ausgangspunkt Titel, Antwortmodus und Optionen der vorherigen Runde, kann im Dialog aber angepasst
@@ -94,16 +94,16 @@ markiert, sobald tatsächlich mindestens eine Bewertung vorliegt.
 ### 3.3 Rundenstatus
 
 - `open`: **Abstimmung läuft**; Antworten können gespeichert und geändert werden.
-- `closed`: **Abstimmung beendet**; Antworten sind schreibgeschützt. Der Ersteller kann ein Ergebnis
-  festhalten oder mit neuer Frist wieder öffnen.
-- `scheduled`: historischer Datenbankname für eine abgeschlossene Runde mit festgehaltenem Ergebnis;
-  in der UI heißt der Status **Ergebnis festgehalten**.
+- `closed`: **Abstimmung beendet**; Antworten sind schreibgeschützt und ihre Zählwerte bilden direkt
+  die Ergebnisübersicht. Der Ersteller kann eine Folgerunde starten oder mit neuer Frist wieder öffnen.
+- `scheduled`: historischer Datenbankname für ältere Entwicklungsrunden mit festgehaltenem Ergebnis;
+  in der UI wird auch dieser Altbestand nur als **Abstimmung beendet** dargestellt.
 - `superseded`: eine ältere abgeschlossene Runde, die durch ein Ergebnis einer neueren Runde ersetzt
   wurde.
 - `cancelled`: abgebrochene Runde; bleibt in der Historie.
 
-Die Schaltfläche „Ergebnis festhalten“ erscheint erst nach „Abstimmung beenden“. Der zugehörige Hinweis
-erklärt, dass das Ergebnis nur in der Rundenhistorie gespeichert wird und keine Eventdaten ändert.
+Es gibt keinen zweiten Schritt zum Festhalten eines Ergebnisses. „Beenden“ friert die Stimmen ein und
+zeigt unmittelbar die Ergebnisübersicht; keine dieser Daten wird in das Event übernommen.
 
 ## 4. Teilnehmerkreis und Berechtigungen
 
@@ -127,8 +127,8 @@ anonyme Auswahl bleibt während einer offenen Runde sichtbar, damit sie geänder
 ### 4.2 Erstellen und Verwalten
 
 - Neue Abstimmung: jeder bestätigte Teilnehmer.
-- Frist, Optionen, Erinnerungen, Abstimmung beenden, wieder öffnen, Abstimmung abbrechen und Ergebnis
-  festhalten: Ersteller der Abstimmung.
+- Titel, Beschreibung, Frist, Optionsnotizen/-links, neue Optionen, Erinnerungen, Beenden, wieder
+  öffnen und Abbrechen: Ersteller der Abstimmung.
 - Owner-Fallback: nur wenn der Ersteller deaktiviert/entfernt ist und der Owner selbst bestätigter
   Teilnehmer des Events ist.
 - Admin/Owner ohne bestätigte Teilnahme: weder lesen noch verwalten.
@@ -157,8 +157,7 @@ erzeugen.
 Der Bereich verwendet ausschließlich die vorhandenen Designbausteine und Tokens:
 
 - `.card` für je eine Abstimmung,
-- kompakte verschachtelte Zeilen für Optionen und `.tournament-section-panel` nur für den
-  Ergebnisbereich,
+- kompakte verschachtelte Zeilen für Optionen,
 - `.selection-toolbar` für Bewertungen beziehungsweise eine Auswahl,
 - `.collapsible-section` für Personenlisten, weitere Aktionen und Historie,
 - `dateTimeFieldHtml(..., { dateOnly: true })` für Fristen,
@@ -171,7 +170,7 @@ Der Bereich verwendet ausschließlich die vorhandenen Designbausteine und Tokens
 - Die kompakte Aktion „Abstimmung starten“ steht rechts oberhalb der Liste und trägt kein Pluszeichen.
 - Jede Abstimmung ist eine einklappbare Karte mit Titel, Ersteller, aktueller Rundennummer, Status und
   Antwortfortschritt bereits im eingeklappten Kopf.
-- „Erinnerung versenden (N)“, „Beenden“ und „Abbrechen“ bleiben für den
+- „Bearbeiten“, „Erinnerung versenden (N)“, „Beenden“ und „Abbrechen“ bleiben für den
   Ersteller ebenfalls im Kopf erreichbar, auch wenn die Karte eingeklappt ist.
 - Beim ersten Laden wird eine laufende Abstimmung geöffnet; weitere Karten bleiben eingeklappt.
 - In der Karte stehen aktuelle Runde und Optionen zuerst. Frühere Runden liegen in einer eigenen,
@@ -192,7 +191,7 @@ Optionen sind kompakte, stabile Zeilen. Jede Option zeigt:
 - die passenden kompakten Antwortbuttons in derselben Inhaltszeile,
 - optional eine kurze Notiz ausschließlich im Info-Tooltip direkt am Titel,
 - optional ein reines, zugängliches Link-Icon direkt rechts neben dem Titel,
-- bei Einzel- und Mehrfachauswahl die Empfehlung „Meiste Stimmen“ direkt oberhalb der Auswahlaktion,
+- bei Einzel- und Mehrfachauswahl die Empfehlung „Meiste Stimmen“ in derselben Titelzeile wie die Option,
 - nach Ende einer nicht-anonymen Runde eine gemeinsame einklappbare Namensliste der abgegebenen
   Antworten; während der Abstimmung und bei anonymen Runden keine Namen.
 
@@ -209,7 +208,7 @@ Der Dialog enthält in dieser Reihenfolge:
 4. bei Mehrfachauswahl optional „Stimmen pro Person“,
 5. die Option „Anonyme Abstimmung“ mit einem Info-Popover, das die dauerhafte Wirkung erklärt,
 6. strukturierte, einzeln entfernbare Freitext-Optionszeilen mit optional einklappbarer kurzer Notiz
-   und Link sowie „+ Option hinzufügen“,
+   und Link sowie „Option hinzufügen“,
 7. themenkonforme Datumsauswahl für die Frist; die Erinnerungserklärung sitzt ausschließlich im
    angrenzenden Info-Popover,
 8. die volle Primäraktion „Abstimmung starten“.
@@ -221,13 +220,15 @@ es nicht. Beim Schließen warnt der Dialog nur, wenn tatsächlich Eingaben geän
 
 - **Erinnerung versenden (N)**: sendet jetzt eine Erinnerung an noch nicht fertige, nicht im
   Cooldown befindliche Teilnehmer.
-- **Abstimmung beenden**: stoppt weitere Antworten; ein Bestätigungsdialog erklärt Wiederöffnung und
-  Ergebnisworkflow.
-- **Ergebnis festhalten**: speichert ausgewählte Ergebnisoptionen nur in der Historie.
+- **Beenden**: stoppt weitere Antworten und zeigt die gespeicherten Zählwerte direkt als Ergebnis.
 - **Wieder öffnen**: verlangt eine neue zukünftige Frist.
-- **Abstimmung abbrechen**: ist direkt im Kartenkopf erreichbar und bleibt als destruktive Aktion in
+- **Abbrechen**: ist direkt im Kartenkopf erreichbar und bleibt als destruktive Aktion in
   der Historie nachvollziehbar.
 - **Neue Runde starten**: erscheint nach Abschluss oder Abbruch für den Abstimmungsersteller.
+- **Bearbeiten**: ändert während einer laufenden Runde Titel, Beschreibung, Frist sowie Notizen/Links
+  vorhandener Optionen und kann Optionen ergänzen. Bereits vorhandene Optionen werden nicht
+  entfernt. Bei Ergänzungen erhalten alle zuvor vollständig Abstimmenden eine stabile Mitteilung und
+  müssen die neuen Optionen noch beantworten.
 
 ## 7. Trennung vom Event
 
@@ -259,7 +260,7 @@ Die historischen Tabellennamen bleiben eine interne Implementierungsentscheidung
 - Eindeutigkeit `(event_id, decision_key, round_number)`,
 - `response_mode`,
 - `max_selections`,
-- `decision_note` und mehrere Ergebnisoptionen.
+- `decision_note` und mehrere Ergebnisoptionen bleiben ausschließlich für bestehende Altstände lesbar.
 - Antwortmodus `rating_1_5` und Antwortwerte `1` bis `5` über Migration 86.
 - `is_anonymous` als nicht-nullfähiges Flag mit sicherem Standard `0` über Migration 87.
 - Optionsnotiz und Link verwenden die bereits vorhandenen Felder `description` und `payload_json`.
@@ -276,15 +277,13 @@ Basis: `/api/events/:eventId/polls`
 - `POST /`: neue Abstimmung oder Folgerunde; der Server bestimmt den Teilnehmerkreis.
 - `GET /:pollId`: Detail und eigene Antwort.
 - `PUT /:pollId/my-responses`: vollständige Antwort atomar speichern.
-- `PATCH /:pollId`: Beschreibung/Frist einer offenen Runde.
+- `PATCH /:pollId`: Titel, Beschreibung, Frist und Optionen einer offenen Runde atomar bearbeiten.
 - `POST /:pollId/reminders`: offene Antworten erinnern.
 - `POST /:pollId/close`: Abstimmung beenden.
 - `POST /:pollId/reopen`: mit neuer Frist wieder öffnen.
 - `POST /:pollId/cancel`: Abstimmung abbrechen.
-- `POST /:pollId/decide`: Ergebnis einer geschlossenen Runde festhalten.
 
-`inviteePlayerIds` wird bei der generischen Erstellung nicht akzeptiert. Eine Ergebnisantwort liefert
-das Event höchstens als unveränderte Vergleichsdarstellung zurück.
+`inviteePlayerIds` wird bei der generischen Erstellung nicht akzeptiert.
 Personenzuordnungen werden nur bei beendeten, nicht-anonymen Runden serialisiert; diese
 Zugriffsgrenze wird nicht lediglich im Browser ausgeblendet.
 
@@ -304,7 +303,9 @@ Zugriffsgrenze wird nicht lediglich im Browser ausgeblendet.
 - Fristen schließen Runden, Erinnerungen beachten Antwortstatus, Teilnehmerstatus und Cooldown.
 - Mehrere unabhängige Abstimmungen und mehrere Runden je Abstimmung haben korrekte Nummern und
   einklappbare Historien.
-- Ergebnis, Abbruch und ältere Runden bleiben nachvollziehbar.
+- Das Ergebnis abgeschlossener Runden, Abbrüche und ältere Runden bleiben nachvollziehbar.
+- Laufende Abstimmungen lassen sich um Optionsnotizen, Links und neue Optionen ergänzen; frühere
+  Abstimmende werden bei neuen Optionen informiert.
 - Antworten lassen sich ohne Scrollsprung auswählen und speichern.
 - Keine Poll-Aktion ändert Eventdaten oder Teilnahmestatus.
 - Direkte Eventänderungen informieren Teilnehmer, ohne ihre Zusage zu invalidieren.

@@ -236,10 +236,8 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   const closed = ownerPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
   await closed.locator('.event-poll-response-details').first().waitFor();
   assert.match((await closed.locator('.event-poll-response-details').first().textContent()) ?? '', new RegExp(MEMBER_NAME));
-  await closed.locator('[data-result-option]').first().click();
-  await closed.locator('[data-decide-poll]').click();
-  await ownerPage.locator('.modal-backdrop [data-confirm]').click();
-  await ownerPage.locator('.toast', { hasText: 'Rundenhistorie' }).waitFor();
+  assert.equal(await closed.locator('.event-poll-result-title', { hasText: 'Ergebnis' }).count(), 1);
+  assert.equal(await closed.locator('[data-decide-poll]').count(), 0, 'the closed counts are the result; there is no second decision step');
   await ownerPage.locator('[data-new-poll-round]').waitFor();
 
   await createPoll(memberPage, {
@@ -259,12 +257,58 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   const pollViewport = memberPage.locator('#view-container');
   await pollViewport.evaluate((element) => { element.scrollTop = element.scrollHeight; });
   const beforeSaveTop = await memberCreated.evaluate((element) => element.getBoundingClientRect().top);
+  const beforeSaveHeight = await memberCreated.evaluate((element) => element.getBoundingClientRect().height);
   await memberCreated.locator('[data-save-poll]').tap();
   await memberPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
   await memberPage.waitForTimeout(300);
   const afterSaveTop = await memberCreated.evaluate((element) => element.getBoundingClientRect().top);
-  assert.ok(Math.abs(afterSaveTop - beforeSaveTop) <= 2, 'saving keeps the visible poll anchored instead of jumping to the top');
-  assert.equal(await memberCreated.locator('.event-poll-choice-control .badge', { hasText: 'Meiste Stimmen' }).count(), 1);
+  const afterSaveHeight = await memberCreated.evaluate((element) => element.getBoundingClientRect().height);
+  assert.ok(
+    Math.abs(afterSaveTop - beforeSaveTop) <= 24 && afterSaveTop < -100,
+    `saving keeps the visible poll anchored instead of jumping to the top (${beforeSaveTop}/${beforeSaveHeight} -> ${afterSaveTop}/${afterSaveHeight})`,
+  );
+  assert.deepEqual(await memberCreated.locator('[data-poll-choice]').allTextContents(), ['Ausgewählt', 'Wählen', 'Wählen']);
+  assert.equal(await memberCreated.locator('.event-poll-option-header .badge', { hasText: 'Meiste Stimmen' }).count(), 1);
+  const compactOptionHeight = (await memberCreated.locator('.event-poll-option').first().boundingBox())!.height;
+  assert.ok(compactOptionHeight < 80, `choice options stay compact (${compactOptionHeight}px)`);
+
+  await memberCreated.locator('[data-poll-choice]').nth(1).tap();
+  await memberCreated.locator('[data-poll-choice]').nth(0).tap();
+  await memberCreated.locator('[data-save-poll]').tap();
+  await memberPage.waitForFunction(() => {
+    const poll = Array.from(document.querySelectorAll('[data-poll-group]')).find((element) => element.textContent?.includes('Welche Verpflegung?'));
+    const counts = poll?.querySelectorAll('.event-poll-counts');
+    return counts?.[0]?.textContent?.includes('0 Stimmen') && counts?.[1]?.textContent?.includes('1 Stimme');
+  });
+  assert.deepEqual(
+    await memberCreated.locator('[data-poll-choice]').allTextContents(),
+    ['Wählen', 'Ausgewählt', 'Wählen'],
+    'the saved answer, counts and recommendation reconcile to the same server response',
+  );
+  assert.equal(await memberCreated.locator('[data-poll-choice]').nth(1).locator('.ui-icon').count(), 0, 'the compact selected action has no redundant check icon');
+  assert.equal(
+    await memberCreated.locator('.event-poll-option').nth(1).locator('.event-poll-option-header .badge', { hasText: 'Meiste Stimmen' }).count(),
+    1,
+    'the recommendation stays on the title line',
+  );
+
+  await memberCreated.locator('[data-edit-poll]').tap();
+  await memberPage.waitForSelector('#event-poll-edit-form');
+  assert.equal(await memberPage.locator('#event-poll-edit-form [data-poll-option-id] [data-remove-poll-option]').count(), 0);
+  const firstEditOption = memberPage.locator('#event-poll-edit-form [data-poll-option-row]').first();
+  await firstEditOption.locator('.event-poll-form-option-details').evaluate((details) => { (details as HTMLDetailsElement).open = true; });
+  await firstEditOption.locator('[data-poll-option-note]').fill('Auch vegetarisch verfügbar');
+  await firstEditOption.locator('[data-poll-option-url]').fill('https://example.com/pizza');
+  await memberPage.click('#event-poll-edit-form #poll-add-option');
+  await memberPage.locator('#event-poll-edit-form [data-poll-option-input]').last().fill('Dessert');
+  await memberPage.click('#event-poll-edit-form button[type="submit"]');
+  await memberPage.locator('.toast', { hasText: 'Bereits abgestimmte Teilnehmer wurden informiert' }).waitFor();
+  await memberPage.waitForFunction(() => {
+    const poll = Array.from(document.querySelectorAll('[data-poll-group]')).find((element) => element.textContent?.includes('Welche Verpflegung?'));
+    return poll?.querySelectorAll('.event-poll-option').length === 4;
+  });
+  assert.equal(await memberCreated.locator('a[href="https://example.com/pizza"]').count(), 1);
+  assert.equal(await memberCreated.locator('[aria-label="Mehr Informationen zu Notiz zu Pizza"]').count(), 1);
   assert.equal(
     await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     true,
@@ -304,6 +348,8 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await anonymousPoll.locator('[data-poll-choice]').first().click();
   await anonymousPoll.locator('[data-save-poll]').click();
   await ownerPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
+  assert.deepEqual(await anonymousPoll.locator('[data-poll-choice]').allTextContents(), ['Ausgewählt', 'Wählen']);
+  assert.match((await anonymousPoll.locator('.event-poll-counts').first().textContent()) ?? '', /1 Stimme/);
   await anonymousPoll.locator('[data-close-poll]').click();
   await ownerPage.locator('.modal-backdrop [data-confirm]').click();
   await ownerPage.locator('.toast', { hasText: 'Abstimmung beendet' }).waitFor();

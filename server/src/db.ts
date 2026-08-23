@@ -4443,6 +4443,23 @@ registerMigration({
   up: addAnonymousEventPolls,
 });
 
+// A closed round is already a complete result snapshot. Starting a follow-up
+// round therefore must not require a second, artificial "result decision"
+// state transition. Keep the uniqueness guard only for the genuinely active
+// round while preserving every historical status and row.
+function allowEventPollRoundsAfterClose(): void {
+  db.exec(`
+    DROP INDEX IF EXISTS idx_event_polls_undecided;
+    CREATE UNIQUE INDEX idx_event_polls_undecided
+      ON event_date_polls(event_id, decision_key) WHERE status = 'open';
+  `);
+}
+registerMigration({
+  version: 88,
+  name: 'allow event poll rounds after close',
+  up: allowEventPollRoundsAfterClose,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

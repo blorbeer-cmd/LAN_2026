@@ -755,19 +755,24 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   may additionally carry a short note and a validated HTTP-/HTTPS-link. A poll can be marked
   anonymous in the same dialog; this permanently suppresses voter-to-answer mappings.
   Each poll is one collapsible card. Its current round and response progress stay together; the
-  creator's compact „Erinnerung versenden (N)“, „Beenden“ and „Abbrechen“
+  creator's compact „Bearbeiten“, „Erinnerung versenden (N)“, „Beenden“ and „Abbrechen“
   actions remain in the card header while collapsed. Earlier rounds live in a nested, initially
   collapsed history. „Offen“ is both an explicit way to clear a per-option feasibility rating and
   the resulting incomplete-response count. Repeated reminders reuse one stable notification-center
   entry per poll and recipient, moving it to the top; automatic sends run 48 hours and 2 hours before
-  the deadline. Option rows keep the title with a note info-tooltip and an icon-only link immediately
-  beside it, counts and compact response controls within a shallow two-row layout. Single- and
-  multiple-choice controls say „Wählen“; their „Meiste Stimmen“ badge sits directly above the
-  control. An optional response-details disclosure is rendered only after a non-anonymous round has
+  the deadline. While a round is open, its creator can edit title, description, deadline, option
+  notes and links and append further options; existing options cannot be removed from that dialog.
+  Adding options informs everyone who had already completed the round and makes those responses
+  incomplete until the added options have been answered. Option rows keep the title with a note
+  info-tooltip and an icon-only link immediately beside it, counts and compact response controls
+  within a shallow two-row layout. Single- and multiple-choice controls say „Wählen“; their
+  „Meiste Stimmen“ badge stays on the same title line as the option name. An optional
+  response-details disclosure is rendered only after a non-anonymous round has
   ended; the server withholds those identities while a poll is open and for anonymous polls at every
-  status. Poll re-renders preserve the visible card's scroll anchor. Choosing a result is offered only
-  after voting ends. Event cards do not embed or link to poll controls. A recorded poll result changes
-  no event field, schedule revision or participation state; the confirmation says this explicitly.
+  status. Poll re-renders preserve the visible card's scroll anchor. Ending a round immediately turns
+  its counts into the read-only result overview; there is no separate result-recording action. Event
+  cards do not embed or link to poll controls. A poll result changes no event field, schedule revision
+  or participation state.
   A future explicit „apply to event“ interaction is outside the current UI.
   The „Events“ tab is reachable by every member, not only by owner/admin, because answering an
   invitation is a personal action. What it shows depends on the role: owner/admin receive the full
