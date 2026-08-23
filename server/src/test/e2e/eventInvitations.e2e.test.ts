@@ -204,20 +204,34 @@ test('manager invites a member who accepts and both open clients update', async 
     'an open invitation cannot receive a payment state',
   );
 
+  // A pending invitation is no longer shown on the Events tab at all — it
+  // would otherwise sit directly above the tab's own event cards. Instead it
+  // surfaces as a Home "Aktuell" nudge and is actually answered in "Mein
+  // Profil" (see events.js/profile.js/aktuellStatus.js).
+  assert.equal(await memberPage.locator(`[data-pending-invitation="${eventId}"]`).count(), 0);
+  await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'home' })));
+  await memberPage.waitForSelector('#view-container[data-view="home"]');
+  const homeInvitationRow = memberPage.locator('[data-current-item]', { hasText: EVENT_NAME });
+  await homeInvitationRow.waitFor();
+  assert.match((await homeInvitationRow.textContent()) ?? '', /Einladung/);
+  await homeInvitationRow.locator('.home-current-navigate').click();
+  await memberPage.waitForSelector('#view-container[data-view="profile"]');
+
   const pending = memberPage.locator(`[data-pending-invitation="${eventId}"]`);
   await pending.waitFor();
 
   // The invitation also arrives as a personal notification. It is delivered in
   // the base workspace because the member is not a participant of the target
-  // event yet, and it deep-links back into the event area.
+  // event yet, and it deep-links back into the profile, where the invitation
+  // is now answered.
   const invitationNotification = memberPage.locator('[data-notification-entry]', { hasText: EVENT_NAME });
   await memberPage.click('#notifications-btn');
   await invitationNotification.waitFor();
   assert.match((await invitationNotification.textContent()) ?? '', /Einladung/);
   assert.equal(
-    await invitationNotification.locator('[data-notification-navigate="events"]').count(),
+    await invitationNotification.locator('[data-notification-navigate="profile"]').count(),
     1,
-    'the notification offers the jump into the event area',
+    'the notification offers the jump into the profile, where the invitation is answered',
   );
   await memberPage.click('#notifications-btn');
   assert.match((await pending.textContent()) ?? '', new RegExp(EVENT_NAME));
@@ -246,6 +260,10 @@ test('manager invites a member who accepts and both open clients update', async 
   const acceptedRosterRow = ownerParticipantList.locator('[data-event-participation-status="accepted"]', { hasText: MEMBER_NAME });
   await acceptedRosterRow.waitFor({ state: 'attached' });
   assert.match((await ownerParticipantList.locator('.food-order-group-meta').textContent()) ?? '', /1 Zusage/);
+
+  // The accepted event's own card only ever lived on the Events tab.
+  await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
+  await memberPage.waitForSelector('#view-container[data-view="events"]');
   const memberEventCard = memberPage.locator(`[data-event-card="${eventId}"]`);
   await memberEventCard.waitFor();
   assert.match((await memberEventCard.textContent()) ?? '', new RegExp(MEMBER_NAME));
@@ -524,9 +542,8 @@ test('manager invites a member who accepts and both open clients update', async 
   });
   assert.equal(clearedContribution.status(), 200, await clearedContribution.text());
   await clearedContributionRefresh;
-  const paidWithoutContribution = memberEventCard.locator('.event-card-payment-member');
+  const paidWithoutContribution = memberEventCard.locator('.event-card-payment-member', { hasText: 'Nicht festgelegt' });
   await paidWithoutContribution.waitFor();
-  assert.match((await paidWithoutContribution.textContent()) ?? '', /Nicht festgelegt/);
   const resetWithoutContribution = paidWithoutContribution.locator('[data-toggle-event-paid]');
   assert.equal(await resetWithoutContribution.getAttribute('aria-pressed'), 'true');
   await resetWithoutContribution.click();
@@ -542,9 +559,23 @@ test('manager invites a member who accepts and both open clients update', async 
   await restoredContributionRefresh;
   await memberEventCard.locator('.event-card-payment-member [data-toggle-event-paid][aria-pressed="false"]').waitFor();
 
+  const memberEndedRefresh = memberPage.waitForResponse(
+    (response) => response.request().method() === 'GET' && response.url() === `${BASE_URL}/api/events`,
+  );
   await ownerPage.click(`[data-end-event="${eventId}"]`);
   await ownerPage.click('[data-confirm]');
+  // A finished event moves into the collapsed "Historie" section (see
+  // events.js's renderEventSection): open it before interacting with its
+  // now-hidden card actions.
+  await ownerPage.locator('[data-event-history] > summary').click();
   await ownerPage.waitForSelector(`[data-restart-event="${eventId}"]`);
+
+  // The same Historie collapse applies to a plain member's own event list —
+  // sourced from its own `endedEvents` field (see routes/events.ts) since
+  // `availableEvents` deliberately excludes ended events entirely.
+  await memberEndedRefresh;
+  await memberPage.locator('[data-event-history] > summary').click();
+  await memberEventCard.waitFor();
 
   await ownerPage.click(`[data-participants-event="${eventId}"]`);
   assert.equal(await ownerPage.locator('.modal-backdrop [data-invite-participant]').count(), 0);

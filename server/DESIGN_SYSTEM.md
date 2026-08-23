@@ -741,8 +741,17 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   management surface — anlegen/bearbeiten, Tracking starten/stoppen, Teilnehmer einladen/entfernen
   and the PDF „Andenken“-Export — while a member gets read-only cards for the events they take
   part in, without the „+ Event“ action or administrative invitation/decline controls; the card
-  includes the event-status badge plus the count and names of accepted participants. Pending invitations for the current identity
-  lead the tab as a subsection for both. Event cards and invitations stay in one vertical column at
+  includes the event-status badge plus the count and names of accepted participants. Cards sort
+  newest-first by start date. A finished event moves out of the active list into the tab's own
+  „Historie“ (the same collapsible-section pattern as Food orders): it starts collapsed and
+  preserves its open state across live re-renders. Pending invitations for the current identity are
+  deliberately absent from this tab — a teaser sitting directly above the Events cards made it too
+  easy to miss and cluttered the tab with the cards immediately following it. Instead, an
+  invitation surfaces as a personal Home „Aktuell“ nudge (see „Home overview“) that links into „Mein
+  Profil“, and Profile's own leading „Einladungen“ section is where it is actually answered
+  (`renderInvitationCard`/`pendingEventInvitations`/`wirePendingInvitationActions` in `events.js`,
+  reused by `profile.js` so the card markup and accept/decline wiring exist exactly once). Event
+  cards stay in one vertical column at
   phone and laptop widths so payment and participant controls keep enough room. Their card hierarchy
   deliberately mirrors Food orders: alternating accent rails and a concise title/status header lead
   into one shared `.food-order-details` information box, followed by the separately collapsible
@@ -967,6 +976,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   copyable `#RRGGBB` field, and explicit cancel/apply actions; it has no competing preset palette.
   Invalid hex input is visibly rejected and cannot be applied or copied. The chosen value remains a draft until the profile's
   main save action persists it.
+  A leading „Einladungen“ section (present only while pending event invitations exist) shows the
+  same invitation cards Orga's Events tab used to render inline — cost/deadline disclosure plus
+  Annehmen/Ablehnen — via events.js's shared `renderInvitationCard`.
 - **Leaderboard** — the „Rangliste“ tab and default entry of the „Auswertung“ area, reached only
   through Admin's „Auswertung“ tool card (see „Admin tools“). The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
@@ -987,7 +999,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   event on the current device; a new vote round, order, tournament or lobby remains visible again.
   Tappable current items, the personal status and player entries remain nested cards on the
   secondary elevated background; „Gerade aktiv“ is a subsection of
-  „Live-Status“ rather than a competing page-level group. Main groups stay in one continuous column
+  „Live-Status“ rather than a competing page-level group. A pending event invitation appears here as
+  a plain linking nudge into „Mein Profil“ (see aktuellStatus.js); the full card with
+  Annehmen/Ablehnen lives only in Profile, not in this list. Main groups stay in one continuous column
   at phone and laptop widths while their existing internal grids remain responsive.
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
   same card grouping as the other polished workflows without an accent rail.

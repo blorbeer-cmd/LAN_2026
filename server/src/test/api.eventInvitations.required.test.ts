@@ -105,7 +105,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal(invitationPushes.length, 1, 'a repeated invite must not notify a second time');
       assert.equal(invitationPushes[0].eventId, BASE_EVENT_ID);
       assert.equal(invitationPushes[0].audience, 'direct');
-      assert.equal(invitationPushes[0].url, '/#events');
+      assert.equal(invitationPushes[0].url, '/#profile');
       assert.deepEqual(JSON.parse(invitationPushes[0].playerIds), [bob.account.id]);
       assert.equal(invitationPushes[0].resolvedAt, null);
       // It is genuinely readable for the invitee, whatever workspace is
