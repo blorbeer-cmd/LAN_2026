@@ -26,7 +26,6 @@ import { emptyStateHtml } from '../emptyState.js';
 import { eventStatusBadgeHtml } from '../eventStatus.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { formatEuroCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
-import { selectEventPollsEvent } from './eventPolls.js';
 
 const EVENT_HELP = 'Nur ein Event gleichzeitig erfasst Live-Status und Spielzeit.';
 const KIOSK_HELP = 'Zeigt Live-Status, Vote, Rang und Turnier; ein eigener Token ist erforderlich.';
@@ -457,7 +456,6 @@ function renderMemberEventCard(event) {
         <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
         ${eventStatusBadgeHtml(event)}
       </div>
-      <button type="button" class="btn btn-sm" data-navigate="eventPolls" data-open-event-polls="${escapeHtml(event.id)}">Abstimmungen${event.openPollCount ? ` (${event.openPollCount})` : ''}</button>
       ${renderEventInfo(event)}
       ${renderAcceptedParticipants(event)}
     </article>
@@ -505,7 +503,6 @@ function renderEventCard(event) {
         <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
         ${eventStatusBadgeHtml(event)}
       </div>
-      <button type="button" class="btn btn-sm" data-navigate="eventPolls" data-open-event-polls="${escapeHtml(event.id)}">Abstimmungen${event.openPollCount ? ` (${event.openPollCount})` : ''}</button>
       ${renderEventInfo(event, { editable: true })}
       ${renderAcceptedParticipants(event, { includeInvitationStatuses: true })}
       <div class="event-card-actions">
@@ -687,7 +684,6 @@ function openEventForm(ctx, existing) {
           <label for="event-name" class="field-label">Name</label>
           <input type="text" id="event-name" maxlength="80" required autofocus value="${escapeHtml(existing?.name ?? '')}" placeholder="z.B. LAN Winter 2027" />
         </div>
-        ${isEdit ? '' : '<label><input type="checkbox" id="event-has-schedule" checked> Termin steht bereits fest</label>'}
         <div class="field-row">
           <div>
             <label for="event-starts" class="field-label">Beginnt am</label>
@@ -776,15 +772,6 @@ function openEventForm(ctx, existing) {
         wireDateTimeField(modalEl, 'event-ends');
         wireDateTimeField(modalEl, 'event-payment-due');
         wireInfoTooltips(modalEl);
-        const scheduleToggle = modalEl.querySelector('#event-has-schedule');
-        const syncScheduleFields = () => {
-          if (!scheduleToggle) return;
-          modalEl.querySelector('#event-starts').disabled = !scheduleToggle.checked;
-          modalEl.querySelector('#event-ends').disabled = !scheduleToggle.checked;
-        };
-        scheduleToggle?.addEventListener('change', syncScheduleFields);
-        syncScheduleFields();
-
         modalEl.querySelector('#event-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const name = modalEl.querySelector('#event-name').value.trim();
@@ -823,12 +810,10 @@ function openEventForm(ctx, existing) {
             return;
           }
 
-          const includeSchedule = isEdit || modalEl.querySelector('#event-has-schedule')?.checked;
           const payload = {
             name,
-            ...(includeSchedule
-              ? { startsAt: startsVal ? new Date(startsVal).getTime() : undefined, endsAt: endsVal ? new Date(endsVal).getTime() : null }
-              : {}),
+            startsAt: startsVal ? new Date(startsVal).getTime() : undefined,
+            endsAt: endsVal ? new Date(endsVal).getTime() : null,
             location: location || null,
             description: description || null,
             costCents,
@@ -982,9 +967,6 @@ export function renderOrgaEvents(container, ctx) {
       if (details.open) expandedEventParticipants.add(details.dataset.eventParticipants);
       else expandedEventParticipants.delete(details.dataset.eventParticipants);
     });
-  });
-  container.querySelectorAll('[data-open-event-polls]').forEach((button) => {
-    button.addEventListener('click', () => selectEventPollsEvent(button.dataset.openEventPolls));
   });
 
   container.querySelector('[data-event-history]')?.addEventListener('toggle', (e) => {

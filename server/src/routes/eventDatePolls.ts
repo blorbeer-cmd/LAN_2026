@@ -3,7 +3,7 @@
 // the actual state machine lives in eventDatePolls.ts.
 
 import { Router, type Request, type Response } from 'express';
-import { db, BASE_EVENT_ID } from '../db';
+import { db } from '../db';
 import { getEvent, type EventRow } from '../events';
 import { resolveGroupResource } from '../groupAuthorization';
 import { writeAdminAudit } from '../adminAudit';
@@ -248,9 +248,9 @@ function loadPollOr404(
   return materialized.poll;
 }
 
-function notifyInvitees(groupId: string, playerIds: string[], title: string, body: string, url: string): void {
+function notifyInvitees(groupId: string, eventId: string, playerIds: string[], title: string, body: string, url: string): void {
   if (playerIds.length === 0) return;
-  notifyPlayers(playerIds, { title, body, url }, 'direct', undefined, { groupId, eventId: BASE_EVENT_ID });
+  notifyPlayers(playerIds, { title, body, url }, 'direct', undefined, { groupId, eventId });
 }
 
 // GET /api/events/:eventId/date-polls
@@ -393,6 +393,7 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
   notifyInvitees(
     event.group_id!,
+    event.id,
     inviteeIds.filter((id) => id !== playerId),
     'Neue Abstimmung',
     `${event.name}: ${(title?.trim() || 'Termin / Zeitraum')} — bitte antworten.`,
@@ -486,7 +487,7 @@ eventDatePollsRouter.post('/:pollId/options', resolveEventForPolls, (req, res) =
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
   const invitees = getDatePollInvitees(poll.id).map((i) => i.player_id).filter((id) => id !== playerId);
-  notifyInvitees(event.group_id!, invitees, 'Abstimmung geändert', `${event.name}: Eine neue Option wurde ergänzt.`, `/#eventPolls/${poll.id}`);
+  notifyInvitees(event.group_id!, event.id, invitees, 'Abstimmung geändert', `${event.name}: Eine neue Option wurde ergänzt.`, `/#eventPolls/${poll.id}`);
   res.status(201).json(serializeDatePoll(getDatePollForEvent(event.id, poll.id)!, event, playerId, req.groupMembership?.role));
 });
 
@@ -515,7 +516,7 @@ eventDatePollsRouter.delete('/:pollId/options/:optionId', resolveEventForPolls, 
     details: { eventId: event.id, pollId: poll.id },
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
-  notifyInvitees(event.group_id!, invitees, 'Abstimmung geändert', `${event.name}: Eine Option wurde entfernt.`, `/#eventPolls/${poll.id}`);
+  notifyInvitees(event.group_id!, event.id, invitees, 'Abstimmung geändert', `${event.name}: Eine Option wurde entfernt.`, `/#eventPolls/${poll.id}`);
   res.status(204).end();
 });
 
@@ -549,7 +550,7 @@ eventDatePollsRouter.post('/:pollId/invitees', resolveEventForPolls, (req, res) 
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
   if (invitedId !== playerId) {
-    notifyInvitees(event.group_id!, [invitedId], 'Abstimmung', `${event.name}: Du wurdest zu einer Abstimmung eingeladen.`, `/#eventPolls/${poll.id}`);
+    notifyInvitees(event.group_id!, event.id, [invitedId], 'Abstimmung', `${event.name}: Du wurdest zu einer Abstimmung eingeladen.`, `/#eventPolls/${poll.id}`);
   }
   res.status(201).json(serializeDatePoll(getDatePollForEvent(event.id, poll.id)!, event, playerId, req.groupMembership?.role));
 });
@@ -634,6 +635,7 @@ eventDatePollsRouter.post('/:pollId/reminders', resolveEventForPolls, (req, res)
   });
   notifyInvitees(
     event.group_id!,
+    event.id,
     candidates.map((c) => c.playerId),
     'Erinnerung: Abstimmung',
     `${event.name}: Bitte antworte auf die Abstimmung.`,
@@ -696,7 +698,7 @@ eventDatePollsRouter.post('/:pollId/reopen', resolveEventForPolls, (req, res) =>
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
   const invitees = getDatePollInvitees(poll.id).map((i) => i.player_id).filter((id) => id !== playerId);
-  notifyInvitees(event.group_id!, invitees, 'Abstimmung', `${event.name}: Die Abstimmung wurde wieder geöffnet.`, `/#eventPolls/${poll.id}`);
+  notifyInvitees(event.group_id!, event.id, invitees, 'Abstimmung', `${event.name}: Die Abstimmung wurde wieder geöffnet.`, `/#eventPolls/${poll.id}`);
   res.json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
 });
 
@@ -767,36 +769,15 @@ eventDatePollsRouter.post('/:pollId/decide', resolveEventForPolls, (req, res) =>
       )
       .all(event.id) as Array<{ playerId: string; status: 'invited' | 'interested' | 'accepted' }>;
     const invitees = getDatePollInvitees(poll.id).map((invitee) => invitee.player_id);
-    const dateChanged = poll.topic === 'date_range';
-    if (dateChanged) {
-      const accepted = participants.filter((row) => row.status === 'accepted').map((row) => row.playerId);
-      const acceptedSet = new Set(accepted);
-      notifyInvitees(
-        event.group_id!,
-        accepted.filter((id) => id !== playerId),
-        'Termin festgelegt',
-        `${event.name}: Ein Termin wurde festgelegt — bitte erneut bestätigen.`,
-        `/#eventPolls/${poll.id}`,
-      );
-      const informed = [...new Set([...participants.map((row) => row.playerId), ...invitees])]
-        .filter((id) => id !== playerId && !acceptedSet.has(id));
-      notifyInvitees(
-        event.group_id!,
-        informed,
-        'Termin festgelegt',
-        `${event.name}: ${result.nextValue} wurde als Termin festgelegt.`,
-        `/#eventPolls/${poll.id}`,
-      );
-    } else {
-      const recipients = [...new Set([...participants.map((row) => row.playerId), ...invitees])].filter((id) => id !== playerId);
-      notifyInvitees(
-        event.group_id!,
-        recipients,
-        'Planung aktualisiert',
-        `${event.name}: ${poll.title} wurde entschieden: ${result.nextValue}. Dein Teilnahmestatus bleibt unverändert.`,
-        `/#eventPolls/${poll.id}`,
-      );
-    }
+    const recipients = [...new Set([...participants.map((row) => row.playerId), ...invitees])].filter((id) => id !== playerId);
+    notifyInvitees(
+      event.group_id!,
+      event.id,
+      recipients,
+      'Abstimmung entschieden',
+      `${event.name}: ${poll.title} – Ergebnis: ${result.nextValue}. Eventdaten und Teilnahmestatus bleiben unverändert.`,
+      `/#eventPolls/${poll.id}`,
+    );
   }
   res.json({
     poll: serializeDatePoll(result.poll, result.event, playerId, req.groupMembership?.role),
@@ -849,6 +830,7 @@ eventDatePollsRouter.post('/:pollId/schedule', resolveEventForPolls, (req, res) 
     toNotify.delete(playerId);
     notifyInvitees(
       event.group_id!,
+      event.id,
       [...toNotify],
       'Termin festgelegt',
       `${event.name}: Ein Termin wurde festgelegt — bitte erneut bestätigen.`,

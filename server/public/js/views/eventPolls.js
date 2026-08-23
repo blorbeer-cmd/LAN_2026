@@ -15,28 +15,10 @@ const TOPICS = {
 const RESPONSE_LABELS = { can: 'Passt', if_needed: 'Wenn nötig', cannot: 'Passt nicht' };
 const pollCache = new Map();
 const drafts = new Map();
-let selectedEventId = null;
-
-export function selectEventPollsEvent(eventId) {
-  selectedEventId = eventId;
-}
 
 export function invalidateEventPolls() {
   pollCache.clear();
   drafts.clear();
-}
-
-function visibleEvents() {
-  const byId = new Map();
-  for (const event of [
-    ...(state.managedEvents ?? []),
-    ...(state.availableEvents ?? []),
-    ...(state.plannedEvents ?? []),
-    ...(state.eventInvitations ?? []),
-  ]) {
-    if (event?.id && !event.isBase) byId.set(event.id, event);
-  }
-  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'de'));
 }
 
 function loadPolls(eventId, ctx) {
@@ -126,7 +108,7 @@ function renderPoll(poll) {
     <div class="stack">${options}</div>
     ${poll.isInvitee && poll.status === 'open' ? `<button type="button" class="btn btn-primary" data-save-poll="${escapeHtml(poll.id)}">Antwort speichern</button>` : ''}
     ${poll.canManage && (poll.status === 'open' || poll.status === 'closed') ? `<div class="event-card-actions">
-      <button type="button" class="btn btn-primary" data-decide-poll="${escapeHtml(poll.id)}">Ergebnis festlegen</button>
+      <button type="button" class="btn btn-primary" data-decide-poll="${escapeHtml(poll.id)}">Ergebnis dokumentieren</button>
       ${poll.status === 'open' ? `<button type="button" class="btn btn-sm" data-close-poll="${escapeHtml(poll.id)}">Schließen</button>` : ''}
       <button type="button" class="btn btn-sm" data-remind-poll="${escapeHtml(poll.id)}">Offene erinnern</button>
     </div>` : ''}
@@ -195,19 +177,12 @@ function openCreatePoll(event, ctx) {
 }
 
 export function renderEventPolls(container, ctx) {
-  const events = visibleEvents();
-  for (const visibleEvent of events) loadPolls(visibleEvent.id, ctx);
-  const targetPollId = String(location.hash || '').match(/^#eventPolls\/(.+)$/)?.[1];
-  if (targetPollId) {
-    const matchingEvent = events.find((entry) => pollCache.get(entry.id)?.polls?.some((poll) => poll.id === targetPollId));
-    if (matchingEvent) selectedEventId = matchingEvent.id;
-  }
-  if (!selectedEventId || !events.some((event) => event.id === selectedEventId)) selectedEventId = events[0]?.id ?? null;
-  const event = events.find((entry) => entry.id === selectedEventId);
-  if (!event) {
-    container.innerHTML = '<div class="empty-state"><h2>Noch keine Abstimmungen</h2><p class="muted">Sobald du ein Event verwaltest oder eingeladen wirst, erscheint es hier.</p></div>';
+  const event = state.activeEvent;
+  if (!event || event.isBase || event.id === 'base') {
+    container.innerHTML = '<div class="empty-state"><h2>Event auswählen</h2><p class="muted">Lege das Event zuerst an und wähle es anschließend oben rechts aus. Alle Abstimmungen in diesem Tab gehören zum aktiven Event.</p></div>';
     return;
   }
+  loadPolls(event.id, ctx);
   const cached = pollCache.get(event.id);
   const pollsHtml = cached?.loading
     ? '<p class="muted">Abstimmungen werden geladen…</p>'
@@ -217,7 +192,7 @@ export function renderEventPolls(container, ctx) {
   const canCreate = cached?.polls?.some((poll) => poll.canManage) || event.createdBy === getMyId() || state.managedEvents?.some((entry) => entry.id === event.id);
   container.innerHTML = `<div class="stack">
     <div class="row-between">
-      <label>Event<select id="poll-event-select">${events.map((entry) => `<option value="${escapeHtml(entry.id)}" ${entry.id === event.id ? 'selected' : ''}>${escapeHtml(entry.name)}</option>`).join('')}</select></label>
+      <div class="stack"><span class="muted">Aktives Event</span><h1>${escapeHtml(event.name)}</h1></div>
       ${canCreate ? '<button type="button" class="btn btn-primary" id="new-event-poll">+ Abstimmung</button>' : ''}
     </div>
     <div class="card stack">
@@ -231,7 +206,6 @@ export function renderEventPolls(container, ctx) {
     </div>
     ${pollsHtml}
   </div>`;
-  container.querySelector('#poll-event-select').addEventListener('change', (e) => { selectedEventId = e.target.value; ctx.rerender(); });
   container.querySelector('#new-event-poll')?.addEventListener('click', () => openCreatePoll(event, ctx));
   container.querySelectorAll('[data-participation]').forEach((button) => button.addEventListener('click', async () => {
     try {
@@ -262,8 +236,8 @@ export function renderEventPolls(container, ctx) {
   container.querySelectorAll('[data-decide-poll]').forEach((button) => button.addEventListener('click', async () => {
     const optionIds = [...container.querySelectorAll(`[data-decision-option="${CSS.escape(button.dataset.decidePoll)}"]:checked`)].map((input) => input.value);
     if (!optionIds.length) return showToast('Bitte ein Ergebnis auswählen.', { error: true });
-    if (!(await confirmDialog('Das Ergebnis wird festgelegt und alle Betroffenen werden informiert.', { title: 'Ergebnis festlegen?', confirmText: 'Festlegen' }))) return;
-    try { await api.eventPolls.decide(event.id, button.dataset.decidePoll, optionIds); invalidateEventPolls(); await ctx.refresh(); showToast('Ergebnis festgelegt.'); }
+    if (!(await confirmDialog('Das Ergebnis wird in der Abstimmung dokumentiert. Eventdaten werden dabei nicht geändert.', { title: 'Ergebnis dokumentieren?', confirmText: 'Dokumentieren' }))) return;
+    try { await api.eventPolls.decide(event.id, button.dataset.decidePoll, optionIds); invalidateEventPolls(); await ctx.refresh(); showToast('Ergebnis dokumentiert.'); }
     catch (error) { showToast(error.message, { error: true }); }
   }));
   container.querySelectorAll('[data-close-poll]').forEach((button) => button.addEventListener('click', async () => {

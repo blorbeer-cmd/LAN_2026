@@ -259,11 +259,6 @@ function serializeEventSummary(
     revealAllParticipantPayments?: boolean;
   } = {},
 ) {
-  const openPollCount = (
-    db
-      .prepare("SELECT COUNT(*) AS count FROM event_date_polls WHERE event_id = ? AND status IN ('open', 'closed')")
-      .get(event.id) as { count: number }
-  ).count;
   return {
     id: event.id,
     name: event.name,
@@ -279,7 +274,6 @@ function serializeEventSummary(
     isBase: event.id === BASE_EVENT_ID,
     trackingEnabled: Boolean(event.tracking_enabled),
     isEnded: Boolean(event.ended_at),
-    openPollCount,
     ...(includeAcceptedParticipants
       ? {
           acceptedParticipants: acceptedParticipantsForViewer(
@@ -837,15 +831,11 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
     return res.status(400).json({ error: 'Name ist erforderlich (1-80 Zeichen).' });
   }
 
-  const hasFixedSchedule = startsAt !== undefined && startsAt !== null;
-  if (hasFixedSchedule !== (endsAt !== undefined && endsAt !== null)) {
-    return res.status(400).json({ error: 'Beginn und Ende müssen entweder beide gesetzt oder beide offen sein.' });
-  }
-  const parsedStartsAt = hasFixedSchedule ? parseRequiredTimestamp(startsAt, 'startsAt') : null;
-  if (parsedStartsAt && !parsedStartsAt.ok) return res.status(400).json({ error: parsedStartsAt.error });
-  const parsedEndsAt = hasFixedSchedule ? parseRequiredTimestamp(endsAt, 'endsAt') : null;
-  if (parsedEndsAt && !parsedEndsAt.ok) return res.status(400).json({ error: parsedEndsAt.error });
-  if (parsedStartsAt?.ok && parsedEndsAt?.ok && parsedEndsAt.value <= parsedStartsAt.value) {
+  const parsedStartsAt = parseRequiredTimestamp(startsAt, 'startsAt');
+  if (!parsedStartsAt.ok) return res.status(400).json({ error: parsedStartsAt.error });
+  const parsedEndsAt = parseRequiredTimestamp(endsAt, 'endsAt');
+  if (!parsedEndsAt.ok) return res.status(400).json({ error: parsedEndsAt.error });
+  if (parsedEndsAt.value <= parsedStartsAt.value) {
     return res.status(400).json({ error: 'endsAt muss nach startsAt liegen.' });
   }
   const parsedLocation = parseOptionalText(location, 500, 'location');
@@ -872,33 +862,18 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
     return res.status(400).json({ error: 'Events sind ausschließlich für angenommene Teilnehmende sichtbar.' });
   }
 
-  const event = hasFixedSchedule && parsedStartsAt?.ok && parsedEndsAt?.ok
-    ? createEvent(name.trim(), {
-        groupId: req.player ? req.group!.id : undefined,
-        startsAt: parsedStartsAt.value,
-        endsAt: parsedEndsAt.value,
-        location: parsedLocation.value,
-        description: parsedDescription.value,
-        costCents: parsedCostCents.value,
-        accommodationCostCents: parsedAccommodationCostCents.value,
-        paypalLink: parsedPaypalLink.value,
-        paymentDueAt: parsedPaymentDueAt.value,
-        createdBy: req.player?.id ?? null,
-      })
-    : updateEvent(
-        createPlanningEvent(name.trim(), {
-          groupId: req.group!.id,
-          location: parsedLocation.value,
-          description: parsedDescription.value,
-          createdBy: req.player!.id,
-        }).id,
-        {
-          costCents: parsedCostCents.value,
-          accommodationCostCents: parsedAccommodationCostCents.value,
-          paypalLink: parsedPaypalLink.value,
-          paymentDueAt: parsedPaymentDueAt.value,
-        },
-      )!;
+  const event = createEvent(name.trim(), {
+    groupId: req.player ? req.group!.id : undefined,
+    startsAt: parsedStartsAt.value,
+    endsAt: parsedEndsAt.value,
+    location: parsedLocation.value,
+    description: parsedDescription.value,
+    costCents: parsedCostCents.value,
+    accommodationCostCents: parsedAccommodationCostCents.value,
+    paypalLink: parsedPaypalLink.value,
+    paymentDueAt: parsedPaymentDueAt.value,
+    createdBy: req.player?.id ?? null,
+  });
 
   writeAdminAudit({
     actorPlayerId: req.player?.id,
@@ -1051,10 +1026,9 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
   }
 
   let updated = updateEvent(req.params.id, fields)!;
-  const scheduleChanged =
-    (fields.startsAt !== undefined && fields.startsAt !== existing.starts_at) ||
-    (fields.endsAt !== undefined && fields.endsAt !== existing.ends_at);
-  if (scheduleChanged) {
+  const startChanged = fields.startsAt !== undefined && fields.startsAt !== existing.starts_at;
+  const endChanged = fields.endsAt !== undefined && fields.endsAt !== existing.ends_at;
+  if (startChanged) {
     db.prepare('UPDATE events SET schedule_revision = schedule_revision + 1 WHERE id = ?').run(existing.id);
     updated = getEvent(existing.id)!;
   }
@@ -1083,10 +1057,10 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
       `Unterkunft: ${money(existing.accommodation_cost_cents)} → ${money(updated.accommodation_cost_cents)}`,
     );
   }
-  if (fields.endsAt !== undefined && fields.endsAt !== existing.ends_at) {
+  if (endChanged) {
     relevantChanges.push('Dauer/Ende wurde geändert');
   }
-  if (scheduleChanged || relevantChanges.length > 0) {
+  if (startChanged || relevantChanges.length > 0) {
     const recipients = db
       .prepare(
         `SELECT player_id AS playerId FROM event_participants
@@ -1096,8 +1070,8 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     notifyPlayers(
       recipients.map((row) => row.playerId).filter((id) => id !== req.player?.id),
       {
-        title: scheduleChanged ? 'Eventtermin geändert' : 'Eventplanung geändert',
-        body: scheduleChanged
+        title: startChanged ? 'Eventtermin geändert' : 'Eventplanung geändert',
+        body: startChanged
           ? `${updated.name}: Der Termin wurde geändert${relevantChanges.length ? `; ${relevantChanges.join('; ')}` : ''}. Bitte bestätige deine Teilnahme erneut.`
           : `${updated.name}: ${relevantChanges.join('; ')}. Deine Zusage bleibt bestehen.`,
         url: '/#events',

@@ -58,6 +58,47 @@ async function navigate(page: Page, view: string): Promise<void> {
   await page.evaluate((target) => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: target })), view);
 }
 
+async function currentPlayerId(page: Page): Promise<string> {
+  return page.evaluate(async () => ((await (await fetch('/api/me')).json()) as { id: string }).id);
+}
+
+async function invitePlayer(page: Page, eventId: string, playerId: string): Promise<void> {
+  const status = await page.evaluate(
+    async ({ selectedEventId, selectedPlayerId }) =>
+      (await fetch(`/api/events/${selectedEventId}/invitations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: selectedPlayerId }),
+      })).status,
+    { selectedEventId: eventId, selectedPlayerId: playerId },
+  );
+  assert.equal(status, 201);
+}
+
+async function acceptEvent(page: Page, eventId: string): Promise<void> {
+  const status = await page.evaluate(
+    async (selectedEventId) =>
+      (await fetch(`/api/events/${selectedEventId}/my-participation`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'accepted' }),
+      })).status,
+    eventId,
+  );
+  assert.equal(status, 200);
+}
+
+async function selectActiveEvent(page: Page, eventId: string): Promise<void> {
+  await page.reload();
+  await page.waitForSelector('#app:not([hidden])');
+  await page.click('#event-context .search-select-toggle');
+  await page.click(`#event-context-switcher-list [data-search-select-value="${eventId}"]`);
+  await page.waitForFunction(
+    (selectedEventId) => (document.getElementById('event-context-switcher') as HTMLInputElement | null)?.value === selectedEventId,
+    eventId,
+  );
+}
+
 function isoDate(daysFromNow: number): string {
   return new Date(Date.now() + daysFromNow * 86_400_000).toISOString().slice(0, 10);
 }
@@ -118,30 +159,47 @@ after(async () => {
   serverProcess?.kill();
 });
 
-test('the Orga poll tab plans an undated event, supports interest/decline, and preserves acceptance after a location decision', async () => {
+test('the Orga poll tab uses the top-right active event and documents results without changing it', async () => {
   await navigate(ownerPage, 'events');
   await ownerPage.waitForSelector('#orga-events-title');
 
-  // One event creation flow: an unset schedule creates a normal event in the
-  // planning state, without a separate "Planungs-Event" action.
+  // Polls belong to an already-created regular event. There is no separate
+  // planning-event action and no schedule-less branch in the event form.
   assert.equal(await ownerPage.locator('#new-planning-event-btn').count(), 0);
   await ownerPage.click('#new-event-btn');
   await ownerPage.waitForSelector('#event-form');
   await ownerPage.fill('#event-name', EVENT_NAME);
-  await ownerPage.uncheck('#event-has-schedule');
-  await ownerPage.fill('#event-location', 'Noch offen');
+  assert.equal(await ownerPage.locator('#event-has-schedule').count(), 0);
+  await ownerPage.fill('#event-location', 'Bestehender Ort');
   await ownerPage.click('#event-form button[type="submit"]');
   const eventCard = ownerPage.locator('.event-card', { hasText: EVENT_NAME });
   await eventCard.waitFor();
-  assert.doesNotMatch((await eventCard.textContent()) ?? '', /Invalid Date/);
   const eventId = (await eventCard.getAttribute('data-event-card')) as string;
 
-  // Event cards contain only the compact entry; the complete controls live
-  // in the new first Orga tab.
+  // Join both accounts to make the existing global workspace switcher offer
+  // the event. The member first uses the provisional invitation state.
+  const ownerId = await currentPlayerId(ownerPage);
+  const memberId = await currentPlayerId(memberPage);
+  await invitePlayer(ownerPage, eventId, ownerId);
+  await invitePlayer(ownerPage, eventId, memberId);
+  await navigate(memberPage, 'profile');
+  const invitation = memberPage.locator('[data-pending-invitation]', { hasText: EVENT_NAME });
+  await invitation.waitFor();
+  await invitation.locator('[data-interest-invitation]').tap();
+  await memberPage.locator('.toast', { hasText: 'Interesse vermerkt' }).waitFor();
+  await memberPage.locator('[data-pending-invitation]', { hasText: EVENT_NAME }).locator('[data-accept-invitation]').tap();
+  await memberPage.locator('.toast', { hasText: 'Zugesagt' }).waitFor();
+  await acceptEvent(ownerPage, eventId);
+
+  // The event is selected once in the top-right global control. The poll tab
+  // contains no second event picker and the event card does not embed polls.
+  await selectActiveEvent(ownerPage, eventId);
+  await selectActiveEvent(memberPage, eventId);
   assert.equal(await eventCard.locator('[data-poll-id]').count(), 0);
-  await eventCard.locator('[data-open-event-polls]').click();
+  await navigate(ownerPage, 'eventPolls');
   await ownerPage.waitForSelector('[data-section-tab="eventPolls"][aria-current="page"]');
-  assert.equal(await ownerPage.locator('#poll-event-select').inputValue(), eventId);
+  assert.equal(await ownerPage.locator('#poll-event-select').count(), 0);
+  await ownerPage.getByRole('heading', { name: EVENT_NAME, exact: true }).waitFor();
 
   await createPoll(ownerPage, {
     topic: 'date_range',
@@ -151,13 +209,10 @@ test('the Orga poll tab plans an undated event, supports interest/decline, and p
   const datePoll = ownerPage.locator('[data-poll-card]', { hasText: 'Welcher Zeitraum passt?' });
   await datePoll.waitFor();
 
-  // The invited member reaches the same tab on a touch-sized viewport and can
-  // first express non-binding interest.
+  // The member reaches the same active-event tab on a touch-sized viewport.
   await navigate(memberPage, 'eventPolls');
   const memberDatePoll = memberPage.locator('[data-poll-card]', { hasText: 'Welcher Zeitraum passt?' });
   await memberDatePoll.waitFor();
-  await memberPage.locator('[data-participation="interested"]').tap();
-  await memberPage.locator('.toast', { hasText: 'Teilnahmestatus aktualisiert' }).last().waitFor();
 
   const memberOptions = memberDatePoll.locator('[data-poll-option-card]');
   await memberOptions.nth(0).locator('[data-poll-response="can"]').tap();
@@ -165,9 +220,8 @@ test('the Orga poll tab plans an undated event, supports interest/decline, and p
   await memberDatePoll.locator('[data-save-poll]').tap();
   await memberPage.locator('.toast', { hasText: 'Antwort gespeichert' }).waitFor();
 
-  // Accept before the date is decided; selecting the date invalidates that
-  // revision and the same reversible participation control reconfirms it.
-  await memberPage.locator('[data-participation="accepted"]').tap();
+  // Selecting a poll result only documents it. It does not update the event
+  // date or invalidate the member's current acceptance.
   await ownerPage.reload();
   await ownerPage.waitForSelector('#app:not([hidden])');
   await navigate(ownerPage, 'eventPolls');
@@ -176,12 +230,10 @@ test('the Orga poll tab plans an undated event, supports interest/decline, and p
   await refreshedDatePoll.locator('[data-decision-option]').first().check();
   await refreshedDatePoll.locator('[data-decide-poll]').click();
   await ownerPage.locator('.modal-backdrop [data-confirm]').click();
-  await ownerPage.locator('.toast', { hasText: 'Ergebnis festgelegt' }).waitFor();
-  await memberPage.locator('[data-participation="accepted"]').tap();
+  await ownerPage.locator('.toast', { hasText: 'Ergebnis dokumentiert' }).waitFor();
 
-  // A second, parallel planning stream changes the location. The member can
-  // later decline and re-accept; the location decision itself leaves the
-  // current schedule acceptance valid.
+  // A second, parallel stream records a location result without applying it
+  // to the event. The member can still decline later.
   await createPoll(ownerPage, {
     topic: 'location',
     title: 'Wo findet die LAN statt?',
@@ -192,11 +244,9 @@ test('the Orga poll tab plans an undated event, supports interest/decline, and p
   await locationPoll.locator('[data-decision-option]').first().check();
   await locationPoll.locator('[data-decide-poll]').click();
   await ownerPage.locator('.modal-backdrop [data-confirm]').click();
-  await ownerPage.locator('.toast', { hasText: 'Ergebnis festgelegt' }).waitFor();
+  await ownerPage.locator('.toast', { hasText: 'Ergebnis dokumentiert' }).waitFor();
 
   await memberPage.locator('[data-participation="declined"]').tap();
-  await memberPage.locator('.toast', { hasText: 'Teilnahmestatus aktualisiert' }).last().waitFor();
-  await memberPage.locator('[data-participation="accepted"]').tap();
   await memberPage.locator('.toast', { hasText: 'Teilnahmestatus aktualisiert' }).last().waitFor();
   assert.equal(
     await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),

@@ -658,34 +658,24 @@ export type DecidePollResult =
   | { ok: true; poll: DatePollRow; event: EventRow; changed: boolean; previousValue: string | null; nextValue: string }
   | { ok: false; code: 'not_open_or_closed' | 'invalid' | 'locked'; error: string };
 
-// Records a non-date planning decision while preserving the event's existing
-// acceptance revision. Location is the only generic topic backed by a native
-// event field today; duration, budget and custom decisions remain explicit
-// poll history until their respective event models gain dedicated fields.
+// Records a planning result without changing the event itself. Poll results
+// deliberately stay separate from dates, location, costs and participation;
+// a future explicit "apply to event" workflow can bridge that boundary.
 export function decideEventPoll(
   event: EventRow,
   poll: DatePollRow,
   optionIds: string[],
   decisionNote?: string | null,
 ): DecidePollResult {
-  if (poll.topic === 'date_range') {
-    if (optionIds.length !== 1) {
-      return { ok: false, code: 'invalid', error: 'Für den Termin muss genau eine Option gewählt werden.' };
-    }
-    const result = scheduleDatePoll(event, poll, optionIds[0]);
-    if (!result.ok) return result;
-    const option = getDatePollOptions(poll.id).find((entry) => entry.id === optionIds[0])!;
-    return {
-      ...result,
-      previousValue: event.starts_at === null ? null : `${event.starts_at}`,
-      nextValue: option.label ?? `${option.starts_on} – ${option.ends_on}`,
-    };
-  }
   if (event.tracking_enabled || event.status === 'ended') {
     return { ok: false, code: 'locked', error: 'Nach aktiviertem Tracking oder Eventende kann diese Entscheidung nicht geändert werden.' };
   }
   const uniqueIds = [...new Set(optionIds)];
-  if (uniqueIds.length === 0 || (poll.response_mode !== 'multiple_choice' && uniqueIds.length !== 1)) {
+  if (
+    uniqueIds.length === 0 ||
+    (poll.topic === 'date_range' && uniqueIds.length !== 1) ||
+    (poll.response_mode !== 'multiple_choice' && uniqueIds.length !== 1)
+  ) {
     return { ok: false, code: 'invalid', error: 'Bitte eine gültige Auswahl festlegen.' };
   }
   const options = getDatePollOptions(poll.id);
@@ -695,7 +685,17 @@ export function decideEventPoll(
   const nextValue = uniqueIds
     .map((id) => options.find((option) => option.id === id)?.label ?? id)
     .join(', ');
-  const previousValue = poll.topic === 'location' ? event.location : null;
+  const previousSelection = db
+    .prepare(
+      `SELECT edpo.label, edpo.starts_on AS startsOn, edpo.ends_on AS endsOn
+       FROM event_poll_selected_options epso
+       JOIN event_date_poll_options edpo ON edpo.id = epso.option_id
+       WHERE epso.poll_id = ? ORDER BY epso.position`,
+    )
+    .all(poll.id) as Array<{ label: string | null; startsOn: string; endsOn: string }>;
+  const previousValue = previousSelection.length
+    ? previousSelection.map((option) => option.label ?? `${option.startsOn} – ${option.endsOn}`).join(', ')
+    : null;
   const now = Date.now();
   return db.transaction((): DecidePollResult => {
     const current = getDatePoll(poll.id)!;
@@ -723,11 +723,7 @@ export function decideEventPoll(
     );
     uniqueIds.forEach((id, position) => insertSelected.run(poll.id, id, position));
     clearAutomaticReminders(poll.id);
-    if (poll.topic === 'location') {
-      db.prepare('UPDATE events SET location = ? WHERE id = ?').run(nextValue, event.id);
-    }
-    const updatedEvent = db.prepare('SELECT * FROM events WHERE id = ?').get(event.id) as EventRow;
-    return { ok: true, poll: getDatePoll(poll.id)!, event: updatedEvent, changed: true, previousValue, nextValue };
+    return { ok: true, poll: getDatePoll(poll.id)!, event, changed: true, previousValue, nextValue };
   })();
 }
 

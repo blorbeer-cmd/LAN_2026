@@ -216,12 +216,16 @@ test('planning event lifecycle: create, poll, respond, schedule, reconfirm', asy
   });
 });
 
-test('generic location poll reuses invitations and keeps accepted participation valid', async () => {
+test('generic poll results stay separate from event data and participation', async () => {
   const member = 'generic-poll-member';
   createMember(member, 'Generic Poll Member');
-  const eventResponse = await request(app).post('/api/events').send({ name: 'Offen geplantes Event' });
+  const startsAt = Date.now() + 10 * 86_400_000;
+  const endsAt = startsAt + 2 * 86_400_000;
+  const eventResponse = await request(app)
+    .post('/api/events')
+    .send({ name: 'Event mit Abstimmungen', startsAt, endsAt, location: 'Bonn' });
   assert.equal(eventResponse.status, 201, JSON.stringify(eventResponse.body));
-  assert.equal(eventResponse.body.status, 'draft');
+  assert.equal(eventResponse.body.status, 'published');
   const eventId = eventResponse.body.id as string;
 
   const pollResponse = await request(app)
@@ -258,7 +262,7 @@ test('generic location poll reuses invitations and keeps accepted participation 
     .post(`/api/events/${eventId}/polls/${pollId}/decide`)
     .send({ optionIds: [selectedId] });
   assert.equal(decided.status, 200, JSON.stringify(decided.body));
-  assert.equal(decided.body.event.location, 'Köln');
+  assert.equal(decided.body.event.location, 'Bonn', 'a documented poll result must not update the event');
   assert.equal(decided.body.event.scheduleRevision, before.revision, 'a location decision must not invalidate acceptance');
   const participant = db
     .prepare('SELECT status, confirmed_schedule_revision AS revision FROM event_participants WHERE event_id = ? AND player_id = ?')
@@ -266,19 +270,52 @@ test('generic location poll reuses invitations and keeps accepted participation 
   assert.equal(participant.status, 'accepted');
   assert.equal(participant.revision, before.revision);
   const decisionPush = db
-    .prepare("SELECT body, url, player_ids AS playerIds FROM push_log WHERE title = 'Planung aktualisiert' ORDER BY created_at DESC LIMIT 1")
-    .get() as { body: string; url: string; playerIds: string };
-  assert.match(decisionPush.body, /Teilnahmestatus bleibt unverändert/);
+    .prepare("SELECT body, url, event_id AS eventId, player_ids AS playerIds FROM push_log WHERE title = 'Abstimmung entschieden' ORDER BY created_at DESC LIMIT 1")
+    .get() as { body: string; url: string; eventId: string; playerIds: string };
+  assert.match(decisionPush.body, /Eventdaten und Teilnahmestatus bleiben unverändert/);
   assert.equal(decisionPush.url, `/#eventPolls/${pollId}`);
+  assert.equal(decisionPush.eventId, eventId, 'the global event switcher receives the poll event context');
   assert.ok((JSON.parse(decisionPush.playerIds) as string[]).includes(member));
+
+  const datePoll = await request(app)
+    .post(`/api/events/${eventId}/polls`)
+    .send({
+      topic: 'date_range',
+      decisionKey: 'date',
+      title: 'Welcher Termin passt?',
+      responseMode: 'feasibility',
+      responseDueOn: isoDate(4),
+      inviteePlayerIds: [member],
+      options: [
+        { startsOn: isoDate(20), endsOn: isoDate(22), label: 'Termin A' },
+        { startsOn: isoDate(27), endsOn: isoDate(29), label: 'Termin B' },
+      ],
+    });
+  assert.equal(datePoll.status, 201, JSON.stringify(datePoll.body));
+  const dateDecision = await request(app)
+    .post(`/api/events/${eventId}/polls/${datePoll.body.id}/decide`)
+    .send({ optionIds: [datePoll.body.options[0].id] });
+  assert.equal(dateDecision.status, 200, JSON.stringify(dateDecision.body));
+  assert.equal(dateDecision.body.event.startsAt, startsAt, 'a date result is not applied automatically');
+  assert.equal(dateDecision.body.event.endsAt, endsAt);
+  assert.equal(dateDecision.body.event.scheduleRevision, before.revision);
 
   const directChange = await request(app).patch(`/api/events/${eventId}`).send({ location: 'Berlin' });
   assert.equal(directChange.status, 200, JSON.stringify(directChange.body));
   const directChangePush = db
     .prepare("SELECT body FROM push_log WHERE title = 'Eventplanung geändert' ORDER BY created_at DESC LIMIT 1")
     .get() as { body: string };
-  assert.match(directChangePush.body, /Ort: Köln → Berlin/);
+  assert.match(directChangePush.body, /Ort: Bonn → Berlin/);
   assert.match(directChangePush.body, /Deine Zusage bleibt bestehen/);
+
+  const durationChange = await request(app).patch(`/api/events/${eventId}`).send({ endsAt: endsAt + 86_400_000 });
+  assert.equal(durationChange.status, 200, JSON.stringify(durationChange.body));
+  assert.equal(durationChange.body.scheduleRevision, before.revision, 'a duration-only change keeps the acceptance current');
+  const durationPush = db
+    .prepare("SELECT body FROM push_log WHERE title = 'Eventplanung geändert' ORDER BY created_at DESC LIMIT 1")
+    .get() as { body: string };
+  assert.match(durationPush.body, /Dauer\/Ende wurde geändert/);
+  assert.match(durationPush.body, /Deine Zusage bleibt bestehen/);
 
   const declined = await request(app)
     .put(`/api/events/${eventId}/my-participation`)

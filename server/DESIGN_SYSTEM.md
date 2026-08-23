@@ -737,11 +737,14 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   initially collapsed „Historie“ section whose open state survives live re-renders, same as Food
   orders.
   The „Abstimmungen“ tab is the event-centric planning surface for Zeitraum, Ort/Unterkunft,
-  Dauer, Budget and free questions. It starts with an event selector, keeps open rounds and their
-  result history together, and offers the reversible personal states „Interessiert“, „Zugesagt“
-  and „Abgesagt“. Event cards only link into this surface; they do not embed the complete poll UI.
-  A non-date decision never invalidates an existing acceptance. Affected invitees, interested
-  people and accepted participants are notified with the changed value and a poll deep link.
+  Dauer, Budget and free questions. It always uses the active event from the existing top-right
+  workspace switcher: neither the tab nor its create dialog contains a second event picker. With
+  „Allgemein“ active it shows an explicit select-an-event empty state. Open rounds and their result
+  history stay together, and the surface offers the reversible personal states „Interessiert“,
+  „Zugesagt“ and „Abgesagt“. Event cards do not embed or link to poll controls. Documenting a poll
+  result changes no event field, schedule revision or participation state; the confirmation dialog
+  and result notification say this explicitly. A future explicit „apply to event“ interaction is
+  outside the current UI.
   The „Events“ tab is reachable by every member, not only by owner/admin, because answering an
   invitation is a personal action. What it shows depends on the role: owner/admin receive the full
   management surface — anlegen/bearbeiten, Tracking starten/stoppen, Teilnehmer einladen/entfernen
