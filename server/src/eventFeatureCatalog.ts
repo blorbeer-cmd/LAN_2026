@@ -147,8 +147,8 @@ export const EVENT_TYPE_PRESETS: Readonly<Record<EventTypeKey, EventTypePreset>>
   trip: {
     key: 'trip',
     version: 1,
-    title: 'Wochenendtrip & Ausflug',
-    description: 'Gemeinsames Wochenende, Hütte, Tagesausflug oder Gruppenreise',
+    title: 'Reise & Ausflug',
+    description: 'Gruppenreise, gemeinsames Wochenende, Hütte oder Tagesausflug',
     recommendedFeatureKeys: ['tasks', 'travel', 'food', 'costs'],
     suggestedFeatureKeys: ['music', 'games', 'seating'],
   },
