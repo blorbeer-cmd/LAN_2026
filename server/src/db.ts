@@ -4141,8 +4141,8 @@ function addEventDatePolls(): void {
       poll_id                   TEXT NOT NULL REFERENCES event_date_polls(id) ON DELETE CASCADE,
       player_id                 TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
       invited_at                INTEGER NOT NULL,
-      last_reminder_at          INTEGER, -- last automatic OR manual reminder; shared 24h minimum spacing
-      automatic_reminder_stage  INTEGER NOT NULL DEFAULT 0, -- 0 = none sent yet, 1 = 48h-before sent, 2 = due-day sent
+      last_reminder_at          INTEGER, -- last automatic OR manual reminder; manual sends use a 24h cooldown
+      automatic_reminder_stage  INTEGER NOT NULL DEFAULT 0, -- 0 = none sent yet, 1 = 48h-before sent, 2 = 2h-before sent
       automatic_reminder_due_at INTEGER, -- next scheduled automatic reminder; cleared on any close/schedule/cancel
       PRIMARY KEY (poll_id, player_id)
     );
@@ -4345,6 +4345,86 @@ registerMigration({
   version: 85,
   name: 'separate event polls from participation',
   up: separateEventPollsFromParticipation,
+  disableForeignKeysForRebuild: true,
+});
+
+// Add the generic 1-5 option rating without discarding any existing poll,
+// response or round history. SQLite cannot extend CHECK constraints in place,
+// so both affected tables are rebuilt transactionally.
+function addEventPollRatingMode(): void {
+  const pollTable = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'event_date_polls'")
+    .get() as { sql: string };
+  if (!pollTable.sql.includes('rating_1_5')) {
+    db.exec(`
+      CREATE TABLE event_date_polls_rebuilt_86 (
+        id                 TEXT PRIMARY KEY,
+        event_id           TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        round_number       INTEGER NOT NULL,
+        note               TEXT,
+        created_by         TEXT REFERENCES players(id) ON DELETE SET NULL,
+        response_due_at    INTEGER NOT NULL,
+        status             TEXT NOT NULL DEFAULT 'open'
+                            CHECK (status IN ('open', 'closed', 'scheduled', 'superseded', 'cancelled')),
+        selected_option_id TEXT REFERENCES event_date_poll_options(id) ON DELETE SET NULL,
+        created_at         INTEGER NOT NULL,
+        updated_at         INTEGER NOT NULL,
+        topic              TEXT NOT NULL DEFAULT 'custom'
+                            CHECK (topic IN ('date_range', 'location', 'duration', 'budget', 'custom')),
+        decision_key       TEXT NOT NULL,
+        title              TEXT NOT NULL,
+        response_mode      TEXT NOT NULL DEFAULT 'feasibility'
+                            CHECK (response_mode IN ('feasibility', 'single_choice', 'multiple_choice', 'rating_1_5')),
+        decision_note      TEXT,
+        max_selections     INTEGER CHECK (max_selections IS NULL OR max_selections >= 1),
+        UNIQUE (event_id, decision_key, round_number)
+      );
+      INSERT INTO event_date_polls_rebuilt_86
+        (id, event_id, round_number, note, created_by, response_due_at, status, selected_option_id,
+         created_at, updated_at, topic, decision_key, title, response_mode, decision_note, max_selections)
+      SELECT id, event_id, round_number, note, created_by, response_due_at, status, selected_option_id,
+             created_at, updated_at, topic, decision_key, title, response_mode, decision_note, max_selections
+      FROM event_date_polls;
+      DROP TABLE event_date_polls;
+      ALTER TABLE event_date_polls_rebuilt_86 RENAME TO event_date_polls;
+      CREATE UNIQUE INDEX idx_event_polls_undecided
+        ON event_date_polls(event_id, decision_key) WHERE status IN ('open', 'closed');
+      CREATE UNIQUE INDEX idx_event_polls_decided
+        ON event_date_polls(event_id, decision_key) WHERE status = 'scheduled';
+      CREATE INDEX idx_event_date_polls_event
+        ON event_date_polls(event_id, decision_key, round_number);
+    `);
+  }
+
+  const responseTable = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'event_date_poll_responses'")
+    .get() as { sql: string };
+  if (!responseTable.sql.includes("'5'")) {
+    db.exec(`
+      CREATE TABLE event_date_poll_responses_rebuilt_86 (
+        poll_id    TEXT NOT NULL,
+        option_id  TEXT NOT NULL,
+        player_id  TEXT NOT NULL,
+        response   TEXT NOT NULL CHECK (response IN ('can', 'if_needed', 'cannot', '1', '2', '3', '4', '5')),
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (poll_id, option_id, player_id),
+        FOREIGN KEY (poll_id, option_id) REFERENCES event_date_poll_options(poll_id, id) ON DELETE CASCADE,
+        FOREIGN KEY (poll_id, player_id) REFERENCES event_date_poll_invitees(poll_id, player_id) ON DELETE CASCADE
+      );
+      INSERT INTO event_date_poll_responses_rebuilt_86
+        (poll_id, option_id, player_id, response, updated_at)
+      SELECT poll_id, option_id, player_id, response, updated_at
+      FROM event_date_poll_responses;
+      DROP TABLE event_date_poll_responses;
+      ALTER TABLE event_date_poll_responses_rebuilt_86 RENAME TO event_date_poll_responses;
+      CREATE INDEX idx_event_date_poll_responses_option ON event_date_poll_responses(option_id);
+    `);
+  }
+}
+registerMigration({
+  version: 86,
+  name: 'add event poll rating mode',
+  up: addEventPollRatingMode,
   disableForeignKeysForRebuild: true,
 });
 

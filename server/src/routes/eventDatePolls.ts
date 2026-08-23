@@ -8,7 +8,11 @@ import { getEvent, type EventRow } from '../events';
 import { resolveGroupResource } from '../groupAuthorization';
 import { writeAdminAudit } from '../adminAudit';
 import { broadcast, Events } from '../realtime';
-import { notifyPlayers } from '../push';
+import {
+  EVENT_POLL_REMINDER_TOPIC_PREFIX,
+  notifyPlayers,
+  resolvePushTopic,
+} from '../push';
 import { isValidIsoDate } from '../localDate';
 import type { GroupRole } from '../groups';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
@@ -135,11 +139,25 @@ function serializeOption(
     startsOn: option.starts_on,
     endsOn: option.ends_on,
     position: option.position,
-    counts: { can: counts.can, ifNeeded: counts.ifNeeded, cannot: counts.cannot, open: counts.open },
+    counts: {
+      can: counts.can,
+      ifNeeded: counts.ifNeeded,
+      cannot: counts.cannot,
+      open: counts.open,
+      ratings: counts.ratings,
+      average: counts.average,
+    },
     people: {
       can: byResponse('can'),
       ifNeeded: byResponse('if_needed'),
       cannot: byResponse('cannot'),
+      ratings: {
+        '1': byResponse('1'),
+        '2': byResponse('2'),
+        '3': byResponse('3'),
+        '4': byResponse('4'),
+        '5': byResponse('5'),
+      },
     },
     isRecommended,
     _answeredIds: answeredIds,
@@ -167,7 +185,7 @@ function serializeDatePoll(
     ...invitees.map((i) => i.player_id),
     ...(poll.created_by ? [poll.created_by] : []),
   ]);
-  const recommendedId = recommendedOptionId(options, responses, invitees.length);
+  const recommendedId = recommendedOptionId(options, responses, invitees.length, poll.response_mode);
 
   const serializedOptions = options.map((option) =>
     serializeOption(option, responses, invitees.length, names, option.id === recommendedId),
@@ -266,6 +284,37 @@ function notifyInvitees(groupId: string, eventId: string, playerIds: string[], t
   notifyPlayers(playerIds, { title, body, url }, 'direct', undefined, { groupId, eventId });
 }
 
+function pollReminderTopicKey(pollId: string, playerId?: string): string {
+  const base = `${EVENT_POLL_REMINDER_TOPIC_PREFIX}${pollId}`;
+  return playerId ? `${base}:${playerId}` : base;
+}
+
+function notifyPollReminder(event: EventRow, poll: DatePollRow, playerId: string): boolean {
+  return Boolean(
+    notifyPlayers(
+      [playerId],
+      {
+        title: 'Erinnerung: Abstimmung',
+        body: `${event.name}: Bitte stimme bei „${poll.title}“ ab.`,
+        url: `/#eventPolls/${poll.id}`,
+        type: 'event-poll-reminder',
+        targetId: poll.id,
+      },
+      'direct',
+      { key: pollReminderTopicKey(poll.id, playerId), expiresAt: poll.response_due_at },
+      { groupId: event.group_id!, eventId: event.id },
+    ),
+  );
+}
+
+function resolvePollReminders(event: EventRow, pollId: string, playerId?: string): void {
+  resolvePushTopic(
+    pollReminderTopicKey(pollId, playerId),
+    playerId === undefined,
+    { groupId: event.group_id!, eventId: event.id },
+  );
+}
+
 // GET /api/events/:eventId/polls
 eventDatePollsRouter.get('/', resolveEventForPolls, (req, res) => {
   const event = req.groupResource as EventRow;
@@ -304,7 +353,7 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
     maxSelections,
   } = req.body ?? {};
   const topics: EventPollTopic[] = ['date_range', 'location', 'duration', 'budget', 'custom'];
-  const responseModes: EventPollResponseMode[] = ['feasibility', 'single_choice', 'multiple_choice'];
+  const responseModes: EventPollResponseMode[] = ['feasibility', 'single_choice', 'multiple_choice', 'rating_1_5'];
   if (!topics.includes(topic)) return res.status(400).json({ error: 'Ungültiges Abstimmungsthema.' });
   if (!responseModes.includes(responseMode)) return res.status(400).json({ error: 'Ungültiger Antwortmodus.' });
   if (
@@ -355,6 +404,13 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
     }
     if (raw.payload !== undefined && (typeof raw.payload !== 'object' || raw.payload === null || Array.isArray(raw.payload))) {
       return res.status(400).json({ error: 'payload muss ein Objekt sein.' });
+    }
+    const optionUrl = raw.payload?.url;
+    if (
+      optionUrl !== undefined &&
+      (typeof optionUrl !== 'string' || optionUrl.length > 500 || !/^https?:\/\/[^\s]+$/i.test(optionUrl))
+    ) {
+      return res.status(400).json({ error: 'Ein Optionslink muss eine vollständige HTTP- oder HTTPS-Adresse sein.' });
     }
     parsedOptions.push({ label: raw.label.trim(), description: raw.description?.trim() || null, payload: raw.payload });
   }
@@ -488,6 +544,18 @@ eventDatePollsRouter.post('/:pollId/options', resolveEventForPolls, (req, res) =
   } else if (typeof label !== 'string' || !label.trim() || label.trim().length > 120) {
     return res.status(400).json({ error: 'label muss 1-120 Zeichen lang sein.' });
   }
+  if (description !== undefined && description !== null && (typeof description !== 'string' || description.length > 500)) {
+    return res.status(400).json({ error: 'description darf höchstens 500 Zeichen lang sein.' });
+  }
+  if (payload !== undefined && (typeof payload !== 'object' || payload === null || Array.isArray(payload))) {
+    return res.status(400).json({ error: 'payload muss ein Objekt sein.' });
+  }
+  if (
+    payload?.url !== undefined &&
+    (typeof payload.url !== 'string' || payload.url.length > 500 || !/^https?:\/\/[^\s]+$/i.test(payload.url))
+  ) {
+    return res.status(400).json({ error: 'Ein Optionslink muss eine vollständige HTTP- oder HTTPS-Adresse sein.' });
+  }
 
   const result = addDatePollOption(poll, { startsOn, endsOn, label, description, payload });
   if (!result.ok) return res.status(result.code === 'not_open' ? 409 : 400).json({ error: result.error });
@@ -560,6 +628,7 @@ eventDatePollsRouter.put('/:pollId/my-responses', resolveEventForPolls, (req, re
   if (!result.ok) {
     return res.status(result.code === 'not_open' ? 409 : result.code === 'not_invitee' ? 404 : 400).json({ error: result.error });
   }
+  if (hasAnsweredDatePoll(poll.id, playerId)) resolvePollReminders(event, poll.id, playerId);
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
   res.json(serializeDatePoll(getDatePollForEvent(event.id, poll.id)!, event, playerId, req.groupMembership?.role));
 });
@@ -581,24 +650,20 @@ eventDatePollsRouter.post('/:pollId/reminders', resolveEventForPolls, (req, res)
   const participantIds = new Set(acceptedParticipantIds(event.id));
   const candidates = reminderCandidates(poll.id).filter((candidate) => participantIds.has(candidate.playerId));
   const now = Date.now();
-  for (const candidate of candidates) markReminderSent(poll.id, candidate.playerId, now);
+  const remindedPlayerIds: string[] = [];
+  for (const candidate of candidates) {
+    if (notifyPollReminder(event, poll, candidate.playerId)) remindedPlayerIds.push(candidate.playerId);
+    markReminderSent(poll.id, candidate.playerId, now);
+  }
   writeAdminAudit({
     actorPlayerId: playerId,
     groupId: event.group_id ?? undefined,
     action: 'event_date_poll_reminder_sent',
     targetType: 'event_date_poll',
     targetId: poll.id,
-    details: { eventId: event.id, playerCount: candidates.length },
+    details: { eventId: event.id, playerCount: remindedPlayerIds.length },
   });
-  notifyInvitees(
-    event.group_id!,
-    event.id,
-    candidates.map((c) => c.playerId),
-    'Erinnerung: Abstimmung',
-    `${event.name}: Bitte antworte auf die Abstimmung.`,
-    `/#eventPolls/${poll.id}`,
-  );
-  res.json({ remindedPlayerIds: candidates.map((c) => c.playerId) });
+  res.json({ remindedPlayerIds });
 });
 
 // POST /api/events/:eventId/polls/:pollId/close
@@ -613,6 +678,7 @@ eventDatePollsRouter.post('/:pollId/close', resolveEventForPolls, (req, res) => 
   }
   const result = closeDatePoll(poll);
   if (!result.ok) return res.status(409).json({ error: result.error });
+  resolvePollReminders(event, poll.id);
 
   writeAdminAudit({
     actorPlayerId: playerId,
@@ -671,6 +737,7 @@ eventDatePollsRouter.post('/:pollId/cancel', resolveEventForPolls, (req, res) =>
   }
   const result = cancelDatePoll(poll);
   if (!result.ok) return res.status(409).json({ error: result.error });
+  resolvePollReminders(event, poll.id);
 
   writeAdminAudit({
     actorPlayerId: playerId,
@@ -718,6 +785,7 @@ eventDatePollsRouter.post('/:pollId/decide', resolveEventForPolls, (req, res) =>
       targetId: poll.id,
       details: { eventId: event.id, topic: poll.topic, optionIds, previousValue: result.previousValue, nextValue: result.nextValue },
     });
+    resolvePollReminders(event, poll.id);
     broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
     const recipients = acceptedParticipantIds(event.id).filter((id) => id !== playerId);
     notifyInvitees(

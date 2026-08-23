@@ -1,9 +1,13 @@
 // Background jobs for the event date poll (docs/plans/event-date-poll-concept.md):
-// automatic reminders (48h-before + due-day) and the optional proactive lazy
+// automatic reminders (48h-before + 2h-before) and the optional proactive lazy
 // deadline close. Mirrors eventPaymentReminders.ts's interval-timer shape.
 
-import { db, BASE_EVENT_ID } from './db';
-import { notifyPlayers } from './push';
+import { db } from './db';
+import {
+  EVENT_POLL_REMINDER_TOPIC_PREFIX,
+  notifyPlayers,
+  resolvePushTopic,
+} from './push';
 import { broadcast, Events } from './realtime';
 import { writeAdminAudit } from './adminAudit';
 import { dueAutomaticReminders, advanceAutomaticReminder, getDatePolls, materializeExpiredPollIfNeeded } from './eventDatePolls';
@@ -17,6 +21,11 @@ interface EventNameGroupRow {
 
 function eventNameAndGroup(eventId: string): EventNameGroupRow | undefined {
   return db.prepare('SELECT name, group_id FROM events WHERE id = ?').get(eventId) as EventNameGroupRow | undefined;
+}
+
+function pollReminderTopicKey(pollId: string, playerId?: string): string {
+  const base = `${EVENT_POLL_REMINDER_TOPIC_PREFIX}${pollId}`;
+  return playerId ? `${base}:${playerId}` : base;
 }
 
 // Sends every automatic reminder whose scheduled instant has passed, then
@@ -34,10 +43,12 @@ export function runEventDatePollReminderSweepOnce(now = Date.now()): { reminded:
         title: 'Erinnerung: Abstimmung',
         body: `${event.name}: Bitte antworte auf die Abstimmung.`,
         url: `/#eventPolls/${due.pollId}`,
+        type: 'event-poll-reminder',
+        targetId: due.pollId,
       },
       'direct',
-      undefined,
-      { groupId: event.group_id, eventId: BASE_EVENT_ID },
+      { key: pollReminderTopicKey(due.pollId, due.playerId) },
+      { groupId: event.group_id, eventId: due.eventId },
     );
     advanceAutomaticReminder(due.pollId, due.playerId, due.stage, now);
     if (delivery) reminded += 1;
@@ -64,6 +75,12 @@ export function runEventDatePollReminderSweepOnce(now = Date.now()): { reminded:
           details: { eventId },
         });
         if (event?.group_id) {
+          resolvePushTopic(
+            pollReminderTopicKey(poll.id),
+            true,
+            { groupId: event.group_id, eventId },
+            false,
+          );
           // Deliberately not scoped to `eventId`: a scoped broadcast only
           // reaches a socket whose *current* active workspace is exactly
           // this event, which a draft (or a not-yet-reconfirmed stale

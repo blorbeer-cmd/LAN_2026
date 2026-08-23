@@ -22,9 +22,9 @@ Umfangs.
   Abstimmungs-Tab und im Erstell-Dialog gibt es keine zweite Eventauswahl.
 - Mit aktivem Basis-Kontext „Allgemein“ zeigt der Tab einen eindeutigen Hinweis, zuerst ein Event zu
   wählen.
-- Sichtbarkeit und Aktionen folgen dem etablierten Event-Teilnehmermodell: Nur Personen mit aktuell
-  bestätigter Teilnahme (`accepted` und aktuelle `schedule_revision`) können Abstimmungen dieses
-  Events sehen, erstellen oder beantworten.
+- Sichtbarkeit und Aktionen folgen dem etablierten Event-Teilnehmermodell: Nur Personen mit
+  bestätigter Teilnahme (`accepted`) können Abstimmungen dieses Events sehen, erstellen oder
+  beantworten. Eventänderungen machen diese Zusage nicht ungültig.
 - Eine offene Einladung, eine abgelehnte Einladung oder eine Adminrolle ohne bestätigte Teilnahme
   gewährt keinen Zugriff.
 - Jeder bestätigte Teilnehmer darf eine neue Abstimmung erstellen. Die einzelne Abstimmung wird von
@@ -47,6 +47,7 @@ Eine **Runde** ist ein konkreter Durchlauf dieser Abstimmung mit:
 - fortlaufender Rundennummer innerhalb genau dieser Abstimmung,
 - Titel und optionaler Beschreibung,
 - zwei bis acht freien Textoptionen,
+- optionaler kurzer Notiz und HTTP-/HTTPS-Link je Option,
 - Antwortmodus,
 - optionaler maximaler Stimmenzahl bei Mehrfachauswahl,
 - Abstimmungsfrist,
@@ -83,18 +84,24 @@ Jede Person wählt mindestens eine Option. Optional kann der Ersteller „höchs
 festlegen. Ohne Wert dürfen alle Optionen gewählt werden. Auch hier sind die Aktionen an jeder
 Option klar mit „Option auswählen“ beziehungsweise „Ausgewählt“ beschriftet.
 
+#### Jede Option von 1 bis 5 bewerten (`rating_1_5`)
+
+Jede Person vergibt für jede Option genau eine Bewertung von **1** bis **5**. Die Übersicht zeigt
+den Durchschnitt, die Zahl der Bewertungen und noch offene Antworten. Die beste Bewertung wird erst
+markiert, sobald tatsächlich mindestens eine Bewertung vorliegt.
+
 ### 3.3 Rundenstatus
 
-- `open`: Abgabe offen; Antworten können gespeichert und geändert werden.
-- `closed`: Abgabe beendet; Antworten sind schreibgeschützt. Der Ersteller kann ein Ergebnis
+- `open`: **Abstimmung läuft**; Antworten können gespeichert und geändert werden.
+- `closed`: **Abstimmung beendet**; Antworten sind schreibgeschützt. Der Ersteller kann ein Ergebnis
   festhalten oder mit neuer Frist wieder öffnen.
 - `scheduled`: historischer Datenbankname für eine abgeschlossene Runde mit festgehaltenem Ergebnis;
-  in der UI heißt der Status nur **Abgeschlossen**.
+  in der UI heißt der Status **Ergebnis festgehalten**.
 - `superseded`: eine ältere abgeschlossene Runde, die durch ein Ergebnis einer neueren Runde ersetzt
   wurde.
 - `cancelled`: abgebrochene Runde; bleibt in der Historie.
 
-Die Schaltfläche „Ergebnis festhalten“ erscheint erst nach „Abgabe beenden“. Der zugehörige Hinweis
+Die Schaltfläche „Ergebnis festhalten“ erscheint erst nach „Abstimmung beenden“. Der zugehörige Hinweis
 erklärt, dass das Ergebnis nur in der Rundenhistorie gespeichert wird und keine Eventdaten ändert.
 
 ## 4. Teilnehmerkreis und Berechtigungen
@@ -113,7 +120,7 @@ als Historie erhalten.
 ### 4.2 Erstellen und Verwalten
 
 - Neue Abstimmung: jeder bestätigte Teilnehmer.
-- Frist, Optionen, Erinnerungen, Abgabe beenden, wieder öffnen, Runde abbrechen und Ergebnis
+- Frist, Optionen, Erinnerungen, Abstimmung beenden, wieder öffnen, Abstimmung abbrechen und Ergebnis
   festhalten: Ersteller der Abstimmung.
 - Owner-Fallback: nur wenn der Ersteller deaktiviert/entfernt ist und der Owner selbst bestätigter
   Teilnehmer des Events ist.
@@ -127,31 +134,38 @@ protokolliert und per Realtime-Signal verteilt.
 
 Bestätigte Teilnehmer mit noch unvollständiger Antwort werden automatisch erinnert:
 
-- ungefähr 48 Stunden vor Frist,
-- am Tag der Frist,
+- 48 Stunden vor Fristende,
+- 2 Stunden vor Fristende,
 - bei später Erstellung nur in der noch sinnvollen Stufe.
 
-Der Ersteller kann zusätzlich „N offene Antworten erinnern“ auslösen. Automatische und manuelle
-Erinnerungen teilen sich eine Mindestpause von 24 Stunden je Person und Runde. Bereits vollständig
-abgestimmte oder nicht mehr bestätigte Personen werden übersprungen.
+Der Ersteller kann zusätzlich „Erinnerung versenden (N)“ auslösen. Manuelle Erinnerungen haben eine
+Mindestpause von 24 Stunden je Person und Runde; sie unterdrücken die beiden festen automatischen
+Zeitpunkte nicht. Bereits vollständig abgestimmte oder nicht mehr bestätigte Personen werden
+übersprungen. Jede Person und Abstimmung besitzt einen stabilen Mitteilungseintrag: Eine weitere
+Erinnerung aktualisiert dessen Zeitpunkt und schiebt ihn nach oben, statt einen Duplikateintrag zu
+erzeugen.
 
 ## 6. Oberfläche und Design
 
 Der Bereich verwendet ausschließlich die vorhandenen Designbausteine und Tokens:
 
 - `.card` für je eine Abstimmung,
-- `.tournament-section-panel` für Optionen und Ergebnisbereich,
-- `.selection-toolbar` für die drei Bewertungen beziehungsweise eine Auswahl,
+- kompakte verschachtelte Zeilen für Optionen und `.tournament-section-panel` nur für den
+  Ergebnisbereich,
+- `.selection-toolbar` für Bewertungen beziehungsweise eine Auswahl,
 - `.collapsible-section` für Personenlisten, weitere Aktionen und Historie,
 - `dateTimeFieldHtml(..., { dateOnly: true })` für Fristen,
 - existierende Badges, Buttons, Abstände, Radien und semantische Farben.
 
 ### 6.1 Übersicht
 
-- Seitenkopf: „Abstimmungen für [aktives Event]“ und „+ Abstimmung starten“.
-- Kurzer Hinweis: Jeder bestätigte Teilnehmer darf erstellen; Ergebnisse ändern das Event nicht.
+- Kein eigener Seiten- oder Untertitel unterhalb der Orga-Tabs; das aktive Event ist bereits im
+  Umschalter oben rechts sichtbar.
+- Die kompakte Aktion „Abstimmung starten“ steht rechts oberhalb der Liste und trägt kein Pluszeichen.
 - Jede Abstimmung ist eine einklappbare Karte mit Titel, Ersteller, aktueller Rundennummer, Status und
   Antwortfortschritt bereits im eingeklappten Kopf.
+- „Erinnerung versenden (N)“, „Beenden“ und „Abbrechen“ bleiben für den
+  Ersteller ebenfalls im Kopf erreichbar, auch wenn die Karte eingeklappt ist.
 - Beim ersten Laden wird eine laufende Abstimmung geöffnet; weitere Karten bleiben eingeklappt.
 - In der Karte stehen aktuelle Runde und Optionen zuerst. Frühere Runden liegen in einer eigenen,
   zunächst eingeklappten „Frühere Runden (N)“-Sektion.
@@ -160,15 +174,16 @@ Der Bereich verwendet ausschließlich die vorhandenen Designbausteine und Tokens
 
 ### 6.2 Optionen und Antworten
 
-Optionen sind keine verschachtelten Karten, sondern kompakte Akzent-Panels. Jede Option zeigt:
+Optionen sind kompakte, stabile Zeilen. Jede Option zeigt:
 
 - Bezeichnung,
 - Ergebnis-/Empfehlungsbadge, falls zutreffend,
 - verständliche Zählwerte,
-- unmittelbar darunter die passenden, vollständig beschrifteten Antwortbuttons,
-- optional einklappbare Namenslisten je Antwort.
+- die passenden kompakten Antwortbuttons in derselben Inhaltszeile,
+- optional eine kurze Notiz und einen direkt aufrufbaren Link,
+- eine gemeinsame einklappbare Namensliste der abgegebenen Antworten.
 
-Das Speichern erfolgt bewusst gesammelt über „Meine Antwort speichern“. So werden nie unbemerkte
+Das Speichern erfolgt bewusst gesammelt über die kompakte Aktion „Speichern“. So werden nie unbemerkte
 Teilantworten erzeugt.
 
 ### 6.3 Erstell-Dialog
@@ -177,25 +192,27 @@ Der Dialog enthält in dieser Reihenfolge:
 
 1. Titel,
 2. optionale Beschreibung,
-3. drei große, beschreibende Antwortmodus-Schaltflächen,
+3. ein normales Auswahlfeld mit vier Antwortarten und einem angrenzenden Info-Popover,
 4. bei Mehrfachauswahl optional „Stimmen pro Person“,
-5. strukturierte, einzeln entfernbare Freitext-Optionszeilen und „+ Option hinzufügen“,
-6. themenkonforme Datumsauswahl für die Frist,
-7. einen nicht-interaktiven Hinweis auf den automatisch übernommenen Teilnehmerkreis,
-8. die volle Primäraktion „Abstimmung starten“.
+5. strukturierte, einzeln entfernbare Freitext-Optionszeilen mit optional einklappbarer kurzer Notiz
+   und Link sowie „+ Option hinzufügen“,
+6. themenkonforme Datumsauswahl für die Frist; die Erinnerungserklärung sitzt ausschließlich im
+   angrenzenden Info-Popover,
+7. die volle Primäraktion „Abstimmung starten“.
 
 Ein Themen-Dropdown, Datumssyntax in einem Freitextfeld und eine lange Teilnehmer-Checkboxliste gibt
 es nicht. Beim Schließen warnt der Dialog nur, wenn tatsächlich Eingaben geändert wurden.
 
 ### 6.4 Verständliche Verwaltungsaktionen
 
-- **N offene Antworten erinnern**: sendet jetzt eine Erinnerung an noch nicht fertige, nicht im
+- **Erinnerung versenden (N)**: sendet jetzt eine Erinnerung an noch nicht fertige, nicht im
   Cooldown befindliche Teilnehmer.
-- **Abgabe beenden**: stoppt weitere Antworten; ein Bestätigungsdialog erklärt Wiederöffnung und
+- **Abstimmung beenden**: stoppt weitere Antworten; ein Bestätigungsdialog erklärt Wiederöffnung und
   Ergebnisworkflow.
 - **Ergebnis festhalten**: speichert ausgewählte Ergebnisoptionen nur in der Historie.
-- **Abgabe wieder öffnen**: verlangt eine neue zukünftige Frist.
-- **Runde abbrechen**: bleibt als sekundäre/destruktive Aktion in der Historie nachvollziehbar.
+- **Wieder öffnen**: verlangt eine neue zukünftige Frist.
+- **Abstimmung abbrechen**: ist direkt im Kartenkopf erreichbar und bleibt als destruktive Aktion in
+  der Historie nachvollziehbar.
 - **Neue Runde starten**: erscheint nach Abschluss oder Abbruch für den Abstimmungsersteller.
 
 ## 7. Trennung vom Event
@@ -229,6 +246,8 @@ Die historischen Tabellennamen bleiben eine interne Implementierungsentscheidung
 - `response_mode`,
 - `max_selections`,
 - `decision_note` und mehrere Ergebnisoptionen.
+- Antwortmodus `rating_1_5` und Antwortwerte `1` bis `5` über Migration 86.
+- Optionsnotiz und Link verwenden die bereits vorhandenen Felder `description` und `payload_json`.
 
 Eine zwischenzeitlich auf dem Feature-Branch eingeführte Teilnahmeform `interested` wird migriert:
 entsprechende Entwicklungszeilen werden wieder zu `invited`; der etablierte Constraint lautet erneut
@@ -244,9 +263,9 @@ Basis: `/api/events/:eventId/polls`
 - `PUT /:pollId/my-responses`: vollständige Antwort atomar speichern.
 - `PATCH /:pollId`: Beschreibung/Frist einer offenen Runde.
 - `POST /:pollId/reminders`: offene Antworten erinnern.
-- `POST /:pollId/close`: Abgabe beenden.
+- `POST /:pollId/close`: Abstimmung beenden.
 - `POST /:pollId/reopen`: mit neuer Frist wieder öffnen.
-- `POST /:pollId/cancel`: Runde abbrechen.
+- `POST /:pollId/cancel`: Abstimmung abbrechen.
 - `POST /:pollId/decide`: Ergebnis einer geschlossenen Runde festhalten.
 
 `inviteePlayerIds` wird bei der generischen Erstellung nicht akzeptiert. Eine Ergebnisantwort liefert
@@ -259,8 +278,10 @@ das Event höchstens als unveränderte Vergleichsdarstellung zurück.
 - Nur bestätigte Teilnehmer sehen den Bereich; Adminrechte allein reichen nicht.
 - Jeder bestätigte Teilnehmer kann eine Abstimmung erstellen.
 - Der Dialog ist auf Mobil- und Desktopbreite übersichtlich und folgt dem Designsystem.
-- Freie Optionen, alle drei Antwortmodi und ein optionales Mehrfachwahl-Limit funktionieren.
+- Freie Optionen mit optionaler Notiz/Link, alle vier Antwortmodi und ein optionales
+  Mehrfachwahl-Limit funktionieren.
 - Bei Bewertung stehen je Option **Passt / Wenn nötig / Passt nicht / Offen** bereit.
+- Alternativ können alle Optionen unabhängig mit **1 bis 5** bewertet werden.
 - Fristen schließen Runden, Erinnerungen beachten Antwortstatus, Teilnehmerstatus und Cooldown.
 - Mehrere unabhängige Abstimmungen und mehrere Runden je Abstimmung haben korrekte Nummern und
   einklappbare Historien.

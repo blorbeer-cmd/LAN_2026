@@ -746,10 +746,20 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   repeatable free-text option rows and three explicit response modes: per-option „Passt / Wenn nötig
   / Passt nicht / Offen“, exactly one choice, or multiple choices with an optional maximum. It never exposes
   a participant picker because the accepted event roster is the single source of truth.
-  Each poll is one collapsible card. Its current round, response progress and clearly named actions
-  stay together; earlier rounds live in a nested, initially collapsed history. „Offen“ is both an
-  explicit way to clear a per-option rating and the resulting incomplete-response count. „Abgabe beenden“, „offene Antworten erinnern“ and
-  „Ergebnis festhalten“ each explain their concrete effect, and choosing a result is offered only
+  The tab adds no own page heading or explanatory subtitle below the Orga tabs because the active
+  event is already visible in the top-right workspace switcher. Its compact „Abstimmung starten“
+  action has no decorative plus sign. The create dialog uses ordinary global text fields, one native
+  select for the four response modes (per-option feasibility, single choice, multiple choice and
+  per-option 1–5 rating), and contextual info beside response mode and deadline. Every free option
+  may additionally carry a short note and a validated HTTP-/HTTPS-link.
+  Each poll is one collapsible card. Its current round and response progress stay together; the
+  creator's compact „Erinnerung versenden (N)“, „Beenden“ and „Abbrechen“
+  actions remain in the card header while collapsed. Earlier rounds live in a nested, initially
+  collapsed history. „Offen“ is both an explicit way to clear a per-option feasibility rating and
+  the resulting incomplete-response count. Repeated reminders reuse one stable notification-center
+  entry per poll and recipient, moving it to the top; automatic sends run 48 hours and 2 hours before
+  the deadline. Option rows keep title/note/link, counts, compact response controls and one optional
+  response-details disclosure within a shallow two-row layout. Choosing a result is offered only
   after voting ends. Event cards do not embed or link to poll controls. A recorded poll result changes
   no event field, schedule revision or participation state; the confirmation says this explicitly.
   A future explicit „apply to event“ interaction is outside the current UI.

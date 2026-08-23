@@ -647,10 +647,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 85);
+  assert.equal(migrations.length, 86);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 85 }, (_, index) => index + 1),
+    Array.from({ length: 86 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1177,8 +1177,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 85 }, (_, index) => index + 1),
-    'every version 1..85 runs exactly once',
+    Array.from({ length: 86 }, (_, index) => index + 1),
+    'every version 1..86 runs exactly once',
   );
 });
 
@@ -2862,6 +2862,101 @@ test('migration 85 restores accepted-only participation and enables independent 
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'event_date_polls'")
     .get() as { sql: string }).sql;
   assert.match(pollSql, /UNIQUE\s*\(event_id,\s*decision_key,\s*round_number\)/i);
+  assert.deepEqual(migrated.pragma('foreign_key_check'), []);
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 86 preserves poll history and enables 1-5 option ratings', () => {
+  const dbFile = makeTempDbPath('event-poll-ratings');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.pragma('foreign_keys = OFF');
+  fixture.exec(`
+    CREATE TABLE event_date_polls_before_86 AS SELECT * FROM event_date_polls;
+    DROP TABLE event_date_polls;
+    CREATE TABLE event_date_polls (
+      id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      round_number INTEGER NOT NULL,
+      note TEXT,
+      created_by TEXT REFERENCES players(id) ON DELETE SET NULL,
+      response_due_at INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open'
+             CHECK (status IN ('open', 'closed', 'scheduled', 'superseded', 'cancelled')),
+      selected_option_id TEXT REFERENCES event_date_poll_options(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      topic TEXT NOT NULL DEFAULT 'custom'
+            CHECK (topic IN ('date_range', 'location', 'duration', 'budget', 'custom')),
+      decision_key TEXT NOT NULL,
+      title TEXT NOT NULL,
+      response_mode TEXT NOT NULL DEFAULT 'feasibility'
+                    CHECK (response_mode IN ('feasibility', 'single_choice', 'multiple_choice')),
+      decision_note TEXT,
+      max_selections INTEGER CHECK (max_selections IS NULL OR max_selections >= 1),
+      UNIQUE (event_id, decision_key, round_number)
+    );
+    INSERT INTO event_date_polls SELECT * FROM event_date_polls_before_86;
+    DROP TABLE event_date_polls_before_86;
+    CREATE UNIQUE INDEX idx_event_polls_undecided
+      ON event_date_polls(event_id, decision_key) WHERE status IN ('open', 'closed');
+    CREATE UNIQUE INDEX idx_event_polls_decided
+      ON event_date_polls(event_id, decision_key) WHERE status = 'scheduled';
+    CREATE INDEX idx_event_date_polls_event
+      ON event_date_polls(event_id, decision_key, round_number);
+
+    CREATE TABLE event_date_poll_responses_before_86 AS SELECT * FROM event_date_poll_responses;
+    DROP TABLE event_date_poll_responses;
+    CREATE TABLE event_date_poll_responses (
+      poll_id TEXT NOT NULL,
+      option_id TEXT NOT NULL,
+      player_id TEXT NOT NULL,
+      response TEXT NOT NULL CHECK (response IN ('can', 'if_needed', 'cannot')),
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (poll_id, option_id, player_id),
+      FOREIGN KEY (poll_id, option_id) REFERENCES event_date_poll_options(poll_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (poll_id, player_id) REFERENCES event_date_poll_invitees(poll_id, player_id) ON DELETE CASCADE
+    );
+    INSERT INTO event_date_poll_responses SELECT * FROM event_date_poll_responses_before_86;
+    DROP TABLE event_date_poll_responses_before_86;
+    CREATE INDEX idx_event_date_poll_responses_option ON event_date_poll_responses(option_id);
+
+    INSERT INTO players (id, name, api_key, created_at)
+      VALUES ('migration-86-player', 'Migration 86 Player', 'migration-86-key', 1);
+    INSERT INTO event_date_polls
+      (id, event_id, round_number, response_due_at, status, created_at, updated_at,
+       topic, decision_key, title, response_mode)
+      VALUES ('migration-86-poll', 'instance-base-event', 1, 9999999999999, 'open', 1, 1,
+              'custom', 'migration-86', 'Migration 86 Poll', 'feasibility');
+    INSERT INTO event_date_poll_options
+      (id, poll_id, starts_on, ends_on, position, label, payload_json)
+      VALUES ('migration-86-option', 'migration-86-poll', '0001-01-01', '0001-01-01', 0, 'Option', '{}');
+    INSERT INTO event_date_poll_invitees (poll_id, player_id, invited_at)
+      VALUES ('migration-86-poll', 'migration-86-player', 1);
+    INSERT INTO event_date_poll_responses (poll_id, option_id, player_id, response, updated_at)
+      VALUES ('migration-86-poll', 'migration-86-option', 'migration-86-player', 'can', 1);
+    DELETE FROM schema_migrations WHERE version = 86;
+  `);
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile);
+  assert.equal(
+    (migrated.prepare('SELECT response FROM event_date_poll_responses WHERE poll_id = ?').get('migration-86-poll') as { response: string }).response,
+    'can',
+  );
+  migrated.prepare("UPDATE event_date_polls SET response_mode = 'rating_1_5' WHERE id = ?").run('migration-86-poll');
+  migrated
+    .prepare("UPDATE event_date_poll_responses SET response = '5' WHERE poll_id = ?")
+    .run('migration-86-poll');
+  assert.equal(
+    (migrated.prepare('SELECT response FROM event_date_poll_responses WHERE poll_id = ?').get('migration-86-poll') as { response: string }).response,
+    '5',
+  );
   assert.deepEqual(migrated.pragma('foreign_key_check'), []);
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });

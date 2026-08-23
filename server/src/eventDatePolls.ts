@@ -8,26 +8,25 @@ import { nanoid } from 'nanoid';
 import { db } from './db';
 import type { EventRow } from './events';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
-import {
-  endOfIsoDateUtcMs,
-  isoDateInTimeZone,
-  startOfIsoDateUtcMs,
-} from './localDate';
+import { endOfIsoDateUtcMs } from './localDate';
 
 export type DatePollStatus = 'open' | 'closed' | 'scheduled' | 'superseded' | 'cancelled';
-export type DatePollResponseValue = 'can' | 'if_needed' | 'cannot';
+export type DatePollResponseValue = 'can' | 'if_needed' | 'cannot' | '1' | '2' | '3' | '4' | '5';
 export type EventPollTopic = 'date_range' | 'location' | 'duration' | 'budget' | 'custom';
-export type EventPollResponseMode = 'feasibility' | 'single_choice' | 'multiple_choice';
+export type EventPollResponseMode = 'feasibility' | 'single_choice' | 'multiple_choice' | 'rating_1_5';
 
-export const RESPONSE_VALUES: DatePollResponseValue[] = ['can', 'if_needed', 'cannot'];
+export const FEASIBILITY_RESPONSE_VALUES: DatePollResponseValue[] = ['can', 'if_needed', 'cannot'];
+export const RATING_RESPONSE_VALUES: DatePollResponseValue[] = ['1', '2', '3', '4', '5'];
+export const RESPONSE_VALUES: DatePollResponseValue[] = [...FEASIBILITY_RESPONSE_VALUES, ...RATING_RESPONSE_VALUES];
 export const MIN_OPTIONS = 2;
 export const MAX_OPTIONS = 8;
 
 export const REMINDER_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const REMINDER_48H_BEFORE_MS = 48 * 60 * 60 * 1000;
+const REMINDER_2H_BEFORE_MS = 2 * 60 * 60 * 1000;
 const STAGE_NONE = 0;
 const STAGE_48H = 1;
-const STAGE_DUE_DAY = 2;
+const STAGE_2H = 2;
 
 export interface DatePollRow {
   id: string;
@@ -315,25 +314,25 @@ interface ReminderPlan {
 }
 
 // Picks the next sensible automatic-reminder stage relative to `now`: the
-// 48h-before mark if that's still ahead, otherwise the due-day mark if that's
+// 48h-before mark if that's still ahead, otherwise the 2h-before mark if that's
 // still ahead, otherwise no automatic reminder at all ("Bei später Erstellung
 // wird nur die nächste sinnvolle Stufe versendet").
 function initialReminderPlan(responseDueAt: number, now: number): ReminderPlan {
   const at48h = responseDueAt - REMINDER_48H_BEFORE_MS;
   if (at48h > now) return { stage: STAGE_NONE, dueAt: at48h };
-  const dueDayStart = startOfIsoDateUtcMs(isoDateInTimeZone(responseDueAt));
-  if (dueDayStart > now) return { stage: STAGE_48H, dueAt: dueDayStart };
-  return { stage: STAGE_DUE_DAY, dueAt: null };
+  const at2h = responseDueAt - REMINDER_2H_BEFORE_MS;
+  if (at2h > now) return { stage: STAGE_48H, dueAt: at2h };
+  return { stage: STAGE_2H, dueAt: null };
 }
 
 // After sending stage `sentStage`'s reminder, this is the plan for whatever
-// comes next (only the due-day stage, or nothing left).
+// comes next (only the 2h-before stage, or nothing left).
 function nextReminderPlan(responseDueAt: number, sentStage: number, now: number): ReminderPlan {
   if (sentStage === STAGE_48H) {
-    const dueDayStart = startOfIsoDateUtcMs(isoDateInTimeZone(responseDueAt));
-    if (dueDayStart > now) return { stage: STAGE_48H, dueAt: dueDayStart };
+    const at2h = responseDueAt - REMINDER_2H_BEFORE_MS;
+    if (at2h > now) return { stage: STAGE_48H, dueAt: at2h };
   }
-  return { stage: STAGE_DUE_DAY, dueAt: null };
+  return { stage: STAGE_2H, dueAt: null };
 }
 
 // ---------- metadata / due date changes ----------
@@ -399,7 +398,7 @@ export function addDatePollOption(poll: DatePollRow, input: DatePollOptionInput)
   }
   const existing = getDatePollOptions(poll.id);
   if (existing.length >= MAX_OPTIONS) {
-    return { ok: false, code: 'invalid', error: `Höchstens ${MAX_OPTIONS} Zeiträume je Runde.` };
+    return { ok: false, code: 'invalid', error: `Höchstens ${MAX_OPTIONS} Optionen je Abstimmung.` };
   }
   const position = existing.reduce((max, o) => Math.max(max, o.position), -1) + 1;
   const startsOn = input.startsOn ?? `0001-01-${String(position + 1).padStart(2, '0')}`;
@@ -497,10 +496,15 @@ export function submitMyResponses(
   const options = getDatePollOptions(poll.id);
   const optionIds = new Set(options.map((o) => o.id));
   const providedIds = new Set(responses.map((r) => r.optionId));
+  const allowedResponses = poll.response_mode === 'rating_1_5'
+    ? RATING_RESPONSE_VALUES
+    : poll.response_mode === 'feasibility'
+      ? FEASIBILITY_RESPONSE_VALUES
+      : (['can', 'cannot'] as DatePollResponseValue[]);
   if (
     providedIds.size !== responses.length ||
     ![...providedIds].every((id) => optionIds.has(id)) ||
-    !responses.every((r) => RESPONSE_VALUES.includes(r.response))
+    !responses.every((r) => allowedResponses.includes(r.response))
   ) {
     return { ok: false, code: 'invalid', error: 'Jede übermittelte Option benötigt genau eine gültige Antwort.' };
   }
@@ -546,7 +550,7 @@ export function closeDatePoll(poll: DatePollRow): PollMutationResult {
       poll.id,
     );
     if (updated.changes !== 1) {
-      return { ok: false, code: 'not_open', error: 'Die Runde ist nicht mehr offen.' };
+      return { ok: false, code: 'not_open', error: 'Die Abstimmung läuft nicht mehr.' };
     }
     clearAutomaticReminders(poll.id);
     return { ok: true, poll: getDatePoll(poll.id)! };
@@ -575,7 +579,7 @@ export function reopenDatePoll(poll: DatePollRow, responseDueOn: string | undefi
       .prepare(`UPDATE event_date_polls SET status = 'open', response_due_at = ?, updated_at = ? WHERE id = ? AND status = 'closed'`)
       .run(responseDueAt, now, poll.id);
     if (updated.changes !== 1) {
-      return { ok: false, code: 'not_closed', error: 'Die Runde ist nicht geschlossen.' };
+      return { ok: false, code: 'not_closed', error: 'Die Abstimmung ist nicht beendet.' };
     }
     rescheduleRemindersForStillOpenInvitees(poll.id, responseDueAt, now);
     return { ok: true, poll: getDatePoll(poll.id)! };
@@ -593,7 +597,7 @@ export function cancelDatePoll(poll: DatePollRow): CancelResult {
       .prepare(`UPDATE event_date_polls SET status = 'cancelled', updated_at = ? WHERE id = ? AND status IN ('open', 'closed')`)
       .run(now, poll.id);
     if (updated.changes !== 1) {
-      return { ok: false, code: 'not_open_or_closed', error: 'Die Runde kann in diesem Zustand nicht abgebrochen werden.' };
+      return { ok: false, code: 'not_open_or_closed', error: 'Die Abstimmung kann in diesem Zustand nicht abgebrochen werden.' };
     }
     clearAutomaticReminders(poll.id);
     return { ok: true, poll: getDatePoll(poll.id)! };
@@ -651,7 +655,7 @@ export function decideEventPoll(
       return { ok: true, poll: current, changed: false, previousValue, nextValue };
     }
     if (current.status !== 'closed') {
-      return { ok: false, code: 'not_open_or_closed', error: 'Vor dem Festhalten eines Ergebnisses muss die Abgabe beendet werden.' };
+      return { ok: false, code: 'not_open_or_closed', error: 'Vor dem Festhalten eines Ergebnisses muss die Abstimmung beendet werden.' };
     }
     db.prepare(
       `UPDATE event_date_polls SET status = 'superseded'
@@ -710,8 +714,7 @@ export function dueAutomaticReminders(now = Date.now()): DueAutomaticReminder[] 
   const rows = db
     .prepare(
       `SELECT edpi.poll_id AS pollId, edp.event_id AS eventId, edpi.player_id AS playerId,
-              edpi.automatic_reminder_due_at AS dueAt, edpi.automatic_reminder_stage AS stage,
-              edpi.last_reminder_at AS lastReminderAt
+              edpi.automatic_reminder_due_at AS dueAt, edpi.automatic_reminder_stage AS stage
        FROM event_date_poll_invitees edpi
        JOIN event_date_polls edp ON edp.id = edpi.poll_id
        JOIN event_participants ep ON ep.event_id = edp.event_id AND ep.player_id = edpi.player_id
@@ -726,16 +729,17 @@ export function dueAutomaticReminders(now = Date.now()): DueAutomaticReminder[] 
     playerId: string;
     dueAt: number;
     stage: number;
-    lastReminderAt: number | null;
   }>;
   return rows
     .filter((row) => !hasAnsweredDatePoll(row.pollId, row.playerId))
-    .filter((row) => row.lastReminderAt === null || now - row.lastReminderAt >= REMINDER_MIN_INTERVAL_MS)
+    // Manual sends must not suppress either promised automatic stage. Each
+    // stage is intrinsically one-shot because advanceAutomaticReminder moves
+    // its due timestamp forward (or clears it) immediately after delivery.
     .map((row) => ({ pollId: row.pollId, eventId: row.eventId, playerId: row.playerId, stage: row.stage + 1 }));
 }
 
 // Records that the automatic reminder for `stage` was sent and schedules
-// whatever comes next (or nothing, once the due-day stage is done).
+// whatever comes next (or nothing, once the 2h-before stage is done).
 export function advanceAutomaticReminder(pollId: string, playerId: string, sentStage: number, now = Date.now()): void {
   const poll = getDatePoll(pollId);
   if (!poll) return;
@@ -754,6 +758,8 @@ export interface OptionCounts {
   ifNeeded: number;
   cannot: number;
   open: number;
+  ratings: Record<'1' | '2' | '3' | '4' | '5', number>;
+  average: number | null;
 }
 
 export function optionCounts(option: DatePollOptionRow, responses: DatePollResponseRow[], inviteeCount: number): OptionCounts {
@@ -761,7 +767,23 @@ export function optionCounts(option: DatePollOptionRow, responses: DatePollRespo
   const can = forOption.filter((r) => r.response === 'can').length;
   const ifNeeded = forOption.filter((r) => r.response === 'if_needed').length;
   const cannot = forOption.filter((r) => r.response === 'cannot').length;
-  return { can, ifNeeded, cannot, open: Math.max(0, inviteeCount - forOption.length) };
+  const ratings = {
+    '1': forOption.filter((r) => r.response === '1').length,
+    '2': forOption.filter((r) => r.response === '2').length,
+    '3': forOption.filter((r) => r.response === '3').length,
+    '4': forOption.filter((r) => r.response === '4').length,
+    '5': forOption.filter((r) => r.response === '5').length,
+  };
+  const ratingCount = Object.values(ratings).reduce((sum, count) => sum + count, 0);
+  const ratingSum = Object.entries(ratings).reduce((sum, [value, count]) => sum + Number(value) * count, 0);
+  return {
+    can,
+    ifNeeded,
+    cannot,
+    open: Math.max(0, inviteeCount - forOption.length),
+    ratings,
+    average: ratingCount > 0 ? ratingSum / ratingCount : null,
+  };
 }
 
 // Stable "Beste Abdeckung" sort, exactly per the concept's tie-break chain:
@@ -772,11 +794,20 @@ export function recommendedOptionId(
   options: DatePollOptionRow[],
   responses: DatePollResponseRow[],
   inviteeCount: number,
+  responseMode: EventPollResponseMode = 'feasibility',
 ): string | undefined {
-  if (options.length === 0) return undefined;
+  if (options.length === 0 || responses.length === 0) return undefined;
   const ranked = [...options].sort((a, b) => {
     const countsA = optionCounts(a, responses, inviteeCount);
     const countsB = optionCounts(b, responses, inviteeCount);
+    if (responseMode === 'rating_1_5') {
+      const averageA = countsA.average ?? -1;
+      const averageB = countsB.average ?? -1;
+      if (averageA !== averageB) return averageB - averageA;
+      const ratingCountA = Object.values(countsA.ratings).reduce((sum, count) => sum + count, 0);
+      const ratingCountB = Object.values(countsB.ratings).reduce((sum, count) => sum + count, 0);
+      if (ratingCountA !== ratingCountB) return ratingCountB - ratingCountA;
+    }
     if (countsA.can !== countsB.can) return countsB.can - countsA.can;
     const combinedA = countsA.can + countsA.ifNeeded;
     const combinedB = countsB.can + countsB.ifNeeded;

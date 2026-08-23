@@ -98,19 +98,28 @@ async function createPoll(
   page: Page,
   { title, options, mode = 'feasibility', maxSelections }: {
     title: string;
-    options: string[];
-    mode?: 'feasibility' | 'single_choice' | 'multiple_choice';
+    options: Array<string | { label: string; description?: string; url?: string }>;
+    mode?: 'feasibility' | 'single_choice' | 'multiple_choice' | 'rating_1_5';
     maxSelections?: number;
   },
 ): Promise<void> {
   await page.click('#new-event-poll');
   await page.waitForSelector('#event-poll-form');
   await page.fill('#poll-title', title);
-  if (mode !== 'feasibility') await page.click(`[data-create-poll-mode="${mode}"]`);
+  await page.selectOption('#poll-mode', mode);
   if (maxSelections !== undefined) await page.fill('#poll-max', String(maxSelections));
   while ((await page.locator('[data-poll-option-input]').count()) < options.length) await page.click('#poll-add-option');
   for (let index = 0; index < options.length; index += 1) {
-    await page.locator('[data-poll-option-input]').nth(index).fill(options[index]);
+    const rawOption = options[index];
+    const option = typeof rawOption === 'string' ? { label: rawOption } : rawOption;
+    await page.locator('[data-poll-option-input]').nth(index).fill(option.label);
+    if (option.description || option.url) {
+      await page.locator('[data-poll-option-row]').nth(index).locator('.event-poll-form-option-details').evaluate((details) => {
+        (details as HTMLDetailsElement).open = true;
+      });
+      if (option.description) await page.locator('[data-poll-option-note]').nth(index).fill(option.description);
+      if (option.url) await page.locator('[data-poll-option-url]').nth(index).fill(option.url);
+    }
   }
   await page.click('#event-poll-form button[type="submit"]');
   await page.waitForSelector('#event-poll-form', { state: 'detached' });
@@ -183,7 +192,8 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await navigate(ownerPage, 'eventPolls');
   await ownerPage.waitForSelector('[data-section-tab="eventPolls"][aria-current="page"]');
   assert.equal(await ownerPage.locator('#poll-event-select').count(), 0);
-  await ownerPage.getByRole('heading', { name: EVENT_NAME, exact: true }).waitFor();
+  assert.equal(await ownerPage.locator('.event-polls-page h1').count(), 0, 'the tab adds no duplicate event heading');
+  assert.equal(await ownerPage.locator('#new-event-poll').textContent(), 'Abstimmung starten');
 
   await createPoll(ownerPage, {
     title: 'Welcher Zeitraum passt?',
@@ -191,6 +201,12 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   });
   const ownerPoll = ownerPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
   await ownerPoll.waitFor();
+  await ownerPoll.locator('[data-toggle-poll]').click();
+  assert.equal(await ownerPoll.locator('[data-poll-round]:visible').count(), 0, 'the poll can be collapsed');
+  assert.equal(await ownerPoll.locator('[data-remind-poll]:visible').count(), 1, 'management actions stay in the collapsed header');
+  assert.equal(await ownerPoll.locator('[data-close-poll]:visible').count(), 1);
+  assert.equal(await ownerPoll.locator('[data-cancel-poll]:visible').count(), 1);
+  await ownerPoll.locator('[data-toggle-poll]').click();
   assert.equal(await ownerPoll.locator('[data-poll-response="can"]').count(), 2);
   assert.equal(await ownerPoll.locator('[data-poll-response="if_needed"]').count(), 2);
   assert.equal(await ownerPoll.locator('[data-poll-response="cannot"]').count(), 2);
@@ -213,7 +229,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await refreshed.waitFor();
   await refreshed.locator('[data-close-poll]').click();
   await ownerPage.locator('.modal-backdrop [data-confirm]').click();
-  await ownerPage.locator('.toast', { hasText: 'Abgabe beendet' }).waitFor();
+  await ownerPage.locator('.toast', { hasText: 'Abstimmung beendet' }).waitFor();
   const closed = ownerPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
   await closed.locator('[data-result-option]').first().click();
   await closed.locator('[data-decide-poll]').click();
@@ -235,4 +251,19 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
     true,
     'the redesigned poll tab stays within the phone viewport',
   );
+
+  await createPoll(ownerPage, {
+    title: 'Unterkünfte bewerten',
+    mode: 'rating_1_5',
+    options: [
+      { label: 'Haus am See', description: 'Mit Sauna', url: 'https://example.com/haus' },
+      'Hütte im Wald',
+    ],
+  });
+  const ratingPoll = ownerPage.locator('[data-poll-group]', { hasText: 'Unterkünfte bewerten' });
+  await ratingPoll.waitFor();
+  assert.equal(await ratingPoll.locator('[data-poll-response="1"]').count(), 2);
+  assert.equal(await ratingPoll.locator('[data-poll-response="5"]').count(), 2);
+  assert.equal(await ratingPoll.locator('a[href="https://example.com/haus"]').count(), 1);
+  assert.match((await ratingPoll.textContent()) ?? '', /Mit Sauna/);
 });

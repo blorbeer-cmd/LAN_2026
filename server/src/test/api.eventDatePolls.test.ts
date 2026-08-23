@@ -4,6 +4,7 @@ import request from 'supertest';
 import { createTestApp, TEST_ADMIN_ID } from './testApp';
 import { db } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
+import { advanceAutomaticReminder, dueAutomaticReminders } from '../eventDatePolls';
 
 const app = createTestApp();
 
@@ -43,10 +44,10 @@ async function createEvent(name: string, participants: string[]): Promise<string
 
 interface PollOverrides {
   title?: string;
-  responseMode?: 'feasibility' | 'single_choice' | 'multiple_choice';
+  responseMode?: 'feasibility' | 'single_choice' | 'multiple_choice' | 'rating_1_5';
   maxSelections?: number | null;
   decisionKey?: string;
-  options?: Array<{ label: string }>;
+  options?: Array<{ label: string; description?: string; payload?: { url?: string } }>;
   responseDueOn?: string;
 }
 
@@ -67,7 +68,7 @@ async function createPoll(eventId: string, creatorId: string, overrides: PollOve
 
 function responsesFor(
   poll: { options: Array<{ id: string }> },
-  values: Array<'can' | 'if_needed' | 'cannot'>,
+  values: Array<'can' | 'if_needed' | 'cannot' | '1' | '2' | '3' | '4' | '5'>,
 ) {
   return poll.options.map((option, index) => ({ optionId: option.id, response: values[index] }));
 }
@@ -125,7 +126,7 @@ test('only confirmed event participants can see, create and answer polls; every 
   assert.equal(customInvitees.status, 400, 'the client cannot narrow the participant roster');
 });
 
-test('feasibility, single choice and limited multiple choice enforce their distinct response semantics', async () => {
+test('feasibility, choice and 1-5 rating modes enforce their distinct response semantics', async () => {
   const alice = 'poll-modes-alice';
   const bob = 'poll-modes-bob';
   createMember(alice, 'Poll Modes Alice');
@@ -191,6 +192,42 @@ test('feasibility, single choice and limited multiple choice enforce their disti
     .set('x-test-player-id', bob)
     .send({ responses: responsesFor(multiple.body, ['can', 'cannot', 'can']) });
   assert.equal(twoVotes.status, 200, JSON.stringify(twoVotes.body));
+
+  const rating = await createPoll(eventId, alice, {
+    title: 'Unterkünfte bewerten',
+    responseMode: 'rating_1_5',
+    options: [
+      { label: 'Haus am See', description: 'Mit Sauna', payload: { url: 'https://example.com/haus' } },
+      { label: 'Hütte im Wald' },
+    ],
+  });
+  assert.equal(rating.status, 201, JSON.stringify(rating.body));
+  assert.equal(rating.body.options[0].description, 'Mit Sauna');
+  assert.equal(rating.body.options[0].payload.url, 'https://example.com/haus');
+  const wrongRatingValue = await request(app)
+    .put(`/api/events/${eventId}/polls/${rating.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: responsesFor(rating.body, ['can', '5']) });
+  assert.equal(wrongRatingValue.status, 400);
+  const incompleteRating = await request(app)
+    .put(`/api/events/${eventId}/polls/${rating.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: [{ optionId: rating.body.options[0].id, response: '5' }] });
+  assert.equal(incompleteRating.status, 400);
+  const completeRating = await request(app)
+    .put(`/api/events/${eventId}/polls/${rating.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: responsesFor(rating.body, ['5', '3']) });
+  assert.equal(completeRating.status, 200, JSON.stringify(completeRating.body));
+  assert.equal(completeRating.body.options[0].counts.ratings['5'], 1);
+  assert.equal(completeRating.body.options[0].counts.average, 5);
+  assert.equal(completeRating.body.options[0].isRecommended, true);
+
+  const unsafeLink = await createPoll(eventId, alice, {
+    title: 'Ungültiger Link',
+    options: [{ label: 'Unsicher', payload: { url: 'javascript:alert(1)' } }, { label: 'Sicher' }],
+  });
+  assert.equal(unsafeLink.status, 400);
 });
 
 test('poll results never modify event data or participation and the old schedule action is unavailable', async () => {
@@ -316,10 +353,69 @@ test('manual reminders target only confirmed participants who have not answered 
     .set('x-test-player-id', alice);
   assert.equal(firstReminder.status, 200);
   assert.deepEqual(firstReminder.body.remindedPlayerIds, [carol]);
+  const topicKey = `event-poll-reminder:${created.body.id}:${carol}`;
+  const firstPush = db
+    .prepare('SELECT id, created_at AS createdAt FROM push_log WHERE topic_key = ?')
+    .get(topicKey) as { id: string; createdAt: number };
+  assert.ok(firstPush);
   const secondReminder = await request(app)
     .post(`/api/events/${eventId}/polls/${created.body.id}/reminders`)
     .set('x-test-player-id', alice);
   assert.deepEqual(secondReminder.body.remindedPlayerIds, [], 'the shared 24-hour cooldown prevents duplicate reminders');
+
+  db.prepare('UPDATE event_date_poll_invitees SET last_reminder_at = NULL WHERE poll_id = ? AND player_id = ?').run(
+    created.body.id,
+    carol,
+  );
+  db.prepare('UPDATE push_log SET created_at = 1 WHERE id = ?').run(firstPush.id);
+  const repeatedReminder = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/reminders`)
+    .set('x-test-player-id', alice);
+  assert.deepEqual(repeatedReminder.body.remindedPlayerIds, [carol]);
+  const repeatedPushes = db
+    .prepare('SELECT id, created_at AS createdAt FROM push_log WHERE topic_key = ?')
+    .all(topicKey) as Array<{ id: string; createdAt: number }>;
+  assert.equal(repeatedPushes.length, 1, 'repeated poll reminders reuse one notification-center entry');
+  assert.equal(repeatedPushes[0].id, firstPush.id);
+  assert.ok(repeatedPushes[0].createdAt > 1, 'the existing reminder rises to the top');
+});
+
+test('automatic poll reminders are scheduled two days and two hours before the deadline', async () => {
+  const alice = 'poll-auto-reminder-alice';
+  createMember(alice, 'Poll Auto Reminder Alice');
+  const eventId = await createEvent('Poll Auto Reminder Event', [alice]);
+  const created = await createPoll(eventId, alice, { responseDueOn: isoDate(6) });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const poll = db
+    .prepare('SELECT response_due_at AS responseDueAt FROM event_date_polls WHERE id = ?')
+    .get(created.body.id) as { responseDueAt: number };
+  const invitee = db
+    .prepare(
+      'SELECT automatic_reminder_due_at AS dueAt, automatic_reminder_stage AS stage FROM event_date_poll_invitees WHERE poll_id = ? AND player_id = ?',
+    )
+    .get(created.body.id, alice) as { dueAt: number; stage: number };
+  assert.equal(invitee.stage, 0);
+  assert.equal(invitee.dueAt, poll.responseDueAt - 48 * 60 * 60 * 1000);
+
+  db.prepare('UPDATE event_date_poll_invitees SET last_reminder_at = ? WHERE poll_id = ? AND player_id = ?').run(
+    invitee.dueAt - 60 * 60 * 1000,
+    created.body.id,
+    alice,
+  );
+  const firstStage = dueAutomaticReminders(invitee.dueAt).find((entry) => entry.pollId === created.body.id);
+  assert.equal(firstStage?.stage, 1, 'a manual reminder does not suppress the required automatic stage');
+  advanceAutomaticReminder(created.body.id, alice, 1, invitee.dueAt);
+  const secondPlan = db
+    .prepare(
+      'SELECT automatic_reminder_due_at AS dueAt, automatic_reminder_stage AS stage FROM event_date_poll_invitees WHERE poll_id = ? AND player_id = ?',
+    )
+    .get(created.body.id, alice) as { dueAt: number; stage: number };
+  assert.equal(secondPlan.stage, 1);
+  assert.equal(secondPlan.dueAt, poll.responseDueAt - 2 * 60 * 60 * 1000);
+  assert.equal(
+    dueAutomaticReminders(secondPlan.dueAt).find((entry) => entry.pollId === created.body.id)?.stage,
+    2,
+  );
 });
 
 test('newly accepted participants join an open poll automatically; removed participants lose access', async () => {

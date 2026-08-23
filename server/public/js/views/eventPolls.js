@@ -6,10 +6,12 @@ import { openModal, confirmDialog } from '../modal.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 const RESPONSE_VALUES = ['can', 'if_needed', 'cannot'];
 const FEASIBILITY_VALUES = [...RESPONSE_VALUES, 'open'];
-const RESPONSE_LABELS = { can: 'Passt', if_needed: 'Wenn nötig', cannot: 'Passt nicht', open: 'Offen' };
+const RATING_VALUES = ['1', '2', '3', '4', '5'];
+const RESPONSE_LABELS = { can: 'Passt', if_needed: 'Notfalls', cannot: 'Nein', open: 'Offen' };
 const MODE_INFO = {
   feasibility: {
     label: 'Jede Option bewerten',
@@ -22,6 +24,10 @@ const MODE_INFO = {
   multiple_choice: {
     label: 'Mehrere Optionen wählen',
     description: 'Jede Person kann mehrere passende Optionen auswählen.',
+  },
+  rating_1_5: {
+    label: 'Optionen von 1 bis 5 bewerten',
+    description: 'Jede Person vergibt für jede Option eine Bewertung von 1 bis 5.',
   },
 };
 
@@ -63,11 +69,11 @@ function formatDate(timestamp) {
 }
 
 function pollStatusInfo(status) {
-  if (status === 'open') return { label: 'Abgabe offen', badge: 'badge-playing' };
-  if (status === 'closed') return { label: 'Abgabe beendet', badge: 'badge-paused' };
-  if (status === 'scheduled') return { label: 'Abgeschlossen', badge: 'badge-online' };
+  if (status === 'open') return { label: 'Abstimmung läuft', badge: 'badge-playing' };
+  if (status === 'closed') return { label: 'Abstimmung beendet', badge: 'badge-paused' };
+  if (status === 'scheduled') return { label: 'Ergebnis festgehalten', badge: 'badge-online' };
   if (status === 'superseded') return { label: 'Frühere Runde', badge: 'badge-offline' };
-  return { label: 'Abgebrochen', badge: 'badge-offline' };
+  return { label: 'Abstimmung abgebrochen', badge: 'badge-offline' };
 }
 
 function groupPolls(polls) {
@@ -86,6 +92,8 @@ function responseDraftFor(poll) {
     const initial = { ...(poll.myResponses ?? {}) };
     if (poll.responseMode === 'feasibility') {
       for (const option of poll.options) initial[option.id] ??= 'open';
+    } else if (poll.responseMode === 'rating_1_5') {
+      for (const option of poll.options) initial[option.id] ??= '';
     } else {
       for (const option of poll.options) initial[option.id] ??= 'cannot';
     }
@@ -100,7 +108,11 @@ function selectedResponseCount(poll) {
 
 function responseDraftIsValid(poll) {
   const draft = responseDraftFor(poll);
-  const allowedValues = poll.responseMode === 'feasibility' ? FEASIBILITY_VALUES : RESPONSE_VALUES;
+  const allowedValues = poll.responseMode === 'feasibility'
+    ? FEASIBILITY_VALUES
+    : poll.responseMode === 'rating_1_5'
+      ? RATING_VALUES
+      : RESPONSE_VALUES;
   if (poll.options.some((option) => !allowedValues.includes(draft[option.id]))) return false;
   const selected = selectedResponseCount(poll);
   if (poll.responseMode === 'single_choice') return selected === 1;
@@ -115,21 +127,43 @@ function resultDraftFor(poll) {
   return resultDrafts.get(poll.id);
 }
 
-function renderPeopleList(label, people) {
-  if (!people?.length) return '';
+function optionUrl(option) {
+  const url = option.payload?.url;
+  return typeof url === 'string' && /^https?:\/\/[^\s]+$/i.test(url) ? url : null;
+}
+
+function responsePeopleGroups(poll, option) {
+  if (poll.responseMode === 'rating_1_5') {
+    return RATING_VALUES.map((value) => ({ label: `${value} von 5`, people: option.people.ratings?.[value] ?? [] }));
+  }
+  if (poll.responseMode === 'feasibility') {
+    return [
+      { label: 'Passt', people: option.people.can },
+      { label: 'Wenn nötig', people: option.people.ifNeeded },
+      { label: 'Passt nicht', people: option.people.cannot },
+    ];
+  }
+  return [{ label: 'Gewählt', people: option.people.can }];
+}
+
+function renderResponseDetails(poll, option) {
+  const groups = responsePeopleGroups(poll, option).filter((group) => group.people?.length);
+  if (!groups.length) return '';
+  const count = groups.reduce((sum, group) => sum + group.people.length, 0);
   return `
-    <details class="collapsible-section event-poll-people">
-      <summary class="collapsible-section-header">
-        <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
-        <span>${escapeHtml(label)} (${people.length})</span>
-      </summary>
-      <div class="collapsible-section-content">
-        <ul class="event-participant-list">
-          ${people.map((person) => {
-            const player = state.players?.find((entry) => entry.id === person.playerId) ?? person;
-            return `<li class="event-participant-row"><span class="player-name">${avatarHtml(player, 20)}${escapeHtml(person.name)}</span></li>`;
-          }).join('')}
-        </ul>
+    <details class="event-poll-response-details">
+      <summary>Antworten (${count})</summary>
+      <div class="stack event-poll-response-groups">
+        ${groups.map((group) => `
+          <div class="stack event-poll-response-group">
+            <strong>${escapeHtml(group.label)}</strong>
+            <ul class="event-participant-list">
+              ${group.people.map((person) => {
+                const player = state.players?.find((entry) => entry.id === person.playerId) ?? person;
+                return `<li class="event-participant-row"><span class="player-name">${avatarHtml(player, 20)}${escapeHtml(person.name)}</span></li>`;
+              }).join('')}
+            </ul>
+          </div>`).join('')}
       </div>
     </details>`;
 }
@@ -137,13 +171,23 @@ function renderPeopleList(label, people) {
 function renderResponseControl(poll, option) {
   if (!poll.isInvitee || poll.status !== 'open') return '';
   const draft = responseDraftFor(poll);
+  if (poll.responseMode === 'rating_1_5') {
+    return `
+      <div class="selection-toolbar event-poll-response-toolbar" role="group" aria-label="Bewertung für ${escapeHtml(optionLabel(option))}">
+        ${RATING_VALUES.map((value) => `
+          <button type="button" class="btn btn-sm${draft[option.id] === value ? ' btn-primary' : ''}"
+            data-poll-response="${value}" data-poll-id="${escapeHtml(poll.id)}" data-option-id="${escapeHtml(option.id)}"
+            aria-label="${value} von 5" aria-pressed="${draft[option.id] === value}">${value}</button>`).join('')}
+      </div>`;
+  }
   if (poll.responseMode === 'feasibility') {
+    const fullLabels = { can: 'Passt', if_needed: 'Wenn nötig', cannot: 'Passt nicht', open: 'Offen' };
     return `
       <div class="selection-toolbar event-poll-response-toolbar" role="group" aria-label="Bewertung für ${escapeHtml(optionLabel(option))}">
         ${FEASIBILITY_VALUES.map((value) => `
           <button type="button" class="btn btn-sm${draft[option.id] === value ? ' btn-primary' : ''}"
             data-poll-response="${value}" data-poll-id="${escapeHtml(poll.id)}" data-option-id="${escapeHtml(option.id)}"
-            aria-pressed="${draft[option.id] === value}">${RESPONSE_LABELS[value]}</button>`).join('')}
+            aria-label="${fullLabels[value]}" aria-pressed="${draft[option.id] === value}">${RESPONSE_LABELS[value]}</button>`).join('')}
       </div>`;
   }
   const selected = draft[option.id] === 'can';
@@ -158,30 +202,34 @@ function renderResponseControl(poll, option) {
 }
 
 function renderCounts(poll, option) {
+  if (poll.responseMode === 'rating_1_5') {
+    const ratingCount = RATING_VALUES.reduce((sum, value) => sum + (option.counts.ratings?.[value] ?? 0), 0);
+    const average = option.counts.average === null ? '–' : option.counts.average.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    return `Ø ${average} · ${ratingCount} ${ratingCount === 1 ? 'Bewertung' : 'Bewertungen'} · ${option.counts.open} offen`;
+  }
   if (poll.responseMode === 'feasibility') {
-    return `Passt ${option.counts.can} · Wenn nötig ${option.counts.ifNeeded} · Passt nicht ${option.counts.cannot} · Offen ${option.counts.open}`;
+    return `Passt ${option.counts.can} · Notfalls ${option.counts.ifNeeded} · Nein ${option.counts.cannot} · Offen ${option.counts.open}`;
   }
   return `${option.counts.can} ${option.counts.can === 1 ? 'Stimme' : 'Stimmen'} · ${option.counts.open} offen`;
 }
 
 function renderOption(poll, option, selectedResults) {
   const isResult = selectedResults.has(option.id);
+  const link = optionUrl(option);
   return `
-    <div class="tournament-section-panel event-poll-option" data-poll-option="${escapeHtml(option.id)}">
+    <div class="event-poll-option" data-poll-option="${escapeHtml(option.id)}">
       <div class="row-between event-poll-option-header">
-        <strong>${escapeHtml(optionLabel(option))}</strong>
+        <span class="stack event-poll-option-copy"><strong>${escapeHtml(optionLabel(option))}</strong>${option.description ? `<span class="muted">${escapeHtml(option.description)}</span>` : ''}</span>
         <span class="row event-poll-option-badges">
           ${isResult ? '<span class="badge badge-playing">Ergebnis</span>' : ''}
-          ${option.isRecommended && poll.status !== 'cancelled' ? `<span class="badge badge-online">${poll.responseMode === 'feasibility' ? 'Beste Bewertung' : 'Meiste Stimmen'}</span>` : ''}
+          ${option.isRecommended && poll.status !== 'cancelled' ? `<span class="badge badge-online">${['feasibility', 'rating_1_5'].includes(poll.responseMode) ? 'Beste Bewertung' : 'Meiste Stimmen'}</span>` : ''}
+          ${link ? `<a class="btn btn-sm event-poll-option-link" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">${icon('squareArrowOutUpRight')} Link</a>` : ''}
         </span>
       </div>
-      ${option.description ? `<span class="muted">${escapeHtml(option.description)}</span>` : ''}
-      <span class="muted event-poll-counts">${renderCounts(poll, option)}</span>
-      ${renderResponseControl(poll, option)}
-      <div class="stack event-poll-people-lists">
-        ${renderPeopleList(poll.responseMode === 'feasibility' ? 'Passt' : 'Stimmen', option.people.can)}
-        ${poll.responseMode === 'feasibility' ? renderPeopleList('Wenn nötig', option.people.ifNeeded) : ''}
-        ${poll.responseMode === 'feasibility' ? renderPeopleList('Passt nicht', option.people.cannot) : ''}
+      <div class="event-poll-option-response-row">
+        <span class="muted event-poll-counts">${renderCounts(poll, option)}</span>
+        ${renderResponseControl(poll, option)}
+        ${renderResponseDetails(poll, option)}
       </div>
     </div>`;
 }
@@ -208,62 +256,49 @@ function renderResultPicker(poll) {
     </div>`;
 }
 
-function renderManagerActions(poll) {
+function renderManagerHeaderActions(poll) {
   if (!poll.canManage) return '';
   const unanswered = poll.invitees.filter((invitee) => !invitee.hasAnswered).length;
   if (poll.status === 'open') {
     return `
-      <div class="event-poll-manager-actions stack">
-        <span class="muted">Als Ersteller kannst du ausstehende Teilnehmer erinnern oder die Abgabe vor der Frist beenden.</span>
-        <div class="event-card-actions">
-          <button type="button" class="btn btn-sm" data-remind-poll="${escapeHtml(poll.id)}" ${unanswered === 0 ? 'disabled' : ''}>
-            ${icon('bell')} ${unanswered === 1 ? '1 offene Antwort erinnern' : `${unanswered} offene Antworten erinnern`}
-          </button>
-          <button type="button" class="btn btn-sm" data-close-poll="${escapeHtml(poll.id)}">Abgabe beenden</button>
-        </div>
-        <details class="collapsible-section event-poll-more-actions">
-          <summary class="collapsible-section-header">
-            <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
-            <span>Weitere Aktion</span>
-          </summary>
-          <div class="collapsible-section-content">
-            <button type="button" class="btn btn-sm btn-danger" data-cancel-poll="${escapeHtml(poll.id)}">Runde abbrechen</button>
-          </div>
-        </details>
+      <div class="event-poll-header-actions">
+        <button type="button" class="btn btn-sm" data-remind-poll="${escapeHtml(poll.id)}" ${unanswered === 0 ? 'disabled' : ''}>Erinnerung versenden (${unanswered})</button>
+        <button type="button" class="btn btn-sm" data-close-poll="${escapeHtml(poll.id)}">Beenden</button>
+        <button type="button" class="btn btn-sm btn-danger" data-cancel-poll="${escapeHtml(poll.id)}">Abbrechen</button>
       </div>`;
   }
   if (poll.status === 'closed') {
-    return `${renderResultPicker(poll)}
-      <div class="event-card-actions">
-        <button type="button" class="btn btn-sm" data-reopen-poll="${escapeHtml(poll.id)}">Abgabe wieder öffnen</button>
-        <button type="button" class="btn btn-sm btn-danger" data-cancel-poll="${escapeHtml(poll.id)}">Runde abbrechen</button>
+    return `
+      <div class="event-poll-header-actions">
+        <button type="button" class="btn btn-sm" data-reopen-poll="${escapeHtml(poll.id)}">Wieder öffnen</button>
+        <button type="button" class="btn btn-sm btn-danger" data-cancel-poll="${escapeHtml(poll.id)}">Abbrechen</button>
       </div>`;
   }
   return '';
 }
 
+function renderManagerContent(poll) {
+  return poll.canManage && poll.status === 'closed' ? renderResultPicker(poll) : '';
+}
+
 function renderRound(poll) {
-  const status = pollStatusInfo(poll.status);
   const answered = poll.invitees.filter((invitee) => invitee.hasAnswered).length;
   const selectedResults = new Set(poll.selectedOptionIds ?? (poll.selectedOptionId ? [poll.selectedOptionId] : []));
   const mode = MODE_INFO[poll.responseMode] ?? MODE_INFO.feasibility;
   const maxCopy = poll.responseMode === 'multiple_choice' && poll.maxSelections ? ` · höchstens ${poll.maxSelections}` : '';
   return `
     <section class="stack event-poll-round" data-poll-round="${escapeHtml(poll.id)}">
-      <div class="row-between event-poll-round-header">
-        <div class="stack"><strong>Runde ${poll.roundNumber}</strong><span class="muted">${escapeHtml(mode.label)}${maxCopy}</span></div>
-        <span class="badge ${status.badge}">${status.label}</span>
-      </div>
+      <span class="muted">${escapeHtml(mode.label)}${maxCopy}</span>
       ${poll.note ? `<p class="event-poll-note">${escapeHtml(poll.note)}</p>` : ''}
       <div class="event-poll-progress row-between">
         <span>${answered} von ${poll.invitees.length} haben abgestimmt</span><span>Frist: ${formatDate(poll.responseDueAt)}</span>
       </div>
       <div class="stack event-poll-options">${poll.options.map((option) => renderOption(poll, option, selectedResults)).join('')}</div>
       ${poll.isInvitee && poll.status === 'open'
-        ? `<button type="button" class="btn btn-primary btn-block" data-save-poll="${escapeHtml(poll.id)}" ${responseDraftIsValid(poll) ? '' : 'disabled'}>Meine Antwort speichern</button>`
+        ? `<div class="row event-poll-save-row"><button type="button" class="btn btn-primary btn-sm" data-save-poll="${escapeHtml(poll.id)}" ${responseDraftIsValid(poll) ? '' : 'disabled'}>Speichern</button></div>`
         : ''}
       ${poll.decisionNote ? `<p class="muted">Notiz zum Ergebnis: ${escapeHtml(poll.decisionNote)}</p>` : ''}
-      ${renderManagerActions(poll)}
+      ${renderManagerContent(poll)}
     </section>`;
 }
 
@@ -297,38 +332,42 @@ function renderPollGroup(group) {
   const status = pollStatusInfo(latest.status);
   const answered = latest.invitees.filter((invitee) => invitee.hasAnswered).length;
   const canStartRound = latest.canManage && ['scheduled', 'superseded', 'cancelled'].includes(latest.status);
+  const expanded = expandedPolls.has(group.key);
   return `
-    <details class="card event-poll-card" data-poll-group="${escapeHtml(group.key)}" ${expandedPolls.has(group.key) ? 'open' : ''}>
-      <summary class="event-poll-card-summary">
-        <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
-        <span class="event-poll-card-title"><strong>${escapeHtml(latest.title)}</strong><span class="muted">von ${escapeHtml(latest.createdByName ?? 'Unbekannt')} · Runde ${latest.roundNumber}</span></span>
-        <span class="event-poll-card-meta"><span class="badge ${status.badge}">${status.label}</span><span class="muted">${answered}/${latest.invitees.length} abgestimmt</span></span>
-      </summary>
-      <div class="stack event-poll-card-content">
+    <article class="card event-poll-card" data-poll-group="${escapeHtml(group.key)}">
+      <header class="event-poll-card-header">
+        <button type="button" class="event-poll-card-toggle" data-toggle-poll="${escapeHtml(group.key)}" aria-expanded="${expanded}">
+          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
+          <span class="event-poll-card-title"><strong>${escapeHtml(latest.title)}</strong><span class="muted">von ${escapeHtml(latest.createdByName ?? 'Unbekannt')} · Runde ${latest.roundNumber}</span></span>
+          <span class="event-poll-card-meta"><span class="badge ${status.badge}">${status.label}</span><span class="muted">${answered}/${latest.invitees.length} abgestimmt</span></span>
+        </button>
+        ${renderManagerHeaderActions(latest)}
+      </header>
+      <div class="stack event-poll-card-content" ${expanded ? '' : 'hidden'}>
         ${renderRound(latest)}
         ${canStartRound ? `<button type="button" class="btn btn-sm" data-new-poll-round="${escapeHtml(latest.id)}">+ Neue Runde starten</button>` : ''}
         ${renderHistory(group)}
       </div>
-    </details>`;
+    </article>`;
 }
 
-function optionRowHtml(index, value = '') {
+function optionRowHtml(index, value = {}) {
+  const showDetails = Boolean(value.description || value.url);
   return `
     <div class="event-poll-form-option" data-poll-option-row="${index}">
-      <label for="poll-option-${index}" class="field-label">Option ${index + 1}</label>
-      <div class="row">
-        <input id="poll-option-${index}" data-poll-option-input maxlength="120" required value="${escapeHtml(value)}" placeholder="z. B. Ferienhaus am See" />
+      <div class="row-between">
+        <label for="poll-option-${index}" class="field-label">Option ${index + 1}</label>
         <button type="button" class="icon-btn" data-remove-poll-option aria-label="Option entfernen" title="Option entfernen">${icon('trash')}</button>
       </div>
+      <input type="text" id="poll-option-${index}" data-poll-option-input maxlength="120" required value="${escapeHtml(value.label ?? '')}" placeholder="z. B. Ferienhaus am See" />
+      <details class="event-poll-form-option-details" ${showDetails ? 'open' : ''}>
+        <summary>Notiz oder Link hinzufügen</summary>
+        <div class="field-row event-poll-option-extra-fields">
+          <div><label for="poll-option-note-${index}" class="field-label">Kurze Notiz (optional)</label><input type="text" id="poll-option-note-${index}" data-poll-option-note maxlength="240" value="${escapeHtml(value.description ?? '')}" placeholder="Zusätzliche Information" /></div>
+          <div><label for="poll-option-url-${index}" class="field-label">Link (optional)</label><input type="url" id="poll-option-url-${index}" data-poll-option-url maxlength="500" value="${escapeHtml(value.url ?? '')}" placeholder="https://…" /></div>
+        </div>
+      </details>
     </div>`;
-}
-
-function modeButtonsHtml(activeMode) {
-  return Object.entries(MODE_INFO).map(([value, info]) => `
-    <button type="button" class="btn event-poll-mode-choice${activeMode === value ? ' btn-primary' : ''}"
-      data-create-poll-mode="${value}" aria-pressed="${activeMode === value}">
-      <strong>${escapeHtml(info.label)}</strong><span>${escapeHtml(info.description)}</span>
-    </button>`).join('');
 }
 
 function readIsoDate(modal, id) {
@@ -337,18 +376,26 @@ function readIsoDate(modal, id) {
 
 function openPollForm(event, ctx, previousRound = null) {
   const initialMode = previousRound?.responseMode ?? 'feasibility';
-  const initialOptions = previousRound?.options?.map(optionLabel) ?? ['', ''];
-  const participantCount = event.participantIds?.length ?? previousRound?.invitees?.length ?? 0;
+  const initialOptions = previousRound?.options?.map((option) => ({
+    label: optionLabel(option),
+    description: option.description ?? '',
+    url: optionUrl(option) ?? '',
+  })) ?? [{}, {}];
   let nextOptionIndex = initialOptions.length;
   let dirty = false;
   let capturedModal;
   const { close } = openModal(previousRound ? `Neue Runde · ${previousRound.title}` : 'Abstimmung starten', `
     <form id="event-poll-form" class="stack">
-      <div><label for="poll-title" class="field-label">Titel</label><input id="poll-title" maxlength="100" required value="${escapeHtml(previousRound?.title ?? '')}" placeholder="Worüber möchtet ihr abstimmen?" autofocus /></div>
+      <div><label for="poll-title" class="field-label">Titel</label><input type="text" id="poll-title" maxlength="100" required value="${escapeHtml(previousRound?.title ?? '')}" placeholder="Worüber möchtet ihr abstimmen?" autofocus /></div>
       <div><label for="poll-note" class="field-label">Beschreibung (optional)</label><textarea id="poll-note" maxlength="500" rows="2" placeholder="Kurzer Kontext für alle Teilnehmer">${escapeHtml(previousRound?.note ?? '')}</textarea></div>
-      <div class="stack">
-        <span class="field-label">Wie wird abgestimmt?</span><input type="hidden" id="poll-mode" value="${initialMode}" />
-        <div class="stack event-poll-mode-choices">${modeButtonsHtml(initialMode)}</div>
+      <div>
+        <div class="title-with-info">
+          <label for="poll-mode" class="field-label">Antwortart</label>
+          ${infoTooltipHtml('poll-mode-help', 'Antwortart', 'Wähle Einzel- oder Mehrfachauswahl, eine Bewertung jeder Option als Passt/Wenn nötig/Passt nicht oder eine Punktzahl von 1 bis 5.')}
+        </div>
+        <select id="poll-mode">
+          ${Object.entries(MODE_INFO).map(([value, info]) => `<option value="${value}" ${initialMode === value ? 'selected' : ''}>${escapeHtml(info.label)}</option>`).join('')}
+        </select>
       </div>
       <div id="poll-max-wrap" ${initialMode === 'multiple_choice' ? '' : 'hidden'}>
         <label for="poll-max" class="field-label">Stimmen pro Person</label>
@@ -359,29 +406,26 @@ function openPollForm(event, ctx, previousRound = null) {
         <div class="stack" id="poll-option-rows">${initialOptions.map((value, index) => optionRowHtml(index, value)).join('')}</div>
         <button type="button" class="btn btn-sm" id="poll-add-option">+ Option hinzufügen</button>
       </div>
-      <div><label for="poll-due" class="field-label">Abstimmungsfrist</label>${dateTimeFieldHtml('poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: false, label: 'Abstimmungsfrist' })}</div>
-      <div class="event-poll-participant-note">${icon('users')}<span>Alle ${participantCount} bestätigten Eventteilnehmer können abstimmen. Wer noch nicht abgestimmt hat, wird vor der Frist automatisch erinnert.</span></div>
+      <div>
+        <div class="title-with-info">
+          <label for="poll-due" class="field-label">Abstimmungsfrist</label>
+          ${infoTooltipHtml('poll-due-help', 'Abstimmungsfrist', 'Teilnehmer mit noch offener Antwort werden automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
+        </div>
+        ${dateTimeFieldHtml('poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: false, label: 'Abstimmungsfrist' })}
+      </div>
       <button type="submit" class="btn btn-primary btn-block">${previousRound ? 'Neue Runde starten' : 'Abstimmung starten'}</button>
     </form>`, {
     confirmClose: () => (dirty && capturedModal ? 'Die eingegebenen Angaben gehen verloren.' : null),
     onMount: (modal) => {
       capturedModal = modal;
       wireDateTimeField(modal, 'poll-due');
+      wireInfoTooltips(modal);
       const markDirty = () => { dirty = true; };
       modal.querySelector('#event-poll-form').addEventListener('input', markDirty);
       modal.querySelector('#event-poll-form').addEventListener('change', markDirty);
-      modal.querySelectorAll('[data-create-poll-mode]').forEach((button) => {
-        button.addEventListener('click', () => {
-          dirty = true;
-          const mode = button.dataset.createPollMode;
-          modal.querySelector('#poll-mode').value = mode;
-          modal.querySelectorAll('[data-create-poll-mode]').forEach((entry) => {
-            const active = entry === button;
-            entry.classList.toggle('btn-primary', active);
-            entry.setAttribute('aria-pressed', String(active));
-          });
-          modal.querySelector('#poll-max-wrap').hidden = mode !== 'multiple_choice';
-        });
+      modal.querySelector('#poll-mode').addEventListener('change', (eventChange) => {
+        dirty = true;
+        modal.querySelector('#poll-max-wrap').hidden = eventChange.target.value !== 'multiple_choice';
       });
       modal.querySelector('#poll-add-option').addEventListener('click', () => {
         if (modal.querySelectorAll('[data-poll-option-row]').length >= 8) return showToast('Höchstens acht Optionen sind möglich.', { error: true });
@@ -401,10 +445,17 @@ function openPollForm(event, ctx, previousRound = null) {
         submitEvent.preventDefault();
         const submitButton = submitEvent.submitter;
         const title = modal.querySelector('#poll-title').value.trim();
-        const labels = [...modal.querySelectorAll('[data-poll-option-input]')].map((input) => input.value.trim());
+        const optionRows = [...modal.querySelectorAll('[data-poll-option-row]')];
+        const options = optionRows.map((row) => ({
+          label: row.querySelector('[data-poll-option-input]').value.trim(),
+          description: row.querySelector('[data-poll-option-note]').value.trim() || null,
+          url: row.querySelector('[data-poll-option-url]').value.trim(),
+        }));
+        const labels = options.map((option) => option.label);
         if (!title) return showToast('Bitte einen Titel eingeben.', { error: true });
         if (labels.some((label) => !label)) return showToast('Bitte alle Optionen benennen.', { error: true });
         if (new Set(labels.map((label) => label.toLocaleLowerCase('de'))).size !== labels.length) return showToast('Optionen dürfen nicht doppelt vorkommen.', { error: true });
+        if (options.some((option) => option.url && !/^https?:\/\/[^\s]+$/i.test(option.url))) return showToast('Links müssen mit http:// oder https:// beginnen.', { error: true });
         const responseDueOn = readIsoDate(modal, 'poll-due');
         if (!responseDueOn) return showToast('Bitte eine Abstimmungsfrist wählen.', { error: true });
         const responseMode = modal.querySelector('#poll-mode').value;
@@ -413,11 +464,16 @@ function openPollForm(event, ctx, previousRound = null) {
         if (maxSelections !== null && (!Number.isInteger(maxSelections) || maxSelections < 1 || maxSelections > labels.length)) return showToast(`Die Stimmenzahl muss zwischen 1 und ${labels.length} liegen.`, { error: true });
         submitButton.disabled = true;
         try {
-          await api.eventPolls.create(event.id, {
+          const createdPoll = await api.eventPolls.create(event.id, {
             topic: 'custom', ...(previousRound ? { decisionKey: previousRound.decisionKey } : {}), title,
             note: modal.querySelector('#poll-note').value.trim() || null, responseMode, maxSelections,
-            options: labels.map((label) => ({ label })), responseDueOn,
+            options: options.map((option) => ({
+              label: option.label,
+              description: option.description,
+              payload: option.url ? { url: option.url } : {},
+            })), responseDueOn,
           });
+          expandedPolls.add(createdPoll.decisionKey);
           dirty = false;
           invalidateEventPolls();
           close();
@@ -434,11 +490,11 @@ function openPollForm(event, ctx, previousRound = null) {
 
 function openReopenForm(event, poll, ctx) {
   let dirty = false;
-  const { close } = openModal('Abgabe wieder öffnen', `
+  const { close } = openModal('Abstimmung wieder öffnen', `
     <form id="reopen-poll-form" class="stack">
       <p class="muted">Lege eine neue Frist fest. Danach können alle bestätigten Eventteilnehmer ihre Antwort wieder ändern.</p>
       <div><label for="reopen-poll-due" class="field-label">Neue Abstimmungsfrist</label>${dateTimeFieldHtml('reopen-poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: false, label: 'Neue Abstimmungsfrist' })}</div>
-      <button type="submit" class="btn btn-primary btn-block">Abgabe wieder öffnen</button>
+      <button type="submit" class="btn btn-primary btn-block">Abstimmung wieder öffnen</button>
     </form>`, {
     confirmClose: () => (dirty ? 'Die gewählte Frist geht verloren.' : null),
     onMount: (modal) => {
@@ -455,7 +511,7 @@ function openReopenForm(event, poll, ctx) {
           invalidateEventPolls();
           close();
           await ctx.refresh();
-          showToast('Abgabe wieder geöffnet.');
+          showToast('Abstimmung wieder geöffnet.');
         } catch (error) {
           eventSubmit.submitter.disabled = false;
           showToast(error.message, { error: true });
@@ -470,9 +526,11 @@ function findPoll(polls, pollId) {
 }
 
 function wirePollActions(container, event, polls, ctx) {
-  container.querySelectorAll('[data-poll-group]').forEach((details) => details.addEventListener('toggle', () => {
-    if (details.open) expandedPolls.add(details.dataset.pollGroup);
-    else expandedPolls.delete(details.dataset.pollGroup);
+  container.querySelectorAll('[data-toggle-poll]').forEach((button) => button.addEventListener('click', () => {
+    const key = button.dataset.togglePoll;
+    if (expandedPolls.has(key)) expandedPolls.delete(key);
+    else expandedPolls.add(key);
+    ctx.rerender();
   }));
   container.querySelectorAll('[data-poll-history]').forEach((details) => details.addEventListener('toggle', () => {
     if (details.open) expandedHistories.add(details.dataset.pollHistory);
@@ -552,14 +610,14 @@ function wirePollActions(container, event, polls, ctx) {
     }
   }));
   container.querySelectorAll('[data-close-poll]').forEach((button) => button.addEventListener('click', async () => {
-    const confirmed = await confirmDialog('Danach können keine Stimmen mehr abgegeben werden. Du kannst die Abgabe später mit einer neuen Frist wieder öffnen oder ein Ergebnis festhalten.', { title: 'Abgabe beenden?', confirmText: 'Abgabe beenden' });
+    const confirmed = await confirmDialog('Danach können keine Stimmen mehr abgegeben werden. Du kannst die Abstimmung später mit einer neuen Frist wieder öffnen oder ein Ergebnis festhalten.', { title: 'Abstimmung beenden?', confirmText: 'Abstimmung beenden' });
     if (!confirmed) return;
     button.disabled = true;
     try {
       await api.eventPolls.close(event.id, button.dataset.closePoll);
       invalidateEventPolls();
       await ctx.refresh();
-      showToast('Abgabe beendet.');
+      showToast('Abstimmung beendet.');
     } catch (error) {
       button.disabled = false;
       showToast(error.message, { error: true });
@@ -581,14 +639,14 @@ function wirePollActions(container, event, polls, ctx) {
     if (poll) openReopenForm(event, poll, ctx);
   }));
   container.querySelectorAll('[data-cancel-poll]').forEach((button) => button.addEventListener('click', async () => {
-    const confirmed = await confirmDialog('Die Runde wird als abgebrochen in der Historie gespeichert. Abgegebene Stimmen bleiben dort nachvollziehbar.', { title: 'Runde abbrechen?', confirmText: 'Runde abbrechen', danger: true });
+    const confirmed = await confirmDialog('Die Abstimmung wird als abgebrochen in der Historie gespeichert. Abgegebene Stimmen bleiben dort nachvollziehbar.', { title: 'Abstimmung abbrechen?', confirmText: 'Abstimmung abbrechen', danger: true });
     if (!confirmed) return;
     button.disabled = true;
     try {
       await api.eventPolls.cancel(event.id, button.dataset.cancelPoll);
       invalidateEventPolls();
       await ctx.refresh();
-      showToast('Runde abgebrochen.');
+      showToast('Abstimmung abgebrochen.');
     } catch (error) {
       button.disabled = false;
       showToast(error.message, { error: true });
@@ -622,11 +680,9 @@ export function renderEventPolls(container, ctx) {
   else content = `<div class="stack event-poll-list">${groups.map(renderPollGroup).join('')}</div>`;
   container.innerHTML = `
     <div class="stack event-polls-page" data-event-polls-event="${escapeHtml(event.id)}">
-      <div class="row-between event-polls-page-header">
-        <div class="stack"><span class="muted">Abstimmungen für</span><h1>${escapeHtml(event.name)}</h1></div>
-        <button type="button" class="btn btn-primary" id="new-event-poll">+ Abstimmung starten</button>
+      <div class="row view-actions event-polls-page-actions">
+        <button type="button" class="btn btn-primary btn-sm" id="new-event-poll">Abstimmung starten</button>
       </div>
-      <p class="muted event-polls-page-intro">Alle bestätigten Teilnehmer dieses Events können Abstimmungen erstellen und beantworten. Ergebnisse bleiben ausschließlich hier und ändern keine Eventdaten.</p>
       ${content}
     </div>`;
   container.querySelector('#new-event-poll')?.addEventListener('click', () => openPollForm(event, ctx));
