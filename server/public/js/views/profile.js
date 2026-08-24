@@ -227,7 +227,7 @@ async function loadNeighbors(playerId, ctx) {
 function renderNeighbors(myId) {
   const others = state.players.filter((p) => p.id !== myId);
   if (others.length === 0) {
-    return emptyStateHtml('Noch keine anderen Spieler da.', { style: 'padding:var(--space-4);' });
+    return emptyStateHtml('Noch keine anderen Teilnehmenden da.', { style: 'padding:var(--space-4);' });
   }
   if (neighborsLoading || neighborsCache === null) {
     return emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' });

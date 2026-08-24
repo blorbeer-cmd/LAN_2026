@@ -296,7 +296,7 @@ function renderPeopleList() {
       <div class="grouped-page-section-title"><h2 id="arrivals-times-title">Alle Zeiten</h2></div>
       <div class="arrivals-mobile-sort" aria-label="Zeiten sortieren">
         <span class="muted">Sortieren:</span>
-        ${renderPeopleSortButton('player', 'Spieler')}
+        ${renderPeopleSortButton('player', 'Person')}
         ${renderPeopleSortButton('arrival', 'Ankunft')}
         ${renderPeopleSortButton('departure', 'Abreise')}
       </div>
@@ -304,12 +304,12 @@ function renderPeopleList() {
         ${
           rows
             ? `<div class="arrivals-times-header" role="row">
-                 <span role="columnheader">${renderPeopleSortButton('player', 'Spieler')}</span>
+                 <span role="columnheader">${renderPeopleSortButton('player', 'Person')}</span>
                  <span role="columnheader">${renderPeopleSortButton('arrival', 'Anreise')}</span>
                  <span role="columnheader">${renderPeopleSortButton('departure', 'Abreise')}</span>
                  <span role="columnheader">Notiz</span>
                </div>${rows}`
-            : emptyStateHtml('Noch keine Spieler.')
+            : emptyStateHtml('Noch keine Teilnehmenden.')
         }
       </div>
     </section>`;

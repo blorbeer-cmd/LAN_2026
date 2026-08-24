@@ -2,19 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   acceptedParticipantCount,
-  availableEventTypeOptions,
   eventSettlement,
   parseEventAccommodationCostCents,
   parseEventCostCents,
   renderEventLocation,
 } from './views/events.js';
-
-test('event creation offers only LAN and the shared general profile as a safe fallback', () => {
-  assert.deepEqual(
-    availableEventTypeOptions([]).map((option) => option.key),
-    ['lan', 'general'],
-  );
-});
 
 test('event locations are clickable only when they contain an HTTP(S) link and never render a copy action', () => {
   const html = renderEventLocation('https://lan.example.test/location', 'Winter LAN');

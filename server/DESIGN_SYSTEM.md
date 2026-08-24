@@ -579,7 +579,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   update, removal and audit endpoints remain server-side compatibility interfaces and intentionally
   have no separate frontend commands.
   The seating editor follows the same grouped-page hierarchy: the editable plan comes first, followed
-  by „Spieler“ and „Konfiguration“. Unassigned players use the shared rectangular two-column player
+  by „Teilnehmende“ and „Konfiguration“. Unassigned participants use the shared rectangular two-column player
   rows instead of pills; phones keep one column. Empty seats use an accent border and only the
   centered white label „Frei“, without a redundant seat number. Players without a real name omit that empty second line so their
   gamertag remains vertically centered with the avatar. The automatic monitor-neighbor and save
@@ -738,11 +738,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   orders.
   The „Events“ tab is reachable by every member, not only by owner/admin, because answering an
   invitation is a personal action. What it shows depends on the role: owner/admin receive the full
-  management surface — anlegen/bearbeiten, Tracking starten/stoppen, Teilnehmer einladen/entfernen
+  management surface — anlegen/bearbeiten, Tracking starten/stoppen, Teilnehmende einladen/entfernen
   and the PDF „Andenken“-Export — while a member gets read-only cards for the events they take
   part in, without the „+ Event“ action or administrative invitation/decline controls; the card
-  includes the event-status badge plus the count and names of accepted participants. Cards sort
-  newest-first by start date. A finished event moves out of the active list into the tab's own
+  includes the event-type badge, event-status badge plus the count and names of accepted
+  participants. Cards sort newest-first by start date. A finished event moves out of the active list into the tab's own
   „Historie“ (the same collapsible-section pattern as Food orders): it starts collapsed and
   preserves its open state across live re-renders. Pending invitations for the current identity are
   deliberately absent from this tab — a teaser sitting directly above the Events cards made it too
@@ -1002,7 +1002,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   „Live-Status“ rather than a competing page-level group. A pending event invitation appears here as
   a plain linking nudge into „Mein Profil“ (see aktuellStatus.js); the full card with
   Annehmen/Ablehnen lives only in Profile, not in this list. Main groups stay in one continuous column
-  at phone and laptop widths while their existing internal grids remain responsive.
+  at phone and laptop widths while their existing internal grids remain responsive. A general event
+  replaces the LAN-only live and ranking groups with a leading event overview containing its type,
+  period, optional location/note, participant count and contribution. A separate „Organisation“
+  group links to the existing Eventdetails, To-Dos, An- & Abreise, Essen and Jam workflows; the
+  read-only seating plan remains its own full-width group below them.
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
   same card grouping as the other polished workflows without an accent rail.
   New/current-round controls come first, followed by separate full-width cards for „Letzter Vote“

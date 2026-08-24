@@ -9,7 +9,7 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml } from '../format.js';
+import { escapeHtml, formatDateTime, stateLabel, avatarHtml, gameChipsHtml } from '../format.js';
 import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
@@ -18,8 +18,20 @@ import { ensureAktuellLoaded, aktuellItems, dismissAktuellItem } from '../aktuel
 import { emptyStateHtml } from '../emptyState.js';
 import { isAdmin } from '../admin.js';
 import { eventHasFeature, viewIsEnabledForEvent } from '../eventFeatures.js';
+import { eventTypeTitle } from '../eventTypes.js';
+import { domainIcon } from '../domainIcons.js';
+import { formatEuroCents } from '../paypal.js';
+import { ensureTasksLoaded, openTaskCount } from './checklist.js';
 
 const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
+
+const GENERAL_EVENT_LINKS = Object.freeze([
+  Object.freeze({ view: 'events', title: 'Eventdetails & Kosten', description: 'Zeitraum, Ort, Teilnehmende und Beiträge' }),
+  Object.freeze({ view: 'checklist', title: 'To-Dos', description: 'Aufgaben und Mitbring-Anfragen' }),
+  Object.freeze({ view: 'arrivals', title: 'An- & Abreise', description: 'Zeiten und Fahrgemeinschaften' }),
+  Object.freeze({ view: 'foodOrders', title: 'Essen', description: 'Gemeinsame Bestellungen' }),
+  Object.freeze({ view: 'music', title: 'Jam', description: 'Musik und gemeinsame Warteschlange' }),
+]);
 
 let seatingCache = null;
 let seatingLoading = false;
@@ -121,6 +133,86 @@ function renderStatus() {
       <div class="card-grid">${rows.join('')}</div>
     </section>
   `;
+}
+
+function eventPeriod(event) {
+  const start = formatDateTime(event.startsAt);
+  return event.endsAt == null ? `Ab ${start}` : `${start} – ${formatDateTime(event.endsAt)}`;
+}
+
+function generalEventLinkHtml(item) {
+  const taskCount = item.view === 'checklist' ? openTaskCount() : 0;
+  const description = taskCount > 0
+    ? `${taskCount} ${taskCount === 1 ? 'To-Do ist' : 'To-Dos sind'} dir zugewiesen`
+    : item.description;
+  return `
+    <button type="button" class="card row list-row" data-navigate="${item.view}">
+      <span class="list-row-icon">${icon(domainIcon(item.view))}</span>
+      <span class="home-current-copy">
+        <span class="player-name">${escapeHtml(item.title)}</span>
+        <span class="muted list-row-desc">${escapeHtml(description)}</span>
+      </span>
+      <span class="muted">${icon('chevronRight')}</span>
+    </button>`;
+}
+
+function renderGeneralEventOverview() {
+  const event = state.activeEvent;
+  if (!event || event.eventType !== 'general') return '';
+  const participantCount = Array.isArray(event.participantIds) ? event.participantIds.length : null;
+  const links = GENERAL_EVENT_LINKS
+    .filter((item) => viewIsEnabledForEvent(item.view, event))
+    .map(generalEventLinkHtml)
+    .join('');
+  return `
+    <section class="card grouped-page-section stack" aria-labelledby="home-event-overview-title" data-home-event-overview>
+      <div class="grouped-page-section-title">
+        <h2 id="home-event-overview-title">Eventübersicht</h2>
+        <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
+      </div>
+      <div class="card stack">
+        <strong>${escapeHtml(event.name)}</strong>
+        <div class="event-card-detail">
+          <span class="event-card-detail-icon" aria-hidden="true">${icon('calendar')}</span>
+          <span class="event-card-detail-content">
+            <span class="event-card-detail-label">Zeitraum</span>
+            <span>${escapeHtml(eventPeriod(event))}</span>
+          </span>
+        </div>
+        ${event.location ? `<div class="event-card-detail">
+          <span class="event-card-detail-icon" aria-hidden="true">${icon('mapPin')}</span>
+          <span class="event-card-detail-content">
+            <span class="event-card-detail-label">Ort</span>
+            <span>${escapeHtml(event.location)}</span>
+          </span>
+        </div>` : ''}
+        ${event.description ? `<div class="event-card-detail">
+          <span class="event-card-detail-icon" aria-hidden="true">${icon('file')}</span>
+          <span class="event-card-detail-content">
+            <span class="event-card-detail-label">Hinweis</span>
+            <span>${escapeHtml(event.description)}</span>
+          </span>
+        </div>` : ''}
+        ${participantCount === null ? '' : `<div class="event-card-detail">
+          <span class="event-card-detail-icon" aria-hidden="true">${icon('users')}</span>
+          <span class="event-card-detail-content">
+            <span class="event-card-detail-label">Teilnehmende</span>
+            <span>${participantCount === 1 ? '1 teilnehmende Person' : `${participantCount} Teilnehmende`}</span>
+          </span>
+        </div>`}
+        ${event.costCents ? `<div class="event-card-detail">
+          <span class="event-card-detail-icon" aria-hidden="true">${icon('paypal')}</span>
+          <span class="event-card-detail-content">
+            <span class="event-card-detail-label">Beitrag pro Person</span>
+            <span>${escapeHtml(formatEuroCents(event.costCents))}</span>
+          </span>
+        </div>` : ''}
+      </div>
+    </section>
+    <section class="card grouped-page-section stack" aria-labelledby="home-organisation-title">
+      <div class="grouped-page-section-title"><h2 id="home-organisation-title">Organisation</h2></div>
+      <div class="card-grid">${links}</div>
+    </section>`;
 }
 
 // Groups currently-playing players by game (FR-27): a quick glance at what's
@@ -236,6 +328,7 @@ export function renderHome(container, ctx) {
 
   const myId = getMyId();
   ensureAktuellLoaded();
+  if (state.activeEvent?.eventType === 'general') ensureTasksLoaded(ctx);
   const cards = players
     .map((p) => {
       const badgeClass = `badge-${p.state}`;
@@ -284,6 +377,7 @@ export function renderHome(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Home</h1>
     <div class="grouped-page-sections">
+      ${renderGeneralEventOverview()}
       ${renderStatus()}
       ${
         trackingEnabled

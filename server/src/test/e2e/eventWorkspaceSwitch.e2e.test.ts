@@ -46,11 +46,16 @@ async function api(path: string, init: RequestInit = {}): Promise<{ status: numb
   return { status: res.status, body };
 }
 
-async function createAcceptedEvent(name: string, playerId: string, eventType = 'lan'): Promise<string> {
+async function createAcceptedEvent(
+  name: string,
+  playerId: string,
+  eventType = 'lan',
+  details: Record<string, unknown> = {},
+): Promise<string> {
   const now = Date.now();
   const created = await api('/api/events', {
     method: 'POST',
-    body: JSON.stringify({ name, startsAt: now, endsAt: now + 3_600_000, eventType }),
+    body: JSON.stringify({ name, startsAt: now, endsAt: now + 3_600_000, eventType, ...details }),
   });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   const id = created.body.id as string;
@@ -126,7 +131,11 @@ before(async () => {
   const myId = me.body.id as string;
   eventA = await createAcceptedEvent('E2E Workspace A', myId);
   eventB = await createAcceptedEvent('E2E Workspace B', myId);
-  generalEvent = await createAcceptedEvent('E2E Allgemeines Event', myId, 'general');
+  generalEvent = await createAcceptedEvent('E2E Allgemeines Event', myId, 'general', {
+    location: 'Gemeinschaftsgarten',
+    description: 'Bitte wetterfeste Kleidung mitbringen.',
+    costCents: 1500,
+  });
 
   // Data that exists only in event A.
   await activate(eventA);
@@ -408,7 +417,26 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   await page.click('.nav-btn[data-view="home"]');
   const home = await viewText();
   assert.doesNotMatch(home, /Live-Status|Rangliste/);
-  assert.match(home, /Sitzplan/);
+  for (const text of [
+    'Eventübersicht',
+    'Allgemeines Event',
+    'Gemeinschaftsgarten',
+    'wetterfeste Kleidung',
+    '15,00',
+    '1 teilnehmende Person',
+    'Organisation',
+    'Eventdetails & Kosten',
+    'To-Dos',
+    'An- & Abreise',
+    'Essen',
+    'Jam',
+    'Sitzplan',
+  ]) {
+    assert.ok(home.includes(text), `Home must show ${text}`);
+  }
+  for (const view of ['events', 'checklist', 'arrivals', 'foodOrders', 'music']) {
+    assert.equal(await page.locator(`[data-navigate="${view}"]`).isVisible(), true, `${view} summary link must be visible`);
+  }
 
   await openView('profile');
   const profile = await viewText();
@@ -421,7 +449,16 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   assert.match(more, /Jam|Orga/);
 
   await page.click('[data-navigate="arrivals"]');
+  await page.waitForSelector('#arrivals-times-title');
+  assert.doesNotMatch(await viewText(), /Spieler/);
+  assert.match(await viewText(), /Person|Teilnehmende/i);
   await page.click('[data-section-tab="events"]');
+  const generalEventCard = page.locator(`[data-event-card="${generalEvent}"]`);
+  assert.equal(
+    await generalEventCard.locator('.event-card-header-badges .badge').first().innerText(),
+    'Allgemeines Event',
+  );
+  assert.match(await generalEventCard.innerText(), /Teilnehmende verwalten/);
   await page.click('#new-event-btn');
   assert.deepEqual(
     await page.locator('#event-type option').allTextContents(),
@@ -437,4 +474,21 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   assert.equal(await page.locator('[data-navigate="leaderboard"]').count(), 0);
   assert.equal(await page.locator('[data-navigate="kiosk"]').count(), 0);
   assert.match(admin, /Sitzplan|Eventverwaltung/);
+
+  await page.click('[data-navigate="seating"]');
+  await page.waitForSelector('#seating-players-title');
+  const seating = await viewText();
+  assert.match(seating, /Teilnehmende/);
+  assert.doesNotMatch(seating, /Spieler/);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.click('.nav-btn[data-view="home"]');
+  await page.waitForSelector('[data-home-event-overview]');
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+    true,
+    'the general-event overview must not introduce horizontal page scrolling on a phone',
+  );
+  assert.equal(await page.locator('[data-home-event-overview] .badge').isVisible(), true);
+  await page.setViewportSize({ width: 1280, height: 720 });
 });

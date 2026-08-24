@@ -27,6 +27,7 @@ import { eventStatusBadgeHtml } from '../eventStatus.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { formatEuroCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
 import { eventHasFeature } from '../eventFeatures.js';
+import { availableEventTypeOptions, eventTypeTitle } from '../eventTypes.js';
 
 const EVENT_HELP = 'Eventtyp, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
 const KIOSK_HELP = 'Zeigt Live-Status, Vote, Rang und Turnier; ein eigener Token ist erforderlich.';
@@ -34,23 +35,6 @@ const expandedEventParticipants = new Set();
 // Mirrors foodOrders.js's Historie collapse: ended events start collapsed and
 // this survives the section's own live re-renders.
 let eventHistoryOpen = false;
-
-const FALLBACK_EVENT_TYPE_OPTIONS = [
-  {
-    key: 'lan',
-    title: 'LAN-Party',
-    description: 'Vollständiger LAN-Funktionsumfang mit Spielen, Wettkampf, Arcade, Tracking und Kiosk.',
-  },
-  {
-    key: 'general',
-    title: 'Allgemeines Event',
-    description: 'Feier, Reise, Ausflug, Spieleabend, Workshop oder anderes Treffen.',
-  },
-];
-
-export function availableEventTypeOptions(options = state.eventTypeOptions) {
-  return Array.isArray(options) && options.length > 0 ? options : FALLBACK_EVENT_TYPE_OPTIONS;
-}
 
 function renderKioskSection() {
   return `
@@ -195,7 +179,7 @@ function renderAcceptedParticipants(event, { includeInvitationStatuses = false }
         <span class="event-participant-toggle">
           <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
           <span class="food-order-group-headtext">
-            <strong>${includeInvitationStatuses ? 'Teilnehmer & Einladungen' : 'Teilnehmer'}</strong>
+            <strong>${includeInvitationStatuses ? 'Teilnehmende & Einladungen' : 'Teilnehmende'}</strong>
             <span class="muted food-order-group-meta">${participantCountLabel}</span>
           </span>
         </span>
@@ -461,7 +445,10 @@ function renderMemberEventCard(event) {
     <article class="card stack event-card event-card-member" data-event-card="${escapeHtml(event.id)}">
       <div class="row-between food-order-card-header event-card-header">
         <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
-        ${eventStatusBadgeHtml(event)}
+        <span class="event-card-header-badges">
+          <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
+          ${eventStatusBadgeHtml(event)}
+        </span>
       </div>
       ${renderEventInfo(event)}
       ${renderAcceptedParticipants(event)}
@@ -503,14 +490,17 @@ function renderEventCard(event) {
     <article class="card stack event-card event-card-managed" data-event-card="${escapeHtml(event.id)}">
       <div class="row-between food-order-card-header event-card-header">
         <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
-        ${eventStatusBadgeHtml(event)}
+        <span class="event-card-header-badges">
+          <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
+          ${eventStatusBadgeHtml(event)}
+        </span>
       </div>
       ${renderEventInfo(event, { editable: true })}
       ${renderAcceptedParticipants(event, { includeInvitationStatuses: true })}
       <div class="event-card-actions">
         ${trackingBtn}
         ${endBtn}
-        <button type="button" class="btn btn-sm" data-participants-event="${event.id}">${icon('users')} Teilnehmer verwalten</button>
+        <button type="button" class="btn btn-sm" data-participants-event="${event.id}">${icon('users')} Teilnehmende verwalten</button>
         <button type="button" class="btn btn-sm" data-export-event="${event.id}" title="Als PDF exportieren">${icon('file')} PDF</button>
       </div>
     </article>
@@ -591,7 +581,10 @@ export function renderInvitationCard(event) {
     <article class="card stack event-card event-card-invitation" data-pending-invitation="${event.id}">
       <div class="row-between food-order-card-header event-card-header">
         <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
-        <span class="badge badge-paused">Eingeladen</span>
+        <span class="event-card-header-badges">
+          <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
+          <span class="badge badge-paused">Eingeladen</span>
+        </span>
       </div>
       ${renderEventInfo(event, { invitation: true })}
       <div class="event-card-actions">
@@ -660,7 +653,7 @@ function openEventForm(ctx, existing) {
   const isEdit = Boolean(existing);
   const now = Date.now();
   const defaultEnd = now + 24 * 60 * 60 * 1000;
-  const eventTypes = availableEventTypeOptions();
+  const eventTypes = availableEventTypeOptions(state.eventTypeOptions);
   const selectedEventType = existing?.eventType ?? 'lan';
   const eventTypeSelectOptions = eventTypes
     .map(
@@ -700,7 +693,7 @@ function openEventForm(ctx, existing) {
         </div>
         <div>
           <label for="event-description" class="field-label">Notiz (optional)</label>
-          <textarea id="event-description" maxlength="500" rows="2" placeholder="z.B. Fokus: AoE2-Turnier">${escapeHtml(existing?.description ?? '')}</textarea>
+          <textarea id="event-description" maxlength="500" rows="2" placeholder="z.B. Hinweise, Ablauf oder Treffpunkt">${escapeHtml(existing?.description ?? '')}</textarea>
         </div>
         <div class="field-row event-payment-fields">
           <div>
@@ -888,7 +881,7 @@ function renderParticipantsBody(event) {
   return `
     <div class="event-participants-body">
       ${event.isEnded ? '<div class="muted event-participants-note" role="status">Für beendete Events sind keine neuen Einladungen mehr möglich.</div>' : ''}
-      ${state.players.length === 0 ? emptyStateHtml('Noch keine Spieler.') : `<div class="event-participant-manager-list">${renderParticipantManagerRows(event)}</div>`}
+      ${state.players.length === 0 ? emptyStateHtml('Noch keine Teilnehmenden.') : `<div class="event-participant-manager-list">${renderParticipantManagerRows(event)}</div>`}
     </div>`;
 }
 
@@ -896,7 +889,7 @@ function renderParticipantsBody(event) {
 // personal action; administrative removal stays available for every status.
 function openParticipantsForm(ctx, event) {
   const { close } = openModal(
-    `Teilnehmer – ${escapeHtml(event.name)}`,
+    `Teilnehmende – ${escapeHtml(event.name)}`,
     renderParticipantsBody(event),
     {
       onMount: (modalEl) => {
@@ -1035,7 +1028,7 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.startTracking);
       if (!event) return;
-      if (!(await confirmDialog(`Tracking für „${event.name}" starten? Live-Status und Spielzeit werden ab jetzt für die Teilnehmer erfasst.`, { confirmText: 'Tracking starten' }))) return;
+      if (!(await confirmDialog(`Tracking für „${event.name}" starten? Live-Status und Spielzeit werden ab jetzt für die Teilnehmenden erfasst.`, { confirmText: 'Tracking starten' }))) return;
       try {
         await api.events.startTracking(event.id);
         await ctx.refresh();
@@ -1063,7 +1056,7 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.events || []).find((e) => e.id === btn.dataset.restartEvent);
       if (!event) return;
-      if (!(await confirmDialog(`Event „${event.name}" wieder starten? Das Event wird geöffnet und Tracking für die Teilnehmer aktiviert.`, { confirmText: 'Event wieder starten' }))) return;
+      if (!(await confirmDialog(`Event „${event.name}" wieder starten? Das Event wird geöffnet und Tracking für die Teilnehmenden aktiviert.`, { confirmText: 'Event wieder starten' }))) return;
       try {
         await api.events.restart(event.id);
         await ctx.refresh();
