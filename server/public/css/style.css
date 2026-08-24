@@ -2684,9 +2684,9 @@ button.draft-pool-player {
   margin: 0;
 }
 
-/* Destinations reached from "Mehr" use the same compact title row as the
-   main navigation. Only Orga reserves a second row because its five area
-   tabs are navigation in their own right. */
+/* Untabbed secondary destinations reached from "Mehr" or Admin use the same
+   compact title row as the main navigation. Only Orga reserves a second row
+   because its five area tabs are navigation in their own right. */
 .more-subpage-header {
   display: flex;
   flex-direction: column;

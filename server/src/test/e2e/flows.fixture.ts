@@ -524,6 +524,18 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
     // test ends (same viewport-leak safety net as the Orga Events test).
     await page.setViewportSize({ width: 390, height: 844 });
   });
+  const assertCompactAdminHeader = async (title: string) => {
+    const header = page.locator('.more-subpage-header');
+    assert.equal(await header.count(), 1);
+    assert.equal(await header.locator('.more-subpage-title-row h1.view-title').innerText(), title);
+    assert.equal(await header.locator('[data-navigate="admin"]').count(), 1);
+    const cardInset = await page.locator('#view-container .card').first().evaluate((card) => {
+      const container = document.querySelector('#view-container');
+      if (!container) throw new Error('View container missing');
+      return Math.round(card.getBoundingClientRect().top - container.getBoundingClientRect().top);
+    });
+    assert.equal(cardInset, 68, `${title} should share the compact first-card inset`);
+  };
   // The bootstrap admin is intentionally created before onboarding is
   // completed. Finish it here so the deep-link assertions exercise the
   // admin-role load race instead of the onboarding tour taking over the
@@ -536,9 +548,11 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   // startup path that a bookmarked hash link uses.
   await page.reload();
   await page.waitForSelector('#admin-feature-usage-title');
+  await assertCompactAdminHeader('Nutzungsauswertung');
   await page.goto(`${BASE_URL}/#adminFeedback`);
   await page.reload();
   await page.waitForSelector('#admin-feedback-title');
+  await assertCompactAdminHeader('Feedback');
   // A regular member must not see the admin content behind the same deep link.
   const memberContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const memberPage = await memberContext.newPage();
@@ -596,6 +610,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   await page.waitForSelector('#admin-tools-title');
   await page.click('[data-navigate="kiosk"]');
   await page.waitForSelector('a[href="/kiosk.html"]');
+  await assertCompactAdminHeader('TV-Kiosk');
   assert.equal(await page.getByRole('heading', { name: 'TV-Kiosk' }).count(), 1);
   assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
   assert.equal(await page.locator('#orga-kiosk-help').count(), 1);
@@ -628,6 +643,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   assert.equal(await page.locator('#admin-count').evaluate((input) => document.activeElement === input), false);
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('.seating-plan.is-editable');
+  await assertCompactAdminHeader('Sitzplan');
   assert.equal(await page.locator('.seating-editor > .grouped-page-section').count(), 3);
   assert.deepEqual(await page.locator('.seating-editor > .grouped-page-section h2 > span:first-child, .seating-editor > .grouped-page-section h2:not(:has(> span:first-child))').allTextContents(), ['Sitzplan', 'Teilnehmende', 'Konfiguration']);
   assert.equal(await page.locator('.seating-pool-player').evaluateAll((players) => players.every((player) => getComputedStyle(player).borderRadius !== '999px')), true);

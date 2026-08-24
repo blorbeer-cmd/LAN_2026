@@ -311,12 +311,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   shell, so a sub-view that reads its own previous DOM before redrawing (the Packliste's add-item
   draft and focus, the same survives-its-own-rerender pattern the Checkliste's To-Do form uses)
   keeps working across a background refresh triggered from outside that tab.
-- **Mehr subpage header** — `.more-subpage-header` with `.more-subpage-title-row` is the shared
-  header for the destinations reached through „Mehr“. It keeps the „Zurück“ action, page title and
-  an optional trailing action on one stable, compact row. These destinations share the same first-
-  card top edge as the untabbed main areas. Only `.more-subpage-header--tabs` reserves a lower row
-  for LAN Orga's tabs; at phone widths that reservation covers the wrapped two-row tab layout.
-  Long content or browser zoom may still grow either header rather than clipping controls.
+- **Secondary page header** — `.more-subpage-header` with `.more-subpage-title-row` is the shared
+  header for the untabbed destinations reached through „Mehr“ or Admin. It keeps the „Zurück“
+  action, page title and an optional trailing action on one stable, compact row. These destinations
+  share the same first-card top edge as the untabbed main areas. Only
+  `.more-subpage-header--tabs` reserves a lower row for LAN Orga's tabs; at phone widths that
+  reservation covers the wrapped two-row tab layout. Long content or browser zoom may still grow
+  either header rather than clipping controls.
 - **Untabbed page header** — a direct `.view-title` or `.page-title-row` reserves one compact touch-
   target-height row plus the standard section gap. This keeps the first content surface on the
   same top edge at phone and laptop widths; a trailing page action may share `.page-title-row`.

@@ -76,8 +76,12 @@ function feedbackBodyHtml() {
 
 function renderAccessDenied(container) {
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück zum Admin</button>
-    <h1 class="view-title">Feedback</h1>
+    <div class="more-subpage-header">
+      <div class="more-subpage-title-row">
+        <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück zum Admin</button>
+        <h1 class="view-title">Feedback</h1>
+      </div>
+    </div>
     <div class="card"><p class="muted">Dieses Konto hat keine Admin-Rechte.</p></div>`;
 }
 
@@ -89,8 +93,12 @@ export function renderAdminFeedback(container, ctx) {
   if (feedbackEntries === null && !feedbackLoading && !feedbackError) loadFeedbackEntries(ctx);
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück zum Admin</button>
-    <h1 class="view-title">Feedback</h1>
+    <div class="more-subpage-header">
+      <div class="more-subpage-title-row">
+        <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück zum Admin</button>
+        <h1 class="view-title">Feedback</h1>
+      </div>
+    </div>
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="admin-feedback-title">
         <div class="grouped-page-section-title">

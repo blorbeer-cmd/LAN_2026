@@ -300,8 +300,12 @@ export function renderSeating(container, ctx) {
   const canEdit = isGroupAdmin();
   if (!canEdit) {
     container.innerHTML = `
-      <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-      <h1 class="view-title">Sitzplan</h1>
+      <div class="more-subpage-header">
+        <div class="more-subpage-title-row">
+          <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+          <h1 class="view-title">Sitzplan</h1>
+        </div>
+      </div>
       <div class="card stack">
         <strong>Nur für Admins verfügbar</strong>
         <span class="muted">Dieses Konto hat keine Admin-Rechte für den Sitzplan.</span>
@@ -311,8 +315,12 @@ export function renderSeating(container, ctx) {
   }
   if ((cache === null || cacheStale) && !loading && !loadError) load(ctx);
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title">Sitzplan</h1>
+    <div class="more-subpage-header">
+      <div class="more-subpage-title-row">
+        <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
+        <h1 class="view-title">Sitzplan</h1>
+      </div>
+    </div>
     ${cache === null ? (loading ? emptyStateHtml('Lädt…') : emptyStateHtml('Fehler beim Laden.')) : renderEditor()}`;
   if (cache) {
     wireInfoTooltips(container);
