@@ -20,6 +20,8 @@ const LABELS = { top: 'Oben', right: 'Rechts', bottom: 'Unten', left: 'Links' };
 let cache = null;
 let loading = false;
 let loadError = false;
+let cacheStale = false;
+let loadRequestVersion = 0;
 let saving = false;
 // Tap-to-place selection: { playerId, source: {side, seat} | null (pool) }.
 let selected = null;
@@ -28,8 +30,11 @@ let selected = null;
 // editor is already open with a cached layout — without this, the board
 // would keep showing the pre-change data for the rest of the session
 // instead of picking it up live (CLAUDE.md: realtime by default).
-export function invalidateSeating() {
-  cache = null;
+export function invalidateSeating({ hard = false } = {}) {
+  loadRequestVersion += 1;
+  loading = false;
+  cacheStale = true;
+  if (hard) cache = null;
   loadError = false;
 }
 
@@ -87,7 +92,7 @@ export function renderSeatingPlan(layout, players, { editable = false } = {}) {
     ${sideHtml(layout, players, 'top', editable)}
     ${sideHtml(layout, players, 'right', editable)}
     <div class="seating-table-center">
-      ${editable ? `<span class="muted">${selected ? 'Zielplatz antippen' : 'Spieler ziehen oder antippen'}</span>` : ''}
+      ${editable ? `<span class="muted">${selected ? 'Zielplatz antippen' : 'Person ziehen oder antippen'}</span>` : ''}
     </div>
     ${sideHtml(layout, players, 'bottom', editable)}
     ${sideHtml(layout, players, 'left', editable)}
@@ -111,9 +116,9 @@ function renderPool(layout, players) {
   const assigned = assignedIds(layout);
   const unassigned = players.filter((player) => !assigned.has(player.id));
   return `<section class="seating-pool card stack grouped-page-section" aria-labelledby="seating-players-title">
-    <div class="grouped-page-section-title"><h2 id="seating-players-title">Spieler</h2><span class="muted">${unassigned.length} frei</span></div>
+    <div class="grouped-page-section-title"><h2 id="seating-players-title">Teilnehmende</h2><span class="muted">${unassigned.length} frei</span></div>
     <div class="seating-player-pool" data-seat-pool>
-      ${unassigned.length ? unassigned.map((player) => `<div class="seating-pool-player ${selected?.playerId === player.id ? 'is-selected' : ''}" draggable="true" data-player-id="${player.id}">${avatarHtml(player, 28)}${seatNamesHtml(player)}</div>`).join('') : '<span class="muted">Alle Spieler sitzen bereits am Tisch.</span>'}
+      ${unassigned.length ? unassigned.map((player) => `<div class="seating-pool-player ${selected?.playerId === player.id ? 'is-selected' : ''}" draggable="true" data-player-id="${player.id}">${avatarHtml(player, 28)}${seatNamesHtml(player)}</div>`).join('') : '<span class="muted">Alle Teilnehmenden sitzen bereits am Tisch.</span>'}
     </div>
   </section>`;
 }
@@ -266,19 +271,25 @@ function wireEditor(container, ctx) {
 }
 
 async function load(ctx) {
+  const version = ++loadRequestVersion;
   loading = true;
   loadError = false;
+  cacheStale = false;
   try {
-    cache = await api.seating.layout();
+    const result = await api.seating.layout();
+    if (version === loadRequestVersion) cache = result;
   } catch (err) {
-    showToast(err.message, { error: true });
-    cache = null;
-    // Prevent an immediate retry on the next rerender that would flood the
-    // user with repeated error toasts.
-    loadError = true;
+    if (version === loadRequestVersion) {
+      showToast(err.message, { error: true });
+      // Prevent an immediate retry on the next rerender that would flood the
+      // user with repeated error toasts. A previously loaded plan stays usable.
+      loadError = cache === null;
+    }
   } finally {
-    loading = false;
-    ctx.rerender();
+    if (version === loadRequestVersion) {
+      loading = false;
+      ctx.rerender();
+    }
   }
 }
 
@@ -298,11 +309,11 @@ export function renderSeating(container, ctx) {
       </div>`;
     return;
   }
-  if (cache === null && !loading && !loadError) load(ctx);
+  if ((cache === null || cacheStale) && !loading && !loadError) load(ctx);
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Sitzplan</h1>
-    ${loading ? emptyStateHtml('Lädt…') : cache === null ? emptyStateHtml('Fehler beim Laden.') : renderEditor()}`;
+    ${cache === null ? (loading ? emptyStateHtml('Lädt…') : emptyStateHtml('Fehler beim Laden.')) : renderEditor()}`;
   if (cache) {
     wireInfoTooltips(container);
     wireEditor(container, ctx);

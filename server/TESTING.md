@@ -104,9 +104,11 @@ Wiederholungsfall ab.
   CI kann `core` und `arcade` unabhängig starten.
 - Core enthält die gezielt auswählbaren Domänen `auth`, `checklist`, `invitations` und `flows`.
   Gemeinsame oder unbekannte Änderungen verwenden `all`; manuelle und tägliche Läufe führen immer
-  alle vier Domänen aus. Die ehemals monolithischen Cross-View-Flows registrieren ihre Tests in drei
-  unabhängigen, laufzeitbalancierten Prozessen für Shell, Wettbewerb und Community. Arcade enthält
-  die Arcade-, Stream-Renderer-,
+  alle vier Domänen aus. Die ehemals monolithischen Cross-View-Flows registrieren ihre Tests in vier
+  unabhängigen Prozessen für Shell, Wettbewerb, Community und Essensbestellungen. Der eigene
+  Food-Order-Owner hält deren umfangreiche, zustandsbehaftete Lebenszyklus-Szenarien aus dem
+  Community-Prozess heraus und startet sie mit einem frischen Server, Browser und Datenbestand.
+  Arcade enthält die Arcade-, Stream-Renderer-,
   Battleship- und Challenge-Rush-Suiten sowie den eigenständig authentifizierten Arcade-Auth-Pfad
   und die Arcade-Partition der Cross-View-Flows. Der vollständige Challenge-Rush-Lifecycle, die
   Snake-Arena-Legenden sowie Navigation, Multiplayer-Layouts und Scribble laufen in getrennten
@@ -139,6 +141,14 @@ Wiederholungsfall ab.
   beschädigte Metadaten früherer Läufe und parallel gepflegte andere Partitionen beeinflussen die
   Auswahl daher nicht. Dadurch bleibt die gemessene Laufzeit unverfälscht und
   ein reproduzierbarer Fehler erhält zusätzlich Playwright-Traces kurzlebiger Browser-Kontexte.
+  Die absichtlich zustandsbehafteten Cross-View-Owner und der Event-Workspace-Switch teilen
+  innerhalb ihres Prozesses veränderlichen Server-, Browser- und Seitenzustand. Nach dem ersten
+  Testfehler werden ihre verbleibenden Geschwister deshalb sofort als durch den Primärfehler
+  blockiert übersprungen, statt mit einem nicht mehr beweisbar sauberen Zustand weitere Timeouts
+  zu erzeugen. Der Primärfehler bleibt rot und erhält die normalen Diagnoseartefakte;
+  `stateful-summary.json` hält zusätzlich `primaryFailure`, `cascadeSuppressed` und `resetResult`
+  maschinenlesbar fest. Der gezielte Owner-Retry startet die Datei in einem frischen Prozess und
+  läuft dadurch wieder mit einem unverbrauchten Circuit Breaker.
   Anschließend lädt CI das Diagnoseverzeichnis sieben Tage lang als
   `*-failure-diagnostics`-Artefakt hoch. Lokal landen Fehler standardmäßig im ignorierten
   Verzeichnis `test-results/e2e/runs/<lauf-id>`; mit `E2E_ARTIFACT_DIR=<pfad>` lässt sich dessen

@@ -2,12 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  aktuellItems,
   dismissAktuellItem,
   FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS,
   foodOrderAktuellItem,
   filterDismissedAktuellItems,
   missingSkillAktuellId,
 } from './aktuellStatus.js';
+import { state } from './state.js';
 
 function storage(initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -103,7 +105,7 @@ test('an unpaid order reuses its existing Home item instead of creating a duplic
   );
 });
 
-test('a closed order stays out of the payment nudge until one hour after dispatch', () => {
+test('a closed order stays out of the payment nudge until two hours after dispatch', () => {
   const closedAt = 10_000;
   const order = {
     id: 'order-3',
@@ -132,6 +134,21 @@ test('dismissing an open order does not hide its later payment reminder', () => 
   const reminder = foodOrderAktuellItem(paymentOrder, 'erin', 1_000 + FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS);
   assert.equal(reminder?.id, 'food-order:order-4:payment');
   assert.deepEqual(filterDismissedAktuellItems([reminder], options), [reminder]);
+});
+
+test('a pending event invitation surfaces as a personal nudge linking into the profile', () => {
+  const previousInvitations = state.eventInvitations;
+  state.eventInvitations = [{ id: 'event-1', name: 'Winter LAN' }];
+  try {
+    const invitationItem = aktuellItems().find((item) => item.id === 'event-invitation:event-1');
+    assert.ok(invitationItem, 'the invitation must produce an Aktuell entry');
+    assert.equal(invitationItem.title, 'Einladung: Winter LAN');
+    // The card with Annehmen/Ablehnen lives only in Profile now (see events.js
+    // and profile.js) — Home's own list just links there.
+    assert.equal(invitationItem.navigate, 'profile');
+  } finally {
+    state.eventInvitations = previousInvitations;
+  }
 });
 
 test('an open order without own unpaid items keeps the normal current entry', () => {

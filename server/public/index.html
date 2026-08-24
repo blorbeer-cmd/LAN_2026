@@ -16,7 +16,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
   <!-- bump ?v= when the stylesheet changes so no cached copy survives a reload -->
-  <link rel="stylesheet" href="/css/style.css?v=41" />
+  <link rel="stylesheet" href="/css/style.css?v=42" />
   <!-- app.js adds this sheet only while an Arcade view is active. -->
 </head>
 <body>
@@ -60,24 +60,24 @@
 
     <nav class="bottom-nav" aria-label="Hauptnavigation">
       <div class="bottom-nav-inner">
-        <button class="nav-btn" data-view="home" aria-label="Home">
+        <button class="nav-btn" data-nav-slot="0" data-view="home" aria-label="Home">
           <span class="nav-icon" data-domain-icon="home"></span><span class="nav-label">Home</span>
         </button>
-        <button class="nav-btn" data-view="matchmaking" aria-label="Match: Teams und Turniere">
+        <button class="nav-btn" data-nav-slot="1" data-view="matchmaking" aria-label="Match: Teams und Turniere">
           <span class="nav-icon" data-domain-icon="competition"></span><span class="nav-label">Match</span>
         </button>
-        <button class="nav-btn" data-view="votes" aria-label="Abstimmung">
+        <button class="nav-btn" data-nav-slot="2" data-view="votes" aria-label="Abstimmung">
           <span class="nav-icon" data-domain-icon="votes"></span><span class="nav-label">Vote</span>
         </button>
         <!-- Auswertung (Rangliste/Statistiken/Hall of Fame) lives in Admin's
              Werkzeuge now (see views/admin.js), not in the bottom nav. -->
-        <button class="nav-btn" data-view="foodOrders" aria-label="Essen: Sammelbestellungen koordinieren" id="nav-food-orders">
+        <button class="nav-btn" data-nav-slot="3" data-view="foodOrders" aria-label="Essen: Sammelbestellungen koordinieren" id="nav-food-orders">
           <span class="nav-icon" data-domain-icon="foodOrders"></span><span class="nav-label">Essen</span>
         </button>
-        <button class="nav-btn" data-view="gameCatalog" aria-label="Spiele">
+        <button class="nav-btn" data-nav-slot="4" data-view="gameCatalog" aria-label="Spiele">
           <span class="nav-icon" data-domain-icon="gameCatalog"></span><span class="nav-label">Spiele</span>
         </button>
-        <button class="nav-btn" data-view="more" aria-label="Mehr">
+        <button class="nav-btn" data-nav-slot="5" data-view="more" aria-label="Mehr">
           <span class="nav-icon" data-domain-icon="more"></span><span class="nav-label">Mehr</span>
         </button>
       </div>

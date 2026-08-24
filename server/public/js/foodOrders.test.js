@@ -26,9 +26,21 @@ test('normalizePaypalInput returns null for empty input', () => {
   assert.equal(normalizePaypalInput(undefined), null);
 });
 
-test('normalizePaypalInput passes a full http(s) URL through unchanged', () => {
+test('normalizePaypalInput keeps PayPal URLs, upgrades PayPal.me, and rejects foreign hosts', () => {
   assert.equal(normalizePaypalInput('https://paypal.me/luigi'), 'https://paypal.me/luigi');
-  assert.equal(normalizePaypalInput('http://example.com/pay'), 'http://example.com/pay');
+  assert.equal(
+    normalizePaypalInput('https://www.paypal.com/paypalme/luigi'),
+    'https://www.paypal.com/paypalme/luigi',
+  );
+  assert.throws(() => normalizePaypalInput('http://example.com/pay'), /HTTPS/);
+  assert.throws(() => normalizePaypalInput('https://example.com/pay'), /paypal\.me/);
+  assert.throws(() => normalizePaypalInput('https://paypal.me/luigi/500EUR'), /paypal\.me/);
+  assert.throws(() => normalizePaypalInput('http://paypal.me/luigi/500EUR'), /paypal\.me/);
+  assert.throws(() => normalizePaypalInput('https://www.paypal.com/paypalme/luigi/500EUR'), /paypal\.me/);
+  assert.throws(() => normalizePaypalInput('https://www.paypal.com/paypalme/luigi/500EUR?locale.x=de_DE'), /paypal\.me/);
+  assert.throws(() => normalizePaypalInput('paypal.me/luigi/500EUR'), /gültige URL/);
+  assert.equal(normalizePaypalInput('http://paypal.me/luigi'), 'https://paypal.me/luigi');
+  assert.equal(normalizePaypalInput('http://www.paypal.me/luigi'), 'https://www.paypal.me/luigi');
 });
 
 test('normalizePaypalInput turns a bare PayPal.me name into a full link', () => {
@@ -69,6 +81,8 @@ test('paypalEmailFromLink treats malformed recipient encoding as a normal URL', 
 
 test('paypalPayUrl appends the amount to a bare paypal.me link', () => {
   assert.equal(paypalPayUrl('https://paypal.me/luigi', 2090), 'https://paypal.me/luigi/20.90EUR');
+  assert.equal(paypalPayUrl('http://paypal.me/luigi', 2090), 'https://paypal.me/luigi/20.90EUR');
+  assert.equal(paypalPayUrl('https://www.paypal.com/paypalme/luigi', 2090), 'https://paypal.me/luigi/20.90EUR');
 });
 
 test('paypalPayUrl leaves an email-based send-money link unchanged (no amount can be pre-filled)', () => {

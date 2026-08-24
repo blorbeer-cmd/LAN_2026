@@ -80,7 +80,11 @@ Bei Zielkonflikten gewinnt die weiter oben stehende Priorität.
 ## 4. Gemeinsame Architektur- und Qualitätsgrenzen
 
 - Node.js 24 ist über `.nvmrc` und die `engines`-Felder festgelegt. Entwicklung, CI, Docker und
-  Paketierung dürfen nicht stillschweigend auf eine andere Hauptversion wechseln.
+  Paketierung dürfen nicht stillschweigend auf eine andere Hauptversion wechseln. Node.js wird
+  einmal pro Rechner beziehungsweise Laufzeitumgebung bereitgestellt, nicht pro Branch. Neue
+  Worktrees erhalten ihre nicht versionierten npm-Abhängigkeiten über
+  `node scripts/worktree-bootstrap.mjs`; der bereichsspezifische Agent-Preflight ruft diesen
+  Bootstrap nach bestandener Branch-Sicherheitsprüfung automatisch und idempotent auf.
 - Architekturwechsel, neue Frameworks oder größere Produktionsabhängigkeiten nicht nebenbei
   einführen. Sie brauchen klaren Nutzen, Folgenabschätzung und Zustimmung des Nutzers.
 - Arcade-Code nach Möglichkeit innerhalb der bestehenden Arcade-Grenzen kapseln

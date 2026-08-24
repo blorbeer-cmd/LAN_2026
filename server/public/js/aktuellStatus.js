@@ -20,7 +20,7 @@ let missingSkillsLoading = false;
 const DISMISSED_STORAGE_PREFIX = 'respawn_home_current_dismissed';
 const MAX_DISMISSED_ITEMS = 100;
 const MAX_ITEM_ID_LENGTH = 200;
-export const FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS = 60 * 60 * 1000;
+export const FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS = 2 * 60 * 60 * 1000;
 const memoryDismissals = new Map();
 
 function dismissalScope({ playerId = getMyId(), eventId = state.activeEvent?.id ?? 'base' } = {}) {
@@ -243,6 +243,20 @@ export function aktuellItems() {
       title: `Skill für ${g.name} bewerten`,
       sub: 'Wird gerade gespielt',
       navigate: 'gameCatalog',
+    });
+  }
+
+  // Pending event invitations need a response, so they get the same personal
+  // nudge as an unrated skill. The full card with Annehmen/Ablehnen lives in
+  // Profile now (see events.js's renderInvitationCard) rather than sitting
+  // directly above the Events tab's own cards.
+  for (const invitation of state.eventInvitations ?? []) {
+    items.push({
+      id: `event-invitation:${invitation.id}`,
+      iconName: domainIcon('events'),
+      title: `Einladung: ${invitation.name}`,
+      sub: 'Annehmen oder ablehnen im Profil',
+      navigate: 'profile',
     });
   }
 

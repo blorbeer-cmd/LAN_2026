@@ -17,7 +17,7 @@ import { api } from '../api.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { state } from '../state.js';
 import { icon } from '../icons.js';
-import { escapeHtml } from '../format.js';
+import { avatarHtml, escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
@@ -25,9 +25,16 @@ import { getMyId } from '../whoami.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { eventStatusBadgeHtml } from '../eventStatus.js';
 import { isGroupAdmin } from '../groupContext.js';
+import { formatEuroCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
+import { eventHasFeature } from '../eventFeatures.js';
+import { availableEventTypeOptions, eventTypeTitle } from '../eventTypes.js';
 
-const EVENT_HELP = 'Nur ein Event gleichzeitig erfasst Live-Status und Spielzeit.';
+const EVENT_HELP = 'Eventtyp, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
 const KIOSK_HELP = 'Zeigt Live-Status, Vote, Rang und Turnier; ein eigener Token ist erforderlich.';
+const expandedEventParticipants = new Set();
+// Mirrors foodOrders.js's Historie collapse: ended events start collapsed and
+// this survives the section's own live re-renders.
+let eventHistoryOpen = false;
 
 function renderKioskSection() {
   return `
@@ -37,101 +44,517 @@ function renderKioskSection() {
   `;
 }
 
-// The base workspace is permanently open, so it has no end date to print.
-function eventDateRange(e) {
-  return e.endsAt == null
-    ? 'Dauerhaft geöffnet'
-    : `${new Date(e.startsAt).toLocaleDateString('de-DE')} – ${new Date(e.endsAt).toLocaleDateString('de-DE')}`;
+// Legacy planning events may have neither startsAt nor endsAt. Keep the
+// fallback explicit so no view ever renders "Invalid Date" for them. The base
+// workspace is permanently open (startsAt set, endsAt null), so it has no end
+// date to print either, but for a different reason.
+export function eventDateRange(e) {
+  if (e.startsAt == null) return 'Termin wird noch abgestimmt';
+  if (e.endsAt == null) return 'Dauerhaft geöffnet';
+  return `${new Date(e.startsAt).toLocaleDateString('de-DE')} – ${new Date(e.endsAt).toLocaleDateString('de-DE')}`;
 }
 
-// Read-only card for a member's own accepted events: same identity and dates
-// as the management card, without the admin-only actions, participant count
-// and tracking state a member never receives.
-function renderMemberEventCard(e) {
+function eventLocationUrl(location) {
+  const trimmed = location.trim();
+  const candidate = trimmed.startsWith('www.') ? `https://${trimmed}` : trimmed;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+export function renderEventLocation(location) {
+  if (!location) return '';
+  const href = eventLocationUrl(location);
+  const value = escapeHtml(location);
   return `
-    <div class="card stack" style="gap:var(--space-3);">
-      <div class="row-between">
-        <strong>${escapeHtml(e.name)}</strong>
+    <div class="event-card-detail event-card-location">
+      <span class="event-card-detail-icon" aria-hidden="true">${icon('mapPin')}</span>
+      <span class="event-card-detail-content">
+        <span class="event-card-detail-label">Ort</span>
+        ${href ? `<a class="event-location-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${value}</a>` : `<span class="event-location-text">${value}</span>`}
+      </span>
+    </div>`;
+}
+
+function acceptedParticipants(event) {
+  if (Array.isArray(event.acceptedParticipants)) return event.acceptedParticipants;
+  const acceptedIds = new Set(
+    event.participantIds ??
+      (event.participants ?? [])
+        .filter((participant) => participant.status === 'accepted')
+        .map((participant) => participant.playerId),
+  );
+  const paidById = new Map((event.participants ?? []).map((participant) => [participant.playerId, Boolean(participant.paid)]));
+  return state.players
+    .filter((player) => acceptedIds.has(player.id))
+    .map((player) => ({ playerId: player.id, name: player.name, paid: paidById.get(player.id) ?? false }));
+}
+
+export function acceptedParticipantCount(event) {
+  return acceptedParticipants(event).length;
+}
+
+export function eventSettlement(event) {
+  const participants = acceptedParticipants(event);
+  const contributionCents = event.costCents ?? 0;
+  const currentPaidParticipants = participants.filter((participant) => participant.paid);
+  const paidCents = event.settlementPaidCents ?? currentPaidParticipants.reduce(
+    (sum, participant) => sum + (participant.paidAmountCents ?? 0),
+    0,
+  );
+  const paidCount = event.settlementPaidCount ?? currentPaidParticipants.length;
+  const unpaidCount = participants.length - currentPaidParticipants.length;
+  const expectedCents = paidCents + unpaidCount * contributionCents;
+  const accommodationCents = event.accommodationCostCents ?? null;
+  return {
+    participantCount: participants.length,
+    paidCount,
+    unpaidCount,
+    paidCents,
+    missingAmountCount: event.settlementMissingAmountCount ?? 0,
+    expectedCents,
+    accommodationCents,
+    perHeadCents:
+      accommodationCents !== null && participants.length > 0
+        ? Math.round(accommodationCents / participants.length)
+        : null,
+    balanceCents: accommodationCents === null ? null : paidCents - accommodationCents,
+    expectedBalanceCents: accommodationCents === null ? null : expectedCents - accommodationCents,
+  };
+}
+
+function paymentProof(participant) {
+  if (!participant.paid) return '';
+  const confirmer = participant.paidByName || (participant.paidBy === participant.playerId ? 'selbst' : 'unbekannt');
+  const amount = participant.paidAmountCents ? ` · ${formatEuroCents(participant.paidAmountCents)}` : '';
+  const when = participant.paidAt
+    ? ` · ${new Date(participant.paidAt).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}`
+    : '';
+  return `Bezahlt von ${confirmer}${amount}${when}`;
+}
+
+function isEventCreator(event) {
+  return Boolean(event.createdBy) && event.createdBy === getMyId();
+}
+
+function canManageEventPayments(event) {
+  return event.canManagePayments ?? isEventCreator(event);
+}
+
+function eventRoster(event, includeInvitationStatuses) {
+  if (!includeInvitationStatuses || !Array.isArray(event.participants)) return acceptedParticipants(event);
+  const acceptedById = new Map(acceptedParticipants(event).map((participant) => [participant.playerId, participant]));
+  return event.participants.map((participant) => {
+    const accepted = acceptedById.get(participant.playerId);
+    const player = state.players.find((candidate) => candidate.id === participant.playerId);
+    return { ...participant, name: accepted?.name ?? player?.name ?? 'Unbekannte Person' };
+  });
+}
+
+function participantSummary(participants, includeInvitationStatuses) {
+  if (!includeInvitationStatuses) {
+    return `${participants.length} ${participants.length === 1 ? 'Person' : 'Personen'}`;
+  }
+  const acceptedCount = participants.filter((participant) => participant.status === 'accepted').length;
+  const invitedCount = participants.filter((participant) => participant.status === 'invited').length;
+  const declinedCount = participants.filter((participant) => participant.status === 'declined').length;
+  return [
+    `${acceptedCount} ${acceptedCount === 1 ? 'Zusage' : 'Zusagen'}`,
+    invitedCount > 0 ? `${invitedCount} ${invitedCount === 1 ? 'Einladung offen' : 'Einladungen offen'}` : '',
+    declinedCount > 0 ? `${declinedCount} abgelehnt` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+function renderAcceptedParticipants(event, { includeInvitationStatuses = false } = {}) {
+  const participants = eventRoster(event, includeInvitationStatuses);
+  const canManagePayments = canManageEventPayments(event)
+    && (event.costCents !== null || participants.some((participant) => participant.paid));
+  const isExpanded = expandedEventParticipants.has(event.id);
+  const participantCountLabel = participantSummary(participants, includeInvitationStatuses);
+  return `
+    <details class="collapsible-section food-order-group event-card-participants" data-event-participants="${escapeHtml(event.id)}" ${isExpanded ? 'open' : ''}>
+      <summary class="collapsible-section-header">
+        <span class="event-participant-toggle">
+          <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
+          <span class="food-order-group-headtext">
+            <strong>${includeInvitationStatuses ? 'Teilnehmende & Einladungen' : 'Teilnehmende'}</strong>
+            <span class="muted food-order-group-meta">${participantCountLabel}</span>
+          </span>
+        </span>
+      </summary>
+      <div class="collapsible-section-content">
+        ${participants.length
+          ? `<ul class="event-participant-list">${participants
+              .map((participant) => {
+                const player = state.players.find((candidate) => candidate.id === participant.playerId) ?? participant;
+                const participation = includeInvitationStatuses ? participationStatus(participant.status) : null;
+                const paidTitle = participant.paid
+                  ? `${participant.name}: Bezahlt – Markierung aufheben`
+                  : `${participant.name} als bezahlt markieren`;
+                return `<li class="event-participant-row ${participant.paid ? 'is-paid' : ''}" ${participation ? `data-event-participation-status="${escapeHtml(participant.status)}"` : ''}>
+                  ${avatarHtml(player, 24)}
+                  <span class="event-participant-name">
+                    <span class="player-name">${escapeHtml(participant.name)}</span>
+                    ${canManagePayments && participant.paid ? `<small class="event-payment-proof">${escapeHtml(paymentProof(participant))}</small>` : ''}
+                  </span>
+                  ${participation ? `<span class="badge ${participation.badge}">${participation.label}</span>` : ''}
+                  ${canManagePayments && participant.status === 'accepted'
+                    ? `<button type="button" class="payment-paid-marker ${participant.paid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(participant.playerId)}" aria-pressed="${Boolean(participant.paid)}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}">${icon(participant.paid ? 'check' : 'circleDashed')}<span>${participant.paid ? 'Bezahlt' : 'Bezahlt?'}</span></button>`
+                    : ''}
+                </li>`;
+              })
+              .join('')}</ul>`
+          : '<p class="muted event-card-empty-copy">Noch niemand zugesagt.</p>'}
       </div>
-      <div class="stack" style="gap:var(--space-1);">
-        ${e.location ? `<div class="muted" style="font-size:var(--font-size-sm);">${icon('mapPin')} ${escapeHtml(e.location)}</div>` : ''}
-        <div class="muted" style="font-size:var(--font-size-sm);">${icon('calendar')} ${eventDateRange(e)}</div>
-        ${e.description ? `<div class="muted" style="font-size:var(--font-size-sm);">${escapeHtml(e.description)}</div>` : ''}
+    </details>`;
+}
+
+function parseEventEuroCents(raw, maxEuro) {
+  const trimmed = (raw ?? '').trim().replace('€', '').trim();
+  if (!trimmed) return null;
+  let normalized;
+  if (trimmed.includes(',')) {
+    if (!/^\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?$|^\d+(?:,\d{1,2})?$/.test(trimmed)) return NaN;
+    normalized = trimmed.replaceAll('.', '').replace(',', '.');
+  } else if (/^\d{1,3}(?:\.\d{3})+$/.test(trimmed)) {
+    normalized = trimmed.replaceAll('.', '');
+  } else if (/^\d+(?:\.\d{1,2})?$/.test(trimmed)) {
+    normalized = trimmed;
+  } else {
+    return NaN;
+  }
+  const value = Number(normalized);
+  if (!Number.isFinite(value) || value <= 0 || value > maxEuro) return NaN;
+  return Math.round(value * 100);
+}
+
+export function parseEventCostCents(raw) {
+  return parseEventEuroCents(raw, 10_000);
+}
+
+export function parseEventAccommodationCostCents(raw) {
+  return parseEventEuroCents(raw, 100_000);
+}
+
+function balanceBadge(balanceCents) {
+  if (balanceCents > 0) {
+    return { badge: 'badge-playing', label: `Überschuss ${formatEuroCents(balanceCents)}` };
+  }
+  if (balanceCents < 0) {
+    return { badge: 'badge-paused', label: `Fehlbetrag ${formatEuroCents(Math.abs(balanceCents))}` };
+  }
+  return { badge: 'badge-playing', label: 'Ausgeglichen' };
+}
+
+function renderEventSettlement(event) {
+  if (!event.accommodationCostCents) return '';
+  const settlement = eventSettlement(event);
+  const balance = balanceBadge(settlement.balanceCents);
+  const expectedBalance = balanceBadge(settlement.expectedBalanceCents);
+  return `
+    <div class="stack event-settlement">
+      <div class="event-settlement-grid">
+        <span class="event-settlement-metric">
+          <small>Unterkunft gesamt</small>
+          <strong>${escapeHtml(formatEuroCents(settlement.accommodationCents))}</strong>
+        </span>
+        <span class="event-settlement-metric">
+          <small>Rechnerisch pro Zusage</small>
+          <strong>${settlement.perHeadCents === null ? '–' : escapeHtml(formatEuroCents(settlement.perHeadCents))}</strong>
+          <span>${settlement.participantCount} ${settlement.participantCount === 1 ? 'Zusage' : 'Zusagen'}</span>
+        </span>
+        <span class="event-settlement-metric">
+          <small>Bereits eingegangen</small>
+          <strong>${escapeHtml(formatEuroCents(settlement.paidCents))}</strong>
+          <span>${settlement.paidCount} bezahlt</span>
+        </span>
+        <span class="event-settlement-metric">
+          <small>Nach allen Zahlungen</small>
+          <strong>${escapeHtml(formatEuroCents(settlement.expectedCents))}</strong>
+          <span>${event.costCents ? `bei ${escapeHtml(formatEuroCents(event.costCents))} Beitrag` : 'Beitrag fehlt'}</span>
+        </span>
       </div>
-    </div>
+      <div class="row-between food-order-total event-settlement-balance">
+        <span class="food-order-total-label">Aktueller Saldo</span>
+        <span class="badge ${balance.badge}">${escapeHtml(balance.label)}</span>
+      </div>
+      ${event.costCents ? `<span class="muted event-payment-overview">Nach Zahlung aller Zusagen: ${escapeHtml(expectedBalance.label)}</span>` : ''}
+    </div>`;
+}
+
+function renderEventPayment(event) {
+  const creator = canManageEventPayments(event);
+  const myId = getMyId();
+  const myParticipation = acceptedParticipants(event).find((participant) => participant.playerId === myId);
+  const hasRecordedPayments = Number(event.paymentSummary?.paidCount ?? 0) > 0;
+  if (
+    !event.costCents
+    && !(creator && (event.accommodationCostCents || hasRecordedPayments))
+    && !myParticipation?.paid
+  ) return '';
+  const amount = event.costCents ? formatEuroCents(event.costCents) : 'Nicht festgelegt';
+  const payTitle = `${amount} über PayPal bezahlen`;
+  if (creator) {
+    const settlement = eventSettlement(event);
+    const participants = acceptedParticipants(event);
+    const paidCount = settlement.paidCount;
+    const openCount = settlement.unpaidCount;
+    return `
+      <div class="event-card-payment event-card-payment-creator">
+        <div class="event-payment-heading">
+          <div class="event-card-detail">
+            <span class="event-card-detail-icon" aria-hidden="true">${icon('paypal')}</span>
+            <span class="event-card-detail-content">
+              <span class="event-card-detail-label">Beitrag pro Person</span>
+              <strong class="event-payment-amount">${escapeHtml(amount)}</strong>
+            </span>
+          </div>
+          ${event.costCents
+            ? `<span class="badge ${openCount > 0 ? 'badge-paused' : 'badge-playing'}">${openCount > 0 ? `${openCount} offen` : 'Alles bezahlt'}</span>`
+            : '<span class="badge badge-paused">Beitrag fehlt</span>'}
+        </div>
+        ${event.costCents && participants.length > 0 ? `<span class="muted event-payment-overview">${paidCount} ${paidCount === 1 ? 'Zahlung' : 'Zahlungen'} erfasst · ${openCount} von ${participants.length} aktuellen Zusagen offen · ${escapeHtml(formatEuroCents(openCount * event.costCents))} ausstehend</span>` : ''}
+        ${event.costCents && event.paymentDueAt ? `<span class="muted event-payment-due">Zahlungsziel: ${escapeHtml(new Date(event.paymentDueAt).toLocaleDateString('de-DE'))}</span>` : ''}
+        ${renderEventSettlement(event)}
+        ${settlement.missingAmountCount > 0 ? `<span class="muted event-payment-overview">${settlement.missingAmountCount} historische ${settlement.missingAmountCount === 1 ? 'Zahlung hat' : 'Zahlungen haben'} keinen gespeicherten Betrag.</span>` : ''}
+      </div>`;
+  }
+
+  const isPaid = Boolean(myParticipation?.paid);
+  return `
+    <div class="event-card-payment event-card-payment-member">
+      <div class="event-payment-member-actions">
+        <div class="event-payment-member-main">
+        <div class="event-card-detail">
+          <span class="event-card-detail-icon" aria-hidden="true">${icon('paypal')}</span>
+          <span class="event-card-detail-content">
+            <span class="event-card-detail-label">${myParticipation ? 'Dein Beitrag' : 'Kosten pro Person'}</span>
+            <strong class="event-payment-amount">${escapeHtml(amount)}</strong>
+          </span>
+        </div>
+        ${myParticipation ? `<button type="button" class="payment-paid-marker ${isPaid ? 'is-paid' : ''}" data-toggle-event-paid="${escapeHtml(event.id)}" data-payment-player="${escapeHtml(myParticipation.playerId)}" aria-pressed="${isPaid}" title="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}" aria-label="${isPaid ? 'Eigene Bezahlt-Markierung aufheben' : 'Eigenen Beitrag als bezahlt markieren'}">${icon(isPaid ? 'check' : 'circleDashed')}<span>${isPaid ? 'Bezahlt' : 'Bezahlt?'}</span></button>` : ''}
+        </div>
+        ${myParticipation && !isPaid && event.paypalLink ? `<button type="button" class="btn btn-primary btn-sm event-paypal-button" data-pay-event="${escapeHtml(event.id)}" title="${escapeHtml(payTitle)}" aria-label="${escapeHtml(payTitle)}">Bezahlen</button>` : ''}
+      </div>
+      ${myParticipation && !isPaid && event.paymentDueAt ? `<span class="muted event-payment-due">Bitte bis ${escapeHtml(new Date(event.paymentDueAt).toLocaleDateString('de-DE'))} bezahlen.</span>` : ''}
+      ${myParticipation && isPaid ? `<small class="event-payment-proof">${escapeHtml(paymentProof(myParticipation))}</small>` : ''}
+    </div>`;
+}
+
+async function handleEventPay(eventId, ctx) {
+  const popup = window.open('', '_blank');
+  if (popup) popup.opener = null;
+  let handedOff = false;
+
+  try {
+    // Match the food-order handoff: re-read the amount and payment state
+    // immediately before opening PayPal so a stale card cannot charge an old
+    // contribution or overwrite a payment somebody just recorded.
+    const event = await api.events.get(eventId);
+    const myId = getMyId();
+    const participation = acceptedParticipants(event).find((participant) => participant.playerId === myId);
+    if (!participation) {
+      popup?.close();
+      showToast('Du nimmst an diesem Event nicht mehr teil.', { error: true });
+      return ctx.refresh();
+    }
+    if (participation.paid) {
+      popup?.close();
+      showToast('Dein Event-Beitrag wurde inzwischen als bezahlt markiert.');
+      return ctx.refresh();
+    }
+    if (!event.paypalLink || !event.costCents) {
+      popup?.close();
+      showToast('PayPal-Link oder Betrag wurde inzwischen entfernt.', { error: true });
+      return ctx.refresh();
+    }
+
+    const amount = formatEuroCents(event.costCents);
+    const payUrl = paypalPayUrl(event.paypalLink, event.costCents);
+    const amountPassedToPaypal = payUrl !== event.paypalLink;
+    const paypalEmail = paypalEmailFromLink(event.paypalLink);
+    if (paypalEmail && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(paypalEmail);
+        showToast(`PayPal-Adresse kopiert: ${paypalEmail}`);
+      } catch {
+        // Opening the placeholder tab can move focus away from this document,
+        // which makes Clipboard.writeText reject in otherwise successful
+        // payment handoffs. Copying is only a convenience: keep the recipient
+        // visible and let the PayPal/confirmation flow continue normally.
+        showToast(`PayPal-Adresse nicht kopiert. Empfänger: ${paypalEmail}`);
+      }
+    }
+    if (popup) popup.location = payUrl;
+    else window.open(payUrl, '_blank', 'noopener');
+    handedOff = true;
+
+    const confirmed = await confirmDialog(
+      amountPassedToPaypal
+        ? `${amount} wurden an PayPal übergeben.`
+        : `PayPal wurde geöffnet.${paypalEmail ? ` Empfänger: ${paypalEmail}.` : ''} ${amount} musst du dort selbst eintragen.`,
+      {
+      title: 'Bezahlt?',
+      confirmText: 'Ja, bezahlt',
+      cancelText: 'Noch nicht',
+      },
+    );
+    if (!confirmed) return;
+    await api.events.setParticipantPaid(event.id, myId, true);
+    await ctx.refresh();
+    showToast('Event-Beitrag als bezahlt markiert.');
+  } catch (err) {
+    if (!handedOff) popup?.close();
+    showToast(err.message, { error: true });
+  }
+}
+
+function renderEventInfo(event, { editable = false, invitation = false } = {}) {
+  const additionalDetails = `${renderEventLocation(event.location)}${
+    event.description
+      ? `<div class="event-card-detail event-card-description">
+           <span class="event-card-detail-icon" aria-hidden="true">${icon('file')}</span>
+           <span class="event-card-detail-content">
+             <span class="event-card-detail-label">Notiz</span>
+             <span>${escapeHtml(event.description)}</span>
+           </span>
+         </div>`
+      : ''
+  }`;
+  const dateLine = `<span class="food-order-send-at">
+      <span class="food-order-detail-icon" aria-hidden="true">${icon('calendar')}</span>
+      ${escapeHtml(eventDateRange(event))}
+    </span>`;
+  return `
+    <div class="food-order-details event-card-info">
+      <div class="food-order-details-head">
+        ${dateLine}
+        ${editable ? `<button type="button" class="btn btn-sm" data-edit-event="${escapeHtml(event.id)}">Bearbeiten</button>` : ''}
+      </div>
+      ${additionalDetails ? `<div class="event-card-info-details">${additionalDetails}</div>` : ''}
+      ${invitation ? renderInvitationPayment(event) : renderEventPayment(event)}
+    </div>`;
+}
+
+// Read-only card for a member's own accepted events. The same information is
+// useful to admins, so both card variants share the detail and accepted-roster
+// blocks while only the management card receives lifecycle actions.
+function renderMemberEventCard(event) {
+  return `
+    <article class="card stack event-card event-card-member" data-event-card="${escapeHtml(event.id)}">
+      <div class="row-between food-order-card-header event-card-header">
+        <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
+        <span class="event-card-header-badges">
+          <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
+          ${eventStatusBadgeHtml(event)}
+        </span>
+      </div>
+      ${renderEventInfo(event)}
+      ${renderAcceptedParticipants(event)}
+    </article>
   `;
 }
 
-function renderEventCard(e) {
-  const dateRange = eventDateRange(e);
-  const participantCount = e.participantIds?.length ?? 0;
+// An invitation discloses the contribution before acceptance, but it does
+// not offer payment actions until the account is an accepted participant.
+function renderInvitationPayment(event) {
+  if (!event.costCents) return '';
+  const amount = formatEuroCents(event.costCents);
+  return `
+    <div class="event-card-payment event-invitation-payment">
+      <div class="event-card-detail">
+        <span class="event-card-detail-icon" aria-hidden="true">${icon('paypal')}</span>
+        <span class="event-card-detail-content">
+          <span class="event-card-detail-label">Kosten pro Person</span>
+          <strong>${escapeHtml(amount)}</strong>
+        </span>
+      </div>
+      ${event.paymentDueAt ? `<span class="muted event-payment-due">Zahlungsziel: ${escapeHtml(new Date(event.paymentDueAt).toLocaleDateString('de-DE'))}</span>` : ''}
+    </div>`;
+}
 
-  const trackingBtn = e.isEnded
-    ? `<button type="button" class="btn btn-sm btn-primary" data-restart-event="${e.id}">Event wieder starten</button>`
-    : e.trackingEnabled
-      ? `<button type="button" class="btn btn-sm" data-stop-tracking="${e.id}">${icon('pause')} Tracking stoppen</button>`
-      : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${e.id}">Tracking starten</button>`;
-  const endBtn = e.isEnded
+export function eventPdfExportAvailable(event) {
+  // The keepsake summarizes LAN-only competition and tracking data. Older
+  // event payloads without a type stay LAN-compatible.
+  return event?.eventType !== 'general';
+}
+
+function renderEventCard(event) {
+  // Nothing about tracking, ending, the regular roster or the PDF keepsake is
+  // meaningful before this event has an actual date — the date poll section
+  // above already covers what to do instead ("Termin abstimmen"/"Termin
+  // festlegen").
+  const hasDate = event.startsAt != null;
+  const trackingBtn = !hasDate || !eventHasFeature(event, 'tracking')
     ? ''
-    : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${e.id}">Beenden</button>`;
+    : event.isEnded
+      ? `<button type="button" class="btn btn-sm btn-primary" data-restart-event="${event.id}">Event wieder starten</button>`
+      : event.trackingEnabled
+        ? `<button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">${icon('pause')} Tracking stoppen</button>`
+        : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${event.id}">Tracking starten</button>`;
+  const endBtn = !hasDate || event.isEnded
+    ? ''
+    : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
 
   return `
-    <div class="card stack" style="gap:var(--space-3);">
-      <div class="row-between">
-        <strong>${escapeHtml(e.name)}</strong>
-        ${eventStatusBadgeHtml(e)}
+    <article class="card stack event-card event-card-managed" data-event-card="${escapeHtml(event.id)}">
+      <div class="row-between food-order-card-header event-card-header">
+        <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
+        <span class="event-card-header-badges">
+          <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
+          ${eventStatusBadgeHtml(event)}
+        </span>
       </div>
-      <div class="stack" style="gap:var(--space-1);">
-        ${e.location ? `<div class="muted" style="font-size:var(--font-size-sm);">${icon('mapPin')} ${escapeHtml(e.location)}</div>` : ''}
-        <div class="muted" style="font-size:var(--font-size-sm);">${icon('calendar')} ${dateRange} · ${icon('users')} ${participantCount} Teilnehmer</div>
-        ${e.description ? `<div class="muted" style="font-size:var(--font-size-sm);">${escapeHtml(e.description)}</div>` : ''}
-      </div>
-      <div class="row event-card-actions" style="gap:var(--space-2);flex-wrap:wrap;">
+      ${renderEventInfo(event, { editable: true })}
+      ${renderAcceptedParticipants(event, { includeInvitationStatuses: true })}
+      <div class="event-card-actions">
         ${trackingBtn}
         ${endBtn}
-        <button type="button" class="btn btn-sm" data-participants-event="${e.id}">${icon('users')} Teilnehmer</button>
-        <button type="button" class="btn btn-sm" data-edit-event="${e.id}">${icon('pencil')} Bearbeiten</button>
-        <button type="button" class="btn btn-sm" data-export-event="${e.id}" title="Als PDF exportieren">${icon('file')} PDF</button>
+        ${hasDate ? `<button type="button" class="btn btn-sm" data-participants-event="${event.id}">${icon('users')} Teilnehmende verwalten</button>` : ''}
+        ${hasDate && eventPdfExportAvailable(event) ? `<button type="button" class="btn btn-sm" data-export-event="${event.id}" title="Als PDF exportieren">${icon('file')} PDF</button>` : ''}
       </div>
-    </div>
+    </article>
   `;
+}
+
+// Newest first, independent of whatever order the API happens to return —
+// both the active list and the collapsed Historie read top-to-bottom by date.
+function byStartsAtDescending(a, b) {
+  return (b.startsAt ?? 0) - (a.startsAt ?? 0);
 }
 
 function renderEventSection() {
   // Only owner/admin receive `managedEvents`; a member's own accepted events
-  // carry neither participants nor tracking state and must not be rendered
-  // through the management card, whose actions they cannot use anyway. The
+  // carry accepted participant names but no management roster/status data and
+  // must not be rendered through the management card, whose actions they cannot
+  // use anyway. The
   // base workspace is filtered out of both: it is not a LAN anyone manages or
   // joins, it is where everyone already is.
   const canManage = Array.isArray(state.managedEvents);
   const realEvents = (canManage ? state.managedEvents : []).filter((e) => !e.isOutsideEvents && !e.isBase);
-  const memberEvents = canManage ? [] : (state.availableEvents || []).filter((e) => !e.isBase);
-  const cards = canManage
-    ? realEvents.map(renderEventCard).join('')
-    : memberEvents.map(renderMemberEventCard).join('');
-  const visibleEventCount = canManage ? realEvents.length : memberEvents.length;
-  const myId = getMyId();
-  // A teaser is all an invited account receives, so the invitation list comes
-  // from its own payload instead of a participant roster it never sees.
-  const pendingInvitations = myId ? state.eventInvitations || [] : [];
-  const invitationRows = pendingInvitations
-    .map(
-      (event) => `
-        <div class="card stack" data-pending-invitation="${event.id}">
-          <div class="row-between">
-            <strong>${escapeHtml(event.name)}</strong>
-            <span class="badge badge-paused">Eingeladen</span>
-          </div>
-          <div class="muted" style="font-size:var(--font-size-sm);">
-            ${icon('calendar')} ${new Date(event.startsAt).toLocaleDateString('de-DE')}${event.endsAt == null ? '' : ` – ${new Date(event.endsAt).toLocaleDateString('de-DE')}`}
-          </div>
-          <div class="row" style="gap:var(--space-2);">
-            <button type="button" class="btn btn-primary" data-accept-invitation="${event.id}">Annehmen</button>
-            <button type="button" class="btn" data-decline-invitation="${event.id}">Ablehnen</button>
-          </div>
-        </div>`,
-    )
-    .join('');
+  // A member's own ended events live in their own field (state.endedEvents)
+  // rather than state.availableEvents, which deliberately excludes them (see
+  // routes/events.ts) — merge both here so the split below can sort them into
+  // the active list and the collapsed Historie the same way managedEvents does.
+  // plannedEvents is retained as an empty compatibility field. Only accepted
+  // participation controls whether a member sees an event here.
+  const memberEvents = canManage
+    ? []
+    : [...(state.availableEvents || []), ...(state.endedEvents || []), ...(state.plannedEvents || [])].filter(
+        (e) => !e.isBase,
+      );
+  const events = (canManage ? realEvents : memberEvents).slice().sort(byStartsAtDescending);
+  const renderCard = (event) => (canManage ? renderEventCard(event) : renderMemberEventCard(event));
+  const activeEvents = events.filter((e) => !e.isEnded);
+  const endedEvents = events.filter((e) => e.isEnded);
+  const activeEmptyText = events.length === 0
+    ? (canManage ? 'Noch keine Events angelegt.' : 'Du nimmst noch an keinem eigenen Event teil.')
+    : (canManage ? 'Keine laufenden Events.' : 'Aktuell kein laufendes Event.');
 
   return `
     <section class="card stack grouped-page-section" aria-labelledby="orga-events-title">
@@ -140,26 +563,92 @@ function renderEventSection() {
           <h2 id="orga-events-title">Events</h2>
           ${infoTooltipHtml('orga-events-help', 'Events', EVENT_HELP)}
         </span>
-        ${canManage ? `<button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>` : ''}
+        ${
+          canManage
+            ? `<span class="row" style="gap:var(--space-2);">
+                 <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>
+               </span>`
+            : ''
+        }
       </div>
       ${
-        pendingInvitations.length > 0
-          ? `<div class="stack" aria-labelledby="orga-invitations-title">
-               <div class="section-title" id="orga-invitations-title" tabindex="-1">Ausstehende Einladungen</div>
-               <div class="two-column-card-grid">${invitationRows}</div>
-             </div>`
-          : ''
+        activeEvents.length === 0
+          ? emptyStateHtml(activeEmptyText, { icon: icon('calendar') })
+          : `<div class="stack orga-event-grid">${activeEvents.map(renderCard).join('')}</div>`
       }
       ${
-        visibleEventCount === 0
-          ? emptyStateHtml(
-              canManage ? 'Noch keine Events angelegt.' : 'Du nimmst noch an keinem eigenen Event teil.',
-              { icon: icon('calendar') },
-            )
-          : `<div class="two-column-card-grid orga-event-grid">${cards}</div>`
+        endedEvents.length > 0
+          ? `<details class="card grouped-page-section collapsible-section" data-event-history ${eventHistoryOpen ? 'open' : ''}>
+               <summary class="collapsible-section-header">
+                 <h2>Historie</h2>
+                 <span class="collapsible-section-summary-end">
+                   <span class="badge badge-offline">${endedEvents.length}</span>
+                   <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+                 </span>
+               </summary>
+               <div class="collapsible-section-content">
+                 <div class="stack orga-event-grid">${endedEvents.map(renderCard).join('')}</div>
+               </div>
+             </details>`
+          : ''
       }
     </section>
   `;
+}
+
+// Single invitation card: cost/deadline disclosure plus accept/decline.
+// Rendered from Profile's own "Einladungen" section rather than here — a
+// teaser sitting directly above the Events cards made it too easy to miss and
+// cluttered the tab (see DESIGN_SYSTEM.md's "Orga" entry). Home's "Aktuell"
+// list gets a lightweight linking nudge instead (see aktuellStatus.js).
+export function renderInvitationCard(event) {
+  return `
+    <article class="card stack event-card event-card-invitation" data-pending-invitation="${event.id}">
+      <div class="row-between food-order-card-header event-card-header">
+        <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
+        <span class="event-card-header-badges">
+          <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
+          <span class="badge badge-paused">Eingeladen</span>
+        </span>
+      </div>
+      ${renderEventInfo(event, { invitation: true })}
+      <div class="event-card-actions">
+        <button type="button" class="btn btn-primary" data-accept-invitation="${event.id}">Annehmen</button>
+        <button type="button" class="btn" data-decline-invitation="${event.id}">Ablehnen</button>
+      </div>
+    </article>`;
+}
+
+// A teaser is all an invited account receives, so the invitation list comes
+// from its own payload instead of a participant roster it never sees.
+export function pendingEventInvitations() {
+  return getMyId() ? state.eventInvitations || [] : [];
+}
+
+// Reused only by Profile's "Einladungen" section today, so it targets that
+// page's own headings directly (the same direct-ID pattern the previous
+// Events-tab handler used for #orga-invitations-title/#orga-events-title):
+// the refresh below replaces the invitation button's own DOM, so focus needs
+// an explicit, still-present target instead of being left to fall back to
+// <body>.
+export function wirePendingInvitationActions(container, ctx) {
+  container.querySelectorAll('[data-accept-invitation], [data-decline-invitation]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const accept = Boolean(btn.dataset.acceptInvitation);
+      const eventId = btn.dataset.acceptInvitation || btn.dataset.declineInvitation;
+      btn.disabled = true;
+      try {
+        if (accept) await api.events.acceptInvitation(eventId);
+        else await api.events.declineInvitation(eventId);
+        await ctx.refresh();
+        (container.querySelector('#profile-invitations-title') || container.querySelector('#profile-view-title'))?.focus();
+        showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
+      } catch (err) {
+        btn.disabled = false;
+        showToast(err.message, { error: true });
+      }
+    });
+  });
 }
 
 // Triggers a browser download of the event's PDF "Andenken" — a designed
@@ -189,7 +678,14 @@ function openEventForm(ctx, existing) {
   const isEdit = Boolean(existing);
   const now = Date.now();
   const defaultEnd = now + 24 * 60 * 60 * 1000;
-
+  const eventTypes = availableEventTypeOptions(state.eventTypeOptions);
+  const selectedEventType = existing?.eventType ?? 'lan';
+  const eventTypeSelectOptions = eventTypes
+    .map(
+      (eventType) =>
+        `<option value="${escapeHtml(eventType.key)}" ${eventType.key === selectedEventType ? 'selected' : ''}>${escapeHtml(eventType.title)}</option>`,
+    )
+    .join('');
   let capturedEl;
   const { close } = openModal(
     isEdit ? 'Event bearbeiten' : 'Neues Event',
@@ -198,6 +694,10 @@ function openEventForm(ctx, existing) {
         <div>
           <label for="event-name" class="field-label">Name</label>
           <input type="text" id="event-name" maxlength="80" required autofocus value="${escapeHtml(existing?.name ?? '')}" placeholder="z.B. LAN Winter 2027" />
+        </div>
+        <div>
+          <label for="event-type" class="field-label">Eventtyp</label>
+          <select id="event-type" ${isEdit ? 'disabled' : ''}>${eventTypeSelectOptions}</select>
         </div>
         <div class="field-row">
           <div>
@@ -210,12 +710,51 @@ function openEventForm(ctx, existing) {
           </div>
         </div>
         <div>
-          <label for="event-location" class="field-label">Ort (optional)</label>
-          <input type="text" id="event-location" maxlength="80" placeholder="z.B. bei Tim" value="${escapeHtml(existing?.location ?? '')}" />
+          <label for="event-location" class="field-label">Ort oder Karten-Link (optional)</label>
+          <input type="text" id="event-location" maxlength="500" placeholder="z.B. https://maps.google.com/…" value="${escapeHtml(existing?.location ?? '')}" />
         </div>
         <div>
           <label for="event-description" class="field-label">Notiz (optional)</label>
-          <textarea id="event-description" maxlength="500" rows="2" placeholder="z.B. Fokus: AoE2-Turnier">${escapeHtml(existing?.description ?? '')}</textarea>
+          <textarea id="event-description" maxlength="500" rows="2" placeholder="z.B. Hinweise, Ablauf oder Treffpunkt">${escapeHtml(existing?.description ?? '')}</textarea>
+        </div>
+        <div class="field-row event-payment-fields">
+          <div>
+            <label for="event-cost" class="field-label">Beitrag pro Person</label>
+            <label class="food-order-price-field">
+              <input type="text" class="food-order-price-input" id="event-cost" inputmode="decimal" placeholder="z.B. 25,00" value="${existing?.costCents ? escapeHtml((existing.costCents / 100).toFixed(2).replace('.', ',')) : ''}" />
+              <span aria-hidden="true">€</span>
+            </label>
+          </div>
+          <div>
+            <div class="food-order-paypal-label">
+              <label for="event-accommodation-cost" class="field-label">Gesamtpreis Unterkunft</label>
+              ${infoTooltipHtml('event-accommodation-cost-help', 'Gesamtpreis Unterkunft', 'Wird mit den bereits eingegangenen Beiträgen verglichen. Der rechnerische Preis pro Kopf verwendet nur aktuell zugesagte Personen.')}
+            </div>
+            <label class="food-order-price-field">
+              <input type="text" class="food-order-price-input" id="event-accommodation-cost" inputmode="decimal" placeholder="z.B. 1.200,00" value="${existing?.accommodationCostCents ? escapeHtml((existing.accommodationCostCents / 100).toFixed(2).replace('.', ',')) : ''}" />
+              <span aria-hidden="true">€</span>
+            </label>
+          </div>
+        </div>
+        <div class="field-row event-payment-fields">
+          <div>
+            <div class="food-order-paypal-label">
+              <label for="event-paypal" class="field-label">PayPal</label>
+              ${infoTooltipHtml(
+                'event-paypal-help',
+                'PayPal',
+                'E-Mail-Adresse oder vollständigen PayPal.me-Link einfügen. Bei einer E-Mail-Adresse wird sie beim Öffnen von PayPal kopiert; ein Betrag kann nur beim PayPal.me-Link vorausgefüllt werden.',
+              )}
+            </div>
+            <input type="text" id="event-paypal" maxlength="300" placeholder="E-Mail-Adresse oder https://paypal.me/name" value="${escapeHtml(paypalEmailFromLink(existing?.paypalLink) ?? existing?.paypalLink ?? '')}" />
+          </div>
+          <div>
+            <div class="food-order-paypal-label">
+              <label for="event-payment-due" class="field-label">Zahlungsziel</label>
+              ${infoTooltipHtml('event-payment-due-help', 'Zahlungsziel', 'Ist ein Datum gesetzt, beginnen Erinnerungen an diesem Tag. Ohne Zahlungsziel beginnen sie zwei Stunden nach der Zusage.')}
+            </div>
+            ${dateTimeFieldHtml('event-payment-due', existing?.paymentDueAt ?? null, { clearable: true, dateOnly: true, label: 'Zahlungsziel' })}
+          </div>
         </div>
         <button type="submit" class="btn btn-primary btn-block">${isEdit ? 'Speichern' : 'Event anlegen'}</button>
       </form>
@@ -226,18 +765,28 @@ function openEventForm(ctx, existing) {
         const name = capturedEl.querySelector('#event-name').value.trim();
         const location = capturedEl.querySelector('#event-location').value.trim();
         const description = capturedEl.querySelector('#event-description').value.trim();
+        const cost = capturedEl.querySelector('#event-cost').value.trim();
+        const accommodationCost = capturedEl.querySelector('#event-accommodation-cost').value.trim();
+        const paypal = capturedEl.querySelector('#event-paypal').value.trim();
+        const paymentDueAt = capturedEl.querySelector('#event-payment-due').value;
+        const paymentDueChanged = (paymentDueAt ? new Date(paymentDueAt).getTime() : null) !== (existing?.paymentDueAt ?? null);
         const dirty = isEdit
           ? name !== (existing.name ?? '') ||
             location !== (existing.location ?? '') ||
-            description !== (existing.description ?? '')
-          : Boolean(name || location || description);
-        return dirty ? 'Die Event-Daten (Name, Zeitraum, Ort, Notiz) gehen verloren.' : null;
+            description !== (existing.description ?? '') ||
+            cost !== (existing.costCents ? (existing.costCents / 100).toFixed(2).replace('.', ',') : '') ||
+            accommodationCost !== (existing.accommodationCostCents ? (existing.accommodationCostCents / 100).toFixed(2).replace('.', ',') : '') ||
+            paypal !== (paypalEmailFromLink(existing.paypalLink) ?? existing.paypalLink ?? '') ||
+            paymentDueChanged
+          : Boolean(name || location || description || cost || accommodationCost || paypal || paymentDueAt);
+        return dirty ? 'Die Event-Daten (Name, Zeitraum, Ort, Notiz, Beiträge, Unterkunftskosten, PayPal und Zahlungsziel) gehen verloren.' : null;
       },
       onMount: (modalEl) => {
         capturedEl = modalEl;
         wireDateTimeField(modalEl, 'event-starts');
         wireDateTimeField(modalEl, 'event-ends');
-
+        wireDateTimeField(modalEl, 'event-payment-due');
+        wireInfoTooltips(modalEl);
         modalEl.querySelector('#event-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const name = modalEl.querySelector('#event-name').value.trim();
@@ -246,13 +795,47 @@ function openEventForm(ctx, existing) {
           const endsVal = modalEl.querySelector('#event-ends').value;
           const location = modalEl.querySelector('#event-location').value.trim();
           const description = modalEl.querySelector('#event-description').value.trim();
+          const paymentDueVal = modalEl.querySelector('#event-payment-due').value;
+          const paymentDueAt = paymentDueVal ? new Date(paymentDueVal).getTime() : null;
+          const costCents = parseEventCostCents(modalEl.querySelector('#event-cost').value);
+          if (Number.isNaN(costCents)) {
+            showToast('Der Beitrag muss zwischen 0,01 € und 10.000,00 € liegen.', { error: true });
+            return;
+          }
+          const accommodationCostCents = parseEventAccommodationCostCents(
+            modalEl.querySelector('#event-accommodation-cost').value,
+          );
+          if (Number.isNaN(accommodationCostCents)) {
+            showToast('Der Gesamtpreis der Unterkunft muss zwischen 0,01 € und 100.000,00 € liegen.', { error: true });
+            return;
+          }
+          let paypalLink;
+          try {
+            paypalLink = normalizePaypalInput(modalEl.querySelector('#event-paypal').value);
+          } catch (err) {
+            showToast(err.message, { error: true });
+            return;
+          }
+          if (paypalLink && !costCents) {
+            showToast('Für PayPal müssen Kosten pro Person angegeben werden.', { error: true });
+            return;
+          }
+          if (paymentDueAt && !costCents) {
+            showToast('Für ein Zahlungsziel müssen Kosten pro Person angegeben werden.', { error: true });
+            return;
+          }
 
           const payload = {
             name,
+            ...(!isEdit ? { eventType: modalEl.querySelector('#event-type').value } : {}),
             startsAt: startsVal ? new Date(startsVal).getTime() : undefined,
             endsAt: endsVal ? new Date(endsVal).getTime() : null,
             location: location || null,
             description: description || null,
+            costCents,
+            accommodationCostCents,
+            paypalLink,
+            paymentDueAt,
           };
 
           try {
@@ -279,83 +862,79 @@ function openEventForm(ctx, existing) {
 function participationStatus(status) {
   if (status === 'accepted') return { label: 'Zugesagt', badge: 'badge-playing' };
   if (status === 'declined') return { label: 'Abgelehnt', badge: 'badge-offline' };
-  return { label: 'Eingeladen', badge: 'badge-paused' };
+  return { label: 'Einladung offen', badge: 'badge-paused' };
 }
 
-function renderParticipantsBody(event) {
-  const participants = new Map((event.participants ?? []).map((entry) => [entry.playerId, entry.status]));
+function renderParticipantManagerRows(event) {
+  const participants = new Map((event.participants ?? []).map((entry) => [entry.playerId, entry]));
   const inviteAllowed = !event.isEnded;
-  const rows = state.players
+  const canSetAnyPaid = canManageEventPayments(event)
+    && (event.costCents !== null || [...participants.values()].some((participant) => participant.paid));
+  return state.players
     .map((p) => {
-      const status = participants.get(p.id);
+      const participant = participants.get(p.id);
+      const status = participant?.status;
       const presentation = status ? participationStatus(status) : null;
+      const paymentLocked = Boolean(participant?.paymentLocked ?? participant?.paid);
+      const paidTitle = participant?.paid
+        ? `${p.name}: Bezahlt – Markierung aufheben`
+        : `${p.name} als bezahlt markieren`;
       return `
-        <div class="card row-between">
-          <span class="player-name" style="min-width:0;">${escapeHtml(p.name)}</span>
-          <span class="row" style="gap:var(--space-2);flex-wrap:wrap;justify-content:flex-end;">
+        <div class="event-participant-manager-row">
+          <span class="player-name"><span>${escapeHtml(p.name)}</span>${participant?.paid ? `<small class="event-payment-proof">${escapeHtml(paymentProof({ ...participant, playerId: p.id }))}</small>` : ''}</span>
+          <span class="event-participant-manager-actions">
             ${presentation ? `<span class="badge ${presentation.badge}">${presentation.label}</span>` : ''}
+            ${status === 'accepted' && canSetAnyPaid ? `<button type="button" class="payment-paid-marker ${participant.paid ? 'is-paid' : ''}" data-modal-toggle-event-paid="${p.id}" aria-pressed="${Boolean(participant.paid)}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}">${icon(participant.paid ? 'check' : 'circleDashed')}<span>${participant.paid ? 'Bezahlt' : 'Bezahlt?'}</span></button>` : ''}
             ${inviteAllowed && (!status || status === 'declined') ? `<button type="button" class="btn btn-sm" data-invite-participant="${p.id}">${status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>` : ''}
-            ${status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${p.id}">Entfernen</button>` : ''}
+            ${status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${p.id}" ${paymentLocked ? 'aria-disabled="true"' : ''}>Entfernen</button>` : ''}
           </span>
         </div>`;
     })
     .join('');
-  return `<div class="stack"><p class="muted" style="font-size:var(--font-size-xs);">Nur zugesagte Spieler erhalten Teilnehmerdaten und werden bei aktivem Event-Tracking berücksichtigt.</p>${event.isEnded ? '<p class="muted" style="font-size:var(--font-size-xs);">Für beendete Events sind keine neuen Einladungen mehr möglich.</p>' : ''}${state.players.length === 0 ? emptyStateHtml('Noch keine Spieler.') : rows}</div>`;
+}
+
+function renderParticipantsBody(event) {
+  return `
+    <div class="event-participants-body">
+      ${event.isEnded ? '<div class="muted event-participants-note" role="status">Für beendete Events sind keine neuen Einladungen mehr möglich.</div>' : ''}
+      ${state.players.length === 0 ? emptyStateHtml('Noch keine Teilnehmenden.') : `<div class="event-participant-manager-list">${renderParticipantManagerRows(event)}</div>`}
+    </div>`;
 }
 
 // Event managers invite active group members here. Acceptance remains a
 // personal action; administrative removal stays available for every status.
 function openParticipantsForm(ctx, event) {
-  const participants = new Map((event.participants ?? []).map((entry) => [entry.playerId, entry.status]));
-  const inviteAllowed = !event.isEnded;
-  const rows = state.players
-    .map((p) => {
-      const status = participants.get(p.id);
-      const presentation = status ? participationStatus(status) : null;
-      return `
-        <div class="card row-between">
-          <span class="player-name" style="min-width:0;">${escapeHtml(p.name)}</span>
-          <span class="row" style="gap:var(--space-2);flex-wrap:wrap;justify-content:flex-end;">
-            ${presentation ? `<span class="badge ${presentation.badge}">${presentation.label}</span>` : ''}
-            ${
-              inviteAllowed && (!status || status === 'declined')
-                ? `<button type="button" class="btn btn-sm" data-invite-participant="${p.id}">${status === 'declined' ? 'Erneut einladen' : 'Einladen'}</button>`
-                : ''
-            }
-            ${status ? `<button type="button" class="btn btn-sm btn-danger" data-remove-participant="${p.id}">Entfernen</button>` : ''}
-          </span>
-        </div>`;
-    })
-    .join('');
-
   const { close } = openModal(
-    `Teilnehmer – ${escapeHtml(event.name)}`,
-    `
-      <div class="stack">
-        <p class="muted" style="font-size:var(--font-size-xs);">
-          Nur zugesagte Spieler erhalten Teilnehmerdaten und werden bei aktivem Event-Tracking berücksichtigt.
-        </p>
-        ${event.isEnded ? '<p class="muted" style="font-size:var(--font-size-xs);">Für beendete Events sind keine neuen Einladungen mehr möglich.</p>' : ''}
-        ${state.players.length === 0 ? emptyStateHtml('Noch keine Spieler.') : rows}
-      </div>
-    `,
+    `Teilnehmende – ${escapeHtml(event.name)}`,
+    renderParticipantsBody(event),
     {
       onMount: (modalEl) => {
         modalEl.addEventListener('click', async (clickEvent) => {
-          const button = clickEvent.target.closest('[data-invite-participant], [data-remove-participant]');
+          const button = clickEvent.target.closest('[data-invite-participant], [data-remove-participant], [data-modal-toggle-event-paid]');
           if (!button) return;
-          const playerId = button.dataset.inviteParticipant || button.dataset.removeParticipant;
+          const playerId = button.dataset.inviteParticipant || button.dataset.removeParticipant || button.dataset.modalToggleEventPaid;
           const isInvite = Boolean(button.dataset.inviteParticipant);
+          const isPayment = Boolean(button.dataset.modalToggleEventPaid);
+          if (!isInvite && !isPayment && button.getAttribute('aria-disabled') === 'true') return;
+          if (!isInvite && !isPayment) {
+            const participant = (event.participants ?? []).find((candidate) => candidate.playerId === playerId);
+            const confirmed = await confirmDialog(
+              `${participant?.name ?? 'Diese Person'} wirklich aus dem Event entfernen?`,
+              { title: 'Teilnahme entfernen?', confirmText: 'Entfernen', danger: true },
+            );
+            if (!confirmed) return;
+          }
           button.disabled = true;
           try {
-            if (isInvite) await api.events.inviteParticipant(event.id, playerId);
+            if (isPayment) await api.events.setParticipantPaid(event.id, playerId, button.getAttribute('aria-pressed') !== 'true');
+            else if (isInvite) await api.events.inviteParticipant(event.id, playerId);
             else await api.events.removeParticipant(event.id, playerId);
             await ctx.refresh();
             const updatedEvent = (state.managedEvents || []).find((candidate) => candidate.id === event.id);
             if (!updatedEvent) return close();
             modalEl.querySelector('.modal-body').innerHTML = renderParticipantsBody(updatedEvent);
-            modalEl.querySelector('[data-invite-participant], [data-remove-participant]')?.focus();
-            showToast(isInvite ? 'Einladung gesendet.' : 'Event-Teilnahme entfernt.');
+            if (playerId) modalEl.querySelector(`[data-modal-toggle-event-paid="${CSS.escape(playerId)}"], [data-invite-participant="${CSS.escape(playerId)}"], [data-remove-participant="${CSS.escape(playerId)}"]`)?.focus();
+            showToast(isPayment ? 'Bezahlstatus aktualisiert.' : isInvite ? 'Einladung gesendet.' : 'Event-Teilnahme entfernt.');
           } catch (err) {
             button.disabled = false;
             showToast(err.message, { error: true });
@@ -398,10 +977,53 @@ export function renderOrgaEvents(container, ctx) {
     </div>
   `;
 
+  container.querySelectorAll('[data-event-participants]').forEach((details) => {
+    details.addEventListener('toggle', () => {
+      if (details.open) expandedEventParticipants.add(details.dataset.eventParticipants);
+      else expandedEventParticipants.delete(details.dataset.eventParticipants);
+    });
+  });
+
+  container.querySelector('[data-event-history]')?.addEventListener('toggle', (e) => {
+    eventHistoryOpen = e.currentTarget.open;
+  });
+
   container.querySelectorAll('[data-export-event]').forEach((btn) => {
     btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
   });
   wireInfoTooltips(container);
+  container.querySelectorAll('[data-toggle-event-paid]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const eventId = btn.dataset.toggleEventPaid;
+      const playerId = btn.dataset.paymentPlayer;
+      btn.disabled = true;
+      try {
+        await api.events.setParticipantPaid(
+          eventId,
+          playerId,
+          btn.getAttribute('aria-pressed') !== 'true',
+        );
+        await ctx.refresh();
+        [...container.querySelectorAll('[data-toggle-event-paid]')]
+          .find((candidate) =>
+            candidate.dataset.toggleEventPaid === eventId && candidate.dataset.paymentPlayer === playerId)
+          ?.focus();
+        showToast('Bezahlstatus aktualisiert.');
+      } catch (err) {
+        btn.disabled = false;
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-pay-event]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      btn.disabled = true;
+      handleEventPay(btn.dataset.payEvent, ctx).finally(() => {
+        btn.disabled = false;
+      });
+    });
+  });
 
   // Absent for a member: only owner/admin get the create action.
   container.querySelector('#new-event-btn')?.addEventListener('click', () => openEventForm(ctx, null));
@@ -417,28 +1039,11 @@ export function renderOrgaEvents(container, ctx) {
       if (event) openParticipantsForm(ctx, event);
     });
   });
-  container.querySelectorAll('[data-accept-invitation], [data-decline-invitation]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const accept = Boolean(btn.dataset.acceptInvitation);
-      const eventId = btn.dataset.acceptInvitation || btn.dataset.declineInvitation;
-      btn.disabled = true;
-      try {
-        if (accept) await api.events.acceptInvitation(eventId);
-        else await api.events.declineInvitation(eventId);
-        await ctx.refresh();
-        (document.querySelector('#orga-invitations-title') || document.querySelector('#orga-events-title'))?.focus();
-        showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
-      } catch (err) {
-        btn.disabled = false;
-        showToast(err.message, { error: true });
-      }
-    });
-  });
   container.querySelectorAll('[data-start-tracking]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.startTracking);
       if (!event) return;
-      if (!(await confirmDialog(`Tracking für „${event.name}" starten? Live-Status und Spielzeit werden ab jetzt für die Teilnehmer erfasst.`, { confirmText: 'Tracking starten' }))) return;
+      if (!(await confirmDialog(`Tracking für „${event.name}" starten? Live-Status und Spielzeit werden ab jetzt für die Teilnehmenden erfasst.`, { confirmText: 'Tracking starten' }))) return;
       try {
         await api.events.startTracking(event.id);
         await ctx.refresh();
@@ -466,7 +1071,7 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.events || []).find((e) => e.id === btn.dataset.restartEvent);
       if (!event) return;
-      if (!(await confirmDialog(`Event „${event.name}" wieder starten? Das Event wird geöffnet und Tracking für die Teilnehmer aktiviert.`, { confirmText: 'Event wieder starten' }))) return;
+      if (!(await confirmDialog(`Event „${event.name}" wieder starten? Das Event wird geöffnet und Tracking für die Teilnehmenden aktiviert.`, { confirmText: 'Event wieder starten' }))) return;
       try {
         await api.events.restart(event.id);
         await ctx.refresh();

@@ -23,6 +23,7 @@ import { invalidateBroadcasts } from './views/broadcast.js';
 import { invalidateInfoBoard, openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
 import { clearFoodOrderTarget, invalidateFoodOrders, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
+import { invalidateEventPolls } from './views/eventPolls.js';
 import { invalidateChecklist } from './views/checklist.js';
 import { invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
 import { invalidateArrivals } from './views/arrivals.js';
@@ -46,6 +47,10 @@ import { initGroupContext, refreshGroupContext } from './groupContext.js';
 import { isKnownView, VIEW_REGISTRY } from './viewRegistry.js';
 import { navGroupForView, sectionKeyForView } from './sectionNav.js';
 import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
+import { captureViewRenderState, restoreViewRenderState } from './viewRenderState.js';
+import { realtimeEventAffectsView } from './realtimeRefreshPolicy.js';
+import { viewIsEnabledForEvent } from './eventFeatures.js';
+import { bottomNavItemsForEvent } from './bottomNav.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -63,15 +68,18 @@ let playerDataReady = false;
 const viewContainer = document.getElementById('view-container');
 let pendingSearchTarget = null;
 let renderRevision = 0;
+let sharedRefreshPromise = null;
+let sharedRefreshDirty = false;
+let sharedRefreshShouldRender = false;
 
 function parseFoodOrderHash(hash) {
   const parts = String(hash || '').replace(/^#/, '').split('/');
-  if (parts[0] !== 'foodOrders') return null;
-  if (!parts[1]) return { view: 'foodOrders', target: null };
+  if (!['foodOrders', 'eventPolls'].includes(parts[0])) return null;
+  if (!parts[1]) return { view: parts[0], target: null };
   try {
-    return { view: 'foodOrders', target: { type: 'order', id: decodeURIComponent(parts[1]) } };
+    return { view: parts[0], target: { type: parts[0] === 'foodOrders' ? 'order' : 'poll', id: decodeURIComponent(parts[1]) } };
   } catch {
-    return { view: 'foodOrders', target: null };
+    return { view: parts[0], target: null };
   }
 }
 
@@ -115,14 +123,81 @@ function syncArcadeStylesheet(entry) {
 // "hey, go vote" nudge.
 let lastVoteRound = null;
 
+async function runSharedRefresh() {
+  // Give the socket echo and the mutation response one task window to meet.
+  // Every signal received while the requests are in flight marks the batch
+  // dirty again; all network reconciliation finishes before a single render.
+  await new Promise((resolve) => setTimeout(resolve, 24));
+  let committed = false;
+  do {
+    sharedRefreshDirty = false;
+    committed = await loadAll();
+    // loadAll() intentionally discards its response when a newer caller
+    // started another central snapshot in parallel. Do not render the old
+    // state or resolve mutation callers in that case: retry until this
+    // coordinator owns the snapshot that actually committed.
+  } while (sharedRefreshDirty || !committed);
+  renderEventContextSwitcher();
+  syncFeatureNavigation();
+  if (sharedRefreshShouldRender) renderCurrent();
+}
+
+function syncFeatureNavigation() {
+  const items = bottomNavItemsForEvent(state.activeEvent);
+  document.querySelectorAll('.nav-btn[data-nav-slot]').forEach((button) => {
+    const item = items[Number(button.dataset.navSlot)];
+    if (!item) return;
+    button.dataset.view = item.view;
+    button.id = item.id ?? '';
+    button.setAttribute('aria-label', item.ariaLabel);
+    const labelElement = button.querySelector('.nav-label');
+    labelElement.textContent = item.label;
+    if (item.labelBreakAfter) {
+      labelElement.textContent = '';
+      labelElement.append(
+        item.label.slice(0, item.labelBreakAfter),
+        document.createElement('wbr'),
+        item.label.slice(item.labelBreakAfter),
+      );
+    }
+    const iconElement = button.querySelector('.nav-icon');
+    iconElement.dataset.domainIcon = item.iconKey;
+    iconElement.innerHTML = icon(domainIcon(item.iconKey));
+
+    const routeAvailable = isKnownView(item.view);
+    button.disabled = !routeAvailable;
+    button.title = routeAvailable ? '' : `${item.label} sind in diesem Stand noch nicht verfügbar.`;
+    button.hidden = !viewIsEnabledForEvent(button.dataset.view, state.activeEvent);
+  });
+  syncBottomNavigationActiveState();
+}
+
+function syncBottomNavigationActiveState() {
+  const activeGroup = navGroupForView(currentView, state.activeEvent);
+  document.querySelectorAll('.nav-btn').forEach((button) => {
+    button.classList.toggle(
+      'active',
+      !button.disabled && navGroupForView(button.dataset.view, state.activeEvent) === activeGroup,
+    );
+  });
+}
+
+function queueSharedRefresh({ render = true } = {}) {
+  sharedRefreshDirty = true;
+  sharedRefreshShouldRender ||= render;
+  if (!sharedRefreshPromise) {
+    sharedRefreshPromise = runSharedRefresh().finally(() => {
+      sharedRefreshPromise = null;
+      sharedRefreshShouldRender = false;
+    });
+  }
+  return sharedRefreshPromise;
+}
+
 const ctx = {
   // Reload everything from the API, then re-render the active view. Use
   // after mutations whose effects aren't already carried by a socket event.
-  refresh: async () => {
-    await loadAll();
-    renderEventContextSwitcher();
-    renderCurrent();
-  },
+  refresh: () => queueSharedRefresh(),
   // Re-render the active view from whatever is already in `state`, with no
   // network round trip. Use when a view already updated `state` itself
   // (e.g. a freshly drawn matchmaking result).
@@ -140,21 +215,22 @@ const ctx = {
 // drift again.
 function invalidateEventScopedCaches() {
   invalidateAktuellStatus();
-  invalidateMatchmakingHistory();
+  invalidateMatchmakingHistory({ hard: true });
   invalidateMatchmakingDraft();
   invalidateVoteEventScope();
-  invalidateTournaments();
-  invalidateHomeSeating();
-  invalidateSeating();
-  invalidateBroadcasts();
+  invalidateTournaments({ hard: true });
+  invalidateHomeSeating({ hard: true });
+  invalidateSeating({ hard: true });
+  invalidateBroadcasts({ hard: true });
   invalidateInfoBoard();
   invalidateFoodOrders();
-  invalidateChecklist();
-  invalidateArrivals();
-  invalidateMusic();
+  invalidateEventPolls();
+  invalidateChecklist(undefined, { hard: true });
+  invalidateArrivals({ hard: true });
+  invalidateMusic({ hard: true });
   invalidateAnalytics();
   invalidateMyStats();
-  invalidateHallOfFame();
+  invalidateHallOfFame({ hard: true });
   invalidateAdminReadiness();
   invalidateAdminFeatureUsage();
   invalidateSeatNeighbors();
@@ -252,6 +328,7 @@ async function activateEvent(eventId, { navigate, searchTarget = null } = {}) {
       invalidateEventScopedCaches();
       await loadAll();
       renderEventContextSwitcher();
+      syncFeatureNavigation();
       await refreshNotificationBanner();
       renderCurrent();
     }
@@ -295,14 +372,21 @@ function wireEventContextSwitcher() {
   });
 }
 
-function renderCurrent() {
+function renderCurrent({ preserveState = true } = {}) {
+  if (playerDataReady && !viewIsEnabledForEvent(currentView, state.activeEvent)) {
+    switchView('home', { replace: true });
+    showToast('Dieser Bereich ist für das aktive Event nicht aktiviert.');
+    return;
+  }
   const revision = ++renderRevision;
   const view = currentView;
   const entry = VIEW_REGISTRY[view];
   if (!entry) return;
+  const renderState = preserveState ? captureViewRenderState(viewContainer) : null;
   const stylesheetReady = syncArcadeStylesheet(entry);
   if (entry.render) {
     entry.render(viewContainer, ctx);
+    restoreViewRenderState(viewContainer, renderState);
     focusPendingSearchTarget();
     return;
   }
@@ -312,6 +396,7 @@ function renderCurrent() {
     .then(([renderFn]) => {
       if (revision !== renderRevision || view !== currentView) return;
       renderFn(viewContainer, ctx);
+      restoreViewRenderState(viewContainer, renderState);
       focusPendingSearchTarget();
     })
     .catch((error) => {
@@ -336,9 +421,15 @@ function focusPendingSearchTarget() {
     ].filter((el) => el.dataset.orderCard === id || el.dataset.closedOrder === id),
     broadcast: [...viewContainer.querySelectorAll('[data-broadcast]')].filter((el) => el.dataset.broadcast === id),
     carpool: [...viewContainer.querySelectorAll('[data-carpool]')].filter((el) => el.dataset.carpool === id),
+    poll: [...viewContainer.querySelectorAll('[data-poll-card]')].filter((el) => el.dataset.pollCard === id),
   }[type] ?? [];
   const element = candidates[0];
   if (!element) return;
+  let enclosingDetails = element.closest('details');
+  while (enclosingDetails) {
+    enclosingDetails.open = true;
+    enclosingDetails = enclosingDetails.parentElement?.closest('details') ?? null;
+  }
   element.classList.add('search-target-highlight');
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   element.scrollIntoView({ block: 'center', behavior: reducedMotion ? 'auto' : 'smooth' });
@@ -375,6 +466,10 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
   // Admin-only areas stay reachable through Admin links and deep links alike,
   // but never render for an account whose role no longer permits them.
   if (viewRequiresAdminRole(view) && playerDataReady && !currentPlayerHasAdminRole()) view = 'foodOrders';
+  if (playerDataReady && !viewIsEnabledForEvent(view, state.activeEvent)) {
+    view = 'home';
+    replace = true;
+  }
   const changed = view !== currentView;
   if (view !== 'foodOrders') clearFoodOrderTarget();
   pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
@@ -387,10 +482,7 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
   viewContainer.dataset.view = view;
   // A nav button stands for a whole area, so every route inside that area
   // (e.g. Teams inside Wettkampf) keeps its button lit — see sectionNav.js.
-  const activeGroup = navGroupForView(view);
-  document.querySelectorAll('.nav-btn').forEach((btn) => {
-    btn.classList.toggle('active', navGroupForView(btn.dataset.view) === activeGroup);
-  });
+  syncBottomNavigationActiveState();
   // Restart the view-enter animation (see .view-enter in style.css). Only on
   // deliberate navigation — realtime-triggered re-renders of the same view
   // must never flash, so renderCurrent() alone doesn't do this.
@@ -401,8 +493,8 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
   // Profil") points new/unset devices at self-onboarding (name, avatar,
   // skills, agent key) instead of leaving them to stumble onto it.
   document.querySelector('.nav-btn[data-view="more"]').classList.toggle('needs-setup', !getMyId());
-  renderCurrent();
-  viewContainer.scrollTop = 0;
+  renderCurrent({ preserveState: !changed && !searchTarget });
+  if (!searchTarget) viewContainer.scrollTop = 0;
   if (replace) {
     history.replaceState({ view }, '');
   } else if (!fromHistory && changed) {
@@ -582,40 +674,44 @@ function wireSocket() {
   // never make the whole app appear offline.
   const socket = connectSocket({ reportConnectionState: true });
 
-  // These events carry no payload (or aren't worth special-casing) — just
-  // reload everything. Infrequent (admin-type actions), so this is cheap.
-  const fullReloadEvents = [
+  // These payload-less events still need a fresh central snapshot, but only
+  // screens that consume the changed entity are redrawn. Secondary caches
+  // are marked stale without throwing their last-known content away.
+  const sharedStateEvents = [
     'players:changed',
     'games:changed',
     'skills:changed',
     'leaderboard:changed',
     'events:changed',
   ];
-  fullReloadEvents.forEach((event) =>
+  sharedStateEvents.forEach((event) =>
     socket.on(event, () => {
-      invalidateMissingSkills();
-      // Cheap enough to invalidate on every one of these (not just
-      // leaderboard:changed, the only one that actually changes match
-      // history) — the next time the Spiele view opens it just refetches.
-      invalidateSkillSuggestions();
-      // Match corrections also change the Teams result history. Invalidate
-      // its separate cache so every open client shows the corrected winner.
-      invalidateMatchmakingHistory();
-      invalidateHallOfFame();
-      invalidateAdminReadiness();
-      // players:changed covers a renamed gamer/real name or new avatar —
-      // both the Home board and the Sitzplan editor embed a snapshot of
-      // player data alongside the layout, so they need the same treatment
-      // or they'd keep showing the old name for the rest of the session on
-      // any device that already has it cached.
-      invalidateHomeSeating();
-      invalidateSeating();
-      // events:changed also covers starting/stopping/switching which event is
-      // tracked, and the Packliste is scoped to that current event - without
-      // this, a stale tasksCache/itemsCache would keep the previous event's
-      // rows on screen (and mutable) after the switch.
-      invalidateChecklist();
-      ctx.refresh();
+      if (event === 'players:changed' || event === 'games:changed' || event === 'skills:changed') {
+        invalidateMissingSkills();
+      }
+      if (event !== 'events:changed') {
+        invalidateSkillSuggestions();
+      }
+      if (event === 'players:changed') {
+        invalidateHomeSeating();
+        invalidateSeating();
+        invalidateChecklist({ scope: 'tasks' });
+        invalidateTournaments();
+        invalidateBroadcasts();
+        invalidateArrivals();
+        if (currentView === 'foodOrders') void refreshFoodOrders(ctx);
+        else invalidateFoodOrders();
+      }
+      if (event === 'games:changed' || event === 'leaderboard:changed') {
+        invalidateMatchmakingHistory();
+        invalidateHallOfFame();
+        invalidateTournaments();
+      }
+      if (event === 'events:changed') {
+        invalidateAdminReadiness();
+        invalidateEventPolls();
+      }
+      void queueSharedRefresh({ render: realtimeEventAffectsView(event, currentView) });
     })
   );
 
@@ -865,6 +961,7 @@ async function main() {
     .then(() => {
       playerDataReady = true;
       renderEventContextSwitcher();
+      syncFeatureNavigation();
       if (appReady) renderCurrentAfterPlayerDataLoad();
     })
     .catch((error) => {
