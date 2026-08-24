@@ -106,7 +106,7 @@ export function getOrRepairActiveEvent(playerId: string): EventContextEvent {
     if (!getActivePlayer(playerId)) throw new Error('Active player required for event context.');
     const current = db
       .prepare(
-        `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id
+        `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id, e.schedule_revision
          FROM player_event_contexts pec
          JOIN events e ON e.id = pec.active_event_id
          JOIN event_participants ep
@@ -128,7 +128,7 @@ export function setActiveEventForPlayer(playerId: string, eventId: string): Even
     if (!getActivePlayer(playerId)) return undefined;
     const event = db
       .prepare(
-        `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id
+        `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id, e.schedule_revision
          FROM events e
          JOIN event_participants ep
            ON ep.event_id = e.id AND ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}

@@ -149,8 +149,7 @@ apiRouter.get('/me', requireUser, (req, res) => {
 });
 
 // The selected workspace is account-wide rather than tab-local. Switching is
-// allowed to published events the account has accepted or marked as
-// interesting; the latter keeps planning polls reachable before a firm yes.
+// limited to published events for which the account is an accepted participant.
 apiRouter.get('/me/active-event', requireUser, (req, res) => {
   res.json(serializeActiveEvent(getOrRepairActiveEvent(req.player!.id)));
 });
