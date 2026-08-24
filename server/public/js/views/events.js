@@ -23,7 +23,7 @@ import { dateTimeFieldHtml, wireDateTimeField, wireDateTimeRange } from '../date
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { getMyId } from '../whoami.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { eventStatusBadgeHtml } from '../eventStatus.js';
+import { compareEventsByStartAscending, eventStatusBadgeHtml } from '../eventStatus.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { formatEuroCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
 import { eventHasFeature } from '../eventFeatures.js';
@@ -522,12 +522,6 @@ function renderEventCard(event) {
   `;
 }
 
-// Newest first, independent of whatever order the API happens to return —
-// both the active list and the collapsed Historie read top-to-bottom by date.
-function byStartsAtDescending(a, b) {
-  return (b.startsAt ?? 0) - (a.startsAt ?? 0);
-}
-
 function renderEventSection() {
   // Only owner/admin receive `managedEvents`; a member's own accepted events
   // carry accepted participant names but no management roster/status data and
@@ -548,7 +542,7 @@ function renderEventSection() {
     : [...(state.availableEvents || []), ...(state.endedEvents || []), ...(state.plannedEvents || [])].filter(
         (e) => !e.isBase,
       );
-  const events = (canManage ? realEvents : memberEvents).slice().sort(byStartsAtDescending);
+  const events = (canManage ? realEvents : memberEvents).slice().sort(compareEventsByStartAscending);
   const renderCard = (event) => (canManage ? renderEventCard(event) : renderMemberEventCard(event));
   const activeEvents = events.filter((e) => !e.isEnded);
   const endedEvents = events.filter((e) => e.isEnded);
