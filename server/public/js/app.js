@@ -49,6 +49,7 @@ import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
 import { captureViewRenderState, restoreViewRenderState } from './viewRenderState.js';
 import { realtimeEventAffectsView } from './realtimeRefreshPolicy.js';
 import { viewIsEnabledForEvent } from './eventFeatures.js';
+import { bottomNavItemsForEvent } from './bottomNav.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -141,8 +142,42 @@ async function runSharedRefresh() {
 }
 
 function syncFeatureNavigation() {
-  document.querySelectorAll('.nav-btn[data-view]').forEach((button) => {
+  const items = bottomNavItemsForEvent(state.activeEvent);
+  document.querySelectorAll('.nav-btn[data-nav-slot]').forEach((button) => {
+    const item = items[Number(button.dataset.navSlot)];
+    if (!item) return;
+    button.dataset.view = item.view;
+    button.id = item.id ?? '';
+    button.setAttribute('aria-label', item.ariaLabel);
+    const labelElement = button.querySelector('.nav-label');
+    labelElement.textContent = item.label;
+    if (item.labelBreakAfter) {
+      labelElement.textContent = '';
+      labelElement.append(
+        item.label.slice(0, item.labelBreakAfter),
+        document.createElement('wbr'),
+        item.label.slice(item.labelBreakAfter),
+      );
+    }
+    const iconElement = button.querySelector('.nav-icon');
+    iconElement.dataset.domainIcon = item.iconKey;
+    iconElement.innerHTML = icon(domainIcon(item.iconKey));
+
+    const routeAvailable = isKnownView(item.view);
+    button.disabled = !routeAvailable;
+    button.title = routeAvailable ? '' : `${item.label} sind in diesem Stand noch nicht verfügbar.`;
     button.hidden = !viewIsEnabledForEvent(button.dataset.view, state.activeEvent);
+  });
+  syncBottomNavigationActiveState();
+}
+
+function syncBottomNavigationActiveState() {
+  const activeGroup = navGroupForView(currentView, state.activeEvent);
+  document.querySelectorAll('.nav-btn').forEach((button) => {
+    button.classList.toggle(
+      'active',
+      !button.disabled && navGroupForView(button.dataset.view, state.activeEvent) === activeGroup,
+    );
   });
 }
 
@@ -439,10 +474,7 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
   viewContainer.dataset.view = view;
   // A nav button stands for a whole area, so every route inside that area
   // (e.g. Teams inside Wettkampf) keeps its button lit — see sectionNav.js.
-  const activeGroup = navGroupForView(view);
-  document.querySelectorAll('.nav-btn').forEach((btn) => {
-    btn.classList.toggle('active', navGroupForView(btn.dataset.view) === activeGroup);
-  });
+  syncBottomNavigationActiveState();
   // Restart the view-enter animation (see .view-enter in style.css). Only on
   // deliberate navigation — realtime-triggered re-renders of the same view
   // must never flash, so renderCurrent() alone doesn't do this.

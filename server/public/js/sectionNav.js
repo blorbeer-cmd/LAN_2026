@@ -72,7 +72,8 @@ export function sectionEntryView(key, event) {
 // Which nav entry should light up for the currently rendered route. A route
 // inside an area highlights that area's button; everything else stands for
 // itself.
-export function navGroupForView(view) {
+export function navGroupForView(view, event) {
+  if (event?.eventType === 'general' && sectionKeyForView(view) === 'orga') return view;
   return sectionKeyForView(view) ?? view;
 }
 
@@ -93,8 +94,12 @@ function badgeText(count) {
 export function renderSectionShell(container, view, { badges = {}, event } = {}) {
   const section = sectionForView(view);
   if (!section) throw new Error(`Kein Bereich für Ansicht ${view}`);
-  const visibleTabs = sectionTabsForEvent(sectionKeyForView(view), event);
-  const visibleTabSignature = visibleTabs.map((tab) => tab.view).join(',');
+  const sectionKey = sectionKeyForView(view);
+  const visibleTabs = sectionTabsForEvent(sectionKey, event);
+  const standalone = event?.eventType === 'general' && sectionKey === 'orga';
+  const visibleTabSignature = standalone
+    ? `standalone:${view}`
+    : visibleTabs.map((tab) => tab.view).join(',');
 
   const existing = container.querySelector(':scope > .section-view');
   if (
@@ -117,9 +122,11 @@ export function renderSectionShell(container, view, { badges = {}, event } = {})
     })
     .join('');
 
+  const activeTab = visibleTabs.find((tab) => tab.view === view);
+  const title = standalone ? activeTab?.label ?? section.title : section.title;
   container.innerHTML = `
-    <h1 class="view-title">${section.title}</h1>
-    <nav class="section-tabs" aria-label="Bereiche in ${section.title}">${tabs}</nav>
+    <h1 class="view-title">${title}</h1>
+    ${standalone ? '' : `<nav class="section-tabs" aria-label="Bereiche in ${section.title}">${tabs}</nav>`}
     <div class="section-view"></div>
   `;
   container.dataset.sectionView = view;

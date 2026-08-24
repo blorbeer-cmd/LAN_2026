@@ -409,10 +409,12 @@ test('an open, actively-searched switcher survives an unrelated background refre
 test('a general event removes LAN-only whole areas across navigation, Home, Profile and Admin', async () => {
   await switchWorkspaceInBrowser(generalEvent);
 
-  for (const view of ['matchmaking', 'votes', 'gameCatalog']) {
-    assert.equal(await page.locator(`.nav-btn[data-view="${view}"]`).isHidden(), true, `${view} must be hidden`);
-  }
-  assert.equal(await page.locator('.nav-btn[data-view="foodOrders"]').isVisible(), true);
+  assert.deepEqual(
+    await page.locator('.nav-btn:visible').evaluateAll((buttons) => buttons.map((button) => (button as HTMLElement).dataset.view)),
+    ['home', 'arrivals', 'checklistPacking', 'checklist', 'eventPolls', 'more'],
+  );
+  assert.equal(await page.locator('.nav-btn[data-view="eventPolls"]').isDisabled(), true);
+  assert.match(await page.locator('.nav-btn[data-view="eventPolls"]').getAttribute('title') ?? '', /noch nicht verfügbar/);
 
   await page.click('.nav-btn[data-view="home"]');
   const home = await viewText();
@@ -445,14 +447,19 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
 
   await page.click('.nav-btn[data-view="more"]');
   const more = await viewText();
-  assert.match(more, /Arcade|Jam|Orga/);
+  assert.match(more, /Arcade|Jam|Events|Essen/);
+  assert.doesNotMatch(more, /Orga/);
   assert.equal(await page.locator('[data-navigate="arcade"]').isVisible(), true);
 
-  await page.click('[data-navigate="arrivals"]');
+  await page.click('.nav-btn[data-view="arrivals"]');
   await page.waitForSelector('#arrivals-times-title');
   assert.doesNotMatch(await viewText(), /Spieler/);
   assert.match(await viewText(), /Person|Teilnehmende/i);
-  await page.click('[data-section-tab="events"]');
+  assert.match(await page.locator('#view-container > .view-title').innerText(), /An- & Abreise/);
+  assert.equal(await page.locator('#view-container > .section-tabs').count(), 0);
+
+  await page.click('.nav-btn[data-view="more"]');
+  await page.click('[data-navigate="events"]');
   const generalEventCard = page.locator(`[data-event-card="${generalEvent}"]`);
   assert.equal(
     await generalEventCard.locator('.event-card-header-badges .badge').first().innerText(),
@@ -493,4 +500,13 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   );
   assert.equal(await page.locator('[data-home-event-overview] .badge').isVisible(), true);
   await page.setViewportSize({ width: 1280, height: 720 });
+
+  await switchWorkspaceInBrowser(eventA);
+  assert.deepEqual(
+    await page.locator('.nav-btn:visible').evaluateAll((buttons) => buttons.map((button) => (button as HTMLElement).dataset.view)),
+    ['home', 'matchmaking', 'votes', 'foodOrders', 'gameCatalog', 'more'],
+  );
+  await page.click('.nav-btn[data-view="more"]');
+  assert.equal(await page.locator('[data-navigate="arrivals"]').isVisible(), true);
+  assert.match(await viewText(), /Orga/);
 });

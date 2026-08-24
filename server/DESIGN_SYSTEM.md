@@ -267,9 +267,11 @@ view and to new views unless a documented domain constraint requires a different
 10. **Keep account management behind the authenticated boundary.** The current roster is readable
     by every signed-in member, while only the session account can edit its own profile. Player
     creation, deletion, roles and foreign-profile editing remain admin-only actions.
-11. **Group related workflows into one area with tabs instead of adding nav entries.** The bottom
-    nav carries exactly the six during-party destinations Home, Match, Vote, Essen, Spiele and
-    Mehr; everything else lives under „Mehr“, the topbar, or (for the merged Rangliste/Statistiken/
+11. **Match primary navigation to the event type.** For LAN events, the bottom nav carries exactly
+    the six during-party destinations Home, Match, Vote, Essen, Spiele and Mehr. A general event
+    instead promotes its planning workflow to Home, An & Abreise, Packliste, To-Do, Abstimmungen
+    and Mehr; the remaining destinations live directly under „Mehr“. Everything else lives under
+    „Mehr“, the topbar, or (for the merged Rangliste/Statistiken/
     Hall-of-Fame area, „Auswertung“) inside the role-protected Admin area. Auswertung is not a
     bottom-nav destination: reaching it now always requires the real owner/admin role
     (`switchView()`'s redirect guard in `app.js`, checked via `currentPlayerHasAdminRole()`), so it
@@ -289,7 +291,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   (full width), `.btn-sm` (compact). Combine variant + size, e.g.
   `class="btn btn-primary btn-sm"`.
 - **Area tabs** — `.section-tabs` with `.section-tab` is the tab row of a merged top-level area
-  (Match, Auswertung, Orga; defined in `sectionNav.js`). It sits directly under the area's
+  (Match, Auswertung and LAN Orga; defined in `sectionNav.js`). General events present every Orga
+  route as a standalone page with its own title because those routes are their primary navigation,
+  not a secondary Orga collection. A tab row sits directly under the area's
   `.view-title`, outside any card, which is what keeps it distinguishable from the in-card control
   rows further down. Because each tab is a real route, the row is `<nav>` navigation rather than a
   toggle: the active tab carries `aria-current="page"` plus `.btn-primary`, never `aria-pressed`.
@@ -620,12 +624,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Nested `.card` surfaces use the secondary elevated background so their hierarchy remains visible.
   `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
-  The „Mehr“ hub holds Mein Profil, Admin, Arcade, Durchsage, Jam and Orga — the destinations that
-  are not among the six bottom-nav entries. Mein Profil moved here from its former topbar icon
+  The LAN „Mehr“ hub holds Mein Profil, Admin, Arcade, Durchsage, Jam and Orga. For a general event,
+  it replaces the Orga wrapper with direct entries for Events and Essen; An & Abreise, Packliste,
+  To-Do and Abstimmungen already occupy the bottom nav. Mein Profil moved here from its former topbar icon
   (`#profile-btn`) to make room for the always-available Feedback icon there (see „Feedback“
   below); the needs-setup indicator that used to sit on that topbar icon now sits on the „Mehr“
-  bottom-nav icon instead. Essen is never listed here since it already has an
-  unconditional bottom-nav slot of its own (`more.js`); Auswertung is never listed here either —
+  bottom-nav icon instead. Essen is listed here only for general events; LAN events retain its
+  unconditional bottom-nav slot (`more.js`). Auswertung is never listed here —
   it has no general-audience entry point at all, living only behind Admin's „Auswertung“ tool card
   (see „Admin tools“). It keeps each destination's canonical icon
   directly beside its centered title so both read as one label; those icons are one spacing step smaller than standard list-row icons and
@@ -712,6 +717,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   is unaffected and still lands directly on To-Do. That tab label carries
   the live count of the current identity's own open+taken items. The checklist's former in-view
   toggle is gone — its two halves are area tabs now, so no tab row nests inside another.
+  In a general event the same routes keep their data and deep links but lose the Orga wrapper:
+  An- & Abreise, Packliste and To-Do are direct bottom-nav pages, while Events is a direct entry
+  under „Mehr“. Each page owns its concise title and shows no Orga tab row. Abstimmungen occupies
+  the fifth bottom-nav slot and becomes interactive as soon as its registered view is available.
   The personal list is unchanged: a compact checkbox row per item (Grundstock plus freely added/removable
   custom entries) with a checked item shown via muted, struck-through text instead of a separate
   badge, followed by the plain add-item field/button row.

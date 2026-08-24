@@ -13,7 +13,7 @@ import { sectionEntryView } from '../sectionNav.js';
 import { state } from '../state.js';
 import { viewIsEnabledForEvent } from '../eventFeatures.js';
 
-const ITEMS = [
+const COMMON_ITEMS = Object.freeze([
   // Moved out of the topbar to make room for the always-available Feedback
   // icon there; still just as reachable, one tap into "Mehr".
   { view: 'profile', title: 'Mein Profil' },
@@ -21,14 +21,29 @@ const ITEMS = [
   { view: 'arcade', title: 'Arcade' },
   { view: 'broadcast', title: 'Durchsage' },
   { view: 'music', title: 'Jam' },
+]);
+
+const LAN_ITEMS = Object.freeze([
   // Opens on Orga's own first tab, same as every other area entered from
   // "Mehr" or the bottom nav (see sectionNav.js's sectionEntryView) — so the
   // tab row's top-left tab is the one actually selected on arrival.
   { section: 'orga', title: 'Orga', iconKey: 'orga' },
-];
+]);
+
+const GENERAL_ITEMS = Object.freeze([
+  { view: 'events', title: 'Events' },
+  { view: 'foodOrders', title: 'Essen' },
+]);
+
+export function moreItemsForEvent(event) {
+  return [
+    ...COMMON_ITEMS,
+    ...(event?.eventType === 'general' ? GENERAL_ITEMS : LAN_ITEMS),
+  ];
+}
 
 export function renderMore(container) {
-  const visibleItems = ITEMS.map((item) => ({
+  const visibleItems = moreItemsForEvent(state.activeEvent).map((item) => ({
     ...item,
     view: item.section ? sectionEntryView(item.section, state.activeEvent) : item.view,
   })).filter(

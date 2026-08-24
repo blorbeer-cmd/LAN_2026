@@ -9,6 +9,7 @@ test('bottom navigation and More define every canonical view icon', () => {
     tournaments: 'swords',
     matchmaking: 'scale',
     votes: 'vote',
+    eventPolls: 'vote',
     leaderboard: 'trophy',
     more: 'menu',
     admin: 'shield',

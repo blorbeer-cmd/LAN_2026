@@ -864,6 +864,7 @@ textarea {
 
 .nav-btn {
   flex: 1;
+  min-width: 0;
   max-width: 120px;
   background: none;
   border: none;
@@ -878,6 +879,10 @@ textarea {
   border-radius: var(--radius-sm);
   position: relative;
   transition: color 0.15s ease;
+}
+.nav-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 .nav-icon {
   display: grid;

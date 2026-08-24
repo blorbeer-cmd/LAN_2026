@@ -9,6 +9,7 @@ export const DOMAIN_ICONS = Object.freeze({
   tournaments: 'swords',
   matchmaking: 'scale',
   votes: 'vote',
+  eventPolls: 'vote',
   leaderboard: 'trophy',
   more: 'menu',
   admin: 'shield',

@@ -43,6 +43,15 @@ test('a section is entered on its first tab and its tabs share one nav group', (
   assert.equal(sectionForView('votes'), null);
 });
 
+test('general-event planning routes each represent their own bottom-nav entry', () => {
+  const generalEvent = { eventType: 'general' };
+  assert.equal(navGroupForView('arrivals', generalEvent), 'arrivals');
+  assert.equal(navGroupForView('checklistPacking', generalEvent), 'checklistPacking');
+  assert.equal(navGroupForView('checklist', generalEvent), 'checklist');
+  assert.equal(navGroupForView('events', generalEvent), 'events');
+  assert.equal(navGroupForView('arrivals', { eventType: 'lan' }), 'orga');
+});
+
 test('section tabs follow the active event feature snapshot', () => {
   const generalEvent = {
     enabledFeatures: ['tasks', 'travel', 'food', 'costs', 'music', 'seating'],
@@ -136,6 +145,22 @@ test('re-rendering the same route keeps the shell and its content element alive'
   assert.equal(container.writes, writesAfterFirst + 1);
   assert.equal(third, container.sectionView);
   assert.match(container.innerHTML, /data-section-tab="arrivals" aria-current="page"/);
+});
+
+test('general-event planning routes render as standalone pages without an Orga tab row', () => {
+  const container = stubContainer();
+  renderSectionShell(container, 'arrivals', {
+    event: { eventType: 'general', enabledFeatures: ['travel', 'tasks'] },
+  });
+  assert.match(container.innerHTML, /<h1 class="view-title">An- & Abreise<\/h1>/);
+  assert.doesNotMatch(container.innerHTML, /class="section-tabs"/);
+  assert.doesNotMatch(container.innerHTML, /data-section-tab=/);
+
+  renderSectionShell(container, 'checklist', {
+    event: { eventType: 'general', enabledFeatures: ['travel', 'tasks'] },
+  });
+  assert.match(container.innerHTML, /<h1 class="view-title">To-Do<\/h1>/);
+  assert.doesNotMatch(container.innerHTML, /class="section-tabs"/);
 });
 
 test('the shell rebuilds a same-route tab row when the event feature set changes', () => {
