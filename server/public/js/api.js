@@ -333,6 +333,24 @@ export const api = {
     declineInvitation: (id) => apiFetch(`/api/events/${id}/invitation/decline`, { method: 'POST' }),
   },
 
+  eventPolls: {
+    list: (eventId) => apiFetch(`/api/events/${eventId}/polls`),
+    get: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}`),
+    create: (eventId, data) => apiFetch(`/api/events/${eventId}/polls`, { method: 'POST', body: JSON.stringify(data) }),
+    update: (eventId, pollId, data) =>
+      apiFetch(`/api/events/${eventId}/polls/${pollId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    submitMyResponses: (eventId, pollId, responses) =>
+      apiFetch(`/api/events/${eventId}/polls/${pollId}/my-responses`, { method: 'PUT', body: JSON.stringify({ responses }) }),
+    sendReminders: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}/reminders`, { method: 'POST' }),
+    close: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}/close`, { method: 'POST' }),
+    reopen: (eventId, pollId, responseDueOn) =>
+      apiFetch(`/api/events/${eventId}/polls/${pollId}/reopen`, {
+        method: 'POST',
+        body: JSON.stringify(responseDueOn ? { responseDueOn } : {}),
+      }),
+    remove: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}`, { method: 'DELETE' }),
+  },
+
   tournaments: {
     list: () => apiFetch('/api/tournaments'),
     get: (id) => apiFetch(`/api/tournaments/${id}`),

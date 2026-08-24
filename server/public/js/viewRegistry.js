@@ -1,5 +1,6 @@
 import { renderHome } from './views/home.js';
 import { renderOrgaEvents, renderOrgaKiosk } from './views/events.js';
+import { renderEventPolls } from './views/eventPolls.js';
 import { renderMatchmaking } from './views/matchmaking.js';
 import { renderBroadcast } from './views/broadcast.js';
 import { renderFoodOrders } from './views/foodOrders.js';
@@ -55,6 +56,7 @@ export const VIEW_REGISTRY = createViewRegistry({
   gameCatalog: renderGameCatalog,
   arrivals: inSection('arrivals', renderArrivals),
   events: inSection('events', renderOrgaEvents),
+  eventPolls: inSection('eventPolls', renderEventPolls),
   // Not an Orga tab — reached only from Admin's "Kioskverwaltung" tool card,
   // like Sitzplan (see renderOrgaKiosk).
   kiosk: renderOrgaKiosk,

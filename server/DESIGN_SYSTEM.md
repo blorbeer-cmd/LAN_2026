@@ -698,8 +698,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   existing order row instead of adding a duplicate. The
   reminder uses the same order deep link and a durable per-player/event send timestamp independent of
   the bounded push history.
-- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its four area tabs
-  are sorted alphabetically by their German label: „An- & Abreise“, „Events“, „Packliste“ and
+- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its five area tabs
+  are sorted alphabetically by their German label: „Abstimmungen“, „An- & Abreise“, „Events“, „Packliste“ and
   „To-Do“ (the last two formerly the separate „Checkliste“ and „An- & Abreise“ areas;
   docs/KONZEPT-PACKLISTE-TICKETS.md Abschnitt 9 records the earlier „Packliste“→„Checkliste“
   rename — „Events“ is the former standalone „Einstellungen“ view, moved here because it is setup
@@ -707,7 +707,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   settings icon). TV-Kiosk is deliberately not an Orga tab — it lives only behind Admin's
   „Kioskverwaltung“ tool card (see „Admin tools“) since opening the shared-screen dashboard is an
   admin task, not something every member needs from Orga. „Mehr“ opens Orga on its first tab,
-  „An- & Abreise“, like every other area (`sectionEntryView()` in `sectionNav.js`), so the tab row's
+  „Abstimmungen“, like every other area (`sectionEntryView()` in `sectionNav.js`), so the tab row's
   top-left tab is the one actually selected on arrival; the already persisted push url `/#checklist`
   is unaffected and still lands directly on To-Do. That tab label carries
   the live count of the current identity's own open+taken items. The checklist's former in-view
@@ -736,6 +736,49 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   zugewiesen“ with „Freigeben“/„Erledigt“ actions instead. Completed To-Dos live in one standard,
   initially collapsed „Historie“ section whose open state survives live re-renders, same as Food
   orders.
+  The „Abstimmungen“ tab is the event-centric planning surface for free questions such as dates,
+  locations, duration or budget. It always uses the active event from the existing top-right
+  workspace switcher: neither the tab nor its create dialog contains a second event picker. With
+  „Allgemein“ active it shows an explicit select-an-event empty state. Visibility, creation and
+  voting all require confirmed participation in that event; being Owner/Admin or merely invited
+  never bypasses this boundary. Every confirmed participant may start a poll, while the creator of
+  that poll manages its deadline, reminders and rounds. The create dialog uses labelled fields,
+  repeatable free-text option rows and four explicit response modes: per-option „Passt / Wenn nötig
+  / Passt nicht / Offen“, exactly one choice, multiple choices with an optional maximum, or a
+  per-option rating from 1 to 5. It never exposes
+  a participant picker because the accepted event roster is the single source of truth.
+  The tab adds no own page heading or explanatory subtitle below the Orga tabs because the active
+  event is already visible in the top-right workspace switcher. Its compact „Abstimmung starten“
+  action has no decorative plus sign. The create dialog uses ordinary global text fields, one native
+  select for the four response modes (per-option feasibility, single choice, multiple choice and
+  per-option 1–5 rating), and contextual info beside response mode and deadline. Every free option
+  may additionally carry a short note and a validated HTTP-/HTTPS-link. A poll can be marked
+  anonymous in the same dialog; this permanently suppresses voter-to-answer mappings.
+  Each poll is one collapsible card. Its current round and response progress stay together; the
+  creator's compact „Bearbeiten“, „Erinnerung versenden (N)“, „Beenden“ and „Löschen“
+  actions remain in the card header while collapsed. They share one „Aktion“ menu; opening one
+  poll's menu closes every other poll menu, clicking outside or pressing Escape closes it, and its
+  card is raised above later siblings while the menu is open. Earlier rounds live in a nested,
+  initially collapsed history and show their best result, start time, creator and end time before
+  the detailed options. „Offen“ is both an explicit way to clear a per-option feasibility rating and
+  the resulting incomplete-response count. Repeated reminders reuse one stable notification-center
+  entry per poll and recipient, moving it to the top; automatic sends run 48 hours and 2 hours before
+  the deadline. While a round is open, its creator can edit title, description, deadline, option
+  notes and links and append further options; existing options cannot be removed from that dialog.
+  Adding options informs everyone who had already completed the round and makes those responses
+  incomplete until the added options have been answered. Option rows keep the title with a note
+  info-tooltip and an icon-only link immediately beside it, counts and compact response controls
+  within a shallow two-row layout. Single- and multiple-choice controls say „Wählen“; their
+  „Meiste Stimmen“ badge stays on the same title line as the option name. An optional
+  response-details disclosure is rendered only after a non-anonymous round has
+  ended; the server withholds those identities while a poll is open and for anonymous polls at every
+  status. Avatar, name and response timestamp share one vertically aligned voter row. Progress and
+  deadline appear once in the card header, not again above the option rows. Poll re-renders preserve
+  the visible card's scroll anchor. Ending a round immediately turns
+  its counts into the read-only result overview; there is no separate result-recording action. Event
+  cards do not embed or link to poll controls. A poll result changes no event field, schedule revision
+  or participation state.
+  A future explicit „apply to event“ interaction is outside the current UI.
   The „Events“ tab is reachable by every member, not only by owner/admin, because answering an
   invitation is a personal action. What it shows depends on the role: owner/admin receive the full
   management surface — anlegen/bearbeiten, Tracking starten/stoppen, Teilnehmer einladen/entfernen

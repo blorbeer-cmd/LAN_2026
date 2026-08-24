@@ -28,6 +28,7 @@ export const SEARCH_ENTRIES = [
   { view: 'profile', title: 'Mein Profil', category: 'Bereich', description: 'Profil, Agent und Push-Benachrichtigungen', aliases: 'account ich agent benachrichtigung', priority: 90 },
   { view: 'myStats', title: 'Meine Statistiken', category: 'Bereich', description: 'Eigene Spielzeit und persönliche Werte', aliases: 'stats spielzeit auswertung', priority: 80 },
   { view: 'events', title: 'Events', category: 'Orga', description: 'Events anlegen, Tracking und Teilnehmer verwalten', aliases: 'orga einstellungen setup konfiguration tracking teilnehmer einladung', priority: 85 },
+  { view: 'eventPolls', title: 'Abstimmungen', category: 'Orga', description: 'Zeitraum, Ort, Dauer und Budget gemeinsam planen', aliases: 'orga umfrage termin ort unterkunft dauer budget planung interessiert', priority: 86 },
   { view: 'kiosk', title: 'TV-Kiosk', category: 'Bereich', description: 'TV-/Kiosk-Ansicht öffnen', aliases: 'admin einstellungen tv bildschirm dashboard kiosk-ansicht', priority: 62, adminOnly: true },
   { view: 'admin', title: 'Admin', category: 'Bereich', description: 'Einladungslink, Sitzplan, Backup, Test-Spieler, Rechte und Diagnose', aliases: 'moderation verwaltung diagnose einladung invite sitzplan backup', priority: 60, adminOnly: true },
   { view: 'gameCatalog', title: 'Spiele', category: 'Bereich', description: 'Bock, Skill und Spielekatalog', aliases: 'games katalog bewertung skill bock', priority: 75 },
@@ -160,6 +161,20 @@ export function createContentSearchEntries(appState, content = {}) {
     aliases: entry.body,
     priority: 74,
   }));
+  const latestPolls = new Map();
+  for (const poll of content.polls ?? []) {
+    const current = latestPolls.get(poll.decisionKey);
+    if (!current || poll.roundNumber > current.roundNumber) latestPolls.set(poll.decisionKey, poll);
+  }
+  const pollEntries = [...latestPolls.values()].map((poll) => ({
+    view: 'eventPolls',
+    title: poll.title,
+    category: 'Abstimmung',
+    description: `${poll.status === 'open' ? 'Läuft' : 'Beendet'}${poll.createdByName ? ` · von ${poll.createdByName}` : ''}`,
+    aliases: `${poll.note ?? ''} ${(poll.options ?? []).map((option) => `${option.label ?? ''} ${option.description ?? ''}`).join(' ')}`,
+    priority: 90,
+    target: { type: 'poll', id: poll.id },
+  }));
 
   return [
     ...playerEntries,
@@ -171,6 +186,7 @@ export function createContentSearchEntries(appState, content = {}) {
     ...carpools,
     ...tournamentEntries,
     ...notificationEntries,
+    ...pollEntries,
   ];
 }
 
@@ -183,8 +199,11 @@ async function loadContentSearchEntries() {
     api.arrivals.list(),
     api.tournaments.list(),
     myId ? api.push.log(myId) : Promise.resolve({ entries: [] }),
+    state.activeEvent && !state.activeEvent.isBase && state.activeEvent.id !== 'base'
+      ? api.eventPolls.list(state.activeEvent.id)
+      : Promise.resolve([]),
   ];
-  const [orders, info, broadcasts, arrivals, tournaments, notifications] = await Promise.allSettled(requests);
+  const [orders, info, broadcasts, arrivals, tournaments, notifications, polls] = await Promise.allSettled(requests);
   const value = (result, fallback) => (result.status === 'fulfilled' ? result.value : fallback);
 
   return createContentSearchEntries(state, {
@@ -194,6 +213,7 @@ async function loadContentSearchEntries() {
     carpools: value(arrivals, { carpools: {} }).carpools ?? {},
     tournaments: value(tournaments, []),
     notifications: value(notifications, { entries: [] }).entries ?? [],
+    polls: value(polls, []),
   });
 }
 

@@ -46,7 +46,7 @@ export function resolveRequestGroupEventScope(req: Request, requestedEventId: un
   return { ok: true, eventId: activeEvent.id };
 }
 
-// Event participation is the only normal workspace visibility contract.
+// Confirmed participation is the normal workspace visibility contract.
 // Administrative event management uses its own role-guarded routes; it never
 // turns into a read bypass for operational event data.
 //

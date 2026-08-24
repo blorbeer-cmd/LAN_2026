@@ -1,6 +1,7 @@
 import { db } from './db';
 import { PAYMENT_REMINDER_INTERVAL_MS } from './paymentReminders';
 import { notifyPlayers } from './push';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 
 export const EVENT_PAYMENT_REMINDER_INTERVAL_MS = PAYMENT_REMINDER_INTERVAL_MS;
 
@@ -25,7 +26,7 @@ function eligiblePayments(now: number): EventPaymentRow[] {
        WHERE e.cost_cents IS NOT NULL
          AND e.status = 'published'
          AND e.ended_at IS NULL
-         AND ep.status = 'accepted'
+         AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          AND ep.paid = 0
          AND p.deactivated_at IS NULL
          AND h.accepted_at IS NOT NULL

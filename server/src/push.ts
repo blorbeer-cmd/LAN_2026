@@ -89,9 +89,13 @@ export interface PushTopic {
 }
 
 export const FOOD_ORDER_PAYMENT_REMINDER_TOPIC_PREFIX = 'food-order-payment-reminder:';
+export const EVENT_POLL_REMINDER_TOPIC_PREFIX = 'event-poll-reminder:';
 
 export function isDeduplicatedPushTopic(topicKey: string): boolean {
-  return topicKey.startsWith(FOOD_ORDER_PAYMENT_REMINDER_TOPIC_PREFIX);
+  return (
+    topicKey.startsWith(FOOD_ORDER_PAYMENT_REMINDER_TOPIC_PREFIX) ||
+    topicKey.startsWith(EVENT_POLL_REMINDER_TOPIC_PREFIX)
+  );
 }
 
 interface SubscriptionRow {
@@ -345,7 +349,7 @@ export function getPushLogEntriesFor(
     .all(playerId, playerId, groupId, eventId ?? BASE_EVENT_ID) as Array<
     PushLogEntry & { playerIds: string; topicKey: string | null; seen: number; hidden: number }
   >;
-  return collapsePaymentReminderRows(
+  return collapseDeduplicatedTopicRows(
     rows.filter((row) => row.playerIds === null || (JSON.parse(row.playerIds) as string[]).includes(playerId)),
   )
     .filter((row) => row.hidden === 0)
@@ -380,7 +384,7 @@ export function getPushLogEntriesForPlayer(
     .all(playerId, playerId) as Array<
     PushLogEntry & { playerIds: string; topicKey: string | null; seen: number; hidden: number }
   >;
-  return collapsePaymentReminderRows(
+  return collapseDeduplicatedTopicRows(
     rows.filter((row) => row.playerIds !== null && (JSON.parse(row.playerIds) as string[]).includes(playerId)),
   )
     .filter((row) => row.hidden === 0)
@@ -391,7 +395,7 @@ export function getPushLogEntriesForPlayer(
     }));
 }
 
-function collapsePaymentReminderRows<
+function collapseDeduplicatedTopicRows<
   T extends { notificationType: string; topicKey: string | null },
 >(rows: T[]): T[] {
   const topics = new Set<string>();

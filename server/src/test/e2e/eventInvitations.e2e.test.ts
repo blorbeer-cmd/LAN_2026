@@ -439,6 +439,7 @@ test('manager invites a member who accepts and both open clients update', async 
   );
   await cardPaymentButton.click();
   await memberPage.locator(`[data-event-card="${eventId}"] .event-card-payment-member [data-toggle-event-paid][aria-pressed="false"]`).waitFor();
+  await ownerParticipantList.locator(`[data-toggle-event-paid="${eventId}"][data-payment-player="${memberId}"][aria-pressed="false"]`).waitFor();
   assert.equal(
     await ownerParticipantList.locator(`[data-toggle-event-paid="${eventId}"][data-payment-player="${memberId}"]`).textContent(),
     'Bezahlt?',

@@ -8,6 +8,7 @@
 import { Server } from 'socket.io';
 import { db } from './db';
 import { config } from './config';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 import { broadcast, Events, isPlayerConnected } from './realtime';
 
 export interface LiveGameEntry {
@@ -113,7 +114,7 @@ export function getLiveBoard(groupId: string, eventId: string): LiveBoardEntry[]
       `SELECT p.id, p.name, p.color, p.avatar
        FROM players p
        JOIN group_memberships gm ON gm.player_id = p.id
-       JOIN event_participants ep ON ep.player_id = p.id AND ep.event_id = ? AND ep.status = 'accepted'
+       JOIN event_participants ep ON ep.player_id = p.id AND ep.event_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
        WHERE p.deactivated_at IS NULL AND gm.group_id = ? AND gm.status = 'active'
        ORDER BY p.name COLLATE NOCASE`
     )
@@ -255,7 +256,7 @@ export function sweepOnce(now: number = Date.now()): void {
        JOIN events e ON e.id = pec.active_event_id
        JOIN event_participants ep ON ep.event_id = pec.active_event_id AND ep.player_id = pec.player_id
        JOIN players p ON p.id = pec.player_id
-       WHERE ep.status = 'accepted' AND p.deactivated_at IS NULL`,
+       WHERE ${ACCEPTED_EVENT_PARTICIPANT_SQL} AND p.deactivated_at IS NULL`,
     ).all() as Array<{ groupId: string; eventId: string }>;
     for (const scope of rows) scopes.set(`${scope.groupId}\u0000${scope.eventId}`, scope);
     for (const { groupId, eventId } of scopes.values()) {

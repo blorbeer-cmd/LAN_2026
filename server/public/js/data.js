@@ -28,6 +28,9 @@ export function normalizeEventContext(eventContext = {}) {
     managedEvents: canManage ? managedEvents : null,
     activeEvent: eventContext.activeEvent ?? null,
     availableEvents,
+    // Retained as an empty compatibility field for clients predating generic
+    // polls. Polls never grant event visibility or require reconfirmation.
+    plannedEvents: eventContext.plannedEvents ?? [],
     // This account's own accepted events that have since ended. Deliberately
     // absent from `availableEvents` (that list answers "where can I switch
     // to", see routes/events.ts), but the Events tab's own Historie section
