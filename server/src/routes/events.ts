@@ -337,7 +337,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        JOIN event_participants ep ON ep.event_id = e.id
        WHERE ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
-       ORDER BY e.id = ? DESC, e.starts_at DESC, e.name COLLATE NOCASE`,
+       ORDER BY e.id = ? DESC, e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id, BASE_EVENT_ID) as EventRow[];
   const invitations = db
@@ -347,7 +347,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        JOIN event_participants ep ON ep.event_id = e.id
        WHERE ep.player_id = ? AND ep.status = 'invited'
          AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
-       ORDER BY e.starts_at, e.name COLLATE NOCASE`,
+       ORDER BY e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
   // A member's own accepted events that have since ended. `availableEvents`
@@ -364,7 +364,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        JOIN event_participants ep ON ep.event_id = e.id
        WHERE ep.player_id = ? AND ep.status = 'accepted'
          AND e.id != ? AND e.group_id = ? AND e.status = 'ended'
-       ORDER BY e.starts_at DESC, e.name COLLATE NOCASE`,
+       ORDER BY e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
   // Compatibility field for older clients. Generic polls never grant event
@@ -393,7 +393,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        JOIN event_participation_history h ON h.event_id = e.id
        WHERE h.player_id = ? AND h.accepted_at IS NOT NULL
          AND e.id != ? AND e.group_id = ? AND e.status != 'cancelled'
-       ORDER BY e.starts_at DESC, e.name COLLATE NOCASE`,
+       ORDER BY e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
   const managedEvents = canManage

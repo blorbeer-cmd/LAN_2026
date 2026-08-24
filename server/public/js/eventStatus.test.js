@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   EVENT_STATUS,
+  compareEventsByStartAscending,
   eventDisplayName,
   eventSelectOption,
   eventSelectOptions,
@@ -84,25 +85,30 @@ test('a dropdown option is the event title plus its state as an icon', () => {
   assert.doesNotMatch(option.label, /Trackt gerade/);
 });
 
-test('event dropdown options are newest first and carry no date range', () => {
+test('event dropdown options show the earliest fixed start first and undated events last', () => {
   const options = eventSelectOptions([
+    { id: 'planning', name: 'Terminfindung', startsAt: null },
     { id: 'old', name: 'Winter-LAN', startsAt: 1_000, endsAt: 2_000, isEnded: true },
     { id: 'new', name: 'Sommer-LAN', startsAt: 9_000, endsAt: null, trackingEnabled: true },
   ]);
   assert.deepEqual(
     options.map((option) => option.value),
-    ['new', 'old'],
+    ['old', 'new', 'planning'],
   );
   // The dates used to be appended in one filter only, which is exactly the
   // inconsistency this shared builder removes.
   assert.deepEqual(
     options.map((option) => option.label),
-    ['Sommer-LAN', 'Winter-LAN'],
+    ['Winter-LAN', 'Sommer-LAN', 'Terminfindung'],
   );
   assert.deepEqual(
     options.map((option) => option.iconState),
-    ['tracking', 'ended'],
+    ['ended', 'tracking', 'planning'],
   );
+});
+
+test('the shared event comparator keeps two undated planning events stable', () => {
+  assert.equal(compareEventsByStartAscending({ startsAt: null }, { startsAt: undefined }), 0);
 });
 
 test('the optional all-events entry leads the list and claims no lifecycle state', () => {

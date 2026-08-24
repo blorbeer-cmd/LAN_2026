@@ -60,6 +60,33 @@ test('every account starts in the permanent base event', async () => {
   );
 });
 
+test('event collections list the earliest start first', async () => {
+  const prefix = `Sortierung ${Date.now()}`;
+  const firstStart = Date.now() + 60_000;
+  const starts = [firstStart + 120_000, firstStart, firstStart + 60_000];
+  const createdIds: string[] = [];
+
+  for (const [index, startsAt] of starts.entries()) {
+    const created = await createEvent(`${prefix} ${index}`, EVENT_MINIMUM_DURATION_MS, {
+      startsAt,
+      endsAt: startsAt + EVENT_MINIMUM_DURATION_MS,
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    createdIds.push(created.body.id as string);
+    accept(created.body.id, TEST_ADMIN_ID);
+  }
+
+  const list = await request(app).get('/api/events');
+  assert.equal(list.status, 200);
+  const expectedIds = [createdIds[1], createdIds[2], createdIds[0]];
+  for (const collection of [list.body.availableEvents, list.body.managedEvents]) {
+    assert.deepEqual(
+      collection.filter((event: { name: string }) => event.name.startsWith(prefix)).map((event: { id: string }) => event.id),
+      expectedIds,
+    );
+  }
+});
+
 test('new events persist and expose the complete backwards-compatible LAN feature snapshot', async () => {
   const created = await createEvent('LAN-Default mit Bereichen');
   assert.equal(created.status, 201, JSON.stringify(created.body));

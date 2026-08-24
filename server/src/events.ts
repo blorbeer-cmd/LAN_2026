@@ -91,7 +91,9 @@ export function getEvent(id: string): EventRow | undefined {
 // visible event switcher lands in the next block.
 export function listEvents(groupId = DEFAULT_GROUP_ID): EventRow[] {
   return db
-    .prepare('SELECT * FROM events WHERE id NOT IN (?, ?) AND group_id = ? ORDER BY starts_at DESC')
+    .prepare(
+      'SELECT * FROM events WHERE id NOT IN (?, ?) AND group_id = ? ORDER BY starts_at IS NULL, starts_at ASC, name COLLATE NOCASE',
+    )
     .all(OUTSIDE_EVENTS_ID, BASE_EVENT_ID, groupId) as EventRow[];
 }
 
