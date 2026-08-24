@@ -256,6 +256,121 @@ flowTest('shell', 'fresh device uses the personal login and reaches the app with
   assert.equal(await loginPage.inputValue('#profile-name'), alice.name);
 });
 
+flowTest('shell', 'untabbed areas align compact cards while tabbed areas reserve a second row', async (t) => {
+  t.after(async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+  });
+
+  type CardMetrics = {
+    top: number;
+    headingMetrics: { fontSize: string; inset: number } | null;
+  };
+  const firstCardMetrics = async (label: string): Promise<CardMetrics> => {
+    const metrics = await page.waitForFunction((areaLabel) => {
+      const card = document.querySelector('#view-container .card');
+      if (!card) return null;
+      const cardBox = card.getBoundingClientRect();
+      if (!cardBox.width || !cardBox.height) return null;
+      const heading = card.querySelector('h2');
+      const headingMetrics = heading
+        ? {
+            fontSize: getComputedStyle(heading).fontSize,
+            inset: Math.round(heading.getBoundingClientRect().top - cardBox.top),
+          }
+        : null;
+      return { label: areaLabel, top: Math.round(cardBox.y), headingMetrics };
+    }, label);
+    const value = await metrics.jsonValue();
+    assert.ok(value, `${label} should render a first card`);
+    return { top: value.top, headingMetrics: value.headingMetrics };
+  };
+
+  for (const width of [390, 900]) {
+    await page.setViewportSize({ width, height: 844 });
+    const metrics: Array<[string, CardMetrics]> = [];
+    const tabbedMetrics: Array<[string, CardMetrics]> = [];
+
+    await page.click('.nav-btn[data-view="matchmaking"]');
+    await page.waitForSelector('#view-container h1:text-is("Match")');
+    tabbedMetrics.push(['Match', await firstCardMetrics('Match')]);
+
+    for (const [view, title] of [
+      ['home', 'Home'],
+      ['votes', 'Vote'],
+      ['foodOrders', 'Essen'],
+      ['gameCatalog', 'Spiele'],
+      ['more', 'Mehr'],
+    ] as const) {
+      await page.click(`.nav-btn[data-view="${view}"]`);
+      await page.waitForSelector(`#view-container h1:text-is("${title}")`);
+      metrics.push([title, await firstCardMetrics(title)]);
+    }
+
+    for (const [view, title, readySelector] of [
+      ['profile', 'Mein Profil', '#profile-name'],
+      ['admin', 'Admin', '#admin-mode-title'],
+      ['arcade', 'Arcade', '#arcade-games-title'],
+      ['broadcast', 'Durchsage', '#broadcast-new-title'],
+      ['music', 'Jam', '#music-setup-title'],
+    ] as const) {
+      await page.click('.nav-btn[data-view="more"]');
+      await page.waitForSelector('.more-grid');
+      await page.click(`[data-navigate="${view}"]`);
+      await page.waitForSelector(readySelector);
+      metrics.push([title, await firstCardMetrics(title)]);
+      assert.equal(await page.locator('.more-subpage-header [data-navigate="more"]').count(), 1);
+    }
+
+    const alignedTops = new Set(metrics.map(([, value]) => value.top));
+    assert.equal(
+      alignedTops.size,
+      1,
+      `all compact areas should share one first-card edge at ${width}px: ${JSON.stringify(metrics)}`,
+    );
+
+    const headingMetrics = metrics
+      .map(([, value]) => value.headingMetrics)
+      .filter((value): value is NonNullable<CardMetrics['headingMetrics']> => value !== null);
+    assert.equal(new Set(headingMetrics.map((value) => value.fontSize)).size, 1);
+    assert.equal(new Set(headingMetrics.map((value) => value.inset)).size, 1);
+
+    await page.click('.nav-btn[data-view="more"]');
+    await page.waitForSelector('.more-grid');
+    await page.click('[data-navigate="admin"]');
+    await page.waitForSelector('#admin-mode-title');
+    await page.click('[data-navigate="leaderboard"]');
+    await page.waitForSelector('#view-container h1:text-is("Auswertung")');
+    tabbedMetrics.push(['Auswertung', await firstCardMetrics('Auswertung')]);
+
+    await openOrgaTab('events');
+    await page.waitForSelector('#orga-events-title');
+    assert.deepEqual(
+      await page.locator('.more-subpage-header--tabs .section-tabs').evaluate((tabs) => {
+        const style = getComputedStyle(tabs);
+        return { marginTop: style.marginTop, marginBottom: style.marginBottom };
+      }),
+      { marginTop: '0px', marginBottom: '0px' },
+      `Orga's tab row should not add spacing outside the shared header at ${width}px`,
+    );
+    const orgaMetrics = await firstCardMetrics('Orga');
+    tabbedMetrics.push(['Orga', orgaMetrics]);
+    for (const [title, value] of tabbedMetrics) {
+      assert.ok(value.top > metrics[0][1].top, `${title} tabs should reserve their own row at ${width}px`);
+      if (value.headingMetrics) assert.deepEqual(value.headingMetrics, headingMetrics[0]);
+    }
+    if (width === 900) {
+      assert.equal(
+        new Set(tabbedMetrics.map(([, value]) => value.top)).size,
+        1,
+        `desktop tabbed areas should share one first-card edge: ${JSON.stringify(tabbedMetrics)}`,
+      );
+    }
+    assert.equal(await page.locator('.more-subpage-header--tabs [data-navigate="more"]').count(), 1);
+    await page.click('.more-subpage-header--tabs [data-navigate="more"]');
+    await page.waitForSelector('.more-grid');
+  }
+});
+
 flowTest('shell', 'Orga Events tab and Profil use grouped help while admin tools stay out of regular Orga', async (t) => {
   // Switches to a desktop viewport partway through (for the desktop-only
   // profile layout checks below) and never switches back on its own —
@@ -417,6 +532,18 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
     // test ends (same viewport-leak safety net as the Orga Events test).
     await page.setViewportSize({ width: 390, height: 844 });
   });
+  const assertCompactAdminHeader = async (title: string) => {
+    const header = page.locator('.more-subpage-header');
+    assert.equal(await header.count(), 1);
+    assert.equal(await header.locator('.more-subpage-title-row h1.view-title').innerText(), title);
+    assert.equal(await header.locator('[data-navigate="admin"]').count(), 1);
+    const cardInset = await page.locator('#view-container .card').first().evaluate((card) => {
+      const container = document.querySelector('#view-container');
+      if (!container) throw new Error('View container missing');
+      return Math.round(card.getBoundingClientRect().top - container.getBoundingClientRect().top);
+    });
+    assert.equal(cardInset, 68, `${title} should share the compact first-card inset`);
+  };
   // The bootstrap admin is intentionally created before onboarding is
   // completed. Finish it here so the deep-link assertions exercise the
   // admin-role load race instead of the onboarding tour taking over the
@@ -429,9 +556,11 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   // startup path that a bookmarked hash link uses.
   await page.reload();
   await page.waitForSelector('#admin-feature-usage-title');
+  await assertCompactAdminHeader('Nutzungsauswertung');
   await page.goto(`${BASE_URL}/#adminFeedback`);
   await page.reload();
   await page.waitForSelector('#admin-feedback-title');
+  await assertCompactAdminHeader('Feedback');
   // A regular member must not see the admin content behind the same deep link.
   const memberContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const memberPage = await memberContext.newPage();
@@ -489,6 +618,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   await page.waitForSelector('#admin-tools-title');
   await page.click('[data-navigate="kiosk"]');
   await page.waitForSelector('a[href="/kiosk.html"]');
+  await assertCompactAdminHeader('TV-Kiosk');
   assert.equal(await page.getByRole('heading', { name: 'TV-Kiosk' }).count(), 1);
   assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
   assert.equal(await page.locator('#orga-kiosk-help').count(), 1);
@@ -521,6 +651,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   assert.equal(await page.locator('#admin-count').evaluate((input) => document.activeElement === input), false);
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('.seating-plan.is-editable');
+  await assertCompactAdminHeader('Sitzplan');
   assert.equal(await page.locator('.seating-editor > .grouped-page-section').count(), 3);
   assert.deepEqual(await page.locator('.seating-editor > .grouped-page-section h2 > span:first-child, .seating-editor > .grouped-page-section h2:not(:has(> span:first-child))').allTextContents(), ['Sitzplan', 'Teilnehmende', 'Konfiguration']);
   assert.equal(await page.locator('.seating-pool-player').evaluateAll((players) => players.every((player) => getComputedStyle(player).borderRadius !== '999px')), true);

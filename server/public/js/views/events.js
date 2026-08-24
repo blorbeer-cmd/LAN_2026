@@ -943,8 +943,12 @@ function openParticipantsForm(ctx, event) {
 export function renderOrgaKiosk(container) {
   if (!isGroupAdmin()) {
     container.innerHTML = `
-      <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-      <h1 class="view-title">TV-Kiosk</h1>
+      <div class="more-subpage-header">
+        <div class="more-subpage-title-row">
+          <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+          <h1 class="view-title">TV-Kiosk</h1>
+        </div>
+      </div>
       <div class="card stack">
         <strong>Nur für Admins verfügbar</strong>
         <span class="muted">Dieses Konto hat keine Admin-Rechte für die Kioskverwaltung.</span>
@@ -953,11 +957,15 @@ export function renderOrgaKiosk(container) {
     return;
   }
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title title-with-info">
-      <span>TV-Kiosk</span>
-      ${infoTooltipHtml('orga-kiosk-help', 'TV-Kiosk', KIOSK_HELP)}
-    </h1>
+    <div class="more-subpage-header">
+      <div class="more-subpage-title-row">
+        <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
+        <h1 class="view-title title-with-info">
+          <span>TV-Kiosk</span>
+          ${infoTooltipHtml('orga-kiosk-help', 'TV-Kiosk', KIOSK_HELP)}
+        </h1>
+      </div>
+    </div>
     <div class="grouped-page-sections">
       ${renderKioskSection()}
     </div>

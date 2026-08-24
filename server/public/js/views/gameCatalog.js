@@ -733,11 +733,11 @@ export function renderGameCatalog(container, ctx) {
         : 'Keine Spiele für diese Filter.';
 
   container.innerHTML = `
-    <div class="row-between">
+    <div class="row-between page-title-row">
       <h1 class="view-title">Spiele</h1>
       <button type="button" class="btn btn-primary btn-sm" id="suggest-new">Spiel vorschlagen</button>
     </div>
-    <div class="grouped-page-sections" style="margin-top:var(--space-3);">
+    <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" ${ratingMode ? 'aria-labelledby="game-catalog-list-title"' : `aria-label="${sectionTitle}"`}>
         ${ratingMode ? `<div class="grouped-page-section-title"><h2 id="game-catalog-list-title">${sectionTitle}</h2></div>` : ''}
         ${ratingMode ? `

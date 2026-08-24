@@ -101,8 +101,8 @@ export function musicSetupHtml(status, activePairing = pairing) {
     const hasKnownController = Boolean(status.controller);
     const reconnecting = hasKnownController;
     return `
-      <section class="card stack music-setup-card" aria-labelledby="music-setup-title">
-          <strong id="music-setup-title">${reconnecting ? 'Jam-Controller wieder verbinden' : 'Jam einrichten'}</strong>
+      <section class="card stack grouped-page-section music-setup-card" aria-labelledby="music-setup-title">
+          <div class="grouped-page-section-title"><h2 id="music-setup-title">${reconnecting ? 'Jam-Controller wieder verbinden' : 'Jam einrichten'}</h2></div>
           ${hasKnownController
             ? `<p><strong>${escapeHtml(status.controller.label)}</strong><span class="muted"> ist nicht erreichbar.</span></p>`
             : ''}
@@ -603,11 +603,15 @@ export function renderMusic(container, ctx) {
     if (silent && existingMusicView) return;
   }
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title title-with-info" data-music-view-root>
-      <span>Jam</span>
-      ${infoTooltipHtml('music-help', 'Jam', JAM_HELP)}
-    </h1>
+    <div class="more-subpage-header">
+      <div class="more-subpage-title-row">
+        <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+        <h1 class="view-title title-with-info" data-music-view-root>
+          <span>Jam</span>
+          ${infoTooltipHtml('music-help', 'Jam', JAM_HELP)}
+        </h1>
+      </div>
+    </div>
     <div class="grouped-page-sections">
       ${cache ? `${musicSetupHtml(cache)}${connectionHtml(cache)}${musicActiveSessionHtml(cache)}` : `<section class="card grouped-page-section">${emptyStateHtml('Lädt…')}</section>`}
     </div>`;

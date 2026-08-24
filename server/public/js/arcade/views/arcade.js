@@ -584,9 +584,13 @@ export function renderArcade(container, ctx) {
   const cg = currentGame();
   const activeGameDefinition = GAMES.find((game) => game.id === cg);
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title">Arcade</h1>
-    <div class="grouped-page-sections" style="margin-top:var(--space-3);">
+    <div class="more-subpage-header">
+      <div class="more-subpage-title-row">
+        <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+        <h1 class="view-title">Arcade</h1>
+      </div>
+    </div>
+    <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="arcade-games-title">
         <div class="grouped-page-section-title"><h2 id="arcade-games-title">Spiele</h2></div>
         <div class="arcade-tiles">

@@ -108,6 +108,7 @@ test('the shell renders the area title, marks the active tab and returns the con
   const container = stubContainer();
   const slot = renderSectionShell(container, 'matchmaking', { badges: { checklist: 3 } });
   assert.equal(slot, container.sectionView);
+  assert.match(container.innerHTML, /class="section-page-header"/);
   assert.match(container.innerHTML, /<h1 class="view-title">Match<\/h1>/);
   for (const tab of SECTIONS.competition.tabs) {
     assert.ok(container.innerHTML.includes(`data-section-tab="${tab.view}"`), tab.view);
@@ -155,6 +156,7 @@ test('general-event planning routes render as standalone pages without an Orga t
     event: { eventType: 'general', enabledFeatures: ['travel', 'tasks'] },
   });
   assert.match(container.innerHTML, /<h1 class="view-title">An- & Abreise<\/h1>/);
+  assert.doesNotMatch(container.innerHTML, /data-navigate="more"/);
   assert.doesNotMatch(container.innerHTML, /class="section-tabs"/);
   assert.doesNotMatch(container.innerHTML, /data-section-tab=/);
 
@@ -163,6 +165,13 @@ test('general-event planning routes render as standalone pages without an Orga t
   });
   assert.match(container.innerHTML, /<h1 class="view-title">To-Do<\/h1>/);
   assert.doesNotMatch(container.innerHTML, /class="section-tabs"/);
+});
+
+test('Orga exposes the shared back navigation to the More hub', () => {
+  const container = stubContainer();
+  renderSectionShell(container, 'events');
+  assert.match(container.innerHTML, /class="more-subpage-header more-subpage-header--tabs"/);
+  assert.match(container.innerHTML, /data-navigate="more"[^>]*>.*Zurück<\/button>/s);
 });
 
 test('the shell rebuilds a same-route tab row when the event feature set changes', () => {

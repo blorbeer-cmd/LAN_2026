@@ -306,9 +306,12 @@ export function renderProfile(container, ctx) {
   const pendingInvitations = pendingEventInvitations();
 
   container.innerHTML = `
-    <div class="row-between profile-page-header">
-      <h1 class="view-title" id="profile-view-title" tabindex="-1">Mein Profil</h1>
-      <button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>
+    <div class="more-subpage-header">
+      <div class="more-subpage-title-row">
+        <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+        <h1 class="view-title" id="profile-view-title" tabindex="-1">Mein Profil</h1>
+        <button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>
+      </div>
     </div>
     <div class="grouped-page-sections">
       ${

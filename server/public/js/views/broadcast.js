@@ -106,8 +106,12 @@ export function renderBroadcast(container, ctx) {
   const displayEndsAt = Number.isFinite(parsedEndsAt) ? parsedEndsAt : Date.now() + 60 * 60 * 1000;
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title">Durchsage</h1>
+    <div class="more-subpage-header">
+      <div class="more-subpage-title-row">
+        <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+        <h1 class="view-title">Durchsage</h1>
+      </div>
+    </div>
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="broadcast-new-title">
         <div class="grouped-page-section-title">
