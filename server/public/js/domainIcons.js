@@ -27,7 +27,7 @@ export const DOMAIN_ICONS = Object.freeze({
   checklistPacking: 'clipboard',
   live: 'radioTower',
   foodOrders: 'hamburger',
-  checklist: 'clipboard',
+  checklist: 'listChecks',
   arcade: 'joystick',
   broadcast: 'megaphone',
   gameCatalog: 'gamepad',
