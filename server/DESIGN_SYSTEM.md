@@ -1246,8 +1246,8 @@ check this line is intentional).
 
 The current, complete list of such exceptions in `server/public`:
 
-- **The 11px vertical control rhythm** — base inputs, `.dt-date-btn`,
-  `.dt-time-select` and the native `select` chevron padding (`style.css`) all
+- **The 11px vertical control rhythm** — base inputs and the native `select`
+  chevron padding (`style.css`) all
   share `11px var(--space-3)`; the wider chevron side clears each element's
   own icon. 11px is deliberate (12px makes the controls taller than the
   compact buttons they sit next to), it's just not itself a token value.

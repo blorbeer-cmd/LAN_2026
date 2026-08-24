@@ -18,8 +18,6 @@ import type { GroupRole } from '../groups';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
 import { isAdminTestMode } from '../testDataVisibility';
 import {
-  MIN_OPTIONS,
-  MAX_OPTIONS,
   RESPONSE_VALUES,
   canManageDatePoll,
   materializeExpiredPollIfNeeded,
@@ -404,9 +402,9 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
   if (
     maxSelections !== undefined &&
     maxSelections !== null &&
-    (!Number.isInteger(maxSelections) || maxSelections < 1 || maxSelections > MAX_OPTIONS)
+    (!Number.isInteger(maxSelections) || maxSelections < 1)
   ) {
-    return res.status(400).json({ error: `maxSelections muss zwischen 1 und ${MAX_OPTIONS} liegen.` });
+    return res.status(400).json({ error: 'maxSelections muss eine positive ganze Zahl sein.' });
   }
   if (title !== undefined && (typeof title !== 'string' || !title.trim() || title.trim().length > 100)) {
     return res.status(400).json({ error: 'title muss 1-100 Zeichen lang sein.' });
@@ -420,8 +418,8 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
   if (previousPollId !== undefined && decisionKey !== undefined) {
     return res.status(400).json({ error: 'Eine vorherige Runde darf nicht zusammen mit decisionKey angegeben werden.' });
   }
-  if (!Array.isArray(options) || options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) {
-    return res.status(400).json({ error: `${MIN_OPTIONS} bis ${MAX_OPTIONS} Optionen sind erforderlich.` });
+  if (!Array.isArray(options) || options.length === 0) {
+    return res.status(400).json({ error: 'Mindestens eine Option ist erforderlich.' });
   }
   if (responseMode !== 'multiple_choice' && maxSelections !== undefined && maxSelections !== null) {
     return res.status(400).json({ error: 'maxSelections ist nur bei Mehrfachauswahl erlaubt.' });
@@ -589,8 +587,8 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
     fields.responseDueOn = responseDueOn;
   }
   if (options !== undefined) {
-    if (!Array.isArray(options) || options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) {
-      return res.status(400).json({ error: `${MIN_OPTIONS} bis ${MAX_OPTIONS} Optionen sind erforderlich.` });
+    if (!Array.isArray(options) || options.length === 0) {
+      return res.status(400).json({ error: 'Mindestens eine Option ist erforderlich.' });
     }
     const parsedOptions: NonNullable<Parameters<typeof updateDatePoll>[1]['options']> = [];
     for (const raw of options) {

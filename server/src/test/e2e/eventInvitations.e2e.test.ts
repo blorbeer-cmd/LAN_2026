@@ -93,7 +93,7 @@ before(async () => {
     body: JSON.stringify({
       name: EVENT_NAME,
       startsAt: now,
-      endsAt: now + 60_000,
+      endsAt: now + 5 * 60_000,
       visibilityScope: 'participants',
       location: 'https://maps.example.test/respawn',
       costCents: 2550,

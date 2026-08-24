@@ -54,6 +54,7 @@ import { isAdminTestMode } from '../testDataVisibility';
 export const eventsRouter = Router();
 
 const READ_ONLY_EVENT_CONFIGURATION_FIELDS = ['presetVersion', 'enabledFeatures'] as const;
+const EVENT_MINIMUM_DURATION_MS = 5 * 60 * 1000;
 
 function requestsReadOnlyEventConfiguration(body: unknown): boolean {
   return Boolean(
@@ -814,8 +815,8 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
   if (!parsedStartsAt.ok) return res.status(400).json({ error: parsedStartsAt.error });
   const parsedEndsAt = parseRequiredTimestamp(endsAt, 'endsAt');
   if (!parsedEndsAt.ok) return res.status(400).json({ error: parsedEndsAt.error });
-  if (parsedEndsAt.value <= parsedStartsAt.value) {
-    return res.status(400).json({ error: 'endsAt muss nach startsAt liegen.' });
+  if (parsedEndsAt.value < parsedStartsAt.value + EVENT_MINIMUM_DURATION_MS) {
+    return res.status(400).json({ error: 'endsAt muss mindestens fünf Minuten nach startsAt liegen.' });
   }
   const parsedLocation = parseOptionalText(location, 500, 'location');
   if (!parsedLocation.ok) return res.status(400).json({ error: parsedLocation.error });
@@ -929,8 +930,8 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
   const effectiveStartsAt = fields.startsAt ?? existing.starts_at;
   const effectiveEndsAt = fields.endsAt !== undefined ? fields.endsAt : existing.ends_at;
   if (effectiveStartsAt !== null) {
-    if (effectiveEndsAt === null || effectiveEndsAt <= effectiveStartsAt) {
-      return res.status(400).json({ error: 'endsAt muss nach startsAt liegen.' });
+    if (effectiveEndsAt === null || effectiveEndsAt < effectiveStartsAt + EVENT_MINIMUM_DURATION_MS) {
+      return res.status(400).json({ error: 'endsAt muss mindestens fünf Minuten nach startsAt liegen.' });
     }
   }
   if (location !== undefined) {

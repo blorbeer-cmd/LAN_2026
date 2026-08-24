@@ -47,7 +47,7 @@ Eine **Runde** ist ein konkreter Durchlauf dieser Abstimmung mit:
 
 - fortlaufender Rundennummer innerhalb genau dieser Abstimmung,
 - Titel und optionaler Beschreibung,
-- zwei bis acht freien Textoptionen,
+- einer oder beliebig vielen freien Textoptionen,
 - optionaler kurzer Notiz und HTTP-/HTTPS-Link je Option,
 - Antwortmodus,
 - optionaler maximaler Stimmenzahl bei Mehrfachauswahl,

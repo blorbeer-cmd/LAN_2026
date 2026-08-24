@@ -8,8 +8,9 @@ import { recordPushLog } from '../push';
 import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 
 const app = createTestApp();
+const EVENT_MINIMUM_DURATION_MS = 5 * 60_000;
 
-async function createEvent(name: string, durationMs = 60_000, fields: Record<string, unknown> = {}) {
+async function createEvent(name: string, durationMs = EVENT_MINIMUM_DURATION_MS, fields: Record<string, unknown> = {}) {
   const now = Date.now();
   return request(app).post('/api/events').send({ name, startsAt: now, endsAt: now + durationMs, ...fields });
 }
@@ -83,7 +84,7 @@ test('new events persist and expose the complete backwards-compatible LAN featur
 });
 
 test('general events persist the shared planning and arcade feature snapshot', async () => {
-  const created = await createEvent('Allgemeines Treffen', 60_000, { eventType: 'general' });
+  const created = await createEvent('Allgemeines Treffen', EVENT_MINIMUM_DURATION_MS, { eventType: 'general' });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.eventType, 'general');
   assert.equal(created.body.presetVersion, 2);
@@ -106,7 +107,7 @@ test('general events persist the shared planning and arcade feature snapshot', a
 });
 
 test('general events reject mutations in LAN-only areas before domain validation', async () => {
-  const created = await createEvent('Allgemeines Event ohne LAN-Bereiche', 60_000, { eventType: 'general' });
+  const created = await createEvent('Allgemeines Event ohne LAN-Bereiche', EVENT_MINIMUM_DURATION_MS, { eventType: 'general' });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   accept(created.body.id, TEST_ADMIN_ID);
   const activated = await request(app).put('/api/me/active-event').send({ eventId: created.body.id });
@@ -139,19 +140,24 @@ test('event creation validates name, required timestamps and ordering', async ()
     (await request(app).post('/api/events').send({ name: 'Zeitreise', startsAt, endsAt: startsAt - 1 })).status,
     400,
   );
+  const tooShort = await request(app)
+    .post('/api/events')
+    .send({ name: 'Zu kurz', startsAt, endsAt: startsAt + EVENT_MINIMUM_DURATION_MS - 1 });
+  assert.equal(tooShort.status, 400);
+  assert.match(tooShort.body.error, /mindestens fünf Minuten/);
   for (const visibilityScope of ['group', 'public']) {
     const deprecated = await request(app)
       .post('/api/events')
-      .send({ name: `Legacy ${visibilityScope}`, startsAt, endsAt: startsAt + 60_000, visibilityScope });
+      .send({ name: `Legacy ${visibilityScope}`, startsAt, endsAt: startsAt + EVENT_MINIMUM_DURATION_MS, visibilityScope });
     assert.equal(deprecated.status, 400);
   }
   const participantsOnly = await request(app)
     .post('/api/events')
-    .send({ name: 'Teilnehmende', startsAt, endsAt: startsAt + 60_000, visibilityScope: 'participants' });
+    .send({ name: 'Teilnehmende', startsAt, endsAt: startsAt + EVENT_MINIMUM_DURATION_MS, visibilityScope: 'participants' });
   assert.equal(participantsOnly.status, 201, JSON.stringify(participantsOnly.body));
   const invalidType = await request(app)
     .post('/api/events')
-    .send({ name: 'Unbekannter Typ', startsAt, endsAt: startsAt + 60_000, eventType: 'trip' });
+    .send({ name: 'Unbekannter Typ', startsAt, endsAt: startsAt + EVENT_MINIMUM_DURATION_MS, eventType: 'trip' });
   assert.equal(invalidType.status, 400);
   assert.match(invalidType.body.error, /lan oder general/);
 });
@@ -169,7 +175,7 @@ test('derived feature snapshot fields and post-creation type changes stay explic
       .send({
         name: `Nicht schreibbar: ${field}`,
         startsAt,
-        endsAt: startsAt + 60_000,
+        endsAt: startsAt + EVENT_MINIMUM_DURATION_MS,
         [field]: value,
       });
     assert.equal(rejected.status, 400, `${field} must not be silently ignored on create`);
@@ -226,7 +232,7 @@ test('event creation and editing validate and expose contribution and accommodat
   const created = await request(app).post('/api/events').send({
     name: 'Event mit Kosten',
     startsAt,
-    endsAt: startsAt + 60_000,
+    endsAt: startsAt + EVENT_MINIMUM_DURATION_MS,
     costCents: 2550,
     accommodationCostCents: 120000,
     paypalLink: 'https://paypal.me/respawn',
@@ -243,7 +249,7 @@ test('event creation and editing validate and expose contribution and accommodat
     const invalid = await request(app).post('/api/events').send({
       name: `Ungültige Kosten ${costCents}`,
       startsAt,
-      endsAt: startsAt + 60_000,
+      endsAt: startsAt + EVENT_MINIMUM_DURATION_MS,
       costCents,
     });
     assert.equal(invalid.status, 400);
@@ -252,7 +258,7 @@ test('event creation and editing validate and expose contribution and accommodat
     const invalid = await request(app).post('/api/events').send({
       name: `Ungültige Unterkunftskosten ${accommodationCostCents}`,
       startsAt,
-      endsAt: startsAt + 60_000,
+      endsAt: startsAt + EVENT_MINIMUM_DURATION_MS,
       accommodationCostCents,
     });
     assert.equal(invalid.status, 400);
@@ -262,7 +268,7 @@ test('event creation and editing validate and expose contribution and accommodat
       await request(app).post('/api/events').send({
         name: 'Link ohne Kosten',
         startsAt,
-        endsAt: startsAt + 60_000,
+        endsAt: startsAt + EVENT_MINIMUM_DURATION_MS,
         paypalLink: 'https://paypal.me/respawn',
       })
     ).status,
@@ -278,7 +284,7 @@ test('event creation and editing validate and expose contribution and accommodat
     const unsafePaypalLink = await request(app).post('/api/events').send({
       name: 'Unsicheres PayPal-Ziel',
       startsAt,
-      endsAt: startsAt + 60_000,
+      endsAt: startsAt + EVENT_MINIMUM_DURATION_MS,
       costCents: 2550,
       paypalLink,
     });
@@ -292,7 +298,7 @@ test('event creation and editing validate and expose contribution and accommodat
   const emailBasedPaypal = await request(app).post('/api/events').send({
     name: 'PayPal per E-Mail-Adresse',
     startsAt,
-    endsAt: startsAt + 60_000,
+    endsAt: startsAt + EVENT_MINIMUM_DURATION_MS,
     costCents: 2550,
     paypalLink: 'https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=orga%40example.com',
   });
@@ -303,7 +309,7 @@ test('event creation and editing validate and expose contribution and accommodat
       await request(app).post('/api/events').send({
         name: 'Zahlungsziel ohne Kosten',
         startsAt,
-        endsAt: startsAt + 60_000,
+        endsAt: startsAt + EVENT_MINIMUM_DURATION_MS,
         paymentDueAt: startsAt,
       })
     ).status,
@@ -314,7 +320,7 @@ test('event creation and editing validate and expose contribution and accommodat
       await request(app).post('/api/events').send({
         name: 'Ungültiger PayPal-Link',
         startsAt,
-        endsAt: startsAt + 60_000,
+        endsAt: startsAt + EVENT_MINIMUM_DURATION_MS,
         costCents: 2550,
         paypalLink: 'javascript:alert(1)',
       })
@@ -352,7 +358,7 @@ test('participants may update only themselves while the event creator may update
     memberTwoId,
   );
 
-  const created = await createEvent('Bezahlstatus Berechtigung', 60_000, {
+  const created = await createEvent('Bezahlstatus Berechtigung', EVENT_MINIMUM_DURATION_MS, {
     costCents: 2550,
     accommodationCostCents: 10000,
   });
@@ -506,7 +512,7 @@ test('payment snapshots survive price, roster, status, and account changes', asy
   const secondId = '__event-payment-snapshot-second__';
   createMember(firstId, 'Snapshot First');
   createMember(secondId, 'Snapshot Second');
-  const created = await createEvent('Snapshot-Abrechnung', 60_000, {
+  const created = await createEvent('Snapshot-Abrechnung', EVENT_MINIMUM_DURATION_MS, {
     costCents: 2550,
     accommodationCostCents: 10000,
   });
@@ -601,7 +607,7 @@ test('payment snapshots survive price, roster, status, and account changes', asy
 test('a paid participant can reset after the contribution is cleared', async () => {
   const memberId = '__event-payment-reset-without-cost__';
   createMember(memberId, 'Reset Without Cost');
-  const created = await createEvent('Zahlung ohne aktuellen Beitrag', 60_000, {
+  const created = await createEvent('Zahlung ohne aktuellen Beitrag', EVENT_MINIMUM_DURATION_MS, {
     costCents: 2550,
     accommodationCostCents: 10000,
   });
@@ -650,7 +656,7 @@ test('the group owner takes over payment management when the event creator is in
     .send({
       name: 'Vertretungsabrechnung',
       startsAt: Date.now() + 120_000,
-      endsAt: Date.now() + 180_000,
+      endsAt: Date.now() + 120_000 + EVENT_MINIMUM_DURATION_MS,
       costCents: 3000,
       accommodationCostCents: 6000,
     });
@@ -842,6 +848,17 @@ test('event metadata remains editable without changing tracking state', async ()
 
   const invalid = await request(app).patch(`/api/events/${eventBId}`).send({ endsAt: updated.body.startsAt - 1 });
   assert.equal(invalid.status, 400);
+
+  const tooShort = await request(app)
+    .patch(`/api/events/${eventBId}`)
+    .send({ endsAt: updated.body.startsAt + EVENT_MINIMUM_DURATION_MS - 1 });
+  assert.equal(tooShort.status, 400);
+  assert.match(tooShort.body.error, /mindestens fünf Minuten/);
+
+  const minimumDuration = await request(app)
+    .patch(`/api/events/${eventBId}`)
+    .send({ endsAt: updated.body.startsAt + EVENT_MINIMUM_DURATION_MS });
+  assert.equal(minimumDuration.status, 200, JSON.stringify(minimumDuration.body));
 });
 
 test('an ended event can be restarted in an emergency', async () => {

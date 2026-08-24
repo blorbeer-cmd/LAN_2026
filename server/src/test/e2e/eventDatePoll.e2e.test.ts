@@ -106,10 +106,15 @@ async function createPoll(
 ): Promise<void> {
   await page.click('#new-event-poll');
   await page.waitForSelector('#event-poll-form');
+  assert.equal(await page.getByText('2 bis 8', { exact: true }).count(), 0);
+  assert.equal(await page.locator('#poll-max').getAttribute('max'), null);
   await page.fill('#poll-title', title);
   await page.selectOption('#poll-mode', mode);
   if (anonymous) await page.check('#poll-anonymous');
   if (maxSelections !== undefined) await page.fill('#poll-max', String(maxSelections));
+  while ((await page.locator('[data-poll-option-input]').count()) > options.length) {
+    await page.locator('[data-remove-poll-option]').last().click();
+  }
   while ((await page.locator('[data-poll-option-input]').count()) < options.length) await page.click('#poll-add-option');
   for (let index = 0; index < options.length; index += 1) {
     const rawOption = options[index];
@@ -439,4 +444,22 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await ownerPage.locator('.modal-backdrop [data-confirm]').click();
   await ownerPage.locator('.toast', { hasText: 'Abstimmung beendet' }).waitFor();
   assert.equal(await anonymousPoll.locator('[data-view-poll-votes]').count(), 0, 'anonymous votes never expose identities');
+
+  await createPoll(ownerPage, {
+    title: 'Eine Möglichkeit',
+    options: ['Nur diese'],
+  });
+  const singleOptionPoll = ownerPage.locator('[data-poll-group]', { hasText: 'Eine Möglichkeit' });
+  await singleOptionPoll.waitFor();
+  assert.equal(await singleOptionPoll.locator('.event-poll-option').count(), 1);
+
+  await createPoll(ownerPage, {
+    title: 'Viele Möglichkeiten',
+    mode: 'multiple_choice',
+    maxSelections: 9,
+    options: Array.from({ length: 9 }, (_, index) => `Möglichkeit ${index + 1}`),
+  });
+  const manyOptionPoll = ownerPage.locator('[data-poll-group]', { hasText: 'Viele Möglichkeiten' });
+  await manyOptionPoll.waitFor();
+  assert.equal(await manyOptionPoll.locator('.event-poll-option').count(), 9);
 });

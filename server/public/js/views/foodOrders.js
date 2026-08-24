@@ -1482,7 +1482,7 @@ function openNewOrderForm(ctx, myId) {
         <label for="order-title" class="field-label">Titel</label>
         <input type="text" id="order-title" maxlength="80" required autofocus placeholder="z.B. Pizza bei Luigi's" />
         <div>
-          <label for="order-sendat" class="field-label">Versand (optional)</label>
+          <label for="order-sendat-date" class="field-label">Versand (optional)</label>
           ${dateTimeFieldHtml('order-sendat', null, { clearable: true, label: 'Versand' })}
         </div>
         <div>
@@ -1571,7 +1571,7 @@ function openDetailsForm(ctx, order) {
     `
       <form id="details-form" class="stack">
         <div>
-          <label for="sendat-input" class="field-label">Versand</label>
+          <label for="sendat-input-date" class="field-label">Versand</label>
           ${dateTimeFieldHtml('sendat-input', order.sendAt, { clearable: true, label: 'Versand' })}
         </div>
         <div>

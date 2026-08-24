@@ -50,6 +50,13 @@ test('PUT /api/arrivals/mine validates player and timestamps', async () => {
   assert.equal(ghost.status, 401);
   const badTime = await request(app).put('/api/arrivals/mine').send({ playerId: alice.id, arrivalAt: 'soon' });
   assert.equal(badTime.status, 400);
+
+  const arrivalAt = Date.now() + 7_200_000;
+  const invalidRange = await request(app)
+    .put('/api/arrivals/mine')
+    .send({ playerId: alice.id, arrivalAt, departureAt: arrivalAt - 60_000 });
+  assert.equal(invalidRange.status, 400);
+  assert.equal(invalidRange.body.error, 'Die Abreise darf nicht vor der Ankunft liegen.');
 });
 
 test('POST /api/arrivals/carpools creates a group, joins the creator as driver, defaults 3 seats', async () => {
@@ -62,6 +69,13 @@ test('POST /api/arrivals/carpools creates a group, joins the creator as driver, 
     .post('/api/arrivals/carpools')
     .send({ playerId: alice.id, direction: 'arrival', label: 'Auto', seatsTotal: 0 });
   assert.equal(badSeats.status, 400);
+
+  const invalidStart = Date.now() + 7_200_000;
+  const invalidRange = await request(app)
+    .post('/api/arrivals/carpools')
+    .send({ playerId: alice.id, direction: 'arrival', label: 'Zeitreise', startAt: invalidStart, etaAt: invalidStart - 60_000 });
+  assert.equal(invalidRange.status, 400);
+  assert.equal(invalidRange.body.error, 'Die Ankunft darf nicht vor dem Start liegen.');
 
   const startAt = Date.now() + 3_600_000;
   const etaAt = startAt + 7_200_000;
@@ -130,6 +144,12 @@ test('PATCH /api/arrivals/carpools/:id lets the driver update the plan, not pass
   // Currently 2 passengers seated (carol + dave) - can't shrink below that.
   const tooFew = await request(app).patch(`/api/arrivals/carpools/${carpoolId}`).send({ playerId: alice.id, seatsTotal: 1 });
   assert.equal(tooFew.status, 400);
+
+  const invalidRange = await request(app)
+    .patch(`/api/arrivals/carpools/${carpoolId}`)
+    .send({ playerId: alice.id, etaAt: 1 });
+  assert.equal(invalidRange.status, 400);
+  assert.equal(invalidRange.body.error, 'Die Ankunft darf nicht vor dem Start liegen.');
 
   const ok = await request(app)
     .patch(`/api/arrivals/carpools/${carpoolId}`)
