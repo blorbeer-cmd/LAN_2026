@@ -400,7 +400,7 @@ async function openCreateTodoForm(ctx, myId) {
           }
         </div>
         <div>
-          <span class="field-label">Fällig bis (optional)</span>
+          <label for="todo-due-date" class="field-label">Fällig bis (optional)</label>
           ${dateTimeFieldHtml('todo-due', prev.dueAtMs, { dateOnly: true, clearable: true, label: 'Fällig bis' })}
         </div>
         <button type="submit" class="btn btn-primary btn-block">To-Do erstellen</button>

@@ -509,7 +509,7 @@ function openPollForm(event, ctx, previousRound = null) {
       </div>
       <div>
         <div class="title-with-info">
-          <label for="poll-due" class="field-label">Abstimmungsfrist</label>
+          <label for="poll-due-date" class="field-label">Abstimmungsfrist</label>
           ${infoTooltipHtml('poll-due-help', 'Abstimmungsfrist', 'Teilnehmer mit noch offener Antwort werden automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
         </div>
         ${dateTimeFieldHtml('poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: false, label: 'Abstimmungsfrist' })}
@@ -609,7 +609,7 @@ function openEditPollForm(event, poll, ctx) {
       </div>
       <div>
         <div class="title-with-info">
-          <label for="poll-edit-due" class="field-label">Abstimmungsfrist</label>
+          <label for="poll-edit-due-date" class="field-label">Abstimmungsfrist</label>
           ${infoTooltipHtml(`poll-edit-due-help-${poll.id}`, 'Abstimmungsfrist', 'Teilnehmer mit noch offener Antwort werden automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
         </div>
         ${dateTimeFieldHtml('poll-edit-due', poll.responseDueAt, { dateOnly: true, clearable: false, label: 'Abstimmungsfrist' })}
@@ -680,7 +680,7 @@ function openReopenForm(event, poll, ctx) {
   const { close } = openModal('Abstimmung wieder öffnen', `
     <form id="reopen-poll-form" class="stack">
       <p class="muted">Lege eine neue Frist fest. Danach können alle bestätigten Eventteilnehmer ihre Antwort wieder ändern.</p>
-      <div><label for="reopen-poll-due" class="field-label">Neue Abstimmungsfrist</label>${dateTimeFieldHtml('reopen-poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: false, label: 'Neue Abstimmungsfrist' })}</div>
+      <div><label for="reopen-poll-due-date" class="field-label">Neue Abstimmungsfrist</label>${dateTimeFieldHtml('reopen-poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: false, label: 'Neue Abstimmungsfrist' })}</div>
       <button type="submit" class="btn btn-primary btn-block">Abstimmung wieder öffnen</button>
     </form>`, {
     confirmClose: () => (dirty ? 'Die gewählte Frist geht verloren.' : null),

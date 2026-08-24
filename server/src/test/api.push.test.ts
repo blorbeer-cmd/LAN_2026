@@ -530,7 +530,7 @@ test('new group members can load the notification center before accepting a priv
     .send({
       name: 'Push Private Event',
       startsAt: Date.now(),
-      endsAt: Date.now() + 60_000,
+      endsAt: Date.now() + 5 * 60_000,
       visibilityScope: 'participants',
     });
   assert.equal(event.status, 201, JSON.stringify(event.body));

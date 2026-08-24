@@ -47,7 +47,7 @@ test('organisation communication is roles-gated and event-scoped inside the one 
 
       const now = Date.now();
       const eventA = await scoped(app, 'post', '/api/events', alice)
-        .send({ name: 'Comms Event A', startsAt: now, endsAt: now + 60_000 });
+        .send({ name: 'Comms Event A', startsAt: now, endsAt: now + 5 * 60_000 });
       assert.equal(eventA.status, 201);
       assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice)
         .send({ playerIds: [alice.account.id] })).status, 200);
@@ -98,7 +98,7 @@ test('organisation communication is roles-gated and event-scoped inside the one 
       // Switching the group's tracked event to a second event keeps event A's
       // entries untouched and filters event B's own writes separately.
       const eventB = await scoped(app, 'post', '/api/events', alice)
-        .send({ name: 'Comms Event B', startsAt: now, endsAt: now + 60_000 });
+        .send({ name: 'Comms Event B', startsAt: now, endsAt: now + 5 * 60_000 });
       assert.equal(eventB.status, 201);
       assert.equal((await scoped(app, 'put', '/api/events/' + eventB.body.id + '/participants', alice)
         .send({ playerIds: [alice.account.id] })).status, 200);

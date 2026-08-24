@@ -55,7 +55,7 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
 
       const now = Date.now();
       const eventA = await scoped(app, 'post', '/api/events', alice, groupId)
-        .send({ name: 'Checklist Event A', startsAt: now, endsAt: now + 60_000 });
+        .send({ name: 'Checklist Event A', startsAt: now, endsAt: now + 5 * 60_000 });
       assert.equal(eventA.status, 201);
       assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice, groupId)
         .send({ playerIds: [alice.account.id, bob.account.id, dave.account.id] })).status, 200);
@@ -168,7 +168,7 @@ test('checklist mutations 404 across an event-scope boundary and group admins mo
       // make them un-mutable (though still group-owned) even though a plain
       // group-membership check alone would happily let them through. ---
       const eventA2 = await scoped(app, 'post', '/api/events', alice, groupId)
-        .send({ name: 'Checklist Event A2', startsAt: now, endsAt: now + 60_000 });
+        .send({ name: 'Checklist Event A2', startsAt: now, endsAt: now + 5 * 60_000 });
       assert.equal(eventA2.status, 201);
       assert.equal((await scoped(app, 'put', '/api/events/' + eventA2.body.id + '/participants', alice, groupId)
         .send({ playerIds: [alice.account.id, bob.account.id, dave.account.id] })).status, 200);
