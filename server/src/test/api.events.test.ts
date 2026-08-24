@@ -5,6 +5,7 @@ import { createTestApp, enableTestTracking, TEST_ADMIN_ID } from './testApp';
 import { BASE_EVENT_ID, DEFAULT_GROUP_ID, db } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
 import { recordPushLog } from '../push';
+import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 
 const app = createTestApp();
 
@@ -34,6 +35,9 @@ test('every account starts in the permanent base event', async () => {
   assert.equal(active.status, 200);
   assert.equal(active.body.id, BASE_EVENT_ID);
   assert.equal(active.body.isBase, true);
+  assert.equal(active.body.eventType, 'lan');
+  assert.equal(active.body.presetVersion, 1);
+  assert.deepEqual(active.body.enabledFeatures, [...EVENT_FEATURE_KEYS]);
 
   const list = await request(app).get('/api/events');
   assert.equal(list.status, 200);
@@ -41,11 +45,87 @@ test('every account starts in the permanent base event', async () => {
   assert.ok(list.body.availableEvents.some((event: { id: string }) => event.id === BASE_EVENT_ID));
   assert.ok(Array.isArray(list.body.invitations));
   assert.ok(Array.isArray(list.body.managedEvents));
+  assert.deepEqual(
+    list.body.eventTypeOptions.map((option: { key: string; title: string }) => ({ key: option.key, title: option.title })),
+    [
+      { key: 'lan', title: 'LAN-Party' },
+      { key: 'general', title: 'Allgemeines Event' },
+    ],
+  );
   assert.equal(
     list.body.managedEvents.some((event: { id: string }) => event.id === BASE_EVENT_ID),
     false,
     'the immutable base workspace is not rendered as a manageable LAN event',
   );
+});
+
+test('new events persist and expose the complete backwards-compatible LAN feature snapshot', async () => {
+  const created = await createEvent('LAN-Default mit Bereichen');
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.eventType, 'lan');
+  assert.equal(created.body.presetVersion, 1);
+  assert.deepEqual(created.body.enabledFeatures, [...EVENT_FEATURE_KEYS]);
+
+  const persistedEvent = db
+    .prepare('SELECT event_type_key AS eventType, preset_version AS presetVersion FROM events WHERE id = ?')
+    .get(created.body.id);
+  assert.deepEqual(persistedEvent, { eventType: 'lan', presetVersion: 1 });
+  const persistedFeatures = db
+    .prepare(
+      `SELECT feature_key AS featureKey, enabled, changed_by AS changedBy
+       FROM event_features WHERE event_id = ? ORDER BY rowid`,
+    )
+    .all(created.body.id);
+  assert.deepEqual(
+    persistedFeatures,
+    EVENT_FEATURE_KEYS.map((featureKey) => ({ featureKey, enabled: 1, changedBy: TEST_ADMIN_ID })),
+  );
+});
+
+test('general events persist the shared planning and arcade feature snapshot', async () => {
+  const created = await createEvent('Allgemeines Treffen', 60_000, { eventType: 'general' });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.eventType, 'general');
+  assert.equal(created.body.presetVersion, 2);
+  assert.deepEqual(created.body.enabledFeatures, ['tasks', 'travel', 'food', 'costs', 'music', 'arcade', 'seating']);
+
+  const featureRows = db
+    .prepare(
+      `SELECT feature_key AS featureKey, enabled, changed_by AS changedBy
+       FROM event_features WHERE event_id = ? ORDER BY rowid`,
+    )
+    .all(created.body.id);
+  assert.deepEqual(
+    featureRows,
+    EVENT_FEATURE_KEYS.map((featureKey) => ({
+      featureKey,
+      enabled: ['tasks', 'travel', 'food', 'costs', 'music', 'arcade', 'seating'].includes(featureKey) ? 1 : 0,
+      changedBy: TEST_ADMIN_ID,
+    })),
+  );
+});
+
+test('general events reject mutations in LAN-only areas before domain validation', async () => {
+  const created = await createEvent('Allgemeines Event ohne LAN-Bereiche', 60_000, { eventType: 'general' });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  accept(created.body.id, TEST_ADMIN_ID);
+  const activated = await request(app).put('/api/me/active-event').send({ eventId: created.body.id });
+  assert.equal(activated.status, 200, JSON.stringify(activated.body));
+
+  const vote = await request(app).post('/api/votes').send({});
+  assert.equal(vote.status, 404);
+  assert.match(vote.body.error, /nicht aktiviert/);
+
+  const match = await request(app).post('/api/matchmaking').send({});
+  assert.equal(match.status, 404);
+  assert.match(match.body.error, /nicht aktiviert/);
+
+  const tracking = await request(app).post(`/api/events/${created.body.id}/tracking/start`);
+  assert.equal(tracking.status, 404);
+  assert.match(tracking.body.error, /nicht aktiviert/);
+
+  const restored = await request(app).put('/api/me/active-event').send({ eventId: BASE_EVENT_ID });
+  assert.equal(restored.status, 200);
 });
 
 test('event creation validates name, required timestamps and ordering', async () => {
@@ -69,6 +149,76 @@ test('event creation validates name, required timestamps and ordering', async ()
     .post('/api/events')
     .send({ name: 'Teilnehmende', startsAt, endsAt: startsAt + 60_000, visibilityScope: 'participants' });
   assert.equal(participantsOnly.status, 201, JSON.stringify(participantsOnly.body));
+  const invalidType = await request(app)
+    .post('/api/events')
+    .send({ name: 'Unbekannter Typ', startsAt, endsAt: startsAt + 60_000, eventType: 'trip' });
+  assert.equal(invalidType.status, 400);
+  assert.match(invalidType.body.error, /lan oder general/);
+});
+
+test('derived feature snapshot fields and post-creation type changes stay explicitly read-only', async () => {
+  const startsAt = Date.now() + 60_000;
+  const readOnlyFields: Array<[string, unknown]> = [
+    ['presetVersion', 2],
+    ['enabledFeatures', ['food']],
+  ];
+  const eventCountBefore = (db.prepare('SELECT COUNT(*) AS count FROM events').get() as { count: number }).count;
+  for (const [field, value] of readOnlyFields) {
+    const rejected = await request(app)
+      .post('/api/events')
+      .send({
+        name: `Nicht schreibbar: ${field}`,
+        startsAt,
+        endsAt: startsAt + 60_000,
+        [field]: value,
+      });
+    assert.equal(rejected.status, 400, `${field} must not be silently ignored on create`);
+    assert.match(rejected.body.error, /schreibgeschützt/);
+  }
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM events').get() as { count: number }).count,
+    eventCountBefore,
+  );
+
+  const created = await createEvent('Unveränderte Eventkonfiguration');
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const eventId = created.body.id as string;
+  const storedBefore = db
+    .prepare('SELECT name, event_type_key, preset_version FROM events WHERE id = ?')
+    .get(eventId);
+  const featuresBefore = db
+    .prepare('SELECT feature_key, enabled FROM event_features WHERE event_id = ? ORDER BY rowid')
+    .all(eventId);
+  const auditCountBefore = (
+    db
+      .prepare("SELECT COUNT(*) AS count FROM admin_log WHERE action = 'event_updated' AND target_id = ?")
+      .get(eventId) as { count: number }
+  ).count;
+
+  for (const [field, value] of [...readOnlyFields, ['eventType', 'general'] as [string, unknown]]) {
+    const rejected = await request(app)
+      .patch(`/api/events/${eventId}`)
+      .send({ name: 'Darf nicht übernommen werden', [field]: value });
+    assert.equal(rejected.status, 400, `${field} must not be silently ignored on update`);
+    assert.match(rejected.body.error, /schreibgeschützt/);
+  }
+  assert.deepEqual(
+    db.prepare('SELECT name, event_type_key, preset_version FROM events WHERE id = ?').get(eventId),
+    storedBefore,
+  );
+  assert.deepEqual(
+    db.prepare('SELECT feature_key, enabled FROM event_features WHERE event_id = ? ORDER BY rowid').all(eventId),
+    featuresBefore,
+  );
+  assert.equal(
+    (
+      db
+        .prepare("SELECT COUNT(*) AS count FROM admin_log WHERE action = 'event_updated' AND target_id = ?")
+        .get(eventId) as { count: number }
+    ).count,
+    auditCountBefore,
+    'rejected configuration writes must not create an event_updated audit record',
+  );
 });
 
 test('event creation and editing validate and expose contribution and accommodation costs', async () => {

@@ -7,8 +7,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createTestApp } from './testApp';
+import { createTestApp, TEST_ADMIN_ID } from './testApp';
 import { BASE_EVENT_ID, db } from '../db';
+import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 
 const app = createTestApp();
 
@@ -96,12 +97,56 @@ test('POST /api/admin/test-data/hall-of-fame creates dense marked history across
   assert.deepEqual(seeded.body, { events: 12, matches: 216, tournaments: 36 });
 
   const events = db
-    .prepare('SELECT id, name, is_test FROM events WHERE is_test = 1 ORDER BY starts_at')
-    .all() as Array<{ id: string; name: string; is_test: number }>;
+    .prepare(
+      'SELECT id, name, is_test, event_type_key AS eventType, preset_version AS presetVersion FROM events WHERE is_test = 1 ORDER BY starts_at',
+    )
+    .all() as Array<{ id: string; name: string; is_test: number; eventType: string; presetVersion: number }>;
   assert.equal(events.length, 12);
   assert.equal(events[0].name, 'Respawn Test-LAN 2015');
   assert.equal(events.at(-1)?.name, 'Respawn Test-LAN 2026');
   assert.ok(events.every((event) => event.is_test === 1));
+  assert.ok(events.every((event) => event.eventType === 'lan' && event.presetVersion === 1));
+
+  const featureSnapshots = db
+    .prepare(
+      `SELECT ef.event_id AS eventId, COUNT(*) AS featureCount, SUM(ef.enabled) AS enabledCount,
+              MIN(ef.changed_by) AS changedBy, MAX(ef.changed_by) AS maxChangedBy
+       FROM event_features ef
+       JOIN events e ON e.id = ef.event_id
+       WHERE e.is_test = 1
+       GROUP BY ef.event_id`,
+    )
+    .all() as Array<{
+      eventId: string;
+      featureCount: number;
+      enabledCount: number;
+      changedBy: string | null;
+      maxChangedBy: string | null;
+    }>;
+  assert.equal(featureSnapshots.length, 12);
+  assert.ok(
+    featureSnapshots.every(
+      (snapshot) =>
+        snapshot.featureCount === EVENT_FEATURE_KEYS.length &&
+        snapshot.enabledCount === EVENT_FEATURE_KEYS.length &&
+        snapshot.changedBy === TEST_ADMIN_ID &&
+        snapshot.maxChangedBy === TEST_ADMIN_ID,
+    ),
+  );
+
+  const eventList = await request(app).get('/api/events');
+  const managedTestEvents = eventList.body.managedEvents.filter((event: { name: string }) =>
+    event.name.startsWith('Respawn Test-LAN'),
+  );
+  assert.equal(managedTestEvents.length, 12);
+  assert.ok(
+    managedTestEvents.every(
+      (event: { eventType: string; presetVersion: number; enabledFeatures: string[] }) =>
+        event.eventType === 'lan' &&
+        event.presetVersion === 1 &&
+        JSON.stringify(event.enabledFeatures) === JSON.stringify(EVENT_FEATURE_KEYS),
+    ),
+  );
 
   const hall = await request(app).get('/api/hall-of-fame');
   assert.equal(hall.status, 200);
@@ -109,6 +154,22 @@ test('POST /api/admin/test-data/hall-of-fame creates dense marked history across
   assert.equal(testEvents.length, 12);
   assert.ok(testEvents.every((event: { overallStandings: unknown[]; tournamentChampions: unknown[] }) =>
     event.overallStandings.length >= 4 && event.tournamentChampions.length === 3));
+
+  const reseeded = await request(app).post('/api/admin/test-data/hall-of-fame');
+  assert.equal(reseeded.status, 201);
+  assert.deepEqual(reseeded.body, seeded.body);
+  assert.equal(
+    (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count
+           FROM event_features ef JOIN events e ON e.id = ef.event_id
+           WHERE e.is_test = 1 AND ef.enabled = 1`,
+        )
+        .get() as { count: number }
+    ).count,
+    12 * EVENT_FEATURE_KEYS.length,
+  );
 });
 
 test('DELETE /api/admin/test-users removes every marked player and historical test LAN', async () => {

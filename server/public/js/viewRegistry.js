@@ -22,6 +22,7 @@ import { renderAdminFeedback } from './views/adminFeedback.js';
 import { renderMusic } from './views/music.js';
 import { createViewRegistry } from './viewManifest.js';
 import { renderSectionShell, sectionKeyForView } from './sectionNav.js';
+import { state } from './state.js';
 
 // A route inside a merged area (see sectionNav.js) draws that area's heading
 // and tab row first and then hands the remaining surface to its own renderer,
@@ -32,7 +33,10 @@ function inSection(view, render) {
     // Orga's To-Dos tab carries a live count, so every tab of that area needs
     // the underlying data — not just the one that renders the list.
     if (inOrga) ensureTasksLoaded(ctx);
-    const content = renderSectionShell(container, view, { badges: { checklist: openTaskCount() } });
+    const content = renderSectionShell(container, view, {
+      badges: { checklist: openTaskCount() },
+      event: state.activeEvent,
+    });
     render(content, ctx);
   };
 }

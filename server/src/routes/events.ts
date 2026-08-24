@@ -42,8 +42,44 @@ import { setEventTrackingConsent } from '../trackingContexts';
 import { activeGroupPlayers } from '../groupPlayers';
 import { createPersistentBackup } from '../backupService';
 import { eventAccessLevel, getOrRepairActiveEvent } from '../eventContext';
+import { getEnabledEventFeatures, isEventFeatureEnabled } from '../eventFeatures';
+import {
+  DEFAULT_EVENT_TYPE_KEY,
+  EVENT_TYPE_KEYS,
+  EVENT_TYPE_PRESETS,
+  isEventTypeKey,
+} from '../eventFeatureCatalog';
 
 export const eventsRouter = Router();
+
+const READ_ONLY_EVENT_CONFIGURATION_FIELDS = ['presetVersion', 'enabledFeatures'] as const;
+
+function requestsReadOnlyEventConfiguration(body: unknown): boolean {
+  return Boolean(
+    body &&
+    typeof body === 'object' &&
+    READ_ONLY_EVENT_CONFIGURATION_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(body, field)),
+  );
+}
+
+function rejectReadOnlyEventConfiguration(res: Response) {
+  return res.status(400).json({
+    error: 'Preset-Version und Bereichsauswahl sind in diesem Ausbau noch schreibgeschützt.',
+  });
+}
+
+function eventTypeOptions() {
+  return EVENT_TYPE_KEYS.map((eventTypeKey) => {
+    const preset = EVENT_TYPE_PRESETS[eventTypeKey];
+    return {
+      key: preset.key,
+      title: preset.title,
+      description: preset.description,
+      presetVersion: preset.version,
+      enabledFeatures: [...preset.recommendedFeatureKeys],
+    };
+  });
+}
 
 // One key per invited account so accepting or declining retires exactly that
 // invitation's notification and never a parallel one for another event.
@@ -269,6 +305,9 @@ function serializeEventSummary(
     ...(includePaymentDetails ? { paypalLink: event.paypal_link } : {}),
     status: event.status,
     isBase: event.id === BASE_EVENT_ID,
+    eventType: event.event_type_key,
+    presetVersion: event.preset_version,
+    enabledFeatures: getEnabledEventFeatures(event.id),
     trackingEnabled: Boolean(event.tracking_enabled),
     isEnded: Boolean(event.ended_at),
     ...(includeAcceptedParticipants
@@ -289,7 +328,7 @@ function serializeEventSummary(
 eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
   const playerId = req.player!.id;
   const canManage = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
-  const activeEvent = getOrRepairActiveEvent(playerId);
+  const activeEvent = getEvent(getOrRepairActiveEvent(playerId).id)!;
   const availableEvents = db
     .prepare(
       `SELECT e.*
@@ -362,6 +401,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
         .map((event) => serializeEvent(event, playerId, req.groupMembership?.role))
     : undefined;
   res.json({
+    eventTypeOptions: eventTypeOptions(),
     activeEvent: {
       ...serializeEventSummary(activeEvent as EventRow),
       // Every picker that draws teams or starts a draft must offer only
@@ -386,7 +426,8 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
 
 // GET /api/events/active - this account's persisted workspace.
 eventsRouter.get('/active', requireConfiguredGroupMembership, (req, res) => {
-  res.json(serializeEventSummary(getOrRepairActiveEvent(req.player!.id) as EventRow));
+  const activeEvent = getEvent(getOrRepairActiveEvent(req.player!.id).id)!;
+  res.json(serializeEventSummary(activeEvent));
 });
 
 eventsRouter.get('/:id', resolveEvent, (req, res) => {
@@ -721,12 +762,14 @@ function parseOptionalPaypalLink(
 // POST /api/events - create a new event. Tracking starts OFF — several
 // events can exist side by side, so creating one never touches whichever
 // event (if any) is currently tracking.
-// Body: { name, startsAt, endsAt, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
+// Body: { name, startsAt, endsAt, eventType?, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
 eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin'), (req, res) => {
+  if (requestsReadOnlyEventConfiguration(req.body)) return rejectReadOnlyEventConfiguration(res);
   const {
     name,
     startsAt,
     endsAt,
+    eventType,
     location,
     description,
     costCents,
@@ -737,6 +780,10 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
   } = req.body ?? {};
   if (!isNonEmptyString(name, 80)) {
     return res.status(400).json({ error: 'Name ist erforderlich (1-80 Zeichen).' });
+  }
+  const eventTypeKey = eventType ?? DEFAULT_EVENT_TYPE_KEY;
+  if (!isEventTypeKey(eventTypeKey)) {
+    return res.status(400).json({ error: 'eventType muss lan oder general sein.' });
   }
 
   const parsedStartsAt = parseRequiredTimestamp(startsAt, 'startsAt');
@@ -781,6 +828,7 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
     paypalLink: parsedPaypalLink.value,
     paymentDueAt: parsedPaymentDueAt.value,
     createdBy: req.player?.id ?? null,
+    eventTypeKey,
   });
 
   writeAdminAudit({
@@ -797,6 +845,8 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
 // PATCH /api/events/:id - metadata correction only (name/dates/location/
 // description/payment details); never touches tracking state or live status.
 // Body: any subset of { name?, startsAt?, endsAt?, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
+// The event type is intentionally fixed after creation in the small MVP so a
+// type switch cannot hide a running LAN workflow without an impact check.
 eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) => {
   const existing = req.groupResource as EventRow;
   if (!existing || existing.id === OUTSIDE_EVENTS_ID) {
@@ -805,6 +855,10 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
   if (existing.id === BASE_EVENT_ID) {
     return res.status(409).json({ error: 'Das dauerhaft offene Basis-Event kann nicht bearbeitet werden.' });
   }
+  if (req.body && typeof req.body === 'object' && Object.prototype.hasOwnProperty.call(req.body, 'eventType')) {
+    return res.status(400).json({ error: 'Der Eventtyp ist in diesem MVP nach dem Anlegen schreibgeschützt.' });
+  }
+  if (requestsReadOnlyEventConfiguration(req.body)) return rejectReadOnlyEventConfiguration(res);
 
   const {
     name,
@@ -956,6 +1010,9 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
 // POST /api/events/:id/tracking/start - starts this event's independent
 // tracking window. Overlapping events may track simultaneously.
 eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin'), async (req, res) => {
+  if (!isEventFeatureEnabled(req.params.id, 'tracking')) {
+    return res.status(404).json({ error: 'Tracking ist für dieses Event nicht aktiviert.' });
+  }
   const attempt = await startTrackingWithBackup(req.params.id);
   if ('backupError' in attempt) {
     // eslint-disable-next-line no-console
@@ -985,6 +1042,9 @@ eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin')
 
 // POST /api/events/:id/restart - reopens an ended event and starts tracking.
 eventsRouter.post('/:id/restart', resolveEvent, requireGroupRole('admin'), async (req, res) => {
+  if (!isEventFeatureEnabled(req.params.id, 'tracking')) {
+    return res.status(404).json({ error: 'Tracking ist für dieses Event nicht aktiviert.' });
+  }
   const attempt = await startTrackingWithBackup(req.params.id, true);
   if ('backupError' in attempt) {
     // eslint-disable-next-line no-console
@@ -1015,6 +1075,9 @@ eventsRouter.post('/:id/restart', resolveEvent, requireGroupRole('admin'), async
 // POST /api/events/:id/tracking/stop - pauses tracking without ending the
 // event; can be resumed with .../tracking/start later.
 eventsRouter.post('/:id/tracking/stop', resolveEvent, requireGroupRole('admin'), async (req, res) => {
+  if (!isEventFeatureEnabled(req.params.id, 'tracking')) {
+    return res.status(404).json({ error: 'Tracking ist für dieses Event nicht aktiviert.' });
+  }
   const updated = await enqueueEventLifecycle(() => stopTracking(req.params.id));
   if (!updated) return res.status(404).json({ error: 'Event nicht gefunden.' });
   writeAdminAudit({

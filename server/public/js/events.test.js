@@ -3,11 +3,18 @@ import assert from 'node:assert/strict';
 import {
   acceptedParticipantCount,
   eventDateRange,
+  eventPdfExportAvailable,
   eventSettlement,
   parseEventAccommodationCostCents,
   parseEventCostCents,
   renderEventLocation,
 } from './views/events.js';
+
+test('the LAN keepsake PDF stays available only for LAN-compatible events', () => {
+  assert.equal(eventPdfExportAvailable({ eventType: 'lan' }), true);
+  assert.equal(eventPdfExportAvailable({ eventType: 'general' }), false);
+  assert.equal(eventPdfExportAvailable({}), true);
+});
 
 test('event date ranges keep a regular midnight end on its selected calendar day', () => {
   const startsAt = new Date(2026, 8, 8, 18, 0).getTime();
