@@ -108,7 +108,7 @@ export function renderBroadcast(container, ctx) {
             <input type="text" id="broadcast-message" placeholder="z.B. Essen ist da!" maxlength="200" ${myId ? '' : 'disabled'} />
           </div>
           <div>
-            <label for="broadcast-ends-at" class="field-label">Sichtbar bis</label>
+            <label for="broadcast-ends-at-date" class="field-label">Sichtbar bis</label>
             ${dateTimeFieldHtml('broadcast-ends-at', displayEndsAt, { disabled: !myId, label: 'Sichtbar bis' })}
           </div>
           <button type="submit" class="btn btn-primary" ${myId ? '' : 'disabled'}>Senden</button>

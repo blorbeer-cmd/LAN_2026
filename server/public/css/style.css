@@ -1403,7 +1403,7 @@ textarea {
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 11px var(--space-3); /* design-token-ok: shared 11px control rhythm, see .dt-time-select exception in DESIGN_SYSTEM.md */
+  padding: 11px var(--space-3); /* design-token-ok: shared 11px control rhythm documented in DESIGN_SYSTEM.md */
   font-size: var(--font-size-md);
   color: var(--text);
   width: 100%;
@@ -1696,11 +1696,8 @@ input[type='number']::-webkit-inner-spin-button {
 }
 
 /* A pair of labeled fields side by side (arrival/departure, event start/end,
-   analytics date range). Native datetime-local controls have a wide,
-   non-shrinkable intrinsic content width — a plain `.row` with `flex:1`
-   children can't shrink them below that, so on a narrow phone the second
-   field gets pushed past the card edge. flex-wrap plus a sane min-width lets
-   the pair drop to one field per line instead of overflowing. */
+   analytics date range). flex-wrap plus a sane min-width lets the pair drop
+   to one field per line instead of overflowing on narrow phones. */
 .field-row {
   display: flex;
   gap: var(--space-3);
@@ -2467,56 +2464,57 @@ button.draft-pool-player {
 }
 
 /* ---------- Custom date/time field (server/public/js/dateTimeField.js) ----------
-   Replaces <input type="datetime-local">: the native control's closed-state
-   segments and popup calendar are drawn by the browser/OS, not themeable to
-   match the rest of the app (they stay a generic light "Windows" widget
-   regardless of dark mode). This is a themed trigger + hour/minute selects +
-   a calendar popover built from the same card/button classes as everywhere
-   else in the app. */
+   One manually editable date plus one time field, backed by the shared dark
+   calendar. Paired instances additionally communicate a real date range. */
 .dt-field {
+  min-width: 0;
+}
+.dt-inputs {
   display: flex;
+  align-items: stretch;
   gap: var(--space-2);
-  flex-wrap: wrap;
+  min-width: 0;
 }
-.dt-date-btn {
-  flex: 1 1 140px;
-  display: flex;
-  align-items: center;
-  background: var(--bg-elevated-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 11px var(--space-3); /* design-token-ok: shared 11px control rhythm, see .dt-time-select exception in DESIGN_SYSTEM.md */
-  font-size: var(--font-size-md);
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
+.dt-date-control {
+  position: relative;
+  flex: 1 1 180px;
+  min-width: 0;
 }
-.dt-date-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+.dt-date-input {
+  width: 100%;
+  padding-right: calc(var(--tap-target-size) + var(--space-2));
 }
-.dt-time-group {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex: 0 0 auto;
-}
-.dt-time-select {
-  width: 62px;
-  padding: 11px 22px 11px 10px; /* design-token-ok: vertical padding matches the shared 11px input rhythm; wider right side clears this select's own chevron icon */
-  background-position: right 6px center;
-}
-.dt-time-sep {
+.dt-calendar-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--tap-target-size);
+  height: auto;
   color: var(--text-muted);
-  font-weight: var(--font-weight-medium);
+}
+.dt-time-input {
+  flex: 0 0 88px;
+  width: 88px;
+  text-align: center;
 }
 .dt-clear-btn {
+  flex: 0 0 var(--tap-target-size);
   color: var(--text-muted);
+}
+.dt-error {
+  margin: var(--space-1) 0 0;
+  color: var(--danger);
+  font-size: var(--font-size-sm);
+}
+.dt-date-input[aria-invalid='true'],
+.dt-time-input[aria-invalid='true'] {
+  border-color: var(--danger);
 }
 
 .dt-popover {
-  width: 280px;
-  max-width: calc(100vw - 16px);
+  width: 320px;
+  max-width: calc(100vw - 2 * var(--space-2));
   z-index: 80;
   box-shadow: var(--shadow);
 }
@@ -2537,6 +2535,9 @@ button.draft-pool-player {
   font-weight: var(--font-weight-medium);
   padding-bottom: var(--space-2);
 }
+.dt-calendar abbr {
+  text-decoration: none;
+}
 .dt-calendar td {
   text-align: center;
   padding: var(--space-1);
@@ -2551,8 +2552,13 @@ button.draft-pool-player {
   font-size: var(--font-size-sm);
   cursor: pointer;
 }
+.dt-day:disabled {
+  color: var(--state-offline);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
 @media (hover: hover) {
-  .dt-day:hover {
+  .dt-day:not(:disabled):hover {
     background: var(--bg-elevated-2);
   }
 }
@@ -2564,8 +2570,32 @@ button.draft-pool-player {
   color: var(--accent-text);
   font-weight: var(--font-weight-bold);
 }
+.dt-day-in-range:not(.dt-day-selected) {
+  background: var(--accent-bg);
+}
 .dt-popover .btn-block {
   margin-top: var(--space-2);
+}
+
+@media (max-width: 640px) { /* --bp-md */
+  .dt-inputs {
+    flex-wrap: wrap;
+  }
+  .dt-date-control {
+    flex-basis: calc(100% - var(--tap-target-size) - var(--space-2));
+  }
+  .dt-time-input {
+    flex: 1 1 88px;
+    width: auto;
+  }
+  .dt-popover {
+    right: var(--space-2);
+    bottom: var(--space-2);
+    left: var(--space-2);
+    width: auto;
+    max-width: none;
+    border-radius: var(--radius-lg);
+  }
 }
 
 .stack {

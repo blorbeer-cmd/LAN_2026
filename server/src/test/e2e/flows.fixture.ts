@@ -290,9 +290,26 @@ flowTest('shell', 'Orga Events tab and Profil use grouped help while admin tools
   );
   assert.equal(await page.locator('.food-order-paypal-label label[for="event-paypal"]').textContent(), 'PayPal');
   assert.equal(
-    await page.locator('.food-order-paypal-label label[for="event-payment-due"]').textContent(),
+    await page.locator('.food-order-paypal-label label[for="event-payment-due-date"]').textContent(),
     'Zahlungsziel',
   );
+  assert.equal(await page.locator('#event-starts-date[placeholder="TT.MM.JJJJ"]').count(), 1);
+  assert.equal(await page.locator('#event-starts-time[placeholder="HH:MM"]').count(), 1);
+  assert.equal(await page.locator('#event-ends-date[placeholder="TT.MM.JJJJ"]').count(), 1);
+  assert.equal(await page.locator('#event-ends-time[placeholder="HH:MM"]').count(), 1);
+  assert.equal(await page.locator('#event-starts-time').evaluate((element) => element.tagName), 'INPUT');
+  assert.equal(await page.locator('[data-dt-field="event-starts"] select').count(), 0);
+
+  const invalidEnd = new Date(Date.now() - 86_400_000);
+  const invalidEndLabel = `${String(invalidEnd.getDate()).padStart(2, '0')}.${String(invalidEnd.getMonth() + 1).padStart(2, '0')}.${invalidEnd.getFullYear()}`;
+  await page.fill('#event-ends-date', invalidEndLabel);
+  await page.locator('#event-ends-date').blur();
+  assert.equal(await page.locator('#event-ends-date').getAttribute('aria-invalid'), 'true');
+  assert.equal(await page.locator('#event-ends-error').textContent(), 'Das Ende muss nach dem Beginn liegen.');
+  await page.click('[data-dt-field="event-ends"] [data-dt-trigger]');
+  await page.waitForSelector('.dt-popover');
+  assert.ok(await page.locator('.dt-popover [data-dt-day]:disabled').count() > 0, 'days before the event start are disabled');
+  await page.keyboard.press('Escape');
   assert.equal(await page.locator('.event-payment-label').count(), 0);
   assert.match(await page.locator('#event-paypal').getAttribute('placeholder') ?? '', /E-Mail-Adresse/);
   await page.click('.modal[aria-label="Neues Event"] [data-close]');

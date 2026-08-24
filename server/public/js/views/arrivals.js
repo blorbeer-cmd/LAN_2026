@@ -8,7 +8,7 @@ import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
-import { dateTimeFieldHtml, wireDateTimeField, parseDatetimeLocalMs } from '../dateTimeField.js';
+import { dateTimeFieldHtml, wireDateTimeField, wireDateTimeRange, parseDatetimeLocalMs } from '../dateTimeField.js';
 import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
@@ -65,11 +65,11 @@ function renderMyForm(myId, draft) {
       <form class="stack" id="arrival-form">
         <div class="field-row">
           <div>
-            <label for="arrival-at" class="field-label">Ankunft</label>
+            <label for="arrival-at-date" class="field-label">Ankunft</label>
             ${dateTimeFieldHtml('arrival-at', arrivalAt, { clearable: true, disabled: !myId, label: 'Ankunft' })}
           </div>
           <div>
-            <label for="departure-at" class="field-label">Abreise</label>
+            <label for="departure-at-date" class="field-label">Abreise</label>
             ${dateTimeFieldHtml('departure-at', departureAt, { clearable: true, disabled: !myId, label: 'Abreise' })}
           </div>
         </div>
@@ -83,9 +83,8 @@ function renderMyForm(myId, draft) {
 // A control inside the still-mounted "Meine An-/Abreise" form that currently
 // has focus, expressed as a selector that resolves to the equivalent control
 // in the freshly rendered form. Only the note textarea has a stable id; the
-// date widget's trigger/hour/minute controls are matched through the field's
-// data-dt-field id instead (see dateTimeField.js - it renders no id of its
-// own on those).
+// date widget's visible date/time controls are matched through the field's
+// data-dt-field id so focus survives the render.
 function focusedArrivalControlSelector(container) {
   const active = document.activeElement;
   if (!active || !container.contains(active)) return null;
@@ -94,8 +93,8 @@ function focusedArrivalControlSelector(container) {
   if (!field) return null;
   const fieldSelector = `[data-dt-field="${field.dataset.dtField}"]`;
   if (active.matches('[data-dt-trigger]')) return `${fieldSelector} [data-dt-trigger]`;
-  if (active.matches('[data-dt-hour]')) return `${fieldSelector} [data-dt-hour]`;
-  if (active.matches('[data-dt-minute]')) return `${fieldSelector} [data-dt-minute]`;
+  if (active.matches('[data-dt-date]')) return `${fieldSelector} [data-dt-date]`;
+  if (active.matches('[data-dt-time]')) return `${fieldSelector} [data-dt-time]`;
   return null;
 }
 
@@ -339,11 +338,11 @@ function openCarpoolForm(direction, myId, ctx, existing = null) {
         </div>
         <div class="field-row">
           <div>
-            <label for="carpool-start-at" class="field-label">Start</label>
+            <label for="carpool-start-at-date" class="field-label">Start</label>
             ${dateTimeFieldHtml('carpool-start-at', existing?.startAt ?? defaultStartAt, { clearable: true, label: 'Start' })}
           </div>
           <div>
-            <label for="carpool-eta-at" class="field-label">Ankunft</label>
+            <label for="carpool-eta-at-date" class="field-label">Ankunft</label>
             ${dateTimeFieldHtml('carpool-eta-at', existing?.etaAt ?? defaultEtaAt, { clearable: true, label: 'Ankunft' })}
           </div>
         </div>
@@ -368,6 +367,7 @@ function openCarpoolForm(direction, myId, ctx, existing = null) {
         modalEl = el;
         wireDateTimeField(el, 'carpool-start-at');
         wireDateTimeField(el, 'carpool-eta-at');
+        wireDateTimeRange(el, 'carpool-start-at', 'carpool-eta-at');
 
         el.querySelector('#carpool-form').addEventListener('submit', async (e) => {
           e.preventDefault();
@@ -442,6 +442,7 @@ export function renderArrivals(container, ctx) {
   wireInfoTooltips(container);
   wireDateTimeField(container, 'arrival-at');
   wireDateTimeField(container, 'departure-at');
+  wireDateTimeRange(container, 'arrival-at', 'departure-at');
   if (focusedSelector) container.querySelector(focusedSelector)?.focus();
 
   container.querySelectorAll('[data-arrivals-sort]').forEach((button) => {

@@ -19,7 +19,7 @@ import { state } from '../state.js';
 import { icon } from '../icons.js';
 import { avatarHtml, escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
-import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
+import { dateTimeFieldHtml, wireDateTimeField, wireDateTimeRange } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { getMyId } from '../whoami.js';
 import { emptyStateHtml } from '../emptyState.js';
@@ -701,11 +701,11 @@ function openEventForm(ctx, existing) {
         </div>
         <div class="field-row">
           <div>
-            <label for="event-starts" class="field-label">Beginnt am</label>
+            <label for="event-starts-date" class="field-label">Beginnt am</label>
             ${dateTimeFieldHtml('event-starts', existing?.startsAt ?? now, { clearable: false, label: 'Beginnt am' })}
           </div>
           <div>
-            <label for="event-ends" class="field-label">Endet am</label>
+            <label for="event-ends-date" class="field-label">Endet am</label>
             ${dateTimeFieldHtml('event-ends', existing?.endsAt ?? defaultEnd, { clearable: isEdit, label: 'Endet am' })}
           </div>
         </div>
@@ -750,7 +750,7 @@ function openEventForm(ctx, existing) {
           </div>
           <div>
             <div class="food-order-paypal-label">
-              <label for="event-payment-due" class="field-label">Zahlungsziel</label>
+              <label for="event-payment-due-date" class="field-label">Zahlungsziel</label>
               ${infoTooltipHtml('event-payment-due-help', 'Zahlungsziel', 'Ist ein Datum gesetzt, beginnen Erinnerungen an diesem Tag. Ohne Zahlungsziel beginnen sie zwei Stunden nach der Zusage.')}
             </div>
             ${dateTimeFieldHtml('event-payment-due', existing?.paymentDueAt ?? null, { clearable: true, dateOnly: true, label: 'Zahlungsziel' })}
@@ -785,6 +785,7 @@ function openEventForm(ctx, existing) {
         capturedEl = modalEl;
         wireDateTimeField(modalEl, 'event-starts');
         wireDateTimeField(modalEl, 'event-ends');
+        wireDateTimeRange(modalEl, 'event-starts', 'event-ends', { minimumGapMs: 5 * 60 * 1000 });
         wireDateTimeField(modalEl, 'event-payment-due');
         wireInfoTooltips(modalEl);
         modalEl.querySelector('#event-form').addEventListener('submit', async (e) => {

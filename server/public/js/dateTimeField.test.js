@@ -1,78 +1,67 @@
-// Unit tests for dateTimeFieldHtml(), the pure string-rendering half of the
-// custom date/time picker (see dateTimeField.js's header for why it exists —
-// it replaces the native <input type="datetime-local"> whose popup can't be
-// themed). wireDateTimeField() itself needs a real DOM/browser and is
-// exercised indirectly by the e2e suite instead.
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dateTimeFieldHtml } from './dateTimeField.js';
+import { dateTimeFieldHtml, parseDateInput, parseTimeInput } from './dateTimeField.js';
 
-test('an empty value renders the placeholder label and a disabled time selects', () => {
-  const html = dateTimeFieldHtml('my-field', null);
-  assert.match(html, /Datum wählen/);
-  assert.match(html, /data-dt-hour disabled/);
-  assert.match(html, /data-dt-minute disabled/);
+test('an empty value renders one editable date and one editable time field', () => {
+  const html = dateTimeFieldHtml('my-field', null, { clearable: true, label: 'Beginn' });
+  assert.match(html, /id="my-field-date"[^>]+placeholder="TT\.MM\.JJJJ"/);
+  assert.match(html, /id="my-field-time"[^>]+placeholder="HH:MM"/);
+  assert.doesNotMatch(html, /data-dt-hour|data-dt-minute|<select/);
+  assert.match(html, /aria-label="Kalender für Beginn öffnen"/);
 });
 
-test('a set value renders the hidden input in datetime-local format and enables the time selects', () => {
-  const d = new Date(2026, 6, 8, 14, 35, 0);
-  const html = dateTimeFieldHtml('my-field', d.getTime());
+test('a set value renders localized visible values and the compatible hidden value', () => {
+  const value = new Date(2026, 6, 8, 14, 35, 0).getTime();
+  const html = dateTimeFieldHtml('my-field', value);
+  assert.match(html, /id="my-field" value="2026-07-08T14:35"/);
+  assert.match(html, /data-dt-date[^>]+value="08\.07\.2026"/);
+  assert.match(html, /data-dt-time[^>]+value="14:35"/);
+});
+
+test('the minute value snaps to the shared 5-minute step', () => {
+  const value = new Date(2026, 6, 8, 14, 37, 0).getTime();
+  const html = dateTimeFieldHtml('my-field', value);
   assert.match(html, /value="2026-07-08T14:35"/);
-  assert.doesNotMatch(html, /data-dt-hour disabled/);
-  assert.doesNotMatch(html, /data-dt-minute disabled/);
+  assert.match(html, /data-dt-time[^>]+value="14:35"/);
 });
 
-test('the minute value snaps to the nearest 5-minute step', () => {
-  const d = new Date(2026, 6, 8, 14, 37, 0); // 37 -> rounds to 35
-  const html = dateTimeFieldHtml('my-field', d.getTime());
-  assert.match(html, /value="2026-07-08T14:35"/);
+test('clearable controls the clear action and required state', () => {
+  const clearable = dateTimeFieldHtml('f1', Date.now(), { clearable: true });
+  assert.match(clearable, /class="dt-clear-btn[^>]+data-dt-clear/);
+  assert.doesNotMatch(clearable, /data-dt-date[^>]+ required/);
+
+  const required = dateTimeFieldHtml('f2', Date.now());
+  assert.doesNotMatch(required, /class="dt-clear-btn/);
+  assert.match(required, /data-dt-date[^>]+ required/);
+  assert.match(required, /data-dt-time[^>]+ required/);
 });
 
-test('the clear button only renders when opts.clearable is set', () => {
-  const withClear = dateTimeFieldHtml('f1', Date.now(), { clearable: true });
-  assert.match(withClear, /data-dt-clear/);
-
-  const withoutClear = dateTimeFieldHtml('f1', Date.now());
-  assert.doesNotMatch(withoutClear, /data-dt-clear/);
+test('disabled disables every visible control', () => {
+  const html = dateTimeFieldHtml('f1', Date.now(), { disabled: true, clearable: true });
+  assert.match(html, /data-dt-date[^>]+ disabled/);
+  assert.match(html, /data-dt-trigger[^>]+ disabled/);
+  assert.match(html, /data-dt-time[^>]+ disabled/);
+  assert.match(html, /data-dt-clear[^>]+ disabled/);
 });
 
-test('opts.disabled disables the trigger button and both time selects', () => {
-  const html = dateTimeFieldHtml('f1', Date.now(), { disabled: true });
-  assert.match(html, /dt-date-btn" data-dt-trigger disabled/);
-});
-
-test('the correct hour/minute <option> is marked selected', () => {
-  const d = new Date(2026, 6, 8, 9, 20, 0);
-  const html = dateTimeFieldHtml('f1', d.getTime());
-  assert.match(html, /<option value="9" selected>09<\/option>/);
-  assert.match(html, /<option value="20" selected>20<\/option>/);
-});
-
-test('opts.label gives the trigger and both time selects a distinct accessible name', () => {
-  const d = new Date(2026, 6, 8, 9, 20, 0);
-  const html = dateTimeFieldHtml('f1', d.getTime(), { label: 'Ankunft', clearable: true });
-  assert.match(html, /data-dt-trigger aria-label="Ankunft, Mi\., 08\.07\.2026"/);
-  assert.match(html, /data-dt-hour aria-label="Ankunft, Stunde"/);
-  assert.match(html, /data-dt-minute aria-label="Ankunft, Minute"/);
-  assert.match(html, /aria-label="Ankunft löschen"/);
-});
-
-test('without opts.label the fields fall back to the generic "Datum löschen" clear label and no aria-label', () => {
-  const html = dateTimeFieldHtml('f1', Date.now(), { clearable: true });
-  assert.doesNotMatch(html, /data-dt-trigger aria-label/);
-  assert.doesNotMatch(html, /data-dt-hour aria-label/);
-  assert.match(html, /aria-label="Datum löschen"/);
-});
-
-test('opts.dateOnly omits the whole hour/minute row, e.g. for a due date with no meaningful time-of-day', () => {
-  const d = new Date(2026, 6, 8, 14, 37, 0);
-  const html = dateTimeFieldHtml('f1', d.getTime(), { dateOnly: true });
-  assert.doesNotMatch(html, /dt-time-group/);
-  assert.doesNotMatch(html, /data-dt-hour/);
-  assert.doesNotMatch(html, /data-dt-minute/);
-  // Unlike the time-aware path, an already-set value is not snapped to the
-  // 5-minute step - there is no time granularity here to snap.
+test('date-only mode omits the time field but preserves the hidden contract', () => {
+  const value = new Date(2026, 6, 8, 14, 37, 0).getTime();
+  const html = dateTimeFieldHtml('f1', value, { dateOnly: true });
+  assert.doesNotMatch(html, /data-dt-time/);
   assert.match(html, /value="2026-07-08T14:37"/);
-  assert.match(html, /Mi\., 08\.07\.2026/);
+  assert.match(html, /value="08\.07\.2026"/);
+});
+
+test('manual German date parsing rejects impossible dates', () => {
+  assert.deepEqual(parseDateInput('8.7.2026'), { day: 8, month: 6, year: 2026 });
+  assert.deepEqual(parseDateInput('08.07.2026'), { day: 8, month: 6, year: 2026 });
+  assert.equal(parseDateInput('31.02.2026'), null);
+  assert.equal(parseDateInput('2026-07-08'), null);
+});
+
+test('manual 24-hour time parsing validates hours and minutes', () => {
+  assert.deepEqual(parseTimeInput('9:05'), { hour: 9, minute: 5 });
+  assert.deepEqual(parseTimeInput('23:59'), { hour: 23, minute: 59 });
+  assert.equal(parseTimeInput('24:00'), null);
+  assert.equal(parseTimeInput('12:60'), null);
 });

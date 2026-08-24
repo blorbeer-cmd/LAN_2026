@@ -98,7 +98,7 @@ test('create a To-Do as one member, claim and complete it as another, "Mir zugew
   // Pick a due date via the themed date-only picker (no time-of-day row).
   await page.click('[data-dt-field="todo-due"] [data-dt-trigger]');
   await page.waitForSelector('.dt-popover');
-  assert.equal(await page.locator('.dt-popover [data-dt-hour]').count(), 0, 'due date picker has no time-of-day controls');
+  assert.equal(await page.locator('[data-dt-field="todo-due"] [data-dt-time]').count(), 0, 'due date picker has no time-of-day controls');
   await page.click('.dt-popover [data-dt-today]');
   await page.waitForSelector('.dt-popover', { state: 'detached' });
 

@@ -232,6 +232,9 @@ arrivalsRouter.put('/mine', ...withBodyPlayerIdentity, (req, res) => {
   if (typeof parsedArrival === 'object' && parsedArrival !== null) return res.status(400).json({ error: parsedArrival.error });
   const parsedDeparture = parseOptionalTimestamp(departureAt, 'departureAt');
   if (typeof parsedDeparture === 'object' && parsedDeparture !== null) return res.status(400).json({ error: parsedDeparture.error });
+  if (parsedArrival !== null && parsedDeparture !== null && parsedDeparture < parsedArrival) {
+    return res.status(400).json({ error: 'Die Abreise darf nicht vor der Ankunft liegen.' });
+  }
   const parsedNote = parseOptionalNote(note);
   if (typeof parsedNote === 'object' && parsedNote !== null) return res.status(400).json({ error: parsedNote.error });
 
@@ -273,6 +276,9 @@ arrivalsRouter.post('/carpools', ...withBodyPlayerIdentity, (req, res) => {
   }
   const parsedEtaAt = parseOptionalTimestamp(etaAt, 'etaAt');
   if (typeof parsedEtaAt === 'object' && parsedEtaAt !== null) return res.status(400).json({ error: parsedEtaAt.error });
+  if (parsedStartAt !== null && parsedEtaAt !== null && parsedEtaAt < parsedStartAt) {
+    return res.status(400).json({ error: 'Die Ankunft darf nicht vor dem Start liegen.' });
+  }
   const parsedSeats = parseSeatsTotal(seatsTotal);
   if (typeof parsedSeats === 'object') return res.status(400).json({ error: parsedSeats.error });
 
@@ -324,6 +330,9 @@ arrivalsRouter.patch('/carpools/:id', ...withBodyPlayerIdentity, (req, res) => {
   }
   const parsedEtaAt = etaAt !== undefined ? parseOptionalTimestamp(etaAt, 'etaAt') : carpool.eta_at;
   if (typeof parsedEtaAt === 'object' && parsedEtaAt !== null) return res.status(400).json({ error: parsedEtaAt.error });
+  if (parsedStartAt !== null && parsedEtaAt !== null && parsedEtaAt < parsedStartAt) {
+    return res.status(400).json({ error: 'Die Ankunft darf nicht vor dem Start liegen.' });
+  }
   const parsedSeats = seatsTotal !== undefined ? parseSeatsTotal(seatsTotal) : carpool.seats_total;
   if (typeof parsedSeats === 'object') return res.status(400).json({ error: parsedSeats.error });
   const taken = seatsTaken(carpool.id, carpool.created_by);
