@@ -222,7 +222,7 @@ test('POST /api/admin/test-data/hall-of-fame creates dense marked history across
               MIN(ef.changed_by) AS changedBy, MAX(ef.changed_by) AS maxChangedBy
        FROM event_features ef
        JOIN events e ON e.id = ef.event_id
-       WHERE e.is_test = 1
+       WHERE e.is_test = 1 AND e.name LIKE 'Respawn Test-LAN %'
        GROUP BY ef.event_id`,
     )
     .all() as Array<{
@@ -243,7 +243,13 @@ test('POST /api/admin/test-data/hall-of-fame creates dense marked history across
     ),
   );
 
-  const eventList = await request(app).get('/api/events');
+  const regularEventList = await request(app).get('/api/events');
+  const regularManagedTestEvents = regularEventList.body.managedEvents.filter((event: { name: string }) =>
+    event.name.startsWith('Respawn Test-LAN'),
+  );
+  assert.equal(regularManagedTestEvents.length, 0);
+
+  const eventList = await request(app).get('/api/events').set('x-admin-mode', '1');
   const managedTestEvents = eventList.body.managedEvents.filter((event: { name: string }) =>
     event.name.startsWith('Respawn Test-LAN'),
   );
@@ -278,7 +284,7 @@ test('POST /api/admin/test-data/hall-of-fame creates dense marked history across
         .prepare(
           `SELECT COUNT(*) AS count
            FROM event_features ef JOIN events e ON e.id = ef.event_id
-           WHERE e.is_test = 1 AND ef.enabled = 1`,
+           WHERE e.is_test = 1 AND e.name LIKE 'Respawn Test-LAN %' AND ef.enabled = 1`,
         )
         .get() as { count: number }
     ).count,
