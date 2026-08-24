@@ -21,7 +21,8 @@ import { eventHasFeature, viewIsEnabledForEvent } from '../eventFeatures.js';
 import { eventTypeTitle } from '../eventTypes.js';
 import { domainIcon } from '../domainIcons.js';
 import { formatEuroCents } from '../paypal.js';
-import { ensureTasksLoaded, openTaskCount } from './checklist.js';
+import { dueBadgeInfo } from '../checklistDue.js';
+import { assignedTasks, ensureTasksLoaded, openTaskCount } from './checklist.js';
 
 const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
 
@@ -215,6 +216,44 @@ function renderGeneralEventOverview() {
     </section>`;
 }
 
+function homeTaskHtml(task) {
+  const due = dueBadgeInfo(task.dueAt);
+  return `
+    <button type="button" class="card row list-row" data-navigate="checklist" data-home-assigned-task="${escapeHtml(task.id)}">
+      <span class="list-row-icon">${icon('check')}</span>
+      <span class="home-current-copy">
+        <span class="player-name">${escapeHtml(task.title)}</span>
+        <span class="muted list-row-desc">${task.type === 'item_request' ? 'Mitbring-Anfrage' : 'Aufgabe'}</span>
+      </span>
+      ${due ? `<span class="badge ${due.cls}">${escapeHtml(due.text)}</span>` : `<span class="muted">${icon('chevronRight')}</span>`}
+    </button>`;
+}
+
+function renderAssignedTodos() {
+  if (!eventHasFeature(state.activeEvent, 'tasks')) return '';
+  const tasks = assignedTasks();
+  const myId = getMyId();
+  let content;
+  if (tasks === null) content = emptyStateHtml('Lädt…');
+  else if (!myId) content = '<p class="muted">Wähle oben, wer du bist, um deine To-Dos zu sehen.</p>';
+  else if (tasks.length === 0) content = '<p class="muted">Aktuell liegt nichts bei dir.</p>';
+  else {
+    const visibleTasks = tasks.slice(0, 3);
+    const remaining = tasks.length - visibleTasks.length;
+    content = `
+      <div class="card-grid">${visibleTasks.map(homeTaskHtml).join('')}</div>
+      ${remaining > 0 ? `<p class="muted">${remaining === 1 ? 'Ein weiteres To-Do' : `${remaining} weitere To-Dos`} findest du in der vollständigen Liste.</p>` : ''}`;
+  }
+  return `
+    <section class="card grouped-page-section stack" aria-labelledby="home-todos-title" data-home-assigned-todos>
+      <div class="grouped-page-section-title">
+        <h2 id="home-todos-title">Meine To-Dos</h2>
+        <button type="button" class="btn btn-sm" data-navigate="checklist">Alle To-Dos</button>
+      </div>
+      ${content}
+    </section>`;
+}
+
 // Groups currently-playing players by game (FR-27): a quick glance at what's
 // running right now and how many/who — the player names sit in a tooltip so
 // the chip row stays compact even with a long roster on one game.
@@ -315,20 +354,24 @@ export function renderHome(container, ctx) {
     return a.name.localeCompare(b.name, 'de');
   });
 
+  if (eventHasFeature(state.activeEvent, 'tasks')) ensureTasksLoaded(ctx);
+
   if (players.length === 0 && trackingEnabled) {
     container.innerHTML = `
       <h1 class="view-title">Home</h1>
-      ${emptyStateHtml(`
-        <img src="/img/mascot.svg" alt="" width="72" height="66" class="mascot" />
-        Noch keine Spieler angelegt.<br />
-        <button type="button" class="btn btn-primary btn-sm" data-navigate="profile" style="margin-top:var(--space-3);">Eigenes Profil anlegen</button>
-      `)}`;
+      <div class="grouped-page-sections">
+        ${renderAssignedTodos()}
+        ${emptyStateHtml(`
+          <img src="/img/mascot.svg" alt="" width="72" height="66" class="mascot" />
+          Noch keine Spieler angelegt.<br />
+          <button type="button" class="btn btn-primary btn-sm" data-navigate="profile" style="margin-top:var(--space-3);">Eigenes Profil anlegen</button>
+        `)}
+      </div>`;
     return;
   }
 
   const myId = getMyId();
   ensureAktuellLoaded();
-  if (state.activeEvent?.eventType === 'general') ensureTasksLoaded(ctx);
   const cards = players
     .map((p) => {
       const badgeClass = `badge-${p.state}`;
@@ -378,6 +421,7 @@ export function renderHome(container, ctx) {
     <h1 class="view-title">Home</h1>
     <div class="grouped-page-sections">
       ${renderGeneralEventOverview()}
+      ${renderAssignedTodos()}
       ${renderStatus()}
       ${
         trackingEnabled

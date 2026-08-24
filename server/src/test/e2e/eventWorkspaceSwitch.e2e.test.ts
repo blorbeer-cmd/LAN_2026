@@ -435,7 +435,7 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
     assert.ok(home.includes(text), `Home must show ${text}`);
   }
   for (const view of ['events', 'checklist', 'arrivals', 'foodOrders', 'music']) {
-    assert.equal(await page.locator(`[data-navigate="${view}"]`).isVisible(), true, `${view} summary link must be visible`);
+    assert.equal(await page.locator(`[data-navigate="${view}"]`).first().isVisible(), true, `${view} summary link must be visible`);
   }
 
   await openView('profile');
@@ -445,8 +445,8 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
 
   await page.click('.nav-btn[data-view="more"]');
   const more = await viewText();
-  assert.doesNotMatch(more, /Arcade/);
-  assert.match(more, /Jam|Orga/);
+  assert.match(more, /Arcade|Jam|Orga/);
+  assert.equal(await page.locator('[data-navigate="arcade"]').isVisible(), true);
 
   await page.click('[data-navigate="arrivals"]');
   await page.waitForSelector('#arrivals-times-title');
@@ -484,6 +484,8 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   await page.setViewportSize({ width: 390, height: 844 });
   await page.click('.nav-btn[data-view="home"]');
   await page.waitForSelector('[data-home-event-overview]');
+  await page.waitForSelector('[data-home-assigned-todos]');
+  assert.match(await page.locator('[data-home-assigned-todos]').innerText(), /Meine To-Dos|Alle To-Dos/);
   assert.equal(
     await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
     true,

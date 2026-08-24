@@ -994,7 +994,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   result entry. Team and free-for-all result inputs use the same aligned responsive grid.
 - **Home overview** — Home follows the same full-width grouped-card hierarchy as Tournaments,
   Teams and Vote. „Aktuell“, „Live-Status“, „Rangliste“ and „Sitzplan“ are separate main cards with
-  their heading inside the surface. Every current item pairs its full-row navigation action with a
+  their heading inside the surface. „Meine To-Dos“ shows up to three tasks assigned to the signed-in
+  identity for every event type, ordered by due date, and links to the complete list. Every current
+  item pairs its full-row navigation action with a
   separate icon action that hides only that live occurrence for the signed-in identity and active
   event on the current device; a new vote round, order, tournament or lobby remains visible again.
   Tappable current items, the personal status and player entries remain nested cards on the
@@ -1006,7 +1008,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   replaces the LAN-only live and ranking groups with a leading event overview containing its type,
   period, optional location/note, participant count and contribution. A separate „Organisation“
   group links to the existing Eventdetails, To-Dos, An- & Abreise, Essen and Jam workflows; the
-  read-only seating plan remains its own full-width group below them.
+  read-only seating plan remains its own full-width group below them. Arcade stays available for
+  both event types because its browser games do not depend on LAN tracking or competition areas.
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
   same card grouping as the other polished workflows without an accent rail.
   New/current-round controls come first, followed by separate full-width cards for „Letzter Vote“

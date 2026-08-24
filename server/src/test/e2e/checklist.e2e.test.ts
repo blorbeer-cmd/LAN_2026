@@ -130,6 +130,17 @@ test('create a To-Do as one member, claim and complete it as another, "Mir zugew
   assert.equal(await mineCard.locator('.badge-due-soon:has-text("Heute fällig")').count(), 1);
   assert.equal(await mineCard.locator('[data-done-task]').count(), 1);
 
+  // Personal work is a cross-event Home concern, not something hidden in
+  // Orga. The default E2E event is a LAN, so this also guards the LAN path.
+  await page.click('.nav-btn[data-view="home"]');
+  await page.waitForSelector('[data-home-assigned-todos]');
+  const homeTask = page.locator('[data-home-assigned-task]', { hasText: 'Mehrfachsteckdosen mitbringen' });
+  await homeTask.waitFor();
+  assert.equal(await homeTask.locator('.badge-due-soon:has-text("Heute fällig")').count(), 1);
+  await homeTask.click();
+  await page.waitForSelector('.view-title:has-text("Orga")');
+  await page.waitForSelector('[data-section-tab="checklist"][aria-current="page"]');
+
   await mineCard.locator('[data-done-task]').click();
   await page.waitForSelector('.toast:has-text("erledigt")');
   // Bob's only assigned To-Do just moved into Historie, so "Mir zugewiesen"

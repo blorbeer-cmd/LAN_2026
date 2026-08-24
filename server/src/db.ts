@@ -4030,6 +4030,32 @@ registerMigration({
   up: collapseEventTypesToLanAndGeneral,
 });
 
+// Arcade is useful for any gathering and does not depend on the LAN game
+// catalog, competition or tracking areas. Upgrade existing general-event
+// snapshots as well as the preset used for newly created events.
+function enableArcadeForGeneralEvents(): void {
+  const changedAt = Date.now();
+  db.prepare(
+    `UPDATE event_features
+     SET enabled = 1, changed_at = ?, changed_by = NULL
+     WHERE feature_key = 'arcade'
+       AND event_id IN (
+         SELECT id FROM events
+         WHERE id != ? AND event_type_key = 'general'
+       )`,
+  ).run(changedAt, OUTSIDE_EVENTS_ID);
+  db.prepare(
+    `UPDATE events
+     SET preset_version = ?
+     WHERE id != ? AND event_type_key = 'general'`,
+  ).run(EVENT_TYPE_PRESETS.general.version, OUTSIDE_EVENTS_ID);
+}
+registerMigration({
+  version: 85,
+  name: 'enable arcade for general events',
+  up: enableArcadeForGeneralEvents,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

@@ -82,12 +82,12 @@ test('new events persist and expose the complete backwards-compatible LAN featur
   );
 });
 
-test('general events persist the shared non-LAN feature snapshot', async () => {
+test('general events persist the shared planning and arcade feature snapshot', async () => {
   const created = await createEvent('Allgemeines Treffen', 60_000, { eventType: 'general' });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.eventType, 'general');
-  assert.equal(created.body.presetVersion, 1);
-  assert.deepEqual(created.body.enabledFeatures, ['tasks', 'travel', 'food', 'costs', 'music', 'seating']);
+  assert.equal(created.body.presetVersion, 2);
+  assert.deepEqual(created.body.enabledFeatures, ['tasks', 'travel', 'food', 'costs', 'music', 'arcade', 'seating']);
 
   const featureRows = db
     .prepare(
@@ -99,7 +99,7 @@ test('general events persist the shared non-LAN feature snapshot', async () => {
     featureRows,
     EVENT_FEATURE_KEYS.map((featureKey) => ({
       featureKey,
-      enabled: ['tasks', 'travel', 'food', 'costs', 'music', 'seating'].includes(featureKey) ? 1 : 0,
+      enabled: ['tasks', 'travel', 'food', 'costs', 'music', 'arcade', 'seating'].includes(featureKey) ? 1 : 0,
       changedBy: TEST_ADMIN_ID,
     })),
   );

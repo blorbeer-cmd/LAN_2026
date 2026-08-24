@@ -50,6 +50,7 @@ test('event type presets only reference known features and satisfy hard dependen
     'food',
     'costs',
     'music',
+    'arcade',
     'seating',
   ]);
   assert.equal(isEventTypeKey('general'), true);

@@ -130,10 +130,10 @@ export const EVENT_TYPE_PRESETS: Readonly<Record<EventTypeKey, EventTypePreset>>
   },
   general: {
     key: 'general',
-    version: 1,
+    version: 2,
     title: 'Allgemeines Event',
     description: 'Feier, Reise, Ausflug, Spieleabend, Workshop oder anderes Treffen',
-    recommendedFeatureKeys: ['tasks', 'travel', 'food', 'costs', 'music', 'seating'],
+    recommendedFeatureKeys: ['tasks', 'travel', 'food', 'costs', 'music', 'arcade', 'seating'],
     suggestedFeatureKeys: [],
   },
 };

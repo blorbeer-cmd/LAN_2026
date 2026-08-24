@@ -137,9 +137,25 @@ function removeTaskFromCache(taskId) {
 // the area instead of only from inside the list. Returns 0 while nothing is
 // loaded yet — a badge must never guess a number.
 export function openTaskCount() {
+  return assignedTasks()?.length ?? 0;
+}
+
+// Shared dashboard projection for the signed-in identity. `null` deliberately
+// means "still loading", while an empty array is a loaded list without work.
+// Keeping the due-date ordering here prevents Home and the full To-Do view
+// from drifting apart.
+export function assignedTasks() {
   const myId = getMyId();
-  if (!myId || tasksCache === null) return 0;
-  return tasksCache.filter((task) => task.status === 'taken' && task.assignee?.id === myId).length;
+  if (tasksCache === null) return null;
+  if (!myId) return [];
+  return tasksCache
+    .filter((task) => task.status === 'taken' && task.assignee?.id === myId)
+    .sort((a, b) => {
+      if (a.dueAt && b.dueAt) return a.dueAt - b.dueAt;
+      if (a.dueAt) return -1;
+      if (b.dueAt) return 1;
+      return 0;
+    });
 }
 
 // The tab count has to be right on every Orga tab, not only on the one that
@@ -480,14 +496,7 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
 
   const tasks = tasksCache || [];
   const openAll = tasks.filter((t) => t.status === 'open');
-  const mineTasks = tasks
-    .filter((t) => t.status === 'taken' && t.assignee?.id === myId)
-    .sort((a, b) => {
-      if (a.dueAt && b.dueAt) return a.dueAt - b.dueAt;
-      if (a.dueAt) return -1;
-      if (b.dueAt) return 1;
-      return 0;
-    });
+  const mineTasks = assignedTasks() ?? [];
   const underwayTasks = tasks.filter((t) => t.status === 'taken' && t.assignee?.id !== myId);
   const doneTasks = tasks.filter((t) => t.status === 'done');
   const openFiltered = openAll
