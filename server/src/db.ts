@@ -9,6 +9,12 @@ import { nanoid } from 'nanoid';
 import { config } from './config';
 import { DEFAULT_QUIZ_QUESTIONS } from './arcade/quizQuestions';
 import { DEFAULT_SCRIBBLE_WORDS } from './arcade/scribbleWords';
+import {
+  DEFAULT_EVENT_PRESET_VERSION,
+  DEFAULT_EVENT_TYPE_KEY,
+  EVENT_FEATURE_KEYS,
+  EVENT_TYPE_PRESETS,
+} from './eventFeatureCatalog';
 
 // Ensure the data directory exists before opening a file-based DB. Skipped for
 // the in-memory database used in tests.
@@ -38,7 +44,7 @@ db.exec(`
     created_at      INTEGER NOT NULL
   );
 
-  -- LAN events (e.g. "LAN Party Sommer 2026"). Several can exist and even
+  -- Event workspaces (e.g. "LAN Party Sommer 2026"). Several can exist and even
   -- overlap in time — the thing that must stay exclusive is *tracking*
   -- (live status / playtime), not the events themselves: at most one event
   -- has tracking_enabled = 1 at any moment (enforced in events.ts, not by
@@ -61,6 +67,13 @@ db.exec(`
     ends_at          INTEGER,
     location         TEXT,
     description      TEXT,
+    cost_cents       INTEGER CHECK (cost_cents IS NULL OR cost_cents > 0),
+    accommodation_cost_cents INTEGER CHECK (accommodation_cost_cents IS NULL OR accommodation_cost_cents > 0),
+    paypal_link      TEXT,
+    payment_due_at   INTEGER,
+    created_by       TEXT REFERENCES players(id) ON DELETE SET NULL,
+    event_type_key   TEXT NOT NULL DEFAULT '${DEFAULT_EVENT_TYPE_KEY}',
+    preset_version   INTEGER NOT NULL DEFAULT ${DEFAULT_EVENT_PRESET_VERSION} CHECK (preset_version > 0),
     tracking_enabled INTEGER NOT NULL DEFAULT 0,
     ended_at         INTEGER,
     is_test          INTEGER NOT NULL DEFAULT 0 -- admin-generated historical fixture; removable without touching real LANs
@@ -73,7 +86,23 @@ db.exec(`
     event_id  TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     status    TEXT NOT NULL DEFAULT 'accepted' CHECK (status IN ('invited', 'accepted', 'declined')),
+    paid      INTEGER NOT NULL DEFAULT 0 CHECK (paid IN (0, 1)),
+    paid_by   TEXT REFERENCES players(id) ON DELETE SET NULL,
+    paid_at   INTEGER,
+    paid_amount_cents INTEGER CHECK (paid_amount_cents IS NULL OR paid_amount_cents > 0),
     PRIMARY KEY (event_id, player_id)
+  );
+
+  -- Whole optional product areas selected for one event. Every event keeps
+  -- its own snapshot so later preset changes cannot silently change existing
+  -- workspaces. Area-specific settings remain in their domain tables.
+  CREATE TABLE IF NOT EXISTS event_features (
+    event_id    TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    feature_key TEXT NOT NULL,
+    enabled     INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+    changed_at  INTEGER NOT NULL,
+    changed_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
+    PRIMARY KEY (event_id, feature_key)
   );
 
   -- Every game the group could play lives here — from a bare tracked entry
@@ -562,7 +591,7 @@ db.exec(`
     created_by   TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     created_at   INTEGER NOT NULL,
     closed_at    INTEGER,
-    finalized_at INTEGER, -- set by the creator/admin once closed; a terminal lock, never cleared
+    finalized_at INTEGER, -- set by the creator/admin once closed; reversible via /reopen, which clears it back to closed
     send_at      INTEGER, -- optional, editable: when the order will actually be placed/picked up
     notes        TEXT,    -- optional, editable: free-text info (e.g. "bar zahlen", "Mindestbestellwert 15€")
     link         TEXT,    -- optional, editable: URL to the menu/delivery service
@@ -660,6 +689,20 @@ type Migration = {
   version: number;
   name: string;
   up: () => void;
+  // Rebuilding a table that other tables reference via FOREIGN KEY (rename-out,
+  // recreate, copy back, rename-in) needs `PRAGMA foreign_keys = OFF` for the
+  // duration, because SQLite otherwise fires each referencing row's ON DELETE
+  // action (e.g. CASCADE) the moment the referenced table is dropped — wiping
+  // the very child rows the rebuild is supposed to preserve. That pragma is a
+  // documented no-op while a transaction is open, so it cannot be toggled
+  // inside the shared per-migration transaction below; this flag makes
+  // runRegisteredMigrations() run this one migration in its own transaction
+  // with foreign keys off, then verify referential integrity with
+  // `PRAGMA foreign_key_check` inside the same transaction, before recording
+  // the migration as applied, and always restore `foreign_keys = ON`
+  // afterwards (success or failure) since the rest of the app relies on it
+  // staying enforced.
+  disableForeignKeysForRebuild?: boolean;
 };
 
 // The initial schema above is the baseline for new databases. The numbered
@@ -715,10 +758,43 @@ function migrationsInRunOrder(): Migration[] {
 // version order. Each version is still guarded individually via
 // schema_migrations, so an already migrated database re-runs nothing and no
 // version is skipped — only the never-applied ones execute, oldest first.
+function runMigrationWithForeignKeysDisabled(migration: Migration): void {
+  // Must run outside any open transaction: `PRAGMA foreign_keys` is a no-op
+  // once a BEGIN is in flight, so this call has to happen before the
+  // transaction below starts, not inside it.
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.transaction(() => {
+      migration.up();
+      // Checked inside the transaction, before recording the migration as
+      // applied: throwing here rolls the migration's own DDL back right
+      // alongside the schema_migrations insert, so a violation can never
+      // leave a broken schema recorded as a successfully applied version.
+      const orphans = db.pragma('foreign_key_check') as unknown[];
+      if (orphans.length > 0) {
+        throw new Error(
+          `Migration ${migration.version} (${migration.name}) left dangling foreign keys: ${JSON.stringify(orphans)}`,
+        );
+      }
+      recordMigration.run(migration.version, migration.name, Date.now());
+    })();
+  } finally {
+    // Restored unconditionally: on success this simply re-enables the pragma
+    // the app expects for the rest of its lifetime; on failure the throw above
+    // (or from migration.up() itself) already rolled the transaction back, so
+    // this just leaves the connection in its normal enforced state.
+    db.pragma('foreign_keys = ON');
+  }
+}
+
 function runRegisteredMigrations(): void {
   migrationsHaveRun = true;
   for (const migration of migrationsInRunOrder()) {
     if (hasAppliedMigration.get(migration.version)) continue;
+    if (migration.disableForeignKeysForRebuild) {
+      runMigrationWithForeignKeysDisabled(migration);
+      continue;
+    }
     db.transaction(() => {
       migration.up();
       recordMigration.run(migration.version, migration.name, Date.now());
@@ -1284,11 +1360,11 @@ function migrateAccountsAuth(): void {
 
     CREATE TABLE IF NOT EXISTS invites (
       code        TEXT PRIMARY KEY,
-      purpose     TEXT NOT NULL, -- 'register' | 'claim' | 'reset'
+      purpose     TEXT NOT NULL, -- 'register' | 'claim' | 'reset' | 'test_login'
       player_id   TEXT REFERENCES players(id) ON DELETE CASCADE, -- set for claim/reset
       created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
       created_at  INTEGER NOT NULL,
-      expires_at  INTEGER NOT NULL,
+      expires_at  INTEGER NOT NULL, -- finite lifetime; 0 is a legacy no-expiry sentinel
       revoked_at  INTEGER,
       used_at     INTEGER,
       used_by     TEXT REFERENCES players(id) ON DELETE SET NULL
@@ -1319,7 +1395,7 @@ function repairInviteAuditForeignKeys(): void {
       player_id   TEXT REFERENCES players(id) ON DELETE CASCADE,
       created_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
       created_at  INTEGER NOT NULL,
-      expires_at  INTEGER NOT NULL,
+      expires_at  INTEGER NOT NULL, -- finite lifetime; 0 is a legacy no-expiry sentinel
       revoked_at  INTEGER,
       used_at     INTEGER,
       used_by     TEXT REFERENCES players(id) ON DELETE SET NULL
@@ -2731,9 +2807,10 @@ function migrateFoodOrderItemPaidColumn(): void {
 }
 registerMigration({ version: 41, name: 'add food order item paid flag', up: migrateFoodOrderItemPaidColumn });
 
-// finalized_at lets the creator/admin permanently lock a closed order (no
-// more reopening, items or paid edits); paypal_link is the co-orderers'
-// "Bezahlen" target, edited the same way as notes/link.
+// finalized_at lets the creator/admin lock a closed order (no more items
+// or paid edits while set) - reversible via /reopen, which clears it back
+// to closed; paypal_link is the co-orderers' "Bezahlen" target, edited the
+// same way as notes/link.
 function migrateFoodOrderFinalizeAndPaypalColumns(): void {
   const columns = db.prepare('PRAGMA table_info(food_orders)').all() as Array<{ name: string }>;
   const has = (name: string) => columns.some((c) => c.name === name);
@@ -3792,6 +3869,718 @@ registerMigration({
   version: 77,
   name: 'add food order payment reminder state',
   up: addFoodOrderPaymentReminderState,
+});
+
+// The admin onboarding tour now includes the event filter inside the
+// admin-only analytics area. Its highest persisted step index therefore grew
+// from 11 to 12. Migration history is immutable, so widen the existing CHECK
+// through another SQLite rebuild instead of editing migration 75.
+function widenOnboardingCoreStepBoundAgain(): void {
+  db.exec(`
+    ALTER TABLE player_onboarding RENAME TO player_onboarding_migration_78;
+    CREATE TABLE player_onboarding (
+      player_id                 TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+      version                   INTEGER NOT NULL DEFAULT 1,
+      status                    TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (status IN ('pending', 'active', 'completed', 'skipped')),
+      last_core_step            INTEGER NOT NULL DEFAULT 9 CHECK (last_core_step BETWEEN 0 AND 12),
+      rating_status             TEXT NOT NULL DEFAULT 'completed'
+                                CHECK (rating_status IN ('pending', 'active', 'completed', 'deferred')),
+      rating_candidate_ids_json TEXT NOT NULL DEFAULT '[]',
+      seen_views_json           TEXT NOT NULL DEFAULT '[]',
+      completed_at              INTEGER,
+      updated_at                INTEGER NOT NULL
+    );
+    INSERT INTO player_onboarding
+      (player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at)
+    SELECT player_id, version, status, last_core_step, rating_status, rating_candidate_ids_json, seen_views_json, completed_at, updated_at
+    FROM player_onboarding_migration_78;
+    DROP TABLE player_onboarding_migration_78;
+    CREATE INDEX IF NOT EXISTS idx_player_onboarding_status ON player_onboarding(status, rating_status);
+  `);
+}
+registerMigration({
+  version: 78,
+  name: 'widen onboarding core step bound for event selection',
+  up: widenOnboardingCoreStepBoundAgain,
+});
+
+// Events can collect one fixed contribution per accepted participant. The
+// creator is persisted explicitly because creator-only payment corrections
+// cannot be inferred safely for historical events; those rows intentionally
+// keep created_by NULL. Existing participants start unpaid.
+function addEventPaymentColumns(): void {
+  const eventColumns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  const hasEventColumn = (name: string) => eventColumns.some((column) => column.name === name);
+  if (!hasEventColumn('cost_cents')) {
+    db.exec('ALTER TABLE events ADD COLUMN cost_cents INTEGER CHECK (cost_cents IS NULL OR cost_cents > 0)');
+  }
+  if (!hasEventColumn('paypal_link')) db.exec('ALTER TABLE events ADD COLUMN paypal_link TEXT');
+  if (!hasEventColumn('created_by')) {
+    db.exec('ALTER TABLE events ADD COLUMN created_by TEXT REFERENCES players(id) ON DELETE SET NULL');
+  }
+
+  const participantColumns = db.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  if (!participantColumns.some((column) => column.name === 'paid')) {
+    db.exec('ALTER TABLE event_participants ADD COLUMN paid INTEGER NOT NULL DEFAULT 0 CHECK (paid IN (0, 1))');
+  }
+}
+registerMigration({
+  version: 79,
+  name: 'add event costs and participant payment state',
+  up: addEventPaymentColumns,
+});
+
+// Event contributions use the same durable two-hour reminder policy as food
+// orders. One row per participant/event is enough to survive restarts and
+// bounded push-log cleanup without sending too often.
+function addEventPaymentReminderState(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS event_payment_reminders (
+      group_id     TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      event_id     TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      last_sent_at INTEGER NOT NULL,
+      PRIMARY KEY (group_id, event_id, player_id)
+    );
+  `);
+}
+registerMigration({
+  version: 80,
+  name: 'add event payment reminder state',
+  up: addEventPaymentReminderState,
+});
+
+// Payment provenance mirrors food-order confirmations, while an optional
+// due timestamp lets organizers defer reminders until the contribution is
+// actually due. Legacy paid rows stay valid with unknown confirmer/time.
+function addEventPaymentAuditAndDueDate(): void {
+  const eventColumns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  if (!eventColumns.some((column) => column.name === 'payment_due_at')) {
+    db.exec('ALTER TABLE events ADD COLUMN payment_due_at INTEGER');
+  }
+  const participantColumns = db.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  if (!participantColumns.some((column) => column.name === 'paid_by')) {
+    db.exec('ALTER TABLE event_participants ADD COLUMN paid_by TEXT REFERENCES players(id) ON DELETE SET NULL');
+  }
+  if (!participantColumns.some((column) => column.name === 'paid_at')) {
+    db.exec('ALTER TABLE event_participants ADD COLUMN paid_at INTEGER');
+  }
+}
+registerMigration({
+  version: 81,
+  name: 'add event payment audit and due date',
+  up: addEventPaymentAuditAndDueDate,
+});
+
+// The accommodation invoice is separate from the fixed contribution each
+// accepted participant is asked to pay. Snapshotting that contribution when
+// it is confirmed keeps the final balance correct if the organizer adjusts
+// the contribution for people who pay later.
+function addEventAccommodationAccounting(): void {
+  const eventColumns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  if (!eventColumns.some((column) => column.name === 'accommodation_cost_cents')) {
+    db.exec(
+      'ALTER TABLE events ADD COLUMN accommodation_cost_cents INTEGER CHECK (accommodation_cost_cents IS NULL OR accommodation_cost_cents > 0)',
+    );
+  }
+  const participantColumns = db.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  if (!participantColumns.some((column) => column.name === 'paid_amount_cents')) {
+    db.exec(
+      'ALTER TABLE event_participants ADD COLUMN paid_amount_cents INTEGER CHECK (paid_amount_cents IS NULL OR paid_amount_cents > 0)',
+    );
+    // Existing paid markers predate amount snapshots. The contribution may
+    // have changed since payment, so using today's event price would invent
+    // accounting data. NULL keeps that uncertainty visible in the summary.
+  }
+}
+registerMigration({
+  version: 82,
+  name: 'add event accommodation accounting',
+  up: addEventAccommodationAccounting,
+});
+
+// Integrated event date poll (docs/plans/event-date-poll-concept.md): a
+// planning event ("In Planung", status draft) can exist before a fixed date is
+// known, and the poll that later fixes it — and can fix it again on a later
+// reschedule — lives inside the same event/participant tables rather than a
+// separate object that gets "converted" into an event.
+//
+// events.starts_at drops its NOT NULL constraint (only for draft events —
+// enforced by the new CHECK below, not by application code alone) and gains
+// schedule_revision. SQLite cannot relax a column's NOT NULL or add a CHECK
+// via ALTER TABLE, so the table is rebuilt: stage the old rows in a plain
+// table, drop `events`, CREATE TABLE `events` fresh with the final schema,
+// copy the staged rows back in, drop the staging table. Two things this
+// deliberately does NOT do, both tried and rejected while building this
+// migration:
+//  - `ALTER TABLE events RENAME TO ...` anywhere in the sequence: SQLite's
+//    rename implementation rewrites the body of every OTHER trigger/view that
+//    references the renamed table by name (verified empirically — it
+//    silently retargets e.g. trg_arcade_results_event_group_insert's `SELECT
+//    ... FROM events` to the new name), which would either permanently break
+//    that trigger (if the temp name is later dropped) or crash the rename
+//    itself with "no such table" (if the target name doesn't exist yet at
+//    the instant SQLite recompiles that unrelated trigger body mid-rename).
+//    Staging into a plain table and using CREATE TABLE for the final `events`
+//    never renames anything, so no other schema object is ever touched.
+//  - Leaving foreign_keys=ON during the drop: `events` is the parent side of
+//    many ON DELETE CASCADE foreign keys (event_participants among them), and
+//    dropping a table with foreign_keys=ON fires those cascades immediately,
+//    deleting the very rows this rebuild must preserve. Marking this
+//    migration disableForeignKeysForRebuild (see the Migration type above)
+//    runs it with foreign_keys off and a post-check instead.
+function addEventDatePolls(): void {
+  const eventColumns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  if (!eventColumns.some((column) => column.name === 'schedule_revision')) {
+    db.exec(`
+      CREATE TABLE events_staging_83 AS SELECT * FROM events;
+      DROP TABLE events;
+      CREATE TABLE events (
+        id                       TEXT PRIMARY KEY,
+        name                     TEXT NOT NULL,
+        starts_at                INTEGER,
+        ends_at                  INTEGER,
+        location                 TEXT,
+        description              TEXT,
+        cost_cents               INTEGER CHECK (cost_cents IS NULL OR cost_cents > 0),
+        accommodation_cost_cents INTEGER CHECK (accommodation_cost_cents IS NULL OR accommodation_cost_cents > 0),
+        paypal_link              TEXT,
+        payment_due_at           INTEGER,
+        created_by               TEXT REFERENCES players(id) ON DELETE SET NULL,
+        tracking_enabled         INTEGER NOT NULL DEFAULT 0,
+        ended_at                 INTEGER,
+        is_test                  INTEGER NOT NULL DEFAULT 0,
+        group_id                 TEXT REFERENCES groups(id) ON DELETE RESTRICT,
+        status                   TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('draft', 'published', 'cancelled', 'ended')),
+        visibility_scope         TEXT NOT NULL DEFAULT 'participants' CHECK (visibility_scope IN ('group', 'participants', 'public')),
+        -- Bumped by exactly one every time a date poll round is scheduled
+        -- (including the very first one, 0 -> 1). A participant's accepted/
+        -- declined roster row is only current when its own
+        -- confirmed_schedule_revision matches this value — see
+        -- eventParticipation.ts's ACCEPTED_EVENT_PARTICIPANT_SQL.
+        schedule_revision        INTEGER NOT NULL DEFAULT 0,
+        CHECK (status = 'draft' OR starts_at IS NOT NULL)
+      );
+      INSERT INTO events
+        (id, name, starts_at, ends_at, location, description, cost_cents, accommodation_cost_cents,
+         paypal_link, payment_due_at, created_by, tracking_enabled, ended_at, is_test, group_id, status,
+         visibility_scope, schedule_revision)
+      SELECT id, name, starts_at, ends_at, location, description, cost_cents, accommodation_cost_cents,
+             paypal_link, payment_due_at, created_by, tracking_enabled, ended_at, is_test, group_id, status,
+             visibility_scope,
+             -- Every existing row has a fixed starts_at (the column was NOT
+             -- NULL until this migration), so this always lands on 1.
+             CASE WHEN starts_at IS NOT NULL THEN 1 ELSE 0 END
+      FROM events_staging_83;
+      DROP TABLE events_staging_83;
+      CREATE INDEX IF NOT EXISTS idx_events_group_start ON events(group_id, starts_at DESC);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_events_group_pk ON events(group_id, id);
+    `);
+  }
+
+  const participantColumns = db.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  if (!participantColumns.some((column) => column.name === 'confirmed_schedule_revision')) {
+    // NULL means "never confirmed for any revision" (still-open invitation).
+    // Existing accepted/declined rows predate the poll entirely, so they are
+    // backfilled against revision 1 — the same revision addEventDatePolls()
+    // above just gave every existing (necessarily dated) event.
+    db.exec('ALTER TABLE event_participants ADD COLUMN confirmed_schedule_revision INTEGER');
+    db.exec(`UPDATE event_participants SET confirmed_schedule_revision = 1 WHERE status IN ('accepted', 'declined')`);
+  }
+
+  db.exec(`
+    -- Defense in depth for the many call sites (application code and tests
+    -- alike) that write status = 'accepted' directly without threading the
+    -- event's current schedule_revision through explicitly. events.ts's
+    -- respondToEventInvitation/setParticipants and eventContext.ts's
+    -- acceptEventParticipation already set confirmed_schedule_revision
+    -- themselves — these triggers only fill the gap (WHEN ... IS NULL) when
+    -- something else didn't, using "the event's current revision" as the
+    -- one sensible default for a plain accept. They never override an
+    -- explicitly provided value, so they cannot interfere with a
+    -- reconfirmation write's deliberate revision bump.
+    CREATE TRIGGER IF NOT EXISTS trg_event_participants_confirm_revision_insert
+    AFTER INSERT ON event_participants
+    WHEN NEW.status = 'accepted' AND NEW.confirmed_schedule_revision IS NULL
+    BEGIN
+      UPDATE event_participants
+      SET confirmed_schedule_revision = (SELECT schedule_revision FROM events WHERE id = NEW.event_id)
+      WHERE event_id = NEW.event_id AND player_id = NEW.player_id;
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_event_participants_confirm_revision_update
+    AFTER UPDATE OF status ON event_participants
+    WHEN NEW.status = 'accepted' AND NEW.confirmed_schedule_revision IS NULL
+    BEGIN
+      UPDATE event_participants
+      SET confirmed_schedule_revision = (SELECT schedule_revision FROM events WHERE id = NEW.event_id)
+      WHERE event_id = NEW.event_id AND player_id = NEW.player_id;
+    END;
+
+    CREATE TABLE IF NOT EXISTS event_date_polls (
+      id                 TEXT PRIMARY KEY,
+      event_id           TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      round_number       INTEGER NOT NULL,
+      note               TEXT,
+      created_by         TEXT REFERENCES players(id) ON DELETE SET NULL,
+      response_due_at    INTEGER NOT NULL,
+      status             TEXT NOT NULL DEFAULT 'open'
+                          CHECK (status IN ('open', 'closed', 'scheduled', 'superseded', 'cancelled')),
+      -- Intentionally a plain FK to event_date_poll_options(id), not a
+      -- composite (poll_id, id) one: that would need a circular forward
+      -- reference between this table and event_date_poll_options (defined
+      -- below, itself referencing event_date_polls). "Belongs to this same
+      -- round" is instead checked transactionally by the poll result writer.
+      selected_option_id TEXT REFERENCES event_date_poll_options(id) ON DELETE SET NULL,
+      created_at         INTEGER NOT NULL,
+      updated_at         INTEGER NOT NULL,
+      UNIQUE (event_id, round_number)
+    );
+    -- At most one undecided (open or closed-but-not-yet-scheduled) round per
+    -- event, and at most one scheduled round per event.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_event_date_polls_undecided
+      ON event_date_polls(event_id) WHERE status IN ('open', 'closed');
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_event_date_polls_scheduled
+      ON event_date_polls(event_id) WHERE status = 'scheduled';
+    CREATE INDEX IF NOT EXISTS idx_event_date_polls_event ON event_date_polls(event_id, round_number);
+
+    CREATE TABLE IF NOT EXISTS event_date_poll_options (
+      id         TEXT PRIMARY KEY,
+      poll_id    TEXT NOT NULL REFERENCES event_date_polls(id) ON DELETE CASCADE,
+      starts_on  TEXT NOT NULL, -- ISO calendar date (YYYY-MM-DD), no time zone of its own
+      ends_on    TEXT NOT NULL,
+      position   INTEGER NOT NULL,
+      -- (poll_id, id) backs the composite FKs from event_date_poll_responses
+      -- below, guaranteeing a response's option actually belongs to its round.
+      UNIQUE (poll_id, id),
+      UNIQUE (poll_id, starts_on, ends_on)
+    );
+    CREATE INDEX IF NOT EXISTS idx_event_date_poll_options_poll ON event_date_poll_options(poll_id, position);
+
+    CREATE TABLE IF NOT EXISTS event_date_poll_invitees (
+      poll_id                   TEXT NOT NULL REFERENCES event_date_polls(id) ON DELETE CASCADE,
+      player_id                 TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      invited_at                INTEGER NOT NULL,
+      last_reminder_at          INTEGER, -- last automatic OR manual reminder; manual sends use a 24h cooldown
+      automatic_reminder_stage  INTEGER NOT NULL DEFAULT 0, -- 0 = none sent yet, 1 = 48h-before sent, 2 = 2h-before sent
+      automatic_reminder_due_at INTEGER, -- next scheduled automatic reminder; cleared on any close/schedule/cancel
+      PRIMARY KEY (poll_id, player_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_event_date_poll_invitees_due
+      ON event_date_poll_invitees(automatic_reminder_due_at) WHERE automatic_reminder_due_at IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS event_date_poll_responses (
+      poll_id    TEXT NOT NULL,
+      option_id  TEXT NOT NULL,
+      player_id  TEXT NOT NULL,
+      response   TEXT NOT NULL CHECK (response IN ('can', 'if_needed', 'cannot')),
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (poll_id, option_id, player_id),
+      -- The option must belong to this same round...
+      FOREIGN KEY (poll_id, option_id) REFERENCES event_date_poll_options(poll_id, id) ON DELETE CASCADE,
+      -- ...and the person must actually be invited to this same round ("Offen"
+      -- is the absence of a row here, never a stored value).
+      FOREIGN KEY (poll_id, player_id) REFERENCES event_date_poll_invitees(poll_id, player_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_event_date_poll_responses_option ON event_date_poll_responses(option_id);
+  `);
+}
+registerMigration({
+  version: 83,
+  name: 'add event date polls',
+  up: addEventDatePolls,
+  disableForeignKeysForRebuild: true,
+});
+
+// Generalize the date-poll foundation without throwing away any round,
+// response, reminder or audit history created by migration 83. The historical
+// table names deliberately remain an implementation detail; callers use the
+// generic /polls API from this migration onward.
+function generalizeEventPolls(): void {
+  const participantColumns = db.prepare('PRAGMA table_info(event_participants)').all() as Array<{ name: string }>;
+  if (participantColumns.some((column) => column.name === 'confirmed_schedule_revision')) {
+    const participantTriggers = db
+      .prepare(
+        `SELECT sql FROM sqlite_master
+         WHERE type = 'trigger' AND tbl_name = 'event_participants' AND sql IS NOT NULL`,
+      )
+      .all() as Array<{ sql: string }>;
+    db.exec(`
+      CREATE TABLE event_participants_staging_84 AS SELECT * FROM event_participants;
+      DROP TABLE event_participants;
+      CREATE TABLE event_participants (
+        event_id                     TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        player_id                    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+        status                       TEXT NOT NULL DEFAULT 'accepted'
+                                     CHECK (status IN ('invited', 'accepted', 'declined')),
+        paid                         INTEGER NOT NULL DEFAULT 0 CHECK (paid IN (0, 1)),
+        paid_by                      TEXT REFERENCES players(id) ON DELETE SET NULL,
+        paid_at                      INTEGER,
+        paid_amount_cents            INTEGER CHECK (paid_amount_cents IS NULL OR paid_amount_cents > 0),
+        confirmed_schedule_revision INTEGER,
+        PRIMARY KEY (event_id, player_id)
+      );
+      INSERT INTO event_participants
+        (event_id, player_id, status, paid, paid_by, paid_at, paid_amount_cents, confirmed_schedule_revision)
+      SELECT event_id, player_id, status, paid, paid_by, paid_at, paid_amount_cents, confirmed_schedule_revision
+      FROM event_participants_staging_84;
+      DROP TABLE event_participants_staging_84;
+    `);
+    for (const trigger of participantTriggers) db.exec(trigger.sql);
+  }
+
+  const pollColumns = db.prepare('PRAGMA table_info(event_date_polls)').all() as Array<{ name: string }>;
+  if (!pollColumns.some((column) => column.name === 'topic')) {
+    db.exec(`
+      ALTER TABLE event_date_polls ADD COLUMN topic TEXT NOT NULL DEFAULT 'date_range'
+        CHECK (topic IN ('date_range', 'location', 'duration', 'budget', 'custom'));
+      ALTER TABLE event_date_polls ADD COLUMN decision_key TEXT NOT NULL DEFAULT 'date';
+      ALTER TABLE event_date_polls ADD COLUMN title TEXT NOT NULL DEFAULT 'Termin / Zeitraum';
+      ALTER TABLE event_date_polls ADD COLUMN response_mode TEXT NOT NULL DEFAULT 'feasibility'
+        CHECK (response_mode IN ('feasibility', 'single_choice', 'multiple_choice'));
+      ALTER TABLE event_date_polls ADD COLUMN decision_note TEXT;
+      DROP INDEX IF EXISTS idx_event_date_polls_undecided;
+      DROP INDEX IF EXISTS idx_event_date_polls_scheduled;
+      CREATE UNIQUE INDEX idx_event_polls_undecided
+        ON event_date_polls(event_id, decision_key) WHERE status IN ('open', 'closed');
+      CREATE UNIQUE INDEX idx_event_polls_decided
+        ON event_date_polls(event_id, decision_key) WHERE status = 'scheduled';
+
+      ALTER TABLE event_date_poll_options ADD COLUMN label TEXT;
+      ALTER TABLE event_date_poll_options ADD COLUMN description TEXT;
+      ALTER TABLE event_date_poll_options ADD COLUMN payload_json TEXT NOT NULL DEFAULT '{}';
+      UPDATE event_date_poll_options
+      SET label = CASE WHEN starts_on = ends_on THEN starts_on ELSE starts_on || ' – ' || ends_on END,
+          payload_json = json_object('startsOn', starts_on, 'endsOn', ends_on)
+      WHERE label IS NULL;
+
+      CREATE TABLE event_poll_selected_options (
+        poll_id   TEXT NOT NULL REFERENCES event_date_polls(id) ON DELETE CASCADE,
+        option_id TEXT NOT NULL,
+        position  INTEGER NOT NULL,
+        PRIMARY KEY (poll_id, option_id),
+        FOREIGN KEY (poll_id, option_id) REFERENCES event_date_poll_options(poll_id, id) ON DELETE CASCADE
+      );
+      INSERT OR IGNORE INTO event_poll_selected_options (poll_id, option_id, position)
+      SELECT id, selected_option_id, 0 FROM event_date_polls WHERE selected_option_id IS NOT NULL;
+    `);
+  }
+}
+registerMigration({
+  version: 84,
+  name: 'generalize event polls',
+  up: generalizeEventPolls,
+  disableForeignKeysForRebuild: true,
+});
+
+// Keep general polls independent from event attendance. Migration 84 briefly
+// introduced an "interested" roster state while the feature branch was under
+// review; convert those rows back to ordinary pending invitations and restore
+// the established three-state participation contract. The additional poll
+// column belongs here as the first schema needed by the revised generic UI.
+function separateEventPollsFromParticipation(): void {
+  const participantTriggers = db
+    .prepare(
+      `SELECT sql FROM sqlite_master
+       WHERE type = 'trigger' AND tbl_name = 'event_participants' AND sql IS NOT NULL`,
+    )
+    .all() as Array<{ sql: string }>;
+  db.exec(`
+    CREATE TABLE event_participants_staging_85 AS SELECT * FROM event_participants;
+    DROP TABLE event_participants;
+    CREATE TABLE event_participants (
+      event_id                     TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      player_id                    TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      status                       TEXT NOT NULL DEFAULT 'accepted'
+                                   CHECK (status IN ('invited', 'accepted', 'declined')),
+      paid                         INTEGER NOT NULL DEFAULT 0 CHECK (paid IN (0, 1)),
+      paid_by                      TEXT REFERENCES players(id) ON DELETE SET NULL,
+      paid_at                      INTEGER,
+      paid_amount_cents            INTEGER CHECK (paid_amount_cents IS NULL OR paid_amount_cents > 0),
+      confirmed_schedule_revision INTEGER,
+      PRIMARY KEY (event_id, player_id)
+    );
+    INSERT INTO event_participants
+      (event_id, player_id, status, paid, paid_by, paid_at, paid_amount_cents, confirmed_schedule_revision)
+    SELECT event_id, player_id, CASE WHEN status = 'interested' THEN 'invited' ELSE status END,
+           paid, paid_by, paid_at, paid_amount_cents, confirmed_schedule_revision
+    FROM event_participants_staging_85;
+    DROP TABLE event_participants_staging_85;
+  `);
+  for (const trigger of participantTriggers) db.exec(trigger.sql);
+
+  const pollColumns = db.prepare('PRAGMA table_info(event_date_polls)').all() as Array<{ name: string }>;
+  if (!pollColumns.some((column) => column.name === 'max_selections')) {
+    db.exec(`
+      ALTER TABLE event_date_polls ADD COLUMN max_selections INTEGER
+        CHECK (max_selections IS NULL OR max_selections >= 1);
+    `);
+  }
+
+  const pollTable = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'event_date_polls'")
+    .get() as { sql: string };
+  if (/UNIQUE\s*\(event_id,\s*round_number\)/i.test(pollTable.sql)) {
+    db.exec(`
+      CREATE TABLE event_date_polls_rebuilt_85 (
+        id                 TEXT PRIMARY KEY,
+        event_id           TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        round_number       INTEGER NOT NULL,
+        note               TEXT,
+        created_by         TEXT REFERENCES players(id) ON DELETE SET NULL,
+        response_due_at    INTEGER NOT NULL,
+        status             TEXT NOT NULL DEFAULT 'open'
+                            CHECK (status IN ('open', 'closed', 'scheduled', 'superseded', 'cancelled')),
+        selected_option_id TEXT REFERENCES event_date_poll_options(id) ON DELETE SET NULL,
+        created_at         INTEGER NOT NULL,
+        updated_at         INTEGER NOT NULL,
+        topic              TEXT NOT NULL DEFAULT 'custom'
+                            CHECK (topic IN ('date_range', 'location', 'duration', 'budget', 'custom')),
+        decision_key       TEXT NOT NULL,
+        title              TEXT NOT NULL,
+        response_mode      TEXT NOT NULL DEFAULT 'feasibility'
+                            CHECK (response_mode IN ('feasibility', 'single_choice', 'multiple_choice')),
+        decision_note      TEXT,
+        max_selections     INTEGER CHECK (max_selections IS NULL OR max_selections >= 1),
+        UNIQUE (event_id, decision_key, round_number)
+      );
+      INSERT INTO event_date_polls_rebuilt_85
+        (id, event_id, round_number, note, created_by, response_due_at, status, selected_option_id,
+         created_at, updated_at, topic, decision_key, title, response_mode, decision_note, max_selections)
+      SELECT id, event_id, round_number, note, created_by, response_due_at, status, selected_option_id,
+             created_at, updated_at, topic, decision_key, title, response_mode, decision_note, max_selections
+      FROM event_date_polls;
+      DROP TABLE event_date_polls;
+      ALTER TABLE event_date_polls_rebuilt_85 RENAME TO event_date_polls;
+      CREATE UNIQUE INDEX idx_event_polls_undecided
+        ON event_date_polls(event_id, decision_key) WHERE status IN ('open', 'closed');
+      CREATE UNIQUE INDEX idx_event_polls_decided
+        ON event_date_polls(event_id, decision_key) WHERE status = 'scheduled';
+      CREATE INDEX idx_event_date_polls_event
+        ON event_date_polls(event_id, decision_key, round_number);
+    `);
+  }
+}
+registerMigration({
+  version: 85,
+  name: 'separate event polls from participation',
+  up: separateEventPollsFromParticipation,
+  disableForeignKeysForRebuild: true,
+});
+
+// Add the generic 1-5 option rating without discarding any existing poll,
+// response or round history. SQLite cannot extend CHECK constraints in place,
+// so both affected tables are rebuilt transactionally.
+function addEventPollRatingMode(): void {
+  const pollTable = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'event_date_polls'")
+    .get() as { sql: string };
+  if (!pollTable.sql.includes('rating_1_5')) {
+    db.exec(`
+      CREATE TABLE event_date_polls_rebuilt_86 (
+        id                 TEXT PRIMARY KEY,
+        event_id           TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        round_number       INTEGER NOT NULL,
+        note               TEXT,
+        created_by         TEXT REFERENCES players(id) ON DELETE SET NULL,
+        response_due_at    INTEGER NOT NULL,
+        status             TEXT NOT NULL DEFAULT 'open'
+                            CHECK (status IN ('open', 'closed', 'scheduled', 'superseded', 'cancelled')),
+        selected_option_id TEXT REFERENCES event_date_poll_options(id) ON DELETE SET NULL,
+        created_at         INTEGER NOT NULL,
+        updated_at         INTEGER NOT NULL,
+        topic              TEXT NOT NULL DEFAULT 'custom'
+                            CHECK (topic IN ('date_range', 'location', 'duration', 'budget', 'custom')),
+        decision_key       TEXT NOT NULL,
+        title              TEXT NOT NULL,
+        response_mode      TEXT NOT NULL DEFAULT 'feasibility'
+                            CHECK (response_mode IN ('feasibility', 'single_choice', 'multiple_choice', 'rating_1_5')),
+        decision_note      TEXT,
+        max_selections     INTEGER CHECK (max_selections IS NULL OR max_selections >= 1),
+        UNIQUE (event_id, decision_key, round_number)
+      );
+      INSERT INTO event_date_polls_rebuilt_86
+        (id, event_id, round_number, note, created_by, response_due_at, status, selected_option_id,
+         created_at, updated_at, topic, decision_key, title, response_mode, decision_note, max_selections)
+      SELECT id, event_id, round_number, note, created_by, response_due_at, status, selected_option_id,
+             created_at, updated_at, topic, decision_key, title, response_mode, decision_note, max_selections
+      FROM event_date_polls;
+      DROP TABLE event_date_polls;
+      ALTER TABLE event_date_polls_rebuilt_86 RENAME TO event_date_polls;
+      CREATE UNIQUE INDEX idx_event_polls_undecided
+        ON event_date_polls(event_id, decision_key) WHERE status IN ('open', 'closed');
+      CREATE UNIQUE INDEX idx_event_polls_decided
+        ON event_date_polls(event_id, decision_key) WHERE status = 'scheduled';
+      CREATE INDEX idx_event_date_polls_event
+        ON event_date_polls(event_id, decision_key, round_number);
+    `);
+  }
+
+  const responseTable = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'event_date_poll_responses'")
+    .get() as { sql: string };
+  if (!responseTable.sql.includes("'5'")) {
+    db.exec(`
+      CREATE TABLE event_date_poll_responses_rebuilt_86 (
+        poll_id    TEXT NOT NULL,
+        option_id  TEXT NOT NULL,
+        player_id  TEXT NOT NULL,
+        response   TEXT NOT NULL CHECK (response IN ('can', 'if_needed', 'cannot', '1', '2', '3', '4', '5')),
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (poll_id, option_id, player_id),
+        FOREIGN KEY (poll_id, option_id) REFERENCES event_date_poll_options(poll_id, id) ON DELETE CASCADE,
+        FOREIGN KEY (poll_id, player_id) REFERENCES event_date_poll_invitees(poll_id, player_id) ON DELETE CASCADE
+      );
+      INSERT INTO event_date_poll_responses_rebuilt_86
+        (poll_id, option_id, player_id, response, updated_at)
+      SELECT poll_id, option_id, player_id, response, updated_at
+      FROM event_date_poll_responses;
+      DROP TABLE event_date_poll_responses;
+      ALTER TABLE event_date_poll_responses_rebuilt_86 RENAME TO event_date_poll_responses;
+      CREATE INDEX idx_event_date_poll_responses_option ON event_date_poll_responses(option_id);
+    `);
+  }
+}
+registerMigration({
+  version: 86,
+  name: 'add event poll rating mode',
+  up: addEventPollRatingMode,
+  disableForeignKeysForRebuild: true,
+});
+
+function addAnonymousEventPolls(): void {
+  const columns = db.prepare('PRAGMA table_info(event_date_polls)').all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === 'is_anonymous')) return;
+  db.exec(`
+    ALTER TABLE event_date_polls
+      ADD COLUMN is_anonymous INTEGER NOT NULL DEFAULT 0
+      CHECK (is_anonymous IN (0, 1));
+  `);
+}
+registerMigration({
+  version: 87,
+  name: 'add anonymous event polls',
+  up: addAnonymousEventPolls,
+});
+
+// A closed round is already a complete result snapshot. Starting a follow-up
+// round therefore must not require a second, artificial "result decision"
+// state transition. Keep the uniqueness guard only for the genuinely active
+// round while preserving every historical status and row.
+function allowEventPollRoundsAfterClose(): void {
+  db.exec(`
+    DROP INDEX IF EXISTS idx_event_polls_undecided;
+    CREATE UNIQUE INDEX idx_event_polls_undecided
+      ON event_date_polls(event_id, decision_key) WHERE status = 'open';
+  `);
+}
+registerMigration({
+  version: 88,
+  name: 'allow event poll rounds after close',
+  up: allowEventPollRoundsAfterClose,
+});
+
+// Establishes the behavior-neutral foundation for flexible event types. Every
+// existing selectable event receives the complete LAN preset, preserving all
+// current functionality. The historical outside-events sentinel is not a
+// workspace and therefore intentionally receives no feature snapshot.
+function addEventTypesAndFeatureSnapshots(): void {
+  const eventColumns = db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>;
+  if (!eventColumns.some((column) => column.name === 'event_type_key')) {
+    db.exec(`ALTER TABLE events ADD COLUMN event_type_key TEXT NOT NULL DEFAULT '${DEFAULT_EVENT_TYPE_KEY}'`);
+  }
+  if (!eventColumns.some((column) => column.name === 'preset_version')) {
+    db.exec(
+      `ALTER TABLE events ADD COLUMN preset_version INTEGER NOT NULL DEFAULT ${DEFAULT_EVENT_PRESET_VERSION} CHECK (preset_version > 0)`,
+    );
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS event_features (
+      event_id    TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      feature_key TEXT NOT NULL,
+      enabled     INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+      changed_at  INTEGER NOT NULL,
+      changed_by  TEXT REFERENCES players(id) ON DELETE SET NULL,
+      PRIMARY KEY (event_id, feature_key)
+    );
+  `);
+
+  const eventIds = db
+    .prepare('SELECT id FROM events WHERE id != ?')
+    .all(OUTSIDE_EVENTS_ID) as Array<{ id: string }>;
+  const insertFeature = db.prepare(
+    `INSERT OR IGNORE INTO event_features (event_id, feature_key, enabled, changed_at, changed_by)
+     VALUES (?, ?, 1, ?, NULL)`,
+  );
+  const migratedAt = Date.now();
+  for (const event of eventIds) {
+    for (const featureKey of EVENT_FEATURE_KEYS) {
+      insertFeature.run(event.id, featureKey, migratedAt);
+    }
+  }
+}
+registerMigration({
+  version: 89,
+  name: 'add event types and feature snapshots',
+  up: addEventTypesAndFeatureSnapshots,
+});
+
+// The first implementation draft offered several presets whose only product
+// difference was their initial feature list. The smaller MVP deliberately
+// keeps one LAN profile and one common profile for every other event. A branch
+// database that already tried one of the retired keys is normalized without
+// deleting any domain data; only its feature snapshot changes.
+function collapseEventTypesToLanAndGeneral(): void {
+  const generalPreset = EVENT_TYPE_PRESETS.general;
+  const changedAt = Date.now();
+  const legacyEvents = db
+    .prepare("SELECT id FROM events WHERE id != ? AND event_type_key NOT IN ('lan', 'general')")
+    .all(OUTSIDE_EVENTS_ID) as Array<{ id: string }>;
+  const updateFeature = db.prepare(
+    `UPDATE event_features
+     SET enabled = ?, changed_at = ?, changed_by = NULL
+     WHERE event_id = ? AND feature_key = ?`,
+  );
+  const enabled = new Set(generalPreset.recommendedFeatureKeys);
+  for (const event of legacyEvents) {
+    db.prepare("UPDATE events SET event_type_key = 'general', preset_version = ? WHERE id = ?")
+      .run(generalPreset.version, event.id);
+    for (const featureKey of EVENT_FEATURE_KEYS) {
+      updateFeature.run(enabled.has(featureKey) ? 1 : 0, changedAt, event.id, featureKey);
+    }
+  }
+}
+registerMigration({
+  version: 90,
+  name: 'collapse event types to lan and general',
+  up: collapseEventTypesToLanAndGeneral,
+});
+
+// Arcade is useful for any gathering and does not depend on the LAN game
+// catalog, competition or tracking areas. Upgrade existing general-event
+// snapshots as well as the preset used for newly created events.
+function enableArcadeForGeneralEvents(): void {
+  const changedAt = Date.now();
+  db.prepare(
+    `UPDATE event_features
+     SET enabled = 1, changed_at = ?, changed_by = NULL
+     WHERE feature_key = 'arcade'
+       AND event_id IN (
+         SELECT id FROM events
+         WHERE id != ? AND event_type_key = 'general'
+       )`,
+  ).run(changedAt, OUTSIDE_EVENTS_ID);
+  db.prepare(
+    `UPDATE events
+     SET preset_version = ?
+     WHERE id != ? AND event_type_key = 'general'`,
+  ).run(EVENT_TYPE_PRESETS.general.version, OUTSIDE_EVENTS_ID);
+}
+registerMigration({
+  version: 91,
+  name: 'enable arcade for general events',
+  up: enableArcadeForGeneralEvents,
 });
 
 runRegisteredMigrations();

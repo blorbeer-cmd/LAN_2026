@@ -72,8 +72,8 @@ export function ensureSnakeSocket() {
     if (hostChanged && currentView() === 'snake') rerender();
     if (!document.querySelector('#snake-canvas') && currentView() === 'arcade') rerender();
   });
-  socket.on('snake:match:paused', () => { if (match) { match.paused = true; if (currentView() === 'snake') rerender(); } });
-  socket.on('snake:match:resumed', () => { if (match) { match.paused = false; if (currentView() === 'snake') rerender(); } });
+  socket.on('snake:match:paused', () => { if (match) { match.paused = true; if (currentView() === 'snake') updatePauseUi(); } });
+  socket.on('snake:match:resumed', () => { if (match) { match.paused = false; if (currentView() === 'snake') updatePauseUi(); } });
   socket.on('snake:match:end', (payload) => {
     if (!match) return;
     match.ended = true;
@@ -341,6 +341,18 @@ export function renderSnake(container) {
     cancelCountdown();
     navigate('arcade');
   });
+}
+
+function updatePauseUi() {
+  const game = document.querySelector('.snake-game');
+  if (!game) return;
+  game.querySelector('.snake-overlay')?.remove();
+  if (match?.paused) game.insertAdjacentHTML('beforeend', '<div class="snake-overlay">Pause</div>');
+  const button = document.querySelector('#snake-pause');
+  if (button) {
+    button.textContent = match.paused ? 'Fortsetzen' : 'Pausieren';
+    button.classList.toggle('btn-primary', match.paused);
+  }
 }
 
 function wireSwipeControls(canvas) {

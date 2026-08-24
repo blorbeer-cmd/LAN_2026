@@ -5,11 +5,11 @@ import { requireUser } from '../sessions';
 export const onboardingRouter = Router();
 
 export const ONBOARDING_VERSION = 1;
-// Upper bound for the persisted step index (see STEPS/buildSteps() in
-// onboarding.js): 12 steps for admins (Home, Match, Vote, Essen, Mehr,
-// Profil, Arcade, Durchsage, Jam, Orga, Admin, Spielekatalog), one fewer for
-// everyone else — index 11 is the highest either variant can reach.
-export const CORE_STEP_COUNT = 11;
+// Upper bound for the persisted step index (see buildOnboardingSteps() in
+// onboarding.js): 13 steps for admins (including the event-selection step),
+// one fewer for everyone else — index 12 is the highest either variant can
+// reach.
+export const CORE_STEP_COUNT = 12;
 const MAX_SEEN_VIEWS = 20;
 
 type OnboardingStatus = 'pending' | 'active' | 'completed' | 'skipped';

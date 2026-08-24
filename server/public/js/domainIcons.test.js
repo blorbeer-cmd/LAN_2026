@@ -9,6 +9,7 @@ test('bottom navigation and More define every canonical view icon', () => {
     tournaments: 'swords',
     matchmaking: 'scale',
     votes: 'vote',
+    eventPolls: 'vote',
     leaderboard: 'trophy',
     more: 'menu',
     admin: 'shield',
@@ -22,7 +23,7 @@ test('bottom navigation and More define every canonical view icon', () => {
     checklistPacking: 'clipboard',
     live: 'radioTower',
     foodOrders: 'hamburger',
-    checklist: 'clipboard',
+    checklist: 'listChecks',
     arcade: 'joystick',
     broadcast: 'megaphone',
     gameCatalog: 'gamepad',
@@ -34,12 +35,12 @@ test('bottom navigation and More define every canonical view icon', () => {
   });
 });
 
-test('a merged area keeps the symbol of the tab it leads with', () => {
-  // The nav button stands for the whole area, so it must not invent a symbol
-  // of its own next to the tab it opens on.
+test('packing and To-Do use distinct symbols', () => {
+  // The general-event footer places these actions side by side, so their
+  // symbols must remain distinguishable even without reading the labels.
   assert.equal(domainIcon('competition'), domainIcon('tournaments'));
   assert.equal(domainIcon('insights'), domainIcon('leaderboard'));
-  assert.equal(domainIcon('orga'), domainIcon('checklist'));
+  assert.notEqual(domainIcon('checklistPacking'), domainIcon('checklist'));
 });
 
 test('unknown domains use the requested fallback', () => {

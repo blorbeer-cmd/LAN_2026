@@ -23,6 +23,8 @@ let itemsCache = null;
 let itemsCacheForId = null;
 let loadingTasks = false;
 let loadingItems = false;
+let tasksStale = false;
+let tasksRequestVersion = 0;
 // Set when a realtime echo of the signed-in identity's own items arrives
 // while a good cache is already showing (see invalidateChecklist below) —
 // a background refetch reconciles it without the destructive null-the-cache
@@ -33,16 +35,22 @@ let typeFilter = 'all'; // 'all' | 'todo' | 'item_request', open-pool only
 let onlyMineFilter = false; // open-pool only: "von mir erstellt"
 
 async function loadTasks(ctx) {
+  const version = ++tasksRequestVersion;
   loadingTasks = true;
+  tasksStale = false;
   try {
     const res = await api.checklist.tasks();
-    tasksCache = res.tasks;
+    if (version === tasksRequestVersion) tasksCache = res.tasks;
   } catch (err) {
-    showToast(err.message, { error: true });
-    tasksCache = [];
+    if (version === tasksRequestVersion) {
+      showToast(err.message, { error: true });
+      if (tasksCache === null) tasksCache = [];
+    }
   } finally {
-    loadingTasks = false;
-    ctx.rerender();
+    if (version === tasksRequestVersion) {
+      loadingTasks = false;
+      ctx.rerender();
+    }
   }
 }
 
@@ -88,9 +96,14 @@ function invalidateItems() {
 // whose items). Honouring that keeps a To-Do somebody else created from
 // throwing away the personal Packliste, which would otherwise drop back to its
 // loading state and take a half-typed entry with it.
-export function invalidateChecklist(payload) {
+export function invalidateChecklist(payload, { hard = false } = {}) {
   const scope = payload?.scope;
-  if (scope !== 'items') tasksCache = null;
+  if (scope !== 'items') {
+    tasksRequestVersion += 1;
+    loadingTasks = false;
+    tasksStale = true;
+    if (hard) tasksCache = null;
+  }
   if (scope === 'tasks') return;
   if (scope === 'items' && payload.playerId && payload.playerId !== getMyId()) return;
   // This is the signed-in identity's own items: either this very client just
@@ -105,14 +118,44 @@ export function invalidateChecklist(payload) {
   invalidateItems();
 }
 
+function reconcileTasks(result) {
+  if (tasksCache === null) return;
+  const changed = Array.isArray(result?.tasks) ? result.tasks : result?.id ? [result] : [];
+  for (const task of changed) {
+    const index = tasksCache.findIndex((entry) => entry.id === task.id);
+    if (index === -1) tasksCache.push(task);
+    else tasksCache[index] = task;
+  }
+}
+
+function removeTaskFromCache(taskId) {
+  if (tasksCache) tasksCache = tasksCache.filter((task) => task.id !== taskId);
+}
+
 // How many To-Dos currently sit with the signed-in identity. The Orga area
 // shows this on its To-Dos tab, so the count stays visible from every tab of
 // the area instead of only from inside the list. Returns 0 while nothing is
 // loaded yet — a badge must never guess a number.
 export function openTaskCount() {
+  return assignedTasks()?.length ?? 0;
+}
+
+// Shared dashboard projection for the signed-in identity. `null` deliberately
+// means "still loading", while an empty array is a loaded list without work.
+// Keeping the due-date ordering here prevents Home and the full To-Do view
+// from drifting apart.
+export function assignedTasks() {
   const myId = getMyId();
-  if (!myId || tasksCache === null) return 0;
-  return tasksCache.filter((task) => task.status === 'taken' && task.assignee?.id === myId).length;
+  if (tasksCache === null) return null;
+  if (!myId) return [];
+  return tasksCache
+    .filter((task) => task.status === 'taken' && task.assignee?.id === myId)
+    .sort((a, b) => {
+      if (a.dueAt && b.dueAt) return a.dueAt - b.dueAt;
+      if (a.dueAt) return -1;
+      if (b.dueAt) return 1;
+      return 0;
+    });
 }
 
 // The tab count has to be right on every Orga tab, not only on the one that
@@ -120,14 +163,14 @@ export function openTaskCount() {
 // "/#arrivals" link otherwise leaves the badge permanently blank. Loading
 // re-renders once it resolves, and a filled cache makes this a no-op.
 export function ensureTasksLoaded(ctx) {
-  if (tasksCache === null && !loadingTasks) loadTasks(ctx);
+  if ((tasksCache === null || tasksStale) && !loadingTasks) loadTasks(ctx);
 }
 
 // These caches are keyed by player id, not by group - switching the active
 // group (see groupContext.js) must drop them too, or the previous group's
 // tasks/items keep rendering (and stay clickable) until some unrelated
 // checklist:changed socket event happens to arrive.
-window.addEventListener('respawn:group-changed', invalidateChecklist);
+window.addEventListener('respawn:group-changed', () => invalidateChecklist(undefined, { hard: true }));
 
 // Kept out of the loading branch below so a refresh never unmounts the field:
 // the geometry stays stable and a half-typed entry has something to be restored
@@ -242,9 +285,9 @@ function openClaimForm(ctx, myId, taskId) {
           e.preventDefault();
           const comment = el.querySelector('#claim-comment').value.trim() || undefined;
           try {
-            await api.checklist.claim(taskId, myId, comment);
+            const updated = await api.checklist.claim(taskId, myId, comment);
+            reconcileTasks(updated);
             close();
-            tasksCache = null;
             showToast('Übernommen.');
             ctx.rerender();
           } catch (err) {
@@ -400,13 +443,11 @@ async function openCreateTodoForm(ctx, myId) {
       const assigneePlayerIds =
         form.assignMode === 'self' ? [myId] : form.assignMode === 'pick' && form.selected.size ? [...form.selected] : undefined;
       try {
-        if (form.kind === 'todo') {
-          await api.checklist.createTodo(myId, trimmedTitle, trimmedDescription, assigneePlayerIds, dueAtMs ?? undefined);
-        } else {
-          await api.checklist.createRequest(myId, trimmedTitle, trimmedDescription, assigneePlayerIds, dueAtMs ?? undefined);
-        }
+        const created = form.kind === 'todo'
+          ? await api.checklist.createTodo(myId, trimmedTitle, trimmedDescription, assigneePlayerIds, dueAtMs ?? undefined)
+          : await api.checklist.createRequest(myId, trimmedTitle, trimmedDescription, assigneePlayerIds, dueAtMs ?? undefined);
+        reconcileTasks(created);
         close();
-        tasksCache = null;
         showToast('To-Do erstellt.');
         ctx.rerender();
       } catch (err) {
@@ -445,7 +486,7 @@ async function openCreateTodoForm(ctx, myId) {
 // as two of its own tabs (see sectionNav.js), so this view no longer carries a
 // second tab row of its own.
 export function renderChecklist(container, ctx, activeTab = 'todos') {
-  if (tasksCache === null && !loadingTasks) loadTasks(ctx);
+  if ((tasksCache === null || tasksStale) && !loadingTasks) loadTasks(ctx);
   const myId = getMyId();
   if (myId && itemsCacheForId !== myId && !loadingItems) loadItems(ctx, myId);
   else if (myId && itemsStale && !loadingItems) loadItems(ctx, myId, { silent: true });
@@ -455,14 +496,7 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
 
   const tasks = tasksCache || [];
   const openAll = tasks.filter((t) => t.status === 'open');
-  const mineTasks = tasks
-    .filter((t) => t.status === 'taken' && t.assignee?.id === myId)
-    .sort((a, b) => {
-      if (a.dueAt && b.dueAt) return a.dueAt - b.dueAt;
-      if (a.dueAt) return -1;
-      if (b.dueAt) return 1;
-      return 0;
-    });
+  const mineTasks = assignedTasks() ?? [];
   const underwayTasks = tasks.filter((t) => t.status === 'taken' && t.assignee?.id !== myId);
   const doneTasks = tasks.filter((t) => t.status === 'done');
   const openFiltered = openAll
@@ -470,14 +504,14 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
     .filter((t) => (onlyMineFilter ? t.createdBy?.id === myId : true));
 
   const mineHtml =
-    loadingTasks && tasksCache === null
+    tasksCache === null
       ? emptyStateHtml('Lädt…')
       : mineTasks.length === 0
         ? emptyStateHtml('Aktuell liegt nichts bei dir.')
         : `<div class="two-column-card-grid">${mineTasks.map((t) => renderTaskCard(t, myId, 'mine')).join('')}</div>`;
 
   const openHtml =
-    loadingTasks && tasksCache === null
+    tasksCache === null
       ? emptyStateHtml('Lädt…')
       : openFiltered.length === 0
         ? emptyStateHtml('Gerade nichts Offenes.')
@@ -610,8 +644,8 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
   container.querySelectorAll('[data-release-task]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       try {
-        await api.checklist.release(btn.dataset.releaseTask, myId);
-        tasksCache = null;
+        const updated = await api.checklist.release(btn.dataset.releaseTask, myId);
+        reconcileTasks(updated);
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });
@@ -622,8 +656,8 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
   container.querySelectorAll('[data-done-task]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       try {
-        await api.checklist.setDone(btn.dataset.doneTask, myId);
-        tasksCache = null;
+        const updated = await api.checklist.setDone(btn.dataset.doneTask, myId);
+        reconcileTasks(updated);
         showToast('Als erledigt markiert.');
         ctx.rerender();
       } catch (err) {
@@ -637,7 +671,7 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
       if (!(await confirmDialog('Zurückziehen? Das To-Do verschwindet aus dem Pool.', { confirmText: 'Zurückziehen' }))) return;
       try {
         await api.checklist.cancel(btn.dataset.cancelTask, myId);
-        tasksCache = null;
+        removeTaskFromCache(btn.dataset.cancelTask);
         ctx.rerender();
       } catch (err) {
         showToast(err.message, { error: true });

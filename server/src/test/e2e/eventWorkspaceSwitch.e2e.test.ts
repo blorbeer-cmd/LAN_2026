@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
 import { authenticatedServerEnv, loginE2EAdmin, finishE2EOnboarding, E2E_ADMIN_NAME, E2E_ADMIN_PASSWORD } from './authHelpers';
-import { createE2EDiagnosticTest } from './e2eDiagnostics';
+import { createStatefulE2EDiagnosticTest } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
@@ -24,8 +24,12 @@ let page: Page;
 let cookie: string;
 let eventA: string;
 let eventB: string;
+let generalEvent: string;
 
-const test = createE2EDiagnosticTest(() => ({ browser, server: e2eServer }));
+const test = createStatefulE2EDiagnosticTest(
+  () => ({ browser, server: e2eServer }),
+  { sharedState: 'server, browser context, and page' },
+);
 
 async function api(path: string, init: RequestInit = {}): Promise<{ status: number; body: any }> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -42,11 +46,16 @@ async function api(path: string, init: RequestInit = {}): Promise<{ status: numb
   return { status: res.status, body };
 }
 
-async function createAcceptedEvent(name: string, playerId: string): Promise<string> {
+async function createAcceptedEvent(
+  name: string,
+  playerId: string,
+  eventType = 'lan',
+  details: Record<string, unknown> = {},
+): Promise<string> {
   const now = Date.now();
   const created = await api('/api/events', {
     method: 'POST',
-    body: JSON.stringify({ name, startsAt: now, endsAt: now + 3_600_000 }),
+    body: JSON.stringify({ name, startsAt: now, endsAt: now + 3_600_000, eventType, ...details }),
   });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   const id = created.body.id as string;
@@ -122,6 +131,11 @@ before(async () => {
   const myId = me.body.id as string;
   eventA = await createAcceptedEvent('E2E Workspace A', myId);
   eventB = await createAcceptedEvent('E2E Workspace B', myId);
+  generalEvent = await createAcceptedEvent('E2E Allgemeines Event', myId, 'general', {
+    location: 'Gemeinschaftsgarten',
+    description: 'Bitte wetterfeste Kleidung mitbringen.',
+    costCents: 1500,
+  });
 
   // Data that exists only in event A.
   await activate(eventA);
@@ -332,6 +346,10 @@ test('the workspace switcher keeps event names concise and shows state through i
 test('the switcher disables itself while a workspace switch is in flight', async () => {
   await switchWorkspaceInBrowser(eventB);
   await page.click('#event-context .search-select-toggle');
+  await page.route(`${BASE_URL}/api/me/active-event`, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.continue();
+  }, { times: 1 });
   await page.click(`#event-context-switcher-list [data-search-select-value="${eventA}"]`);
   // The onChange handler disables both elements synchronously, before its
   // first await — so by the time the click above has resolved, the disabled
@@ -340,6 +358,8 @@ test('the switcher disables itself while a workspace switch is in flight', async
   // polls avoids a race against an in-memory-DB switch that can complete
   // (and re-enable the rebuilt control) between the two separate round
   // trips a pair of waitForSelector calls would need.
+  await page.waitForSelector('#event-context-switcher-search[disabled]');
+  await page.waitForSelector('#event-context .search-select-toggle[disabled]');
   const disabledDuringSwitch = await page.evaluate(() => ({
     search: (document.getElementById('event-context-switcher-search') as HTMLInputElement | null)?.disabled,
     toggle: (document.querySelector('#event-context .search-select-toggle') as HTMLButtonElement | null)?.disabled,
@@ -384,4 +404,116 @@ test('an open, actively-searched switcher survives an unrelated background refre
     'the open list must stay open across the unrelated refresh',
   );
   await page.keyboard.press('Escape');
+});
+
+test('a general event removes LAN-only whole areas across navigation, Home, Profile and Admin', async () => {
+  await switchWorkspaceInBrowser(generalEvent);
+
+  assert.deepEqual(
+    await page.locator('.nav-btn:visible').evaluateAll((buttons) => buttons.map((button) => (button as HTMLElement).dataset.view)),
+    ['home', 'arrivals', 'checklistPacking', 'checklist', 'eventPolls', 'more'],
+  );
+  assert.equal(await page.locator('.nav-btn[data-view="eventPolls"]').isEnabled(), true);
+  await page.click('.nav-btn[data-view="eventPolls"]');
+  assert.match(await page.locator('#view-container > .view-title').innerText(), /Abstimmungen/);
+
+  await page.click('.nav-btn[data-view="home"]');
+  const home = await viewText();
+  assert.doesNotMatch(home, /Live-Status|Rangliste/);
+  for (const text of [
+    'Eventübersicht',
+    'Allgemeines Event',
+    'Gemeinschaftsgarten',
+    'wetterfeste Kleidung',
+    '15,00',
+    '1 teilnehmende Person',
+    'Organisation',
+    'Eventdetails & Kosten',
+    'To-Dos',
+    'An- & Abreise',
+    'Essen',
+    'Jam',
+    'Sitzplan',
+  ]) {
+    assert.ok(home.includes(text), `Home must show ${text}`);
+  }
+  for (const view of ['events', 'checklist', 'arrivals', 'foodOrders', 'music']) {
+    assert.equal(await page.locator(`[data-navigate="${view}"]`).first().isVisible(), true, `${view} summary link must be visible`);
+  }
+
+  await openView('profile');
+  const profile = await viewText();
+  assert.doesNotMatch(profile, /Live-Status-Agent|Sichtbare Monitore|Meine Statistiken|Bock & Skill eintragen/);
+  assert.match(profile, /Push-Benachrichtigungen/);
+
+  await page.click('.nav-btn[data-view="more"]');
+  const more = await viewText();
+  assert.match(more, /Arcade|Jam|Events|Essen/);
+  assert.doesNotMatch(more, /Orga/);
+  assert.equal(await page.locator('[data-navigate="arcade"]').isVisible(), true);
+
+  await page.click('.nav-btn[data-view="arrivals"]');
+  await page.waitForSelector('#arrivals-times-title');
+  assert.doesNotMatch(await viewText(), /Spieler/);
+  assert.match(await viewText(), /Person|Teilnehmende/i);
+  assert.match(await page.locator('#view-container > .view-title').innerText(), /An- & Abreise/);
+  assert.equal(await page.locator('#view-container > .section-tabs').count(), 0);
+
+  await page.click('.nav-btn[data-view="more"]');
+  await page.click('[data-navigate="events"]');
+  const generalEventCard = page.locator(`[data-event-card="${generalEvent}"]`);
+  assert.equal(
+    await generalEventCard.locator('.event-card-header-badges .badge').first().innerText(),
+    'Allgemeines Event',
+  );
+  assert.match(await generalEventCard.innerText(), /Teilnehmende verwalten/);
+  assert.equal(
+    await generalEventCard.locator('[data-export-event]').count(),
+    0,
+    'general events must not offer the LAN keepsake PDF',
+  );
+  await page.click('#new-event-btn');
+  assert.deepEqual(
+    await page.locator('#event-type option').allTextContents(),
+    ['LAN-Party', 'Allgemeines Event'],
+  );
+  assert.equal(await page.locator('#event-type-description').count(), 0);
+  await page.selectOption('#event-type', 'general');
+  assert.equal(await page.locator('#event-type-description').count(), 0);
+  await page.click('.modal-backdrop [data-close]');
+
+  await openView('admin');
+  const admin = await viewText();
+  assert.doesNotMatch(admin, /LAN-Bereitschaft|Agent-Diagnose|Kioskverwaltung/);
+  assert.equal(await page.locator('[data-navigate="leaderboard"]').count(), 0);
+  assert.equal(await page.locator('[data-navigate="kiosk"]').count(), 0);
+  assert.match(admin, /Sitzplan|Eventverwaltung/);
+
+  await page.click('[data-navigate="seating"]');
+  await page.waitForSelector('#seating-players-title');
+  const seating = await viewText();
+  assert.match(seating, /Teilnehmende/);
+  assert.doesNotMatch(seating, /Spieler/);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.click('.nav-btn[data-view="home"]');
+  await page.waitForSelector('[data-home-event-overview]');
+  await page.waitForSelector('[data-home-assigned-todos]');
+  assert.match(await page.locator('[data-home-assigned-todos]').innerText(), /Meine To-Dos|Alle To-Dos/);
+  assert.equal(
+    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+    true,
+    'the general-event overview must not introduce horizontal page scrolling on a phone',
+  );
+  assert.equal(await page.locator('[data-home-event-overview] .badge').isVisible(), true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  await switchWorkspaceInBrowser(eventA);
+  assert.deepEqual(
+    await page.locator('.nav-btn:visible').evaluateAll((buttons) => buttons.map((button) => (button as HTMLElement).dataset.view)),
+    ['home', 'matchmaking', 'votes', 'foodOrders', 'gameCatalog', 'more'],
+  );
+  await page.click('.nav-btn[data-view="more"]');
+  assert.equal(await page.locator('[data-navigate="eventPolls"]').isVisible(), true);
+  assert.match(await viewText(), /Orga/);
 });

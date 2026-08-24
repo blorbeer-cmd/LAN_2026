@@ -5,8 +5,10 @@
 // nochmal was?" round through the room becomes one glance at the screen —
 // but stays reversible: the creator/an admin can reopen it to add a
 // forgotten item or fix a price, and paid status/metadata stay editable
-// throughout. Only once they close it for good ("Geschlossen") does it lock
-// permanently.
+// throughout. Once they lock it for good ("Geschlossen"), no items, paid or
+// metadata changes are possible any more — but even that lock itself stays
+// reversible through the same "Wieder öffnen" action, one step back at a
+// time (Geschlossen -> Abgeschickt -> Offen).
 //
 // Payment happens at the orderer group: each person sees one complete amount,
 // pays it through the order's PayPal link and confirms the whole group.
@@ -21,10 +23,93 @@ import { icon } from '../icons.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { currentPlayerHasAdminRole } from '../adminAccess.js';
+import { formatEuroCents as formatCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
+
+export { normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
 
 let cache = null;
 let loading = false;
 let historyOpen = false;
+
+// Realtime updates may arrive several times while a suggestion option is
+// being targeted. Replacing the complete view in that window detaches the
+// option between pointerdown and click, so Playwright (and a quick real user)
+// can chase an element that never stays connected long enough to select.
+// Keep applying responses to the cache, but defer that one DOM replacement
+// until the active suggestion interaction has closed.
+let deferredInteractiveRender = null; // { container, ctx } | null
+let deferredInteractiveRenderScheduled = false;
+let forceInteractiveRender = false;
+let outsidePointerInteractionPending = false;
+
+function flushDeferredInteractiveRender() {
+  if (!deferredInteractiveRender || deferredInteractiveRenderScheduled) return;
+  deferredInteractiveRenderScheduled = true;
+  // A macrotask lets the click/default action that closed the dropdown finish
+  // before the form containing its target is replaced.
+  setTimeout(() => {
+    deferredInteractiveRenderScheduled = false;
+    const pending = deferredInteractiveRender;
+    if (!pending) return;
+    if (!pending.container.isConnected) {
+      deferredInteractiveRender = null;
+      return;
+    }
+    if (pending.container.querySelector('[data-desc-suggest].is-open')) return;
+    deferredInteractiveRender = null;
+    pending.ctx.rerender();
+  }, 0);
+}
+
+function flushDeferredInteractiveRenderAfterPointer(pointerId) {
+  outsidePointerInteractionPending = true;
+  let pointerReleased = false;
+  let fallbackTimer = null;
+
+  const cleanup = () => {
+    document.removeEventListener('pointerup', onPointerUp, true);
+    document.removeEventListener('pointercancel', onPointerCancel, true);
+    document.removeEventListener('click', onClick, true);
+    window.removeEventListener('blur', onWindowBlur);
+    if (fallbackTimer !== null) clearTimeout(fallbackTimer);
+  };
+  const finish = () => {
+    cleanup();
+    outsidePointerInteractionPending = false;
+    flushDeferredInteractiveRender();
+  };
+  const onPointerUp = (event) => {
+    if (event.pointerId !== pointerId) return;
+    pointerReleased = true;
+    document.removeEventListener('pointerup', onPointerUp, true);
+    // Normal taps emit click immediately after pointerup. A drag or another
+    // gesture may not emit one at all, so release the deferred render after a
+    // bounded fallback without racing a delayed touch click.
+    fallbackTimer = setTimeout(finish, 500);
+  };
+  const onPointerCancel = (event) => {
+    if (event.pointerId === pointerId) finish();
+  };
+  const onClick = () => {
+    if (pointerReleased) finish();
+  };
+  const onWindowBlur = () => finish();
+
+  document.addEventListener('pointerup', onPointerUp, true);
+  document.addEventListener('pointercancel', onPointerCancel, true);
+  document.addEventListener('click', onClick, true);
+  window.addEventListener('blur', onWindowBlur, { once: true });
+}
+
+function rerenderLocalMutation(ctx) {
+  forceInteractiveRender = true;
+  try {
+    ctx.rerender();
+  } finally {
+    forceInteractiveRender = false;
+  }
+}
 
 // Orderer-group expand/collapse state: `orderId -> Set<playerId>` of currently
 // expanded groups. Deliberately module state, not persisted; the start rule
@@ -37,6 +122,12 @@ const groupStartRuleApplied = new Set();
 // gets no collapse chrome at all. Not persisted beyond the session.
 const expandedOpenOrders = new Set();
 let orderStartRuleApplied = false;
+
+// Same collapse pattern, mirrored for Historie: only meaningful once more
+// than one closed/finalized order exists. A single history entry gets no
+// collapse chrome either.
+const expandedClosedOrders = new Set();
+let closedOrderStartRuleApplied = false;
 let pendingOrderTargetId = null;
 let activeOrderTargetId = null;
 let orderTargetStateVersion = 0;
@@ -85,9 +176,11 @@ export function clearFoodOrderTarget() {
 let fetchInFlight = null;
 let refetchPending = false;
 let foodOrderScopeVersion = 0;
+let foodOrderWorkspaceVersion = 0;
 
 function invalidateFoodOrderCache() {
   foodOrderScopeVersion += 1;
+  foodOrderWorkspaceVersion += 1;
   cache = null;
 }
 
@@ -181,6 +274,78 @@ export async function refreshFoodOrders(ctx) {
   return fetchFoodOrders(ctx);
 }
 
+function sortCachedOrders(orders) {
+  return orders.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+// Mutation endpoints return the complete, freshly serialized order. Apply
+// that response directly instead of clearing the cache: a hard invalidate
+// briefly replaced the whole Essen view with "Lädt…", shrank the scroll
+// container and forced its scrollTop to 0. The quiet follow-up GET still
+// reconciles concurrent changes from other devices without introducing that
+// intermediate empty frame.
+function reconcileLocalOrderMutation(nextOrder, ctx, mutationWorkspaceVersion) {
+  if (mutationWorkspaceVersion !== foodOrderWorkspaceVersion) {
+    void refreshFoodOrders(ctx);
+    return;
+  }
+  foodOrderScopeVersion += 1;
+  const nextCache = cache === null ? [] : [...cache];
+  const index = nextCache.findIndex((order) => order.id === nextOrder.id);
+  if (index === -1) nextCache.push(nextOrder);
+  else nextCache[index] = nextOrder;
+  cache = sortCachedOrders(nextCache);
+
+  if (nextOrder.open) {
+    const openCount = cache.filter((order) => order.open).length;
+    if (openCount > 1) {
+      // A just-created or reopened order is the thing the user is working
+      // with, so keep it visible when the open-order cards are collapsible.
+      if (!orderStartRuleApplied) {
+        orderStartRuleApplied = true;
+        expandedOpenOrders.clear();
+      }
+      expandedOpenOrders.add(nextOrder.id);
+    }
+  } else {
+    // Closing/finalizing/unfinalizing an order keeps (or moves) its card in
+    // Historie. Keep the same card on screen instead of making it disappear
+    // into a newly collapsed section or card.
+    historyOpen = true;
+    expandedOpenOrders.delete(nextOrder.id);
+    const closedCount = cache.filter((order) => !order.open).length;
+    if (closedCount > 1) {
+      if (!closedOrderStartRuleApplied) {
+        closedOrderStartRuleApplied = true;
+        expandedClosedOrders.clear();
+      }
+      expandedClosedOrders.add(nextOrder.id);
+    }
+  }
+
+  rerenderLocalMutation(ctx);
+  void refreshFoodOrders(ctx);
+}
+
+function reconcileLocalOrderRemoval(orderId, ctx, mutationWorkspaceVersion) {
+  if (mutationWorkspaceVersion !== foodOrderWorkspaceVersion) {
+    void refreshFoodOrders(ctx);
+    return;
+  }
+  foodOrderScopeVersion += 1;
+  if (cache !== null) cache = cache.filter((order) => order.id !== orderId);
+  expandedGroups.delete(orderId);
+  groupStartRuleApplied.delete(orderId);
+  expandedOpenOrders.delete(orderId);
+  expandedClosedOrders.delete(orderId);
+  rerenderLocalMutation(ctx);
+  void refreshFoodOrders(ctx);
+}
+
+function refreshFoodOrdersAfterMutationError(ctx) {
+  void refreshFoodOrders(ctx);
+}
+
 // "4,50" / "4.50" / "4" -> 450 cents; null for empty, NaN for garbage.
 export function parsePriceToCents(raw) {
   const trimmed = (raw || '').trim().replace('€', '').trim();
@@ -189,12 +354,6 @@ export function parsePriceToCents(raw) {
   const value = Number(normalized);
   if (!Number.isFinite(value) || value < 0) return NaN;
   return Math.round(value * 100);
-}
-
-const euroFormatter = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
-
-function formatCents(cents) {
-  return euroFormatter.format(cents / 100);
 }
 
 async function copyFoodOrderValue(value, label) {
@@ -227,69 +386,6 @@ function copyPaypalAddressToClipboard(address) {
 
 export function addTipToCents(cents, tipPercent) {
   return Math.round(cents * (1 + (tipPercent || 0) / 100));
-}
-
-// Turns a stored PayPal(.me) link into a payable one: a bare
-// "paypal.me/name" link gets the exact owed amount appended so paying is one
-// tap; anything else (already has a path/amount, or some other payment page
-// entirely) opens unchanged rather than risk mangling a URL the creator
-// typed on purpose.
-export function paypalPayUrl(paypalLink, cents) {
-  const bareMatch = paypalLink.match(/^(https?:\/\/(?:www\.)?paypal\.me\/[^/?#]+)\/?$/i);
-  if (bareMatch && cents > 0) {
-    return `${bareMatch[1]}/${(cents / 100).toFixed(2)}EUR`;
-  }
-  return paypalLink;
-}
-
-// PayPal has no public URL that pre-fills a payment's recipient by email
-// (the old cmd=_send-money trick is long dead) — so an email address can't
-// become a one-tap payment link the way a paypal.me name can. The best we
-// can do is send people to PayPal's generic "send money" page and put the
-// address on the clipboard so they only have to paste it. The email is
-// tucked into the (otherwise unused by PayPal) recipient query param purely
-// so paypalEmailFromLink can recover it later for that clipboard copy.
-const PAYPAL_EMAIL_LINK_RE = /^https:\/\/www\.paypal\.com\/myaccount\/transfer\/homepage\/pay\?recipient=([^&]+)$/i;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// The email this order's PayPal link was built from, or null if the link
-// isn't one of ours (a paypal.me link or some other payment page).
-export function paypalEmailFromLink(paypalLink) {
-  const match = (paypalLink ?? '').match(PAYPAL_EMAIL_LINK_RE);
-  if (!match) return null;
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    // The API accepts arbitrary HTTP(S) URLs. Treat malformed percent
-    // encoding as an ordinary PayPal URL instead of breaking Essen while it
-    // renders the order card.
-    return null;
-  }
-}
-
-// Lets people type just their paypal.me name ("blorbeer", "@blorbeer",
-// pasted "paypal.me/blorbeer" without a scheme, …) instead of having to
-// paste the whole https://paypal.me/… URL, or their PayPal email address if
-// that's all they have (see paypalEmailFromLink for what that turns into).
-// A full http(s) link is passed through untouched so anyone who prefers a
-// different payment page can still use it. Returns null for empty input;
-// throws a user-facing message for input that's neither a link, an email,
-// nor a usable name.
-export function normalizePaypalInput(raw) {
-  const trimmed = (raw ?? '').trim();
-  if (!trimmed) return null;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  if (EMAIL_RE.test(trimmed)) {
-    return `https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=${encodeURIComponent(trimmed)}`;
-  }
-  const name = trimmed
-    .replace(/^@/, '')
-    .replace(/^(www\.)?paypal\.me\//i, '')
-    .replace(/\/+$/, '');
-  if (!name || /\s/.test(name)) {
-    throw new Error('PayPal-Link muss eine gültige URL, E-Mail-Adresse oder ein PayPal.me-Name ohne Leerzeichen sein.');
-  }
-  return `https://paypal.me/${name}`;
 }
 
 function itemsGroupedByPlayer(order) {
@@ -406,7 +502,11 @@ function applyLocalPaidState(items, paid) {
 // current when it resolves; mutating the pre-PATCH object would let a stale
 // response overwrite the local result (and invalidating to null would jump
 // the visible Essen view back to its loading placeholder).
-function reconcileLocalPaidMutation(orderId, itemIds, paid, ctx) {
+function reconcileLocalPaidMutation(orderId, itemIds, paid, ctx, mutationWorkspaceVersion) {
+  if (mutationWorkspaceVersion !== foodOrderWorkspaceVersion) {
+    void refreshFoodOrders(ctx);
+    return;
+  }
   foodOrderScopeVersion += 1;
   const currentOrder = cache?.find((candidate) => candidate.id === orderId);
   const currentItems = currentOrder?.items.filter((item) => itemIds.includes(item.id)) ?? [];
@@ -457,8 +557,8 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
       ? `Bezahlt, bestätigt von ${paidNames.join(', ')} – Markierung aufheben`
       : 'Bezahlt – Markierung aufheben'
     : `${items[0].playerName} als bezahlt markieren`;
-  const paidMarkerHtml = `<button type="button" class="food-order-paid-marker ${allPaid ? 'is-paid' : ''}" data-toggle-group-paid="${playerId}" data-order="${order.id}" ${locked ? 'disabled' : ''} aria-pressed="${allPaid ? 'true' : 'false'}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}">
-    ${icon(allPaid ? 'check' : 'circleDashed')}<span>${allPaid ? 'Bezahlt' : 'Offen'}</span>
+  const paidMarkerHtml = `<button type="button" class="payment-paid-marker food-order-paid-marker ${allPaid ? 'is-paid' : ''}" data-toggle-group-paid="${playerId}" data-order="${order.id}" ${locked ? 'disabled' : ''} aria-pressed="${allPaid ? 'true' : 'false'}" title="${escapeHtml(paidTitle)}" aria-label="${escapeHtml(paidTitle)}">
+    ${icon(allPaid ? 'check' : 'circleDashed')}<span>${allPaid ? 'Bezahlt' : 'Bezahlt?'}</span>
   </button>`;
 
   const payDisabledReason = locked
@@ -470,7 +570,7 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
         : null;
   const payTitle = payDisabledReason || `${formatCents(totalCents)} für ${items[0].playerName} über PayPal bezahlen`;
   const payButtonHtml = order.paypalLink
-    ? `<button type="button" class="icon-btn food-order-item-action food-order-group-pay" data-group-pay="${playerId}" data-order="${order.id}" ${payDisabledReason ? 'disabled' : ''} title="${escapeHtml(payTitle)}" aria-label="${escapeHtml(payTitle)}">${icon('paypal')}</button>`
+    ? `<button type="button" class="icon-btn payment-paypal-button food-order-item-action food-order-group-pay" data-group-pay="${playerId}" data-order="${order.id}" ${payDisabledReason ? 'disabled' : ''} title="${escapeHtml(payTitle)}" aria-label="${escapeHtml(payTitle)}">${icon('paypal')}</button>`
     : '';
 
   const copyValue = allPriced || hasPriced ? formatCents(totalCents) : null;
@@ -490,9 +590,8 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
   return `
     <div class="row food-order-group-header">
       ${leftHtml}
-      ${paidMarkerHtml}
       ${amountHtml}
-      <span class="food-order-group-actions">${copyHtml}${payButtonHtml}${deleteHtml}</span>
+      <span class="food-order-group-actions">${copyHtml}${payButtonHtml}${paidMarkerHtml}${deleteHtml}</span>
     </div>`;
 }
 
@@ -747,11 +846,13 @@ function wireDescSuggest(wrapper) {
     updateExpanded(true);
     renderOptions();
   };
-  const close = () => {
+  const close = ({ flush = true } = {}) => {
+    const wasOpen = isOpen();
     list.hidden = true;
     updateExpanded(false);
     input.removeAttribute('aria-activedescendant');
     activeIndex = -1;
+    if (wasOpen && flush) flushDeferredInteractiveRender();
   };
   const selectSuggestion = (suggestion) => {
     input.value = suggestion.label;
@@ -832,7 +933,10 @@ function wireDescSuggest(wrapper) {
       document.removeEventListener('pointerdown', closeFromOutsidePointer);
       return;
     }
-    if (isOpen() && !wrapper.contains(event.target)) close();
+    if (isOpen() && !wrapper.contains(event.target)) {
+      close({ flush: false });
+      flushDeferredInteractiveRenderAfterPointer(event.pointerId);
+    }
   };
   document.addEventListener('pointerdown', closeFromOutsidePointer);
 }
@@ -897,40 +1001,52 @@ function renderOpenOrder(order, myId, { collapsible = false } = {}) {
 // The "Abgeschickt" (submitted) state — items are frozen for others, but the
 // creator/an admin can still reopen it and edit metadata, and any group
 // member can still toggle paid status — is deliberately kept visually and
-// textually distinct from "Geschlossen" (finalized, fully locked): a
-// different badge color (badge-paused vs badge-offline, matching the
-// amber/gray "pausiert"/"offline" state language used elsewhere) plus
-// different wording.
-function renderClosedOrder(order, myId) {
+// textually distinct from "Geschlossen" (finalized): a different badge color
+// (badge-paused vs badge-offline, matching the amber/gray
+// "pausiert"/"offline" state language used elsewhere) plus different
+// wording. Both states are reversible through the same "Wieder öffnen"
+// action (finalized -> abgeschickt -> offen, one step per tap), mirroring
+// renderOpenOrder's own collapsible-card pattern once more than one history
+// entry exists.
+function renderClosedOrder(order, myId, { collapsible = false } = {}) {
   const finalized = Boolean(order.finalizedAt);
   const itemsHtml = renderItems(order, myId, { locked: finalized });
-  return `
-    <article class="card stack food-order-card" data-closed-order="${order.id}">
-      <div class="row-between">
-        <strong>${escapeHtml(order.title)}</strong>
-        <span class="badge ${finalized ? 'badge-offline' : 'badge-paused'}">${finalized ? 'Geschlossen' : 'Abgeschickt'}</span>
-      </div>
-      <div class="muted food-order-meta">
-        von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
-      </div>
-      ${renderDetails(order, { locked: finalized })}
-      ${renderOrderOverview(order)}
+  const expanded = !collapsible || expandedClosedOrders.has(order.id);
+  const bodyHtml = `
+    <div class="muted food-order-meta">
+      von ${escapeHtml(order.createdByName)} · ${formatDateTime(order.createdAt)}
+    </div>
+    ${renderDetails(order, { locked: finalized })}
+    ${renderOrderOverview(order)}
+    <div class="food-order-card-body stack" ${expanded ? '' : 'hidden'}>
       ${renderCardToolbar(order)}
       <div class="food-order-items">${itemsHtml}</div>
       ${renderOrderSummary(order)}
       ${
-        order.createdBy === myId
+        order.createdBy === myId || currentPlayerHasAdminRole()
           ? `<div class="food-order-close-action stack" style="gap:var(--space-2);">
-               ${
-                 finalized
-                   ? ''
-                   : `<button type="button" class="btn btn-sm btn-block" data-reopen-order="${order.id}">Wieder öffnen</button>
-                      <button type="button" class="btn btn-danger btn-sm btn-block" data-finalize-order="${order.id}">Bestellung schließen</button>`
-               }
+               <button type="button" class="btn btn-sm btn-block" data-reopen-order="${order.id}">Wieder öffnen</button>
+               ${finalized ? '' : `<button type="button" class="btn btn-danger btn-sm btn-block" data-finalize-order="${order.id}">Bestellung schließen</button>`}
                <button type="button" class="btn btn-danger btn-sm btn-block" data-delete-order="${order.id}">Bestellung löschen</button>
              </div>`
           : ''
       }
+    </div>`;
+
+  return `
+    <article class="card stack food-order-card" data-closed-order="${order.id}">
+      <div class="row-between food-order-card-header">
+        ${collapsible
+          ? `<button type="button" class="food-order-card-header-toggle" data-order-toggle="${order.id}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="food-order-card-body-${order.id}" aria-label="Bestellung ${escapeHtml(order.title)} ${expanded ? 'einklappen' : 'ausklappen'}">
+               ${icon('chevronRight', { className: 'food-order-card-chevron' })}
+               <strong class="food-order-card-title">${escapeHtml(order.title)}</strong>
+             </button>`
+          : `<strong class="food-order-card-title">${escapeHtml(order.title)}</strong>`}
+        <span class="food-order-card-header-end">
+          <span class="badge ${finalized ? 'badge-offline' : 'badge-paused'}">${finalized ? 'Geschlossen' : 'Abgeschickt'}</span>
+        </span>
+      </div>
+      ${bodyHtml.replace('class="food-order-card-body stack"', `id="food-order-card-body-${order.id}" class="food-order-card-body stack"`)}
     </article>`;
 }
 
@@ -1038,14 +1154,14 @@ async function markGroupItemsPaid(orderId, playerId, itemIds, ctx) {
     // Invalidate GETs that may start while this PATCH is in flight. The
     // completion helper bumps the version once more before applying the
     // result to the current cache.
+    const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
     foodOrderScopeVersion += 1;
     await api.foodOrders.setGroupPaid(orderId, targets.map((item) => item.id), true);
-    reconcileLocalPaidMutation(orderId, targets.map((item) => item.id), true, ctx);
+    reconcileLocalPaidMutation(orderId, targets.map((item) => item.id), true, ctx, mutationWorkspaceVersion);
     showToast(`${targets.length} ${targets.length === 1 ? 'Position' : 'Positionen'} als bezahlt markiert.`);
   } catch (err) {
-    invalidateFoodOrderCache();
     showToast(err.message, { error: true });
-    ctx.rerender();
+    refreshFoodOrdersAfterMutationError(ctx);
   }
 }
 
@@ -1150,14 +1266,14 @@ async function handleGroupPaid(orderId, playerId, paid, ctx) {
   const targets = items.filter((item) => item.paid !== paid);
   if (targets.length === 0) return;
   try {
+    const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
     foodOrderScopeVersion += 1;
     await api.foodOrders.setGroupPaid(orderId, targets.map((item) => item.id), paid);
-    reconcileLocalPaidMutation(orderId, targets.map((item) => item.id), paid, ctx);
+    reconcileLocalPaidMutation(orderId, targets.map((item) => item.id), paid, ctx, mutationWorkspaceVersion);
     showToast(paid ? `${items[0].playerName} als bezahlt markiert.` : `${items[0].playerName} wieder als offen markiert.`);
   } catch (err) {
-    invalidateFoodOrderCache();
     showToast(err.message, { error: true });
-    ctx.rerender();
+    refreshFoodOrdersAfterMutationError(ctx);
   }
 }
 
@@ -1191,8 +1307,14 @@ async function handleRemoveGroup(order, playerId, myId, ctx) {
     const itemsToRemove = freshItems.filter((item) => initialItemIds.has(item.id));
     // Invalidate GETs that may have started while the DELETEs are in flight.
     // Otherwise an older response could reintroduce the deleted positions.
+    const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
     foodOrderScopeVersion += 1;
     await Promise.all(itemsToRemove.map((item) => api.foodOrders.removeItem(order.id, item.id, myId)));
+    if (mutationWorkspaceVersion !== foodOrderWorkspaceVersion) {
+      showToast('Eigene Positionen entfernt.');
+      void refreshFoodOrders(ctx);
+      return;
+    }
     const currentOrder = cache?.find((candidate) => candidate.id === order.id);
     if (currentOrder) {
       // Apply the successful deletes to whichever snapshot is current now.
@@ -1200,17 +1322,17 @@ async function handleRemoveGroup(order, playerId, myId, ctx) {
       // writing through the stale `freshOrder` object used for validation.
       currentOrder.items = currentOrder.items.filter((item) => !itemsToRemove.some((removed) => removed.id === item.id));
     } else {
-      // A refresh left no current snapshot while the individual deletes were
-      // in flight. Discard the current generation and fetch authoritatively.
-      invalidateFoodOrderCache();
-      await fetchFoodOrders(ctx);
+      // A scope change removed the current snapshot while the individual
+      // deletes were in flight. Keep the validated order itself as a stable
+      // local bridge until the quiet authoritative refresh completes.
+      cache = [{ ...freshOrder, items: freshOrder.items.filter((item) => !itemsToRemove.some((removed) => removed.id === item.id)) }];
     }
     showToast('Eigene Positionen entfernt.');
     ctx.rerender();
+    void refreshFoodOrders(ctx);
   } catch (err) {
-    invalidateFoodOrderCache();
     showToast(err.message, { error: true });
-    ctx.rerender();
+    refreshFoodOrdersAfterMutationError(ctx);
   }
 }
 
@@ -1302,13 +1424,15 @@ function renderConsolidatedListBody(order) {
 function wireConsolidatedListActions(el, order) {
   el.querySelector('[data-close-order-from-list]')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Bestellung abschicken? Danach kann niemand mehr etwas eintragen.', { confirmText: 'Abschicken' }))) return;
+    const ctx = consolidatedListDialog?.ctx;
     try {
-      await api.foodOrders.close(order.id);
-      invalidateFoodOrderCache();
+      const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+      const updatedOrder = await api.foodOrders.close(order.id);
       showToast('Bestellung abgeschickt.');
-      consolidatedListDialog?.ctx.rerender();
+      if (ctx) reconcileLocalOrderMutation(updatedOrder, ctx, mutationWorkspaceVersion);
     } catch (err) {
       showToast(err.message, { error: true });
+      if (ctx) refreshFoodOrdersAfterMutationError(ctx);
     }
   });
 }
@@ -1425,13 +1549,14 @@ function openNewOrderForm(ctx, myId) {
           }
           const tipPercent = tipRaw ? Number(tipRaw) : undefined;
           try {
-            await api.foodOrders.create(myId, title, { sendAt, notes, link, paypalLink, tipPercent });
+            const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+            const createdOrder = await api.foodOrders.create(myId, title, { sendAt, notes, link, paypalLink, tipPercent });
             close();
-            invalidateFoodOrderCache();
             showToast('Bestellung geöffnet – alle wurden benachrichtigt.');
-            ctx.rerender();
+            reconcileLocalOrderMutation(createdOrder, ctx, mutationWorkspaceVersion);
           } catch (err) {
             showToast(err.message, { error: true });
+            refreshFoodOrdersAfterMutationError(ctx);
           }
         });
       },
@@ -1517,13 +1642,14 @@ function openDetailsForm(ctx, order) {
           }
           const tipPercent = tipRaw ? Number(tipRaw) : null;
           try {
-            await api.foodOrders.updateDetails(order.id, { sendAt, notes, link, paypalLink, tipPercent });
+            const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+            const updatedOrder = await api.foodOrders.updateDetails(order.id, { sendAt, notes, link, paypalLink, tipPercent });
             close();
-            invalidateFoodOrderCache();
             showToast('Gespeichert.');
-            ctx.rerender();
+            reconcileLocalOrderMutation(updatedOrder, ctx, mutationWorkspaceVersion);
           } catch (err) {
             showToast(err.message, { error: true });
+            refreshFoodOrdersAfterMutationError(ctx);
           }
         });
       },
@@ -1531,7 +1657,116 @@ function openDetailsForm(ctx, order) {
   );
 }
 
+function visibleOrderViewportAnchors(container) {
+  const viewport = container.getBoundingClientRect();
+  return [...container.querySelectorAll('[data-order-card], [data-closed-order]')]
+    .map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        id: element.dataset.orderCard ?? element.dataset.closedOrder,
+        offset: rect.top - viewport.top,
+        visible: rect.bottom > viewport.top && rect.top < viewport.bottom,
+      };
+    })
+    .filter((anchor) => anchor.id && anchor.visible)
+    .sort((a, b) => Math.abs(a.offset) - Math.abs(b.offset));
+}
+
+function restoreOrderViewportAnchor(container, anchors, previousScrollTop) {
+  container.scrollTop = previousScrollTop;
+  const viewportTop = container.getBoundingClientRect().top;
+  const cards = [...container.querySelectorAll('[data-order-card], [data-closed-order]')];
+  for (const anchor of anchors) {
+    const element = cards.find((card) => (card.dataset.orderCard ?? card.dataset.closedOrder) === anchor.id);
+    if (!element || element.getClientRects().length === 0) continue;
+    container.scrollTop += element.getBoundingClientRect().top - viewportTop - anchor.offset;
+    return;
+  }
+}
+
+const FOOD_ORDER_FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function visibleFoodOrderFocusTargets(scope) {
+  return [...scope.querySelectorAll(FOOD_ORDER_FOCUSABLE_SELECTOR)].filter(
+    (element) => !element.closest('[hidden]') && element.getClientRects().length > 0
+  );
+}
+
+function foodOrderFocusScope(container, element) {
+  const card = element.closest('[data-order-card], [data-closed-order]');
+  if (!card || !container.contains(card)) return { kind: 'view', id: null, element: container };
+  if (card.dataset.orderCard) return { kind: 'open', id: card.dataset.orderCard, element: card };
+  return { kind: 'closed', id: card.dataset.closedOrder, element: card };
+}
+
+function captureFoodOrderFocus(container) {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !container.contains(active)) return null;
+  const scope = foodOrderFocusScope(container, active);
+  const attributes = [...active.attributes]
+    .filter(
+      ({ name }) =>
+        name === 'id' ||
+        name === 'class' ||
+        name === 'name' ||
+        name === 'type' ||
+        name === 'href' ||
+        name === 'aria-label' ||
+        (name.startsWith('data-') && !name.startsWith('data-e2e-'))
+    )
+    .map(({ name, value }) => [name, value]);
+  const targets = visibleFoodOrderFocusTargets(scope.element);
+  return {
+    scopeKind: scope.kind,
+    scopeId: scope.id,
+    tagName: active.tagName,
+    attributes,
+    text: active.textContent?.trim() ?? '',
+    index: targets.indexOf(active),
+  };
+}
+
+function restoreFoodOrderFocus(container, anchor) {
+  if (!anchor) return;
+  const scope =
+    anchor.scopeKind === 'view'
+      ? container
+      : [...container.querySelectorAll('[data-order-card], [data-closed-order]')].find((card) =>
+          anchor.scopeKind === 'open' ? card.dataset.orderCard === anchor.scopeId : card.dataset.closedOrder === anchor.scopeId
+        );
+  if (!scope) return;
+  const targets = visibleFoodOrderFocusTargets(scope);
+  let target = targets.find(
+    (element) =>
+      element.tagName === anchor.tagName &&
+      anchor.attributes.every(([name, value]) => element.getAttribute(name) === value)
+  );
+  if (!target && anchor.attributes.length === 0) {
+    const indexedTarget = targets[anchor.index];
+    if (indexedTarget?.tagName === anchor.tagName && indexedTarget.textContent?.trim() === anchor.text) {
+      target = indexedTarget;
+    }
+  }
+  target?.focus({ preventScroll: true });
+}
+
 export function renderFoodOrders(container, ctx) {
+  if (
+    !forceInteractiveRender &&
+    (outsidePointerInteractionPending || container.querySelector('[data-desc-suggest].is-open'))
+  ) {
+    deferredInteractiveRender = { container, ctx };
+    return;
+  }
+  if (deferredInteractiveRender?.container === container) deferredInteractiveRender = null;
+
   if (cache === null && !loading) load(ctx);
 
   const myId = getMyId();
@@ -1563,13 +1798,21 @@ export function renderFoodOrders(container, ctx) {
     orderStartRuleApplied = true;
     expandedOpenOrders.clear();
   }
+  // Same rule, mirrored for Historie entries.
+  if (cache !== null && closedOrders.length > 1 && !closedOrderStartRuleApplied) {
+    closedOrderStartRuleApplied = true;
+    expandedClosedOrders.clear();
+  }
 
   // A direct search/push/Home target must be visible regardless of whether
   // the order is still open or already lives in the collapsed history.
   if (cache !== null && pendingOrderTargetId) {
     const targetOrder = orders.find((order) => order.id === pendingOrderTargetId);
     if (targetOrder?.open && openOrders.length > 1) expandedOpenOrders.add(targetOrder.id);
-    if (targetOrder && !targetOrder.open) historyOpen = true;
+    if (targetOrder && !targetOrder.open) {
+      historyOpen = true;
+      if (closedOrders.length > 1) expandedClosedOrders.add(targetOrder.id);
+    }
     pendingOrderTargetId = null;
   }
 
@@ -1587,6 +1830,8 @@ export function renderFoodOrders(container, ctx) {
   // keeps e.g. marking several positions paid in a row from jumping the
   // whole view back to the top after every single toggle.
   const scrollTop = container.scrollTop;
+  const viewportAnchors = visibleOrderViewportAnchors(container);
+  const focusAnchor = captureFoodOrderFocus(container);
 
   container.innerHTML = `
     <div class="row-between">
@@ -1609,14 +1854,14 @@ export function renderFoodOrders(container, ctx) {
                  </span>
                </summary>
                <div class="collapsible-section-content">
-                 <div class="two-column-card-grid food-order-grid">${closedOrders.map((o) => renderClosedOrder(o, myId)).join('')}</div>
+                 <div class="two-column-card-grid food-order-grid">${closedOrders.map((o) => renderClosedOrder(o, myId, { collapsible: closedOrders.length > 1 })).join('')}</div>
                </div>
              </details>`
           : ''
       }
     </div>
   `;
-  container.scrollTop = scrollTop;
+  restoreOrderViewportAnchor(container, viewportAnchors, scrollTop);
 
   wireInfoTooltips(container);
 
@@ -1629,9 +1874,9 @@ export function renderFoodOrders(container, ctx) {
     if (prev.desc) desc.value = prev.desc;
     quantity.value = prev.quantity;
     if (prev.price) price.value = prev.price;
-    if (prev.focus === 'desc') desc.focus();
-    if (prev.focus === 'quantity') quantity.focus();
-    if (prev.focus === 'price') price.focus();
+    if (prev.focus === 'desc') desc.focus({ preventScroll: true });
+    if (prev.focus === 'quantity') quantity.focus({ preventScroll: true });
+    if (prev.focus === 'price') price.focus({ preventScroll: true });
   });
 
   container.querySelectorAll('[data-desc-suggest]').forEach((wrapper) => wireDescSuggest(wrapper));
@@ -1660,19 +1905,27 @@ export function renderFoodOrders(container, ctx) {
       }
       const submitBtn = form.querySelector('button[type="submit"]');
       if (submitBtn.disabled) return;
+      // A submit started by the pointer interaction that just closed the
+      // dropdown will reconcile and render from its own response. Do not let
+      // the older deferred background render replace the form mid-request.
+      deferredInteractiveRender = null;
       submitBtn.disabled = true;
       try {
-        await api.foodOrders.addItem(orderId, { playerId: myId, description, quantity, priceCents: priceCents ?? undefined });
-        invalidateFoodOrderCache();
+        const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+        const updatedOrder = await api.foodOrders.addItem(orderId, { playerId: myId, description, quantity, priceCents: priceCents ?? undefined });
+        descInput.value = '';
+        quantityInput.value = '';
+        priceInput.value = '';
         // AP3.8: adding an own position forces the own group open again, in
         // case it had been collapsed.
         const set = expandedGroups.get(orderId) ?? new Set();
         set.add(myId);
         expandedGroups.set(orderId, set);
-        ctx.rerender();
+        reconcileLocalOrderMutation(updatedOrder, ctx, mutationWorkspaceVersion);
       } catch (err) {
         submitBtn.disabled = false;
         showToast(err.message, { error: true });
+        refreshFoodOrdersAfterMutationError(ctx);
       }
     });
   });
@@ -1684,11 +1937,12 @@ export function renderFoodOrders(container, ctx) {
       const title = item ? `${item.quantity ?? 1} × ${item.description} löschen?` : 'Position löschen?';
       if (!(await confirmDialog('Lässt sich nicht rückgängig machen.', { title, confirmText: 'Löschen', danger: true }))) return;
       try {
-        await api.foodOrders.removeItem(btn.dataset.order, btn.dataset.removeItem, myId);
-        invalidateFoodOrderCache();
-        ctx.rerender();
+        const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+        const updatedOrder = await api.foodOrders.removeItem(btn.dataset.order, btn.dataset.removeItem, myId);
+        reconcileLocalOrderMutation(updatedOrder, ctx, mutationWorkspaceVersion);
       } catch (err) {
         showToast(err.message, { error: true });
+        refreshFoodOrdersAfterMutationError(ctx);
       }
     });
   });
@@ -1751,8 +2005,10 @@ export function renderFoodOrders(container, ctx) {
   container.querySelectorAll('[data-order-toggle]').forEach((button) => {
     button.addEventListener('click', () => {
       const orderId = button.dataset.orderToggle;
-      if (expandedOpenOrders.has(orderId)) expandedOpenOrders.delete(orderId);
-      else expandedOpenOrders.add(orderId);
+      const order = orders.find((o) => o.id === orderId);
+      const set = order?.open ? expandedOpenOrders : expandedClosedOrders;
+      if (set.has(orderId)) set.delete(orderId);
+      else set.add(orderId);
       ctx.rerender();
     });
   });
@@ -1787,25 +2043,34 @@ export function renderFoodOrders(container, ctx) {
     btn.addEventListener('click', async () => {
       if (!(await confirmDialog('Bestellung abschicken? Danach kann niemand mehr etwas eintragen.', { confirmText: 'Abschicken' }))) return;
       try {
-        await api.foodOrders.close(btn.dataset.closeOrder);
-        invalidateFoodOrderCache();
+        const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+        const updatedOrder = await api.foodOrders.close(btn.dataset.closeOrder);
         showToast('Bestellung abgeschickt.');
-        ctx.rerender();
+        reconcileLocalOrderMutation(updatedOrder, ctx, mutationWorkspaceVersion);
       } catch (err) {
         showToast(err.message, { error: true });
+        refreshFoodOrdersAfterMutationError(ctx);
       }
     });
   });
 
   container.querySelectorAll('[data-reopen-order]').forEach((btn) => {
     btn.addEventListener('click', async () => {
+      // Reopening steps back exactly one lock level per request (see the route
+      // comment in routes/foodOrders.ts); disabling here stops a fast double-
+      // click/tap from firing a second request before the first response
+      // re-renders this button, which would otherwise skip a level.
+      btn.disabled = true;
       try {
-        await api.foodOrders.reopen(btn.dataset.reopenOrder);
-        invalidateFoodOrderCache();
-        showToast('Bestellung wieder geöffnet.');
-        ctx.rerender();
+        const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+        const updatedOrder = await api.foodOrders.reopen(btn.dataset.reopenOrder);
+        showToast(updatedOrder.open ? 'Bestellung wieder geöffnet.' : 'Bestellung wieder freigegeben (Abgeschickt).');
+        reconcileLocalOrderMutation(updatedOrder, ctx, mutationWorkspaceVersion);
       } catch (err) {
         showToast(err.message, { error: true });
+        refreshFoodOrdersAfterMutationError(ctx);
+      } finally {
+        btn.disabled = false;
       }
     });
   });
@@ -1814,18 +2079,19 @@ export function renderFoodOrders(container, ctx) {
     btn.addEventListener('click', async () => {
       if (
         !(await confirmDialog(
-          'Bestellung schließen? Danach sind keine Änderungen mehr möglich – auch nicht durch erneutes Öffnen.',
+          'Bestellung schließen? Danach sind keine Änderungen mehr möglich, bis sie wieder geöffnet wird.',
           { confirmText: 'Schließen' }
         ))
       )
         return;
       try {
-        await api.foodOrders.finalize(btn.dataset.finalizeOrder);
-        invalidateFoodOrderCache();
+        const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
+        const updatedOrder = await api.foodOrders.finalize(btn.dataset.finalizeOrder);
         showToast('Bestellung geschlossen.');
-        ctx.rerender();
+        reconcileLocalOrderMutation(updatedOrder, ctx, mutationWorkspaceVersion);
       } catch (err) {
         showToast(err.message, { error: true });
+        refreshFoodOrdersAfterMutationError(ctx);
       }
     });
   });
@@ -1834,15 +2100,17 @@ export function renderFoodOrders(container, ctx) {
     btn.addEventListener('click', async () => {
       if (!(await confirmDialog('Bestellung endgültig löschen? Alle eingetragenen Positionen gehen dabei verloren.', { confirmText: 'Löschen', danger: true }))) return;
       try {
+        const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
         await api.foodOrders.remove(btn.dataset.deleteOrder);
-        invalidateFoodOrderCache();
         showToast('Bestellung gelöscht.');
-        ctx.rerender();
+        reconcileLocalOrderRemoval(btn.dataset.deleteOrder, ctx, mutationWorkspaceVersion);
       } catch (err) {
         showToast(err.message, { error: true });
+        refreshFoodOrdersAfterMutationError(ctx);
       }
     });
   });
 
+  restoreFoodOrderFocus(container, focusAnchor);
   refreshConsolidatedListDialog(myId);
 }

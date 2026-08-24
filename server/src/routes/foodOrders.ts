@@ -3,19 +3,23 @@
 // abgeschickt" in the UI — closed_at) freezes the list for reading out to
 // the phone/delivery app. That's reversible via reopen (add a forgotten
 // item, fix a price) until the creator/an admin finalizes it ("wird
-// geschlossen" in the UI — finalized_at) — a one-way lock, no more
-// reopening, items, paid or metadata changes. The check-then-write race to
-// watch: someone closes the order while others are still typing — adding to
-// a closed order must fail with a clean 409, never silently append, and two
-// simultaneous closes must resolve to exactly one winner (see
-// api.concurrency.test.ts).
+// geschlossen" in the UI — finalized_at): while finalized, no more items,
+// paid or metadata changes are possible. Finalizing is itself reversible
+// through the same reopen endpoint (it undoes exactly the most recent lock
+// step — finalized back to closed, closed back to open) — a finalized order
+// is never permanently stuck, someone just has to explicitly reopen it
+// before payments can be marked or anything else changes again. The
+// check-then-write race to watch: someone closes the order while others are
+// still typing — adding to a closed order must fail with a clean 409, never
+// silently append, and two simultaneous closes must resolve to exactly one
+// winner (see api.concurrency.test.ts).
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { requireGroupEventAccess, resolveRequestGroupEventScope, resolveRequestGroupEventStorageId } from '../groupEventScope';
-import { isIntInRange, isNonEmptyString, isValidUrl } from '../validation';
+import { isIntInRange, isNonEmptyString, isValidPaypalUrl, isValidUrl } from '../validation';
 import { notifyPlayers, resolvePushTopic, updatePushTopicExpiry } from '../push';
 import { requireUser, withBodyPlayerIdentity } from '../sessions';
 import { communicationRecipientIds } from '../communicationRecipients';
@@ -75,6 +79,10 @@ function isValidNotes(value: unknown): boolean {
 
 function isValidLink(value: unknown): boolean {
   return value === null || isValidUrl(value, MAX_LINK_LENGTH);
+}
+
+function isValidPaypalLink(value: unknown): boolean {
+  return value === null || isValidPaypalUrl(value, MAX_LINK_LENGTH);
 }
 
 // Whole percent, 0-100 — a decimal-point tip is more precision than anyone
@@ -196,7 +204,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   if (link !== undefined && link !== null && !isValidLink(link)) {
     return res.status(400).json({ error: 'Speisekarte muss eine gültige http(s)-URL sein.' });
   }
-  if (paypalLink !== undefined && paypalLink !== null && !isValidLink(paypalLink)) {
+  if (paypalLink !== undefined && paypalLink !== null && !isValidPaypalLink(paypalLink)) {
     return res.status(400).json({ error: 'PayPal-Link muss eine gültige http(s)-URL sein.' });
   }
   if (tipPercent !== undefined && tipPercent !== null && !isValidTipPercent(tipPercent)) {
@@ -297,7 +305,7 @@ foodOrdersRouter.patch('/:id', requireUser, (req, res) => {
   if (link !== undefined && !isValidLink(link)) {
     return res.status(400).json({ error: 'Speisekarte muss eine gültige http(s)-URL sein (oder null zum Entfernen).' });
   }
-  if (paypalLink !== undefined && !isValidLink(paypalLink)) {
+  if (paypalLink !== undefined && !isValidPaypalLink(paypalLink)) {
     return res.status(400).json({ error: 'PayPal-Link muss eine gültige http(s)-URL sein (oder null zum Entfernen).' });
   }
   if (tipPercent !== undefined && !isValidTipPercent(tipPercent)) {
@@ -559,9 +567,13 @@ foodOrdersRouter.post('/:id/close', requireUser, (req, res) => {
   res.json(serializeOrder({ ...order, closed_at: closedAt }));
 });
 
-// POST /api/food-orders/:id/reopen - undoes a close so items/prices can be
-// corrected or added and paid status keeps changing. Only from the (non-
-// final) closed state; a finalized order can never be reopened.
+// POST /api/food-orders/:id/reopen - undoes exactly the most recent lock
+// step, one at a time. From finalized ("geschlossen"), it clears
+// finalized_at and drops the order back to the closed/"abgeschickt" state
+// (paid marking and metadata edits work again, items stay frozen). From
+// closed, it clears closed_at and drops the order back to fully open so
+// items/prices can be corrected or added. Calling it on an already-open
+// order is a 409 - there is nothing left to undo.
 foodOrdersRouter.post('/:id/reopen', requireUser, (req, res) => {
   const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
@@ -569,7 +581,9 @@ foodOrdersRouter.post('/:id/reopen', requireUser, (req, res) => {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung wieder öffnen.' });
   }
   if (order.finalized_at !== null) {
-    return res.status(409).json({ error: 'Diese Bestellung ist bereits geschlossen und kann nicht mehr geöffnet werden.' });
+    db.prepare('UPDATE food_orders SET finalized_at = NULL WHERE id = ?').run(order.id);
+    broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
+    return res.json(serializeOrder({ ...order, finalized_at: null }));
   }
   if (order.closed_at === null) {
     return res.status(409).json({ error: 'Diese Bestellung ist bereits offen.' });
@@ -580,10 +594,11 @@ foodOrdersRouter.post('/:id/reopen', requireUser, (req, res) => {
   res.json(serializeOrder({ ...order, closed_at: null }));
 });
 
-// POST /api/food-orders/:id/finalize - the creator's/admin's terminal lock
-// ("wird geschlossen" in the UI): no more reopening, items, paid changes or
-// metadata edits. Only from the closed/"abgeschickt" state (close first,
-// then finalize once everyone has settled up).
+// POST /api/food-orders/:id/finalize - the creator's/admin's lock
+// ("wird geschlossen" in the UI): no more items, paid changes or metadata
+// edits while finalized. Only from the closed/"abgeschickt" state (close
+// first, then finalize once everyone has settled up). Reversible via
+// /reopen, which clears finalized_at and drops the order back to closed.
 foodOrdersRouter.post('/:id/finalize', requireUser, (req, res) => {
   const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });

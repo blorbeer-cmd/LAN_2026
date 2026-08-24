@@ -305,12 +305,13 @@ export const api = {
 
   events: {
     list: () => apiFetch('/api/events'),
+    get: (id) => apiFetch(`/api/events/${id}`),
     active: () => apiFetch('/api/events/active'),
     activate: (eventId) =>
       apiFetch('/api/me/active-event', { method: 'PUT', body: JSON.stringify({ eventId }) }),
-    // data: { name, startsAt, endsAt, location?, description? }
+    // data: { name, startsAt, endsAt, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
     create: (data) => apiFetch('/api/events', { method: 'POST', body: JSON.stringify(data) }),
-    // fields: any subset of { name?, startsAt?, endsAt?, location?, description? }
+    // fields: any subset of { name?, startsAt?, endsAt?, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
     update: (id, fields) => apiFetch(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(fields) }),
     startTracking: (id) => apiFetch(`/api/events/${id}/tracking/start`, { method: 'POST' }),
     restart: (id) => apiFetch(`/api/events/${id}/restart`, { method: 'POST' }),
@@ -323,8 +324,31 @@ export const api = {
       apiFetch(`/api/events/${id}/invitations`, { method: 'POST', body: JSON.stringify({ playerId }) }),
     removeParticipant: (id, playerId) =>
       apiFetch(`/api/events/${id}/participants/${playerId}`, { method: 'DELETE' }),
+    setParticipantPaid: (id, playerId, paid) =>
+      apiFetch(`/api/events/${id}/participants/${playerId}/payment`, {
+        method: 'PATCH',
+        body: JSON.stringify({ paid }),
+      }),
     acceptInvitation: (id) => apiFetch(`/api/events/${id}/invitation/accept`, { method: 'POST' }),
     declineInvitation: (id) => apiFetch(`/api/events/${id}/invitation/decline`, { method: 'POST' }),
+  },
+
+  eventPolls: {
+    list: (eventId) => apiFetch(`/api/events/${eventId}/polls`),
+    get: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}`),
+    create: (eventId, data) => apiFetch(`/api/events/${eventId}/polls`, { method: 'POST', body: JSON.stringify(data) }),
+    update: (eventId, pollId, data) =>
+      apiFetch(`/api/events/${eventId}/polls/${pollId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    submitMyResponses: (eventId, pollId, responses) =>
+      apiFetch(`/api/events/${eventId}/polls/${pollId}/my-responses`, { method: 'PUT', body: JSON.stringify({ responses }) }),
+    sendReminders: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}/reminders`, { method: 'POST' }),
+    close: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}/close`, { method: 'POST' }),
+    reopen: (eventId, pollId, responseDueOn) =>
+      apiFetch(`/api/events/${eventId}/polls/${pollId}/reopen`, {
+        method: 'POST',
+        body: JSON.stringify(responseDueOn ? { responseDueOn } : {}),
+      }),
+    remove: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}`, { method: 'DELETE' }),
   },
 
   tournaments: {

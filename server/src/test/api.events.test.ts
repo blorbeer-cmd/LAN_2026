@@ -2,13 +2,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createTestApp, enableTestTracking, TEST_ADMIN_ID } from './testApp';
-import { BASE_EVENT_ID, db } from '../db';
+import { BASE_EVENT_ID, DEFAULT_GROUP_ID, db } from '../db';
+import { ensureDefaultGroupMembership } from '../groups';
+import { recordPushLog } from '../push';
+import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 
 const app = createTestApp();
 
-async function createEvent(name: string, durationMs = 60_000) {
+async function createEvent(name: string, durationMs = 60_000, fields: Record<string, unknown> = {}) {
   const now = Date.now();
-  return request(app).post('/api/events').send({ name, startsAt: now, endsAt: now + durationMs });
+  return request(app).post('/api/events').send({ name, startsAt: now, endsAt: now + durationMs, ...fields });
 }
 
 function accept(eventId: string, playerId: string): void {
@@ -19,11 +22,22 @@ function accept(eventId: string, playerId: string): void {
   ).run(eventId, playerId);
 }
 
+function createMember(id: string, name: string): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO players (id, name, color, api_key, created_at)
+     VALUES (?, ?, '#4f9dff', ?, ?)`,
+  ).run(id, name, `${id}-api-key`, Date.now());
+  ensureDefaultGroupMembership(id);
+}
+
 test('every account starts in the permanent base event', async () => {
   const active = await request(app).get('/api/events/active');
   assert.equal(active.status, 200);
   assert.equal(active.body.id, BASE_EVENT_ID);
   assert.equal(active.body.isBase, true);
+  assert.equal(active.body.eventType, 'lan');
+  assert.equal(active.body.presetVersion, 1);
+  assert.deepEqual(active.body.enabledFeatures, [...EVENT_FEATURE_KEYS]);
 
   const list = await request(app).get('/api/events');
   assert.equal(list.status, 200);
@@ -31,11 +45,87 @@ test('every account starts in the permanent base event', async () => {
   assert.ok(list.body.availableEvents.some((event: { id: string }) => event.id === BASE_EVENT_ID));
   assert.ok(Array.isArray(list.body.invitations));
   assert.ok(Array.isArray(list.body.managedEvents));
+  assert.deepEqual(
+    list.body.eventTypeOptions.map((option: { key: string; title: string }) => ({ key: option.key, title: option.title })),
+    [
+      { key: 'lan', title: 'LAN-Party' },
+      { key: 'general', title: 'Allgemeines Event' },
+    ],
+  );
   assert.equal(
     list.body.managedEvents.some((event: { id: string }) => event.id === BASE_EVENT_ID),
     false,
     'the immutable base workspace is not rendered as a manageable LAN event',
   );
+});
+
+test('new events persist and expose the complete backwards-compatible LAN feature snapshot', async () => {
+  const created = await createEvent('LAN-Default mit Bereichen');
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.eventType, 'lan');
+  assert.equal(created.body.presetVersion, 1);
+  assert.deepEqual(created.body.enabledFeatures, [...EVENT_FEATURE_KEYS]);
+
+  const persistedEvent = db
+    .prepare('SELECT event_type_key AS eventType, preset_version AS presetVersion FROM events WHERE id = ?')
+    .get(created.body.id);
+  assert.deepEqual(persistedEvent, { eventType: 'lan', presetVersion: 1 });
+  const persistedFeatures = db
+    .prepare(
+      `SELECT feature_key AS featureKey, enabled, changed_by AS changedBy
+       FROM event_features WHERE event_id = ? ORDER BY rowid`,
+    )
+    .all(created.body.id);
+  assert.deepEqual(
+    persistedFeatures,
+    EVENT_FEATURE_KEYS.map((featureKey) => ({ featureKey, enabled: 1, changedBy: TEST_ADMIN_ID })),
+  );
+});
+
+test('general events persist the shared planning and arcade feature snapshot', async () => {
+  const created = await createEvent('Allgemeines Treffen', 60_000, { eventType: 'general' });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.eventType, 'general');
+  assert.equal(created.body.presetVersion, 2);
+  assert.deepEqual(created.body.enabledFeatures, ['tasks', 'travel', 'food', 'costs', 'music', 'arcade', 'seating']);
+
+  const featureRows = db
+    .prepare(
+      `SELECT feature_key AS featureKey, enabled, changed_by AS changedBy
+       FROM event_features WHERE event_id = ? ORDER BY rowid`,
+    )
+    .all(created.body.id);
+  assert.deepEqual(
+    featureRows,
+    EVENT_FEATURE_KEYS.map((featureKey) => ({
+      featureKey,
+      enabled: ['tasks', 'travel', 'food', 'costs', 'music', 'arcade', 'seating'].includes(featureKey) ? 1 : 0,
+      changedBy: TEST_ADMIN_ID,
+    })),
+  );
+});
+
+test('general events reject mutations in LAN-only areas before domain validation', async () => {
+  const created = await createEvent('Allgemeines Event ohne LAN-Bereiche', 60_000, { eventType: 'general' });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  accept(created.body.id, TEST_ADMIN_ID);
+  const activated = await request(app).put('/api/me/active-event').send({ eventId: created.body.id });
+  assert.equal(activated.status, 200, JSON.stringify(activated.body));
+
+  const vote = await request(app).post('/api/votes').send({});
+  assert.equal(vote.status, 404);
+  assert.match(vote.body.error, /nicht aktiviert/);
+
+  const match = await request(app).post('/api/matchmaking').send({});
+  assert.equal(match.status, 404);
+  assert.match(match.body.error, /nicht aktiviert/);
+
+  const tracking = await request(app).post(`/api/events/${created.body.id}/tracking/start`);
+  assert.equal(tracking.status, 404);
+  assert.match(tracking.body.error, /nicht aktiviert/);
+
+  const restored = await request(app).put('/api/me/active-event').send({ eventId: BASE_EVENT_ID });
+  assert.equal(restored.status, 200);
 });
 
 test('event creation validates name, required timestamps and ordering', async () => {
@@ -59,6 +149,565 @@ test('event creation validates name, required timestamps and ordering', async ()
     .post('/api/events')
     .send({ name: 'Teilnehmende', startsAt, endsAt: startsAt + 60_000, visibilityScope: 'participants' });
   assert.equal(participantsOnly.status, 201, JSON.stringify(participantsOnly.body));
+  const invalidType = await request(app)
+    .post('/api/events')
+    .send({ name: 'Unbekannter Typ', startsAt, endsAt: startsAt + 60_000, eventType: 'trip' });
+  assert.equal(invalidType.status, 400);
+  assert.match(invalidType.body.error, /lan oder general/);
+});
+
+test('derived feature snapshot fields and post-creation type changes stay explicitly read-only', async () => {
+  const startsAt = Date.now() + 60_000;
+  const readOnlyFields: Array<[string, unknown]> = [
+    ['presetVersion', 2],
+    ['enabledFeatures', ['food']],
+  ];
+  const eventCountBefore = (db.prepare('SELECT COUNT(*) AS count FROM events').get() as { count: number }).count;
+  for (const [field, value] of readOnlyFields) {
+    const rejected = await request(app)
+      .post('/api/events')
+      .send({
+        name: `Nicht schreibbar: ${field}`,
+        startsAt,
+        endsAt: startsAt + 60_000,
+        [field]: value,
+      });
+    assert.equal(rejected.status, 400, `${field} must not be silently ignored on create`);
+    assert.match(rejected.body.error, /schreibgeschützt/);
+  }
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM events').get() as { count: number }).count,
+    eventCountBefore,
+  );
+
+  const created = await createEvent('Unveränderte Eventkonfiguration');
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const eventId = created.body.id as string;
+  const storedBefore = db
+    .prepare('SELECT name, event_type_key, preset_version FROM events WHERE id = ?')
+    .get(eventId);
+  const featuresBefore = db
+    .prepare('SELECT feature_key, enabled FROM event_features WHERE event_id = ? ORDER BY rowid')
+    .all(eventId);
+  const auditCountBefore = (
+    db
+      .prepare("SELECT COUNT(*) AS count FROM admin_log WHERE action = 'event_updated' AND target_id = ?")
+      .get(eventId) as { count: number }
+  ).count;
+
+  for (const [field, value] of [...readOnlyFields, ['eventType', 'general'] as [string, unknown]]) {
+    const rejected = await request(app)
+      .patch(`/api/events/${eventId}`)
+      .send({ name: 'Darf nicht übernommen werden', [field]: value });
+    assert.equal(rejected.status, 400, `${field} must not be silently ignored on update`);
+    assert.match(rejected.body.error, /schreibgeschützt/);
+  }
+  assert.deepEqual(
+    db.prepare('SELECT name, event_type_key, preset_version FROM events WHERE id = ?').get(eventId),
+    storedBefore,
+  );
+  assert.deepEqual(
+    db.prepare('SELECT feature_key, enabled FROM event_features WHERE event_id = ? ORDER BY rowid').all(eventId),
+    featuresBefore,
+  );
+  assert.equal(
+    (
+      db
+        .prepare("SELECT COUNT(*) AS count FROM admin_log WHERE action = 'event_updated' AND target_id = ?")
+        .get(eventId) as { count: number }
+    ).count,
+    auditCountBefore,
+    'rejected configuration writes must not create an event_updated audit record',
+  );
+});
+
+test('event creation and editing validate and expose contribution and accommodation costs', async () => {
+  const startsAt = Date.now() + 60_000;
+  const created = await request(app).post('/api/events').send({
+    name: 'Event mit Kosten',
+    startsAt,
+    endsAt: startsAt + 60_000,
+    costCents: 2550,
+    accommodationCostCents: 120000,
+    paypalLink: 'https://paypal.me/respawn',
+    paymentDueAt: startsAt,
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.costCents, 2550);
+  assert.equal(created.body.accommodationCostCents, 120000);
+  assert.equal(created.body.paypalLink, 'https://paypal.me/respawn');
+  assert.equal(created.body.paymentDueAt, startsAt);
+  assert.equal(created.body.createdBy, TEST_ADMIN_ID);
+
+  for (const costCents of [0, 25.5, 1_000_001]) {
+    const invalid = await request(app).post('/api/events').send({
+      name: `Ungültige Kosten ${costCents}`,
+      startsAt,
+      endsAt: startsAt + 60_000,
+      costCents,
+    });
+    assert.equal(invalid.status, 400);
+  }
+  for (const accommodationCostCents of [0, 25.5, 10_000_001]) {
+    const invalid = await request(app).post('/api/events').send({
+      name: `Ungültige Unterkunftskosten ${accommodationCostCents}`,
+      startsAt,
+      endsAt: startsAt + 60_000,
+      accommodationCostCents,
+    });
+    assert.equal(invalid.status, 400);
+  }
+  assert.equal(
+    (
+      await request(app).post('/api/events').send({
+        name: 'Link ohne Kosten',
+        startsAt,
+        endsAt: startsAt + 60_000,
+        paypalLink: 'https://paypal.me/respawn',
+      })
+    ).status,
+    400,
+  );
+  for (const paypalLink of [
+    'http://paypal.me/respawn',
+    'https://payments.example/respawn',
+    'https://paypal.me/respawn/500EUR',
+    'https://www.paypal.com/paypalme/respawn/500EUR',
+    'https://www.paypal.com/paypalme/respawn/500EUR?locale.x=de_DE',
+  ]) {
+    const unsafePaypalLink = await request(app).post('/api/events').send({
+      name: 'Unsicheres PayPal-Ziel',
+      startsAt,
+      endsAt: startsAt + 60_000,
+      costCents: 2550,
+      paypalLink,
+    });
+    assert.equal(unsafePaypalLink.status, 400);
+  }
+  const canonicalPaypalMe = await request(app)
+    .patch(`/api/events/${created.body.id}`)
+    .send({ paypalLink: 'https://www.paypal.com/paypalme/respawn' });
+  assert.equal(canonicalPaypalMe.status, 200, JSON.stringify(canonicalPaypalMe.body));
+  assert.equal(canonicalPaypalMe.body.paypalLink, 'https://www.paypal.com/paypalme/respawn');
+  const emailBasedPaypal = await request(app).post('/api/events').send({
+    name: 'PayPal per E-Mail-Adresse',
+    startsAt,
+    endsAt: startsAt + 60_000,
+    costCents: 2550,
+    paypalLink: 'https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=orga%40example.com',
+  });
+  assert.equal(emailBasedPaypal.status, 201, JSON.stringify(emailBasedPaypal.body));
+  assert.match(emailBasedPaypal.body.paypalLink, /recipient=orga%40example\.com/);
+  assert.equal(
+    (
+      await request(app).post('/api/events').send({
+        name: 'Zahlungsziel ohne Kosten',
+        startsAt,
+        endsAt: startsAt + 60_000,
+        paymentDueAt: startsAt,
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(app).post('/api/events').send({
+        name: 'Ungültiger PayPal-Link',
+        startsAt,
+        endsAt: startsAt + 60_000,
+        costCents: 2550,
+        paypalLink: 'javascript:alert(1)',
+      })
+    ).status,
+    400,
+  );
+
+  const cannotLeaveLinkBehind = await request(app)
+    .patch(`/api/events/${created.body.id}`)
+    .send({ costCents: null });
+  assert.equal(cannotLeaveLinkBehind.status, 400);
+  const cleared = await request(app)
+    .patch(`/api/events/${created.body.id}`)
+    .send({ costCents: null, accommodationCostCents: null, paypalLink: null, paymentDueAt: null });
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.body));
+  assert.equal(cleared.body.costCents, null);
+  assert.equal(cleared.body.accommodationCostCents, null);
+  assert.equal(cleared.body.paypalLink, null);
+  assert.equal(cleared.body.paymentDueAt, null);
+});
+
+test('participants may update only themselves while the event creator may update everyone', async () => {
+  const memberOneId = '__event-payment-member-one__';
+  const memberTwoId = '__event-payment-member-two__';
+  const memberThreeId = '__event-payment-member-three__';
+  const uninvitedMemberId = '__event-payment-uninvited__';
+  const invitedMemberId = '__event-payment-invited__';
+  createMember(memberOneId, 'Payment Member One');
+  createMember(memberTwoId, 'Payment Member Two');
+  createMember(memberThreeId, 'Payment Member Three');
+  createMember(uninvitedMemberId, 'Payment Uninvited');
+  createMember(invitedMemberId, 'Payment Invited');
+  db.prepare("UPDATE group_memberships SET role = 'admin' WHERE group_id = ? AND player_id = ?").run(
+    DEFAULT_GROUP_ID,
+    memberTwoId,
+  );
+
+  const created = await createEvent('Bezahlstatus Berechtigung', 60_000, {
+    costCents: 2550,
+    accommodationCostCents: 10000,
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  accept(created.body.id, memberOneId);
+  accept(created.body.id, memberTwoId);
+  accept(created.body.id, memberThreeId);
+  db.prepare(`INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'invited')`).run(
+    created.body.id,
+    invitedMemberId,
+  );
+
+  for (const hiddenMemberId of [uninvitedMemberId, invitedMemberId]) {
+    const ownPayment = await request(app)
+      .patch(`/api/events/${created.body.id}/participants/${hiddenMemberId}/payment`)
+      .set('x-test-player-id', hiddenMemberId)
+      .send({ paid: true });
+    assert.equal(ownPayment.status, 404);
+    assert.equal(ownPayment.body.error, 'Event nicht gefunden.');
+
+  }
+  const reminderTopic = `event-payment-reminder:${memberOneId}:${created.body.id}`;
+  recordPushLog(
+    [memberOneId],
+    { title: 'Offener Event-Beitrag', body: 'Bitte bezahlen.' },
+    'direct',
+    { key: reminderTopic },
+    { groupId: DEFAULT_GROUP_ID, eventId: created.body.id },
+  );
+
+  const selfPaid = await request(app)
+    .patch(`/api/events/${created.body.id}/participants/${memberOneId}/payment`)
+    .set('x-test-player-id', memberOneId)
+    .send({ paid: true });
+  assert.equal(selfPaid.status, 200, JSON.stringify(selfPaid.body));
+  assert.equal(selfPaid.body.playerId, memberOneId);
+  assert.equal(selfPaid.body.paid, true);
+  assert.equal(selfPaid.body.paidBy, memberOneId);
+  assert.equal(selfPaid.body.paidAmountCents, 2550);
+  assert.ok(selfPaid.body.paidAt);
+  assert.ok(
+    (db.prepare('SELECT resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?').get(reminderTopic) as {
+      resolvedAt: number | null;
+    }).resolvedAt,
+    'recording payment resolves the active reminder immediately',
+  );
+
+  const cannotChangeOther = await request(app)
+    .patch(`/api/events/${created.body.id}/participants/${memberOneId}/payment`)
+    .set('x-test-player-id', memberTwoId)
+    .send({ paid: false });
+  assert.equal(cannotChangeOther.status, 403);
+
+  const creatorPaid = await request(app)
+    .patch(`/api/events/${created.body.id}/participants/${memberTwoId}/payment`)
+    .send({ paid: true });
+  assert.equal(creatorPaid.status, 200, JSON.stringify(creatorPaid.body));
+  assert.equal(creatorPaid.body.paidBy, TEST_ADMIN_ID);
+
+  const removedBulkAction = await request(app)
+    .patch(`/api/events/${created.body.id}/participants/payment`)
+    .send({ paid: true });
+  assert.equal(removedBulkAction.status, 404);
+
+  const memberList = await request(app).get('/api/events').set('x-test-player-id', memberOneId);
+  const event = memberList.body.availableEvents.find((candidate: { id: string }) => candidate.id === created.body.id);
+  assert.ok(event);
+  const ownPayment = event.acceptedParticipants.find(
+    (participant: { playerId: string }) => participant.playerId === memberOneId,
+  );
+  assert.equal(ownPayment.paid, true);
+  assert.equal(ownPayment.paidBy, memberOneId);
+  assert.equal(ownPayment.paidByName, 'Payment Member One');
+  assert.equal(ownPayment.paidAmountCents, 2550);
+  assert.ok(ownPayment.paidAt);
+  assert.equal('accommodationCostCents' in event, false, 'members must not receive the organizer invoice');
+  for (const participant of event.acceptedParticipants.filter(
+    (candidate: { playerId: string }) => candidate.playerId !== memberOneId,
+  )) {
+    assert.equal('paid' in participant, false, 'members must not receive another participant payment state');
+    assert.equal('paymentLocked' in participant, false, 'member rosters must not reveal another payment lock');
+    assert.equal('paidBy' in participant, false);
+    assert.equal('paidAt' in participant, false);
+    assert.equal('paidAmountCents' in participant, false);
+  }
+
+  const nonCreatorAdminList = await request(app).get('/api/events').set('x-test-player-id', memberTwoId);
+  const managedEvent = nonCreatorAdminList.body.managedEvents.find(
+    (candidate: { id: string }) => candidate.id === created.body.id,
+  );
+  assert.ok(managedEvent);
+  assert.equal(managedEvent.accommodationCostCents, 10000);
+  const creatorPaymentView = (await request(app).get('/api/events')).body.managedEvents.find(
+    (candidate: { id: string }) => candidate.id === created.body.id,
+  );
+  assert.equal(
+    creatorPaymentView.acceptedParticipants.find(
+      (participant: { playerId: string }) => participant.playerId === memberTwoId,
+    ).paid,
+    true,
+  );
+  assert.equal(
+    creatorPaymentView.acceptedParticipants.find(
+      (participant: { playerId: string }) => participant.playerId === memberTwoId,
+    ).paidAmountCents,
+    2550,
+  );
+  assert.equal(
+    creatorPaymentView.acceptedParticipants.find(
+      (participant: { playerId: string }) => participant.playerId === memberThreeId,
+    ).paid,
+    false,
+  );
+  for (const participant of managedEvent.acceptedParticipants.filter(
+    (candidate: { playerId: string }) => candidate.playerId !== memberTwoId,
+  )) {
+    assert.equal('paid' in participant, false, 'non-creator admins must not receive foreign payment states');
+    assert.equal('paidAmountCents' in participant, false);
+  }
+  for (const participant of managedEvent.participants.filter(
+    (candidate: { playerId: string }) => candidate.playerId !== memberTwoId,
+  )) {
+    assert.equal('paid' in participant, false, 'management rows must apply the same privacy boundary');
+    assert.equal('paidAmountCents' in participant, false);
+  }
+  assert.equal(
+    managedEvent.participants.find((participant: { playerId: string }) => participant.playerId === memberOneId)
+      .paymentLocked,
+    true,
+    'non-payment managers receive only the removal lock, not foreign payment details',
+  );
+  assert.equal(
+    managedEvent.participants.find((participant: { playerId: string }) => participant.playerId === memberThreeId)
+      .paymentLocked,
+    false,
+  );
+
+  assert.equal(
+    (
+      await request(app)
+        .patch(`/api/events/${created.body.id}/participants/${memberOneId}/payment`)
+        .set('x-test-player-id', memberOneId)
+        .send({ paid: 'yes' })
+    ).status,
+    400,
+  );
+});
+
+test('payment snapshots survive price, roster, status, and account changes', async () => {
+  const firstId = '__event-payment-snapshot-first__';
+  const secondId = '__event-payment-snapshot-second__';
+  createMember(firstId, 'Snapshot First');
+  createMember(secondId, 'Snapshot Second');
+  const created = await createEvent('Snapshot-Abrechnung', 60_000, {
+    costCents: 2550,
+    accommodationCostCents: 10000,
+  });
+  accept(created.body.id, firstId);
+  accept(created.body.id, secondId);
+
+  assert.equal(
+    (
+      await request(app)
+        .patch(`/api/events/${created.body.id}/participants/${firstId}/payment`)
+        .set('x-test-player-id', firstId)
+        .send({ paid: true })
+    ).status,
+    200,
+  );
+  assert.equal((await request(app).patch(`/api/events/${created.body.id}`).send({ costCents: 4000 })).status, 200);
+  assert.equal(
+    (
+      await request(app)
+        .patch(`/api/events/${created.body.id}/participants/${secondId}/payment`)
+        .set('x-test-player-id', secondId)
+        .send({ paid: true })
+    ).status,
+    200,
+  );
+
+  const creatorEvent = () =>
+    request(app).get('/api/events').then((response) =>
+      response.body.managedEvents.find((event: { id: string }) => event.id === created.body.id),
+    );
+  let settlement = await creatorEvent();
+  assert.equal(settlement.settlementPaidCents, 6550);
+  assert.equal(settlement.settlementPaidCount, 2);
+  assert.equal(
+    settlement.acceptedParticipants.find((participant: { playerId: string }) => participant.playerId === firstId)
+      .paidAmountCents,
+    2550,
+  );
+  assert.equal(
+    settlement.acceptedParticipants.find((participant: { playerId: string }) => participant.playerId === secondId)
+      .paidAmountCents,
+    4000,
+  );
+
+  const directRemoval = await request(app).delete(`/api/events/${created.body.id}/participants/${secondId}`);
+  assert.equal(directRemoval.status, 409);
+  const rosterReplacement = await request(app)
+    .put(`/api/events/${created.body.id}/participants`)
+    .send({ playerIds: [firstId] });
+  assert.equal(rosterReplacement.status, 409);
+  const accountDeletion = await request(app).delete(`/api/players/${secondId}`);
+  assert.equal(accountDeletion.status, 409);
+  assert.match(accountDeletion.body.error, /Event-Zahlung.*zurückgesetzt/);
+  assert.ok(db.prepare('SELECT 1 FROM players WHERE id = ?').get(secondId));
+  settlement = await creatorEvent();
+  assert.equal(settlement.settlementPaidCents, 6550, 'a blocked account deletion preserves the settlement');
+
+  db.prepare('UPDATE players SET deactivated_at = ? WHERE id = ?').run(Date.now(), secondId);
+  db.prepare("UPDATE event_participants SET status = 'declined' WHERE event_id = ? AND player_id = ?").run(
+    created.body.id,
+    secondId,
+  );
+  settlement = await creatorEvent();
+  assert.equal(settlement.settlementPaidCents, 6550);
+  assert.equal(settlement.settlementPaidCount, 2);
+  assert.equal(
+    settlement.acceptedParticipants.some((participant: { playerId: string }) => participant.playerId === secondId),
+    false,
+  );
+
+  db.prepare('UPDATE event_participants SET paid_amount_cents = NULL WHERE event_id = ? AND player_id = ?').run(
+    created.body.id,
+    secondId,
+  );
+  settlement = await creatorEvent();
+  assert.equal(settlement.settlementPaidCents, 2550, 'an unknown legacy amount must not fall back to today\'s price');
+  assert.equal(settlement.settlementMissingAmountCount, 1);
+
+  db.prepare("UPDATE event_participants SET status = 'accepted' WHERE event_id = ? AND player_id = ?").run(
+    created.body.id,
+    secondId,
+  );
+  const reset = await request(app)
+    .patch(`/api/events/${created.body.id}/participants/${secondId}/payment`)
+    .send({ paid: false });
+  assert.equal(reset.status, 200);
+  assert.equal(reset.body.paidAmountCents, null);
+  assert.equal((await request(app).delete(`/api/events/${created.body.id}/participants/${secondId}`)).status, 204);
+  assert.equal((await request(app).delete(`/api/players/${secondId}`)).status, 204);
+});
+
+test('a paid participant can reset after the contribution is cleared', async () => {
+  const memberId = '__event-payment-reset-without-cost__';
+  createMember(memberId, 'Reset Without Cost');
+  const created = await createEvent('Zahlung ohne aktuellen Beitrag', 60_000, {
+    costCents: 2550,
+    accommodationCostCents: 10000,
+  });
+  accept(created.body.id, memberId);
+
+  assert.equal(
+    (
+      await request(app)
+        .patch(`/api/events/${created.body.id}/participants/${memberId}/payment`)
+        .set('x-test-player-id', memberId)
+        .send({ paid: true })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await request(app)
+        .patch(`/api/events/${created.body.id}`)
+        .send({ costCents: null, accommodationCostCents: null, paypalLink: null, paymentDueAt: null })
+    ).status,
+    200,
+  );
+
+  const reset = await request(app)
+    .patch(`/api/events/${created.body.id}/participants/${memberId}/payment`)
+    .set('x-test-player-id', memberId)
+    .send({ paid: false });
+  assert.equal(reset.status, 200, JSON.stringify(reset.body));
+  assert.equal(reset.body.paidAmountCents, null);
+  assert.equal((await request(app).delete(`/api/events/${created.body.id}/participants/${memberId}`)).status, 204);
+  assert.equal((await request(app).delete(`/api/players/${memberId}`)).status, 204);
+});
+
+test('the group owner takes over payment management when the event creator is inactive or missing', async () => {
+  const creatorId = '__event-payment-inactive-creator__';
+  const attendeeId = '__event-payment-fallback-attendee__';
+  createMember(creatorId, 'Inactive Event Creator');
+  createMember(attendeeId, 'Fallback Attendee');
+  db.prepare("UPDATE group_memberships SET role = 'admin' WHERE group_id = ? AND player_id = ?").run(
+    DEFAULT_GROUP_ID,
+    creatorId,
+  );
+  const created = await request(app)
+    .post('/api/events')
+    .set('x-test-player-id', creatorId)
+    .send({
+      name: 'Vertretungsabrechnung',
+      startsAt: Date.now() + 120_000,
+      endsAt: Date.now() + 180_000,
+      costCents: 3000,
+      accommodationCostCents: 6000,
+    });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  accept(created.body.id, attendeeId);
+  assert.equal(
+    (
+      await request(app)
+        .patch(`/api/events/${created.body.id}/participants/${attendeeId}/payment`)
+        .set('x-test-player-id', creatorId)
+        .send({ paid: true })
+    ).status,
+    200,
+  );
+
+  let ownerEvent = (await request(app).get('/api/events')).body.managedEvents.find(
+    (event: { id: string }) => event.id === created.body.id,
+  );
+  assert.equal(ownerEvent.canManagePayments, false, 'an active creator keeps the owner fallback closed');
+  assert.equal('settlementPaidCents' in ownerEvent, false);
+  for (const collection of [ownerEvent.acceptedParticipants, ownerEvent.participants]) {
+    const attendee = collection.find((participant: { playerId: string }) => participant.playerId === attendeeId);
+    assert.equal('paid' in attendee, false);
+    assert.equal('paidAmountCents' in attendee, false);
+  }
+  assert.equal(
+    (
+      await request(app)
+        .patch(`/api/events/${created.body.id}/participants/${attendeeId}/payment`)
+        .send({ paid: false })
+    ).status,
+    403,
+    'the owner cannot change a foreign event payment while its creator is active',
+  );
+
+  db.prepare('UPDATE players SET deactivated_at = ? WHERE id = ?').run(Date.now(), creatorId);
+
+  ownerEvent = (await request(app).get('/api/events')).body.managedEvents.find(
+    (event: { id: string }) => event.id === created.body.id,
+  );
+  assert.equal(ownerEvent.canManagePayments, true);
+  assert.equal(ownerEvent.settlementPaidCents, 3000);
+  assert.equal(
+    (
+      await request(app)
+        .patch(`/api/events/${created.body.id}/participants/${attendeeId}/payment`)
+        .send({ paid: true })
+    ).status,
+    200,
+  );
+
+  db.prepare('UPDATE events SET created_by = NULL WHERE id = ?').run(created.body.id);
+  ownerEvent = (await request(app).get('/api/events')).body.managedEvents.find(
+    (event: { id: string }) => event.id === created.body.id,
+  );
+  assert.equal(ownerEvent.canManagePayments, true);
+  assert.equal(ownerEvent.settlementPaidCents, 3000);
 });
 
 test("GET /api/events scopes the active event's participantIds to accepted participants, not the whole roster", async () => {
@@ -86,6 +735,10 @@ test("GET /api/events scopes the active event's participantIds to accepted parti
   const list = await request(app).get('/api/events');
   assert.equal(list.status, 200);
   assert.equal(list.body.activeEvent.id, eventId);
+  assert.equal(list.body.activeEvent.scheduleRevision, event.body.scheduleRevision);
+  const active = await request(app).get('/api/events/active');
+  assert.equal(active.status, 200);
+  assert.equal(active.body.scheduleRevision, event.body.scheduleRevision);
   const participantIds: string[] = list.body.activeEvent.participantIds;
   assert.ok(participantIds.includes(TEST_ADMIN_ID));
   assert.ok(participantIds.includes(acceptedPlayer.body.id));
@@ -321,6 +974,43 @@ test('the participation history keeps a finished event available to personal ana
   const scoped = await request(app).get(`/api/players/${TEST_ADMIN_ID}/stats?eventId=${eventId}`);
   assert.equal(scoped.status, 200, JSON.stringify(scoped.body));
   assert.equal(scoped.body.eventId, eventId);
+});
+
+test("a member's own ended event moves into their Historie with full card detail", async () => {
+  // availableEvents intentionally excludes an ended event (see the test
+  // above); the Events tab's own collapsed "Historie" for a plain member
+  // needs the same rich accepted-participant/payment detail an active member
+  // card has, which the lighter historicalEvents summary does not carry.
+  // That is what `endedEvents` exists for (see events.js's renderEventSection).
+  const memberId = 'historie-member';
+  createMember(memberId, 'Historie Member');
+  const created = await createEvent('Historie LAN');
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const eventId = created.body.id as string;
+  accept(eventId, memberId);
+
+  const beforeEnd = await request(app).get('/api/events').set('x-test-player-id', memberId);
+  assert.equal(beforeEnd.status, 200);
+  assert.ok(beforeEnd.body.availableEvents.some((event: { id: string }) => event.id === eventId));
+  assert.equal(beforeEnd.body.endedEvents.length, 0);
+
+  assert.equal((await request(app).post(`/api/events/${eventId}/end`)).status, 200);
+
+  const afterEnd = await request(app).get('/api/events').set('x-test-player-id', memberId);
+  assert.equal(afterEnd.status, 200);
+  assert.equal(
+    afterEnd.body.availableEvents.some((event: { id: string }) => event.id === eventId),
+    false,
+    'still not a switchable workspace',
+  );
+  const ended = afterEnd.body.endedEvents.find((event: { id: string }) => event.id === eventId);
+  assert.ok(ended, 'the ended event reaches the member through its own field');
+  assert.equal(ended.isEnded, true);
+  assert.ok(
+    Array.isArray(ended.acceptedParticipants) &&
+      ended.acceptedParticipants.some((p: { playerId: string }) => p.playerId === memberId),
+    'the card needs the same accepted-participant detail an active member card has',
+  );
 });
 
 test('the participation history drops an event that was called off', async () => {

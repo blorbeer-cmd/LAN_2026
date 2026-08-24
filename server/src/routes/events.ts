@@ -8,6 +8,7 @@ import {
   listEvents,
   getEvent,
   createEvent,
+  publishPlanningEventIfScheduled,
   updateEvent,
   startTracking,
   restartEvent,
@@ -15,6 +16,9 @@ import {
   endEvent,
   getParticipantIds,
   getEventParticipants,
+  getAcceptedEventParticipants,
+  getEventPaymentSummary,
+  getPaidEventParticipantIds,
   inviteParticipant,
   isParticipant,
   removeEventParticipant,
@@ -28,7 +32,9 @@ import { BASE_EVENT_ID, db } from '../db';
 import { broadcast, Events, switchPlayerEventScope } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { notifyPlayers, resolvePushTopic } from '../push';
-import { isNonEmptyString } from '../validation';
+import { isNonEmptyString, isValidPaypalUrl } from '../validation';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
+import type { GroupRole } from '../groups';
 import { requireConfiguredGroupMembership, requireGroupRole, resolveGroupResource } from '../groupAuthorization';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
@@ -36,8 +42,44 @@ import { setEventTrackingConsent } from '../trackingContexts';
 import { activeGroupPlayers } from '../groupPlayers';
 import { createPersistentBackup } from '../backupService';
 import { eventAccessLevel, getOrRepairActiveEvent } from '../eventContext';
+import { getEnabledEventFeatures, isEventFeatureEnabled } from '../eventFeatures';
+import {
+  DEFAULT_EVENT_TYPE_KEY,
+  EVENT_TYPE_KEYS,
+  EVENT_TYPE_PRESETS,
+  isEventTypeKey,
+} from '../eventFeatureCatalog';
 
 export const eventsRouter = Router();
+
+const READ_ONLY_EVENT_CONFIGURATION_FIELDS = ['presetVersion', 'enabledFeatures'] as const;
+
+function requestsReadOnlyEventConfiguration(body: unknown): boolean {
+  return Boolean(
+    body &&
+    typeof body === 'object' &&
+    READ_ONLY_EVENT_CONFIGURATION_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(body, field)),
+  );
+}
+
+function rejectReadOnlyEventConfiguration(res: Response) {
+  return res.status(400).json({
+    error: 'Preset-Version und Bereichsauswahl sind in diesem Ausbau noch schreibgeschützt.',
+  });
+}
+
+function eventTypeOptions() {
+  return EVENT_TYPE_KEYS.map((eventTypeKey) => {
+    const preset = EVENT_TYPE_PRESETS[eventTypeKey];
+    return {
+      key: preset.key,
+      title: preset.title,
+      description: preset.description,
+      presetVersion: preset.version,
+      enabledFeatures: [...preset.recommendedFeatureKeys],
+    };
+  });
+}
 
 // One key per invited account so accepting or declining retires exactly that
 // invitation's notification and never a parallel one for another event.
@@ -90,16 +132,133 @@ const resolveEvent = resolveGroupResource<EventRow>({
 // reader never has to know which of the two it got: both name the same value
 // the same way. Before that, `starts_at` here versus `startsAt` there made
 // every member-visible event render as "Invalid Date".
-function serializeEvent(event: ReturnType<typeof getEvent>) {
-  if (!event) return undefined;
+function paymentDetailsForViewer<T extends { playerId: string }>(
+  participant: T,
+  viewerId: string | undefined,
+  revealAllPayments: boolean,
+) {
+  if (revealAllPayments || participant.playerId === viewerId) return participant;
+  const safeParticipant = { ...participant } as T & Record<string, unknown>;
+  delete safeParticipant.paid;
+  delete safeParticipant.paidBy;
+  delete safeParticipant.paidByName;
+  delete safeParticipant.paidAt;
+  delete safeParticipant.paidAmountCents;
+  return safeParticipant;
+}
+
+function acceptedParticipantsForViewer(eventId: string, viewerId: string | undefined, revealAllPayments: boolean) {
+  return getAcceptedEventParticipants(eventId).map((participant) =>
+    paymentDetailsForViewer(participant, viewerId, revealAllPayments),
+  );
+}
+
+// The viewer's own raw participation row, independent of the centralized
+// "currently confirmed" predicate — acceptedParticipants deliberately hides a
+// stale (pre-reschedule, unconfirmed) row, but the date poll UI needs exactly
+// that row to tell the affected member they must reconfirm.
+function myParticipationField(eventId: string, viewerId: string) {
+  const row = db
+    .prepare('SELECT status, confirmed_schedule_revision AS confirmedScheduleRevision FROM event_participants WHERE event_id = ? AND player_id = ?')
+    .get(eventId, viewerId) as { status: 'invited' | 'accepted' | 'declined'; confirmedScheduleRevision: number | null } | undefined;
+  return { myParticipation: row ? { status: row.status, confirmedScheduleRevision: row.confirmedScheduleRevision } : null };
+}
+
+function eventParticipantsForViewer(eventId: string, viewerId: string | undefined, revealAllPayments: boolean) {
+  return getEventParticipants(eventId).map((participant) => ({
+    ...paymentDetailsForViewer(participant, viewerId, revealAllPayments),
+    // Administrative roster actions need to explain why removal is blocked,
+    // but non-payment managers must not receive amount, actor, or timestamp.
+    paymentLocked: Boolean(participant.paid),
+  }));
+}
+
+function canManageEventPayments(
+  event: EventRow,
+  viewerId: string | undefined,
+  viewerRole: GroupRole | undefined,
+): boolean {
+  if (!viewerId) return false;
+  if (event.created_by === viewerId) return true;
+  if (viewerRole !== 'owner') return false;
+  if (!event.created_by) return true;
+  const activeCreator = db
+    .prepare(
+      `SELECT 1
+       FROM players p
+       JOIN group_memberships gm ON gm.player_id = p.id
+       WHERE p.id = ? AND p.deactivated_at IS NULL
+         AND gm.group_id = ? AND gm.status = 'active'`,
+    )
+    .get(event.created_by, event.group_id);
+  return !activeCreator;
+}
+
+function paymentManagementFields(
+  event: EventRow,
+  viewerId: string | undefined,
+  viewerRole: GroupRole | undefined,
+) {
+  const canManagePayments = canManageEventPayments(event, viewerId, viewerRole);
+  if (!canManagePayments) return { canManagePayments: false };
+  const summary = getEventPaymentSummary(event.id);
   return {
-    ...serializeEventSummary(event as EventRow),
+    canManagePayments: true,
+    settlementPaidCents: summary.paidCents,
+    settlementPaidCount: summary.paidCount,
+    settlementMissingAmountCount: summary.missingAmountCount,
+  };
+}
+
+// Shared shape for a plain member's own event card — the normal
+// `availableEvents` workspace list and `endedEvents` (this account's own
+// finished events, kept out of availableEvents for the same "not a switchable
+// workspace" reason) both need
+// the identical accepted-participant/payment/myParticipation detail to render
+// the same card component.
+function serializeMemberEvent(event: EventRow, playerId: string, viewerRole: GroupRole | undefined) {
+  const managementFields = paymentManagementFields(event, playerId, viewerRole);
+  return {
+    ...serializeEventSummary(event, {
+      includeAcceptedParticipants: true,
+      includePaymentDetails: true,
+      paymentViewerId: playerId,
+      revealAllParticipantPayments: managementFields.canManagePayments,
+    }),
+    createdBy: event.created_by,
+    ...managementFields,
+    ...(managementFields.canManagePayments ? { accommodationCostCents: event.accommodation_cost_cents } : {}),
+    ...myParticipationField(event.id, playerId),
+  };
+}
+
+function serializeEvent(
+  event: ReturnType<typeof getEvent>,
+  viewerId: string | undefined,
+  viewerRole?: GroupRole,
+) {
+  if (!event) return undefined;
+  const revealAllPayments = canManageEventPayments(event, viewerId, viewerRole);
+  return {
+    ...serializeEventSummary(event as EventRow, {
+      includeAcceptedParticipants: true,
+      includePaymentDetails: true,
+      paymentViewerId: viewerId,
+      revealAllParticipantPayments: revealAllPayments,
+    }),
     endedAt: event.ended_at,
     groupId: event.group_id,
+    createdBy: event.created_by,
+    ...paymentManagementFields(event, viewerId, viewerRole),
+    accommodationCostCents: event.accommodation_cost_cents,
     visibilityScope: event.visibility_scope,
     isOutsideEvents: event.id === OUTSIDE_EVENTS_ID,
     participantIds: event.id === OUTSIDE_EVENTS_ID ? undefined : getParticipantIds(event.id),
-    participants: event.id === OUTSIDE_EVENTS_ID ? undefined : getEventParticipants(event.id),
+    participants:
+      event.id === OUTSIDE_EVENTS_ID
+        ? undefined
+        : eventParticipantsForViewer(event.id, viewerId, revealAllPayments),
+    ...(event.id === OUTSIDE_EVENTS_ID || !viewerId ? {} : myParticipationField(event.id, viewerId)),
   };
 }
 
@@ -115,36 +274,67 @@ function activeContextPlayerIds(eventId: string): string[] {
   ).map((row) => row.player_id);
 }
 
-// `trackingEnabled`/`isEnded` are part of the summary rather than management
-// data: the workspace switcher shows the state of every event it offers, and
-// a member only ever receives this shape. They describe the event itself, not
-// anything about its participants, so an invitation teaser may carry them too.
-function serializeEventSummary(event: EventRow) {
+// The default summary is teaser-safe and contains no participant data. The
+// accepted-participant extension is only requested after the caller's admin
+// or accepted-member access check; invitation teasers must keep using the
+// default shape.
+function serializeEventSummary(
+  event: EventRow,
+  {
+    includeAcceptedParticipants = false,
+    includePaymentDetails = false,
+    paymentViewerId,
+    revealAllParticipantPayments = false,
+  }: {
+    includeAcceptedParticipants?: boolean;
+    includePaymentDetails?: boolean;
+    paymentViewerId?: string;
+    revealAllParticipantPayments?: boolean;
+  } = {},
+) {
   return {
     id: event.id,
     name: event.name,
     startsAt: event.starts_at,
     endsAt: event.ends_at,
+    scheduleRevision: event.schedule_revision,
     location: event.location,
     description: event.description,
+    costCents: event.cost_cents,
+    paymentDueAt: event.payment_due_at,
+    ...(includePaymentDetails ? { paypalLink: event.paypal_link } : {}),
     status: event.status,
     isBase: event.id === BASE_EVENT_ID,
+    eventType: event.event_type_key,
+    presetVersion: event.preset_version,
+    enabledFeatures: getEnabledEventFeatures(event.id),
     trackingEnabled: Boolean(event.tracking_enabled),
     isEnded: Boolean(event.ended_at),
+    ...(includeAcceptedParticipants
+      ? {
+          acceptedParticipants: acceptedParticipantsForViewer(
+            event.id,
+            paymentViewerId,
+            revealAllParticipantPayments,
+          ),
+        }
+      : {}),
   };
 }
 
 // GET /api/events - the account's active workspace, accepted workspaces and
-// invitation teasers. Admins additionally receive the full management list.
+// invitation teasers. Admins additionally receive the full
+// management list.
 eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
   const playerId = req.player!.id;
-  const activeEvent = getOrRepairActiveEvent(playerId);
+  const canManage = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
+  const activeEvent = getEvent(getOrRepairActiveEvent(playerId).id)!;
   const availableEvents = db
     .prepare(
       `SELECT e.*
        FROM events e
        JOIN event_participants ep ON ep.event_id = e.id
-       WHERE ep.player_id = ? AND ep.status = 'accepted'
+       WHERE ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
        ORDER BY e.id = ? DESC, e.starts_at DESC, e.name COLLATE NOCASE`,
     )
@@ -159,6 +349,27 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        ORDER BY e.starts_at, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
+  // A member's own accepted events that have since ended. `availableEvents`
+  // deliberately excludes these — it answers "where can I switch to right
+  // now", not "what did I finish" (see the dedicated test below) — but the
+  // Events tab's own collapsed "Historie" section needs the same rich
+  // accepted-participant/payment detail `availableEvents` carries, which the
+  // lighter `historicalEvents` summary (built for the analytics event filter)
+  // does not. Hence its own query rather than reusing either.
+  const endedEvents = db
+    .prepare(
+      `SELECT e.*
+       FROM events e
+       JOIN event_participants ep ON ep.event_id = e.id
+       WHERE ep.player_id = ? AND ep.status = 'accepted'
+         AND e.id != ? AND e.group_id = ? AND e.status = 'ended'
+       ORDER BY e.starts_at DESC, e.name COLLATE NOCASE`,
+    )
+    .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
+  // Compatibility field for older clients. Generic polls never grant event
+  // visibility, and accepted invitations never become stale because of a
+  // poll, so there are no poll-only or reconfirmation-only event cards.
+  const plannedEvents: EventRow[] = [];
   // The personal-analytics allowlist, mirroring resolveAnalyticsEvents on the
   // server: every event this account accepted at some point, ended ones
   // included. `availableEvents` cannot serve that purpose because it is the
@@ -184,13 +395,13 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        ORDER BY e.starts_at DESC, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
-  const canManage = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
   const managedEvents = canManage
     ? listEvents(req.group!.id)
         .filter((event) => event.id !== BASE_EVENT_ID)
-        .map((event) => serializeEvent(event))
+        .map((event) => serializeEvent(event, playerId, req.groupMembership?.role))
     : undefined;
   res.json({
+    eventTypeOptions: eventTypeOptions(),
     activeEvent: {
       ...serializeEventSummary(activeEvent as EventRow),
       // Every picker that draws teams or starts a draft must offer only
@@ -203,8 +414,11 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
       // wired up to this field yet — see the PR's own follow-up note.
       participantIds: getParticipantIds(activeEvent.id),
     },
-    availableEvents: availableEvents.map(serializeEventSummary),
-    historicalEvents: historicalEvents.map(serializeEventSummary),
+    availableEvents: availableEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
+    // Retained as an empty compatibility field for older clients.
+    plannedEvents: plannedEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
+    endedEvents: endedEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
+    historicalEvents: historicalEvents.map((event) => serializeEventSummary(event)),
     invitations: invitations.map((event) => ({ ...serializeEventSummary(event), participationStatus: 'invited' })),
     ...(managedEvents ? { managedEvents } : {}),
   });
@@ -212,7 +426,8 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
 
 // GET /api/events/active - this account's persisted workspace.
 eventsRouter.get('/active', requireConfiguredGroupMembership, (req, res) => {
-  res.json(serializeEventSummary(getOrRepairActiveEvent(req.player!.id) as EventRow));
+  const activeEvent = getEvent(getOrRepairActiveEvent(req.player!.id).id)!;
+  res.json(serializeEventSummary(activeEvent));
 });
 
 eventsRouter.get('/:id', resolveEvent, (req, res) => {
@@ -220,16 +435,19 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
   if (event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
   const access = eventAccessLevel(event.id, req.player!.id, req.groupMembership!.role);
   if (access === 'none') return res.status(404).json({ error: 'Event nicht gefunden.' });
-  if (access === 'teaser') {
-    return res.json({ ...serializeEventSummary(event), participationStatus: 'invited' });
-  }
+  if (access === 'teaser') return res.json({ ...serializeEventSummary(event), participationStatus: 'invited' });
   if (access === 'participant') {
+    const managementFields = paymentManagementFields(event, req.player!.id, req.groupMembership?.role);
     return res.json({
-      ...serializeEventSummary(event),
+      ...serializeEventSummary(event, { includePaymentDetails: true }),
+      createdBy: event.created_by,
+      ...managementFields,
+      ...(managementFields.canManagePayments ? { accommodationCostCents: event.accommodation_cost_cents } : {}),
       participantIds: getParticipantIds(event.id),
+      acceptedParticipants: acceptedParticipantsForViewer(event.id, req.player!.id, managementFields.canManagePayments),
     });
   }
-  return res.json(serializeEvent(event));
+  return res.json(serializeEvent(event, req.player!.id, req.groupMembership?.role));
 });
 
 // Event tracking is an explicit personal decision, separate from an
@@ -275,6 +493,11 @@ eventsRouter.post('/:id/invitations', resolveEvent, requireGroupRole('admin'), (
   if (event.ended_at || event.status === 'ended') {
     return res.status(409).json({ error: 'Für beendete Events können keine neuen Einladungen gesendet werden.' });
   }
+  if (event.status === 'draft' && event.starts_at === null) {
+    return res.status(409).json({
+      error: 'Für ein Planungs-Event ohne festen Termin können noch keine regulären Einladungen gesendet werden.',
+    });
+  }
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId || playerId.length > 200) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -284,6 +507,7 @@ eventsRouter.post('/:id/invitations', resolveEvent, requireGroupRole('admin'), (
   }
 
   const result = inviteParticipant(event.id, playerId);
+  if (result.changed) publishPlanningEventIfScheduled(event.id);
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.group!.id,
@@ -309,14 +533,17 @@ eventsRouter.post('/:id/invitations', resolveEvent, requireGroupRole('admin'), (
       {
         title: 'Event-Einladung',
         body: `${event.name}: Du wurdest eingeladen.`,
-        url: '/#events',
+        url: '/#profile',
       },
       'direct',
       { key: eventInvitationTopicKey(event.id, playerId) },
       { groupId: req.group!.id, eventId: BASE_EVENT_ID },
     );
   }
-  res.status(result.changed ? 201 : 200).json(result.participant);
+  res.status(result.changed ? 201 : 200).json({
+    playerId: result.participant.playerId,
+    status: result.participant.status,
+  });
 });
 
 function answerEventInvitation(response: 'accepted' | 'declined') {
@@ -354,12 +581,65 @@ function answerEventInvitation(response: 'accepted' | 'declined') {
       groupId: req.group!.id,
       eventId: BASE_EVENT_ID,
     });
-    return res.json(result.participant);
+    return res.json({ playerId: result.participant.playerId, status: result.participant.status });
   };
 }
 
 eventsRouter.post('/:id/invitation/accept', resolveEvent, answerEventInvitation('accepted'));
 eventsRouter.post('/:id/invitation/decline', resolveEvent, answerEventInvitation('declined'));
+
+// PATCH /api/events/:id/participants/:playerId/payment - an accepted
+// participant may correct only their own state. The recorded event creator
+// may additionally correct every accepted participant. If that account no
+// longer exists or is inactive, the group owner becomes the explicit fallback.
+eventsRouter.patch('/:id/participants/:playerId/payment', resolveEvent, (req, res) => {
+  const event = req.groupResource as EventRow;
+  if (!event || event.id === OUTSIDE_EVENTS_ID || event.id === BASE_EVENT_ID) {
+    return res.status(404).json({ error: 'Event nicht gefunden.' });
+  }
+  const actorId = requestPlayerId(req);
+  const targetPlayerId = req.params.playerId;
+  const { paid } = req.body ?? {};
+  if (!actorId) return res.status(401).json({ error: 'Anmeldung erforderlich.' });
+  const access = eventAccessLevel(event.id, actorId, req.groupMembership!.role);
+  if ((access === 'none' || access === 'teaser') && event.created_by !== actorId) {
+    return res.status(404).json({ error: 'Event nicht gefunden.' });
+  }
+  if (typeof paid !== 'boolean') return res.status(400).json({ error: 'paid muss ein Boolean sein.' });
+  if (paid && event.cost_cents === null) {
+    return res.status(409).json({ error: 'Für dieses Event sind keine Kosten hinterlegt.' });
+  }
+  if (targetPlayerId !== actorId && !canManageEventPayments(event, actorId, req.groupMembership?.role)) {
+    return res.status(403).json({ error: 'Du kannst nur deinen eigenen Bezahlstatus ändern.' });
+  }
+
+  const paidAt = paid ? Date.now() : null;
+  const updated = db
+    .prepare(
+      `UPDATE event_participants SET paid = ?, paid_by = ?, paid_at = ?, paid_amount_cents = ?
+       WHERE event_id = ? AND player_id = ? AND status = 'accepted'`,
+    )
+    .run(paid ? 1 : 0, paid ? actorId : null, paidAt, paid ? event.cost_cents : null, event.id, targetPlayerId);
+  if (updated.changes !== 1) {
+    return res.status(404).json({ error: 'Zugesagter Event-Teilnehmer nicht gefunden.' });
+  }
+
+  if (paid) {
+    resolvePushTopic(`event-payment-reminder:${targetPlayerId}:${event.id}`, false, {
+      groupId: req.group!.id,
+      eventId: event.id,
+    });
+  }
+
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  return res.json({
+    playerId: targetPlayerId,
+    paid,
+    paidBy: paid ? actorId : null,
+    paidAt,
+    paidAmountCents: paid ? event.cost_cents : null,
+  });
+});
 
 // DELETE /api/events/:id/participants/:playerId - administrative removal
 // remains distinct from a member declining their own invitation.
@@ -368,6 +648,11 @@ eventsRouter.delete('/:id/participants/:playerId', resolveEvent, requireGroupRol
   if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
   if (event.id === BASE_EVENT_ID) {
     return res.status(409).json({ error: 'Teilnehmer des Basis-Events können nicht entfernt werden.' });
+  }
+  if (getPaidEventParticipantIds(event.id).includes(req.params.playerId)) {
+    return res.status(409).json({
+      error: 'Eine bestätigte Zahlung muss zuerst zurückgesetzt werden, bevor die Teilnahme entfernt werden kann.',
+    });
   }
   const wasActiveContext = activeContextPlayerIds(event.id).includes(req.params.playerId);
   const previousStatus = removeEventParticipant(event.id, req.params.playerId);
@@ -437,14 +722,68 @@ function parseRequiredTimestamp(
   return { ok: true, value };
 }
 
+const MAX_EVENT_COST_CENTS = 1_000_000;
+const MAX_ACCOMMODATION_COST_CENTS = 10_000_000;
+const MAX_PAYPAL_LINK_LENGTH = 300;
+
+function parseOptionalCostCents(
+  value: unknown,
+): { ok: true; value: number | null } | { ok: false; error: string } {
+  if (value === undefined || value === null || value === '') return { ok: true, value: null };
+  if (!Number.isInteger(value) || (value as number) <= 0 || (value as number) > MAX_EVENT_COST_CENTS) {
+    return { ok: false, error: 'costCents muss zwischen 1 und 1000000 Cent liegen.' };
+  }
+  return { ok: true, value: value as number };
+}
+
+function parseOptionalAccommodationCostCents(
+  value: unknown,
+): { ok: true; value: number | null } | { ok: false; error: string } {
+  if (value === undefined || value === null || value === '') return { ok: true, value: null };
+  if (!Number.isInteger(value) || (value as number) <= 0 || (value as number) > MAX_ACCOMMODATION_COST_CENTS) {
+    return { ok: false, error: 'accommodationCostCents muss zwischen 1 und 10000000 Cent liegen.' };
+  }
+  return { ok: true, value: value as number };
+}
+
+function parseOptionalPaypalLink(
+  value: unknown,
+): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (value === undefined || value === null || value === '') return { ok: true, value: null };
+  if (!isValidPaypalUrl(value, MAX_PAYPAL_LINK_LENGTH)) {
+    return {
+      ok: false,
+      error: 'paypalLink muss eine sichere PayPal-Adresse mit https:// sein.',
+    };
+  }
+  return { ok: true, value: value.trim() };
+}
+
 // POST /api/events - create a new event. Tracking starts OFF — several
 // events can exist side by side, so creating one never touches whichever
 // event (if any) is currently tracking.
-// Body: { name, startsAt, endsAt, location?, description? }
+// Body: { name, startsAt, endsAt, eventType?, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
 eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin'), (req, res) => {
-  const { name, startsAt, endsAt, location, description, visibilityScope } = req.body ?? {};
+  if (requestsReadOnlyEventConfiguration(req.body)) return rejectReadOnlyEventConfiguration(res);
+  const {
+    name,
+    startsAt,
+    endsAt,
+    eventType,
+    location,
+    description,
+    costCents,
+    accommodationCostCents,
+    paypalLink,
+    paymentDueAt,
+    visibilityScope,
+  } = req.body ?? {};
   if (!isNonEmptyString(name, 80)) {
     return res.status(400).json({ error: 'Name ist erforderlich (1-80 Zeichen).' });
+  }
+  const eventTypeKey = eventType ?? DEFAULT_EVENT_TYPE_KEY;
+  if (!isEventTypeKey(eventTypeKey)) {
+    return res.status(400).json({ error: 'eventType muss lan oder general sein.' });
   }
 
   const parsedStartsAt = parseRequiredTimestamp(startsAt, 'startsAt');
@@ -454,10 +793,26 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
   if (parsedEndsAt.value <= parsedStartsAt.value) {
     return res.status(400).json({ error: 'endsAt muss nach startsAt liegen.' });
   }
-  const parsedLocation = parseOptionalText(location, 80, 'location');
+  const parsedLocation = parseOptionalText(location, 500, 'location');
   if (!parsedLocation.ok) return res.status(400).json({ error: parsedLocation.error });
   const parsedDescription = parseOptionalText(description, 500, 'description');
   if (!parsedDescription.ok) return res.status(400).json({ error: parsedDescription.error });
+  const parsedCostCents = parseOptionalCostCents(costCents);
+  if (!parsedCostCents.ok) return res.status(400).json({ error: parsedCostCents.error });
+  const parsedAccommodationCostCents = parseOptionalAccommodationCostCents(accommodationCostCents);
+  if (!parsedAccommodationCostCents.ok) {
+    return res.status(400).json({ error: parsedAccommodationCostCents.error });
+  }
+  const parsedPaypalLink = parseOptionalPaypalLink(paypalLink);
+  if (!parsedPaypalLink.ok) return res.status(400).json({ error: parsedPaypalLink.error });
+  const parsedPaymentDueAt = parseOptionalTimestamp(paymentDueAt, 'paymentDueAt');
+  if (!parsedPaymentDueAt.ok) return res.status(400).json({ error: parsedPaymentDueAt.error });
+  if (parsedPaypalLink.value && parsedCostCents.value === null) {
+    return res.status(400).json({ error: 'Für einen PayPal-Link müssen Kosten pro Person angegeben werden.' });
+  }
+  if (parsedPaymentDueAt.value !== null && parsedCostCents.value === null) {
+    return res.status(400).json({ error: 'Für ein Zahlungsziel müssen Kosten pro Person angegeben werden.' });
+  }
   if (visibilityScope !== undefined && visibilityScope !== 'participants') {
     return res.status(400).json({ error: 'Events sind ausschließlich für angenommene Teilnehmende sichtbar.' });
   }
@@ -468,6 +823,12 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
     endsAt: parsedEndsAt.value,
     location: parsedLocation.value,
     description: parsedDescription.value,
+    costCents: parsedCostCents.value,
+    accommodationCostCents: parsedAccommodationCostCents.value,
+    paypalLink: parsedPaypalLink.value,
+    paymentDueAt: parsedPaymentDueAt.value,
+    createdBy: req.player?.id ?? null,
+    eventTypeKey,
   });
 
   writeAdminAudit({
@@ -478,12 +839,14 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
     targetId: event.id,
   });
   broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
-  res.status(201).json(serializeEvent(event));
+  res.status(201).json(serializeEvent(event, req.player?.id, req.groupMembership?.role));
 });
 
 // PATCH /api/events/:id - metadata correction only (name/dates/location/
-// description); never touches tracking state or live status.
-// Body: any subset of { name?, startsAt?, endsAt?, location?, description? }
+// description/payment details); never touches tracking state or live status.
+// Body: any subset of { name?, startsAt?, endsAt?, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
+// The event type is intentionally fixed after creation in the small MVP so a
+// type switch cannot hide a running LAN workflow without an impact check.
 eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) => {
   const existing = req.groupResource as EventRow;
   if (!existing || existing.id === OUTSIDE_EVENTS_ID) {
@@ -492,13 +855,37 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
   if (existing.id === BASE_EVENT_ID) {
     return res.status(409).json({ error: 'Das dauerhaft offene Basis-Event kann nicht bearbeitet werden.' });
   }
+  if (req.body && typeof req.body === 'object' && Object.prototype.hasOwnProperty.call(req.body, 'eventType')) {
+    return res.status(400).json({ error: 'Der Eventtyp ist in diesem MVP nach dem Anlegen schreibgeschützt.' });
+  }
+  if (requestsReadOnlyEventConfiguration(req.body)) return rejectReadOnlyEventConfiguration(res);
 
-  const { name, startsAt, endsAt, location, description, visibilityScope } = req.body ?? {};
+  const {
+    name,
+    startsAt,
+    endsAt,
+    location,
+    description,
+    costCents,
+    accommodationCostCents,
+    paypalLink,
+    paymentDueAt,
+    visibilityScope,
+  } = req.body ?? {};
   const fields: UpdateEventFields = {};
 
   if (name !== undefined) {
     if (!isNonEmptyString(name, 80)) return res.status(400).json({ error: 'Name muss 1-80 Zeichen lang sein.' });
     fields.name = name.trim();
+  }
+  // A planning event's date is set exclusively through its date poll's
+  // schedule action (see routes/eventDatePolls.ts) — never through this
+  // generic metadata PATCH, so there is only ever one place that writes
+  // starts_at/ends_at/schedule_revision together in a single transaction.
+  if (existing.status === 'draft' && (startsAt !== undefined || endsAt !== undefined)) {
+    return res.status(409).json({
+      error: 'Der Termin eines Planungs-Events wird ausschließlich über die Terminabstimmung festgelegt.',
+    });
   }
   if (startsAt !== undefined) {
     const parsed = parseOptionalTimestamp(startsAt, 'startsAt');
@@ -514,14 +901,16 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
   // Validated against the EFFECTIVE start/end (existing values merged with
   // whatever this request is changing), so e.g. patching just endsAt on an
   // event whose existing startsAt is later still gets caught. endsAt is
-  // required at creation and remains required during PATCH.
+  // required for any non-draft event and remains required during PATCH.
   const effectiveStartsAt = fields.startsAt ?? existing.starts_at;
   const effectiveEndsAt = fields.endsAt !== undefined ? fields.endsAt : existing.ends_at;
-  if (effectiveEndsAt === null || effectiveEndsAt <= effectiveStartsAt) {
-    return res.status(400).json({ error: 'endsAt muss nach startsAt liegen.' });
+  if (effectiveStartsAt !== null) {
+    if (effectiveEndsAt === null || effectiveEndsAt <= effectiveStartsAt) {
+      return res.status(400).json({ error: 'endsAt muss nach startsAt liegen.' });
+    }
   }
   if (location !== undefined) {
-    const parsed = parseOptionalText(location, 80, 'location');
+    const parsed = parseOptionalText(location, 500, 'location');
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
     fields.location = parsed.value;
   }
@@ -530,13 +919,44 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
     fields.description = parsed.value;
   }
+  if (costCents !== undefined) {
+    const parsed = parseOptionalCostCents(costCents);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    fields.costCents = parsed.value;
+  }
+  if (accommodationCostCents !== undefined) {
+    const parsed = parseOptionalAccommodationCostCents(accommodationCostCents);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    fields.accommodationCostCents = parsed.value;
+  }
+  if (paypalLink !== undefined) {
+    const parsed = parseOptionalPaypalLink(paypalLink);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    fields.paypalLink = parsed.value;
+  }
+  if (paymentDueAt !== undefined) {
+    const parsed = parseOptionalTimestamp(paymentDueAt, 'paymentDueAt');
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    fields.paymentDueAt = parsed.value;
+  }
+  const effectiveCostCents = fields.costCents !== undefined ? fields.costCents : existing.cost_cents;
+  const effectivePaypalLink = fields.paypalLink !== undefined ? fields.paypalLink : existing.paypal_link;
+  const effectivePaymentDueAt = fields.paymentDueAt !== undefined ? fields.paymentDueAt : existing.payment_due_at;
+  if (effectivePaypalLink && effectiveCostCents === null) {
+    return res.status(400).json({ error: 'Für einen PayPal-Link müssen Kosten pro Person angegeben werden.' });
+  }
+  if (effectivePaymentDueAt !== null && effectiveCostCents === null) {
+    return res.status(400).json({ error: 'Für ein Zahlungsziel müssen Kosten pro Person angegeben werden.' });
+  }
   if (visibilityScope !== undefined) {
     if (visibilityScope !== 'participants') {
       return res.status(400).json({ error: 'Events sind ausschließlich für angenommene Teilnehmende sichtbar.' });
     }
   }
 
-  const updated = updateEvent(req.params.id, fields);
+  const updated = updateEvent(req.params.id, fields)!;
+  const startChanged = fields.startsAt !== undefined && fields.startsAt !== existing.starts_at;
+  const endChanged = fields.endsAt !== undefined && fields.endsAt !== existing.ends_at;
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.player ? req.group!.id : undefined,
@@ -545,12 +965,54 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     targetId: req.params.id,
   });
   broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
-  res.json(serializeEvent(updated));
+  const relevantChanges: string[] = [];
+  if (fields.location !== undefined && fields.location !== existing.location) {
+    relevantChanges.push(`Ort: ${existing.location || 'offen'} → ${updated.location || 'offen'}`);
+  }
+  if (fields.costCents !== undefined && fields.costCents !== existing.cost_cents) {
+    const money = (value: number | null) => (value === null ? 'offen' : `${(value / 100).toFixed(2).replace('.', ',')} €`);
+    relevantChanges.push(`Preis: ${money(existing.cost_cents)} → ${money(updated.cost_cents)}`);
+  }
+  if (
+    fields.accommodationCostCents !== undefined &&
+    fields.accommodationCostCents !== existing.accommodation_cost_cents
+  ) {
+    const money = (value: number | null) => (value === null ? 'offen' : `${(value / 100).toFixed(2).replace('.', ',')} €`);
+    relevantChanges.push(
+      `Unterkunft: ${money(existing.accommodation_cost_cents)} → ${money(updated.accommodation_cost_cents)}`,
+    );
+  }
+  if (endChanged) {
+    relevantChanges.push('Dauer/Ende wurde geändert');
+  }
+  if (startChanged || relevantChanges.length > 0) {
+    const recipients = db
+      .prepare(
+        `SELECT player_id AS playerId FROM event_participants
+         WHERE event_id = ? AND status IN ('invited', 'accepted')`,
+      )
+      .all(existing.id) as Array<{ playerId: string }>;
+    notifyPlayers(
+      recipients.map((row) => row.playerId).filter((id) => id !== req.player?.id),
+      {
+        title: startChanged ? 'Eventtermin geändert' : 'Eventplanung geändert',
+        body: `${updated.name}: ${startChanged ? 'Der Termin wurde geändert' : relevantChanges.join('; ')}${startChanged && relevantChanges.length ? `; ${relevantChanges.join('; ')}` : ''}. Deine Zusage bleibt bestehen.`,
+        url: '/#events',
+      },
+      'direct',
+      undefined,
+      { groupId: req.group!.id, eventId: BASE_EVENT_ID },
+    );
+  }
+  res.json(serializeEvent(updated, req.player?.id, req.groupMembership?.role));
 });
 
 // POST /api/events/:id/tracking/start - starts this event's independent
 // tracking window. Overlapping events may track simultaneously.
 eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin'), async (req, res) => {
+  if (!isEventFeatureEnabled(req.params.id, 'tracking')) {
+    return res.status(404).json({ error: 'Tracking ist für dieses Event nicht aktiviert.' });
+  }
   const attempt = await startTrackingWithBackup(req.params.id);
   if ('backupError' in attempt) {
     // eslint-disable-next-line no-console
@@ -575,11 +1037,14 @@ eventsRouter.post('/:id/tracking/start', resolveEvent, requireGroupRole('admin')
     groupId: req.group!.id,
     eventId: req.params.id,
   });
-  res.json(serializeEvent(result.event));
+  res.json(serializeEvent(result.event, req.player?.id, req.groupMembership?.role));
 });
 
 // POST /api/events/:id/restart - reopens an ended event and starts tracking.
 eventsRouter.post('/:id/restart', resolveEvent, requireGroupRole('admin'), async (req, res) => {
+  if (!isEventFeatureEnabled(req.params.id, 'tracking')) {
+    return res.status(404).json({ error: 'Tracking ist für dieses Event nicht aktiviert.' });
+  }
   const attempt = await startTrackingWithBackup(req.params.id, true);
   if ('backupError' in attempt) {
     // eslint-disable-next-line no-console
@@ -604,12 +1069,15 @@ eventsRouter.post('/:id/restart', resolveEvent, requireGroupRole('admin'), async
     groupId: req.group!.id,
     eventId: req.params.id,
   });
-  res.json(serializeEvent(result.event));
+  res.json(serializeEvent(result.event, req.player?.id, req.groupMembership?.role));
 });
 
 // POST /api/events/:id/tracking/stop - pauses tracking without ending the
 // event; can be resumed with .../tracking/start later.
 eventsRouter.post('/:id/tracking/stop', resolveEvent, requireGroupRole('admin'), async (req, res) => {
+  if (!isEventFeatureEnabled(req.params.id, 'tracking')) {
+    return res.status(404).json({ error: 'Tracking ist für dieses Event nicht aktiviert.' });
+  }
   const updated = await enqueueEventLifecycle(() => stopTracking(req.params.id));
   if (!updated) return res.status(404).json({ error: 'Event nicht gefunden.' });
   writeAdminAudit({
@@ -624,7 +1092,7 @@ eventsRouter.post('/:id/tracking/stop', resolveEvent, requireGroupRole('admin'),
     groupId: req.group!.id,
     eventId: req.params.id,
   });
-  res.json(serializeEvent(updated));
+  res.json(serializeEvent(updated, req.player?.id, req.groupMembership?.role));
 });
 
 // POST /api/events/:id/end - closes the event for good (stops tracking
@@ -651,7 +1119,7 @@ eventsRouter.post('/:id/end', resolveEvent, requireGroupRole('admin'), async (re
     groupId: req.group!.id,
     eventId: req.params.id,
   });
-  res.json(serializeEvent(updated));
+  res.json(serializeEvent(updated, req.player?.id, req.groupMembership?.role));
 });
 
 // PUT /api/events/:id/participants - replace the whole roster.
@@ -661,6 +1129,11 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
   if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
   if (event.id === BASE_EVENT_ID) {
     return res.status(409).json({ error: 'Die Teilnehmerliste des Basis-Events wird automatisch gepflegt.' });
+  }
+  if (event.status === 'draft' && event.starts_at === null && Array.isArray(req.body?.playerIds) && req.body.playerIds.length > 0) {
+    return res.status(409).json({
+      error: 'Für ein Planungs-Event ohne festen Termin können noch keine regulären Einladungen gesendet werden.',
+    });
   }
 
   const { playerIds } = req.body ?? {};
@@ -687,8 +1160,16 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
   }
 
   const previousIds = new Set(getParticipantIds(req.params.id));
+  const paidRemovedIds = getPaidEventParticipantIds(req.params.id).filter((playerId) => !uniqueIds.includes(playerId));
+  if (paidRemovedIds.length > 0) {
+    return res.status(409).json({
+      error: 'Bestätigte Zahlungen müssen zuerst zurückgesetzt werden, bevor Teilnehmende entfernt werden können.',
+      playerIds: paidRemovedIds,
+    });
+  }
   const activeBefore = new Set(activeContextPlayerIds(req.params.id));
   setParticipants(req.params.id, uniqueIds);
+  if (uniqueIds.length > 0) publishPlanningEventIfScheduled(event.id);
   const rosterRemovedIds = [...previousIds].filter((playerId) => !uniqueIds.includes(playerId));
   for (const playerId of rosterRemovedIds) {
     if (activeBefore.has(playerId)) switchPlayerEventScope(playerId, req.group!.id, BASE_EVENT_ID);
@@ -719,7 +1200,7 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
       eventId: event.id,
     });
   }
-  res.json(serializeEvent(getEvent(req.params.id)));
+  res.json(serializeEvent(getEvent(req.params.id), req.player?.id, req.groupMembership?.role));
 });
 
 eventsRouter.delete('/:id', resolveEvent, requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
@@ -738,5 +1219,5 @@ eventsRouter.delete('/:id', resolveEvent, requireGroupRole('admin'), requireRece
     targetId: req.params.id,
   });
   broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
-  res.json(serializeEvent(cancelled));
+  res.json(serializeEvent(cancelled, req.player?.id, req.groupMembership?.role));
 });

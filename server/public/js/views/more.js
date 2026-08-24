@@ -10,8 +10,10 @@ import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
 import { currentPlayerHasAdminRole } from '../adminAccess.js';
 import { sectionEntryView } from '../sectionNav.js';
+import { state } from '../state.js';
+import { viewIsEnabledForEvent } from '../eventFeatures.js';
 
-const ITEMS = [
+const COMMON_ITEMS = Object.freeze([
   // Moved out of the topbar to make room for the always-available Feedback
   // icon there; still just as reachable, one tap into "Mehr".
   { view: 'profile', title: 'Mein Profil' },
@@ -19,14 +21,38 @@ const ITEMS = [
   { view: 'arcade', title: 'Arcade' },
   { view: 'broadcast', title: 'Durchsage' },
   { view: 'music', title: 'Jam' },
+]);
+
+const LAN_ITEMS = Object.freeze([
   // Opens on Orga's own first tab, same as every other area entered from
   // "Mehr" or the bottom nav (see sectionNav.js's sectionEntryView) — so the
   // tab row's top-left tab is the one actually selected on arrival.
-  { view: sectionEntryView('orga'), title: 'Orga', iconKey: 'orga' },
-];
+  { section: 'orga', title: 'Orga', iconKey: 'orga' },
+]);
+
+const GENERAL_ITEMS = Object.freeze([
+  { view: 'events', title: 'Events' },
+  { view: 'foodOrders', title: 'Essen' },
+]);
+
+export function moreItemsForEvent(event) {
+  return [
+    ...COMMON_ITEMS,
+    ...(event?.eventType === 'general' ? GENERAL_ITEMS : LAN_ITEMS),
+  ];
+}
 
 export function renderMore(container) {
-  const rows = ITEMS.filter((item) => item.view !== 'admin' || currentPlayerHasAdminRole())
+  const visibleItems = moreItemsForEvent(state.activeEvent).map((item) => ({
+    ...item,
+    view: item.section ? sectionEntryView(item.section, state.activeEvent) : item.view,
+  })).filter(
+    (item) =>
+      item.view &&
+      viewIsEnabledForEvent(item.view, state.activeEvent) &&
+      (item.view !== 'admin' || currentPlayerHasAdminRole()),
+  );
+  const rows = visibleItems
     .map(
       (item) => `
     <button type="button" class="card row list-row more-card" data-navigate="${item.view}">
