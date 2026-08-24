@@ -67,12 +67,59 @@ export function parseTimeInput(value) {
   return { hour, minute };
 }
 
+export function formatDateTyping(value) {
+  if (!/^[\d.]*$/.test(value)) return value;
+  const normalized = value.replace(/\.+/g, '.');
+  const firstSeparator = normalized.indexOf('.');
+  const secondSeparator = firstSeparator === -1 ? -1 : normalized.indexOf('.', firstSeparator + 1);
+  // Keep explicitly typed short forms such as 8.7.2026 intact. The automatic
+  // mask only owns separators at the canonical two-digit positions.
+  if ((firstSeparator !== -1 && firstSeparator !== 2)
+    || (secondSeparator !== -1 && secondSeparator !== 5)) return normalized;
+  const digits = normalized.replace(/\D/g, '').slice(0, 8);
+  if (digits.length < 2) return digits;
+  if (digits.length < 4) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
+}
+
+export function formatTimeTyping(value) {
+  if (!/^[\d:]*$/.test(value)) return value;
+  const separator = value.indexOf(':');
+  // parseTimeInput also accepts 9:05, so do not rewrite a separator the user
+  // intentionally entered after a single-digit hour.
+  if (separator !== -1 && separator !== 2) return value;
+  const digits = value.replace(/\D/g, '').slice(0, 4);
+  if (digits.length < 2) return digits;
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+}
+
 function dateKey(date) {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
 function dayMs(year, month, day) {
   return new Date(year, month, day, 0, 0, 0, 0).getTime();
+}
+
+export function calendarMonthTargetMs(focusedMs, delta, minimumMs = null, keepDay = true) {
+  const current = new Date(focusedMs);
+  const targetMonth = new Date(current.getFullYear(), current.getMonth() + delta, 1);
+  const targetYear = targetMonth.getFullYear();
+  const targetMonthIndex = targetMonth.getMonth();
+  const lastTargetDay = new Date(targetYear, targetMonthIndex + 1, 0).getDate();
+  const targetDay = keepDay ? Math.min(current.getDate(), lastTargetDay) : 1;
+  let candidate = dayMs(targetYear, targetMonthIndex, targetDay);
+
+  if (minimumMs !== null) {
+    const lastMomentInTargetMonth = new Date(targetYear, targetMonthIndex + 1, 0, 23, 59, 59, 999).getTime();
+    if (lastMomentInTargetMonth < minimumMs) return focusedMs;
+    const minimum = new Date(minimumMs);
+    if (targetYear === minimum.getFullYear() && targetMonthIndex === minimum.getMonth()) {
+      candidate = Math.max(candidate, dayMs(targetYear, targetMonthIndex, minimum.getDate()));
+    }
+  }
+
+  return candidate;
 }
 
 let active = null;
@@ -278,9 +325,8 @@ export function wireDateTimeField(container, id) {
     }
 
     function changeMonth(delta, keepDay = true) {
-      const current = new Date(focusedMs);
-      const target = new Date(current.getFullYear(), current.getMonth() + delta, keepDay ? current.getDate() : 1);
-      focusedMs = dayMs(target.getFullYear(), target.getMonth(), target.getDate());
+      focusedMs = calendarMonthTargetMs(focusedMs, delta, minimumMs, keepDay);
+      const target = new Date(focusedMs);
       viewYear = target.getFullYear();
       viewMonth = target.getMonth();
       rerender({ focus: true });
@@ -346,6 +392,8 @@ export function wireDateTimeField(container, id) {
     popover.querySelector('[data-dt-day][tabindex="0"]')?.focus();
   }
 
+  dateInput.addEventListener('input', () => { dateInput.value = formatDateTyping(dateInput.value); });
+  timeInput?.addEventListener('input', () => { timeInput.value = formatTimeTyping(timeInput.value); });
   dateInput.addEventListener('blur', commitManualInput);
   dateInput.addEventListener('change', commitManualInput);
   timeInput?.addEventListener('blur', commitManualInput);

@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dateTimeFieldHtml, parseDateInput, parseTimeInput } from './dateTimeField.js';
+import {
+  calendarMonthTargetMs,
+  dateTimeFieldHtml,
+  formatDateTyping,
+  formatTimeTyping,
+  parseDateInput,
+  parseTimeInput,
+} from './dateTimeField.js';
 
 test('an empty value renders one editable date and one editable time field', () => {
   const html = dateTimeFieldHtml('my-field', null, { clearable: true, label: 'Beginn' });
@@ -64,4 +71,37 @@ test('manual 24-hour time parsing validates hours and minutes', () => {
   assert.deepEqual(parseTimeInput('23:59'), { hour: 23, minute: 59 });
   assert.equal(parseTimeInput('24:00'), null);
   assert.equal(parseTimeInput('12:60'), null);
+});
+
+test('numeric mobile typing inserts the separators required by the visible formats', () => {
+  assert.equal(formatDateTyping('08072026'), '08.07.2026');
+  assert.equal(formatDateTyping('08'), '08.');
+  assert.equal(formatDateTyping('08..07..2026'), '08.07.2026');
+  assert.equal(formatTimeTyping('1435'), '14:35');
+  assert.equal(formatTimeTyping('14'), '14:');
+});
+
+test('typing helpers preserve supported short and partially entered forms', () => {
+  assert.equal(formatDateTyping('8.7.2026'), '8.7.2026');
+  assert.equal(formatDateTyping('8.'), '8.');
+  assert.equal(formatTimeTyping('9:05'), '9:05');
+  assert.equal(formatTimeTyping('9:'), '9:');
+});
+
+test('calendar month paging never moves focus into a fully disabled month', () => {
+  const focused = new Date(2026, 7, 24).getTime();
+  const minimum = new Date(2026, 7, 24, 14, 5).getTime();
+  assert.equal(calendarMonthTargetMs(focused, -1, minimum), focused);
+});
+
+test('calendar month paging clamps focus to the first enabled day and valid month length', () => {
+  const minimum = new Date(2026, 8, 20, 14, 5).getTime();
+  assert.equal(
+    calendarMonthTargetMs(new Date(2026, 9, 12).getTime(), -1, minimum),
+    new Date(2026, 8, 20).getTime(),
+  );
+  assert.equal(
+    calendarMonthTargetMs(new Date(2027, 0, 31).getTime(), 1),
+    new Date(2027, 1, 28).getTime(),
+  );
 });

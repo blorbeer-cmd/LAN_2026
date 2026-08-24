@@ -309,7 +309,16 @@ flowTest('shell', 'Orga Events tab and Profil use grouped help while admin tools
   await page.click('[data-dt-field="event-ends"] [data-dt-trigger]');
   await page.waitForSelector('.dt-popover');
   assert.ok(await page.locator('.dt-popover [data-dt-day]:disabled').count() > 0, 'days before the event start are disabled');
+  const visibleMonth = await page.locator('.dt-popover [data-dt-month]').textContent();
+  const focusedDay = await page.locator('.dt-popover [data-dt-day]:focus').getAttribute('data-dt-day');
+  await page.keyboard.press('PageUp');
+  assert.equal(await page.locator('.dt-popover [data-dt-month]').textContent(), visibleMonth, 'PageUp cannot enter a fully disabled month');
+  assert.equal(await page.locator('.dt-popover [data-dt-day]:focus').getAttribute('data-dt-day'), focusedDay, 'calendar focus remains on the enabled day');
   await page.keyboard.press('Escape');
+  await page.fill('#event-starts-date', '08072027');
+  await page.fill('#event-starts-time', '1435');
+  assert.equal(await page.inputValue('#event-starts-date'), '08.07.2027');
+  assert.equal(await page.inputValue('#event-starts-time'), '14:35');
   assert.equal(await page.locator('.event-payment-label').count(), 0);
   assert.match(await page.locator('#event-paypal').getAttribute('placeholder') ?? '', /E-Mail-Adresse/);
   await page.click('.modal[aria-label="Neues Event"] [data-close]');
