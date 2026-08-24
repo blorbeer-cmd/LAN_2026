@@ -72,11 +72,20 @@ export function eventSelectOption(event) {
   };
 }
 
+// Fixed dates read chronologically from the event that starts first to the
+// one that starts last. A planning event without a date cannot be the next
+// event, so it follows every scheduled event.
+export function compareEventsByStartAscending(a, b) {
+  if (a.startsAt == null) return b.startsAt == null ? 0 : 1;
+  if (b.startsAt == null) return -1;
+  return a.startsAt - b.startsAt;
+}
+
 // The event filters additionally offer an "all events" entry. It is not an
 // event and therefore has no lifecycle icon of its own.
 export function eventSelectOptions(events, { allEntryLabel } = {}) {
   const options = [...events]
-    .sort((a, b) => b.startsAt - a.startsAt)
+    .sort(compareEventsByStartAscending)
     .map((event) => eventSelectOption(event));
   return allEntryLabel ? [{ value: '', label: allEntryLabel }, ...options] : options;
 }

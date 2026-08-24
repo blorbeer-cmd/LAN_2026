@@ -60,6 +60,65 @@ test('every account starts in the permanent base event', async () => {
   );
 });
 
+test('event collections list the earliest start first', async () => {
+  const marker = Date.now();
+  const prefix = `Sortierung ${marker}`;
+  const memberId = `sort-order-member-${marker}`;
+  const firstStart = Date.now() + 60_000;
+  const starts = [firstStart + 120_000, firstStart, firstStart + 60_000];
+  const createdIds: string[] = [];
+  createMember(memberId, `Sort Order Member ${marker}`);
+
+  for (const [index, startsAt] of starts.entries()) {
+    const created = await createEvent(`${prefix} ${index}`, EVENT_MINIMUM_DURATION_MS, {
+      startsAt,
+      endsAt: startsAt + EVENT_MINIMUM_DURATION_MS,
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    createdIds.push(created.body.id as string);
+    accept(created.body.id, TEST_ADMIN_ID);
+  }
+
+  const list = await request(app).get('/api/events');
+  assert.equal(list.status, 200);
+  const expectedIds = [createdIds[1], createdIds[2], createdIds[0]];
+  for (const collection of [list.body.availableEvents, list.body.managedEvents]) {
+    assert.deepEqual(
+      collection.filter((event: { name: string }) => event.name.startsWith(prefix)).map((event: { id: string }) => event.id),
+      expectedIds,
+    );
+  }
+
+  for (const eventId of createdIds) {
+    db.prepare(`INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'invited')`).run(
+      eventId,
+      memberId,
+    );
+  }
+  const invitedList = await request(app).get('/api/events').set('x-test-player-id', memberId);
+  assert.equal(invitedList.status, 200);
+  assert.deepEqual(
+    invitedList.body.invitations
+      .filter((event: { name: string }) => event.name.startsWith(prefix))
+      .map((event: { id: string }) => event.id),
+    expectedIds,
+  );
+
+  for (const eventId of createdIds) {
+    accept(eventId, memberId);
+    const ended = await request(app).post(`/api/events/${eventId}/end`);
+    assert.equal(ended.status, 200, JSON.stringify(ended.body));
+  }
+  const endedList = await request(app).get('/api/events').set('x-test-player-id', memberId);
+  assert.equal(endedList.status, 200);
+  for (const collection of [endedList.body.endedEvents, endedList.body.historicalEvents]) {
+    assert.deepEqual(
+      collection.filter((event: { name: string }) => event.name.startsWith(prefix)).map((event: { id: string }) => event.id),
+      expectedIds,
+    );
+  }
+});
+
 test('new events persist and expose the complete backwards-compatible LAN feature snapshot', async () => {
   const created = await createEvent('LAN-Default mit Bereichen');
   assert.equal(created.status, 201, JSON.stringify(created.body));

@@ -372,7 +372,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   colour alone. Option sets without icons render exactly the markup they did before.
 - **Event dropdown** — every place that picks an event uses the searchable select above with one
   shared option shape from `eventStatus.js` (`eventSelectOption`/`eventSelectOptions`): the event
-  title plus its state as an icon, newest first. That covers the topbar workspace switcher
+  title plus its state as an icon, earliest start first; events without a fixed date follow the
+  scheduled events. That covers the topbar workspace switcher
   (`#event-context`), Auswertung's shared filter, „Meine Statistiken“ and Hall of Fame's „Nach
   LAN“ picker. They previously described the same events in three different ways — one appended
   the date range, another showed the bare name, and none showed the state until after a choice had
@@ -796,7 +797,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   and the PDF „Andenken“-Export — while a member gets read-only cards for the events they take
   part in, without the „+ Event“ action or administrative invitation/decline controls; the card
   includes the event-type badge, event-status badge plus the count and names of accepted
-  participants. Cards sort newest-first by start date. A finished event moves out of the active list into the tab's own
+  participants. Cards sort from the earliest start date to the latest; events without a fixed date
+  follow the scheduled events. A finished event moves out of the active list into the tab's own
   „Historie“ (the same collapsible-section pattern as Food orders): it starts collapsed and
   preserves its open state across live re-renders. Pending invitations for the current identity are
   deliberately absent from this tab — a teaser sitting directly above the Events cards made it too
