@@ -9,6 +9,7 @@ import { escapeHtml } from './format.js';
 import { showToast } from './toast.js';
 import { currentPlayerHasAdminRole } from './adminAccess.js';
 import { sectionEntryView } from './sectionNav.js';
+import { eventHasFeature, viewIsEnabledForEvent } from './eventFeatures.js';
 
 // Ordered to match the bottom nav (Home, Match, Vote, Essen), then the
 // individual areas under "Mehr" (which itself sits after Essen in the nav),
@@ -100,7 +101,7 @@ export function buildOnboardingSteps(isAdmin = currentPlayerHasAdminRole()) {
     text: 'Bewerte die ersten zehn Spiele mit Bock und Skill. Bock unterstützt die Spielauswahl, Skill die Teamaufteilung; die Chips „Bock offen“ und „Skill offen“ helfen dir später, schnell noch unbewertete Spiele zu finden.',
     view: 'gameCatalog',
   });
-  return steps;
+  return steps.filter((step) => viewIsEnabledForEvent(step.view, state.activeEvent));
 }
 
 function buildSteps() {
@@ -495,6 +496,11 @@ export async function initOnboarding({ navigate, rerender, getCurrentView }) {
 
 export function maybeStartOnboarding() {
   if (!runtime || runtime.mode || runtime.deferredThisSession) return;
+  // The current onboarding culminates in mandatory Bock/Skill ratings and is
+  // therefore a LAN/game-area flow. A general event must not force people
+  // through hidden gaming screens; the pending state remains available when
+  // they later enter a LAN workspace.
+  if (!eventHasFeature(state.activeEvent, 'games')) return;
   const shouldResumeCore = (runtime.state.status === 'pending' || runtime.state.status === 'active')
     && runtime.state.ratingStatus !== 'deferred'
     && runtime.state.ratingStatus !== 'completed';

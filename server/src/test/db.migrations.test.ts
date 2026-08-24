@@ -15,6 +15,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import Database from 'better-sqlite3';
+import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
 const BOOTSTRAP_ADMINS_JS_PATH = path.join(__dirname, '..', 'bootstrapAdmins.js');
@@ -647,10 +648,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 88);
+  assert.equal(migrations.length, 91);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 88 }, (_, index) => index + 1),
+    Array.from({ length: 91 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1177,8 +1178,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 88 }, (_, index) => index + 1),
-    'every version 1..88 runs exactly once',
+    Array.from({ length: 91 }, (_, index) => index + 1),
+    'every version 1..91 runs exactly once',
   );
 });
 
@@ -2665,6 +2666,104 @@ test('migration 83 makes starts_at nullable for drafts, adds schedule revisions,
 
   assert.deepEqual(migrated.pragma('foreign_key_check'), []);
   migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migrations 89 through 91 add event types, collapse legacy presets and enable Arcade', () => {
+  const dbFile = makeTempDbPath('event-type-feature-migrations');
+  runMigrations(dbFile);
+
+  const legacy = new Database(dbFile);
+  const now = Date.now();
+  legacy
+    .prepare(
+      `INSERT INTO events (id, name, starts_at, ends_at, group_id, status, visibility_scope)
+       VALUES (?, ?, ?, ?, 'default-group', 'published', 'participants')`,
+    )
+    .run('legacy-feature-event', 'Legacy Feature Event', now, now + 60_000);
+  legacy.exec(`
+    DROP TABLE event_features;
+    ALTER TABLE events DROP COLUMN event_type_key;
+    ALTER TABLE events DROP COLUMN preset_version;
+    DELETE FROM schema_migrations WHERE version IN (89, 90, 91);
+  `);
+  legacy.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+
+  const migrated = new Database(dbFile);
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT event_type_key AS eventType, preset_version AS presetVersion FROM events WHERE id = ?')
+      .get('legacy-feature-event'),
+    { eventType: 'lan', presetVersion: 1 },
+  );
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT feature_key AS featureKey, enabled FROM event_features WHERE event_id = ? ORDER BY rowid')
+      .all('legacy-feature-event'),
+    EVENT_FEATURE_KEYS.map((featureKey) => ({ featureKey, enabled: 1 })),
+  );
+  assert.equal(
+    (migrated.prepare('SELECT COUNT(*) AS count FROM event_features WHERE event_id = ?').get('outside-events') as { count: number }).count,
+    0,
+  );
+
+  migrated
+    .prepare(
+      `INSERT INTO events
+         (id, name, starts_at, ends_at, group_id, status, visibility_scope, event_type_key, preset_version)
+       VALUES (?, ?, ?, ?, 'default-group', 'published', 'participants', 'trip', 1)`,
+    )
+    .run('legacy-trip-event', 'Legacy Trip', now, now + 60_000);
+  const insertFeature = migrated.prepare(
+    `INSERT INTO event_features (event_id, feature_key, enabled, changed_at, changed_by)
+     VALUES (?, ?, 1, ?, NULL)`,
+  );
+  for (const featureKey of EVENT_FEATURE_KEYS) insertFeature.run('legacy-trip-event', featureKey, now);
+  migrated.prepare('DELETE FROM schema_migrations WHERE version IN (90, 91)').run();
+  migrated.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+
+  const collapsed = new Database(dbFile);
+  assert.deepEqual(
+    collapsed
+      .prepare('SELECT event_type_key AS eventType, preset_version AS presetVersion FROM events WHERE id = ?')
+      .get('legacy-trip-event'),
+    { eventType: 'general', presetVersion: 2 },
+  );
+  assert.deepEqual(
+    (collapsed
+      .prepare('SELECT feature_key AS featureKey FROM event_features WHERE event_id = ? AND enabled = 1 ORDER BY rowid')
+      .all('legacy-trip-event') as Array<{ featureKey: string }>).map((row) => row.featureKey),
+    ['tasks', 'travel', 'food', 'costs', 'music', 'arcade', 'seating'],
+  );
+
+  collapsed
+    .prepare('UPDATE event_features SET enabled = 0 WHERE event_id = ? AND feature_key = ?')
+    .run('legacy-trip-event', 'arcade');
+  collapsed.prepare('UPDATE events SET preset_version = 1 WHERE id = ?').run('legacy-trip-event');
+  collapsed.prepare('DELETE FROM schema_migrations WHERE version = 91').run();
+  collapsed.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+
+  const arcadeEnabled = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    arcadeEnabled
+      .prepare('SELECT preset_version AS presetVersion FROM events WHERE id = ?')
+      .get('legacy-trip-event'),
+    { presetVersion: 2 },
+  );
+  assert.deepEqual(
+    arcadeEnabled
+      .prepare('SELECT enabled FROM event_features WHERE event_id = ? AND feature_key = ?')
+      .get('legacy-trip-event', 'arcade'),
+    { enabled: 1 },
+  );
+  assert.deepEqual(arcadeEnabled.pragma('foreign_key_check'), []);
+  arcadeEnabled.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 

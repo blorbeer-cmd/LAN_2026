@@ -43,6 +43,7 @@ export function normalizeEventContext(eventContext = {}) {
     // payload still yields a usable filter instead of an empty one.
     historicalEvents: eventContext.historicalEvents ?? availableEvents,
     eventInvitations: eventContext.invitations ?? [],
+    eventTypeOptions: eventContext.eventTypeOptions ?? [],
   };
 }
 

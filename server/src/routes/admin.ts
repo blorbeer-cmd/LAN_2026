@@ -65,7 +65,7 @@ adminRouter.post('/test-users', requireAdmin, (req, res) => {
 // player creation so adding another test participant never rewrites history.
 adminRouter.post('/test-data/hall-of-fame', requireAdmin, (req, res) => {
   try {
-    const created = seedHallOfFameTestData();
+    const created = seedHallOfFameTestData(req.player?.id ?? null);
     broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
     broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
     broadcast(Events.tournamentsChanged, null, { groupId: req.group!.id });

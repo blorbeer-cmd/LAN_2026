@@ -8,6 +8,13 @@ import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL, type EventParticipationStatus } from './eventParticipation';
 import { closeEventContexts } from './trackingContexts';
 import { fallbackEventContexts, fallbackPlayerEventContext } from './eventContext';
+import {
+  DEFAULT_EVENT_PRESET_VERSION,
+  DEFAULT_EVENT_TYPE_KEY,
+  EVENT_TYPE_PRESETS,
+  type EventTypeKey,
+} from './eventFeatureCatalog';
+import { createEventFeatureSnapshot } from './eventFeatures';
 
 export { OUTSIDE_EVENTS_ID };
 
@@ -25,6 +32,8 @@ export interface EventRow {
   paypal_link: string | null;
   payment_due_at: number | null;
   created_by: string | null;
+  event_type_key: EventTypeKey;
+  preset_version: number;
   tracking_enabled: number;
   ended_at: number | null;
   group_id: string | null;
@@ -97,6 +106,7 @@ export interface CreateEventOptions {
   paypalLink?: string | null;
   paymentDueAt?: number | null;
   createdBy?: string | null;
+  eventTypeKey?: EventTypeKey;
 }
 
 // Just creates the event — tracking starts off, so this never wipes live
@@ -108,27 +118,35 @@ export interface CreateEventOptions {
 // against (see ACCEPTED_EVENT_PARTICIPANT_SQL).
 export function createEvent(name: string, options: CreateEventOptions): EventRow {
   const id = nanoid();
-  db.prepare(
-    `INSERT INTO events
-       (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at,
-        group_id, status, visibility_scope, cost_cents, accommodation_cost_cents, paypal_link, payment_due_at, created_by,
-        schedule_revision)
-     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, 'published', 'participants', ?, ?, ?, ?, ?, 1)`
-  ).run(
-    id,
-    name,
-    options.startsAt,
-    options.endsAt,
-    options.location ?? null,
-    options.description ?? null,
-    options.groupId ?? DEFAULT_GROUP_ID,
-    options.costCents ?? null,
-    options.accommodationCostCents ?? null,
-    options.paypalLink ?? null,
-    options.paymentDueAt ?? null,
-    options.createdBy ?? null,
-  );
-  return getEvent(id)!;
+  const eventTypeKey = options.eventTypeKey ?? DEFAULT_EVENT_TYPE_KEY;
+  return db.transaction(() => {
+    db.prepare(
+      `INSERT INTO events
+         (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at,
+          group_id, status, visibility_scope, cost_cents, accommodation_cost_cents, paypal_link, payment_due_at,
+          created_by, event_type_key, preset_version, schedule_revision)
+       VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, 'published', 'participants', ?, ?, ?, ?, ?, ?, ?, 1)`
+    ).run(
+      id,
+      name,
+      options.startsAt,
+      options.endsAt,
+      options.location ?? null,
+      options.description ?? null,
+      options.groupId ?? DEFAULT_GROUP_ID,
+      options.costCents ?? null,
+      options.accommodationCostCents ?? null,
+      options.paypalLink ?? null,
+      options.paymentDueAt ?? null,
+      options.createdBy ?? null,
+      eventTypeKey,
+      eventTypeKey === DEFAULT_EVENT_TYPE_KEY
+        ? DEFAULT_EVENT_PRESET_VERSION
+        : EVENT_TYPE_PRESETS[eventTypeKey].version,
+    );
+    createEventFeatureSnapshot(id, eventTypeKey, options.createdBy ?? null);
+    return getEvent(id)!;
+  })();
 }
 
 export interface UpdateEventFields {

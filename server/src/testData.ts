@@ -6,6 +6,8 @@
 import { nanoid } from 'nanoid';
 import { db, DEFAULT_GROUP_ID } from './db';
 import { deleteTestUsers } from './testUsers';
+import { DEFAULT_EVENT_PRESET_VERSION, DEFAULT_EVENT_TYPE_KEY } from './eventFeatureCatalog';
+import { createEventFeatureSnapshot } from './eventFeatures';
 
 const FIRST_TEST_YEAR = 2015;
 const LAST_TEST_YEAR = 2026;
@@ -37,7 +39,7 @@ function deleteTestEventsInTransaction(): number {
   return result.changes;
 }
 
-export function seedHallOfFameTestData(): HallOfFameSeedResult {
+export function seedHallOfFameTestData(changedBy: string | null = null): HallOfFameSeedResult {
   const seed = db.transaction((): HallOfFameSeedResult => {
     const players = db
       .prepare('SELECT id FROM players ORDER BY is_test, created_at, name COLLATE NOCASE LIMIT 12')
@@ -55,8 +57,9 @@ export function seedHallOfFameTestData(): HallOfFameSeedResult {
 
     const insertEvent = db.prepare(
       `INSERT INTO events
-       (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at, is_test, group_id, schedule_revision)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, ?, 1)`
+       (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at, is_test, group_id,
+        event_type_key, preset_version, schedule_revision)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?, ?, 1)`
     );
     // confirmed_schedule_revision = 1 matches the fixture event's own
     // schedule_revision (set above) — otherwise these historical test
@@ -99,8 +102,11 @@ export function seedHallOfFameTestData(): HallOfFameSeedResult {
         year % 2 === 0 ? 'Hamburg' : 'Melle',
         'Historische Testdaten für die Hall of Fame.',
         endsAt,
-        DEFAULT_GROUP_ID
+        DEFAULT_GROUP_ID,
+        DEFAULT_EVENT_TYPE_KEY,
+        DEFAULT_EVENT_PRESET_VERSION,
       );
+      createEventFeatureSnapshot(eventId, DEFAULT_EVENT_TYPE_KEY, changedBy);
       for (const player of players) insertParticipant.run(eventId, player.id);
 
       // Enough normal results to produce full, visibly changing standings.
