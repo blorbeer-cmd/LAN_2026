@@ -8,7 +8,14 @@ import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
-import { dateTimeFieldHtml, wireDateTimeField, wireDateTimeRange, parseDatetimeLocalMs } from '../dateTimeField.js';
+import {
+  captureDateTimeFieldDraft,
+  dateTimeFieldHtml,
+  parseDatetimeLocalMs,
+  restoreDateTimeFieldDraft,
+  wireDateTimeField,
+  wireDateTimeRange,
+} from '../dateTimeField.js';
 import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
@@ -421,6 +428,8 @@ export function renderArrivals(container, ctx) {
     ? {
         arrivalAt: parseDatetimeLocalMs(container.querySelector('#arrival-at')?.value),
         departureAt: parseDatetimeLocalMs(container.querySelector('#departure-at')?.value),
+        arrivalInput: captureDateTimeFieldDraft(container, 'arrival-at'),
+        departureInput: captureDateTimeFieldDraft(container, 'departure-at'),
         note: container.querySelector('#arrival-note')?.value ?? '',
       }
     : null;
@@ -443,6 +452,8 @@ export function renderArrivals(container, ctx) {
   wireDateTimeField(container, 'arrival-at');
   wireDateTimeField(container, 'departure-at');
   wireDateTimeRange(container, 'arrival-at', 'departure-at');
+  restoreDateTimeFieldDraft(container, 'arrival-at', draft?.arrivalInput);
+  restoreDateTimeFieldDraft(container, 'departure-at', draft?.departureInput);
   if (focusedSelector) container.querySelector(focusedSelector)?.focus();
 
   container.querySelectorAll('[data-arrivals-sort]').forEach((button) => {

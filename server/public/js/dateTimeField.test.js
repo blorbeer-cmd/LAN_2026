@@ -88,6 +88,12 @@ test('typing helpers preserve supported short and partially entered forms', () =
   assert.equal(formatTimeTyping('9:'), '9:');
 });
 
+test('typing helpers do not recreate separators removed with Backspace or Delete', () => {
+  assert.equal(formatDateTyping('08', 'deleteContentBackward'), '08');
+  assert.equal(formatDateTyping('0807', 'deleteContentForward'), '0807');
+  assert.equal(formatTimeTyping('14', 'deleteContentBackward'), '14');
+});
+
 test('calendar month paging never moves focus into a fully disabled month', () => {
   const focused = new Date(2026, 7, 24).getTime();
   const minimum = new Date(2026, 7, 24, 14, 5).getTime();

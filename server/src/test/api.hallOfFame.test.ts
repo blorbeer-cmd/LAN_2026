@@ -77,7 +77,7 @@ test('GET /api/hall-of-fame all-time rankings credit the champion', async () => 
 test('GET /api/hall-of-fame reports no champion for an event with no matches', async () => {
   const created = await request(app)
     .post('/api/events')
-    .send({ name: 'Empty HoF Event', startsAt: Date.now(), endsAt: Date.now() + 1000 });
+    .send({ name: 'Empty HoF Event', startsAt: Date.now(), endsAt: Date.now() + 5 * 60_000 });
   assert.equal(created.status, 201);
   const roster = await request(app)
     .put(`/api/events/${created.body.id}/participants`)

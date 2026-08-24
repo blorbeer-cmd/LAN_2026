@@ -51,7 +51,7 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
       assert.equal(gameA.status, 201, JSON.stringify(gameA.body));
 
       const now = Date.now();
-      const eventA = await scoped(app, 'post', '/api/events', alice).send({ name: 'Vote Event A', startsAt: now, endsAt: now + 60_000 });
+      const eventA = await scoped(app, 'post', '/api/events', alice).send({ name: 'Vote Event A', startsAt: now, endsAt: now + 5 * 60_000 });
       assert.equal(eventA.status, 201, JSON.stringify(eventA.body));
       assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice)
         .send({ playerIds: [alice.account.id, bob.account.id, eve.account.id] })).status, 200);
@@ -115,7 +115,7 @@ test('votes and drafts stay roles-gated and event-scoped inside the one real gro
       // Switching the group's tracked event moves subsequent writes there too
       // - round numbers keep incrementing (they are group-local, not
       // event-local), while history/export stay filtered per event.
-      const eventB = await scoped(app, 'post', '/api/events', alice).send({ name: 'Vote Event B', startsAt: now, endsAt: now + 60_000 });
+      const eventB = await scoped(app, 'post', '/api/events', alice).send({ name: 'Vote Event B', startsAt: now, endsAt: now + 5 * 60_000 });
       assert.equal(eventB.status, 201, JSON.stringify(eventB.body));
       assert.equal((await scoped(app, 'put', '/api/events/' + eventB.body.id + '/participants', alice)
         .send({ playerIds: [alice.account.id, bob.account.id, eve.account.id] })).status, 200);

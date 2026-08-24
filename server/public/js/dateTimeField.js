@@ -67,7 +67,12 @@ export function parseTimeInput(value) {
   return { hour, minute };
 }
 
-export function formatDateTyping(value) {
+function isDeletion(inputType) {
+  return typeof inputType === 'string' && inputType.startsWith('delete');
+}
+
+export function formatDateTyping(value, inputType = '') {
+  if (isDeletion(inputType)) return value;
   if (!/^[\d.]*$/.test(value)) return value;
   const normalized = value.replace(/\.+/g, '.');
   const firstSeparator = normalized.indexOf('.');
@@ -82,7 +87,8 @@ export function formatDateTyping(value) {
   return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`;
 }
 
-export function formatTimeTyping(value) {
+export function formatTimeTyping(value, inputType = '') {
+  if (isDeletion(inputType)) return value;
   if (!/^[\d:]*$/.test(value)) return value;
   const separator = value.indexOf(':');
   // parseTimeInput also accepts 9:05, so do not rewrite a separator the user
@@ -154,6 +160,24 @@ export function dateTimeFieldHtml(id, rawValueMs, opts = {}) {
       </div>
       <p class="dt-error" id="${errorId}" data-dt-error aria-live="polite" hidden></p>
     </div>`;
+}
+
+export function captureDateTimeFieldDraft(container, id) {
+  const field = container.querySelector(`[data-dt-field="${id}"]`);
+  if (!field) return null;
+  return {
+    date: field.querySelector('[data-dt-date]')?.value ?? '',
+    time: field.querySelector('[data-dt-time]')?.value ?? null,
+  };
+}
+
+export function restoreDateTimeFieldDraft(container, id, draft) {
+  if (!draft) return;
+  const field = container.querySelector(`[data-dt-field="${id}"]`);
+  const dateInput = field?.querySelector('[data-dt-date]');
+  const timeInput = field?.querySelector('[data-dt-time]');
+  if (dateInput) dateInput.value = draft.date;
+  if (timeInput && draft.time !== null) timeInput.value = draft.time;
 }
 
 function buildGridRows(viewYear, viewMonth, selectedMs, focusedMs, minMs, rangeStartMs, rangeEndMs) {
@@ -294,7 +318,10 @@ export function wireDateTimeField(container, id) {
     wrapper.innerHTML = popoverHtml(viewYear, viewMonth, currentMs(), focusedMs, minimumMs, rangeStartMs, rangeEndMs, label);
     const popover = wrapper.firstElementChild;
     popover.style.position = 'fixed';
-    document.body.appendChild(popover);
+    // Keep a modal's calendar inside its backdrop so modal.js includes all
+    // calendar controls in the focus trap. Outside modals, body remains the
+    // least surprising fixed-position host.
+    (field.closest('.modal-backdrop') || document.body).appendChild(popover);
     trigger.setAttribute('aria-expanded', 'true');
     positionPopover(popover, trigger);
 
@@ -392,8 +419,12 @@ export function wireDateTimeField(container, id) {
     popover.querySelector('[data-dt-day][tabindex="0"]')?.focus();
   }
 
-  dateInput.addEventListener('input', () => { dateInput.value = formatDateTyping(dateInput.value); });
-  timeInput?.addEventListener('input', () => { timeInput.value = formatTimeTyping(timeInput.value); });
+  dateInput.addEventListener('input', (event) => {
+    dateInput.value = formatDateTyping(dateInput.value, event.inputType);
+  });
+  timeInput?.addEventListener('input', (event) => {
+    timeInput.value = formatTimeTyping(timeInput.value, event.inputType);
+  });
   dateInput.addEventListener('blur', commitManualInput);
   dateInput.addEventListener('change', commitManualInput);
   timeInput?.addEventListener('blur', commitManualInput);

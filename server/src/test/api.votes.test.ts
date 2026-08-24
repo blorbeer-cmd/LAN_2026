@@ -406,7 +406,7 @@ test('each result row reports total all-time playtime, growing as sessions are t
 test('vote notifications target only the active event roster', async () => {
   const event = await request(app)
     .post('/api/events')
-    .send({ name: 'Vote roster', startsAt: Date.now(), endsAt: Date.now() + 60_000 });
+    .send({ name: 'Vote roster', startsAt: Date.now(), endsAt: Date.now() + 5 * 60_000 });
   assert.equal(event.status, 201);
 
   const roster = await request(app).put(`/api/events/${event.body.id}/participants`).send({ playerIds: [playerA] });

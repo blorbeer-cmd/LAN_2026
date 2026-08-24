@@ -5,7 +5,12 @@ import { api } from '../api.js';
 import { escapeHtml, formatDateTime } from '../format.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
-import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
+import {
+  captureDateTimeFieldDraft,
+  dateTimeFieldHtml,
+  restoreDateTimeFieldDraft,
+  wireDateTimeField,
+} from '../dateTimeField.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { domainIcon } from '../domainIcons.js';
@@ -83,6 +88,19 @@ export function renderBroadcast(container, ctx) {
   const prevInput = container.querySelector('#broadcast-message');
   const prevValue = prevInput?.value ?? '';
   const hadFocus = prevInput && document.activeElement === prevInput;
+  const previousDateTimeField = container.querySelector('[data-dt-field="broadcast-ends-at"]');
+  const previousDateTimeFocus = previousDateTimeField?.contains(document.activeElement)
+    ? document.activeElement.matches('[data-dt-date]')
+      ? '[data-dt-date]'
+      : document.activeElement.matches('[data-dt-time]')
+        ? '[data-dt-time]'
+        : document.activeElement.matches('[data-dt-trigger]')
+          ? '[data-dt-trigger]'
+          : null
+    : null;
+  const endsAtDraft = previousDateTimeFocus
+    ? captureDateTimeFieldDraft(container, 'broadcast-ends-at')
+    : null;
   const prevEndsAtValue = container.querySelector('#broadcast-ends-at')?.value ?? '';
   const parsedEndsAt = prevEndsAtValue ? new Date(prevEndsAtValue).getTime() : NaN;
   const displayEndsAt = Number.isFinite(parsedEndsAt) ? parsedEndsAt : Date.now() + 60 * 60 * 1000;
@@ -128,6 +146,7 @@ export function renderBroadcast(container, ctx) {
   `;
 
   wireDateTimeField(container, 'broadcast-ends-at');
+  restoreDateTimeFieldDraft(container, 'broadcast-ends-at', endsAtDraft);
   wireInfoTooltips(container);
 
   container.querySelector('[data-broadcast-history]')?.addEventListener('toggle', (event) => {
@@ -137,6 +156,9 @@ export function renderBroadcast(container, ctx) {
   const messageInput = container.querySelector('#broadcast-message');
   if (prevValue) messageInput.value = prevValue;
   if (hadFocus) messageInput.focus();
+  if (previousDateTimeFocus) {
+    container.querySelector(`[data-dt-field="broadcast-ends-at"] ${previousDateTimeFocus}`)?.focus();
+  }
 
   container.querySelector('#broadcast-form').addEventListener('submit', async (e) => {
     e.preventDefault();

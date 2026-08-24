@@ -2468,6 +2468,7 @@ button.draft-pool-player {
    calendar. Paired instances additionally communicate a real date range. */
 .dt-field {
   min-width: 0;
+  container-type: inline-size;
 }
 .dt-inputs {
   display: flex;
@@ -2476,22 +2477,30 @@ button.draft-pool-player {
   min-width: 0;
 }
 .dt-date-control {
-  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--tap-target-size);
   flex: 1 1 180px;
   min-width: 0;
 }
 .dt-date-input {
   width: 100%;
-  padding-right: calc(var(--tap-target-size) + var(--space-2));
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
 }
 .dt-calendar-btn {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
   width: var(--tap-target-size);
-  height: auto;
+  min-height: var(--tap-target-size);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-left: 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--bg-elevated-2);
   color: var(--text-muted);
+}
+@media (hover: hover) {
+  .dt-calendar-btn:hover {
+    background: var(--bg-elevated-2);
+    color: var(--text);
+  }
 }
 .dt-time-input {
   flex: 0 0 88px;
@@ -2510,6 +2519,18 @@ button.draft-pool-player {
 .dt-date-input[aria-invalid='true'],
 .dt-time-input[aria-invalid='true'] {
   border-color: var(--danger);
+}
+
+/* A date, 44px calendar action and time cannot stay legible in the narrow
+   half of a paired form. React to the component's own width (not only the
+   viewport) and give the date row the full available width. */
+@container (max-width: 280px) {
+  .dt-inputs {
+    flex-wrap: wrap;
+  }
+  .dt-date-control {
+    flex-basis: 100%;
+  }
 }
 
 .dt-popover {

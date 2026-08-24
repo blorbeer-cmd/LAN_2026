@@ -48,7 +48,7 @@ test('arcade data and REST history stay event-scoped inside the one real group',
 
       const now = Date.now();
       const eventA = await scoped(app, 'post', '/api/events', alice, groupId)
-        .send({ name: 'Arcade Event A', startsAt: now, endsAt: now + 60_000 });
+        .send({ name: 'Arcade Event A', startsAt: now, endsAt: now + 5 * 60_000 });
       assert.equal(eventA.status, 201, JSON.stringify(eventA.body));
       assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice, groupId)
         .send({ playerIds: [alice.account.id, bob.account.id] })).status, 200);
@@ -80,7 +80,7 @@ test('arcade data and REST history stay event-scoped inside the one real group',
       // Only one event can track at a time - switch sequentially before
       // creating event B's own data.
       const eventB = await scoped(app, 'post', '/api/events', alice, groupId)
-        .send({ name: 'Arcade Event B', startsAt: now, endsAt: now + 60_000 });
+        .send({ name: 'Arcade Event B', startsAt: now, endsAt: now + 5 * 60_000 });
       assert.equal(eventB.status, 201, JSON.stringify(eventB.body));
       assert.equal((await scoped(app, 'put', '/api/events/' + eventB.body.id + '/participants', alice, groupId)
         .send({ playerIds: [alice.account.id, bob.account.id] })).status, 200);

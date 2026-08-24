@@ -63,7 +63,7 @@ test('GET /api/skills/suggestions ignores matches from an event this account nev
   const now = Date.now();
   const privateEvent = await request(app)
     .post('/api/events')
-    .send({ name: 'Privates Event', startsAt: now, endsAt: now + 60_000 });
+    .send({ name: 'Privates Event', startsAt: now, endsAt: now + 5 * 60_000 });
   assert.equal(privateEvent.status, 201, JSON.stringify(privateEvent.body));
   const privateEventId = privateEvent.body.id as string;
   // Creating an event is not attending it: drop the creator's own roster row
@@ -114,7 +114,7 @@ test('GET /api/skills/suggestions rejects an explicit event the account never jo
   const now = Date.now();
   const other = await request(app)
     .post('/api/events')
-    .send({ name: 'Nicht besucht', startsAt: now, endsAt: now + 60_000 });
+    .send({ name: 'Nicht besucht', startsAt: now, endsAt: now + 5 * 60_000 });
   const otherId = other.body.id as string;
   db.prepare('DELETE FROM event_participants WHERE event_id = ? AND player_id = ?').run(otherId, TEST_ADMIN_ID);
   db.prepare('DELETE FROM event_participation_history WHERE event_id = ? AND player_id = ?').run(otherId, TEST_ADMIN_ID);

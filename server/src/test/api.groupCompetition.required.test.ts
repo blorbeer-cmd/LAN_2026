@@ -55,7 +55,7 @@ test('matches, matchmaking draws, tournaments and their aggregates stay event-sc
       assert.equal(gameA.status, 201, JSON.stringify(gameA.body));
 
       const now = Date.now();
-      const eventA = await scoped(app, 'post', '/api/events', alice.cookie, groupId).send({ name: 'Competition Event A', startsAt: now, endsAt: now + 60_000 });
+      const eventA = await scoped(app, 'post', '/api/events', alice.cookie, groupId).send({ name: 'Competition Event A', startsAt: now, endsAt: now + 5 * 60_000 });
       assert.equal(eventA.status, 201, JSON.stringify(eventA.body));
       assert.equal((await scoped(app, 'put', '/api/events/' + eventA.body.id + '/participants', alice.cookie, groupId)
         .send({ playerIds: [alice.account.id, bob.account.id] })).status, 200);
@@ -110,7 +110,7 @@ test('matches, matchmaking draws, tournaments and their aggregates stay event-sc
       // one event can track at a time, so this must be sequential, not
       // concurrent.
       assert.equal((await scoped(app, 'post', '/api/events/' + eventA.body.id + '/tracking/stop', alice.cookie, groupId).send({})).status, 200);
-      const eventB = await scoped(app, 'post', '/api/events', alice.cookie, groupId).send({ name: 'Competition Event B', startsAt: now, endsAt: now + 60_000 });
+      const eventB = await scoped(app, 'post', '/api/events', alice.cookie, groupId).send({ name: 'Competition Event B', startsAt: now, endsAt: now + 5 * 60_000 });
       assert.equal(eventB.status, 201, JSON.stringify(eventB.body));
       assert.equal((await scoped(app, 'put', '/api/events/' + eventB.body.id + '/participants', alice.cookie, groupId)
         .send({ playerIds: [alice.account.id, bob.account.id] })).status, 200);

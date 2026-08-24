@@ -247,7 +247,7 @@ test('PUT /api/players/:id/neighbors rejects unknown ids', async () => {
 test('profile reads stay in the base event and personal analytics exclude unvisited private events', async () => {
   const event = await request(app)
     .post('/api/events')
-    .send({ name: 'Private Profile Event', startsAt: Date.now(), endsAt: Date.now() + 60_000, visibilityScope: 'participants' });
+    .send({ name: 'Private Profile Event', startsAt: Date.now(), endsAt: Date.now() + 5 * 60_000, visibilityScope: 'participants' });
   assert.equal(event.status, 201, JSON.stringify(event.body));
   const game = db.prepare('SELECT id FROM games WHERE group_id = ? OR arcade_key IS NOT NULL LIMIT 1').get(DEFAULT_GROUP_ID) as {
     id: string;

@@ -96,7 +96,7 @@ test('POST /api/broadcasts defaults to one hour, stores the deadline, and lists 
 test('event broadcasts enforce recipients and mutes while preserving a kiosk-only entry', async () => {
   const event = await request(app)
     .post('/api/events')
-    .send({ name: 'Stumme Event-Durchsage', startsAt: Date.now(), endsAt: Date.now() + 60_000 });
+    .send({ name: 'Stumme Event-Durchsage', startsAt: Date.now(), endsAt: Date.now() + 5 * 60_000 });
   assert.equal(event.status, 201);
   const roster = await request(app)
     .put(`/api/events/${event.body.id}/participants`)
@@ -127,7 +127,7 @@ test('an event without participants rejects operational broadcasts', async () =>
     .send({
       name: 'Leeres Event',
       startsAt: Date.now(),
-      endsAt: Date.now() + 60_000,
+      endsAt: Date.now() + 5 * 60_000,
       visibilityScope: 'participants',
     });
   assert.equal(event.status, 201);
