@@ -64,7 +64,7 @@ test('group roles, event resources and audit stay isolated inside the one real g
 
       const now = Date.now();
       const eventA = await scoped(app, 'post', '/api/events', alice.cookie).send({
-        name: 'Event A', startsAt: now, endsAt: now + 60_000,
+        name: 'Event A', startsAt: now, endsAt: now + 5 * 60_000,
       });
       assert.equal(eventA.status, 201, JSON.stringify(eventA.body));
       assert.equal(eventA.body.groupId, DEFAULT_GROUP_ID);
@@ -76,7 +76,7 @@ test('group roles, event resources and audit stay isolated inside the one real g
       assert.equal(bobEventsA.body.availableEvents.some((event) => event.id === eventA.body.id), false);
       assert.ok(bobEventsA.body.availableEvents.some((event) => event.isBase));
       const bobCreateDenied = await scoped(app, 'post', '/api/events', bob.cookie).send({
-        name: 'Forbidden', startsAt: now, endsAt: now + 60_000,
+        name: 'Forbidden', startsAt: now, endsAt: now + 5 * 60_000,
       });
       assert.equal(bobCreateDenied.status, 403);
       assert.equal((await request(app).post('/api/groups/' + DEFAULT_GROUP_ID + '/test-users').set('Cookie', bob.cookie).send({ count: 1 })).status, 403);
@@ -187,7 +187,7 @@ test('group roles, event resources and audit stay isolated inside the one real g
         .set('Cookie', alice.cookie)
         .send({ role: 'admin' })).status, 409);
       const bobCreatesImmediately = await scoped(app, 'post', '/api/events', bob.cookie).send({
-        name: 'Bob Admin Event', startsAt: now, endsAt: now + 60_000,
+        name: 'Bob Admin Event', startsAt: now, endsAt: now + 5 * 60_000,
       });
       assert.equal(bobCreatesImmediately.status, 201, JSON.stringify(bobCreatesImmediately.body));
       assert.equal((await request(app).post('/api/auth/reauth').set('Cookie', bob.cookie).send({ password: bob.password })).status, 204);

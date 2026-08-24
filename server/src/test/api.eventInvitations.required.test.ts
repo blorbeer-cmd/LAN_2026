@@ -67,7 +67,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       const disabled = await register('Invitation Disabled');
       const now = Date.now();
       const event = await call(app, 'post', '/api/events', owner).send({
-        name: 'Invitation Event', startsAt: now, endsAt: now + 60_000,
+        name: 'Invitation Event', startsAt: now, endsAt: now + 5 * 60_000,
       });
       assert.equal(event.status, 201, JSON.stringify(event.body));
 
@@ -156,7 +156,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       // open. Its notification must retire with it, or the banner keeps
       // asking about an event the account can no longer see at all.
       const withdrawnEvent = await call(app, 'post', '/api/events', owner).send({
-        name: 'Withdrawn Event', startsAt: now, endsAt: now + 60_000,
+        name: 'Withdrawn Event', startsAt: now, endsAt: now + 5 * 60_000,
       });
       assert.equal(withdrawnEvent.status, 201);
       assert.equal((await call(app, 'post', '/api/events/' + withdrawnEvent.body.id + '/invitations', owner).send({ playerId: bob.account.id })).status, 201);
@@ -169,7 +169,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.notEqual(withdrawnPushRow().resolvedAt, null, 'withdrawing must resolve the invitation notification');
 
       const declineEvent = await call(app, 'post', '/api/events', owner).send({
-        name: 'Decline Event', startsAt: now, endsAt: now + 60_000,
+        name: 'Decline Event', startsAt: now, endsAt: now + 5 * 60_000,
       });
       assert.equal(declineEvent.status, 201);
       assert.equal((await call(app, 'post', '/api/events/' + declineEvent.body.id + '/invitations', owner).send({ playerId: bob.account.id })).status, 201);
@@ -195,7 +195,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal((await call(app, 'post', '/api/events/missing/invitation/accept', bob)).status, 404);
 
       const linkedEvent = await call(app, 'post', '/api/events', owner).send({
-        name: 'Direct Link Event', startsAt: now, endsAt: now + 60_000,
+        name: 'Direct Link Event', startsAt: now, endsAt: now + 5 * 60_000,
       });
       assert.equal(linkedEvent.status, 201, JSON.stringify(linkedEvent.body));
       const registrationLink = await request(app)
@@ -221,7 +221,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       );
 
       const scopeEvent = await call(app, 'post', '/api/events', owner).send({
-        name: 'Invitation Scope Event', startsAt: now, endsAt: now + 60_000, visibilityScope: 'participants',
+        name: 'Invitation Scope Event', startsAt: now, endsAt: now + 5 * 60_000, visibilityScope: 'participants',
       });
       assert.equal(scopeEvent.status, 201, JSON.stringify(scopeEvent.body));
       db.prepare('UPDATE events SET tracking_enabled = 1 WHERE id = ?').run(scopeEvent.body.id);

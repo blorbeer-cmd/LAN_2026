@@ -30,7 +30,7 @@ test('concurrent tracking starts create exactly one verified pre-event snapshot'
   mutableConfig.backupRetention = 3;
   const event = await request(app)
     .post('/api/events')
-    .send({ name: 'Backup Start', startsAt: Date.now(), endsAt: Date.now() + 60_000 });
+    .send({ name: 'Backup Start', startsAt: Date.now(), endsAt: Date.now() + 5 * 60_000 });
 
   const starts = await Promise.all(
     Array.from({ length: 4 }, () => request(app).post(`/api/events/${event.body.id}/tracking/start`)),
@@ -47,7 +47,7 @@ test('tracking stays off when the pre-event snapshot cannot be written', async (
   mutableConfig.backupDir = blockedPath;
   const event = await request(app)
     .post('/api/events')
-    .send({ name: 'Backup Failure', startsAt: Date.now(), endsAt: Date.now() + 60_000 });
+    .send({ name: 'Backup Failure', startsAt: Date.now(), endsAt: Date.now() + 5 * 60_000 });
 
   const originalConsoleError = console.error;
   console.error = () => undefined;

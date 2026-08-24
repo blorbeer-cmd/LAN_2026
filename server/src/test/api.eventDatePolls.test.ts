@@ -145,6 +145,40 @@ test('the permanent base event cannot host polls through the API', async () => {
   assert.equal(after.count, before.count);
 });
 
+test('polls accept one option and grow beyond the former eight-option cap', async () => {
+  const alice = 'poll-option-count-alice';
+  createMember(alice, 'Poll Option Count Alice');
+  const eventId = await createEvent('Poll Option Count Event', [alice]);
+
+  const singleOption = await createPoll(eventId, alice, {
+    title: 'Eine Möglichkeit',
+    options: [{ label: 'Nur diese' }],
+  });
+  assert.equal(singleOption.status, 201, JSON.stringify(singleOption.body));
+  assert.equal(singleOption.body.options.length, 1);
+
+  const expandedOptions = [
+    { id: singleOption.body.options[0].id, label: 'Nur diese' },
+    ...Array.from({ length: 9 }, (_, index) => ({ label: `Ergänzung ${index + 1}` })),
+  ];
+  const expanded = await request(app)
+    .patch(`/api/events/${eventId}/polls/${singleOption.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ options: expandedOptions });
+  assert.equal(expanded.status, 200, JSON.stringify(expanded.body));
+  assert.equal(expanded.body.options.length, 10);
+
+  const manyOptions = await createPoll(eventId, alice, {
+    title: 'Viele Möglichkeiten',
+    responseMode: 'multiple_choice',
+    maxSelections: 9,
+    options: Array.from({ length: 12 }, (_, index) => ({ label: `Möglichkeit ${index + 1}` })),
+  });
+  assert.equal(manyOptions.status, 201, JSON.stringify(manyOptions.body));
+  assert.equal(manyOptions.body.options.length, 12);
+  assert.equal(manyOptions.body.maxSelections, 9);
+});
+
 test('feasibility, choice and 1-5 rating modes enforce their distinct response semantics', async () => {
   const alice = 'poll-modes-alice';
   const bob = 'poll-modes-bob';
@@ -529,28 +563,27 @@ test('an open poll can update option notes and links, add options and notify onl
   assert.equal(editClosed.status, 409);
 });
 
-test('concurrent option additions keep the eight-option limit atomic', async () => {
+test('concurrent option additions can grow a poll beyond the former eight-option cap', async () => {
   const alice = 'poll-edit-race-alice';
   createMember(alice, 'Poll Edit Race Alice');
   const eventId = await createEvent('Poll Edit Race Event', [alice]);
   const created = await createPoll(eventId, alice, {
-    options: Array.from({ length: 7 }, (_, index) => ({ label: `Option ${index + 1}` })),
+    options: Array.from({ length: 8 }, (_, index) => ({ label: `Option ${index + 1}` })),
   });
   assert.equal(created.status, 201, JSON.stringify(created.body));
-  const existingOptions = created.body.options.map((option: { id: string; label: string }) => ({ id: option.id, label: option.label }));
   const responses = await Promise.all([
     request(app)
-      .patch(`/api/events/${eventId}/polls/${created.body.id}`)
+      .post(`/api/events/${eventId}/polls/${created.body.id}/options`)
       .set('x-test-player-id', alice)
-      .send({ options: [...existingOptions, { label: 'Option A' }] }),
+      .send({ label: 'Option A' }),
     request(app)
-      .patch(`/api/events/${eventId}/polls/${created.body.id}`)
+      .post(`/api/events/${eventId}/polls/${created.body.id}/options`)
       .set('x-test-player-id', alice)
-      .send({ options: [...existingOptions, { label: 'Option B' }] }),
+      .send({ label: 'Option B' }),
   ]);
-  assert.deepEqual(responses.map((response) => response.status).sort(), [200, 400]);
+  assert.deepEqual(responses.map((response) => response.status).sort(), [201, 201]);
   const current = await request(app).get(`/api/events/${eventId}/polls/${created.body.id}`).set('x-test-player-id', alice);
-  assert.equal(current.body.options.length, 8);
+  assert.equal(current.body.options.length, 10);
 });
 
 test('manual reminders target only confirmed participants who have not answered and respect cooldown', async () => {

@@ -273,7 +273,7 @@ test('GET /api/analytics/games-tournaments filters by a historically participate
   const now = Date.now();
   const ghostEvent = await request(app)
     .post('/api/events')
-    .send({ name: 'Leeres Event', startsAt: now, endsAt: now + 60_000 });
+    .send({ name: 'Leeres Event', startsAt: now, endsAt: now + 5 * 60_000 });
   db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')").run(
     ghostEvent.body.id,
     statP1,
