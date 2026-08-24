@@ -6,9 +6,10 @@ import { api } from './api.js';
 import { getMyId } from './whoami.js';
 import { icon } from './icons.js';
 import { escapeHtml, formatDateTime } from './format.js';
-import { feedEntryIcon, feedEntryTitle, feedLinkView, FEED_LINK_LABELS } from './pushFeed.js';
+import { feedEntryIcon, feedEntryTitle, feedLinkTarget, feedLinkView, FEED_LINK_LABELS } from './pushFeed.js';
 import { showToast } from './toast.js';
 import { confirmDialog } from './modal.js';
+import { emptyStateHtml } from './emptyState.js';
 
 const FEED_LIMIT = 20;
 
@@ -56,20 +57,24 @@ function scheduleHighlightExpiry() {
   highlightExpiryTimer = window.setTimeout(refreshNotificationBanner, Math.min(delay, 2_147_483_647));
 }
 
-function entryHtml(entry) {
+export function entryHtml(entry) {
   const view = feedLinkView(entry.url);
+  const target = feedLinkTarget(entry.url);
   const directBadge = entry.audience === 'direct' ? '<span class="badge badge-paused">Für dich</span>' : '';
+  const eventBadge = entry.eventName
+    ? `<span class="badge badge-event">${escapeHtml(entry.eventName)}</span>`
+    : '';
   return `<article class="notification-center-entry${entry.seen ? '' : ' is-unread'}" data-notification-entry="${entry.id}">
     <div class="row-between notification-center-entry-head">
       <span class="row notification-center-entry-title">
         <span class="notification-center-entry-icon">${icon(feedEntryIcon(entry))}</span>
-        <strong>${escapeHtml(feedEntryTitle(entry))}</strong>${directBadge}
+        <strong>${escapeHtml(feedEntryTitle(entry))}</strong>${eventBadge}${directBadge}
       </span>
       <time class="muted notification-center-time">${formatDateTime(entry.createdAt)}</time>
     </div>
     <div class="muted notification-center-body">${escapeHtml(entry.body)}</div>
     <div class="notification-center-actions">
-      ${view ? `<button type="button" class="btn btn-sm" data-notification-navigate="${view}" data-notification-id="${entry.id}">${FEED_LINK_LABELS[view]}</button>` : ''}
+      ${view ? `<button type="button" class="btn btn-sm" data-notification-navigate="${view}" data-notification-target="${escapeHtml(target?.id ?? '')}" data-notification-event-id="${escapeHtml(entry.eventId ?? '')}" data-notification-id="${entry.id}">${FEED_LINK_LABELS[view]}</button>` : ''}
       <span class="notification-center-entry-tools">
         ${entry.seen ? '' : `<button type="button" class="icon-btn notification-center-seen" data-notification-seen="${entry.id}" aria-label="Als gelesen markieren" title="Als gelesen markieren">${icon('circleCheck')}</button>`}
         <button type="button" class="icon-btn notification-center-remove" data-notification-hide="${entry.id}" aria-label="Mitteilung entfernen" title="Mitteilung entfernen">${icon('trash')}</button>
@@ -80,21 +85,21 @@ function entryHtml(entry) {
 
 function panelContentHtml(myId) {
   if (!myId) {
-    return '<div class="empty-state notification-center-empty">Wähle zuerst dein Profil aus.</div>';
+    return emptyStateHtml('Wähle zuerst dein Profil aus.', { className: 'notification-center-empty' });
   }
   if (loading && loadedForId !== myId) {
-    return '<div class="empty-state notification-center-empty">Mitteilungen werden geladen…</div>';
+    return emptyStateHtml('Mitteilungen werden geladen…', { className: 'notification-center-empty' });
   }
   if (loadError) {
-    return '<div class="empty-state notification-center-empty">Mitteilungen konnten nicht geladen werden.</div>';
+    return emptyStateHtml('Mitteilungen konnten nicht geladen werden.', { className: 'notification-center-empty' });
   }
   if (entries.length === 0) {
-    return '<div class="empty-state notification-center-empty">Keine Mitteilungen.</div>';
+    return emptyStateHtml('Keine Mitteilungen.', { className: 'notification-center-empty' });
   }
   return `<div class="notification-center-list">${entries.slice(0, FEED_LIMIT).map(entryHtml).join('')}</div>`;
 }
 
-async function markSeen(entryId, { navigate } = {}) {
+async function markSeen(entryId, { navigate, eventId, target = null } = {}) {
   const playerId = getMyId();
   const entry = entries.find((item) => item.id === entryId);
   if (!playerId || !entry) return;
@@ -109,7 +114,7 @@ async function markSeen(entryId, { navigate } = {}) {
     await api.push.seen(entryId, playerId);
     if (navigate) {
       setOpen(false);
-      window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: navigate }));
+      window.dispatchEvent(new CustomEvent('respawn:event-navigate', { detail: { view: navigate, eventId, target } }));
     }
   } catch (err) {
     entry.seen = false;
@@ -202,13 +207,15 @@ function renderHighlight() {
   container.innerHTML = `
     <button type="button" class="notification-highlight-link" ${view ? `data-notification-highlight-navigate="${view}"` : 'data-notification-highlight-open'} data-notification-id="${highlightEntry.id}">
       ${icon(feedEntryIcon(highlightEntry))}
-      <span class="notification-highlight-text"><strong>${escapeHtml(feedEntryTitle(highlightEntry))}</strong><span>${escapeHtml(highlightEntry.body)}</span></span>
+      <span class="notification-highlight-text"><strong>${escapeHtml(highlightEntry.eventName ? `${highlightEntry.eventName} · ${feedEntryTitle(highlightEntry)}` : feedEntryTitle(highlightEntry))}</strong><span>${escapeHtml(highlightEntry.body)}</span></span>
       ${view ? icon('chevronRight') : ''}
     </button>
     <button type="button" class="icon-btn notification-highlight-dismiss" data-notification-highlight-dismiss="${highlightEntry.id}" aria-label="Aktuelle Mitteilung schließen" title="Schließen">${icon('x')}</button>`;
   container.querySelector('[data-notification-highlight-navigate]')?.addEventListener('click', (event) => {
     markSeen(event.currentTarget.dataset.notificationId, {
       navigate: event.currentTarget.dataset.notificationHighlightNavigate,
+      eventId: highlightEntry.eventId,
+      target: feedLinkTarget(highlightEntry.url),
     });
   });
   container.querySelector('[data-notification-highlight-open]')?.addEventListener('click', () => setOpen(true));
@@ -268,12 +275,16 @@ export function renderBanner() {
   });
   panel.querySelectorAll('[data-notification-navigate]').forEach((control) => {
     control.addEventListener('click', () =>
-      markSeen(control.dataset.notificationId, { navigate: control.dataset.notificationNavigate })
+      markSeen(control.dataset.notificationId, {
+        navigate: control.dataset.notificationNavigate,
+        eventId: control.dataset.notificationEventId,
+        target: control.dataset.notificationTarget ? { type: 'order', id: control.dataset.notificationTarget } : null,
+      })
     );
   });
 }
 
-export async function refreshNotificationBanner() {
+export async function refreshNotificationBanner({ throwOnError = false } = {}) {
   const myId = getMyId();
   const thisEpoch = ++epoch;
   if (!myId) {
@@ -297,13 +308,14 @@ export async function refreshNotificationBanner() {
     highlightEntry = current.entry;
     scheduleHighlightExpiry();
     loadedForId = myId;
-  } catch {
+  } catch (error) {
     if (thisEpoch !== epoch) return;
     entries = [];
     highlightEntry = null;
     clearHighlightExpiryTimer();
     loadedForId = myId;
     loadError = true;
+    if (throwOnError) throw error;
   } finally {
     if (thisEpoch === epoch) {
       loading = false;

@@ -1,13 +1,18 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { writeAdminAudit } from '../adminAudit';
-import { config } from '../config';
 import { db } from '../db';
-import { resolveGroupEventScope, type GroupEventScope } from '../groupEventScope';
+import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
+import {
+  requireGroupEventAccess,
+  resolveRequestGroupEventScope,
+  type GroupEventScope,
+} from '../groupEventScope';
 import { resolveGroupResource } from '../groupAuthorization';
 import { activeGroupPlayers } from '../groupPlayers';
 import { withBodyPlayerIdentity } from '../sessions';
 import { isNonEmptyString } from '../validation';
+import { isParticipant } from '../events';
 
 export const pingsRouter = Router();
 
@@ -103,26 +108,24 @@ function buildPings(groupId: string, eventId: GroupEventScope | undefined, histo
   }));
 }
 
-// GET /api/pings/history - durable group history, optionally narrowed to a
-// same-group event. Without eventId it spans the whole selected group.
+// GET /api/pings/history - history of the active or explicitly selected event.
 pingsRouter.get('/history', (req, res) => {
-  if (req.query.eventId === undefined) {
-    return res.json({ groupId: req.group!.id, pings: buildPings(req.group!.id, undefined, true) });
-  }
-  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  const scope = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json({ groupId: req.group!.id, eventId: scope.eventId, pings: buildPings(req.group!.id, scope.eventId, true) });
 });
 
-// GET /api/pings - active pings in the current group room/tracking event.
+// GET /api/pings - active pings in the account's current event.
 pingsRouter.get('/', (req, res) => {
-  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  const scope = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json({ groupId: req.group!.id, eventId: scope.eventId, pings: buildPings(req.group!.id, scope.eventId, false) });
 });
 
-// POST /api/pings - active members create a short-lived request. Required
-// auth binds playerId to the session; legacy keeps the existing body shape.
+// POST /api/pings - active members create a short-lived request. The actor is
+// always bound to the verified session, regardless of the submitted body.
 pingsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const { playerId, gameId, message, expiresInMinutes, eventId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -145,14 +148,16 @@ pingsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     });
   }
 
-  const scope = resolveGroupEventScope(req.group!.id, eventId);
+  const scope = resolveRequestGroupEventScope(req, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const player = activeGroupPlayers(req.group!.id, [playerId]).get(playerId);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   const game = db
-    .prepare('SELECT id, name, icon FROM games WHERE id = ? AND group_id = ?')
-    .get(gameId, req.group!.id) as { id: string; name: string; icon: string } | undefined;
+    .prepare('SELECT id, name, icon, status FROM games WHERE id = ? AND group_id = ?')
+    .get(gameId, req.group!.id) as { id: string; name: string; icon: string; status: string } | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+  if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
 
   const now = Date.now();
   db.prepare(
@@ -184,13 +189,16 @@ pingsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
 
 pingsRouter.post('/:id/interested', resolvePing, ...withBodyPlayerIdentity, (req, res) => {
   const ping = req.groupResource as PingRow;
+  if (!requireGroupEventAccess(req, res, ping.event_id)) return;
   if (ping.cancelled_at !== null || ping.expires_at <= Date.now()) {
     return res.status(410).json({ error: 'Dieser Ping ist bereits abgelaufen.' });
   }
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) return res.status(400).json({ error: 'playerId ist erforderlich.' });
   const player = activeGroupPlayers(ping.group_id, [playerId]).get(playerId);
-  if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (!player || !ping.event_id || !isParticipant(ping.event_id, playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
 
   const existing = db
     .prepare('SELECT 1 FROM game_ping_interested WHERE ping_id = ? AND player_id = ?')
@@ -215,9 +223,10 @@ pingsRouter.post('/:id/interested', resolvePing, ...withBodyPlayerIdentity, (req
 // ping. Instance-admin state is deliberately not a group-role bypass.
 pingsRouter.delete('/:id', resolvePing, (req, res) => {
   const ping = req.groupResource as PingRow;
+  if (!requireGroupEventAccess(req, res, ping.event_id)) return;
   const role = req.groupMembership?.role;
   const mayModerate = role === 'admin' || role === 'owner';
-  if (config.authMode !== 'legacy' && req.player?.id !== ping.player_id && !mayModerate) {
+  if (req.player?.id !== ping.player_id && !mayModerate) {
     writeAdminAudit({
       actorPlayerId: req.player?.id,
       groupId: ping.group_id,

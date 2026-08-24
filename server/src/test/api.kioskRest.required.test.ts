@@ -1,5 +1,5 @@
-// AUTH_MODE and KIOSK_TOKEN are read at module import time, so the read-only
-// kiosk REST boundary is exercised in a child process with the environment
+// KIOSK_TOKEN is read at module import time, so the read-only kiosk REST
+// boundary is exercised in a child process with the environment
 // configured before app.ts and its routers load. Covers the token-only
 // dashboard load (/push/last must be reachable), the env-token archived-group
 // rejection, and the group-kiosk banner union that mirrors the socket rules.
@@ -11,18 +11,22 @@ import path from 'path';
 const APP_JS_PATH = path.join(__dirname, '..', 'app.js');
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
 
-test('a token-only kiosk can load the whole dashboard, honours archival, and unions its banner scope', () => {
+test('a token-only kiosk loads one exact event and honours archival', () => {
   const script = `
     const assert = require('assert/strict');
     const request = require('supertest');
+    const { createHash } = require('crypto');
     const { createApp } = require(${JSON.stringify(APP_JS_PATH)});
-    const { db } = require(${JSON.stringify(DB_JS_PATH)});
+    const { BASE_EVENT_ID, db } = require(${JSON.stringify(DB_JS_PATH)});
 
     const KIOSK = 'required-kiosk-token';
     const GROUP = 'default-group';
 
     function kioskGet(app, pathname) {
       return request(app).get(pathname).set('x-kiosk-mode', '1').set('x-access-token', KIOSK);
+    }
+    function eventKioskGet(app, pathname) {
+      return request(app).get(pathname).set('x-kiosk-mode', '1').set('x-access-token', 'event-kiosk-token');
     }
 
     // Direct group-wide push rows: an empty player_ids array satisfies the
@@ -51,13 +55,20 @@ test('a token-only kiosk can load the whole dashboard, honours archival, and uni
 
       // #4 — a group kiosk unions its group room with its current tracking
       // event and returns the newest active 'all' entry across both.
+      pushRow('Allgemein', BASE_EVENT_ID);
+      const afterBase = await kioskGet(app, '/api/push/last');
+      assert.equal(afterBase.body.entry.title, 'Allgemein');
+
       db.prepare("INSERT INTO events (id, name, starts_at, group_id, tracking_enabled) VALUES ('kiosk-evt', 'Kiosk Evt', ?, ?, 1)").run(Date.now(), GROUP);
-      pushRow('Gruppenraum', null);
-      const afterRoom = await kioskGet(app, '/api/push/last');
-      assert.equal(afterRoom.body.entry.title, 'Gruppenraum', 'group-room banner is shown');
+      db.prepare(
+        "INSERT INTO kiosk_tokens (id, token_hash, group_id, event_id, label, created_by, created_at, revoked_at) " +
+        "VALUES ('event-kiosk', ?, ?, 'kiosk-evt', 'Test', NULL, ?, NULL)"
+      ).run(createHash('sha256').update('event-kiosk-token').digest('hex'), GROUP, Date.now());
+      assert.equal((await eventKioskGet(app, '/api/push/last')).body.entry, null);
       pushRow('Aktuelles Event', 'kiosk-evt');
-      const afterEvent = await kioskGet(app, '/api/push/last');
-      assert.equal(afterEvent.body.entry.title, 'Aktuelles Event', 'the newer current-event banner wins the union');
+      const afterEvent = await eventKioskGet(app, '/api/push/last');
+      assert.equal(afterEvent.body.entry.title, 'Aktuelles Event');
+      assert.equal((await kioskGet(app, '/api/push/last')).body.entry.title, 'Allgemein');
 
       // #2 — the env token keeps reading until the resolved group is archived,
       // then every kiosk GET is rejected (parity with the socket delivery).
@@ -68,6 +79,7 @@ test('a token-only kiosk can load the whole dashboard, honours archival, and uni
       assert.equal(afterArchive.status, 404, 'an archived group must reject the env-token kiosk');
       const lastAfterArchive = await kioskGet(app, '/api/push/last');
       assert.equal(lastAfterArchive.status, 404, 'and the banner endpoint too');
+      assert.equal((await eventKioskGet(app, '/api/live')).status, 401, 'archival invalidates stored event tokens');
 
       console.log('KIOSK_REST_OK');
     })().catch((err) => {
@@ -79,7 +91,6 @@ test('a token-only kiosk can load the whole dashboard, honours archival, and uni
     env: {
       ...process.env,
       DB_FILE: ':memory:',
-      AUTH_MODE: 'required',
       COOKIE_SECURE: '0',
       KIOSK_TOKEN: 'required-kiosk-token',
       ADMIN_RECOVERY_CODE: 'kiosk-rest-recovery-code',

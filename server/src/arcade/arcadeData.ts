@@ -1,7 +1,6 @@
 import { nanoid } from 'nanoid';
-import { config } from '../config';
-import { db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from '../db';
-import { getTrackingEvent } from '../events';
+import { db } from '../db';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
 
 export interface ArcadeDataScope {
   groupId: string;
@@ -12,63 +11,47 @@ interface ArcadePlayerSnapshot {
   id?: string;
   playerId?: string;
   name?: string;
+  isWinner?: boolean;
 }
 
 export function currentArcadeDataScope(playerIds: string[] = []): ArcadeDataScope | null {
-  const tracking = getTrackingEvent();
-  const groupId = tracking.id === OUTSIDE_EVENTS_ID ? DEFAULT_GROUP_ID : tracking.group_id ?? DEFAULT_GROUP_ID;
-  const eventId = tracking.id === OUTSIDE_EVENTS_ID ? null : tracking.id;
   const uniquePlayerIds = [...new Set(playerIds)];
-  if (uniquePlayerIds.length === 0) return { groupId, eventId };
-
-  if (config.authMode === 'legacy') {
-    const placeholders = uniquePlayerIds.map(() => '?').join(',');
-    const playerCount = (
-      db.prepare(`SELECT COUNT(*) AS count FROM players WHERE id IN (${placeholders})`).get(...uniquePlayerIds) as {
-        count: number;
-      }
-    ).count;
-    if (playerCount !== uniquePlayerIds.length) return null;
-    const now = Date.now();
-    const ensureMembership = db.prepare(
-      `INSERT OR IGNORE INTO group_memberships
-         (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
-       VALUES (?, ?, 'member', 'active', ?, NULL, 1, NULL)`,
-    );
-    db.transaction(() => {
-      for (const playerId of uniquePlayerIds) ensureMembership.run(groupId, playerId, now);
-    })();
-    return { groupId, eventId };
-  }
+  if (uniquePlayerIds.length === 0) return null;
 
   const placeholders = uniquePlayerIds.map(() => '?').join(',');
-  const activeCount = (
+  const contexts = db
+    .prepare(
+      `SELECT DISTINCT e.id AS eventId, e.group_id AS groupId
+       FROM player_event_contexts pec
+       JOIN events e ON e.id = pec.active_event_id
+       JOIN event_participants ep ON ep.event_id = e.id AND ep.player_id = pec.player_id
+       JOIN group_memberships gm ON gm.group_id = e.group_id AND gm.player_id = pec.player_id
+       JOIN players p ON p.id = pec.player_id
+       WHERE pec.player_id IN (${placeholders}) AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
+         AND gm.status = 'active' AND p.deactivated_at IS NULL`,
+    )
+    .all(...uniquePlayerIds) as Array<{ eventId: string; groupId: string }>;
+  if (contexts.length !== 1) return null;
+  const context = contexts[0];
+  // Deactivation does not purge event_participants, so a stale accepted row
+  // would otherwise let a removed player ride along with the remaining active
+  // ones: the query above simply yields no row for them, and a plain count
+  // over event_participants would still reach uniquePlayerIds.length. Every
+  // id therefore has to prove active membership and an active account here
+  // too, exactly as the context query does.
+  const participantCount = (
     db
       .prepare(
-        `SELECT COUNT(*) AS count
-         FROM group_memberships gm
-         JOIN players p ON p.id = gm.player_id
-         WHERE gm.group_id = ? AND gm.status = 'active' AND p.deactivated_at IS NULL
-           AND gm.player_id IN (${placeholders})`,
+        `SELECT COUNT(*) AS count FROM event_participants ep
+         JOIN group_memberships gm ON gm.group_id = ? AND gm.player_id = ep.player_id
+         JOIN players p ON p.id = ep.player_id
+         WHERE ep.event_id = ? AND ep.player_id IN (${placeholders})
+           AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
+           AND gm.status = 'active' AND p.deactivated_at IS NULL`,
       )
-      .get(groupId, ...uniquePlayerIds) as { count: number }
+      .get(context.groupId, context.eventId, ...uniquePlayerIds) as { count: number }
   ).count;
-  if (activeCount !== uniquePlayerIds.length) return null;
-
-  // Legacy mode has one implicit group. Required mode additionally ensures
-  // that an event-scoped Arcade action only references that event's roster.
-  if (eventId) {
-    const participantCount = (
-      db
-        .prepare(
-          `SELECT COUNT(*) AS count FROM event_participants
-           WHERE event_id = ? AND player_id IN (${placeholders})`,
-        )
-        .get(eventId, ...uniquePlayerIds) as { count: number }
-    ).count;
-    if (participantCount !== uniquePlayerIds.length) return null;
-  }
-  return { groupId, eventId };
+  return participantCount === uniquePlayerIds.length ? context : null;
 }
 
 export function recordArcadeResult(options: {
@@ -79,6 +62,7 @@ export function recordArcadeResult(options: {
   reason: string;
   startedAt: number;
   endedAt?: number;
+  matchId?: string;
   scope?: ArcadeDataScope;
 }): string | null {
   const playerSnapshots = options.players.filter((player) => typeof (player.id ?? player.playerId) === 'string');
@@ -89,8 +73,9 @@ export function recordArcadeResult(options: {
   const realPlayerById = new Map(realPlayers.map((player) => [player.id, player]));
   const realPlayerIds = participantKeys.filter((id) => realPlayerById.has(id));
   const scope = options.scope ?? currentArcadeDataScope(realPlayerIds);
-  if (scope && options.scope && config.authMode !== 'legacy') {
-    const eventExists = scope.eventId === null || Boolean(
+  if (!scope?.eventId) return null;
+  if (scope && options.scope) {
+    const eventExists = Boolean(
       db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(scope.eventId, scope.groupId),
     );
     const permitted = realPlayerIds.every((playerId) => Boolean(db.prepare(
@@ -99,10 +84,11 @@ export function recordArcadeResult(options: {
        JOIN players p ON p.id = gm.player_id
        WHERE gm.group_id = ? AND gm.player_id = ? AND gm.status = 'active'
          AND g.archived_at IS NULL AND p.deactivated_at IS NULL
-         AND (? IS NULL OR gm.role IN ('admin', 'owner') OR EXISTS (
+         AND EXISTS (
            SELECT 1 FROM event_participants ep WHERE ep.event_id = ? AND ep.player_id = gm.player_id
-         ))`,
-    ).get(scope.groupId, playerId, scope.eventId, scope.eventId)));
+             AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
+         )`,
+    ).get(scope.groupId, playerId, scope.eventId)));
     if (!eventExists || !permitted) return null;
   }
   if (!scope || (options.winnerId !== null && !realPlayerById.has(options.winnerId))) return null;
@@ -114,8 +100,8 @@ export function recordArcadeResult(options: {
   );
   const insertResult = db.prepare(
     `INSERT INTO arcade_results
-       (id, group_id, event_id, game_type, winner_id, players, scores, reason, started_at, ended_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, group_id, event_id, game_type, winner_id, players, scores, reason, started_at, ended_at, source_match_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertParticipant = db.prepare(
     `INSERT INTO arcade_result_participants
@@ -135,6 +121,7 @@ export function recordArcadeResult(options: {
       options.reason,
       options.startedAt,
       endedAt,
+      options.matchId ?? null,
     );
     for (const player of playerSnapshots) {
       const participantKey = String(player.id ?? player.playerId);
@@ -147,7 +134,7 @@ export function recordArcadeResult(options: {
         participantKey,
         String(score.name ?? player.name ?? realPlayer?.name ?? 'Unbekannt'),
         JSON.stringify(score),
-        options.winnerId === participantKey ? 1 : 0,
+        options.winnerId === participantKey || score.isWinner === true ? 1 : 0,
       );
     }
   })();

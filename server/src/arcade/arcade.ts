@@ -6,16 +6,17 @@ import { notifyPlayers, resolvePushTopic } from '../push';
 import { matchesAnswer, pickQuestion } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
-import { broadcastArcadeKiosk } from '../realtime';
+import { broadcastArcadeKiosk } from './realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { shouldSendLobbyPush } from './lobbyPush';
 import { recordArcadeResult } from './arcadeData';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 import { communicationRecipientIds } from '../communicationRecipients';
+import { arcadeTiming } from './timing';
 
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
-const COUNTDOWN_MS = 3000; // "3, 2, 1" intro before the first question
+const COUNTDOWN_MS = arcadeTiming.countdownMs; // "3, 2, 1" intro before the first question
 const QUIZ_BOT = { id: 'quiz-bot', name: 'Quiz-Bot' };
 
 function quizLobbyPushKey(lobbyId: string): string {
@@ -152,7 +153,6 @@ function firstAcceptedAnswer(question: QuizQuestion): string {
 
 function markSeen(match: MatchState, winnerId: string | null) {
   if (!match.currentQuestion) return;
-  const players = realPlayerIds(match.players);
   const now = Date.now();
   const stmt = db.prepare(
     `INSERT INTO quiz_seen
@@ -318,7 +318,7 @@ export function registerArcadeSockets(io: Server): void {
       // so a real push is the only way the rest of the LAN finds out a lobby
       // is waiting for them. Throttled per game type (see lobbyPush.ts) so
       // rapid re-creation cannot spam every phone on the LAN.
-      if (shouldSendLobbyPush('quiz')) {
+      if (lobby.eventId && shouldSendLobbyPush('quiz')) {
         const otherPlayerIds = communicationRecipientIds(lobby.groupId, lobby.eventId).filter((id) => id !== player.id);
         notifyPlayers(
           otherPlayerIds,

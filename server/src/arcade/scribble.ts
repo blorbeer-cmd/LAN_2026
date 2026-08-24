@@ -18,10 +18,11 @@ import { notifyPlayers, resolvePushTopic } from '../push';
 import { matchesAnswer } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
-import { broadcastArcadeKiosk } from '../realtime';
+import { broadcastArcadeKiosk } from './realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { shouldSendLobbyPush } from './lobbyPush';
 import { recordArcadeResult } from './arcadeData';
+import { arcadeTiming } from './timing';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, emitArcadeSocket, socketArcadeScope, socketCanUseArcadeScope } from './scope';
 import { communicationRecipientIds } from '../communicationRecipients';
 import {
@@ -42,7 +43,7 @@ function scribbleLobbyPushKey(lobbyId: string): string {
 
 const CHOICE_MS = 15_000;
 const REVEAL_MS = 3_000;
-const COUNTDOWN_MS = 3000; // "3, 2, 1" before the first turn's word choice
+const COUNTDOWN_MS = arcadeTiming.countdownMs; // "3, 2, 1" before the first turn's word choice
 const DEFAULT_ROUNDS = 2;
 const DEFAULT_TURN_MS = 60_000;
 const MIN_TURN_MS = 20_000;
@@ -414,13 +415,18 @@ function persistCurrentDrawing(match: ScribbleMatchState): DrawingSummary | null
   if (!drawer || drawer.id === BOT_ID || !match.currentWord) return null;
   const id = nanoid();
   const round = Math.floor(match.turnsPlayed / match.players.length) + 1;
+  // Recorded at persist time, not derived later from arcade_results: a bot
+  // opponent's match never finishes with a completed result before its
+  // human drawings are queried (stats requested mid-match) or at all (host
+  // ends the match early, or the process stops before finishMatch runs).
+  const isAiMatch = match.players.some((player) => player.id === BOT_ID);
   db.prepare(
     `INSERT INTO scribble_drawings
-       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops, created_at, group_id, event_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops, is_ai_match, created_at, group_id, event_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id, match.id, round, match.turnsPlayed + 1, drawer.id, drawer.name, match.currentWord,
-    JSON.stringify(match.strokes), Date.now(), match.groupId, match.eventId,
+    JSON.stringify(match.strokes), isAiMatch ? 1 : 0, Date.now(), match.groupId, match.eventId,
   );
   match.currentDrawingId = id;
   return drawingSummaries(match.id, round).find((drawing) => drawing.id === id) ?? null;
@@ -470,6 +476,7 @@ function finishMatch(io: Server, match: ScribbleMatchState, winner: PlayerRef | 
     scores,
     reason,
     startedAt: match.startedAt,
+    matchId: match.id,
     scope: match,
   });
   // Only drawings someone actually marked with a thumb re-enter the final
@@ -549,15 +556,9 @@ function startNextTurn(io: Server, match: ScribbleMatchState): void {
   match.choiceExpiresAt = Date.now() + CHOICE_MS;
   match.choiceTimer = setTimeout(() => autoChooseWord(io, match), CHOICE_MS);
 
-  const drawerSocketId = match.socketIds.get(drawer.id);
-  if (drawerSocketId) {
-    emitArcadeSocket(io, drawerSocketId, 'scribble:choose', {
-      matchId: match.id,
-      options: match.wordOptions.map((w) => ({ id: w.id, word: w.word })),
-      expiresAt: match.choiceExpiresAt,
-    }, match);
-  }
-
+  // Establish the shared choosing phase first. The private word options then
+  // arrive on top of that durable state instead of briefly rendering against
+  // the previous reveal/drawing phase and being lost in a competing rerender.
   emitArcadeRoom(io, match.room, 'scribble:turn', {
     matchId: match.id,
     phase: 'choosing',
@@ -568,6 +569,14 @@ function startNextTurn(io: Server, match: ScribbleMatchState): void {
     expiresAt: match.choiceExpiresAt,
     scores: scorePayload(match),
   }, match);
+  const drawerSocketId = match.socketIds.get(drawer.id);
+  if (drawerSocketId) {
+    emitArcadeSocket(io, drawerSocketId, 'scribble:choose', {
+      matchId: match.id,
+      options: match.wordOptions.map((w) => ({ id: w.id, word: w.word })),
+      expiresAt: match.choiceExpiresAt,
+    }, match);
+  }
   kioskSnapshot(io, match);
 }
 
@@ -710,7 +719,7 @@ export function registerScribbleSockets(io: Server): void {
       // so a real push is the only way the rest of the LAN finds out a lobby
       // is waiting for them. Throttled per game type (see lobbyPush.ts) so
       // rapid re-creation cannot spam every phone on the LAN.
-      if (shouldSendLobbyPush('scribble')) {
+      if (lobby.eventId && shouldSendLobbyPush('scribble')) {
         const otherPlayerIds = communicationRecipientIds(lobby.groupId, lobby.eventId).filter((id) => id !== player.id);
         notifyPlayers(
           otherPlayerIds,

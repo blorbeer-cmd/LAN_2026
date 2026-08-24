@@ -8,8 +8,14 @@
 import { Router } from 'express';
 import { db } from '../db';
 import { activeGroupPlayers } from '../groupPlayers';
-import { groupPlayerRows, resolveGroupEventScope, type GroupEventScope } from '../groupEventScope';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
+import {
+  requireGroupEventAccess,
+  resolveRequestGroupEventScope,
+  type GroupEventScope,
+} from '../groupEventScope';
 import { requireGroupRole } from '../groupAuthorization';
+import { isParticipant } from '../events';
 import {
   SIDES,
   type Side,
@@ -30,36 +36,38 @@ interface PlayerRow {
   is_test: number;
 }
 
-function getPlayers(groupId: string, includeHistorical = false): PlayerRow[] {
-  if (includeHistorical) {
-    return db
-      .prepare(
-        `SELECT p.id, p.name, p.real_name, p.color, p.avatar, p.is_test
-         FROM players p JOIN group_memberships gm ON gm.player_id = p.id
-         WHERE gm.group_id = ? ORDER BY p.name COLLATE NOCASE`,
-      )
-      .all(groupId) as PlayerRow[];
-  }
-  return groupPlayerRows<PlayerRow>(groupId, 'p.id, p.name, p.real_name, p.color, p.avatar, p.is_test');
+function getPlayers(groupId: string, eventId: string): PlayerRow[] {
+  return db
+    .prepare(
+      `SELECT p.id, p.name, p.real_name, p.color, p.avatar, p.is_test
+       FROM players p
+       JOIN group_memberships gm ON gm.player_id = p.id AND gm.group_id = ? AND gm.status = 'active'
+       JOIN event_participants ep ON ep.player_id = p.id AND ep.event_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
+       WHERE p.deactivated_at IS NULL
+       ORDER BY p.name COLLATE NOCASE`,
+    )
+    .all(groupId, eventId) as PlayerRow[];
 }
 
 function getLayoutResponse(groupId: string, eventId: GroupEventScope) {
-  const players = getPlayers(groupId, eventId !== null);
+  const players = eventId ? getPlayers(groupId, eventId) : [];
   return { groupId, eventId, players, layout: readLayout(groupId, eventId, new Set(players.map((p) => p.id))) };
 }
 
 // GET /api/seating/layout - the editable shared table plan.
 seatingRouter.get('/layout', (req, res) => {
-  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  const scope = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   res.json(getLayoutResponse(req.group!.id, scope.eventId));
 });
 
 // PUT /api/seating/layout - replacing the shared plan is a group moderation
 // action; personal visible-monitor choices remain self-service below.
 seatingRouter.put('/layout', requireGroupRole('admin'), (req, res) => {
-  const scope = resolveGroupEventScope(req.group!.id, req.body?.eventId);
+  const scope = resolveRequestGroupEventScope(req, req.body?.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const eventId = scope.eventId;
   const body = req.body ?? {};
   const sideNames = { top: 'topSeats', right: 'rightSeats', bottom: 'bottomSeats', left: 'leftSeats' } as const;
@@ -67,13 +75,16 @@ seatingRouter.put('/layout', requireGroupRole('admin'), (req, res) => {
   if (SIDES.some((side) => !Number.isInteger(counts[side]) || (counts[side] as number) < 0 || (counts[side] as number) > MAX_SEATS_PER_SIDE)) {
     return res.status(400).json({ error: `Jede Tischseite muss zwischen 0 und ${MAX_SEATS_PER_SIDE} Plätze haben.` });
   }
-  const players = getPlayers(req.group!.id);
+  const players = eventId ? getPlayers(req.group!.id, eventId) : [];
   const playerIds = new Set(players.map((p) => p.id));
   const assignments: unknown[] = Array.isArray(body.assignments) ? body.assignments : [];
   const referencedIds = assignments
     .map((assignment) => (assignment && typeof assignment === 'object' ? (assignment as { playerId?: unknown }).playerId : undefined))
     .filter((playerId): playerId is string => typeof playerId === 'string');
-  if (activeGroupPlayers(req.group!.id, referencedIds).size !== new Set(referencedIds).size) {
+  if (
+    activeGroupPlayers(req.group!.id, referencedIds).size !== new Set(referencedIds).size ||
+    referencedIds.some((playerId) => !eventId || !isParticipant(eventId, playerId))
+  ) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
   }
   const seenSeats = new Set<string>();
@@ -123,8 +134,9 @@ seatingRouter.put('/layout', requireGroupRole('admin'), (req, res) => {
 // picture: deduped pairs, players grouped into connected clusters, and
 // whoever hasn't declared any neighbor at all.
 seatingRouter.get('/', (req, res) => {
-  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  const scope = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const filterEventId = scope.eventId;
 
   const pairRows = db
@@ -137,7 +149,7 @@ seatingRouter.get('/', (req, res) => {
       neighbor_name_snapshot: string;
     }>;
 
-  const players = getPlayers(req.group!.id, filterEventId !== null);
+  const players = filterEventId ? getPlayers(req.group!.id, filterEventId) : [];
   const playerById = new Map(players.map((p) => [p.id, p]));
 
   // Neighbors are declared per-direction (A says B, independent of whether

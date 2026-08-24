@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import express from 'express';
 import { chromium } from 'playwright';
+import { runWithE2EDiagnostics, trackE2EContext } from './e2eDiagnostics';
 
 const probeHtml = `<!doctype html>
 <html lang="de">
@@ -11,6 +12,7 @@ const probeHtml = `<!doctype html>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/css/style.css" />
+    <link rel="stylesheet" href="/css/arcade.css" />
     <style>
       body { margin: 0; }
       #probe { width: 100%; }
@@ -20,7 +22,7 @@ const probeHtml = `<!doctype html>
   <body>
     <main id="probe"></main>
     <script type="module">
-      import { drawArcadeStreamCanvas } from '/js/arcadeStreamRenderer.js';
+      import { drawArcadeStreamCanvas } from '/js/arcade/shared/arcadeStreamRenderer.js';
 
       const emptyBoard = () => Array.from({ length: 20 }, () => Array(10).fill(0));
       const leftBoard = emptyBoard();
@@ -28,7 +30,10 @@ const probeHtml = `<!doctype html>
       leftBoard[19].splice(0, 4, 1, 2, 3, 4);
       rightBoard[19].splice(6, 4, 5, 6, 7, 8);
       const games = {
-        pong: { gameType: 'pong', world: { paddles: [{ x: 48, y: 100 }, { x: 896, y: 260 }], ball: { x: 480, y: 270 } } },
+        pong: { gameType: 'pong', world: { paddles: [
+          { x: 48, y: 52, team: 'left' }, { x: 48, y: 376, team: 'left' },
+          { x: 896, y: 52, team: 'right' }, { x: 896, y: 376, team: 'right' },
+        ], ball: { x: 480, y: 270 } } },
         blobby: { gameType: 'blobby', world: { blobs: [{ x: 250, y: 506 }, { x: 750, y: 506 }], ball: { x: 500, y: 220 } } },
         snake: { gameType: 'snake', world: { snakes: [{ body: [{ x: 2, y: 3 }], score: 1 }, { body: [{ x: 29, y: 16 }], score: 2 }], food: { x: 16, y: 10 } } },
         tetris: { gameType: 'tetris', players: [
@@ -66,7 +71,11 @@ test('Arcade spectator canvases fit a mobile viewport and render every game worl
   const browser = await chromium.launch({ headless: true });
 
   try {
+    await runWithE2EDiagnostics(
+      { testName: 'Arcade spectator canvases fit a mobile viewport and render every game world', browser },
+      async () => {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await trackE2EContext(page.context(), 'arcade-stream-renderer');
     await page.goto(`http://127.0.0.1:${address.port}/probe`);
     await page.waitForFunction(() => (window as typeof window & { streamProbeReady?: boolean }).streamProbeReady === true);
 
@@ -113,8 +122,8 @@ test('Arcade spectator canvases fit a mobile viewport and render every game worl
       };
       return { left: countChanged(40, 72), right: countChanged(888, 920) };
     });
-    assert.ok(pongPixels.left > 500, 'the left Pong paddle is visible');
-    assert.ok(pongPixels.right > 500, 'the right Pong paddle is visible');
+    assert.ok(pongPixels.left > 1_000, 'both left-team Pong paddles are visible');
+    assert.ok(pongPixels.right > 1_000, 'both right-team Pong paddles are visible');
 
     const scribbleFillVisible = await page.locator('canvas[data-game="scribble"]').evaluate((element) => {
       const canvas = element as HTMLCanvasElement;
@@ -124,6 +133,8 @@ test('Arcade spectator canvases fit a mobile viewport and render every game worl
       return corner[0] !== center[0] || corner[1] !== center[1] || corner[2] !== center[2];
     });
     assert.equal(scribbleFillVisible, true, 'Scribble fill operations are visible to spectators');
+      },
+    );
   } finally {
     await browser.close();
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

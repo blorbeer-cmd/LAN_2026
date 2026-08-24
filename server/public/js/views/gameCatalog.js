@@ -13,13 +13,47 @@ import { escapeHtml } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { suggestProcessNames } from '../gameProcessSuggestions.js';
-import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { getMyId } from '../whoami.js';
 import { domainIcon } from '../domainIcons.js';
 import { withStepUp } from '../reauth.js';
+import { GAME_GENRES, MAX_GENRES_PER_GAME } from '../gameGenres.js';
+import { wireSelectionSearch } from '../selectionSearch.js';
+import { emptyStateHtml } from '../emptyState.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import {
+  isOnboardingRatingActive,
+  onboardingRatingIds,
+  onboardingRatingProgress,
+  focusOnboardingRatingSlider,
+  refreshOnboardingRatingProgress,
+  syncOnboardingRatingCandidates,
+} from '../onboarding.js';
 
-let activeTab = 'catalog'; // 'catalog' | 'suggestions'
+// 'catalog' = the accepted games (everything that is not a suggestion, the
+// only ones Vote/Turnier/Auslosung offer), 'suggestions' = the pool waiting
+// to be accepted, 'all' = both in one list with suggestions still marked by
+// their Vorschlag badge.
+let activeTab = 'catalog'; // 'catalog' | 'suggestions' | 'all'
 let sortKey = 'name';
 let sortDir = 'asc';
+// Genre chip filter for the list (OR semantics: a game matches if it has at
+// least one of the selected genres). Empty set means "no filter, show all".
+let genreFilter = new Set();
+// Independent facets ('bock', 'skill'): AND semantics across the two - if
+// both are active, only games missing *both* of the current identity's own
+// ratings stay visible, since each is its own separate condition to satisfy
+// (unlike genreFilter's alternative-values-of-one-facet OR).
+let ratingFilter = new Set();
+// Free-text filter, same component/pattern as the Neue-Abstimmung game
+// picker in votes.js — hides already-rendered rows client-side instead of
+// re-filtering and re-rendering on every keystroke.
+let gameSearchQuery = '';
+
+function sameGenres(a, b) {
+  if (a.length !== b.length) return false;
+  const setA = new Set(a);
+  return b.every((g) => setA.has(g));
+}
 
 // No dedicated fetch/cache here on purpose for games/skills/preferences:
 // they're all already part of the app-wide loadAll() round trip (see
@@ -91,7 +125,11 @@ export function invalidateSkillSuggestions() {
 
 export function focusGameCatalog(gameId) {
   const game = state.games.find((entry) => entry.id === gameId);
-  if (game) activeTab = game.isSuggestion ? 'suggestions' : 'catalog';
+  if (!game) return;
+  // "Alle" already contains every game, suggestion or not — switching tabs
+  // there would only take the user out of the list they chose.
+  if (activeTab === 'all') return;
+  activeTab = game.isSuggestion ? 'suggestions' : 'catalog';
 }
 
 async function loadSuggestions(ctx) {
@@ -146,8 +184,9 @@ function sortedGames(games, myId) {
 }
 
 function sortButton(key, label) {
-  const mark = sortKey === key ? ` ${icon(sortDir === 'asc' ? 'arrowUp' : 'arrowDown')}` : '';
-  return `<button type="button" class="btn btn-sm" data-sort="${key}">${label}${mark}</button>`;
+  const active = sortKey === key;
+  const mark = active ? ` ${icon(sortDir === 'asc' ? 'arrowUp' : 'arrowDown')}` : '';
+  return `<button type="button" class="btn btn-sm${active ? ' btn-primary' : ''}" data-sort="${key}" aria-pressed="${active}">${label}${mark}</button>`;
 }
 
 function statusBadgeHtml(game) {
@@ -155,6 +194,16 @@ function statusBadgeHtml(game) {
   if (game.processNames.length > 0) return `<span class="badge badge-playing">getrackt</span>`;
   return `<span class="badge badge-offline">${icon('library')} Katalog</span>`;
 }
+
+// Sort keys grouped for the "Sortieren" panel below — kept as one array so
+// the panel and its wiring stay in sync automatically if a sort option is
+// ever added or removed.
+const SORT_OPTIONS = [
+  { key: 'name', label: 'Name' },
+  { key: 'myBock', label: 'Mein Bock' },
+  { key: 'avgBock', label: 'Ø Bock' },
+  { key: 'avgSkill', label: 'Ø Skill' },
+];
 
 // The process suggestion chip: only rendered once there's actually a suggestion
 // for this player+game (see suggestionFor/loadSuggestions above). Deliberately
@@ -177,16 +226,25 @@ function suggestionChipHtml(gameId, suggestion, mine) {
     >${icon('brain', { className: 'skill-suggestion-icon' })} ${suggestion.rating}</button>`;
 }
 
-function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, kind, disabled, suggestionHtml }) {
+function ratingRowHtml({ label, accentClass, mine, avg, count, gameId, gameName, kind, disabled, suggestionHtml }) {
   const avgText = avg === null ? '' : `Ø ${avg.toFixed(1)} (${count})`;
+  const isUnset = mine == null;
   const sliderValue = mine ?? 5;
+  const sliderLabelBase = kind === 'bock' ? `Bock auf ${gameName}` : `Skill in ${gameName}`;
+  // The slider itself can't sit at a visible "empty" position (Bock/Skill
+  // ratings are stored 1-10, never 0), so an untouched slider still starts
+  // at a plausible-looking mid-value. skill-row-slider-unset dims it until
+  // the player's own input event fires (see the pointerdown/input wiring
+  // below), and the value label shows the same en dash skillDisplay.js
+  // already uses elsewhere for "no rating yet" instead of going blank.
+  const sliderLabel = isUnset ? `${sliderLabelBase} – noch nicht bewertet` : sliderLabelBase;
   return `
     <div class="skill-row" data-game="${gameId}" data-kind="${kind}">
       <span class="row" style="gap:var(--space-2);flex-wrap:wrap;">
         ${label} <span class="muted game-avg-note">${avgText}</span> ${suggestionHtml || ''}
       </span>
-      <span class="skill-value">${mine ?? ''}</span>
-      <input type="range" class="skill-row-slider ${accentClass}" min="1" max="10" step="1" value="${sliderValue}" ${disabled ? 'disabled' : ''} />
+      <span class="skill-value">${mine ?? '–'}</span>
+      <input type="range" class="skill-row-slider ${accentClass}${isUnset ? ' skill-row-slider-unset' : ''}" min="1" max="10" step="1" value="${sliderValue}" aria-label="${escapeHtml(sliderLabel)}" ${disabled ? 'disabled' : ''} />
     </div>`;
 }
 
@@ -243,7 +301,7 @@ function gameRowIconsHtml(game) {
   return `<span class="game-row-links">${trackIndicator}${detailBtn}${linkIcons}</span>`;
 }
 
-function gameRowHtml(game, myId) {
+function gameRowHtml(game, myId, showSuggestionBadge, onboardingRequired = false) {
   const bockStats = ratingStats(state.preferences, game.id);
   const skillStats = ratingStats(state.skills, game.id);
   const myBock = myId ? myRating(state.preferences, myId, game.id) : null;
@@ -256,40 +314,50 @@ function gameRowHtml(game, myId) {
     avg: bockStats.avg,
     count: bockStats.count,
     gameId: game.id,
+    gameName: game.name,
     kind: 'bock',
     disabled: !myId,
   });
 
-  // A suggestion has no skill rating yet (Promote/Delete live in the detail
-  // modal, via the info icon, instead) — with only one meter to show, it
-  // sits in the right-hand (skill) column instead of the left one, so it
-  // doesn't look stranded in the middle of an otherwise empty row.
-  const [bockCell, skillCell] = game.isSuggestion
-    ? ['', bockRow]
-    : [
-        bockRow,
-        ratingRowHtml({
-          label: `${icon(domainIcon('skill'))} Skill`,
-          accentClass: '',
-          mine: mySkill,
-          avg: skillStats.avg,
-          count: skillStats.count,
-          gameId: game.id,
-          kind: 'skill',
-          disabled: !myId,
-          suggestionHtml: suggestionChipHtml(game.id, suggestionFor(game.id, myId), mySkill),
-        }),
-      ];
+  // Suggestions carry both meters just like catalog games: how good the group
+  // already is at a game is part of deciding whether to accept it at all, so
+  // the Skill slider stays available before the promotion too.
+  const skillRow = ratingRowHtml({
+    label: `${icon(domainIcon('skill'))} Skill`,
+    accentClass: '',
+    mine: mySkill,
+    avg: skillStats.avg,
+    count: skillStats.count,
+    gameId: game.id,
+    gameName: game.name,
+    kind: 'skill',
+    disabled: !myId,
+    suggestionHtml: suggestionChipHtml(game.id, suggestionFor(game.id, myId), mySkill),
+  });
+
+  // Only the mixed "Alle" list needs the marker — in the two single-status
+  // tabs every row would carry the same badge, which says nothing. The badge
+  // itself is icon-only (an accessible name covers screen readers, a native
+  // title covers mouse hover) and the row picks up a matching border tint
+  // via .is-suggestion, so the status doesn't rely on reading a spelled-out
+  // "Vorschlag" label at a glance.
+  const isMarkedSuggestion = showSuggestionBadge && game.isSuggestion;
+  const suggestionBadge = isMarkedSuggestion
+    ? `<span class="badge badge-paused game-row-status-badge" title="Vorschlag">${icon('lightbulb', { label: 'Vorschlag' })}</span>`
+    : '';
 
   return `
-    <div class="card game-table-row" data-search-game="${game.id}">
+    <div class="card game-table-row${isMarkedSuggestion ? ' is-suggestion' : ''}${onboardingRequired ? ' onboarding-required' : ''}" data-search-game="${game.id}" data-game-catalog-search-item data-selection-search="${escapeHtml(game.name)}">
       <div class="game-row-name">
                 <strong class="game-row-title">${escapeHtml(game.name)}</strong>
+        ${onboardingRequired ? '<span class="badge badge-playing onboarding-required-badge">Pflicht</span>' : ''}
+        ${suggestionBadge}
+        ${game.genres?.length ? `<span class="muted game-row-genre">${escapeHtml(game.genres.join(', '))}</span>` : ''}
         ${gameRowIconsHtml(game)}
       </div>
       <div class="game-row-sliders">
-        <div class="game-row-bock">${bockCell}</div>
-        <div class="game-row-skill">${skillCell}</div>
+        <div class="game-row-bock">${bockRow}</div>
+        <div class="game-row-skill">${skillRow}</div>
       </div>
     </div>`;
 }
@@ -341,9 +409,8 @@ function openSuggestForm(ctx) {
               playerId: myId,
             });
             close();
-            await ctx.refresh();
             activeTab = 'suggestions';
-            ctx.rerender();
+            await ctx.refresh();
             showToast('Vorschlag eingetragen.');
           } catch (err) {
             showToast(err.message, { error: true });
@@ -354,9 +421,18 @@ function openSuggestForm(ctx) {
   );
 }
 
+function genreChipsHtml(selectedGenres) {
+  return GAME_GENRES.map(
+    (g) =>
+      `<button type="button" class="chip${selectedGenres.has(g) ? ' is-active' : ''}" data-genre-toggle="${escapeHtml(g)}" aria-pressed="${selectedGenres.has(g)}">${escapeHtml(g)}</button>`,
+  ).join('');
+}
+
 function openGameDetail(gameId, ctx) {
   const game = state.games.find((g) => g.id === gameId);
   if (!game) return;
+
+  const selectedGenres = new Set(game.genres ?? []);
 
   const processChips = game.processNames
     .map(
@@ -390,6 +466,14 @@ function openGameDetail(gameId, ctx) {
           <label class="field-label" for="edit-trailer">Gameplay-Trailer</label>
           <input type="url" id="edit-trailer" maxlength="500" value="${escapeHtml(game.trailer_url ?? '')}" placeholder="https://…" />
         </div>
+        <div>
+          <span class="field-label" id="edit-genre-label">Genre</span>
+          <div class="chip-list" role="group" aria-labelledby="edit-genre-label" id="edit-genre-chips">${genreChipsHtml(selectedGenres)}</div>
+        </div>
+        <div>
+          <label class="field-label" for="edit-info">Info</label>
+          <textarea id="edit-info" maxlength="300" placeholder="Zusätzliche Hinweise…">${escapeHtml(game.info ?? '')}</textarea>
+        </div>
         <div class="row" style="align-items:flex-start;">
           <div style="flex:1;">
             <label for="edit-min" class="field-label">Min. Teamgröße</label>
@@ -400,6 +484,17 @@ function openGameDetail(gameId, ctx) {
             <input type="number" id="edit-max" min="1" max="20" value="${game.max_team_size}" />
           </div>
         </div>
+        <div class="check-row">
+          <input type="checkbox" id="edit-consider-seat-neighbors" ${game.considerSeatNeighborsDefault ? 'checked' : ''} />
+          <span class="title-with-info tournament-option-label">
+            <label for="edit-consider-seat-neighbors">Sitznachbarn bei Auslosung</label>
+            ${infoTooltipHtml(
+              'edit-consider-seat-neighbors-help',
+              'Sitznachbarn bei Auslosung',
+              'Voreinstellung für die Teams-Auslosung: Ist dieses Spiel ausgewählt, startet „Sitznachbarn“ dort mit diesem Wert. Lässt sich bei jeder Auslosung weiterhin einzeln umschalten.',
+            )}
+          </span>
+        </div>
 
         <div class="section-title">Prozessname</div>
         <div class="chip-list">${processChips || '<span class="muted">Noch keine.</span>'}</div>
@@ -409,7 +504,7 @@ function openGameDetail(gameId, ctx) {
             : ''
         }
         <div class="row" style="align-items:stretch;">
-          <input type="text" id="new-process" placeholder="z.B. cs2.exe" style="flex:1;" />
+          <input type="text" id="new-process" placeholder="z.B. cs2.exe" style="flex:1;" aria-label="Prozessname" />
           <button type="button" class="btn" id="add-process">+</button>
         </div>
 
@@ -417,7 +512,7 @@ function openGameDetail(gameId, ctx) {
         ${
           game.isSuggestion
             ? `<button type="button" class="btn btn-primary btn-block" id="edit-promote">In Katalog übernehmen</button>`
-            : ''
+            : `<button type="button" class="btn btn-block" id="edit-demote">Zurück zu Vorschlägen</button>`
         }
         <button type="button" class="btn btn-danger btn-block" id="edit-delete">Spiel löschen</button>
       </div>
@@ -429,21 +524,44 @@ function openGameDetail(gameId, ctx) {
         const platform = modalEl.querySelector('#edit-platform').value.trim();
         const platformUrl = modalEl.querySelector('#edit-platform-url').value.trim();
         const trailerUrl = modalEl.querySelector('#edit-trailer').value.trim();
+        const info = modalEl.querySelector('#edit-info').value.trim();
         const minTeamSize = modalEl.querySelector('#edit-min').value;
         const maxTeamSize = modalEl.querySelector('#edit-max').value;
+        const considerSeatNeighborsDefault = modalEl.querySelector('#edit-consider-seat-neighbors').checked;
         const newProcess = modalEl.querySelector('#new-process').value.trim();
         const dirty =
           name !== (game.name ?? '') ||
           platform !== (game.platform ?? '') ||
           platformUrl !== (game.platform_url ?? '') ||
           trailerUrl !== (game.trailer_url ?? '') ||
+          !sameGenres([...selectedGenres], game.genres ?? []) ||
+          info !== (game.info ?? '') ||
           Number(minTeamSize) !== game.min_team_size ||
           Number(maxTeamSize) !== game.max_team_size ||
+          considerSeatNeighborsDefault !== Boolean(game.considerSeatNeighborsDefault) ||
           Boolean(newProcess);
         return dirty ? 'Deine Änderungen am Spiel (Name, Plattform, Team-Größen, Prozessname) werden nicht gespeichert.' : null;
       },
       onMount: (el) => {
         modalEl = el;
+        wireInfoTooltips(el);
+        el.querySelectorAll('[data-genre-toggle]').forEach((chip) => {
+          chip.addEventListener('click', () => {
+            const g = chip.dataset.genreToggle;
+            if (selectedGenres.has(g)) {
+              selectedGenres.delete(g);
+            } else {
+              if (selectedGenres.size >= MAX_GENRES_PER_GAME) {
+                showToast(`Maximal ${MAX_GENRES_PER_GAME} Genres auswählen.`, { error: true });
+                return;
+              }
+              selectedGenres.add(g);
+            }
+            const active = selectedGenres.has(g);
+            chip.classList.toggle('is-active', active);
+            chip.setAttribute('aria-pressed', String(active));
+          });
+        });
         el.querySelector('#edit-save').addEventListener('click', async () => {
           const name = el.querySelector('#edit-name').value.trim();
           const minTeamSize = parseInt(el.querySelector('#edit-min').value, 10);
@@ -451,6 +569,8 @@ function openGameDetail(gameId, ctx) {
           const platform = el.querySelector('#edit-platform').value.trim();
           const platformUrl = el.querySelector('#edit-platform-url').value.trim();
           const trailerUrl = el.querySelector('#edit-trailer').value.trim();
+          const info = el.querySelector('#edit-info').value.trim();
+          const considerSeatNeighborsDefault = el.querySelector('#edit-consider-seat-neighbors').checked;
           try {
             await api.games.update(gameId, {
               name,
@@ -459,6 +579,9 @@ function openGameDetail(gameId, ctx) {
               platform: platform || null,
               platformUrl: platformUrl || null,
               trailerUrl: trailerUrl || null,
+              genres: [...selectedGenres],
+              info: info || null,
+              considerSeatNeighborsDefault,
             });
             close();
             await ctx.refresh();
@@ -472,10 +595,20 @@ function openGameDetail(gameId, ctx) {
           try {
             await api.games.promote(gameId);
             close();
-            await ctx.refresh();
             activeTab = 'catalog';
-            ctx.rerender();
+            await ctx.refresh();
             showToast('Spiel in den Katalog übernommen.');
+          } catch (err) {
+            showToast(err.message, { error: true });
+          }
+        });
+
+        el.querySelector('#edit-demote')?.addEventListener('click', async () => {
+          try {
+            await api.games.demote(gameId);
+            close();
+            await ctx.refresh();
+            showToast('Spiel zurück in die Vorschlagsliste verschoben.');
           } catch (err) {
             showToast(err.message, { error: true });
           }
@@ -526,7 +659,7 @@ function openGameDetail(gameId, ctx) {
         });
 
         el.querySelector('#edit-delete').addEventListener('click', async () => {
-          if (!(await confirmDialog(`${game.name} wirklich löschen? Skill-/Bock-Wertungen und Ergebnisse dazu gehen verloren.`))) return;
+          if (!(await confirmDialog(`${game.name} wirklich löschen? Skill-/Bock-Wertungen und Ergebnisse dazu gehen verloren.`, { confirmText: 'Löschen', danger: true }))) return;
           try {
             const removed = await withStepUp(() => api.games.remove(gameId));
             if (removed === undefined) return;
@@ -550,45 +683,147 @@ export function renderGameCatalog(container, ctx) {
   if (suggestionsCache === null && !suggestionsLoading) loadSuggestions(ctx);
 
   const myId = getMyId();
-  const games = state.games.filter((g) => (activeTab === 'suggestions' ? g.isSuggestion : !g.isSuggestion));
-  const rows = sortedGames(games, myId);
+  const ratingMode = isOnboardingRatingActive();
+  // Remembers which required slider (if any) currently holds focus so a
+  // rerender triggered by that same slider's own debounced save (see the
+  // 'input' listener below) can restore focus there instead of yanking it
+  // - and the page scroll with it - back to the first required row every
+  // time. focusOnboardingRatingSlider() below stays the fallback for the
+  // cases that actually need it: entering rating mode fresh, or the
+  // previously focused row no longer being part of the required set.
+  const focusedSkillRow = ratingMode ? document.activeElement?.closest?.('.skill-row') : null;
+  const focusedGameId = focusedSkillRow?.dataset.game;
+  const focusedKind = focusedSkillRow?.dataset.kind;
+  if (ratingMode) void syncOnboardingRatingCandidates();
+  const ratingIds = onboardingRatingIds();
+  const requiredRatingIds = new Set(ratingIds.slice(0, 10));
+  const tabGames = state.games.filter((g) => {
+    if (ratingMode) return !g.isSuggestion;
+    if (activeTab === 'suggestions') return g.isSuggestion;
+    if (activeTab === 'catalog') return !g.isSuggestion;
+    return true;
+  });
+  const games = tabGames
+    .filter((g) => ratingMode || genreFilter.size === 0 || (g.genres ?? []).some((genre) => genreFilter.has(genre)))
+    .filter((g) => {
+      if (ratingMode || !myId || ratingFilter.size === 0) return true;
+      if (ratingFilter.has('bock') && myRating(state.preferences, myId, g.id) !== null) return false;
+      if (ratingFilter.has('skill') && myRating(state.skills, myId, g.id) !== null) return false;
+      return true;
+    });
+  const rows = ratingMode
+    ? ratingIds.map((id) => games.find((game) => game.id === id)).filter(Boolean)
+    : sortedGames(games, myId);
+  const sectionTitle =
+    ratingMode ? 'Bewertungen' : activeTab === 'catalog' ? 'Spielekatalog' : activeTab === 'suggestions' ? 'Vorschläge' : 'Alle Spiele';
+  const usedGenres = GAME_GENRES.filter((g) => state.games.some((game) => (game.genres ?? []).includes(g)));
+  // Distinguishes a genuinely empty catalog/suggestion pool from "filtered
+  // down to nothing" - the rating filter case gets a positive framing since
+  // reaching it is the point of using that filter, not an error state.
+  const emptyTabMessages = {
+    suggestions: 'Noch keine vorgeschlagenen Spiele.',
+    catalog: 'Noch keine Spiele im Katalog.',
+    all: 'Noch keine Spiele eingetragen.',
+  };
+  const emptyMessage =
+    tabGames.length === 0
+      ? emptyTabMessages[activeTab]
+      : ratingFilter.size > 0
+        ? 'Alles bewertet – keine offenen Spiele mit diesem Filter.'
+        : 'Keine Spiele für diese Filter.';
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <div class="row-between">
       <h1 class="view-title">Spiele</h1>
       <button type="button" class="btn btn-primary btn-sm" id="suggest-new">Spiel vorschlagen</button>
     </div>
-    ${whoAmICardHtml('whoami')}
     <div class="grouped-page-sections" style="margin-top:var(--space-3);">
-      <section class="card stack grouped-page-section" aria-labelledby="game-catalog-list-title">
-        <div class="grouped-page-section-title"><h2 id="game-catalog-list-title">${activeTab === 'catalog' ? 'Spielekatalog' : 'Vorschläge'}</h2></div>
-        <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
-          <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Alle</button>
+      <section class="card stack grouped-page-section" ${ratingMode ? 'aria-labelledby="game-catalog-list-title"' : `aria-label="${sectionTitle}"`}>
+        ${ratingMode ? `<div class="grouped-page-section-title"><h2 id="game-catalog-list-title">${sectionTitle}</h2></div>` : ''}
+        ${ratingMode ? `
+          <div class="onboarding-rating-banner" aria-live="polite">
+            <div class="onboarding-rating-banner-copy">
+              <strong>Pflichtbewertung</strong>
+              <span>${onboardingRatingProgress().completed} von ${onboardingRatingProgress().required} Spielen vollständig bewertet. Für jedes Spiel werden Bock und Skill benötigt.</span>
+            </div>
+          </div>` : ''}
+        ${ratingMode ? '' : `<div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm ${activeTab === 'catalog' ? 'btn-primary' : ''}" data-tab="catalog">Katalog</button>
           <button type="button" class="btn btn-sm ${activeTab === 'suggestions' ? 'btn-primary' : ''}" data-tab="suggestions">Vorschläge</button>
-        </div>
-        <div class="row" style="gap:var(--space-2);flex-wrap:wrap;">
-          ${sortButton('name', 'Name')}
-          ${sortButton('myBock', 'Mein Bock')}
-          ${sortButton('avgBock', 'Ø Bock')}
-          ${activeTab === 'catalog' ? sortButton('avgSkill', 'Ø Skill') : ''}
-        </div>
-        <div class="game-table">
+          <button type="button" class="btn btn-sm ${activeTab === 'all' ? 'btn-primary' : ''}" data-tab="all">Alle</button>
+        </div>`}
+        ${ratingMode ? '' : `<section class="tournament-section-panel stack" aria-label="Sortieren und Filtern">
+          <div class="row" role="group" aria-label="Sortieren" style="gap:var(--space-2);flex-wrap:wrap;">
+            ${SORT_OPTIONS.map((o) => sortButton(o.key, o.label)).join('')}
+          </div>
+          <div class="stack game-catalog-filter-group" role="group" aria-label="Filtern" style="gap:var(--space-2);">
+            ${[
+              usedGenres.length
+                ? `<div class="chip-list" role="group" aria-label="Nach Genre filtern">
+                     ${usedGenres
+                       .map(
+                         (g) =>
+                           `<button type="button" class="chip${genreFilter.has(g) ? ' is-active' : ''}" data-genre-filter="${escapeHtml(g)}" aria-pressed="${genreFilter.has(g)}">${escapeHtml(g)}</button>`,
+                       )
+                       .join('')}
+                   </div>`
+                : null,
+              myId
+                ? `<div class="chip-list" role="group" aria-label="Nach fehlender eigener Bewertung filtern">
+                     <button type="button" class="chip${ratingFilter.has('bock') ? ' is-active' : ''}" data-rating-filter="bock" aria-pressed="${ratingFilter.has('bock')}">Bock offen</button>
+                     <button type="button" class="chip${ratingFilter.has('skill') ? ' is-active' : ''}" data-rating-filter="skill" aria-pressed="${ratingFilter.has('skill')}">Skill offen</button>
+                   </div>`
+                : null,
+              `<input type="search" id="game-catalog-search" value="${escapeHtml(gameSearchQuery)}" placeholder="Spiele suchen…" aria-label="Spiele suchen" autocomplete="off" />`,
+            ]
+              .filter(Boolean)
+              .map((html, i) => (i === 0 ? html : `<div class="game-catalog-filter-divider">${html}</div>`))
+              .join('')}
+          </div>
+        </section>`}
+        <div class="game-table${ratingMode ? ' onboarding-rating-list' : ''}">
           ${
             rows.length === 0
-              ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('gameCatalog'))}</span>${activeTab === 'suggestions' ? 'Noch keine vorgeschlagenen Spiele.' : 'Noch keine Spiele im Katalog.'}</div>`
-              : rows.map((g) => gameRowHtml(g, myId)).join('')
+              ? emptyStateHtml(emptyMessage, { icon: icon(domainIcon('gameCatalog')) })
+              : rows.map((g) => gameRowHtml(g, myId, activeTab === 'all', ratingMode && requiredRatingIds.has(g.id))).join('')
           }
         </div>
+        <p class="muted" data-game-catalog-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>
       </section>
     </div>
   `;
 
-  wireWhoAmICard(container, 'whoami', ctx);
 
   container.querySelectorAll('[data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => {
       activeTab = btn.dataset.tab;
+      ctx.rerender();
+    });
+  });
+
+  wireSelectionSearch(container, {
+    inputId: 'game-catalog-search',
+    itemSelector: '[data-game-catalog-search-item]',
+    emptySelector: '[data-game-catalog-search-empty]',
+    onQueryChange: (query) => {
+      gameSearchQuery = query;
+    },
+  });
+
+  container.querySelectorAll('[data-genre-filter]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const g = btn.dataset.genreFilter;
+      if (genreFilter.has(g)) genreFilter.delete(g);
+      else genreFilter.add(g);
+      ctx.rerender();
+    });
+  });
+
+  container.querySelectorAll('[data-rating-filter]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const k = btn.dataset.ratingFilter;
+      if (ratingFilter.has(k)) ratingFilter.delete(k);
+      else ratingFilter.add(k);
       ctx.rerender();
     });
   });
@@ -605,7 +840,7 @@ export function renderGameCatalog(container, ctx) {
     });
   });
 
-  container.querySelector('#suggest-new').addEventListener('click', () => openSuggestForm(ctx));
+  container.querySelector('#suggest-new')?.addEventListener('click', () => openSuggestForm(ctx));
 
   container.querySelectorAll('[data-detail]').forEach((btn) => {
     btn.addEventListener('click', () => openGameDetail(btn.dataset.detail, ctx));
@@ -626,6 +861,7 @@ export function renderGameCatalog(container, ctx) {
     let debounceTimer = null;
     slider.addEventListener('input', () => {
       valueEl.textContent = slider.value;
+      slider.classList.remove('skill-row-slider-unset');
       updateSliderTone();
       sliderSaving = true;
       clearTimeout(debounceTimer);
@@ -635,7 +871,10 @@ export function renderGameCatalog(container, ctx) {
             // No ctx.refresh(): the 'preferences:changed' broadcast this
             // triggers (see app.js) already patches state for every
             // connected client, including this one.
-            await api.preferences.set(myId, gameId, parseInt(slider.value, 10));
+            const saved = await api.preferences.set(myId, gameId, parseInt(slider.value, 10));
+            const existing = state.preferences.find((p) => p.player_id === saved.playerId && p.game_id === saved.gameId);
+            if (existing) existing.rating = saved.rating;
+            else state.preferences.push({ player_id: saved.playerId, game_id: saved.gameId, rating: saved.rating });
           } else {
             // Still no ctx.refresh() (a full loadAll() + render): PUT
             // /api/skills broadcasts 'skills:changed', which app.js's
@@ -662,6 +901,7 @@ export function renderGameCatalog(container, ctx) {
           showToast(err.message, { error: true });
         } finally {
           sliderSaving = false;
+          refreshOnboardingRatingProgress();
           if (!sliderDragActive) lastCtx?.rerender();
         }
       }, 250);
@@ -681,4 +921,14 @@ export function renderGameCatalog(container, ctx) {
       }
     });
   });
+
+  if (ratingMode) {
+    const restored = focusedGameId
+      ? [...container.querySelectorAll('.skill-row')]
+          .find((row) => row.dataset.game === focusedGameId && row.dataset.kind === focusedKind)
+          ?.querySelector('input[type="range"]')
+      : null;
+    if (restored) restored.focus({ preventScroll: true });
+    else focusOnboardingRatingSlider();
+  }
 }

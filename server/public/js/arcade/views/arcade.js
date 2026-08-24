@@ -1,0 +1,799 @@
+import { api } from '../../api.js';
+import { connectSocket } from '../../socket.js';
+import { escapeHtml } from '../../format.js';
+import { showToast } from '../../toast.js';
+import { icon } from '../../icons.js';
+import { getMyId } from '../../whoami.js';
+import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
+import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard, myTetrisLobby, tetrisLobbies, leaveMyTetrisLobby } from './tetris.js';
+import {
+  ensureScribbleSocket,
+  renderScribbleLobbyCard,
+  wireScribbleLobbyCard,
+  myScribbleLobby,
+  hasScribbleMatch,
+  scribbleLobbies,
+  leaveMyScribbleLobby,
+  renderScribbleDrawing,
+} from './arcadeScribble.js';
+import { ensureBlobbySocket, renderBlobbyLobbyCard, wireBlobbyLobbyCard, myBlobbyLobby, hasBlobbyMatch, blobbyLobbies, leaveMyBlobbyLobby } from './blobby.js';
+import { ensurePongSocket, renderPongLobbyCard, wirePongLobbyCard, myPongLobby, hasPongMatch, pongLobbies, leaveMyPongLobby } from './pong.js';
+import { ensureSnakeSocket, renderSnakeLobbyCard, wireSnakeLobbyCard, mySnakeLobby, hasSnakeMatch, snakeLobbies, leaveMySnakeLobby } from './snake.js';
+import { ensureBattleshipSocket, renderBattleshipLobbyCard, wireBattleshipLobbyCard, myBattleshipLobby, hasBattleshipMatch, battleshipLobbies } from './battleship.js';
+import { ensureChallengeRushSocket, renderChallengeRushLobbyCard, wireChallengeRushLobbyCard, myChallengeRushLobby, hasChallengeRushMatch, challengeRushLobbies, leaveMyChallengeRushLobby } from './challengeRush.js';
+import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcadeUi.js';
+import { playArcadeSound } from '../arcadeSound.js';
+import { startArcadeWatch } from './arcadeWatch.js';
+import { confirmDialog } from '../../modal.js';
+import { showCountdown, cancelCountdown } from '../countdown.js';
+import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentWhenAiUnavailable, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../../infoTooltip.js';
+import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
+import { searchSelectHtml, wireSearchSelect } from '../../searchSelect.js';
+import { emptyStateHtml } from '../../emptyState.js';
+
+// The Arcade opens as a launcher: a compact grid of playable game tiles.
+// Picking one reveals that game's lobby below.
+const GAMES = [
+  {
+    id: 'quiz',
+    icon: icon('brain'),
+    name: 'Gaming-Quiz',
+    help: 'Ziel: Richtige Antworten sammeln. Steuerung: Antwort tippen und senden.',
+  },
+  {
+    id: 'tetris',
+    icon: icon('blocks'),
+    name: 'Tetris',
+    help: 'Ziel: Überleben. Steuerung: Pfeiltasten und Leertaste.',
+  },
+  {
+    id: 'scribble',
+    icon: icon('pencil'),
+    name: 'Scribble',
+    help: 'Ziel: Wörter erraten und Punkte sammeln. Steuerung: Zeichnen und tippen.',
+  },
+  {
+    id: 'pong',
+    icon: icon('gitCommitVertical'),
+    name: 'Pong',
+    help: 'Ziel: Erreiche zuerst die Punktzahl. Steuerung: Pfeiltasten.',
+  },
+  {
+    id: 'blobby',
+    icon: icon('volleyball'),
+    name: 'Blobby Volley',
+    help: 'Duell oder Doppel. Ziel: Erreiche zuerst die Punktzahl. Steuerung: Pfeiltasten.',
+  },
+  {
+    id: 'snake',
+    icon: icon('snake'),
+    name: 'Snake',
+    help: 'Klassisch: 1 gegen 1. Arena: 3 bis 8 Spieler, die sichere Zone schrumpft regelmäßig und die letzte Schlange gewinnt. Steuerung: Pfeiltasten oder Wischen.',
+  },
+  {
+    id: 'battleship',
+    icon: icon('ship'),
+    name: 'Battleship',
+    help: 'Ziel: Versenke die gegnerische Flotte. Zu Beginn ein Schiff wählen und auf das Startfeld tippen, um es zu platzieren; Berührungen zwischen Schiffen sind erlaubt. Steuerung: Raster antippen oder mit der Tastatur bedienen.',
+  },
+  {
+    id: 'challenge-rush',
+    icon: icon('crosshair'),
+    name: 'Challenge Rush',
+    help: 'Ziel: In vier kurzen Mini-Challenges möglichst viele Punkte sammeln. Steuerung: Tippen oder klicken.',
+  },
+];
+
+let socket = null;
+let lobbies = [];
+let watchMatches = [];
+let stats = null;
+let statsLoading = false;
+let scribbleGallery = [];
+let activeStatsGame = null;
+let activeGame = null; // which game tile is expanded
+let quizOpponent = 'human';
+let match = null;
+let currentQuestion = null;
+let lastResult = null;
+let quizAnswerHadFocusBeforePause = false;
+let countdownInterval = null;
+let customTarget = '5';
+
+function currentView() {
+  return document.getElementById('view-container')?.dataset.view;
+}
+
+function rerenderIfView(ctx, view) {
+  if (currentView() === view) ctx.rerender();
+}
+
+// The Tetris view lives in its own module; when one of its matches finishes it
+// fires this so our cached highscores refetch the next time Arcade renders.
+window.addEventListener('respawn:arcade-stats-dirty', () => {
+  stats = null;
+  scribbleGallery = [];
+});
+
+function stopCountdown() {
+  if (countdownInterval) clearInterval(countdownInterval);
+  countdownInterval = null;
+}
+
+function updateCountdownBadge() {
+  const badge = document.querySelector('#quiz-countdown');
+  if (!badge) return;
+  const left = secondsLeft();
+  badge.textContent = match?.paused ? 'Pause' : `${left}s`;
+  badge.classList.toggle('badge-paused', match?.paused || left <= 5);
+  badge.classList.toggle('badge-playing', !match?.paused && left > 5);
+  if (!match?.paused && left > 0 && left <= 5) playArcadeSound('quiz-tick');
+}
+
+function startCountdown() {
+  stopCountdown();
+  updateCountdownBadge();
+  countdownInterval = setInterval(updateCountdownBadge, 1000);
+}
+
+async function loadStats(ctx) {
+  if (statsLoading) return;
+  statsLoading = true;
+  try {
+    const [loadedStats, gallery] = await Promise.all([api.arcade.stats(), api.arcade.scribbleGallery()]);
+    stats = loadedStats;
+    scribbleGallery = gallery.drawings ?? [];
+  } catch (err) {
+    showToast(err.message, { error: true });
+    stats = { games: [] };
+    scribbleGallery = [];
+  } finally {
+    statsLoading = false;
+    rerenderIfView(ctx, 'arcade');
+  }
+}
+
+function ensureSocket(ctx) {
+  if (socket) return socket;
+  resetArcadeOpponentWhenAiUnavailable(() => { quizOpponent = 'human'; });
+  socket = connectSocket();
+  socket.on('arcade:lobbies', (payload) => {
+    lobbies = payload?.lobbies ?? [];
+    rerenderIfView(ctx, 'arcade');
+  });
+  socket.on('arcade:watch:list', (payload) => {
+    watchMatches = payload?.matches ?? [];
+    rerenderIfView(ctx, 'arcade');
+  });
+  socket.on('arcade:match:start', (payload) => {
+    match = { ...payload, scores: payload.players.map((p) => ({ playerId: p.id, name: p.name, score: 0 })), paused: false };
+    currentQuestion = null;
+    lastResult = null;
+    stopCountdown();
+    navigate('quizRoom'); // hand over to the dedicated match view
+    showCountdown(payload.beginsAt);
+  });
+  socket.on('arcade:quiz:question', (payload) => {
+    currentQuestion = payload;
+    if (payload.scores) match = { ...(match ?? {}), matchId: payload.matchId, scores: payload.scores, targetScore: payload.targetScore };
+    lastResult = null;
+    startCountdown();
+    rerenderIfView(ctx, 'quizRoom');
+  });
+  socket.on('arcade:quiz:result', (payload) => {
+    lastResult = payload;
+    if (payload.scores) match = { ...(match ?? {}), scores: payload.scores };
+    currentQuestion = null;
+    stopCountdown();
+    rerenderIfView(ctx, 'quizRoom');
+  });
+  socket.on('arcade:quiz:timeout', (payload) => {
+    lastResult = { winner: null, correctAnswer: payload.correctAnswer, timeout: true };
+    if (payload.scores) match = { ...(match ?? {}), scores: payload.scores };
+    currentQuestion = null;
+    stopCountdown();
+    rerenderIfView(ctx, 'quizRoom');
+  });
+  socket.on('arcade:match:end', (payload) => {
+    lastResult = payload.winner ? { winner: payload.winner, correctAnswer: 'Match beendet' } : lastResult;
+    if (payload.scores) match = { ...(match ?? {}), scores: payload.scores, ended: true, winner: payload.winner };
+    currentQuestion = null;
+    stopCountdown();
+    cancelCountdown();
+    stats = null;
+    loadStats(ctx);
+    rerenderIfView(ctx, 'quizRoom');
+  });
+  socket.on('arcade:match:paused', (payload) => {
+    if (payload.scores) match = { ...(match ?? {}), scores: payload.scores, paused: true, remainingMs: payload.remainingMs };
+    quizAnswerHadFocusBeforePause = document.activeElement?.id === 'quiz-answer';
+    stopCountdown();
+    if (currentView() === 'quizRoom') updateQuizPauseUi();
+  });
+  socket.on('arcade:match:resumed', (payload) => {
+    if (payload.scores) match = { ...(match ?? {}), scores: payload.scores, paused: false, remainingMs: null };
+    if (currentQuestion && payload.expiresAt) currentQuestion = { ...currentQuestion, expiresAt: payload.expiresAt };
+    startCountdown();
+    if (currentView() === 'quizRoom') updateQuizPauseUi();
+  });
+  socket.on('arcade:match:opponent-left', () => {
+    showToast('Ein Spieler hat das Match verlassen.', { error: true });
+    match = null;
+    currentQuestion = null;
+    lastResult = null;
+    stopCountdown();
+    cancelCountdown();
+    navigate('arcade');
+  });
+  return socket;
+}
+
+function navigate(view) {
+  window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view }));
+}
+
+function emitWithAck(event, payload) {
+  return new Promise((resolve) => {
+    socket.emit(event, payload, resolve);
+  });
+}
+
+function myLobby() {
+  const myId = getMyId();
+  return lobbies.find((l) => l.players.some((p) => p.id === myId)) ?? null;
+}
+
+function scribbleArtStatsHtml(game) {
+  const players = game.artPlayers ?? [];
+  const artRows = players.length
+    ? players.map((player, index) => `
+        <div class="lb-row scribble-art-stat-row">
+          <span class="lb-rank">${index + 1}</span>
+          <span class="leaderboard-row-main">
+            <strong class="player-name leaderboard-row-name">${escapeHtml(player.name)}</strong>
+            <span class="muted leaderboard-row-stat">${player.drawings} Bilder · ${player.roundWins} Rundenbilder · ${player.favorites} Favoriten</span>
+            <span class="muted leaderboard-row-stat">Cool ${player.reactionBreakdown.cool} · Kreativ ${player.reactionBreakdown.creative} · Witzig ${player.reactionBreakdown.funny}</span>
+          </span>
+        </div>`).join('')
+    : emptyStateHtml('Noch keine bewerteten Scribble-Bilder.', { style: 'padding:var(--space-4);' });
+  const galleryHtml = scribbleGallery.length
+    ? `<div class="scribble-gallery-grid">${scribbleGallery.map((drawing) => `
+        <article class="card stack scribble-drawing-card is-winner">
+          <div class="row-between" style="gap:var(--space-2);"><strong>${escapeHtml(drawing.artistName)}</strong><span class="badge">${icon('trophy')} Runde ${drawing.round}</span></div>
+          <div class="scribble-stored-canvas-wrap"><canvas data-arcade-gallery-drawing="${drawing.id}" aria-label="Rundenbild von ${escapeHtml(drawing.artistName)}"></canvas></div>
+          <div class="muted">${escapeHtml(drawing.word)} · ${drawing.favoriteVotes} Favoriten · ${drawing.reactionCount} Reaktionen</div>
+        </article>`).join('')}</div>`
+    : emptyStateHtml('Noch kein Rundenbild gekürt.', { style: 'padding:var(--space-4);' });
+  return `
+    <div class="section-title">Beste Bilder pro Spieler</div>
+    <div class="leaderboard-list-grid">${artRows}</div>
+    <div class="section-title">Rundenbilder-Galerie</div>
+    ${galleryHtml}`;
+}
+
+function arcadeMatchCountLabel(count) {
+  return `${count} ${count === 1 ? 'Match' : 'Matches'}`;
+}
+
+function arcadeResultLabel(wins, losses) {
+  return `${wins} ${wins === 1 ? 'Sieg' : 'Siege'} · ${losses} ${losses === 1 ? 'Niederlage' : 'Niederlagen'}`;
+}
+
+function arcadeStatsHtml() {
+  if (!stats && !statsLoading) return '';
+  if (statsLoading && !stats) return emptyStateHtml('Statistiken laden…', { style: 'padding:var(--space-4);' });
+  const games = stats?.games ?? [];
+  if (!games.length) return emptyStateHtml('Noch keine abgeschlossenen Arcade-Runden.', { style: 'padding:var(--space-4);' });
+  if (!games.some((g) => (g.statsKey ?? g.gameType) === activeStatsGame)) activeStatsGame = games[0].statsKey ?? games[0].gameType;
+
+  const statsGameOptions = games.map((g) => ({ value: g.statsKey ?? g.gameType, label: `${g.title} · ${arcadeMatchCountLabel(g.matches)}` }));
+  const gameSelect = `
+    <div>
+      <label for="arcade-stats-game-search" class="field-label">Spiel auswählen</label>
+      ${searchSelectHtml('arcade-stats-game', statsGameOptions, activeStatsGame, { placeholder: 'Spiel suchen…' })}
+    </div>`;
+
+  const game = games.find((g) => (g.statsKey ?? g.gameType) === activeStatsGame);
+  const isArenaStats = game.mode?.startsWith('arena');
+  const rows = game.players
+    .slice(0, 5)
+    .map(
+      (p, i) => `
+        <div class="lb-row">
+          <span class="lb-rank">${i + 1}</span>
+          <span class="leaderboard-row-main">
+            <strong class="player-name leaderboard-row-name">${escapeHtml(p.name)}</strong>
+            <span class="muted leaderboard-row-stat">${
+              isArenaStats
+                ? `${p.wins} ${p.wins === 1 ? 'Sieg' : 'Siege'} · ${p.topThree}× Top 3 · Ø Platz ${p.averagePlacement?.toFixed(1) ?? '–'}`
+                : arcadeResultLabel(p.wins, p.losses)
+            }</span>
+            ${isArenaStats ? `<span class="muted leaderboard-row-stat">${p.lines} Zeilen · ${p.garbageSent} Angriff · ${p.knockouts} K.o.</span>` : ''}
+          </span>
+          <strong class="lb-points">${isArenaStats ? `${p.knockouts} K.o.` : `${Math.round(p.winRate * 100)}%`}</strong>
+        </div>`
+    )
+    .join('');
+  return `
+    ${gameSelect}
+    <div class="arcade-stat-game">
+      <div class="leaderboard-list-grid">${rows}</div>
+    </div>
+    ${game.gameType === 'scribble' ? scribbleArtStatsHtml(game) : ''}`;
+}
+
+function renderLobbyList() {
+  if (lobbies.length === 0) return emptyStateHtml('Keine offene Quiz-Lobby.', { style: 'padding:var(--space-4);' });
+  return lobbies
+    .map((l) => {
+      const isHost = l.host.id === getMyId();
+      const joined = l.players.some((p) => p.id === getMyId());
+      const settingsHtml = isHost
+        ? `<label class="arcade-lobby-target-score">
+            <span>Punkte bis Sieg</span>
+            <input type="number" id="target-score" min="1" max="100" value="${escapeHtml(customTarget)}" aria-label="Punkte bis Sieg" />
+          </label>`
+        : '';
+      const startReason = l.players.length < 2 ? 'Noch nicht genug Spieler (mind. 2).' : '';
+      const footerActions = isHost
+        ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-start-lobby" ${l.players.length < 2 ? 'disabled' : ''}>Start</button>
+            ${startReason ? infoTooltipHtml(`quiz-start-${l.id}`, 'Start nicht möglich', startReason, 'warning') : ''}
+          <button type="button" class="btn btn-sm btn-equal btn-danger" data-close-lobby="${l.id}">Schließen</button>`
+        : joined
+          ? readyToggleHtml(l, getMyId(), 'quiz-ready')
+          : '';
+      const joinAction = !joined && !isHost
+        ? `<button type="button" class="btn btn-sm btn-primary" data-join-lobby="${l.id}">Beitreten</button>`
+        : '';
+      return arcadeLobbyEntryHtml(l, { joinAction, settingsHtml, footerActions });
+    })
+    .join('');
+}
+
+function secondsLeft() {
+  if (match?.paused) return Math.max(0, Math.ceil((match.remainingMs ?? 0) / 1000));
+  if (!currentQuestion?.expiresAt) return 0;
+  return Math.max(0, Math.ceil((currentQuestion.expiresAt - Date.now()) / 1000));
+}
+
+function matchControlsHtml() {
+  if (!match || match.ended) return '';
+  const isHost = match.host?.id === getMyId();
+  if (!isHost) {
+    // A non-host player can't pause (shared timer state, host-only), but
+    // must still have a way out instead of only a raw tab close.
+    if (!match.players.some((p) => p.id === getMyId())) return '';
+    return `
+      <div class="arcade-match-controls">
+        <button type="button" class="btn btn-sm btn-equal btn-danger" id="quiz-leave">Verlassen</button>
+      </div>`;
+  }
+  return `
+    <div class="arcade-match-controls">
+      ${
+        match.paused
+          ? `<button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-resume">Fortsetzen</button>`
+          : `<button type="button" class="btn btn-sm btn-equal" id="quiz-pause">Pausieren</button>`
+      }
+      <button type="button" class="btn btn-sm btn-equal btn-danger" id="quiz-finish">Beenden</button>
+    </div>`;
+}
+
+function renderMatch() {
+  if (!match) return '';
+  const winnerId = match.winner?.id ?? lastResult?.winner?.id ?? null;
+  const roster = matchRosterHtml(match.players, {
+    winnerId,
+    scoreFor: (player) => {
+      const score = match.scores?.find((s) => s.playerId === player.id)?.score ?? 0;
+      return `${score}/${match.targetScore ?? 5}`;
+    },
+  });
+  const result = lastResult && !match.ended
+    ? `<div class="card quiz-stage-card" style="margin-top:var(--space-3);">
+        <div class="quiz-stage-content quiz-round-result"><h2>${escapeHtml(lastResult.correctAnswer ?? '')}</h2></div>
+      </div>`
+    : '';
+  const question = currentQuestion
+    ? `
+      <div class="card quiz-stage-card" style="margin-top:var(--space-3);">
+      <form id="quiz-answer-form" class="stack quiz-stage-content">
+        <div class="row-between">
+          <div class="muted">${escapeHtml(currentQuestion.category || 'Quiz')} · ${escapeHtml(currentQuestion.difficulty || 'offen')}</div>
+          <span id="quiz-countdown" class="badge ${secondsLeft() <= 5 ? 'badge-paused' : 'badge-playing'}">${match.paused ? 'Pause' : `${secondsLeft()}s`}</span>
+        </div>
+        <h2 style="font-size:var(--font-size-lg);margin:0;">${escapeHtml(currentQuestion.question)}</h2>
+        <div class="row">
+          <input type="text" id="quiz-answer" autocomplete="off" placeholder="Antwort" style="flex:1;" aria-label="Antwort" ${match.paused ? 'disabled' : ''} />
+          <button type="submit" class="btn btn-primary" ${match.paused ? 'disabled' : ''}>Senden</button>
+        </div>
+      </form></div>`
+    : match.ended
+      ? emptyStateHtml('Match beendet.', { style: 'margin-top:var(--space-3);' })
+      : emptyStateHtml('Nächste Frage kommt…', { style: 'margin-top:var(--space-3);' });
+  return `
+    ${roster}
+    ${result}
+    ${question}
+    ${matchControlsHtml()}
+  `;
+}
+
+function engagedGame() {
+  if (match || myLobby()) return 'quiz';
+  if (myTetrisLobby()) return 'tetris';
+  if (myScribbleLobby() || hasScribbleMatch()) return 'scribble';
+  if (myPongLobby() || hasPongMatch()) return 'pong';
+  if (myBlobbyLobby() || hasBlobbyMatch()) return 'blobby';
+  if (mySnakeLobby() || hasSnakeMatch()) return 'snake';
+  if (myBattleshipLobby() || hasBattleshipMatch()) return 'battleship';
+  if (myChallengeRushLobby() || hasChallengeRushMatch()) return 'challenge-rush';
+  return null;
+}
+
+function currentGame() {
+  return activeGame ?? engagedGame();
+}
+
+async function leaveCurrentLobbyBeforeAction(targetGame, action) {
+  const playerId = getMyId();
+  const quizLobby = myLobby();
+  const candidates = [
+    { name: 'Quiz', lobby: quizLobby, leave: (lobby) => emitWithAck(lobby.host.id === playerId ? 'arcade:lobby:close' : 'arcade:lobby:leave', { lobbyId: lobby.id, playerId }) },
+    { name: 'Tetris', lobby: myTetrisLobby(), leave: leaveMyTetrisLobby },
+    { name: 'Scribble', lobby: myScribbleLobby(), leave: leaveMyScribbleLobby },
+    { name: 'Pong', lobby: myPongLobby(), leave: leaveMyPongLobby },
+    { name: 'Blobby Volley', lobby: myBlobbyLobby(), leave: leaveMyBlobbyLobby },
+    { name: 'Snake', lobby: mySnakeLobby(), leave: leaveMySnakeLobby },
+    { name: 'Battleship', lobby: myBattleshipLobby(), leave: async (lobby) => emitWithAck('battleship:lobby:leave', { lobbyId: lobby.id, playerId }) },
+    { name: 'Challenge Rush', lobby: myChallengeRushLobby(), leave: leaveMyChallengeRushLobby },
+  ];
+  const current = candidates.find((entry) => entry.lobby);
+  if (!current) return true;
+  const ownsLobby = current.lobby.host.id === playerId;
+  const consequence = ownsLobby ? 'wird deine eigene Lobby aufgelöst' : 'verlässt du deine aktuelle Lobby';
+  const actionText = action === 'create' ? 'eine neue Lobby öffnest' : 'dieser Lobby beitrittst';
+  if (!(await confirmDialog(
+    `Du bist bereits in einer ${current.name}-Lobby. Wenn du ${actionText}, ${consequence}.`,
+    { confirmText: action === 'create' ? 'Verlassen & öffnen' : 'Verlassen & beitreten', danger: true }
+  ))) return false;
+
+  const result = await current.leave(current.lobby);
+  if (!result?.ok) {
+    showToast(result?.error || 'Deine aktuelle Lobby konnte nicht verlassen werden.', { error: true });
+    return false;
+  }
+  activeGame = targetGame;
+  return true;
+}
+
+// The raw open-lobby list for a given game — every xLobbies() getter
+// already returns the same { id, host, players, ... } shape as quiz's own
+// `lobbies`, so this is the one place that maps a game id to it.
+function gameLobbies(gameId) {
+  switch (gameId) {
+    case 'quiz':
+      return lobbies;
+    case 'tetris':
+      return tetrisLobbies();
+    case 'scribble':
+      return scribbleLobbies();
+    case 'pong':
+      return pongLobbies();
+    case 'blobby':
+      return blobbyLobbies();
+    case 'snake':
+      return snakeLobbies();
+    case 'battleship':
+      return battleshipLobbies();
+    case 'challenge-rush':
+      return challengeRushLobbies();
+    default:
+      return [];
+  }
+}
+
+// How many open lobbies exist right now for a given game, so the tile grid
+// and the compact overview below can both show it.
+function openLobbyCount(gameId) {
+  return gameLobbies(gameId).length;
+}
+
+function gameTileHtml(game, active, count) {
+  return `
+    <button type="button" class="card arcade-tile ${active === game.id ? 'is-active' : ''} ${game.soon ? 'is-soon' : ''}" data-game="${game.id}" aria-pressed="${active === game.id}">
+      <span class="arcade-tile-icon" aria-hidden="true">${game.icon}</span>
+      <span class="arcade-tile-name">${escapeHtml(game.name)}</span>
+      ${game.soon ? `<span class="badge arcade-tile-state">Bald</span>` : count > 0 ? `<span class="badge arcade-tile-count">${count} offen</span>` : ''}
+    </button>`;
+}
+
+function runningMatchesOverviewHtml() {
+  const myId = getMyId();
+  const matches = watchMatches.filter((live) => !isOwnFinishedMatch(live, myId));
+  if (matches.length === 0) return '';
+  return `
+    <section class="card stack grouped-page-section" aria-labelledby="arcade-running-title">
+      <div class="grouped-page-section-title"><h2 id="arcade-running-title">Laufende Spiele</h2></div>
+      <div class="arcade-watch-list two-column-card-grid">
+        ${matches
+          .map((live) => {
+            const game = GAMES.find((entry) => entry.id === live.gameType);
+            const players = (live.players ?? []).map((player) => escapeHtml(player.name ?? player.ref?.name ?? 'Spieler')).join(' · ');
+            const scoreText = (live.scores ?? []).map((score) => `${escapeHtml(score.name ?? 'Spieler')}: ${score.score ?? 0}`).join(' · ');
+            return `<div class="card arcade-watch-list-row">
+              <div class="stack" style="gap:var(--space-1);min-width:0;">
+                <strong>${game?.icon ?? ''} ${escapeHtml(game?.name ?? live.gameType)}</strong>
+                <span class="muted list-row-desc">${players || 'Spiel läuft'}${scoreText ? ` · ${scoreText}` : ''}</span>
+              </div>
+              <button type="button" class="btn btn-sm btn-primary" data-watch-match="${escapeHtml(live.matchId)}">Zuschauen</button>
+            </div>`;
+          })
+          .join('')}
+      </div>
+    </section>`;
+}
+
+// The lobby/match UI for the currently selected game, shown under the tiles.
+// Nothing renders here until a game is picked (or the player is already
+// engaged in one) — that's the whole point of keeping this a launcher.
+function activeGameHtml() {
+  const game = currentGame();
+  if (game === 'quiz') {
+    const createReason = match ? 'Beende zuerst dein aktuelles Spiel.' : '';
+    const mayUseAi = currentPlayerMayUseArcadeAi();
+    return `
+      <div class="card stack arcade-lobby-card">
+        <div class="arcade-lobby-create-actions">
+          <div class="arcade-lobby-create-row arcade-lobby-create-row--no-mode${mayUseAi ? '' : ' arcade-lobby-create-row--no-opponent'}">
+            <button type="button" class="btn btn-primary btn-sm" id="quiz-create-lobby" ${match ? 'disabled' : ''}>Lobby öffnen</button>
+            ${createReason ? infoTooltipHtml('quiz-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
+            ${mayUseAi ? arcadeLobbyOpponentToggleHtml('quiz-opponent', quizOpponent, Boolean(match)) : ''}
+          </div>
+        </div>
+        ${renderLobbyList()}
+      </div>`;
+  }
+  if (game === 'tetris') {
+    return `<div>${renderTetrisLobbyCard()}</div>`;
+  }
+  if (game === 'scribble') {
+    return `<div>${renderScribbleLobbyCard()}</div>`;
+  }
+  if (game === 'pong') return `<div>${renderPongLobbyCard()}</div>`;
+  if (game === 'blobby') return `<div>${renderBlobbyLobbyCard()}</div>`;
+  if (game === 'snake') return `<div>${renderSnakeLobbyCard()}</div>`;
+  if (game === 'battleship') return `<div>${renderBattleshipLobbyCard()}</div>`;
+  if (game === 'challenge-rush') return `<div>${renderChallengeRushLobbyCard()}</div>`;
+  return '';
+}
+
+export function renderArcade(container, ctx) {
+  ensureSocket(ctx);
+  ensureTetrisSocket();
+  ensureScribbleSocket();
+  ensurePongSocket();
+  ensureBlobbySocket();
+  ensureSnakeSocket();
+  ensureBattleshipSocket();
+  ensureChallengeRushSocket();
+  if (!stats && !statsLoading) loadStats(ctx);
+  const lobby = myLobby();
+
+  const cg = currentGame();
+  const activeGameDefinition = GAMES.find((game) => game.id === cg);
+  container.innerHTML = `
+    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+    <h1 class="view-title">Arcade</h1>
+    <div class="grouped-page-sections" style="margin-top:var(--space-3);">
+      <section class="card stack grouped-page-section" aria-labelledby="arcade-games-title">
+        <div class="grouped-page-section-title"><h2 id="arcade-games-title">Spiele</h2></div>
+        <div class="arcade-tiles">
+          ${GAMES.map((g) => gameTileHtml(g, cg, openLobbyCount(g.id))).join('')}
+        </div>
+      </section>
+      ${runningMatchesOverviewHtml()}
+      ${
+        activeGameDefinition
+          ? `<section class="card stack grouped-page-section" aria-labelledby="arcade-active-game-title">
+               <div class="grouped-page-section-title">
+                 <div class="row arcade-active-game-title">
+                   <h2 id="arcade-active-game-title">${escapeHtml(activeGameDefinition.name)}</h2>
+                   ${infoTooltipHtml(`arcade-${activeGameDefinition.id}-game-info`, activeGameDefinition.name, activeGameDefinition.help)}
+                 </div>
+               </div>
+               ${activeGameHtml()}
+             </section>`
+          : ''
+      }
+      <section class="card stack grouped-page-section" aria-labelledby="arcade-stats-title">
+        <div class="grouped-page-section-title"><h2 id="arcade-stats-title">Statistiken</h2></div>
+        ${arcadeStatsHtml()}
+      </section>
+    </div>
+  `;
+
+  wireInfoTooltips(container);
+  wireTetrisLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('tetris', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('tetris', 'join') });
+  wireScribbleLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('scribble', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('scribble', 'join') });
+  wirePongLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('pong', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('pong', 'join') });
+  wireBlobbyLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('blobby', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('blobby', 'join') });
+  wireSnakeLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('snake', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('snake', 'join') });
+  wireBattleshipLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('battleship', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('battleship', 'join') });
+  wireChallengeRushLobbyCard(container, { beforeCreate: () => leaveCurrentLobbyBeforeAction('challenge-rush', 'create'), beforeJoin: () => leaveCurrentLobbyBeforeAction('challenge-rush', 'join') });
+
+  container.querySelectorAll('[data-game]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.game;
+      const def = GAMES.find((g) => g.id === id);
+      if (def?.soon) return showToast(`${def.name} kommt bald!`);
+      activeGame = activeGame === id ? null : id;
+      ctx.rerender();
+    });
+  });
+
+  container.querySelectorAll('[data-watch-match]').forEach((btn) => {
+    btn.addEventListener('click', () => startArcadeWatch(btn.dataset.watchMatch));
+  });
+
+  if (container.querySelector('#arcade-stats-game')) {
+    wireSearchSelect(container, 'arcade-stats-game', (stats?.games ?? []).map((g) => ({ value: g.statsKey ?? g.gameType, label: `${g.title} · ${arcadeMatchCountLabel(g.matches)}` })));
+    container.querySelector('#arcade-stats-game').addEventListener('change', (event) => {
+      activeStatsGame = event.currentTarget.value;
+      ctx.rerender();
+    });
+  }
+
+  container.querySelectorAll('canvas[data-arcade-gallery-drawing]').forEach((canvas) => {
+    const drawing = scribbleGallery.find((entry) => entry.id === canvas.dataset.arcadeGalleryDrawing);
+    if (drawing) renderScribbleDrawing(canvas, drawing.strokes ?? []);
+  });
+
+  wireArcadeOpponentToggle(container, 'quiz-opponent', (value) => {
+    quizOpponent = value;
+    ctx.rerender();
+  });
+
+  container.querySelector('#quiz-create-lobby')?.addEventListener('click', async () => {
+    const playerId = getMyId();
+    if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+    if (!(await leaveCurrentLobbyBeforeAction('quiz', 'create'))) return;
+    if (quizOpponent === 'bot') {
+      const botRes = await emitWithAck('arcade:lobby:bot', { playerId });
+      if (!botRes?.ok) showToast(botRes?.error || 'KI-Lobby konnte nicht erstellt werden.', { error: true });
+      return;
+    }
+    const res = await emitWithAck('arcade:lobby:create', { gameType: 'quiz', playerId });
+    if (!res?.ok) return showToast(res?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
+    showToast('Quiz-Lobby geöffnet.');
+  });
+
+  container.querySelectorAll('[data-close-lobby]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const playerId = getMyId();
+      const res = await emitWithAck('arcade:lobby:close', { lobbyId: btn.dataset.closeLobby, playerId });
+      if (!res?.ok) showToast(res?.error || 'Schließen fehlgeschlagen.', { error: true });
+    });
+  });
+
+  container.querySelectorAll('[data-join-lobby]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const playerId = getMyId();
+      if (!playerId) return showToast('Bitte zuerst auswählen, wer du bist.', { error: true });
+      if (!(await leaveCurrentLobbyBeforeAction('quiz', 'join'))) return;
+      const res = await emitWithAck('arcade:lobby:join', { lobbyId: btn.dataset.joinLobby, playerId });
+      if (!res?.ok) showToast(res?.error || 'Beitritt fehlgeschlagen.', { error: true });
+    });
+  });
+
+  wireReadyToggle(container, 'quiz-ready', async (lobbyId, ready) => {
+    const res = await emitWithAck('arcade:lobby:ready', { lobbyId, playerId: getMyId(), ready });
+    if (!res?.ok) showToast(res?.error || 'Bereit-Status konnte nicht gesetzt werden.', { error: true });
+  });
+
+  container.querySelector('#target-score')?.addEventListener('input', (e) => {
+    customTarget = e.target.value;
+  });
+
+  container.querySelector('#quiz-start-lobby')?.addEventListener('click', async () => {
+    const playerId = getMyId();
+    const targetScore = Number(container.querySelector('#target-score')?.value ?? 5);
+    const res = await emitWithAck('arcade:lobby:start', { lobbyId: lobby.id, playerId, targetScore });
+    if (!res?.ok) showToast(res?.error || 'Start fehlgeschlagen.', { error: true });
+  });
+}
+
+// The live quiz match runs in its own view (like Tetris), so the Arcade page
+// stays a clean launcher. app.js maps the `quizRoom` view here.
+export function renderQuizRoom(container, ctx) {
+  ensureSocket(ctx);
+  if (!match) {
+    container.innerHTML = `
+      <button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button>
+      ${emptyStateHtml('Kein laufendes Quiz-Match.', { style: 'margin-top:var(--space-4);' })}`;
+    return;
+  }
+  container.innerHTML = `
+    <div class="arcade-game-shell"><h1 class="view-title">Gaming-Quiz</h1>
+    ${arcadeToolbarHtml()}
+    ${renderMatch()}
+    ${match.ended ? `<button type="button" class="btn btn-primary btn-block" id="quiz-back" style="margin-top:var(--space-4);">Zurück zum Arcade</button>` : ''}
+    </div>`;
+  wireQuizMatch(container);
+  wireArcadeToolbar(container);
+  if (currentQuestion && !match.paused) startCountdown();
+  // Every socket update (new question, opponent's result, ...) rebuilds this
+  // view's DOM from scratch, which otherwise drops focus and forces a click
+  // back into the box before typing again — keep the cursor there so players
+  // can just keep typing across questions.
+  container.querySelector('#quiz-answer:not(:disabled)')?.focus();
+}
+
+function wireQuizMatch(container) {
+  container.querySelector('#quiz-answer-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const playerId = getMyId();
+    const input = container.querySelector('#quiz-answer');
+    const text = input.value.trim();
+    if (!playerId || !match?.matchId || !text) return;
+    const res = await emitWithAck('arcade:quiz:answer', { matchId: match.matchId, playerId, text });
+    if (res?.ok && res.correct === false) { showToast('Noch nicht richtig.'); playArcadeSound('quiz-wrong'); }
+    if (res?.ok && res.correct === true) playArcadeSound('quiz-correct');
+    if (!res?.ok) showToast(res?.error || 'Antwort nicht angenommen.', { error: true });
+    input.value = '';
+    input.focus();
+  });
+
+  wireQuizPauseControl(container);
+  container.querySelector('#quiz-finish')?.addEventListener('click', async () => {
+    if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
+    const res = await emitWithAck('arcade:match:finish', { matchId: match?.matchId, playerId: getMyId() });
+    if (!res?.ok) showToast(res?.error || 'Beenden fehlgeschlagen.', { error: true });
+  });
+  container.querySelector('#quiz-leave')?.addEventListener('click', async () => {
+    if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
+    const res = await emitWithAck('arcade:match:leave', { matchId: match?.matchId, playerId: getMyId() });
+    if (!res?.ok) showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
+  });
+
+  container.querySelector('#quiz-back')?.addEventListener('click', () => {
+    match = null;
+    currentQuestion = null;
+    lastResult = null;
+    stopCountdown();
+    navigate('arcade');
+  });
+}
+
+function wireQuizPauseControl(container) {
+  container.querySelector('#quiz-pause')?.addEventListener('click', async () => {
+    const res = await emitWithAck('arcade:match:pause', { matchId: match?.matchId, playerId: getMyId() });
+    if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
+  });
+
+  container.querySelector('#quiz-resume')?.addEventListener('click', async () => {
+    const res = await emitWithAck('arcade:match:resume', { matchId: match?.matchId, playerId: getMyId() });
+    if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
+  });
+
+}
+
+function updateQuizPauseUi() {
+  updateCountdownBadge();
+  const answer = document.querySelector('#quiz-answer');
+  const submit = document.querySelector('#quiz-answer-form button[type="submit"]');
+  if (answer) answer.disabled = match.paused;
+  if (submit) submit.disabled = match.paused;
+  const button = document.querySelector('#quiz-pause, #quiz-resume');
+  if (button) {
+    button.outerHTML = match.paused
+      ? '<button type="button" class="btn btn-sm btn-equal btn-primary" id="quiz-resume">Fortsetzen</button>'
+      : '<button type="button" class="btn btn-sm btn-equal" id="quiz-pause">Pausieren</button>';
+    wireQuizPauseControl(document);
+  }
+  if (!match.paused && quizAnswerHadFocusBeforePause && answer) {
+    answer.focus();
+    quizAnswerHadFocusBeforePause = false;
+  }
+}

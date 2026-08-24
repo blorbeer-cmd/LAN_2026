@@ -11,13 +11,17 @@ import { state } from '../state.js';
 import { escapeHtml, avatarHtml, stateLabel } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
-import { isAdmin } from '../admin.js';
+import { isGroupAdmin } from '../groupContext.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const SIDES = ['top', 'right', 'bottom', 'left'];
 const LABELS = { top: 'Oben', right: 'Rechts', bottom: 'Unten', left: 'Links' };
 let cache = null;
 let loading = false;
+let loadError = false;
+let cacheStale = false;
+let loadRequestVersion = 0;
 let saving = false;
 // Tap-to-place selection: { playerId, source: {side, seat} | null (pool) }.
 let selected = null;
@@ -26,8 +30,12 @@ let selected = null;
 // editor is already open with a cached layout — without this, the board
 // would keep showing the pre-change data for the rest of the session
 // instead of picking it up live (CLAUDE.md: realtime by default).
-export function invalidateSeating() {
-  cache = null;
+export function invalidateSeating({ hard = false } = {}) {
+  loadRequestVersion += 1;
+  loading = false;
+  cacheStale = true;
+  if (hard) cache = null;
+  loadError = false;
 }
 
 function playerMap(players) {
@@ -84,7 +92,6 @@ export function renderSeatingPlan(layout, players, { editable = false } = {}) {
     ${sideHtml(layout, players, 'top', editable)}
     ${sideHtml(layout, players, 'right', editable)}
     <div class="seating-table-center">
-      <div class="seating-table-mark"><strong>Sitzplan</strong></div>
       ${editable ? `<span class="muted">${selected ? 'Zielplatz antippen' : 'Spieler ziehen oder antippen'}</span>` : ''}
     </div>
     ${sideHtml(layout, players, 'bottom', editable)}
@@ -95,18 +102,13 @@ export function renderSeatingPlan(layout, players, { editable = false } = {}) {
 function renderSideControls(layout) {
   return `<section class="seating-controls card stack grouped-page-section" aria-labelledby="seating-config-title">
     <div class="grouped-page-section-title">
-      <span class="title-with-info">
-        <h2 id="seating-config-title">Konfiguration</h2>
-        ${infoTooltipHtml('seating-save-help', 'Konfiguration', 'Änderungen werden direkt gespeichert.')}
-      </span>
+      <h2 id="seating-config-title">Konfiguration</h2>
     </div>
     <div class="seating-control-grid">${SIDES.map((side) => `
       <label>${LABELS[side]}
         <input type="number" min="0" max="12" value="${layout[`${side}Seats`]}" data-seat-count="${side}" />
       </label>`).join('')}</div>
-    <div class="seating-save-status">
-      <span class="muted">${saving ? 'Speichert…' : 'Automatisch gespeichert'}</span>
-    </div>
+    ${saving ? '<div class="seating-save-status"><span class="muted">Speichert…</span></div>' : ''}
   </section>`;
 }
 
@@ -269,35 +271,49 @@ function wireEditor(container, ctx) {
 }
 
 async function load(ctx) {
+  const version = ++loadRequestVersion;
   loading = true;
+  loadError = false;
+  cacheStale = false;
   try {
-    cache = await api.seating.layout();
+    const result = await api.seating.layout();
+    if (version === loadRequestVersion) cache = result;
   } catch (err) {
-    showToast(err.message, { error: true });
-    cache = null;
+    if (version === loadRequestVersion) {
+      showToast(err.message, { error: true });
+      // Prevent an immediate retry on the next rerender that would flood the
+      // user with repeated error toasts. A previously loaded plan stays usable.
+      loadError = cache === null;
+    }
   } finally {
-    loading = false;
-    ctx.rerender();
+    if (version === loadRequestVersion) {
+      loading = false;
+      ctx.rerender();
+    }
   }
 }
 
 export function renderSeating(container, ctx) {
-  if (!isAdmin()) {
+  // The server gates PUT /api/seating/layout on the group role (admin/owner).
+  // Mirror that check here
+  // so the editor is only shown when the save will actually succeed.
+  const canEdit = isGroupAdmin();
+  if (!canEdit) {
     container.innerHTML = `
-      <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
+      <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
       <h1 class="view-title">Sitzplan</h1>
       <div class="card stack">
-        <strong>Nur im Admin-Modus verfügbar</strong>
-        <span class="muted">Aktiviere zuerst den Admin-Modus, um den Sitzplan zu bearbeiten.</span>
-        <button type="button" class="btn btn-primary btn-block" data-navigate="admin">Zum Admin-Modus</button>
+        <strong>Nur für Admins verfügbar</strong>
+        <span class="muted">Dieses Konto hat keine Admin-Rechte für den Sitzplan.</span>
+        <button type="button" class="btn btn-primary btn-block" data-navigate="more">Zu Mehr</button>
       </div>`;
     return;
   }
-  if (cache === null && !loading) load(ctx);
+  if ((cache === null || cacheStale) && !loading && !loadError) load(ctx);
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Sitzplan</h1>
-    ${loading || cache === null ? '<div class="empty-state">Lädt…</div>' : renderEditor()}`;
+    ${cache === null ? (loading ? emptyStateHtml('Lädt…') : emptyStateHtml('Fehler beim Laden.')) : renderEditor()}`;
   if (cache) {
     wireInfoTooltips(container);
     wireEditor(container, ctx);

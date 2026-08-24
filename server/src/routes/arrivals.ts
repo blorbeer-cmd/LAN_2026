@@ -4,13 +4,21 @@
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { db, OUTSIDE_EVENTS_ID } from '../db';
-import { resolveGroupEventStorageId } from '../groupEventScope';
+import { db } from '../db';
+import { requireGroupEventAccess, resolveRequestGroupEventScope, resolveRequestGroupEventStorageId } from '../groupEventScope';
 import { broadcast, Events } from '../realtime';
 import { isNonEmptyString } from '../validation';
 import { withBodyPlayerIdentity } from '../sessions';
 
 export const arrivalsRouter = Router();
+
+arrivalsRouter.use((req, res, next) => {
+  const scope = resolveRequestGroupEventScope(req, undefined);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  res.locals.storageEventId = resolveRequestGroupEventStorageId(req);
+  next();
+});
 
 const MAX_NOTE_LENGTH = 240;
 const MAX_LABEL_LENGTH = 120;
@@ -67,6 +75,24 @@ function playerExists(playerId: string): boolean {
   return Boolean(db.prepare('SELECT 1 FROM players WHERE id = ?').get(playerId));
 }
 
+// Ankunft/Abreise oben und die Fahrgemeinschaftszeiten sind zwei Ansichten
+// derselben Angabe: eine Anreise-Fahrgemeinschaft plant die "Ankunft"
+// (eta_at), eine Abreise-Fahrgemeinschaft den Aufbruch (start_at). Anlegen,
+// Bearbeiten und Beitreten übernehmen den jeweiligen Fahrgemeinschaftswert in
+// die eigene arrivals-Zeile; Austreten/Löschen setzt ihn wieder zurück.
+const DIRECTION_FIELD = { arrival: 'arrival_at', departure: 'departure_at' } as const;
+
+function syncOwnDirectionField(eventId: string, playerId: string, direction: 'arrival' | 'departure', value: number | null): void {
+  const column = DIRECTION_FIELD[direction];
+  db.prepare(
+    `INSERT INTO arrivals (event_id, player_id, ${column}, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(event_id, player_id) DO UPDATE SET
+       ${column} = excluded.${column},
+       updated_at = excluded.updated_at`
+  ).run(eventId, playerId, value, Date.now());
+}
+
 function parseOptionalLocation(value: unknown): string | null | { error: string } {
   if (value === undefined || value === null || value === '') return null;
   if (typeof value !== 'string' || value.trim().length > MAX_LOCATION_LENGTH) {
@@ -118,22 +144,7 @@ function serializeCarpool(row: CarpoolRow) {
   };
 }
 
-function deliveryEventId(eventId: string): string | null {
-  return eventId === OUTSIDE_EVENTS_ID ? null : eventId;
-}
-
-function buildList(groupId: string) {
-  const eventId = resolveGroupEventStorageId(groupId);
-  if (!eventId) {
-    return {
-      eventId: null,
-      arrivals: [] as ArrivalRow[],
-      carpools: {
-        arrival: [] as ReturnType<typeof serializeCarpool>[],
-        departure: [] as ReturnType<typeof serializeCarpool>[],
-      },
-    };
-  }
+function buildList(groupId: string, eventId: string) {
   const arrivals = db
     .prepare(
       `SELECT a.event_id, a.player_id, p.name AS playerName, p.color AS playerColor, p.avatar AS playerAvatar,
@@ -165,20 +176,48 @@ function buildList(groupId: string) {
   return { eventId, arrivals, carpools };
 }
 
-function getCarpool(id: string, groupId: string): CarpoolRow | undefined {
+// A player can drive or ride along in at most one carpool per direction -
+// otherwise their own Ankunft/Abreise (synced from the carpool) would be
+// ambiguous between two groups. excludeCarpoolId lets a join check ignore
+// the target carpool itself (already being in it isn't "another" one).
+function memberOfOtherDirectionCarpool(
+  eventId: string,
+  groupId: string,
+  direction: 'arrival' | 'departure',
+  playerId: string,
+  excludeCarpoolId?: string
+): boolean {
+  return Boolean(
+    db
+      .prepare(
+        `SELECT 1 FROM carpool_members cm
+         JOIN carpools c ON c.id = cm.carpool_id
+         JOIN events e ON e.id = c.event_id
+         WHERE cm.player_id = ? AND c.event_id = ? AND e.group_id = ? AND c.direction = ? AND c.id != ?`
+      )
+      .get(playerId, eventId, groupId, direction, excludeCarpoolId ?? '')
+  );
+}
+
+function directionLabel(direction: 'arrival' | 'departure'): string {
+  return direction === 'arrival' ? 'Anreise' : 'Abreise';
+}
+
+function getCarpool(id: string, groupId: string, eventId: string | null): CarpoolRow | undefined {
+  if (!eventId) return undefined;
   return db
     .prepare(
       `SELECT c.*, e.group_id, p.name AS createdByName
        FROM carpools c
        JOIN events e ON e.id = c.event_id
        JOIN players p ON p.id = c.created_by
-       WHERE c.id = ? AND e.group_id = ?`
+       WHERE c.id = ? AND e.group_id = ? AND c.event_id = ?`
     )
-    .get(id, groupId) as CarpoolRow | undefined;
+    .get(id, groupId, eventId) as CarpoolRow | undefined;
 }
 
 arrivalsRouter.get('/', (req, res) => {
-  res.json(buildList(req.group!.id));
+  res.json(buildList(req.group!.id, res.locals.storageEventId as string));
 });
 
 // PUT /api/arrivals/mine - body: { playerId, arrivalAt?, departureAt?, note? }
@@ -196,7 +235,7 @@ arrivalsRouter.put('/mine', ...withBodyPlayerIdentity, (req, res) => {
   const parsedNote = parseOptionalNote(note);
   if (typeof parsedNote === 'object' && parsedNote !== null) return res.status(400).json({ error: parsedNote.error });
 
-  const eventId = resolveGroupEventStorageId(req.group!.id);
+  const eventId = res.locals.storageEventId as string | null;
   if (!eventId) return res.status(409).json({ error: 'Für diese Gruppe läuft derzeit kein Event.' });
   db.prepare(
     `INSERT INTO arrivals (event_id, player_id, arrival_at, departure_at, note, updated_at)
@@ -208,8 +247,8 @@ arrivalsRouter.put('/mine', ...withBodyPlayerIdentity, (req, res) => {
        updated_at = excluded.updated_at`
   ).run(eventId, playerId, parsedArrival, parsedDeparture, parsedNote, Date.now());
 
-  broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id, eventId: deliveryEventId(eventId) });
-  res.json(buildList(req.group!.id));
+  broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id, eventId });
+  res.json(buildList(req.group!.id, eventId));
 });
 
 // POST /api/arrivals/carpools - body: { playerId, direction, label, startAt?,
@@ -239,26 +278,35 @@ arrivalsRouter.post('/carpools', ...withBodyPlayerIdentity, (req, res) => {
 
   const id = nanoid();
   const now = Date.now();
-  const eventId = resolveGroupEventStorageId(req.group!.id);
+  const eventId = res.locals.storageEventId as string | null;
   if (!eventId) return res.status(409).json({ error: 'Für diese Gruppe läuft derzeit kein Event.' });
+  if (memberOfOtherDirectionCarpool(eventId, req.group!.id, direction as 'arrival' | 'departure', playerId)) {
+    return res.status(409).json({ error: `Du bist bereits Teil einer ${directionLabel(direction as 'arrival' | 'departure')}-Fahrgemeinschaft.` });
+  }
   const create = db.transaction(() => {
     db.prepare(
       `INSERT INTO carpools (id, event_id, direction, label, start_at, start_location, eta_at, seats_total, created_by, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(id, eventId, direction, label.trim(), parsedStartAt, parsedStartLocation, parsedEtaAt, parsedSeats, playerId, now);
     db.prepare('INSERT INTO carpool_members (carpool_id, player_id) VALUES (?, ?)').run(id, playerId);
+    syncOwnDirectionField(
+      eventId,
+      playerId,
+      direction as 'arrival' | 'departure',
+      direction === 'arrival' ? parsedEtaAt : parsedStartAt
+    );
   });
   create();
 
-  broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id, eventId: deliveryEventId(eventId) });
-  res.status(201).json(serializeCarpool(getCarpool(id, req.group!.id)!));
+  broadcast(Events.arrivalsChanged, null, { groupId: req.group!.id, eventId });
+  res.status(201).json(serializeCarpool(getCarpool(id, req.group!.id, eventId)!));
 });
 
 // PATCH /api/arrivals/carpools/:id - driver-only. Lets the driver correct
 // their plan (time slips, seat count changes, ...) without having to delete
 // and recreate the group (which would kick every joined passenger out).
 arrivalsRouter.patch('/carpools/:id', ...withBodyPlayerIdentity, (req, res) => {
-  const carpool = getCarpool(req.params.id, req.group!.id);
+  const carpool = getCarpool(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!carpool) return res.status(404).json({ error: 'Fahrgemeinschaft nicht gefunden.' });
   const { playerId, label, startAt, startLocation, etaAt, seatsTotal } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -283,19 +331,23 @@ arrivalsRouter.patch('/carpools/:id', ...withBodyPlayerIdentity, (req, res) => {
     return res.status(400).json({ error: `Es sitzen schon ${taken} Mitfahrer drin - Plätze können nicht darunter reduziert werden.` });
   }
 
-  db.prepare(
-    `UPDATE carpools SET label = ?, start_at = ?, start_location = ?, eta_at = ?, seats_total = ? WHERE id = ?`
-  ).run(label !== undefined ? label.trim() : carpool.label, parsedStartAt, parsedStartLocation, parsedEtaAt, parsedSeats, carpool.id);
+  const update = db.transaction(() => {
+    db.prepare(
+      `UPDATE carpools SET label = ?, start_at = ?, start_location = ?, eta_at = ?, seats_total = ? WHERE id = ?`
+    ).run(label !== undefined ? label.trim() : carpool.label, parsedStartAt, parsedStartLocation, parsedEtaAt, parsedSeats, carpool.id);
+    syncOwnDirectionField(carpool.event_id, playerId, carpool.direction, carpool.direction === 'arrival' ? parsedEtaAt : parsedStartAt);
+  });
+  update();
 
   broadcast(Events.arrivalsChanged, null, {
     groupId: carpool.group_id,
-    eventId: deliveryEventId(carpool.event_id),
+    eventId: carpool.event_id,
   });
-  res.json(serializeCarpool(getCarpool(carpool.id, carpool.group_id)!));
+  res.json(serializeCarpool(getCarpool(carpool.id, carpool.group_id, carpool.event_id)!));
 });
 
 arrivalsRouter.post('/carpools/:id/join', ...withBodyPlayerIdentity, (req, res) => {
-  const carpool = getCarpool(req.params.id, req.group!.id);
+  const carpool = getCarpool(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!carpool) return res.status(404).json({ error: 'Fahrgemeinschaft nicht gefunden.' });
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -305,17 +357,29 @@ arrivalsRouter.post('/carpools/:id/join', ...withBodyPlayerIdentity, (req, res) 
   if (!alreadyIn && seatsTaken(carpool.id, carpool.created_by) >= carpool.seats_total) {
     return res.status(409).json({ error: 'Keine Plätze mehr frei.' });
   }
+  if (!alreadyIn && memberOfOtherDirectionCarpool(carpool.event_id, carpool.group_id, carpool.direction, playerId, carpool.id)) {
+    return res.status(409).json({ error: `Du bist bereits Teil einer anderen ${directionLabel(carpool.direction)}-Fahrgemeinschaft.` });
+  }
 
-  db.prepare('INSERT OR IGNORE INTO carpool_members (carpool_id, player_id) VALUES (?, ?)').run(carpool.id, playerId);
+  const join = db.transaction(() => {
+    db.prepare('INSERT OR IGNORE INTO carpool_members (carpool_id, player_id) VALUES (?, ?)').run(carpool.id, playerId);
+    syncOwnDirectionField(
+      carpool.event_id,
+      playerId,
+      carpool.direction,
+      carpool.direction === 'arrival' ? carpool.eta_at : carpool.start_at
+    );
+  });
+  join();
   broadcast(Events.arrivalsChanged, null, {
     groupId: carpool.group_id,
-    eventId: deliveryEventId(carpool.event_id),
+    eventId: carpool.event_id,
   });
   res.json(serializeCarpool(carpool));
 });
 
 arrivalsRouter.post('/carpools/:id/leave', ...withBodyPlayerIdentity, (req, res) => {
-  const carpool = getCarpool(req.params.id, req.group!.id);
+  const carpool = getCarpool(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!carpool) return res.status(404).json({ error: 'Fahrgemeinschaft nicht gefunden.' });
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -325,6 +389,7 @@ arrivalsRouter.post('/carpools/:id/leave', ...withBodyPlayerIdentity, (req, res)
 
   const leave = db.transaction(() => {
     db.prepare('DELETE FROM carpool_members WHERE carpool_id = ? AND player_id = ?').run(carpool.id, playerId);
+    syncOwnDirectionField(carpool.event_id, playerId, carpool.direction, null);
     const remaining = (db.prepare('SELECT COUNT(*) AS n FROM carpool_members WHERE carpool_id = ?').get(carpool.id) as { n: number }).n;
     if (remaining === 0) db.prepare('DELETE FROM carpools WHERE id = ?').run(carpool.id);
     return remaining;
@@ -333,14 +398,14 @@ arrivalsRouter.post('/carpools/:id/leave', ...withBodyPlayerIdentity, (req, res)
 
   broadcast(Events.arrivalsChanged, null, {
     groupId: carpool.group_id,
-    eventId: deliveryEventId(carpool.event_id),
+    eventId: carpool.event_id,
   });
   if (remaining === 0) return res.status(204).end();
   res.json(serializeCarpool(carpool));
 });
 
 arrivalsRouter.delete('/carpools/:id', ...withBodyPlayerIdentity, (req, res) => {
-  const carpool = getCarpool(req.params.id, req.group!.id);
+  const carpool = getCarpool(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!carpool) return res.status(404).json({ error: 'Fahrgemeinschaft nicht gefunden.' });
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId) return res.status(400).json({ error: 'playerId ist erforderlich.' });
@@ -348,10 +413,17 @@ arrivalsRouter.delete('/carpools/:id', ...withBodyPlayerIdentity, (req, res) => 
     return res.status(403).json({ error: 'Nur der Ersteller kann diese Fahrgemeinschaft löschen.' });
   }
 
-  db.prepare('DELETE FROM carpools WHERE id = ?').run(carpool.id);
+  const remove = db.transaction(() => {
+    const members = db.prepare('SELECT player_id FROM carpool_members WHERE carpool_id = ?').all(carpool.id) as { player_id: string }[];
+    db.prepare('DELETE FROM carpools WHERE id = ?').run(carpool.id);
+    for (const member of members) {
+      syncOwnDirectionField(carpool.event_id, member.player_id, carpool.direction, null);
+    }
+  });
+  remove();
   broadcast(Events.arrivalsChanged, null, {
     groupId: carpool.group_id,
-    eventId: deliveryEventId(carpool.event_id),
+    eventId: carpool.event_id,
   });
   res.status(204).end();
 });

@@ -26,6 +26,10 @@
     var(--danger)
   );
   --accent-text: #ffffff;
+  /* Tinted accent background - the same "-bg" companion pattern as the
+     semantic state colors below, for selected/active chip-style controls
+     that need a light fill rather than a solid gradient. */
+  --accent-bg: rgba(91, 140, 255, 0.16);
   --rank-1-gold: #ffd166;
   --danger: #ef4444;
   --danger-bg: rgba(239, 68, 68, 0.15);
@@ -38,6 +42,7 @@
   --radius-sm: 8px;
   --radius: 14px;
   --radius-lg: 20px;
+  --motion-fast: 0.15s ease;
   --shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
   --nav-height: 64px;
   --topbar-height: 56px;
@@ -72,8 +77,37 @@
   --seating-seat-width-compact: calc(var(--avatar-size-lg) + var(--space-4));
   --seating-seat-height-compact: calc(var(--row-min-h) + var(--space-5));
   --assignment-select-width: 112px;
+  /* Fixed width keeps the food-order payment toggle stable beside the PayPal
+     action while its label, position count and amount change. */
+  --payment-marker-width: 96px;
+  /* Stable Arcade creation geometry: mode-capable and fixed-mode games keep
+     the primary lobby action in the same column while switching tiles. */
+  --arcade-lobby-mode-width: 134px;
+  --arcade-lobby-mode-toggle-width: 154px;
+  --arcade-lobby-card-min-height: 220px;
+  --challenge-rush-stage-max-width: 760px;
+  --challenge-rush-playfield-min-height: 280px;
+  --challenge-rush-button-min-width: 180px;
+  --challenge-rush-button-min-height: 96px;
+  --challenge-rush-number-min-width: 48px;
+  --challenge-rush-number-grid-width: 360px;
+  --challenge-rush-tile-grid-width: 360px;
+  --challenge-rush-trial-grid-max-width: 420px;
+  --challenge-rush-traffic-light-size: 140px;
+  --challenge-rush-color-dot-size: 16px;
   --notification-panel-width: 360px;
   --search-panel-width: 640px;
+  --search-select-results-max-height: 320px;
+  /* Caps a single Info entry's content so a long entry scrolls internally
+     instead of stretching every card in its two-column grid row to match it.
+     ~4 lines at --font-size-lg/1.5 line-height, matching the line-count half
+     of isLongContent()'s own threshold in infoBoard.js. */
+  --info-board-content-max-height: 120px;
+  /* Set from JS to the first-login onboarding rating dialog's own rendered
+     height so the required game rows can scroll fully clear of it instead
+     of the last rows staying pinned behind a fixed panel; 0 outside rating
+     mode. */
+  --onboarding-rating-spacer: 0px;
 
   /* Avatar sizes — the one scale every avatar/color-dot rendering (see
      avatarHtml in format.js) should size itself from, instead of each call
@@ -281,6 +315,53 @@ textarea {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* Technical connection loss is a global app state, so it sits directly
+   below the header until Socket.IO confirms a successful reconnect. */
+.connection-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--state-paused);
+  background: var(--state-paused-bg);
+  color: var(--state-paused);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-align: center;
+}
+
+.connection-status .ui-icon {
+  flex: 0 0 auto;
+}
+
+.readiness-overview > span:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.readiness-check {
+  gap: var(--space-2);
+}
+
+.readiness-check-summary,
+.readiness-details {
+  margin: 0;
+}
+
+.readiness-check-summary {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.readiness-details {
+  padding-left: var(--space-5);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
 }
 
 #broadcast-message {
@@ -517,32 +598,6 @@ textarea {
   }
 }
 
-.group-switcher {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  max-width: 180px;
-  min-height: 40px;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  background: var(--bg-elevated-2);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-}
-.group-switcher[hidden] {
-  display: none;
-}
-.group-switcher .ui-icon {
-  flex: 0 0 auto;
-}
-.group-switcher span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 @media (max-width: 639px) { /* --bp-md */
   .topbar-title .brand-title,
   .github-icon-btn {
@@ -551,8 +606,514 @@ textarea {
   .topbar-actions {
     gap: var(--space-1);
   }
-  .group-switcher {
-    max-width: 132px;
+  .event-context {
+    max-width: 164px;
+  }
+  /* The phone topbar has no room for the chevron's full tap-target inset next
+     to the status icon; the toggle stays tappable via the field itself. */
+  .event-context .search-select-control > input {
+    padding-right: var(--space-6);
+  }
+  /* The switcher only gets ~120px between the logo and the icon buttons, which
+     would truncate every LAN name in its own popup. The topbar is sticky at
+     the top, so the list anchors to the viewport under it instead of to the
+     control — full width, and it cannot spill past either edge the way a
+     control-anchored min-width did. */
+  .event-context .search-select-list {
+    position: fixed;
+    top: calc(var(--topbar-height) + env(safe-area-inset-top) + var(--space-1));
+    right: var(--space-3);
+    left: var(--space-3);
+  }
+}
+
+/* Event polls — follows the same card, compact row, selection-toolbar and
+   collapsible-section vocabulary used by Events, Essen, Vote and Checkliste. */
+.event-polls-page {
+  /* The view restores its own card anchor after live re-renders. Native scroll
+     anchoring would otherwise move the container a second time when the
+     focused response button is replaced. */
+  overflow-anchor: none;
+}
+.event-poll-round-header,
+.event-poll-option-header {
+  align-items: flex-start;
+}
+.event-poll-card-title strong {
+  margin: 0;
+}
+.event-poll-list {
+  gap: var(--space-3);
+}
+.event-poll-card {
+  position: relative;
+  padding: 0;
+  overflow: visible;
+}
+.event-poll-card.has-open-action-menu {
+  z-index: 20;
+}
+.event-poll-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+.event-poll-card-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--tap-target-size);
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.event-poll-card-toggle[aria-expanded='true'] .collapsible-section-chevron {
+  transform: rotate(90deg);
+}
+@media (hover: hover) {
+  .event-poll-card-toggle:hover {
+    background: var(--bg-elevated-2);
+  }
+}
+.event-poll-card-title,
+.event-poll-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.event-poll-card-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.event-poll-card-meta {
+  align-items: flex-end;
+  text-align: right;
+  min-width: 9rem;
+}
+.event-poll-card-side {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+}
+.event-poll-best-result {
+  max-width: 15rem;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-poll-action-menu {
+  position: relative;
+  z-index: 4;
+}
+.event-poll-action-menu[open] {
+  z-index: 21;
+}
+.event-poll-action-menu > summary {
+  list-style: none;
+  white-space: nowrap;
+}
+.event-poll-action-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.event-poll-action-menu-panel {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 12;
+  display: flex;
+  width: max-content;
+  min-width: 12rem;
+  flex-direction: column;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+}
+.event-poll-action-menu-panel button {
+  min-height: 36px;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.event-poll-action-menu-panel button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.event-poll-action-menu-panel button.is-danger {
+  color: var(--danger);
+}
+@media (hover: hover) {
+  .event-poll-action-menu-panel button:hover:not(:disabled) {
+    background: var(--bg-elevated-2);
+  }
+}
+.event-poll-card-content {
+  gap: var(--space-4);
+  padding: 0 var(--space-4) var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.event-poll-round {
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+}
+.event-poll-note {
+  margin: 0;
+}
+.event-poll-options {
+  gap: var(--space-2);
+}
+.event-poll-option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.event-poll-option-badges {
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  min-width: 7.5rem;
+  min-height: 24px;
+}
+.event-poll-option-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+.event-poll-option-title-row {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.event-poll-option-title-row strong {
+  overflow-wrap: anywhere;
+}
+.event-poll-option-link {
+  flex: none;
+  padding: 0;
+}
+.event-poll-option-title-row .info-tooltip-trigger {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+.event-poll-option-title-row .event-poll-option-link .ui-icon,
+.event-poll-option-title-row .info-tooltip-trigger .ui-icon {
+  width: 17px;
+  height: 17px;
+}
+.event-poll-option-response-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.event-poll-counts {
+  font-size: var(--font-size-sm);
+}
+.event-poll-response-toolbar {
+  width: fit-content;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.event-poll-response-toolbar .btn:not(.btn-primary) {
+  min-width: var(--tap-target-size);
+  background: var(--bg-elevated);
+}
+.event-poll-rating-toolbar .btn,
+.event-poll-rating-toolbar .btn:not(.btn-primary) {
+  min-width: 30px;
+  height: 30px;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+}
+.event-poll-choice-control {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+.event-poll-choice-control .selection-toolbar .event-poll-choice-btn {
+  height: auto;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+}
+.event-poll-form-option-details > summary {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.event-poll-save-row {
+  justify-content: flex-end;
+}
+.event-poll-result-title {
+  margin: 0;
+}
+.event-poll-edit-mode {
+  gap: var(--space-1);
+}
+.event-poll-history-round {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.event-poll-history-result {
+  color: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+.event-poll-history-details > summary {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.event-poll-history-details > .event-poll-options {
+  padding-top: var(--space-2);
+}
+.event-poll-ended-history > .collapsible-section-content {
+  padding-top: 0;
+}
+.event-poll-vote-details {
+  gap: var(--space-3);
+}
+.event-poll-vote-option {
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.event-poll-vote-group {
+  gap: var(--space-1);
+}
+.event-poll-vote-person {
+  gap: var(--space-3);
+  min-height: 28px;
+}
+.event-poll-vote-person .player-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.event-poll-voter-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.event-poll-vote-person time {
+  flex: none;
+  font-size: var(--font-size-xs);
+}
+.event-poll-form-option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.event-poll-form-option:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.event-poll-form-option > .row-between {
+  align-items: center;
+}
+.event-poll-form-option-details > summary {
+  font-size: var(--font-size-sm);
+}
+.event-poll-option-extra-fields {
+  margin-top: var(--space-2);
+}
+.event-poll-max-field {
+  grid-template-columns: minmax(0, 112px) minmax(0, 1fr);
+  align-items: center;
+}
+@media (max-width: 639px) { /* --bp-md */
+  .event-poll-card-header {
+    align-items: center;
+  }
+  .event-poll-card-toggle {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .event-poll-card-side {
+    align-self: stretch;
+    align-items: center;
+    justify-content: center;
+  }
+  .event-poll-card-meta {
+    min-width: 0;
+  }
+  .event-poll-best-result {
+    max-width: 8rem;
+  }
+  .event-poll-max-field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .event-poll-option-extra-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .event-poll-option-header {
+    grid-template-columns: minmax(0, 1fr) minmax(6.5rem, auto);
+  }
+  .event-poll-option-badges {
+    min-width: 6.5rem;
+  }
+  .event-poll-vote-person {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0;
+  }
+}
+
+/* Workspace switcher. Deliberately *not* its own control shape: it is the
+   shared `.search-select` every other event and game dropdown uses, so it
+   reads as the same kind of dropdown as the rest of the app. This wrapper
+   only bounds its width inside the crowded topbar; the status icon, listbox
+   and colours all come from the shared component. */
+.event-context {
+  display: block;
+  width: 100%;
+  max-width: 300px;
+}
+.event-context[hidden] {
+  display: none;
+}
+/* The topbar sits above the page content, so the switcher's popup has to as
+   well — otherwise the open list slides behind the first card. */
+.event-context .search-select-list {
+  z-index: 40;
+}
+
+/* ---------- Battleship ---------- */
+.battleship-board-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.battleship-grid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: var(--space-1);
+  width: min(100%, 560px);
+  margin: 0 auto;
+  aspect-ratio: 1;
+}
+
+.battleship-cell {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: var(--tap-target-size);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  cursor: pointer;
+}
+
+.battleship-cell.is-ship {
+  background: var(--accent);
+}
+
+.battleship-cell.is-hit,
+.battleship-cell.is-sunk {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.battleship-cell.is-sunk {
+  background: var(--danger);
+  color: var(--bg);
+  outline: 2px solid var(--danger);
+  outline-offset: -3px;
+}
+
+.battleship-cell.is-miss {
+  background: var(--state-offline-bg);
+  color: var(--text-muted);
+  border-color: var(--text-muted);
+  font-size: var(--font-size-lg);
+}
+
+.battleship-cell.is-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.battleship-cell:disabled {
+  cursor: default;
+  opacity: 0.9;
+}
+
+.battleship-ship-picker,
+.battleship-setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.battleship-setup-actions {
+  justify-content: space-between;
+}
+
+.battleship-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+@media (max-width: 639px) { /* --bp-md */
+  .battleship-board-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .battleship-cell {
+    min-height: var(--tap-target-size);
+  }
+
+  .battleship-board-layout,
+  .battleship-placement-locked,
+  .battleship-setup {
+    min-width: 0;
+  }
+
+  .battleship-board-layout > .card,
+  .battleship-setup {
+    overflow-x: auto;
+  }
+
+  .battleship-setup-actions .btn {
+    flex: 1 1 calc(50% - var(--space-2));
   }
 }
 
@@ -575,14 +1136,14 @@ textarea {
   height: 44px;
   padding: var(--space-3);
 }
-.icon-btn.needs-setup {
+.nav-btn.needs-setup .nav-icon {
   position: relative;
 }
-.icon-btn.needs-setup::after {
+.nav-btn.needs-setup .nav-icon::after {
   content: '';
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: -2px;
+  right: -2px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -594,6 +1155,9 @@ textarea {
   flex: 1;
   min-height: 0; /* allow this flex item to actually shrink and scroll internally, see .app */
   overflow-y: auto;
+  /* Reserve the scrollbar track even for short views so switching to a
+     longer view never changes the content width for a single frame. */
+  scrollbar-gutter: stable;
   /* Full-width scroll area with the content column centered via computed
      side padding instead of max-width + auto margins — same visible column,
      but the scrollbar parks at the window's right edge instead of floating
@@ -603,14 +1167,18 @@ textarea {
   width: 100%;
 }
 /* Re-applied by switchView() on every tab change (and only there — realtime
-   re-renders must not flash): the incoming view fades/slides in briefly. */
+   re-renders must not flash): the incoming view fades in briefly. Opacity
+   only, deliberately not transform: animating transform on this element
+   would animate the scroll container itself (it's also the overflow-y:auto
+   box), which briefly promotes it to its own compositing layer on every
+   switch and made overlay-style scrollbars flash in at the right edge for
+   that instant even on a view short enough to need no scrollbar at all. */
 .view-container.view-enter {
   animation: view-in 0.22s ease;
 }
 @keyframes view-in {
   from {
     opacity: 0;
-    transform: translateY(7px);
   }
 }
 
@@ -874,6 +1442,149 @@ select {
   background-position: right 12px center;
   padding-right: 38px;
 }
+
+/* Searchable select: the options stay inside the app instead of using the
+   browser's unthemeable native datalist popup. */
+.search-select {
+  position: relative;
+}
+.search-select-control {
+  position: relative;
+}
+.search-select-control > input {
+  padding-right: calc(var(--tap-target-size) + var(--space-2));
+}
+.search-select-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  width: var(--tap-target-size);
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.search-select.is-open .search-select-toggle {
+  color: var(--text);
+}
+.search-select.is-open .search-select-toggle .ui-icon {
+  transform: rotate(180deg);
+}
+/* Busy state while a selection triggers an in-flight request (e.g. the
+   topbar workspace switcher awaiting its activate call) — same treatment as
+   .btn:disabled so it reads as the same kind of "wait" state app-wide. */
+.search-select-control > input:disabled,
+.search-select-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.search-select-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  left: 0;
+  max-height: var(--search-select-results-max-height);
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+}
+.search-select-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--tap-target-size);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--font-size-md);
+  text-align: left;
+  cursor: pointer;
+}
+.search-select-option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The food-order description dropdown's per-option price (see "Food orders"
+   in DESIGN_SYSTEM.md) - a plain trailing muted value, not a status icon. */
+.search-select-option-price {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* Status icon for the event dropdowns. It sits inside the field's own left
+   padding when collapsed — the same seating the topbar switcher already used
+   — and repeats on every row of the open list, so the state is readable while
+   choosing instead of only afterwards. Never colour alone: each icon carries
+   the German state as its accessible name and native title. */
+.search-select-value-icon {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--space-3);
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.search-select.has-status-icon .search-select-control > input {
+  padding-left: 38px; /* design-token-ok: clears the status icon, mirrors the chevron's own 38px inset */
+}
+.search-select-status,
+.search-select-option-icon {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  line-height: var(--line-height-tight);
+  color: var(--text-muted);
+}
+.search-select-status[data-event-status='tracking'],
+.search-select-option-icon[data-event-status='tracking'] {
+  color: var(--state-playing);
+}
+.search-select-status[data-event-status='ended'],
+.search-select-option-icon[data-event-status='ended'] {
+  color: var(--state-offline);
+}
+.search-select-status[data-event-status='base'],
+.search-select-option-icon[data-event-status='base'] {
+  color: var(--accent);
+}
+.search-select-option[aria-selected='true'] {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+.search-select-option.is-active {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.search-select-empty {
+  padding: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+@media (hover: hover) {
+  .search-select-option:hover {
+    background: var(--bg-elevated-2);
+  }
+}
 /* Chrome/Edge render the datetime-local picker icon dark-on-dark by default
    (it doesn't follow color-scheme automatically inside a custom-background
    input) — invert it so it's visible against the app's dark inputs. */
@@ -1010,9 +1721,62 @@ input[type='number']::-webkit-inner-spin-button {
   width: calc(var(--space-8) * 2);
   flex: 0 0 auto;
 }
-.selection-toolbar input[type='number'],
 .selection-toolbar .btn {
   height: var(--tap-target-size);
+}
+.selection-toolbar-icon {
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+}
+.selection-toolbar-icon--clear {
+  color: var(--danger);
+}
+.selection-search {
+  display: flex;
+  align-items: center;
+  flex: 1 1 calc(var(--tap-target-size) * 4);
+  min-width: calc(var(--tap-target-size) * 4);
+}
+.selection-search:not(.is-open) {
+  flex: 0 0 var(--tap-target-size);
+  min-width: var(--tap-target-size);
+}
+.selection-search-trigger,
+.selection-search-close {
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+}
+.selection-search-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-width: 0;
+}
+.selection-search-field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+}
+@media (hover: hover) {
+  .selection-toolbar-icon:hover,
+  .selection-search-trigger:hover,
+  .selection-search-close:hover {
+    background: var(--bg-elevated-2);
+  }
+}
+@media (max-width: 639px) { /* --bp-md */
+  .selection-search {
+    flex-basis: 100%;
+  }
 }
 .tournament-team-count-field {
   flex: 0 0 calc(var(--space-8) * 2);
@@ -1217,6 +1981,16 @@ input[type='number']::-webkit-inner-spin-button {
 }
 .profile-identity-fields .field-label {
   margin: 0;
+}
+.profile-password-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+}
+@media (min-width: 640px) { /* --bp-md */
+  .profile-password-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .analytics-tournament-breakdowns {
   display: grid;
@@ -1487,6 +2261,22 @@ button.draft-pool-player {
   width: var(--space-1);
   border-radius: 0 var(--radius-full) var(--radius-full) 0;
   background: var(--accent-gradient);
+}
+/* Spiele view: "Sortieren" and "Filtern" share one compact panel (see
+   gameCatalog.js) instead of two full nested sections each with their own
+   border/padding - a hairline plus a little top padding is enough to still
+   read as two categories without doubling the panel chrome. */
+.game-catalog-filter-group {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+/* Genre chips, the "Meine Bewertung" chips and the search field sit directly
+   under the single "Filtern" heading with no per-row label of their own
+   (each control's own text/aria-label already says what it does) - the same
+   hairline divider used above separates them from each other instead. */
+.game-catalog-filter-divider {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
 }
 .tournament-create-step-title {
   display: flex;
@@ -1779,103 +2569,11 @@ button.draft-pool-player {
   gap: var(--space-3);
 }
 
-.group-list {
-  display: grid;
-  gap: var(--space-2);
-}
-.group-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  width: 100%;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-elevated-2);
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.group-option.is-active {
-  border-color: var(--accent);
-}
-.group-option span:first-child {
-  display: grid;
-  gap: var(--space-1);
-}
-.group-option small {
-  color: var(--text-muted);
-}
-.group-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-.group-member-list {
-  display: grid;
-  gap: var(--space-2);
-}
-.group-member-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-elevated-2);
-}
-.group-member-row > span:first-child {
-  display: grid;
-  gap: var(--space-1);
-}
-.group-member-row small {
-  color: var(--text-muted);
-}
-.group-member-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-.group-role-select {
-  width: auto;
-  min-width: 112px;
-}
-.group-audit-list {
-  display: grid;
-  gap: var(--space-2);
-  margin: var(--space-3) 0 0;
-  padding-left: var(--space-5);
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
-}
-.group-test-users-form {
-  align-items: stretch;
-  margin-top: var(--space-3);
-}
-.group-test-users-form input {
-  flex: 1 1 80px;
-  min-width: 72px;
-}
-@media (max-width: 479px) { /* --bp-sm */
-  .group-member-row {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .group-member-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-}
 .notice {
   margin: 0;
   padding: var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius);
   background: var(--bg-elevated-2);
   color: var(--text-muted);
   font-size: var(--font-size-sm);
@@ -1924,6 +2622,37 @@ button.draft-pool-player {
   text-transform: uppercase;
   letter-spacing: 0.03em;
   margin: var(--space-5) 0 var(--space-2);
+}
+
+/* Tab row of a merged top-level area (Wettkampf, Auswertung, Orga — see
+   sectionNav.js). Each tab is a real route, so this is navigation, not a
+   filter: the active tab carries aria-current="page" plus the primary button
+   treatment. It sits directly under the area title, outside any card, which is
+   what keeps it distinguishable from the in-card control rows further down. */
+.section-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+}
+/* Phones share the full width so every tab keeps a comfortable tap target. */
+.section-tab {
+  flex: 1 1 auto;
+}
+/* On a wide column, stretching two tabs across 1080px would make them read as
+   banners instead of navigation — from here they size to their own label. */
+@media (min-width: 640px) { /* --bp-md */
+  .section-tab {
+    flex: 0 0 auto;
+  }
+}
+
+/* Right-aligned page-level action next to an area's tab row (Turnier anlegen,
+   Ergebnis eintragen) — those used to share a row with the view title the
+   area shell now owns. */
+.view-actions {
+  justify-content: flex-end;
+  margin-bottom: var(--space-3);
 }
 
 .title-with-info {
@@ -1982,6 +2711,7 @@ button.draft-pool-player {
 .info-tooltip-panel {
   position: fixed;
   z-index: 20;
+  pointer-events: none;
   width: min(var(--info-popover-max-width), calc(100vw - var(--space-4)));
   padding: var(--space-3);
   border: 1px solid var(--border);
@@ -2041,7 +2771,25 @@ button.draft-pool-player {
    gap) below the true end of the scrollable content, and a sticky
    element's offset is resolved against that reserved edge. Re-adding the
    nav height here double-counts it and parks the bar a full nav-height
-   too high, floating over mid-list rows with a dead gap above the nav. */
+   too high, floating over mid-list rows with a dead gap above the nav.
+
+   While it's stuck, whatever list row is scrolling past directly behind it
+   is briefly hidden — measured on a full ~17-player roster, that's a real,
+   reproducible overlap at common sizes like 1366x768, not just a mobile
+   edge case. A permanent fix (reserving matching blank space above the bar
+   so no real row ever lines up behind it) needs the reserved amount to
+   track live content height — every row can pass behind the bar at some
+   scroll position, not only the last one, so the reservation would have to
+   span the whole scrollable region, i.e. effectively turn each long list
+   into its own internally-scrolling box instead of scrolling with the
+   page. That's a materially different, riskier interaction model for a
+   narrow, self-resolving annoyance (scrolling a little further always
+   clears it). Instead: keep the same frosted-glass treatment already used
+   for the topbar/bottom nav below so a covered row stays legible through
+   the bar, and let clicks fall through the bar's own empty background onto
+   whatever row is currently behind it — the annoyance shrinks from "can't
+   see or reach it" to "reads dimmer for a moment", without the bigger
+   rework's risk. */
 .sticky-actions {
   position: sticky;
   bottom: 0;
@@ -2049,6 +2797,24 @@ button.draft-pool-player {
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
   background: var(--bg-elevated);
+  pointer-events: none;
+}
+/* Re-enable only actual controls, not their wrapping layout divs (e.g. the
+   flex `.row` around a button) — those wrappers can span wider than the
+   control itself, and giving pointer-events back to the whole wrapper would
+   silently reopen the same dead zone this rule exists to remove. */
+.sticky-actions button,
+.sticky-actions a,
+.sticky-actions input,
+.sticky-actions [tabindex] {
+  pointer-events: auto;
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sticky-actions {
+    background: rgba(23, 30, 46, 0.7);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+  }
 }
 
 /* Cards that ARE buttons (game rows, tournament list, "Mehr" hub): lift
@@ -2095,6 +2861,49 @@ button.card {
   overflow: hidden;
   min-height: 2.4em;
   font-size: var(--font-size-xs);
+}
+.home-current-row {
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  padding: 0;
+  cursor: default;
+}
+.home-current-navigate {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: var(--row-min-h);
+  flex: 1;
+  padding: var(--card-padding);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.home-current-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.home-current-dismiss {
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
+  align-self: center;
+  flex: 0 0 var(--tap-target-size);
+  margin-right: var(--space-2);
+  color: var(--text-muted);
+}
+@media (hover: hover) {
+  .home-current-navigate:hover {
+    background: var(--bg-elevated-2);
+  }
+  .home-current-row:has(.home-current-navigate:hover) {
+    border-color: var(--accent);
+  }
 }
 .more-card {
   display: grid;
@@ -2146,6 +2955,14 @@ button.card {
   font-size: var(--font-size-lg);
   line-height: 1.5;
 }
+/* A long entry (well past the 1000-character server cap, but already
+   overwhelming next to a short one-line entry) scrolls within a bounded box
+   instead of stretching every card in its grid row to match it. */
+.info-board-content-scroll {
+  max-height: var(--info-board-content-max-height);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .award-card {
   display: flex;
   flex-direction: column;
@@ -2153,329 +2970,6 @@ button.card {
 .award-card-player {
   margin-top: auto;
   padding-top: var(--space-3);
-}
-
-/* Arcade launcher: game choices follow the shared one-/two-column card
-   rhythm instead of shrinking every game into one narrow desktop row. */
-.arcade-tiles {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
-}
-@media (min-width: 640px) { /* --bp-md */
-  .arcade-tiles {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-.arcade-tile {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: var(--space-3);
-  min-height: var(--row-min-h);
-  padding: var(--space-3);
-  cursor: pointer;
-  text-align: left;
-}
-.arcade-tile-icon {
-  width: var(--row-icon-size);
-  height: var(--row-icon-size);
-  display: inline-flex;
-  flex: 0 0 var(--row-icon-size);
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-  font-size: var(--font-size-xl);
-  line-height: var(--line-height-tight);
-}
-.arcade-tile-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-bold);
-}
-.arcade-tile.is-active {
-  border-color: var(--accent);
-  background: var(--bg-elevated-2);
-}
-.arcade-tile.is-soon {
-  opacity: 0.5;
-}
-.arcade-tile-state,
-.arcade-tile-count {
-  flex: 0 0 auto;
-  margin-left: auto;
-}
-.arcade-tile-count {
-  background: var(--state-playing-bg);
-  color: var(--state-playing);
-}
-
-.arcade-stat-game {
-  min-width: 0;
-  margin-top: var(--space-3);
-}
-.arcade-lobby-card {
-  gap: var(--space-3);
-}
-.arcade-active-game-title {
-  gap: var(--space-2);
-}
-.arcade-lobby-create-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-right: var(--space-3);
-  margin-left: var(--space-3);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--border);
-}
-.arcade-lobby-create-actions .btn {
-  width: 100%;
-}
-.arcade-lobby-entry {
-  gap: var(--space-2);
-  padding: var(--space-3);
-  background: var(--bg-elevated-2);
-}
-.arcade-lobby-entry-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-.arcade-lobby-entry-head > strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.arcade-lobby-member-list {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-1);
-}
-.arcade-lobby-member-row {
-  display: grid;
-  grid-template-columns: var(--avatar-size-sm) minmax(0, 1fr) calc(var(--space-8) + var(--space-8));
-  align-items: center;
-  column-gap: var(--space-2);
-  min-height: var(--row-icon-size);
-  min-width: 0;
-}
-.arcade-lobby-member-row + .arcade-lobby-member-row {
-  border-top: 1px solid var(--border);
-}
-.arcade-lobby-member-row .player-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.arcade-lobby-member-role {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-}
-.arcade-lobby-avatar-slot {
-  width: var(--avatar-size-sm);
-  height: var(--avatar-size-sm);
-}
-.arcade-lobby-free-label {
-  align-self: center;
-}
-.arcade-lobby-free-row .btn {
-  width: 100%;
-  align-self: center;
-  padding-top: var(--space-1);
-  padding-bottom: var(--space-1);
-}
-.arcade-lobby-control-bar {
-  display: grid;
-  gap: var(--space-2);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--border);
-}
-.arcade-lobby-settings {
-  display: grid;
-  gap: var(--space-2);
-  min-width: 0;
-}
-.arcade-lobby-target-score {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) calc(var(--space-8) + var(--space-6));
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-}
-.arcade-lobby-target-score select,
-.arcade-lobby-target-score input {
-  height: var(--space-7);
-  padding-top: var(--space-1);
-  padding-bottom: var(--space-1);
-  text-align: center;
-}
-.arcade-lobby-setting-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
-}
-.arcade-lobby-setting-options .check-row {
-  justify-content: center;
-  padding: var(--space-2) var(--space-3);
-}
-.arcade-lobby-entry-actions {
-  display: flex;
-  gap: var(--space-2);
-}
-.arcade-lobby-entry-actions .btn {
-  flex: 1 1 0;
-  min-width: 0;
-}
-@media (min-width: 640px) { /* --bp-md */
-  .arcade-lobby-control-bar:has(.arcade-lobby-settings):has(.arcade-lobby-entry-actions) {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: end;
-  }
-  .arcade-lobby-setting-options {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-.arcade-winner-card {
-  display: grid;
-  gap: var(--space-3);
-  margin-top: var(--space-3);
-}
-
-/* ---------- Scribble (skribbl.io-style draw & guess arcade game) ---------- */
-
-/* Fixed logical aspect ratio so every phone/laptop draws onto the same
-   normalized canvas — coordinates are streamed as 0-1 fractions (see
-   arcadeScribble.js), so the actual pixel size here doesn't matter. Always a
-   light drawing surface (like paper), regardless of the app's dark theme —
-   that's the norm for drawing tools and matches skribbl.io itself. */
-.scribble-canvas-wrap {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 8 / 5;
-  background: #ffffff; /* design-token-ok: paper-white drawing surface regardless of app theme, like skribbl.io */
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  overflow: hidden;
-  touch-action: none;
-}
-.scribble-canvas-wrap canvas {
-  width: 100%;
-  height: 100%;
-  display: block;
-  cursor: crosshair;
-}
-.arcade-game-shell .scribble-stage-card {
-  width: min(100%, 820px);
-  margin-inline: auto;
-}
-.scribble-canvas-locked {
-  cursor: default;
-}
-.scribble-toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  margin-top: var(--space-2);
-}
-.scribble-swatch {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
-  cursor: pointer;
-  padding: 0;
-  flex-shrink: 0;
-}
-.scribble-swatch-active {
-  border-color: var(--accent);
-}
-.scribble-size-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.scribble-size-btn span {
-  display: block;
-  border-radius: 50%;
-  background: currentColor;
-}
-.scribble-word-mask {
-  font-family: 'Courier New', monospace;
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-bold);
-  letter-spacing: 2px; /* design-token-ok: spreads the monospace underscore blanks so single letters stay countable */
-  text-align: center;
-}
-.scribble-chat-log {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  max-height: 160px;
-  overflow-y: auto;
-  font-size: var(--font-size-sm);
-}
-.scribble-chat-correct {
-  color: var(--state-playing);
-  font-weight: var(--font-weight-medium);
-}
-.scribble-word-choice-btn {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
-  padding: var(--space-3);
-}
-
-.scribble-gallery-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--space-3);
-}
-
-.scribble-drawing-card {
-  min-width: 0;
-}
-
-.scribble-drawing-card.is-winner {
-  border-color: var(--rank-1-gold);
-}
-
-.scribble-stored-canvas-wrap {
-  width: 100%;
-  aspect-ratio: 8 / 5;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--accent-text);
-}
-
-.scribble-stored-canvas-wrap canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.scribble-art-stat-row {
-  align-items: flex-start;
-  gap: var(--space-2);
-  flex-wrap: wrap;
 }
 
 /* Spiele view (gameCatalog.js): one compact table-like row per game. A real
@@ -2510,6 +3004,32 @@ button.card {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Optional genre tag next to the title; never allowed to shrink the title
+   below readability, so it's the one that gives way first on narrow rows. */
+.game-row-genre {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+}
+/* "Vorschlag" marker, only rendered in the mixed "Alle" list where catalog
+   games and suggestions sit side by side. Unlike the genre tag it must not
+   give way on narrow rows — it is the row's status, not a detail. Icon-only
+   (see gameRowHtml in gameCatalog.js) so the status reads at a glance
+   without spelling the word out on every row; the icon carries an
+   accessible name and a native title for that. */
+.game-row-status-badge {
+  flex: 0 0 auto;
+}
+/* Same status, reinforced on the row itself so it doesn't depend on
+   noticing the small badge alone — same border+inset-shadow pattern as
+   .matchmaking-draw-team.is-winner, just in the paused/amber color already
+   tied to "Vorschlag" everywhere else. */
+.game-table-row.is-suggestion {
+  border-color: var(--state-paused);
+  box-shadow: inset 0 0 0 1px var(--state-paused);
 }
 /* Static (non-interactive) marker for "agent can detect this game", reusing
    the same green already used for "spielt"/"trackt gerade" elsewhere so the
@@ -2853,9 +3373,8 @@ button.card {
 @media (min-width: 640px) { /* --bp-md */
   .two-column-card-grid.arrivals-carpool-grid > :only-child,
   .two-column-card-grid.arrivals-carpool-grid > :last-child:nth-child(odd),
-  .two-column-card-grid.settings-event-grid > :last-child:nth-child(odd),
   .two-column-card-grid.home-live-grid > :last-child:nth-child(odd) {
-    /* Entity cards (carpools, events, player status) keep sibling width; an
+    /* Entity cards (carpools, player status) keep sibling width; an
        odd final card must not stretch across the full row. */
     grid-column: auto;
   }
@@ -2903,146 +3422,6 @@ button.card {
   }
 }
 
-/* ---------- Tetris Battle (views/tetris.js) ---------- */
-/* Both boards are equal-sized: each column takes half the row and the canvas
-   scales to fill it (its 1:2 pixel resolution is fixed in JS), capped on wide
-   screens so they don't become giant. A soft pulsing glow sits behind them. */
-.tetris-boards {
-  position: relative;
-  display: flex;
-  gap: var(--space-3);
-  justify-content: center;
-  align-items: flex-start;
-  max-width: 540px;
-  margin: var(--space-2) auto 0;
-}
-.tetris-boards::before {
-  content: '';
-  position: absolute;
-  inset: -24px;
-  background: radial-gradient(58% 60% at 50% 42%, rgba(91, 140, 255, 0.14), transparent 70%);
-  animation: tetris-bg-pulse 4s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 0;
-}
-.tetris-board-col {
-  position: relative;
-  z-index: 1;
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-2);
-}
-.tetris-canvas-wrap {
-  position: relative;
-  width: 100%;
-  line-height: 0;
-}
-.tetris-canvas {
-  display: block;
-  width: 100%;
-  height: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: rgba(15, 20, 32, 0.9);
-  touch-action: none; /* drag/tap gestures drive the piece, don't scroll */
-}
-/* Particle overlay for line-clear bursts; never intercepts touches. */
-.tetris-fx {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 2;
-}
-.tetris-stats-line {
-  font-size: var(--font-size-2xs);
-  font-variant-numeric: tabular-nums;
-}
-/* Incoming-garbage warning, pinned to the top-right of a board. */
-.tetris-incoming {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  z-index: 3;
-  font-size: var(--font-size-2xs);
-  font-weight: var(--font-weight-bold);
-  color: var(--state-paused);
-}
-.tetris-incoming-hot {
-  color: var(--danger);
-}
-/* Countdown / pause overlay centred over the player's own board. */
-.tetris-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(6, 9, 18, 0.55);
-  border-radius: var(--radius-sm);
-}
-.tetris-overlay-text {
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-black);
-  color: var(--text);
-}
-@keyframes tetris-bg-pulse {
-  0%,
-  100% {
-    opacity: 0.45;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-/* Line-clear juice: a white flash (gold for a Tetris) plus a quick shake. */
-.tetris-canvas-wrap.tetris-flash::after,
-.tetris-canvas-wrap.tetris-flash-big::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: var(--radius-sm);
-  pointer-events: none;
-  z-index: 3;
-  animation: tetris-flash-fade 0.5s ease-out forwards;
-}
-.tetris-canvas-wrap.tetris-flash::after {
-  background: rgba(255, 255, 255, 0.55);
-}
-.tetris-canvas-wrap.tetris-flash-big::after {
-  background: rgba(255, 209, 102, 0.65);
-}
-@keyframes tetris-flash-fade {
-  to {
-    opacity: 0;
-  }
-}
-.tetris-board-col.tetris-shake {
-  animation: tetris-shake 0.35s ease-in-out;
-}
-@keyframes tetris-shake {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  20% {
-    transform: translateX(-4px);
-  }
-  40% {
-    transform: translateX(4px);
-  }
-  60% {
-    transform: translateX(-3px);
-  }
-  80% {
-    transform: translateX(3px);
-  }
-}
 
 /* The QR code SVG already draws its own white background (needed for
    scanability regardless of theme) — just round its corners and give it
@@ -3057,6 +3436,19 @@ button.card {
 .invite-link-row .btn {
   height: var(--tap-target-size);
   white-space: nowrap;
+}
+.admin-invite-event {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.admin-register-invite-note {
+  margin: 0;
+  font-size: var(--font-size-sm);
 }
 .invite-qr-modal {
   display: flex;
@@ -3148,6 +3540,10 @@ button.card {
   background: var(--state-playing-bg);
   color: var(--state-playing);
 }
+.badge-online {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
 .badge-paused {
   background: var(--state-paused-bg);
   color: var(--state-paused);
@@ -3155,6 +3551,32 @@ button.card {
 .badge-offline {
   background: var(--state-offline-bg);
   color: var(--state-offline);
+}
+/* Neutral label badge (e.g. a To-Do's Art, or a plain not-yet-urgent due
+   date) - visually quiet, distinct from the semantic state badges above. */
+.badge-neutral {
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+}
+/* Event identity on a notification: which workspace an entry came from. It
+   names a scope rather than a state, so it stays as quiet as .badge-neutral
+   instead of competing with the semantic colours - the notification center
+   shows it right next to the "Für dich" audience chip, which is the one that
+   should carry emphasis. */
+.badge-event {
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+}
+/* To-Do due-date badges (docs/KONZEPT-PACKLISTE-TICKETS.md): reuse the same
+   danger/paused semantics as everywhere else in the app rather than
+   inventing new colors - overdue is an error state, due-soon a caution one. */
+.badge-overdue {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.badge-due-soon {
+  background: var(--state-paused-bg);
+  color: var(--state-paused);
 }
 
 .chip {
@@ -3170,6 +3592,14 @@ button.card {
      this they'd pick up the browser's default blue/underlined link style. */
   color: inherit;
   text-decoration: none;
+}
+/* Selected-filter state (To-Dos' Art/"von mir erstellt" chips) - same
+   accent-border convention as .group-option.is-active, plus a light fill so
+   a row of several chips still reads clearly on a phone at a glance. */
+.chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--text);
 }
 @media (hover: hover) {
   a.chip:hover {
@@ -3190,12 +3620,276 @@ button.card {
   gap: var(--space-2);
 }
 
-/* Divider between an event card's info block and its action buttons — keeps
-   the buttons from reading as glued to the text right above them, especially
-   once they wrap onto a second line. */
-.event-card-actions {
+/* ---------- Event cards ---------- */
+
+.event-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  height: 100%;
+  min-width: 0;
+}
+.event-card-header {
+  align-items: flex-start;
+}
+.event-card-detail-label {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.event-card h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+.event-card-info-details {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+}
+.event-card-info > .food-order-details-head:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.event-card-detail {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+}
+.event-card-detail-icon {
+  display: inline-flex;
+  flex: 0 0 var(--font-size-lg);
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+.event-card-detail-icon .ui-icon {
+  width: 1em;
+  height: 1em;
+}
+.event-card-detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.event-card-detail-label {
+  color: var(--text-muted);
+  font-weight: var(--font-weight-medium);
+}
+.event-card-description .event-card-detail-content > span:last-child {
+  white-space: pre-wrap;
+}
+.event-location-link {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: var(--space-1);
+}
+.event-location-text {
+  overflow-wrap: anywhere;
+}
+.event-card-payment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+}
+.event-card-info-details + .event-card-payment {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.event-payment-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.event-payment-member-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.event-payment-member-main {
+  display: flex;
+  flex: 1 1 16rem;
+  align-items: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.event-payment-member-main .event-card-detail {
+  flex: 1 1 auto;
+}
+.event-payment-member-actions .event-paypal-button {
+  flex: 0 0 auto;
+}
+.event-payment-amount {
+  font-size: var(--font-size-lg);
+  font-variant-numeric: tabular-nums;
+}
+.event-payment-due,
+.event-payment-proof,
+.event-payment-overview {
+  font-size: var(--font-size-xs);
+}
+.event-payment-proof {
+  color: var(--text-muted);
+}
+.event-settlement {
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
+}
+.event-settlement-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.event-settlement-metric {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.event-settlement-metric small,
+.event-settlement-metric > span {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.event-settlement-metric strong {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.event-settlement-balance {
+  align-items: center;
+}
+.payment-paypal-button {
+  width: var(--space-7);
+  height: var(--space-7);
+  padding: var(--space-1);
+}
+.event-card-participants {
+  display: block;
+}
+.event-participant-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.event-card-participants .collapsible-section-content {
+  padding-top: 0;
+}
+.event-participant-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.event-participant-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.event-participant-row:first-child {
+  border-top: 0;
+}
+.event-participant-name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.event-card-empty-copy {
+  margin: 0;
+  font-size: var(--font-size-xs);
+}
+.event-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--space-2);
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.event-card-actions .btn {
+  flex: 1 1 calc(50% - var(--space-2));
+  min-width: 0;
+}
+.event-participant-manager-list {
+  display: grid;
+  gap: var(--space-2);
+}
+.event-participant-manager-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.event-participant-manager-row > .player-name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.event-participant-manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+.event-participants-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+@media (max-width: 639px) {
+  .event-payment-heading {
+    align-items: flex-start;
+  }
+  .event-payment-member-main {
+    flex-basis: 100%;
+  }
+  .event-payment-member-actions .event-paypal-button {
+    margin-left: auto;
+  }
+  .event-participant-manager-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .event-participant-manager-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 /* ---------- Live board ---------- */
@@ -3205,6 +3899,16 @@ button.card {
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-4);
+}
+/* Home's live board doubles as the roster since the separate "Spieler" area
+   was removed: every card opens that participant's read-only profile. The
+   kiosk keeps rendering the same card as a static div, so the interactive
+   resets stay scoped to the button form. */
+button.player-card {
+  width: 100%;
+  text-align: left;
+  font-size: var(--font-size-md);
+  cursor: pointer;
 }
 .player-card-main {
   flex: 1;
@@ -3230,319 +3934,6 @@ button.card {
 }
 
 /* ---------- Sliders (skill ratings) ---------- */
-
-/* ---------- Blobby Volley ---------- */
-
-.agent-diagnostic-row {
-  display: grid;
-  gap: var(--space-2);
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--border);
-}
-.agent-diagnostic-row:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-
-.arcade-game-shell {
-  width: min(100%, 960px);
-  margin-inline: auto;
-}
-.arcade-expand-control {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: var(--space-3);
-}
-.arcade-game-shell.is-expanded {
-  width: min(100%, calc(100vw - var(--space-4) - var(--space-4)));
-  max-width: none;
-  box-sizing: border-box;
-}
-.arcade-game-shell.is-expanded .quiz-stage-card,
-.arcade-game-shell.is-expanded .scribble-stage-card,
-.arcade-game-shell.is-expanded .blobby-court,
-.arcade-game-shell.is-expanded .pong-arena,
-.arcade-game-shell.is-expanded .snake-game {
-  width: 100%;
-  max-width: none;
-}
-.arcade-game-shell.is-expanded .quiz-stage-card {
-  height: auto;
-  min-height: 220px;
-  max-height: none;
-}
-.arcade-game-shell.is-expanded .tetris-boards {
-  max-width: none;
-}
-/* The height budget every expanded-playfield width formula below is derived
-   from. The default is a fixed guess (fits the least-chrome game); JS
-   (arcadeUi.js's syncExpandedPlayfieldHeight) overrides it with a measured,
-   precise value on the shell's inline style whenever the guess would
-   overflow the scrollable view and clip score/chat/controls below the fold. */
-.arcade-game-shell.is-expanded {
-  --arcade-h-budget: calc(100dvh - 18rem);
-}
-/* Expanded playfields are bounded by the viewport through their width. Their
-   native aspect ratios remain in charge of the height so canvas coordinates,
-   hit testing and overlays keep the same geometry at every scale. */
-.arcade-game-shell.is-expanded .scribble-canvas-wrap,
-.arcade-game-shell.is-expanded .blobby-court,
-.arcade-game-shell.is-expanded .pong-arena,
-.arcade-game-shell.is-expanded .snake-game {
-  width: min(100%, calc(var(--arcade-h-budget) * 1.6));
-  max-width: 100%;
-  height: auto;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-.arcade-game-shell.is-expanded .scribble-canvas-wrap {
-  aspect-ratio: 8 / 5;
-}
-.arcade-game-shell.is-expanded .blobby-court {
-  width: min(100%, calc(var(--arcade-h-budget) * 5 / 3));
-}
-.arcade-game-shell.is-expanded .pong-arena {
-  width: min(100%, calc(var(--arcade-h-budget) * 16 / 9));
-}
-.arcade-game-shell.is-expanded .snake-game {
-  width: min(100%, calc((var(--arcade-h-budget) - var(--space-4)) * 1.6 + var(--space-4)));
-}
-.arcade-game-shell.is-expanded .blobby-court canvas,
-.arcade-game-shell.is-expanded .pong-arena canvas,
-.arcade-game-shell.is-expanded #snake-canvas {
-  width: 100%;
-  height: auto;
-}
-/* The Scribble canvas carries no width/height attributes when the saved
-   expand preference applies before setupCanvas() runs — height:auto would
-   fall back to the canvas default 300×150 (2:1) inside the 8:5 wrapper and
-   distort every replayed stroke. The wrapper's aspect-ratio is the geometry
-   authority, so the canvas must always fill it completely. */
-.arcade-game-shell.is-expanded .scribble-canvas-wrap canvas {
-  width: 100%;
-  height: 100%;
-}
-.arcade-game-shell.is-expanded .tetris-boards {
-  width: min(100%, calc(100vw - var(--space-3)));
-  height: auto;
-  max-width: none;
-  box-sizing: border-box;
-  /* Contains the decorative ::before glow (inset -24px): at near-viewport
-     width it would otherwise protrude past .view-container and create
-     horizontal page scrolling. */
-  overflow: hidden;
-}
-.arcade-game-shell.is-expanded .tetris-board-col {
-  height: auto;
-  align-items: center;
-}
-.arcade-game-shell.is-expanded .tetris-canvas-wrap {
-  width: min(100%, calc(var(--arcade-h-budget) / 2));
-  height: auto;
-  display: flex;
-  justify-content: center;
-}
-.arcade-game-shell.is-expanded .tetris-canvas {
-  width: 100%;
-  height: auto;
-  max-width: 100%;
-}
-.arcade-game-shell > .view-title {
-  text-align: center;
-}
-.arcade-watch-list-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3);
-}
-.arcade-watch-shell {
-  width: min(100%, 1080px);
-}
-.arcade-watch-header {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin: var(--space-3) 0;
-  font-weight: var(--font-weight-bold);
-}
-.arcade-watch-roster {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-}
-.arcade-watch-player {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  background: var(--bg-elevated);
-}
-.arcade-watch-player strong {
-  color: var(--accent);
-}
-.arcade-watch-shell canvas {
-  display: block;
-  width: 100%;
-  height: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--bg);
-}
-.arcade-watch-safe-note {
-  padding: var(--space-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--bg-elevated);
-  color: var(--text-muted);
-  text-align: center;
-}
-.arcade-match-controls {
-  display: flex;
-  justify-content: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  margin-top: var(--space-3);
-}
-.arcade-roster {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--space-2);
-  margin: var(--space-3) 0;
-}
-.arcade-player-tile {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: 72px;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, var(--bg-elevated), var(--bg-elevated-2));
-  box-shadow: var(--shadow);
-}
-.arcade-player-tile.is-winner {
-  border-color: rgba(91, 140, 255, 0.82);
-  background: linear-gradient(135deg, rgba(91, 140, 255, 0.18), rgba(239, 93, 168, 0.14));
-  box-shadow: 0 0 0 1px rgba(145, 99, 245, 0.22), 0 0 28px rgba(145, 99, 245, 0.24);
-}
-.arcade-player-tile-body {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-1);
-}
-.arcade-player-tile-score,
-.arcade-player-tile-detail {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-}
-.arcade-game-shell .quiz-stage-card {
-  width: min(100%, 680px);
-  height: 174px;
-  min-height: 174px;
-  max-height: 174px;
-  margin-inline: auto;
-  box-sizing: border-box;
-  display: flex;
-}
-.arcade-game-shell .quiz-stage-content {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-}
-.arcade-game-shell .quiz-round-result {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-.arcade-game-shell .quiz-round-result h2 {
-  margin: 0;
-  font-size: var(--font-size-lg);
-}
-
-.blobby-court {
-  position: relative;
-  width: min(100%, 960px);
-  margin: 0 auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  box-shadow: var(--shadow);
-  background: var(--bg-elevated);
-}
-.blobby-court canvas {
-  display: block;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 5 / 3;
-  touch-action: none;
-}
-.blobby-point {
-  position: absolute;
-  inset: 50% auto auto 50%;
-  transform: translate(-50%, -50%);
-  padding: var(--space-3) var(--space-5);
-  border-radius: var(--radius-full);
-  background: var(--accent-gradient);
-  color: var(--accent-text);
-  font-weight: var(--font-weight-black);
-  box-shadow: var(--shadow);
-}
-.blobby-pause-overlay {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: color-mix(in srgb, var(--bg) 62%, transparent);
-  color: var(--text);
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-black);
-}
-
-.pong-arena {
-  position: relative;
-  width: min(100%, 960px);
-  margin: 0 auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow), 0 0 36px rgba(145, 99, 245, 0.12);
-}
-.pong-arena canvas {
-  display: block;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 16 / 9;
-  touch-action: none;
-}
-.pong-point {
-  position: absolute;
-  inset: 50% auto auto 50%;
-  transform: translate(-50%, -50%);
-  padding: var(--space-3) var(--space-5);
-  border-radius: var(--radius-full);
-  background: var(--accent-gradient);
-  color: var(--accent-text);
-  font-weight: var(--font-weight-bold);
-  box-shadow: var(--shadow);
-}
-.pong-overlay {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: color-mix(in srgb, var(--bg) 62%, transparent);
-  color: var(--text);
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-bold);
-}
 
 input[type='range'] {
   width: 100%;
@@ -3590,6 +3981,13 @@ input[type='range'] {
 .skill-row-slider:not(.preference-row-slider) {
   --slider-low: #9bb7f5;
   --slider-high: #536dff;
+}
+/* An untouched Bock/Skill slider still renders at a plausible mid-value
+   (ratings are stored 1-10, never 0, so there's no true "empty" position) -
+   dimmed until the player's own input event fires, so it doesn't read as an
+   already-set rating at a glance. */
+.skill-row-slider-unset {
+  opacity: 0.5;
 }
 .skill-value {
   font-variant-numeric: tabular-nums;
@@ -3649,6 +4047,13 @@ input[type='range'].preference-row-slider {
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+/* A player without an own rating still enters the draw with the server's
+   neutral fallback, so the value stays visible: the parentheses plus this
+   dimming mark it as derived rather than self-reported. Same role on a team
+   total, where the parenthesized number counts the unrated players. */
+.rating-unrated {
+  opacity: 0.7;
 }
 .team-player-name {
   overflow: hidden;
@@ -3830,10 +4235,13 @@ button.bracket-team-row {
    selector to win outright instead of reaching for !important. */
 input[type='number'].bracket-score-input,
 input[type='number'].tournament-score-input {
-  width: var(--space-7);
+  /* The shared number stepper occupies the right side of the field. Keep
+     enough room for it plus a two-digit score instead of letting the value
+     sit underneath the arrows. */
+  width: calc(var(--space-7) + var(--space-7));
   height: var(--space-7);
-  flex: 0 0 var(--space-7);
-  padding: 0;
+  flex: 0 0 calc(var(--space-7) + var(--space-7));
+  padding: 0 var(--space-7) 0 var(--space-2);
   text-align: center;
   font-size: var(--font-size-sm);
 }
@@ -3984,7 +4392,6 @@ input[type='number'].tournament-score-input {
   height: var(--tap-target-size);
   min-height: var(--tap-target-size);
 }
-.vote-game-filter,
 .vote-game-select-wrap {
   gap: var(--space-2);
 }
@@ -4000,6 +4407,13 @@ input[type='number'].tournament-score-input {
   .vote-ranking-columns {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: var(--space-6);
+  }
+}
+/* A third column keeps each 0-10 slider at a sane width instead of stretching
+   it across half of --content-max-width's full 1320px on a wide desktop. */
+@media (min-width: 1280px) { /* --bp-xl */
+  .vote-game-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 /* The gradient lives on the track itself (fixed left-to-right, full width)
@@ -4046,7 +4460,11 @@ input[type='number'].tournament-score-input {
 }
 .grouped-page-section .empty-state {
   display: flex;
-  min-height: calc(var(--row-min-h) * 2);
+  /* Was 2x row height: fine for a single empty section, but several pages
+     (Hall of Fame, Checkliste) stack two or three of these in one view on a
+     fresh install, and the doubled height compounds into a wall of blank
+     space for a couple of short German sentences. */
+  min-height: var(--row-min-h);
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -4090,6 +4508,16 @@ input[type='number'].tournament-score-input {
   padding-left: var(--space-2);
   font-size: var(--font-size-xs);
 }
+.agent-diagnostic-row {
+  display: grid;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.agent-diagnostic-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
 .admin-test-controls input,
 .admin-test-controls .btn {
   height: calc(var(--tap-target-size) - var(--space-2));
@@ -4104,6 +4532,10 @@ input[type='number'].tournament-score-input {
   justify-content: flex-end;
   margin-left: auto;
 }
+.admin-role-select {
+  width: auto;
+  min-width: var(--assignment-select-width);
+}
 @media (min-width: 640px) { /* --bp-md */
   .two-column-card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4114,10 +4546,6 @@ input[type='number'].tournament-score-input {
   }
   .two-column-card-grid.food-order-grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .two-column-card-grid.player-roster-grid > :only-child,
-  .two-column-card-grid.player-roster-grid > :last-child:nth-child(odd) {
-    grid-column: auto;
   }
 }
 .lb-row {
@@ -4146,12 +4574,23 @@ input[type='number'].tournament-score-input {
 .leaderboard-list-grid > .empty-state {
   grid-column: 1 / -1;
 }
-.food-order-card {
+.food-order-card,
+.event-card {
   position: relative;
   align-content: start;
   overflow: hidden;
 }
-.food-order-card::before {
+/* The card clips its own content by design (the accent rail below stays
+   flush with the rounded corners), but that same clip cut off the add-item
+   description field's suggestion dropdown (.search-select-list) whenever it
+   had less room below the input than the open list needed, hiding or
+   truncating later suggestions instead of letting them float over the next
+   card the way the shared .search-select component does everywhere else. */
+.food-order-card:has(.search-select.is-open) {
+  overflow: visible;
+}
+.food-order-card::before,
+.event-card::before {
   content: '';
   position: absolute;
   inset: var(--space-3) auto var(--space-3) 0;
@@ -4164,59 +4603,242 @@ input[type='number'].tournament-score-input {
 .food-order-grid > .food-order-card:nth-child(even)::before {
   background: var(--accent-3);
 }
+.orga-event-grid > .event-card:nth-child(odd)::before {
+  background: var(--accent);
+}
+.orga-event-grid > .event-card:nth-child(even)::before {
+  background: var(--accent-3);
+}
 .food-order-meta,
+.food-order-overview,
 .hall-of-fame-empty-result {
   font-size: var(--font-size-xs);
 }
 .food-order-details {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+.food-order-details-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.food-order-send-at {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.food-order-detail-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.food-order-details-note {
+  padding-top: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.food-order-detail-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+}
+.food-order-detail-links [data-open-order-list] {
+  margin-left: auto;
+}
+.food-order-card-toolbar {
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.food-order-card-header {
+  align-items: center;
+  min-height: var(--tap-target-size);
+}
+.food-order-card-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.food-order-card-header-toggle {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  min-height: var(--tap-target-size);
+  padding: 0;
+  cursor: pointer;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.food-order-card-header-end {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.food-order-card-chevron {
+  display: inline-flex;
+  color: var(--text-muted);
+  transition: transform var(--motion-fast);
+}
+.food-order-card-header-toggle[aria-expanded='true'] .food-order-card-chevron {
+  transform: rotate(90deg);
+}
+.food-order-card-body[hidden] {
+  display: none;
+}
+/* Each orderer group is its own subtle nested surface. */
+.food-order-group {
   gap: var(--space-2);
   padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
 }
-.food-order-player {
-  gap: var(--space-1);
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--border);
+.food-order-group.is-all-paid {
+  background: transparent;
+  opacity: 0.78;
 }
-.food-order-player:last-child {
-  border-bottom: 0;
-}
-.food-order-player-head {
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-}
-.food-order-player-items {
-  padding-left: calc(var(--space-5) + var(--space-2));
-}
-.food-order-payment-actions {
-  display: inline-flex;
+.food-order-group-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
 }
+/* The group toggle is one sibling of the payment and delete controls. */
+.food-order-group-toggle {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.food-order-group-static {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+.food-order-group-chevron {
+  flex-shrink: 0;
+  transition: transform var(--motion-fast);
+}
+.food-order-group-toggle[aria-expanded='true'] .food-order-group-chevron {
+  transform: rotate(90deg);
+}
+.food-order-group-headtext {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0;
+}
+.food-order-group-headtext strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.food-order-group-self-label {
+  font-weight: var(--font-weight-regular);
+}
+.food-order-group-meta {
+  font-size: var(--font-size-xs);
+}
+.food-order-group-amount-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.food-order-group-tip {
+  font-size: var(--font-size-2xs);
+  white-space: nowrap;
+}
+.food-order-group-amount {
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.food-order-group-amount.is-paid {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.food-order-group-partial {
+  font-size: var(--font-size-2xs);
+  font-variant-numeric: tabular-nums;
+}
+.food-order-group-actions {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+.food-order-group-items {
+  padding-left: calc(var(--space-5) + var(--space-2));
+  padding-top: var(--space-2);
+}
+/* One line per position: quantity × description / amount / copy / remove. */
 .food-order-item {
-  min-height: var(--space-7);
-  padding: var(--space-1) 0;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
   font-size: var(--font-size-sm);
+}
+/* The person's two-state payment marker stays stable as its label changes. */
+.payment-paid-marker {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  width: var(--payment-marker-width);
+  min-height: var(--space-7);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+.payment-paid-marker.is-paid {
+  border-color: var(--state-playing);
+  background: var(--state-playing-bg);
+  color: var(--state-playing);
+}
+.payment-paid-marker:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .food-order-item-description {
   min-width: 0;
   flex: 1;
   overflow-wrap: anywhere;
 }
-.food-order-item-paid-toggle {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: var(--space-1);
-}
-.food-order-item.is-paid > span {
-  color: var(--text-muted);
-  text-decoration: line-through;
-}
-.food-order-item-price {
+/* Betrag ist Anzeige, kein Knopf - a plain display block. */
+.food-order-item-amount {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -4224,103 +4846,144 @@ input[type='number'].tournament-score-input {
   font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
 }
-.food-order-item-price .muted {
+.food-order-item-amount strong {
+  font-size: var(--font-size-md);
+}
+.food-order-item-amount .muted {
   font-size: var(--font-size-xs);
 }
-.food-order-item-pay-select {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: var(--space-1);
-}
-.food-order-item-toggle-label {
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  white-space: nowrap;
-}
-.food-order-payment-hint {
-  justify-content: flex-end;
-}
-.food-order-item.is-selected-for-payment {
-  border-left: var(--space-1) solid var(--accent);
-  background: var(--bg-elevated-2);
-  padding-left: var(--space-2);
-}
-.food-order-item-action,
-.food-order-item-action-slot {
-  width: var(--space-7);
-  height: var(--space-7);
-  flex: 0 0 var(--space-7);
-}
-.food-order-item-controls {
+/* Copy and remove keep stable slots, even when copying is unavailable. */
+.food-order-item-action-cluster {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+.food-order-item-action,
+.food-order-item-action-spacer {
+  width: var(--space-7);
+  height: var(--space-7);
   flex-shrink: 0;
 }
 .food-order-item-action {
   padding: var(--space-1);
   font-size: var(--font-size-xs);
 }
+.food-order-item-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.food-order-item-remove {
+  color: var(--danger);
+}
+/* Deliberately heavier than the surrounding muted meta/info text (send time,
+   notes, per-item rows) so the order-wide total reads as a real total at a
+   glance instead of blending in as another info line. */
 .food-order-total {
-  padding-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.food-order-total-label {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+}
+.food-order-total-value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.food-order-total-value strong {
+  font-size: var(--font-size-lg);
+  font-variant-numeric: tabular-nums;
+}
+/* Used by confirmWithList to show the affected positions alongside the
+   confirmation message. */
+.food-order-confirm-list {
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.food-order-confirm-list li {
+  overflow-wrap: anywhere;
+}
+/* AP4: consolidated order list dialog. */
+.food-order-consolidated-rows {
+  gap: var(--space-1);
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.food-order-consolidated-row {
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  font-size: var(--font-size-sm);
+}
+.food-order-consolidated-row-desc {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.food-order-consolidated-totals {
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
   font-size: var(--font-size-sm);
 }
-.food-order-payment-selector {
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-  font-size: var(--font-size-sm);
-}
-.food-order-payment-selector > .muted {
-  min-width: 0;
+.food-order-consolidated-open-note {
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-xs);
 }
 .food-order-item-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
   gap: var(--space-2);
 }
-.food-order-item-form > [data-item-desc] {
+.food-order-item-form > .food-order-desc-field {
   grid-column: 1 / -1;
 }
 .food-order-add-button {
   grid-column: -2 / -1;
-  justify-self: end;
-  padding-right: 0;
+  align-self: stretch;
+}
+.food-order-item.is-paid .food-order-item-description,
+.food-order-item.is-paid .food-order-item-amount {
+  text-decoration: line-through;
 }
 @media (max-width: 639px) { /* --bp-md */
-  .food-order-player-items {
+  /* Keep the name row and its action row independent on narrow phones. The
+     group header has too many deliberate, fixed-width controls to compress
+     into one line without clipping the payment marker or action buttons. */
+  .food-order-group-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  .food-order-group-toggle,
+  .food-order-group-static {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    width: 100%;
+  }
+  .food-order-group-amount-wrap {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: end;
+  }
+  .food-order-group-actions {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    min-width: 0;
+    width: 100%;
+    justify-content: flex-end;
+    margin-left: 0;
+  }
+  .food-order-group-items {
     padding-left: 0;
   }
-  .food-order-item {
-    flex-direction: column;
+  /* Keep the amount on its own line on narrow phones. */
+  .food-order-item-amount {
+    flex-basis: 100%;
     align-items: flex-start;
-    gap: var(--space-2);
-    padding: var(--space-3) 0;
-  }
-  .food-order-item-description {
-    width: 100%;
-    order: 1;
-  }
-  .food-order-item-price {
-    order: 2;
-    align-items: flex-start;
-  }
-  .food-order-item-paid-toggle {
-    order: 3;
-  }
-  .food-order-item-pay-select {
-    order: 4;
-  }
-  .food-order-item-controls {
-    order: 5;
-    gap: var(--space-2);
-  }
-  .food-order-item-action-slot {
-    display: none;
   }
   .food-order-total {
     flex-direction: column;
@@ -4330,40 +4993,46 @@ input[type='number'].tournament-score-input {
   .food-order-item-form {
     grid-template-columns: minmax(0, 1fr);
   }
-  .food-order-item-form > [data-item-desc],
+  .food-order-item-form > .food-order-desc-field,
   .food-order-add-button {
     grid-column: 1;
   }
   .food-order-add-button {
     width: 100%;
-    padding-right: var(--space-3);
-  }
-  .food-order-payment-selector {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .food-order-payment-actions {
-    align-self: flex-end;
   }
 }
-.food-order-quantity-field,
+@media (max-width: 359px) {
+  /* At the narrowest supported width all four payment actions still fit in
+     one line; both payment states retain the same compact marker width. */
+  .food-order-group-actions {
+    --payment-marker-width: 88px;
+    gap: 0;
+  }
+}
+.food-order-quantity-field {
+  display: block;
+  min-width: 0;
+}
 .food-order-price-field {
   position: relative;
   display: block;
   min-width: 0;
 }
-/* The element prefix keeps these ahead of the base input[type=...] rule,
-   which otherwise resets padding-right and lets text run under the ×/€
-   suffix on narrow fields. */
-input.food-order-quantity-input,
+/* The element prefix keeps this ahead of the base input[type=...] rule,
+   which otherwise resets padding-right and lets text run under the €
+   suffix on narrow fields. Quantity has no such suffix: it is a
+   type="number" field, so numberStepper.js already reserves its own
+   right-hand padding for the +/- overlay — a decorative × there used to sit
+   underneath those buttons and looked like a broken, non-functional third
+   control. */
 input.food-order-price-input {
   width: 100%;
   padding-right: var(--space-7);
 }
 .food-order-quantity-input {
+  width: 100%;
   text-align: left;
 }
-.food-order-quantity-field > span,
 .food-order-price-field > span {
   position: absolute;
   top: 50%;
@@ -4371,9 +5040,6 @@ input.food-order-price-input {
   color: var(--text-muted);
   transform: translateY(-50%);
   pointer-events: none;
-}
-.food-order-add-button {
-  align-self: center;
 }
 .food-order-close-action {
   padding-top: var(--space-3);
@@ -4453,7 +5119,7 @@ input.food-order-price-input {
   .food-order-item-form {
     grid-template-columns: minmax(0, 1fr) repeat(2, var(--assignment-select-width)) auto;
   }
-  .food-order-item-form > [data-item-desc] {
+  .food-order-item-form > .food-order-desc-field {
     grid-column: auto;
   }
 }
@@ -4483,8 +5149,7 @@ input.food-order-price-input {
 .check-row > .leaderboard-row-name {
   flex: 1;
 }
-.leaderboard-row-stat,
-.match-result-help {
+.leaderboard-row-stat {
   font-size: var(--font-size-xs);
 }
 .lb-points {
@@ -4496,9 +5161,6 @@ input.food-order-price-input {
 }
 .match-team-count-field {
   width: calc(var(--space-8) * 2);
-}
-.match-result-help {
-  margin: 0;
 }
 .match-result-row {
   display: grid;
@@ -4565,7 +5227,7 @@ input.food-order-price-input {
 
 /* ---------- Toasts ---------- */
 
-/* ---------- Countdown overlay (public/js/countdown.js) ----------
+/* ---------- Countdown overlay (public/js/arcade/countdown.js) ----------
    Shared "3 · 2 · 1 · Los!" intro for every arcade game. Full-screen, with a
    dim blurred backdrop so the board behind stays faintly visible, and a big
    gradient number in the brand style that pops in per second. */
@@ -4712,6 +5374,210 @@ input.food-order-price-input {
   /* Bottom sheet slides up on phones… */
   animation: sheet-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
+
+/* ---------- First-login onboarding ---------- */
+
+#onboarding-root {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.onboarding-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  /* Only used on steps with no highlighted target (see onboarding.js) - a
+     step that highlights something instead relies on the ring's own
+     spotlight shadow below, so the two never stack into a double-dark
+     overlay. Lower than the previous 0.78 so the dimmed page underneath
+     stays legible instead of nearly invisible. */
+  opacity: 0.5;
+  pointer-events: auto;
+}
+
+.onboarding-dialog {
+  position: fixed;
+  z-index: 42;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + var(--space-4));
+  max-width: var(--search-panel-width);
+  margin: 0 auto;
+  padding: var(--space-4);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+}
+
+/* Used instead of the default bottom anchor when the step's highlighted
+   target sits in the lower half of the viewport (the bottom nav) - keeps
+   the explanation text from sitting directly over the icon it's pointing
+   at. Set by onboarding.js after measuring the target. */
+.onboarding-dialog--top {
+  top: calc(var(--topbar-height) + var(--space-4));
+  bottom: auto;
+}
+
+.onboarding-progress {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.onboarding-dialog h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-lg);
+}
+
+.onboarding-dialog p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.onboarding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.onboarding-actions-spacer {
+  flex: 1 1 auto;
+}
+
+.onboarding-rating-dialog {
+  /* Only the dialog's own controls stay clickable (see the button rule
+     below) - everything else, including its own background, lets clicks
+     and taps fall through to whatever required game row is scrolled behind
+     it, the same passthrough technique `.sticky-actions` already uses for
+     the same "fixed bar over a scrollable list" shape. Combined with the
+     onboarding-rating-list spacer below, every required row is reachable
+     either way; this is the fallback for the brief moments (a resize, a
+     font-size change) where the measured spacer hasn't caught up yet. */
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  pointer-events: none;
+}
+
+.onboarding-rating-dialog button,
+.onboarding-rating-dialog input,
+.onboarding-rating-dialog [tabindex] {
+  pointer-events: auto;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .onboarding-rating-dialog {
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+  }
+}
+
+.onboarding-rating-list {
+  padding-bottom: var(--onboarding-rating-spacer);
+}
+
+.onboarding-rating-progress {
+  margin-top: var(--space-3) !important;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.onboarding-rating-actions {
+  justify-content: flex-end;
+}
+
+.onboarding-target-highlight {
+  border-radius: var(--radius-sm);
+}
+
+.onboarding-target-ring {
+  position: fixed;
+  z-index: 41;
+  pointer-events: none;
+  border-radius: var(--radius-sm);
+  /* The huge fourth spread value is the actual highlighting mechanism: it
+     dims the whole viewport except this element's own box, which stays
+     fully transparent - so the highlighted icon renders at full brightness
+     instead of sitting dimmed under a separate full-screen backdrop (see
+     onboarding.js, which skips rendering .onboarding-backdrop whenever a
+     step has a target for exactly this reason). */
+  box-shadow:
+    0 0 0 var(--space-1) var(--accent),
+    var(--shadow-glow-accent),
+    0 0 0 9999px color-mix(in srgb, var(--bg) 50%, transparent);
+}
+
+.game-table-row.onboarding-required {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.onboarding-required-badge {
+  flex: 0 0 auto;
+}
+
+.onboarding-rating-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+}
+
+.onboarding-rating-banner-copy {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.onboarding-rating-banner-copy strong,
+.onboarding-rating-banner-copy span {
+  display: block;
+}
+
+.onboarding-rating-banner-copy span {
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+@media (min-width: 640px) { /* --bp-md */
+  .onboarding-dialog {
+    bottom: var(--space-6);
+  }
+
+  .onboarding-dialog--top {
+    bottom: auto;
+  }
+}
+
+@media (max-width: 639px) { /* --bp-md */
+  .onboarding-rating-dialog {
+    padding: var(--space-3);
+  }
+
+  .onboarding-rating-dialog .onboarding-rating-actions {
+    flex-wrap: nowrap;
+    gap: var(--space-1);
+    margin-top: var(--space-3);
+  }
+
+  .onboarding-rating-dialog .onboarding-rating-actions .btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: var(--space-2);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+  }
+}
+
 @media (min-width: 640px) { /* --bp-md */
   .modal {
     border-radius: var(--radius-lg);
@@ -4746,6 +5612,17 @@ input.food-order-price-input {
 .modal-header h2 {
   margin: 0;
   font-size: var(--font-size-lg);
+}
+
+/* Info dialog (topbar "i"): reference material — WLAN, Discord, server IPs,
+   house rules — that people look up mid-conversation, so it opens over the
+   current view instead of replacing it. Same width cap as the search palette,
+   since both hold a list of short titles plus one line of content. */
+.info-board-modal .modal {
+  max-width: var(--search-panel-width);
+}
+.info-board-dialog .two-column-card-grid {
+  margin-top: var(--space-2);
 }
 
 /* Global command palette: fast navigation across every area without adding
@@ -4891,12 +5768,6 @@ input.food-order-price-input {
   background: linear-gradient(135deg, rgba(145, 99, 245, .2), rgba(91, 140, 255, .12));
   color: var(--text-muted);
 }
-.seating-table-mark {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text);
-}
 .seating-seat {
   flex: 0 0 auto;
   box-sizing: border-box;
@@ -4971,6 +5842,7 @@ input.food-order-price-input {
   background: var(--danger);
 }
 .seating-status-indicator.is-playing,
+.seating-status-indicator.is-online,
 .seating-status-indicator.is-paused {
   animation: seating-status-pulse 1.8s ease-in-out infinite;
   will-change: transform, box-shadow;
@@ -4978,6 +5850,10 @@ input.food-order-price-input {
 .seating-status-indicator.is-playing {
   --seating-status-halo: var(--state-playing-bg);
   background: var(--state-playing);
+}
+.seating-status-indicator.is-online {
+  --seating-status-halo: var(--accent-bg);
+  background: var(--accent);
 }
 .seating-status-indicator.is-paused {
   --seating-status-halo: var(--state-paused-bg);
@@ -5109,9 +5985,6 @@ input.food-order-price-input {
   }
 }
 
-.snake-game { position:relative; width:min(100%, 720px); margin:0 auto; padding:var(--space-2); overflow:hidden; background:linear-gradient(135deg,rgba(91,140,255,.12),rgba(239,93,168,.1)); }
-#snake-canvas { display:block; width:100%; aspect-ratio:8/5; border-radius:var(--radius); box-shadow:0 0 30px rgba(145,99,245,.18); touch-action:none; }
-.snake-overlay { position:absolute; inset:0; display:grid; place-items:center; font-size:var(--font-size-xl); font-weight:var(--font-weight-bold); color:var(--text); background:rgba(10,13,27,.62); }
 
 /* ---------- Shared music session ---------- */
 
@@ -5138,7 +6011,7 @@ input.food-order-price-input {
   gap: var(--space-3);
   padding: var(--space-4);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius);
   background: var(--bg);
 }
 .music-pairing-header {
@@ -5168,7 +6041,7 @@ input.food-order-price-input {
   min-height: 64px;
   padding: var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius);
   background: var(--bg-elevated);
 }
 .music-pairing-code strong {
@@ -5283,6 +6156,19 @@ input.food-order-price-input {
 }
 .music-search-results {
   margin-top: var(--space-3);
+}
+.music-result-type-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  width: 100%;
+}
+.music-result-type-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
 }
 .music-search-result {
   display: grid;

@@ -6,8 +6,13 @@ import { openLobbySummaries as scribbleLobbies } from '../arcade/scribble';
 import { openLobbySummaries as blobbyLobbies } from '../arcade/blobby';
 import { openLobbySummaries as pongLobbies } from '../arcade/pong';
 import { openLobbySummaries as snakeLobbies } from '../arcade/snake';
-import { resolveGroupEventScope } from '../groupEventScope';
-import { config } from '../config';
+import { openLobbySummaries as battleshipLobbies } from '../arcade/battleship';
+import { isKnownArcadeBotId } from '../arcade/botIds';
+import {
+  requestCanUseEventWorkspace,
+  requireGroupEventAccess,
+  resolveRequestGroupEventScope,
+} from '../groupEventScope';
 
 export const arcadeRouter = Router();
 
@@ -20,6 +25,7 @@ export const ARCADE_TITLES: Record<string, string> = {
   blobby: 'Blobby Volley',
   pong: 'Pong',
   snake: 'Snake',
+  battleship: 'Battleship',
 };
 interface ArcadeResultRow {
   id: string;
@@ -37,6 +43,14 @@ interface ScoreEntry {
   playerId: string;
   name: string;
   score: number;
+  isWinner?: boolean;
+  isBot?: boolean;
+  mode?: 'duel' | 'arena';
+  placement?: number | null;
+  lines?: number;
+  garbageSent?: number;
+  garbageReceived?: number;
+  knockouts?: number;
 }
 
 interface ScribbleArtStatsRow {
@@ -52,12 +66,14 @@ interface ScribbleArtStatsRow {
 }
 
 function eventFilter(
-  groupId: string,
+  req: Request,
   requested: unknown,
-): { ok: true; eventId?: string | null } | { ok: false; status: 400 | 404; error: string } {
-  if (requested === undefined) return { ok: true };
-  const resolved = resolveGroupEventScope(groupId, requested);
-  return resolved.ok ? { ok: true, eventId: resolved.eventId } : resolved;
+): { ok: true; eventId: string } | { ok: false; status: 400 | 404; error: string } {
+  const resolved = resolveRequestGroupEventScope(req, requested);
+  if (!resolved.ok) return resolved;
+  return resolved.eventId
+    ? { ok: true, eventId: resolved.eventId }
+    : { ok: false, status: 404, error: 'Event nicht gefunden.' };
 }
 
 function parseJsonArray(value: string): unknown[] {
@@ -89,17 +105,9 @@ function resultPayload(row: ArcadeResultRow) {
 // in-memory in their socket modules (short-lived party state, not data),
 // so this just aggregates their summaries.
 arcadeRouter.get('/lobbies', (req, res) => {
-  const selectedEvent = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  const selectedEvent = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!selectedEvent.ok) return res.status(selectedEvent.status).json({ error: selectedEvent.error });
-  if (config.authMode === 'required' && selectedEvent.eventId) {
-    const mayAccess = req.groupMembership?.role === 'admin' || req.groupMembership?.role === 'owner' || Boolean(
-      db.prepare('SELECT 1 FROM event_participants WHERE event_id = ? AND player_id = ?').get(
-        selectedEvent.eventId,
-        req.player?.id,
-      ),
-    );
-    if (!mayAccess) return res.json({ lobbies: [] });
-  }
+  if (!requestCanUseEventWorkspace(req, selectedEvent.eventId)) return res.json({ lobbies: [] });
   const groupId = req.group!.id;
   const eventId = selectedEvent.eventId;
   const lobbies = [
@@ -109,6 +117,7 @@ arcadeRouter.get('/lobbies', (req, res) => {
     ...pongLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'pong' })),
     ...blobbyLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'blobby' })),
     ...snakeLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'snake' })),
+    ...battleshipLobbies(groupId, eventId).map((l) => ({ ...l, gameType: 'battleship' })),
   ]
     .map((l) => ({ ...l, title: ARCADE_TITLES[l.gameType] ?? l.gameType }))
     .sort((a, b) => b.createdAt - a.createdAt);
@@ -116,14 +125,13 @@ arcadeRouter.get('/lobbies', (req, res) => {
 });
 
 arcadeRouter.get('/stats', (req, res) => {
-  const selectedEvent = eventFilter(req.group!.id, req.query.eventId);
+  const selectedEvent = eventFilter(req, req.query.eventId);
   if (!selectedEvent.ok) return res.status(selectedEvent.status).json({ error: selectedEvent.error });
+  if (!requireGroupEventAccess(req, res, selectedEvent.eventId)) return;
   const clauses = ["group_id = ?", "reason = 'completed'"];
   const params: Array<string | null> = [req.group!.id];
-  if (selectedEvent.eventId !== undefined) {
-    clauses.push('event_id IS ?');
-    params.push(selectedEvent.eventId);
-  }
+  clauses.push('event_id = ?');
+  params.push(selectedEvent.eventId);
   const rows = db
     .prepare(
       `SELECT id, event_id, game_type, winner_id, players, scores, reason, started_at, ended_at
@@ -135,8 +143,90 @@ arcadeRouter.get('/stats', (req, res) => {
 
   const games = new Map<
     string,
-    { gameType: string; matches: number; players: Map<string, { playerId: string; name: string; matches: number; wins: number }> }
+    {
+      gameType: string;
+      baseGameType: string;
+      mode: string | null;
+      matches: number;
+      players: Map<
+        string,
+        {
+          playerId: string;
+          name: string;
+          matches: number;
+          wins: number;
+          topThree: number;
+          placementTotal: number;
+          placedMatches: number;
+          lines: number;
+          garbageSent: number;
+          garbageReceived: number;
+          knockouts: number;
+        }
+      >;
+    }
   >();
+  const scribbleResultClauses = ['group_id = ?', "game_type = 'scribble'", 'source_match_id IS NOT NULL'];
+  const scribbleResultParams: Array<string | null> = [req.group!.id];
+  scribbleResultClauses.push('event_id = ?');
+  scribbleResultParams.push(selectedEvent.eventId);
+  const aiScribbleMatchIds = (
+    db.prepare(
+      `SELECT source_match_id, scores
+       FROM arcade_results
+       WHERE ${scribbleResultClauses.join(' AND ')}`,
+    ).all(...scribbleResultParams) as Array<{ source_match_id: string; scores: string }>
+  ).filter((row) => parseJsonArray(row.scores).some((score) => {
+    const entry = score as ScoreEntry;
+    return entry?.isBot === true || isKnownArcadeBotId(entry?.playerId);
+  })).map((row) => row.source_match_id);
+
+  const addResultToGame = (
+    statsKey: string,
+    gameType: string,
+    baseGameType: string,
+    mode: string | null,
+    row: ArcadeResultRow,
+    scores: ScoreEntry[],
+  ) => {
+    const game = games.get(statsKey) ?? {
+      gameType,
+      baseGameType,
+      mode,
+      matches: 0,
+      players: new Map(),
+    };
+    game.matches += 1;
+    for (const score of scores) {
+      if (score.isBot === true || isKnownArcadeBotId(score.playerId)) continue;
+      const current = game.players.get(score.playerId) ?? {
+        playerId: score.playerId,
+        name: score.name,
+        matches: 0,
+        wins: 0,
+        topThree: 0,
+        placementTotal: 0,
+        placedMatches: 0,
+        lines: 0,
+        garbageSent: 0,
+        garbageReceived: 0,
+        knockouts: 0,
+      };
+      current.matches += 1;
+      if (row.winner_id === score.playerId || score.isWinner === true) current.wins += 1;
+      if (typeof score.placement === 'number') {
+        current.placementTotal += score.placement;
+        current.placedMatches += 1;
+        if (score.placement <= 3) current.topThree += 1;
+      }
+      current.lines += Number(score.lines) || 0;
+      current.garbageSent += Number(score.garbageSent) || 0;
+      current.garbageReceived += Number(score.garbageReceived) || 0;
+      current.knockouts += Number(score.knockouts) || 0;
+      game.players.set(score.playerId, current);
+    }
+    games.set(statsKey, game);
+  };
 
   for (const row of rows) {
     const parsed = parseJsonArray(row.scores);
@@ -148,28 +238,42 @@ arcadeRouter.get('/stats', (req, res) => {
     );
     if (scores.length === 0) continue;
 
-    const game = games.get(row.game_type) ?? { gameType: row.game_type, matches: 0, players: new Map() };
-    game.matches += 1;
-    for (const score of scores) {
-      const current = game.players.get(score.playerId) ?? {
-        playerId: score.playerId,
-        name: score.name,
-        matches: 0,
-        wins: 0,
-      };
-      current.matches += 1;
-      if (row.winner_id === score.playerId) current.wins += 1;
-      game.players.set(score.playerId, current);
+    const hasBot = scores.some((score) => score.isBot === true || isKnownArcadeBotId(score.playerId));
+    // Tetris exposes explicit AI variants below. Every other game keeps its
+    // public ranking human-only, so an AI test match must not increment the
+    // match, win or loss counters of its human participant.
+    if (hasBot && row.game_type !== 'tetris') continue;
+
+    const baseMode = scores.some((score) => score.mode === 'arena') ? 'arena' : 'duel';
+    const mode =
+      row.game_type === 'tetris'
+        ? `${baseMode}${hasBot ? '-ai' : ''}`
+        : null;
+    const statsKey = mode ? `${row.game_type}:${mode}` : row.game_type;
+    if (row.game_type === 'tetris') {
+      // Preserve the legacy unique tetris entry and expose mode-specific
+      // variants under their own versioned gameType/statsKey values.
+      addResultToGame('tetris', 'tetris', 'tetris', null, row, scores);
+      addResultToGame(statsKey, statsKey, 'tetris', mode, row, scores);
+    } else {
+      addResultToGame(statsKey, row.game_type, row.game_type, mode, row, scores);
     }
-    games.set(row.game_type, game);
   }
 
   const drawingClauses = ['d.group_id = ?'];
   const drawingParams: Array<string | null> = [req.group!.id];
-  if (selectedEvent.eventId !== undefined) {
-    drawingClauses.push('d.event_id IS ?');
-    drawingParams.push(selectedEvent.eventId);
+  drawingClauses.push('d.event_id = ?');
+  drawingParams.push(selectedEvent.eventId);
+  if (aiScribbleMatchIds.length > 0) {
+    drawingClauses.push(`d.match_id NOT IN (${aiScribbleMatchIds.map(() => '?').join(',')})`);
+    drawingParams.push(...aiScribbleMatchIds);
   }
+  // Belt-and-suspenders beyond the arcade_results lookup above: that lookup
+  // only sees matches that reached a persisted result row, so a still-active
+  // or crashed-before-finishMatch AI match would otherwise leak its drawings
+  // into the human ranking until (or unless) it ever finishes. Drawings are
+  // flagged at persist time (see scribble.ts persistCurrentDrawing) instead.
+  drawingClauses.push('d.is_ai_match = 0');
   const scribbleArtPlayers = db.prepare(
     `SELECT d.artist_id AS player_id, d.artist_name AS name,
             COUNT(*) AS drawings,
@@ -194,15 +298,30 @@ arcadeRouter.get('/stats', (req, res) => {
           ...player,
           losses: player.matches - player.wins,
           winRate: player.matches > 0 ? player.wins / player.matches : 0,
+          averagePlacement: player.placedMatches > 0 ? player.placementTotal / player.placedMatches : null,
         }))
-        .sort((a, b) => b.winRate - a.winRate || b.wins - a.wins || a.name.localeCompare(b.name, 'de'));
+        .sort((a, b) =>
+          game.mode?.startsWith('arena')
+            ? b.wins - a.wins ||
+              b.topThree - a.topThree ||
+              (a.averagePlacement ?? Number.MAX_SAFE_INTEGER) - (b.averagePlacement ?? Number.MAX_SAFE_INTEGER) ||
+              b.knockouts - a.knockouts ||
+              a.name.localeCompare(b.name, 'de')
+            : b.winRate - a.winRate || b.wins - a.wins || a.name.localeCompare(b.name, 'de'),
+        );
       return {
         gameType: game.gameType,
-        title: ARCADE_TITLES[game.gameType] ?? game.gameType,
+        statsKey: game.gameType,
+        ...(game.baseGameType !== game.gameType ? { baseGameType: game.baseGameType } : {}),
+        mode: game.mode,
+        title:
+          game.baseGameType === 'tetris' && game.mode
+            ? `Tetris ${game.mode?.startsWith('arena') ? 'Arena' : 'Duell'}${game.mode?.endsWith('-ai') ? ' · KI-Test' : ''}`
+            : ARCADE_TITLES[game.baseGameType] ?? game.baseGameType,
         matches: game.matches,
         leader: players[0] ?? null,
         players,
-        ...(game.gameType === 'scribble'
+        ...(game.baseGameType === 'scribble'
           ? {
               artPlayers: scribbleArtPlayers.map((player) => ({
                 playerId: player.player_id,
@@ -222,14 +341,13 @@ arcadeRouter.get('/stats', (req, res) => {
 });
 
 arcadeRouter.get('/scribble/gallery', (req, res) => {
-  const selectedEvent = eventFilter(req.group!.id, req.query.eventId);
+  const selectedEvent = eventFilter(req, req.query.eventId);
   if (!selectedEvent.ok) return res.status(selectedEvent.status).json({ error: selectedEvent.error });
+  if (!requireGroupEventAccess(req, res, selectedEvent.eventId)) return;
   const clauses = ['d.group_id = ?', 'd.is_round_winner = 1'];
   const params: Array<string | null> = [req.group!.id];
-  if (selectedEvent.eventId !== undefined) {
-    clauses.push('d.event_id IS ?');
-    params.push(selectedEvent.eventId);
-  }
+  clauses.push('d.event_id = ?');
+  params.push(selectedEvent.eventId);
   const rows = db.prepare(
     `SELECT d.id, d.match_id, d.round_number, d.artist_id, d.artist_name, d.word, d.draw_ops, d.created_at,
             COUNT(DISTINCT r.player_id) AS reaction_count,
@@ -267,14 +385,13 @@ arcadeRouter.get('/scribble/gallery', (req, res) => {
 });
 
 function listResults(req: Request, res: Response) {
-  const selectedEvent = eventFilter(req.group!.id, req.query.eventId);
+  const selectedEvent = eventFilter(req, req.query.eventId);
   if (!selectedEvent.ok) return res.status(selectedEvent.status).json({ error: selectedEvent.error });
+  if (!requireGroupEventAccess(req, res, selectedEvent.eventId)) return;
   const clauses = ['r.group_id = ?'];
   const params: Array<string | number | null> = [req.group!.id];
-  if (selectedEvent.eventId !== undefined) {
-    clauses.push('r.event_id IS ?');
-    params.push(selectedEvent.eventId);
-  }
+  clauses.push('r.event_id = ?');
+  params.push(selectedEvent.eventId);
   if (req.query.gameType !== undefined) {
     if (typeof req.query.gameType !== 'string' || !ARCADE_TITLES[req.query.gameType]) {
       return res.status(400).json({ error: 'gameType ist ungültig.' });
@@ -326,5 +443,6 @@ arcadeRouter.get('/results/:id', (req, res) => {
      FROM arcade_results WHERE id = ? AND group_id = ?`,
   ).get(req.params.id, req.group!.id) as ArcadeResultRow | undefined;
   if (!row) return res.status(404).json({ error: 'Arcade-Ergebnis nicht gefunden.' });
+  if (!row.event_id || !requireGroupEventAccess(req, res, row.event_id)) return;
   res.json(resultPayload(row));
 });

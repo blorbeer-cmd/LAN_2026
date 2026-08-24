@@ -1,5 +1,4 @@
-// "Mein Profil": required auth binds identity to the session; legacy mode
-// keeps whoami.js as a compatibility selector. Players can maintain their own
+// "Mein Profil": authentication binds identity to the session. Players maintain their own
 // gamer name (unique across everyone), a profile picture and seat neighbors.
 // Bock/Skill-Ratings moved to the Spiele view (see server/CLAUDE.md games
 // reorg) — that's where the group averages live too, so this page just
@@ -11,19 +10,22 @@
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, avatarHtml } from '../format.js';
-import { getMyId, setMyId } from '../whoami.js';
-import { authRequired, logout } from '../authGate.js';
+import { getMyId } from '../whoami.js';
+import { logout } from '../authGate.js';
 import { showToast } from '../toast.js';
 import { getPushSubscriptionState, enablePush, disablePush } from '../push.js';
-import { invalidateMyStats } from './myStats.js';
 import { resizeImageFile } from '../imageUtils.js';
 import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { confirmDialog, openModal } from '../modal.js';
+import { emptyStateHtml } from '../emptyState.js';
+import { pendingEventInvitations, renderInvitationCard, wirePendingInvitationActions } from './events.js';
 
 const TRACKING_PAUSE_HELP = 'Pausiert Live-Status und Spielzeit. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
 const ACTIVITY_TRACKING_HELP = 'Erfasst zusätzlich, ob das Spielfenster im Vordergrund ist. Der Wert lässt sich später in der Agent-Steuerung ändern.';
 const PUSH_HELP = 'Benachrichtigt dich auch, wenn Respawn nicht geöffnet ist.';
+const RATING_HELP = 'Bock unterstützt die Spielauswahl, Skill die Teamaufteilung.';
+const AGENT_DOWNLOAD_HELP = 'Das ZIP enthält bereits Server-Adresse und deinen persönlichen Key.';
 
 function normalizedProfileColor(value) {
   return /^#[0-9a-f]{6}$/i.test(value ?? '')
@@ -181,56 +183,21 @@ let neighborsCache = null;
 let neighborsLoading = false;
 let neighborsForPlayerId = null;
 
+// Seat neighbours are pre-filled from the active event's seating plan, so
+// they are event data even though the cache is keyed by player id. Switching
+// the workspace has to drop them, or the previous event's seating keeps
+// driving the checkboxes for the new one.
+export function invalidateSeatNeighbors() {
+  neighborsCache = null;
+  neighborsLoading = false;
+  neighborsForPlayerId = null;
+}
+
 // 'unsupported' | 'denied' | 'unsubscribed' | 'subscribed' | null (not yet
 // checked). Re-checked whenever the view renders fresh (cheap local
 // permission/registration lookups, no network round trip).
 let pushState = null;
 let pushBusy = false;
-
-function renderIdentityPicker(container, ctx) {
-  const myId = getMyId();
-  container.innerHTML = `
-    <h1 class="view-title">Willkommen bei Respawn</h1>
-    <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section" aria-labelledby="profile-create-title">
-        <div class="grouped-page-section-title"><h2 id="profile-create-title">Profil anlegen</h2></div>
-        <form id="profile-new-form" class="field-row">
-          <input type="text" id="profile-new-name" placeholder="Dein Gamer-Name" maxlength="60" required autofocus />
-          <button type="submit" class="btn btn-primary">Los geht's</button>
-        </form>
-        <div class="muted" style="font-size:var(--font-size-xs);">Profilbild, Skills und dein Agent-Key richtest du direkt im Anschluss ein.</div>
-      </section>
-      <section class="card stack grouped-page-section" aria-labelledby="profile-existing-title">
-        <div class="grouped-page-section-title"><h2 id="profile-existing-title">Schon dabei?</h2></div>
-        <select id="profile-whoami">
-          <option value="">– deinen Namen wählen –</option>
-          ${state.players.map((p) => `<option value="${p.id}" ${p.id === myId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
-        </select>
-      </section>
-    </div>
-  `;
-
-  container.querySelector('#profile-whoami').addEventListener('change', (e) => {
-    if (!e.target.value) return;
-    setMyId(e.target.value);
-    ctx.rerender();
-  });
-
-  container.querySelector('#profile-new-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const name = container.querySelector('#profile-new-name').value.trim();
-    if (!name) return;
-    try {
-      const created = await api.players.create({ name });
-      await ctx.refresh();
-      setMyId(created.id);
-      showToast(`Willkommen, ${created.name}!`);
-      ctx.rerender();
-    } catch (err) {
-      showToast(err.message, { error: true });
-    }
-  });
-}
 
 // The seating plan editor (seating.js) may have just auto-filled/updated our
 // own visible-monitor pairs — refetch next render instead of showing a stale
@@ -247,6 +214,9 @@ async function loadNeighbors(playerId, ctx) {
   } catch (err) {
     showToast(err.message, { error: true });
     neighborsCache = null;
+    // Mark as attempted so a failed load doesn't immediately retry on the
+    // next rerender and flood the user with repeated error toasts.
+    neighborsForPlayerId = playerId;
   } finally {
     neighborsLoading = false;
     ctx.rerender();
@@ -256,10 +226,10 @@ async function loadNeighbors(playerId, ctx) {
 function renderNeighbors(myId) {
   const others = state.players.filter((p) => p.id !== myId);
   if (others.length === 0) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Noch keine anderen Spieler da.</div>`;
+    return emptyStateHtml('Noch keine anderen Spieler da.', { style: 'padding:var(--space-4);' });
   }
   if (neighborsLoading || neighborsCache === null) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
+    return emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' });
   }
   const checked = new Set(neighborsCache.neighborIds);
   const rows = others
@@ -299,7 +269,7 @@ function renderPushSection() {
           ${infoTooltipHtml('profile-push-help', 'Push-Benachrichtigungen aktivieren', PUSH_HELP)}
         </span>
       </label>
-      ${pushBusy || status ? `<span class="muted" style="font-size:var(--font-size-xs);">${pushBusy ? 'Wird aktualisiert…' : status}</span>` : ''}
+      ${status ? `<span class="muted" style="font-size:var(--font-size-xs);">${status}</span>` : ''}
     </div>`;
 }
 
@@ -307,7 +277,7 @@ export function renderProfile(container, ctx) {
   const myId = getMyId();
   const me = state.players.find((p) => p.id === myId);
   if (!me) {
-    renderIdentityPicker(container, ctx);
+    container.innerHTML = emptyStateHtml('Dein Profil konnte nicht geladen werden.');
     return;
   }
 
@@ -324,18 +294,27 @@ export function renderProfile(container, ctx) {
   const hasAnyRating =
     state.skills.some((s) => s.player_id === myId) || state.preferences.some((p) => p.player_id === myId);
 
+  // Event invitations lead the page: they need a response and would
+  // otherwise sit unnoticed above Orga's Events cards (see events.js's
+  // renderInvitationCard/pendingEventInvitations, also linked from Home's
+  // "Aktuell" list in aktuellStatus.js).
+  const pendingInvitations = pendingEventInvitations();
+
   container.innerHTML = `
     <div class="row-between profile-page-header">
-      <h1 class="view-title">Mein Profil</h1>
-      ${
-        authRequired
-          ? `<button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>`
-          : `<button type="button" class="btn btn-sm" id="profile-not-me">Nicht du?</button>`
-      }
+      <h1 class="view-title" id="profile-view-title" tabindex="-1">Mein Profil</h1>
+      <button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>
     </div>
     <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section" aria-labelledby="profile-data-title">
-        <div class="grouped-page-section-title"><h2 id="profile-data-title">Profil</h2></div>
+      ${
+        pendingInvitations.length > 0
+          ? `<section class="card stack grouped-page-section" aria-labelledby="profile-invitations-title">
+               <div class="grouped-page-section-title"><h2 id="profile-invitations-title" tabindex="-1">Einladungen</h2></div>
+               <div class="stack orga-event-grid">${pendingInvitations.map(renderInvitationCard).join('')}</div>
+             </section>`
+          : ''
+      }
+      <section class="card stack grouped-page-section" aria-label="Profildaten">
         <div class="profile-identity-editor">
           <div class="profile-identity-fields">
             <div class="profile-avatar-editor">
@@ -362,32 +341,33 @@ export function renderProfile(container, ctx) {
         </div>
       </section>
 
-      ${
-        authRequired
-          ? `<section class="card stack grouped-page-section" aria-labelledby="profile-password-title">
+      <section class="card stack grouped-page-section" aria-labelledby="profile-password-title">
                <div class="grouped-page-section-title"><h2 id="profile-password-title">Passwort ändern</h2></div>
                <form class="stack" id="profile-password-form">
-                 <div class="row">
-                   <input type="password" id="profile-current-password" autocomplete="current-password" required style="flex:1;" placeholder="Aktuelles Passwort" />
-                   <button type="button" class="icon-btn" data-password-toggle="profile-current-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
+                 <div class="profile-password-fields">
+                   <div class="row">
+                     <input type="password" id="profile-current-password" autocomplete="current-password" required style="flex:1;" placeholder="Aktuelles Passwort" />
+                     <button type="button" class="icon-btn" data-password-toggle="profile-current-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
+                   </div>
+                   <div class="row">
+                     <input type="password" id="profile-new-password" autocomplete="new-password" minlength="1" maxlength="1024" required style="flex:1;" placeholder="Neues Passwort" />
+                     <button type="button" class="icon-btn" data-password-toggle="profile-new-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
+                   </div>
                  </div>
-                 <div class="row">
-                   <input type="password" id="profile-new-password" autocomplete="new-password" minlength="15" maxlength="1024" required style="flex:1;" placeholder="Neues Passwort" />
-                   <button type="button" class="icon-btn" data-password-toggle="profile-new-password" aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
-                 </div>
-                 <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Mindestens 15 Zeichen. Drei Wörter reichen, eine lange Passphrase ist besser als Zeichensalat.</p>
-                 <button type="submit" class="btn btn-primary btn-sm">Passwort speichern</button>
+                 <button type="submit" class="btn btn-primary btn-block">Passwort speichern</button>
                </form>
-             </section>`
-          : ''
-      }
+      </section>
 
       ${
         state.games.length === 0 || hasAnyRating
           ? ''
           : `<section class="card stack grouped-page-section profile-rating-nudge" aria-labelledby="profile-rating-title">
-               <div class="grouped-page-section-title"><h2 id="profile-rating-title">Bock & Skill eintragen</h2></div>
-               <p class="muted" style="font-size:var(--font-size-xs);margin:0;">Hilft beim Voting und beim Teams-Auslosen und dauert nur eine Minute.</p>
+               <div class="grouped-page-section-title">
+                 <h2 id="profile-rating-title" class="title-with-info">
+                   <span>Bock &amp; Skill eintragen</span>
+                   ${infoTooltipHtml('profile-rating-help', 'Bock und Skill', RATING_HELP)}
+                 </h2>
+               </div>
                <button type="button" class="btn btn-primary btn-block" data-navigate="gameCatalog">Zu den Spielen</button>
              </section>`
       }
@@ -415,8 +395,10 @@ export function renderProfile(container, ctx) {
           </div>
           <div class="card stack profile-agent-step">
             <span class="muted profile-agent-step-label">Schritt 2</span>
-            <strong>Agent herunterladen</strong>
-            <span class="muted">Das ZIP enthält bereits Server-Adresse und deinen persönlichen Key.</span>
+            <strong class="title-with-info">
+              <span>Agent herunterladen</span>
+              ${infoTooltipHtml('profile-agent-download-help', 'Agent herunterladen', AGENT_DOWNLOAD_HELP)}
+            </strong>
             <button type="button" class="btn btn-primary btn-block" id="agent-download">Für Windows herunterladen</button>
           </div>
           <div class="card stack profile-agent-step">
@@ -432,7 +414,7 @@ export function renderProfile(container, ctx) {
             <button type="button" class="btn btn-sm" id="profile-copy-key">Kopieren</button>
             <button type="button" class="btn btn-sm btn-danger" id="profile-rotate-key">Erneuern</button>
           </div>
-          <p class="muted" style="font-size:var(--font-size-xs);margin-bottom:0;">Key in die Agent-Konfiguration eintragen; Details stehen in <code>agent/README.md</code>.</p>
+          <p class="muted" style="font-size:var(--font-size-xs);margin-bottom:0;">Key in die Agent-Konfiguration eintragen.</p>
         </details>
       </section>
 
@@ -456,42 +438,31 @@ export function renderProfile(container, ctx) {
   `;
 
   wireInfoTooltips(container);
+  wirePendingInvitationActions(container, ctx);
 
-  // "Nicht du?" (a passwordless identity switch) stops making sense once a
-  // real, password-backed session is active — the account IS the identity
-  // then, so the same button instead really signs out (see authGate.js).
-  if (authRequired) {
-    container.querySelector('#profile-logout').addEventListener('click', () => logout());
-    container.querySelectorAll('[data-password-toggle]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const input = container.querySelector(`#${button.dataset.passwordToggle}`);
-        const visible = input.type === 'password';
-        input.type = visible ? 'text' : 'password';
-        button.innerHTML = icon(visible ? 'eyeOff' : 'eye');
-        button.setAttribute('aria-label', visible ? 'Passwort verbergen' : 'Passwort anzeigen');
-        button.title = button.getAttribute('aria-label');
-      });
+  container.querySelector('#profile-logout').addEventListener('click', () => logout());
+  container.querySelectorAll('[data-password-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const input = container.querySelector(`#${button.dataset.passwordToggle}`);
+      const visible = input.type === 'password';
+      input.type = visible ? 'text' : 'password';
+      button.innerHTML = icon(visible ? 'eyeOff' : 'eye');
+      button.setAttribute('aria-label', visible ? 'Passwort verbergen' : 'Passwort anzeigen');
+      button.title = button.getAttribute('aria-label');
     });
-    container.querySelector('#profile-password-form').addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const currentPassword = container.querySelector('#profile-current-password');
-      const newPassword = container.querySelector('#profile-new-password');
-      try {
-        await api.auth.changePassword({ currentPassword: currentPassword.value, newPassword: newPassword.value });
-        event.currentTarget.reset();
-        showToast('Passwort geändert. Andere Geräte wurden abgemeldet.');
-      } catch (error) {
-        showToast(error.message, { error: true });
-      }
-    });
-  } else {
-    container.querySelector('#profile-not-me').addEventListener('click', () => {
-      setMyId('');
-      invalidateMyStats();
-      neighborsForPlayerId = null;
-      ctx.rerender();
-    });
-  }
+  });
+  container.querySelector('#profile-password-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const currentPassword = container.querySelector('#profile-current-password');
+    const newPassword = container.querySelector('#profile-new-password');
+    try {
+      await api.auth.changePassword({ currentPassword: currentPassword.value, newPassword: newPassword.value });
+      event.currentTarget.reset();
+      showToast('Passwort geändert. Andere Geräte wurden abgemeldet.');
+    } catch (error) {
+      showToast(error.message, { error: true });
+    }
+  });
 
   // Fetched lazily (the roster list intentionally omits API keys) and only
   // ever for your own profile — see the players.js detail modal for the

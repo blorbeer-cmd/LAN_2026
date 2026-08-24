@@ -3,7 +3,16 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { escapeHtml, formatSince, formatDateTime, formatDate, toDatetimeLocal, stateLabel, avatarHtml, gameChipsHtml } from './format.js';
+import {
+  escapeHtml,
+  formatSince,
+  formatDateTime,
+  formatDate,
+  toDatetimeLocal,
+  stateLabel,
+  avatarHtml,
+  gameChipsHtml,
+} from './format.js';
 
 test('escapeHtml neutralizes all five HTML-significant characters', () => {
   assert.equal(escapeHtml(`<b>"Tom & Jerry's"</b>`), '&lt;b&gt;&quot;Tom &amp; Jerry&#39;s&quot;&lt;/b&gt;');
@@ -52,6 +61,7 @@ test('toDatetimeLocal pads single-digit month/day/hour/minute', () => {
 
 test('stateLabel maps known live states to their German label', () => {
   assert.equal(stateLabel('playing'), 'Spielt');
+  assert.equal(stateLabel('online'), 'Online');
   assert.equal(stateLabel('paused'), 'Pause');
   assert.equal(stateLabel('offline'), 'Offline');
 });

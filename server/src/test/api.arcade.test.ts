@@ -1,10 +1,35 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
-import { db } from '../db';
+import { createTestApp } from './testApp';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
 
-const app = createApp();
+const app = createTestApp();
+
+// Older hand-written fixtures in this file intentionally omit the columns
+// added by the event-scope migrations. Normalize those raw rows before an
+// API read; production writers always provide the scope directly.
+function scopeArcadeFixtures(): void {
+  for (const table of [
+    'arcade_results',
+    'scribble_drawings',
+    'scribble_drawing_reactions',
+    'scribble_drawing_favorites',
+  ]) {
+    db.prepare(`UPDATE ${table} SET group_id = ? WHERE group_id IS NULL`).run(DEFAULT_GROUP_ID);
+    db.prepare(`UPDATE ${table} SET event_id = ? WHERE event_id IS NULL`).run(BASE_EVENT_ID);
+  }
+}
+
+function getArcadeStats() {
+  scopeArcadeFixtures();
+  return request(app).get('/api/arcade/stats');
+}
+
+function getScribbleGallery() {
+  scopeArcadeFixtures();
+  return request(app).get('/api/arcade/scribble/gallery');
+}
 
 test('GET /api/arcade/lobbies returns the (empty) cross-game open-lobby list', async () => {
   // Lobbies are created over Socket.IO, which these HTTP-only tests don't
@@ -29,7 +54,7 @@ test('GET /api/arcade/stats summarizes completed quiz results', async () => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run('arcade-test-result', 'quiz', alice.body.id, JSON.stringify(scores), JSON.stringify(scores), 'completed', now - 1000, now);
 
-  const res = await request(app).get('/api/arcade/stats');
+  const res = await getArcadeStats();
   assert.equal(res.status, 200);
   const quiz = res.body.games.find((game: { gameType: string }) => game.gameType === 'quiz');
   assert.equal(quiz.title, 'Gaming-Quiz');
@@ -68,7 +93,7 @@ test('arcade stats rank by win–loss ratio, not single-game score', async () =>
   mk('rank-1', 9000, 200, q.body.id);
   mk('rank-2', 100, 300, q.body.id);
 
-  const res = await request(app).get('/api/arcade/stats');
+  const res = await getArcadeStats();
   const game = res.body.games.find((g: { gameType: string }) => g.gameType === 'pong');
   assert.equal(game.title, 'Pong');
   assert.equal(game.leader.name, 'DuelWinner'); // ranked by win rate, not highscore
@@ -92,14 +117,210 @@ test('GET /api/arcade/stats labels and aggregates tetris results too', async () 
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run('tetris-test-result', 'tetris', cara.body.id, JSON.stringify(scores), JSON.stringify(scores), 'completed', now - 1000, now);
 
-  const res = await request(app).get('/api/arcade/stats');
+  const res = await getArcadeStats();
   assert.equal(res.status, 200);
   const tetris = res.body.games.find((game: { gameType: string }) => game.gameType === 'tetris');
+  const duel = res.body.games.find((game: { gameType: string }) => game.gameType === 'tetris:duel');
   assert.equal(tetris.title, 'Tetris');
   assert.equal(tetris.matches, 1);
   assert.equal(tetris.leader.name, 'Tetris Cara');
   assert.equal(tetris.players[0].wins, 1);
   assert.equal(tetris.players[0].losses, 0);
+  assert.equal(duel.title, 'Tetris Duell');
+  assert.equal(duel.matches, 1);
+});
+
+test('GET /api/arcade/stats separates KI Arena placements and excludes KI opponents', async () => {
+  const winner = await request(app).post('/api/players').send({ name: 'Arena Sieger' });
+  const runnerUp = await request(app).post('/api/players').send({ name: 'Arena Zweiter' });
+  const now = Date.now();
+  const scores = [
+    {
+      playerId: winner.body.id,
+      name: winner.body.name,
+      mode: 'arena',
+      score: 5200,
+      lines: 24,
+      placement: 1,
+      garbageSent: 8,
+      garbageReceived: 3,
+      knockouts: 2,
+    },
+    {
+      playerId: runnerUp.body.id,
+      name: runnerUp.body.name,
+      mode: 'arena',
+      score: 4100,
+      lines: 19,
+      placement: 2,
+      garbageSent: 5,
+      garbageReceived: 7,
+      knockouts: 1,
+    },
+    {
+      playerId: 'tetris-bot-1',
+      name: 'Tetris-Bot 1',
+      mode: 'arena',
+      isBot: true,
+      score: 1900,
+      lines: 8,
+      placement: 3,
+      garbageSent: 1,
+      garbageReceived: 5,
+      knockouts: 0,
+    },
+  ];
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    'tetris-arena-stats-result',
+    'tetris',
+    winner.body.id,
+    JSON.stringify(scores),
+    JSON.stringify(scores),
+    'completed',
+    now - 1000,
+    now,
+  );
+
+  const res = await getArcadeStats();
+  assert.equal(res.status, 200);
+  assert.equal(new Set(res.body.games.map((game: { gameType: string }) => game.gameType)).size, res.body.games.length);
+  const aggregate = res.body.games.find((game: { gameType: string }) => game.gameType === 'tetris');
+  const arena = res.body.games.find((game: { statsKey: string }) => game.statsKey === 'tetris:arena-ai');
+  assert.equal(aggregate.title, 'Tetris');
+  assert.ok(aggregate.matches >= 1);
+  assert.ok(aggregate.players.some((player: { name: string }) => player.name === 'Arena Sieger'));
+  assert.equal(arena.gameType, 'tetris:arena-ai');
+  assert.equal(arena.baseGameType, 'tetris');
+  assert.equal(arena.title, 'Tetris Arena · KI-Test');
+  assert.equal(arena.matches, 1);
+  assert.equal(arena.players.length, 2);
+  assert.equal(arena.players[0].name, 'Arena Sieger');
+  assert.equal(arena.players[0].topThree, 1);
+  assert.equal(arena.players[0].averagePlacement, 1);
+  assert.equal(arena.players[0].knockouts, 2);
+});
+
+test('GET /api/arcade/stats keeps non-Tetris AI matches out of human rankings', async () => {
+  const human = await request(app).post('/api/players').send({ name: 'KI Statistik Kontrollspieler' });
+  const before = await getArcadeStats();
+  const gameTypes = ['pong', 'blobby', 'snake', 'challenge-rush'];
+  const beforeGames = new Map(
+    gameTypes.map((gameType) => [
+      gameType,
+      before.body.games.find((game: { gameType: string }) => game.gameType === gameType),
+    ]),
+  );
+  const now = Date.now();
+
+  for (const gameType of gameTypes) {
+    const botId = `${gameType}-bot`;
+    const scores = [
+      { playerId: human.body.id, name: human.body.name, score: 10 },
+      { playerId: botId, name: 'KI', score: 20, isBot: true, isWinner: true },
+    ];
+    db.prepare(
+      `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+       VALUES (?, ?, NULL, ?, ?, 'completed', ?, ?)`,
+    ).run(
+      `arcade-ai-ranking-${gameType}`,
+      gameType,
+      JSON.stringify(scores),
+      JSON.stringify(scores),
+      now - 1000,
+      now,
+    );
+  }
+
+  const after = await getArcadeStats();
+  for (const gameType of gameTypes) {
+    assert.deepEqual(
+      after.body.games.find((game: { gameType: string }) => game.gameType === gameType),
+      beforeGames.get(gameType),
+    );
+  }
+});
+
+test('GET /api/arcade/stats excludes drawings from non-completed Scribble AI matches', async () => {
+  const aiArtist = await request(app).post('/api/players').send({ name: 'KI Scribble Abbruch Künstler' });
+  const normalArtist = await request(app).post('/api/players').send({ name: 'Scribble Ranglisten Künstler' });
+  const now = Date.now();
+  const aiScores = [
+    { playerId: aiArtist.body.id, name: aiArtist.body.name, score: 20 },
+    { playerId: 'scribble-bot', name: 'Scribble-Bot', score: 10, isBot: true },
+  ];
+  const normalScores = [
+    { playerId: normalArtist.body.id, name: normalArtist.body.name, score: 30 },
+  ];
+
+  db.prepare(
+    `INSERT INTO arcade_results
+       (id, game_type, winner_id, players, scores, reason, started_at, ended_at, source_match_id)
+     VALUES (?, 'scribble', NULL, ?, ?, 'ended-by-host', ?, ?, ?)`,
+  ).run('scribble-ai-aborted-result', JSON.stringify(aiScores), JSON.stringify(aiScores), now - 1000, now, 'scribble-ai-aborted-match');
+  db.prepare(
+    `INSERT INTO arcade_results
+       (id, game_type, winner_id, players, scores, reason, started_at, ended_at, source_match_id)
+     VALUES (?, 'scribble', ?, ?, ?, 'completed', ?, ?, ?)`,
+  ).run('scribble-human-result', normalArtist.body.id, JSON.stringify(normalScores), JSON.stringify(normalScores), now - 1000, now, 'scribble-human-match');
+  const insertDrawing = db.prepare(
+    `INSERT INTO scribble_drawings
+       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops, is_round_winner, created_at)
+     VALUES (?, ?, 1, 1, ?, ?, 'Testwort', '[]', 1, ?)`,
+  );
+  insertDrawing.run('scribble-ai-aborted-drawing', 'scribble-ai-aborted-match', aiArtist.body.id, aiArtist.body.name, now);
+  insertDrawing.run('scribble-human-drawing', 'scribble-human-match', normalArtist.body.id, normalArtist.body.name, now);
+
+  try {
+    const res = await getArcadeStats().expect(200);
+    const scribble = res.body.games.find((game: { gameType: string }) => game.gameType === 'scribble');
+    assert.equal(scribble.artPlayers.some((player: { playerId: string }) => player.playerId === aiArtist.body.id), false);
+    assert.equal(scribble.artPlayers.some((player: { playerId: string }) => player.playerId === normalArtist.body.id), true);
+  } finally {
+    db.prepare("DELETE FROM scribble_drawings WHERE id IN ('scribble-ai-aborted-drawing', 'scribble-human-drawing')").run();
+    db.prepare("DELETE FROM arcade_results WHERE id IN ('scribble-ai-aborted-result', 'scribble-human-result')").run();
+  }
+});
+
+test('GET /api/arcade/stats excludes drawings from a still-running or crashed Scribble AI match without a persisted result', async () => {
+  // Regresses the gap where the arcade_results-based lookup above misses a
+  // match that never reached finishMatch: persistCurrentDrawing marks the
+  // drawing is_ai_match at insert time instead, so this stays excluded even
+  // with no arcade_results row at all (mid-match stats request, or the
+  // process stopping before the match ever finishes).
+  const aiArtist = await request(app).post('/api/players').send({ name: 'KI Scribble Live Künstler' });
+  const normalArtist = await request(app).post('/api/players').send({ name: 'Scribble Live Ranglisten Künstler' });
+  const now = Date.now();
+  // A completed human result keeps the scribble entry present in `games` at
+  // all — the still-running AI match deliberately has no arcade_results row
+  // of its own, since that absence is exactly the gap being regressed here.
+  const normalScores = [{ playerId: normalArtist.body.id, name: normalArtist.body.name, score: 30 }];
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at, source_match_id)
+     VALUES (?, 'scribble', ?, ?, ?, 'completed', ?, ?, ?)`,
+  ).run('scribble-live-human-result', normalArtist.body.id, JSON.stringify(normalScores), JSON.stringify(normalScores), now - 1000, now, 'scribble-live-human-match');
+  db.prepare(
+    `INSERT INTO scribble_drawings
+       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops, is_round_winner, is_ai_match, created_at)
+     VALUES (?, ?, 1, 1, ?, ?, 'Testwort', '[]', 0, 1, ?)`,
+  ).run('scribble-ai-live-drawing', 'scribble-ai-live-match', aiArtist.body.id, aiArtist.body.name, now);
+  db.prepare(
+    `INSERT INTO scribble_drawings
+       (id, match_id, round_number, turn_number, artist_id, artist_name, word, draw_ops, is_round_winner, is_ai_match, created_at)
+     VALUES (?, ?, 1, 1, ?, ?, 'Testwort', '[]', 0, 0, ?)`,
+  ).run('scribble-live-human-drawing', 'scribble-live-human-match', normalArtist.body.id, normalArtist.body.name, now);
+
+  try {
+    const res = await getArcadeStats().expect(200);
+    const scribble = res.body.games.find((game: { gameType: string }) => game.gameType === 'scribble');
+    assert.equal(scribble.artPlayers.some((player: { playerId: string }) => player.playerId === aiArtist.body.id), false);
+    assert.equal(scribble.artPlayers.some((player: { playerId: string }) => player.playerId === normalArtist.body.id), true);
+  } finally {
+    db.prepare("DELETE FROM scribble_drawings WHERE id IN ('scribble-ai-live-drawing', 'scribble-live-human-drawing')").run();
+    db.prepare("DELETE FROM arcade_results WHERE id = 'scribble-live-human-result'").run();
+  }
 });
 
 test('GET /api/arcade/stats summarizes completed scribble results under their own title', async () => {
@@ -116,7 +337,7 @@ test('GET /api/arcade/stats summarizes completed scribble results under their ow
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run('arcade-test-scribble-result', 'scribble', carla.body.id, JSON.stringify(scores), JSON.stringify(scores), 'completed', now - 1000, now);
 
-  const res = await request(app).get('/api/arcade/stats');
+  const res = await getArcadeStats();
   assert.equal(res.status, 200);
   const scribble = res.body.games.find((game: { gameType: string }) => game.gameType === 'scribble');
   assert.equal(scribble.title, 'Scribble');
@@ -159,7 +380,7 @@ test('scribble stats and gallery retain round-winning drawings and per-artist ra
     'INSERT INTO scribble_drawing_favorites (match_id, round_number, player_id, drawing_id, created_at) VALUES (?, ?, ?, ?, ?)'
   ).run('gallery-match', 1, voter.body.id, 'gallery-drawing', now);
 
-  const statsRes = await request(app).get('/api/arcade/stats').expect(200);
+  const statsRes = await getArcadeStats().expect(200);
   const scribble = statsRes.body.games.find((game: { gameType: string }) => game.gameType === 'scribble');
   const artStats = scribble.artPlayers.find((player: { playerId: string }) => player.playerId === artist.body.id);
   assert.deepEqual(
@@ -173,7 +394,7 @@ test('scribble stats and gallery retain round-winning drawings and per-artist ra
     { drawings: 1, roundWins: 1, reactions: 1, favorites: 1, creative: 1 }
   );
 
-  const galleryRes = await request(app).get('/api/arcade/scribble/gallery').expect(200);
+  const galleryRes = await getScribbleGallery().expect(200);
   const drawing = galleryRes.body.drawings.find((entry: { id: string }) => entry.id === 'gallery-drawing');
   assert.equal(drawing.artistName, 'Gallery Artist');
   assert.equal(drawing.word, 'Rakete');
@@ -195,7 +416,7 @@ test('GET /api/arcade/stats labels Blobby Volley results', async () => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run('arcade-test-blobby-result', 'blobby', eve.body.id, JSON.stringify(scores), JSON.stringify(scores), 'completed', now - 1000, now);
 
-  const res = await request(app).get('/api/arcade/stats');
+  const res = await getArcadeStats();
   const blobby = res.body.games.find((game: { gameType: string }) => game.gameType === 'blobby');
   assert.equal(blobby.title, 'Blobby Volley');
   assert.equal(blobby.matches, 1);
@@ -203,6 +424,33 @@ test('GET /api/arcade/stats labels Blobby Volley results', async () => {
   assert.equal(blobby.players[0].wins, 1);
   assert.equal(blobby.players[0].losses, 0);
   assert.equal(blobby.players[0].winRate, 1);
+});
+
+test('GET /api/arcade/stats counts both winners of a Blobby Doppel team', async () => {
+  const blueA = await request(app).post('/api/players').send({ name: 'Doppel Blau A' });
+  const blueB = await request(app).post('/api/players').send({ name: 'Doppel Blau B' });
+  const pinkA = await request(app).post('/api/players').send({ name: 'Doppel Pink A' });
+  const pinkB = await request(app).post('/api/players').send({ name: 'Doppel Pink B' });
+  const now = Date.now();
+  const scores = [
+    { playerId: blueA.body.id, name: blueA.body.name, team: 'left', score: 7, isWinner: true },
+    { playerId: blueB.body.id, name: blueB.body.name, team: 'left', score: 7, isWinner: true },
+    { playerId: pinkA.body.id, name: pinkA.body.name, team: 'right', score: 4, isWinner: false },
+    { playerId: pinkB.body.id, name: pinkB.body.name, team: 'right', score: 4, isWinner: false },
+  ];
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run('arcade-test-blobby-doubles', 'blobby-doubles-test', null, JSON.stringify(scores), JSON.stringify(scores), 'completed', now - 1000, now);
+
+  const res = await getArcadeStats();
+  assert.equal(res.status, 200);
+  const game = res.body.games.find((entry: { gameType: string }) => entry.gameType === 'blobby-doubles-test');
+  const players = new Map(game.players.map((player: { name: string; wins: number; losses: number }) => [player.name, player]));
+  assert.equal((players.get('Doppel Blau A') as { wins: number }).wins, 1);
+  assert.equal((players.get('Doppel Blau B') as { wins: number }).wins, 1);
+  assert.equal((players.get('Doppel Pink A') as { wins: number }).wins, 0);
+  assert.equal((players.get('Doppel Pink B') as { losses: number }).losses, 1);
 });
 
 test('GET /api/arcade/stats attributes Snake results to named players (title capitalized)', async () => {
@@ -218,7 +466,7 @@ test('GET /api/arcade/stats attributes Snake results to named players (title cap
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run('snake-test-result', 'snake', gwen.body.id, JSON.stringify(scores), JSON.stringify(scores), 'completed', now - 1000, now);
 
-  const res = await request(app).get('/api/arcade/stats');
+  const res = await getArcadeStats();
   const snake = res.body.games.find((game: { gameType: string }) => game.gameType === 'snake');
   assert.equal(snake.title, 'Snake');
   assert.equal(snake.leader.name, 'Snake Gwen');
@@ -236,21 +484,24 @@ test('GET /api/arcade/stats ignores legacy Snake rows that stored a bare score a
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run('snake-legacy-result', 'snakelegacy', null, JSON.stringify([]), JSON.stringify([12, 8]), 'completed', now - 1000, now);
 
-  const res = await request(app).get('/api/arcade/stats');
+  const res = await getArcadeStats();
   // A game with no attributable results is dropped entirely rather than shown
   // as an empty "1 Match, no players" tab.
   const legacy = res.body.games.find((game: { gameType: string }) => game.gameType === 'snakelegacy');
   assert.equal(legacy, undefined);
 });
 
-test('arcade AI access follows the selected player admin flag', async () => {
+test('arcade AI access follows the server-managed group admin role', async () => {
   const player = await request(app).post('/api/players').send({ name: 'Arcade Non Admin' });
   assert.equal(player.body.is_admin, 0);
 
   const { playerMayUseArcadeAi } = await import('../arcade/adminAccess');
   assert.equal(playerMayUseArcadeAi(player.body.id), false);
 
-  await request(app).patch(`/api/players/${player.body.id}`).send({ isAdmin: true }).expect(200);
+  await request(app)
+    .patch(`/api/groups/${DEFAULT_GROUP_ID}/members/${player.body.id}`)
+    .send({ role: 'admin' })
+    .expect(200);
   assert.equal(playerMayUseArcadeAi(player.body.id), true);
   assert.equal(playerMayUseArcadeAi('missing-player'), false);
 });

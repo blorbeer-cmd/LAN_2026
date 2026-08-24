@@ -8,10 +8,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 import { createInvite } from '../invites';
 
-const app = createApp();
+const app = createTestApp();
 
 const statusCounts = (statuses: number[]) =>
   statuses.reduce<Record<number, number>>((acc, s) => ((acc[s] = (acc[s] ?? 0) + 1), acc), {});
@@ -268,7 +268,7 @@ test('simultaneous carpool joins: exactly seatsTotal of them win', async () => {
   assert.equal(carpool.seatsFree, 0);
 });
 
-test('two events starting tracking simultaneously: exactly one wins', async () => {
+test('two events can start tracking simultaneously without sharing global state', async () => {
   const now = Date.now();
   const events = await Promise.all(
     ['Race Event A', 'Race Event B'].map((name) =>
@@ -279,8 +279,7 @@ test('two events starting tracking simultaneously: exactly one wins', async () =
     events.map((e) => request(app).post(`/api/events/${e.body.id}/tracking/start`))
   );
   const counts = statusCounts(results.map((r) => r.status));
-  assert.equal(counts[200], 1, JSON.stringify(counts));
-  assert.equal(counts[409], 1, JSON.stringify(counts));
+  assert.equal(counts[200], 2, JSON.stringify(counts));
 });
 
 test('two results submitted for the same draw at once: exactly one is recorded and claims the draw', async () => {
@@ -334,12 +333,12 @@ test('simultaneous test-user seeding: no duplicate names or double-booked seats'
 test('simultaneous broadcast endings: exactly one request ends the announcement', async () => {
   const created = await request(app)
     .post('/api/broadcasts')
-    .send({ playerId: playerIds[0], message: 'Race-Durchsage' });
+    .send({ message: 'Race-Durchsage' });
   assert.equal(created.status, 201);
 
   const results = await Promise.all(
     Array.from({ length: 6 }, () =>
-      request(app).post(`/api/broadcasts/${created.body.id}/end`).send({ playerId: playerIds[0] })
+      request(app).post(`/api/broadcasts/${created.body.id}/end`).send({})
     )
   );
   const counts = statusCounts(results.map((result) => result.status));
@@ -347,7 +346,7 @@ test('simultaneous broadcast endings: exactly one request ends the announcement'
   assert.equal(counts[409], 5, JSON.stringify(counts));
 });
 
-test('simultaneous registrations with the same invite code: exactly one succeeds', async () => {
+test('simultaneous registrations with the same reusable invite code all succeed', async () => {
   const admin = await request(app).post('/api/players').send({ name: 'Auth Race Admin' });
   const invite = createInvite({ purpose: 'register', createdBy: admin.body.id });
 
@@ -359,7 +358,7 @@ test('simultaneous registrations with the same invite code: exactly one succeeds
     )
   );
   const counts = statusCounts(results.map((r) => r.status));
-  assert.equal(counts[201], 1, JSON.stringify(counts));
+  assert.equal(counts[201], 6, JSON.stringify(counts));
 });
 
 test('simultaneous registrations with the same name (different codes): exactly one succeeds', async () => {

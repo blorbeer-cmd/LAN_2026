@@ -6,7 +6,7 @@
 
 import { api } from '../api.js';
 import { confirmDialog } from '../modal.js';
-import { state, gameById } from '../state.js';
+import { state, catalogGames } from '../state.js';
 import { escapeHtml, avatarHtml, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
@@ -16,6 +16,9 @@ import { moveTournamentDraftPlayer } from '../tournamentTeamDraft.js';
 import { selectActiveLobbyMatches } from '../tournamentLobbies.js';
 import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
 import { withStepUp } from '../reauth.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
+import { matchesSelectionSearch, selectionSearchHtml, wireSelectionSearch } from '../selectionSearch.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -32,12 +35,16 @@ const SHORT_FORMAT_LABELS = {
 
 let listCache = null;
 let listLoading = false;
+let listStale = false;
+let listRequestVersion = 0;
 let completedSectionOpen = false;
 
 let currentTournamentId = null; // null = list/create view
 let detailCache = null;
 let detailLoading = false;
 let detailForId = null;
+let detailStale = false;
+let detailRequestVersion = 0;
 let editingResultMatchId = null;
 
 let createOpen = false;
@@ -55,6 +62,7 @@ let createProposedTeams = null; // [{ name, playerIds, players (for display), to
 let createSelectedPlayerId = null; // touch/keyboard fallback for moving a proposed player
 let createSeatConflicts = null; // { conflicts, considered } from the last proposal, for the seating note
 let createAvoidPairs = []; // seat-neighbor pairs from the last proposal, to re-flag conflicts after a manual move
+let createPlayerSearchQuery = '';
 
 // Re-derives each player's seatConflict flag/neighbor names (and the
 // seating-note count) from createAvoidPairs — needed after a manual
@@ -97,38 +105,63 @@ function recomputeSeatConflicts() {
 }
 
 async function loadList(ctx) {
+  const version = ++listRequestVersion;
   listLoading = true;
+  listStale = false;
   try {
-    listCache = await api.tournaments.list();
+    const result = await api.tournaments.list();
+    if (version === listRequestVersion) listCache = result;
   } catch (err) {
-    showToast(err.message, { error: true });
-    listCache = [];
+    if (version === listRequestVersion) {
+      showToast(err.message, { error: true });
+      if (listCache === null) listCache = [];
+    }
   } finally {
-    listLoading = false;
-    ctx.rerender();
+    if (version === listRequestVersion) {
+      listLoading = false;
+      ctx.rerender();
+    }
   }
 }
 
 async function loadDetail(id, ctx) {
+  const version = ++detailRequestVersion;
   detailLoading = true;
+  detailStale = false;
   try {
-    detailCache = await api.tournaments.get(id);
-    detailForId = id;
+    const result = await api.tournaments.get(id);
+    if (version === detailRequestVersion) {
+      detailCache = result;
+      detailForId = id;
+    }
   } catch (err) {
-    showToast(err.message, { error: true });
-    detailCache = null;
-    detailForId = id;
+    if (version === detailRequestVersion) {
+      showToast(err.message, { error: true });
+      if (detailForId !== id) detailCache = null;
+      detailForId = id;
+    }
   } finally {
-    detailLoading = false;
-    ctx.rerender();
+    if (version === detailRequestVersion) {
+      detailLoading = false;
+      ctx.rerender();
+    }
   }
 }
 
 // Called from app.js on every tournaments:changed socket event, so this
 // view's data is never more than one re-render stale.
-export function invalidateTournaments() {
-  listCache = null;
-  detailForId = null;
+export function invalidateTournaments({ hard = false } = {}) {
+  listRequestVersion += 1;
+  detailRequestVersion += 1;
+  listLoading = false;
+  detailLoading = false;
+  listStale = true;
+  detailStale = true;
+  if (hard) {
+    listCache = null;
+    detailCache = null;
+    detailForId = null;
+  }
 }
 
 // Called from app.js when a player taps a tournament notification toast, so
@@ -163,12 +196,18 @@ function resetCreateForm() {
   createSelectedPlayerId = null;
   createSeatConflicts = null;
   createAvoidPairs = [];
+  createPlayerSearchQuery = '';
 }
 
 // ---------- list + create ----------
 
 function renderList(container, ctx) {
-  if (listCache === null && !listLoading) loadList(ctx);
+  if ((listCache === null || listStale) && !listLoading) loadList(ctx);
+  if (createOpen) {
+    container.innerHTML = '<div id="tourn-create" class="tournament-create-slot"></div>';
+    renderCreateForm(container.querySelector('#tourn-create'), ctx);
+    return;
+  }
 
   const tournamentCards = (tournaments) => `<div class="card-grid tournament-list-grid">${tournaments
     .map(
@@ -214,10 +253,10 @@ function renderList(container, ctx) {
 
   let currentListHtml;
   let completedListHtml = '';
-  if (listLoading || listCache === null) {
-    currentListHtml = `<div class="empty-state">Lädt…</div>`;
+  if (listCache === null) {
+    currentListHtml = emptyStateHtml('Lädt…');
   } else if (listCache.length === 0) {
-    currentListHtml = `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('tournaments'))}</span><br />Noch keine Turniere.</div>`;
+    currentListHtml = emptyStateHtml('<br />Noch keine Turniere.', { icon: icon(domainIcon('tournaments')) });
   } else {
     const activeTournaments = listCache.filter((t) => t.status !== 'completed');
     const completedTournaments = listCache.filter((t) => t.status === 'completed');
@@ -226,8 +265,7 @@ function renderList(container, ctx) {
   }
 
   container.innerHTML = `
-    <div class="row-between">
-      <h1 class="view-title">Turniere</h1>
+    <div class="row view-actions">
       <button type="button" class="btn btn-primary btn-sm" id="tourn-new-btn">Turnier anlegen</button>
     </div>
     ${currentListHtml}
@@ -252,14 +290,30 @@ function renderList(container, ctx) {
     completedSectionOpen = completedSection.open;
   });
 
-  if (createOpen) {
-    renderCreateForm(container.querySelector('#tourn-create'), ctx);
-  }
+}
+
+// A tournament runs on an accepted game only — a suggestion nobody has taken
+// into the catalog yet is not something to schedule a bracket for.
+function createFormGameId() {
+  const games = catalogGames();
+  return games.some((game) => game.id === state.selectedGameId) ? state.selectedGameId : games[0]?.id;
 }
 
 function renderCreateForm(el, ctx) {
-  if (state.games.length === 0 || state.players.length < 2) {
-    el.innerHTML = `<div class="empty-state" style="padding:var(--space-4);">Dafür braucht es mindestens ein Spiel und 2 Spieler.</div>`;
+  if (catalogGames().length === 0 || state.players.length < 2) {
+    el.innerHTML = `<div class="card stack">
+      <div class="row-between">
+        <div class="section-title" style="margin:0;">Neues Turnier</div>
+        <button type="button" class="icon-btn" id="tourn-create-close" aria-label="Schließen">${icon('x')}</button>
+      </div>
+      ${emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', {
+        style: 'padding:var(--space-4);',
+      })}
+    </div>`;
+    el.querySelector('#tourn-create-close').addEventListener('click', () => {
+      resetCreateForm();
+      ctx.rerender();
+    });
     return;
   }
 
@@ -268,23 +322,19 @@ function renderCreateForm(el, ctx) {
     if (createCheckedIds.size === 0) createCheckedIds = new Set(state.players.map((p) => p.id));
   }
 
-  const selectedGameId = state.games.some((game) => game.id === state.selectedGameId)
-    ? state.selectedGameId
-    : state.games[0].id;
+  const selectedGameId = createFormGameId();
   state.selectedGameId = selectedGameId;
 
-  const gameOptions = state.games
-    .map((g) => `<option value="${g.id}" ${g.id === selectedGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`)
-    .join('');
+  const gameSelectOptions = catalogGames().map((g) => ({ value: g.id, label: g.name }));
 
   const playerRows = state.players
     .map(
       (p) => `
-      <label class="check-row">
+      <label class="check-row" data-tourn-player-search-item data-selection-search="${escapeHtml(p.name)}">
         <input type="checkbox" data-create-player="${p.id}" ${createCheckedIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
-        ${playerSkillHtml(p.id, selectedGameId)}
+        ${playerSkillHtml(p, selectedGameId)}
       </label>`
     )
     .join('');
@@ -310,7 +360,7 @@ function renderCreateForm(el, ctx) {
           <div class="team-card tournament-draft-team${selectedTeamIndex !== -1 && selectedTeamIndex !== i ? ' is-select-target' : ''}" data-tourn-drop-team="${i}" role="group" aria-label="${escapeHtml(t.name)}">
             <div class="team-card-header tournament-team-skill-header">
               <input type="text" data-team-name="${i}" value="${escapeHtml(t.name)}" maxlength="60" />
-              ${teamSkillHtml(t.players, selectedGameId)}
+              ${teamSkillHtml(t.players, selectedGameId, { stored: true })}
             </div>
             ${t.players
               .map(
@@ -319,7 +369,7 @@ function renderCreateForm(el, ctx) {
                 ${avatarHtml(p, 18)}
                 <span class="player-name team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
                 ${seatConflictIconHtml(p)}
-                ${playerSkillHtml(p.id, selectedGameId)}
+                ${playerSkillHtml(p, selectedGameId, { stored: true })}
               </button>`
               )
               .join('')}
@@ -340,19 +390,20 @@ function renderCreateForm(el, ctx) {
       <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="tournament-draw-step-title">
         <div class="tournament-create-step-title">
           <h3 id="tournament-draw-step-title">Auslosung</h3>
-          <span class="muted">Teams zusammenstellen</span>
         </div>
-        <label class="field-label" for="tourn-game">Spiel auswählen</label>
-        <select id="tourn-game">${gameOptions}</select>
+        <label class="field-label" for="tourn-game-search">Spiel auswählen</label>
+        ${searchSelectHtml('tourn-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen…' })}
         <div class="selection-toolbar">
           <div class="tournament-team-count-field">
             <label class="field-label" for="tourn-teamcount">Anzahl Teams</label>
             <input type="number" id="tourn-teamcount" min="2" value="${escapeHtml(createTeamCount)}" />
           </div>
-          <button type="button" class="btn btn-sm" id="tourn-select-all">Alle markieren</button>
-          <button type="button" class="btn btn-sm" id="tourn-select-none">Auswahl aufheben</button>
+          <button type="button" class="icon-btn selection-toolbar-icon" id="tourn-select-all" aria-label="Sichtbare Spieler markieren" data-tooltip="Sichtbare markieren">${icon('listChecks')}</button>
+          <button type="button" class="icon-btn selection-toolbar-icon selection-toolbar-icon--clear" id="tourn-select-none" aria-label="Sichtbare Spieler abwählen" data-tooltip="Sichtbare abwählen">${icon('listX')}</button>
+          ${selectionSearchHtml('tourn-player-search', createPlayerSearchQuery)}
         </div>
         <div class="player-selection-grid tournament-player-grid">${playerRows}</div>
+        <p class="muted" data-tourn-player-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spieler gefunden.</p>
         <div class="check-row">
           <input type="checkbox" id="tourn-avoid-adjacent" ${createAvoidAdjacent ? 'checked' : ''} />
           <span class="title-with-info tournament-option-label">
@@ -374,7 +425,6 @@ function renderCreateForm(el, ctx) {
       <section class="tournament-section-panel tournament-create-step stack" aria-labelledby="tournament-mode-step-title">
         <div class="tournament-create-step-title">
           <h3 id="tournament-mode-step-title">Modus</h3>
-          <span class="muted">Ablauf festlegen</span>
         </div>
         <div class="title-with-info tournament-format-label">
           <label class="field-label" for="tourn-format">Turnierformat</label>
@@ -409,27 +459,13 @@ function renderCreateForm(el, ctx) {
           createFormat === 'round_robin' || createFormat === 'group_knockout'
             ? `<div class="check-row">
                  <input type="checkbox" id="tourn-two-legged" ${createTwoLegged ? 'checked' : ''} />
-                 <span class="title-with-info tournament-option-label">
-                   <label for="tourn-two-legged">Hin- und Rückspiel${createFormat === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>
-                   ${infoTooltipHtml(
-                       'tournament-two-legged-help',
-                       'Hin- und Rückspiel',
-                       'Jede Paarung wird zweimal gespielt.'
-                     )}
-                 </span>
+                 <label for="tourn-two-legged">Hin- und Rückspiel${createFormat === 'group_knockout' ? ' in der Gruppenphase' : ''}</label>
                </div>`
             : ''
         }
         <div class="check-row">
           <input type="checkbox" id="tourn-track-score" ${createTrackScore ? 'checked' : ''} />
-          <span class="title-with-info tournament-option-label">
-            <label for="tourn-track-score">Ergebnisse inkl. Punktestand</label>
-            ${infoTooltipHtml(
-                'tournament-score-help',
-                'Ergebnisse inklusive Punktestand',
-                'Erfasst den genauen Punktestand statt nur Sieg oder Niederlage.'
-              )}
-          </span>
+          <label for="tourn-track-score">Ergebnisse inkl. Punktestand</label>
         </div>
         <div class="field-row">
           <div>
@@ -456,6 +492,14 @@ function renderCreateForm(el, ctx) {
   `;
 
   wireInfoTooltips(el);
+  wireSelectionSearch(el, {
+    inputId: 'tourn-player-search',
+    itemSelector: '[data-tourn-player-search-item]',
+    emptySelector: '[data-tourn-player-search-empty]',
+    onQueryChange: (query) => {
+      createPlayerSearchQuery = query;
+    },
+  });
 
   el.querySelector('#tourn-create-close').addEventListener('click', async () => {
     const hasEnteredData = Boolean(createProposedTeams) || Boolean(createLobbyName.trim()) || Boolean(createLobbyPassword.trim());
@@ -471,6 +515,7 @@ function renderCreateForm(el, ctx) {
     ctx.rerender();
   });
 
+  wireSearchSelect(el, 'tourn-game', gameSelectOptions);
   el.querySelector('#tourn-game').addEventListener('change', (e) => {
     state.selectedGameId = e.target.value;
     createProposedTeams = null;
@@ -486,12 +531,16 @@ function renderCreateForm(el, ctx) {
   });
 
   el.querySelector('#tourn-select-all').addEventListener('click', () => {
-    createCheckedIds = new Set(state.players.map((player) => player.id));
+    for (const player of state.players.filter((entry) => matchesSelectionSearch(entry.name, createPlayerSearchQuery))) {
+      createCheckedIds.add(player.id);
+    }
     createProposedTeams = null;
     ctx.rerender();
   });
   el.querySelector('#tourn-select-none').addEventListener('click', () => {
-    createCheckedIds.clear();
+    for (const player of state.players.filter((entry) => matchesSelectionSearch(entry.name, createPlayerSearchQuery))) {
+      createCheckedIds.delete(player.id);
+    }
     createProposedTeams = null;
     ctx.rerender();
   });
@@ -541,7 +590,7 @@ function renderCreateForm(el, ctx) {
   }
 
   async function proposeTeams() {
-    const gameId = state.selectedGameId || state.games[0].id;
+    const gameId = createFormGameId();
     const playerIds = [...createCheckedIds];
     if (playerIds.length < 2) {
       return showToast('Mindestens 2 Spieler auswählen.', { error: true });
@@ -655,7 +704,7 @@ function renderCreateForm(el, ctx) {
   if (submitBtn) {
     submitBtn.addEventListener('click', async () => {
       if (!createProposedTeams) return;
-      const gameId = state.selectedGameId || state.games[0].id;
+      const gameId = createFormGameId();
       try {
         const created = await api.tournaments.create({
           gameId,
@@ -673,7 +722,7 @@ function renderCreateForm(el, ctx) {
         currentTournamentId = created.id;
         detailCache = created;
         detailForId = created.id;
-        listCache = null;
+        listStale = true;
         showToast('Turnier erstellt.');
         ctx.rerender();
       } catch (err) {
@@ -896,7 +945,7 @@ function buildBracketNode(matchesByKey, round, slot, t, teamsById) {
 // matches defaults to the tournament's full match list (single_elimination),
 // but group_knockout passes just its knockout-stage rows so this can be
 // reused for that sub-bracket once it's been generated.
-function renderBracket(t, ctx, matches = t.matches) {
+function renderBracket(t, matches = t.matches) {
   const teamsById = new Map(t.teams.map((team) => [team.id, team]));
   const totalRounds = Math.max(...matches.map((m) => m.round));
   const matchesByKey = new Map(matches.map((m) => [`${m.round}:${m.slot}`, m]));
@@ -985,14 +1034,14 @@ function renderRoundRobinBoard(t, teamsById, matches, standings, { accentRounds 
   `;
 }
 
-function renderRoundRobin(t, ctx) {
+function renderRoundRobin(t) {
   const teamsById = new Map(t.teams.map((team) => [team.id, team]));
   return renderRoundRobinBoard(t, teamsById, t.matches, t.standings, { accentRounds: true });
 }
 
 // ---------- detail: group stage + knockout ----------
 
-function renderGroupKnockout(t, ctx) {
+function renderGroupKnockout(t) {
   const teamsById = new Map(t.teams.map((team) => [team.id, team]));
 
   const groupBlocks = (t.groups || [])
@@ -1002,7 +1051,6 @@ function renderGroupKnockout(t, ctx) {
         <section class="tournament-section-panel tournament-group-panel stack" aria-labelledby="tournament-group-${g.groupIndex}">
           <div class="tournament-create-step-title">
             <h3 id="tournament-group-${g.groupIndex}">Gruppe ${g.groupIndex + 1}</h3>
-            <span class="muted">Tabelle und Spielrunden</span>
           </div>
           ${renderRoundRobinBoard(t, teamsById, groupMatches, g.standings)}
         </section>`;
@@ -1013,12 +1061,12 @@ function renderGroupKnockout(t, ctx) {
   const knockoutHtml =
     knockoutMatches.length === 0
       ? `<section class="tournament-section-panel tournament-group-panel stack">
-           <div class="tournament-create-step-title"><h3>K.O.-Runde</h3><span class="muted">Entscheidungsphase</span></div>
-           <div class="empty-state">Startet automatisch, sobald alle Gruppenspiele entschieden sind.</div>
+           <div class="tournament-create-step-title"><h3>K.O.-Runde</h3></div>
+           ${emptyStateHtml('Startet automatisch, sobald alle Gruppenspiele entschieden sind.')}
          </section>`
       : `<section class="tournament-section-panel tournament-group-panel stack">
-           <div class="tournament-create-step-title"><h3>K.O.-Runde</h3><span class="muted">Entscheidungsphase</span></div>
-           ${renderBracket(t, ctx, knockoutMatches)}
+           <div class="tournament-create-step-title"><h3>K.O.-Runde</h3></div>
+           ${renderBracket(t, knockoutMatches)}
          </section>`;
 
   return `<div class="tournament-group-stage">${groupBlocks}${knockoutHtml}</div>`;
@@ -1044,7 +1092,7 @@ function renderTournamentTeams(t) {
                   <div class="team-player">
                     ${avatarHtml(player, 24)}
                     <span class="player-name team-player-name" style="flex:1;">${escapeHtml(player.name)}</span>
-                    ${playerSkillHtml(player.id, t.gameId)}
+                    ${playerSkillHtml(player, t.gameId)}
                   </div>`
                 )
                 .join('')
@@ -1058,13 +1106,13 @@ function renderTournamentTeams(t) {
 }
 
 function renderDetail(container, ctx) {
-  if (detailForId !== currentTournamentId && !detailLoading) {
+  if ((detailForId !== currentTournamentId || detailStale) && !detailLoading) {
     loadDetail(currentTournamentId, ctx);
   }
-  if (detailLoading || !detailCache) {
+  if (detailForId !== currentTournamentId || !detailCache) {
     container.innerHTML = `
       <button type="button" class="btn btn-sm" id="tourn-back">‹ Zurück</button>
-      <div class="empty-state">Lädt…</div>`;
+      ${emptyStateHtml('Lädt…')}`;
     container.querySelector('#tourn-back').addEventListener('click', () => {
       currentTournamentId = null;
       editingResultMatchId = null;
@@ -1076,10 +1124,10 @@ function renderDetail(container, ctx) {
   const t = detailCache;
   const boardContent =
     t.format === 'single_elimination'
-      ? renderBracket(t, ctx)
+      ? renderBracket(t)
       : t.format === 'group_knockout'
-        ? renderGroupKnockout(t, ctx)
-        : renderRoundRobin(t, ctx);
+        ? renderGroupKnockout(t)
+        : renderRoundRobin(t);
   const board =
     t.format === 'single_elimination'
       ? `<div class="section-title">Turnierbaum</div><div class="card tournament-board-panel">${boardContent}</div>`
@@ -1116,7 +1164,7 @@ function renderDetail(container, ctx) {
       <button type="button" class="btn btn-sm" id="tourn-back">‹ Zurück</button>
       <button type="button" class="btn btn-sm btn-danger" id="tourn-delete">Löschen</button>
     </div>
-    <h1 class="view-title">${escapeHtml(t.name)}</h1>
+    <h2 class="view-title">${escapeHtml(t.name)}</h2>
     <div class="muted tournament-detail-meta">
       ${formatDisplay}
       <span class="badge ${t.status === 'completed' ? 'badge-offline' : 'badge-playing'}">${t.status === 'completed' ? 'Beendet' : 'Läuft'}</span>
@@ -1156,13 +1204,14 @@ function renderDetail(container, ctx) {
   });
 
   container.querySelector('#tourn-delete').addEventListener('click', async () => {
-    if (!(await confirmDialog(`Turnier "${t.name}" wirklich löschen?`))) return;
+    if (!(await confirmDialog(`Turnier "${t.name}" wirklich löschen?`, { confirmText: 'Löschen', danger: true }))) return;
     try {
       const removed = await withStepUp(() => api.tournaments.remove(t.id));
       if (removed === undefined) return;
       currentTournamentId = null;
       editingResultMatchId = null;
-      listCache = null;
+      if (listCache) listCache = listCache.filter((entry) => entry.id !== t.id);
+      listStale = true;
       showToast('Turnier gelöscht.');
       ctx.rerender();
     } catch (err) {

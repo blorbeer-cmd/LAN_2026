@@ -3,24 +3,36 @@
 // abgeschickt" in the UI — closed_at) freezes the list for reading out to
 // the phone/delivery app. That's reversible via reopen (add a forgotten
 // item, fix a price) until the creator/an admin finalizes it ("wird
-// geschlossen" in the UI — finalized_at) — a one-way lock, no more
-// reopening, items, paid or metadata changes. The check-then-write race to
-// watch: someone closes the order while others are still typing — adding to
-// a closed order must fail with a clean 409, never silently append, and two
-// simultaneous closes must resolve to exactly one winner (see
-// api.concurrency.test.ts).
+// geschlossen" in the UI — finalized_at): while finalized, no more items,
+// paid or metadata changes are possible. Finalizing is itself reversible
+// through the same reopen endpoint (it undoes exactly the most recent lock
+// step — finalized back to closed, closed back to open) — a finalized order
+// is never permanently stuck, someone just has to explicitly reopen it
+// before payments can be marked or anything else changes again. The
+// check-then-write race to watch: someone closes the order while others are
+// still typing — adding to a closed order must fail with a clean 409, never
+// silently append, and two simultaneous closes must resolve to exactly one
+// winner (see api.concurrency.test.ts).
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { db, OUTSIDE_EVENTS_ID } from '../db';
+import { db } from '../db';
 import { broadcast, Events } from '../realtime';
-import { resolveGroupEventStorageId } from '../groupEventScope';
-import { isIntInRange, isNonEmptyString, isValidUrl } from '../validation';
+import { requireGroupEventAccess, resolveRequestGroupEventScope, resolveRequestGroupEventStorageId } from '../groupEventScope';
+import { isIntInRange, isNonEmptyString, isValidPaypalUrl, isValidUrl } from '../validation';
 import { notifyPlayers, resolvePushTopic, updatePushTopicExpiry } from '../push';
-import { requireConfiguredUser, withBodyPlayerIdentity } from '../sessions';
+import { requireUser, withBodyPlayerIdentity } from '../sessions';
 import { communicationRecipientIds } from '../communicationRecipients';
 
 export const foodOrdersRouter = Router();
+
+foodOrdersRouter.use((req, res, next) => {
+  const scope = resolveRequestGroupEventScope(req, undefined);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  res.locals.storageEventId = resolveRequestGroupEventStorageId(req);
+  next();
+});
 
 const MAX_TITLE_LENGTH = 80;
 const MAX_ITEM_LENGTH = 120;
@@ -29,7 +41,7 @@ const MAX_ITEM_QUANTITY = 99;
 const MAX_NOTES_LENGTH = 500;
 const MAX_LINK_LENGTH = 300;
 const HISTORY_LIMIT = 10;
-const communicationEventId = (eventId: string): string | null => (eventId === OUTSIDE_EVENTS_ID ? null : eventId);
+const MAX_GROUP_PAYMENT_ITEMS = 100;
 
 interface OrderRow {
   id: string;
@@ -69,21 +81,14 @@ function isValidLink(value: unknown): boolean {
   return value === null || isValidUrl(value, MAX_LINK_LENGTH);
 }
 
+function isValidPaypalLink(value: unknown): boolean {
+  return value === null || isValidPaypalUrl(value, MAX_LINK_LENGTH);
+}
+
 // Whole percent, 0-100 — a decimal-point tip is more precision than anyone
 // needs at a LAN party.
 function isValidTipPercent(value: unknown): boolean {
   return value === null || isIntInRange(value, 0, 100);
-}
-
-interface ItemRow {
-  id: string;
-  order_id: string;
-  player_id: string;
-  description: string;
-  quantity: number;
-  price_cents: number | null;
-  paid: number;
-  created_at: number;
 }
 
 function serializeOrder(row: OrderRow) {
@@ -91,11 +96,22 @@ function serializeOrder(row: OrderRow) {
     db
       .prepare(
         `SELECT i.id, i.player_id AS playerId, p.name AS playerName, p.color AS playerColor, p.avatar AS playerAvatar,
-                i.description, i.quantity, i.price_cents AS priceCents, i.paid, i.created_at AS createdAt
-         FROM food_order_items i JOIN players p ON p.id = i.player_id
+                i.description, i.quantity, i.price_cents AS priceCents, i.paid,
+                i.paid_by AS paidBy, pb.name AS paidByName, i.paid_at AS paidAt, i.created_at AS createdAt
+         FROM food_order_items i
+         JOIN players p ON p.id = i.player_id
+         LEFT JOIN players pb ON pb.id = i.paid_by
          WHERE i.order_id = ? ORDER BY i.created_at`
       )
-      .all(row.id) as Array<{ playerId: string; quantity: number; priceCents: number | null; paid: number }>
+      .all(row.id) as Array<{
+      playerId: string;
+      quantity: number;
+      priceCents: number | null;
+      paid: number;
+      paidBy: string | null;
+      paidByName: string | null;
+      paidAt: number | null;
+    }>
   ).map((i) => ({ ...i, paid: Boolean(i.paid) }));
 
   const creator = db.prepare('SELECT name FROM players WHERE id = ?').get(row.created_by) as
@@ -123,8 +139,7 @@ function serializeOrder(row: OrderRow) {
   };
 }
 
-function buildList(groupId: string) {
-  const eventId = resolveGroupEventStorageId(groupId);
+function buildList(groupId: string, eventId: string | null, targetOrderId: string | null = null) {
   if (!eventId) return { orders: [] };
   const rows = db
     .prepare(
@@ -134,27 +149,34 @@ function buildList(groupId: string) {
        ORDER BY fo.created_at DESC LIMIT ?`,
     )
     .all(eventId, groupId, HISTORY_LIMIT) as OrderRow[];
+  if (targetOrderId && !rows.some((row) => row.id === targetOrderId)) {
+    const target = getOrder(targetOrderId, groupId, eventId);
+    if (target) rows.push(target);
+  }
+  rows.sort((a, b) => b.created_at - a.created_at);
   return { orders: rows.map(serializeOrder) };
 }
 
-function getOrder(id: string, groupId: string): OrderRow | undefined {
+function getOrder(id: string, groupId: string, eventId: string | null): OrderRow | undefined {
+  if (!eventId) return undefined;
   return db
     .prepare(
       `SELECT fo.*, e.group_id
        FROM food_orders fo JOIN events e ON e.id = fo.event_id
-       WHERE fo.id = ? AND e.group_id = ?`,
+       WHERE fo.id = ? AND e.group_id = ? AND fo.event_id = ?`,
     )
-    .get(id, groupId) as OrderRow | undefined;
+    .get(id, groupId, eventId) as OrderRow | undefined;
 }
 
-function orderDeliveryScope(order: OrderRow): { groupId: string; eventId: string | null } {
-  return { groupId: order.group_id, eventId: communicationEventId(order.event_id) };
+function orderDeliveryScope(order: OrderRow): { groupId: string; eventId: string } {
+  return { groupId: order.group_id, eventId: order.event_id };
 }
 
 // GET /api/food-orders - current event's orders, newest first (open ones on
 // top by recency; the frontend splits open vs closed).
 foodOrdersRouter.get('/', (req, res) => {
-  res.json(buildList(req.group!.id));
+  const targetOrderId = typeof req.query.orderId === 'string' ? req.query.orderId : null;
+  res.json(buildList(req.group!.id, res.locals.storageEventId as string | null, targetOrderId));
 });
 
 // POST /api/food-orders - body: { playerId, title, sendAt?, notes?, link?, paypalLink?, tipPercent? }.
@@ -180,9 +202,9 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     return res.status(400).json({ error: `Infos dürfen höchstens ${MAX_NOTES_LENGTH} Zeichen lang sein.` });
   }
   if (link !== undefined && link !== null && !isValidLink(link)) {
-    return res.status(400).json({ error: 'Link muss eine gültige http(s)-URL sein.' });
+    return res.status(400).json({ error: 'Speisekarte muss eine gültige http(s)-URL sein.' });
   }
-  if (paypalLink !== undefined && paypalLink !== null && !isValidLink(paypalLink)) {
+  if (paypalLink !== undefined && paypalLink !== null && !isValidPaypalLink(paypalLink)) {
     return res.status(400).json({ error: 'PayPal-Link muss eine gültige http(s)-URL sein.' });
   }
   if (tipPercent !== undefined && tipPercent !== null && !isValidTipPercent(tipPercent)) {
@@ -193,7 +215,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     | undefined;
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
-  const eventId = resolveGroupEventStorageId(req.group!.id);
+  const eventId = res.locals.storageEventId as string | null;
   if (!eventId) return res.status(409).json({ error: 'Für diese Gruppe läuft derzeit kein Event.' });
   const row: OrderRow = {
     id: nanoid(),
@@ -232,11 +254,12 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   // (they just tapped the button themselves). Scoped to the order's event so
   // non-participants of an event-only order are not prompted for it — the
   // same recipient set the push below is limited to.
-  const eventScope = communicationEventId(row.event_id);
+  const eventScope = row.event_id;
   broadcast(Events.foodOrdersChanged, {
     notify: {
       message: `Neue Sammelbestellung: ${row.title}${sendAtNote} – jetzt eintragen!`,
       excludePlayerId: playerId,
+      target: { type: 'order', id: row.id },
     },
   }, { groupId: row.group_id, eventId: eventScope });
   const allPlayerIds = communicationRecipientIds(row.group_id, eventScope);
@@ -245,7 +268,7 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     {
       title: 'Neue Sammelbestellung',
       body: `${row.title}${sendAtNote} (von ${player.name}) – jetzt eintragen!`,
-      url: '/#foodOrders',
+      url: `/#foodOrders/${row.id}`,
     },
     'all',
     { key: `food-order:${row.id}`, expiresAt: row.send_at },
@@ -262,8 +285,8 @@ foodOrdersRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
 // open/closed like items are. Each field is independent: omit a field to
 // leave it as-is, pass null to clear it. A finalized order is fully locked,
 // though: no more edits of any kind.
-foodOrdersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+foodOrdersRouter.patch('/:id', requireUser, (req, res) => {
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung bearbeiten.' });
@@ -280,9 +303,9 @@ foodOrdersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
     return res.status(400).json({ error: `Infos dürfen höchstens ${MAX_NOTES_LENGTH} Zeichen lang sein (oder null zum Entfernen).` });
   }
   if (link !== undefined && !isValidLink(link)) {
-    return res.status(400).json({ error: 'Link muss eine gültige http(s)-URL sein (oder null zum Entfernen).' });
+    return res.status(400).json({ error: 'Speisekarte muss eine gültige http(s)-URL sein (oder null zum Entfernen).' });
   }
-  if (paypalLink !== undefined && !isValidLink(paypalLink)) {
+  if (paypalLink !== undefined && !isValidPaypalLink(paypalLink)) {
     return res.status(400).json({ error: 'PayPal-Link muss eine gültige http(s)-URL sein (oder null zum Entfernen).' });
   }
   if (tipPercent !== undefined && !isValidTipPercent(tipPercent)) {
@@ -307,7 +330,7 @@ foodOrdersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   if (sendAt !== undefined) {
     updatePushTopicExpiry(`food-order:${order.id}`, next.send_at, {
       groupId: order.group_id,
-      eventId: communicationEventId(order.event_id),
+      eventId: order.event_id,
     });
   }
   broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
@@ -319,8 +342,8 @@ foodOrdersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
 // here, this is deliberately NOT gated on open/closed/finalized: scrapping an
 // order opened by mistake, or one nobody wants to keep around after the LAN,
 // must stay possible at every stage, not just while it's still open.
-foodOrdersRouter.delete('/:id', requireConfiguredUser, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+foodOrdersRouter.delete('/:id', requireUser, (req, res) => {
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung löschen.' });
@@ -329,7 +352,7 @@ foodOrdersRouter.delete('/:id', requireConfiguredUser, (req, res) => {
   db.prepare('DELETE FROM food_orders WHERE id = ?').run(order.id);
   resolvePushTopic(`food-order:${order.id}`, false, {
     groupId: order.group_id,
-    eventId: communicationEventId(order.event_id),
+    eventId: order.event_id,
   });
   broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
   res.status(204).end();
@@ -337,7 +360,7 @@ foodOrdersRouter.delete('/:id', requireConfiguredUser, (req, res) => {
 
 // POST /api/food-orders/:id/items - body: { playerId, description, quantity, priceCents? }
 foodOrdersRouter.post('/:id/items', ...withBodyPlayerIdentity, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   // The race guard: the order may have been closed between this device
   // rendering the form and the submit arriving.
@@ -376,7 +399,7 @@ foodOrdersRouter.post('/:id/items', ...withBodyPlayerIdentity, (req, res) => {
 // DELETE /api/food-orders/:id/items/:itemId - body: { playerId }. Players
 // may only remove their own items (mis-taps happen), and only while open.
 foodOrdersRouter.delete('/:id/items/:itemId', ...withBodyPlayerIdentity, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (order.closed_at !== null) {
     return res.status(409).json({ error: 'Diese Bestellung wurde bereits abgeschickt.' });
@@ -384,29 +407,113 @@ foodOrdersRouter.delete('/:id/items/:itemId', ...withBodyPlayerIdentity, (req, r
 
   const { playerId } = req.body ?? {};
   const item = db
-    .prepare('SELECT id, player_id FROM food_order_items WHERE id = ? AND order_id = ?')
-    .get(req.params.itemId, order.id) as { id: string; player_id: string } | undefined;
+    .prepare('SELECT id, player_id, paid FROM food_order_items WHERE id = ? AND order_id = ?')
+    .get(req.params.itemId, order.id) as { id: string; player_id: string; paid: number } | undefined;
   if (!item) return res.status(404).json({ error: 'Position nicht gefunden.' });
   if (item.player_id !== playerId) {
     return res.status(403).json({ error: 'Nur eigene Positionen können entfernt werden.' });
   }
+  if (item.paid) {
+    return res.status(409).json({ error: 'Bezahlte Positionen können nicht entfernt werden.' });
+  }
 
-  db.prepare('DELETE FROM food_order_items WHERE id = ?').run(item.id);
+  // Keep the state check in the DELETE itself: the read above only decides
+  // which user-facing error to return. A simultaneous payment must win over
+  // deletion instead of turning a stale UI into a paid-item delete.
+  const deleted = db
+    .prepare(
+      `DELETE FROM food_order_items
+       WHERE id = ? AND order_id = ? AND player_id = ? AND paid = 0
+         AND EXISTS (SELECT 1 FROM food_orders WHERE id = ? AND closed_at IS NULL)`,
+    )
+    .run(item.id, order.id, playerId, order.id);
+  if (deleted.changes === 0) {
+    const currentOrder = db.prepare('SELECT closed_at FROM food_orders WHERE id = ?').get(order.id) as { closed_at: number | null } | undefined;
+    if (!currentOrder) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
+    if (currentOrder.closed_at !== null) {
+      return res.status(409).json({ error: 'Diese Bestellung wurde bereits abgeschickt.' });
+    }
+    const currentItem = db
+      .prepare('SELECT player_id, paid FROM food_order_items WHERE id = ? AND order_id = ?')
+      .get(item.id, order.id) as { player_id: string; paid: number } | undefined;
+    if (!currentItem) return res.status(404).json({ error: 'Position nicht gefunden.' });
+    if (currentItem.player_id !== playerId) {
+      return res.status(403).json({ error: 'Nur eigene Positionen können entfernt werden.' });
+    }
+    if (currentItem.paid) {
+      return res.status(409).json({ error: 'Bezahlte Positionen können nicht entfernt werden.' });
+    }
+    return res.status(409).json({ error: 'Position konnte wegen einer parallelen Änderung nicht entfernt werden.' });
+  }
   broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
   res.json(serializeOrder(order));
 });
 
-// PATCH /api/food-orders/:id/items/:itemId - body: { paid }. Whoever collects
-// the money (the order's creator, or an admin) checks items off as people
-// pay — same authorization as close. Deliberately not gated on open/closed:
-// settling up normally happens after the order is already closed. A
-// finalized order is fully locked, though.
-foodOrdersRouter.patch('/:id/items/:itemId', requireConfiguredUser, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+// PATCH /api/food-orders/:id/items/bulk-paid - body: { itemIds, paid }. Apply a
+// person's payment state as one transaction. The precondition check and the
+// update live in the same transaction so a concurrent change cannot leave a
+// partially paid group behind.
+foodOrdersRouter.patch('/:id/items/bulk-paid', requireUser, (req, res) => {
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
-  if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
-    return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann Positionen als bezahlt markieren.' });
+  if (order.finalized_at !== null) {
+    return res.status(409).json({ error: 'Diese Bestellung ist geschlossen und kann nicht mehr geändert werden.' });
   }
+
+  const { itemIds, paid } = req.body ?? {};
+  if (
+    !Array.isArray(itemIds) ||
+    itemIds.length === 0 ||
+    itemIds.length > MAX_GROUP_PAYMENT_ITEMS ||
+    itemIds.some((id: unknown) => typeof id !== 'string' || id.length === 0) ||
+    new Set(itemIds).size !== itemIds.length ||
+    typeof paid !== 'boolean'
+  ) {
+    return res.status(400).json({ error: 'itemIds muss eine eindeutige Liste sein und paid muss true oder false sein.' });
+  }
+
+  const placeholders = itemIds.map(() => '?').join(', ');
+  const expectedPaid = paid ? 0 : 1;
+  const result = db.transaction(() => {
+    const items = db
+      .prepare(`SELECT id, paid FROM food_order_items WHERE order_id = ? AND id IN (${placeholders})`)
+      .all(order.id, ...itemIds) as Array<{ id: string; paid: number }>;
+    if (items.length !== itemIds.length) {
+      return { status: 404, error: 'Eine Position wurde nicht gefunden.' } as const;
+    }
+    if (items.some((item) => item.paid !== expectedPaid)) {
+      return { status: 409, error: paid ? 'Eine Position wurde inzwischen bereits als bezahlt markiert.' : 'Eine Position ist bereits offen.' } as const;
+    }
+
+    const updated = db
+      .prepare(
+        `UPDATE food_order_items
+         SET paid = ?, paid_by = ?, paid_at = ?
+         WHERE order_id = ? AND paid = ? AND id IN (${placeholders})`,
+      )
+      .run(paid ? 1 : 0, paid ? req.player!.id : null, paid ? Date.now() : null, order.id, expectedPaid, ...itemIds);
+    if (updated.changes !== itemIds.length) {
+      return { status: 409, error: 'Die Positionen wurden inzwischen parallel geändert.' } as const;
+    }
+    return { status: 200 } as const;
+  })();
+
+  if (result.status !== 200) return res.status(result.status).json({ error: result.error });
+  broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
+  return res.json(serializeOrder(order));
+});
+
+// PATCH /api/food-orders/:id/items/:itemId - body: { paid }. Anyone who can
+// pay into this order (any authenticated group member, same as the identity
+// switch on the order itself) can also check a position off as paid — the
+// automatic "mark paid after paying" flows through the group payment handoff
+// otherwise. paid_by/paid_at record who last flipped the mark, shown in the
+// Bezahlt-Marke's tooltip; both clear again when a position is unmarked.
+// Deliberately not gated on open/closed: settling up normally happens after
+// the order is already closed. A finalized order is fully locked, though.
+foodOrdersRouter.patch('/:id/items/:itemId', requireUser, (req, res) => {
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
+  if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (order.finalized_at !== null) {
     return res.status(409).json({ error: 'Diese Bestellung ist geschlossen und kann nicht mehr geändert werden.' });
   }
@@ -420,7 +527,19 @@ foodOrdersRouter.patch('/:id/items/:itemId', requireConfiguredUser, (req, res) =
     .get(req.params.itemId, order.id) as { id: string } | undefined;
   if (!item) return res.status(404).json({ error: 'Position nicht gefunden.' });
 
-  db.prepare('UPDATE food_order_items SET paid = ? WHERE id = ?').run(paid ? 1 : 0, item.id);
+  const expectedPaid = paid ? 0 : 1;
+  const updated = db.prepare(
+    'UPDATE food_order_items SET paid = ?, paid_by = ?, paid_at = ? WHERE id = ? AND paid = ?',
+  ).run(
+    paid ? 1 : 0,
+    paid ? req.player!.id : null,
+    paid ? Date.now() : null,
+    item.id,
+    expectedPaid,
+  );
+  if (updated.changes === 0) {
+    return res.status(409).json({ error: paid ? 'Position wurde inzwischen bereits als bezahlt markiert.' : 'Position ist bereits offen.' });
+  }
   broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
   res.json(serializeOrder(order));
 });
@@ -428,8 +547,8 @@ foodOrdersRouter.patch('/:id/items/:itemId', requireConfiguredUser, (req, res) =
 // POST /api/food-orders/:id/close - freezes the list ("wird abgeschickt" in
 // the UI). Exactly one closer wins; the second tap gets a 409 instead of
 // double-notifying everyone.
-foodOrdersRouter.post('/:id/close', requireConfiguredUser, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+foodOrdersRouter.post('/:id/close', requireUser, (req, res) => {
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung abschicken.' });
@@ -442,23 +561,29 @@ foodOrdersRouter.post('/:id/close', requireConfiguredUser, (req, res) => {
   db.prepare('UPDATE food_orders SET closed_at = ? WHERE id = ?').run(closedAt, order.id);
   resolvePushTopic(`food-order:${order.id}`, false, {
     groupId: order.group_id,
-    eventId: communicationEventId(order.event_id),
+    eventId: order.event_id,
   });
   broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
   res.json(serializeOrder({ ...order, closed_at: closedAt }));
 });
 
-// POST /api/food-orders/:id/reopen - undoes a close so items/prices can be
-// corrected or added and paid status keeps changing. Only from the (non-
-// final) closed state; a finalized order can never be reopened.
-foodOrdersRouter.post('/:id/reopen', requireConfiguredUser, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+// POST /api/food-orders/:id/reopen - undoes exactly the most recent lock
+// step, one at a time. From finalized ("geschlossen"), it clears
+// finalized_at and drops the order back to the closed/"abgeschickt" state
+// (paid marking and metadata edits work again, items stay frozen). From
+// closed, it clears closed_at and drops the order back to fully open so
+// items/prices can be corrected or added. Calling it on an already-open
+// order is a 409 - there is nothing left to undo.
+foodOrdersRouter.post('/:id/reopen', requireUser, (req, res) => {
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung wieder öffnen.' });
   }
   if (order.finalized_at !== null) {
-    return res.status(409).json({ error: 'Diese Bestellung ist bereits geschlossen und kann nicht mehr geöffnet werden.' });
+    db.prepare('UPDATE food_orders SET finalized_at = NULL WHERE id = ?').run(order.id);
+    broadcast(Events.foodOrdersChanged, null, orderDeliveryScope(order));
+    return res.json(serializeOrder({ ...order, finalized_at: null }));
   }
   if (order.closed_at === null) {
     return res.status(409).json({ error: 'Diese Bestellung ist bereits offen.' });
@@ -469,12 +594,13 @@ foodOrdersRouter.post('/:id/reopen', requireConfiguredUser, (req, res) => {
   res.json(serializeOrder({ ...order, closed_at: null }));
 });
 
-// POST /api/food-orders/:id/finalize - the creator's/admin's terminal lock
-// ("wird geschlossen" in the UI): no more reopening, items, paid changes or
-// metadata edits. Only from the closed/"abgeschickt" state (close first,
-// then finalize once everyone has settled up).
-foodOrdersRouter.post('/:id/finalize', requireConfiguredUser, (req, res) => {
-  const order = getOrder(req.params.id, req.group!.id);
+// POST /api/food-orders/:id/finalize - the creator's/admin's lock
+// ("wird geschlossen" in the UI): no more items, paid changes or metadata
+// edits while finalized. Only from the closed/"abgeschickt" state (close
+// first, then finalize once everyone has settled up). Reversible via
+// /reopen, which clears finalized_at and drops the order back to closed.
+foodOrdersRouter.post('/:id/finalize', requireUser, (req, res) => {
+  const order = getOrder(req.params.id, req.group!.id, res.locals.storageEventId as string | null);
   if (!order) return res.status(404).json({ error: 'Bestellung nicht gefunden.' });
   if (req.player && order.created_by !== req.player.id && !req.player.is_admin) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Admin kann diese Bestellung schließen.' });

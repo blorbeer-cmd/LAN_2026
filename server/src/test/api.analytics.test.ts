@@ -5,10 +5,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
-import { db } from '../db';
+import { createTestApp, enableTestTracking, sessionCookie } from './testApp';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
 
-const app = createApp();
+const app = createTestApp();
 let cs2GameId: string;
 let rlGameId: string;
 let playerA: string;
@@ -27,6 +27,8 @@ test('setup: two players and two seeded games', async () => {
   apiKeyA = a.body.api_key;
   playerB = b.body.id;
   apiKeyB = b.body.api_key;
+  enableTestTracking(playerA);
+  enableTestTracking(playerB);
 
   const games = await request(app).get('/api/games');
   cs2GameId = games.body.find((g: { name: string }) => g.name === 'Counter-Strike 2').id;
@@ -135,8 +137,7 @@ test('GET /api/analytics/awards rejects from > to', async () => {
 test('eventId filters analytics precisely, independent of session timestamps', async () => {
   const firstEvent = await request(app).get('/api/events/active');
 
-  // A session recorded in the first event ("außerhalb von Events" at this
-  // point, since nothing has started tracking yet).
+  // A session recorded in the permanent base event.
   await report(apiKeyA, ['cs2.exe']);
   await new Promise((r) => setTimeout(r, 30));
   await report(apiKeyA, []);
@@ -145,20 +146,21 @@ test('eventId filters analytics precisely, independent of session timestamps', a
   const countBeforeSwitch = beforeSwitch.body.length;
   assert.ok(countBeforeSwitch > 0);
 
-  // Switch to a new event: create it, roster player B onto it, and start
-  // tracking — only then does a new session actually land there.
+  // Switch player B to a new event. Only then does a new session land there.
   const secondEvent = await request(app).post('/api/events').send({
     name: 'Zweites Event',
     startsAt: Date.now(),
     endsAt: Date.now() + 24 * 60 * 60 * 1000,
   });
-  await request(app).put(`/api/events/${secondEvent.body.id}/participants`).send({ playerIds: [playerB] });
-  await request(app).post(`/api/events/${secondEvent.body.id}/tracking/start`).send({});
+  enableTestTracking(playerB, secondEvent.body.id);
   await report(apiKeyB, ['rocketleague.exe']);
   await new Promise((r) => setTimeout(r, 30));
   await report(apiKeyB, []);
 
-  const secondSessions = await request(app).get(`/api/analytics/sessions?eventId=${secondEvent.body.id}`);
+  const playerBCookie = sessionCookie(playerB);
+  const secondSessions = await request(app)
+    .get(`/api/analytics/sessions?eventId=${secondEvent.body.id}`)
+    .set('Cookie', playerBCookie);
   assert.equal(secondSessions.body.length, 1, 'the new event should only contain the one new session');
   assert.equal(secondSessions.body[0].playerId, playerB);
 
@@ -167,10 +169,14 @@ test('eventId filters analytics precisely, independent of session timestamps', a
   const afterSwitch = await request(app).get(`/api/analytics/sessions?eventId=${firstEvent.body.id}`);
   assert.equal(afterSwitch.body.length, countBeforeSwitch);
 
-  const secondPlaytime = await request(app).get(`/api/stats/playtime?eventId=${secondEvent.body.id}`);
+  const secondPlaytime = await request(app)
+    .get(`/api/stats/playtime?eventId=${secondEvent.body.id}`)
+    .set('Cookie', playerBCookie);
   assert.ok(secondPlaytime.body.entries.every((e: { playerId: string }) => e.playerId === playerB));
 
-  const secondOverview = await request(app).get(`/api/analytics/overview?eventId=${secondEvent.body.id}`);
+  const secondOverview = await request(app)
+    .get(`/api/analytics/overview?eventId=${secondEvent.body.id}`)
+    .set('Cookie', playerBCookie);
   assert.ok(
     secondOverview.body.longestSessionsPerPlayerGame.every((e: { playerId: string }) => e.playerId === playerB)
   );
@@ -263,9 +269,18 @@ test('GET /api/analytics/games-tournaments aggregates matches, tournaments, draw
   assert.ok(res.body.fun.biggestUnderdogWin.winners.some((w: { id: string }) => w.id === statP1));
 });
 
-test('GET /api/analytics/games-tournaments filters by eventId', async () => {
-  const ghostEvent = await request(app).post('/api/events').send({ name: 'Leeres Event' });
-  const res = await request(app).get(`/api/analytics/games-tournaments?eventId=${ghostEvent.body.id}`);
+test('GET /api/analytics/games-tournaments filters by a historically participated eventId', async () => {
+  const now = Date.now();
+  const ghostEvent = await request(app)
+    .post('/api/events')
+    .send({ name: 'Leeres Event', startsAt: now, endsAt: now + 60_000 });
+  db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')").run(
+    ghostEvent.body.id,
+    statP1,
+  );
+  const res = await request(app)
+    .get(`/api/analytics/games-tournaments?eventId=${ghostEvent.body.id}`)
+    .set('Cookie', sessionCookie(statP1));
   assert.equal(res.status, 200);
   assert.equal(res.body.matches.total, 0);
   assert.equal(res.body.tournaments.total, 0);
@@ -283,8 +298,9 @@ test('GET /api/analytics/arcade summarizes durations, most-active players and a 
   const mk = (id: string, winner: string, startedAt: number, endedAt: number) =>
     db
       .prepare(
-        `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
-         VALUES (?, 'snake', ?, ?, ?, 'completed', ?, ?)`
+        `INSERT INTO arcade_results
+           (id, game_type, winner_id, players, scores, reason, started_at, ended_at, group_id, event_id)
+         VALUES (?, 'snake', ?, ?, ?, 'completed', ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -295,7 +311,9 @@ test('GET /api/analytics/arcade summarizes durations, most-active players and a 
           { playerId: bea.body.id, name: bea.body.name, score: 4 },
         ]),
         startedAt,
-        endedAt
+        endedAt,
+        DEFAULT_GROUP_ID,
+        BASE_EVENT_ID,
       );
 
   // Ace wins both, so Ace is the most-active *and* the only "winner" in this
@@ -329,9 +347,10 @@ test('GET /api/analytics/arcade skips legacy score rows with no player attributi
 
   const now = Date.now();
   db.prepare(
-    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
-     VALUES (?, 'snake', NULL, '[]', ?, 'completed', ?, ?)`
-  ).run('arcade-analytics-legacy', JSON.stringify([12, 8]), now - 1000, now);
+    `INSERT INTO arcade_results
+       (id, game_type, winner_id, players, scores, reason, started_at, ended_at, group_id, event_id)
+     VALUES (?, 'snake', NULL, '[]', ?, 'completed', ?, ?, ?, ?)`
+  ).run('arcade-analytics-legacy', JSON.stringify([12, 8]), now - 1000, now, DEFAULT_GROUP_ID, BASE_EVENT_ID);
 
   const after = await request(app).get('/api/analytics/arcade');
   const matchesAfter = after.body.games.find((g: { gameType: string }) => g.gameType === 'snake').matches;
@@ -340,17 +359,50 @@ test('GET /api/analytics/arcade skips legacy score rows with no player attributi
   assert.equal(after.body.totals.matches, before.body.totals.matches);
 });
 
+test('GET /api/analytics/arcade excludes Tetris KI identities from player activity', async () => {
+  const human = await request(app).post('/api/players').send({ name: 'Arena Mensch' });
+  const now = Date.now();
+  const scores = [
+    { playerId: human.body.id, name: human.body.name, score: 100, mode: 'arena', isBot: false },
+    { playerId: 'tetris-bot-1', name: 'Tetris-Bot 1', score: 200, mode: 'arena', isBot: true },
+  ];
+  db.prepare(
+    `INSERT INTO arcade_results
+       (id, game_type, winner_id, players, scores, reason, started_at, ended_at, group_id, event_id)
+     VALUES (?, 'tetris', NULL, ?, ?, 'completed', ?, ?, ?, ?)`,
+  ).run(
+    'arcade-analytics-tetris-ai',
+    JSON.stringify(scores),
+    JSON.stringify(scores),
+    now - 1000,
+    now,
+    DEFAULT_GROUP_ID,
+    BASE_EVENT_ID,
+  );
+
+  const res = await request(app).get('/api/analytics/arcade');
+  assert.equal(res.status, 200);
+  const tetris = res.body.games.find((game: { gameType: string }) => game.gameType === 'tetris');
+  assert.equal(tetris.uniquePlayers, 1);
+  assert.equal(tetris.mostActive.name, 'Arena Mensch');
+});
+
 test('GET /api/analytics/arcade filters results by start time', async () => {
   const player = await request(app).post('/api/players').send({ name: 'Arcade Zeitraum' });
   const now = Date.now();
   const insert = db.prepare(
-    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
-     VALUES (?, 'pong', ?, ?, ?, 'completed', ?, ?)`
+    `INSERT INTO arcade_results
+       (id, game_type, winner_id, players, scores, reason, started_at, ended_at, group_id, event_id)
+     VALUES (?, 'pong', ?, ?, ?, 'completed', ?, ?, ?, ?)`
   );
   const players = JSON.stringify([{ playerId: player.body.id }]);
   const scores = JSON.stringify([{ playerId: player.body.id, name: player.body.name, score: 7 }]);
-  insert.run('arcade-range-old', player.body.id, players, scores, now - 20_000, now - 19_000);
-  insert.run('arcade-range-new', player.body.id, players, scores, now - 2_000, now - 1_000);
+  insert.run(
+    'arcade-range-old', player.body.id, players, scores, now - 20_000, now - 19_000, DEFAULT_GROUP_ID, BASE_EVENT_ID,
+  );
+  insert.run(
+    'arcade-range-new', player.body.id, players, scores, now - 2_000, now - 1_000, DEFAULT_GROUP_ID, BASE_EVENT_ID,
+  );
 
   const res = await request(app).get(`/api/analytics/arcade?from=${now - 5_000}&to=${now}`);
   assert.equal(res.status, 200);

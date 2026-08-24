@@ -15,8 +15,11 @@ test('bottom navigation and More define every canonical view icon', () => {
     arrivals: 'van',
     analytics: 'chart',
     hallOfFame: 'landmark',
-    infoBoard: 'pin',
-    players: 'users',
+    infoBoard: 'info',
+    competition: 'swords',
+    insights: 'trophy',
+    orga: 'clipboard',
+    checklistPacking: 'clipboard',
     live: 'radioTower',
     foodOrders: 'hamburger',
     checklist: 'clipboard',
@@ -25,7 +28,18 @@ test('bottom navigation and More define every canonical view icon', () => {
     gameCatalog: 'gamepad',
     skill: 'activity',
     music: 'music',
+    events: 'calendar',
+    feedback: 'messageSquare',
+    profile: 'circleUser',
   });
+});
+
+test('a merged area keeps the symbol of the tab it leads with', () => {
+  // The nav button stands for the whole area, so it must not invent a symbol
+  // of its own next to the tab it opens on.
+  assert.equal(domainIcon('competition'), domainIcon('tournaments'));
+  assert.equal(domainIcon('insights'), domainIcon('leaderboard'));
+  assert.equal(domainIcon('orga'), domainIcon('checklist'));
 });
 
 test('unknown domains use the requested fallback', () => {

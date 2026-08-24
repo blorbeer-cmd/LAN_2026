@@ -13,12 +13,12 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 | Feature | Beschreibung |
 |---|---|
 | 🏠 **Home** | Die gruppierte Startübersicht mit „Aktuell“, Live-Status, Rangliste und Sitzplan. Die neueste aktive Mitteilung erscheint als farbiger Direktlink unter der Kopfzeile; die Glocke öffnet die persönliche Historie mit Gelesen- und Löschaktionen. |
-| ⚔️ **Turniere** | K.O.-Baum, Liga „jeder gegen jeden" (optional mit Hin-/Rückspielen) oder Gruppenphase + K.O. – Teams werden skill-balanciert vorgeschlagen, Ergebnisse (mit oder ohne Punktestand) direkt im Turnierbaum eintragbar, der sich automatisch weiterentwickelt. Bei neuem/anstehendem Match gibt's einen Push-Hinweis an die Beteiligten. |
-| ⚖️ **Teams** | Für ein Spiel automatisch faire Teams aus den anwesenden Spielern auslosen (skill-basiert) oder per Captain Draft zusammenstellen, optional unter Berücksichtigung der Sitznachbarn. Ergebnisse und Rematches landen in einer gemeinsamen Historie. |
+| ⚔️ **Wettkampf** | Ein Bereich mit den Tabs **Turniere** und **Teams**. Turniere: K.O.-Baum, Liga „jeder gegen jeden" (optional mit Hin-/Rückspielen) oder Gruppenphase + K.O. – Teams werden skill-balanciert vorgeschlagen, Ergebnisse (mit oder ohne Punktestand) direkt im Turnierbaum eintragbar, der sich automatisch weiterentwickelt. Bei neuem/anstehendem Match gibt's einen Push-Hinweis an die Beteiligten. Teams: für ein Spiel automatisch faire Teams aus den anwesenden Spielern auslosen (skill-basiert) oder per Captain Draft zusammenstellen, optional unter Berücksichtigung der Sitznachbarn. Ergebnisse und Rematches landen in einer gemeinsamen Historie. |
 | 👑 **Captain Draft** | Die soziale Alternative zur Auslosung innerhalb von „Teams“: erst Teilnehmer, dann 2–4 Captains festlegen und anschließend abwechselnd aus den übrigen Spielern wählen. Das Ergebnis landet in derselben Historie wie Auslosungen und Matches. |
 | 🗳️ **Vote** | Jeder gibt seine Stimme oder Punkte ab, sieht dabei aber nur die eigene Wahl und nicht den Zwischenstand. Die volle Punkteverteilung erscheint erst nach Rundenende; Unentschieden können direkt in eine Stichwahl übergehen. Vergangene Runden stehen in der eingeklappten Historie. |
-| 🏆 **Rang** | Match-Ergebnisse eintragen (auch Frei-für-alle ohne Teams), Punkte übers ganze Wochenende, Gesamtsieger der LAN, gefilterte Spieler-Spielzeit und ein ungefilterter Vergleich der Spielzeit pro Spiel. |
-| ☰ **Mehr** | Sammelstelle für An-/Abreise, Arcade, Auswertungen, Durchsage, Essen, Hall of Fame, Info, Spieler, Spiele, Einstellungen und weitere Werkzeuge. |
+| 🏆 **Auswertung** | Ein Bereich mit den Tabs **Rangliste**, **Statistiken** und **Hall of Fame**. Rangliste: Match-Ergebnisse eintragen (auch Frei-für-alle ohne Teams), Punkte übers ganze Wochenende, Gesamtsieger der LAN, gefilterte Spieler-Spielzeit und ein ungefilterter Vergleich der Spielzeit pro Spiel. |
+| ☰ **Mehr** | Sammelstelle für Orga (To-Dos, Packliste, An- & Abreise), Arcade, Durchsage, Essen, Jam, Spiele, Admin und weitere Werkzeuge. |
+| ℹ️ **Info** | Kein eigener Bereich, sondern das „i“ in der Kopfzeile: WLAN-Passwort, Discord-Link, Server-IPs und Hausregeln lassen sich als Dialog über jeder Ansicht öffnen, ohne den aktuellen Arbeitsstand zu verlassen. |
 
 ### Auswertungen & Erinnerungsstücke
 
@@ -26,7 +26,7 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 |---|---|
 | 🕒 **Spielzeit-Auswertungen** | Awards (z. B. „Marathon-Zocker"), beliebteste Spiele, wer wann was gespielt hat, ein Concurrency-Chart („wie viele haben X gleichzeitig gespielt") – filterbar nach Event bzw. Zeitraum. |
 | 📊 **Spiele & Turniere** | Match-/Turnier-Statistiken abseits der reinen Punkte: Rivalitäten, erfolgreichste Duos, größte Underdog-Siege. |
-| 🏛️ **Hall of Fame** | Champions über alle LAN-Partys hinweg (mehrere `events` in der DB) – Gesamtsieger je Event plus eine All-Time-Rangliste „wer hat am häufigsten gewonnen". |
+| 🏛️ **Hall of Fame** | Champions über alle LAN-Partys hinweg (mehrere `events` in der DB) – Gesamtsieger je Event plus eine All-Time-Rangliste „wer hat am häufigsten gewonnen". Liegt als Tab im Bereich „Auswertung“. |
 | 🪑 **Sitzplan** | Wer neben wem sitzt (jeder trägt seine Nachbarn selbst im Profil ein), zu „Sitzgruppen" zusammengefasst – hilft Neulingen, ihre Freunde im Raum zu finden. |
 | 📄 **Export als Andenken** | Ein Event per Knopfdruck als gestaltetes PDF exportieren (Rangliste, Spielzeit, Awards, Turnier-Champions). Dieselben Daten stehen auch roh als JSON über `GET /api/export` bereit, falls jemand eigenes Tooling anschließen will. |
 
@@ -41,9 +41,12 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 | 🎪 **Events** | Mehrere LAN-Termine können nebeneinander in derselben Installation existieren; nur eines „trackt" gleichzeitig (Live-Status/Spielzeit). Was außerhalb eines getrackten Events passiert, läuft normal unter „Außerhalb von Events". |
 | 🔗 **Einladungslink & QR-Code** | Ein Link (trägt bei Bedarf das Zugangs-Token) führt neue Leute direkt zur Profil-Erstellung – auch als QR-Code zum Aushängen, serverseitig gerendert statt über einen Drittanbieter. |
 | 🖥️ **TV-/Kiosk-Ansicht** | Scrollfreies Read-only-Dashboard (`/kiosk.html`) im 2×2-Aufbau: Live-Status und Rangliste oben, Live-Vote und Turnier unten. Offene Votes maskieren die Spiele, zeigen nach dem Ende einen Countdown und halten das Ergebnis anschließend zeitlich begrenzt sichtbar. |
-| 🎵 **Jam** | Gemeinsame Spotify-Warteschlange mit Suche, Wiedergabesteuerung und Kiosk-Anzeige. Ein fester Musik-PC oder Raspberry Pi hält die Spotify-Anmeldung lokal; auf dem Respawn-Server liegen keine Spotify-Zugangsdaten oder OAuth-Tokens. [Kurzanleitung](docs/JAM.md) |
+| 🎵 **Jam** | Gemeinsame Spotify-Wiedergabe mit Titel- und Playlist-Suche, sichtbarem Playlist-Restbestand, Songwünschen, Wiedergabesteuerung und Kiosk-Anzeige. Ein einmalig installierter Musik-PC oder Raspberry Pi hält die Spotify-Anmeldung lokal, verbindet sich nach Unterbrechungen erneut und kann ohne neues Downloadpaket wieder gekoppelt werden. [Einrichtung und Bedienung](docs/JAM.md) |
 | 🔔 **Push-Benachrichtigungen** | Optionaler Web-Push-Opt-in fürs Handy: neue Abstimmung, neue Durchsage, anstehendes Turnier-Match – auch wenn die Seite gerade nicht offen ist. Ein Tipp springt direkt in den passenden Bereich; verpasste Nachrichten stehen in der Glocke der Kopfzeile. |
 | ⚙️ **Spiele & Events verwalten** | Spiele, Icons/eigene Logos, Teamgrößen und Prozessname-Zuordnungen (für die Live-Erkennung) zentral pflegen; Events anlegen und Tracking gezielt starten/stoppen. |
+| 📡 **Verbindungsstatus** | Wird die Live-Verbindung unterbrochen oder ist das Gerät offline, erscheint global ein Hinweis. Nach erfolgreichem Reconnect verschwindet er automatisch und die Gruppe wird neu abonniert. |
+| 🛡️ **LAN-Bereitschaft** | Der Admin-Bereich bündelt Event, Agent-Abdeckung und -Versionen, Prozess-Zuordnungen, Kiosk-Zugang, Server/SQLite und den letzten Backup-Status in einer kompakten Ampelübersicht. |
+| 💾 **Backup-Kette** | Vor jedem Aktivieren des Event-Trackings wird ein verifizierter SQLite-Snapshot angelegt; schlägt er fehl, bleibt das Event aus. Manuelle Downloads erzeugen weitere persistente Restore-Punkte, alte Snapshots werden automatisch rotiert. |
 | 🔒 **Zugangsschutz** | Leichtes, geteiltes Zugangs-Token schützt die Web-Oberfläche, falls der Server im Internet erreichbar ist. |
 | 🛡️ **Race-sicher** | Gleichzeitige Aktionen mehrerer Geräte (zwei Leute starten dieselbe Abstimmung, zwei melden dasselbe Turnier-Match) werden serverseitig sauber aufgelöst statt Daten zu duplizieren/korrumpieren – siehe `CLAUDE.md` → „Race-Sicherheit". |
 
@@ -71,17 +74,21 @@ Profil an – keine App-Installation, kein Account, kein langes Formular.
 
 - **Server**: läuft in der Cloud, hält alle Daten (SQLite), liefert die Web-Oberfläche aus und
   verteilt Live-Updates über WebSockets.
-- **Agent**: winziges Programm, das jeder Teilnehmer einmal auf seinem PC installiert. Es scannt die
-  laufenden Prozesse (z. B. `cs2.exe`) und meldet dem Server, welches Spiel gerade läuft. Bringt ein
+- **Agent**: winziges Programm, das jeder Teilnehmer einmal auf seinem PC installiert. Es fragt den
+  PC gezielt nur nach den zentral hinterlegten Spiele-Prozessen (z. B. `cs2.exe`) – nie nach allem,
+  was gerade läuft – und meldet dem Server, welches Spiel gerade läuft. Bringt ein
   eigenes, rein lokales **Kontroll-Tool** mit (Tray-Icon + kleine Weboberfläche) zum Pausieren,
   Umschalten von Einstellungen und Deinstallieren, ohne Server-Zugriff und ohne dass ein Mitspieler
   im LAN darauf zugreifen könnte – siehe [„Agent-Steuerung"](#agent-steuerung-kontroll-tool) unten.
 - **Web-UI**: keine Installation, jeder öffnet einfach die URL im Browser und legt sich selbst ein
   Profil an.
-- **Jam-Controller**: fertiges portables Download-Paket für den Musik-PC oder Raspberry Pi. Es
-  meldet sich per PKCE bei Spotify an, führt die Wiedergabebefehle aus und bleibt unsichtbar in
-  Spielerlisten und Statistiken. Repository, `npm` und eine installierte Node-Laufzeit sind auf dem
-  Musikgerät nicht nötig. Siehe [Jam einrichten](docs/JAM.md).
+- **Jam-Controller**: einmaliges Download-Paket für den festen Musik-PC oder Raspberry Pi. Die
+  Startdatei installiert den Controller samt privater Laufzeit unter `.respawn`; danach genügen
+  Autostart oder dieselbe Startdatei. Die lokale Statusseite trennt Respawn- und Spotify-Verbindung,
+  wiederholt vorübergehend fehlgeschlagene Verbindungen und erlaubt eine neue Kopplung oder
+  Spotify-Anmeldung ohne erneuten Download. Der Controller führt Titel-, Playlist- und
+  Wiedergabebefehle aus, hält Client-ID und OAuth-Tokens lokal und bleibt unsichtbar in
+  Spielerlisten und Statistiken. Siehe [Jam einrichten und bedienen](docs/JAM.md).
 
 ## Verzeichnisstruktur
 
@@ -100,23 +107,46 @@ Respawn/
 
 ## Schnellstart (lokal / Entwicklung)
 
-Das Projekt verwendet Node.js 24. Die Version steht in `.nvmrc`; mit `nvm use` wird sie automatisch
-ausgewählt. Server und Agent deklarieren Node 24 zusätzlich über `engines`.
+Das Projekt verwendet ausschließlich Node.js 24. Die Laufzeit wird einmal auf dem Rechner
+installiert beziehungsweise von der Entwicklungsumgebung bereitgestellt, nicht pro Branch oder
+Worktree. `.nvmrc` beschreibt die benötigte Hauptversion; ein vorhandener Versionsmanager kann sie
+mit `nvm use` auswählen. Ohne Versionsmanager muss `node --version` bereits `v24...` ausgeben.
+
+Ein neuer Git-Worktree enthält absichtlich keine `node_modules`. Der gemeinsame Bootstrap
+installiert Server- und Agent-Abhängigkeiten beim ersten Lauf mit `npm ci` und wiederholt das nur,
+wenn das jeweilige `package-lock.json` geändert wurde:
 
 ```bash
-# Server
+# einmal im Repository-/Worktree-Stamm
+node scripts/worktree-bootstrap.mjs --scope all
+
+# danach Server starten
 cd server
-npm install
 npm run dev          # startet auf http://localhost:3000
 
 # Agent (auf einem Spieler-PC)
-cd agent
-npm install
+cd ../agent
 # agent.config.json anpassen (Server-URL + eigener API-Key)
 npm start
 ```
 
-Danach im Browser `http://localhost:3000` öffnen.
+Für einen einzelnen Bereich sind außerdem `--scope server`, `--scope frontend` und
+`--scope agent` verfügbar. Coding-Agenten müssen keinen separaten Installationsschritt ausführen:
+Der vorgeschriebene bereichsspezifische Preflight startet denselben idempotenten Bootstrap erst
+nach bestandener Branch-Sicherheitsprüfung automatisch. Nur bei einer vermuteten beschädigten
+Installation erzwingt `--force` einen erneuten sauberen Lauf.
+
+Beim Server-Bootstrap läuft der vorhandene npm-`prepare`-Lifecycle mit. Dadurch setzt
+`server/scripts/setup-git-hooks.js` `core.hooksPath` auf `.githooks` in der gemeinsamen Git-
+Konfiguration; die Einstellung gilt für alle verlinkten Worktrees dieses Repositorys und aktiviert
+den vorgesehenen Pre-Commit-Hook zentral.
+
+Danach im Browser `http://localhost:3000` öffnen. Auf einer frischen lokalen Datenbank erzeugen
+`npm run dev` und `npm start` automatisch einen temporären Recovery-Code und geben den vollständigen
+`/?claim=...`-Link in der Konsole aus. Für einen dauerhaften lokalen Zugang stattdessen
+`ADMIN_RECOVERY_CODE` oder ein vollständiges `BOOTSTRAP_ADMIN_<n>_NAME`/`_PASSWORD`-Paar setzen. Die
+beiden lokalen Wrapper setzen außerdem `COOKIE_SECURE=0`, damit persönliche Sessions über bewusstes
+LAN-HTTP funktionieren; für HTTPS kann der Wert explizit auf `1` gesetzt werden.
 
 ### Code-Qualität
 
@@ -170,7 +200,6 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
    | `CF_TUNNEL_TOKEN` | Token aus Schritt 2 |
    | `APP_ADMIN_RECOVERY_CODE` | starkes, einmaliges Bootstrap-/Recovery-Secret, z. B. `openssl rand -hex 32`; nicht an Teilnehmende verteilen |
    | `APP_KIOSK_TOKEN` | eigener starker Read-only-Token für `/kiosk.html`; z. B. `openssl rand -hex 32` |
-   | `APP_ACCESS_TOKEN` | starkes Zufallstoken für Rollbacks auf alte Images; aktuelle Images mit `AUTH_MODE=required` verwenden es nicht mehr |
    | `GHCR_PULL_TOKEN` | GitHub → Settings → Developer settings → **Tokens (classic)** (fine-grained Tokens haben **kein** Packages-Permission – GitHub-seitige Lücke, nicht behebbar; und da das Repo nicht dir gehört, tauchte es dort im Repo-Auswahldialog ohnehin nicht auf). Scopes: `read:packages` + `repo` (`repo` sorgt dafür, dass GitHub deine bestehenden Collaborator-Rechte auf dem privaten Repo für das Package durchreicht). Ablaufdatum setzen und dir merken, das Secret + `.env` auf dem Server (siehe "Alltag" unten) danach zu erneuern. **Bewusst kein Fix "Package auf public stellen"** – das Image bleibt privat, der Server authentifiziert sich stattdessen selbst beim Pullen. |
 
 4. **`Provision Hetzner Server`-Workflow manuell starten** (Actions-Tab → Workflow auswählen →
@@ -197,18 +226,20 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
   Container-Healthcheck und zeigt bei einem Startfehler automatisch Status und die letzten 100
   App-Logzeilen; anschließend stellt er das zuvor laufende Image wieder her.
 - **Rollback:** auf dem Server (`ssh deploy@<HETZNER_HOST>`) `/opt/respawn/rollback.sh <git-sha>`
-  ausführen – pinnt das Docker-Image auf einen früheren, bereits gebauten Stand.
-- **Bestehenden Server auf persönliche Logins umstellen:** Vor dem ersten Required-Auth-Deploy in
-  `/opt/lan2026/.env` ein starkes `ADMIN_RECOVERY_CODE`, einen separaten `KIOSK_TOKEN` ergänzen und
-  `AUTH_MODE=required` setzen.
+  ausführen – pinnt das Docker-Image auf einen früheren, bereits gebauten Stand. Frisch
+  provisionierte Hosts behalten dafür eine nur vom Rollback-Skript verwendete Kopie des
+  Kiosk-Secrets; bei Images vor der Umstellung auf persönliche Logins setzt das Skript daraus die
+  damaligen `AUTH_MODE=required`-/`ACCESS_TOKEN`-Werte. Aktuelle Images ignorieren diese Altwerte.
+- **Bestehenden Server auf persönliche Logins vorbereiten:** Vor dem Deploy in
+  `/opt/lan2026/.env` ein starkes `ADMIN_RECOVERY_CODE` und einen separaten `KIOSK_TOKEN` ergänzen.
   Anschließend `docker compose up -d --wait app`. Beim ersten Aufruf `/?claim=<RECOVERY_CODE>`
   öffnen, das eigene bestehende Profil auswählen und ein Passwort setzen. Danach im Admin-Bereich
   die persönlichen Claim-Links für alle übrigen Profile erzeugen. Der Bootstrap-Pfad schließt
   sich, sobald das erste Admin-Konto beansprucht wurde; falls genau dieser einzige aktive Admin sein
-  Passwort vergisst, kann derselbe Recovery-Code sein Passwort zurücksetzen. `ACCESS_TOKEN` für
-  Rollbacks auf ältere Images in der `.env` belassen.
-- **Backups:** noch nicht eingerichtet (siehe Security-Review) – für echte Daten vor der ersten
-  "richtigen" LAN auf dem neuen Server unbedingt einen Cron-Job mit `sqlite3 .backup` ergänzen.
+  Passwort vergisst, kann derselbe Recovery-Code sein Passwort zurücksetzen.
+- **Backups:** Vor jedem Tracking-Start und bei jedem manuellen Admin-Download entsteht ein
+  integritätsgeprüfter Snapshot unter `data/backups/`. Restore und regelmäßiger Restore-Test sind
+  in [`server/OPERATIONS.md`](server/OPERATIONS.md#backup-und-restore) beschrieben.
 - **`GHCR_PULL_TOKEN` erneuern** (Fine-grained Tokens laufen ggf. ab): neuen Token erzeugen, das
   GitHub-Secret aktualisieren, dann auf dem Server (`ssh deploy@<HETZNER_HOST>`) die Zeile in
   `/opt/respawn/.env` von Hand ersetzen und `/opt/respawn/docker-login.sh` erneut ausführen –
@@ -218,7 +249,10 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
 
 Der Server ist weiterhin ein normaler Node.js-Prozess mit einer SQLite-Datei und läuft genauso gut
 auf jedem beliebigen kleinen Linux-Server/VPS ohne Docker – für die LAN-Party selbst reicht wie
-bisher `npm install && npm run build && npm start` auf einem Laptop im WLAN.
+bisher `npm ci && npm run build && npm start` auf einem Laptop im WLAN. Ist die Datenbank leer
+und kein Erstzugang konfiguriert, zeigt `npm start` den einmalig für diesen Prozess erzeugten
+`/?claim=...`-Link an; der direkte Aufruf `node dist/index.js` verlangt dagegen explizit einen
+Recovery-Code oder ein bereits beanspruchtes Admin-Konto.
 
 ### Umgebungsvariablen
 
@@ -226,19 +260,20 @@ bisher `npm install && npm run build && npm start` auf einem Laptop im WLAN.
 |---|---|---|
 | `PORT` | `3000` | Port, auf dem der Server lauscht. |
 | `DB_FILE` | `server/data/lan.db` | Pfad zur SQLite-Datei. Wird beim ersten Start angelegt. |
-| `AUTH_MODE` | `legacy` | `required` aktiviert persönliche Logins und ersetzt den geteilten Web-Zugang vollständig durch Session-Authentifizierung. |
-| `ADMIN_RECOVERY_CODE` | *(leer)* | Starkes Bootstrap-/Recovery-Secret für den ersten beziehungsweise letzten Admin. In Produktion mit `AUTH_MODE=required` Pflicht. |
-| `KIOSK_TOKEN` | *(leer = Kiosk in Required-Mode gesperrt)* | Separater Read-only-Zugang für die Kiosk-GET-Endpunkte und `kiosk:subscribe`; Aufruf als `/kiosk.html?token=...`. |
-| `ACCESS_TOKEN` | *(leer = kein Schutz)* | Nur im Legacy-Modus: geteiltes Zugangs-Token für die Web-Oberfläche. Im Required-Modus wird es ignoriert. |
+| `BACKUP_DIR` | `<DB-Verzeichnis>/backups` | Verzeichnis für persistente, atomar geschriebene SQLite-Snapshots. Im Docker-Setup liegt es damit auf dem gemounteten `data`-Volume. |
+| `BACKUP_RETENTION` | `20` | Maximale Anzahl persistenter Snapshots; ältere Dateien werden nach einem erfolgreichen Backup entfernt. |
+| `ADMIN_RECOVERY_CODE` | *(leer)* | Starkes Bootstrap-/Recovery-Secret für den ersten beziehungsweise letzten Admin. In Produktion Pflicht. |
+| `BOOTSTRAP_ADMIN_<n>_NAME` / `BOOTSTRAP_ADMIN_<n>_PASSWORD` | *(leer)* | Optionale, beim Start angelegte fertige Admin-Konten (Slot `n` = 1…20), damit du nicht den Recovery-Weg gehen musst. Idempotent, überschreibt kein bestehendes Passwort. Details in [`docs/BOOTSTRAP-ADMINS.md`](docs/BOOTSTRAP-ADMINS.md). |
+| `KIOSK_TOKEN` | *(leer = Kiosk gesperrt)* | Separater Read-only-Zugang für die Kiosk-GET-Endpunkte und `kiosk:subscribe`; Aufruf als `/kiosk.html?token=...`. |
 | `COOKIE_SECURE` | `1` | Sichere Session-Cookies; nur für bewusstes lokales HTTP-Hosting mit `0` abschalten. |
-| `MULTI_GROUPS_ENABLED` | `0` | Aktiviert ausschließlich für Entwicklung und Tests das Anlegen weiterer Gruppen und Gruppeneinladungen. Bis Fach- und Trackingdaten vollständig gruppenbezogen isoliert sind, in Produktion auf `0` lassen. |
 | `OFFLINE_TIMEOUT_MS` | `60000` | Nach wie vielen ms ohne Agent-Meldung ein Spieler als „offline" gilt. |
-| `NODE_ENV` | *(leer)* | Auf `production` gesetzt (macht der Docker-Container automatisch): verlangt im Legacy-Modus `ACCESS_TOKEN`, im Required-Modus `ADMIN_RECOVERY_CODE`, und beendet den Prozess bei unerwarteten Fehlern, damit Docker sauber neu startet. Für die LAN-Party selbst ohne Supervisor bewusst **nicht** setzen. |
+| `EXPECTED_AGENT_VERSION` | `1.0.0` | Version, die die LAN-Bereitschaft als aktuell bewertet. Abweichende oder unbekannte Agent-Versionen werden vor dem Event hervorgehoben. |
+| `NODE_ENV` | *(leer)* | Auf `production` gesetzt (macht der Docker-Container automatisch): verlangt `ADMIN_RECOVERY_CODE` und beendet den Prozess bei unerwarteten Fehlern, damit Docker sauber neu startet. Für die LAN-Party selbst ohne Supervisor bewusst **nicht** setzen. |
 
 Beispiel:
 
 ```bash
-PORT=3000 AUTH_MODE=required ADMIN_RECOVERY_CODE="$(openssl rand -hex 32)" KIOSK_TOKEN="$(openssl rand -hex 32)" node dist/index.js
+PORT=3000 COOKIE_SECURE=0 ADMIN_RECOVERY_CODE="$(openssl rand -hex 32)" KIOSK_TOKEN="$(openssl rand -hex 32)" node dist/index.js
 ```
 
 Den Recovery-Code geheim halten: Er bootstrapt den ersten Admin und kann genau den einzigen aktiven
@@ -261,7 +296,7 @@ Windows-Login.
    kopieren**.
 2. `agent/agent.config.example.json` zu `agent.config.json` kopieren, Server-URL + den kopierten
    Key eintragen.
-3. `npm install && npm start`.
+3. `npm ci && npm start`.
 
 Der Agent braucht sonst nichts zu wissen – neue Spiele bzw. neue Prozessname-Zuordnungen werden
 zentral im Web-Tool unter „⚙️ Spiele verwalten" gepflegt und wirken sofort, ohne den Agent

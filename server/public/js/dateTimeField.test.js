@@ -48,3 +48,31 @@ test('the correct hour/minute <option> is marked selected', () => {
   assert.match(html, /<option value="9" selected>09<\/option>/);
   assert.match(html, /<option value="20" selected>20<\/option>/);
 });
+
+test('opts.label gives the trigger and both time selects a distinct accessible name', () => {
+  const d = new Date(2026, 6, 8, 9, 20, 0);
+  const html = dateTimeFieldHtml('f1', d.getTime(), { label: 'Ankunft', clearable: true });
+  assert.match(html, /data-dt-trigger aria-label="Ankunft, Mi\., 08\.07\.2026"/);
+  assert.match(html, /data-dt-hour aria-label="Ankunft, Stunde"/);
+  assert.match(html, /data-dt-minute aria-label="Ankunft, Minute"/);
+  assert.match(html, /aria-label="Ankunft löschen"/);
+});
+
+test('without opts.label the fields fall back to the generic "Datum löschen" clear label and no aria-label', () => {
+  const html = dateTimeFieldHtml('f1', Date.now(), { clearable: true });
+  assert.doesNotMatch(html, /data-dt-trigger aria-label/);
+  assert.doesNotMatch(html, /data-dt-hour aria-label/);
+  assert.match(html, /aria-label="Datum löschen"/);
+});
+
+test('opts.dateOnly omits the whole hour/minute row, e.g. for a due date with no meaningful time-of-day', () => {
+  const d = new Date(2026, 6, 8, 14, 37, 0);
+  const html = dateTimeFieldHtml('f1', d.getTime(), { dateOnly: true });
+  assert.doesNotMatch(html, /dt-time-group/);
+  assert.doesNotMatch(html, /data-dt-hour/);
+  assert.doesNotMatch(html, /data-dt-minute/);
+  // Unlike the time-aware path, an already-set value is not snapped to the
+  // 5-minute step - there is no time granularity here to snap.
+  assert.match(html, /value="2026-07-08T14:37"/);
+  assert.match(html, /Mi\., 08\.07\.2026/);
+});

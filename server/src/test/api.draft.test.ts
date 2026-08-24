@@ -6,10 +6,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 import { snakeCaptainIndex } from '../routes/draft';
 
-const app = createApp();
+const app = createTestApp();
 
 let gameId: string;
 let players: Array<{ id: string; name: string }>;
@@ -120,16 +120,39 @@ test('a full 2-captain draft: snake order, turn enforcement, auto-assigned last 
   const late = await request(app).post('/api/draft/pick').send({ playerId: capA.id, pickPlayerId: p2.id });
   assert.equal(late.status, 409);
 
-  // The completed draft shows up in the shared Team-Historie.
-  const history = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
+  // Outside an event, the completed draft stays in the group-room draft history.
+  const history = await request(app).get('/api/draft/history');
   assert.equal(history.status, 200);
   assert.ok(history.body.history.length >= 1);
   const latest = history.body.history[0];
   assert.equal(latest.teams.length, 2);
   assert.equal(latest.teams[0].players.length, 3);
-  // Marked as coming from a Captain-Draft, so Team-/Ergebnis-Historie can
-  // show a "Captain-Draft" badge instead of looking like a random draw.
-  assert.equal(latest.source, 'draft');
+  assert.equal(latest.status, 'completed');
+
+  const teamHistory = await request(app).get(`/api/matchmaking/history?gameId=${gameId}`);
+  assert.equal(teamHistory.status, 200);
+  assert.ok(
+    teamHistory.body.history.some((entry: { source: string }) => entry.source === 'draft'),
+    'a completed group-room draft must remain visible in Team-Historie',
+  );
+
+  // A draft never balanced by rating, so its snapshot carries none — and
+  // moving a player inside it must not invent a balancing total either.
+  type DraftDraw = {
+    id: string;
+    source: string;
+    teams: Array<{ players: Array<{ id: string; rating: number | null }>; totalRating: number }>;
+  };
+  const drafted: DraftDraw = teamHistory.body.history.find((entry: DraftDraw) => entry.source === 'draft');
+  assert.ok(drafted.teams.every((t) => t.totalRating === 0 && t.players.every((p) => p.rating === null)));
+
+  const fromTeam = drafted.teams.findIndex((t) => t.players.length > 1);
+  const toTeam = fromTeam === 0 ? 1 : 0;
+  const moved = await request(app)
+    .patch(`/api/matchmaking/draws/${drafted.id}/move`)
+    .send({ playerId: drafted.teams[fromTeam].players[0].id, toTeamIndex: toTeam });
+  assert.equal(moved.status, 200);
+  assert.ok(moved.body.teams.every((t: { totalRating: number }) => t.totalRating === 0));
 });
 
 test('POST /api/draft/cancel abandons a running draft', async () => {

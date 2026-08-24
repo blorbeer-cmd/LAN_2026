@@ -4,9 +4,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 let playerId: string;
 let gameId: string;
 
@@ -25,7 +25,7 @@ test('PUT /api/preferences rejects an out-of-range rating', async () => {
 
 test('PUT /api/preferences rejects an unknown player', async () => {
   const res = await request(app).put('/api/preferences').send({ playerId: 'ghost', gameId, rating: 5 });
-  assert.equal(res.status, 404);
+  assert.equal(res.status, 401);
 });
 
 test('PUT /api/preferences rejects an unknown game', async () => {

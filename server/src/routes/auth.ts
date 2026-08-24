@@ -2,12 +2,11 @@
 // brand-new player, claim an existing one, log in/out, change a password,
 // and (admin-only) issue/revoke the invite codes that gate all of the above.
 //
-// Feature routes enforce these sessions when AUTH_MODE=required; legacy mode
-// preserves the existing shared-token behavior for explicit rollbacks.
+// Feature routes enforce these sessions for every browser request.
 
 import { Router, type RequestHandler } from 'express';
 import { nanoid } from 'nanoid';
-import { db } from '../db';
+import { BASE_EVENT_ID, db } from '../db';
 import { config } from '../config';
 import { broadcast, disconnectPlayerSockets, disconnectSessionSockets, Events } from '../realtime';
 import { isNonEmptyString, isHexColor, isValidAvatar } from '../validation';
@@ -17,6 +16,7 @@ import {
   isValidPassword,
   hasClaimedAdmin,
   MIN_PASSWORD_LENGTH,
+  MAX_PASSWORD_LENGTH,
 } from '../accounts';
 import {
   createSession,
@@ -30,7 +30,17 @@ import {
   requireRecentReauthentication,
   markSessionReauthenticated,
 } from '../sessions';
-import { createInvite, findValidInvite, markInviteUsed, voidOutstandingInvites, revokeInvite, type InvitePurpose } from '../invites';
+import {
+  createInvite,
+  findValidInvite,
+  markInviteUsed,
+  voidOutstandingInvites,
+  revokeInvite,
+  NO_INVITE_EXPIRY,
+  DEFAULT_INVITE_TTL_MS,
+  inviteFingerprint,
+  type InvitePurpose,
+} from '../invites';
 import { DEFAULT_GROUP_ID, ensureDefaultGroupMembership } from '../groups';
 import {
   consumeGlobalAuthRequest,
@@ -40,6 +50,13 @@ import {
   recordLoginSuccess,
 } from '../loginRateLimit';
 import { writeAdminAudit } from '../adminAudit';
+import { resetOnboardingForNewAccount } from './onboarding';
+import {
+  ensureAccountEventContext,
+  getOrRepairActiveEvent,
+  getSelectableEvent,
+  InvalidEventContextError,
+} from '../eventContext';
 
 export const authRouter = Router();
 
@@ -131,7 +148,7 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
   if (!isNonEmptyString(code, 200)) return res.status(400).json({ error: 'Einladungscode ist erforderlich.' });
   if (!isNonEmptyString(name)) return res.status(400).json({ error: 'Name ist erforderlich (1-60 Zeichen).' });
   if (!isValidPassword(password)) {
-    return res.status(400).json({ error: `Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein.` });
+    return res.status(400).json({ error: `Passwort muss zwischen ${MIN_PASSWORD_LENGTH} und ${MAX_PASSWORD_LENGTH} Zeichen lang sein.` });
   }
   if (color !== undefined && !isHexColor(color)) {
     return res.status(400).json({ error: 'Farbe muss ein Hex-Code sein, z.B. #4f9dff.' });
@@ -164,6 +181,7 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
     created_at: now,
   };
 
+  let eventContext: { id: string; name: string; isBase: boolean; fallback: boolean } | undefined;
   try {
     db.transaction(() => {
       db.prepare(
@@ -172,10 +190,36 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
       ).run(player.id, player.name, player.color, player.avatar, nanoid(24), player.is_admin, player.password_hash, now, now);
 
       if (invite && !markInviteUsed(invite.code, player.id, 'register')) throw new InvalidInviteError();
-      ensureDefaultGroupMembership(player.id);
+      ensureDefaultGroupMembership(player.id, { bootstrapAdmin: isBootstrap });
+      const selectedEvent = ensureAccountEventContext(player.id, invite?.event_id ?? BASE_EVENT_ID, {
+        // Reusable links must remain redeemable until revoked. If their target
+        // event was closed in the meantime, the account still gets the base
+        // event rather than failing registration with an apparently expired link.
+        fallbackToBase: Boolean(invite?.event_id && invite.purpose === 'register' && invite.event_id !== BASE_EVENT_ID),
+      });
+      eventContext = {
+        id: selectedEvent.id,
+        name: selectedEvent.name,
+        isBase: selectedEvent.id === BASE_EVENT_ID,
+        fallback: Boolean(invite?.event_id && invite.event_id !== BASE_EVENT_ID && selectedEvent.id === BASE_EVENT_ID),
+      };
+      if (invite) {
+        writeAdminAudit({
+          action: 'invite_used',
+          targetType: 'registration',
+          targetId: player.id,
+          details: {
+            inviteFingerprint: inviteFingerprint(invite.code),
+            createdBy: invite.created_by,
+            eventId: invite.event_id,
+            appliedEventId: selectedEvent.id,
+          },
+        });
+      }
+      resetOnboardingForNewAccount(player.id);
     })();
   } catch (error) {
-    if (error instanceof InvalidInviteError) {
+    if (error instanceof InvalidInviteError || error instanceof InvalidEventContextError) {
       return res.status(400).json({ error: 'Einladungscode ist ungültig oder abgelaufen.' });
     }
     throw error;
@@ -193,7 +237,7 @@ authRouter.post('/register', limitAnonymousAuthAttempts, (req, res) => {
   }
   const token = createSession(player.id);
   setSessionCookie(res, token);
-  res.status(201).json(toPublicAccount(player));
+  res.status(201).json({ ...toPublicAccount(player), eventContext });
 });
 
 // POST /api/auth/claim - sets a password on an existing, not-yet-claimed
@@ -206,7 +250,7 @@ authRouter.post('/claim', limitAnonymousAuthAttempts, (req, res) => {
 
   if (!isNonEmptyString(code, 200)) return res.status(400).json({ error: 'Einladungscode ist erforderlich.' });
   if (!isValidPassword(password)) {
-    return res.status(400).json({ error: `Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein.` });
+    return res.status(400).json({ error: `Passwort muss zwischen ${MIN_PASSWORD_LENGTH} und ${MAX_PASSWORD_LENGTH} Zeichen lang sein.` });
   }
 
   const isBootstrap = recoveryCodeUsable(code);
@@ -241,10 +285,12 @@ authRouter.post('/claim', limitAnonymousAuthAttempts, (req, res) => {
         .run(passwordHash, nextIsAdmin, now, existing.id);
       if (result.changes !== 1) throw new InvalidInviteError();
       voidOutstandingInvites(existing.id, 'claim');
-      ensureDefaultGroupMembership(existing.id);
+      ensureDefaultGroupMembership(existing.id, { bootstrapAdmin: isBootstrap });
+      ensureAccountEventContext(existing.id, invite?.event_id ?? BASE_EVENT_ID);
+      resetOnboardingForNewAccount(existing.id);
     })();
   } catch (error) {
-    if (error instanceof InvalidInviteError) {
+    if (error instanceof InvalidInviteError || error instanceof InvalidEventContextError) {
       return res.status(400).json({
         error: isBootstrap
           ? 'Bootstrap-Code ist nicht mehr gültig oder das Konto wurde bereits beansprucht.'
@@ -320,7 +366,10 @@ authRouter.post('/login', limitAnonymousAuthAttempts, (req, res) => {
   }
 
   recordLoginSuccess(trimmedName);
-  db.prepare('UPDATE players SET last_login_at = ? WHERE id = ?').run(Date.now(), player!.id);
+  db.transaction(() => {
+    db.prepare('UPDATE players SET last_login_at = ? WHERE id = ?').run(Date.now(), player!.id);
+    getOrRepairActiveEvent(player!.id);
+  })();
 
   const token = createSession(player!.id);
   setSessionCookie(res, token);
@@ -346,7 +395,7 @@ authRouter.post('/password', requireUser, (req, res) => {
     return res.status(400).json({ error: 'Aktuelles Passwort ist erforderlich.' });
   }
   if (!isValidPassword(newPassword)) {
-    return res.status(400).json({ error: `Neues Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein.` });
+    return res.status(400).json({ error: `Neues Passwort muss zwischen ${MIN_PASSWORD_LENGTH} und ${MAX_PASSWORD_LENGTH} Zeichen lang sein.` });
   }
 
   const existing = db.prepare('SELECT * FROM players WHERE id = ?').get(req.player!.id) as PlayerRow;
@@ -399,7 +448,7 @@ authRouter.post('/reset', limitAnonymousAuthAttempts, (req, res) => {
     return res.status(400).json({ error: 'Reset-Code ist erforderlich.' });
   }
   if (!isValidPassword(newPassword)) {
-    return res.status(400).json({ error: `Neues Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein.` });
+    return res.status(400).json({ error: `Neues Passwort muss zwischen ${MIN_PASSWORD_LENGTH} und ${MAX_PASSWORD_LENGTH} Zeichen lang sein.` });
   }
 
   const recoveryTarget = soleClaimedAdminForRecovery(code);
@@ -423,6 +472,7 @@ authRouter.post('/reset', limitAnonymousAuthAttempts, (req, res) => {
     deleteAllSessionsForPlayer(existing.id);
     db.prepare('DELETE FROM push_subscriptions WHERE player_id = ?').run(existing.id);
     voidOutstandingInvites(existing.id, 'reset');
+    getOrRepairActiveEvent(existing.id);
     return true;
   })();
   if (!reset) {
@@ -444,7 +494,66 @@ authRouter.post('/reset', limitAnonymousAuthAttempts, (req, res) => {
   res.json(toPublicAccount(existing));
 });
 
-const INVITE_PURPOSES: InvitePurpose[] = ['register', 'claim', 'reset'];
+// POST /api/auth/test-session - consumes an admin-minted 'test_login' code and
+// logs this device in directly as the targeted is_test player (no password –
+// test players never have one). Body: { code }. Re-checks is_test at
+// redemption time, not just at mint time, in case the player's marking
+// changed in between.
+authRouter.post('/test-session', limitAnonymousAuthAttempts, (req, res) => {
+  const { code } = req.body ?? {};
+  if (!isNonEmptyString(code, 200)) return res.status(400).json({ error: 'Der Link ist ungültig.' });
+
+  const invite = findValidInvite(code, 'test_login');
+  if (!invite || !invite.player_id) {
+    return res.status(400).json({ error: 'Der Link ist ungültig oder abgelaufen.' });
+  }
+  const target = db.prepare('SELECT * FROM players WHERE id = ?').get(invite.player_id) as PlayerRow | undefined;
+  if (!target || !target.is_test || target.deactivated_at !== null) {
+    return res.status(409).json({ error: 'Dieser Test-Spieler ist nicht mehr verfügbar.' });
+  }
+
+  const consumed = db.transaction(() => {
+    if (!markInviteUsed(invite.code, target.id, 'test_login')) return false;
+    getOrRepairActiveEvent(target.id);
+    return true;
+  })();
+  if (!consumed) {
+    return res.status(409).json({ error: 'Der Link wurde bereits verwendet.' });
+  }
+
+  writeAdminAudit({
+    action: 'test_session_started',
+    targetType: 'player',
+    targetId: target.id,
+  });
+  const token = createSession(target.id);
+  setSessionCookie(res, token);
+  res.json(toPublicAccount(target));
+});
+
+const INVITE_PURPOSES: InvitePurpose[] = ['register', 'claim', 'reset', 'test_login'];
+
+function inviteUseCounts(codes: string[]): Map<string, number> {
+  const codeByFingerprint = new Map(codes.map((code) => [inviteFingerprint(code), code]));
+  const counts = new Map<string, number>();
+  if (codeByFingerprint.size === 0) return counts;
+
+  const rows = db
+    .prepare("SELECT details FROM admin_log WHERE action = 'invite_used' AND target_type = 'registration'")
+    .all() as Array<{ details: string | null }>;
+  for (const row of rows) {
+    if (!row.details) continue;
+    try {
+      const details = JSON.parse(row.details) as { inviteFingerprint?: unknown };
+      if (typeof details.inviteFingerprint !== 'string') continue;
+      const code = codeByFingerprint.get(details.inviteFingerprint);
+      if (code) counts.set(code, (counts.get(code) ?? 0) + 1);
+    } catch {
+      // Ignore malformed legacy audit rows rather than failing the admin list.
+    }
+  }
+  return counts;
+}
 
 // GET /api/auth/invites - active, still-shareable links for the admin UI.
 // Used/revoked/expired codes stay in the DB audit trail but are not returned.
@@ -452,24 +561,60 @@ authRouter.get('/invites', ...requireSessionAdmin, (_req, res) => {
   const rows = db
     .prepare(
       `SELECT i.code, i.purpose, i.player_id AS playerId, p.name AS playerName,
+              i.event_id AS eventId, e.name AS eventName,
               i.created_at AS createdAt, i.expires_at AS expiresAt
        FROM invites i
        LEFT JOIN players p ON p.id = i.player_id
-       WHERE i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > ?
+       LEFT JOIN events e ON e.id = i.event_id
+       WHERE i.used_at IS NULL AND i.revoked_at IS NULL
+         AND (i.expires_at = ? OR i.expires_at > ?)
        ORDER BY i.created_at DESC`
     )
-    .all(Date.now());
-  res.json(rows);
+    .all(NO_INVITE_EXPIRY, Date.now()) as Array<{
+      code: string;
+      purpose: InvitePurpose;
+      playerId: string | null;
+      playerName: string | null;
+      eventId: string | null;
+      eventName: string | null;
+      createdAt: number;
+      expiresAt: number;
+    }>;
+  const usageCounts = inviteUseCounts(rows.map((row) => row.code));
+  res.json(
+    rows.map((row) => {
+      const isBaseEvent = row.eventId === BASE_EVENT_ID;
+      const eventCanBeTargeted = row.purpose === 'register' || row.purpose === 'claim';
+      return {
+        ...row,
+        eventId: isBaseEvent ? null : row.eventId,
+        eventName: isBaseEvent ? null : row.eventName,
+        expiresAt: row.expiresAt === NO_INVITE_EXPIRY ? null : row.expiresAt,
+        reusable: row.purpose === 'register',
+        eventSelectable: !eventCanBeTargeted || isBaseEvent || Boolean(row.eventId && getSelectableEvent(row.eventId)),
+        usageCount: usageCounts.get(row.code) ?? 0,
+      };
+    }),
+  );
 });
 
-// POST /api/auth/invites - admin-only. Body: { purpose, playerId?, expiresInMs? }
+// POST /api/auth/invites - admin-only.
+// Body: { purpose, playerId?, eventId?, expiresInMs? }
+// Registration links are reusable during their finite lifetime. Claim, reset
+// and test-session links retain their one-time lifecycles.
 authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthentication, (req, res) => {
-  const { purpose, playerId, expiresInMs } = req.body ?? {};
+  const { purpose, playerId, eventId, expiresInMs } = req.body ?? {};
   if (typeof purpose !== 'string' || !INVITE_PURPOSES.includes(purpose as InvitePurpose)) {
     return res.status(400).json({ error: `purpose muss eines von ${INVITE_PURPOSES.join(', ')} sein.` });
   }
   if (expiresInMs !== undefined && (typeof expiresInMs !== 'number' || !Number.isFinite(expiresInMs) || expiresInMs <= 0)) {
     return res.status(400).json({ error: 'expiresInMs muss eine positive Zahl sein.' });
+  }
+  if (eventId !== undefined && (typeof eventId !== 'string' || !eventId)) {
+    return res.status(400).json({ error: 'eventId muss eine nicht-leere Zeichenfolge sein.' });
+  }
+  if (eventId !== undefined && purpose !== 'register' && purpose !== 'claim') {
+    return res.status(400).json({ error: 'eventId ist nur bei Registrierungs- und Konto-Einladungen zulässig.' });
   }
 
   if (purpose === 'register') {
@@ -484,43 +629,75 @@ authRouter.post('/invites', ...requireSessionAdmin, requireRecentReauthenticatio
       | { id: string; password_hash: string | null; is_test: number; deactivated_at: number | null }
       | undefined;
     if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-    if (target.is_test) return res.status(409).json({ error: 'Test-Spieler erhalten keine Anmeldelinks.' });
     if (target.deactivated_at !== null) return res.status(409).json({ error: 'Dieses Konto ist deaktiviert.' });
-    if (purpose === 'claim' && target.password_hash) {
-      return res.status(409).json({ error: 'Dieser Spieler hat bereits ein Passwort gesetzt.' });
+    if (purpose === 'test_login') {
+      // The inverse of the other purposes: a test-session link only ever
+      // targets an admin-seeded is_test player, never a real account.
+      if (!target.is_test) return res.status(409).json({ error: 'Testsitzungen gibt es nur für Test-Spieler.' });
+    } else {
+      if (target.is_test) return res.status(409).json({ error: 'Test-Spieler erhalten keine Anmeldelinks.' });
+      if (purpose === 'claim' && target.password_hash) {
+        return res.status(409).json({ error: 'Dieser Spieler hat bereits ein Passwort gesetzt.' });
+      }
+      if (purpose === 'reset' && !target.password_hash) {
+        return res.status(409).json({ error: 'Dieser Spieler hat noch kein Passwort gesetzt.' });
+      }
     }
-    if (purpose === 'reset' && !target.password_hash) {
-      return res.status(409).json({ error: 'Dieser Spieler hat noch kein Passwort gesetzt.' });
-    }
+  }
+
+  const inviteEventId = purpose === 'register' || purpose === 'claim' ? eventId ?? BASE_EVENT_ID : undefined;
+  const inviteEvent = inviteEventId ? getSelectableEvent(inviteEventId) : undefined;
+  if (inviteEventId && !inviteEvent) {
+    return res.status(404).json({ error: 'Event nicht gefunden.' });
   }
 
   const invite = createInvite({
     purpose: purpose as InvitePurpose,
     playerId: purpose === 'register' ? undefined : playerId,
+    eventId: inviteEventId,
     createdBy: req.player!.id,
-    expiresInMs,
+    expiresInMs: purpose === 'register' && expiresInMs === undefined ? DEFAULT_INVITE_TTL_MS : expiresInMs,
   });
   writeAdminAudit({
     actorPlayerId: req.player!.id,
     action: 'invite_created',
     targetType: purpose === 'register' ? 'registration' : 'player',
     targetId: purpose === 'register' ? undefined : playerId,
-    details: { purpose, expiresAt: invite.expires_at },
+    details: {
+      purpose,
+      eventId: invite.event_id,
+      expiresAt: invite.expires_at === NO_INVITE_EXPIRY ? null : invite.expires_at,
+      inviteFingerprint: inviteFingerprint(invite.code),
+    },
   });
   res.status(201).json({
     code: invite.code,
     purpose: invite.purpose,
     playerId: invite.player_id,
-    expiresAt: invite.expires_at,
+    eventId: invite.event_id === BASE_EVENT_ID ? null : invite.event_id,
+    eventName: invite.event_id === BASE_EVENT_ID ? null : inviteEvent?.name ?? null,
+    expiresAt: invite.expires_at === NO_INVITE_EXPIRY ? null : invite.expires_at,
+    reusable: invite.purpose === 'register',
+    usageCount: 0,
   });
 });
 
 // DELETE /api/auth/invites/:code - admin-only. Revoking an already-used or
 // already-revoked code is a no-op 404, not an error worth retrying.
 authRouter.delete('/invites/:code', ...requireSessionAdmin, requireRecentReauthentication, (req, res) => {
-  const invite = db.prepare('SELECT purpose, player_id FROM invites WHERE code = ?').get(req.params.code) as
-    | { purpose: InvitePurpose; player_id: string | null }
+  const invite = db
+    .prepare('SELECT code, purpose, player_id, event_id, created_by, expires_at FROM invites WHERE code = ?')
+    .get(req.params.code) as
+    | {
+        code: string;
+        purpose: InvitePurpose;
+        player_id: string | null;
+        event_id: string | null;
+        created_by: string | null;
+        expires_at: number;
+      }
     | undefined;
+  const usageCount = invite ? inviteUseCounts([invite.code]).get(invite.code) ?? 0 : 0;
   if (!revokeInvite(req.params.code)) {
     return res.status(404).json({ error: 'Einladungscode nicht gefunden oder bereits verbraucht.' });
   }
@@ -529,7 +706,14 @@ authRouter.delete('/invites/:code', ...requireSessionAdmin, requireRecentReauthe
     action: 'invite_revoked',
     targetType: invite?.player_id ? 'player' : 'registration',
     targetId: invite?.player_id ?? undefined,
-    details: { purpose: invite?.purpose },
+    details: {
+      purpose: invite?.purpose,
+      eventId: invite?.event_id ?? null,
+      createdBy: invite?.created_by ?? null,
+      expiresAt: invite && invite.expires_at !== NO_INVITE_EXPIRY ? invite.expires_at : null,
+      inviteFingerprint: invite ? inviteFingerprint(invite.code) : undefined,
+      usageCount,
+    },
   });
   res.status(204).end();
 });

@@ -14,6 +14,7 @@ import { leaderboardRouter } from './leaderboard';
 import { statsRouter } from './stats';
 import { analyticsRouter } from './analytics';
 import { eventsRouter } from './events';
+import { eventDatePollsRouter } from './eventDatePolls';
 import { tournamentsRouter } from './tournaments';
 import { qrcodeRouter } from './qrcode';
 import { exportRouter } from './export';
@@ -37,13 +38,18 @@ import { groupsRouter } from './groups';
 import { pingsRouter } from './pings';
 import { musicRouter } from './music';
 import { musicControllerRouter } from '../musicController';
-import { requireConfiguredUser, requireUser } from '../sessions';
+import { onboardingRouter } from './onboarding';
+import { feedbackRouter } from './feedback';
+import { requireUser } from '../sessions';
 import { config } from '../config';
 import { extractToken } from '../auth';
 import { requireConfiguredGroupMembership } from '../groupAuthorization';
 import { getGroup } from '../groups';
-import { DEFAULT_GROUP_ID } from '../db';
+import { BASE_EVENT_ID, DEFAULT_GROUP_ID } from '../db';
 import { resolveKioskToken } from '../kioskTokens';
+import { getOrRepairActiveEvent, setActiveEventForPlayer, type EventContextEvent } from '../eventContext';
+import { broadcast, Events, switchPlayerEventScope } from '../realtime';
+import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 
 export const apiRouter = Router();
 
@@ -59,9 +65,8 @@ apiRouter.use('/auth', authRouter);
 // only this narrow command channel before browser/user authentication.
 apiRouter.use('/music/controller', musicControllerRouter);
 
-// Once required auth is enabled, every browser-facing feature API is behind
-// the verified session. Health and the anonymous auth flows above stay public;
-// legacy mode keeps the existing shared-token behavior unchanged.
+// Every browser-facing feature API is behind the verified session. Health and
+// the anonymous auth flows above stay public.
 const KIOSK_GET_PATHS = [
   /^\/live\/?$/,
   /^\/votes\/?$/,
@@ -79,7 +84,6 @@ const KIOSK_GET_PATHS = [
 
 apiRouter.use((req, res, next) => {
   const kioskRead =
-    config.authMode === 'required' &&
     req.method === 'GET' &&
     req.header('x-kiosk-mode') === '1' &&
     Boolean(config.kioskToken || resolveKioskToken(extractToken(req))) &&
@@ -100,12 +104,13 @@ apiRouter.use((req, res, next) => {
     if (!group || group.archived_at !== null) {
       return res.status(404).json({ error: 'Kiosk-Gruppe ist nicht verfügbar.' });
     }
-    if (tokenScope?.eventId) req.query.eventId = tokenScope.eventId;
+    const kioskEventId = tokenScope?.eventId ?? BASE_EVENT_ID;
+    req.query.eventId = kioskEventId;
     req.group = group;
-    req.kioskScope = { groupId, eventId: tokenScope?.eventId ?? null };
+    req.kioskScope = { groupId, eventId: kioskEventId };
     return next();
   }
-  requireConfiguredUser(req, res, next);
+  requireUser(req, res, next);
 });
 
 // Resolves req.group for every feature route below (the group-scoped data
@@ -118,8 +123,20 @@ apiRouter.use((req, res, next) => {
 
 // GET /api/me - the logged-in account, per the real per-user login system
 // (see docs/KONZEPT-USER-MANAGEMENT.md).
+function serializeActiveEvent(event: EventContextEvent) {
+  return {
+    id: event.id,
+    name: event.name,
+    startsAt: event.starts_at,
+    endsAt: event.ends_at,
+    status: event.status,
+    isBase: event.id === BASE_EVENT_ID,
+  };
+}
+
 apiRouter.get('/me', requireUser, (req, res) => {
   const p = req.player!;
+  const activeEvent = getOrRepairActiveEvent(p.id);
   res.json({
     id: p.id,
     name: p.name,
@@ -127,8 +144,39 @@ apiRouter.get('/me', requireUser, (req, res) => {
     avatar: p.avatar,
     isAdmin: Boolean(p.is_admin),
     isTest: Boolean(p.is_test),
+    activeEventId: activeEvent.id,
   });
 });
+
+// The selected workspace is account-wide rather than tab-local. Switching is
+// limited to published events for which the account is an accepted participant.
+apiRouter.get('/me/active-event', requireUser, (req, res) => {
+  res.json(serializeActiveEvent(getOrRepairActiveEvent(req.player!.id)));
+});
+
+apiRouter.put('/me/active-event', requireUser, (req, res) => {
+  const { eventId } = req.body ?? {};
+  if (typeof eventId !== 'string' || !eventId) {
+    return res.status(400).json({ error: 'eventId ist erforderlich.' });
+  }
+  const previousEvent = getOrRepairActiveEvent(req.player!.id);
+  const event = setActiveEventForPlayer(req.player!.id, eventId);
+  if (!event) return res.status(404).json({ error: 'Event nicht gefunden oder nicht freigegeben.' });
+  if (previousEvent.id !== event.id) {
+    clearPlayerLiveStatus(req.player!.id, Date.now(), previousEvent.id);
+    if (previousEvent.group_id) {
+      broadcast(Events.liveStatusChanged, getLiveBoard(previousEvent.group_id, previousEvent.id), {
+        groupId: previousEvent.group_id,
+        eventId: previousEvent.id,
+      });
+    }
+  }
+  switchPlayerEventScope(req.player!.id, event.group_id!, event.id);
+  return res.json(serializeActiveEvent(event));
+});
+
+apiRouter.use('/me/onboarding', onboardingRouter);
+apiRouter.use('/feedback', feedbackRouter);
 
 apiRouter.use('/groups', groupsRouter);
 
@@ -144,6 +192,7 @@ apiRouter.use('/leaderboard', leaderboardRouter);
 apiRouter.use('/stats', statsRouter);
 apiRouter.use('/analytics', analyticsRouter);
 apiRouter.use('/events', eventsRouter);
+apiRouter.use('/events/:eventId/polls', eventDatePollsRouter);
 apiRouter.use('/tournaments', tournamentsRouter);
 apiRouter.use('/qrcode', qrcodeRouter);
 apiRouter.use('/export', exportRouter);

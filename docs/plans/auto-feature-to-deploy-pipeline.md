@@ -1,370 +1,756 @@
-# Konzept: Autonome Pipeline von „Feature fertig“ bis „deployed“
+# Konzept: Automatisierte Agenten-Pipeline bis zum menschlich freigegebenen Merge
 
-Ziel dieses Dokuments: ein Konzept und ein umsetzbarer Schritt-für-Schritt-Plan, um den gesamten
-Weg eines fertigen Features bis zum Produktiv-Deployment zu automatisieren – inklusive Push,
-Pull-Request-Erstellung, Behebung von Pipeline-Fehlern und Merge-Konflikten, automatischem
-Cross-Review (Codex reviewt Claude-PRs und umgekehrt), Umsetzung von Review-Kommentaren,
-Auto-Merge und Deployment.
+Status: beschlossenes Zielkonzept; Phasen 0 bis 2 umgesetzt (Task-Vertrag, Labels, stateless
+Readiness-Reconciler) sowie Phase 7 (Commit-Status `Agent pipeline / ready for human merge`, aktiv
+als Required Check auf `main`). Aus Phase 4 sind die Pilotpfade Codex-Implementierung →
+Claude-Cross-Review und Claude-Implementierung → Codex-Cross-Review umgesetzt; Self-Review ist
+in beiden Provider-Richtungen pilotiert. Für Claude-Selbst-Review existiert zusätzlich zum lokalen
+`agent-review-session.mjs --headless`-Launcher ein automatisierter, credential-read-only
+Workflow (`agent-pipeline-claude-self-review.yml`), der bei `review:self` für eine
+Claude-Implementierung ohne manuellen Aufruf startet; für eine Codex-Implementierung bleibt Self-
+Review beim dedizierten Codex-`/review`-Weg. Die Sechs-Felder-Matrix ist table-driven abgesichert.
+Die post-#396 Human-Pilotfälle in beiden Implementierer-Richtungen sind noch nicht abgenommen.
+Für Codex-Implementierungen liefert der externe Task-Monitor inzwischen jeden distinkten
+Current-Head-CI-Fehlversuch sowie fehlgeschlagene post-merge `main`-CI/CD-Läufe zurück an die
+ursprüngliche Task; diese informiert den Nutzer und führt die sichere Fix-/Retry-Arbeit automatisch
+fort. Ein unabhängiger Fix-Worker, Claude-Session-Zustellung, Konflikt-Fixes, formale Rundenzähler
+und die vollständige Findings-Fix-Schleife fehlen weiterhin. Stand: 2026-08-14
 
-## 1. Ausgangslage
+Der Reviewer wird nicht mehr automatisch bestimmt, sondern vom Nutzer pro Head-SHA gewählt. Die
+Herleitung dieser Änderung steht in [`review-mode-selection.md`](review-mode-selection.md), der
+Ablauf in `.github/agent-pipeline/review-decision.md`.
 
-Bereits vorhanden und **nicht Teil dieses Vorhabens**:
+Dieses Dokument beschreibt, wie eine Aufgabe von Codex oder Claude Code implementiert, vom
+jeweils anderen Coding-Agent geprüft und anhand der Review-Findings automatisch korrigiert wird.
+CI-Fehler und Mergekonflikte werden ebenfalls automatisch bearbeitet. Der Ablauf endet bei einem
+vollständig geprüften, merge-bereiten Pull Request. **Den Merge gibt ausschließlich der Nutzer
+frei.** Ein Push auf `main` startet danach wie bisher die bestehende CI/CD- und Deployment-Pipeline.
 
-- `.github/workflows/deploy.yml` führt bei jedem PR die vollständigen Pflichtchecks aus
-  (Design-Tokens, Lint, Format, Build, Unit-/Integrations-/E2E-Tests für Server und Agent) und
-  baut das Runtime-Image als Deployment-Gate.
-- Ein Push auf `main` baut und veröffentlicht das Image nach GHCR und deployt es per SSH auf den
-  Hetzner-Server, inklusive Rollback bei fehlgeschlagenem `docker compose up`.
-- Beide Coding-Agents erstellen heute schon Branches und PRs: Claude Code auf `claude/*`-Branches,
-  Codex auf `codex/*`-Branches.
+Das Konzept ersetzt den ursprünglichen Stand aus PR #173. Insbesondere entfallen Auto-Merge,
+Review-Skip und eine automatische Changelog-Änderung nach dem Merge.
 
-**Manuell** sind heute: Review anstoßen und durchführen, CI-Fehler auf dem PR-Branch beheben,
-Merge-Konflikte auflösen, Review-Kommentare umsetzen, mergen und die Changelog-Pflege nach
-Abschnitt 10 der `DEVELOPMENT_GUIDELINES.md`.
+## 1. Ziel und Abgrenzung
 
-## 2. Zielbild
+### Ziel
 
-Der PR-Lebenszyklus wird zu einer Zustandsmaschine, die ohne menschliches Eingreifen bis zum
-Deployment läuft und nur bei definierten Eskalationsfällen stoppt:
+Ein Nutzer stellt einem Coding-Agent eine Aufgabe. Danach läuft alles automatisch, mit genau einer
+wiederkehrenden Entscheidung des Nutzers — wer das Review durchführt:
 
+1. Implementierung auf einem eigenen Branch und Eröffnung eines Draft-PRs.
+2. Ausführung der bestehenden Pflichtprüfungen; ein Draft blockiert dabei weder die
+   Review-Auswahl noch den Review-Start.
+3. Automatische Behebung von CI-Fehlern und Mergekonflikten durch den Implementierungs-Agent.
+4. Aktive, genau einmalige Zustellung der Review-Auswahl für den aktuellen Head-SHA und Auswahl des
+   Modus durch den Nutzer, mit Empfehlung:
+   - `cross`: Review durch den jeweils anderen Anbieter.
+   - `self`: Review durch den Implementierungs-Anbieter in einer frischen, isolierten und
+     schreibgeschützten Session.
+   - `human`: Review durch den Nutzer selbst.
+5. Automatischer Start des gewählten Reviews, automatische Umsetzung berechtigter Review-Findings
+   und danach erneut Auswahl und vollständiges Review für den neuen Head-SHA.
+6. Bei UI/UX-Änderungen eine Nachricht mit Änderung, Branch, PR und Prüfanleitung.
+7. Abschließender Status `agent:ready-for-merge`; erst danach entscheidet der Nutzer über den
+   Merge.
+
+### Nicht Bestandteil
+
+- Kein automatischer Merge und kein automatisches Aktivieren von Auto-Merge.
+- Keine Umgehung von Nutzungslimits oder Sicherheitsgrenzen.
+- Kein automatisches Überspringen eines Reviews.
+- Keine Wahl des Review-Modus durch einen Agenten. Eine interaktive Session setzt das
+  `review:*`-Label als Übertragung einer ausdrücklichen Nutzerantwort; sie erfindet, ändert oder
+  ersetzt es nie. Unbeaufsichtigte Automatik — Reconciler, Dispatcher, Review-Session, CI-Job —
+  setzt es nie, denn ein Agent, der seinen eigenen Reviewmodus wählt, bedient sich am Merge-Gate.
+- Kein stillschweigender Wechsel des Review-Modus bei Anbieter-Ausfall und kein Auto-Start nach
+  Zeitablauf, wenn die Auswahl unbeantwortet bleibt.
+- Keine Agenten-Schreibrechte auf `main` und keine Deploy-Berechtigungen für Agenten.
+- Keine automatische Änderung von `.github/workflows/**`, `infra/**`, Secrets oder
+  Branch-Protection durch die laufende Pipeline.
+- Keine automatische Changelog-Pflege nach dem Merge. Eine solche Historienpflege wäre ein
+  eigener, vom Nutzer freizugebender Auftrag.
+- Keine Automatisierung der fachlichen Aufgabenplanung vor dem Implementierungsauftrag.
+
+## 2. Bestehende Grundlage
+
+- `.github/workflows/deploy.yml` klassifiziert Änderungen und führt die einschlägigen Server-,
+  Frontend-, E2E-, Agent- und Image-Prüfungen aus.
+- Ein Push auf `main` veröffentlicht und deployt weiterhin automatisch. Die vorhandene
+  `production-deploy`-Concurrency und das Rollback bleiben unverändert.
+- `main` verlangt aktuell einen aktuellen Branch, die bestehenden Pflichtchecks und aufgelöste
+  Review-Konversationen. Force-Pushes und Branch-Löschung sind gesperrt.
+- Auto-Merge ist deaktiviert und bleibt deaktiviert.
+- Codex und Claude können bereits Branches bzw. PRs bearbeiten. Vor der Automatisierung müssen
+  ihre konkreten GitHub-Identitäten und Schreibrechte auf Feature-Branches verifiziert werden.
+
+## 3. Zielablauf
+
+```text
+Aufgabe an Codex oder Claude
+  └─ Implementierung auf Feature-Branch
+       └─ Draft-PR + Task-Vertrag
+            ├─ CI rot ───────────────→ Implementierungs-Agent korrigiert ─┐
+            ├─ Mergekonflikt ─────────→ Implementierungs-Agent löst ihn ──┤
+            └─ CI grün + konfliktfrei (auch im Draft)                      │
+                 └─ Auswahl an den Nutzer: Empfehlung + a/b/c              │
+                      ├─ keine Antwort → `awaiting-review-decision`, nichts startet
+                      ├─ a) `review:cross`  → Gegen-Anbieter reviewt        │
+                      ├─ b) `review:self`   → frische, read-only Session    │
+                      │                        des Implementierungs-Anbieters
+                      ├─ c) `review:human`  → Nutzer reviewt selbst         │
+                      │                                                     │
+                      ├─ gewählter Anbieter nicht verfügbar → melden        │
+                      │   und erneut zur Auswahl                            │
+                      ├─ Findings → Implementierungs-Agent korrigiert ──────┘
+                      └─ Verdikt `pass` zum aktuellen Head-SHA
+                           ├─ ggf. UI/UX-Nachricht an Nutzer
+                           └─ `agent:ready-for-merge`
+                                └─ Nutzer prüft und merged
+                                     └─ bestehendes Deployment
 ```
-Feature fertig (Agent-Session)
-  └─ Push + PR (macht der Agent bereits heute)
-       └─ Label `auto-pipeline` gesetzt → Automatik aktiv
-            ├─ CI läuft (bestehendes deploy.yml)
-            │    └─ rot → Autor-Agent analysiert Logs, fixt, pusht  ──┐
-            ├─ Merge-Konflikt erkannt → Autor-Agent merged main,      │ max. N Runden,
-            │    löst Konflikte auf, pusht                        ────┤ sonst Label
-            ├─ Cross-Review: Gegen-Agent reviewt                      │ `needs-human`
-            │    └─ Änderungswünsche → Autor-Agent setzt um,          │ + Benachrichtigung
-            │         antwortet, fordert Re-Review an             ────┘
-            └─ CI grün + Review ohne offene Punkte
-                 └─ Auto-Merge (Squash) in main
-                      ├─ bestehender Deploy-Job baut + deployt
-                      └─ Post-Merge-Job pflegt docs/changelog/ nach
+
+Jeder neue Commit macht ein vorheriges positives Review ungültig. Der aktuelle Head-SHA muss
+erneut CI und Review durchlaufen — und erneut die Auswahl des Review-Modus, weil ein an einen
+früheren Head gebundenes Wahl-Label verfällt.
+
+## 4. Rollen und Review-Unabhängigkeit
+
+| Modus            | Reviewer                                       | Findings/Fixes         | Unabhängigkeit                               |
+| ---------------- | ---------------------------------------------- | ---------------------- | -------------------------------------------- |
+| `cross` (Normal) | Gegen-Anbieter (Claude ↔ Codex)                | Implementierungs-Agent | höchste                                      |
+| `self`           | frische, isolierte Session desselben Anbieters | Implementierungs-Agent | reduziert, bewusst gewählt                   |
+| `human`          | Nutzer                                         | Implementierungs-Agent | Review und Merge liegen bei derselben Person |
+
+Der Cross-Review bleibt der empfohlene Normalfall. `self` und `human` sind kein Überspringen des
+Reviews, sondern ein Review mit geringerer Unabhängigkeit; sie gelten nur, wenn der Nutzer sie für
+den konkreten Head-SHA gewählt hat, und sind über das gesetzte `review:*`-Label und den
+Statuskommentar dauerhaft nachvollziehbar. `agent:review-fallback` bleibt dem Fall vorbehalten, in
+dem der zuerst gewählte Anbieter ausgefallen ist.
+
+### Anforderungen an ein Review durch den Implementierungs-Anbieter (`self`, `fallback`)
+
+- Neue Session beziehungsweise neuer Review-Subagent; niemals die Implementierungs-Konversation
+  einfach um eine Selbsteinschätzung bitten.
+- Kein Zugriff auf den Implementierungs-Chatverlauf oder dessen Begründungskette.
+- Als Kontext nur Task-Vertrag, Repository-Regeln, Diff gegen `main`, CI-Ergebnisse und bereits
+  veröffentlichte PR-Diskussion.
+- Frischer Checkout oder Worktree auf dem geprüften Head-SHA.
+- Read-only muss technisch abgesichert sein; eine reine Prompt-Anweisung genügt nie. Es gibt zwei
+  ausreichende Stufen: `true` — Sandbox, Berechtigungsmodus **und** schreibgeschützte Credentials —
+  sowie `verified` — Werkzeugentzug, gesperrte schreibende git-/gh-Befehle, eigener auf den Head-SHA
+  detachter Worktree und eine Prüfung von außen nach der Session, dass darin nichts verändert wurde.
+  Welche Stufe genügt, legt `selfReviewMinimumEnforcement` fest (Standard `verified`). Erreicht die
+  gewählte Oberfläche nicht einmal `verified`, gilt der Reviewer als nicht verfügbar.
+- `verified` ist bewusst schwächer als `true`: die Prüfung erkennt eine Verletzung, sie verhindert
+  sie nicht. Sie existiert, weil `true` in Umgebungen, deren einzige Credentials pushen können, gar
+  nicht erreichbar ist — dort war `self` vorher schlicht unbenutzbar, was kein Sicherheitsgewinn ist,
+  sondern ein Verfahren, das unbemerkt aufhört zu funktionieren.
+- Gleiches strukturiertes Reviewformat und dieselben Qualitätsregeln wie beim Cross-Review.
+- Das Ergebnis muss Anbieter, Sessiontyp und geprüften Head-SHA nennen.
+
+Eine neue Session behebt Kontextprobleme, aber kein kontoweites Nutzungslimit. Ist auch der
+Implementierungs-Anbieter nicht verfügbar, wechselt der PR zu `agent:waiting` und wird nach dem
+regulären Limit-Reset erneut versucht. Es gibt keinen Pfad, der ein Review überspringt: `human`
+verlagert das Review auf den Nutzer, statt es zu entfallen.
+
+## 5. Task-Vertrag und sichere Klassifikation
+
+Jeder automatisierte PR enthält einen maschinenlesbaren Task-Vertrag, beispielsweise als
+HTML-Kommentar im PR-Text:
+
+```text
+task-id: agent-20260726-001
+implementer: codex
+base-branch: main
+base-sha: <sha>
+head-branch: codex/<name>
+scope: frontend
+ui-change: yes|no|unknown
+max-ci-fix-rounds: 3
+max-review-rounds: 3
 ```
 
-### Rollenmodell (Cross-Review)
+Der sichtbare Teil des PR-Texts nennt zusätzlich Ziel, Abnahmekriterien, geänderte Bereiche,
+Prüfungen und bekannte Einschränkungen.
 
-| PR-Autor | Erkennung | Reviewer | Fixes/Kommentar-Umsetzung |
-|---|---|---|---|
-| Claude Code | Branch `claude/*` bzw. PR-Autor = Claude-App | **Codex** | Claude (Autor-Agent) |
-| Codex | Branch `codex/*` bzw. PR-Autor = Codex-Integration | **Claude** | Codex (Autor-Agent) |
-| Mensch | alles andere | optional beide, standardmäßig keine Automatik | Mensch |
+Branchpräfix und PR-Autor sind nur Plausibilitätsmerkmale. Die Automatik startet ausschließlich,
+wenn Task-Vertrag, Branch, Head-Repository und erlaubte GitHub-App-Identität zusammenpassen.
+Fork-PRs nehmen nicht an der schreibenden Automatik teil.
 
-Grundregel: **Der Autor-Agent repariert und setzt um, der Gegen-Agent reviewt.** Damit bleibt die
-Vier-Augen-Trennung erhalten – kein Agent approvt seine eigene Arbeit.
+## 6. Zustandsmodell
 
-## 3. Bausteine
+### Sichtbare Labels
 
-1. **Claude GitHub App + `anthropics/claude-code-action`** (GitHub Action): führt Reviews aus,
-   reagiert auf `@claude`-Mentions und kann mit einem Prompt gezielt beauftragt werden
-   („behebe den CI-Fehler auf diesem Branch“, „setze die Review-Kommentare um“). Authentifizierung
-   über `ANTHROPIC_API_KEY` oder `CLAUDE_CODE_OAUTH_TOKEN` als Repository-Secret.
-2. **Codex GitHub-Integration (Codex Cloud)**: wird über die Codex-/ChatGPT-Einstellungen mit dem
-   Repository verbunden. Danach reagiert Codex auf `@codex review` bzw. `@codex fix …`-Mentions in
-   PR-Kommentaren und kann PRs automatisch reviewen. Die genauen Fähigkeiten (automatisches Review
-   bei PR-Eröffnung vs. nur Mention-getrieben) sind vor Phase 2 gegen die aktuelle Codex-Doku zu
-   verifizieren – die Integration entwickelt sich schnell.
-3. **Eigene, schlanke Orchestrierungs-Workflows** unter `.github/workflows/`: kleine YAML-Dateien,
-   die auf PR-Ereignisse reagieren und den jeweils zuständigen Agent anstoßen. Keine zusätzliche
-   Infrastruktur, kein eigener Server – passt zum Grundsatz „schlanke Wartbarkeit“.
-4. **GitHub-Bordmittel**: Branch-Ruleset auf `main` (Pflichtchecks, Review-Pflicht,
-   Conversation-Resolution), natives Auto-Merge, Labels als Zustandsspeicher.
+| Label                   | Bedeutung                                                         |
+| ----------------------- | ----------------------------------------------------------------- |
+| `agent:pipeline`        | PR nimmt an der Automatik teil                                    |
+| `agent:implementing`    | Implementierungs-Agent arbeitet                                   |
+| `agent:ci-fix`          | CI-Fehler wird bearbeitet                                         |
+| `agent:conflict-fix`    | Mergekonflikt wird bearbeitet                                     |
+| `agent:review`          | gewähltes Review läuft oder steht aus                             |
+| `agent:review-fallback` | Ausweichreview, weil der zuerst gewählte Anbieter ausgefallen ist |
+| `review:cross`          | Nutzerwahl: Review durch den Gegen-Anbieter                       |
+| `review:self`           | Nutzerwahl: isoliertes Review des Implementierungs-Anbieters      |
+| `review:human`          | Nutzerwahl: menschliches Review                                   |
+| `agent:waiting`         | benötigter Anbieter oder Dienst ist vorübergehend nicht verfügbar |
+| `agent:needs-human`     | kritische Entscheidung oder Rundenlimit erreicht                  |
+| `agent:ready-for-merge` | alle maschinellen Gates für den aktuellen Head-SHA erfüllt        |
+| `ui:changed`            | PR enthält eine sichtbare UI/UX-Änderung                          |
+| `agent:no-auto`         | manueller Kill-Switch für diesen PR                               |
 
-### Wichtige technische Stolperfalle
+### Maschinenzustand
 
-Aktionen, die ein Workflow mit dem Standard-`GITHUB_TOKEN` ausführt (Kommentare, Pushes, Reviews),
-**lösen keine weiteren Workflows aus**. Damit die Kette „Agent pusht Fix → CI läuft erneut“
-funktioniert, müssen agentische Pushes und Kommentare über die **GitHub-App-Identität** (Claude
-App bzw. Codex-Integration) oder ein App-Token laufen, nicht über `GITHUB_TOKEN`. Die Claude- und
-Codex-Integrationen tun das von Haus aus; nur selbstgebaute Schritte (z. B. das
-Auto-Merge-Aktivieren) dürfen `GITHUB_TOKEN` nutzen, weil dort kein Folge-Trigger nötig ist.
+Die drei `review:*`-Labels gehören dem Nutzer. Unbeaufsichtigte Automatik setzt sie nie. Eine
+interaktive Agenten-Session darf genau eines ausschließlich als Übertragung einer ausdrücklichen,
+zum aktuellen Head-SHA gehörenden Nutzerantwort setzen. Die Pipeline entfernt genau eines davon:
+das an einen früheren Head gebundene, damit die Auswahl für den neuen Head erneut gestellt wird
+statt eine alte Antwort auf ungesehenen Code anzuwenden. Welcher Head zu einer Wahl gehört, hält
+die Pipeline in ihrem eigenen Statuskommentar fest; die Label-Historie des Pull Requests bleibt
+der eigentliche Prüfpfad, wer wann welchen Modus gewählt hat.
 
-## 4. Steuerung über Labels (Zustandsmaschine)
+Labels sind nicht der alleinige Zustandsspeicher. Ein einzelner, von der Pipeline aktualisierter
+Status enthält mindestens:
 
-| Label | Bedeutung |
-|---|---|
-| `auto-pipeline` | Automatik für diesen PR aktiv (Opt-in; wird für `claude/*`- und `codex/*`-PRs automatisch gesetzt) |
-| `no-auto` | Opt-out: Automatik fasst diesen PR nicht an, auch wenn er von einem Agent stammt |
-| `auto:fixing` | Autor-Agent arbeitet gerade (verhindert parallele Läufe zusätzlich zur `concurrency`-Gruppe) |
-| `auto:waiting` | Zuständiger Agent ist wegen Nutzungslimit/Rate-Limit nicht verfügbar; die anstehende Aktion wird per Schedule erneut versucht (siehe Abschnitt 6) |
-| `review:skip` | Nur vom Menschen zu setzen: auf das Agent-Review dieses PRs wird verzichtet, das Merge-Gate akzeptiert den PR ohne Gegen-Review (Abschnitt 6) |
-| `review:self` | Nur vom Menschen zu setzen: der Autor-Agent darf diesen PR ausnahmsweise selbst reviewen (Abschnitt 6) |
-| `needs-human` | Eskalation: Rundenlimit erreicht oder Fall, den die Automatik nicht entscheiden darf |
+- Task-ID und PR-Nummer,
+- Implementierungs- und Review-Anbieter,
+- gewählten Review-Modus und den Head-SHA, für den er gilt,
+- aktuellen Head-SHA und zuletzt geprüften SHA,
+- CI-Fix-, Konflikt- und Reviewrunde,
+- reguläres oder Fallback-Review,
+- letzte Aktion und Zeitstempel,
+- UI/UX-Benachrichtigungsstatus,
+- SHA-gebundener Zustellungsstatus der Review-Auswahl und gegebenenfalls Zustellungsfehler,
+- gegebenenfalls Warte- oder Eskalationsgrund.
 
-Labels sind bewusst der einzige Zustandsspeicher: sichtbar in der PR-Übersicht, manuell
-korrigierbar und ohne zusätzliche Datenhaltung.
+Die Umsetzung kann dafür einen eindeutig markierten, aktualisierbaren PR-Kommentar plus einen
+Commit-Status verwenden. Kommentare werden nicht als Rundenzähler ausgewertet. Jeder Übergang ist
+idempotent: derselbe Event darf weder eine zweite Agenten-Session noch einen zweiten Fix starten.
 
-## 5. Leitplanken (nicht verhandelbar)
+`concurrency` serialisiert Mutationen pro PR. Ein regelmäßiger Reconciler prüft zusätzlich offene
+PRs, falls Webhooks, Kommentare oder Anbieterreaktionen verloren gehen.
 
-- **Kein Agent approvt oder merged eigene Änderungen.** Approval kommt immer vom Gegen-Agent bzw.
-  vom Gate-Workflow, der das Gegen-Review geprüft hat. Einzige Ausnahme: der Mensch gibt den PR
-  bei limitbedingter Reviewer-Nichtverfügbarkeit ausdrücklich per `review:skip` oder `review:self`
-  frei (Abschnitt 6) – die Automatik selbst trifft diese Entscheidung nie.
-- **Rundenlimits:** maximal 3 CI-Fix-Runden und maximal 3 Review-Runden pro PR. Danach
-  `needs-human` + Benachrichtigung statt Endlosschleife. Das deckt sich mit der Richtlinie, einen
-  roten Pflichtcheck nicht durch bloßes Wiederholen zu umgehen: jede Runde muss eine echte
-  Ursachenanalyse enthalten.
-- **Kein Force-Push, keine destruktiven Git-Operationen.** Konflikte werden durch Merge von `main`
-  in den PR-Branch gelöst, nie durch Rebase mit Force-Push.
-- **`.github/workflows/**` und `infra/**` sind für die Automatik tabu:** Auto-Fixes dürfen die
-  Pipeline und die Server-Provisionierung nicht selbst umschreiben (Prompt-Regel plus Absicherung
-  im Gate: Änderungen an diesen Pfaden setzen `needs-human`).
-- **Tests bleiben Pflicht:** Der Autor-Agent darf Tests reparieren, aber nicht löschen oder
-  aufweichen, um grün zu werden (Abschnitt 8 der Richtlinien gilt unverändert; steht explizit im
-  Fix-Prompt).
-- **Kill-Switch:** Jeder Orchestrierungs-Workflow lässt sich über die GitHub-UI deaktivieren
-  („Disable workflow“); zusätzlich wirkt `no-auto` pro PR.
-- **Secrets:** nur `ANTHROPIC_API_KEY` bzw. `CLAUDE_CODE_OAUTH_TOKEN` als neues Repo-Secret. Die
-  Codex-Seite authentifiziert über die installierte Integration, kein API-Key im Repo. Bestehende
-  Deploy-Secrets bleiben unangetastet.
-- **Produktionsschutz unverändert:** Deployt wird weiterhin ausschließlich durch den bestehenden
-  `deploy`-Job nach Push auf `main`. Die Automatik erhält keinerlei SSH- oder Deploy-Rechte.
+Die Review-Auswahl wird nicht nur in diesem Sticky-Status gerendert. Sobald alle Vorbedingungen
+erfüllt sind, erzeugt der Reconciler einen neuen, `AGENT_PIPELINE_OWNER` erwähnenden PR-Kommentar
+mit Head-SHA, Implementierer, Gegenanbieter, Änderungsumfang seit der letzten Review-Runde,
+vorherigen Finding-Schweregraden, offenen Threads, Provider-/Timeout-Zustand, Empfehlung,
+Begründung und a/b/c. Der Marker
+`agent-pipeline:review-decision-notification <head-sha>` dedupliziert alle Wiederholungsläufe. Ein
+neuer Head erhält nach erneut grünen Vorbedingungen eine neue Nachricht; die alte Wahl verfällt.
+Scheitert die Zustellung, werden Sticky-Kommentar und Commit-Status sichtbar auf
+`review-decision-delivery-failed` gesetzt und der Workflow schlägt fehl.
 
-## 6. Nichtverfügbarkeit durch Nutzungslimits
+Eine direkte Codex-Task-Zustellung bleibt aus GitHub Actions nicht verfügbar: Die in der
+Desktop-App vorhandenen Thread-Werkzeuge sind keine aus einem Repository-Workflow aufrufbare API.
+Der externe Adapter läuft deshalb als einzelner Codex-seitiger Fünf-Minuten-Heartbeat-Monitor.
+GitHub bildet seine dauerhafte Outbox; der Monitor beobachtet Zustellmarker, provider-spezifische
+Review-Check-Runs, Current-Head-CI-Checks und abgeschlossene `main`-CI/CD-Läufe, ordnet PR und
+`task-id` über das optionale `codex-thread-id` oder den eindeutigen Head-Branch der ursprünglichen
+Codex-Task zu, weckt diese und quittiert erst nach erfolgreichem Versand mit
+`agent-pipeline:codex-delivery`. Ein tatsächlich laufender oder erfolgreich angenommener Review-
+Check erzeugt dabei eine positive Startmeldung; ein bloßer Workflow-Trigger nicht. Leere Scans
+bleiben bei `failed_runs_only` still. Für
+Claude-Implementierungen existiert keine belastbare Claude-Session-Wakeup-Schnittstelle; der
+Adapter erzeugt für sie deshalb keine Codex-Zustellereignisse und erfindet keine Task-ID. GitHub
+bleibt deren dokumentierte Outbox. Die interaktive Task überträgt weiterhin nur eine ausdrückliche
+Antwort für denselben Head-SHA als genau eines der drei Labels.
 
-Beide Agents unterliegen Nutzungslimits (Claude-API-Budget bzw. Abo-Zeitfenster, Codex-Kontingent
-mit 5-Stunden- und Wochenfenstern). Solche Limits setzen sich nach Ablauf des Fensters von selbst
-zurück – die Standardstrategie ist deshalb **warten und erneut versuchen, niemals umgehen**.
+## 7. CI-Fehler und Mergekonflikte
+
+### CI-Fehler
+
+1. Fehlgeschlagenen Workflow, Jobs und Logs erfassen.
+2. Infrastruktur-/Providerfehler von einem reproduzierbaren Codefehler unterscheiden.
+3. Implementierungs-Agent mit Run-Link und betroffenen Jobs beauftragen.
+4. Ursache beheben, die einschlägigen lokalen Prüfungen ausführen und pushen.
+5. Ursache, Änderung und Prüfergebnis im PR dokumentieren.
+6. Maximal drei echte Fix-Runden. Ein bloßer Retry ohne Codeänderung zählt nur, wenn ein
+   nachgewiesener transienter Infrastrukturfehler vorlag.
+
+Tests dürfen nicht gelöscht, gelockert oder mit pauschalen Timeouts überdeckt werden, um einen
+Lauf grün zu bekommen.
+
+### Testlauf-Regressionen
+
+Die CI misst Unit-/Integration-, Core-E2E-, Arcade-Smoke- und Arcade-E2E-Laufzeit getrennt von
+Setup und Build.
+Mehr als 20 Prozent und mindestens 30 Sekunden gegenüber dem Median der letzten fünf erfolgreichen
+`main`-Läufe lösen zunächst einen automatischen Wiederholungslauf der auffälligen Suite aus. Der
+stabile Required Check `Test performance` aggregiert Detektor und Wiederholung fail closed. Ein
+bestätigter Rückschritt oder ein technischer Fehler wird zum CI-Fehler und durchläuft die normale
+CI-Fix-Schleife. Der
+Implementierungs-Agent untersucht dann Ursache und langsamste Tests und reduziert die Laufzeit,
+ohne Abdeckung oder Assertions zu schwächen. Ist zusätzliche Laufzeit wegen notwendiger neuer
+Abdeckung unvermeidbar, wird sie im PR nachvollziehbar begründet und im Review bewertet.
+
+Core- und Arcade-E2E sind getrennte Checks. Eine getestete Pfadklassifikation startet den
+vollständigen Arcade-Lauf nur für Arcade-spezifische Bereiche. Gemeinsame Dateien und unbekannte
+Produktionspfade fallen sicher auf Core-E2E plus einen begrenzten Arcade-Smoke-Test zurück.
+Allgemeiner Socket-Transport und Arcade-Watcher-/Kiosk-Streaming sind in getrennten Modulen
+gekapselt, sodass Änderungen am allgemeinen Realtime-Modul keinen Arcade-Test benötigen. Die
+gemeinsamen Unit-/Integrationstests bleiben dabei verpflichtend. Ein täglicher Volltest bleibt als
+Sicherheitsnetz bestehen.
+
+### Mergekonflikte
+
+1. Aktuelles `main` in den Feature-Branch mergen.
+2. Beide Seiten des Konflikts inhaltlich verstehen; nie pauschal `ours` oder `theirs` wählen.
+3. Betroffene Prüfungen erneut ausführen und den Merge-Commit pushen.
+4. Danach CI und Review für den neuen Head-SHA vollständig wiederholen.
+
+Kein Rebase mit Force-Push. Konflikte in Authentifizierung, Datenbankmigrationen, Workflows,
+Infrastruktur oder widersprüchlicher Fachlogik werden nicht geraten, sondern eskaliert.
+
+## 8. Reviewformat und Findings-Schleife
+
+Jedes Review liefert maschinenlesbar:
+
+```text
+reviewer-provider: claude|codex
+review-mode: cross|self
+reviewed-head-sha: <sha>
+verdict: pass|changes-required|blocked
+findings:
+  - id: <finding-id>
+    severity: critical|high|medium|low
+    disposition: actionable|needs-human
+    anchor: inline|none
+    file: <path or null>
+    line: <line or null>
+    summary: <short text>
+    rationale: <why this matters>
+    verification: <how to verify the fix>
+```
+
+Actionable Findings werden als auflösbare Inline-Review-Threads mit konkretem Datei-/Zeilenanker
+veröffentlicht. Top-Level-PR-Kommentare können Kontext dokumentieren, gelten aber nicht als
+blockierende Findings und können das Merge-Gate nicht erfüllen. Gibt es keinen stabilen Inline-
+Anker, wird mit `disposition: needs-human`, `anchor: none`, `file: null`, `line: null` und
+`verdict: blocked` gekennzeichnet; die vollständigen Finding-Details bleiben im Ergebnis erhalten
+und das Gate bleibt blockiert.
+
+Der Implementierungs-Agent bearbeitet jedes Finding nachvollziehbar:
+
+- `fixed`: Änderung und Prüfung nennen,
+- `rejected`: fachliche Begründung liefern; der Reviewer entscheidet erneut. Bestätigt der Reviewer
+  die Zurückweisung oder erklärt das Finding für obsolet, wird der ursprüngliche Thread ebenfalls
+  abgeschlossen,
+- `needs-human`: bei kritischer oder mehrdeutiger Entscheidung eskalieren.
+
+Nach einem bestätigten `fixed`, einer akzeptierten Zurückweisung oder einer bestätigten Obsoleszenz
+markiert der Implementierungs-Agent den zugehörigen Inline-Review-Thread und die darin enthaltenen
+Kommentare als gelöst. Ein Finding gilt für das Merge-Gate erst als abgeschlossen, wenn die
+Behebung beziehungsweise Entscheidung geprüft und die zugehörige Review-Konversation gelöst ist.
+
+Nach jedem Fix-Commit beginnt ein vollständiger Review des neuen Head-SHAs, und zwar erneut mit der
+Auswahl des Modus samt Empfehlung. Nach drei erfolglosen Reviewrunden wird nicht weiter zwischen
+Agenten gependelt; der PR wechselt zu `agent:needs-human`.
+
+Ein Review durch den Implementierungs-Anbieter besitzt in GitHub keine eigene Entsprechung. Es
+veröffentlicht sein Verdikt deshalb zusätzlich als maschinenlesbaren Marker im PR. Wird das Review
+über `agent-review-session.mjs --headless` gestartet, schreibt die Review-Session selbst nichts: Sie
+gibt ihr Ergebnis nur aus, der Launcher prüft danach den Arbeitsbaum und hängt den Marker erst an,
+wenn diese Prüfung bestanden ist. Dadurch kann eine Verletzung keinen bereits veröffentlichten
+Marker hinterlassen, und die Review-Session braucht überhaupt keinen GitHub-Zugriff. Ein
+Fallback-Review verwendet denselben Marker mit `mode=self` und wird durch
+`agent:review-fallback` als solches ausgewiesen; einen vierten Marker-Modus kennt das Gate nicht:
+
+```text
+<!-- agent-pipeline:review-result <head-sha> mode=self verdict=pass session=<id> read-only=true -->
+```
+
+Nur ein Marker mit einer ausreichenden `read-only`-Stufe, passendem Head-SHA und `verdict=pass` von
+einer dafür erlaubten Identität erfüllt das Gate. Die Autorenprüfung ist bewusst enger als
+„vertrauenswürdiger Kommentarautor", der jedes `[bot]`-Konto einschließt. Im Modus `self` muss die
+Identität zum Implementierungs-Anbieter gehören. Im Modus `cross` kann eine provider-spezifische,
+vertrauenswürdige Workflow-Identität das strukturierte Ergebnis eines credential-read-only
+Review-Laufs veröffentlichen, wenn die Anbieterintegration kein natives GitHub-Review erzeugt.
+Im Modus `human` bleibt ein natives Review zum exakten Head-SHA der Nachweis: eine Approval oder,
+wenn der Mensch selbst PR-Autor ist, dessen `COMMENTED`-Review. GitHub verbietet Autoren die
+Approval des eigenen Pull Requests.
+
+## 9. Nutzungslimits und Nichtverfügbarkeit
 
 ### Erkennung
 
-- **Claude:** Der `claude-code-action`-Job schlägt mit einem erkennbaren API-Fehler fehl
-  (Rate-Limit `429`, erschöpftes Guthaben). Der Orchestrierungs-Workflow wertet die Fehlerart aus
-  und unterscheidet „Limit“ (warten) von „echter Fehler“ (Eskalation).
-- **Codex:** Es gibt keinen synchronen Fehlerkanal – eine Mention verhallt bei erschöpftem
-  Kontingent einfach. Deshalb prüft ein Watchdog (verzögerter Job bzw. der nächste Schedule-Lauf)
-  nach jeder `@codex …`-Mention, ob innerhalb von ~45 Minuten eine Reaktion erfolgt ist
-  (Kommentar, Review oder Push). Keine Reaktion → als „nicht verfügbar“ behandeln.
+- Claude: Action-Ausgang, strukturierte Fehlermeldung und bekannte Rate-/Budgetfehler auswerten.
+- Codex: Reaktion auf `@codex review` sowie Review-/Kommentarereignisse beobachten. Eine bekannte
+  Kontingentmeldung gilt sofort als Limit; ohne Reaktion greift ein konfigurierbarer Timeout.
+- Timeout allein ist kein sicherer Beweis für ein Nutzungslimit. Der Status nennt deshalb den
+  tatsächlich beobachteten Grund.
 
-### Verhalten
+### Reihenfolge
 
-1. Der PR erhält das Label `auto:waiting` plus einen kurzen Kommentar: welche Aktion aussteht
-   (Review, CI-Fix, Konfliktauflösung, Kommentar-Umsetzung), welcher Agent fehlt, Zeitstempel.
-2. **Sofortige Benachrichtigung bei verzögertem Review:** Betrifft die Wartesituation das
-   Gegen-Review, wird der Nutzer immer und unmittelbar informiert – nicht erst nach der
-   24-Stunden-Eskalation. Der Kommentar aus Schritt 1 enthält dazu eine `@`-Mention des Nutzers
-   (löst je nach GitHub-Einstellungen E-Mail-/Push-Benachrichtigung aus) und nennt die drei
-   Handlungsoptionen aus dem folgenden Unterabschnitt. Ohne Reaktion wartet die Automatik einfach
-   weiter – die Benachrichtigung ist ein Angebot, kein Zwang zu reagieren.
-3. Der bestehende Schedule-Lauf (Phase 3) versucht bei `auto:waiting`-PRs die ausstehende Aktion
-   erneut – dadurch entsteht ein natürlicher 2-Stunden-Backoff ohne zusätzliche Infrastruktur.
-   Wartezyklen zählen **nicht** auf die Rundenlimits aus Abschnitt 5; die zählen nur echte
-   Arbeitsrunden.
-4. Nach 24 Stunden ohne erfolgreiche Wiederaufnahme: Label `needs-human` + erneute
-   Benachrichtigung. Vermutlich liegt dann kein Zeitfenster-Limit vor, sondern ein erschöpftes
-   Budget oder ein Integrationsproblem, das ein Mensch klären muss.
+1. Den vom Nutzer gewählten Reviewer anfordern.
+2. Bei technischem Einzelfehler genau einmal neu zustellen. Ebenso, wenn die beobachtete Ursache ein
+   erkennbares Ende nennt oder impliziert — ein Nutzungslimit mit Reset-Zeitpunkt, ein Rate-Limit,
+   eine Infrastrukturstörung: Ursache und geplanten neuen Versuch melden, den Wegfall der Ursache
+   abwarten und danach denselben Modus einmal erneut anfordern, ohne die Auswahl neu vorzulegen. Die
+   Antwort des Nutzers gilt weiter, denn ausgefallen ist der Anbieter, nicht die Entscheidung. Der
+   erneute Versuch bindet an denselben Head; ein neuer Head lässt die Antwort verfallen.
+3. Bei unbekannter Ursache, nicht benennbarem Ende oder erneutem Ausfall nach Schritt 2 den
+   beobachteten Grund melden und dieselbe Auswahl erneut vorlegen, mit angepasster Empfehlung. Kein stillschweigender Wechsel des Modus: gerade
+   die Kontingentlage ist der Grund, aus dem der Nutzer diese Entscheidung selbst trifft. Wählt er
+   daraufhin den Implementierungs-Anbieter, läuft dessen isoliertes Review als
+   `agent:review-fallback`.
+   Ein vertrauenswürdig publizierter terminaler Startfehler für den exakten Head wird dabei pro
+   Workflow-Attempt genau einmal verarbeitet: Nur die fehlgeschlagene Auswahl wird gelöscht, der
+   Zustand wird `awaiting-review-decision`, und keine Alternative wird automatisch gesetzt.
+4. Ist kein Anbieter verfügbar und will der Nutzer nicht selbst reviewen, `agent:waiting` setzen
+   und zeitgesteuert erneut versuchen.
+5. Warteversuche und unbeantwortete Auswahlfragen zählen nicht als Reviewrunde.
+6. Liefert ein gewähltes Review nach `waitingEscalationHours` aus `.github/agent-pipeline/config.json`
+   (derzeit 2 Stunden) kein Ergebnis, meldet der Reconciler die Überfälligkeit als Blocker und als
+   eigene Zeile im Statuskommentar; nur bei einer tatsächlich nötigen Entscheidung zusätzlich
+   `agent:needs-human` setzen. Eine ausstehende Modus-Auswahl allein ist keine Eskalation, sondern
+   der Normalzustand `awaiting-review-decision`.
 
-### Optionen des Nutzers bei verzögertem Review
+Der lokale Plan `docs/plans/auto-resume-after-token-reset.md` kann unterbrochene lokale Sessions
+ergänzend fortsetzen. Für parallele Arbeiten muss er konkrete Session-IDs statt `--last`
+verwenden. Die GitHub-Pipeline bleibt die führende Quelle für den PR-Zustand.
 
-Ist das Review limitbedingt verzögert, hat der Nutzer pro PR immer drei Wege; die beiden
-Abkürzungen wählt er durch Setzen eines Labels, das nur für Menschen gedacht ist:
+## 10. UI/UX-Benachrichtigung
 
-1. **Warten (Standard, keine Aktion nötig):** Die Automatik versucht das Review weiter, sobald
-   der Reviewer-Agent wieder verfügbar ist.
-2. **`review:skip` – auf das Review verzichten:** Das Merge-Gate (Phase 5) behandelt den PR, als
-   läge ein `VERDICT: approve` vor. CI-Pflichtchecks gelten unverändert; der PR merged also erst,
-   wenn die Pipeline grün ist. Der Verzicht ist eine bewusste, im PR sichtbare Einzelfall-
-   Entscheidung des Menschen.
-3. **`review:self` – Selbst-Review durch den Autor-Agent:** Der Review-Workflow (Phase 1) startet
-   das Review ausnahmsweise beim Autor-Agent statt beim Gegen-Agent. Dessen `VERDICT` zählt für
-   das Gate; Änderungswünsche durchlaufen die normalen Runden aus Phase 4. Ein Selbst-Review
-   findet Flüchtigkeitsfehler, aber tendenziell nicht die eigenen Denkfehler – deshalb nur als
-   vom Menschen gesetzte Ausnahme, nie als automatischer Fallback.
+Eine UI/UX-Änderung wird zunächst über geänderte Pfade wie `server/public/**` erkannt. Der
+Implementierungs-Agent bestätigt zusätzlich im Task-Vertrag, ob die Änderung sichtbar ist; so
+werden auch serverseitig erzeugte Texte oder Zustände erfasst.
 
-Beide Labels wirken nur auf den jeweiligen PR und werden von der Automatik nie selbst gesetzt.
-Setzt der Nutzer das Label wieder ab, bevor das Gate gegriffen hat, gilt wieder der Standardweg.
+Sobald der Branch sinnvoll prüfbar ist, erhält der Nutzer eine aktualisierbare Nachricht mit:
 
-### Grundsätze
+- kurzer Beschreibung der sichtbaren Änderung,
+- exaktem Branch-Namen,
+- PR-Link,
+- betroffenen Ansichten und relevanten Bildschirmgrößen,
+- konkreten Schritten zur manuellen Prüfung,
+- Screenshots oder Preview-Link, sofern verfügbar und sinnvoll,
+- Hinweis auf bekannte Einschränkungen.
 
-- **Die Automatik überspringt das Review-Gate nie von sich aus.** Ohne menschliche Freigabe per
-  `review:skip`/`review:self` wartet der PR, egal wie grün die CI ist.
-- **Kein Selbst-Review als automatischer Fallback.** Selbst-Review gibt es ausschließlich als
-  bewusste Einzelfall-Entscheidung des Menschen über `review:self`.
-- **Degradierter Modus für Fixes (optional, siehe offene Entscheidungen):** Ist der
-  *Autor*-Agent dauerhaft nicht verfügbar, darf der jeweils andere Agent CI-Fixes,
-  Konfliktauflösungen und Kommentar-Umsetzungen übernehmen. Da dann Fixer und Reviewer dieselbe
-  Instanz sind, ist die Vier-Augen-Trennung verletzt – in diesem Modus setzt das Merge-Gate
-  automatisch `needs-human`, und das finale Approval kommt von einem Menschen. Vollautomatisch
-  bis Produktion gibt es nur bei intakter Rollentrennung.
-- **CI und Deployment sind nicht betroffen:** Nutzungslimits treffen nur die Agents. Pflichtchecks
-  und der bestehende Deploy-Job laufen unverändert; ein wartender PR blockiert keine anderen PRs
-  und kein laufendes Deployment.
+Verändert eine Review-Korrektur das Erscheinungsbild wesentlich, wird dieselbe Nachricht
+aktualisiert. Unwesentliche Folgecommits erzeugen keine wiederholten Benachrichtigungen. Die
+UI/UX-Nachricht ist Voraussetzung für `agent:ready-for-merge`, wenn `ui:changed` gesetzt ist.
 
-## 7. Schritt-für-Schritt-Plan
+## 11. Menschliches Merge-Gate
 
-### Phase 0 – Voraussetzungen und Bestandsaufnahme (manuell, einmalig)
+Der Required Status `Agent pipeline / ready for human merge` wird für den aktuellen Head-SHA nur
+erfolgreich, wenn:
 
-1. **Claude GitHub App installieren** (falls noch nicht geschehen): in einer lokalen Claude-Code-
-   Session `/install-github-app` ausführen oder über github.com/apps/claude installieren und dem
-   Repo `blorbeer-cmd/Respawn` Zugriff geben.
-2. **Secret anlegen:** `ANTHROPIC_API_KEY` (oder `CLAUDE_CODE_OAUTH_TOKEN` aus einem
-   Claude-Abo) unter *Settings → Secrets and variables → Actions*.
-3. **Codex-GitHub-Integration verbinden:** in den Codex-Einstellungen (ChatGPT → Codex →
-   Code Review / GitHub) das Repo verbinden und prüfen: Reagiert Codex auf `@codex review`?
-   Gibt es automatisches Review bei PR-Eröffnung? Ergebnis im Plan-Dokument nachtragen, weil
-   Phase 2 davon abhängt.
-4. **Repo-Einstellungen:** unter *Settings → General* „Allow auto-merge“ aktivieren und unter
-   *Settings → Actions → General* „Allow GitHub Actions to create and approve pull requests“
-   erlauben (wird vom Merge-Gate in Phase 5 benötigt).
-5. **Branch-Ruleset für `main`** anlegen bzw. prüfen: Required Status Check „Build and test“,
-   mindestens 1 Approval, „Require conversation resolution before merging“. Damit ist Auto-Merge
-   technisch erst möglich, wenn CI grün ist und ein Gegen-Review vorliegt.
-6. **Labels anlegen:** `auto-pipeline`, `no-auto`, `auto:fixing`, `auto:waiting`, `review:skip`,
-   `review:self`, `needs-human`.
+- der Task-Vertrag gültig ist,
+- alle einschlägigen CI-Checks grün sind,
+- kein bestätigter ungeklärter Testlauf-Rückschritt für den aktuellen Head offen ist,
+- der Branch aktuell und konfliktfrei ist,
+- der PR nicht mehr als Draft markiert ist,
+- für den aktuellen Head-SHA genau ein Review-Modus gewählt ist,
+- das Review exakt den aktuellen Head-SHA geprüft hat,
+- das Review im gewählten Modus `pass` meldet: bei `cross` je nach `crossReviewEvidence` als
+  Approval des Gegen-Anbieters oder — Standard — als dessen natives Review genau dieses Heads ohne
+  offene Findings beziehungsweise als validierter, credential-read-only Ergebnis-Marker seines
+  dedizierten Publishers; ein ausdrückliches `CHANGES_REQUESTED` oder `changes-required` blockiert.
+  Weiter bei
+  `self` als vertrauenswürdiger Ergebnis-Marker, dessen `read-only`-Stufe
+  `selfReviewMinimumEnforcement` erreicht, bei `human` als Approval eines Menschen mit
+  Schreibzugriff oder als `COMMENTED`-Review des schreibberechtigten PR-Autors,
+- alle blockierenden Review-Findings erledigt und jeder zugehörige auflösbare Inline-Review-Thread
+  als gelöst markiert ist,
+- Thread-Snapshots für den aktuellen Head monoton versioniert sind und kein älterer Snapshot einen
+  neueren Diskussionsstand überschreiben kann,
+- kein `agent:waiting`, `agent:needs-human` oder `agent:no-auto` aktiv ist,
+- bei UI/UX-Änderungen die Prüfinformation versendet wurde,
+- Änderungen an Workflow oder Infrastruktur für den aktuellen Head ausdrücklich durch eine
+  unabhängige menschliche Approval freigegeben wurden und keine Secrets automatisiert verändert
+  werden. Die Autoren-`COMMENTED`-Ausnahme des Modus `human` erfüllt dieses Schutzgate nicht.
 
-Verifikation Phase 0: Test-PR von Hand öffnen, `@claude` und `@codex` je einmal erwähnen und
-prüfen, dass beide antworten.
+In den Modi `self` und `human` ist das Gate bewusst schwächer als beim Cross-Review: bei `self`
+kann es nur prüfen, dass ein head-gebundener, vollständiger Ergebnis-Marker von einer
+vertrauenswürdigen Identität stammt und welche Read-only-Stufe er nennt, nicht aber die tatsächliche
+Unabhängigkeit der Session — die erreichte Stufe steht deshalb im Statuskommentar neben dem Modus; bei
+`human` fallen Review und Merge auf dieselbe Person. Beides ist zulässig, weil es eine ausdrückliche
+Wahl für genau diesen Head-SHA ist, als Label sichtbar bleibt und im Statuskommentar samt Hinweis
+auf die reduzierte Unabhängigkeit protokolliert wird. Alle übrigen Gate-Bedingungen gelten in jedem
+Modus unverändert.
 
-### Phase 1 – Cross-Review-Workflow (`.github/workflows/agent-review.yml`)
+Das Gate setzt `agent:ready-for-merge` und informiert den Nutzer. Es approvt und merged nicht.
+Auto-Merge bleibt aus. Der Nutzer prüft den PR und führt den Merge selbst aus. Damit ist dieser
+Klick zugleich die bewusste Freigabe für das anschließend automatisch startende
+Produktionsdeployment.
 
-Trigger: `pull_request` (`opened`, `ready_for_review`, `synchronize` nach Fix-Runden über
-Re-Review-Anforderung).
+## 12. Eskalationsregeln
 
-1. Job „classify“: bestimmt aus Head-Branch-Präfix (`claude/`, `codex/`) und PR-Autor den
-   Autor-Agent; setzt bei Agent-PRs das Label `auto-pipeline` (sofern nicht `no-auto`).
-2. Job „request-review“ (nur mit `auto-pipeline`, nicht bei Draft):
-   - Trägt der PR das vom Menschen gesetzte Label `review:self` (Abschnitt 6), geht der
-     Review-Auftrag an den Autor-Agent statt an den Gegen-Agent; bei `review:skip` entfällt der
-     Review-Auftrag ganz.
-   - Autor = Claude → Kommentar `@codex review` posten (bzw. den in Phase 0 verifizierten
-     Codex-Review-Mechanismus nutzen).
-   - Autor = Codex → `anthropics/claude-code-action` mit Review-Prompt starten. Der Prompt
-     verlangt ein Review nach `DEVELOPMENT_GUIDELINES.md` (Race-Sicherheit, Testmatrix,
-     Design-Tokens, Doku-Pflicht) und als Abschluss ein klares maschinenlesbares Urteil im
-     Review-Text: `VERDICT: approve` oder `VERDICT: request-changes` mit begründeten
-     Einzelkommentaren.
-3. `concurrency: agent-review-${{ github.event.pull_request.number }}` verhindert überlappende
-   Reviews desselben PRs.
+### Ohne Rückfrage automatisch bearbeiten
 
-Verifikation: je ein Dummy-PR von Claude- und Codex-Seite; erwartet wird genau ein Review vom
-jeweils anderen Agent.
+- normale Implementierungsdetails innerhalb eindeutiger Abnahmekriterien,
+- reproduzierbare CI-, Lint-, Build- und Testfehler,
+- klar lösbare Mergekonflikte,
+- konkrete Review-Findings mit eindeutigem Fix,
+- temporäre Anbieter- und Nutzungslimits,
+- Dokumentation und Tests, die unmittelbar zur Änderung gehören.
 
-### Phase 2 – Auto-Fix bei CI-Fehlern (`.github/workflows/agent-autofix.yml`)
+### Nutzer fragen und auf die Antwort warten
 
-Trigger: `workflow_run` (Workflow „CI/CD“, `conclusion == failure`), zugeordneten PR ermitteln.
+- wer das Review für den aktuellen Head-SHA durchführt. Diese Frage hält die Pipeline an, ohne sie
+  zu eskalieren: kein Auto-Start nach Zeitablauf, keine Ersatzwahl durch einen Agenten. Sie hält
+  dabei nur die Pipeline an, nicht den Nutzer: Sie wird als Text vorgelegt und nie über ein
+  blockierendes Frage-Werkzeug, das die Eingabe der Session bis zur Antwort sperren würde. Pro
+  Head-SHA wird sie höchstens einmal gestellt und mit dem Merge oder Schließen des Pull Requests gar
+  nicht mehr (`.github/agent-pipeline/review-decision.md`).
 
-1. Vorbedingungen prüfen: PR offen, Label `auto-pipeline`, kein `no-auto`/`needs-human`,
-   Fix-Rundenzähler < 3 (Zählung über die Anzahl bisheriger Auto-Fix-Kommentare des Workflows am
-   PR – kein separater Speicher nötig).
-2. Autor = Claude → `claude-code-action` checkt den PR-Branch aus, liest die fehlgeschlagenen
-   Job-Logs, analysiert die Ursache, fixt, führt die betroffenen Prüfungen aus der Testmatrix
-   lokal aus und pusht. Autor = Codex → Kommentar `@codex Die CI ist fehlgeschlagen (Link zum
-   Run). Analysiere die Ursache und pushe einen Fix auf diesen Branch.`
-3. Jede Runde hinterlässt einen kurzen PR-Kommentar (Ursache → Fix), damit die Historie
-   nachvollziehbar bleibt und der Rundenzähler daraus ablesbar ist.
-4. Limit erreicht oder Fix unmöglich (z. B. Ursache in `.github/**`): Label `needs-human`,
-   zusammenfassender Kommentar mit Diagnose.
+### Nutzer informieren, aber nicht anhalten
 
-### Phase 3 – Merge-Konflikte automatisch auflösen
+- UI/UX-Änderung ist prüfbar,
+- Fallback-Review wurde verwendet,
+- zeitweiliges Warten auf einen Anbieter,
+- transienter CI-Dienstfehler wurde erneut ausgeführt.
 
-Gleicher Workflow wie Phase 2, zusätzlicher Trigger: `push` auf `main` sowie `schedule`
-(z. B. alle 2 Stunden als Fangnetz, GitHub liefert für Konflikt-Zustände kein Event). Derselbe
-Schedule-Lauf nimmt auch `auto:waiting`-PRs wieder auf (Abschnitt 6) und prüft als
-Codex-Watchdog, ob offene `@codex`-Mentions unbeantwortet geblieben sind.
+### Nutzer fragen und Pipeline anhalten
 
-1. Alle offenen `auto-pipeline`-PRs auflisten; bei `mergeable_state == dirty` den Autor-Agent
-   beauftragen: `git merge origin/main` auf dem PR-Branch, Konflikte inhaltlich auflösen (beide
-   Seiten verstehen, nicht schematisch „ours/theirs“), betroffene Prüfungen ausführen, pushen.
-2. Konflikte in Changelog-Dateien (`docs/changelog/**`) sind der häufigste Fall und fast immer
-   additiv lösbar (beide Einträge behalten, Chronologie wahren) – das steht explizit im Prompt.
-3. Kein Force-Push; scheitert die Auflösung, `needs-human` + Kommentar mit Konfliktdateien.
+- möglicher Datenverlust oder destruktive Datenbankmigration,
+- Änderung von Authentifizierung, Berechtigungen, Secrets oder Sicherheitsgrenzen,
+- Änderung von Produktion, Infrastruktur oder Deployment,
+- neue Architektur, neues Framework oder wesentliche Produktionsabhängigkeit,
+- mehrere plausible Produktauslegungen mit deutlich unterschiedlichem Verhalten,
+- notwendiges Löschen, Lockern oder Umgehen von Tests,
+- semantisch riskanter Mergekonflikt,
+- fachliche Uneinigkeit nach drei Reviewrunden,
+- drei erfolglose echte CI-Fix-Runden,
+- fehlende Berechtigung oder externer Zustand, den die Automatik nicht sicher ändern darf,
+- finaler Merge.
 
-### Phase 4 – Review-Kommentare automatisch umsetzen
+## 13. Sicherheits- und Betriebsgrenzen
 
-Trigger: `pull_request_review` (`submitted`) und `issue_comment`/`pull_request_review_comment`
-vom Gegen-Agent.
+- GitHub-Workflow-Berechtigungen pro Job minimal vergeben; der globale Repository-Default kann
+  read-only bleiben.
+- Agenten dürfen nur den eigenen Feature-Branch ändern. Kein Token darf direkten Push auf `main`,
+  Merge, Branch-Protection-Änderung oder Zugriff auf Deploy-Secrets erlauben.
+- PR-validierende Workflows verwenden `pull_request_target` oder einen Default-Branch-eigenen Dispatcher,
+  sodass GitHub ausschließlich die Workflowdefinition vom vertrauenswürdigen Default-Branch lädt.
+  Validator und Konfiguration stammen ebenfalls ausschließlich vom Default-Branch; als PR-Base ist
+  nur dieser konfigurierte Branch zulässig. Der PR-Head wird nur als Diff-Datenquelle verwendet und
+  nie ausgeführt; insbesondere nie zusammen mit Schreibtoken oder Secrets.
+- Schreibende Automatik nur für Branches im Hauptrepository, gültigen Task-Vertrag und erlaubte
+  App-Identitäten. Der verifizierte PR-Autor muss dabei zur provider-spezifischen Allow-List passen.
+- Drittanbieter-Actions auf feste Commit-SHAs pinnen und Updates bewusst prüfen.
+- Aktionen des Standard-`GITHUB_TOKEN` lösen meist keine Folgeworkflows aus. Interne Übergänge
+  deshalb explizit über `workflow_dispatch`/`repository_dispatch`, App-Ereignisse oder den
+  Reconciler modellieren.
+- Kill-Switches: Workflow deaktivieren, `agent:no-auto` pro PR und optional eine
+  Repository-Variable für einen globalen Stopp.
+- Jeder Agentenlauf und Zustandswechsel wird mit Task-ID, SHA, Anbieter und Ergebnis protokolliert.
 
-1. Nur reagieren, wenn das Review vom Reviewer-Agent stammt und Änderungen fordert
-   (`request-changes`-Verdict bzw. `changes_requested`).
-2. Autor-Agent setzt die Kommentare um: jede Anmerkung entweder umsetzen (Commit + kurze Antwort
-   am Thread) oder mit fachlicher Begründung ablehnen (Antwort am Thread, Thread bleibt offen für
-   den Reviewer). Danach Re-Review anfordern → Phase 1 greift erneut.
-3. Rundenlimit 3 (Zählung über die Anzahl der Reviews des Gegen-Agents). Sind sich die Agents
-   danach uneinig, `needs-human` – Meinungsverschiedenheiten zwischen zwei Modellen sind ein
-   erwünschter Stopp-Grund, kein Fehler.
+## 14. Schritt-für-Schritt-Umsetzungsplan
 
-### Phase 5 – Merge-Gate und Auto-Merge (`.github/workflows/agent-automerge.yml`)
+### Phase 0 – Integrationen und Berechtigungen verifizieren
 
-Trigger: `pull_request_review` (`submitted`), `workflow_run` (CI erfolgreich).
+1. Claude GitHub App installieren beziehungsweise Zugriff auf das Repository prüfen.
+2. `ANTHROPIC_API_KEY` oder `CLAUDE_CODE_OAUTH_TOKEN` als Actions-Secret konfigurieren.
+3. Codex Cloud und Codex Code Review für das Repository aktivieren.
+4. `AGENT_PIPELINE_REVIEW_REQUEST_TOKEN` als Actions-Secret hinterlegen: ein Token eines mit Codex
+   verbundenen GitHub-Kontos. Die Codex-Integration weist ein `@codex review` von
+   `github-actions[bot]` ab, deshalb setzt der Workflow ohne dieses Secret bewusst keine Anfrage ab
+   und meldet den Fehlversuch am Pull Request.
+5. Mit zwei Test-PRs prüfen:
+   - `@codex review` reagiert und nennt den geprüften SHA,
+   - Claude Code Action kann strukturiert reviewen,
+   - beide Anbieter dürfen auf eigene Feature-Branches pushen,
+   - keiner darf `main` pushen oder mergen.
+6. GitHub-Benutzername für Pipeline-Benachrichtigungen als Repository-Variable hinterlegen.
 
-1. Gate-Bedingungen: Label `auto-pipeline`, kein `needs-human`/`no-auto`, letztes Review des
-   zuständigen Reviewers enthält `VERDICT: approve` (Gegen-Agent; bei `review:self` der
-   Autor-Agent, bei `review:skip` entfällt diese Bedingung gemäß Abschnitt 6), alle
-   Review-Threads resolved, PR ist kein Draft, Diff enthält keine Änderungen unter
-   `.github/workflows/**` oder `infra/**`.
-2. Gate erfüllt → formales Approval durch den Gate-Job (github-actions-Bot, deshalb die
-   Einstellung aus Phase 0.4) und natives Auto-Merge (Squash) aktivieren. GitHub merged dann
-   selbstständig, sobald der Pflichtcheck grün ist – Reihenfolgeprobleme zwischen „Review fertig“
-   und „CI fertig“ löst Auto-Merge von allein.
-3. Merge auf `main` → bestehender `deploy`-Job baut, veröffentlicht und deployt unverändert.
-   Die `production-deploy`-Concurrency-Gruppe serialisiert mehrere schnell aufeinanderfolgende
-   Auto-Merges bereits heute korrekt.
+Abnahme: dokumentierte Identitäten, Berechtigungen, Timeouts und tatsächlich beobachtete
+Limitmeldungen beider Anbieter.
 
-### Phase 6 – Changelog-Automatik (`.github/workflows/agent-changelog.yml`)
+### Phase 1 – Task-Vertrag, Labels und PR-Vorlage
 
-Trigger: `pull_request` (`closed`, `merged == true`).
+1. PR-Template um den Task-Vertrag und die sichtbare Zusammenfassung ergänzen.
+2. Labels aus Abschnitt 6 anlegen.
+3. Task-Vertrag validieren und Branch/Identität gegen eine Allow-List prüfen.
+4. Ungültige oder fremde PRs sicher ignorieren und mit verständlicher Diagnose markieren.
 
-1. `claude-code-action` legt gemäß Abschnitt 10 der Richtlinien den Eintrag unter
-   `docs/changelog/pr/` an, aktualisiert `docs/changelog/branches/` und `docs/changelog/README.md`
-   – mit den **echten** Merge-Metadaten aus dem Event (PR-Nummer, Datum, Branch, Merge-SHA),
-   niemals erfundenen.
-2. Commit direkt auf `main` (nur `docs/**`; die bestehende `paths-ignore`-Regel verhindert, dass
-   dieser Docs-Commit ein erneutes Produktiv-Deployment auslöst). Alternative, falls das Ruleset
-   direkte Pushes verbietet: Mini-PR mit `auto-pipeline`-Label, der denselben Weg durch das Gate
-   nimmt.
-3. Damit entfällt die Changelog-Pflege als manueller Schritt und als häufigste Konfliktquelle in
-   Feature-PRs.
+Abnahme: gültige Agenten-PRs werden eindeutig klassifiziert; Forks und manipulierte Metadaten
+erhalten keine schreibende Automatik.
 
-### Phase 7 – Pilotbetrieb und Feinschliff
+### Phase 2 – Readiness-Modell und Reconciler
 
-1. Ein echtes, kleines Feature vollständig durch die Pipeline laufen lassen (Claude-PR → Codex-
-   Review) und den Spiegel-Fall (Codex-PR → Claude-Review).
-2. Bewusst einen CI-Fehler und einen Merge-Konflikt provozieren und die Fix-Runden beobachten.
-3. Rundenlimits, Prompts und Schedule-Frequenz anhand der Ergebnisse justieren.
-4. Betriebsdokumentation: Kill-Switch, Labels, Eskalationsweg und Kostenhinweise in `README.md`
-   bzw. `server/OPERATIONS.md` ergänzen; Changelog-Eintrag für das Automatisierungs-PR selbst.
+1. Kleine, testbare Zustandslogik implementieren, getrennt von den Workflow-YAML-Dateien.
+2. Sticky-Status, Labels, SHA-Bindung, genau einmalige aktive Review-Auswahl-Zustellung und
+   Rundenzähler idempotent aktualisieren.
+3. `concurrency` pro PR und einen regelmäßigen Reconciler einrichten.
+4. Doppelzustellung, verspätete Events und einen neuen Commit während eines Reviews testen.
 
-## 8. Aufwand, Kosten, Risiken
+Bauform: Readiness aus dem aktuellen GitHub-Stand ableiten, nicht aus einem eigenen Eventstrom.
+GitHub hält Check-Runs, `mergeable_state`, Reviews und Review-Threads bereits pro SHA vor. Ein
+Reconciler, der diesen Stand bei jedem Lauf vollständig liest und Readiness als reine Funktion
+daraus berechnet, hat kein Ordnungsproblem: keine Sequenznummern, keine Snapshot-IDs, keine
+verspäteten oder doppelten Events. Ein erster Entwurf als eventgetriebener Reducer wurde in
+mehreren Reviewrunden verworfen, weil jeder Eventtyp seine Staleness-Prüfung selbst mitbringen
+musste und dabei wiederholt Race Conditions entstanden. Falls doch eigener Zustand nötig wird:
+genau eine zentrale Vorprüfung vor der Fallunterscheidung, genau eine Stelle, die Phase und
+Blocker schreibt, und jede kopfbezogene Klassifizierung fällt bei einem neuen Head einheitlich
+auf „unbekannt“ und damit blockierend zurück.
 
-- **Kosten:** Jede Review-, Fix- und Changelog-Runde verbraucht Claude-API-Tokens bzw.
-  Codex-Kontingent; die GitHub-Actions-Minuten selbst sind im öffentlichen/kleinen Rahmen
-  vernachlässigbar. Die Rundenlimits begrenzen das Kostenrisiko nach oben.
-- **Größtes fachliches Risiko:** Zwei Agents einigen sich auf eine falsche Lösung. Abmilderung:
-  striktes Cross-Review (nie Selbst-Approval), unveränderte Pflicht-CI als objektives Gate,
-  `needs-human` bei Uneinigkeit, Deploy-Rollback im bestehenden `deploy`-Job als letztes Netz.
-- **Verhaltensdrift der Integrationen:** Sowohl `claude-code-action` als auch die
-  Codex-Integration ändern sich laufend. Die Orchestrierung bleibt deshalb bewusst dünn
-  (Mentions, Labels, ein Gate) statt eng an interne APIs gekoppelt.
-- **Sicherheit:** Die Automatik arbeitet nur mit PR-Scope (contents/PR/issues write). Deploy-
-  Secrets (`SSH_PRIVATE_KEY`, `HETZNER_HOST`) bleiben exklusiv beim bestehenden Deploy-Job mit
-  Environment `production`.
+Abnahme: Ein Event kann gefahrlos mehrfach eintreffen; nur ein Agent arbeitet gleichzeitig am PR;
+pro Head entsteht höchstens eine aktive Auswahlbenachrichtigung und ein Zustellungsfehler bleibt als
+Pipeline-Blocker sichtbar.
 
-## 9. Offene Entscheidungen (vor Phase 1 klären)
+### Phase 3 – Automatische CI- und Konfliktkorrektur
 
-1. **Letzte menschliche Instanz vor Produktion?** Standard dieses Konzepts: vollautomatisch bis
-   Produktion. Alternativ kann das GitHub-Environment `production` einen „Required reviewer“
-   erhalten – dann läuft alles automatisch bis zum Merge, und nur das Deployment wartet auf einen
-   Klick. Empfehlung: erst mit manueller Deploy-Freigabe pilotieren, nach stabilen Durchläufen auf
-   vollautomatisch stellen.
-2. **Gilt die Automatik auch für menschliche PRs?** Empfehlung: nein; Menschen setzen bei Bedarf
-   selbst `auto-pipeline`.
-3. **Codex-Fähigkeiten:** Ob Codex auf `@codex fix …` zuverlässig Commits auf Fremd-PR-Branches
-   pusht, entscheidet, ob die Codex-Seite der Fix-Automatik (Phasen 2–4 für `codex/*`-PRs) sofort
-   oder erst später kommt. Fallback: Claude übernimmt Fixes auch auf Codex-PRs, das Review bleibt
-   trotzdem beim jeweils anderen Agent – die Vier-Augen-Trennung gilt dann pro Commit-Runde nur
-   noch eingeschränkt und wird im Pilot bewertet.
-4. **Degradierter Modus bei Nutzungslimits (Abschnitt 6):** Darf der jeweils andere Agent die
-   Fixes übernehmen, wenn der Autor-Agent dauerhaft nicht verfügbar ist (dann mit menschlichem
-   Final-Approval), oder wartet der PR strikt, bis der Autor-Agent wieder verfügbar ist?
-   Empfehlung: im Pilot strikt warten; den degradierten Modus erst freischalten, wenn die
-   Grundautomatik stabil läuft.
+Teilstand: Der Codex-seitige Heartbeat erkennt für offene Codex-Agenten-PRs den jeweils neuesten
+Check-Run pro Namen. Jeder neue fehlgeschlagene Versuch wird mit Job-/Run-Link an die ursprüngliche
+Implementierungs-Task zugestellt und erst nach erfolgreichem Versand dauerhaft quittiert. Die Task
+informiert den Nutzer, klassifiziert transient gegen reproduzierbar und setzt den normalen
+Fix-/Retry-Ablauf automatisch fort; die Obergrenze ist das im Task-Vertrag des PR stehende
+`max-ci-fix-rounds` und wird im Prompt genannt. Nach dem Merge werden nur aktuell ungelöste
+fehlgeschlagene `CI/CD`-Runs seit dem letzten erfolgreichen `main`-Lauf über den Merge-Commit zum
+Ursprungs-PR zurückverfolgt; ist diese Erfolgsgrenze im geblätterten Fenster nicht sichtbar, wird
+gar nichts zugestellt statt eine abgeschnittene Historie nachzuspielen. Insbesondere ein
+fehlgeschlagener Deploy weckt dieselbe Task mit der Pflicht, Rollback und Produktionszustand zu
+verifizieren. Ein Code-Fix beginnt dann auf einem neuen Branch/PR, nie auf `main` oder dem gemergten
+Branch. Diese Zustellung ist noch kein unabhängiger Fix-Worker und deckt mangels
+Wake-up-Schnittstelle keine ursprünglichen Claude-Tasks ab.
 
-## 10. Nicht Bestandteil dieses Vorhabens
+1. Fehlgeschlagene CI-Läufe dem PR und Head-SHA zuordnen.
+2. Implementierungs-Agent mit Logs und klar begrenztem Fix-Auftrag starten.
+3. Mergekonflikte nach Push auf `main` und im Reconciler erkennen.
+4. Konfliktlösung, Tests, Push und erneute Gate-Auswertung automatisieren.
+5. Rundenlimits und kritische Eskalationen durchsetzen.
+6. Bestätigte Testlauf-Regressionen wie andere reproduzierbare CI-Fehler an den Implementierungs-
+   Agenten geben; unvermeidbare Laufzeit durch neue Abdeckung sichtbar begründen.
 
-- Keine Änderung an Test-, Build- oder Deploy-Logik in `deploy.yml` (außer keinerlei Änderung –
-  die Orchestrierung liegt in neuen, separaten Workflow-Dateien).
-- Kein eigener Orchestrierungs-Server, keine neue Produktionsabhängigkeit.
-- Keine Automatisierung der Issue-/Feature-Planung („Feature fertig“ bleibt der Startpunkt).
-- Keine Lockerung von Branch-Schutz, Tests oder Sicherheitsgrenzen zugunsten der Automatik.
+Abnahme: je ein absichtlich erzeugter Codefehler, transienter CI-Fehler und einfacher
+Mergekonflikt werden korrekt behandelt; ein riskanter Konflikt stoppt.
+
+### Phase 4 – Cross-Review und strukturierte Ergebnisse
+
+Teilstand: Die Auswahl `review:cross` startet für mechanisch review-bereite Heads beide regulären
+Richtungen: für eine Codex-Implementierung genau einen credential-read-only Claude-Lauf und für eine
+Claude-Implementierung genau eine native Codex-Review-Anforderung. Das Claude-Ergebnis wird
+validiert, an den aktuellen Head gebunden und vom vertrauenswürdigen Workflow veröffentlicht; der
+Codex-Adapter bindet seine `@codex review`-Anforderung über einen exact-head Marker und überlässt
+die Review-Evidenz dem nativen GitHub-Review. Der PR-Checkout wird nach der Diff-Erzeugung und vor
+Übergabe des Provider-Secrets vollständig entfernt; damit können Gedächtnisdateien des Heads nicht
+als Claude-Code-Anweisungen geladen werden. Findings-Schleife, Fallback und Rundenlimits bleiben
+offen.
+
+1. Auswahl des Review-Modus mit Empfehlung vorlegen und das Review an den gewählten Reviewer
+   routen: `cross` an den Gegen-Anbieter, `self` an eine frische, schreibgeschützte Session des
+   Implementierungs-Anbieters, `human` an den Nutzer.
+2. Gemeinsamen Review-Prompt aus Repository-Richtlinien und bereichsspezifischen `AGENTS.md`
+   erzeugen.
+3. Reviewformat aus Abschnitt 8 validieren und an den exakten Head-SHA binden.
+4. Findings an den Implementierungs-Agent zurückgeben und Antworten nachverfolgen.
+5. Nach jedem Fix ein neues Review erzwingen, beginnend mit einer neuen Auswahl.
+
+Abnahme: alle drei Modi liefern reproduzierbare `pass`-/`changes-required`-Ergebnisse; ein
+veraltetes Review und eine an einen früheren Head gebundene Wahl können das Gate nicht öffnen.
+
+Umsetzungsstand: Die Auswahl selbst, ihre GitHub-Outbox-Zustellung, der externe Codex-Task-Monitor
+und beide regulären Provider-Adapter sind umgesetzt. Cross- und Self-Reviews wurden in beiden
+Implementierer-Richtungen pilotiert; die Human-Piloten nach #396 sind in beiden Richtungen noch
+nicht abgenommen. Der Reconciler kennt die drei `review:*`-Labels, bindet sie an den
+Head-SHA, wertet die modusabhängige Evidenz aus, stellt die Frage im Statuskommentar samt Empfehlung
+und erzeugt pro bereitem Head genau einen neuen, maschinenlesbar markierten und den Maintainer
+erwähnenden Kommentar. Solange die Auswahl unbeantwortet ist, blockiert das Gate mit
+`awaiting-review-decision`; ein Zustellungsfehler blockiert sichtbar mit
+`review-decision-delivery-failed` und wird erneut versucht. Der Ablauf in der Session und die
+GitHub-Outbox-/Codex-Monitor-Grenze stehen in `.github/agent-pipeline/review-decision.md`.
+Für Codex-Implementierungen startet `review:cross`
+den eng begrenzten Claude-Pilotpfad; für Claude-Implementierungen fordert der Codex-Adapter die
+native Review an. Für Claude-Implementierungen startet `review:self` zusätzlich den eng begrenzten,
+credential-read-only `agent-pipeline-claude-self-review.yml`-Workflow; sein Ergebnis-Marker teilt
+sich mit dem manuell gestarteten Launcher denselben Gate-Pfad (`selfReviewResultAuthors` ergänzt
+dessen `github-actions[bot]`-Identität als zweite gültige Quelle neben `claude[bot]` und dem
+menschlichen Betreiber), sodass der jeweils neuere Marker zählt. Ein automatisiertes erneutes
+Auslösen nach einem zunächst noch nicht bereiten Head (wie `planReviewRetrigger` es für `cross`
+bereits leistet) existiert für `self` noch nicht; ein deklinierter Versuch bleibt bis zu einer
+erneuten Label-Wahl liegen. Codex-Selbst-Review läuft weiterhin ausschließlich über den dedizierten
+Codex-`/review`-Weg. Die Sechs-Felder-Matrix ist als table-driven Akzeptanzstandard getestet. Die
+Findings-Fix-Schleife, automatische CI-/Konfliktkorrektur und Rundenzähler bleiben außerhalb
+dieses Auftrags.
+
+### Phase 5 – Reviewer-Fallback und Limit-Retry
+
+1. Claude-Fehler und Codex-Kontingentkommentare erkennen; für fehlende Codex-Reaktionen Timeout
+   und Watchdog ergänzen.
+2. Bei Ausfall des gewählten Reviewers den beobachteten Grund melden und die Auswahl erneut
+   vorlegen, statt den Modus selbst zu wechseln.
+3. Ein daraufhin gewähltes Review des Implementierungs-Anbieters als Fallback in Status, Label und
+   Review-Ergebnis sichtbar machen.
+4. Bei Ausfall beider Anbieter `agent:waiting` und einen zeitgesteuerten Retry verwenden.
+5. Mit simulierten Limitantworten testen; echte Limits nicht absichtlich verbrauchen.
+
+Abnahme: kein Review wird übersprungen, kein Modus wechselt ohne Nutzerentscheidung, das Review des
+Implementierungs-Anbieters erreicht mindestens die konfigurierte Read-only-Stufe und Wartezyklen
+verbrauchen keine Reviewrunde.
+
+### Phase 6 – UI/UX-Erkennung und Benachrichtigung
+
+1. Pfadklassifikation und Agentenerklärung zu `ui:changed` kombinieren.
+2. Ein wiederverwendbares Nachrichtenformat mit Branch, PR, Änderungen und Prüfschritten bauen.
+3. Vorhandene Screenshots oder Preview-Artefakte verlinken; keine künstliche Pflicht erzeugen,
+   wenn visuelle Evidenz keinen Mehrwert hat.
+4. Nachricht nach wesentlichen visuellen Review-Fixes aktualisieren.
+
+Abnahme: ein UI-Test-PR informiert den Nutzer genau einmal und bleibt bis zur Merge-Bereitschaft
+aktuell; ein reiner Backend-PR erzeugt keine UI-Nachricht.
+
+### Phase 7 – Readiness-Check und Branch-Schutz
+
+1. Commit-Status `Agent pipeline / ready for human merge` implementieren.
+2. Alle Bedingungen aus Abschnitt 11 in das Gate aufnehmen.
+3. Den Status als Required Check für `main` eintragen.
+4. Auto-Merge deaktiviert lassen und sicherstellen, dass Agenten nicht mergen können.
+5. Bestehende CI/CD und Deployment-Workflows unverändert lassen.
+
+Abnahme: Nur der Nutzer kann einen vollständig grünen PR mergen; ein neuer Commit, offenes
+Finding oder fehlende UI-Nachricht schließt das Gate wieder.
+
+Umsetzungsstand: Schritte 1, 2, 4 und 5 sind im Reconciler umgesetzt; der Status kennt `success`
+und `pending` und trägt den ersten offenen Blocker in seiner Beschreibung. PRs ohne aktivierten
+Task-Vertrag erhalten nur dann bewusst `success`, wenn sie echte manuelle PRs außerhalb der
+Agenten-Namespaces/-Labels sind; Agenten-PRs ohne gültigen Vertrag bleiben `pending`. Fork-PRs
+bleiben ausgenommen. Schritt 3 bleibt manuell und wird erst nach Merge dieses Stands und einem
+erneuten Pilot ausgeführt. Am 2026-08-10 enthielt der Schutz von `main` weiterhin nur die sechs
+bisherigen Required Checks; die exakte additive Post-Merge-Anweisung und Rücknahme stehen in
+`.github/agent-pipeline/README.md`.
+
+### Phase 8 – Pilot und schrittweise Aktivierung
+
+1. Kleiner Codex-PR mit Claude-Review.
+2. Kleiner Claude-PR mit Codex-Review.
+3. Bewusstes Review-Finding und automatische Korrektur.
+4. Bewusster CI-Fehler und einfacher Mergekonflikt.
+5. Simulierter Ausfall beider Reviewer-Richtungen inklusive Fallback.
+6. UI/UX-PR mit Nutzerbenachrichtigung.
+7. Kill-Switch und Wiederaufnahme testen.
+8. Erst nach erfolgreichen Pilotfällen die Automatik standardmäßig für Agenten-PRs aktivieren.
+
+Abnahme: vollständige Auditspur für jeden Pilotfall, keine unerlaubte `main`-Mutation und jede
+Freigabe endet am menschlichen Merge-Gate.
+
+## 15. Definition of Done für die Gesamtumsetzung
+
+- Beide Implementierungsrichtungen funktionieren Ende-zu-Ende.
+- Cross-Review, Selbst-Review, menschliches Review, Findings-Schleife, CI-Fix und Konfliktlösung
+  sind getestet.
+- Die Auswahl des Review-Modus wird pro Head-SHA aktiv und höchstens einmal zugestellt, von keiner
+  unbeaufsichtigten Automatik beantwortet und öffnet das Gate nur mit der zum Modus passenden
+  Evidenz.
+- Review und Gate sind immer an den aktuellen Head-SHA gebunden.
+- Draft-PRs können bereits die Review-Auswahl und das Review durchlaufen; Draft blockiert nur das
+  menschliche Merge-Gate.
+- Kritische Fälle halten an; normale Korrekturen laufen ohne Rückfrage weiter.
+- UI/UX-Änderungen erzeugen die vereinbarte prüfbare Benachrichtigung.
+- Kein Agent kann `main` ändern, mergen, Branch-Schutz verändern oder Deploy-Secrets lesen.
+- Auto-Merge bleibt deaktiviert.
+- Der Nutzer ist die einzige finale Merge-Instanz.
+- Betriebsdokumentation nennt Status, Logs, Retry, Kill-Switch und manuelle Wiederaufnahme.
+- Alle neuen Workflow- und Zustandslogikpfade besitzen Tests beziehungsweise reproduzierbare
+  Pilotnachweise.
+
+## 16. Aufwand und Risiken
+
+- Die größte technische Arbeit liegt nicht in den Agenten-Prompts, sondern in einer sicheren,
+  idempotenten Zustandsmaschine über asynchrone GitHub- und Anbieterereignisse.
+- Reviews, Fixes und erneute Reviews verbrauchen Kontingent. Rundenlimits begrenzen Kosten und
+  Endlosschleifen.
+- Ein Fallback-Review desselben Anbieters ist weniger unabhängig als ein Cross-Review. Die frische,
+  read-only Session und die abschließende menschliche Mergeentscheidung begrenzen dieses Risiko.
+- Anbieterintegrationen und CLI-Flags ändern sich. Ihre Fähigkeiten werden in Phase 0 praktisch
+  verifiziert und die Orchestrierung bleibt auf kleine Adapter begrenzt.
+- Agenten können gemeinsam eine falsche Lösung akzeptieren. Pflicht-CI, Repository-Regeln,
+  SHA-gebundene Reviews und der menschliche Merge bleiben deshalb eigenständige Schutzschichten.

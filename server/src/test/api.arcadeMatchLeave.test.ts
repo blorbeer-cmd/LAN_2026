@@ -10,7 +10,7 @@ import type { AddressInfo } from 'net';
 import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp, installTestSocketIdentity } from './testApp';
 import { registerArcadeSockets } from '../arcade/arcade';
 import { registerTetrisSockets } from '../arcade/tetris';
 import { registerPongSockets } from '../arcade/pong';
@@ -47,8 +47,9 @@ async function makePlayers(baseUrl: string, names: string[]): Promise<string[]> 
 
 test('a non-host participant can leave a running match in every arcade game', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerArcadeSockets(io);
   registerTetrisSockets(io);
   registerPongSockets(io);
@@ -94,6 +95,7 @@ test('a non-host participant can leave a running match in every arcade game', as
       const created = await emitAck(hostSocket, 'tetris:lobby:create', { playerId: hostId });
       assert.equal(created.ok, true);
       await emitAck(guestSocket, 'tetris:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
+      await emitAck(guestSocket, 'tetris:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true });
       const startPromise = waitForEvent(guestSocket, 'tetris:match:start') as Promise<{ matchId: string }>;
       const started = await emitAck(hostSocket, 'tetris:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
       assert.equal(started.ok, true);
@@ -111,6 +113,7 @@ test('a non-host participant can leave a running match in every arcade game', as
       const [hostId, guestId] = await makePlayers(baseUrl, ['Pong Host', 'Pong Guest']);
       const created = await emitAck(hostSocket, 'pong:lobby:create', { playerId: hostId });
       await emitAck(guestSocket, 'pong:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
+      await emitAck(guestSocket, 'pong:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true });
       const startPromise = waitForEvent(guestSocket, 'pong:match:start') as Promise<{ matchId: string }>;
       await emitAck(hostSocket, 'pong:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
       const { matchId } = await startPromise;
@@ -127,6 +130,7 @@ test('a non-host participant can leave a running match in every arcade game', as
       const [hostId, guestId] = await makePlayers(baseUrl, ['Blobby Host', 'Blobby Guest']);
       const created = await emitAck(hostSocket, 'blobby:lobby:create', { playerId: hostId });
       await emitAck(guestSocket, 'blobby:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
+      await emitAck(guestSocket, 'blobby:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true });
       const startPromise = waitForEvent(guestSocket, 'blobby:match:start') as Promise<{ matchId: string }>;
       await emitAck(hostSocket, 'blobby:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
       const { matchId } = await startPromise;
@@ -181,8 +185,9 @@ test('a non-host participant can leave a running match in every arcade game', as
 
 test('leaving a running match never shows the leaver their own "opponent left" toast', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerArcadeSockets(io);
   registerTetrisSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
@@ -217,6 +222,7 @@ test('leaving a running match never shows the leaver their own "opponent left" t
       const [hostId, guestId] = await makePlayers(baseUrl, ['Toast Tetris Host', 'Toast Tetris Guest']);
       const created = await emitAck(hostSocket, 'tetris:lobby:create', { playerId: hostId });
       await emitAck(guestSocket, 'tetris:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
+      await emitAck(guestSocket, 'tetris:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true });
       const startPromise = waitForEvent(guestSocket, 'tetris:match:start') as Promise<{ matchId: string }>;
       await emitAck(hostSocket, 'tetris:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
       const { matchId } = await startPromise;
@@ -242,8 +248,9 @@ test('leaving a running match never shows the leaver their own "opponent left" t
 
 test('scribble: leaving revokes guess authorization instead of letting a departed player keep scoring in a 3+ player match', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerScribbleSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
@@ -313,8 +320,9 @@ test('scribble: leaving revokes guess authorization instead of letting a departe
 
 test('a host finishing a match at the same instant a guest leaves it resolves cleanly (no crash, no duplicate result)', async () => {
   clearLobbyMemberships();
-  const httpServer = http.createServer(createApp());
+  const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
+  installTestSocketIdentity(io);
   registerArcadeSockets(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;

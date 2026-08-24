@@ -1,7 +1,6 @@
-// QR code generation for the invite link (FR extension): rendered
-// server-side so the link — which carries the shared access token — never
-// gets sent to a third-party "free QR code" API. Behind the same
-// requireAccess gate as every other /api route.
+// QR code generation for the invite link (FR extension), rendered server-side
+// so its one-time code never reaches a third-party "free QR code" API. Behind
+// the same session gate as every other feature route.
 
 import { Router } from 'express';
 import QRCode from 'qrcode';

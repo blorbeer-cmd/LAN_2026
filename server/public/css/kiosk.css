@@ -461,7 +461,13 @@
   border-radius: var(--radius);
   background: var(--accent-gradient);
   color: var(--accent-text);
-  font-size: var(--font-size-md);
+  /* Sized for reading across a room, not at arm's length like regular body
+     text (--font-size-md) -- this is the one banner a kiosk view needs
+     legible from a distance. Stops short of --font-size-2xl/3xl because
+     .notification-banner-body stays single-line with an ellipsis; a bigger
+     jump would truncate more announcements sooner. */
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-medium);
   box-shadow: 0 4px 24px rgba(91, 140, 255, 0.45);
   animation: kiosk-broadcast-in 0.4s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
@@ -516,8 +522,15 @@
   flex: 1;
   min-height: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--space-3);
+}
+.kiosk-game-content .snake-arena-legend {
+  justify-content: center;
+  margin-bottom: 0;
+  font-size: var(--font-size-lg);
 }
 .kiosk-game-content canvas {
   display: block;

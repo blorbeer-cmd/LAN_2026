@@ -1,37 +1,23 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
+import type { ChildProcess } from 'child_process';
 import { io as ioClient, Socket } from 'socket.io-client';
+import { startE2EServer } from './e2eServer';
 
-const PORT = 3911;
-const BASE_URL = `http://127.0.0.1:${PORT}`;
+let BASE_URL: string;
 const RECOVERY_CODE = 'phase5e-isolation-recovery';
 
 let serverProcess: ChildProcess;
 let adminId = '';
 let adminCookie = '';
-let groupA = '';
-let groupB = '';
+let groupId = '';
+let activeEventId = '';
 
-async function waitForServer(): Promise<void> {
-  const started = Date.now();
-  while (Date.now() - started < 10_000) {
-    try {
-      if ((await fetch(`${BASE_URL}/api/health`)).ok) return;
-    } catch {
-      // keep polling
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error('Phase-5e test server did not become ready');
-}
-
-async function api(pathname: string, init: RequestInit = {}, groupId?: string, includeCookie = true): Promise<Response> {
+async function api(pathname: string, init: RequestInit = {}, requestGroupId?: string, includeCookie = true): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set('content-type', 'application/json');
   if (includeCookie) headers.set('cookie', adminCookie);
-  if (groupId) headers.set('x-group-id', groupId);
+  if (requestGroupId) headers.set('x-group-id', requestGroupId);
   return fetch(`${BASE_URL}${pathname}`, { ...init, headers, signal: init.signal ?? AbortSignal.timeout(5_000) });
 }
 
@@ -47,28 +33,23 @@ function connect(cookie: string): Promise<Socket> {
   });
 }
 
-async function subscribe(socket: Socket, groupId: string): Promise<void> {
+async function subscribe(socket: Socket, subscribeGroupId: string): Promise<void> {
   const result = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
-    socket.emit('scope:subscribe', { groupId }, resolve);
+    socket.emit('scope:subscribe', { groupId: subscribeGroupId, eventId: activeEventId }, resolve);
   });
-  assert.deepEqual(result, { ok: true, groupId, eventId: null });
+  assert.deepEqual(result, { ok: true, groupId: subscribeGroupId, eventId: activeEventId });
 }
 
 before(async () => {
-  serverProcess = spawn('node', [path.join(__dirname, '..', '..', '..', 'dist', 'index.js')], {
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      DB_FILE: ':memory:',
-      AUTH_MODE: 'required',
-      MULTI_GROUPS_ENABLED: '1',
-      ADMIN_RECOVERY_CODE: RECOVERY_CODE,
-      COOKIE_SECURE: '0',
-      KIOSK_TOKEN: 'legacy-phase5e-token',
-    },
-    stdio: 'ignore',
+  const server = await startE2EServer({
+    ...process.env,
+    DB_FILE: ':memory:',
+    ADMIN_RECOVERY_CODE: RECOVERY_CODE,
+    COOKIE_SECURE: '0',
+    KIOSK_TOKEN: 'e2e-phase5e-token',
   });
-  await waitForServer();
+  serverProcess = server.process;
+  BASE_URL = server.baseUrl;
 
   const registered = await fetch(`${BASE_URL}/api/auth/register`, {
     method: 'POST',
@@ -81,25 +62,31 @@ before(async () => {
   assert.ok(setCookie);
   adminCookie = setCookie!.split(';')[0];
 
-  const createdA = await api('/api/groups', { method: 'POST', body: JSON.stringify({ name: 'Phase 5e A' }) });
-  const createdB = await api('/api/groups', { method: 'POST', body: JSON.stringify({ name: 'Phase 5e B' }) });
-  if (createdA.status !== 201) throw new Error(`group A create failed: ${createdA.status} ${await createdA.text()}`);
-  if (createdB.status !== 201) throw new Error(`group B create failed: ${createdB.status} ${await createdB.text()}`);
-  groupA = ((await createdA.json()) as { id: string }).id;
-  groupB = ((await createdB.json()) as { id: string }).id;
+  // The instance has exactly one group; every account (including this
+  // freshly registered one) is already an active member of it.
+  const groups = await api('/api/groups');
+  assert.equal(groups.status, 200);
+  groupId = ((await groups.json()) as Array<{ id: string }>)[0].id;
+  const activeEvent = await api('/api/events/active');
+  assert.equal(activeEvent.status, 200);
+  activeEventId = ((await activeEvent.json()) as { id: string }).id;
 });
 
 after(() => serverProcess?.kill());
 
-test('two independent browser/agent sockets receive only their current group delivery', async () => {
+test('a socket receives only its subscribed group scope, and an unknown group id is rejected', async () => {
   // The first socket represents the browser tab; the second is a separately
   // authenticated agent-side connection. They deliberately share an account
   // but hold different active rooms, which catches room-name trust bugs.
   const browserSocket = await connect(adminCookie);
   const agentSocket = await connect(adminCookie);
   try {
-    await subscribe(browserSocket, groupA);
-    await subscribe(agentSocket, groupB);
+    await subscribe(browserSocket, groupId);
+    const denied = await new Promise<{ ok: boolean }>((resolve) => {
+      agentSocket.emit('scope:subscribe', { groupId: 'unknown-group' }, resolve);
+    });
+    assert.equal(denied.ok, false);
+
     let browserEvents = 0;
     let agentEvents = 0;
     browserSocket.on('live:changed', () => { browserEvents += 1; });
@@ -107,17 +94,12 @@ test('two independent browser/agent sockets receive only their current group del
 
     const changed = await api(`/api/live/${adminId}/note`, {
       method: 'POST',
-      body: JSON.stringify({ note: 'nur Gruppe A' }),
-    }, groupA);
+      body: JSON.stringify({ note: 'nur diese Gruppe' }),
+    }, groupId);
     assert.equal(changed.status, 200);
     await new Promise((resolve) => setTimeout(resolve, 150));
     assert.equal(browserEvents, 1);
-    assert.equal(agentEvents, 0);
-
-    const denied = await new Promise<{ ok: boolean }>((resolve) => {
-      agentSocket.emit('scope:subscribe', { groupId: 'unknown-group' }, resolve);
-    });
-    assert.equal(denied.ok, false);
+    assert.equal(agentEvents, 0, 'a socket that never subscribed to a real scope receives nothing (default-deny)');
   } finally {
     browserSocket.close();
     agentSocket.close();

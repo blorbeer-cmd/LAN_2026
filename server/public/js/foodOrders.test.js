@@ -1,9 +1,17 @@
-// Unit tests for the pure PayPal link helpers used by the "Essen bestellen"
-// view. No DOM needed - these are plain string functions.
+// Unit tests for the pure helpers used by the "Essen bestellen" view. No DOM
+// needed - these are plain string/array functions.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addTipToCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from './views/foodOrders.js';
+import {
+  addTipToCents,
+  normalizePaypalInput,
+  paypalEmailFromLink,
+  paypalPayUrl,
+  groupPaymentState,
+  buildConsolidatedRows,
+  foodOrderDescriptionSuggestions,
+} from './views/foodOrders.js';
 
 test('addTipToCents adds and rounds the configured percentage', () => {
   assert.equal(addTipToCents(1000, 10), 1100);
@@ -18,9 +26,21 @@ test('normalizePaypalInput returns null for empty input', () => {
   assert.equal(normalizePaypalInput(undefined), null);
 });
 
-test('normalizePaypalInput passes a full http(s) URL through unchanged', () => {
+test('normalizePaypalInput keeps PayPal URLs, upgrades PayPal.me, and rejects foreign hosts', () => {
   assert.equal(normalizePaypalInput('https://paypal.me/luigi'), 'https://paypal.me/luigi');
-  assert.equal(normalizePaypalInput('http://example.com/pay'), 'http://example.com/pay');
+  assert.equal(
+    normalizePaypalInput('https://www.paypal.com/paypalme/luigi'),
+    'https://www.paypal.com/paypalme/luigi',
+  );
+  assert.throws(() => normalizePaypalInput('http://example.com/pay'), /HTTPS/);
+  assert.throws(() => normalizePaypalInput('https://example.com/pay'), /paypal\.me/);
+  assert.throws(() => normalizePaypalInput('https://paypal.me/luigi/500EUR'), /paypal\.me/);
+  assert.throws(() => normalizePaypalInput('http://paypal.me/luigi/500EUR'), /paypal\.me/);
+  assert.throws(() => normalizePaypalInput('https://www.paypal.com/paypalme/luigi/500EUR'), /paypal\.me/);
+  assert.throws(() => normalizePaypalInput('https://www.paypal.com/paypalme/luigi/500EUR?locale.x=de_DE'), /paypal\.me/);
+  assert.throws(() => normalizePaypalInput('paypal.me/luigi/500EUR'), /gültige URL/);
+  assert.equal(normalizePaypalInput('http://paypal.me/luigi'), 'https://paypal.me/luigi');
+  assert.equal(normalizePaypalInput('http://www.paypal.me/luigi'), 'https://www.paypal.me/luigi');
 });
 
 test('normalizePaypalInput turns a bare PayPal.me name into a full link', () => {
@@ -55,11 +75,104 @@ test('paypalEmailFromLink returns null for a paypal.me link or other input', () 
   assert.equal(paypalEmailFromLink(undefined), null);
 });
 
+test('paypalEmailFromLink treats malformed recipient encoding as a normal URL', () => {
+  assert.equal(paypalEmailFromLink('https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=%E0%A4%A'), null);
+});
+
 test('paypalPayUrl appends the amount to a bare paypal.me link', () => {
   assert.equal(paypalPayUrl('https://paypal.me/luigi', 2090), 'https://paypal.me/luigi/20.90EUR');
+  assert.equal(paypalPayUrl('http://paypal.me/luigi', 2090), 'https://paypal.me/luigi/20.90EUR');
+  assert.equal(paypalPayUrl('https://www.paypal.com/paypalme/luigi', 2090), 'https://paypal.me/luigi/20.90EUR');
 });
 
 test('paypalPayUrl leaves an email-based send-money link unchanged (no amount can be pre-filled)', () => {
   const link = normalizePaypalInput('blorbeer@gmx.de');
   assert.equal(paypalPayUrl(link, 2090), link);
+});
+
+// --- Per-person payment state ----------------------------------------------
+
+test('groupPaymentState has exactly the two derived states', () => {
+  assert.equal(groupPaymentState([]), 'open');
+  assert.equal(groupPaymentState([{ paid: false }, { paid: true }]), 'open');
+  assert.equal(groupPaymentState([{ paid: true }, { paid: true }]), 'paid');
+});
+
+// --- AP4.2: consolidated order list -----------------------------------------
+
+test('buildConsolidatedRows merges same normalized description and same price', () => {
+  const rows = buildConsolidatedRows([
+    { description: 'Margherita', priceCents: 850, quantity: 1 },
+    { description: '  margherita  ', priceCents: 850, quantity: 2 },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0], { description: 'Margherita', priceCents: 850, quantity: 3 });
+});
+
+test('buildConsolidatedRows keeps the same name at a different price as its own row', () => {
+  const rows = buildConsolidatedRows([
+    { description: 'Margherita', priceCents: 850, quantity: 1 },
+    { description: 'Margherita', priceCents: 900, quantity: 1 },
+  ]);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(
+    rows.map((r) => r.priceCents).sort((a, b) => a - b),
+    [850, 900]
+  );
+});
+
+test('buildConsolidatedRows sums quantities of unpriced items with the same description', () => {
+  const rows = buildConsolidatedRows([
+    { description: 'Wasser', priceCents: null, quantity: 1 },
+    { description: 'Wasser', priceCents: null, quantity: 2 },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0], { description: 'Wasser', priceCents: null, quantity: 3 });
+});
+
+test('buildConsolidatedRows defaults a missing quantity to 1', () => {
+  const rows = buildConsolidatedRows([{ description: 'Cola', priceCents: 250 }]);
+  assert.equal(rows[0].quantity, 1);
+});
+
+test('buildConsolidatedRows sorts alphabetically with the German locale', () => {
+  const rows = buildConsolidatedRows([
+    { description: 'Pizza', priceCents: 100, quantity: 1 },
+    { description: 'Öl', priceCents: 100, quantity: 1 },
+    { description: 'Apfelschorle', priceCents: 100, quantity: 1 },
+  ]);
+  assert.deepEqual(
+    rows.map((r) => r.description),
+    ['Apfelschorle', 'Öl', 'Pizza']
+  );
+});
+
+test('foodOrderDescriptionSuggestions deduplicates by normalized description, keeping the first spelling and price', () => {
+  const suggestions = foodOrderDescriptionSuggestions([
+    { description: 'Margherita', priceCents: 850 },
+    { description: '  margherita  ', priceCents: 900 },
+    { description: 'MARGHERITA', priceCents: 900 },
+  ]);
+  assert.deepEqual(suggestions, [{ label: 'Margherita', priceCents: 850 }]);
+});
+
+test('foodOrderDescriptionSuggestions keeps a null price when the first-seen item had none', () => {
+  const suggestions = foodOrderDescriptionSuggestions([{ description: 'Wasser', priceCents: null }]);
+  assert.deepEqual(suggestions, [{ label: 'Wasser', priceCents: null }]);
+});
+
+test('foodOrderDescriptionSuggestions sorts alphabetically with the German locale', () => {
+  const suggestions = foodOrderDescriptionSuggestions([
+    { description: 'Pizza', priceCents: null },
+    { description: 'Öl', priceCents: null },
+    { description: 'Apfelschorle', priceCents: null },
+  ]);
+  assert.deepEqual(
+    suggestions.map((s) => s.label),
+    ['Apfelschorle', 'Öl', 'Pizza']
+  );
+});
+
+test('foodOrderDescriptionSuggestions returns an empty list for an order without items', () => {
+  assert.deepEqual(foodOrderDescriptionSuggestions([]), []);
 });

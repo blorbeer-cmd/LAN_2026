@@ -17,19 +17,20 @@
 // fall back to the games' aggregate "Bock" rating (preferences table) so the
 // list starts out sorted by general popularity, not alphabetically.
 
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { nanoid } from 'nanoid';
-import { db, getState, setState } from '../db';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID, getState, setState } from '../db';
+import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { broadcast, Events } from '../realtime';
-import { getTrackingEventId, OUTSIDE_EVENTS_ID } from '../events';
 import { notifyPlayers, resolvePushTopic } from '../push';
 import { isIntInRange } from '../validation';
 import { formatDurationMs } from '../playtime';
 import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
 import { requireGroupRole } from '../groupAuthorization';
 import { activeGroupPlayers } from '../groupPlayers';
-import { trackingEventIdForGroup } from '../competitionScope';
+import { competitionPlayersBelongToGroup } from '../competitionScope';
 import { communicationRecipientIds } from '../communicationRecipients';
+import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 
 export const votesRouter = Router();
 
@@ -55,16 +56,7 @@ function optionalText(value: unknown, maxLength: number): string | null | undefi
 }
 
 export function voteNotificationPlayerIds(groupId?: string, scopedEventId?: string | null): string[] {
-  if (groupId !== undefined) return communicationRecipientIds(groupId, scopedEventId ?? null);
-  const eventId = getTrackingEventId();
-  if (eventId === OUTSIDE_EVENTS_ID) {
-    return (db.prepare('SELECT id FROM players').all() as Array<{ id: string }>).map((player) => player.id);
-  }
-  return (
-    db.prepare('SELECT player_id AS id FROM event_participants WHERE event_id = ?').all(eventId) as Array<{
-      id: string;
-    }>
-  ).map((player) => player.id);
+  return communicationRecipientIds(groupId ?? DEFAULT_GROUP_ID, scopedEventId ?? BASE_EVENT_ID);
 }
 
 type VoteMode = 'single' | 'points';
@@ -76,20 +68,30 @@ interface RoundState {
   mode: VoteMode;
 }
 
-function scopedStateKey(key: string, groupId: string): string {
-  return `${key}:${groupId}`;
+function scopedStateKey(key: string, groupId: string, eventId: string): string {
+  return `${key}:${groupId}:${eventId}`;
 }
 
-function readRoundState(groupId: string): RoundState {
-  const storedMode = getState(scopedStateKey(MODE_KEY, groupId));
+function readRoundState(groupId: string, eventId: string): RoundState {
+  const storedMode = getState(scopedStateKey(MODE_KEY, groupId, eventId));
   return {
-    round: parseInt(getState(scopedStateKey(ROUND_KEY, groupId)) ?? '0', 10),
-    open: getState(scopedStateKey(OPEN_KEY, groupId)) === '1',
-    startedAt: getState(scopedStateKey(STARTED_AT_KEY, groupId))
-      ? parseInt(getState(scopedStateKey(STARTED_AT_KEY, groupId))!, 10)
+    round: parseInt(getState(scopedStateKey(ROUND_KEY, groupId, eventId)) ?? '0', 10),
+    open: getState(scopedStateKey(OPEN_KEY, groupId, eventId)) === '1',
+    startedAt: getState(scopedStateKey(STARTED_AT_KEY, groupId, eventId))
+      ? parseInt(getState(scopedStateKey(STARTED_AT_KEY, groupId, eventId))!, 10)
       : null,
     mode: storedMode === 'points' ? 'points' : 'single',
   };
+}
+
+function requestVoteEventId(req: Request, res: Response, requestedEventId?: unknown): string | null {
+  const scope = resolveRequestGroupEventScope(req, requestedEventId);
+  if (!scope.ok) {
+    res.status(scope.status).json({ error: scope.error });
+    return null;
+  }
+  if (!scope.eventId || !requireGroupEventAccess(req, res, scope.eventId)) return null;
+  return scope.eventId;
 }
 
 interface RoundMeta {
@@ -119,6 +121,43 @@ function getRoundMeta(groupId: string, round: number): RoundMeta {
     info: row.info,
     selectedGameIds: row.selectedGameIdsJson ? JSON.parse(row.selectedGameIdsJson) : null,
   };
+}
+
+// The tied winners a runoff continues with. A runoff is not a fresh pick: it
+// re-asks the exact games the closed round produced, so one of them being a
+// suggestion by now (demoted afterwards, or already one back when suggestions
+// were still on every ballot) must not block the whole runoff.
+function winnerGameIdsOfRound(groupId: string, round: number): Set<string> {
+  if (round < 1) return new Set();
+  const row = db
+    .prepare('SELECT winner_game_ids AS winnerJson FROM vote_rounds WHERE group_id = ? AND round = ?')
+    .get(groupId, round) as { winnerJson: string | null } | undefined;
+  if (!row?.winnerJson) return new Set();
+  try {
+    const parsed = JSON.parse(row.winnerJson);
+    return new Set(Array.isArray(parsed) ? (parsed as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+// Mirrors buildAllResults' HAVING rule for the submit paths: a suggestion is
+// never on a fresh ballot, but one this round actually put there stays
+// votable — either explicitly (a runoff's selectedGameIds) or because it
+// already carries votes of this round (it was demoted mid-round). Otherwise
+// the round would show a game to some voters and reject it for the next one.
+function suggestionIsOnBallot(
+  groupId: string,
+  round: number,
+  gameId: string,
+  selectedGameIds: string[] | null,
+): boolean {
+  if (selectedGameIds) return selectedGameIds.includes(gameId);
+  return Boolean(
+    db
+      .prepare('SELECT 1 FROM votes WHERE group_id = ? AND round = ? AND game_id = ? LIMIT 1')
+      .get(groupId, round, gameId),
+  );
 }
 
 interface ResultRow {
@@ -159,8 +198,24 @@ function voteWinCountsByGame(groupId: string): Map<string, number> {
 // a single call's underlying query/sort can be reused for both the
 // round-scoped view and the always-full-catalog "Bock" popularity view
 // (buildPayload's `catalogResults`) instead of querying twice.
-function buildAllResults(groupId: string, round: number, mode: VoteMode): ResultRow[] {
+// Suggestions are not on the ballot (see gameSelection.ts): a round nobody
+// restricted covers the catalog, not the proposal pool. The HAVING exception
+// keeps a suggestion that already carries votes in *this* round visible, so
+// a round recorded before this rule (or a game demoted afterwards) still
+// shows the votes that were actually cast for it.
+function buildAllResults(
+  groupId: string,
+  round: number,
+  mode: VoteMode,
+  ballotGameIds: string[] | null = null,
+): ResultRow[] {
   const now = Date.now();
+  // A round that named its games explicitly (a runoff continues the closed
+  // round's tied winners) keeps every one of them on its own ballot, even if
+  // one has been demoted since — /start validated that selection when the
+  // round began. The placeholders carry ids as bound values, never as SQL.
+  const ballotIds = ballotGameIds ?? [];
+  const ballotClause = ballotIds.length ? ` OR g.id IN (${ballotIds.map(() => '?').join(', ')})` : '';
   const rows = db
     .prepare(
       `SELECT g.id AS gameId, g.name AS gameName, g.icon AS icon,
@@ -184,9 +239,10 @@ function buildAllResults(groupId: string, round: number, mode: VoteMode): Result
          FROM play_sessions WHERE group_id = ? GROUP BY game_id
        ) ps ON ps.game_id = g.id
        WHERE g.arcade_key IS NULL AND g.group_id = ?
-       GROUP BY g.id`,
+       GROUP BY g.id
+       HAVING g.status != 'suggestion' OR COUNT(v.player_id) > 0${ballotClause}`,
     )
-    .all(groupId, round, groupId, groupId, now, groupId, groupId) as Array<
+    .all(groupId, round, groupId, groupId, now, groupId, groupId, ...ballotIds) as Array<
     Omit<ResultRow, 'score' | 'totalPlaytimeFormatted' | 'voteWinCount'>
   >;
 
@@ -222,7 +278,7 @@ function buildResults(
   mode: VoteMode,
   selectedGameIds: string[] | null = null,
 ): ResultRow[] {
-  return filterResults(buildAllResults(groupId, round, mode), selectedGameIds);
+  return filterResults(buildAllResults(groupId, round, mode, selectedGameIds), selectedGameIds);
 }
 
 // While a round is open, nobody — not even the person about to close it —
@@ -244,8 +300,8 @@ function redactOpenRoundResults(results: ResultRow[]): Array<Omit<ResultRow, 'vo
   return sorted.map(({ votes: _votes, points: _points, score: _score, ...rest }) => rest);
 }
 
-function buildPayload(groupId: string, extra: Record<string, unknown> = {}) {
-  const state = readRoundState(groupId);
+function buildPayload(groupId: string, eventId: string, extra: Record<string, unknown> = {}) {
+  const state = readRoundState(groupId, eventId);
   const meta = getRoundMeta(groupId, state.round);
   // One query (buildAllResults) backs both views: the round-scoped
   // `results` (filtered to this round's own game selection, if any) and the
@@ -254,7 +310,7 @@ function buildPayload(groupId: string, extra: Record<string, unknown> = {}) {
   // bestimmte Spiele zur Wahl stellen" restriction, but recomputing the same
   // SQL join a second time just to drop that restriction would be redundant
   // — filtering the already-fetched rows in JS is enough.
-  const catalogFullResults = buildAllResults(groupId, state.round, state.mode);
+  const catalogFullResults = buildAllResults(groupId, state.round, state.mode, meta.selectedGameIds);
   const fullResults = filterResults(catalogFullResults, meta.selectedGameIds);
   const totalVotes = fullResults.reduce((sum, r) => sum + r.votes, 0);
   const totalPoints = fullResults.reduce((sum, r) => sum + r.points, 0);
@@ -276,7 +332,9 @@ function buildPayload(groupId: string, extra: Record<string, unknown> = {}) {
 
 // GET /api/votes - current round's state and tally.
 votesRouter.get('/', (req, res) => {
-  res.json(buildPayload(req.group!.id));
+  const eventId = requestVoteEventId(req, res, req.query.eventId);
+  if (!eventId) return;
+  res.json(buildPayload(req.group!.id, eventId));
 });
 
 // GET /api/votes/kiosk - the shared room display receives the current tally
@@ -287,7 +345,9 @@ votesRouter.get('/', (req, res) => {
 // prevent its live ranking from influencing those votes too.
 votesRouter.get('/kiosk', (req, res) => {
   const groupId = req.group!.id;
-  const state = readRoundState(groupId);
+  const eventId = requestVoteEventId(req, res, req.query.eventId);
+  if (!eventId) return;
+  const state = readRoundState(groupId, eventId);
   const meta = getRoundMeta(groupId, state.round);
   const currentResults = state.open ? buildResults(groupId, state.round, state.mode, meta.selectedGameIds) : [];
   const currentTotalVoters = state.open
@@ -344,7 +404,9 @@ votesRouter.get('/mine', ...withQueryPlayerIdentity, (req, res) => {
   if (typeof playerId !== 'string' || !playerId) {
     return res.status(400).json({ error: 'playerId ist erforderlich.' });
   }
-  const state = readRoundState(req.group!.id);
+  const eventId = requestVoteEventId(req, res, req.query.eventId);
+  if (!eventId) return;
+  const state = readRoundState(req.group!.id, eventId);
   const entries = db
     .prepare(
       `SELECT v.game_id AS gameId, v.points
@@ -363,9 +425,11 @@ votesRouter.get('/mine', ...withQueryPlayerIdentity, (req, res) => {
 // - title/info: optional free text shown to voters.
 // - gameIds: optional preselection of which games this round covers; omit
 //   for "every game in the catalog".
-votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
+votesRouter.post('/start', requireGroupRole('member'), (req, res) => {
   const groupId = req.group!.id;
-  const state = readRoundState(groupId);
+  const eventId = requestVoteEventId(req, res);
+  if (!eventId) return;
+  const state = readRoundState(groupId, eventId);
   if (state.open) {
     return res.status(409).json({ error: 'Es läuft bereits eine Abstimmung.' });
   }
@@ -373,6 +437,9 @@ votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   const { mode, title, info, gameIds } = req.body ?? {};
   if (mode !== undefined && mode !== 'single' && mode !== 'points') {
     return res.status(400).json({ error: 'mode muss "single" oder "points" sein.' });
+  }
+  if (mode === 'single' && req.groupMembership?.role === 'member') {
+    return res.status(403).json({ error: 'Stichwahlen können nur von Gruppenadmins gestartet werden.' });
   }
   const nextMode: VoteMode = mode === 'single' ? 'single' : 'points';
 
@@ -386,6 +453,7 @@ votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
   }
 
   let selectedGameIds: string[] | null = null;
+  const runoffWinners = winnerGameIdsOfRound(groupId, state.round);
   if (gameIds !== undefined) {
     if (!Array.isArray(gameIds) || gameIds.length === 0) {
       return res.status(400).json({ error: 'Mindestens ein Spiel muss ausgewählt sein.' });
@@ -393,16 +461,24 @@ votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
     const uniqueIds = [...new Set(gameIds)];
     for (const id of uniqueIds) {
       if (typeof id !== 'string' || !id) return res.status(400).json({ error: 'Ungültige gameId.' });
-      const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(id, req.group!.id);
+      const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(id, req.group!.id) as
+        | { id: string; status: string }
+        | undefined;
       if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+      if (isSuggestionGame(game) && !runoffWinners.has(id)) {
+        return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
+      }
     }
     selectedGameIds = uniqueIds as string[];
   }
 
-  const nextRound = state.round + 1;
+  const nextRound =
+    (
+      db.prepare('SELECT COALESCE(MAX(round), 0) AS round FROM vote_rounds WHERE group_id = ?').get(groupId) as {
+        round: number;
+      }
+    ).round + 1;
   const now = Date.now();
-  const trackingEventId = trackingEventIdForGroup(groupId);
-  const eventId = trackingEventId && trackingEventId !== OUTSIDE_EVENTS_ID ? trackingEventId : null;
   db.transaction(() => {
     db.prepare(
       `INSERT INTO vote_rounds
@@ -418,13 +494,13 @@ votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
       cleanInfo,
       selectedGameIds ? JSON.stringify(selectedGameIds) : null,
     );
-    setState(scopedStateKey(ROUND_KEY, groupId), String(nextRound));
-    setState(scopedStateKey(OPEN_KEY, groupId), '1');
-    setState(scopedStateKey(STARTED_AT_KEY, groupId), String(now));
-    setState(scopedStateKey(MODE_KEY, groupId), nextMode);
+    setState(scopedStateKey(ROUND_KEY, groupId, eventId), String(nextRound));
+    setState(scopedStateKey(OPEN_KEY, groupId, eventId), '1');
+    setState(scopedStateKey(STARTED_AT_KEY, groupId, eventId), String(now));
+    setState(scopedStateKey(MODE_KEY, groupId, eventId), nextMode);
   })();
 
-  const payload = buildPayload(req.group!.id);
+  const payload = buildPayload(req.group!.id, eventId);
   broadcast(Events.votesChanged, payload, { groupId, eventId });
 
   notifyPlayers(
@@ -449,7 +525,9 @@ votesRouter.post('/start', requireGroupRole('admin'), (req, res) => {
 // Body: { playerId, gameId }
 votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   const groupId = req.group!.id;
-  const state = readRoundState(groupId);
+  const eventId = requestVoteEventId(req, res);
+  if (!eventId) return;
+  const state = readRoundState(groupId, eventId);
   if (!state.open) {
     return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
   }
@@ -466,9 +544,18 @@ votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   }
   const player = activeGroupPlayers(groupId, [playerId]).get(playerId);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id);
+  if (!competitionPlayersBelongToGroup(groupId, eventId, [playerId])) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+  const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
+    | { id: string; status: string }
+    | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
   const meta = getRoundMeta(groupId, state.round);
+  if (meta.eventId !== eventId) return res.status(409).json({ error: 'Die Abstimmung gehört zu einem anderen Event.' });
+  if (isSuggestionGame(game) && !suggestionIsOnBallot(groupId, state.round, gameId, meta.selectedGameIds)) {
+    return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
+  }
   if (meta.selectedGameIds && !meta.selectedGameIds.includes(gameId)) {
     return res.status(400).json({ error: 'Dieses Spiel ist in dieser Abstimmung nicht auswählbar.' });
   }
@@ -489,8 +576,8 @@ votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     return res.status(409).json({ error: 'Du hast in dieser Runde bereits abgestimmt.' });
   }
 
-  const payload = buildPayload(req.group!.id);
-  broadcast(Events.votesChanged, payload, { groupId, eventId: meta.eventId });
+  const payload = buildPayload(req.group!.id, eventId);
+  broadcast(Events.votesChanged, payload, { groupId, eventId });
   res.json(payload);
 });
 
@@ -500,7 +587,9 @@ votesRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
 // per round; the transaction below answers a resubmission with 409.
 votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
   const groupId = req.group!.id;
-  const state = readRoundState(groupId);
+  const eventId = requestVoteEventId(req, res);
+  if (!eventId) return;
+  const state = readRoundState(groupId, eventId);
   if (!state.open) {
     return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
   }
@@ -514,6 +603,9 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
   }
   const player = activeGroupPlayers(groupId, [playerId]).get(playerId);
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (!competitionPlayersBelongToGroup(groupId, eventId, [playerId])) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
 
   if (!Array.isArray(entries)) {
     return res.status(400).json({ error: 'entries muss ein Array sein.' });
@@ -523,6 +615,7 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
   }
 
   const meta = getRoundMeta(groupId, state.round);
+  if (meta.eventId !== eventId) return res.status(409).json({ error: 'Die Abstimmung gehört zu einem anderen Event.' });
   const seen = new Set<string>();
   const clean: Array<{ gameId: string; points: number }> = [];
   for (const entry of entries) {
@@ -537,8 +630,13 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
     if (!isIntInRange(points, 1, 10)) {
       return res.status(400).json({ error: 'Punkte müssen eine Ganzzahl zwischen 1 und 10 sein.' });
     }
-    const game = db.prepare('SELECT id FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id);
+    const game = db.prepare('SELECT id, status FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
+      | { id: string; status: string }
+      | undefined;
     if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+    if (isSuggestionGame(game) && !suggestionIsOnBallot(groupId, state.round, gameId, meta.selectedGameIds)) {
+      return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
+    }
     if (meta.selectedGameIds && !meta.selectedGameIds.includes(gameId)) {
       return res.status(400).json({ error: 'Dieses Spiel ist in dieser Abstimmung nicht auswählbar.' });
     }
@@ -565,8 +663,8 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
     return res.status(409).json({ error: 'Du hast in dieser Runde bereits abgestimmt.' });
   }
 
-  const payload = buildPayload(req.group!.id);
-  broadcast(Events.votesChanged, payload, { groupId, eventId: meta.eventId });
+  const payload = buildPayload(req.group!.id, eventId);
+  broadcast(Events.votesChanged, payload, { groupId, eventId });
   res.json(payload);
 });
 
@@ -574,11 +672,13 @@ votesRouter.post('/points', ...withBodyPlayerIdentity, (req, res) => {
 // all reported so the group can decide/re-vote).
 votesRouter.post('/close', requireGroupRole('admin'), (req, res) => {
   const groupId = req.group!.id;
-  const state = readRoundState(groupId);
+  const eventId = requestVoteEventId(req, res);
+  if (!eventId) return;
+  const state = readRoundState(groupId, eventId);
   if (!state.open) {
     return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
   }
-  setState(scopedStateKey(OPEN_KEY, groupId), '0');
+  setState(scopedStateKey(OPEN_KEY, groupId, eventId), '0');
 
   const meta = getRoundMeta(groupId, state.round);
   const results = buildResults(req.group!.id, state.round, state.mode, meta.selectedGameIds);
@@ -593,8 +693,8 @@ votesRouter.post('/close', requireGroupRole('admin'), (req, res) => {
   );
   resolvePushTopic(`vote:${state.round}`, false, { groupId, eventId: meta.eventId });
 
-  const payload = buildPayload(req.group!.id, { winnerGameIds });
-  broadcast(Events.votesChanged, payload, { groupId, eventId: meta.eventId });
+  const payload = buildPayload(req.group!.id, eventId, { winnerGameIds });
+  broadcast(Events.votesChanged, payload, { groupId, eventId });
   res.json(payload);
 });
 
@@ -603,17 +703,19 @@ votesRouter.post('/close', requireGroupRole('admin'), (req, res) => {
 // deleted so they don't linger as noise in the history.
 votesRouter.post('/cancel', requireGroupRole('admin'), (req, res) => {
   const groupId = req.group!.id;
-  const state = readRoundState(groupId);
+  const eventId = requestVoteEventId(req, res);
+  if (!eventId) return;
+  const state = readRoundState(groupId, eventId);
   if (!state.open) {
     return res.status(409).json({ error: 'Es läuft keine Abstimmung.' });
   }
   const meta = getRoundMeta(groupId, state.round);
   db.prepare('DELETE FROM vote_rounds WHERE group_id = ? AND round = ?').run(groupId, state.round);
-  setState(scopedStateKey(OPEN_KEY, groupId), '0');
+  setState(scopedStateKey(OPEN_KEY, groupId, eventId), '0');
   resolvePushTopic(`vote:${state.round}`, false, { groupId, eventId: meta.eventId });
 
-  const payload = buildPayload(req.group!.id);
-  broadcast(Events.votesChanged, payload, { groupId, eventId: meta.eventId });
+  const payload = buildPayload(req.group!.id, eventId);
+  broadcast(Events.votesChanged, payload, { groupId, eventId });
   res.json(payload);
 });
 
@@ -630,12 +732,6 @@ interface VoteRoundRow {
   selectedGameIdsJson: string | null;
 }
 
-function voteEventFilter(groupId: string, requested: unknown): string | null {
-  if (typeof requested === 'string' && requested) return requested === OUTSIDE_EVENTS_ID ? null : requested;
-  const trackingEventId = trackingEventIdForGroup(groupId);
-  return trackingEventId && trackingEventId !== OUTSIDE_EVENTS_ID ? trackingEventId : null;
-}
-
 // GET /api/votes/history - past (closed) rounds for the active event, newest
 // first: when it happened, how many players submitted, the compact per-game
 // ranking, and who won. Rounds nobody voted in still show up (with an empty
@@ -643,26 +739,25 @@ function voteEventFilter(groupId: string, requested: unknown): string | null {
 votesRouter.get('/history', (req, res) => {
   const { eventId, limit } = req.query;
   const groupId = req.group!.id;
-  const filterEventId = voteEventFilter(groupId, eventId);
+  const scope = resolveRequestGroupEventScope(req, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const filterEventId = scope.eventId;
   const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
-  const eventClause = filterEventId === null ? 'vr.event_id IS NULL' : 'vr.event_id = ?';
-  const params: Array<string | number> = [groupId];
-  if (filterEventId !== null) params.push(filterEventId);
-  params.push(limitNum);
 
   const rows = db
     .prepare(
-      `SELECT vr.round AS round, vr.event_id AS eventId, COALESCE(e.name, 'Gruppenraum') AS eventName,
+      `SELECT vr.round AS round, vr.event_id AS eventId, e.name AS eventName,
               vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
               vr.winner_game_ids AS winnerGameIdsJson, vr.title AS title, vr.info AS info,
               vr.selected_game_ids AS selectedGameIdsJson
        FROM vote_rounds vr
-       LEFT JOIN events e ON e.group_id = vr.group_id AND e.id = vr.event_id
-       WHERE vr.group_id = ? AND vr.closed_at IS NOT NULL AND ${eventClause}
+       JOIN events e ON e.group_id = vr.group_id AND e.id = vr.event_id
+       WHERE vr.group_id = ? AND vr.closed_at IS NOT NULL AND vr.event_id = ?
        ORDER BY vr.round DESC
        LIMIT ?`,
     )
-    .all(...params) as VoteRoundRow[];
+    .all(groupId, filterEventId, limitNum) as VoteRoundRow[];
 
   const history = rows.map((r) => {
     const winnerIds: string[] = r.winnerGameIdsJson ? JSON.parse(r.winnerGameIdsJson) : [];
@@ -692,6 +787,15 @@ votesRouter.get('/history', (req, res) => {
     };
   });
 
+  // Rounds nobody voted in (totalVoters === 0) carry no result to show, so they
+  // sink below every round that does; within each of those two groups the
+  // existing round-descending (= newest-first) order from the query above is
+  // preserved.
+  history.sort((a, b) => {
+    const hasResult = (h: (typeof history)[number]) => (h.totalVoters > 0 ? 1 : 0);
+    return hasResult(b) - hasResult(a) || b.round - a.round;
+  });
+
   res.json({ history });
 });
 
@@ -705,17 +809,21 @@ votesRouter.get('/history/:round', (req, res) => {
     return res.status(400).json({ error: 'round muss eine positive Ganzzahl sein.' });
   }
 
+  const scope = resolveRequestGroupEventScope(req, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+
   const row = db
     .prepare(
-      `SELECT vr.round AS round, vr.event_id AS eventId, COALESCE(e.name, 'Gruppenraum') AS eventName,
+      `SELECT vr.round AS round, vr.event_id AS eventId, e.name AS eventName,
               vr.started_at AS startedAt, vr.closed_at AS closedAt, vr.mode AS mode,
               vr.winner_game_ids AS winnerGameIdsJson, vr.title AS title, vr.info AS info,
               vr.selected_game_ids AS selectedGameIdsJson
        FROM vote_rounds vr
-       LEFT JOIN events e ON e.group_id = vr.group_id AND e.id = vr.event_id
-       WHERE vr.group_id = ? AND vr.round = ?`,
+       JOIN events e ON e.group_id = vr.group_id AND e.id = vr.event_id
+       WHERE vr.group_id = ? AND vr.round = ? AND vr.event_id = ?`,
     )
-    .get(req.group!.id, round) as VoteRoundRow | undefined;
+    .get(req.group!.id, round, scope.eventId) as VoteRoundRow | undefined;
   if (!row || row.closedAt === null) {
     return res.status(404).json({ error: 'Abgeschlossene Abstimmungsrunde nicht gefunden.' });
   }

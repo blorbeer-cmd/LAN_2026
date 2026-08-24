@@ -8,13 +8,14 @@ import { Router, type Request, type Response } from 'express';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { nanoid } from 'nanoid';
-import { db, OUTSIDE_EVENTS_ID } from '../db';
+import { db } from '../db';
+import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { broadcast, Events } from '../realtime';
-import { getTrackingEventId } from '../events';
 import { isNonEmptyString } from '../validation';
 import { notifyPlayers, resolvePushTopic } from '../push';
-import { competitionPlayersBelongToGroup, trackingEventIdForGroup } from '../competitionScope';
+import { competitionPlayersBelongToGroup } from '../competitionScope';
 import { requireGroupRole } from '../groupAuthorization';
+import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 import {
   generateBracket,
   applyBracketResult,
@@ -31,7 +32,7 @@ import {
 export const tournamentsRouter = Router();
 
 const FORMATS: TournamentFormat[] = ['single_elimination', 'round_robin', 'group_knockout'];
-const communicationEventId = (eventId: string): string | null => (eventId === OUTSIDE_EVENTS_ID ? null : eventId);
+const communicationEventId = (eventId: string): string => eventId;
 
 interface TournamentRow {
   id: string;
@@ -161,8 +162,8 @@ function clearKnockoutStage(tournamentId: string): void {
 }
 
 // Builds the full detail payload shared by create/list-one/record-result.
-// groupId is required so a foreign group's tournament id 404s the same way
-// every other group-owned resource does (existence hidden).
+// groupId stays required so a tournament whose retained group_id does not
+// match the request returns 404 with its existence hidden.
 function buildDetail(tournamentId: string, groupId: string) {
   const tournament = db.prepare('SELECT * FROM tournaments WHERE id = ?').get(tournamentId) as
     | TournamentRow
@@ -182,7 +183,7 @@ function buildDetail(tournamentId: string, groupId: string) {
   if (allPlayerIds.length > 0) {
     const placeholders = allPlayerIds.map(() => '?').join(',');
     const players = db
-      .prepare(`SELECT id, name, color, avatar FROM players WHERE id IN (${placeholders})`)
+      .prepare(`SELECT id, name, color, avatar FROM players WHERE deactivated_at IS NULL AND id IN (${placeholders})`)
       .all(...allPlayerIds) as PlayerRow[];
     players.forEach((p) => playerById.set(p.id, p));
   }
@@ -272,7 +273,10 @@ function buildDetail(tournamentId: string, groupId: string) {
 // a picker list (use GET /:id for the full board).
 tournamentsRouter.get('/', (req, res) => {
   const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
+  const scope = resolveRequestGroupEventScope(req, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const filterEventId = scope.eventId!;
 
   const rows = db
     .prepare(
@@ -291,6 +295,11 @@ tournamentsRouter.get('/', (req, res) => {
 
 // GET /api/tournaments/:id - full board: teams, bracket/fixtures, standings.
 tournamentsRouter.get('/:id', (req, res) => {
+  const tournament = db
+    .prepare('SELECT event_id FROM tournaments WHERE id = ? AND group_id = ?')
+    .get(req.params.id, req.group!.id) as { event_id: string } | undefined;
+  if (!tournament) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, tournament.event_id)) return;
   const detail = buildDetail(req.params.id, req.group!.id);
   if (!detail) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
   res.json(detail);
@@ -337,10 +346,11 @@ tournamentsRouter.post('/', (req, res) => {
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
   }
-  const game = db.prepare('SELECT id, name, icon FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
-    | { id: string; name: string; icon: string }
-    | undefined;
+  const game = db
+    .prepare('SELECT id, name, icon, status FROM games WHERE id = ? AND group_id = ?')
+    .get(gameId, req.group!.id) as { id: string; name: string; icon: string; status: string } | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+  if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
 
   if (typeof format !== 'string' || !FORMATS.includes(format as TournamentFormat)) {
     return res.status(400).json({ error: `format muss eines von ${FORMATS.join(', ')} sein.` });
@@ -388,16 +398,16 @@ tournamentsRouter.post('/', (req, res) => {
   }
 
   const allPlayerIds = teamsInput.flatMap((t) => t.playerIds);
-  const eventId = trackingEventIdForGroup(req.group!.id);
-  if (!eventId) {
-    return res.status(409).json({ error: 'Tracking läuft derzeit in einem anderen Gruppenkontext.' });
-  }
+  const scope = resolveRequestGroupEventScope(req, undefined);
+  if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const eventId = scope.eventId;
   if (!competitionPlayersBelongToGroup(req.group!.id, eventId, allPlayerIds)) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
   }
   const placeholders = allPlayerIds.map(() => '?').join(',');
   const foundPlayers = db
-    .prepare(`SELECT id FROM players WHERE id IN (${placeholders})`)
+      .prepare(`SELECT id FROM players WHERE deactivated_at IS NULL AND id IN (${placeholders})`)
     .all(...allPlayerIds) as Array<{ id: string }>;
   if (foundPlayers.length !== new Set(allPlayerIds).size) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
@@ -541,6 +551,7 @@ function saveTournamentResult(req: Request, res: Response) {
     | TournamentRow
     | undefined;
   if (!tournament) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, tournament.event_id)) return;
 
   const match = db
     .prepare('SELECT * FROM tournament_matches WHERE id = ? AND tournament_id = ?')
@@ -908,7 +919,7 @@ function saveTournamentResult(req: Request, res: Response) {
       { ...notificationScope, recipientPlayerIds: notify.playerIds },
     );
   }
-  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
+  broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id, eventId: tournament.event_id });
   res.json(buildDetail(tournament.id, req.group!.id));
 }
 
@@ -923,6 +934,8 @@ tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthe
   const tournament = db
     .prepare('SELECT event_id FROM tournaments WHERE id = ? AND group_id = ?')
     .get(req.params.id, req.group!.id) as { event_id: string } | undefined;
+  if (!tournament) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, tournament.event_id)) return;
   const result = db.prepare('DELETE FROM tournaments WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Turnier nicht gefunden.' });
   writeAdminAudit({
@@ -934,12 +947,12 @@ tournamentsRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthe
   });
   resolvePushTopic(`tournament:${req.params.id}`, true, {
     groupId: req.group!.id,
-    eventId: tournament ? communicationEventId(tournament.event_id) : null,
+    eventId: communicationEventId(tournament.event_id),
   });
   broadcast(
     Events.tournamentsChanged,
     { type: 'deleted', tournamentId: req.params.id },
-    { groupId: req.group!.id, eventId: tournament ? communicationEventId(tournament.event_id) : null },
+    { groupId: req.group!.id, eventId: communicationEventId(tournament.event_id) },
   );
   res.status(204).end();
 });

@@ -6,10 +6,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp, enableTestTracking } from './testApp';
 import { db } from '../db';
 
-const app = createApp();
+const app = createTestApp();
 let apiKey: string;
 let playerId: string;
 let cs2GameId: string;
@@ -23,6 +23,7 @@ test('setup: create a player and locate two seeded games', async () => {
   const player = await request(app).post('/api/players').send({ name: 'Agent Tester' });
   playerId = player.body.id;
   apiKey = player.body.api_key;
+  enableTestTracking(playerId);
 
   const games = await request(app).get('/api/games');
   cs2GameId = games.body.find((g: { name: string }) => g.name === 'Counter-Strike 2').id;
@@ -60,15 +61,36 @@ test('POST /api/agent/report matches a known process to its game', async () => {
   assert.deepEqual(res.body.gameIds, [cs2GameId]);
 });
 
-test('GET /api/admin/agent-diagnostics exposes the latest agent heartbeat', async () => {
+test('GET /api/admin/agent-diagnostics exposes the latest agent heartbeat, filtered to configured game processes', async () => {
   const res = await request(app).get('/api/admin/agent-diagnostics');
   assert.equal(res.status, 200);
   const entry = res.body.find((row: { playerId: string }) => row.playerId === playerId);
   assert.ok(entry);
   assert.equal(entry.agentVersion, '1.0.0');
   assert.ok(entry.lastReportAt);
-  assert.deepEqual(entry.processNames, ['explorer.exe', 'cs2.exe']);
+  // 'explorer.exe' was sent alongside 'CS2.EXE' but isn't a configured game
+  // process, so it's stripped before ever reaching this diagnostics view.
+  assert.deepEqual(entry.processNames, ['cs2.exe']);
   assert.equal(entry.online, true);
+});
+
+test('GET /api/agent/process-names without x-api-key is rejected', async () => {
+  const res = await request(app).get('/api/agent/process-names');
+  assert.equal(res.status, 401);
+});
+
+test('GET /api/agent/process-names with a wrong api key is rejected', async () => {
+  const res = await request(app).get('/api/agent/process-names').set('x-api-key', 'not-a-real-key');
+  assert.equal(res.status, 401);
+});
+
+test('GET /api/agent/process-names returns the configured game process allow-list', async () => {
+  const res = await request(app).get('/api/agent/process-names').set('x-api-key', apiKey);
+  assert.equal(res.status, 200);
+  assert.ok(Array.isArray(res.body.processNames));
+  assert.ok(res.body.processNames.includes('cs2.exe'));
+  assert.ok(res.body.processNames.includes('rocketleague.exe'));
+  assert.ok(!res.body.processNames.includes('explorer.exe'));
 });
 
 test('GET /api/live shows the player as playing exactly CS2', async () => {
@@ -125,7 +147,7 @@ test('closing one of two games removes only that one', async () => {
   assert.equal(entry.state, 'playing');
 });
 
-test('reporting no matching process clears all games and flips state to offline', async () => {
+test('reporting no matching process clears all games but remains online while tracking is fresh', async () => {
   await request(app)
     .post('/api/agent/report')
     .set('x-api-key', apiKey)
@@ -134,7 +156,7 @@ test('reporting no matching process clears all games and flips state to offline'
   const res = await request(app).get('/api/live');
   const entry = res.body.find((r: { player_id: string }) => r.player_id === playerId);
   assert.deepEqual(entry.games, []);
-  assert.equal(entry.state, 'offline');
+  assert.equal(entry.state, 'online');
 });
 
 test('a player with no report at all appears as offline on the board', async () => {

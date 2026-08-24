@@ -3,9 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp, TEST_ADMIN_ID } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 let gameId: string;
 let playerA: string;
 let playerB: string;
@@ -25,6 +25,12 @@ test('setup: a game, two players, a match, and a completed tournament', async ()
     .post('/api/events')
     .send({ name: 'HoF Test Event', startsAt: Date.now(), endsAt: Date.now() + 24 * 60 * 60 * 1000 });
   activeEventId = trackedEvent.body.id;
+  const roster = await request(app)
+    .put(`/api/events/${activeEventId}/participants`)
+    .send({ playerIds: [TEST_ADMIN_ID, playerA, playerB] });
+  assert.equal(roster.status, 200, JSON.stringify(roster.body));
+  const selected = await request(app).put('/api/me/active-event').send({ eventId: activeEventId });
+  assert.equal(selected.status, 200, JSON.stringify(selected.body));
   await request(app).post(`/api/events/${activeEventId}/tracking/start`).send({});
 
   // Alice wins the overall leaderboard for this event...
@@ -73,6 +79,10 @@ test('GET /api/hall-of-fame reports no champion for an event with no matches', a
     .post('/api/events')
     .send({ name: 'Empty HoF Event', startsAt: Date.now(), endsAt: Date.now() + 1000 });
   assert.equal(created.status, 201);
+  const roster = await request(app)
+    .put(`/api/events/${created.body.id}/participants`)
+    .send({ playerIds: [TEST_ADMIN_ID] });
+  assert.equal(roster.status, 200, JSON.stringify(roster.body));
   const res = await request(app).get('/api/hall-of-fame');
   const entry = res.body.events.find((e: { eventId: string }) => e.eventId === created.body.id);
   assert.ok(entry);

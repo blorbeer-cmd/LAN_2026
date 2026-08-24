@@ -14,8 +14,8 @@ ohne 15 Handys. Dazu gehört:
 2. Test-User sind **nur im Admin-Modus sichtbar** – normale Geräte sehen sie nirgends
    (Spielerliste, Sitzplan, Leaderboard, Live-Status, …).
 3. Der **Admin-Modus ist deutlich erkennbar** (dauerhafter Hinweis, nicht nur im Admin-Tab).
-4. Der **Admin-PIN entfällt**. Im Legacy-Modus genügt lokal ein Klick; unter Required-Auth
-   entscheidet ausschließlich die serverseitige Admin-Rolle der Session.
+4. Der **Admin-PIN entfällt**. Ausschließlich die serverseitige Admin-Rolle der Session
+   entscheidet über Admin-Zugriff.
 
 ## Ist-Zustand (relevant)
 
@@ -23,7 +23,7 @@ ohne 15 Handys. Dazu gehört:
   einer Schleife `POST /api/players` auf. Die Spieler sind normale Spieler ohne Markierung,
   ohne Seed-Daten, für alle sichtbar.
 - Im damaligen Ausgangszustand war der Admin-Modus ein Gerät-lokales Flag (`localStorage`) mit
-  optionalem PIN. Required-Auth ersetzt diese Vertrauensannahme durch die Session-Rolle.
+  optionalem PIN. Die persönliche Session ersetzt diese Vertrauensannahme durch ihre Serverrolle.
 - Sitzplan: `seating_layouts.assignments` (JSON `{side, seat, playerId}`), beim Speichern
   leitet `syncAutoSeatNeighbors` aus Kanten-Nachbarschaft automatisch `seat_neighbors`-Zeilen
   (`source='auto'`) ab → genau das ist „Sichtbare Monitore".
@@ -112,11 +112,44 @@ Solange der Admin-Modus aktiv ist:
 
 ### 5. PIN entfernt
 
-- `views/admin.js`: Unlock-Screen entfällt komplett; der Admin-Tab zeigt direkt einen
-  „Admin-Modus aktivieren"-Schalter (ein Klick an/aus).
-- Server: `requireAdmin` prüft unter Required-Auth die echte Session-Rolle. `ADMIN_PIN`,
+- `views/admin.js`: Ein Unlock-Screen oder lokaler Aktivierungsschalter entfällt komplett;
+  verifizierte Owner/Admins sehen die Werkzeuge direkt. Der sichtbare Banner kann die
+  Testspieler-Darstellung auf einem Gerät vorübergehend ausblenden.
+- Server: `requireAdmin` prüft die echte Session-Rolle. `ADMIN_PIN`,
   `x-admin-pin` sowie `GET /api/admin/status` und `POST /api/admin/unlock` sind entfernt.
-  Der Legacy-Modus behält bis zum Cutover bewusst seinen lokalen Ein-Klick-Vertrauensmodus.
+
+### 6. Als Testspieler anmelden (Testsitzung)
+
+Jede Anfrage ist an genau eine Session gebunden — ein Admin kann sich
+also nicht einfach clientseitig als Test-Spieler ausgeben, um Multi-User-Features (Vote,
+Mitfahrgelegenheiten, Arcade-Lobbys, Push-Zustellung) allein zu testen. Statt die
+Session-Bindung aufzuweichen, bekommt ein zweites Gerät/Browserfenster eine **echte, zweite
+Session**:
+
+- Neue Invite-`purpose: 'test_login'` (`invites.ts`) mit eigener, kurzer Default-TTL
+  (15 Minuten – deutlich kürzer als `register`/`reset`, weil das Einlösen sofort eine
+  Session ohne Passwortabfrage erzeugt).
+- **Mint:** `POST /api/auth/invites` mit `purpose: 'test_login'`, weiterhin
+  `requireSessionAdmin` + `requireRecentReauthentication`. Die Zielprüfung ist gegenüber
+  `register`/`claim`/`reset` umgekehrt: nur ein `is_test`-Spieler ist ein gültiges Ziel.
+  Im Admin-Panel löst der Button „Testsitzung öffnen" neben jedem Test-Spieler das bestehende
+  Invite-Link/QR-Modal aus (`views/admin.js`) — keine neue UI-Komponente.
+- **Redeem:** neuer Endpoint `POST /api/auth/test-session` (`routes/auth.ts`). Prüft
+  `is_test` und `deactivated_at` erneut zum Einlöse-Zeitpunkt (nicht nur beim Minten),
+  konsumiert den Code atomar über `markInviteUsed` und erzeugt eine normale Session für den
+  Test-Spieler. `authGate.js` bekommt dafür einen eigenen Login-Modus `testSession`
+  (`?testSession=CODE`), der ohne Formular direkt auf „Anmelden" wartet.
+- **Sichtbarkeit der Test-Peers:** Eine eingeloggte Testsitzung hat serverseitig kein
+  Admin-Recht (`is_admin` bleibt `0`), muss aber ihre Test-Spieler-Peers sehen, um z. B.
+  einer von einem anderen Test-Spieler angelegten Mitfahrgelegenheit beitreten zu können.
+  Dafür bekommt `testFilter.js` ein eigenes, rein clientseitiges Flag
+  (`respawn_test_identity`, gesetzt/gelöscht über `setTestIdentity()`), das wie das
+  bestehende `isAdmin()`-Flag **keine Sicherheitsgrenze** ist — es steuert nur, ob Test-Spieler
+  im UI dieses Geräts sichtbar bleiben.
+
+Bewusst **nicht** im Scope: ein serverseitiges „Act as" auf der Session des Admins selbst
+(einzige Identität pro Browser-Kontext bliebe bestehen, echtes Push und paralleles Arcade-
+Testen wären damit nicht abbildbar).
 
 ## Sinnvolle Ergänzungen (im Scope)
 

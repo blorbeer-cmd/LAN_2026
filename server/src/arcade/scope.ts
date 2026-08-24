@@ -1,7 +1,6 @@
 import { Server, Socket } from 'socket.io';
-import { config } from '../config';
-import { db, DEFAULT_GROUP_ID } from '../db';
-import { resolveGroupEventScope } from '../groupEventScope';
+import { db } from '../db';
+import { isParticipant } from '../events';
 
 export interface ArcadeScope {
   groupId: string;
@@ -25,38 +24,18 @@ function activeGroupMember(groupId: string, playerId: unknown): boolean {
 
 function activeEventAccess(groupId: string, eventId: string, playerId: unknown): boolean {
   if (!activeGroupMember(groupId, playerId)) return false;
-  const membership = db.prepare(
-    "SELECT role FROM group_memberships WHERE group_id = ? AND player_id = ? AND status = 'active'",
-  ).get(groupId, playerId) as { role: string } | undefined;
-  if (membership?.role === 'admin' || membership?.role === 'owner') {
-    return Boolean(db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId));
-  }
-  return Boolean(db.prepare(
-    `SELECT 1 FROM event_participants ep JOIN events e ON e.id = ep.event_id
-     WHERE ep.event_id = ? AND ep.player_id = ? AND e.group_id = ?`,
-  ).get(eventId, playerId, groupId));
+  const event = db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId);
+  return typeof playerId === 'string' && Boolean(event) && isParticipant(eventId, playerId);
 }
 
 export function socketArcadeScope(socket: Socket, playerId?: unknown): ArcadeScope | null {
-  if (config.authMode === 'legacy') {
-    if (playerId !== undefined) {
-      if (typeof playerId !== 'string' || !db.prepare('SELECT 1 FROM players WHERE id = ?').get(playerId)) return null;
-      db.prepare(
-        `INSERT OR IGNORE INTO group_memberships
-           (group_id, player_id, role, status, joined_at, ended_at, outside_tracking_enabled, invited_by)
-         VALUES (?, ?, 'member', 'active', ?, NULL, 1, NULL)`,
-      ).run(DEFAULT_GROUP_ID, playerId, Date.now());
-    }
-    const scope = resolveGroupEventScope(DEFAULT_GROUP_ID, undefined);
-    return { groupId: DEFAULT_GROUP_ID, eventId: scope.ok ? scope.eventId : null };
-  }
   if (socket.data.kioskReadOnly) return null;
   const groupId = typeof socket.data.groupId === 'string' && socket.data.groupId ? socket.data.groupId : null;
   const authPlayerId = socket.data.authPlayerId;
   if (!groupId || !activeGroupMember(groupId, authPlayerId)) return null;
   if (playerId !== undefined && playerId !== authPlayerId) return null;
   const eventId = typeof socket.data.eventId === 'string' && socket.data.eventId ? socket.data.eventId : null;
-  if (eventId && !activeEventAccess(groupId, eventId, authPlayerId)) return null;
+  if (!eventId || !activeEventAccess(groupId, eventId, authPlayerId)) return null;
   return { groupId, eventId };
 }
 

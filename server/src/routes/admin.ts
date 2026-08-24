@@ -1,30 +1,53 @@
-// Admin extras are session-role protected in required mode.
+// Admin extras are protected by the authenticated session role.
 
 import { Router } from 'express';
 import { requireAdmin } from '../auth';
 import { db } from '../db';
 import { config } from '../config';
 import { broadcast, Events } from '../realtime';
-import { getLiveBoard } from '../liveStatus';
+import { broadcastLiveBoards } from '../liveStatus';
 import { createTestUsers, countTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
 import { deleteAllTestData, seedHallOfFameTestData } from '../testData';
 import { writeAdminAudit } from '../adminAudit';
 import { requireRecentReauthentication } from '../sessions';
+import { getReadiness } from '../readiness';
+import { getOrRepairActiveEvent } from '../eventContext';
+import { computeFeatureUsage } from '../featureUsage';
 
 export const adminRouter = Router();
+
+// GET /api/admin/feature-usage?eventId= — Bestandsdaten-Auswertung
+// (docs/KONZEPT-FEATURE-NUTZUNGSANALYSE.md, Baustein A): how many distinct
+// people and how much activity each existing fachliche feature already shows
+// in its own tables. An omitted eventId aggregates the whole group history;
+// an explicit one narrows every eventScoped entry to that event. A value
+// outside the caller's group simply yields empty entries (every query is
+// already group_id-scoped), so no extra existence check is needed here.
+adminRouter.get('/feature-usage', requireAdmin, (req, res) => {
+  const { eventId } = req.query;
+  if (eventId !== undefined && (typeof eventId !== 'string' || !eventId)) {
+    return res.status(400).json({ error: 'eventId muss eine nicht-leere Zeichenkette sein.' });
+  }
+  res.json(computeFeatureUsage(req.group!.id, typeof eventId === 'string' ? eventId : null));
+});
+
+adminRouter.get('/readiness', requireAdmin, async (req, res, next) => {
+  try {
+    res.json(await getReadiness(req.group!.id));
+  } catch (error) {
+    next(error);
+  }
+});
 
 // POST /api/admin/test-users - body: { count }. Creates fully seeded test
 // players (seats + visible monitors, skill/Bock per game, play sessions,
 // two of them live) in one transaction — see testUsers.ts.
 adminRouter.post('/test-users', requireAdmin, (req, res) => {
-  if (config.authMode === 'required') {
-    return res.status(403).json({ error: 'Test-Spieler werden über die aktive Gruppe verwaltet.' });
-  }
   const { count } = req.body ?? {};
   if (!Number.isInteger(count) || count < 1 || count > MAX_TEST_USERS_PER_CALL) {
     return res.status(400).json({ error: `count muss eine ganze Zahl zwischen 1 und ${MAX_TEST_USERS_PER_CALL} sein.` });
   }
-  const created = createTestUsers(count);
+  const created = createTestUsers(count, req.group!.id, getOrRepairActiveEvent(req.player!.id).id);
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     action: 'test_users_created',
@@ -33,7 +56,7 @@ adminRouter.post('/test-users', requireAdmin, (req, res) => {
   });
   broadcast(Events.playersChanged, null, { groupId: req.group!.id });
   broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
-  broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
+  broadcastLiveBoards(req.group!.id);
   res.status(201).json({ created, totalTestUsers: countTestUsers() });
 });
 
@@ -41,9 +64,6 @@ adminRouter.post('/test-users', requireAdmin, (req, res) => {
 // fixtures with a dense deterministic 2015-2026 data set. Kept separate from
 // player creation so adding another test participant never rewrites history.
 adminRouter.post('/test-data/hall-of-fame', requireAdmin, (req, res) => {
-  if (config.authMode === 'required') {
-    return res.status(403).json({ error: 'Test-Daten werden über die aktive Gruppe verwaltet.' });
-  }
   try {
     const created = seedHallOfFameTestData();
     broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
@@ -59,9 +79,6 @@ adminRouter.post('/test-data/hall-of-fame', requireAdmin, (req, res) => {
 // DELETE /api/admin/test-users - removes every test player and everything
 // hanging off them (skills, Bock, sessions, seats, neighbors, live rows).
 adminRouter.delete('/test-users', requireAdmin, requireRecentReauthentication, (req, res) => {
-  if (config.authMode === 'required') {
-    return res.status(403).json({ error: 'Test-Spieler werden über die aktive Gruppe verwaltet.' });
-  }
   const { deletedPlayers, deletedEvents } = deleteAllTestData();
   writeAdminAudit({
     actorPlayerId: req.player?.id,
@@ -72,7 +89,7 @@ adminRouter.delete('/test-users', requireAdmin, requireRecentReauthentication, (
   if (deletedPlayers > 0 || deletedEvents > 0) {
     broadcast(Events.playersChanged, null, { groupId: req.group!.id });
     broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
-    broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
+    broadcastLiveBoards(req.group!.id);
     broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
     broadcast(Events.leaderboardChanged, null, { groupId: req.group!.id });
     broadcast(Events.tournamentsChanged, null, { groupId: req.group!.id });

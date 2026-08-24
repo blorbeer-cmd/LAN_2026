@@ -4,9 +4,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { nanoid } from 'nanoid';
+import { createTestApp } from './testApp';
+import { db, DEFAULT_GROUP_ID } from '../db';
 
-const app = createApp();
+const app = createTestApp();
 let gameId: string;
 let playerIds: string[];
 
@@ -51,6 +53,16 @@ test('POST /api/matchmaking 404s if a player does not exist', async () => {
   assert.equal(res.status, 404);
 });
 
+test('POST /api/matchmaking rejects a deactivated player', async () => {
+  db.prepare('UPDATE players SET deactivated_at = ? WHERE id = ?').run(Date.now(), playerIds[0]);
+  try {
+    const res = await request(app).post('/api/matchmaking').send({ gameId, playerIds });
+    assert.equal(res.status, 404);
+  } finally {
+    db.prepare('UPDATE players SET deactivated_at = NULL WHERE id = ?').run(playerIds[0]);
+  }
+});
+
 test('POST /api/matchmaking draws two balanced teams by default', async () => {
   const res = await request(app).post('/api/matchmaking').send({ gameId, playerIds });
   assert.equal(res.status, 200);
@@ -72,16 +84,27 @@ test('POST /api/matchmaking respects an explicit teamCount', async () => {
   }
 });
 
-test('POST /api/matchmaking uses a neutral default rating for unrated players', async () => {
+test('POST /api/matchmaking balances an unrated player with the neutral default but stores no rating', async () => {
   const unrated = await request(app).post('/api/players').send({ name: 'Unrated' });
   const res = await request(app)
     .post('/api/matchmaking')
     .send({ gameId, playerIds: [...playerIds, unrated.body.id], teamCount: 2 });
   assert.equal(res.status, 200);
+  type SnapshotTeam = { players: Array<{ id: string; rating: number | null }>; totalRating: number };
   const found = res.body.teams
-    .flatMap((t: { players: { id: string; rating: number }[] }) => t.players)
+    .flatMap((t: SnapshotTeam) => t.players)
     .find((p: { id: string }) => p.id === unrated.body.id);
-  assert.equal(found.rating, 5);
+  // null instead of the substituted 5: a later reader must be able to tell an
+  // absent self-rating from someone who really rated the game a 5.
+  assert.equal(found.rating, null);
+  // The total still counts that player with the fallback the draw balanced on.
+  const teamOfUnrated = res.body.teams.find((t: SnapshotTeam) =>
+    t.players.some((p) => p.id === unrated.body.id)
+  );
+  assert.equal(
+    teamOfUnrated.totalRating,
+    teamOfUnrated.players.reduce((sum: number, p: { rating: number | null }) => sum + (p.rating ?? 5), 0)
+  );
 });
 
 test('POST /api/matchmaking ignores seat neighbors unless this draw asks for it', async () => {
@@ -366,6 +389,45 @@ test('PATCH /api/matchmaking/draws/:id/move moves a player and recomputes totals
 
   const history = await request(app).get(`/api/matchmaking/history?gameId=${game.body.id}`);
   assert.equal(teamOf(history.body.history[0].teams, ids[0]), toTeam);
+});
+
+test('PATCH /api/matchmaking/draws/:id/move refuses a draw from an event the account is not part of', async () => {
+  // The handler's row lookup is scoped by group_id only. That is not the
+  // event boundary: POST /, POST /rematch and GET /history all additionally
+  // check participation, and reshuffling someone else's teams is a write, not
+  // a read — so the strictest of those rules applies here too.
+  const game = await request(app).post('/api/games').send({ name: 'Move Scope Game' });
+  const ids: string[] = [];
+  for (const name of ['ScopeA', 'ScopeB']) {
+    const p = await request(app).post('/api/players').send({ name });
+    ids.push(p.body.id);
+  }
+  const draw = await request(app)
+    .post('/api/matchmaking')
+    .send({ gameId: game.body.id, playerIds: ids, teamCount: 2 });
+  assert.equal(draw.status, 200, JSON.stringify(draw.body));
+
+  const foreignEventId = nanoid();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO events (id, name, starts_at, ends_at, tracking_enabled, group_id, status, visibility_scope)
+     VALUES (?, 'Fremdes Event', ?, ?, 0, ?, 'published', 'participants')`,
+  ).run(foreignEventId, now - 1_000, now + 60_000, DEFAULT_GROUP_ID);
+  db.prepare('UPDATE matchmaking_draws SET event_id = ? WHERE id = ?').run(foreignEventId, draw.body.id);
+
+  const moved = await request(app)
+    .patch(`/api/matchmaking/draws/${draw.body.id}/move`)
+    .send({ playerId: ids[0], toTeamIndex: 1 });
+  assert.equal(moved.status, 404, JSON.stringify(moved.body));
+
+  const stored = db.prepare('SELECT teams FROM matchmaking_draws WHERE id = ?').get(draw.body.id) as {
+    teams: string;
+  };
+  assert.deepEqual(
+    JSON.parse(stored.teams),
+    draw.body.teams,
+    'a refused move must not have touched the stored lineup',
+  );
 });
 
 test('PATCH /api/matchmaking/draws/:id/move recomputes seat-conflict flags after a manual reassignment', async () => {

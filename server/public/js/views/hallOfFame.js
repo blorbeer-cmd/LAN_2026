@@ -8,31 +8,47 @@ import { escapeHtml, avatarHtml, formatDate } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
+import { emptyStateHtml } from '../emptyState.js';
+import { accessibleEvents } from '../state.js';
+import { eventSelectOption } from '../eventStatus.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 
 let cache = null;
 let loading = false;
+let cacheStale = false;
+let requestVersion = 0;
 let selectedEventId = null;
 
-export function invalidateHallOfFame() {
-  cache = null;
+export function invalidateHallOfFame({ hard = false } = {}) {
+  requestVersion += 1;
+  loading = false;
+  cacheStale = true;
+  if (hard) cache = null;
 }
 
 async function load(ctx) {
+  const version = ++requestVersion;
   loading = true;
+  cacheStale = false;
   try {
-    cache = await api.hallOfFame.get();
+    const result = await api.hallOfFame.get();
+    if (version === requestVersion) cache = result;
   } catch (err) {
-    showToast(err.message, { error: true });
-    cache = { events: [], allTime: { mostOverallWins: [], mostTournamentWins: [] } };
+    if (version === requestVersion) {
+      showToast(err.message, { error: true });
+      if (cache === null) cache = { events: [], allTime: { mostOverallWins: [], mostTournamentWins: [] } };
+    }
   } finally {
-    loading = false;
-    ctx.rerender();
+    if (version === requestVersion) {
+      loading = false;
+      ctx.rerender();
+    }
   }
 }
 
 function rankedRows(entries, suffix) {
   if (entries.length === 0) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Noch keine Daten.</div>`;
+    return emptyStateHtml('Noch keine Daten.', { style: 'padding:var(--space-4);' });
   }
   return entries
     .map(
@@ -101,18 +117,30 @@ function renderEvent(e) {
   `;
 }
 
+// The Hall-of-Fame payload carries results, not lifecycle flags, so the state
+// comes from the shared event list this account can see. An event that list
+// no longer holds still gets an option — it has results to show — just
+// without a state claim the payload cannot back.
+function eventPickerOptions(events) {
+  const byId = new Map(accessibleEvents().map((event) => [event.id, event]));
+  return events.map((summary) => {
+    const known = byId.get(summary.eventId);
+    return known
+      ? { ...eventSelectOption(known), value: summary.eventId }
+      : { value: summary.eventId, label: summary.eventName };
+  });
+}
+
 export function renderHallOfFame(container, ctx) {
-  if (cache === null && !loading) load(ctx);
+  if ((cache === null || cacheStale) && !loading) load(ctx);
   const events = cache?.events ?? [];
   if (!events.some((event) => event.eventId === selectedEventId)) selectedEventId = events[0]?.eventId ?? null;
   const selectedEvent = events.find((event) => event.eventId === selectedEventId) ?? null;
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title">Hall of Fame</h1>
     ${
-      loading || cache === null
-        ? `<div class="empty-state">Lädt…</div>`
+      cache === null
+        ? emptyStateHtml('Lädt…')
         : `
       <div class="grouped-page-sections">
         <section class="card stack grouped-page-section" aria-labelledby="hall-overall-title">
@@ -127,10 +155,12 @@ export function renderHallOfFame(container, ctx) {
           <div class="grouped-page-section-title"><h2 id="hall-events-title">Nach LAN</h2></div>
           ${
             events.length === 0
-              ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('hallOfFame'))}</span>Noch keine Events.</div>`
-              : `<select id="hall-event-select" aria-label="LAN">
-                   ${events.map((event) => `<option value="${event.eventId}" ${event.eventId === selectedEventId ? 'selected' : ''}>${escapeHtml(event.eventName)}</option>`).join('')}
-                 </select>
+              ? emptyStateHtml('Noch keine Events.', { icon: icon(domainIcon('hallOfFame')) })
+              : `${searchSelectHtml('hall-event-select', eventPickerOptions(events), selectedEventId, {
+                  placeholder: 'LAN suchen…',
+                  ariaLabel: 'LAN',
+                  label: 'LANs mit Ergebnissen',
+                })}
                  <div class="card hall-of-fame-selected-event">${renderEvent(selectedEvent)}</div>`
           }
         </section>
@@ -139,8 +169,11 @@ export function renderHallOfFame(container, ctx) {
     }
   `;
 
-  container.querySelector('#hall-event-select')?.addEventListener('change', (event) => {
-    selectedEventId = event.currentTarget.value;
-    ctx.rerender();
+  wireSearchSelect(container, 'hall-event-select', eventPickerOptions(events), {
+    emptyText: 'Kein passendes LAN gefunden.',
+    onChange: (eventId) => {
+      selectedEventId = eventId;
+      ctx.rerender();
+    },
   });
 }

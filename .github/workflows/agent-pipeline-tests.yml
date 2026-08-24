@@ -1,0 +1,68 @@
+name: Agent pipeline tests
+
+# Runs the unit tests for the agent-pipeline state logic. This workflow executes pull-request head
+# code by design, so it stays read-only and receives no secrets.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/agent-*"
+      - ".github/agent-pipeline/**"
+      - ".github/workflows/agent-pipeline-*.yml"
+  pull_request:
+    paths:
+      - "scripts/agent-*"
+      - ".github/agent-pipeline/**"
+      - ".github/workflows/agent-pipeline-*.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-pipeline-tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  test:
+    name: Agent pipeline / tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The contract validator resolves the declared base SHA against real history.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Test task contract validator
+        run: node --test scripts/agent-pipeline.test.mjs
+
+      - name: Test readiness reconciler
+        run: node --test scripts/agent-pipeline-reconcile.test.mjs
+
+      - name: Test scheduled sweep selector
+        run: node --test scripts/agent-pipeline-select-prs.test.mjs
+
+      - name: Test agent preflight
+        run: node --test scripts/agent-preflight.test.mjs
+
+      - name: Test review session launcher
+        run: node --test scripts/agent-review-session.test.mjs
+
+      - name: Test Claude cross-review adapter
+        run: node --test scripts/agent-claude-review.test.mjs
+
+      - name: Test Claude self-review adapter
+        run: node --test scripts/agent-claude-self-review.test.mjs
+
+      - name: Test Codex cross-review adapter
+        run: node --test scripts/agent-codex-review.test.mjs
+
+      - name: Test Codex task delivery adapter
+        run: node --test scripts/agent-pipeline-codex-adapter.test.mjs

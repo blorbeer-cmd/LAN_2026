@@ -1,175 +1,111 @@
-// Tests the sweeper's per-tick behavior in isolation from the real timer:
-// startOfflineSweeper() itself just wires sweepOnce() into setInterval, so
-// exercising sweepOnce() directly proves the tick logic without waiting on
-// wall-clock time. Two things matter here: it must actually broadcast the
-// refreshed board, and a thrown error inside must never escape (an
-// unhandled exception in a setInterval callback kills the whole process —
-// exactly what must never happen on a friend's PC during a 3-day LAN).
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { nanoid } from 'nanoid';
-import { db } from './db';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from './db';
 import { setIo } from './realtime';
 import { sweepOnce } from './liveStatus';
-import { config } from './config';
+import { ensureAccountEventContext, setActiveEventForPlayer } from './eventContext';
 
-test('sweepOnce broadcasts the live board via io.emit', () => {
-  const emitted: Array<{ event: string; payload: unknown }> = [];
-  const fakeIo = { emit: (event: string, payload: unknown) => emitted.push({ event, payload }) };
-  setIo(fakeIo as any);
-
-  const playerId = nanoid();
+function createScopedPlayer(name: string, eventId = BASE_EVENT_ID): string {
+  const id = nanoid();
+  const now = Date.now();
   db.prepare('INSERT INTO players (id, name, color, api_key, created_at) VALUES (?, ?, ?, ?, ?)').run(
-    playerId,
-    'SweepOnce Player',
+    id,
+    name,
     '#abcdef',
     nanoid(),
-    Date.now()
+    now,
   );
+  db.prepare(
+    `INSERT INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+     VALUES (?, ?, 'member', 'active', ?, 0)`,
+  ).run(DEFAULT_GROUP_ID, id, now);
+  ensureAccountEventContext(id);
+  if (eventId !== BASE_EVENT_ID) {
+    db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')").run(eventId, id);
+    assert.ok(setActiveEventForPlayer(id, eventId));
+  }
+  return id;
+}
 
-  sweepOnce(Date.now());
-
-  assert.equal(emitted.length, 1);
-  assert.equal(emitted[0].event, 'live:changed');
-  assert.ok(Array.isArray(emitted[0].payload));
-  assert.ok((emitted[0].payload as unknown[]).some((e: any) => e.player_id === playerId));
-
-  setIo(null as any);
-});
-
-test('sweepOnce refreshes every group that carries live rows, each under its own scope', () => {
-  const emitted: Array<{ event: string; payload: unknown }> = [];
-  const fakeIo = { emit: (event: string, payload: unknown) => emitted.push({ event, payload }) };
-  setIo(fakeIo as any);
-
-  const groupA = nanoid();
-  const groupB = nanoid();
-  db.prepare('INSERT INTO groups (id, name, created_at) VALUES (?, ?, ?)').run(groupA, 'Sweep A', Date.now());
-  db.prepare('INSERT INTO groups (id, name, created_at) VALUES (?, ?, ?)').run(groupB, 'Sweep B', Date.now());
-  const playerA = nanoid();
-  const playerB = nanoid();
-  db.prepare('INSERT INTO players (id, name, color, api_key, created_at) VALUES (?, ?, ?, ?, ?)').run(
-    playerA,
-    'Sweep Player A',
-    '#abcdef',
-    nanoid(),
-    Date.now()
-  );
-  db.prepare('INSERT INTO players (id, name, color, api_key, created_at) VALUES (?, ?, ?, ?, ?)').run(
-    playerB,
-    'Sweep Player B',
-    '#abcdef',
-    nanoid(),
-    Date.now()
-  );
+function createEvent(name: string): string {
+  const id = nanoid();
   const now = Date.now();
   db.prepare(
-    'INSERT INTO tracking_live_contexts (player_id, group_id, event_id, last_seen, activity_tracked) VALUES (?, ?, NULL, ?, 0)'
-  ).run(playerA, groupA, now);
-  db.prepare(
-    'INSERT INTO tracking_live_contexts (player_id, group_id, event_id, last_seen, activity_tracked) VALUES (?, ?, NULL, ?, 0)'
-  ).run(playerB, groupB, now);
+    `INSERT INTO events (id, name, starts_at, ends_at, group_id, status, visibility_scope)
+     VALUES (?, ?, ?, ?, ?, 'published', 'participants')`,
+  ).run(id, name, now, now + 60_000, DEFAULT_GROUP_ID);
+  return id;
+}
 
+test('sweepOnce broadcasts the base-event board to a matching authenticated socket', () => {
+  const emitted: Array<{ event: string; payload: unknown }> = [];
+  const playerId = createScopedPlayer('SweepOnce Player');
+  const fakeIo = {
+    emit() { throw new Error('event broadcasts must never use io.emit'); },
+    sockets: { sockets: new Map([['player', {
+      data: { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID, authPlayerId: playerId },
+      emit: (event: string, payload: unknown) => emitted.push({ event, payload }),
+    }]]) },
+  };
+  setIo(fakeIo as any);
   try {
-    sweepOnce(now);
-    const liveEvents = emitted.filter((entry) => entry.event === 'live:changed');
-    // One board per group with live rows plus the always-included default group.
-    assert.equal(liveEvents.length, 3);
+    sweepOnce(Date.now());
+    assert.equal(emitted.length, 1);
+    assert.equal(emitted[0].event, 'live:changed');
+    assert.ok((emitted[0].payload as Array<{ player_id: string }>).some((entry) => entry.player_id === playerId));
   } finally {
-    db.prepare('DELETE FROM tracking_live_contexts WHERE player_id IN (?, ?)').run(playerA, playerB);
-    setIo(null as any);
+    setIo(null);
   }
 });
 
-test('sweepOnce isolates group boards by actual required-mode recipient', () => {
-  const originalAuthMode = config.authMode;
-  (config as { authMode: 'legacy' | 'required' }).authMode = 'required';
-  const groupA = nanoid();
-  const groupB = nanoid();
-  const playerA = nanoid();
-  const playerB = nanoid();
-  const now = Date.now();
-  db.prepare('INSERT INTO groups (id, name, created_at) VALUES (?, ?, ?)').run(groupA, 'Sweep Recipient A', now);
-  db.prepare('INSERT INTO groups (id, name, created_at) VALUES (?, ?, ?)').run(groupB, 'Sweep Recipient B', now);
-  const insertPlayer = db.prepare('INSERT INTO players (id, name, color, api_key, created_at) VALUES (?, ?, ?, ?, ?)');
-  insertPlayer.run(playerA, 'Sweep Recipient Player A', '#abcdef', nanoid(), now);
-  insertPlayer.run(playerB, 'Sweep Recipient Player B', '#fedcba', nanoid(), now);
-  const insertMembership = db.prepare(
-    `INSERT INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
-     VALUES (?, ?, 'member', 'active', ?, 1)`,
-  );
-  insertMembership.run(groupA, playerA, now);
-  insertMembership.run(groupB, playerB, now);
-  db.prepare(
-    'INSERT INTO tracking_live_contexts (player_id, group_id, event_id, last_seen, activity_tracked) VALUES (?, ?, NULL, ?, 0)',
-  ).run(playerA, groupA, now);
-  db.prepare(
-    'INSERT INTO tracking_live_contexts (player_id, group_id, event_id, last_seen, activity_tracked) VALUES (?, ?, NULL, ?, 0)',
-  ).run(playerB, groupB, now);
-
-  const received = new Map<string, unknown[]>([['groupA', []], ['groupB', []], ['unscoped', []]]);
-  const fakeSocket = (label: string, data: Record<string, unknown>) => ({
-    data,
+test('sweepOnce isolates simultaneous personal event workspaces', () => {
+  const eventA = createEvent('Sweep Event A');
+  const eventB = createEvent('Sweep Event B');
+  const playerA = createScopedPlayer('Sweep Player A', eventA);
+  const playerB = createScopedPlayer('Sweep Player B', eventB);
+  const receivedA: unknown[] = [];
+  const receivedB: unknown[] = [];
+  const fakeSocket = (playerId: string, eventId: string, target: unknown[]) => ({
+    data: { groupId: DEFAULT_GROUP_ID, eventId, authPlayerId: playerId },
     emit(event: string, payload: unknown) {
-      if (event === 'live:changed') received.get(label)!.push(payload);
+      if (event === 'live:changed') target.push(payload);
     },
   });
-  const globalEmits: string[] = [];
   const fakeIo = {
-    emit(event: string) { globalEmits.push(event); },
+    emit() { throw new Error('event broadcasts must never use io.emit'); },
     sockets: { sockets: new Map([
-      ['groupA', fakeSocket('groupA', { groupId: groupA, authPlayerId: playerA })],
-      ['groupB', fakeSocket('groupB', { groupId: groupB, authPlayerId: playerB })],
-      ['unscoped', fakeSocket('unscoped', { authPlayerId: playerA })],
+      ['a', fakeSocket(playerA, eventA, receivedA)],
+      ['b', fakeSocket(playerB, eventB, receivedB)],
     ]) },
   };
   setIo(fakeIo as any);
-
   try {
-    sweepOnce(now);
-    assert.deepEqual(globalEmits, [], 'required-mode sweeps never fall back to a global emit');
-    assert.equal(received.get('groupA')!.length, 1, 'group A receives exactly its board refresh');
-    assert.equal(received.get('groupB')!.length, 1, 'group B receives exactly its board refresh');
-    assert.equal(received.get('unscoped')!.length, 0, 'an unscoped socket receives no board');
-    const boardA = received.get('groupA')![0] as Array<{ player_id: string }>;
-    const boardB = received.get('groupB')![0] as Array<{ player_id: string }>;
+    sweepOnce(Date.now());
+    assert.equal(receivedA.length, 1);
+    assert.equal(receivedB.length, 1);
+    const boardA = receivedA[0] as Array<{ player_id: string }>;
+    const boardB = receivedB[0] as Array<{ player_id: string }>;
     assert.ok(boardA.some((entry) => entry.player_id === playerA));
-    assert.ok(!boardA.some((entry) => entry.player_id === playerB), 'group A board excludes group B players');
+    assert.ok(!boardA.some((entry) => entry.player_id === playerB));
     assert.ok(boardB.some((entry) => entry.player_id === playerB));
-    assert.ok(!boardB.some((entry) => entry.player_id === playerA), 'group B board excludes group A players');
+    assert.ok(!boardB.some((entry) => entry.player_id === playerA));
   } finally {
     setIo(null);
-    (config as { authMode: 'legacy' | 'required' }).authMode = originalAuthMode;
   }
 });
 
-test('sweepOnce swallows an error thrown while closing stale sessions', () => {
-  const emitted: Array<{ event: string; payload: unknown }> = [];
-  const fakeIo = { emit: (event: string, payload: unknown) => emitted.push({ event, payload }) };
-  setIo(fakeIo as any);
-
-  // Shadow the instance method so the first query inside closeStaleSessions
-  // throws, proving sweepOnce()'s try/catch actually catches — a silent
-  // no-op (e.g. NaN just matching zero rows) wouldn't prove anything.
+test('sweepOnce swallows and logs cleanup errors', () => {
   const originalPrepare = db.prepare.bind(db);
-  db.prepare = (() => {
-    throw new Error('boom');
-  }) as typeof db.prepare;
-
+  db.prepare = (() => { throw new Error('boom'); }) as typeof db.prepare;
   const originalConsoleError = console.error;
-  let loggedError = false;
-  console.error = () => {
-    loggedError = true;
-  };
-
+  let logged = false;
+  console.error = () => { logged = true; };
   try {
     assert.doesNotThrow(() => sweepOnce(Date.now()));
-    assert.equal(loggedError, true, 'the caught error should be logged');
-    assert.equal(emitted.length, 0, 'broadcast must not fire after the query threw');
+    assert.equal(logged, true);
   } finally {
     db.prepare = originalPrepare;
     console.error = originalConsoleError;
-    setIo(null as any);
   }
 });

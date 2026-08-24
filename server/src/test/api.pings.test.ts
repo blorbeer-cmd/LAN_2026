@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
-import { db } from '../db';
+import { createTestApp } from './testApp';
+import { BASE_EVENT_ID, db } from '../db';
 
-const app = createApp();
+const app = createTestApp();
 let gameId: string;
 let playerA: string;
 let playerB: string;
@@ -17,7 +17,7 @@ test('setup ping players and game', async () => {
 });
 
 test('pings validate references and expiry bounds', async () => {
-  assert.equal((await request(app).post('/api/pings').send({ playerId: 'ghost', gameId })).status, 404);
+  assert.equal((await request(app).post('/api/pings').send({ playerId: 'ghost', gameId })).status, 401);
   assert.equal((await request(app).post('/api/pings').send({ playerId: playerA, gameId: 'ghost' })).status, 404);
   assert.equal(
     (await request(app).post('/api/pings').send({ playerId: playerA, gameId, expiresInMinutes: 999 })).status,
@@ -28,7 +28,7 @@ test('pings validate references and expiry bounds', async () => {
 test('create, toggle interest, cancel and retain ping history', async () => {
   const created = await request(app).post('/api/pings').send({ playerId: playerA, gameId, message: 'Wer ist dabei?' });
   assert.equal(created.status, 201, JSON.stringify(created.body));
-  assert.equal(created.body.eventId, null);
+  assert.equal(created.body.eventId, BASE_EVENT_ID);
   assert.equal(created.body.pings[0].playerName, 'Ping Alice');
   pingId = created.body.pings[0].id;
 

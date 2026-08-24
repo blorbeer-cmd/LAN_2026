@@ -1,93 +1,85 @@
-// Delivery-rule matrix for the scoped realtime model in required-auth mode:
-// normal sockets only receive their subscribed group scope with a live
-// membership re-check at delivery time, kiosk sockets only receive the
-// allowlisted events of their validated token scope, and an accidentally
-// unscoped fachlicher broadcast neither goes global nor disappears silently.
-//
-// config.authMode is patched for this file only — every test file runs in its
-// own process (see TESTING.md), so the override cannot leak elsewhere.
+// Required delivery matrix for the event-workspace model. Every normal
+// socket and every kiosk has exactly one concrete event scope; delivery
+// revalidates membership, participation and token state immediately.
 
-import { test, before, after } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'http';
 import type { AddressInfo } from 'net';
-import { Server } from 'socket.io';
-import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
+import { Server, type Socket } from 'socket.io';
+import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import { nanoid } from 'nanoid';
-import request from 'supertest';
-import { createApp } from '../app';
-import { db, DEFAULT_GROUP_ID } from '../db';
-import { config } from '../config';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
 import {
   broadcast,
-  broadcastArcadeKiosk,
   broadcastInstanceSignal,
-  arcadeWatcherPlayerIds,
   createSocketAuthGuard,
   Events,
-  registerArcadeKioskSockets,
+  registerScopedSockets,
   setIo,
+  switchPlayerEventScope,
 } from '../realtime';
+import { arcadeWatcherPlayerIds, broadcastArcadeKiosk, registerArcadeSockets } from '../arcade/realtime';
+import { socketArcadeScope } from '../arcade/scope';
+import { broadcastLiveBoards, getLiveBoard } from '../liveStatus';
 import { issueKioskToken, revokeKioskToken } from '../kioskTokens';
-import { notifyPlayers } from '../push';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
-import { registerPongSockets } from '../arcade/pong';
+import { ensureAccountEventContext, fallbackPlayerEventContext, setActiveEventForPlayer } from '../eventContext';
 
-const originalAuthMode = config.authMode;
+interface TestServer {
+  baseUrl: string;
+  io: Server;
+}
 
-before(() => {
-  (config as { authMode: 'legacy' | 'required' }).authMode = 'required';
-});
-
-after(() => {
-  (config as { authMode: 'legacy' | 'required' }).authMode = originalAuthMode;
-});
-
-function createPlayer(name: string): string {
+function createPlayer(name: string, role: 'owner' | 'admin' | 'member' = 'member'): string {
   const id = nanoid();
+  const now = Date.now();
   db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(
     id,
     `${name} ${id}`,
     nanoid(24),
-    Date.now()
+    now,
   );
-  return id;
-}
-
-function createGroup(name: string): string {
-  const id = nanoid();
-  db.prepare('INSERT INTO groups (id, name, created_at) VALUES (?, ?, ?)').run(id, name, Date.now());
-  return id;
-}
-
-function addMembership(groupId: string, playerId: string, role = 'member', status = 'active'): void {
   db.prepare(
-    `INSERT INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
-     VALUES (?, ?, ?, ?, ?, 1)
-     ON CONFLICT(group_id, player_id) DO UPDATE SET role = excluded.role, status = excluded.status`
-  ).run(groupId, playerId, role, status, Date.now());
+    `INSERT INTO group_memberships
+       (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+     VALUES (?, ?, ?, 'active', ?, 0)`,
+  ).run(DEFAULT_GROUP_ID, id, role, now);
+  ensureAccountEventContext(id);
+  return id;
 }
 
-interface TestServer {
-  io: Server;
-  baseUrl: string;
+function createEvent(name: string): string {
+  const id = nanoid();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO events
+       (id, name, starts_at, ends_at, tracking_enabled, group_id, status, visibility_scope)
+     VALUES (?, ?, ?, ?, 0, ?, 'published', 'participants')`,
+  ).run(id, `${name} ${id}`, now - 1_000, now + 60_000, DEFAULT_GROUP_ID);
+  return id;
 }
 
-async function withRequiredServer(
-  fn: (server: TestServer) => Promise<void>,
-  envKioskToken = '',
-  registerAdditionalSockets?: (io: Server) => void,
-): Promise<void> {
+function activate(playerId: string, eventId: string): void {
+  db.prepare(
+    `INSERT INTO event_participants (event_id, player_id, status)
+     VALUES (?, ?, 'accepted')
+     ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted'`,
+  ).run(eventId, playerId);
+  assert.ok(setActiveEventForPlayer(playerId, eventId));
+}
+
+async function withServer(fn: (server: TestServer) => Promise<void>): Promise<void> {
   const httpServer = http.createServer();
   const io = new Server(httpServer);
-  io.use(createSocketAuthGuard('', 'required', envKioskToken));
-  registerArcadeKioskSockets(io);
-  registerAdditionalSockets?.(io);
+  io.use(createSocketAuthGuard());
+  registerScopedSockets(io);
+  registerArcadeSockets(io);
   setIo(io);
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
   try {
-    await fn({ io, baseUrl });
+    await fn({ baseUrl, io });
   } finally {
     io.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
@@ -96,12 +88,12 @@ async function withRequiredServer(
 }
 
 function connectSession(baseUrl: string, playerId: string): Promise<ClientSocket> {
-  const sessionToken = createSession(playerId);
+  const token = createSession(playerId);
   return new Promise((resolve, reject) => {
     const socket = ioClient(baseUrl, {
       transports: ['websocket'],
       reconnection: false,
-      extraHeaders: { Cookie: `${SESSION_COOKIE_NAME}=${sessionToken}` },
+      extraHeaders: { Cookie: `${SESSION_COOKIE_NAME}=${token}` },
     });
     socket.once('connect', () => resolve(socket));
     socket.once('connect_error', reject);
@@ -120,504 +112,208 @@ function connectKiosk(baseUrl: string, token: string): Promise<ClientSocket> {
   });
 }
 
-async function subscribeScope(socket: ClientSocket, groupId: string): Promise<void> {
-  const result = await new Promise<{ ok: boolean }>((resolve) => {
-    socket.emit('scope:subscribe', { groupId }, resolve);
-  });
-  assert.equal(result.ok, true);
+async function subscribe(socket: ClientSocket, eventId?: string): Promise<{ eventId: string }> {
+  const result = await subscribeResult(socket, eventId);
+  assert.equal(result.ok, true, result.error);
+  assert.ok(result.eventId);
+  return { eventId: result.eventId };
 }
 
-function subscribeEventScope(
+function subscribeResult(
   socket: ClientSocket,
-  groupId: string,
-  eventId: string,
-): Promise<{ ok: boolean; error?: string }> {
+  eventId?: string,
+): Promise<{ ok: boolean; eventId?: string; error?: string }> {
   return new Promise((resolve) => {
-    socket.emit('scope:subscribe', { groupId, eventId }, resolve);
+    socket.emit('scope:subscribe', { groupId: DEFAULT_GROUP_ID, ...(eventId ? { eventId } : {}) }, resolve);
   });
 }
 
-function collect(socket: ClientSocket, event: string): { count: () => number } {
-  let count = 0;
-  socket.on(event, () => {
-    count += 1;
-  });
-  return { count: () => count };
+function payloads(socket: ClientSocket, event: string): unknown[] {
+  const values: unknown[] = [];
+  socket.on(event, (payload: unknown) => values.push(payload));
+  return values;
 }
 
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 75));
 
-test('normal sockets receive only their subscribed group scope', async () => {
-  const groupA = createGroup('Delivery A');
-  const groupB = createGroup('Delivery B');
-  const alice = createPlayer('Alice');
-  const bob = createPlayer('Bob');
-  const carol = createPlayer('Carol');
-  addMembership(groupA, alice);
-  addMembership(groupB, bob);
-  addMembership(groupA, carol);
+test('normal sockets default to the persisted active event and never receive another event', async () => {
+  const alice = createPlayer('Event Alice');
+  const bob = createPlayer('Event Bob');
+  const eventA = createEvent('Event A');
+  const eventB = createEvent('Event B');
+  activate(alice, eventA);
+  activate(bob, eventB);
 
-  await withRequiredServer(async ({ baseUrl }) => {
+  await withServer(async ({ baseUrl }) => {
     const aliceSocket = await connectSession(baseUrl, alice);
     const bobSocket = await connectSession(baseUrl, bob);
-    const carolSocket = await connectSession(baseUrl, carol); // member, but never subscribed
     try {
-      await subscribeScope(aliceSocket, groupA);
-      await subscribeScope(bobSocket, groupB);
-      const aliceVotes = collect(aliceSocket, Events.votesChanged);
-      const bobVotes = collect(bobSocket, Events.votesChanged);
-      const carolVotes = collect(carolSocket, Events.votesChanged);
-
-      broadcast(Events.votesChanged, { round: 1 }, { groupId: groupA });
+      assert.equal((await subscribe(aliceSocket)).eventId, eventA);
+      assert.equal((await subscribe(bobSocket)).eventId, eventB);
+      const aliceVotes = payloads(aliceSocket, Events.votesChanged);
+      const bobVotes = payloads(bobSocket, Events.votesChanged);
+      broadcast(Events.votesChanged, { event: 'A' }, { groupId: DEFAULT_GROUP_ID, eventId: eventA });
       await settle();
-
-      assert.equal(aliceVotes.count(), 1);
-      assert.equal(bobVotes.count(), 0, 'a foreign group socket must not receive the event');
-      assert.equal(carolVotes.count(), 0, 'an unsubscribed socket stays default-deny even as a member');
+      assert.deepEqual(aliceVotes, [{ event: 'A' }]);
+      assert.deepEqual(bobVotes, []);
     } finally {
       aliceSocket.close();
       bobSocket.close();
-      carolSocket.close();
     }
   });
 });
 
-test('kiosk sockets receive only allowlisted events for their validated token scope', async () => {
-  const groupA = createGroup('Kiosk A');
-  const groupB = createGroup('Kiosk B');
-  const owner = createPlayer('Kiosk Owner');
-  addMembership(groupA, owner, 'owner');
-  const tokenA = issueKioskToken(groupA, null, owner, null).token;
-  const tokenB = issueKioskToken(groupB, null, owner, null).token;
+test('an account-wide workspace switch moves every open socket immediately', async () => {
+  const player = createPlayer('Workspace Switch');
+  const eventA = createEvent('Switch A');
+  const eventB = createEvent('Switch B');
+  activate(player, eventA);
+  db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')").run(eventB, player);
 
-  await withRequiredServer(async ({ baseUrl }) => {
-    const kioskA = await connectKiosk(baseUrl, tokenA);
-    const kioskB = await connectKiosk(baseUrl, tokenB);
+  await withServer(async ({ baseUrl }) => {
+    const first = await connectSession(baseUrl, player);
+    const second = await connectSession(baseUrl, player);
     try {
-      const kioskAVotes = collect(kioskA, Events.votesChanged);
-      const kioskBVotes = collect(kioskB, Events.votesChanged);
-      const kioskASkills = collect(kioskA, Events.skillsChanged);
-      const kioskAPush = collect(kioskA, Events.pushSent);
+      await subscribe(first);
+      await subscribe(second);
+      const firstContext = payloads(first, Events.eventContextChanged);
+      const secondContext = payloads(second, Events.eventContextChanged);
+      const firstVotes = payloads(first, Events.votesChanged);
+      const secondVotes = payloads(second, Events.votesChanged);
 
-      const kioskAPlayers = collect(kioskA, Events.playersChanged);
-      broadcast(Events.votesChanged, { round: 2 }, { groupId: groupA });
-      broadcast(Events.skillsChanged, null, { groupId: groupA });
-      broadcast(Events.pushSent, { title: 'Nur Gruppe A' }, { groupId: groupA });
-      broadcast(Events.playersChanged, null, { groupId: groupA });
+      assert.ok(setActiveEventForPlayer(player, eventB));
+      switchPlayerEventScope(player, DEFAULT_GROUP_ID, eventB);
+      broadcast(Events.votesChanged, { event: 'old' }, { groupId: DEFAULT_GROUP_ID, eventId: eventA });
+      broadcast(Events.votesChanged, { event: 'new' }, { groupId: DEFAULT_GROUP_ID, eventId: eventB });
       await settle();
 
-      assert.equal(kioskAVotes.count(), 1, 'the matching kiosk receives allowlisted group events');
-      assert.equal(kioskAPush.count(), 1, 'push banners belong to the kiosk allowlist');
-      assert.equal(kioskAPlayers.count(), 1, 'player-lifecycle signals refresh the group kiosk');
-      assert.equal(kioskBVotes.count(), 0, 'a kiosk token of another group must receive nothing');
-      assert.equal(kioskASkills.count(), 0, 'events outside the kiosk allowlist stay member-only');
+      assert.deepEqual(firstContext, [{ eventId: eventB }]);
+      assert.deepEqual(secondContext, [{ eventId: eventB }]);
+      assert.deepEqual(firstVotes, [{ event: 'new' }]);
+      assert.deepEqual(secondVotes, [{ event: 'new' }]);
     } finally {
-      kioskA.close();
-      kioskB.close();
+      first.close();
+      second.close();
     }
   });
 });
 
-test('kiosks receive refresh signals without fachliche payloads, members get the full payload', async () => {
-  const groupA = createGroup('Kiosk Sanitize A');
-  const owner = createPlayer('Kiosk Sanitize Owner');
-  addMembership(groupA, owner, 'owner');
-  const kioskToken = issueKioskToken(groupA, null, owner, null).token;
+test('event participation is revalidated immediately before delivery', async () => {
+  const player = createPlayer('Revoked Participant');
+  const eventId = createEvent('Revoked Event');
+  activate(player, eventId);
 
-  await withRequiredServer(async ({ baseUrl }) => {
-    const memberSocket = await connectSession(baseUrl, owner);
-    const kiosk = await connectKiosk(baseUrl, kioskToken);
+  await withServer(async ({ baseUrl }) => {
+    const socket = await connectSession(baseUrl, player);
     try {
-      await subscribeScope(memberSocket, groupA);
-      const memberPayloads: unknown[] = [];
-      const kioskPayloads: unknown[] = [];
-      memberSocket.on(Events.tournamentsChanged, (payload: unknown) => memberPayloads.push(payload));
-      kiosk.on(Events.tournamentsChanged, (payload: unknown) => kioskPayloads.push(payload));
-
-      const sensitive = { type: 'match_ready', notify: { message: 'Lobby geheim / Passwort 1234' } };
-      broadcast(Events.tournamentsChanged, sensitive, { groupId: groupA });
+      await subscribe(socket);
+      const changes = payloads(socket, Events.votesChanged);
+      db.prepare('DELETE FROM event_participants WHERE event_id = ? AND player_id = ?').run(eventId, player);
+      fallbackPlayerEventContext(player, eventId);
+      broadcast(Events.votesChanged, { secret: true }, { groupId: DEFAULT_GROUP_ID, eventId });
       await settle();
-
-      assert.deepEqual(memberPayloads, [sensitive], 'members receive the full payload');
-      assert.deepEqual(kioskPayloads, [null], 'the kiosk receives only the refresh signal');
+      assert.deepEqual(changes, []);
     } finally {
-      memberSocket.close();
-      kiosk.close();
+      socket.close();
     }
   });
 });
 
-test('an event kiosk refreshes on group signals but banner-matches its exact push scope', async () => {
-  const groupA = createGroup('Kiosk Event A');
-  const owner = createPlayer('Kiosk Event Owner');
-  addMembership(groupA, owner, 'owner');
-  const eventId = nanoid();
-  db.prepare('INSERT INTO events (id, name, starts_at, group_id) VALUES (?, ?, ?, ?)').run(
-    eventId,
-    'Kiosk Event',
-    Date.now(),
-    groupA
-  );
-  const eventToken = issueKioskToken(groupA, eventId, owner, null).token;
-
-  await withRequiredServer(async ({ baseUrl }) => {
-    const eventKiosk = await connectKiosk(baseUrl, eventToken);
-    try {
-      const votes = collect(eventKiosk, Events.votesChanged);
-      // Refresh signals: routes emit event changes as a plain { groupId }
-      // signal, so the event kiosk must fire on both group-room and
-      // event-scoped changes and refetch through its own token scope.
-      broadcast(Events.votesChanged, { round: 3 }, { groupId: groupA });
-      broadcast(Events.votesChanged, { round: 4 }, { groupId: groupA, eventId });
-      await settle();
-      assert.equal(votes.count(), 2, 'both the group-room and event refresh signals reach the event kiosk');
-
-      // Banner content stays scope-exact: only the event-scoped push reaches
-      // the event kiosk, never a group-room banner.
-      const banners: unknown[] = [];
-      eventKiosk.on(Events.pushSent, (payload: unknown) => banners.push(payload));
-      broadcast(Events.pushSent, { title: 'Gruppe' }, { groupId: groupA });
-      broadcast(Events.pushSent, { title: 'Event' }, { groupId: groupA, eventId });
-      await settle();
-      assert.deepEqual(banners, [{ title: 'Event' }], 'only the event-scoped banner reaches the event kiosk');
-    } finally {
-      eventKiosk.close();
-    }
-  });
-});
-
-test('a group kiosk shows group-room and current-event banners but not a foreign event banner', async () => {
-  const groupA = createGroup('Kiosk Group Banner A');
-  const owner = createPlayer('Kiosk Group Banner Owner');
-  addMembership(groupA, owner, 'owner');
-  const currentEventId = nanoid();
-  const otherEventId = nanoid();
-  // The group's currently tracking event; its banner belongs on the group
-  // kiosk because /api/push/last resolves exactly this event for it.
-  db.prepare('INSERT INTO events (id, name, starts_at, group_id, tracking_enabled) VALUES (?, ?, ?, ?, 1)').run(
-    currentEventId,
-    'Current Event',
-    Date.now(),
-    groupA
-  );
-  db.prepare('INSERT INTO events (id, name, starts_at, group_id, tracking_enabled) VALUES (?, ?, ?, ?, 0)').run(
-    otherEventId,
-    'Other Event',
-    Date.now(),
-    groupA
-  );
-  const groupToken = issueKioskToken(groupA, null, owner, null).token;
-
-  await withRequiredServer(async ({ baseUrl }) => {
-    const kiosk = await connectKiosk(baseUrl, groupToken);
-    try {
-      const banners: unknown[] = [];
-      kiosk.on(Events.pushSent, (payload: unknown) => banners.push(payload));
-      broadcast(Events.pushSent, { title: 'Gruppenraum' }, { groupId: groupA });
-      broadcast(Events.pushSent, { title: 'Aktuelles Event' }, { groupId: groupA, eventId: currentEventId });
-      broadcast(Events.pushSent, { title: 'Anderes Event' }, { groupId: groupA, eventId: otherEventId });
-      await settle();
-      assert.deepEqual(
-        banners,
-        [{ title: 'Gruppenraum' }, { title: 'Aktuelles Event' }],
-        'the group kiosk shows its group-room and current-event banners, not a non-current event banner'
-      );
-    } finally {
-      kiosk.close();
-    }
-  });
-});
-
-test('a direct push reaches only its resolved recipients and never the kiosk', async () => {
-  const groupA = createGroup('Direct Push A');
-  const alice = createPlayer('Push Alice');
-  const bob = createPlayer('Push Bob');
-  addMembership(groupA, alice, 'owner');
-  addMembership(groupA, bob);
-  const kioskToken = issueKioskToken(groupA, null, alice, null).token;
-
-  await withRequiredServer(async ({ baseUrl }) => {
-    const aliceSocket = await connectSession(baseUrl, alice);
-    const bobSocket = await connectSession(baseUrl, bob);
-    const kiosk = await connectKiosk(baseUrl, kioskToken);
-    try {
-      await subscribeScope(aliceSocket, groupA);
-      await subscribeScope(bobSocket, groupA);
-      const alicePush = collect(aliceSocket, Events.pushSent);
-      const bobPush = collect(bobSocket, Events.pushSent);
-      const kioskPush = collect(kiosk, Events.pushSent);
-
-      notifyPlayers(
-        [alice],
-        { title: 'Privat', body: 'Nur Alice darf das lesen' },
-        'direct',
-        undefined,
-        { groupId: groupA },
-      );
-      await settle();
-      assert.equal(alicePush.count(), 1, 'the resolved recipient receives the direct push');
-      assert.equal(bobPush.count(), 0, 'other group members must not see a direct push payload');
-      assert.equal(kioskPush.count(), 0, 'the shared kiosk must never render a direct push');
-
-      notifyPlayers([alice, bob], { title: 'Für alle', body: 'Gruppenweit' }, 'all', undefined, {
-        groupId: groupA,
-      });
-      await settle();
-      assert.equal(alicePush.count(), 2);
-      assert.equal(bobPush.count(), 1);
-      assert.equal(kioskPush.count(), 1, 'group-wide entries remain the kiosk banner source');
-    } finally {
-      aliceSocket.close();
-      bobSocket.close();
-      kiosk.close();
-    }
-  });
-});
-
-test('event sockets admit participants plus group admins and owners, and revalidate role changes', async () => {
-  const groupA = createGroup('Event Access A');
-  const participant = createPlayer('Event Participant');
-  const outsider = createPlayer('Event Outsider');
-  const admin = createPlayer('Event Admin');
-  const owner = createPlayer('Event Owner');
-  addMembership(groupA, participant);
-  addMembership(groupA, outsider);
-  addMembership(groupA, admin, 'admin');
-  addMembership(groupA, owner, 'owner');
-  const eventId = nanoid();
-  db.prepare('INSERT INTO events (id, name, starts_at, group_id) VALUES (?, ?, ?, ?)').run(
-    eventId,
-    'Private Event',
-    Date.now(),
-    groupA,
-  );
-  db.prepare('INSERT INTO event_participants (event_id, player_id) VALUES (?, ?)').run(eventId, participant);
-
-  await withRequiredServer(async ({ baseUrl }) => {
-    const participantSocket = await connectSession(baseUrl, participant);
-    const outsiderSocket = await connectSession(baseUrl, outsider);
-    const adminSocket = await connectSession(baseUrl, admin);
-    const ownerSocket = await connectSession(baseUrl, owner);
-    try {
-      assert.equal((await subscribeEventScope(participantSocket, groupA, eventId)).ok, true);
-      assert.equal((await subscribeEventScope(adminSocket, groupA, eventId)).ok, true);
-      assert.equal((await subscribeEventScope(ownerSocket, groupA, eventId)).ok, true);
-      assert.equal((await subscribeEventScope(outsiderSocket, groupA, eventId)).ok, false);
-      await subscribeScope(outsiderSocket, groupA);
-
-      const participantEvents = collect(participantSocket, Events.tournamentsChanged);
-      const outsiderEvents = collect(outsiderSocket, Events.tournamentsChanged);
-      const adminEvents = collect(adminSocket, Events.tournamentsChanged);
-      const ownerEvents = collect(ownerSocket, Events.tournamentsChanged);
-
-      broadcast(Events.tournamentsChanged, { tournamentName: 'Private Cup' }, { groupId: groupA, eventId });
-      await settle();
-      assert.equal(participantEvents.count(), 1);
-      assert.equal(outsiderEvents.count(), 0, 'a normal non-participant receives no event payload');
-      assert.equal(adminEvents.count(), 1, 'a group admin may administer the event without a participant row');
-      assert.equal(ownerEvents.count(), 1, 'a group owner may administer the event without a participant row');
-
-      addMembership(groupA, admin, 'member');
-      broadcast(Events.tournamentsChanged, { tournamentName: 'After role revoke' }, { groupId: groupA, eventId });
-      await settle();
-      assert.equal(adminEvents.count(), 1, 'role revocation stops event delivery immediately');
-
-      db.prepare('DELETE FROM event_participants WHERE event_id = ? AND player_id = ?').run(eventId, participant);
-      broadcast(Events.tournamentsChanged, { tournamentName: 'After participant removal' }, { groupId: groupA, eventId });
-      await settle();
-      assert.equal(participantEvents.count(), 2, 'participant removal stops subsequent event delivery');
-    } finally {
-      participantSocket.close();
-      outsiderSocket.close();
-      adminSocket.close();
-      ownerSocket.close();
-    }
-  });
-});
-
-test('event-bound tournament, draft, matchmaking and vote producers exclude normal non-participants', async () => {
-  const app = createApp();
-  const groupA = createGroup('Producer Event A');
-  const alice = createPlayer('Producer Alice');
-  const carol = createPlayer('Producer Carol');
-  const eve = createPlayer('Producer Eve');
-  const outsider = createPlayer('Producer Outsider');
-  const admin = createPlayer('Producer Admin');
-  const owner = createPlayer('Producer Owner');
-  addMembership(groupA, alice);
-  addMembership(groupA, carol);
-  addMembership(groupA, eve);
-  addMembership(groupA, outsider);
-  addMembership(groupA, admin, 'admin');
-  addMembership(groupA, owner, 'owner');
-
-  const eventId = nanoid();
-  // Earlier cases deliberately create their own tracking fixtures in this
-  // process; make this producer matrix's event the unambiguous active one.
-  db.prepare('UPDATE events SET tracking_enabled = 0').run();
-  db.prepare(
-    'INSERT INTO events (id, name, starts_at, ends_at, tracking_enabled, group_id) VALUES (?, ?, ?, ?, 1, ?)',
-  ).run(eventId, 'Producer Private Event', Date.now() - 1_000, Date.now() + 60_000, groupA);
-  const insertParticipant = db.prepare('INSERT INTO event_participants (event_id, player_id) VALUES (?, ?)');
-  for (const playerId of [alice, carol, eve]) insertParticipant.run(eventId, playerId);
-  const gameId = nanoid();
-  db.prepare('INSERT INTO games (id, name, created_at, group_id) VALUES (?, ?, ?, ?)').run(
-    gameId,
-    'Producer Game',
-    Date.now(),
-    groupA,
-  );
-
-  const received = new Map<string, Array<{ event: string; payload: unknown }>>();
-  function fakeSocket(label: string, playerId: string) {
-    received.set(label, []);
-    return {
-      data: { groupId: groupA, authPlayerId: playerId },
-      emit(event: string, payload: unknown) { received.get(label)!.push({ event, payload }); },
-    };
-  }
-  const fakeIo = {
-    sockets: { sockets: new Map([
-      ['participant', fakeSocket('participant', alice)],
-      ['outsider', fakeSocket('outsider', outsider)],
-      ['admin', fakeSocket('admin', admin)],
-      ['owner', fakeSocket('owner', owner)],
-    ]) },
-    emit() {},
-  };
-  setIo(fakeIo as unknown as Server);
-
-  const ownerCookie = `${SESSION_COOKIE_NAME}=${createSession(owner)}`;
-  const scopedRequest = (method: 'post', url: string) => request(app)[method](url)
-    .set('Cookie', ownerCookie)
-    .set('x-group-id', groupA);
-  const cases: Array<{ label: string; event: string; run: () => Promise<request.Response> }> = [
-    {
-      label: 'tournament',
-      event: Events.tournamentsChanged,
-      run: () => scopedRequest('post', '/api/tournaments').send({
-        gameId,
-        format: 'single_elimination',
-        teams: [
-          { name: 'Team Alice', playerIds: [alice] },
-          { name: 'Team Carol', playerIds: [carol] },
-        ],
-      }),
-    },
-    {
-      label: 'draft',
-      event: Events.draftChanged,
-      run: () => scopedRequest('post', '/api/draft/start').send({
-        gameId,
-        captainIds: [alice, carol],
-        poolPlayerIds: [eve],
-      }),
-    },
-    {
-      label: 'matchmaking',
-      event: Events.matchmakingGenerated,
-      run: () => scopedRequest('post', '/api/matchmaking').send({ gameId, playerIds: [alice, carol] }),
-    },
-    {
-      label: 'vote',
-      event: Events.votesChanged,
-      run: () => scopedRequest('post', '/api/votes/start').send({
-        title: 'Private vote',
-        gameIds: [gameId],
-      }),
-    },
-  ];
-
-  try {
-    for (const producer of cases) {
-      for (const deliveries of received.values()) deliveries.length = 0;
-      const response = await producer.run();
-      assert.ok(response.status >= 200 && response.status < 300, producer.label + ': ' + JSON.stringify(response.body));
-      for (const [label, deliveries] of received) {
-        const count = deliveries.filter((delivery) => delivery.event === producer.event).length;
-        if (label === 'outsider') {
-          assert.equal(count, 0, producer.label + ' leaked its event payload to a normal non-participant');
-        } else {
-          assert.ok(count >= 1, producer.label + ' did not reach authorized ' + label);
-        }
+test('admin and owner roles do not bypass event participation for sockets or Arcade', async () => {
+  const eventId = createEvent('Role Isolation');
+  for (const role of ['admin', 'owner'] as const) {
+    const playerId = createPlayer(`Role ${role}`, role);
+    await withServer(async ({ baseUrl }) => {
+      const socket = await connectSession(baseUrl, playerId);
+      try {
+        const result = await subscribeResult(socket, eventId);
+        assert.equal(result.ok, false, `${role} unexpectedly subscribed without participation`);
+      } finally {
+        socket.close();
       }
-    }
-  } finally {
-    setIo(null);
-  }
-});
-
-test('legacy mode never globally emits personally targeted push payloads', () => {
-  const groupA = createGroup('Legacy Direct Push A');
-  const alice = createPlayer('Legacy Push Alice');
-  addMembership(groupA, alice, 'owner');
-  const emitted: Array<{ event: string; payload: unknown }> = [];
-  const fakeIo = {
-    sockets: { sockets: new Map() },
-    emit(event: string, payload: unknown) { emitted.push({ event, payload }); },
-  };
-  (config as { authMode: 'legacy' | 'required' }).authMode = 'legacy';
-  setIo(fakeIo as unknown as Server);
-  try {
-    notifyPlayers(
-      [alice],
-      { title: 'Legacy private', body: 'Must not be broadcast globally' },
-      'direct',
-      undefined,
-      { groupId: groupA },
-    );
-    assert.equal(
-      emitted.filter((delivery) => delivery.event === Events.pushSent).length,
-      0,
-      'legacy sockets have no proven identity, so no direct realtime payload is safe',
-    );
-
-    notifyPlayers([alice], { title: 'Legacy group', body: 'Group-wide compatibility' }, 'all', undefined, {
-      groupId: groupA,
     });
-    assert.equal(
-      emitted.filter((delivery) => delivery.event === Events.pushSent).length,
-      1,
-      'group-wide legacy notifications keep their compatibility broadcast',
-    );
-  } finally {
-    setIo(null);
-    (config as { authMode: 'legacy' | 'required' }).authMode = 'required';
+
+    const arcadeSocket = {
+      data: { groupId: DEFAULT_GROUP_ID, eventId, authPlayerId: playerId },
+    } as unknown as Socket;
+    assert.equal(socketArcadeScope(arcadeSocket), null, `${role} unexpectedly received an Arcade scope`);
   }
 });
 
-test('a recipient-scoped fachbroadcast reaches only named members, and never the kiosk', async () => {
-  // Models the tournament match-ready split: the group gets a plain refresh
-  // (tested via the null-payload kiosk path elsewhere), while the detailed
-  // notify carrying private lobby credentials rides a recipient-scoped
-  // broadcast that must reach exactly the named players.
-  const groupA = createGroup('Recipient Scope A');
+test('event kiosks receive only their exact event and only sanitized refresh payloads', async () => {
+  const owner = createPlayer('Kiosk Owner');
+  const eventA = createEvent('Kiosk A');
+  const eventB = createEvent('Kiosk B');
+  const token = issueKioskToken(DEFAULT_GROUP_ID, eventA, owner, 'Event A TV').token;
+
+  await withServer(async ({ baseUrl }) => {
+    const kiosk = await connectKiosk(baseUrl, token);
+    try {
+      const tournamentChanges = payloads(kiosk, Events.tournamentsChanged);
+      const banners = payloads(kiosk, Events.pushSent);
+      broadcast(Events.tournamentsChanged, { privateLobby: 'secret' }, { groupId: DEFAULT_GROUP_ID, eventId: eventA });
+      broadcast(Events.tournamentsChanged, { foreign: true }, { groupId: DEFAULT_GROUP_ID, eventId: eventB });
+      broadcast(Events.pushSent, { title: 'Event A' }, { groupId: DEFAULT_GROUP_ID, eventId: eventA });
+      broadcast(Events.pushSent, { title: 'Event B' }, { groupId: DEFAULT_GROUP_ID, eventId: eventB });
+      await settle();
+      assert.deepEqual(tournamentChanges, [null]);
+      assert.deepEqual(banners, [{ title: 'Event A' }]);
+    } finally {
+      kiosk.close();
+    }
+  });
+});
+
+test('revoking a kiosk token stops its already-open socket', async () => {
+  const owner = createPlayer('Revoked Kiosk Owner');
+  const eventId = createEvent('Revoked Kiosk Event');
+  const issued = issueKioskToken(DEFAULT_GROUP_ID, eventId, owner, 'Revocable TV');
+
+  await withServer(async ({ baseUrl }) => {
+    const kiosk = await connectKiosk(baseUrl, issued.token);
+    try {
+      const changes = payloads(kiosk, Events.liveStatusChanged);
+      broadcast(Events.liveStatusChanged, { before: true }, { groupId: DEFAULT_GROUP_ID, eventId });
+      await settle();
+      assert.deepEqual(changes, [null], 'the test must prove delivery worked before revocation');
+      changes.length = 0;
+      assert.equal(revokeKioskToken(DEFAULT_GROUP_ID, issued.scope.id), true);
+      broadcast(Events.liveStatusChanged, { leaked: true }, { groupId: DEFAULT_GROUP_ID, eventId });
+      await settle();
+      assert.deepEqual(changes, []);
+    } finally {
+      kiosk.close();
+    }
+  });
+});
+
+test('recipient filters stay inside the concrete event and never include a kiosk', async () => {
   const alice = createPlayer('Recipient Alice');
   const bob = createPlayer('Recipient Bob');
-  addMembership(groupA, alice, 'owner');
-  addMembership(groupA, bob);
-  const kioskToken = issueKioskToken(groupA, null, alice, null).token;
+  const eventId = createEvent('Recipient Event');
+  activate(alice, eventId);
+  activate(bob, eventId);
+  const kioskToken = issueKioskToken(DEFAULT_GROUP_ID, eventId, alice, 'Recipient TV').token;
 
-  await withRequiredServer(async ({ baseUrl }) => {
+  await withServer(async ({ baseUrl }) => {
     const aliceSocket = await connectSession(baseUrl, alice);
     const bobSocket = await connectSession(baseUrl, bob);
     const kiosk = await connectKiosk(baseUrl, kioskToken);
     try {
-      await subscribeScope(aliceSocket, groupA);
-      await subscribeScope(bobSocket, groupA);
-      const aliceTourneys = collect(aliceSocket, Events.tournamentsChanged);
-      const bobTourneys = collect(bobSocket, Events.tournamentsChanged);
-      const kioskTourneys = collect(kiosk, Events.tournamentsChanged);
-
+      await subscribe(aliceSocket);
+      await subscribe(bobSocket);
+      const alicePush = payloads(aliceSocket, Events.pushSent);
+      const bobPush = payloads(bobSocket, Events.pushSent);
+      const kioskPush = payloads(kiosk, Events.pushSent);
       broadcast(
-        Events.tournamentsChanged,
-        { type: 'match_ready', notify: { playerIds: [alice], message: 'Lobby "Geheim", PW: 1234' } },
-        { groupId: groupA, recipientPlayerIds: [alice] },
+        Events.pushSent,
+        { title: 'Only Alice' },
+        { groupId: DEFAULT_GROUP_ID, eventId, recipientPlayerIds: [alice] },
       );
       await settle();
-      assert.equal(aliceTourneys.count(), 1, 'the named recipient receives the detailed notify');
-      assert.equal(bobTourneys.count(), 0, 'a non-recipient member never sees the private lobby notify');
-      assert.equal(kioskTourneys.count(), 0, 'the shared kiosk never receives a recipient-scoped payload');
+      assert.deepEqual(alicePush, [{ title: 'Only Alice' }]);
+      assert.deepEqual(bobPush, []);
+      assert.deepEqual(kioskPush, []);
     } finally {
       aliceSocket.close();
       bobSocket.close();
@@ -626,152 +322,147 @@ test('a recipient-scoped fachbroadcast reaches only named members, and never the
   });
 });
 
-test('archiving the group silences an already-connected env-token kiosk too', async () => {
-  await withRequiredServer(async ({ baseUrl }) => {
-    const kiosk = await connectKiosk(baseUrl, 'env-kiosk-token');
+test('the permanent base event is a concrete socket scope, not a group-room fallback', async () => {
+  const player = createPlayer('Base Scope');
+  await withServer(async ({ baseUrl }) => {
+    const socket = await connectSession(baseUrl, player);
     try {
-      const votes = collect(kiosk, Events.votesChanged);
-      broadcast(Events.votesChanged, { round: 1 }, { groupId: DEFAULT_GROUP_ID });
+      assert.equal((await subscribe(socket)).eventId, BASE_EVENT_ID);
+      const updates = payloads(socket, Events.playersChanged);
+      broadcast(Events.playersChanged, null, { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
       await settle();
-      assert.equal(votes.count(), 1, 'the env-token kiosk receives its default-group events');
-
-      db.prepare('UPDATE groups SET archived_at = ? WHERE id = ?').run(Date.now(), DEFAULT_GROUP_ID);
-      try {
-        broadcast(Events.votesChanged, { round: 2 }, { groupId: DEFAULT_GROUP_ID });
-        await settle();
-        assert.equal(votes.count(), 1, 'an archived group stops delivery even without a token row');
-      } finally {
-        db.prepare('UPDATE groups SET archived_at = NULL WHERE id = ?').run(DEFAULT_GROUP_ID);
-      }
+      assert.deepEqual(updates, [null]);
     } finally {
-      kiosk.close();
+      socket.close();
     }
-  }, 'env-kiosk-token');
+  });
+});
+
+// The global instance signal deliberately sits outside the event scoping above:
+// membership-lifecycle refreshes have to reach clients that hold no deliverable
+// scope yet. That exemption is exactly why its allowlist needs its own guard —
+// without it, any fach event could be emitted instance-wide.
+test('broadcastInstanceSignal reaches every socket with a null payload, but only for allowlisted names', async () => {
+  const player = createPlayer('Signal Player');
+
+  await withServer(async ({ baseUrl }) => {
+    const subscribed = await connectSession(baseUrl, player);
+    const unsubscribed = await connectSession(baseUrl, player);
+    try {
+      await subscribe(subscribed);
+      const scopedSignals = payloads(subscribed, Events.groupsChanged);
+      const unscopedSignals = payloads(unsubscribed, Events.groupsChanged);
+
+      broadcastInstanceSignal(Events.groupsChanged);
+      await settle();
+
+      assert.deepEqual(scopedSignals, [null], 'the instance signal never carries data');
+      assert.deepEqual(
+        unscopedSignals,
+        [null],
+        'membership-lifecycle refreshes reach sockets without a subscribed scope too',
+      );
+      assert.throws(
+        () => broadcastInstanceSignal(Events.votesChanged),
+        /kein freigegebenes globales Instanz-Signal/,
+        'a fach event must never be emitted instance-wide',
+      );
+    } finally {
+      subscribed.close();
+      unsubscribed.close();
+    }
+  });
 });
 
 test('an event kiosk gets its arcade replay from an empty kiosk:subscribe', async () => {
-  const groupA = createGroup('Arcade Replay A');
-  const owner = createPlayer('Arcade Replay Owner');
-  addMembership(groupA, owner, 'owner');
-  const eventId = nanoid();
-  db.prepare('INSERT INTO events (id, name, starts_at, group_id) VALUES (?, ?, ?, ?)').run(
-    eventId,
-    'Arcade Replay Evt',
-    Date.now(),
-    groupA
-  );
-  const eventToken = issueKioskToken(groupA, eventId, owner, null).token;
+  const owner = createPlayer('Arcade Replay Owner', 'owner');
+  const eventId = createEvent('Arcade Replay');
+  const token = issueKioskToken(DEFAULT_GROUP_ID, eventId, owner, null).token;
   const matchId = `arcade-replay-${nanoid()}`;
 
-  await withRequiredServer(async ({ io, baseUrl }) => {
-    const kiosk = await connectKiosk(baseUrl, eventToken);
+  await withServer(async ({ baseUrl, io }) => {
+    const kiosk = await connectKiosk(baseUrl, token);
     try {
       broadcastArcadeKiosk(io, {
         matchId,
         gameType: 'pong',
-        groupId: groupA,
+        groupId: DEFAULT_GROUP_ID,
         eventId,
         running: true,
         players: [],
         scores: [],
       });
-      // kiosk.js emits kiosk:subscribe with no payload; before the fix an event
-      // kiosk was rejected here and never received its replay.
+      // kiosk.js emits kiosk:subscribe without a payload; an event kiosk must
+      // still resolve its own bound event and receive the running match.
       const replay = await new Promise<{ matchId?: string }>((resolve) => {
         kiosk.on('arcade:kiosk:game', (payload: { matchId?: string }) => resolve(payload));
         kiosk.emit('kiosk:subscribe');
       });
       assert.equal(replay.matchId, matchId, 'the event kiosk receives the arcade replay from an empty subscribe');
     } finally {
-      broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: groupA, eventId });
+      broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: DEFAULT_GROUP_ID, eventId });
       kiosk.close();
     }
   });
 });
 
 test('read-only kiosks never receive arcade watch lists', async () => {
-  const groupA = createGroup('Watch List A');
-  const owner = createPlayer('Watch List Owner');
-  addMembership(groupA, owner, 'owner');
-  const kioskToken = issueKioskToken(groupA, null, owner, null).token;
+  const owner = createPlayer('Watch List Owner', 'owner');
+  const eventId = createEvent('Watch List');
+  activate(owner, eventId);
+  const token = issueKioskToken(DEFAULT_GROUP_ID, eventId, owner, null).token;
   const matchId = `watch-list-kiosk-${nanoid()}`;
 
-  await withRequiredServer(async ({ io, baseUrl }) => {
-    const kiosk = await connectKiosk(baseUrl, kioskToken);
-    const memberSocket = await connectSession(baseUrl, owner);
+  await withServer(async ({ baseUrl, io }) => {
+    const kiosk = await connectKiosk(baseUrl, token);
+    const member = await connectSession(baseUrl, owner);
     try {
-      await subscribeScope(memberSocket, groupA);
-      const kioskLists = collect(kiosk, 'arcade:watch:list');
-      const memberLists = collect(memberSocket, 'arcade:watch:list');
+      await subscribe(member, eventId);
+      const kioskLists = payloads(kiosk, 'arcade:watch:list');
+      const memberLists = payloads(member, 'arcade:watch:list');
 
       broadcastArcadeKiosk(io, {
         matchId,
         gameType: 'pong',
-        groupId: groupA,
-        eventId: null,
+        groupId: DEFAULT_GROUP_ID,
+        eventId,
         running: true,
         players: [],
         scores: [],
       });
       await settle();
 
-      assert.equal(kioskLists.count(), 0, 'watch summaries must never reach a read-only kiosk');
-      assert.ok(memberLists.count() >= 1, 'regular sockets keep receiving the watch list');
+      assert.equal(kioskLists.length, 0, 'watch summaries must never reach a read-only kiosk');
+      assert.ok(memberLists.length >= 1, 'regular sockets keep receiving the watch list');
     } finally {
-      broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: groupA, eventId: null });
+      broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: DEFAULT_GROUP_ID, eventId });
       kiosk.close();
-      memberSocket.close();
+      member.close();
     }
   });
 });
 
-test('arcade streams, watch state and replay are exact-scope and default-deny', async () => {
-  const groupA = createGroup('Arcade Scope A');
-  const groupB = createGroup('Arcade Scope B');
-  const alice = createPlayer('Arcade Alice');
-  const bob = createPlayer('Arcade Bob');
-  addMembership(groupA, alice);
-  addMembership(groupB, bob);
-  const eventA = nanoid();
-  const eventB = nanoid();
-  db.prepare('INSERT INTO events (id, name, starts_at, group_id) VALUES (?, ?, ?, ?)').run(eventA, 'Arcade Event A', Date.now(), groupA);
-  db.prepare('INSERT INTO events (id, name, starts_at, group_id) VALUES (?, ?, ?, ?)').run(eventB, 'Arcade Event B', Date.now(), groupA);
-  db.prepare('INSERT INTO event_participants (event_id, player_id) VALUES (?, ?)').run(eventA, alice);
-  db.prepare('INSERT INTO event_participants (event_id, player_id) VALUES (?, ?)').run(eventB, alice);
-  const kioskEventA = issueKioskToken(groupA, eventA, alice, null).token;
-  const kioskEventB = issueKioskToken(groupA, eventB, alice, null).token;
-  const kioskGroupA = issueKioskToken(groupA, null, alice, null).token;
-  const matchId = `arcade-exact-${nanoid()}`;
+// arcadeWatcherPlayerIds decides who counts as an eligible voter in a running
+// arcade match, so a watcher outside the match's own event must not be counted.
+test('arcade watcher ids are limited to watchers inside the match event scope', async () => {
+  const alice = createPlayer('Watcher Alice');
+  const bob = createPlayer('Watcher Bob');
+  const eventA = createEvent('Watcher Event A');
+  const eventB = createEvent('Watcher Event B');
+  activate(alice, eventA);
+  activate(bob, eventB);
+  const matchId = `watchers-${nanoid()}`;
 
-  await withRequiredServer(async ({ io, baseUrl }) => {
-    const unscoped = await connectSession(baseUrl, alice);
-    const eventASocket = await connectSession(baseUrl, alice);
-    const eventBSocket = await connectSession(baseUrl, alice);
-    const groupSocket = await connectSession(baseUrl, alice);
-    const foreignSocket = await connectSession(baseUrl, bob);
-    const kioskA = await connectKiosk(baseUrl, kioskEventA);
-    const kioskB = await connectKiosk(baseUrl, kioskEventB);
-    const kioskGroup = await connectKiosk(baseUrl, kioskGroupA);
-    const sockets = { unscoped, eventASocket, eventBSocket, groupSocket, foreignSocket, kioskA, kioskB, kioskGroup };
+  await withServer(async ({ baseUrl, io }) => {
+    const inScope = await connectSession(baseUrl, alice);
+    const outOfScope = await connectSession(baseUrl, bob);
     try {
-      assert.equal((await subscribeEventScope(eventASocket, groupA, eventA)).ok, true);
-      assert.equal((await subscribeEventScope(eventBSocket, groupA, eventB)).ok, true);
-      await subscribeScope(groupSocket, groupA);
-      await subscribeScope(foreignSocket, groupB);
-
-      const kioskDeliveries = new Map<string, unknown[]>();
-      const watchLists = new Map<string, unknown[]>();
-      for (const [name, socket] of Object.entries(sockets)) {
-        kioskDeliveries.set(name, []);
-        watchLists.set(name, []);
-        socket.on('arcade:kiosk:game', (payload: unknown) => kioskDeliveries.get(name)!.push(payload));
-        socket.on('arcade:watch:list', (payload: unknown) => watchLists.get(name)!.push(payload));
-      }
-
+      await subscribe(inScope, eventA);
+      await subscribe(outOfScope, eventB);
       broadcastArcadeKiosk(io, {
         matchId,
         gameType: 'pong',
-        groupId: groupA,
+        groupId: DEFAULT_GROUP_ID,
         eventId: eventA,
         running: true,
         players: [],
@@ -779,299 +470,82 @@ test('arcade streams, watch state and replay are exact-scope and default-deny', 
       });
       await settle();
 
-      for (const name of ['eventASocket', 'kioskA']) {
-        assert.equal(kioskDeliveries.get(name)!.length, 1, `${name} receives the exact event stream`);
-      }
-      for (const name of ['unscoped', 'eventBSocket', 'groupSocket', 'foreignSocket', 'kioskB', 'kioskGroup']) {
-        assert.equal(kioskDeliveries.get(name)!.length, 0, `${name} must not receive a foreign or unproven arcade stream`);
-      }
-      assert.ok(watchLists.get('eventASocket')!.length >= 1, 'the exact event participant receives the watch list');
-      for (const name of ['eventBSocket', 'groupSocket', 'foreignSocket']) {
-        const listedIds = watchLists.get(name)!.flatMap((payload) =>
-          ((payload as { matches?: Array<{ matchId?: string }> }).matches ?? []).map((match) => match.matchId),
-        );
-        assert.ok(!listedIds.includes(matchId), `${name} must not list the exact event match`);
-      }
-      for (const name of ['unscoped', 'kioskA', 'kioskB', 'kioskGroup']) {
-        assert.equal(watchLists.get(name)!.length, 0, `${name} must not receive the watch-list channel`);
-      }
+      const joinAck = (socket: ClientSocket, playerId: string): Promise<{ ok: boolean; error?: string }> =>
+        new Promise((resolve) => socket.emit('arcade:watch:join', { matchId, playerId }, resolve));
 
-      const join = (socket: ClientSocket) => new Promise<{ ok: boolean }>((resolve) => {
-        socket.emit('arcade:watch:join', { matchId, playerId: alice }, resolve);
-      });
-      assert.equal((await join(eventASocket)).ok, true);
-      assert.equal((await join(unscoped)).ok, false, 'an unscoped required socket cannot watch by known match id');
-      assert.equal((await join(eventBSocket)).ok, false, 'another event scope cannot watch by known match id');
-      assert.equal((await join(groupSocket)).ok, false, 'a group-room scope cannot watch an event match');
-
-      const foreignReplayAck = await new Promise<{ ok: boolean }>((resolve) => kioskB.emit('kiosk:subscribe', undefined, resolve));
-      assert.equal(foreignReplayAck.ok, true, 'the foreign event kiosk may subscribe to its own empty replay scope');
-      await settle();
-      assert.equal(kioskDeliveries.get('kioskB')!.length, 0, 'an event kiosk never replays another event\'s latest game');
-
-      db.prepare("UPDATE group_memberships SET status = 'removed' WHERE group_id = ? AND player_id = ?").run(groupA, alice);
-      broadcastArcadeKiosk(io, {
-        matchId,
-        gameType: 'pong',
-        groupId: groupA,
-        eventId: eventA,
-        running: true,
-        paused: true,
-      });
-      await settle();
-      assert.equal(kioskDeliveries.get('eventASocket')!.length, 1, 'membership revocation stops normal arcade delivery immediately');
-      assert.deepEqual(arcadeWatcherPlayerIds(io, matchId), [], 'revoked watchers no longer count as eligible voters');
-    } finally {
-      broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: groupA, eventId: eventA });
-      for (const socket of Object.values(sockets)) socket.close();
-    }
-  });
-});
-
-test('generic arcade lobby channels require the immutable event scope', async () => {
-  const app = createApp();
-  const groupA = createGroup('Pong Scope A');
-  const host = createPlayer('Pong Scope Host');
-  const guest = createPlayer('Pong Scope Guest');
-  const rival = createPlayer('Pong Scope Rival');
-  addMembership(groupA, host);
-  addMembership(groupA, guest);
-  addMembership(groupA, rival);
-  const eventA = nanoid();
-  const eventB = nanoid();
-  db.prepare('INSERT INTO events (id, name, starts_at, group_id) VALUES (?, ?, ?, ?)').run(eventA, 'Pong Event A', Date.now(), groupA);
-  db.prepare('INSERT INTO events (id, name, starts_at, group_id) VALUES (?, ?, ?, ?)').run(eventB, 'Pong Event B', Date.now(), groupA);
-  for (const eventId of [eventA, eventB]) {
-    db.prepare('INSERT INTO event_participants (event_id, player_id) VALUES (?, ?)').run(eventId, host);
-    db.prepare('INSERT INTO event_participants (event_id, player_id) VALUES (?, ?)').run(eventId, guest);
-    db.prepare('INSERT INTO event_participants (event_id, player_id) VALUES (?, ?)').run(eventId, rival);
-  }
-  const kioskToken = issueKioskToken(groupA, eventA, host, null).token;
-
-  await withRequiredServer(async ({ baseUrl }) => {
-    const hostSocket = await connectSession(baseUrl, host);
-    const guestSocket = await connectSession(baseUrl, guest);
-    const rivalSocket = await connectSession(baseUrl, rival);
-    const hostOtherEventSocket = await connectSession(baseUrl, host);
-    const otherEventSocket = await connectSession(baseUrl, guest);
-    const unscopedSocket = await connectSession(baseUrl, guest);
-    const kiosk = await connectKiosk(baseUrl, kioskToken);
-    try {
-      assert.equal((await subscribeEventScope(hostSocket, groupA, eventA)).ok, true);
-      assert.equal((await subscribeEventScope(guestSocket, groupA, eventA)).ok, true);
-      assert.equal((await subscribeEventScope(rivalSocket, groupA, eventA)).ok, true);
-      assert.equal((await subscribeEventScope(hostOtherEventSocket, groupA, eventB)).ok, true);
-      assert.equal((await subscribeEventScope(otherEventSocket, groupA, eventB)).ok, true);
-      const received = new Map<string, Array<{ lobbies?: Array<{ id?: string }> }>>([
-        ['guest', []], ['other', []], ['unscoped', []], ['kiosk', []],
-      ]);
-      guestSocket.on('pong:lobbies', (payload) => received.get('guest')!.push(payload));
-      otherEventSocket.on('pong:lobbies', (payload) => received.get('other')!.push(payload));
-      unscopedSocket.on('pong:lobbies', (payload) => received.get('unscoped')!.push(payload));
-      kiosk.on('pong:lobbies', (payload) => received.get('kiosk')!.push(payload));
-
-      const created = await new Promise<{ ok: boolean; lobbyId?: string }>((resolve) => {
-        hostSocket.emit('pong:lobby:create', { playerId: host }, resolve);
-      });
-      assert.equal(created.ok, true);
-      await settle();
-      assert.ok(received.get('guest')!.some((payload) => payload.lobbies?.some((lobby) => lobby.id === created.lobbyId)), 'same-event participants receive the lobby');
-      assert.ok(received.get('other')!.every((payload) => !payload.lobbies?.some((lobby) => lobby.id === created.lobbyId)), 'another event never receives the lobby');
-      assert.equal(received.get('unscoped')!.length, 0, 'an unscoped socket receives no generic lobby channel');
-      assert.equal(received.get('kiosk')!.length, 0, 'a kiosk receives no generic lobby channel');
-
-      const hostLobbies = await request(app)
-        .get(`/api/arcade/lobbies?eventId=${eventA}`)
-        .set('Cookie', `${SESSION_COOKIE_NAME}=${createSession(host)}`)
-        .set('x-group-id', groupA);
-      assert.equal(hostLobbies.status, 200);
-      assert.ok(hostLobbies.body.lobbies.some((lobby: { id?: string }) => lobby.id === created.lobbyId));
-
-      db.prepare('DELETE FROM event_participants WHERE event_id = ? AND player_id = ?').run(eventA, guest);
-      const revokedLobbies = await request(app)
-        .get(`/api/arcade/lobbies?eventId=${eventA}`)
-        .set('Cookie', `${SESSION_COOKIE_NAME}=${createSession(guest)}`)
-        .set('x-group-id', groupA);
-      assert.equal(revokedLobbies.status, 200);
-      assert.deepEqual(revokedLobbies.body.lobbies, [], 'REST lobby summaries exclude normal event non-participants');
-      const joined = await new Promise<{ ok: boolean }>((resolve) => {
-        guestSocket.emit('pong:lobby:join', { lobbyId: created.lobbyId, playerId: guest }, resolve);
-      });
-      assert.equal(joined.ok, false, 'event access is revalidated for a known lobby id');
-
-      const rivalJoined = await new Promise<{ ok: boolean }>((resolve) => {
-        rivalSocket.emit('pong:lobby:join', { lobbyId: created.lobbyId, playerId: rival }, resolve);
-      });
-      assert.equal(rivalJoined.ok, true, 'a participant in the immutable event scope may join');
-      const started = await new Promise<{ ok: boolean; matchId?: string }>((resolve) => {
-        hostSocket.emit('pong:lobby:start', { lobbyId: created.lobbyId, playerId: host }, resolve);
-      });
-      assert.equal(started.ok, true);
-      const crossEventPause = await new Promise<{ ok: boolean }>((resolve) => {
-        hostOtherEventSocket.emit('pong:match:pause', { matchId: started.matchId, playerId: host }, resolve);
-      });
-      assert.equal(crossEventPause.ok, false, 'even the host cannot mutate the match from another event socket');
-      const paused = await new Promise<{ ok: boolean }>((resolve) => {
-        hostSocket.emit('pong:match:pause', { matchId: started.matchId, playerId: host }, resolve);
-      });
-      assert.equal(paused.ok, true, 'the exact-scope host may mutate the match');
-      db.prepare('DELETE FROM event_participants WHERE event_id = ? AND player_id = ?').run(eventA, host);
-      const revokedPause = await new Promise<{ ok: boolean }>((resolve) => {
-        hostSocket.emit('pong:match:pause', { matchId: started.matchId, playerId: host }, resolve);
-      });
-      assert.equal(revokedPause.ok, false, 'event revocation stops known-match mutations immediately');
-      db.prepare('INSERT INTO event_participants (event_id, player_id) VALUES (?, ?)').run(eventA, host);
-      const finished = await new Promise<{ ok: boolean }>((resolve) => {
-        hostSocket.emit('pong:match:finish', { matchId: started.matchId, playerId: host }, resolve);
-      });
-      assert.equal(finished.ok, true);
-
-      const secondLobby = await new Promise<{ ok: boolean; lobbyId?: string }>((resolve) => {
-        hostSocket.emit('pong:lobby:create', { playerId: host }, resolve);
-      });
-      assert.equal(secondLobby.ok, true);
-      db.prepare('UPDATE groups SET archived_at = ? WHERE id = ?').run(Date.now(), groupA);
-      const closed = await new Promise<{ ok: boolean }>((resolve) => {
-        hostSocket.emit('pong:lobby:leave', { lobbyId: secondLobby.lobbyId, playerId: host }, resolve);
-      });
-      assert.equal(closed.ok, false, 'an archived scope cannot mutate a known lobby id');
-    } finally {
-      db.prepare('UPDATE groups SET archived_at = NULL WHERE id = ?').run(groupA);
-      hostSocket.close();
-      guestSocket.close();
-      rivalSocket.close();
-      hostOtherEventSocket.close();
-      otherEventSocket.close();
-      unscopedSocket.close();
-      kiosk.close();
-    }
-  }, '', registerPongSockets);
-});
-
-test('revoking a kiosk token stops delivery to its already-connected socket', async () => {
-  const groupA = createGroup('Kiosk Revoke A');
-  const owner = createPlayer('Kiosk Revoke Owner');
-  addMembership(groupA, owner, 'owner');
-  const issued = issueKioskToken(groupA, null, owner, null);
-
-  await withRequiredServer(async ({ baseUrl }) => {
-    const kiosk = await connectKiosk(baseUrl, issued.token);
-    try {
-      const votes = collect(kiosk, Events.votesChanged);
-      broadcast(Events.votesChanged, { round: 1 }, { groupId: groupA });
-      await settle();
-      assert.equal(votes.count(), 1, 'delivery works while the token is valid');
-
-      assert.equal(revokeKioskToken(groupA, issued.scope.id), true);
-      broadcast(Events.votesChanged, { round: 2 }, { groupId: groupA });
-      await settle();
-      assert.equal(votes.count(), 1, 'a revoked token receives no further delivery');
-    } finally {
-      kiosk.close();
-    }
-  });
-});
-
-test('membership revocation stops delivery immediately, even on an open subscribed socket', async () => {
-  const groupA = createGroup('Revoke A');
-  const mallory = createPlayer('Mallory');
-  addMembership(groupA, mallory);
-
-  await withRequiredServer(async ({ baseUrl }) => {
-    const socket = await connectSession(baseUrl, mallory);
-    try {
-      await subscribeScope(socket, groupA);
-      const votes = collect(socket, Events.votesChanged);
-
-      broadcast(Events.votesChanged, { round: 1 }, { groupId: groupA });
-      await settle();
-      assert.equal(votes.count(), 1, 'delivery works while the membership is active');
-
-      addMembership(groupA, mallory, 'member', 'removed');
-      broadcast(Events.votesChanged, { round: 2 }, { groupId: groupA });
-      await settle();
-      assert.equal(votes.count(), 1, 'no further delivery after the membership was revoked');
-    } finally {
-      socket.close();
-    }
-  });
-});
-
-test('switching the subscribed group ends the previous scope and serves the new one', async () => {
-  const groupA = createGroup('Switch A');
-  const groupB = createGroup('Switch B');
-  const dave = createPlayer('Dave');
-  addMembership(groupA, dave);
-  addMembership(groupB, dave);
-
-  await withRequiredServer(async ({ baseUrl }) => {
-    const socket = await connectSession(baseUrl, dave);
-    try {
-      await subscribeScope(socket, groupA);
-      const votes = collect(socket, Events.votesChanged);
-
-      broadcast(Events.votesChanged, { round: 1 }, { groupId: groupA });
-      await settle();
-      assert.equal(votes.count(), 1);
-
-      await subscribeScope(socket, groupB);
-      broadcast(Events.votesChanged, { round: 2 }, { groupId: groupA });
-      broadcast(Events.votesChanged, { round: 3 }, { groupId: groupB });
-      await settle();
-      assert.equal(votes.count(), 2, 'after the switch only the new group scope is delivered');
-    } finally {
-      socket.close();
-    }
-  });
-});
-
-test('an unscoped fachlicher broadcast throws outside production and delivers nothing', async () => {
-  const groupA = createGroup('Unscoped A');
-  const erin = createPlayer('Erin');
-  addMembership(groupA, erin);
-
-  await withRequiredServer(async ({ baseUrl }) => {
-    const socket = await connectSession(baseUrl, erin);
-    try {
-      await subscribeScope(socket, groupA);
-      const votes = collect(socket, Events.votesChanged);
-
-      assert.throws(
-        () => (broadcast as (event: string, payload: unknown, scope?: unknown) => void)(Events.votesChanged, { round: 1 }),
-        /ohne Gruppen-Scope/
+      assert.equal((await joinAck(inScope, alice)).ok, true);
+      assert.equal(
+        (await joinAck(outOfScope, bob)).ok,
+        false,
+        'a socket in another event may not even join the watch room',
       );
-      assert.throws(() => broadcast(Events.votesChanged, { round: 1 }, { groupId: '' }), /ohne Gruppen-Scope/);
       await settle();
-      assert.equal(votes.count(), 0, 'nothing may be delivered for an unscoped broadcast');
+
+      assert.deepEqual(
+        arcadeWatcherPlayerIds(io, matchId),
+        [alice],
+        'only a watcher inside the match event counts as an eligible voter',
+      );
+      assert.deepEqual(
+        arcadeWatcherPlayerIds(io, `unknown-${matchId}`),
+        [],
+        'an unknown match has no watchers at all',
+      );
     } finally {
-      socket.close();
+      broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: DEFAULT_GROUP_ID, eventId: eventA });
+      inScope.close();
+      outOfScope.close();
     }
   });
 });
 
-test('broadcastInstanceSignal reaches every socket with a null payload, but only for allowlisted names', async () => {
-  const groupA = createGroup('Signal A');
-  const frank = createPlayer('Frank');
-  addMembership(groupA, frank);
+// A group-wide change has to reach every workspace with *that workspace's*
+// board. The regression this guards against is subtle and CI-invisible: the
+// live board carries its payload straight into `state.live`, and an
+// eventId-less broadcast scope is fanned out to every active event context —
+// so one board computed for the base event was delivered into every other
+// event's room, showing a client in event B the instance-wide "Allgemein"
+// roster without any user action.
+test('a group-wide live board change reaches each event with its own board', async () => {
+  const alice = createPlayer('Board Alice');
+  const bob = createPlayer('Board Bob');
+  const eventA = createEvent('Board Event A');
+  const eventB = createEvent('Board Event B');
+  activate(alice, eventA);
+  activate(bob, eventB);
 
-  await withRequiredServer(async ({ baseUrl }) => {
-    const subscribed = await connectSession(baseUrl, frank);
-    const unsubscribed = await connectSession(baseUrl, frank);
+  await withServer(async ({ baseUrl }) => {
+    const inA = await connectSession(baseUrl, alice);
+    const inB = await connectSession(baseUrl, bob);
     try {
-      await subscribeScope(subscribed, groupA);
-      const payloads: unknown[] = [];
-      subscribed.on(Events.groupsChanged, (payload: unknown) => payloads.push(payload));
-      const unsubscribedSignals = collect(unsubscribed, Events.groupsChanged);
+      await subscribe(inA, eventA);
+      await subscribe(inB, eventB);
+      const boardsInA = payloads(inA, Events.liveStatusChanged);
+      const boardsInB = payloads(inB, Events.liveStatusChanged);
 
-      broadcastInstanceSignal(Events.groupsChanged);
+      broadcastLiveBoards(DEFAULT_GROUP_ID);
       await settle();
 
-      assert.deepEqual(payloads, [null], 'the instance signal never carries data');
-      assert.equal(unsubscribedSignals.count(), 1, 'membership-lifecycle refreshes reach unscoped sockets too');
-      assert.throws(() => broadcastInstanceSignal(Events.votesChanged), /kein freigegebenes globales Instanz-Signal/);
+      assert.equal(boardsInA.length, 1, 'the workspace of A is refreshed exactly once');
+      assert.equal(boardsInB.length, 1, 'and so is the workspace of B');
+      assert.deepEqual(
+        boardsInA[0],
+        getLiveBoard(DEFAULT_GROUP_ID, eventA),
+        'event A receives the board computed for event A',
+      );
+      assert.deepEqual(
+        boardsInB[0],
+        getLiveBoard(DEFAULT_GROUP_ID, eventB),
+        'event B receives its own board, never the one of another workspace',
+      );
+      assert.notDeepEqual(
+        boardsInB[0],
+        getLiveBoard(DEFAULT_GROUP_ID, BASE_EVENT_ID),
+        'and specifically not the base workspace board every account belongs to',
+      );
     } finally {
-      subscribed.close();
-      unsubscribed.close();
+      inA.close();
+      inB.close();
     }
   });
 });

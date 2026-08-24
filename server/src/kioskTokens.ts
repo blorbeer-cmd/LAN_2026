@@ -1,11 +1,11 @@
 import { createHash, randomBytes } from 'crypto';
 import { nanoid } from 'nanoid';
-import { db } from './db';
+import { BASE_EVENT_ID, db } from './db';
 
 export interface KioskTokenScope {
   id: string;
   groupId: string;
-  eventId: string | null;
+  eventId: string;
   label: string | null;
 }
 
@@ -13,7 +13,10 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
-export function issueKioskToken(groupId: string, eventId: string | null, createdBy: string, label: string | null): { token: string; scope: KioskTokenScope } {
+export function issueKioskToken(groupId: string, requestedEventId: string | null, createdBy: string, label: string | null): { token: string; scope: KioskTokenScope } {
+  const eventId = requestedEventId ?? BASE_EVENT_ID;
+  const event = db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId);
+  if (!event) throw new Error('Kiosk token requires a matching event.');
   const token = randomBytes(32).toString('hex');
   const id = nanoid();
   db.prepare(

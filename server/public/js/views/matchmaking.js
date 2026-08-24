@@ -6,7 +6,7 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { confirmDialog, openModal } from '../modal.js';
-import { state, gameById } from '../state.js';
+import { state, gameById, catalogGames, gamesWithHistory, eventPlayers } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { openMatchForm } from './leaderboard.js';
@@ -14,13 +14,22 @@ import { getMyId } from '../whoami.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { domainIcon } from '../domainIcons.js';
 import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
+import { matchesSelectionSearch, selectionSearchHtml, wireSelectionSearch } from '../selectionSearch.js';
+import { emptyStateHtml } from '../emptyState.js';
 
 // Persists across re-renders of this view (but not across a full page
 // reload) so toggling checkboxes survives a re-roll without extra plumbing.
 let checkedIds = null;
 let avoidAdjacentOpponents = false;
+// Tracks which game's default `avoidAdjacentOpponents` currently reflects, so
+// switching games re-applies that game's stored default (considerSeatNeighborsDefault)
+// exactly once per change, without clobbering a manual toggle on repeat re-renders
+// for the same game (e.g. from an unrelated realtime update).
+let avoidAdjacentOpponentsGameId = null;
 let teamCountValue = '2';
 let selectedDrawPlayer = null;
+let drawPlayerSearchQuery = '';
 
 // Which of the two team-formation workflows is currently open below the
 // shared game picker — only one shows at a time so the game+mode choice
@@ -38,6 +47,8 @@ let draftCache = null; // { draft: {...} | null }
 let draftLoading = false;
 let draftPlayerIds = null; // independently selected participants for the next draft
 let draftCaptainIds = new Set(); // captains chosen in the start form
+let draftPlayerSearchQuery = '';
+let captainSearchQuery = '';
 
 async function loadDraft(ctx) {
   draftLoading = true;
@@ -63,27 +74,52 @@ export function setDraftState(payload) {
 let historyCache = null;
 let historyLoading = false;
 let historyForGameId = null;
+let historyStale = false;
+let historyRequestVersion = 0;
 
 async function loadHistory(gameId, ctx) {
+  const version = ++historyRequestVersion;
   historyLoading = true;
+  historyStale = false;
   try {
     const res = await api.matchmaking.history(gameId);
-    historyCache = res.history;
-    historyForGameId = gameId;
+    if (version === historyRequestVersion) {
+      historyCache = res.history;
+      historyForGameId = gameId;
+    }
   } catch {
-    historyCache = [];
-    historyForGameId = gameId;
+    if (version === historyRequestVersion) {
+      if (historyForGameId !== gameId) historyCache = [];
+      historyForGameId = gameId;
+    }
   } finally {
-    historyLoading = false;
-    ctx.rerender();
+    if (version === historyRequestVersion) {
+      historyLoading = false;
+      ctx.rerender();
+    }
   }
 }
 
 // Called from app.js whenever a matchmaking:generated or
 // matchmaking:draws-changed event arrives, so history is never more than one
 // re-render stale.
-export function invalidateMatchmakingHistory() {
-  historyForGameId = null;
+export function invalidateMatchmakingHistory({ hard = false } = {}) {
+  historyRequestVersion += 1;
+  historyLoading = false;
+  historyStale = true;
+  if (hard) {
+    historyCache = null;
+    historyForGameId = null;
+  }
+}
+
+// A running captain draft belongs to exactly one event, so switching the
+// workspace has to drop it alongside the history — otherwise the previous
+// event's draft board stays on screen and its pick buttons keep firing
+// against a draft the new workspace cannot see.
+export function invalidateMatchmakingDraft() {
+  draftCache = null;
+  draftLoading = false;
 }
 
 // A draw currently on screen either comes from the freshly-generated result
@@ -99,6 +135,11 @@ function findDrawById(id) {
 // changes its actions inside the shared Historie. Selecting a player and
 // then a team is the touch equivalent; arrow keys provide the keyboard path.
 function renderDrawCard(draw, { editable, showGame = false }) {
+  // A drawn lineup carries the ratings it was balanced with, so it keeps
+  // showing those instead of drifting when someone rates the game later. A
+  // drafted lineup was never balanced by rating and stores none, so its rows
+  // stay informational and read from the current state.
+  const skillOptions = draw.source === 'draft' ? { balanced: false } : { stored: true };
   const selectedTeamIndex =
     editable && selectedDrawPlayer?.drawId === draw.id
       ? draw.teams.findIndex((team) => team.players.some((player) => player.id === selectedDrawPlayer.playerId))
@@ -118,7 +159,7 @@ function renderDrawCard(draw, { editable, showGame = false }) {
 
       return `
       <div class="team-card tournament-draft-team matchmaking-draw-team${isWinner ? ' is-winner' : ''}${selectedTeamIndex !== -1 && selectedTeamIndex !== i ? ' is-select-target' : ''}" role="group" aria-label="Team ${i + 1}${isWinner ? ', Gewinner' : ''}" ${editable ? `data-draw-drop-team="${i}" data-draw-id="${draw.id}"` : ''}>
-        <div class="team-card-header"><span>Team ${i + 1}</span>${teamSkillHtml(t.players, draw.gameId)}</div>
+        <div class="team-card-header"><span>Team ${i + 1}</span>${teamSkillHtml(t.players, draw.gameId, skillOptions)}</div>
         ${resultLine}
         ${t.players
           .map(
@@ -127,7 +168,7 @@ function renderDrawCard(draw, { editable, showGame = false }) {
             ${avatarHtml(p, 18)}
             <span class="team-player-name" style="flex:1;">${escapeHtml(p.name)}</span>
             ${seatConflictIconHtml(p)}
-            ${playerSkillHtml(p.id, draw.gameId)}
+            ${playerSkillHtml(p, draw.gameId, skillOptions)}
           ${editable ? '</button>' : '</div>'}`
           )
           .join('')}
@@ -238,7 +279,7 @@ function openDrawResultEdit(draw, ctx) {
         teams,
         winnerTeamIndex: winnerRaw === '' ? null : Number(winnerRaw),
       });
-      historyForGameId = null;
+      invalidateMatchmakingHistory();
       close();
       await ctx.refresh();
       showToast('Ergebnis aktualisiert.');
@@ -397,19 +438,19 @@ function renderHistoryDetails(title, count, content) {
   </details>`;
 }
 
-function renderHistory() {
-  if (historyLoading || historyCache === null) {
+function renderHistory(selectedGameId) {
+  if (historyForGameId !== selectedGameId || historyCache === null) {
     return renderHistoryDetails(
       'Historie',
       0,
-      '<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>'
+      emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' })
     );
   }
   if (historyCache.length === 0) {
     return renderHistoryDetails(
       'Historie',
       0,
-      '<div class="empty-state" style="padding:var(--space-4);">Noch keine Auslosungen für dieses Spiel.</div>'
+      emptyStateHtml('Noch keine Auslosungen für dieses Spiel.', { style: 'padding:var(--space-4);' })
     );
   }
 
@@ -426,7 +467,10 @@ function renderHistory() {
 
 // ---------- captain draft: live board ----------
 
-function renderDraftBoard(draft, ctx) {
+function renderDraftBoard(draft) {
+  // Captains pick by turn order, not by rating (routes/draft.ts): the values
+  // here inform the picking captain, they never enter a calculation.
+  const skillOptions = { balanced: false };
   const myId = getMyId();
   const isMyTurn = draft.turnCaptainId === myId;
   const turnCaptain = draft.teams[draft.turnCaptainIndex]?.captain;
@@ -437,9 +481,9 @@ function renderDraftBoard(draft, ctx) {
       <div class="team-card" ${draft.turnCaptainIndex === i ? 'style="border-color:var(--accent);"' : ''}>
         <div class="team-card-header">
           <span>${escapeHtml(t.captain.name)}</span>
-          <span class="row" style="gap:var(--space-2);">${teamSkillHtml(t.players, draft.gameId)}${draft.turnCaptainIndex === i ? '<span style="color:var(--accent);">am Zug</span>' : ''}</span>
+          <span class="row" style="gap:var(--space-2);">${teamSkillHtml(t.players, draft.gameId, skillOptions)}${draft.turnCaptainIndex === i ? '<span style="color:var(--accent);">am Zug</span>' : ''}</span>
         </div>
-        ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 20)} <span class="team-player-name">${escapeHtml(p.name)}</span>${playerSkillHtml(p.id, draft.gameId)}</div>`).join('')}
+        ${t.players.map((p) => `<div class="team-player">${avatarHtml(p, 20)} <span class="team-player-name">${escapeHtml(p.name)}</span>${playerSkillHtml(p, draft.gameId, skillOptions)}</div>`).join('')}
       </div>`
     )
     .join('');
@@ -447,8 +491,8 @@ function renderDraftBoard(draft, ctx) {
   const poolHtml = draft.pool
     .map((p) =>
       isMyTurn
-        ? `<button type="button" class="check-row draft-pool-player" data-draft-pick="${p.id}">${avatarHtml(p, 20)} <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>${playerSkillHtml(p.id, draft.gameId)}</button>`
-        : `<div class="check-row draft-pool-player">${avatarHtml(p, 20)} <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>${playerSkillHtml(p.id, draft.gameId)}</div>`
+        ? `<button type="button" class="check-row draft-pool-player" data-draft-pick="${p.id}">${avatarHtml(p, 20)} <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>${playerSkillHtml(p, draft.gameId, skillOptions)}</button>`
+        : `<div class="check-row draft-pool-player">${avatarHtml(p, 20)} <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>${playerSkillHtml(p, draft.gameId, skillOptions)}</div>`
     )
     .join('');
 
@@ -472,7 +516,7 @@ function wireDraftBoard(container, ctx) {
   const cancelBtn = container.querySelector('#draft-cancel');
   if (cancelBtn) {
     cancelBtn.addEventListener('click', async () => {
-      if (!(await confirmDialog('Draft wirklich abbrechen?'))) return;
+      if (!(await confirmDialog('Draft wirklich abbrechen?', { confirmText: 'Draft abbrechen', danger: true }))) return;
       try {
         draftCache = await api.draft.cancel();
         ctx.rerender();
@@ -495,10 +539,17 @@ function wireDraftBoard(container, ctx) {
 }
 
 export function renderMatchmaking(container, ctx) {
-  if (state.games.length === 0 || state.players.length === 0) {
-    container.innerHTML = `
-      <h1 class="view-title">Teams</h1>
-      <div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('matchmaking'))}</span>Dafür braucht es mindestens ein Spiel und 2 Spieler.</div>`;
+  // Only accepted games can be drawn/drafted for — an open suggestion is not
+  // something to build teams for yet (see catalogGames()). The picker still
+  // lists a game that was moved back to the suggestions *after* it was drawn
+  // or played, because this one <select> also scopes the Historie below:
+  // without it, that draw's Ergebnis-/Rematch-Aktionen would be unreachable.
+  // Drawing and drafting stay blocked for such a game (see drawDisabledReason).
+  const pickableGames = gamesWithHistory([state.lastMatchmaking?.gameId]);
+  if (catalogGames().length === 0 || eventPlayers().length === 0) {
+    container.innerHTML = emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', {
+      icon: icon(domainIcon('matchmaking')),
+    });
     return;
   }
 
@@ -512,9 +563,7 @@ export function renderMatchmaking(container, ctx) {
   // Historie below (see draft.ts), same as any other draw.
   const draft = draftCache?.draft;
   if (draft && draft.status === 'active') {
-    container.innerHTML = `
-      <h1 class="view-title">Teams</h1>
-      ${renderDraftBoard(draft, ctx)}`;
+    container.innerHTML = renderDraftBoard(draft);
     wireDraftBoard(container, ctx);
     return;
   }
@@ -522,71 +571,90 @@ export function renderMatchmaking(container, ctx) {
   if (checkedIds === null) {
     // First render: default to whoever is currently shown as playing.
     checkedIds = new Set(state.live.filter((p) => p.state === 'playing').map((p) => p.player_id));
-    if (checkedIds.size === 0) checkedIds = new Set(state.players.map((p) => p.id));
+    if (checkedIds.size === 0) checkedIds = new Set(eventPlayers().map((p) => p.id));
   }
   if (draftPlayerIds === null) draftPlayerIds = new Set(checkedIds);
-  const availablePlayerIds = new Set(state.players.map((player) => player.id));
+  const availablePlayerIds = new Set(eventPlayers().map((player) => player.id));
+  // Both selections predate the active event's participant scoping (a stale
+  // `state.live`-based default, or leftover from an event switch) and must be
+  // pruned the same way, or a since-removed/never-accepted id would still
+  // reach POST /api/matchmaking and fail competitionPlayersBelongToGroup.
+  checkedIds = new Set([...checkedIds].filter((id) => availablePlayerIds.has(id)));
   draftPlayerIds = new Set([...draftPlayerIds].filter((id) => availablePlayerIds.has(id)));
   draftCaptainIds = new Set([...draftCaptainIds].filter((id) => draftPlayerIds.has(id)));
 
-  const selectedGameId = state.selectedGameId || state.games[0].id;
+  const selectedGameId = pickableGames.some((g) => g.id === state.selectedGameId) ? state.selectedGameId : catalogGames()[0].id;
 
-  if (historyForGameId !== selectedGameId && !historyLoading) {
+  if (avoidAdjacentOpponentsGameId !== selectedGameId) {
+    avoidAdjacentOpponentsGameId = selectedGameId;
+    avoidAdjacentOpponents = Boolean(gameById(selectedGameId)?.considerSeatNeighborsDefault);
+  }
+
+  if ((historyForGameId !== selectedGameId || historyStale) && !historyLoading) {
     loadHistory(selectedGameId, ctx);
   }
 
-  const gameOptions = state.games
-    .map((g) => `<option value="${g.id}" ${g.id === selectedGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`)
-    .join('');
+  const gameSelectOptions = pickableGames.map((g) => ({ value: g.id, label: g.name }));
 
-  const playerRows = state.players
+  const playerRows = eventPlayers()
     .map(
       (p) => `
-      <label class="check-row">
+      <label class="check-row" data-mm-draw-search-item data-selection-search="${escapeHtml(p.name)}">
         <input type="checkbox" data-player="${p.id}" ${checkedIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
-        ${playerSkillHtml(p.id, selectedGameId)}
+        ${playerSkillHtml(p, selectedGameId)}
       </label>`
     )
     .join('');
 
-  const draftPlayerRows = state.players
+  const draftPlayerRows = eventPlayers()
     .map(
-      (p) => `<label class="check-row">
+      (p) => `<label class="check-row" data-mm-draft-search-item data-selection-search="${escapeHtml(p.name)}">
         <input type="checkbox" data-draft-player="${p.id}" ${draftPlayerIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
-        ${playerSkillHtml(p.id, selectedGameId)}
+        ${playerSkillHtml(p, selectedGameId, { balanced: false })}
       </label>`
     )
     .join('');
 
   // Captains are selected only from the independently prepared draft roster;
   // every other selected participant becomes part of the live pick pool.
-  const draftPlayers = state.players.filter((p) => draftPlayerIds.has(p.id));
+  const draftPlayers = eventPlayers().filter((p) => draftPlayerIds.has(p.id));
   const captainRows = draftPlayers
     .map(
-      (p) => `<label class="check-row">
+      (p) => `<label class="check-row" data-mm-captain-search-item data-selection-search="${escapeHtml(p.name)}">
         <input type="checkbox" data-captain-toggle="${p.id}" ${draftCaptainIds.has(p.id) ? 'checked' : ''} />
         ${avatarHtml(p, 20)}
         <span class="player-name" style="flex:1;">${escapeHtml(p.name)}</span>
-        ${playerSkillHtml(p.id, selectedGameId)}
+        ${playerSkillHtml(p, selectedGameId, { balanced: false })}
       </label>`
     )
     .join('');
   const draftPoolSize = draftPlayers.length - draftCaptainIds.size;
-  const draftReady = draftCaptainIds.size >= 2 && draftCaptainIds.size <= 4 && draftPoolSize >= 1;
+  // A game that is only in the picker because it still carries history (see
+  // pickableGames) must not start anything new — the server refuses it too.
+  const selectedIsSuggestion = gameById(selectedGameId)?.isSuggestion === true;
+  const suggestionBlockedReason =
+    'Dieses Spiel steht wieder als Vorschlag in der Spiele-Liste. Erst in den Katalog aufnehmen, dann sind Auslosung und Draft wieder möglich.';
+
+  const draftReady =
+    !selectedIsSuggestion && draftCaptainIds.size >= 2 && draftCaptainIds.size <= 4 && draftPoolSize >= 1;
   // Mirrors the disabled "Draft starten" button below: named so the reason
   // is visible up front instead of only after a click is attempted.
   let draftDisabledReason = '';
   if (!draftReady) {
-    if (draftCaptainIds.size < 2) draftDisabledReason = 'Mindestens 2 Captains auswählen, um den Draft zu starten.';
+    if (selectedIsSuggestion) draftDisabledReason = suggestionBlockedReason;
+    else if (draftCaptainIds.size < 2) draftDisabledReason = 'Mindestens 2 Captains auswählen, um den Draft zu starten.';
     else if (draftCaptainIds.size > 4) draftDisabledReason = 'Maximal 4 Captains auswählen.';
     else draftDisabledReason = 'Mindestens 1 weiteren Spieler zusätzlich zu den Captains auswählen.';
   }
 
-  const drawReady = checkedIds.size >= 2;
+  const drawReady = !selectedIsSuggestion && checkedIds.size >= 2;
+  const drawDisabledReason = selectedIsSuggestion
+    ? suggestionBlockedReason
+    : 'Mindestens 2 Spieler auswählen, um Teams auszulosen.';
 
   const modeToggleHtml = `
       <div class="selection-toolbar" role="group" aria-labelledby="mm-mode-label">
@@ -596,11 +664,10 @@ export function renderMatchmaking(container, ctx) {
       </div>`;
 
   container.innerHTML = `
-    <h1 class="view-title">Teams</h1>
     <div class="card stack">
       <div>
-        <label class="field-label" for="mm-game">Spiel auswählen</label>
-        <select id="mm-game">${gameOptions}</select>
+        <label class="field-label" for="mm-game-search">Spiel auswählen</label>
+        ${searchSelectHtml('mm-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen…' })}
       </div>
       ${modeToggleHtml}
 
@@ -614,10 +681,12 @@ export function renderMatchmaking(container, ctx) {
             <label class="field-label" for="mm-teamcount">Anzahl Teams</label>
             <input type="number" id="mm-teamcount" min="2" value="${escapeHtml(teamCountValue)}" />
           </div>
-          <button type="button" class="btn btn-sm" id="mm-select-all">Alle markieren</button>
-          <button type="button" class="btn btn-sm" id="mm-select-none">Auswahl aufheben</button>
+          <button type="button" class="icon-btn selection-toolbar-icon" id="mm-select-all" aria-label="Sichtbare Spieler markieren" data-tooltip="Sichtbare markieren">${icon('listChecks')}</button>
+          <button type="button" class="icon-btn selection-toolbar-icon selection-toolbar-icon--clear" id="mm-select-none" aria-label="Sichtbare Spieler abwählen" data-tooltip="Sichtbare abwählen">${icon('listX')}</button>
+          ${selectionSearchHtml('mm-player-search', drawPlayerSearchQuery)}
         </div>
         <div class="player-selection-grid tournament-player-grid">${playerRows}</div>
+        <p class="muted" data-mm-draw-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spieler gefunden.</p>
         <div class="check-row">
           <input type="checkbox" id="mm-avoid-adjacent" ${avoidAdjacentOpponents ? 'checked' : ''} />
           <span class="title-with-info tournament-option-label">
@@ -635,7 +704,7 @@ export function renderMatchmaking(container, ctx) {
             ${drawReady ? '' : infoTooltipHtml(
                 'matchmaking-draw-disabled-help',
                 'Warum ist „Teams auslosen“ deaktiviert?',
-                'Mindestens 2 Spieler auswählen, um Teams auszulosen.',
+                drawDisabledReason,
                 'warning'
               )}
           </div>
@@ -656,15 +725,19 @@ export function renderMatchmaking(container, ctx) {
         </div>
         <div class="selection-toolbar">
           <span class="field-label">Spieler</span>
-          <button type="button" class="btn btn-sm" id="draft-select-all">Alle markieren</button>
-          <button type="button" class="btn btn-sm" id="draft-select-none">Auswahl aufheben</button>
+          <button type="button" class="icon-btn selection-toolbar-icon" id="draft-select-all" aria-label="Sichtbare Spieler markieren" data-tooltip="Sichtbare markieren">${icon('listChecks')}</button>
+          <button type="button" class="icon-btn selection-toolbar-icon selection-toolbar-icon--clear" id="draft-select-none" aria-label="Sichtbare Spieler abwählen" data-tooltip="Sichtbare abwählen">${icon('listX')}</button>
+          ${selectionSearchHtml('draft-player-search', draftPlayerSearchQuery)}
         </div>
         <div class="player-selection-grid tournament-player-grid captain-selection-grid">${draftPlayerRows}</div>
+        <p class="muted" data-mm-draft-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spieler gefunden.</p>
         <div class="captain-selection-group">
           <div class="field-label">Captains</div>
+          ${selectionSearchHtml('captain-player-search', captainSearchQuery, { label: 'Captains suchen' })}
           <div class="player-selection-grid tournament-player-grid captain-selection-grid">
             ${captainRows}
           </div>
+          <p class="muted" data-mm-captain-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spieler gefunden.</p>
         </div>
         <div class="sticky-actions">
           <div class="row" style="flex-wrap:wrap;">
@@ -681,11 +754,35 @@ export function renderMatchmaking(container, ctx) {
     </div>
     <div id="mm-result">${renderResult(state.lastMatchmaking)}</div>
 
-    ${renderHistory()}
+    ${renderHistory(selectedGameId)}
   `;
 
   wireInfoTooltips(container);
   wireDrawCards(container, ctx);
+  wireSelectionSearch(container, {
+    inputId: 'mm-player-search',
+    itemSelector: '[data-mm-draw-search-item]',
+    emptySelector: '[data-mm-draw-search-empty]',
+    onQueryChange: (query) => {
+      drawPlayerSearchQuery = query;
+    },
+  });
+  wireSelectionSearch(container, {
+    inputId: 'draft-player-search',
+    itemSelector: '[data-mm-draft-search-item]',
+    emptySelector: '[data-mm-draft-search-empty]',
+    onQueryChange: (query) => {
+      draftPlayerSearchQuery = query;
+    },
+  });
+  wireSelectionSearch(container, {
+    inputId: 'captain-player-search',
+    itemSelector: '[data-mm-captain-search-item]',
+    emptySelector: '[data-mm-captain-search-empty]',
+    onQueryChange: (query) => {
+      captainSearchQuery = query;
+    },
+  });
 
   container.querySelectorAll('[data-mm-mode]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -699,21 +796,29 @@ export function renderMatchmaking(container, ctx) {
   });
 
   container.querySelector('#mm-select-all')?.addEventListener('click', () => {
-    checkedIds = new Set(state.players.map((player) => player.id));
+    for (const player of eventPlayers().filter((entry) => matchesSelectionSearch(entry.name, drawPlayerSearchQuery))) {
+      checkedIds.add(player.id);
+    }
     ctx.rerender();
   });
   container.querySelector('#mm-select-none')?.addEventListener('click', () => {
-    checkedIds.clear();
+    for (const player of eventPlayers().filter((entry) => matchesSelectionSearch(entry.name, drawPlayerSearchQuery))) {
+      checkedIds.delete(player.id);
+    }
     ctx.rerender();
   });
 
   container.querySelector('#draft-select-all')?.addEventListener('click', () => {
-    draftPlayerIds = new Set(state.players.map((player) => player.id));
+    for (const player of eventPlayers().filter((entry) => matchesSelectionSearch(entry.name, draftPlayerSearchQuery))) {
+      draftPlayerIds.add(player.id);
+    }
     ctx.rerender();
   });
   container.querySelector('#draft-select-none')?.addEventListener('click', () => {
-    draftPlayerIds.clear();
-    draftCaptainIds.clear();
+    for (const player of eventPlayers().filter((entry) => matchesSelectionSearch(entry.name, draftPlayerSearchQuery))) {
+      draftPlayerIds.delete(player.id);
+      draftCaptainIds.delete(player.id);
+    }
     ctx.rerender();
   });
 
@@ -758,6 +863,7 @@ export function renderMatchmaking(container, ctx) {
     }
   });
 
+  wireSearchSelect(container, 'mm-game', gameSelectOptions);
   container.querySelector('#mm-game').addEventListener('change', (event) => {
     state.selectedGameId = event.target.value;
     ctx.rerender();

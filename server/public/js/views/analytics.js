@@ -18,10 +18,14 @@
 // fetch, then trigger a re-render.
 
 import { api } from '../api.js';
-import { state } from '../state.js';
+import { accessibleEvents, state } from '../state.js';
 import { escapeHtml, formatDateTime, avatarHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
+import { emptyStateHtml } from '../emptyState.js';
+import { eventSelectOptions } from '../eventStatus.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let activeTab = 'playtime'; // 'playtime' | 'matches' | 'arcade'
 
@@ -39,19 +43,36 @@ function defaultFilters() {
 }
 let filters = defaultFilters();
 
+// Every tab's data is filtered by this view's own event selection, so all of
+// it belongs to the event that was active when it was fetched. Switching the
+// workspace has to drop the numbers *and* the selection: the selected event
+// may not even be readable from the new workspace, and re-resolving the
+// 'active' sentinel is what re-points the view at the new event.
+export function invalidateAnalytics() {
+  cache = null;
+  matchesCache = null;
+  arcadeCache = null;
+  loading = false;
+  matchesLoading = false;
+  arcadeLoading = false;
+  filters = defaultFilters();
+}
+
 // Resolves the 'active' sentinel to a real event id once the events list is
 // available, so the view opens pre-filtered to the current LAN by default.
+// state.activeEvent is the account's persisted workspace; the per-event
+// payload carries no "is this the active one" flag of its own.
 function resolveEventSelection() {
   if (filters.eventId !== 'active') return;
-  const active = state.events.find((e) => e.isActive);
-  filters.eventId = active?.id ?? '';
+  const activeId = state.activeEvent?.id ?? null;
+  filters.eventId = activeId && accessibleEvents().some((e) => e.id === activeId) ? activeId : '';
 }
 
 // Arcade results do not carry an event id. For that tab only, translate the
 // selected event into its date bounds before querying the shared endpoint.
 function selectedEventRange() {
-  const ev = state.events.find((e) => e.id === filters.eventId);
-  if (ev) return { from: ev.starts_at, to: ev.ends_at ?? Date.now() };
+  const ev = accessibleEvents().find((e) => e.id === filters.eventId);
+  if (ev) return { from: ev.startsAt, to: ev.endsAt ?? Date.now() };
   return null;
 }
 
@@ -128,15 +149,13 @@ async function loadArcadeData(ctx) {
   }
 }
 
-function renderEventOptions() {
-  const sorted = [...state.events].sort((a, b) => b.starts_at - a.starts_at);
-  const options = sorted
-    .map((e) => {
-      const range = `${new Date(e.starts_at).toLocaleDateString('de-DE')}${e.ends_at ? '–' + new Date(e.ends_at).toLocaleDateString('de-DE') : ' (läuft)'}`;
-      return `<option value="${e.id}" ${e.id === filters.eventId ? 'selected' : ''}>${escapeHtml(e.name)} (${range})</option>`;
-    })
-    .join('');
-  return `<option value="" ${filters.eventId === '' ? 'selected' : ''}>Gesamt (alle Events)</option>${options}`;
+// The list spans finished LANs as well as the running one. Each option is the
+// event's title plus its state as an icon — the same shape every other event
+// dropdown uses. The date range this filter used to append is gone: it made
+// this one option list read differently from all the others, and the state
+// the reader is actually choosing by is now visible directly.
+function eventFilterOptions() {
+  return eventSelectOptions(accessibleEvents(), { allEntryLabel: 'Gesamt (alle Events)' });
 }
 
 export function renderAnalytics(container, ctx) {
@@ -151,17 +170,18 @@ export function renderAnalytics(container, ctx) {
     loadArcadeData(ctx);
   }
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <h1 class="view-title">Auswertungen</h1>
     <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section" aria-labelledby="analytics-controls-title">
-        <div class="grouped-page-section-title"><h2 id="analytics-controls-title">Ansicht</h2></div>
+      <section class="card stack grouped-page-section" aria-label="Ansicht">
         <div class="tabs" style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
           <button type="button" class="btn btn-sm ${activeTab === 'playtime' ? 'btn-primary' : ''}" data-an-tab="playtime">Spielzeit</button>
           <button type="button" class="btn btn-sm ${activeTab === 'matches' ? 'btn-primary' : ''}" data-an-tab="matches">Matches & Turniere</button>
           <button type="button" class="btn btn-sm ${activeTab === 'arcade' ? 'btn-primary' : ''}" data-an-tab="arcade">Arcade</button>
         </div>
-        <select id="an-event" aria-label="Veranstaltung">${renderEventOptions()}</select>
+        ${searchSelectHtml('an-event', eventFilterOptions(), filters.eventId, {
+          placeholder: 'Event suchen…',
+          ariaLabel: 'Veranstaltung',
+          label: 'Auswertbare Events',
+        })}
       </section>
       <div id="an-content" class="grouped-page-sections">${renderActiveTabContent()}</div>
     </div>
@@ -174,27 +194,29 @@ export function renderAnalytics(container, ctx) {
     });
   });
 
-  const eventSelect = container.querySelector('#an-event');
-  if (eventSelect) {
-    eventSelect.addEventListener('change', (e) => {
-      filters.eventId = e.target.value; // '' selects "Gesamt (alle Events)"
+  wireSearchSelect(container, 'an-event', eventFilterOptions(), {
+    emptyText: 'Kein passendes Event gefunden.',
+    onChange: (eventId) => {
+      filters.eventId = eventId; // '' selects "Gesamt (alle Events)"
       cache = null;
       matchesCache = null;
       arcadeCache = null;
       ctx.rerender();
-    });
-  }
+    },
+  });
+
+  wireInfoTooltips(container);
 
 }
 
 function renderActiveTabContent() {
   if (activeTab === 'matches') {
-    return matchesLoading || !matchesCache ? `<div class="empty-state">Lädt…</div>` : renderMatchesContent();
+    return matchesLoading || !matchesCache ? emptyStateHtml('Lädt…') : renderMatchesContent();
   }
   if (activeTab === 'arcade') {
-    return arcadeLoading || !arcadeCache ? `<div class="empty-state">Lädt…</div>` : renderArcadeContent();
+    return arcadeLoading || !arcadeCache ? emptyStateHtml('Lädt…') : renderArcadeContent();
   }
-  return loading || !cache ? `<div class="empty-state">Lädt…</div>` : renderPlaytimeContent();
+  return loading || !cache ? emptyStateHtml('Lädt…') : renderPlaytimeContent();
 }
 
 function renderArcadeContent() {
@@ -218,7 +240,7 @@ function renderArcadeContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine abgeschlossenen Arcade-Matches.</div>`;
+    : emptyStateHtml('Noch keine abgeschlossenen Arcade-Matches.', { style: 'padding:var(--space-4);' });
 
   return `
     <section class="card stack grouped-page-section" aria-labelledby="analytics-arcade-total-title">
@@ -253,13 +275,13 @@ function renderPlaytimeContent() {
           <span class="lb-rank">${i + 1}</span>
                     <span style="flex:1;">
             ${escapeHtml(g.gameName)}
-            <div class="muted" style="font-size:var(--font-size-xs);">${g.playerCount} Spieler · ${g.sessionCount} Session(s)</div>
+            <div class="muted" style="font-size:var(--font-size-xs);">${g.playerCount} Spieler · ${g.sessionCount} ${g.sessionCount === 1 ? 'Sitzung' : 'Sitzungen'}</div>
           </span>
           <span class="lb-points">${escapeHtml(g.totalFormatted)}</span>
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions für dieses Event.</div>`;
+    : emptyStateHtml('Keine Sessions für dieses Event.', { style: 'padding:var(--space-4);' });
 
   const awardsHtml = awards.length
     ? awards
@@ -278,7 +300,7 @@ function renderPlaytimeContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Awards für dieses Event.</div>`;
+    : emptyStateHtml('Noch keine Awards für dieses Event.', { style: 'padding:var(--space-4);' });
 
   const longestPerGameHtml = overview.longestSessionsPerGame.length
     ? overview.longestSessionsPerGame
@@ -291,7 +313,7 @@ function renderPlaytimeContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions für dieses Event.</div>`;
+    : emptyStateHtml('Keine Sessions für dieses Event.', { style: 'padding:var(--space-4);' });
 
   const sessionRows = sessions
     .slice(0, 100)
@@ -331,7 +353,7 @@ function renderPlaytimeContent() {
       </summary>
       <div class="collapsible-section-content">
         <div class="leaderboard-list-grid">
-          ${sessionRows || `<div class="empty-state" style="padding:var(--space-4);">Keine Sessions für dieses Event.</div>`}
+          ${sessionRows || emptyStateHtml('Keine Sessions für dieses Event.', { style: 'padding:var(--space-4);' })}
         </div>
       </div>
     </details>
@@ -361,7 +383,7 @@ function renderMatchesContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Ergebnisse eingetragen.</div>`;
+    : emptyStateHtml('Noch keine Ergebnisse eingetragen.', { style: 'padding:var(--space-4);' });
 
   const tournamentByGameRows = tournaments.byGame.length
     ? tournaments.byGame
@@ -373,7 +395,7 @@ function renderMatchesContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Turniere.</div>`;
+    : emptyStateHtml('Noch keine Turniere.', { style: 'padding:var(--space-4);' });
 
   const formatRows = tournaments.byFormat.length
     ? tournaments.byFormat
@@ -385,7 +407,7 @@ function renderMatchesContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Turnierarten.</div>`;
+    : emptyStateHtml('Noch keine Turnierarten.', { style: 'padding:var(--space-4);' });
 
   const drawRows = draws.byGame.length
     ? draws.byGame
@@ -397,14 +419,19 @@ function renderMatchesContent() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Teams ausgelost.</div>`;
+    : emptyStateHtml('Noch keine Teams ausgelost.', { style: 'padding:var(--space-4);' });
 
   const funCards = [];
   if (fun.biggestRivalry) {
     funCards.push(`
       <div class="card">
-        <div class="row-between"><div class="player-name">Größte Rivalität</div><span class="lb-points">${fun.biggestRivalry.count}×</span></div>
-        <div class="muted" style="font-size:var(--font-size-xs);">Sind sich am häufigsten als Gegner begegnet.</div>
+        <div class="row-between">
+          <div class="player-name title-with-info">
+            <span>Größte Rivalität</span>
+            ${infoTooltipHtml('analytics-rivalry-help', 'Größte Rivalität', 'Häufigste Begegnung als Gegner.')}
+          </div>
+          <span class="lb-points">${fun.biggestRivalry.count}×</span>
+        </div>
         <div class="stack" style="margin-top:var(--space-2);gap:var(--space-1);">
           <div class="row">${playerChip(fun.biggestRivalry.playerA)}</div>
           <div class="row">${playerChip(fun.biggestRivalry.playerB)}</div>
@@ -436,7 +463,7 @@ function renderMatchesContent() {
   }
   const funHtml = funCards.length
     ? `<div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));">${funCards.join('')}</div>`
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch nicht genug Ergebnisse.</div>`;
+    : emptyStateHtml('Noch nicht genug Ergebnisse.', { style: 'padding:var(--space-4);' });
 
   return `
     <section class="card stack grouped-page-section" aria-labelledby="analytics-match-results-title">

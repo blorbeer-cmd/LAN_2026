@@ -1,15 +1,16 @@
-// Phase 5c communication data: announcements are persisted with an immutable
-// group/event recipient snapshot. Delivery is deliberately deferred.
+// Group/event announcements keep an immutable recipient snapshot and use the
+// shared in-app, kiosk and Web Push delivery pipeline immediately.
 
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { isNonEmptyString } from '../validation';
-import { recordPushLog, resolvePushTopic } from '../push';
+import { notifyPlayers, resolvePushTopic } from '../push';
 import { withBodyPlayerIdentity } from '../sessions';
-import { resolveGroupEventScope } from '../groupEventScope';
+import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 import { communicationRecipientIds } from '../communicationRecipients';
 import { activeGroupPlayers } from '../groupPlayers';
+import { broadcast, Events } from '../realtime';
 
 export const broadcastsRouter = Router();
 
@@ -62,8 +63,10 @@ function buildList(groupId: string, eventId: string | null) {
 }
 
 broadcastsRouter.get('/', (req, res) => {
-  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  const scope = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  if (!scope.eventId) return res.status(404).json({ error: 'Event nicht gefunden.' });
   res.json(buildList(req.group!.id, scope.eventId));
 });
 
@@ -75,8 +78,10 @@ broadcastsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
   if (!isNonEmptyString(message, MAX_MESSAGE_LENGTH)) {
     return res.status(400).json({ error: `Nachricht ist erforderlich (1-${MAX_MESSAGE_LENGTH} Zeichen).` });
   }
-  const scope = resolveGroupEventScope(req.group!.id, eventId);
+  const scope = resolveRequestGroupEventScope(req, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  if (!scope.eventId) return res.status(404).json({ error: 'Event nicht gefunden.' });
   if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
@@ -120,14 +125,14 @@ broadcastsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     row.created_at,
   );
 
-  const pushEntry = recordPushLog(
+  const pushDelivery = notifyPlayers(
     recipientIds,
     { title: player.name, body: row.message, url: '/#broadcast' },
     'all',
     { key: broadcastTopicKey(row.id), expiresAt: row.ends_at },
     { groupId: row.group_id, eventId: row.event_id },
   );
-  res.status(201).json({
+  const created = {
     id: row.id,
     groupId: row.group_id,
     eventId: row.event_id,
@@ -139,9 +144,27 @@ broadcastsRouter.post('/', ...withBodyPlayerIdentity, (req, res) => {
     active: true,
     recipientIds,
     recipientCount: recipientIds.length,
-    pushLogId: pushEntry.id,
+    pushLogId: pushDelivery?.entry.id ?? null,
     createdAt: row.created_at,
-  });
+  };
+  const deliveredRecipientIds = pushDelivery?.recipientPlayerIds ?? [];
+  broadcast(
+    Events.broadcastNew,
+    {
+      id: created.id,
+      playerId: created.playerId,
+      playerName: created.playerName,
+      message: created.message,
+      endsAt: created.endsAt,
+      createdAt: created.createdAt,
+    },
+    {
+      groupId: row.group_id,
+      eventId: row.event_id,
+      recipientPlayerIds: deliveredRecipientIds,
+    },
+  );
+  res.status(201).json(created);
 });
 
 broadcastsRouter.post('/:id/end', ...withBodyPlayerIdentity, (req, res) => {
@@ -153,6 +176,7 @@ broadcastsRouter.post('/:id/end', ...withBodyPlayerIdentity, (req, res) => {
     .prepare('SELECT * FROM broadcasts WHERE id = ? AND group_id = ?')
     .get(req.params.id, req.group!.id) as BroadcastRow | undefined;
   if (!row) return res.status(404).json({ error: 'Durchsage nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, row.event_id)) return;
   const mayModerate = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
   if (row.player_id !== playerId && !mayModerate) {
     return res.status(403).json({ error: 'Nur der Ersteller oder ein Gruppen-Admin kann diese Durchsage beenden.' });
@@ -164,6 +188,7 @@ broadcastsRouter.post('/:id/end', ...withBodyPlayerIdentity, (req, res) => {
     .run(endedAt, row.id, row.group_id, endedAt);
   if (result.changes === 0) return res.status(409).json({ error: 'Durchsage ist bereits beendet oder abgelaufen.' });
 
-  resolvePushTopic(broadcastTopicKey(row.id), false, { groupId: row.group_id, eventId: row.event_id }, false);
+  resolvePushTopic(broadcastTopicKey(row.id), false, { groupId: row.group_id, eventId: row.event_id });
+  broadcast(Events.broadcastsChanged, { id: row.id, endedAt }, { groupId: row.group_id, eventId: row.event_id });
   res.json({ id: row.id, endedAt });
 });

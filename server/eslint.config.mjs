@@ -47,4 +47,10 @@ export default tseslint.config(
       'no-useless-assignment': 'off',
     },
   },
+  {
+    files: ['public/js/**/*.js'],
+    rules: {
+      'no-unused-vars': ['error', { args: 'all', argsIgnorePattern: '^_' }],
+    },
+  },
 );

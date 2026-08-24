@@ -1,91 +1,119 @@
-// App bootstrap: token gate, tab switching, and wiring realtime events into
+// App bootstrap: login gate, tab switching, and wiring realtime events into
 // the shared state. Kept as one small orchestrator so each view module stays
 // focused on its own rendering logic.
 
-import { api, getToken, setToken } from './api.js';
+import { api } from './api.js';
 import { ensureLogin } from './authGate.js';
 import { connectSocket } from './socket.js';
-import { state } from './state.js';
+import { initConnectionStatus } from './connectionStatus.js';
+import { createConnectionRefreshCoordinator } from './connectionRefresh.js';
+import { selectableEventWorkspaces, state } from './state.js';
 import { loadAll } from './data.js';
 import { showToast } from './toast.js';
+import { openFeedbackModal } from './feedback.js';
 import { getMyId } from './whoami.js';
 import { isAdmin, setAdmin } from './admin.js';
+import { currentPlayerHasAdminRole } from './adminAccess.js';
 import { filterTestUsers } from './testFilter.js';
-import { renderHome, invalidateHomeSeating } from './views/home.js';
+import { invalidateHomeSeating } from './views/home.js';
 import { initNotificationBanner, refreshNotificationBanner } from './notificationBanner.js';
 import { invalidateMissingSkills, invalidateAktuellStatus } from './aktuellStatus.js';
-import { renderPlayers } from './views/players.js';
-import { renderSettings } from './views/games.js';
-import { renderMatchmaking, invalidateMatchmakingHistory, setDraftState } from './views/matchmaking.js';
-import { renderBroadcast, invalidateBroadcasts } from './views/broadcast.js';
-import { renderInfoBoard, invalidateInfoBoard } from './views/infoBoard.js';
-import { renderFoodOrders, invalidateFoodOrders } from './views/foodOrders.js';
-import { renderChecklist, invalidateChecklist } from './views/checklist.js';
-import { renderArcade, renderQuizRoom } from './views/arcade.js';
-import { renderArcadeWatch } from './views/arcadeWatch.js';
-import { renderTetris } from './views/tetris.js';
-import { renderScribbleRoom } from './views/arcadeScribble.js';
-import { renderBlobby } from './views/blobby.js';
-import { renderPong } from './views/pong.js';
-import { renderSnake } from './views/snake.js';
-import { renderGameCatalog, invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
-import { renderArrivals, invalidateArrivals } from './views/arrivals.js';
-import { renderVotes, invalidateVoteHistory } from './views/votes.js';
-import { renderLeaderboard } from './views/leaderboard.js';
-import { renderAnalytics } from './views/analytics.js';
-import { renderProfile } from './views/profile.js';
-import { renderTournaments, invalidateTournaments, focusTournament, showTournamentLanding } from './views/tournament.js';
-import { invalidateHallOfFame, renderHallOfFame } from './views/hallOfFame.js';
-import { renderSeating, invalidateSeating } from './views/seating.js';
-import { renderMyStats } from './views/myStats.js';
-import { renderMore } from './views/more.js';
-import { renderAdmin } from './views/admin.js';
-import { invalidateMusic, renderMusic } from './views/music.js';
+import { invalidateMatchmakingHistory, invalidateMatchmakingDraft, setDraftState } from './views/matchmaking.js';
+import { invalidateBroadcasts } from './views/broadcast.js';
+import { invalidateInfoBoard, openInfoBoard } from './views/infoBoard.js';
+import { openPlayerDetail } from './views/playerDetail.js';
+import { clearFoodOrderTarget, invalidateFoodOrders, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
+import { invalidateEventPolls } from './views/eventPolls.js';
+import { invalidateChecklist } from './views/checklist.js';
+import { invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
+import { invalidateArrivals } from './views/arrivals.js';
+import { invalidateVoteEventScope, invalidateVoteHistory } from './views/votes.js';
+import { invalidateTournaments, focusTournament, showTournamentLanding } from './views/tournament.js';
+import { invalidateHallOfFame } from './views/hallOfFame.js';
+import { invalidateSeating } from './views/seating.js';
+import { invalidateAdminMemberships, invalidateAdminReadiness } from './views/admin.js';
+import { invalidateAdminFeatureUsage } from './views/adminFeatureUsage.js';
+import { invalidateMusic } from './views/music.js';
+import { invalidateAnalytics } from './views/analytics.js';
+import { invalidateMyStats } from './views/myStats.js';
+import { invalidateSeatNeighbors } from './views/profile.js';
+import { eventSelectOptions, eventStatus, eventSwitcherLabel } from './eventStatus.js';
+import { searchSelectHtml, wireSearchSelect } from './searchSelect.js';
 import { icon, installIconReplacement } from './icons.js';
 import { initNumberStepper } from './numberStepper.js';
 import { initGlobalSearch } from './searchPalette.js';
-import { installDomainIcons } from './domainIcons.js';
+import { domainIcon, installDomainIcons } from './domainIcons.js';
 import { initGroupContext, refreshGroupContext } from './groupContext.js';
+import { isKnownView, VIEW_REGISTRY } from './viewRegistry.js';
+import { navGroupForView, sectionKeyForView } from './sectionNav.js';
+import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
+import { captureViewRenderState, restoreViewRenderState } from './viewRenderState.js';
+import { realtimeEventAffectsView } from './realtimeRefreshPolicy.js';
 
 installIconReplacement();
 installDomainIcons();
 initNumberStepper();
 
-const VIEWS = {
-  home: renderHome,
-  players: renderPlayers,
-  matchmaking: renderMatchmaking,
-  votes: renderVotes,
-  leaderboard: renderLeaderboard,
-  settings: renderSettings,
-  analytics: renderAnalytics,
-  profile: renderProfile,
-  tournaments: renderTournaments,
-  hallOfFame: renderHallOfFame,
-  seating: renderSeating,
-  myStats: renderMyStats,
-  more: renderMore,
-  broadcast: renderBroadcast,
-  infoBoard: renderInfoBoard,
-  foodOrders: renderFoodOrders,
-  checklist: renderChecklist,
-  arcade: renderArcade,
-  arcadeWatch: renderArcadeWatch,
-  quizRoom: renderQuizRoom,
-  tetris: renderTetris,
-  scribbleRoom: renderScribbleRoom,
-  blobby: renderBlobby,
-  pong: renderPong,
-  snake: renderSnake,
-  gameCatalog: renderGameCatalog,
-  arrivals: renderArrivals,
-  admin: renderAdmin,
-  music: renderMusic,
-};
-
 let currentView = 'home';
+// The topbar has no room for a persistent Feedback icon at the narrowest
+// supported phone width (verified: even one more 44px icon overflows a
+// 320px viewport), so Feedback lives in the "Mehr" hub instead and needs
+// this to still capture "which view were you actually looking at" — "Mehr"
+// itself carries no content of its own to report feedback about.
+let lastSubstantiveView = 'home';
+let appReady = false;
+let playerDataReady = false;
 const viewContainer = document.getElementById('view-container');
 let pendingSearchTarget = null;
+let renderRevision = 0;
+let sharedRefreshPromise = null;
+let sharedRefreshDirty = false;
+let sharedRefreshShouldRender = false;
+
+function parseFoodOrderHash(hash) {
+  const parts = String(hash || '').replace(/^#/, '').split('/');
+  if (!['foodOrders', 'eventPolls'].includes(parts[0])) return null;
+  if (!parts[1]) return { view: parts[0], target: null };
+  try {
+    return { view: parts[0], target: { type: parts[0] === 'foodOrders' ? 'order' : 'poll', id: decodeURIComponent(parts[1]) } };
+  } catch {
+    return { view: parts[0], target: null };
+  }
+}
+
+function syncArcadeStylesheet(entry) {
+  const linkId = 'arcade-stylesheet';
+  const existing = document.getElementById(linkId);
+  if (entry?.area === 'arcade') {
+    if (existing?.dataset.loaded === 'true') return Promise.resolve();
+    if (existing) {
+      return new Promise((resolve, reject) => {
+        existing.addEventListener('load', resolve, { once: true });
+        existing.addEventListener('error', reject, { once: true });
+      });
+    }
+    const link = document.createElement('link');
+    link.id = linkId;
+    link.rel = 'stylesheet';
+    // bump ?v= when arcade.css changes so no cached copy survives a reload
+    // (keep in sync with kiosk.html's static link)
+    link.href = '/css/arcade.css?v=2';
+    const loaded = new Promise((resolve, reject) => {
+      link.addEventListener('load', () => {
+        link.dataset.loaded = 'true';
+        resolve();
+      }, { once: true });
+      link.addEventListener('error', () => {
+        link.remove();
+        reject(new Error('Arcade-Stylesheet konnte nicht geladen werden.'));
+      }, { once: true });
+    });
+    document.head.append(link);
+    return loaded;
+  }
+  existing?.remove();
+  return Promise.resolve();
+}
 
 // Tracks the last vote round we've seen, so the socket handler can tell a
 // genuinely new round (round number just changed while open) apart from a
@@ -93,46 +121,283 @@ let pendingSearchTarget = null;
 // "hey, go vote" nudge.
 let lastVoteRound = null;
 
+async function runSharedRefresh() {
+  // Give the socket echo and the mutation response one task window to meet.
+  // Every signal received while the requests are in flight marks the batch
+  // dirty again; all network reconciliation finishes before a single render.
+  await new Promise((resolve) => setTimeout(resolve, 24));
+  let committed = false;
+  do {
+    sharedRefreshDirty = false;
+    committed = await loadAll();
+    // loadAll() intentionally discards its response when a newer caller
+    // started another central snapshot in parallel. Do not render the old
+    // state or resolve mutation callers in that case: retry until this
+    // coordinator owns the snapshot that actually committed.
+  } while (sharedRefreshDirty || !committed);
+  renderEventContextSwitcher();
+  if (sharedRefreshShouldRender) renderCurrent();
+}
+
+function queueSharedRefresh({ render = true } = {}) {
+  sharedRefreshDirty = true;
+  sharedRefreshShouldRender ||= render;
+  if (!sharedRefreshPromise) {
+    sharedRefreshPromise = runSharedRefresh().finally(() => {
+      sharedRefreshPromise = null;
+      sharedRefreshShouldRender = false;
+    });
+  }
+  return sharedRefreshPromise;
+}
+
 const ctx = {
   // Reload everything from the API, then re-render the active view. Use
   // after mutations whose effects aren't already carried by a socket event.
-  refresh: async () => {
-    await loadAll();
-    renderCurrent();
-  },
+  refresh: () => queueSharedRefresh(),
   // Re-render the active view from whatever is already in `state`, with no
   // network round trip. Use when a view already updated `state` itself
   // (e.g. a freshly drawn matchmaking result).
   rerender: () => renderCurrent(),
 };
 
-function renderCurrent() {
-  const renderFn = VIEWS[currentView];
-  if (renderFn) renderFn(viewContainer, ctx);
-  focusPendingSearchTarget();
+// Everything a view kept from the workspace it was rendered in. loadAll()
+// refreshes `state`, but every view module that fetches from its own endpoint
+// caches outside `state` — those survive the switch and would keep the
+// previous event's data on screen.
+//
+// This list is the complete set of event-scoped caches; the contract test in
+// eventScopedCaches.test.js fails when a view gains an invalidator that is
+// neither listed here nor declared event-independent, so it cannot silently
+// drift again.
+function invalidateEventScopedCaches() {
+  invalidateAktuellStatus();
+  invalidateMatchmakingHistory({ hard: true });
+  invalidateMatchmakingDraft();
+  invalidateVoteEventScope();
+  invalidateTournaments({ hard: true });
+  invalidateHomeSeating({ hard: true });
+  invalidateSeating({ hard: true });
+  invalidateBroadcasts({ hard: true });
+  invalidateInfoBoard();
+  invalidateFoodOrders();
+  invalidateEventPolls();
+  invalidateChecklist(undefined, { hard: true });
+  invalidateArrivals({ hard: true });
+  invalidateMusic({ hard: true });
+  invalidateAnalytics();
+  invalidateMyStats();
+  invalidateHallOfFame({ hard: true });
+  invalidateAdminReadiness();
+  invalidateAdminFeatureUsage();
+  invalidateSeatNeighbors();
+  // Not a view cache but the same problem: a drawn lineup belongs to the
+  // event it was drawn in, and nothing in loadAll() overwrites it.
+  state.lastMatchmaking = null;
+}
+
+// The topbar workspace switcher is the same searchable dropdown as every
+// other event picker (and as the game pickers in Match): title plus the state
+// as an icon, visible collapsed and on every row of the open list. It is
+// rebuilt rather than patched because the option set itself changes when an
+// event starts, ends or is left.
+function renderEventContextSwitcher() {
+  const container = document.getElementById('event-context');
+  if (!container) return;
+  // renderEventContextSwitcher() is called from 30+ unrelated ctx.refresh()
+  // sites and from the event-context:changed socket push, none of which know
+  // whether a reader currently has this control open and mid-search. Rebuilding
+  // unconditionally would close the list and discard whatever they typed, which
+  // a native <select> never did. Skip the rebuild while it's open and focused —
+  // the option set (and the active-event highlight) simply catches up on the
+  // next render once the reader closes it again.
+  const openSearch = container.querySelector('#event-context-switcher-search');
+  const openList = container.querySelector('#event-context-switcher-list');
+  if (openList && !openList.hidden && document.activeElement === openSearch) return;
+  const events = selectableEventWorkspaces();
+  container.hidden = events.length === 0;
+  if (events.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const active = events.find((event) => event.id === state.activeEvent?.id) ?? state.activeEvent;
+  const options = eventSelectOptions(events);
+  const activeId = active?.id ?? '';
+  // The state stays in words too: the icon carries the German label, and the
+  // wrapper describes the whole control, so colour is never the only cue. The
+  // base workspace is the one case where name and state are the same word
+  // ("Allgemein"), so it is not repeated back as "Allgemein – Allgemein".
+  const activeName = eventSwitcherLabel(active);
+  const activeState = eventStatus(active).label;
+  const description = active
+    ? `Aktives Event: ${activeName}${activeState === activeName ? '' : ` – ${activeState}`}`
+    : 'Aktives Event';
+  container.innerHTML = searchSelectHtml('event-context-switcher', options, activeId, {
+    placeholder: 'Event suchen…',
+    ariaLabel: description,
+    label: 'Auswählbare Events',
+  });
+  container.title = description;
+
+  wireSearchSelect(container, 'event-context-switcher', options, {
+    emptyText: 'Kein passendes Event gefunden.',
+    onChange: async (eventId) => {
+      // Mirrors the disabled state the previous native <select> got for free
+      // while its change handler awaited the switch: without it, a second
+      // pick before the first request resolves fired a second overlapping
+      // activateEvent() with no guarantee the visibly-last choice also wins
+      // the race, plus an avoidable duplicate round trip. Both elements are
+      // re-created by the renderEventContextSwitcher() call at the end of
+      // activateEvent() (success or error), so nothing needs to re-enable
+      // these exact nodes explicitly.
+      const search = container.querySelector('#event-context-switcher-search');
+      const toggle = container.querySelector('.search-select-toggle');
+      if (search) search.disabled = true;
+      if (toggle) toggle.disabled = true;
+      try {
+        await activateEvent(eventId);
+      } catch (error) {
+        renderEventContextSwitcher();
+        showToast(error.message, { error: true });
+      } finally {
+        if (search) search.disabled = false;
+        if (toggle) toggle.disabled = false;
+      }
+    },
+  });
+}
+
+// Every caller (the switcher above and followEventDeepLink) funnels through
+// this single queue, so two switches — however they were triggered — always
+// finish in the order they were requested instead of racing on network
+// timing. Without it, whichever request happened to complete last won,
+// independent of which one the reader actually picked last.
+let activateEventQueue = Promise.resolve();
+
+async function activateEvent(eventId, { navigate, searchTarget = null } = {}) {
+  const run = async () => {
+    // A missing eventId is not an error: a notification stored before this
+    // release carries no event, and its destination is still the thing the
+    // reader tapped. Skip the switch, keep the navigation.
+    if (eventId && state.activeEvent?.id !== eventId) {
+      await api.events.activate(eventId);
+      invalidateEventScopedCaches();
+      await loadAll();
+      renderEventContextSwitcher();
+      await refreshNotificationBanner();
+      renderCurrent();
+    }
+    if (navigate && isKnownView(navigate)) switchView(navigate, { searchTarget });
+  };
+  const queued = activateEventQueue.then(run, run);
+  // A failure must not wedge every switch queued after it — only the caller
+  // that triggered it should see the rejection.
+  activateEventQueue = queued.catch(() => {});
+  return queued;
+}
+
+// The one entry point for "a notification wants me somewhere". Its event may
+// be gone by the time it is tapped — ended, cancelled, or the participation
+// withdrawn — and PUT /api/me/active-event answers 404 for all three. That is
+// an expected outcome of a stale link, not a startup failure: say so once and
+// still take the reader to the promised view in whatever workspace is active.
+async function followEventDeepLink(eventId, view, searchTarget = null) {
+  try {
+    await activateEvent(eventId, { navigate: view, searchTarget });
+  } catch (error) {
+    // Defensive on purpose: this catch runs during startup, so throwing a
+    // second time here would reintroduce exactly the aborted-startup bug it
+    // exists to prevent.
+    if (error?.status === 404) {
+      showToast('Das Event dieser Mitteilung ist nicht mehr verfügbar.', { error: true });
+    } else {
+      showToast(error?.message ?? 'Der Eventwechsel ist fehlgeschlagen.', { error: true });
+    }
+    if (view && isKnownView(view)) switchView(view, { searchTarget });
+  }
+}
+
+// Selecting a workspace is wired in renderEventContextSwitcher, because that
+// function owns the switcher's DOM and replaces it on every refresh. Only the
+// deep-link listener belongs here: it outlives any single render.
+function wireEventContextSwitcher() {
+  window.addEventListener('respawn:event-navigate', (event) => {
+    const { eventId, view, target } = event.detail ?? {};
+    void followEventDeepLink(eventId, view, target);
+  });
+}
+
+function renderCurrent({ preserveState = true } = {}) {
+  const revision = ++renderRevision;
+  const view = currentView;
+  const entry = VIEW_REGISTRY[view];
+  if (!entry) return;
+  const renderState = preserveState ? captureViewRenderState(viewContainer) : null;
+  const stylesheetReady = syncArcadeStylesheet(entry);
+  if (entry.render) {
+    entry.render(viewContainer, ctx);
+    restoreViewRenderState(viewContainer, renderState);
+    focusPendingSearchTarget();
+    return;
+  }
+
+  viewContainer.innerHTML = '<section class="card grouped-page-section"><p class="muted">Arcade wird geladen…</p></section>';
+  Promise.all([entry.resolveRenderer(), stylesheetReady])
+    .then(([renderFn]) => {
+      if (revision !== renderRevision || view !== currentView) return;
+      renderFn(viewContainer, ctx);
+      restoreViewRenderState(viewContainer, renderState);
+      focusPendingSearchTarget();
+    })
+    .catch((error) => {
+      if (revision !== renderRevision || view !== currentView) return;
+      // A failed Arcade chunk never poisons the Core registry. The explicit retry also resets the
+      // registry's rejected promise, while navigating Home works immediately.
+      console.error(error);
+      viewContainer.innerHTML = '<section class="card grouped-page-section"><p class="muted">Arcade konnte nicht geladen werden.</p><button class="btn" data-retry-arcade>Erneut versuchen</button></section>';
+      showToast('Arcade konnte nicht geladen werden.', { error: true });
+    });
 }
 
 function focusPendingSearchTarget() {
   if (!pendingSearchTarget || pendingSearchTarget.view !== currentView) return;
   const { type, id } = pendingSearchTarget.target;
+  // No `player`/`info` entry: both open as a dialog instead of navigating to a
+  // view that would then have to highlight a row (see initGlobalSearch below).
   const candidates = {
-    player: [...viewContainer.querySelectorAll('[data-player]')].filter((el) => el.dataset.player === id),
     game: [...viewContainer.querySelectorAll('[data-search-game]')].filter((el) => el.dataset.searchGame === id),
     order: [
       ...viewContainer.querySelectorAll('[data-order-card], [data-closed-order]'),
     ].filter((el) => el.dataset.orderCard === id || el.dataset.closedOrder === id),
-    info: [...viewContainer.querySelectorAll('[data-info-entry]')].filter((el) => el.dataset.infoEntry === id),
     broadcast: [...viewContainer.querySelectorAll('[data-broadcast]')].filter((el) => el.dataset.broadcast === id),
     carpool: [...viewContainer.querySelectorAll('[data-carpool]')].filter((el) => el.dataset.carpool === id),
+    poll: [...viewContainer.querySelectorAll('[data-poll-card]')].filter((el) => el.dataset.pollCard === id),
   }[type] ?? [];
   const element = candidates[0];
   if (!element) return;
-  if (element instanceof HTMLDetailsElement) element.open = true;
+  let enclosingDetails = element.closest('details');
+  while (enclosingDetails) {
+    enclosingDetails.open = true;
+    enclosingDetails = enclosingDetails.parentElement?.closest('details') ?? null;
+  }
   element.classList.add('search-target-highlight');
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   element.scrollIntoView({ block: 'center', behavior: reducedMotion ? 'auto' : 'smooth' });
   if (element.matches('button, a, input, [tabindex]')) element.focus({ preventScroll: true });
   pendingSearchTarget = null;
+}
+
+function viewRequiresAdminRole(view) {
+  return sectionKeyForView(view) === 'insights' || ['adminFeatureUsage', 'adminFeedback'].includes(view);
+}
+
+function renderCurrentAfterPlayerDataLoad() {
+  if (playerDataReady && viewRequiresAdminRole(currentView) && !currentPlayerHasAdminRole()) {
+    switchView(currentView, { fromHistory: true, replace: true });
+    return;
+  }
+  renderCurrent();
 }
 
 // Every deliberate tab switch pushes a browser history entry (see main()'s
@@ -149,15 +414,24 @@ function focusPendingSearchTarget() {
 // re-pushing would trap back/forward between the stale entry and its
 // redirect target).
 function switchView(view, { fromHistory = false, replace = false, searchTarget = null } = {}) {
+  // Admin-only areas stay reachable through Admin links and deep links alike,
+  // but never render for an account whose role no longer permits them.
+  if (viewRequiresAdminRole(view) && playerDataReady && !currentPlayerHasAdminRole()) view = 'foodOrders';
   const changed = view !== currentView;
+  if (view !== 'foodOrders') clearFoodOrderTarget();
   pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
+  if (view === 'foodOrders' && searchTarget?.type === 'order') prepareFoodOrderTarget(searchTarget.id);
   currentView = view;
+  if (view !== 'more') lastSubstantiveView = view;
   // Realtime game modules use this marker to ignore updates while another
   // view is active. Without it, a running game can rebuild the current DOM
   // during navigation and make a tap appear to be lost.
   viewContainer.dataset.view = view;
+  // A nav button stands for a whole area, so every route inside that area
+  // (e.g. Teams inside Wettkampf) keeps its button lit — see sectionNav.js.
+  const activeGroup = navGroupForView(view);
   document.querySelectorAll('.nav-btn').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.view === view);
+    btn.classList.toggle('active', navGroupForView(btn.dataset.view) === activeGroup);
   });
   // Restart the view-enter animation (see .view-enter in style.css). Only on
   // deliberate navigation — realtime-triggered re-renders of the same view
@@ -165,12 +439,12 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
   viewContainer.classList.remove('view-enter');
   void viewContainer.offsetWidth; // force reflow so removing+adding re-triggers
   viewContainer.classList.add('view-enter');
-  // A little indicator on the profile icon points new/unset devices at
-  // self-onboarding (name, avatar, skills, agent key) instead of leaving
-  // them to stumble onto it.
-  document.getElementById('profile-btn').classList.toggle('needs-setup', !getMyId());
-  renderCurrent();
-  viewContainer.scrollTop = 0;
+  // A little indicator on the "Mehr" nav button (which now leads to "Mein
+  // Profil") points new/unset devices at self-onboarding (name, avatar,
+  // skills, agent key) instead of leaving them to stumble onto it.
+  document.querySelector('.nav-btn[data-view="more"]').classList.toggle('needs-setup', !getMyId());
+  renderCurrent({ preserveState: !changed && !searchTarget });
+  if (!searchTarget) viewContainer.scrollTop = 0;
   if (replace) {
     history.replaceState({ view }, '');
   } else if (!fromHistory && changed) {
@@ -192,68 +466,25 @@ function wireAdminMode() {
     setAdmin(false);
     showToast('Admin-Modus verlassen.');
   });
+  // Both the Home board and the Sitzplan editor embed their own snapshot of
+  // player data, so a visibility change must drop them too — otherwise a test
+  // player stays readable on Home's seating plan after admin mode is left.
+  const invalidateVisibilityCaches = () => {
+    invalidateHomeSeating();
+    invalidateSeating();
+  };
   window.addEventListener('respawn:admin-changed', () => {
     updateAdminIndicator();
     invalidateMusic();
+    invalidateVisibilityCaches();
     ctx.refresh();
   });
-}
-
-async function tokenWorks(candidate) {
-  try {
-    const res = await fetch('/api/health', { headers: { 'x-access-token': candidate } });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-// Legacy deployments use the shared-token gate; required auth replaces it
-// with the personal login gate.
-async function ensureAccess() {
-  const meta = await api.meta();
-  if (meta.accessProtection) await ensureToken();
-  if (meta.authMode === 'required') await ensureLogin();
-  return meta;
-}
-
-// Invite links carry the token in the URL (?token=...): opening one logs in
-// automatically without anyone having to type or paste anything, which is
-// the whole point of sending a link instead of a password.
-async function ensureToken() {
-  const fromUrl = new URLSearchParams(location.search).get('token');
-  if (fromUrl && (await tokenWorks(fromUrl))) {
-    setToken(fromUrl);
-    const cleanUrl = new URL(location.href);
-    cleanUrl.searchParams.delete('token');
-    history.replaceState(null, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
-    return;
-  }
-
-  const existing = getToken();
-  if (existing && (await tokenWorks(existing))) return;
-
-  const loginScreen = document.getElementById('login-screen');
-  const form = document.getElementById('login-form');
-  const input = document.getElementById('login-token');
-  const errorEl = document.getElementById('login-error');
-
-  loginScreen.hidden = false;
-
-  return new Promise((resolve) => {
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const candidate = input.value.trim();
-      if (!candidate) return;
-      if (await tokenWorks(candidate)) {
-        setToken(candidate);
-        loginScreen.hidden = true;
-        resolve();
-      } else {
-        errorEl.hidden = false;
-        errorEl.textContent = 'Token ungültig – bitte erneut versuchen.';
-      }
-    });
+  // A redeemed test-session identity also needs its test-player peers visible
+  // (see testFilter.js) — same "refetch so already-loaded data gets
+  // re-filtered" reason as admin-changed above.
+  window.addEventListener('respawn:test-identity-changed', () => {
+    invalidateVisibilityCaches();
+    ctx.refresh();
   });
 }
 
@@ -262,9 +493,8 @@ function wireNav() {
   // (index.html stays free of hand-copied SVG paths); the app shell is
   // hidden until this boot code runs, so nothing renders icon-less.
   document.getElementById('notifications-btn').insertAdjacentHTML('afterbegin', icon('bell'));
-  document.getElementById('group-btn').insertAdjacentHTML('afterbegin', icon('users'));
-  document.getElementById('profile-btn').innerHTML = icon('circleUser');
-  document.getElementById('settings-btn').innerHTML = icon('settings');
+  document.getElementById('info-btn').innerHTML = icon(domainIcon('infoBoard'));
+  document.getElementById('feedback-btn').innerHTML = icon(domainIcon('feedback'));
   document.querySelector('.admin-banner-label').insertAdjacentHTML('afterbegin', icon('shield'));
 
   document.querySelectorAll('.nav-btn').forEach((btn) => {
@@ -273,15 +503,43 @@ function wireNav() {
       switchView(btn.dataset.view);
     });
   });
-  document.getElementById('settings-btn').addEventListener('click', () => switchView('settings'));
-  document.getElementById('profile-btn').addEventListener('click', () => switchView('profile'));
+  // Feedback is reachable from every view via this topbar icon; the view it
+  // was opened from is captured automatically (see lastSubstantiveView).
+  document.getElementById('feedback-btn').addEventListener('click', () => openFeedbackModal(lastSubstantiveView));
+  // Info is reference material people look up mid-conversation, so it opens
+  // over whatever they were doing instead of costing them their current view.
+  document.getElementById('info-btn').addEventListener('click', () => openInfoBoard());
 
   // Views can request navigation to a non-bottom-nav view (settings,
-  // analytics) by rendering a button with data-navigate="<view>", without
+  // analytics) by rendering a control with data-navigate="<view>", without
   // needing to import app.js themselves (would risk circular imports).
   viewContainer.addEventListener('click', (e) => {
+    if (e.target.closest('[data-retry-arcade]')) {
+      renderCurrent();
+      return;
+    }
+    // An area's own tab row (see sectionNav.js). Same navigation as
+    // data-navigate, but switching back to the Turniere tab always returns to
+    // the tournament list instead of whichever board was open last.
+    const tab = e.target.closest('[data-section-tab]');
+    if (tab) {
+      if (tab.dataset.sectionTab === 'tournaments') showTournamentLanding();
+      switchView(tab.dataset.sectionTab);
+      return;
+    }
+    const detail = e.target.closest('[data-open-player-detail]');
+    if (detail) {
+      openPlayerDetail(detail.dataset.openPlayerDetail);
+      return;
+    }
     const btn = e.target.closest('[data-navigate]');
-    if (btn) switchView(btn.dataset.navigate);
+    if (btn) {
+      if (btn instanceof HTMLAnchorElement) e.preventDefault();
+      const target = btn.dataset.navigateTargetId
+        ? { type: btn.dataset.navigateTargetType || 'order', id: btn.dataset.navigateTargetId }
+        : null;
+      switchView(btn.dataset.navigate, { searchTarget: target });
+    }
   });
 
   // Programmatic hooks for view modules that must drive navigation/redraws
@@ -291,7 +549,7 @@ function wireNav() {
   // detail is either the view name or { view, replace } (see switchView).
   window.addEventListener('respawn:navigate', (e) => {
     const detail = typeof e.detail === 'string' ? { view: e.detail } : e.detail ?? {};
-    if (VIEWS[detail.view]) switchView(detail.view, { replace: detail.replace === true });
+    if (isKnownView(detail.view)) switchView(detail.view, { replace: detail.replace === true });
   });
   window.addEventListener('respawn:rerender', () => renderCurrent());
   window.addEventListener('respawn:group-changed', () => ctx.refresh());
@@ -310,47 +568,100 @@ function wireNav() {
   // of reloading the whole SPA just to change tabs.
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (e) => {
-      if (e.data?.type === 'navigate' && VIEWS[e.data.view]) switchView(e.data.view);
+      if (e.data?.type === 'navigate' && isKnownView(e.data.view)) {
+        void followEventDeepLink(e.data.eventId, e.data.view, e.data.target ?? null);
+      }
     });
   }
 }
 
 function wireSocket() {
-  const socket = connectSocket();
+  let reconnectFailureNotified = false;
+  const refreshCoordinator = createConnectionRefreshCoordinator({
+    refresh: async () => {
+      // Socket.IO does not replay arbitrary application events. Invalidate
+      // every secondary cache and reload the central REST state after the
+      // transport reconnects.
+      invalidateMissingSkills();
+      invalidateAktuellStatus();
+      invalidateSkillSuggestions();
+      invalidateMatchmakingHistory();
+      invalidateVoteHistory();
+      invalidateHallOfFame();
+      invalidateHomeSeating();
+      invalidateSeating();
+      invalidateChecklist();
+      invalidateTournaments();
+      invalidateBroadcasts();
+      invalidateInfoBoard();
+      invalidateFoodOrders();
+      invalidateArrivals();
+      invalidateAdminMemberships();
+      invalidateAdminReadiness();
+      invalidateMusic();
+      await refreshGroupContext({ throwOnError: true });
+      await Promise.all([loadAll(), refreshNotificationBanner({ throwOnError: true })]);
+      playerDataReady = true;
+      if (appReady) renderCurrentAfterPlayerDataLoad();
+    },
+    onRecovered: () => {
+      reconnectFailureNotified = false;
+    },
+    onFailure: () => {
+      if (reconnectFailureNotified) return;
+      showToast('Aktualisierung fehlgeschlagen – neuer Versuch läuft.', { error: true });
+      reconnectFailureNotified = true;
+    },
+    onUnauthorized: () => location.reload(),
+  });
+  window.addEventListener('respawn:connection-restored', (event) => {
+    refreshCoordinator.enqueue(event.detail);
+  });
+  window.addEventListener('respawn:connection-recovery-required', () => location.reload());
 
-  // These events carry no payload (or aren't worth special-casing) — just
-  // reload everything. Infrequent (admin-type actions), so this is cheap.
-  const fullReloadEvents = [
+  // Only the long-lived application socket owns the global connection banner.
+  // Arcade views open and intentionally close auxiliary sockets; those must
+  // never make the whole app appear offline.
+  const socket = connectSocket({ reportConnectionState: true });
+
+  // These payload-less events still need a fresh central snapshot, but only
+  // screens that consume the changed entity are redrawn. Secondary caches
+  // are marked stale without throwing their last-known content away.
+  const sharedStateEvents = [
     'players:changed',
     'games:changed',
     'skills:changed',
     'leaderboard:changed',
     'events:changed',
   ];
-  fullReloadEvents.forEach((event) =>
+  sharedStateEvents.forEach((event) =>
     socket.on(event, () => {
-      invalidateMissingSkills();
-      // Cheap enough to invalidate on every one of these (not just
-      // leaderboard:changed, the only one that actually changes match
-      // history) — the next time the Spiele view opens it just refetches.
-      invalidateSkillSuggestions();
-      // Match corrections also change the Teams result history. Invalidate
-      // its separate cache so every open client shows the corrected winner.
-      invalidateMatchmakingHistory();
-      invalidateHallOfFame();
-      // players:changed covers a renamed gamer/real name or new avatar —
-      // both the Home board and the Sitzplan editor embed a snapshot of
-      // player data alongside the layout, so they need the same treatment
-      // or they'd keep showing the old name for the rest of the session on
-      // any device that already has it cached.
-      invalidateHomeSeating();
-      invalidateSeating();
-      // events:changed also covers starting/stopping/switching which event is
-      // tracked, and the Packliste is scoped to that current event - without
-      // this, a stale tasksCache/itemsCache would keep the previous event's
-      // rows on screen (and mutable) after the switch.
-      invalidateChecklist();
-      ctx.refresh();
+      if (event === 'players:changed' || event === 'games:changed' || event === 'skills:changed') {
+        invalidateMissingSkills();
+      }
+      if (event !== 'events:changed') {
+        invalidateSkillSuggestions();
+      }
+      if (event === 'players:changed') {
+        invalidateHomeSeating();
+        invalidateSeating();
+        invalidateChecklist({ scope: 'tasks' });
+        invalidateTournaments();
+        invalidateBroadcasts();
+        invalidateArrivals();
+        if (currentView === 'foodOrders') void refreshFoodOrders(ctx);
+        else invalidateFoodOrders();
+      }
+      if (event === 'games:changed' || event === 'leaderboard:changed') {
+        invalidateMatchmakingHistory();
+        invalidateHallOfFame();
+        invalidateTournaments();
+      }
+      if (event === 'events:changed') {
+        invalidateAdminReadiness();
+        invalidateEventPolls();
+      }
+      void queueSharedRefresh({ render: realtimeEventAffectsView(event, currentView) });
     })
   );
 
@@ -450,6 +761,7 @@ function wireSocket() {
   // header notification center so new entries appear without a reload.
   socket.on('push:sent', () => {
     refreshNotificationBanner();
+    invalidateAktuellStatus();
   });
   // A short-lived push topic was closed, completed or reached its deadline.
   // Refresh the center so its server-backed state remains current.
@@ -464,7 +776,7 @@ function wireSocket() {
   // Arcade views consume these payloads themselves; Home just refetches the
   // cross-game summary (GET /api/arcade/lobbies) instead of tracking four
   // different payload shapes.
-  ['arcade:lobbies', 'tetris:lobbies', 'scribble:lobbies', 'pong:lobbies', 'blobby:lobbies', 'snake:lobbies'].forEach((event) =>
+  ['arcade:lobbies', 'tetris:lobbies', 'scribble:lobbies', 'pong:lobbies', 'blobby:lobbies', 'snake:lobbies', 'battleship:lobbies', 'challenge-rush:lobbies'].forEach((event) =>
     socket.on(event, () => {
       invalidateAktuellStatus();
       if (currentView === 'home') renderCurrent();
@@ -508,20 +820,27 @@ function wireSocket() {
     if (currentView === 'broadcast') renderCurrent();
   });
 
-  socket.on('info:changed', () => {
-    invalidateInfoBoard();
-    if (currentView === 'infoBoard') renderCurrent();
-  });
+  // The Info dialog refreshes itself while it is open; nothing else on screen
+  // depends on those entries.
+  socket.on('info:changed', invalidateInfoBoard);
 
   socket.on('foodOrders:changed', (payload) => {
-    invalidateFoodOrders();
     invalidateAktuellStatus();
-    if (currentView === 'foodOrders' || currentView === 'home') renderCurrent();
+    if (currentView === 'foodOrders') {
+      // Silent background refetch (see refreshFoodOrders) instead of the
+      // hard invalidate+"Lädt…" reload every other live update uses - that
+      // would flash and jump the view back to the top on every payment
+      // toggle, including the echo of this device's own change.
+      refreshFoodOrders(ctx);
+    } else {
+      invalidateFoodOrders();
+      if (currentView === 'home') renderCurrent();
+    }
     const myId = getMyId();
     if (payload?.notify && myId && myId !== payload.notify.excludePlayerId && currentView !== 'foodOrders') {
       showToast(payload.notify.message, {
         duration: 5000,
-        onClick: () => switchView('foodOrders'),
+        onClick: () => switchView('foodOrders', { searchTarget: payload.notify.target ?? null }),
       });
     }
   });
@@ -530,24 +849,51 @@ function wireSocket() {
     invalidateArrivals();
     if (currentView === 'arrivals') renderCurrent();
   });
-  socket.on('checklist:changed', () => {
-    invalidateChecklist();
-    if (currentView === 'checklist') renderCurrent();
+  socket.on('checklist:changed', (payload) => {
+    // The payload says whether tasks or someone's items changed; passing it on
+    // keeps an unrelated half of the cache (and the Packliste draft it feeds)
+    // from being thrown away.
+    invalidateChecklist(payload);
+    // Every Orga tab re-renders, not just the two checklist ones: the To-Dos
+    // tab count belongs to the area shell and is visible from all of them.
+    if (sectionKeyForView(currentView) === 'orga') renderCurrent();
   });
 
   socket.on('music:changed', () => {
     invalidateMusic();
     if (currentView === 'music') renderCurrent();
   });
-  socket.on('groups:changed', () => refreshGroupContext());
+  socket.on('event-context:changed', async () => {
+    invalidateEventScopedCaches();
+    await loadAll();
+    renderEventContextSwitcher();
+    await refreshNotificationBanner();
+    renderCurrent();
+  });
+  socket.on('groups:changed', async () => {
+    await refreshGroupContext();
+    invalidateAdminMemberships();
+    if (['admin', 'adminFeatureUsage', 'adminFeedback'].includes(currentView)) renderCurrent();
+  });
 }
 
 async function main() {
-  const meta = await ensureAccess();
+  await ensureLogin();
   document.getElementById('app').hidden = false;
-  await initGroupContext(meta);
+  await initGroupContext();
   wireNav();
   initGlobalSearch((entry) => {
+    // Info entries and foreign profiles have no own area any more — they open
+    // as a dialog over the current view instead of navigating away from it.
+    if (entry.target?.type === 'info' || entry.action === 'info') {
+      openInfoBoard({ focusEntryId: entry.target?.id ?? null });
+      return;
+    }
+    if (entry.target?.type === 'player') {
+      if (entry.target.id === getMyId()) switchView('profile');
+      else openPlayerDetail(entry.target.id);
+      return;
+    }
     if (entry.target?.type === 'tournament') focusTournament(entry.target.id);
     if (entry.target?.type === 'game') focusGameCatalog(entry.target.id);
     switchView(entry.view, {
@@ -555,33 +901,67 @@ async function main() {
     });
   });
   wireAdminMode();
-  wireSocket();
+  initConnectionStatus();
   initNotificationBanner();
-  await loadAll();
+  wireEventContextSwitcher();
+  // Socket connection and REST cache recovery are background concerns. The
+  // app shell and onboarding must still become usable when a single refresh
+  // request fails temporarily (or keeps retrying in the background).
+  const initialDataLoad = loadAll()
+    .then(() => {
+      playerDataReady = true;
+      renderEventContextSwitcher();
+      if (appReady) renderCurrentAfterPlayerDataLoad();
+    })
+    .catch((error) => {
+      if (error?.status !== 401) showToast('Daten konnten noch nicht geladen werden – neuer Versuch läuft.', { error: true });
+    });
+  // Start the initial snapshot before opening the socket. This gives it the
+  // oldest generation, so any reconnect refresh that starts afterwards wins
+  // the state commit even when the initial requests resolve late.
+  wireSocket();
+  appReady = true;
+  await initOnboarding({ navigate: (view) => switchView(view, { replace: true }), rerender: renderCurrent, getCurrentView: () => currentView });
   lastVoteRound = state.votes ? state.votes.round : null;
-  // Nobody has set up "who am I" on this device yet (fresh invite link, new
-  // phone, …) — send them straight into self-onboarding instead of the Home
-  // view, so setting up name/avatar/skills/agent-key is the first thing
-  // they see, not something they have to go looking for.
+  const pushedEventId = new URL(location.href).searchParams.get('eventId');
+  if (pushedEventId) {
+    await initialDataLoad;
+    // Never let a stale link abort the remaining startup: the base history
+    // entry, the initial switchView() and onboarding all still have to run.
+    // The parameter is dropped either way, or a failing link would replay its
+    // failure on every reload of this tab.
+    await followEventDeepLink(pushedEventId);
+    const cleanUrl = new URL(location.href);
+    cleanUrl.searchParams.delete('eventId');
+    history.replaceState(history.state, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+  }
   // A push notification's deep link (e.g. /#votes, opened by sw.js when no
   // app window existed yet) overrides that default so the tap actually lands
   // where the notification promised.
-  const hashView = location.hash.slice(1);
+  const hashTarget = parseFoodOrderHash(location.hash);
+  const hashView = hashTarget?.view ?? location.hash.slice(1);
   // A reload keeps the view the browser was on (stored on the history entry
   // by switchView) instead of bouncing back to Home mid-workflow.
   const restoredView = history.state?.view;
-  const initialView = VIEWS[hashView]
+  const initialView = isKnownView(hashView)
     ? hashView
-    : VIEWS[restoredView]
+    : isKnownView(restoredView)
       ? restoredView
-      : getMyId()
-        ? 'home'
-        : 'profile';
+      : 'home';
   // Establishes the base history entry the very first popstate can land on
   // (replace, not push — this page load shouldn't cost an extra back-step)
   // before any tab switch starts pushing entries on top of it.
   history.replaceState({ view: initialView }, '');
-  switchView(initialView, { fromHistory: true });
+  switchView(initialView, { fromHistory: true, searchTarget: hashTarget?.target ?? null });
+  // The core tour's step list depends on the admin role, which only exists
+  // on state.players once initialDataLoad resolves (see loadAll() above).
+  // The app itself stays interactive regardless - only starting the tour
+  // waits, so an admin's first login never silently loses the Admin step to
+  // this still-loading player list. initialDataLoad never rejects (see its
+  // own .catch() above), so this can't turn a failed refresh into a stuck
+  // startup.
+  await initialDataLoad;
+  maybeStartOnboarding();
 }
 
 main().catch((err) => {

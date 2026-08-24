@@ -5,14 +5,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
-import { db } from '../db';
+import { createTestApp, sessionCookie, TEST_ADMIN_ID } from './testApp';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
 
-const app = createApp();
+const app = createTestApp();
 let createdId: string;
 
 function patchPlayer(id: string, body: Record<string, unknown>, actorId: string = id) {
-  return request(app).patch(`/api/players/${id}`).set('x-player-id', actorId).send(body);
+  return request(app).patch(`/api/players/${id}`).set('x-test-player-id', actorId).send(body);
 }
 
 test('POST /api/players rejects an empty name', async () => {
@@ -45,15 +45,17 @@ test('GET /api/players lists players WITHOUT exposing api_key', async () => {
 });
 
 test('GET /api/players/:id returns the single player WITH api_key', async () => {
-  const res = await request(app).get(`/api/players/${createdId}`).set('x-player-id', createdId);
+  const res = await request(app).get(`/api/players/${createdId}`).set('x-test-player-id', createdId);
   assert.equal(res.status, 200);
   assert.ok(res.body.api_key);
 });
 
 test('GET /api/players/:id hides api_key from another identity', async () => {
-  const res = await request(app).get(`/api/players/${createdId}`).set('x-player-id', 'someone-else');
+  const viewer = await request(app).post('/api/players').send({ name: 'Profile Viewer' });
+  const res = await request(app).get(`/api/players/${createdId}`).set('x-test-player-id', viewer.body.id);
   assert.equal(res.status, 200);
   assert.equal('api_key' in res.body, false);
+  await request(app).delete(`/api/players/${viewer.body.id}`);
 });
 
 test('GET /api/players/:id includes the most recent agent report time', async () => {
@@ -65,7 +67,9 @@ test('GET /api/players/:id includes the most recent agent report time', async ()
 });
 
 test('GET /api/players/:id 404s for an unknown id', async () => {
-  const res = await request(app).get('/api/players/does-not-exist');
+  const res = await request(app)
+    .get('/api/players/does-not-exist')
+    .set('Cookie', sessionCookie(TEST_ADMIN_ID));
   assert.equal(res.status, 404);
 });
 
@@ -78,9 +82,6 @@ test('PATCH /api/players/:id renames and recolors', async () => {
 
 test('PATCH /api/players/:id rejects profile changes from another identity', async () => {
   const other = await request(app).post('/api/players').send({ name: 'Fremder Spieler' });
-  const missingIdentity = await request(app).patch(`/api/players/${createdId}`).send({ name: 'Übernommen' });
-  assert.equal(missingIdentity.status, 403);
-
   const foreignIdentity = await patchPlayer(createdId, { name: 'Übernommen' }, other.body.id);
   assert.equal(foreignIdentity.status, 403);
   assert.match(foreignIdentity.body.error, /eigenes Profil/);
@@ -171,9 +172,27 @@ test('PATCH /api/players/:id accepts and stores a valid avatar data URL', async 
   assert.equal(fetched.body.avatar, avatar);
 });
 
-test('GET /api/players/:id/stats 404s for an unknown id', async () => {
-  const res = await request(app).get('/api/players/does-not-exist/stats');
-  assert.equal(res.status, 404);
+test('GET /api/players/:id/stats binds the URL identity to the session', async () => {
+  const res = await request(app)
+    .get('/api/players/does-not-exist/stats')
+    .set('x-test-player-id', createdId);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.playerId, createdId);
+});
+
+test('GET /api/players/:id/stats ignores a foreign id and answers for the session account', async () => {
+  // The `:id` looks like a lookup parameter but is rebound to the session
+  // identity, which is what makes the reader-keyed event scoping below
+  // correct: there is no second account whose events could differ.
+  const foreign = await request(app).post('/api/players').send({ name: 'Foreign Stats Target' });
+  assert.equal(foreign.status, 201, JSON.stringify(foreign.body));
+
+  const res = await request(app)
+    .get(`/api/players/${foreign.body.id}/stats`)
+    .set('x-test-player-id', createdId);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.playerId, createdId, 'a foreign id never selects another account');
+  assert.notEqual(res.body.playerId, foreign.body.id);
 });
 
 test('GET /api/players/:id/stats returns an empty-but-shaped summary before any sessions', async () => {
@@ -218,35 +237,90 @@ test('PUT /api/players/:id/neighbors sets and replaces the declared neighbors', 
   assert.deepEqual(check.body.neighborIds, [third.body.id]);
 });
 
-test('PUT /api/players/:id/neighbors silently drops your own id and unknown ids', async () => {
+test('PUT /api/players/:id/neighbors rejects unknown ids', async () => {
   const res = await request(app)
     .put(`/api/players/${createdId}/neighbors`)
     .send({ neighborIds: [createdId, 'ghost-id'] });
-  assert.equal(res.status, 200);
-  assert.deepEqual(res.body.neighborIds, []);
-});
-
-test('PUT /api/players/:id/neighbors 404s for an unknown player', async () => {
-  const res = await request(app).put('/api/players/ghost/neighbors').send({ neighborIds: [] });
   assert.equal(res.status, 404);
 });
 
-test('real players are deactivated instead of hard-deleted', async () => {
-  assert.equal((await request(app).delete(`/api/players/${createdId}`)).status, 409);
-  const res = await request(app).post(`/api/players/${createdId}/deactivate`);
+test('profile reads stay in the base event and personal analytics exclude unvisited private events', async () => {
+  const event = await request(app)
+    .post('/api/events')
+    .send({ name: 'Private Profile Event', startsAt: Date.now(), endsAt: Date.now() + 60_000, visibilityScope: 'participants' });
+  assert.equal(event.status, 201, JSON.stringify(event.body));
+  const game = db.prepare('SELECT id FROM games WHERE group_id = ? OR arcade_key IS NOT NULL LIMIT 1').get(DEFAULT_GROUP_ID) as {
+    id: string;
+  };
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO play_sessions (id, player_id, game_id, event_id, group_id, started_at, ended_at, active_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run('profile-group-room-session', createdId, game.id, BASE_EVENT_ID, DEFAULT_GROUP_ID, now - 1_000, now, 500);
+  db.prepare(
+    `INSERT INTO play_sessions (id, player_id, game_id, event_id, group_id, started_at, ended_at, active_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run('profile-private-session', createdId, game.id, event.body.id, DEFAULT_GROUP_ID, now - 9_000, now, 4_500);
+  try {
+    // createdId never joined the private event, so their operational profile
+    // remains in the persisted base workspace regardless of tracking flags.
+    const neighbors = await request(app).get(`/api/players/${createdId}/neighbors`);
+    assert.equal(neighbors.status, 200);
+    assert.equal(neighbors.body.eventId, BASE_EVENT_ID);
+
+    const stats = await request(app).get(`/api/players/${createdId}/stats`);
+    assert.equal(stats.status, 200);
+    assert.equal(stats.body.playerId, createdId);
+    assert.equal(stats.body.eventId, null);
+    assert.deepEqual(stats.body.eventIds, [BASE_EVENT_ID]);
+    assert.equal(stats.body.sessionCount, 1, 'the inaccessible private event session must not leak into the fallback');
+    assert.equal(stats.body.totalMs, 1_000);
+    assert.equal(stats.body.events.some((entry: { eventId: string }) => entry.eventId === event.body.id), false);
+
+    const explicit = await request(app).get(`/api/players/${createdId}/neighbors?eventId=${event.body.id}`);
+    assert.equal(explicit.status, 404, 'an explicitly requested inaccessible event id still 404s');
+    const explicitStats = await request(app).get(`/api/players/${createdId}/stats?eventId=${event.body.id}`);
+    assert.equal(explicitStats.status, 404, 'explicit stats for an inaccessible event still 404');
+  } finally {
+    db.prepare("DELETE FROM play_sessions WHERE id IN ('profile-group-room-session', 'profile-private-session')").run();
+  }
+});
+
+test('PUT /api/players/:id/neighbors binds the URL identity to the session', async () => {
+  const res = await request(app)
+    .put('/api/players/ghost/neighbors')
+    .set('Cookie', sessionCookie(TEST_ADMIN_ID))
+    .send({ neighborIds: [] });
+  assert.equal(res.status, 200);
+});
+
+test('real players can be hard-deleted and their tracking data is removed', async () => {
+  const sender = await request(app).post('/api/players').send({ name: 'Delete Sender' });
+  const now = Date.now();
+  db.prepare("INSERT OR IGNORE INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled) VALUES (?, ?, 'member', 'active', ?, 0)")
+    .run(DEFAULT_GROUP_ID, createdId, now);
+  db.prepare("INSERT OR IGNORE INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled) VALUES (?, ?, 'member', 'active', ?, 0)")
+    .run(DEFAULT_GROUP_ID, sender.body.id, now);
+  db.prepare('INSERT INTO push_log (id, group_id, event_id, title, body, audience, player_ids, created_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?)')
+    .run('delete-test-push', DEFAULT_GROUP_ID, 'Test', 'Test', 'all', JSON.stringify([createdId, sender.body.id]), now);
+  db.prepare('INSERT INTO broadcasts (id, group_id, event_id, player_id, player_name_snapshot, message, ends_at, recipient_ids, created_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)')
+    .run('delete-test-broadcast', DEFAULT_GROUP_ID, sender.body.id, sender.body.name, 'Test', now + 60_000, JSON.stringify([createdId, sender.body.id]), now);
+  const res = await request(app).delete(`/api/players/${createdId}`);
   assert.equal(res.status, 204);
 
-  const after = await request(app).get(`/api/players/${createdId}`);
+  const after = await request(app)
+    .get(`/api/players/${createdId}`)
+    .set('Cookie', sessionCookie(TEST_ADMIN_ID));
   assert.equal(after.status, 404);
-  const stored = db.prepare('SELECT deactivated_at FROM players WHERE id = ?').get(createdId) as {
-    deactivated_at: number | null;
-  };
-  assert.ok(stored.deactivated_at);
+  assert.equal(db.prepare('SELECT 1 FROM players WHERE id = ?').get(createdId), undefined);
+  assert.equal(db.prepare('SELECT 1 FROM live_status WHERE player_id = ?').get(createdId), undefined);
+  assert.deepEqual(JSON.parse((db.prepare('SELECT player_ids FROM push_log WHERE id = ?').get('delete-test-push') as { player_ids: string }).player_ids), [sender.body.id]);
+  assert.deepEqual(JSON.parse((db.prepare('SELECT recipient_ids FROM broadcasts WHERE id = ?').get('delete-test-broadcast') as { recipient_ids: string }).recipient_ids), [sender.body.id]);
   const roster = await request(app).get('/api/players');
   assert.equal(roster.body.some((player: { id: string }) => player.id === createdId), false);
 });
 
-test('deactivation rejects an already inactive player', async () => {
+test('deactivation returns not found after a player was deleted', async () => {
   const res = await request(app).post(`/api/players/${createdId}/deactivate`);
-  assert.equal(res.status, 409);
+  assert.equal(res.status, 404);
 });

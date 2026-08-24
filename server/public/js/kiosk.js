@@ -4,20 +4,22 @@
 // format.js modules the main app uses, but renders its own compact layout
 // rather than the phone-sized views (see kiosk.html/css).
 
-import { api, getToken, setKioskMode, setToken } from './api.js';
+import { api, getKioskToken, setKioskMode, setKioskToken } from './api.js';
 import { connectSocket } from './socket.js';
 import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml, formatDateTime } from './format.js';
 import { installIconReplacement, icon } from './icons.js';
 import { bannerContentHtml } from './pushFeed.js';
-import { drawArcadeStreamCanvas } from './arcadeStreamRenderer.js';
+import { drawArcadeStreamCanvas } from './arcade/shared/arcadeStreamRenderer.js';
 import { domainIcon, installDomainIcons } from './domainIcons.js';
+import { snakeArenaLegendHtml } from './arcade/shared/snakeArenaLegend.js';
+import { emptyStateHtml } from './emptyState.js';
 
 installIconReplacement();
 installDomainIcons();
 setKioskMode(true);
 
-const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
-const GAME_NAMES = { quiz: 'Gaming-Quiz', tetris: 'Tetris', scribble: 'Scribble', blobby: 'Blobby Volley', pong: 'Pong', snake: 'Snake' };
+const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
+const GAME_NAMES = { quiz: 'Gaming-Quiz', tetris: 'Tetris', scribble: 'Scribble', blobby: 'Blobby Volley', pong: 'Pong', snake: 'Snake', 'challenge-rush': 'Challenge Rush' };
 const cssColor = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 function drawLegacyKioskCanvas(canvas, game) {
@@ -69,13 +71,19 @@ function drawLegacyKioskCanvas(canvas, game) {
 
   if (game.gameType === 'tetris') {
     const boards = game.players || [];
-    const boardW = w / Math.max(1, boards.length);
+    const columns = boards.length <= 2 ? Math.max(1, boards.length) : boards.length <= 4 ? 2 : 4;
+    const rows = Math.ceil(boards.length / columns);
+    const boardW = w / columns;
+    const boardH = h / Math.max(1, rows);
     boards.forEach((player, index) => {
-      const left = index * boardW + boardW * 0.1;
-      const top = h * 0.06;
+      const column = index % columns;
+      const rowIndex = Math.floor(index / columns);
+      const left = column * boardW + boardW * 0.1;
+      const top = rowIndex * boardH + boardH * 0.06;
       const bw = boardW * 0.8;
-      const bh = h * 0.88;
+      const bh = boardH * 0.8;
       const cell = Math.min(bw / 10, bh / 20);
+      ctx.globalAlpha = player.alive === false ? 0.45 : 1;
       ctx.fillStyle = cssColor('--bg-elevated');
       ctx.fillRect(left, top, cell * 10, cell * 20);
       (player.board || []).forEach((row, y) => row.forEach((value, x) => {
@@ -89,24 +97,15 @@ function drawLegacyKioskCanvas(canvas, game) {
       }
       ctx.fillStyle = cssColor('--text');
       ctx.font = `${parseFloat(getComputedStyle(document.body).fontSize) * 1.5}px sans-serif`;
-      ctx.fillText(player.name || 'Spieler', left, h * 0.98);
+      ctx.fillText(player.name || 'Spieler', left, (rowIndex + 1) * boardH - 4);
+      ctx.globalAlpha = 1;
     });
     return;
   }
 
   const world = game.world;
   if (!world) return;
-  if (game.gameType === 'snake') {
-    const cw = w / 32;
-    const ch = h / 20;
-    ctx.strokeStyle = cssColor('--accent-2');
-    ctx.globalAlpha = 0.12;
-    for (let x = 1; x < 32; x++) { ctx.beginPath(); ctx.moveTo(x * cw, 0); ctx.lineTo(x * cw, h); ctx.stroke(); }
-    for (let y = 1; y < 20; y++) { ctx.beginPath(); ctx.moveTo(0, y * ch); ctx.lineTo(w, y * ch); ctx.stroke(); }
-    ctx.globalAlpha = 1;
-    world.snakes.forEach((snake, index) => { ctx.fillStyle = index ? cssColor('--accent-3') : cssColor('--accent'); snake.body.forEach((part) => ctx.fillRect(part.x * cw, part.y * ch, cw - 2, ch - 2)); });
-    ctx.fillStyle = cssColor('--rank-1-gold'); ctx.beginPath(); ctx.arc((world.food.x + 0.5) * cw, (world.food.y + 0.5) * ch, Math.min(cw, ch) * 0.35, 0, Math.PI * 2); ctx.fill();
-  } else if (game.gameType === 'pong') {
+  if (game.gameType === 'pong') {
     const scaleX = w / 800;
     const scaleY = h / 450;
     ctx.fillStyle = cssColor('--accent'); ctx.fillRect(world.paddles[0].x * scaleX, world.paddles[0].y * scaleY, 12, world.paddles[0].height * scaleY);
@@ -140,35 +139,37 @@ function renderArcadeStream(game) {
   dashboard.hidden = true;
   gameView.hidden = false;
   document.getElementById('kiosk-game-title').textContent = GAME_NAMES[game.gameType] || 'Arcade';
-  document.getElementById('kiosk-game-status').textContent = game.phase === 'countdown' ? 'Startet gleich' : game.paused ? 'Pause' : 'Läuft';
+  document.getElementById('kiosk-game-status').textContent = game.phase === 'ended' ? 'Beendet' : game.phase === 'countdown' ? 'Startet gleich' : game.paused ? 'Pause' : 'Läuft';
   const content = document.getElementById('kiosk-game-content');
   if (game.gameType === 'quiz') {
     content.innerHTML = `<div class="kiosk-game-question">${escapeHtml(game.question || 'Nächste Frage kommt gleich.')}</div>`;
     return;
   }
+  if (game.gameType === 'challenge-rush') {
+    content.innerHTML = `<div class="kiosk-game-question">${escapeHtml(game.challenge || 'Mini-Challenge')}</div><div class="kiosk-game-scores">${(game.scores || []).map((score) => `<div>${escapeHtml(score.name || 'Spieler')}: <strong>${score.score || 0}</strong></div>`).join('')}</div>`;
+    return;
+  }
   let canvas = content.querySelector('canvas');
-  if (!canvas) { content.innerHTML = '<canvas width="800" height="450" aria-label="Livebild des Arcade-Spiels"></canvas>'; canvas = content.querySelector('canvas'); }
+  if (!canvas) content.innerHTML = '';
+  const legendHtml = snakeArenaLegendHtml(game);
+  const existingLegend = content.querySelector('.snake-arena-legend');
+  if (legendHtml && !existingLegend) content.insertAdjacentHTML('afterbegin', legendHtml);
+  else if (legendHtml && existingLegend?.outerHTML !== legendHtml) existingLegend.outerHTML = legendHtml;
+  else if (!legendHtml) existingLegend?.remove();
+  if (!canvas) { content.insertAdjacentHTML('beforeend', '<canvas width="800" height="450" aria-label="Livebild des Arcade-Spiels"></canvas>'); canvas = content.querySelector('canvas'); }
   drawKioskCanvas(canvas, game);
 }
 
-// Same idea as app.js's ensureAccess, but with no login form to fall back
-// to — a kiosk screen is set up once (via ?token=…, same as an invite link)
-// and then left running, so there's nobody there afterwards to type a token
-// in if it's missing.
+// A kiosk is set up once via ?token=… and then left running, so there is no
+// interactive login fallback when its dedicated credential is missing.
 async function ensureAccess() {
-  const meta = await api.meta();
-  const protectedAccess = meta.authMode === 'required' ? meta.kioskProtection : meta.accessProtection;
-  if (meta.authMode === 'required' && !meta.kioskProtection) return false;
-  if (!protectedAccess) return true;
-
   const fromUrl = new URLSearchParams(location.search).get('token');
-  if (fromUrl) setToken(fromUrl);
+  if (fromUrl) setKioskToken(fromUrl);
 
-  const token = getToken();
+  const token = getKioskToken();
   if (!token) return false;
   try {
-    const res = await fetch('/api/health', { headers: { 'x-access-token': token } });
-    if (!res.ok) return false;
+    await api.live.board();
     if (fromUrl) history.replaceState(null, '', `${location.pathname}${location.hash}`);
     return true;
   } catch {
@@ -178,7 +179,7 @@ async function ensureAccess() {
 
 function renderLive(players) {
   if (players.length === 0) {
-    return `<div class="empty-state">Noch keine Spieler.</div>`;
+    return emptyStateHtml('Noch keine Spieler.');
   }
   const sorted = [...players].sort((a, b) => {
     const rankDiff = STATE_RANK[a.state] - STATE_RANK[b.state];
@@ -308,7 +309,7 @@ function renderVotes(votes) {
     clearVoteDisplayTimer();
   }
   if (!vote) {
-    return `<div class="empty-state kiosk-vote-state">Keine offene Abstimmung.</div>`;
+    return emptyStateHtml('Keine offene Abstimmung.', { className: 'kiosk-vote-state' });
   }
   const heading = vote.mode === 'single' ? 'Stichwahl läuft' : 'Abstimmung läuft';
   return `
@@ -327,7 +328,7 @@ function renderVotes(votes) {
 
 function renderLeaderboard(standings) {
   if (!standings || standings.length === 0) {
-    return `<div class="empty-state">Noch keine Ergebnisse.</div>`;
+    return emptyStateHtml('Noch keine Ergebnisse.');
   }
   const rows = standings
     .slice(0, 8)
@@ -355,7 +356,7 @@ function tournamentStandingRow(name, standing, index, { compact = false } = {}) 
 }
 
 function renderTournament(t) {
-  if (!t) return `<div class="empty-state">Kein Turnier.</div>`;
+  if (!t) return emptyStateHtml('Kein Turnier.');
   const teamsById = new Map(t.teams.map((team) => [team.id, team]));
   const teamName = (id) => (id ? escapeHtml(teamsById.get(id)?.name ?? 'TBD') : 'TBD');
 
@@ -458,7 +459,8 @@ function renderBroadcastBanner(entry) {
     const delay = Math.max(0, Math.min(entry.expiresAt - Date.now() + 50, 2_147_483_647));
     pushBannerExpiryTimer = setTimeout(refreshPushBanner, delay);
   }
-  el.innerHTML = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time">${formatDateTime(entry.createdAt)} Uhr</span>`;
+  const html = `${bannerContentHtml(entry)} <span class="kiosk-broadcast-time">${formatDateTime(entry.createdAt)} Uhr</span>`;
+  if (el.innerHTML !== html) el.innerHTML = html;
   el.hidden = false;
   updateAlertLayout();
 }
@@ -530,6 +532,7 @@ function renderMusicBar(payload) {
   if (!session) {
     element.hidden = true;
     element.innerHTML = '';
+    delete element.dataset.renderKey;
     return;
   }
   const track = session.currentTrack;
@@ -539,7 +542,14 @@ function renderMusicBar(payload) {
   const request = (session.requests || []).find(
     (entry) => entry.status === 'playing' && entry.trackUri === track?.uri,
   );
-  element.innerHTML = track ? `
+  const renderKey = JSON.stringify({
+    track: track?.uri ?? null,
+    playing: session.isPlaying,
+    device: session.deviceName,
+    requester: request?.requestedByName ?? null,
+    next: queued[0]?.id ?? queued[0]?.trackUri ?? null,
+  });
+  const html = track ? `
     <span class="kiosk-music-current">
       ${track.imageUrl ? `<img class="kiosk-music-cover" src="${escapeHtml(track.imageUrl)}" alt="" />` : `<span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span>`}
       <span class="kiosk-music-copy">
@@ -562,6 +572,10 @@ function renderMusicBar(payload) {
         </span>` : `<span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span><span class="kiosk-music-copy"><span class="muted kiosk-music-next-label">${icon('music')} Als Nächstes</span><strong>Noch keine Wünsche</strong></span>`}
     </span>` : `
       <span class="kiosk-music-current kiosk-music-empty"><span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span><span class="kiosk-music-copy"><strong>Jam aktiv</strong><span class="muted">Auf ${escapeHtml(session.deviceName)} läuft gerade kein Titel.</span></span></span>`;
+  if (element.dataset.renderKey !== renderKey) {
+    element.innerHTML = html;
+    element.dataset.renderKey = renderKey;
+  }
   element.hidden = false;
   scheduleMusicBarProgress();
 }
@@ -577,41 +591,72 @@ async function refreshMusic() {
   }
 }
 
-let refreshVersion = 0;
+function updateHtml(id, html) {
+  const element = document.getElementById(id);
+  if (element.innerHTML !== html) element.innerHTML = html;
+}
 
-async function refreshAll() {
-  const requestVersion = ++refreshVersion;
+function logRefreshFailure(scope, error) {
+  // A kiosk has nobody to dismiss a toast; keep the last-known card and let
+  // the next scoped signal retry it.
+  // eslint-disable-next-line no-console
+  console.error(`Kiosk ${scope} refresh failed:`, error);
+}
+
+async function refreshLive() {
   try {
-    const [live, votes, leaderboard, tournaments, lastPush, music] = await Promise.all([
-      api.live.board(),
-      api.votes.kiosk(),
-      api.leaderboard.get(),
-      api.tournaments.list(),
-      api.push.last(),
-      api.music.kiosk(),
-    ]);
-    if (requestVersion !== refreshVersion) return;
-    document.getElementById('kiosk-live').innerHTML = renderLive(live);
-    document.getElementById('kiosk-votes').innerHTML = renderVotes(votes);
-    document.getElementById('kiosk-leaderboard').innerHTML = renderLeaderboard(leaderboard.standings);
-    renderBroadcastBanner(lastPush.entry);
-    renderMusicBar(music);
+    updateHtml('kiosk-live', renderLive(await api.live.board()));
+  } catch (error) {
+    logRefreshFailure('live', error);
+  }
+}
 
+async function refreshVotes() {
+  try {
+    updateHtml('kiosk-votes', renderVotes(await api.votes.kiosk()));
+  } catch (error) {
+    logRefreshFailure('vote', error);
+  }
+}
+
+async function refreshLeaderboard() {
+  try {
+    const leaderboard = await api.leaderboard.get();
+    updateHtml('kiosk-leaderboard', renderLeaderboard(leaderboard.standings));
+  } catch (error) {
+    logRefreshFailure('leaderboard', error);
+  }
+}
+
+let tournamentRefreshVersion = 0;
+async function refreshTournament() {
+  const requestVersion = ++tournamentRefreshVersion;
+  try {
+    const tournaments = await api.tournaments.list();
+    if (requestVersion !== tournamentRefreshVersion) return;
     const active = tournaments.find((t) => t.status === 'active') || tournaments[0] || null;
-    document.getElementById('kiosk-tournament-title').innerHTML = `${icon(domainIcon('tournaments'))} ${active ? escapeHtml(active.name) : 'Turnier'}`;
+    updateHtml('kiosk-tournament-title', `${icon(domainIcon('tournaments'))} ${active ? escapeHtml(active.name) : 'Turnier'}`);
     if (active) {
       const detail = await api.tournaments.get(active.id);
-      if (requestVersion !== refreshVersion) return;
-      document.getElementById('kiosk-tournament').innerHTML = renderTournament(detail);
+      if (requestVersion !== tournamentRefreshVersion) return;
+      updateHtml('kiosk-tournament', renderTournament(detail));
     } else {
-      document.getElementById('kiosk-tournament').innerHTML = `<div class="empty-state">Kein offenes Turnier.</div>`;
+      updateHtml('kiosk-tournament', emptyStateHtml('Kein offenes Turnier.'));
     }
   } catch (err) {
-    // A kiosk screen has nobody to dismiss a toast — log and try again on
-    // the next event/poll instead of leaving a stuck error state.
-    // eslint-disable-next-line no-console
-    console.error('Kiosk refresh failed:', err);
+    logRefreshFailure('tournament', err);
   }
+}
+
+async function refreshAll() {
+  await Promise.all([
+    refreshLive(),
+    refreshVotes(),
+    refreshLeaderboard(),
+    refreshTournament(),
+    refreshPushBanner(),
+    refreshMusic(),
+  ]);
 }
 
 // Kiosk screens are set up once (someone opens the browser, maybe clicks
@@ -665,10 +710,10 @@ function updateClock() {
 async function main() {
   const ok = await ensureAccess();
   if (!ok) {
-    document.getElementById('kiosk-root').innerHTML = `
-      <div class="empty-state" style="padding:var(--space-8);font-size:var(--font-size-lg);">
-        Kein Zugriff — diese Seite mit <code>?token=…</code> öffnen (wie der Einladungslink).
-      </div>`;
+    document.getElementById('kiosk-root').innerHTML = emptyStateHtml(
+      'Kein Zugriff — diese Seite mit <code>?token=…</code> öffnen (wie der Einladungslink).',
+      { style: 'padding:var(--space-8);font-size:var(--font-size-lg);' },
+    );
     return;
   }
 
@@ -682,19 +727,14 @@ async function main() {
   socket.on('arcade:kiosk:game', renderArcadeStream);
   socket.emit('kiosk:subscribe');
 
-  [
-    'live:changed',
-    // Player-lifecycle changes (rename, deactivation, tracking pause) can
-    // clear live rows without a follow-up live:changed for this group, so the
-    // shared screen refreshes on the roster signal too.
-    'players:changed',
-    'votes:changed',
-    'leaderboard:changed',
-    'tournaments:changed',
-    'matchmaking:generated',
-    'foodOrders:changed',
-    'music:changed',
-  ].forEach((event) => socket.on(event, refreshAll));
+  socket.on('live:changed', refreshLive);
+  // A rename can affect every card that contains a player snapshot. Each
+  // updater still patches only when its rendered HTML actually changed.
+  socket.on('players:changed', () => Promise.all([refreshLive(), refreshLeaderboard(), refreshTournament()]));
+  socket.on('votes:changed', refreshVotes);
+  socket.on('leaderboard:changed', refreshLeaderboard);
+  socket.on('tournaments:changed', refreshTournament);
+  socket.on('music:changed', refreshMusic);
 
   // Last-push banner: a big banner across the top of the shared screen — the
   // whole point of putting it on the kiosk is that people look up from their
@@ -709,5 +749,7 @@ async function main() {
 main().catch((err) => {
   // eslint-disable-next-line no-console
   console.error(err);
-  document.getElementById('kiosk-root').innerHTML = `<div class="empty-state" style="padding:var(--space-8);">Fehler beim Start: ${err.message}</div>`;
+  document.getElementById('kiosk-root').innerHTML = emptyStateHtml(`Fehler beim Start: ${err.message}`, {
+    style: 'padding:var(--space-8);',
+  });
 });

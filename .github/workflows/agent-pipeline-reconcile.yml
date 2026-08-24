@@ -1,0 +1,218 @@
+name: Agent pipeline reconcile
+
+# Derives the pipeline state of an agent pull request from the current GitHub state and keeps the
+# pipeline labels, the sticky status comment and the `Agent pipeline / ready for human merge`
+# commit status in sync. For each eligible head it also creates one mention-bearing review-choice
+# notification. It starts no agent, chooses no review mode and never approves or merges.
+
+on:
+  # These events always load the workflow definition from the trusted default branch.
+  # Never execute or check out code from the pull-request head in this workflow.
+  # Draft pull requests are reconciled on `opened`/`synchronize`; draft status blocks only the
+  # final merge gate, not the review decision or review phase.
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - ready_for_review
+      - converted_to_draft
+      - labeled
+      - unlabeled
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  # Provider self-review results and finding-free Codex reviews are posted as PR comments, so they
+  # carry a user or app identity and do start this workflow. Reconcile that evidence immediately
+  # instead of waiting for the 30-minute sweep. A clean-pass candidate is restricted to the exact
+  # Codex connector identity; the reconciler still validates its wording and head before accepting
+  # it as evidence.
+  # Deliberately not listed here: the failure notice of the cross-review workflow. That comment is
+  # written with the repository `GITHUB_TOKEN`, and GitHub starts no workflow run from an event
+  # created with it. The notice reaches the status comment because its own workflow reconciles
+  # right after posting it — see the `reconcile` job in `agent-pipeline-claude-review.yml`.
+  issue_comment:
+    types: [created, edited]
+  # GitHub does not deliver check_suite events for suites created by GitHub Actions, and every
+  # check in this repository comes from Actions. workflow_run does fire for them, so this is what
+  # actually observes the CI-running to CI-green transition. The workflow list must never include
+  # this workflow itself, which would make it retrigger on its own completion.
+  workflow_run:
+    workflows:
+      - CI/CD
+      - Agent pipeline contract
+      - Agent pipeline tests
+    types: [completed]
+  # Safety net for lost webhooks, late provider reactions and missed check results.
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    name: Collect pull requests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
+    if: >-
+      ${{
+        github.event_name != 'issue_comment' ||
+        (
+          github.event.issue.pull_request != null &&
+          (
+            (
+              contains(github.event.comment.body, 'agent-pipeline:review-result') &&
+              (
+                endsWith(github.event.comment.user.login, '[bot]') ||
+                contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+              )
+            ) ||
+            (
+              github.event.comment.user.login == 'chatgpt-codex-connector[bot]' &&
+              contains(github.event.comment.body, 'Codex Review:') &&
+              contains(github.event.comment.body, '**Reviewed commit:**')
+            )
+          )
+        )
+      }}
+    outputs:
+      pull_requests: ${{ steps.select.outputs.pull_requests }}
+    steps:
+      - name: Determine reconciliation scope
+        id: scope
+        shell: bash
+        env:
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          EVENT_ISSUE_PR: ${{ github.event.issue.pull_request.url }}
+          EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          # workflow_run carries the pull requests its run belonged to, but the list is empty for
+          # fork runs and for runs GitHub could not associate; the sweep below covers those.
+          RUN_PR: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${EVENT_PR}" ]]; then
+            # A pull-request scoped event reconciles exactly that pull request.
+            echo "direct=[${EVENT_PR}]" >> "$GITHUB_OUTPUT"
+            echo "sweep=false" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${EVENT_ISSUE_PR}" ]]; then
+            echo "direct=[${EVENT_ISSUE_NUMBER}]" >> "$GITHUB_OUTPUT"
+            echo "sweep=false" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${RUN_PR}" ]]; then
+            echo "direct=[${RUN_PR}]" >> "$GITHUB_OUTPUT"
+            echo "sweep=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "direct=[]" >> "$GITHUB_OUTPUT"
+            echo "sweep=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The selector always comes from the trusted default branch. Event-scoped runs skip these
+      # setup steps and retain their existing fast path.
+      - name: Check out trusted sweep selector
+        if: steps.scope.outputs.sweep == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        if: steps.scope.outputs.sweep == 'true'
+        with:
+          node-version: 24
+
+      - name: Select pull requests to reconcile
+        id: select
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DIRECT_PRS: ${{ steps.scope.outputs.direct }}
+          SWEEP: ${{ steps.scope.outputs.sweep }}
+        run: |
+          set -euo pipefail
+          if [[ "${SWEEP}" == "true" ]]; then
+            candidates="${RUNNER_TEMP}/agent-pipeline-open-prs.json"
+            gh pr list --state open --limit 1000 \
+              --json number,body,headRefName,labels,statusCheckRollup > "${candidates}"
+            selected=$(node scripts/agent-pipeline-select-prs.mjs < "${candidates}")
+          else
+            selected="${DIRECT_PRS}"
+          fi
+          echo "pull_requests=${selected}" >> "$GITHUB_OUTPUT"
+          echo "Selected pull requests: ${selected}"
+
+  reconcile:
+    name: Reconcile pull request
+    needs: collect
+    if: needs.collect.outputs.pull_requests != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: read
+      # Covers the pipeline labels and the sticky status comment on pull requests.
+      pull-requests: write
+      # Covers the `Agent pipeline / ready for human merge` commit status on the head SHA. It
+      # grants no access to code, branches or the merge itself.
+      statuses: write
+      # Lets the reconciler dispatch `workflow_dispatch` on the two trusted cross-review workflows
+      # in this same repository when a labeled attempt already declined only because the head was
+      # not ready yet. GitHub explicitly exempts `workflow_dispatch` from the restriction that
+      # otherwise stops a `GITHUB_TOKEN`-authored event from starting another workflow run. Grants
+      # no access to code, branches, secrets or any other repository's workflows.
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        pull_request: ${{ fromJson(needs.collect.outputs.pull_requests) }}
+    concurrency:
+      # Serialises every mutation per pull request, across event and scheduled runs alike.
+      group: agent-pipeline-reconcile-${{ matrix.pull_request }}
+      # Do not cancel an in-flight reconciliation. A cancelled run is reported
+      # as a failed required check and can leave the PR blocked until a manual
+      # rerun, while each reconciliation is short and idempotent.
+      cancel-in-progress: false
+    steps:
+      # Run only the reconciler and configuration from the trusted default branch.
+      # No code from any pull-request head is checked out or executed.
+      - name: Check out trusted reconciler
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Detect trusted reconciler
+        id: trusted
+        shell: bash
+        run: |
+          if [[ -f scripts/agent-pipeline-reconcile.mjs && -f .github/agent-pipeline/config.json ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Trusted default branch does not contain the reconciler yet; safely skipping this bootstrap run."
+          fi
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        if: steps.trusted.outputs.available == 'true'
+        with:
+          node-version: 24
+
+      - name: Reconcile pipeline state
+        if: steps.trusted.outputs.available == 'true'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # Repository-wide kill switch; `agent:no-auto` remains the per-pull-request one.
+          AGENT_PIPELINE_DISABLED: ${{ vars.AGENT_PIPELINE_DISABLED }}
+          # Mentioned in the once-per-head fallback comment so GitHub emits a visible notification.
+          AGENT_PIPELINE_OWNER: ${{ vars.AGENT_PIPELINE_OWNER }}
+        run: >-
+          node scripts/agent-pipeline-reconcile.mjs reconcile
+          --repository "${{ github.repository }}"
+          --pr "${{ matrix.pull_request }}"
+          --apply

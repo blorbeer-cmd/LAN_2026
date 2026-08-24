@@ -10,47 +10,62 @@
 import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml } from '../format.js';
-import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { renderSeatingPlan } from './seating.js';
-import { ensureAktuellLoaded, aktuellItems } from '../aktuellStatus.js';
+import { ensureAktuellLoaded, aktuellItems, dismissAktuellItem } from '../aktuellStatus.js';
+import { emptyStateHtml } from '../emptyState.js';
+import { isAdmin } from '../admin.js';
 
-const STATE_RANK = { playing: 0, paused: 1, offline: 2 };
+const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
 
 let seatingCache = null;
 let seatingLoading = false;
+let seatingStale = false;
+let seatingRequestVersion = 0;
+let seatingLoadError = false;
 
 window.addEventListener('seating:changed', () => {
-  seatingCache = null;
+  invalidateHomeSeating();
 });
 
 // A player's name/real name/avatar can change (players:changed) without the
 // seating layout itself changing — the cached board would otherwise keep
 // showing the old real name for the rest of the session on any device that
 // already loaded it (CLAUDE.md: realtime by default, no manual reload).
-export function invalidateHomeSeating() {
-  seatingCache = null;
+export function invalidateHomeSeating({ hard = false } = {}) {
+  seatingRequestVersion += 1;
+  seatingLoading = false;
+  seatingStale = true;
+  seatingLoadError = false;
+  if (hard) seatingCache = null;
 }
 
 async function loadSeating(ctx) {
+  const version = ++seatingRequestVersion;
   seatingLoading = true;
+  seatingStale = false;
+  seatingLoadError = false;
   try {
-    seatingCache = await api.seating.layout();
+    const result = await api.seating.layout();
+    if (version === seatingRequestVersion) seatingCache = result;
   } catch {
-    seatingCache = null;
+    if (version === seatingRequestVersion) seatingLoadError = seatingCache === null;
   } finally {
-    seatingLoading = false;
-    ctx.rerender();
+    if (version === seatingRequestVersion) {
+      seatingLoading = false;
+      ctx.rerender();
+    }
   }
 }
 
 function renderHomeSeating(ctx) {
-  if (seatingCache === null && !seatingLoading) loadSeating(ctx);
+  if ((seatingCache === null || seatingStale) && !seatingLoading && !seatingLoadError) loadSeating(ctx);
   return `<section class="card grouped-page-section live-seating stack" aria-labelledby="home-seating-title">
     <div class="grouped-page-section-title"><h2 id="home-seating-title">Sitzplan</h2></div>
-    ${seatingLoading || seatingCache === null
-      ? '<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>'
+    ${seatingCache === null
+      ? emptyStateHtml(seatingLoadError ? 'Sitzplan konnte nicht geladen werden.' : 'Lädt…', { style: 'padding:var(--space-4);' })
       : renderSeatingPlan(seatingCache.layout, seatingCache.players)}
   </section>`;
 }
@@ -64,29 +79,35 @@ let lastCtx = null;
 window.addEventListener('respawn:aktuell-changed', () => lastCtx?.rerender());
 
 // Compact single-line row (the "Mehr" hub's list-row component, see
-// more.js) instead of a full card with its own button: the prominent header
-// banner (notificationBanner.js) already covers the "look at me" job for
-// the single latest thing, so these just need to be scannable at a glance,
-// with the whole row (not a separate button) as the tap target.
-function statusRowHtml({ iconName, title, sub, navigate }) {
+// more.js). Navigation and dismissal are sibling buttons so both remain
+// semantic, keyboard-operable controls without nesting one button in another.
+function statusRowHtml({ id, iconName, title, sub, navigate, target }) {
+  const targetAttrs = target?.type && target?.id
+    ? `data-navigate-target-type="${escapeHtml(target.type)}" data-navigate-target-id="${escapeHtml(target.id)}"`
+    : '';
   return `
-    <button type="button" class="card row list-row" data-navigate="${navigate}">
-      <span class="list-row-icon">${icon(iconName)}</span>
-      <span style="flex:1;min-width:0;">
-        <div class="player-name">${title}</div>
-        ${sub ? `<div class="muted list-row-desc">${sub}</div>` : ''}
-      </span>
-      <span class="muted">${icon('chevronRight')}</span>
-    </button>`;
+    <article class="card list-row home-current-row" data-current-item="${id}">
+      <button type="button" class="home-current-navigate" data-navigate="${navigate}" ${targetAttrs}>
+        <span class="list-row-icon">${icon(iconName)}</span>
+        <span class="home-current-copy">
+          <span class="player-name">${title}</span>
+          ${sub ? `<span class="muted list-row-desc">${sub}</span>` : ''}
+        </span>
+        <span class="muted">${icon('chevronRight')}</span>
+      </button>
+      <button type="button" class="icon-btn home-current-dismiss" data-dismiss-current="${id}" aria-label="${title} ausblenden" title="Meldung ausblenden">${icon('x')}</button>
+    </article>`;
 }
 
 function renderStatus() {
   const rows = aktuellItems().map((item) =>
     statusRowHtml({
+      id: escapeHtml(item.id),
       iconName: item.iconName,
       title: escapeHtml(item.title),
       sub: item.sub ? escapeHtml(item.sub) : '',
       navigate: item.navigate,
+      target: item.target,
     })
   );
 
@@ -135,6 +156,11 @@ function renderActiveGroups(players) {
 // Leaderboard snapshot: the top six use the otherwise empty card width as
 // two compact columns on larger screens and stay a single list on phones.
 function renderLeaderboardTop() {
+  // The Auswertung area (leaderboard/analytics/hallOfFame) is only reachable
+  // with the device-local Admin mode active (see app.js's switchView()) — a
+  // preview here would otherwise offer a "Gesamte Rangliste" link that
+  // silently redirects a regular member to Essen instead.
+  if (!isAdmin()) return '';
   const standings = state.leaderboard?.standings || [];
   if (standings.length === 0) return '';
   const columns = [standings.slice(0, 3), standings.slice(3, 6)]
@@ -177,8 +203,8 @@ function renderMyStatus(myId, players) {
         <span>Dein Status:</span>
         <span class="badge ${badgeClass}">${stateLabel(me.state)}</span>
       </span>
-      <button type="button" class="btn btn-sm" data-toggle-pause="${me.player_id}" data-paused="${me.state === 'paused' ? '1' : '0'}">
-        ${me.state === 'paused' ? `${icon('play')} Bin wieder da` : `${icon('pause')} Pause / Essen`}
+      <button type="button" class="btn btn-primary btn-sm" data-toggle-pause="${me.player_id}" data-paused="${me.state === 'paused' ? '1' : '0'}">
+        ${me.state === 'paused' ? 'Bin wieder da' : 'Pause / Essen'}
       </button>
     </div>
   `;
@@ -195,17 +221,15 @@ export function renderHome(container, ctx) {
   if (players.length === 0) {
     container.innerHTML = `
       <h1 class="view-title">Home</h1>
-      <div class="empty-state">
+      ${emptyStateHtml(`
         <img src="/img/mascot.svg" alt="" width="72" height="66" class="mascot" />
         Noch keine Spieler angelegt.<br />
         <button type="button" class="btn btn-primary btn-sm" data-navigate="profile" style="margin-top:var(--space-3);">Eigenes Profil anlegen</button>
-      </div>`;
+      `)}`;
     return;
   }
 
   const myId = getMyId();
-  const whoAmI = whoAmICardHtml('home-whoami', { marginBottom: 'var(--space-4)' });
-
   ensureAktuellLoaded();
   const cards = players
     .map((p) => {
@@ -219,23 +243,41 @@ export function renderHome(container, ctx) {
       // was the last source of a tile being taller than its siblings, which
       // visibly resized the whole .card-grid row (that stretches every card
       // in a row to the tallest one) the moment someone paused.
+      //
+      // The card is the roster: tapping it opens that participant's read-only
+      // profile (or "Mein Profil" for the own row). The separate "Spieler"
+      // area that used to hold the same list is gone — the live board already
+      // shows everyone, so a second identical list was pure detour.
+      const action = isMe
+        ? 'data-navigate="profile"'
+        : `data-open-player-detail="${p.player_id}"`;
+      // A button's descendants are presentational to assistive technology, so
+      // the live state and the running games would silently disappear from the
+      // card the moment it became tappable. They are the card's whole point —
+      // spell them into its accessible name instead. Children are <span>s for
+      // the same reason a button may not wrap flow content; the layout classes
+      // supply their own display.
+      const runningGames = p.games.map((g) => g.game_name).join(', ');
+      const label = `${p.name}${isMe ? ' (du)' : ''}, ${stateLabel(p.state)}${runningGames ? `, ${runningGames}` : ''}. ${
+        isMe ? 'Mein Profil öffnen' : 'Profil ansehen'
+      }`;
       return `
-        <div class="card player-card">
+        <button type="button" class="card player-card" data-player="${p.player_id}" ${action}
+          aria-label="${escapeHtml(label)}">
           ${avatarHtml(p, 36)}
-          <div class="player-card-main">
-            <div class="row-between">
+          <span class="player-card-main">
+            <span class="row-between">
               <span class="player-name">${escapeHtml(p.name)}${isMe ? ' <span class="muted">(du)</span>' : ''}</span>
               <span class="badge ${badgeClass}">${stateLabel(p.state)}</span>
-            </div>
-            ${games ? `<div class="player-card-games chip-list">${games}</div>` : ''}
-          </div>
-        </div>`;
+            </span>
+            ${games ? `<span class="player-card-games chip-list">${games}</span>` : ''}
+          </span>
+        </button>`;
     })
     .join('');
 
   container.innerHTML = `
     <h1 class="view-title">Home</h1>
-    ${whoAmI}
     <div class="grouped-page-sections">
       ${renderStatus()}
       <section class="card grouped-page-section stack" aria-labelledby="home-live-title">
@@ -249,8 +291,6 @@ export function renderHome(container, ctx) {
     </div>
   `;
 
-  wireWhoAmICard(container, 'home-whoami', ctx);
-
   container.querySelectorAll('[data-toggle-pause]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const isPaused = btn.dataset.paused === '1';
@@ -260,6 +300,14 @@ export function renderHome(container, ctx) {
       } catch (err) {
         showToast(err.message, { error: true });
       }
+    });
+  });
+
+  container.querySelectorAll('[data-dismiss-current]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!dismissAktuellItem(btn.dataset.dismissCurrent)) return;
+      showToast('Meldung ausgeblendet.');
+      ctx.rerender();
     });
   });
 }

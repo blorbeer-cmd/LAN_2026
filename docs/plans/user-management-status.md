@@ -1,5 +1,12 @@
 # User-Management – verifizierter Koordinationsabschluss
 
+> **Historisch (seit 2026-07-20):** Dieses Dokument beschreibt den Koordinationsstand des damals
+> verfolgten **Mehrgruppenmodells** (Rev. 4, PRs #197–#201) und ist überholt. Die Produktentscheidung
+> vom 2026-07-20 verwirft das Mehrgruppenmodell zugunsten eines Ein-Gruppen-Modells; der aktuelle
+> Stand und Plan stehen in [`docs/plans/reset-single-group.md`](reset-single-group.md). Der Inhalt
+> unten bleibt unverändert als historischer Beleg dafür, wie und warum die PRs #197–#201 damals
+> behandelt wurden.
+
 Stand: 2026-07-16. Verifiziert gegen Git, GitHub und die PR-Heads. Statuswörter bleiben getrennt: **implementiert**, **getestet**, **reviewt**, **gemergt**. Es gibt keine ungeklärten Widersprüche mehr; verbleibende Punkte sind konkrete Blocker oder terminierte Folgeaufträge.
 
 ## Abschlusscheckliste

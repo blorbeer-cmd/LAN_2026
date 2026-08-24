@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
+import { isSuggestionGame, SUGGESTION_GAME_ERROR } from './gameSelection';
 import { broadcast, Events } from '../realtime';
 import {
   balanceTeams,
@@ -17,18 +18,31 @@ import {
   type SeatPair,
 } from '../matchmaking';
 import { isIntInRange } from '../validation';
-import { getTrackingEventId, OUTSIDE_EVENTS_ID } from '../events';
-import { competitionPlayersBelongToGroup, trackingEventIdForGroup } from '../competitionScope';
+import { competitionPlayersBelongToGroup } from '../competitionScope';
+import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 
 export const matchmakingRouter = Router();
 
-const DEFAULT_RATING = 5; // neutral middle rating for players without one
-const deliveryEventId = (eventId: string): string | null => (eventId === OUTSIDE_EVENTS_ID ? null : eventId);
+// Neutral middle rating for players without one. It is what balanceTeams
+// works with, but a stored teams snapshot keeps `rating: null` for such a
+// player instead of the substituted number: only then can a later reader tell
+// "rated 5" from "had no rating and was drawn as a 5". The frontend shows the
+// same value in parentheses for a null and includes it in the team total
+// (UNRATED_SKILL_VALUE in public/js/skillDisplay.js) — change both together,
+// or the displayed totals stop matching the draw they came from.
+const DEFAULT_RATING = 5;
+
+// Team total the way the draw itself saw it: a player without an own rating
+// contributes the neutral fallback, exactly as in the balancing input.
+const totalRatingOf = (players: Array<{ rating: number | null }>): number =>
+  players.reduce((sum, p) => sum + (p.rating ?? DEFAULT_RATING), 0);
+const deliveryEventId = (eventId: string): string => eventId;
 
 interface GameRow {
   id: string;
   name: string;
   max_team_size: number;
+  status: string;
 }
 
 interface PlayerRow {
@@ -50,7 +64,7 @@ export function buildTeamsSnapshot(gameId: string, teamPlayerIdLists: string[][]
   if (allIds.length > 0) {
     const placeholders = allIds.map(() => '?').join(',');
     const players = db
-      .prepare(`SELECT id, name, color, avatar FROM players WHERE id IN (${placeholders})`)
+      .prepare(`SELECT id, name, color, avatar FROM players WHERE deactivated_at IS NULL AND id IN (${placeholders})`)
       .all(...allIds) as PlayerRow[];
     players.forEach((p) => playerById.set(p.id, p));
     const ratingRows = db
@@ -66,10 +80,10 @@ export function buildTeamsSnapshot(gameId: string, teamPlayerIdLists: string[][]
         name: p?.name ?? '?',
         color: p?.color ?? '#888888',
         avatar: p?.avatar ?? null,
-        rating: ratingByPlayer.get(id) ?? DEFAULT_RATING,
+        rating: ratingByPlayer.get(id) ?? null,
       };
     });
-    return { players: teamPlayers, totalRating: teamPlayers.reduce((sum, p) => sum + p.rating, 0) };
+    return { players: teamPlayers, totalRating: totalRatingOf(teamPlayers) };
   });
 }
 
@@ -108,7 +122,7 @@ function loadAvoidPairs(groupId: string, eventId: string, playerIds: string[]): 
        WHERE group_id = ? AND event_id IS ?
          AND player_id IN (${placeholders}) AND neighbor_id IN (${placeholders})`
     )
-    .all(groupId, eventId === OUTSIDE_EVENTS_ID ? null : eventId, ...playerIds, ...playerIds) as Array<{
+    .all(groupId, eventId, ...playerIds, ...playerIds) as Array<{
       player_id: string;
       neighbor_id: string;
     }>;
@@ -126,9 +140,13 @@ function loadAvoidPairs(groupId: string, eventId: string, playerIds: string[]): 
 // POST /api/matchmaking
 // Body: { gameId: string, playerIds: string[], teamCount?: number,
 //         avoidAdjacentOpponents?: boolean }
-// avoidAdjacentOpponents is a per-draw choice, not a game setting — whether
-// it's worth keeping seat-neighbors off opposing teams depends on how
-// competitive/serious that particular round is, not the game itself.
+// avoidAdjacentOpponents is always an explicit per-draw choice here, never
+// implied by the game. games.consider_seat_neighbors_default (routes/games.ts)
+// only prefills this checkbox client-side when a game is selected — it still
+// arrives as an ordinary boolean in this request body and stays freely
+// overridable per draw, since whether it's worth keeping seat-neighbors off
+// opposing teams can depend on how competitive/serious that particular round
+// is, not just the game itself.
 matchmakingRouter.post('/', (req, res) => {
   const { gameId, playerIds, teamCount, avoidAdjacentOpponents } = req.body ?? {};
 
@@ -153,22 +171,23 @@ matchmakingRouter.post('/', (req, res) => {
     return res.status(400).json({ error: 'avoidAdjacentOpponents muss ein Boolean sein.' });
   }
 
-  const game = db.prepare('SELECT id, name, max_team_size FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
-    | GameRow
-    | undefined;
+  const game = db
+    .prepare('SELECT id, name, max_team_size, status FROM games WHERE id = ? AND group_id = ?')
+    .get(gameId, req.group!.id) as GameRow | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+  if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
 
-  const eventId = trackingEventIdForGroup(req.group!.id);
-  if (!eventId) {
-    return res.status(409).json({ error: 'Tracking läuft derzeit in einem anderen Gruppenkontext.' });
-  }
+  const scope = resolveRequestGroupEventScope(req, undefined);
+  if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const eventId = scope.eventId;
   if (!competitionPlayersBelongToGroup(req.group!.id, eventId, uniqueIds)) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
   }
 
   const placeholders = uniqueIds.map(() => '?').join(',');
   const players = db
-    .prepare(`SELECT id, name, color, avatar FROM players WHERE id IN (${placeholders})`)
+    .prepare(`SELECT id, name, color, avatar FROM players WHERE deactivated_at IS NULL AND id IN (${placeholders})`)
     .all(...uniqueIds) as PlayerRow[];
   if (players.length !== uniqueIds.length) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
@@ -199,14 +218,14 @@ matchmakingRouter.post('/', (req, res) => {
       const neighborIds = conflictNeighbors.get(id);
       return {
         ...playerById.get(id)!,
-        rating: ratingByPlayer.get(id) ?? DEFAULT_RATING,
+        rating: ratingByPlayer.get(id) ?? null,
         seatConflict: !!neighborIds,
         seatConflictNames: neighborIds?.map((nid) => playerById.get(nid)?.name).filter((n): n is string => !!n) ?? [],
       };
     });
     return {
       players: teamPlayers,
-      totalRating: teamPlayers.reduce((sum, p) => sum + p.rating, 0),
+      totalRating: totalRatingOf(teamPlayers),
     };
   });
 
@@ -269,22 +288,23 @@ matchmakingRouter.post('/rematch', (req, res) => {
     return res.status(400).json({ error: 'Ein Spieler ist in mehreren Teams.' });
   }
 
-  const game = db.prepare('SELECT id, name, max_team_size FROM games WHERE id = ? AND group_id = ?').get(gameId, req.group!.id) as
-    | GameRow
-    | undefined;
+  const game = db
+    .prepare('SELECT id, name, max_team_size, status FROM games WHERE id = ? AND group_id = ?')
+    .get(gameId, req.group!.id) as GameRow | undefined;
   if (!game) return res.status(404).json({ error: 'Spiel nicht gefunden.' });
+  if (isSuggestionGame(game)) return res.status(400).json({ error: SUGGESTION_GAME_ERROR });
 
-  const eventId = trackingEventIdForGroup(req.group!.id);
-  if (!eventId) {
-    return res.status(409).json({ error: 'Tracking läuft derzeit in einem anderen Gruppenkontext.' });
-  }
+  const scope = resolveRequestGroupEventScope(req, undefined);
+  if (!scope.ok || !scope.eventId) return res.status(409).json({ error: 'Kein aktives Event verfügbar.' });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const eventId = scope.eventId;
   if (!competitionPlayersBelongToGroup(req.group!.id, eventId, uniqueIds)) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
   }
 
   const placeholders = uniqueIds.map(() => '?').join(',');
   const players = db
-    .prepare(`SELECT id, name, color, avatar FROM players WHERE id IN (${placeholders})`)
+    .prepare(`SELECT id, name, color, avatar FROM players WHERE deactivated_at IS NULL AND id IN (${placeholders})`)
     .all(...uniqueIds) as PlayerRow[];
   if (players.length !== uniqueIds.length) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
@@ -384,7 +404,10 @@ function attachMatchResults(draws: ReturnType<typeof parseDrawRow>[]): void {
 // them by matchId.
 matchmakingRouter.get('/history', (req, res) => {
   const { eventId, gameId, limit } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : getTrackingEventId();
+  const scope = resolveRequestGroupEventScope(req, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
+  const filterEventId = scope.eventId!;
   const limitNum = Math.min(50, Math.max(1, parseInt(typeof limit === 'string' ? limit : '', 10) || 20));
 
   const clauses = ['md.group_id = ?', 'md.event_id = ?'];
@@ -427,9 +450,21 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
   }
 
   const row = db.prepare('SELECT * FROM matchmaking_draws WHERE id = ? AND group_id = ?').get(req.params.id, req.group!.id) as
-    | { id: string; game_id: string; event_id: string; teams: string; match_id: string | null; seat_pairs_considered: number }
+    | {
+        id: string;
+        game_id: string;
+        event_id: string;
+        teams: string;
+        match_id: string | null;
+        seat_pairs_considered: number;
+        source: string | null;
+      }
     | undefined;
   if (!row) return res.status(404).json({ error: 'Auslosung nicht gefunden.' });
+  // The group_id filter above is not the event boundary: a draw belongs to a
+  // concrete event, and only its accepted participants may reshuffle it —
+  // same rule POST /, POST /rematch and GET /history apply.
+  if (!requireGroupEventAccess(req, res, row.event_id)) return;
   if (row.match_id) {
     return res.status(409).json({ error: 'Für diese Auslosung wurde bereits ein Ergebnis erfasst.' });
   }
@@ -456,8 +491,11 @@ matchmakingRouter.patch('/draws/:id/move', (req, res) => {
       1
     );
     teams[toTeamIndex].players.push(player);
+    // A captain draft is logged into the same history but never used ratings
+    // (see routes/draft.ts): its snapshot keeps every rating null and a total
+    // of 0, so moving a player must not invent a balancing total for it.
     for (const t of [teams[fromTeamIndex], teams[toTeamIndex]]) {
-      t.totalRating = t.players.reduce((sum, p) => sum + (p.rating ?? 0), 0);
+      t.totalRating = row.source === 'draft' ? 0 : totalRatingOf(t.players);
     }
   }
 

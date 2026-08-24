@@ -8,7 +8,7 @@ import { isNonEmptyString } from '../validation';
 import { requireRecentReauthentication } from '../sessions';
 import { writeAdminAudit } from '../adminAudit';
 import { requireGroupRole } from '../groupAuthorization';
-import { resolveGroupEventScope } from '../groupEventScope';
+import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
 
 export const infoBoardRouter = Router();
 
@@ -38,8 +38,9 @@ function serialize(row: InfoRow) {
 }
 
 infoBoardRouter.get('/', (req, res) => {
-  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
+  const scope = resolveRequestGroupEventScope(req, req.query.eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const rows = db
     .prepare('SELECT * FROM info_entries WHERE group_id = ? AND event_id IS ? ORDER BY created_at')
     .all(req.group!.id, scope.eventId) as InfoRow[];
@@ -54,8 +55,9 @@ infoBoardRouter.post('/', requireGroupRole('admin'), (req, res) => {
   if (!isNonEmptyString(content, MAX_CONTENT_LENGTH)) {
     return res.status(400).json({ error: `Inhalt ist erforderlich (1-${MAX_CONTENT_LENGTH} Zeichen).` });
   }
-  const scope = resolveGroupEventScope(req.group!.id, eventId);
+  const scope = resolveRequestGroupEventScope(req, eventId);
   if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  if (!requireGroupEventAccess(req, res, scope.eventId)) return;
   const now = Date.now();
   const row: InfoRow = {
     id: nanoid(),
@@ -78,6 +80,7 @@ infoBoardRouter.patch('/:id', requireGroupRole('admin'), (req, res) => {
     .prepare('SELECT * FROM info_entries WHERE id = ? AND group_id = ?')
     .get(req.params.id, req.group!.id) as InfoRow | undefined;
   if (!existing) return res.status(404).json({ error: 'Eintrag nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, existing.event_id)) return;
 
   const { title, content } = req.body ?? {};
   if (title !== undefined && !isNonEmptyString(title, MAX_TITLE_LENGTH)) {
@@ -102,8 +105,13 @@ infoBoardRouter.patch('/:id', requireGroupRole('admin'), (req, res) => {
 });
 
 infoBoardRouter.delete('/:id', requireGroupRole('admin'), requireRecentReauthentication, (req, res) => {
-  const result = db.prepare('DELETE FROM info_entries WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Eintrag nicht gefunden.' });
+  const existing = db.prepare('SELECT * FROM info_entries WHERE id = ? AND group_id = ?').get(
+    req.params.id,
+    req.group!.id,
+  ) as InfoRow | undefined;
+  if (!existing) return res.status(404).json({ error: 'Eintrag nicht gefunden.' });
+  if (!requireGroupEventAccess(req, res, existing.event_id)) return;
+  db.prepare('DELETE FROM info_entries WHERE id = ? AND group_id = ?').run(req.params.id, req.group!.id);
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     groupId: req.group!.id,

@@ -6,7 +6,8 @@ import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { isIntInRange } from '../validation';
 import { computeSkillSuggestionsForGame, MIN_RESULTS_FOR_SUGGESTION, type SkillSuggestionMatch } from '../skillSuggestion';
-import { requireConfiguredUser } from '../sessions';
+import { requireUser } from '../sessions';
+import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
 
 export const skillsRouter = Router();
 
@@ -42,7 +43,18 @@ skillsRouter.get('/', (req, res) => {
 // rather than cached/stored: at this project's scale (a LAN's worth of
 // matches) that's cheap, and it means the suggestion is always exactly
 // consistent with the current match history, including edits/deletes.
+//
+// Reads the same personal participation allowlist as every other endpoint
+// derived from `matches` (Rangliste, Hall of Fame, Auswertungen). Without it
+// this would be the one remaining instance-wide all-events aggregate: the
+// suggestion carries gamesPlayed and wins per player, so an unscoped read
+// reported how a private event went to accounts that were never invited to it
+// (docs/KONZEPT-EVENT-SICHTBARKEIT.md, Abschnitt 4.4). A kiosk stays bound to
+// its token event, as everywhere else.
 skillsRouter.get('/suggestions', (req, res) => {
+  const scope = resolveAnalyticsEvents(req, req.query.eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  const eventFilter = eventIdSql('event_id', scope.eventIds);
   const games = db.prepare('SELECT id FROM games WHERE group_id = ?').all(req.group!.id) as Array<{ id: string }>;
   const suggestions: Array<{
     gameId: string;
@@ -55,8 +67,11 @@ skillsRouter.get('/suggestions', (req, res) => {
 
   for (const game of games) {
     const rows = db
-      .prepare('SELECT result, played_at FROM matches WHERE game_id = ?')
-      .all(game.id) as Array<{ result: string; played_at: number }>;
+      .prepare(
+        `SELECT result, played_at FROM matches
+         WHERE group_id = ? AND game_id = ? AND ${eventFilter.clause}`,
+      )
+      .all(req.group!.id, game.id, ...eventFilter.params) as Array<{ result: string; played_at: number }>;
     const decided: SkillSuggestionMatch[] = rows
       .map((r) => ({ ...(JSON.parse(r.result) as Omit<SkillSuggestionMatch, 'playedAt'>), playedAt: r.played_at }))
       .filter((m) => m.winnerTeamIndex !== null);
@@ -72,7 +87,7 @@ skillsRouter.get('/suggestions', (req, res) => {
 
 // PUT /api/skills - upsert a single rating. Idempotent by design so the
 // frontend can fire-and-forget on every slider change.
-skillsRouter.put('/', requireConfiguredUser, (req, res) => {
+skillsRouter.put('/', requireUser, (req, res) => {
   const { playerId, gameId, rating } = req.body ?? {};
 
   if (typeof playerId !== 'string' || !playerId) {
@@ -103,7 +118,7 @@ skillsRouter.put('/', requireConfiguredUser, (req, res) => {
 });
 
 // DELETE /api/skills/:playerId/:gameId - clear a rating.
-skillsRouter.delete('/:playerId/:gameId', requireConfiguredUser, (req, res) => {
+skillsRouter.delete('/:playerId/:gameId', requireUser, (req, res) => {
   if (req.player && req.params.playerId !== req.player.id) {
     return res.status(403).json({ error: 'Du kannst nur deine eigenen Skill-Ratings bearbeiten.' });
   }

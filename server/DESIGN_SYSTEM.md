@@ -6,6 +6,18 @@ tokens are plain CSS custom properties defined once in `server/public/css/style.
 (`:root` block, top of the file) and consumed everywhere else via `var(--token-name)`,
 including inline `style="..."` attributes built by the JS views.
 
+Arcade-only presentation rules live in `server/public/css/arcade.css`. The app loads that
+stylesheet only for Arcade views, while `kiosk.html` loads it statically for its Arcade dashboard.
+Keep new Arcade selectors there so shared-view changes do not expand the Arcade browser-test
+trigger.
+
+Arcade browser code lives under `server/public/js/arcade/`; route renderers live in its `views/`
+subdirectory and are declared directly in `viewManifest.js` with `area: 'arcade'`. The Core app
+loads those renderers with native `import()` and waits for `arcade.css` before rendering. New
+Arcade code stays inside this subtree. Move a helper to shared Core code only when Core genuinely
+uses it. The kiosk is the deliberate exception: it loads Arcade CSS statically and may import only
+the small spectator helpers under `arcade/shared/`.
+
 If you're adding or changing UI, the rule is simple: **never write a raw color,
 pixel value, or font-size — always reference a token below.** If the token you
 need doesn't exist yet, add it to the `:root` block first (with a short comment
@@ -143,6 +155,16 @@ a different-sized element, and forcing them to match would either wash out a
 small icon glow or under-power a full-screen splash effect. Only exact-value
 duplicates were consolidated; deliberately distinct ones stay distinct.
 
+## Motion
+
+| Token | Value | Use |
+|---|---|---|
+| `--motion-fast` | `0.15s ease` | Short state transitions such as a tile changing shape |
+
+All animations and transitions still require the global `prefers-reduced-motion`
+override described below. The token only standardizes timing; it does not make
+motion an acceptable substitute for a visible state change.
+
 ## Avatar sizes
 
 | Token | Value |
@@ -172,10 +194,14 @@ columns without making names or avatars too cramped.
 around the physical seating plan the same size; the compact size preserves that equality on phones.
 `--assignment-select-width` (112px) keeps repeated player-to-team selectors aligned independently
 of player-name length.
+`--payment-marker-width` (96px, 88px only below 360px) keeps the food-order payment toggle stable
+directly beside its PayPal action while the label, position count and amount change.
 `--notification-panel-width` (360px) caps the header notification center while it remains
 viewport-responsive on phones.
 `--search-panel-width` (640px) gives the global search palette enough room for titles and short
 descriptions while the shared modal remains full-width on phones.
+`--search-select-results-max-height` (320px) keeps a long searchable option list usable without
+letting it cover the full page; additional results scroll inside the dark listbox.
 
 ## Breakpoints
 
@@ -236,13 +262,24 @@ view and to new views unless a documented domain constraint requires a different
    states must retain the same geometry as the populated state.
 9. **Reuse canonical semantics.** Navigation and „Mehr“ define domain icons through
    `domainIcons.js`; all other appearances reuse those mappings. Visible German page labels stay
-   concise (`Teams`, `Vote`, `Rang`, `Info`, `Trivia`, `Historie`), while longer explanations and
+   concise (`Teams`, `Vote`, `Orga`, `Info`, `Trivia`, `Historie`), while longer explanations and
    former labels may appear only in help text or technical documentation where needed.
-10. **Keep future user management behind a clear boundary.** The current roster is readable by
-    everyone, but only the device's selected identity can edit its own profile. Player creation,
-    deletion, roles and foreign-profile editing are not added to regular UI until authenticated
-    user management owns those actions. Document this temporary identity boundary whenever a new
-    profile-related flow depends on it.
+10. **Keep account management behind the authenticated boundary.** The current roster is readable
+    by every signed-in member, while only the session account can edit its own profile. Player
+    creation, deletion, roles and foreign-profile editing remain admin-only actions.
+11. **Group related workflows into one area with tabs instead of adding nav entries.** The bottom
+    nav carries exactly the six during-party destinations Home, Match, Vote, Essen, Spiele and
+    Mehr; everything else lives under „Mehr“, the topbar, or (for the merged Rangliste/Statistiken/
+    Hall-of-Fame area, „Auswertung“) inside the role-protected Admin area. Auswertung is not a
+    bottom-nav destination: reaching it now always requires the real owner/admin role
+    (`switchView()`'s redirect guard in `app.js`, checked via `currentPlayerHasAdminRole()`), so it
+    lives behind Admin's „Auswertung“ tool card (see „Admin tools“) rather than sharing a
+    conditional bottom-nav slot with Essen the way it once did — Essen now has that slot
+    unconditionally, for every device. Where two or three
+    closely related workflows would otherwise each claim their own entry, they become tabs of one area (see
+    `sectionNav.js`). Every tab keeps its own route, so deep links, the back button and persisted
+    push urls stay valid, and a tab never nests inside another tab row — a merged area flattens the
+    sub-view's own tabs into its area tab row.
 
 ## Components
 
@@ -251,6 +288,32 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Button** — `.btn` (default), `.btn-primary`, `.btn-danger`, `.btn-block`
   (full width), `.btn-sm` (compact). Combine variant + size, e.g.
   `class="btn btn-primary btn-sm"`.
+- **Area tabs** — `.section-tabs` with `.section-tab` is the tab row of a merged top-level area
+  (Match, Auswertung, Orga; defined in `sectionNav.js`). It sits directly under the area's
+  `.view-title`, outside any card, which is what keeps it distinguishable from the in-card control
+  rows further down. Because each tab is a real route, the row is `<nav>` navigation rather than a
+  toggle: the active tab carries `aria-current="page"` plus `.btn-primary`, never `aria-pressed`.
+  A tab may carry a live count in parentheses (Orga's „To-Do“ shows the current identity's own
+  open items) so the number stays visible from every tab of the area; a zero count renders no
+  parentheses at all. That count is loaded once the area is entered on any of its tabs, not only the
+  one that renders the underlying list, and is patched into all of the area's tab buttons in place. Tabs share the full width on phones for a comfortable tap target and size to
+  their own label from `--bp-md`, because two tabs stretched across the wide content column would
+  read as banners rather than navigation. A page-level primary action that used to share a row with the view title
+  moves into a right-aligned `.row.view-actions` above the content („Turnier anlegen“,
+  „Ergebnis eintragen“).
+  Re-rendering the same tab reuses its existing `.section-view` element instead of rebuilding the
+  shell, so a sub-view that reads its own previous DOM before redrawing (the Packliste's add-item
+  draft and focus, the same survives-its-own-rerender pattern the Checkliste's To-Do form uses)
+  keeps working across a background refresh triggered from outside that tab.
+- **Mode / setting choice** — pick the widget by the shape of the decision, not by habit: a native
+  `<select>` for three or more mutually exclusive named options (tournament format); the
+  `.btn`/`.btn-primary` two-or-three-way toggle (`aria-pressed`, usually inside `.selection-toolbar`)
+  for a plain either/or choice with no competing primary action nearby (Team formation's
+  Auslosung/Captain Draft, Checkliste's tabs, the To-Do dialog's Art/Zuweisen-an); the Arcade
+  section's `.arcade-mode-toggle` segmented pill only when the toggle sits directly beside a primary
+  gradient CTA it must not visually compete with; a plain checkbox only for an independent on/off
+  flag (Hin-/Rückspiel, Punktestand tracken, Sitznachbarn), never for a named exclusive
+  choice among alternatives.
 - **Input** — plain `<input>`/`<select>`/`<textarea>` are styled globally by
   type selector; no class needed.
 - **Number stepper** — every `input[type="number"]` is enhanced app-wide by
@@ -265,7 +328,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   underneath the pointer).
 - **Card** — `.card`.
 - **Badge** (status pill) — `.badge` + one of `.badge-playing` /
-  `.badge-paused` / `.badge-offline`.
+  `.badge-online` / `.badge-paused` / `.badge-offline`. Online reuses the
+  accent color pair so it stays distinct from the green active-game state.
 - **Chip** — `.chip` (generic pill, works on `<span>`, `<button>`, `<a>`).
 - **List row** — `.list-row` (+ `.list-row-icon`, `.list-row-desc`) for
   Spieler/Spiele/Turniere lists and the "Mehr" hub.
@@ -282,10 +346,38 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.notification-center-entry` keeps the full personal history plus single/bulk read/remove state;
   unread entries use the accent edge and elevated background without an additional „Neu“ badge;
   the two bulk actions share the complete sticky footer width in equal columns below the history.
+- **Connection status** — `.connection-status` is the single global technical-state strip below the
+  topbar. A short initial Socket.IO connection stays hidden to avoid startup flicker; offline and
+  reconnect states remain visible with explicit German text until a confirmed reconnect hides the
+  strip. The state uses the shared paused color pair and a local Lucide icon, never color alone.
 - **Global search** — `.global-search` with `.global-search-results` and
   `.global-search-result`, wired through `searchPalette.js`; opens from the topbar or with
   `Strg/Cmd + K`, searches both areas and current app content without an external service, and uses
   `.search-target-highlight` to expose a concrete result after navigation.
+- **Searchable select** — `.search-select` combines a text input with an app-rendered
+  `.search-select-list`/`.search-select-option` listbox. It replaces the browser's native
+  unthemeable `datalist` popup for long game catalogs, keeps the selected value in the existing
+  hidden input contract, filters while typing, caps long result lists locally and supports
+  pointer, touch, arrow keys, Enter, Escape and visible focus. An option may carry a leading
+  status icon (`icon`, `iconLabel`, `iconState`); the component then renders it both inside the
+  collapsed control (`.search-select-value-icon`/`.search-select-status`, seated in the field's own
+  left padding, which `.has-status-icon` reserves) and on every row of the open list
+  (`.search-select-option-icon`). That is the point of the icon: the state is readable *while*
+  choosing, which a native `<select>` cannot do inside its options. `iconState` only colours the
+  icon — each one also carries the German state as `aria-label` and `title`, so meaning is never
+  colour alone. Option sets without icons render exactly the markup they did before.
+- **Event dropdown** — every place that picks an event uses the searchable select above with one
+  shared option shape from `eventStatus.js` (`eventSelectOption`/`eventSelectOptions`): the event
+  title plus its state as an icon, newest first. That covers the topbar workspace switcher
+  (`#event-context`), Auswertung's shared filter, „Meine Statistiken“ and Hall of Fame's „Nach
+  LAN“ picker. They previously described the same events in three different ways — one appended
+  the date range, another showed the bare name, and none showed the state until after a choice had
+  been made. The date range is deliberately gone: `eventStatus.js`'s vocabulary is what the reader
+  chooses by, and the event cards in Orga remain the place that shows a LAN's exact dates. A filter
+  that also offers „Gesamt (alle Events)“ passes it as `allEntryLabel`; that entry is not an event
+  and therefore carries no state icon. Hall of Fame's payload holds results rather than lifecycle
+  flags, so it joins its events against `accessibleEvents()` for the state and falls back to a
+  plain title for an event that list no longer holds.
 - **Sticky in-card actions** — `.sticky-actions` pins a card's primary action(s) to the bottom of
   the viewport, just above the fixed bottom nav, while a long preceding list (vote game rows,
   player-selection grids) scrolls through. It stays bounded to its own card via `position: sticky`
@@ -293,19 +385,31 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   unrelated card further down the page. Used for the open vote round's submit/cancel/beenden stack
   and the „Abstimmung starten“ action in Vote, and the „Teams auslosen“/„Draft starten“ actions in
   Team formation and Tournament creation.
+  While it's stuck, whatever list row is scrolling past directly behind it is briefly hidden —
+  reproducible on a full-size roster at common laptop heights like 1366×768, not only on phones.
+  A structural fix (reserving matching blank space so no real row ever lines up behind the bar)
+  would need to track live content height for every row along the whole scrollable region, i.e.
+  turn each long list into its own internally-scrolling box instead of scrolling with the page —
+  a materially different, riskier interaction model for a narrow, self-resolving annoyance
+  (scrolling a little further always clears it). Instead the bar reuses the topbar/bottom-nav
+  frosted-glass treatment (`background: rgba(23, 30, 46, 0.7)` plus `backdrop-filter: blur(16px)
+  saturate(1.4)` where supported) so a covered row stays legible through it, and only its actual
+  controls (`button`, `a`, `input`, `[tabindex]`) opt back into `pointer-events` — the bar's own
+  background is `pointer-events: none`, so a click on the empty part of the bar falls through to
+  whatever row is currently behind it instead of being swallowed by the bar's wrapping layout.
 - **Collapsible section** — `.collapsible-section` uses a native `details` element with
   `.collapsible-section-header`, a count/status badge and `.collapsible-section-chevron`. It is the
   standard presentation for collapsed histories, completed tournament lists and closed order
   cards: a full bordered card whose chevron rotates when opened. Section-specific content lives in
   `.collapsible-section-content`; decorative heading icons are omitted.
 - **Seating status** — `.seating-status-indicator` sits directly after the gamer name and mirrors
-  the shared live state as green „Spielt“, yellow „Pause“ or red „Offline“. Its German title and
-  accessible label preserve the meaning beyond color. Playing and pause indicators pulse gently,
+  the shared live state as green „Spielt“, blue „Online“, yellow „Pause“ or red „Offline“. Its German title and
+  accessible label preserve the meaning beyond color. Playing, online and pause indicators pulse gently,
   while offline stays static; the global reduced-motion rule disables that motion when requested.
   Every `.seating-seat` uses the same width and height on all four table sides, so vertical sides
   no longer stretch into wide rows. Phones switch all four sides to one shared compact size and
   keep exceptionally narrow layouts locally scrollable instead of widening the page.
-- **Team formation** — the Teams view first asks for game and mode: one shared `<select>` picks the
+- **Team formation** — the „Teams“ tab of the „Match“ area. The view first asks for game and mode: one shared `<select>` picks the
   game, followed by a `Modus` toggle (two `.btn`/`.btn-sm` buttons, `.btn-primary` marking the active
   one, `aria-pressed` conveying state beyond color) choosing between „Auslosung“ and „Captain Draft“.
   Only the chosen mode's `.tournament-section-panel` renders below — the two workflows never compete
@@ -317,7 +421,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the associated player grid. Both selections use the standard checkbox-card state without an
   additional selected-card highlight. The captain action stretches like the draw action and stays
   labeled simply „Draft starten“ without repeating participant counts already visible in the
-  selections. Switching modes keeps both selections intact, so toggling back and forth loses no work.
+  selections. Each player and captain checkbox grid has a directly labeled search field that filters
+  its visible rows without changing hidden selections; where bulk selection actions are offered, they
+  apply only to the currently visible search results. Switching modes keeps both selections and search
+  terms intact, so toggling back and forth loses no work.
   „Teams auslosen“ and „Draft starten“ share one rule: each stays disabled until its minimum
   (2 selected players; 2–4 captains plus at least 1 pool player) is met, and a red
   `.info-tooltip-trigger--warning` beside the disabled button names the exact missing requirement —
@@ -326,9 +433,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   chips; the drafted teams are introduced by the parallel heading „Captains“. Decorative draft icons
   and the redundant local-turn hint are omitted.
   Every player row in both setup flows, the live draft and the drawn teams shows the shared activity
-  icon followed by the selected game's `1–10` skill value; an en dash makes a missing self-rating
-  explicit instead of silently presenting the matchmaking fallback as a real rating. The title and
-  accessible label retain the full term „Skill-Level“.
+  icon followed by the selected game's `1–10` skill value; in the rating-balanced draw a missing
+  self-rating shows the matchmaking fallback in parentheses, so the visible value matches the one
+  the draw balanced with, while the captain draft keeps the en dash because it never uses ratings.
+  The title and accessible label retain the full term „Skill-Level“.
   Open draws and recorded results share one newest-first „Historie“ because they are two states of
   the same lineup. It starts collapsed through the shared collapsible-section component. Every
   history card repeats its game name. Recorded results omit a status badge;
@@ -339,21 +447,96 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Successful seat-neighbor grouping stays silent; a note appears only when requested seat neighbors
   still had to be placed in opposing teams.
 - **Player skill display** — `skillDisplay.js` renders the shared activity icon plus the selected
-  game's current self-rating, or an en dash when no rating exists. Teams and Tournaments reuse it
-  in participant selection, drawn-team previews, live drafts, histories and tournament detail teams;
-  the icon's tooltip and accessible label retain the full „Skill-Level“ meaning. Team headers show
-  the same icon with a dynamically calculated total; missing ratings contribute `0`, stated
-  explicitly in its tooltip and accessible label.
-- **Player profiles** — The roster is public and opens read-only details for other participants.
-  The current device identity is marked as „Mein Profil“ and opens the dedicated self-service
-  profile editor. Foreign profiles expose neither edit/delete actions nor the private agent key;
-  the API omits the private agent key and rejects profile-field updates when `x-player-id` does not
+  game's skill value. Teams and Tournaments reuse it in participant selection, drawn-team previews,
+  live drafts, histories and tournament detail teams; the icon's tooltip and accessible label
+  retain the full „Skill-Level“ meaning. Two call-site options decide what an honest value is:
+  - `balanced` (default `true`) — the shown teams really were built from these ratings. A player
+    without an own rating then shows the neutral matchmaking fallback dimmed and in parentheses
+    (`.rating-unrated`, `5`, mirroring `DEFAULT_RATING` in `src/routes/matchmaking.ts`) instead of
+    an en dash, because that is the value the draw balanced with; the team header's total includes
+    those fallbacks and appends the dimmed parenthesized count of unrated players. Changing the
+    server-side fallback requires updating `UNRATED_SKILL_VALUE` in the same work item so the shown
+    totals cannot drift away from the balancing again.
+  - `balanced: false` — the captain draft, which picks by turn order and never reads ratings
+    (`src/routes/draft.ts`). Its values are purely informational for the picking captain, so a
+    missing rating stays an en dash („Noch kein Skill-Level eingetragen“) and neither the row nor
+    the total claims that anything counted with `5`. This covers the live draft board, the draft
+    participant/captain selections and drafted lineups in the history.
+  - `stored: true` — the player objects come from a persisted draw snapshot
+    (`matchmaking_draws.teams`, the `POST /api/matchmaking` response) and carry the rating that
+    draw used, `null` where there was none. Those values are shown as-is, so a self-rating entered
+    later cannot retroactively change a recorded lineup's rows or total. Live selections carry no
+    snapshot and read the current rating from state.
+- **Game catalog** — The list has three tabs: „Katalog“ (the accepted games), „Vorschläge“ (the
+  proposals waiting to be accepted) and „Alle“ (both together). „Alle“ means all — in that mixed
+  list every suggestion keeps its `.badge-paused` marker (`.game-row-status-badge`) plus a matching
+  `.is-suggestion` border/inset-shadow tint on the row itself, which an accepted game never
+  carries, so the two remain distinguishable without switching tabs. The marker is icon-only (a
+  lightbulb with an accessible name and native title, not the spelled-out word) since it repeats on
+  every suggestion row in that mixed list; the „Vorschläge“ tab's own label and active state already
+  say what the whole list is, so its rows carry no additional per-row marker.
+  Below the tabs, the sort buttons and the filter controls share one compact
+  `.tournament-section-panel` — the same bordered/accent-rail pattern the Tournament create form
+  and result dialogs use to separate sibling control groups, but one panel instead of two so the
+  combined control area doesn't push the actual list further down than it has to. Neither group
+  carries a visible text heading; `.game-catalog-filter-group`'s hairline `border-top` is the only
+  visual separator between them, and each group still has an `aria-label` (`role="group"`) so the
+  category survives for assistive tech even without on-screen text. The active sort key gets
+  `.btn-primary` plus its direction arrow, which combined with the `.btn`/`.chip` shape difference
+  from the filter controls below is enough to read as sort vs. filter without a heading for either.
+  Inside the filter group, genre chips, the „Bock offen“/„Skill offen“ chips and the free-text
+  search carry no per-row label either — each control's own text or accessible name already says
+  what it does — and `.game-catalog-filter-divider` separates them from each other with the same
+  kind of hairline.
+  Every other surface that picks a game to actually play — Vote, Turnier, Team-Auslosung, Captain
+  Draft, „Ergebnis eintragen“ and game pings — offers accepted games only (`catalogGames()` in
+  `public/js/state.js`, enforced server-side by `src/routes/gameSelection.ts`), which is what keeps
+  those pickers short. Demoting a game must not strand what it already produced, so
+  `gamesWithHistory()` adds back every game that already carries data wherever a picker also
+  scopes existing records: the Rangliste's game filter and the Teams view's game select, whose
+  one control also scopes the Historie below it. Such a game stays visible but cannot start
+  anything new — the Teams view disables „Teams auslosen“/„Draft starten“ with the usual red
+  warning tooltip naming the reason, and „Ergebnis eintragen“ preselects a different game and
+  says why in a toast instead of silently swapping it. The one action that stays open is
+  completing a draw made while the game was still in the catalog: a result carrying that
+  `drawId` is accepted, because recording what was actually played is history rather than
+  scheduling. Both meters are editable on every tab, suggestions included — how good the group
+  already is at a game is part of deciding whether to accept it.
+  Bock and Skill sliders in the game catalog are stored 1-10 and have no true
+  empty position, so an untouched slider still renders at a plausible mid-value; it stays dimmed
+  (`.skill-row-slider-unset`) and its number label shows an en dash for "no rating yet" until the
+  player's own input event fires. The dash belongs to this own-rating input, where no value has
+  been given at all — unlike the team views, where a missing rating still enters the draw as the
+  parenthesized fallback. Two independent chip
+  filters, „Bock offen“ and „Skill offen“, narrow the list to games the current identity hasn't
+  rated yet on that facet; both active at once is an AND, unlike the genre chips'
+  OR-within-one-facet semantics.
+  The first-login onboarding uses the same catalog rows in a temporary rating mode. The first ten
+  required games are marked with the textual `Pflicht` badge and an accent rail; the list can be
+  expanded to all catalog games, but completion still requires both sliders for the required set.
+  If a required game is demoted or removed while the round is open, the server reconciles the
+  candidate list against the current catalog and fills the vacancy from the next ranked game.
+  Test-player ratings are excluded from this ranking because those players are hidden in normal
+  member views. `Später` persists a deferred round, restores the normal catalog for the current
+  session and resumes the rating panel on the next login.
+- **Player profiles** — There is no separate roster area: Home's Live-Status already lists everyone,
+  so every card there is a button that opens that participant's read-only detail dialog. The card
+  of the session account is marked „(du)“ and opens the dedicated self-service profile editor
+  instead. A global-search hit on a person behaves the same way — the dialog opens over the current
+  view rather than navigating away from it. The card's children stay `<span>`s carrying only display
+  styling — a `<button>`'s content model is phrasing content, and its descendants are presentational
+  to assistive technology once an `aria-label` is set — so the live state and running games are
+  spelled into that accessible name itself instead of only appearing as visible child markup.
+  Foreign profiles expose neither edit/delete actions nor the private agent key;
+  the API omits the private agent key and rejects profile-field updates when the session does not
   match the target player.
-  The roster itself has no duplicate „Teilnehmende“ heading and no player-creation action. Player
-  creation stays deliberately deferred until authenticated user management owns that workflow. The
-  desktop roster keeps exactly two equal-width cards per row; an odd final player does not stretch.
-  This device-local identity header is deliberately documented as the temporary boundary that
-  future authenticated user management must replace. The self-service profile uses the shared
+  A foreign profile's detail dialog leads with identity (avatar, Gamertag, real name); the complete
+  „Bock & Skill“ rating list across every game sits inside one initially collapsed
+  `.collapsible-section` carrying the total game count, so a roster of many games does not force a
+  long scroll just to see who someone is.
+  Player creation stays in the authenticated Admin workflow. The desktop live board keeps exactly
+  two equal-width cards per row; an odd final player does not stretch.
+  The self-service profile uses the shared
   grouped-page hierarchy for profile data, Agent setup, Push, visible monitors and personal stats.
   Agent setup is split into three stable nested cards for choosing tracking, downloading and
   installing; tracking pause belongs to the first step beside foreground-activity tracking, and
@@ -364,18 +547,37 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   below that row. The foreground option uses the concise label „Erweitertes Tracking“. Push uses the same checkbox language with its
   explanation in a tooltip instead of an action button and omits a redundant off-state sentence.
   Visible-monitor choices form exactly two columns from `--bp-md`, with phones kept to one column.
-- **Settings and admin tools** — Settings uses separate grouped cards for Events, the invitation
-  link and the TV/Kiosk view. Their concise explanations live in contextual tooltips beside each
-  heading. Event cards use the standard two-column nested-card grid. Invitation link, copy action
-  and QR action share one compact row at one shared control height; the QR code opens in the shared centered modal rather than expanding
-  the settings page. Backup and seating-plan editing are absent from regular settings and live
-  together as nested tool cards in the active Admin mode. Each tool card keeps its title, adjacent
-  help tooltip and colorful primary action on one row; the seating editor returns to Admin and blocks
-  editing outside that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and
+- **Admin tools** — Account invitations and claim/reset links live in Admin's authenticated
+  onboarding group; their QR codes open in the shared centered modal.
+  Admin begins with one „LAN-Bereitschaft“ group: its overall badge and responsive
+  two-column check cards cover Server/SQLite, Event and participants, agent coverage/version,
+  process mappings, Kiosk and the latest persistent backup. Every card pairs its semantic badge
+  with a textual summary and actionable detail; loading and retry errors stay inside the group.
+  Backup and seating-plan editing are absent from regular member views and live
+  together as nested tool cards in the role-protected Admin area. Admin settings and tools remain
+  visible to owners/admins without activating the device-local Admin mode; that mode only reveals
+  test players and test-data controls throughout the app and enables Arcade AI matches. The leading
+  tool card, „Auswertung“, is the sole entry point into the merged Rangliste/Statistiken/Hall-of-Fame
+  area: it used to be a conditional bottom-nav destination gated by the device-local Admin mode
+  (sharing that slot with Essen), but now lives only here, gated by the real admin role like the
+  rest of Admin — the same standalone, role-protected pattern as „Kioskverwaltung“ below, not a
+  shortcut into an otherwise generally-reachable tab. A further
+  tool card, „Eventverwaltung“, links into Orga's „Events“ tab — that global, non-personal
+  management surface is otherwise only reachable through „Mehr“ like any other Orga tab. „Kioskverwaltung“
+  is different: TV-Kiosk is not an Orga tab at all, so this card is its only entry point, a
+  standalone role-protected route of its own (the same pattern as „Sitzplan“) rather than a link
+  into a tab row. Each tool card keeps its
+  title, adjacent help tooltip and colorful primary action on one row; the seating and kiosk
+  editors both return to Admin and remain role-protected independently of that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and
   need no separate Admin action. The test-data fixture explanation and the existing test-player count live in adjacent
   tooltips; the compact count input, „Test-Daten aufräumen“ and create action share one control row
   in that order. Cleanup removes every marked test player and test LAN
-  without touching real events.
+  without touching real events. The single-instance access context is not shown as a separate group
+  control in the topbar. Owner/Admin/Member roles are managed directly in Admin's consolidated
+  „Benutzer“ list; test players keep a read-only member role there.
+  „Benutzer“ list; test players keep a read-only member role there. The underlying group detail,
+  update, removal and audit endpoints remain server-side compatibility interfaces and intentionally
+  have no separate frontend commands.
   The seating editor follows the same grouped-page hierarchy: the editable plan comes first, followed
   by „Spieler“ and „Konfiguration“. Unassigned players use the shared rectangular two-column player
   rows instead of pills; phones keep one column. Empty seats use an accent border and only the
@@ -418,8 +620,15 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Nested `.card` surfaces use the secondary elevated background so their hierarchy remains visible.
   `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
-  The „Mehr“ hub keeps each destination's canonical icon directly beside its centered title so
-  both read as one label; those icons are one spacing step smaller than standard list-row icons and
+  The „Mehr“ hub holds Mein Profil, Admin, Arcade, Durchsage, Jam and Orga — the destinations that
+  are not among the six bottom-nav entries. Mein Profil moved here from its former topbar icon
+  (`#profile-btn`) to make room for the always-available Feedback icon there (see „Feedback“
+  below); the needs-setup indicator that used to sit on that topbar icon now sits on the „Mehr“
+  bottom-nav icon instead. Essen is never listed here since it already has an
+  unconditional bottom-nav slot of its own (`more.js`); Auswertung is never listed here either —
+  it has no general-audience entry point at all, living only behind Admin's „Auswertung“ tool card
+  (see „Admin tools“). It keeps each destination's canonical icon
+  directly beside its centered title so both read as one label; those icons are one spacing step smaller than standard list-row icons and
   use the wider section gap to keep icon and text visually distinct. Only the navigation chevron
   remains independently aligned at the right.
   The destinations below „Mehr“ follow this same hierarchy without adding decorative accent rails:
@@ -430,44 +639,237 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   persistent explanation below the form. Recent broadcasts live in one standard, initially
   collapsed „Historie“ section whose open state survives live re-renders; its entries use the
   responsive two-column row grid.
-- **Food orders** — Open and historical orders use one full-width nested card per row so their
-  metadata, player positions, add-item form, total and actions stay aligned regardless of content.
-  Consecutive cards alternate blue and pink accent rails and omit decorative order, timer and link
-  symbols. The responsive add-item row keeps description, explicit quantity, unit price with euro
-  suffix and the compact action together. Item totals multiply unit price by quantity; clearly
-  labeled subtotals per player and the order-wide total use consistent German currency formatting.
-  Quantity starts empty with the explicit placeholder „Anzahl“ instead of implying one item. Quantity
-  and price use the same wider field width; the left-aligned quantity carries an internal
-  multiplication sign just as the price carries its euro suffix, so neither placeholder is squeezed.
-  An absent send time is plain text without a misleading timer icon. Closing an order is the
-  colorful full-width primary action below a divider; the compact neutral „Hinzufügen“ action does
-  not stretch to the input height. Closed orders live inside one standard, initially collapsed
-  „Historie“ section whose open state survives live re-renders. Every card — open, abgeschickt or
-  geschlossen — carries a stacked full-width „Bestellung löschen“ danger action below its other
-  actions, since scrapping an order stays possible at every lifecycle stage unlike the other,
-  stage-gated mutations. Each position's two per-item checkboxes carry their own short visible
-  label („Bezahlt“, „Sammelzahlung“) instead of relying on an aria-label alone; a single contextual
-  tooltip beside „Sammelzahlung“, shown once per card when the order has a PayPal link, explains
-  that any position — including someone else's — can be picked for the combined payment below.
-- **Packliste** — „Meine Packliste“ and „Aufgaben & Anfragen“ are separate grouped-page sections.
-  The personal list is a compact checkbox row per item (Grundstock plus freely added/removable
+- **Food orders** — Open and historical orders use one full-width nested card per row. Consecutive
+  open cards alternate blue and pink accent rails; orderer groups and position rows use no decorative
+  order, timer or link symbols. A send time is shown as `20.08. 19:30 Uhr`; without one the detail
+  line reads `Kein Zeitpunkt festgelegt`. The view keeps the existing free-text description suggestions,
+  quantity field, optional unit price with euro suffix, consolidated list and lifecycle actions.
+
+  Payment is a per-person handoff, never a per-position action. Each orderer group shows the
+  quantity-weighted meta line (`<n> Positionen`, plus `Preis fehlt` when necessary), the complete
+  tip-inclusive person sum with a small `inkl. x % Trinkgeld` line when a tip is set, a copy action, a PayPal action when the order has a link, and one two-state
+  paid marker. `Bezahlt?` uses a dashed circle; `Bezahlt` uses a green check and names the confirmer.
+  Its fixed-width slot follows directly to the right of the PayPal action in the group action
+  cluster, so label, position and total changes do not move it.
+  The marker is derived from the group's items, is available to every authenticated member, and is
+  disabled only after finalization. Both marking and reversing happen directly without a confirmation;
+  the paid marker's tooltip names existing confirmers. A group delete is available only for the current
+  member's open, entirely unpaid group and confirms the complete position list. When a group is paid,
+  every one of its position descriptions and amounts is struck through; reversing removes that treatment.
+  Finalization itself is not permanent: the creator/an admin can reopen a finalized ("Geschlossen") order
+  back to the closed/"Abgeschickt" state through the same `Wieder öffnen` action shown for a merely closed
+  order, which restores paid marking and metadata edits (items stay frozen until a further reopen).
+
+  The PayPal button is the only payment handoff. It opens a blank tab synchronously, clears its opener,
+  refreshes the order immediately before navigation, aborts when the order or any group item vanished,
+  was paid elsewhere, lost its link, or has an incomplete price, and then navigates to the exact
+  stored URL, appending the amount only for a bare `paypal.me` recipient link. A `Bezahlt?` dialog
+  opens immediately after navigation, explains whether the amount was prefilled, lists every displayed
+  position amount, and offers copy actions for both the total and stored PayPal address; only the
+  affirmative answer marks all group items paid. The local `paypal` icon is the filled brand path in
+  `icons.js`; other icons remain line icons.
+
+  Position rows contain only quantity × description, amount, copy and delete. The displayed amount
+  includes quantity and tip; copy uses exactly that display string. There is no position-level paid
+  marker, selection state or row divider; their strike-through is derived from the person-level paid
+  state. Own open positions can be deleted after the existing confirmation; paid positions disable
+  deletion. Foreign and unavailable actions keep their reserved spacer so columns stay aligned. The
+  order summary counts quantity-weighted positions,
+  people, fully paid people and the open sum of people not fully confirmed. Missing prices show the
+  actual priced subtotal with `Preise unvollständig`; the total is labeled `(unvollständig)`.
+
+  The detail-links row always contains `Bestellübersicht`, visible to everyone, with `margin-left:auto`.
+  The list deliberately contains no names or paid state: it consolidates normalized descriptions by
+  exact unit price and shows quantity, unit price, line total, subtotal and tip-inclusive total.
+  The order card puts title/status, creator/time metadata, info, summary, toolbar, groups, total,
+  add form and lifecycle actions in that order. The toolbar contains only
+  `Alle ausklappen`/`Alle einklappen`, aligned left. When more than one order is open, each card
+  starts collapsed; a sibling `aria-expanded` button controls its body, and a search/push target
+  expands exactly that card. A single open order has no card-collapse chrome. The same rule applies
+  independently inside Historie: once it holds more than one closed/finalized order, each of its
+  cards gets the identical collapsible header/chevron and starts collapsed too, while a single
+  history entry stays chrome-free. A target for a sent order opens the history section and expands
+  that specific card within it (when Historie holds more than one entry) instead of only the section
+  itself. Both expanded-state sets live in module state and survive live re-renders.
+  The add action is a normal `.btn` spanning the last grid columns and stretching to field height.
+
+  Two hours after an order is sent, unpaid active members become eligible for a direct payment
+  reminder, repeated at most once per rolling two-hour window. Home's `Aktuell` list enriches the
+  existing order row instead of adding a duplicate. The
+  reminder uses the same order deep link and a durable per-player/event send timestamp independent of
+  the bounded push history.
+- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its five area tabs
+  are sorted alphabetically by their German label: „Abstimmungen“, „An- & Abreise“, „Events“, „Packliste“ and
+  „To-Do“ (the last two formerly the separate „Checkliste“ and „An- & Abreise“ areas;
+  docs/KONZEPT-PACKLISTE-TICKETS.md Abschnitt 9 records the earlier „Packliste“→„Checkliste“
+  rename — „Events“ is the former standalone „Einstellungen“ view, moved here because it is setup
+  work like the rest of Orga rather than a personal preference screen; there is no longer a topbar
+  settings icon). TV-Kiosk is deliberately not an Orga tab — it lives only behind Admin's
+  „Kioskverwaltung“ tool card (see „Admin tools“) since opening the shared-screen dashboard is an
+  admin task, not something every member needs from Orga. „Mehr“ opens Orga on its first tab,
+  „Abstimmungen“, like every other area (`sectionEntryView()` in `sectionNav.js`), so the tab row's
+  top-left tab is the one actually selected on arrival; the already persisted push url `/#checklist`
+  is unaffected and still lands directly on To-Do. That tab label carries
+  the live count of the current identity's own open+taken items. The checklist's former in-view
+  toggle is gone — its two halves are area tabs now, so no tab row nests inside another.
+  The personal list is unchanged: a compact checkbox row per item (Grundstock plus freely added/removable
   custom entries) with a checked item shown via muted, struck-through text instead of a separate
-  badge, followed by the plain add-item field/button row. Shared tasks and open Mitbring-Anfragen
-  use one bare `.badge` to distinguish the two types and share the same nested-card layout as an
-  open request card; „Übernehmen“ replaces the claim action once someone else already committed to
-  it, and the requester/organizer sees „Zurückziehen“ on their own open entry instead. Tasks already
-  taken move into the „Unterwegs“ subsection with the current assignee's avatar/name and, for that
-  assignee only, „Freigeben“/„Erledigt“ actions. Completed tasks live in one standard, initially
-  collapsed „Historie“ section whose open state survives live re-renders, same as Food orders.
+  badge, followed by the plain add-item field/button row.
+  Any active member — not only Owner/Admin — can create a To-Do of either Art (Aufgabe/
+  Mitbring-Anfrage) through one unified „To-Do erstellen“ dialog: a `.selection-toolbar` Art toggle,
+  Titel/Beschreibung, a second `.selection-toolbar` for „Zuweisen an“ (Niemand/Ich/Personen wählen —
+  the last reveals the existing player-selection grid plus „Alle auswählen“/„Alle abwählen“), and an
+  optional „Fällig bis“ date using `dateTimeFieldHtml`'s `dateOnly` mode (no time-of-day picker, since
+  none is meaningful here). Switching Art or Zuweisen-an mid-form preserves already-typed field values
+  across the internal re-render, the same survives-its-own-rerender pattern the add-item field uses.
+  „Mir zugewiesen“ is a dedicated first subsection listing the current identity's own open+taken
+  To-Dos sorted by due date (undated ones last); an overdue card gets the `checklist-task-overdue`
+  border/background treatment and every card with a due date carries a `.badge-overdue`/
+  `.badge-due-soon`/`.badge-neutral` pill (never color alone — the badge text itself says „Überfällig“/
+  „Heute fällig“/„Morgen fällig“/„Fällig in N Tagen“/a plain date). „Offen“ (the shared pool) gets
+  `.chip` filter toggles for Art (Alle/Aufgaben/Mitbring-Anfragen) plus a „Von mir erstellt“ toggle,
+  each marked `.chip.is-active` when selected; the pool otherwise still uses one bare `.badge` to
+  distinguish the two types and the same nested-card layout as before. „Übernehmen“ replaces the claim
+  action once someone else already committed to it, and the creator sees „Zurückziehen“ on their own
+  open entry instead. To-Dos already taken by someone else move into the „Unterwegs“ subsection with
+  the current assignee's avatar/name and due badge; taken by the current identity, they show in „Mir
+  zugewiesen“ with „Freigeben“/„Erledigt“ actions instead. Completed To-Dos live in one standard,
+  initially collapsed „Historie“ section whose open state survives live re-renders, same as Food
+  orders.
+  The „Abstimmungen“ tab is the event-centric planning surface for free questions such as dates,
+  locations, duration or budget. It always uses the active event from the existing top-right
+  workspace switcher: neither the tab nor its create dialog contains a second event picker. With
+  „Allgemein“ active it shows an explicit select-an-event empty state. Visibility, creation and
+  voting all require confirmed participation in that event; being Owner/Admin or merely invited
+  never bypasses this boundary. Every confirmed participant may start a poll, while the creator of
+  that poll manages its deadline, reminders and rounds. The create dialog uses labelled fields,
+  repeatable free-text option rows and four explicit response modes: per-option „Passt / Wenn nötig
+  / Passt nicht / Offen“, exactly one choice, multiple choices with an optional maximum, or a
+  per-option rating from 1 to 5. It never exposes
+  a participant picker because the accepted event roster is the single source of truth.
+  The tab adds no own page heading or explanatory subtitle below the Orga tabs because the active
+  event is already visible in the top-right workspace switcher. Its compact „Abstimmung starten“
+  action has no decorative plus sign. The create dialog uses ordinary global text fields, one native
+  select for the four response modes (per-option feasibility, single choice, multiple choice and
+  per-option 1–5 rating), and contextual info beside response mode and deadline. Every free option
+  may additionally carry a short note and a validated HTTP-/HTTPS-link. A poll can be marked
+  anonymous in the same dialog; this permanently suppresses voter-to-answer mappings.
+  Each poll is one collapsible card. Its current round and response progress stay together; the
+  creator's compact „Bearbeiten“, „Erinnerung versenden (N)“, „Beenden“ and „Löschen“
+  actions remain in the card header while collapsed. They share one „Aktion“ menu; opening one
+  poll's menu closes every other poll menu, clicking outside or pressing Escape closes it, and its
+  card is raised above later siblings while the menu is open. Earlier rounds live in a nested,
+  initially collapsed history and show their best result, start time, creator and end time before
+  the detailed options. „Offen“ is both an explicit way to clear a per-option feasibility rating and
+  the resulting incomplete-response count. Repeated reminders reuse one stable notification-center
+  entry per poll and recipient, moving it to the top; automatic sends run 48 hours and 2 hours before
+  the deadline. While a round is open, its creator can edit title, description, deadline, option
+  notes and links and append further options; existing options cannot be removed from that dialog.
+  Adding options informs everyone who had already completed the round and makes those responses
+  incomplete until the added options have been answered. Option rows keep the title with a note
+  info-tooltip and an icon-only link immediately beside it, counts and compact response controls
+  within a shallow two-row layout. Single- and multiple-choice controls say „Wählen“; their
+  „Meiste Stimmen“ badge stays on the same title line as the option name. An optional
+  response-details disclosure is rendered only after a non-anonymous round has
+  ended; the server withholds those identities while a poll is open and for anonymous polls at every
+  status. Avatar, name and response timestamp share one vertically aligned voter row. Progress and
+  deadline appear once in the card header, not again above the option rows. Poll re-renders preserve
+  the visible card's scroll anchor. Ending a round immediately turns
+  its counts into the read-only result overview; there is no separate result-recording action. Event
+  cards do not embed or link to poll controls. A poll result changes no event field, schedule revision
+  or participation state.
+  A future explicit „apply to event“ interaction is outside the current UI.
+  The „Events“ tab is reachable by every member, not only by owner/admin, because answering an
+  invitation is a personal action. What it shows depends on the role: owner/admin receive the full
+  management surface — anlegen/bearbeiten, Tracking starten/stoppen, Teilnehmer einladen/entfernen
+  and the PDF „Andenken“-Export — while a member gets read-only cards for the events they take
+  part in, without the „+ Event“ action or administrative invitation/decline controls; the card
+  includes the event-status badge plus the count and names of accepted participants. Cards sort
+  newest-first by start date. A finished event moves out of the active list into the tab's own
+  „Historie“ (the same collapsible-section pattern as Food orders): it starts collapsed and
+  preserves its open state across live re-renders. Pending invitations for the current identity are
+  deliberately absent from this tab — a teaser sitting directly above the Events cards made it too
+  easy to miss and cluttered the tab with the cards immediately following it. Instead, an
+  invitation surfaces as a personal Home „Aktuell“ nudge (see „Home overview“) that links into „Mein
+  Profil“, and Profile's own leading „Einladungen“ section is where it is actually answered
+  (`renderInvitationCard`/`pendingEventInvitations`/`wirePendingInvitationActions` in `events.js`,
+  reused by `profile.js` so the card markup and accept/decline wiring exist exactly once). Event
+  cards stay in one vertical column at
+  phone and laptop widths so payment and participant controls keep enough room. Their card hierarchy
+  deliberately mirrors Food orders: alternating accent rails and a concise title/status header lead
+  into one shared `.food-order-details` information box, followed by the separately collapsible
+  participant list. Date, location, note and payment information therefore never form competing
+  sibling boxes; an editable management card places „Bearbeiten“ in the information-box header like
+  an order does. The remaining management actions stay in a stable flex footer, and location links
+  are clickable without a separate copy
+  action when an event stores a web URL; plain locations remain text. Event creation and editing may
+  add one optional per-person cost plus the same PayPal input as food orders: either an e-mail address
+  or a complete HTTPS address on `paypal.me`/`paypal.com`. Cost and PayPal controls reuse the food-order price suffix
+  and contextual label layout so both fields stay aligned. Invitation cards disclose that cost
+  and its optional deadline before acceptance, without offering payment actions yet. Accepted
+  non-creators see only their own contribution and `Noch zu bezahlen`/`Bezahlt` state, the confirmer
+  and timestamp of their own payment, plus a personal toggle for recording or correcting it; foreign
+  payment states and aggregates are absent from both UI and API payload. A managing non-creator who
+  lacks payment-management rights receives only the boolean `paymentLocked` removal guard on roster
+  rows, without amount, actor or timestamp, so the blocked action has an explicit reason; this is
+  the sole administrative exception to the foreign-payment privacy rule. The visible full-width
+  PayPal action says `Bezahlen`. The handoff refreshes the event before opening PayPal,
+  prefills the EUR amount for PayPal.me, attempts to copy an e-mail recipient for the generic PayPal
+  flow and keeps that recipient visible in the confirmation if clipboard access is unavailable. It
+  asks „Bezahlt?“ afterwards; only an affirmative answer records the payment. The recorded event
+  creator instead receives the aggregate overview and the same `Offen`/`Bezahlt` toggle used by food
+  orders on every accepted participant row. There is no bulk-payment action. The edit form can also
+  record the accommodation's total invoice separately from the fixed contribution per person. The
+  creator's payment box compares snapshotted received contributions with that invoice. Confirmed
+  payments remain in the received total after a decline or account deactivation; a paid roster row
+  cannot be removed until its payment is explicitly reset. If the creator account becomes inactive
+  or is deleted, the group owner becomes the payment manager. The box shows the
+  current surplus/deficit, the projected result after every accepted person pays and the rounded
+  accommodation price per current acceptance; pending and declined invitations never enter that
+  per-head calculation. Payment controls keep the reset action visible for an already recorded
+  payment even if the current contribution was subsequently cleared, so roster and account-removal
+  guards never create a dead end. The card-level list
+  includes every invited account and labels each row as `Zugesagt`, `Einladung offen` or
+  `Abgelehnt`; its summary separates accepted and still-open invitation counts. Member cards remain
+  accepted-only and expose neither pending/declined identities nor that management status. Participant lists use
+  the shared collapsible-section behavior plus Food orders' leading chevron/name/meta header pattern,
+  start closed and preserve their open state across live re-renders. Their people remain one full-width
+  row per line at every breakpoint so payment proof and the creator's toggle have predictable room;
+  the separate management dialog proceeds directly to its rows without repeated counts or general
+  explanatory paragraphs. State-specific blockers remain explicit: an ended event shows once that
+  new invitations are unavailable, and a paid row associates its removal action with the instruction
+  to reset the payment first.
+  An optional date-only payment deadline starts reminders on that day; without one, contributions
+  become eligible two hours after acceptance. Further reminders run at most once per rolling two-hour
+  window, using durable reminder state independent of push history. TV-Kiosk (Admin's „Kioskverwaltung“
+  card, not an Orga tab) is deliberately minimal — one grouped-page-section with a single
+  full-width link that opens `/kiosk.html` in a new tab.
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
   grid. „Nach LAN“ uses one directly labeled event dropdown and shows every overall placement for
   the selected LAN, followed by tournament winners in the same leaderboard-row structure. Blue and
   pink accent rails distinguish the two result groups; tournament game names have no decorative
   game symbols. Admin fixtures cover twelve years with full standings and three tournament winners per LAN so dense
-  long-term states remain testable. The
-  visible short name for the former Info-Board is „Info“ throughout navigation, search and the page
-  itself; entries remain alphabetically sorted responsive two-column nested cards.
-- **Arrival carpools** — Anreise and Abreise remain separate full-width accented panels. Their
+  long-term states remain testable. Hall of Fame is the third tab of the „Auswertung“ area.
+  Info is not an area at all: the topbar's „i“ (`#info-btn`, the canonical `info` icon from
+  `domainIcons.js`) opens it as a dialog over whatever view is open, because it is reference
+  material — WLAN, Discord, server IPs, house rules — that people look up mid-conversation and must
+  not cost them their current workflow. Entries remain alphabetically sorted responsive two-column
+  nested cards; „Eintrag anlegen“ is the dialog's leading full-width primary action, and an open
+  dialog refreshes itself on `info:changed` instead of stacking a second copy. Being itself an
+  `openModal()` instance, its entry form and delete confirmation can open on top of it — `modal.js`
+  delivers Escape only to the topmost open `.modal-backdrop`, so cancelling a nested confirmation
+  never takes the dialog underneath it down too.
+- **Feedback** — the topbar's `#feedback-btn` (the canonical `feedback` icon from
+  `domainIcons.js`) opens the feedback dialog as a modal over whatever view is open, the same
+  reachable-from-anywhere pattern as Info. It automatically captures the view that was open when
+  the icon was tapped, so a report never needs to explain where it happened. A submission picks one
+  of four distinct sentiments — Positiv, Negativ, Problem, Idee — through the shared
+  `.selection-toolbar` toggle rather than a free-text category, plus a message field. Admin's
+  Feedback section lists submissions newest first and filters them by the same four sentiments plus
+  „Alle“ through the shared `.chip`/`.chip.is-active` pattern (mirroring Spiele's genre chips and
+  Orga's To-Do Art filter).
+- **Arrival carpools** — the „An- & Abreise“ tab of Orga. Anreise and Abreise remain separate
+  full-width accented panels. Their
   carpool cards use two columns from `--bp-md`, but an odd final card deliberately keeps one-column
   width instead of spanning the row; phones stay single-column. Every card repeats Start and
   Ankunft vertically and proceeds directly into the passenger rows without a redundant
@@ -489,25 +891,91 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   role/readiness at the right, a direct join action in a free-slot row and host/member actions in a
   separated full-width footer. Host labels, free labels and join actions share an exact three-column
   grid and row height. A host's game settings belong inside that lobby card; the compact
-  „Punkte bis Sieg“ control shares the separated footer with „Schließen“ and „Start“ from `--bp-md`
-  instead of forming a wide radio-button block. Readiness is communicated in the player rows without
-  a duplicate status sentence. „Lobby öffnen“ follows the lobby cards at full width, while the
-  temporary „Gegen KI“ mode occupies its own full-width row below it. An empty lobby no longer adds
+  „Punkte bis Sieg“ control shares the separated footer with „Start“ and „Schließen“ from `--bp-md`
+  instead of forming a wide radio-button block. „Start“ precedes „Schließen“ in that footer so the
+  primary action reads first, ahead of the destructive one, and both split the footer evenly so they
+  render at the same width. A disabled „Start“ keeps its red reason tooltip as a direct sibling in
+  that footer rather than wrapping it together with the button: a wrapper claims only its content
+  width while the lone sibling stretches, which left the pair visibly uneven. Readiness is
+  communicated in the player rows without a duplicate status sentence. Tetris exposes a compact Duell/Arena selector before creation.
+  „Lobby öffnen“ precedes the lobby cards at full width, so opening a new lobby never requires
+  scrolling past every existing one first. The mode selector is a small bordered segmented switch
+  (`.arcade-mode-toggle`) with a flat `--accent` fill on the active segment, deliberately distinct
+  from `.btn-primary`'s accent-gradient treatment so the pill reads as a setting rather than a
+  second, equally weighted action next to „Lobby öffnen“ — that primary create action keeps the
+  gradient to itself. Duell keeps two equal boards;
+  Arena accepts three to eight players and keeps the local board large beside a responsive grid of
+  opponent boards. On phones the local board sits above that grid. The current automatic attack
+  target receives a textual „Ziel“ marker in addition to its accent border, while eliminated
+  players remain visibly dimmed for spectating. For admins with active Admin mode the opponent
+  choice is a second `.arcade-mode-toggle` segmented switch („Mensch“/„KI“) directly to the right
+  of „Lobby öffnen“, so the create row reads as [Modus] [Lobby öffnen] [Gegner] and the primary
+  create action keeps its gradient to itself instead of competing with a separate „Gegen KI“
+  button. That switch only selects; „Lobby öffnen“ then opens either a human or an AI lobby, and
+  the AI lobby honors the mode switch beside it — Tetris and Snake Duell use one bot while their
+  Arena fills all seven opponent slots, and Pong and Blobby Volley cover both the AI duel and the
+  Doppel variant with a bot teammate. An empty
+  lobby no longer adds
   a redundant waiting sentence. Member actions use the same destructive treatment for „Verlassen“
-  as the host's „Schließen“ action. Guest footers place „Verlassen“ before the readiness toggle;
-  compact score selectors use the smaller shared row height. Create actions use the same inset as
-  lobby footer actions, so „Lobby öffnen“ and readiness controls align exactly.
+  as the host's „Schließen“ action, and only render for a member who actually joined that lobby.
+  Guest footers place „Verlassen“ before the readiness toggle;
+  compact score selectors use the smaller shared row height. Create-action containers use the same
+  outer inset as lobby footers. Whichever of the two flanking switches a game or player does not
+  get reserves its width anyway (`.arcade-lobby-create-row--no-mode` /
+  `--no-opponent`), so from `--bp-md` „Lobby öffnen“ keeps one width and equal left and right
+  insets across every game; on phones the
+  primary action remains full-width. Tetris, Pong, Snake and
+  Blobby Volley all select Duell by default. A disabled „Lobby
+  öffnen“ or „Start“ carries the same red `.info-tooltip-trigger--warning` reason pattern as Team
+  formation's „Teams auslosen“/„Draft starten“.
+  Blobby Volley and Pong both offer Duell (1 gegen 1) and Doppel (2 gegen 2) through the same
+  segmented switch, without a separate mode label or explanatory tooltip. Doppel lobbies expose
+  two explicit teams with two slots each, require all four participants to be ready and award the
+  shared team score and win to both teammates. Pong follows Atari's Pong-4 rules: each participant
+  controls a separate paddle that remains in its assigned upper/lower half, player initials and roster
+  lane labels identify all four paddles, and Doppel defaults to 21 points.
+  Both games reach a Doppel AI match through the same two switches — „Doppel“ plus „KI“ — where
+  the host and one bot teammate play against two bot opponents.
   Statistics use the concise title „Statistiken“ and one full-width game dropdown whose options
   include each game's match count. The selected game is not repeated above its results. Those
   results follow directly without another enclosing card or accent rail; player rows reuse
   `.leaderboard-list-grid` for the shared one-/two-column ranking presentation and spell out wins
-  and losses in German.
-- **Jam sessions** — Jam is a grouped page below „Mehr“. A dedicated local controller on the
+  and losses in German. Tetris Duell and Tetris Arena are separate dropdown entries so an Arena's
+  many non-winning placements do not distort the duel win rate. Arena rows instead show wins,
+  Top-3 finishes, average placement, cleared lines, sent garbage and knockouts. Matches containing
+  bots appear as separate „KI-Test“ entries and never alter the human-only Duell/Arena rankings.
+  Mode-capable Arcade lobbies use the shared `.arcade-mode-toggle` segmented switch in the same
+  action row as lobby creation. Snake „Duell“ remains the two-player classic mode; „Arena“ accepts
+  three to eight players and labels every lobby with mode and occupancy. Snake's AI lobby follows
+  that same mode switch: „Duell“ opens a one-on-one against a single bot, „Arena“ fills the lobby
+  with the maximum seven bots. Neither exposes a count selector.
+  Arena matches keep eliminated players visibly in the roster with a textual status, while the
+  canvas dims their snake and marks the shrinking safe zone with the shared danger treatment.
+  Numbered head markers and a matching `Schlange N · Name` legend identify every participant
+  without relying on color; the same legend appears in player, spectator and kiosk contexts.
+  Challenge Rush also exposes the Admin-mode-gated opponent switch plus its test-challenge
+  selection; playing the bot solo draws
+  from its ten original single-payload challenges, since the bot cannot yet play the thirty
+  logic/memory trial challenges. A lobby that further humans join before it starts keeps the
+  full forty-challenge catalog like any other match, and the bot then simply scores 0 on
+  whichever trial challenges come up.
+- **Jam sessions** — Jam is a grouped page below „Mehr“. Its page heading always exposes an info
+  tooltip explaining the shared title/playlist workflow, controller lifecycle and that only the
+  controller device needs Spotify. The setup card is shown whenever no controller is paired yet or
+  the paired one is offline, so the unconfigured state is not silently empty. A dedicated local controller on the
   playback PC or kiosk Raspberry Pi connects Spotify through PKCE and never appears as a player.
   The server stores neither Spotify application credentials nor OAuth tokens. One participant
   starts a session on an explicitly selected playback device; this player is the host. All active
-  group members share pause, resume and skip controls and search the same
-  catalog and add any number of requests. Requests use stable full-width rows with artwork,
+  group members share pause, resume and skip controls and search the same catalog for tracks and
+  playlists. „Als Nächstes“ follows directly below „Jetzt läuft“ before the search workflow. Search
+  results stay inside one stable block and use a full-width two-button switch built from the shared
+  secondary and primary button treatments to switch between titles and playlists. Both choices get
+  equal space, and only the active result type receives primary emphasis. A playlist
+  result starts its complete Spotify playback context and replaces the
+  current playback plus pending requests after explicit confirmation. While that context is active,
+  „Als Nächstes“ shows the remaining playlist-track count separately from additional song requests.
+  Those requests follow Spotify's append-only queue in request order; reorder and remove
+  controls stay hidden because Spotify exposes neither operation for its live queue. Requests use stable full-width rows with artwork,
   title, artist and requester instead of pills; their order is the shared queue order. The current
   track is the most prominent nested surface, with progress and host controls directly attached.
   Members can reorder two or more queued requests through native drag-and-drop or the equivalent
@@ -518,10 +986,27 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   loopback redirect `http://127.0.0.1:43821/callback` makes controller setup independent of the
   Respawn server URL. A short-lived pairing code replaces an existing controller; only its hashed
   credential and public playback/queue metadata reach the server.
-  The setup card offers a generated portable controller ZIP instead of repository or `npm`
-  instructions. It contains prefilled server/pairing data and platform launchers for macOS,
-  Windows and Raspberry Pi/Linux; the launchers provision an isolated runtime on first use.
-- **Analytics** — All three tabs share the same event dropdown and show no additional date controls.
+  The setup card offers a fresh pairing code independently from the generated controller ZIP, so an
+  already installed controller can always be paired again without another download. Explicitly
+  disconnecting a controller immediately creates and displays such a code; the ZIP remains the
+  secondary first-installation or recovery fallback instead of becoming the only available action.
+  The package needs neither repository nor `npm` instructions.
+  It contains prefilled server/pairing data and platform launchers for macOS, Windows and Raspberry
+  Pi/Linux; the first launch installs the controller and its isolated runtime once below the user's
+  `.respawn` directory. Its local status page can enable login autostart, retry immediately, renew
+  Spotify authorization independently and re-pair an existing installation with a fresh code.
+  Respawn's offline state therefore offers reconnection first and a new download only as a fallback.
+  Controller requests have bounded timeouts and retry automatically after transient network errors.
+  The controller heartbeat remains online when Spotify is temporarily unavailable and omits the
+  unavailable playback snapshot so the server retains the last confirmed track. An invalid Respawn
+  credential explicitly requests re-pairing; an expired or revoked Spotify refresh token explicitly
+  requests only Spotify reauthorization, never an unnecessary controller reinstall. Realtime
+  playback refreshes retain the current Jam DOM while new status is fetched; active controls keep
+  focus and the view preserves its internal scroll position instead of flashing a loading state.
+- **Analytics** — the „Statistiken“ tab of the „Auswertung“ area. Its own three datasets
+  (Spielzeit, Matches & Turniere, Arcade) stay an in-card control group under the visible heading
+  „Ansicht“, which is what separates them from the area tab row above. All three share the same
+  event dropdown and show no additional date controls.
   Playtime and tournament data use the selected event directly; Arcade internally derives the
   event's date bounds because arcade results have no event assignment. The daily match chart is
   omitted. Tournament formats and per-game tournament counts are separate nested groups with blue
@@ -534,7 +1019,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   copyable `#RRGGBB` field, and explicit cancel/apply actions; it has no competing preset palette.
   Invalid hex input is visibly rejected and cannot be applied or copied. The chosen value remains a draft until the profile's
   main save action persists it.
-- **Leaderboard** — The concise page title is „Rang“. The filtered „Rangliste“ and per-player
+  A leading „Einladungen“ section (present only while pending event invitations exist) shows the
+  same invitation cards Orga's Events tab used to render inline — cost/deadline disclosure plus
+  Annehmen/Ablehnen — via events.js's shared `renderInvitationCard`.
+- **Leaderboard** — the „Rangliste“ tab and default entry of the „Auswertung“ area, reached only
+  through Admin's „Auswertung“ tool card (see „Admin tools“). The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
   each remains a distinct `.tournament-section-panel` with the shared accent rail. „Spielzeit pro
   Spiel“ stays a separate grouped page section. The selected game scopes the two accented sections
@@ -548,15 +1037,25 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   result entry. Team and free-for-all result inputs use the same aligned responsive grid.
 - **Home overview** — Home follows the same full-width grouped-card hierarchy as Tournaments,
   Teams and Vote. „Aktuell“, „Live-Status“, „Rangliste“ and „Sitzplan“ are separate main cards with
-  their heading inside the surface. Tappable current items, the personal status and player entries
-  remain nested cards on the secondary elevated background; „Gerade aktiv“ is a subsection of
-  „Live-Status“ rather than a competing page-level group. Main groups stay in one continuous column
+  their heading inside the surface. Every current item pairs its full-row navigation action with a
+  separate icon action that hides only that live occurrence for the signed-in identity and active
+  event on the current device; a new vote round, order, tournament or lobby remains visible again.
+  Tappable current items, the personal status and player entries remain nested cards on the
+  secondary elevated background; „Gerade aktiv“ is a subsection of
+  „Live-Status“ rather than a competing page-level group. A pending event invitation appears here as
+  a plain linking nudge into „Mein Profil“ (see aktuellStatus.js); the full card with
+  Annehmen/Ablehnen lives only in Profile, not in this list. Main groups stay in one continuous column
   at phone and laptop widths while their existing internal grids remain responsive.
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
   same card grouping as the other polished workflows without an accent rail.
   New/current-round controls come first, followed by separate full-width cards for „Letzter Vote“
   and „Top 10 nach Bock-Level“. An open round exposes a bordered participation counter with the
-  submitted and eligible-player totals, updated through the existing realtime refresh. The latest
+  submitted and eligible-player totals, updated through the existing realtime refresh. In points
+  mode, an open round that the current identity hasn't submitted yet also shows its own rating
+  progress („X von Y bewertet“) beside an „Unbewertet“ chip that narrows the game grid to
+  still-unrated rows. `.vote-game-grid` itself keeps two columns from `--bp-md` and gains a third from `--bp-xl`
+  (1280px) instead of stretching each 0-10 slider across half of a wide desktop's full content
+  width. The latest
   result and every history card show up to ten scored games with the same compact rows and
   responsive columns as the Bock ranking; games with zero votes or points are omitted. History
   keeps an explicit detail action for the complete non-zero bar view. Equal top scores use the same
@@ -568,20 +1067,39 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   list. Game rows remain one
   column on phones and two from `--bp-md`, with the same bordered card treatment at both sizes.
   Explanations sit in info tooltips immediately beside their titles. Title and info fields start at
-  the same control height; the optional game filter uses an aligned toolbar and consistent gaps.
-  The participant action spans the full width, with equal-width „Abbrechen“ and „Beenden“ actions below.
+  the same control height. The participant action spans the full width, with equal-width „Abbrechen“ and „Beenden“ actions below.
+  Starting a round always shows its game selection grid — there is no separate checkbox gating it.
+  It preselects the current Top 10 by Bock as a starting point, same as before; a round covering
+  everything simply uses „Alle markieren“ or clears the remaining exclusions by hand. The
+  grid reuses the same icon select-all/deselect-all buttons (`.selection-toolbar-icon`) and
+  collapsible text search (`selectionSearchHtml`) as Team formation's and Tournament creation's
+  player pickers, alongside its own genre chips. All three controls filter the visible rows while
+  hidden checkbox selections remain intact; bulk selection actions apply only to the currently
+  visible intersection. That grid, an
+  unrestricted round's ballot and „Top 10 nach Bock-Level“ all cover the accepted games only;
+  suggestions are not votable (see „Game catalog“). A suggestion's own Bock ranking stays visible
+  in the Spiele view, which sorts by Ø Bock on every tab. A round keeps the exact games it was
+  started with for its whole life: a game demoted mid-round keeps the votes already cast for it,
+  stays votable for everyone else and can still win, and „Stichwahl starten“ still offers every
+  tied winner of the closed round. Only a fresh selection is restricted.
   Vote-specific empty states center icon and copy vertically in both overview and history.
   Every identity can submit only once per round: the server enforces this atomically with `409`,
   empty points submissions are invalid, and the client replaces the submit action with a green
   „Bewertung/Stimme abgegeben“ state while locking that identity's controls.
   Vote history is labeled simply „Historie“, uses the shared icon-free collapsible header, starts
   closed and retains its open state across live re-renders.
-- **Tournament overview** — `.tournament-list-grid` shows at most two tournament cards per row;
+- **Tournament overview** — the „Turniere“ tab in the „Match“ area, whose first/default tab is
+  „Teams“; switching back to „Turniere“ from the tab row always returns to the
+  list rather than the tournament board that was last open. A tournament's own detail page keeps
+  the area tabs above it and titles itself with an `h2`, so the page never carries two `h1`
+  headings. `.tournament-list-grid` shows at most two tournament cards per row;
   a single card stretches across the available width and further cards wrap. `.tournament-list-section` presents
   active and completed tournaments as two prominent status rows without separate summary-stat
   cards. The completed row uses the shared collapsible-section presentation, starts collapsed and
   retains its open state across view re-renders. `.tournament-player-grid` keeps the player picker at two cards per row from `--bp-md`; phones
   stack one card per row so checkbox, avatar, name and skill value stay readable inside each card.
+  Tournament creation places a directly labeled player search above that grid; it filters rows
+  without clearing hidden selections, and its bulk actions affect only visible search results.
   `.tournament-detail-stats` and `.tournament-team-grid` expose real progress and roster information
   above a centered, locally scrollable bracket; team cards use at most two columns. The proposal
   grid follows the same two-column cap and uses draggable `.tournament-drag-player` rows, with
@@ -654,6 +1172,11 @@ space pattern rather than content-dependent card heights.
   a state change.
 - Dynamic announcements such as errors or completed background actions use the
   established toast/live-region mechanism without repeatedly interrupting screen readers.
+- The first-login core tour is a true modal: `#app` is inert, focus cycles inside the dialog,
+  Escape skips the explanatory steps into the required rating mode, and focus returns to the
+  previous control after completion. The rating panel is intentionally non-modal so its sliders
+  remain usable; it stays below the shared modal layer so game details and other forms remain
+  operable.
 - Layouts must tolerate longer German text, user-provided names and browser zoom without
   clipping essential controls or creating horizontal page scrolling. Intentional
   horizontal content such as the tournament bracket remains locally scrollable.
@@ -742,7 +1265,15 @@ diff under `server/public/**/*.{css,js}` — not the whole codebase — so it
 enforces the rule going forward without requiring every existing off-scale
 value to be fixed or allowlisted first.
 
-It blocks a commit that introduces:
+It checks the complete frontend snapshot for references to undefined CSS custom
+properties: the full staged Git index locally and the full committed `HEAD` tree
+with `--base-ref` in CI. It never mixes either snapshot with unrelated unstaged
+working-tree changes. A property set dynamically with `style.setProperty(...)`
+counts as defined; a `var(--name, fallback)` reference is also valid without a
+global definition because it has an explicit recovery value. This full-state
+check also catches removal of a definition that is still referenced elsewhere.
+
+For the added lines in the staged or branch diff, it additionally blocks:
 - a hardcoded hex color outside a `--token: #...` definition itself,
 - a hardcoded `font-size`/`font-weight`,
 - a hardcoded `gap`/`padding`/`margin`,
@@ -763,10 +1294,11 @@ and it does not check `box-shadow` or breakpoint values — those needed either
 too much judgment (glows are legitimately different sizes for different
 elements) or too much false-positive risk to check mechanically.
 
-Because the script reads the staged diff, an unstaged change may produce no finding.
-Before relying on the result, review the complete working diff as well. Do not stage
-unrelated user changes merely to make the checker inspect them. CI or review should run
-the same command on the intended change set; the same-line `design-token-ok` escape hatch
+Because the local script reads the staged diff and full staged index, an unstaged
+change produces no finding and cannot block an unrelated commit. Before relying on
+the result, review the complete working diff as well. Do not stage unrelated user
+changes merely to make the checker inspect them. CI or review should run the same
+command on the intended change set; the same-line `design-token-ok` escape hatch
 always requires a concrete reason, never a generic suppression.
 
 GitHub Actions checks the full branch range with

@@ -12,7 +12,7 @@ import { isNonEmptyString, isIntInRange, isValidAvatar } from '../validation';
 import { writeAdminAudit } from '../adminAudit';
 import { requireRecentReauthentication, withBodyPlayerIdentity } from '../sessions';
 import { requireGroupRole, resolveGroupResource } from '../groupAuthorization';
-import { getLiveBoard } from '../liveStatus';
+import { broadcastLiveBoards } from '../liveStatus';
 
 export const gamesRouter = Router();
 
@@ -22,6 +22,45 @@ const MAX_TEAM_SIZE_CEIL = 20;
 const MAX_TITLE_LENGTH = 60;
 const MAX_PLATFORM_LENGTH = 80;
 const MAX_URL_LENGTH = 500;
+const MAX_INFO_LENGTH = 300;
+
+// Fixed multiselect options for a game's genre tags. Mirrored in the frontend
+// as GAME_GENRES in server/public/js/gameGenres.js — keep both in sync
+// (server/public/js/gameGenres.test.js fails if they drift apart). Ordered by
+// theme rather than alphabetically so related genres sit next to each other in
+// the chip list; 'Sonstiges' stays last as the catch-all.
+// The migration-time copy in db.ts is deliberately *not* kept in sync: see the
+// comment on GAME_GENRES_AT_MIGRATION_55 there.
+const GAME_GENRES = [
+  'Shooter',
+  'Battle Royale',
+  'Fighting',
+  'Racing',
+  'Sport',
+  'Party',
+  'Quiz',
+  'Strategie',
+  'MOBA',
+  '4X',
+  'Tower Defense',
+  'Aufbau',
+  'Rollenspiel',
+  'MMO',
+  'Abenteuer',
+  'Plattformer',
+  'Roguelike',
+  'Puzzle',
+  'Simulation',
+  'Sandbox',
+  'Survival',
+  'Kartenspiel',
+  'Geschicklichkeit',
+  'Rhythmus',
+  'Koop',
+  'Horror',
+  'Sonstiges',
+] as const;
+const MAX_GENRES_PER_GAME = 5;
 
 type GameStatus = 'suggestion' | 'catalog';
 
@@ -35,11 +74,14 @@ interface GameRow {
   platform: string | null;
   platform_url: string | null;
   trailer_url: string | null;
+  genre: string | null;
+  info: string | null;
   status: GameStatus;
   created_by: string | null;
   created_at: number;
   group_id: string | null;
   arcade_key?: string | null;
+  consider_seat_neighbors_default: number;
 }
 
 // Case-insensitive lookup used to give a friendly 409 instead of silently
@@ -56,10 +98,13 @@ function withProcessNames(game: GameRow) {
   const procs = db
     .prepare('SELECT process_name FROM game_process_names WHERE game_id = ? ORDER BY process_name')
     .all(game.id) as Array<{ process_name: string }>;
+  const { genre, ...rest } = game;
   return {
-    ...game,
+    ...rest,
     isSuggestion: game.status === 'suggestion',
     processNames: procs.map((p) => p.process_name),
+    genres: parseGenreColumn(genre),
+    considerSeatNeighborsDefault: Boolean(game.consider_seat_neighbors_default),
   };
 }
 
@@ -70,6 +115,35 @@ function optionalText(value: unknown, maxLength: number): string | null | undefi
   const trimmed = value.trim();
   if (!trimmed) return null;
   return trimmed.length <= maxLength ? trimmed : undefined;
+}
+
+// Stored as a JSON array of GAME_GENRES entries in the existing `genre` TEXT
+// column (no schema change needed) — parsing failures or legacy free text
+// from before the multiselect just read back as "no genres" instead of
+// crashing the games list.
+function parseGenreColumn(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((g): g is string => typeof g === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+// undefined = field omitted entirely (caller keeps the existing value).
+// Any other invalid shape also returns undefined but is distinguished by the
+// caller checking `value !== undefined`, same convention as optionalText.
+function validateGenres(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return [];
+  if (!Array.isArray(value) || value.length > MAX_GENRES_PER_GAME) return undefined;
+  const genres = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== 'string' || !(GAME_GENRES as readonly string[]).includes(entry)) return undefined;
+    genres.add(entry);
+  }
+  return [...genres];
 }
 
 function optionalUrl(value: unknown): string | null | undefined {
@@ -90,6 +164,14 @@ function assertPlayer(playerId: unknown): string | null | undefined {
   return player ? playerId : undefined;
 }
 
+// GET /api/games/genres - the fixed genre multiselect options, so the
+// frontend's edit form and filters render from one server-side list instead
+// of duplicating it (still mirrored as a constant for the client-side
+// filter/chip rendering itself, since there's no bundler to share code).
+gamesRouter.get('/genres', (_req, res) => {
+  res.json(GAME_GENRES);
+});
+
 // GET /api/games - all games (suggestions, catalog and tracked alike),
 // including their process-name mappings. Excludes the 5 built-in Arcade
 // titles (quiz/tetris/scribble/blobby/snake, arcade_key IS NOT NULL) — they
@@ -105,9 +187,8 @@ gamesRouter.get('/', (req, res) => {
 });
 
 // GET /api/games/:id - the built-in Arcade titles (group_id NULL) are shared
-// system fixtures readable from any group; a real catalog entry is only
-// readable from its own group (404 otherwise, existence hidden like every
-// other cross-group boundary).
+// system fixtures. A real catalog entry must match the request's retained
+// group_id scope (404 otherwise, with existence hidden).
 gamesRouter.get('/:id', (req, res) => {
   const row = db.prepare('SELECT * FROM games WHERE id = ?').get(req.params.id) as GameRow | undefined;
   if (!row || (row.group_id !== null && row.group_id !== req.group!.id)) {
@@ -148,8 +229,21 @@ gamesRouter.post(
     next();
   },
   (req, res) => {
-    const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, status, playerId } =
-      req.body ?? {};
+    const {
+      name,
+      icon,
+      iconImage,
+      minTeamSize,
+      maxTeamSize,
+      platform,
+      platformUrl,
+      trailerUrl,
+      genres,
+      info,
+      status,
+      playerId,
+      considerSeatNeighborsDefault,
+    } = req.body ?? {};
 
     if (!isNonEmptyString(name, MAX_TITLE_LENGTH)) {
       return res.status(400).json({ error: `Name ist erforderlich (1-${MAX_TITLE_LENGTH} Zeichen).` });
@@ -169,6 +263,13 @@ gamesRouter.post(
       return res.status(400).json({ error: 'Plattform-Link muss mit http(s) beginnen.' });
     const parsedTrailer = optionalUrl(trailerUrl ?? null);
     if (parsedTrailer === undefined) return res.status(400).json({ error: 'Trailer-Link muss mit http(s) beginnen.' });
+    const parsedGenres = validateGenres(genres ?? null);
+    if (parsedGenres === undefined) return res.status(400).json({ error: 'Genre-Auswahl ist ungültig.' });
+    const parsedInfo = optionalText(info ?? null, MAX_INFO_LENGTH);
+    if (parsedInfo === undefined) return res.status(400).json({ error: 'Info ist zu lang.' });
+    if (considerSeatNeighborsDefault !== undefined && typeof considerSeatNeighborsDefault !== 'boolean') {
+      return res.status(400).json({ error: 'considerSeatNeighborsDefault muss ein Boolean sein.' });
+    }
     const resolvedStatus: GameStatus = status === 'suggestion' ? 'suggestion' : 'catalog';
     const createdBy = assertPlayer(playerId);
     if (createdBy === undefined) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
@@ -188,15 +289,18 @@ gamesRouter.post(
       platform: parsedPlatform ?? null,
       platform_url: parsedPlatformUrl ?? null,
       trailer_url: parsedTrailer ?? null,
+      genre: parsedGenres.length ? JSON.stringify(parsedGenres) : null,
+      info: parsedInfo ?? null,
       status: resolvedStatus,
       created_by: createdBy,
       created_at: Date.now(),
       group_id: req.group!.id,
+      consider_seat_neighbors_default: considerSeatNeighborsDefault ? 1 : 0,
     };
 
     db.prepare(
-      `INSERT INTO games (id, name, icon, icon_image, min_team_size, max_team_size, platform, platform_url, trailer_url, status, created_by, created_at, group_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO games (id, name, icon, icon_image, min_team_size, max_team_size, platform, platform_url, trailer_url, genre, info, status, created_by, created_at, group_id, consider_seat_neighbors_default)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       row.id,
       row.name,
@@ -207,10 +311,13 @@ gamesRouter.post(
       row.platform,
       row.platform_url,
       row.trailer_url,
+      row.genre,
+      row.info,
       row.status,
       row.created_by,
       row.created_at,
       row.group_id,
+      row.consider_seat_neighbors_default,
     );
 
     broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
@@ -218,9 +325,9 @@ gamesRouter.post(
   },
 );
 
-// Resolves :id to a game owned by the caller's current group, 404-ing
-// (existence hidden) for a foreign group's game or an arcade fixture
-// (group_id NULL) — neither is editable through this generic route.
+// Resolves :id to a game whose retained group_id matches the request, 404-ing
+// (with existence hidden) on a mismatch or an Arcade fixture (group_id NULL)
+// — neither is editable through this generic route.
 const resolveGame = resolveGroupResource<GameRow>({
   resourceType: 'Spiel',
   load: (id) => {
@@ -233,7 +340,8 @@ const resolveGame = resolveGroupResource<GameRow>({
 gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => {
   const existing = req.groupResource as GameRow;
 
-  const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl } = req.body ?? {};
+  const { name, icon, iconImage, minTeamSize, maxTeamSize, platform, platformUrl, trailerUrl, genres, info, considerSeatNeighborsDefault } =
+    req.body ?? {};
   if (name !== undefined && !isNonEmptyString(name, MAX_TITLE_LENGTH)) {
     return res.status(400).json({ error: `Name muss 1-${MAX_TITLE_LENGTH} Zeichen lang sein.` });
   }
@@ -260,6 +368,17 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => 
   if (parsedTrailer === undefined && trailerUrl !== undefined) {
     return res.status(400).json({ error: 'Trailer-Link muss mit http(s) beginnen.' });
   }
+  const parsedGenres = validateGenres(genres);
+  if (parsedGenres === undefined && genres !== undefined) {
+    return res.status(400).json({ error: 'Genre-Auswahl ist ungültig.' });
+  }
+  const parsedInfo = optionalText(info, MAX_INFO_LENGTH);
+  if (parsedInfo === undefined && info !== undefined) {
+    return res.status(400).json({ error: 'Info ist zu lang.' });
+  }
+  if (considerSeatNeighborsDefault !== undefined && typeof considerSeatNeighborsDefault !== 'boolean') {
+    return res.status(400).json({ error: 'considerSeatNeighborsDefault muss ein Boolean sein.' });
+  }
 
   if (name !== undefined && nameTaken(req.group!.id, name.trim(), existing.id)) {
     return res.status(409).json({ error: `Das Spiel "${name.trim()}" gibt es schon.` });
@@ -275,11 +394,17 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => 
     platform: platform !== undefined ? (parsedPlatform ?? null) : existing.platform,
     platform_url: platformUrl !== undefined ? (parsedPlatformUrl ?? null) : existing.platform_url,
     trailer_url: trailerUrl !== undefined ? (parsedTrailer ?? null) : existing.trailer_url,
+    genre: genres !== undefined ? (parsedGenres!.length ? JSON.stringify(parsedGenres) : null) : existing.genre,
+    info: info !== undefined ? (parsedInfo ?? null) : existing.info,
+    consider_seat_neighbors_default:
+      considerSeatNeighborsDefault !== undefined
+        ? (considerSeatNeighborsDefault ? 1 : 0)
+        : existing.consider_seat_neighbors_default,
   };
 
   db.prepare(
     `UPDATE games
-     SET name = ?, icon = ?, icon_image = ?, min_team_size = ?, max_team_size = ?, platform = ?, platform_url = ?, trailer_url = ?
+     SET name = ?, icon = ?, icon_image = ?, min_team_size = ?, max_team_size = ?, platform = ?, platform_url = ?, trailer_url = ?, genre = ?, info = ?, consider_seat_neighbors_default = ?
      WHERE id = ?`,
   ).run(
     next.name,
@@ -290,6 +415,9 @@ gamesRouter.patch('/:id', resolveGame, requireGroupRole('admin'), (req, res) => 
     next.platform,
     next.platform_url,
     next.trailer_url,
+    next.genre,
+    next.info,
+    next.consider_seat_neighbors_default,
     next.id,
   );
 
@@ -309,6 +437,22 @@ gamesRouter.post('/:id/promote', resolveGame, requireGroupRole('admin'), (req, r
     .prepare(`UPDATE games SET status = 'catalog' WHERE id = ? AND status = 'suggestion'`)
     .run(existing.id);
   if (result.changes === 0) return res.status(409).json({ error: 'Spiel ist bereits im Katalog.' });
+
+  broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
+  res.json(withProcessNames(db.prepare('SELECT * FROM games WHERE id = ?').get(existing.id) as GameRow));
+});
+
+// POST /api/games/:id/demote - the inverse of promote: pushes a catalog entry
+// back into the suggestions list. Guarded the same way against a double-tap
+// racing itself.
+gamesRouter.post('/:id/demote', resolveGame, requireGroupRole('admin'), (req, res) => {
+  const existing = req.groupResource as GameRow;
+  if (existing.status !== 'catalog') return res.status(409).json({ error: 'Spiel ist bereits ein Vorschlag.' });
+
+  const result = db
+    .prepare(`UPDATE games SET status = 'suggestion' WHERE id = ? AND status = 'catalog'`)
+    .run(existing.id);
+  if (result.changes === 0) return res.status(409).json({ error: 'Spiel ist bereits ein Vorschlag.' });
 
   broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
   res.json(withProcessNames(db.prepare('SELECT * FROM games WHERE id = ?').get(existing.id) as GameRow));
@@ -342,7 +486,7 @@ gamesRouter.delete(
       targetId: existing.id,
     });
     broadcast(Events.gamesChanged, null, { groupId: req.group!.id });
-    broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id), { groupId: req.group!.id });
+    broadcastLiveBoards(req.group!.id);
     res.status(204).end();
   },
 );

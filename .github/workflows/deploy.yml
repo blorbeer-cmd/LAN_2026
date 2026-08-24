@@ -3,13 +3,17 @@ name: CI/CD
 on:
   push:
     branches: [main]
-    # Pull requests still run the complete CI below. Once a docs-only PR is
-    # merged, do not rebuild and restart production for Markdown that cannot
-    # change the shipped image.
+    # Pull requests still run the path classifier below. Once a docs-only PR
+    # is merged, do not rebuild and restart production for Markdown that
+    # cannot change the shipped image.
     paths-ignore:
       - "docs/**"
       - "**/*.md"
   pull_request:
+  schedule:
+    # A daily full run keeps both E2E partitions exercised and builds the
+    # rolling performance baseline even when normal changes touch one side.
+    - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       deploy:
@@ -32,8 +36,39 @@ concurrency:
 # but now run as parallel jobs; the runtime image builds alongside them and is
 # only published (and deployed) after every check has passed.
 jobs:
+  changes:
+    name: Classify changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+      e2e_core: ${{ steps.filter.outputs.e2e_core }}
+      e2e_core_scope: ${{ steps.filter.outputs.e2e_core_scope }}
+      e2e_arcade: ${{ steps.filter.outputs.e2e_arcade }}
+      e2e_arcade_smoke: ${{ steps.filter.outputs.e2e_arcade_smoke }}
+      agent: ${{ steps.filter.outputs.agent }}
+      image: ${{ steps.filter.outputs.image }}
+      deploy: ${{ steps.filter.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Select required work
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          node scripts/ci-path-classifier.mjs
+          --event "$EVENT_NAME"
+          --base "$BASE_SHA"
+          --head "$HEAD_SHA"
+          --github-output "$GITHUB_OUTPUT"
+
   server-checks:
     name: Server lint, build and tests
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -54,7 +89,18 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: server/package-lock.json
+      # npm's download cache still leaves npm ci rebuilding all 432 packages
+      # (~90 seconds on the hosted runner). Cache the installed tree behind an
+      # exact platform/Node/lockfile key; a dependency change still forces a
+      # clean npm ci, while ordinary PR and post-merge runs restore it directly.
+      - name: Cache installed server dependencies
+        id: server-node-modules
+        uses: actions/cache@v4
+        with:
+          path: server/node_modules
+          key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
       - run: npm ci
+        if: steps.server-node-modules.outputs.cache-hit != 'true'
       - name: Check design tokens
         shell: bash
         env:
@@ -70,11 +116,95 @@ jobs:
         run: npm run lint
       - name: Check tool configuration formatting
         run: npm run format:check
+      - name: Test CI selection and performance logic
+        working-directory: ${{ github.workspace }}
+        run: >-
+          node --test
+          scripts/ci-path-classifier.test.mjs
+          scripts/ci-test-performance.test.mjs
+          scripts/ci-install-chromium.test.mjs
       - run: npm run build
-      - run: npm test
+      - name: Compile unit and integration tests
+        run: npm run test:compile
+      - name: Run measured unit and integration tests
+        run: npm run test:run
 
-  e2e:
-    name: Browser E2E
+  e2e-core:
+    name: Browser E2E Core
+    needs: changes
+    if: needs.changes.outputs.e2e_core == 'true'
+    runs-on: ubuntu-latest
+    # Leave a bounded diagnostics window after the original E2E attempt. Without
+    # this headroom a trace retry can hit the job deadline, turn the result into
+    # `cancelled`, and prevent the diagnostic artifact from being uploaded.
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Cache installed server dependencies
+        id: server-node-modules
+        uses: actions/cache@v4
+        with:
+          path: server/node_modules
+          key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
+      - run: npm ci
+        if: steps.server-node-modules.outputs.cache-hit != 'true'
+      # Restoring Chromium is faster than pulling the Playwright container;
+      # the pinned-container benchmark added ~45 seconds before tests and also
+      # lacked the toolchain needed to build better-sqlite3 on a cache miss.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
+      # Both installs go through the helper instead of calling Playwright
+      # directly: it enforces a per-attempt timeout and one retry. Without it a
+      # stalled Ubuntu mirror keeps apt-get waiting until the *job* timeout
+      # fires, and a job killed that way ends as `cancelled` — a state
+      # "Re-run failed jobs" never picks up, which strands the whole run (and
+      # the post-merge deploy) short of green.
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" browser
+      - name: Install Chromium system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" deps
+      - name: Prepare Core E2E build
+        run: npm run test:e2e:prepare
+      - name: Run measured Core E2E (${{ needs.changes.outputs.e2e_core_scope }})
+        env:
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+        run: npm run test:e2e:run:core -- "${{ needs.changes.outputs.e2e_core_scope }}"
+      - name: Reproduce Core E2E failure with tracing
+        if: failure()
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+          E2E_RETRY_FAILED_ONLY: "1"
+          E2E_TRACE: "1"
+        run: npm run test:e2e:run:core -- "${{ needs.changes.outputs.e2e_core_scope }}"
+      - name: Preserve Core E2E failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-core-failure-diagnostics
+          path: ${{ runner.temp }}/e2e-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+
+  e2e-arcade-smoke:
+    name: Browser E2E Arcade smoke
+    needs: changes
+    if: needs.changes.outputs.e2e_arcade_smoke == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -87,9 +217,14 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: server/package-lock.json
+      - name: Cache installed server dependencies
+        id: server-node-modules
+        uses: actions/cache@v4
+        with:
+          path: server/node_modules
+          key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
       - run: npm ci
-      # The Chromium download (~150 MB) dominated this step — cache it keyed
-      # on the lockfile, so only a Playwright version bump re-downloads.
+        if: steps.server-node-modules.outputs.cache-hit != 'true'
       - name: Cache Playwright browsers
         id: playwright-cache
         uses: actions/cache@v4
@@ -98,15 +233,328 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
       - name: Install Chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" browser
       - name: Install Chromium system dependencies
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-      # test:e2e builds the server itself before starting it.
-      - run: npm run test:e2e
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" deps
+      - name: Prepare Arcade smoke E2E build
+        run: npm run test:e2e:prepare
+      - name: Run measured Arcade smoke E2E
+        env:
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+        run: npm run test:e2e:run:arcade-smoke
+      - name: Reproduce Arcade smoke E2E failure with tracing
+        if: failure()
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+          E2E_RETRY_FAILED_ONLY: "1"
+          E2E_TRACE: "1"
+        run: npm run test:e2e:run:arcade-smoke
+      - name: Preserve Arcade smoke E2E failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-arcade-smoke-failure-diagnostics
+          path: ${{ runner.temp }}/e2e-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+
+  e2e-arcade:
+    name: Browser E2E Arcade
+    needs: changes
+    if: needs.changes.outputs.e2e_arcade == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Cache installed server dependencies
+        id: server-node-modules
+        uses: actions/cache@v4
+        with:
+          path: server/node_modules
+          key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
+      - run: npm ci
+        if: steps.server-node-modules.outputs.cache-hit != 'true'
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" browser
+      - name: Install Chromium system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" deps
+      - name: Prepare Arcade E2E build
+        run: npm run test:e2e:prepare
+      - name: Run measured Arcade E2E
+        env:
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+        run: npm run test:e2e:run:arcade
+      - name: Reproduce Arcade E2E failure with tracing
+        if: failure()
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+          E2E_RETRY_FAILED_ONLY: "1"
+          E2E_TRACE: "1"
+        run: npm run test:e2e:run:arcade
+      - name: Preserve Arcade E2E failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-arcade-failure-diagnostics
+          path: ${{ runner.temp }}/e2e-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Keep the established branch-protection context while the actual browser
+  # coverage runs as independently selected Core, Arcade smoke and Arcade jobs.
+  browser-e2e:
+    name: Browser E2E
+    if: always()
+    needs: [changes, e2e-core, e2e-arcade-smoke, e2e-arcade]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify selected browser E2E partitions
+        shell: bash
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CORE_RESULT: ${{ needs['e2e-core'].result }}
+          ARCADE_SMOKE_RESULT: ${{ needs['e2e-arcade-smoke'].result }}
+          ARCADE_RESULT: ${{ needs['e2e-arcade'].result }}
+        run: |
+          set -euo pipefail
+          if [[ "$CHANGES_RESULT" != "success" ]]; then
+            echo "Path classification ended with: $CHANGES_RESULT" >&2
+            exit 1
+          fi
+          for result in "$CORE_RESULT" "$ARCADE_SMOKE_RESULT" "$ARCADE_RESULT"; do
+            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
+              echo "A browser E2E partition ended with: $result" >&2
+              exit 1
+            fi
+          done
+
+  test-performance-detect:
+    name: Detect test performance
+    if: >-
+      always() &&
+      needs.changes.result == 'success' &&
+      (needs.changes.outputs.server == 'true' ||
+       needs.changes.outputs.e2e_core == 'true' ||
+       needs.changes.outputs.e2e_arcade == 'true' ||
+       needs.changes.outputs.e2e_arcade_smoke == 'true')
+    needs: [changes, server-checks, e2e-core, e2e-arcade, e2e-arcade-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      has_suspicions: ${{ steps.evaluate.outputs.has_suspicions }}
+      suspicions: ${{ steps.evaluate.outputs.suspicions }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compare test runtimes with main baseline
+        id: evaluate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          node scripts/ci-test-performance.mjs evaluate-github
+          --repository "${{ github.repository }}"
+          --workflow "deploy.yml"
+          --run-id "${{ github.run_id }}"
+          --branch "${{ github.event.repository.default_branch }}"
+          --github-output "$GITHUB_OUTPUT"
+          --report "${{ runner.temp }}/test-performance-detection.json"
+          --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve detector report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-performance-detection
+          path: ${{ runner.temp }}/test-performance-detection.json
+          if-no-files-found: ignore
+          retention-days: 1
+
+  test-performance-confirm:
+    name: Confirm test performance (${{ matrix.suite }})
+    if: needs['test-performance-detect'].outputs.has_suspicions == 'true'
+    needs: test-performance-detect
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs['test-performance-detect'].outputs.suspicions) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Cache installed server dependencies
+        id: server-node-modules
+        uses: actions/cache@v4
+        with:
+          path: server/node_modules
+          key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
+      - run: npm ci
+        if: steps.server-node-modules.outputs.cache-hit != 'true'
+      - name: Cache Playwright browsers
+        if: matrix.suite != 'unit-integration'
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('server/package-lock.json') }}
+      - name: Install Chromium
+        if: matrix.suite != 'unit-integration' && steps.playwright-cache.outputs.cache-hit != 'true'
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" browser
+      - name: Install Chromium system dependencies
+        if: matrix.suite != 'unit-integration' && steps.playwright-cache.outputs.cache-hit == 'true'
+        run: node "${{ github.workspace }}/scripts/ci-install-chromium.mjs" deps
+      - name: Prepare repeated suite
+        env:
+          SUITE: ${{ matrix.suite }}
+        shell: bash
+        run: |
+          if [[ "$SUITE" == "unit-integration" ]]; then
+            npm run test:compile
+          else
+            npm run test:e2e:prepare
+          fi
+      - name: Repeat and confirm suspected regression
+        env:
+          SUITE: ${{ matrix.suite }}
+          BASELINE_MS: ${{ matrix.baselineMs }}
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+        shell: bash
+        run: |
+          case "$SUITE" in
+            unit-integration) command="test:run" ;;
+            e2e-core) command="test:e2e:run:core" ;;
+            e2e-arcade) command="test:e2e:run:arcade" ;;
+            e2e-arcade-smoke) command="test:e2e:run:arcade-smoke" ;;
+            *) echo "Unknown suite: $SUITE" >&2; exit 1 ;;
+          esac
+          started_ms="$(date +%s%3N)"
+          npm run "$command"
+          completed_ms="$(date +%s%3N)"
+          current_ms="$((completed_ms - started_ms))"
+          node ../scripts/ci-test-performance.mjs confirm \
+            --suite "$SUITE" \
+            --baseline-ms "$BASELINE_MS" \
+            --current-ms "$current_ms" \
+            --report "${RUNNER_TEMP}/test-performance-${SUITE}.json"
+
+      - name: Preserve confirmation report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-performance-confirm-${{ matrix.suite }}
+          path: ${{ runner.temp }}/test-performance-${{ matrix.suite }}.json
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Reproduce repeated E2E failure with tracing
+        if: failure() && matrix.suite != 'unit-integration'
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+          E2E_RETRY_FAILED_ONLY: "1"
+          E2E_TRACE: "1"
+          SUITE: ${{ matrix.suite }}
+        shell: bash
+        run: |
+          case "$SUITE" in
+            e2e-core) command="test:e2e:run:core" ;;
+            e2e-arcade) command="test:e2e:run:arcade" ;;
+            e2e-arcade-smoke) command="test:e2e:run:arcade-smoke" ;;
+            *) echo "Unknown E2E suite: $SUITE" >&2; exit 1 ;;
+          esac
+          npm run "$command"
+
+      - name: Preserve repeated E2E failure diagnostics
+        if: failure() && matrix.suite != 'unit-integration'
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-performance-${{ matrix.suite }}-e2e-failure-diagnostics
+          path: ${{ runner.temp }}/e2e-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Stable branch-protection context. The detector and dynamic confirmation jobs may change or be
+  # skipped, but this aggregate always reports exactly `Test performance` and fails closed.
+  test-performance:
+    name: Test performance
+    if: always()
+    needs: [changes, test-performance-detect, test-performance-confirm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download detector report
+        if: needs['test-performance-detect'].result == 'success'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: test-performance-detection
+          path: ${{ runner.temp }}/test-performance/detection
+
+      - name: Download confirmation reports
+        if: needs['test-performance-confirm'].result != 'skipped'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-performance-confirm-*
+          path: ${{ runner.temp }}/test-performance/confirmations
+          merge-multiple: true
+
+      - name: Aggregate final performance verdict
+        env:
+          APPLICABLE: ${{ needs.changes.outputs.server == 'true' || needs.changes.outputs.e2e_core == 'true' || needs.changes.outputs.e2e_arcade == 'true' || needs.changes.outputs.e2e_arcade_smoke == 'true' }}
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          DETECTOR_RESULT: ${{ needs['test-performance-detect'].result }}
+          CONFIRMATION_RESULT: ${{ needs['test-performance-confirm'].result }}
+        shell: bash
+        run: >-
+          node scripts/ci-test-performance.mjs aggregate
+          --applicable "$APPLICABLE"
+          --changes-result "$CHANGES_RESULT"
+          --detector-result "$DETECTOR_RESULT"
+          --confirmation-result "$CONFIRMATION_RESULT"
+          --detection "${RUNNER_TEMP}/test-performance/detection/test-performance-detection.json"
+          --confirmations-dir "${RUNNER_TEMP}/test-performance/confirmations"
+          --summary "$GITHUB_STEP_SUMMARY"
 
   agent:
     name: Agent lint and tests
+    needs: changes
+    if: needs.changes.outputs.agent == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -119,9 +567,19 @@ jobs:
             server/package-lock.json
             agent/package-lock.json
       # The agent-server integration test drives the real built server.
+      - name: Cache installed server dependencies
+        id: server-node-modules
+        uses: actions/cache@v4
+        with:
+          path: server/node_modules
+          key: server-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('server/package-lock.json') }}
+      - name: Install server dependencies
+        if: steps.server-node-modules.outputs.cache-hit != 'true'
+        working-directory: server
+        run: npm ci
       - name: Build server for the integration test
         working-directory: server
-        run: npm ci && npm run build
+        run: npm run build
       - name: Install agent dependencies
         working-directory: agent
         run: npm ci
@@ -141,8 +599,14 @@ jobs:
   # cache once all checks are green.
   image:
     name: Build runtime image
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # This non-publishing gate needs neither the downloadable BuildKit record
+      # nor an attestation. The publish build below keeps its default provenance.
+      DOCKER_BUILD_RECORD_UPLOAD: false
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -150,6 +614,7 @@ jobs:
         with:
           context: ./server
           push: false
+          provenance: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -158,8 +623,29 @@ jobs:
   # input. The image itself comes out of the layer cache written by the
   # parallel build above, so this job is quick.
   publish:
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
-    needs: [server-checks, e2e, agent, image]
+    if: >-
+      always() &&
+      needs.changes.outputs.deploy == 'true' &&
+      needs.changes.result == 'success' &&
+      (needs.server-checks.result == 'success' || needs.server-checks.result == 'skipped') &&
+      (needs['e2e-core'].result == 'success' || needs['e2e-core'].result == 'skipped') &&
+      (needs['e2e-arcade'].result == 'success' || needs['e2e-arcade'].result == 'skipped') &&
+      (needs['e2e-arcade-smoke'].result == 'success' || needs['e2e-arcade-smoke'].result == 'skipped') &&
+      needs['test-performance'].result == 'success' &&
+      (needs.agent.result == 'success' || needs.agent.result == 'skipped') &&
+      needs.image.result == 'success' &&
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy))
+    needs:
+      [
+        changes,
+        server-checks,
+        e2e-core,
+        e2e-arcade,
+        e2e-arcade-smoke,
+        test-performance,
+        agent,
+        image,
+      ]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -192,8 +678,18 @@ jobs:
             ${{ steps.meta.outputs.image }}:${{ github.sha }}
             ${{ steps.meta.outputs.image }}:latest
 
+  # `always()` is required, not cosmetic: without a status check function
+  # GitHub adds an implicit `success()` that also fails when an *indirect*
+  # dependency was skipped. `publish` tolerates the routinely skipped
+  # `test-performance-confirm` via its own `always()` and succeeds, but that
+  # skip propagated through the graph and silently skipped `deploy` — the image
+  # was published and never rolled out. The explicit result check below is what
+  # actually gates the deploy now, so it must stay in sync with `needs`.
   deploy:
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
+    if: >-
+      always() &&
+      needs.publish.result == 'success' &&
+      (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy))
     needs: publish
     runs-on: ubuntu-latest
     timeout-minutes: 10

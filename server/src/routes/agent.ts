@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { db, OUTSIDE_EVENTS_ID } from '../db';
+import { db } from '../db';
 import { broadcast, Events } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { isGameActive } from '../activity';
@@ -9,6 +9,32 @@ import { activeTrackingContexts, closeTrackingContext } from '../trackingContext
 import { activePlayerGroupIds } from '../groups';
 
 export const agentRouter = Router();
+
+// The union of process names any of a player's active groups has mapped to a
+// game. Both the allow-list endpoint below and the report handler use this:
+// the agent filters its scan against it locally, and the server independently
+// filters what it persists against it too, so an older/unpatched agent can
+// never make an arbitrary process name show up in the admin diagnostics view.
+function allowedProcessNames(groupIds: string[]): string[] {
+  if (groupIds.length === 0) return [];
+  const placeholders = groupIds.map(() => '?').join(',');
+  const rows = db
+    .prepare(`SELECT DISTINCT process_name FROM game_process_names WHERE group_id IN (${placeholders})`)
+    .all(...groupIds) as Array<{ process_name: string }>;
+  return rows.map((row) => row.process_name);
+}
+
+// GET /api/agent/process-names — the set of process names the agent is
+// allowed to report at all. The agent fetches this before every scan and
+// only sends names that match, so anything else currently running on the
+// player's PC (browser, chat apps, ...) never leaves it in the first place.
+agentRouter.get('/process-names', (req, res) => {
+  const apiKey = req.header('x-api-key');
+  if (!apiKey) return res.status(401).json({ error: 'API-Key fehlt (Header x-api-key).' });
+  const player = db.prepare('SELECT id FROM players WHERE api_key = ? AND deactivated_at IS NULL').get(apiKey) as { id: string } | undefined;
+  if (!player) return res.status(401).json({ error: 'Ungültiger API-Key.' });
+  res.json({ processNames: allowedProcessNames(activePlayerGroupIds(player.id)) });
+});
 
 agentRouter.post('/report', (req, res) => {
   const apiKey = req.header('x-api-key');
@@ -25,16 +51,31 @@ agentRouter.post('/report', (req, res) => {
   const idle = typeof idleSeconds === 'number' && Number.isFinite(idleSeconds) ? idleSeconds : null;
   const activityTracked = foregroundProcessName !== undefined;
   const now = Date.now();
+  const groupIds = activePlayerGroupIds(player.id);
+  // A current agent already only ever sends matched names (see the allow-list
+  // endpoint above), but this filters again server-side so a stale agent that
+  // hasn't picked up that behavior yet still can't leak arbitrary process
+  // names into the diagnostics view or the database.
+  const allowed = new Set(allowedProcessNames(groupIds));
+  const diagnosticProcessNames = normalized.filter((name) => allowed.has(name));
   db.prepare(`INSERT INTO agent_diagnostics (player_id, agent_version, last_report_at, process_names) VALUES (?, ?, ?, ?)
     ON CONFLICT(player_id) DO UPDATE SET agent_version=excluded.agent_version, last_report_at=excluded.last_report_at, process_names=excluded.process_names`)
-    .run(player.id, typeof agentVersion === 'string' && agentVersion.trim() ? agentVersion.trim() : null, now, JSON.stringify(normalized));
+    .run(player.id, typeof agentVersion === 'string' && agentVersion.trim() ? agentVersion.trim() : null, now, JSON.stringify(diagnosticProcessNames));
   const contexts = player.tracking_paused ? [] : activeTrackingContexts(player.id, now);
-  if (!contexts.length) return res.json({ ok: true, playerId: player.id, gameIds: [], tracked: false, trackingPaused: Boolean(player.tracking_paused) });
+  const previousContexts = db.prepare(
+    'SELECT group_id, event_id FROM tracking_live_contexts WHERE player_id = ?',
+  ).all(player.id) as Array<{ group_id: string; event_id: string | null }>;
+  const affectedScopes = new Map<string, { groupId: string; eventId: string }>();
+  for (const context of previousContexts) {
+    if (context.event_id) affectedScopes.set(`${context.group_id}:${context.event_id}`, { groupId: context.group_id, eventId: context.event_id });
+  }
+  for (const context of contexts) {
+    affectedScopes.set(`${context.groupId}:${context.eventId}`, { groupId: context.groupId, eventId: context.eventId });
+  }
 
   const sync = db.transaction(() => {
     const wanted = new Set(contexts.map((c) => `${c.groupId}:${c.eventId ?? ''}`));
-    const oldContexts = db.prepare('SELECT group_id, event_id FROM tracking_live_contexts WHERE player_id = ?').all(player.id) as Array<{ group_id: string; event_id: string | null }>;
-    for (const old of oldContexts) if (!wanted.has(`${old.group_id}:${old.event_id ?? ''}`)) closeTrackingContext(player.id, old.group_id, old.event_id, now);
+    for (const old of previousContexts) if (!wanted.has(`${old.group_id}:${old.event_id ?? ''}`)) closeTrackingContext(player.id, old.group_id, old.event_id, now);
     for (const context of contexts) {
       const eventId = context.eventId;
       const previous = db.prepare('SELECT last_seen FROM tracking_live_contexts WHERE player_id = ? AND group_id = ? AND event_id IS ?').get(player.id, context.groupId, eventId) as { last_seen: number } | undefined;
@@ -48,7 +89,7 @@ agentRouter.post('/report', (req, res) => {
       const oldGames = db.prepare('SELECT game_id FROM tracking_live_games WHERE player_id = ? AND group_id = ? AND event_id IS ?').all(player.id, context.groupId, eventId) as Array<{ game_id: string }>;
       for (const old of oldGames) if (!matched.has(old.game_id)) {
         db.prepare('DELETE FROM tracking_live_games WHERE player_id = ? AND group_id = ? AND event_id IS ? AND game_id = ?').run(player.id, context.groupId, eventId, old.game_id);
-        db.prepare('UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND group_id = ? AND event_id = ? AND game_id = ? AND ended_at IS NULL').run(now, player.id, context.groupId, eventId ?? OUTSIDE_EVENTS_ID, old.game_id);
+        db.prepare('UPDATE play_sessions SET ended_at = ? WHERE player_id = ? AND group_id = ? AND event_id = ? AND game_id = ? AND ended_at IS NULL').run(now, player.id, context.groupId, eventId, old.game_id);
       }
       let activeGame: string | null = null;
       if (foreground) {
@@ -63,16 +104,18 @@ agentRouter.post('/report', (req, res) => {
         if (existing) db.prepare('UPDATE tracking_live_games SET is_foreground = ? WHERE player_id = ? AND group_id = ? AND event_id IS ? AND game_id = ?').run(gameId === activeGame ? 1 : 0, player.id, context.groupId, eventId, gameId);
         else {
           db.prepare('INSERT INTO tracking_live_games (player_id, group_id, event_id, game_id, since, is_foreground) VALUES (?, ?, ?, ?, ?, ?)').run(player.id, context.groupId, eventId, gameId, now, gameId === activeGame ? 1 : 0);
-          db.prepare('INSERT INTO play_sessions (id, player_id, game_id, group_id, event_id, started_at, ended_at, allocation_weight) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)').run(nanoid(), player.id, gameId, context.groupId, eventId ?? OUTSIDE_EVENTS_ID, now, context.weight);
+          db.prepare('INSERT INTO play_sessions (id, player_id, game_id, group_id, event_id, started_at, ended_at, allocation_weight) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)').run(nanoid(), player.id, gameId, context.groupId, eventId, now, context.weight);
         }
       }
-      if (activeGame && elapsed > 0) db.prepare('UPDATE play_sessions SET active_ms = active_ms + ? WHERE player_id = ? AND group_id = ? AND event_id = ? AND game_id = ? AND ended_at IS NULL').run(elapsed * context.weight, player.id, context.groupId, eventId ?? OUTSIDE_EVENTS_ID, activeGame);
+      if (activeGame && elapsed > 0) db.prepare('UPDATE play_sessions SET active_ms = active_ms + ? WHERE player_id = ? AND group_id = ? AND event_id = ? AND game_id = ? AND ended_at IS NULL').run(elapsed * context.weight, player.id, context.groupId, eventId, activeGame);
     }
   });
   sync();
-  for (const groupId of [...new Set(contexts.map((c) => c.groupId))]) broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+  for (const { groupId, eventId } of affectedScopes.values()) {
+    broadcast(Events.liveStatusChanged, getLiveBoard(groupId, eventId), { groupId, eventId });
+  }
   const gameIds = [...new Set((db.prepare('SELECT game_id FROM tracking_live_games WHERE player_id = ?').all(player.id) as Array<{ game_id: string }>).map((row) => row.game_id))];
-  res.json({ ok: true, playerId: player.id, gameIds, tracked: true, trackingPaused: false });
+  res.json({ ok: true, playerId: player.id, gameIds, tracked: contexts.length > 0, trackingPaused: Boolean(player.tracking_paused) });
 });
 
 agentRouter.post('/tracking-paused', (req, res) => {

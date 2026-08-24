@@ -6,19 +6,19 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { broadcast, disconnectPlayerSockets, Events } from '../realtime';
 import { isNonEmptyString, isHexColor, isValidAvatar } from '../validation';
-import { getTrackingEventId } from '../events';
 import { formatDurationMs, computePlaytime, type PlaySession } from '../playtime';
 import { sessionDurations, computeSimultaneousGameTime, type SessionDuration } from '../sessionStats';
 import { computeAwards } from '../awards';
-import { hasRecentReauthentication, requireConfiguredUser, withParamPlayerIdentity } from '../sessions';
+import { hasRecentReauthentication, requireUser, withParamPlayerIdentity } from '../sessions';
 import { requireAdmin } from '../auth';
-import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
+import { broadcastLiveBoards, clearPlayerLiveStatus } from '../liveStatus';
 import { writeAdminAudit } from '../adminAudit';
-import { voidOutstandingInvites } from '../invites';
+import { revokeRegistrationInvitesCreatedBy, voidOutstandingInvites } from '../invites';
 import { activeGroupPlayers } from '../groupPlayers';
-import { activePlayerGroupIds } from '../groups';
-import { resolveGroupEventScope } from '../groupEventScope';
-import { config } from '../config';
+import { activePlayerGroupIds, ensureDefaultGroupMembership, syncInstanceAdminForRole } from '../groups';
+import { resolveAccessibleGroupEventScope } from '../groupEventScope';
+import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
+import { getOrRepairActiveEvent } from '../eventContext';
 
 export const playersRouter = Router();
 
@@ -74,6 +74,24 @@ function toPrivatePlayer(row: PlayerRow) {
   return rest;
 }
 
+function removePlayerFromRecipientSnapshots(playerId: string): void {
+  const pushRows = db.prepare('SELECT id, player_ids FROM push_log WHERE player_ids IS NOT NULL').all() as Array<{ id: string; player_ids: string }>;
+  const updatePush = db.prepare('UPDATE push_log SET player_ids = ? WHERE id = ?');
+  for (const row of pushRows) {
+    const ids = JSON.parse(row.player_ids) as unknown;
+    if (!Array.isArray(ids) || !ids.includes(playerId)) continue;
+    updatePush.run(JSON.stringify(ids.filter((id): id is string => typeof id === 'string' && id !== playerId)), row.id);
+  }
+
+  const broadcastRows = db.prepare('SELECT id, recipient_ids FROM broadcasts').all() as Array<{ id: string; recipient_ids: string }>;
+  const updateBroadcast = db.prepare('UPDATE broadcasts SET recipient_ids = ? WHERE id = ?');
+  for (const row of broadcastRows) {
+    const ids = JSON.parse(row.recipient_ids) as unknown;
+    if (!Array.isArray(ids) || !ids.includes(playerId)) continue;
+    updateBroadcast.run(JSON.stringify(ids.filter((id): id is string => typeof id === 'string' && id !== playerId)), row.id);
+  }
+}
+
 // GET /api/players - roster without API keys.
 playersRouter.get('/', (_req, res) => {
   const rows = db
@@ -82,10 +100,9 @@ playersRouter.get('/', (_req, res) => {
   res.json(rows.map(toPublicPlayer));
 });
 
-// GET /api/players/:id - public profile details for everyone. Under required
-// auth the private agent API key is only visible to its owner or an admin;
-// legacy mode reveals it only to the matching device identity.
-playersRouter.get('/:id', requireConfiguredUser, (req, res) => {
+// GET /api/players/:id - public profile details for everyone. The private
+// agent API key is only visible to its owner or an admin.
+playersRouter.get('/:id', requireUser, (req, res) => {
   const row = db
     .prepare(
       `SELECT p.*, ls.last_seen AS agent_last_seen
@@ -97,15 +114,13 @@ playersRouter.get('/:id', requireConfiguredUser, (req, res) => {
   if (row.deactivated_at !== null && !req.player?.is_admin) {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
-  const maySeeApiKey = req.player
-    ? req.player.id === row.id || Boolean(req.player.is_admin)
-    : req.header('x-player-id') === row.id;
+  const maySeeApiKey = req.player?.id === row.id || Boolean(req.player?.is_admin);
   res.json(maySeeApiKey ? toPrivatePlayer(row) : toPublicPlayer(row));
 });
 
 // POST /api/players - create a player. Returns the API key once here (and via
 // the single-player GET) so the frontend can show/copy it.
-playersRouter.post('/', requireConfiguredUser, (req, res) => {
+playersRouter.post('/', requireUser, (req, res) => {
   if (req.player && !req.player.is_admin) {
     return res.status(403).json({ error: 'Nur Admins können weitere Spielerprofile anlegen.' });
   }
@@ -159,30 +174,34 @@ playersRouter.post('/', requireConfiguredUser, (req, res) => {
     row.created_at,
   );
 
+  ensureDefaultGroupMembership(row.id);
   broadcast(Events.playersChanged, null, { groupId: req.group!.id });
   res.status(201).json(row);
 });
 
 // PATCH /api/players/:id - rename, recolor, update the avatar, and/or
-// pause/resume tracking. Profile fields may only be changed by the device
-// identity currently assigned to that player. The x-player-id header is the
-// temporary identity boundary until future user management replaces the
-// device-local "who am I" selection with authenticated sessions.
+// pause/resume tracking. Profile fields may only be changed by the
+// authenticated account that owns that player.
 // trackingPaused is the player-side opt-out: while
 // true, the agent's reports for this player are received but silently
 // dropped (see routes/agent.ts) — no live status, no playtime, regardless
 // of whether an event is tracking.
-playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
+playersRouter.patch('/:id', requireUser, (req, res) => {
   const existing = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id) as PlayerRow | undefined;
   if (!existing) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+
+  if (Object.prototype.hasOwnProperty.call(req.body ?? {}, 'isAdmin') || Object.prototype.hasOwnProperty.call(req.body ?? {}, 'is_admin')) {
+    return res.status(400).json({ error: 'Adminrechte werden ausschließlich über die Gruppenrolle verwaltet.' });
+  }
 
   if (req.player && req.player.id !== existing.id && !req.player.is_admin) {
     return res.status(403).json({ error: 'Du kannst nur dein eigenes Profil bearbeiten.' });
   }
 
-  const { name, realName, color, avatar, trackingPaused, isAdmin } = req.body ?? {};
+  const { name, realName, color, avatar, trackingPaused } = req.body ?? {};
   const changesProfile = [name, realName, color, avatar, trackingPaused].some((value) => value !== undefined);
-  if (changesProfile && req.header('x-player-id') !== existing.id) {
+  const actorId = req.player?.id;
+  if (changesProfile && actorId !== existing.id) {
     return res.status(403).json({ error: 'Du kannst nur dein eigenes Profil bearbeiten.' });
   }
   if (name !== undefined && !isNonEmptyString(name)) {
@@ -201,29 +220,6 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   if (trackingPaused !== undefined && typeof trackingPaused !== 'boolean') {
     return res.status(400).json({ error: 'trackingPaused muss ein Boolean sein.' });
   }
-  if (isAdmin !== undefined && typeof isAdmin !== 'boolean') {
-    return res.status(400).json({ error: 'isAdmin muss ein Boolean sein.' });
-  }
-  if (req.player && isAdmin !== undefined && !req.player.is_admin) {
-    return res.status(403).json({ error: 'Nur Admins können Rollen ändern.' });
-  }
-  if (isAdmin === true && existing.is_test) {
-    return res.status(409).json({ error: 'Test-Spieler können keine Admin-Rechte erhalten.' });
-  }
-  if (
-    req.player &&
-    isAdmin !== undefined &&
-    Number(isAdmin) !== existing.is_admin &&
-    !hasRecentReauthentication(req.sessionId)
-  ) {
-    return res.status(403).json({
-      error: 'Bitte bestätige dein Passwort, bevor du Rollen änderst.',
-      code: 'reauth_required',
-    });
-  }
-  // Granting/revoking admin remains an admin-panel action in the UI; the
-  // endpoint keeps the existing trusted-friend-group API shape.
-
   const nextName = name !== undefined ? name.trim() : existing.name;
   if (name !== undefined && nameTaken(nextName, existing.id)) {
     return res.status(409).json({ error: `Der Name "${nextName}" ist schon vergeben.` });
@@ -231,43 +227,15 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
   const nextColor = color !== undefined ? color : existing.color;
   const nextAvatar = avatar !== undefined ? avatar : existing.avatar;
   const nextTrackingPaused = trackingPaused !== undefined ? (trackingPaused ? 1 : 0) : existing.tracking_paused;
-  const nextIsAdmin = isAdmin !== undefined ? (isAdmin ? 1 : 0) : existing.is_admin;
-
-  const roleChanged = nextIsAdmin !== existing.is_admin;
-  const update = db.transaction(() => {
-    if (roleChanged && existing.is_admin && nextIsAdmin === 0) {
-      const adminCount = (
-        db
-          .prepare(
-            'SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL AND (? = 0 OR password_hash IS NOT NULL)',
-          )
-          .get(req.player ? 1 : 0) as {
-          count: number;
-        }
-      ).count;
-      if (adminCount <= 1) return false;
-    }
-    db.prepare(
-      'UPDATE players SET name = ?, real_name = ?, color = ?, avatar = ?, tracking_paused = ?, is_admin = ? WHERE id = ?',
-    ).run(nextName, nextRealName, nextColor, nextAvatar, nextTrackingPaused, nextIsAdmin, existing.id);
-    if (roleChanged) {
-      writeAdminAudit({
-        actorPlayerId: req.player?.id,
-        action: nextIsAdmin ? 'admin_granted' : 'admin_revoked',
-        targetType: 'player',
-        targetId: existing.id,
-      });
-    }
-    return true;
-  })();
-  if (!update) return res.status(409).json({ error: 'Der letzte Admin kann seine Rolle nicht verlieren.' });
+  db.prepare(
+    'UPDATE players SET name = ?, real_name = ?, color = ?, avatar = ?, tracking_paused = ? WHERE id = ?',
+  ).run(nextName, nextRealName, nextColor, nextAvatar, nextTrackingPaused, existing.id);
 
   // Profile changes are visible in every group the player belongs to, not
   // only in the tab the request happened to come from.
   for (const groupId of activePlayerGroupIds(existing.id)) {
     broadcast(Events.playersChanged, null, { groupId });
   }
-  if (roleChanged) disconnectPlayerSockets(existing.id);
   res.json(
     toPrivatePlayer({
       ...existing,
@@ -276,7 +244,7 @@ playersRouter.patch('/:id', requireConfiguredUser, (req, res) => {
       color: nextColor,
       avatar: nextAvatar,
       tracking_paused: nextTrackingPaused,
-      is_admin: nextIsAdmin,
+      is_admin: existing.is_admin,
     }),
   );
 });
@@ -289,8 +257,10 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
     });
   }
   const target = db
-    .prepare('SELECT id, is_admin, is_test, deactivated_at FROM players WHERE id = ?')
-    .get(req.params.id) as Pick<PlayerRow, 'id' | 'is_admin' | 'is_test' | 'deactivated_at'> | undefined;
+    .prepare('SELECT id, is_admin, is_test, deactivated_at, password_hash FROM players WHERE id = ?')
+    .get(req.params.id) as
+    | Pick<PlayerRow, 'id' | 'is_admin' | 'is_test' | 'deactivated_at' | 'password_hash'>
+    | undefined;
   if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   if (target.is_test) return res.status(409).json({ error: 'Test-Spieler werden vollständig gelöscht.' });
   if (target.deactivated_at !== null) return res.status(409).json({ error: 'Dieses Konto ist bereits deaktiviert.' });
@@ -326,6 +296,26 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
       )
       .get(target.id);
     if (soleOwnedGroup) return 'last_group_owner';
+    if (target.password_hash) {
+      const soleClaimedOwnedGroup = db
+        .prepare(
+          `SELECT gm.group_id
+           FROM group_memberships gm
+           JOIN groups g ON g.id = gm.group_id AND g.archived_at IS NULL
+           WHERE gm.player_id = ? AND gm.status = 'active' AND gm.role = 'owner'
+             AND NOT EXISTS (
+               SELECT 1
+               FROM group_memberships other
+               JOIN players p ON p.id = other.player_id
+               WHERE other.group_id = gm.group_id AND other.player_id != gm.player_id
+                 AND other.status = 'active' AND other.role = 'owner'
+                 AND p.deactivated_at IS NULL AND p.password_hash IS NOT NULL
+             )
+           LIMIT 1`,
+        )
+        .get(target.id);
+      if (soleClaimedOwnedGroup) return 'last_group_owner';
+    }
     db.prepare('UPDATE players SET deactivated_at = ?, is_admin = 0, tracking_paused = 1 WHERE id = ?').run(
       now,
       target.id,
@@ -336,6 +326,7 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
     clearPlayerLiveStatus(target.id, now);
     voidOutstandingInvites(target.id, 'claim');
     voidOutstandingInvites(target.id, 'reset');
+    revokeRegistrationInvitesCreatedBy(target.id, 'creator_deactivated', req.player?.id);
     writeAdminAudit({
       actorPlayerId: req.player?.id,
       action: 'player_deactivated',
@@ -357,7 +348,7 @@ playersRouter.post('/:id/deactivate', requireAdmin, (req, res) => {
     broadcast(Events.playersChanged, null, { groupId });
     // live:changed carries the fresh board — clients assign the payload to
     // their state directly and do not treat null as a reload signal.
-    broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+    broadcastLiveBoards(groupId);
   }
   res.status(204).end();
 });
@@ -369,23 +360,32 @@ playersRouter.post('/:id/reactivate', requireAdmin, (req, res) => {
       code: 'reauth_required',
     });
   }
-  const result = db
-    .prepare('UPDATE players SET deactivated_at = NULL WHERE id = ? AND deactivated_at IS NOT NULL')
-    .run(req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: 'Deaktiviertes Konto nicht gefunden.' });
-  writeAdminAudit({
-    actorPlayerId: req.player?.id,
-    action: 'player_reactivated',
-    targetType: 'player',
-    targetId: req.params.id,
-  });
+  const reactivated = db.transaction(() => {
+    const result = db
+      .prepare('UPDATE players SET deactivated_at = NULL WHERE id = ? AND deactivated_at IS NOT NULL')
+      .run(req.params.id);
+    if (result.changes === 0) return false;
+    const membership = db
+      .prepare("SELECT role FROM group_memberships WHERE group_id = ? AND player_id = ? AND status = 'active'")
+      .get(req.group!.id, req.params.id) as { role: 'owner' | 'admin' | 'member' } | undefined;
+    syncInstanceAdminForRole(req.group!.id, req.params.id, membership?.role ?? 'member', req.player?.id);
+    getOrRepairActiveEvent(req.params.id);
+    writeAdminAudit({
+      actorPlayerId: req.player?.id,
+      action: 'player_reactivated',
+      targetType: 'player',
+      targetId: req.params.id,
+    });
+    return true;
+  })();
+  if (!reactivated) return res.status(404).json({ error: 'Deaktiviertes Konto nicht gefunden.' });
   for (const groupId of activePlayerGroupIds(req.params.id)) {
     broadcast(Events.playersChanged, null, { groupId });
   }
   res.status(204).end();
 });
 
-playersRouter.post('/:id/api-key/rotate', requireConfiguredUser, (req, res) => {
+playersRouter.post('/:id/api-key/rotate', requireUser, (req, res) => {
   const target = db.prepare('SELECT id, deactivated_at FROM players WHERE id = ?').get(req.params.id) as
     { id: string; deactivated_at: number | null } | undefined;
   if (!target || target.deactivated_at !== null) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
@@ -405,32 +405,72 @@ playersRouter.post('/:id/api-key/rotate', requireConfiguredUser, (req, res) => {
     targetId: target.id,
   });
   for (const groupId of activePlayerGroupIds(target.id)) {
-    broadcast(Events.liveStatusChanged, getLiveBoard(groupId), { groupId });
+    broadcastLiveBoards(groupId);
   }
   res.json({ apiKey });
 });
 
-// Hard-delete is intentionally limited to disposable test identities. Real
-// participants are deactivated so historical matches and statistics remain.
+// Hard-delete removes the account and all account/tracking data. Historical
+// match JSON may still contain a name snapshot, but no player-owned tracking
+// row or selectable account survives the operation.
 playersRouter.delete('/:id', requireAdmin, (req, res) => {
   if (req.player && !hasRecentReauthentication(req.sessionId)) {
     return res.status(403).json({ error: 'Bitte bestätige dein Passwort.', code: 'reauth_required' });
   }
-  const target = db.prepare('SELECT is_test FROM players WHERE id = ?').get(req.params.id) as
-    { is_test: number } | undefined;
+  const target = db
+    .prepare('SELECT id, is_admin, is_test, deactivated_at FROM players WHERE id = ?')
+    .get(req.params.id) as { id: string; is_admin: number; is_test: number; deactivated_at: number | null } | undefined;
   if (!target) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
-  if (!target.is_test) return res.status(409).json({ error: 'Echte Spieler werden deaktiviert statt gelöscht.' });
-  // Resolved before the delete: afterwards the membership rows are gone and
-  // could no longer name the groups whose roster just lost this test player.
   const affectedGroupIds = activePlayerGroupIds(req.params.id);
-  const result = db.prepare('DELETE FROM players WHERE id = ?').run(req.params.id);
-  if (result.changes === 0) {
-    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  const deleted = db.transaction(() => {
+    if (target.is_admin) {
+      const admins = (db.prepare('SELECT COUNT(*) AS count FROM players WHERE is_admin = 1 AND deactivated_at IS NULL').get() as { count: number }).count;
+      if (admins <= 1) return 'last_admin' as const;
+    }
+    const soleOwnedGroup = db.prepare(
+      `SELECT 1 FROM group_memberships gm JOIN groups g ON g.id = gm.group_id AND g.archived_at IS NULL
+       WHERE gm.player_id = ? AND gm.status = 'active' AND gm.role = 'owner'
+       AND NOT EXISTS (SELECT 1 FROM group_memberships other JOIN players p ON p.id = other.player_id
+         WHERE other.group_id = gm.group_id AND other.player_id != gm.player_id AND other.status = 'active'
+           AND other.role = 'owner' AND p.deactivated_at IS NULL) LIMIT 1`,
+    ).get(target.id);
+    if (soleOwnedGroup) return 'last_group_owner' as const;
+    const confirmedEventPayment = db
+      .prepare('SELECT 1 FROM event_participants WHERE player_id = ? AND paid = 1 LIMIT 1')
+      .get(target.id);
+    if (confirmedEventPayment) return 'confirmed_event_payment' as const;
+    const membershipGroups = db.prepare('SELECT group_id FROM group_memberships WHERE player_id = ?').all(target.id) as Array<{ group_id: string }>;
+    const groupIds = membershipGroups.map((row) => row.group_id);
+    if (groupIds.length > 0) {
+      const placeholders = groupIds.map(() => '?').join(',');
+      db.prepare(`DELETE FROM votes WHERE group_id IN (${placeholders}) AND player_id = ?`).run(...groupIds, target.id);
+      db.prepare(`DELETE FROM draft_player_refs WHERE group_id IN (${placeholders}) AND player_id = ?`).run(...groupIds, target.id);
+      db.prepare(`DELETE FROM arcade_result_participants WHERE group_id IN (${placeholders}) AND player_id = ?`).run(...groupIds, target.id);
+      db.prepare(`DELETE FROM broadcasts WHERE group_id IN (${placeholders}) AND player_id = ?`).run(...groupIds, target.id);
+    }
+    removePlayerFromRecipientSnapshots(target.id);
+    revokeRegistrationInvitesCreatedBy(target.id, 'creator_deleted', req.player?.id);
+    db.prepare('DELETE FROM group_memberships WHERE player_id = ?').run(target.id);
+    for (const table of ['play_sessions', 'live_status_games', 'live_status', 'agent_diagnostics', 'tracking_live_games', 'tracking_game_state', 'group_tracking_consents', 'event_tracking_consents', 'push_subscriptions', 'sessions']) {
+      try {
+        db.prepare(`DELETE FROM ${table} WHERE player_id = ?`).run(target.id);
+      } catch (error) {
+        if (!(error instanceof Error) || !/no such table/i.test(error.message)) throw error;
+      }
+    }
+    const result = db.prepare('DELETE FROM players WHERE id = ?').run(target.id);
+    return result.changes === 1 ? 'ok' as const : 'missing' as const;
+  })();
+  if (deleted === 'missing') return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  if (deleted === 'last_admin') return res.status(409).json({ error: 'Der letzte Admin kann nicht gelöscht werden.' });
+  if (deleted === 'last_group_owner') return res.status(409).json({ error: 'Der letzte aktive Owner einer Gruppe kann nicht gelöscht werden.' });
+  if (deleted === 'confirmed_event_payment') {
+    return res.status(409).json({ error: 'Eine bestätigte Event-Zahlung muss vor dem Löschen zurückgesetzt werden.' });
   }
   disconnectPlayerSockets(req.params.id);
   writeAdminAudit({
     actorPlayerId: req.player?.id,
-    action: 'test_player_deleted',
+    action: target.is_test ? 'test_player_deleted' : 'player_deleted',
     targetType: 'player',
     targetId: req.params.id,
   });
@@ -451,8 +491,8 @@ playersRouter.get('/:id/neighbors', ...withParamPlayerIdentity('id'), (req, res)
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
 
-  const scope = resolveGroupEventScope(req.group!.id, req.query.eventId);
-  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  const scope = resolveAccessibleGroupEventScope(req, res, req.query.eventId);
+  if (!scope) return;
 
   const rows = db
     .prepare('SELECT neighbor_id FROM seat_neighbors WHERE group_id = ? AND event_id IS ? AND player_id = ?')
@@ -476,15 +516,15 @@ playersRouter.put('/:id/neighbors', ...withParamPlayerIdentity('id'), (req, res)
   if (!Array.isArray(neighborIds) || !neighborIds.every((n) => typeof n === 'string')) {
     return res.status(400).json({ error: 'neighborIds muss ein String-Array sein.' });
   }
-  const scope = resolveGroupEventScope(req.group!.id, eventId);
-  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  const scope = resolveAccessibleGroupEventScope(req, res, eventId);
+  if (!scope) return;
 
   // Silently drop yourself and anything that isn't actually a player, rather
   // than erroring — a stale id from a checkbox list a moment after someone
   // else got deleted shouldn't block saving the rest.
   const uniqueIds = [...new Set(neighborIds)].filter((id) => id !== player.id);
   const validPlayers = activeGroupPlayers(req.group!.id, uniqueIds);
-  if (config.authMode !== 'legacy' && validPlayers.size !== uniqueIds.length) {
+  if (validPlayers.size !== uniqueIds.length) {
     return res.status(404).json({ error: 'Mindestens ein Spieler wurde nicht gefunden.' });
   }
   const validIds = [...validPlayers.keys()];
@@ -537,23 +577,32 @@ interface SessionRow {
 
 // GET /api/players/:id/stats - "my own stats": per-game and per-event
 // breakdown, multitasking/AFK ratio, longest sessions, and any awards this
-// player holds. Optionally narrowed to one ?eventId=. Read-only and not
-// ownership-gated for the same reason the rest of this API isn't (see
-// PATCH above) — it's just as visible to everyone as the roster already is.
+// account holds. Optionally narrowed to one ?eventId=.
+//
+// Despite the `:id` in the path this is a self-service endpoint, not a
+// lookup: withParamPlayerIdentity('id') rebinds req.params.id to the session
+// account (see sessions.ts), so the id in the URL is never what decides whose
+// numbers come back. That is also why scoping the events via
+// resolveAnalyticsEvents(req, ...) — which keys on req.player — is correct
+// here: reader and subject are always the same account. It aggregates only
+// events this account actually accepted at some point, so a private event it
+// never joined contributes neither playtime nor its name, and an explicit
+// ?eventId= for such an event is a 404.
 playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => {
-  const player = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id) as PlayerRow | undefined;
+  const player = db.prepare('SELECT * FROM players WHERE id = ? AND deactivated_at IS NULL').get(req.params.id) as PlayerRow | undefined;
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
   const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' ? eventId : null;
+  const scope = resolveAnalyticsEvents(req, eventId);
+  if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+  const filterEventId = scope.explicitEventId;
   const now = Date.now();
 
   const ownClauses = ['player_id = ?', 'group_id = ?'];
   const ownParams: string[] = [player.id, req.group!.id];
-  if (filterEventId) {
-    ownClauses.push('event_id = ?');
-    ownParams.push(filterEventId);
-  }
+  const ownEventFilter = eventIdSql('event_id', scope.eventIds);
+  ownClauses.push(ownEventFilter.clause);
+  ownParams.push(...ownEventFilter.params);
   const ownRows = db
     .prepare(
       `SELECT player_id, game_id, event_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${ownClauses.join(' AND ')}`,
@@ -647,10 +696,9 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
   // relative to the rest of the group), then filtered down to this player's.
   const allClauses: string[] = ['group_id = ?'];
   const allParams: string[] = [req.group!.id];
-  if (filterEventId) {
-    allClauses.push('event_id = ?');
-    allParams.push(filterEventId);
-  }
+  const allEventFilter = eventIdSql('event_id', scope.eventIds);
+  allClauses.push(allEventFilter.clause);
+  allParams.push(...allEventFilter.params);
   const allRows = db
     .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${allClauses.join(' AND ')}`)
     .all(...allParams) as SessionRow[];
@@ -679,6 +727,7 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
     playerId: player.id,
     playerName: player.name,
     eventId: filterEventId,
+    eventIds: scope.eventIds,
     totalMs,
     formatted: formatDurationMs(totalMs),
     activeMs,

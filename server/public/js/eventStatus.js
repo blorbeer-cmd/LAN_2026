@@ -1,0 +1,82 @@
+// One vocabulary for "what state is this event in", shared by the workspace
+// switcher in the topbar and the event cards in event management. The two
+// used to describe the same three states independently, which is how a
+// switcher can end up calling an event "aktiv" while its card says "Beendet".
+//
+// The states come straight from the event payload
+// (serializeEventSummary in src/routes/events.ts): a permanently open base
+// workspace, an ended event, the one event currently tracking playtime, and
+// everything else — created but not tracking.
+
+import { icon } from './icons.js';
+
+export const EVENT_STATUS = Object.freeze({
+  base: { key: 'base', label: 'Allgemein', icon: 'globe', badge: 'badge-online' },
+  ended: { key: 'ended', label: 'Beendet', icon: 'circleCheck', badge: 'badge-offline' },
+  tracking: { key: 'tracking', label: 'Trackt gerade', icon: 'radioTower', badge: 'badge-playing' },
+  idle: { key: 'idle', label: 'Nicht aktiv', icon: 'pause', badge: 'badge-paused' },
+  // A planning event (docs/plans/event-date-poll-concept.md) has no fixed
+  // date yet — its own date poll section explains the terminfindung itself,
+  // this badge just needs to say up front that it isn't a normal event yet.
+  planning: { key: 'planning', label: 'In Planung', icon: 'vote', badge: 'badge-paused' },
+});
+
+// Order matters: an ended event never counts as tracking, the permanent base
+// workspace has no lifecycle of its own to report, and a still-dateless
+// planning event is neither tracking nor idle in the normal sense.
+export function eventStatus(event) {
+  if (!event) return EVENT_STATUS.idle;
+  if (event.isBase) return EVENT_STATUS.base;
+  if (event.startsAt == null) return EVENT_STATUS.planning;
+  if (event.isEnded) return EVENT_STATUS.ended;
+  if (event.trackingEnabled) return EVENT_STATUS.tracking;
+  return EVENT_STATUS.idle;
+}
+
+// The badge used on event cards. The icon carries the compact visual state;
+// the accessible label and tooltip preserve the meaning without repeating it
+// as visible copy.
+export function eventStatusBadgeHtml(event) {
+  const status = eventStatus(event);
+  return `<span class="badge ${status.badge}" role="img" aria-label="${status.label}" title="${status.label}">${icon(status.icon)}</span>`;
+}
+
+// "Allgemein" is the permanent base workspace's visible name everywhere; its
+// stored name is an internal detail nobody should see in the UI.
+export function eventDisplayName(event) {
+  if (!event) return '';
+  return event.isBase ? 'Allgemein' : event.name;
+}
+
+// The workspace switcher's option text stays concise. The selected control's
+// accessible label still includes the state, while the status icon provides
+// the visual cue beside the shared select.
+export function eventSwitcherLabel(event) {
+  return eventDisplayName(event);
+}
+
+// One option shape for every event dropdown in the app — the topbar
+// workspace switcher, Auswertung's shared filter and Hall of Fame's LAN
+// picker. They used to describe the same events differently (one appended the
+// date range, another showed the bare name, none showed the state while the
+// list was open), which is the drift this collapses: title plus the state as
+// an icon, everywhere, expanded and collapsed alike.
+export function eventSelectOption(event) {
+  const status = eventStatus(event);
+  return {
+    value: event.id,
+    label: eventDisplayName(event),
+    icon: status.icon,
+    iconLabel: status.label,
+    iconState: status.key,
+  };
+}
+
+// The event filters additionally offer an "all events" entry. It is not an
+// event and therefore has no lifecycle icon of its own.
+export function eventSelectOptions(events, { allEntryLabel } = {}) {
+  const options = [...events]
+    .sort((a, b) => b.startsAt - a.startsAt)
+    .map((event) => eventSelectOption(event));
+  return allEntryLabel ? [{ value: '', label: allEntryLabel }, ...options] : options;
+}

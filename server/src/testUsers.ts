@@ -12,10 +12,10 @@
 // real features (playtime, awards, matchmaking) without special cases.
 
 import { nanoid } from 'nanoid';
-import { db, DEFAULT_GROUP_ID } from './db';
-import { getTrackingEventId } from './events';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from './db';
 import { addPlayersToLayout, removePlayersFromLayouts } from './seatingLayout';
-import { resolveGroupEventScope } from './groupEventScope';
+import { ensureAccountEventContext } from './eventContext';
+import { setEventTrackingConsent } from './trackingContexts';
 
 // Avatar color palette for generated players (single source of truth since
 // the profile editor moved to a free color picker without presets). Six of
@@ -82,12 +82,14 @@ function pickName(taken: Set<string>): string {
   }
 }
 
-export function createTestUsers(count: number, ownerGroupId = DEFAULT_GROUP_ID): CreatedTestUser[] {
+export function createTestUsers(
+  count: number,
+  ownerGroupId = DEFAULT_GROUP_ID,
+  eventId = BASE_EVENT_ID,
+): CreatedTestUser[] {
   const seed = db.transaction((): CreatedTestUser[] => {
     const now = Date.now();
-    const eventId = getTrackingEventId();
-    const resolvedSeatingScope = resolveGroupEventScope(ownerGroupId, undefined);
-    const seatingEventId = resolvedSeatingScope.ok ? resolvedSeatingScope.eventId : null;
+    const seatingEventId = eventId;
     // Arcade titles (quiz/tetris/...) are excluded here just like in
     // GET /api/games — they aren't skill-rated or vote-eligible, see
     // routes/games.ts's arcade_key filter. Scoped to the owning group's own
@@ -115,11 +117,15 @@ export function createTestUsers(count: number, ownerGroupId = DEFAULT_GROUP_ID):
       'INSERT INTO play_sessions (id, player_id, game_id, group_id, event_id, started_at, ended_at, active_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     );
     const insertLiveStatus = db.prepare(
-      `INSERT INTO live_status (player_id, last_seen, manual_note, activity_tracked) VALUES (?, ?, NULL, 0)
-       ON CONFLICT(player_id) DO UPDATE SET last_seen = excluded.last_seen`,
+      `INSERT INTO tracking_live_contexts
+         (player_id, group_id, event_id, last_seen, manual_note, activity_tracked)
+       VALUES (?, ?, ?, ?, NULL, 0)
+       ON CONFLICT(player_id, group_id, event_id) DO UPDATE SET last_seen = excluded.last_seen`,
     );
     const insertLiveGame = db.prepare(
-      'INSERT OR IGNORE INTO live_status_games (player_id, game_id, group_id, since, is_foreground) VALUES (?, ?, ?, ?, 1)',
+      `INSERT OR IGNORE INTO tracking_live_games
+         (player_id, group_id, event_id, game_id, since, is_foreground)
+       VALUES (?, ?, ?, ?, ?, 1)`,
     );
 
     const created: CreatedTestUser[] = [];
@@ -133,6 +139,8 @@ export function createTestUsers(count: number, ownerGroupId = DEFAULT_GROUP_ID):
       const color = COLORS[(existingTestCount + i) % COLORS.length];
       insertPlayer.run(id, name, color, null, nanoid(24), ownerGroupId, now);
       insertMembership.run(ownerGroupId, id, now);
+      ensureAccountEventContext(id, eventId);
+      setEventTrackingConsent(eventId, ownerGroupId, id, true, now);
       created.push({ id, name });
 
       // Bock loosely follows skill (people usually feel like playing what
@@ -172,8 +180,8 @@ export function createTestUsers(count: number, ownerGroupId = DEFAULT_GROUP_ID):
         const gameId = [...bockByGame.entries()].sort((a, b) => b[1] - a[1])[0][0];
         const since = now - randInt(10, 30) * MINUTE_MS;
         insertSession.run(nanoid(), id, gameId, ownerGroupId, eventId, since, null, 0);
-        insertLiveStatus.run(id, now);
-        insertLiveGame.run(id, gameId, ownerGroupId, since);
+        insertLiveStatus.run(id, ownerGroupId, eventId, now);
+        insertLiveGame.run(id, ownerGroupId, eventId, gameId, since);
       }
     }
 

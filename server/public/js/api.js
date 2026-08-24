@@ -1,39 +1,51 @@
-// Fetch wrapper: attaches the legacy shared access token (if any) and normalizes
-// errors so callers always get either parsed JSON or a thrown Error with the
+// Fetch wrapper: attaches the dedicated kiosk credential when needed and
+// normalizes errors so callers get parsed JSON or a thrown Error with the
 // server's German error message.
 
 import { filterTestUsers } from './testFilter.js';
 
-const TOKEN_KEY = 'respawn_access_token';
-const PLAYER_ID_KEY = 'respawn_my_player_id';
+const KIOSK_TOKEN_KEY = 'respawn_kiosk_token';
+const LEGACY_KIOSK_TOKEN_KEY = 'respawn_access_token';
 let kioskMode = false;
+// One instance, one group: this is no longer sent as a request header (the
+// server always resolves the single start group on its own) but stays as the
+// client-side key for the group id used to build /api/groups/:groupId/...
+// URLs (see groupContext.js, socket.js, checklist.js).
 export const GROUP_KEY = 'respawn_group_id';
 
 export function setKioskMode(enabled) {
   kioskMode = Boolean(enabled);
 }
 
-function addGroupHeader(headers) {
-  const groupId = sessionStorage.getItem(GROUP_KEY);
-  if (groupId) headers['x-group-id'] = groupId;
+export function getKioskToken() {
+  const token = localStorage.getItem(KIOSK_TOKEN_KEY);
+  if (token) {
+    localStorage.removeItem(LEGACY_KIOSK_TOKEN_KEY);
+    return token;
+  }
+
+  // Before the auth cutover the dedicated kiosk credential shared the
+  // browser key used by the removed legacy login. Move it once so already
+  // configured kiosk screens keep working without reviving shared auth.
+  const legacyToken = localStorage.getItem(LEGACY_KIOSK_TOKEN_KEY);
+  if (!legacyToken) return '';
+  localStorage.setItem(KIOSK_TOKEN_KEY, legacyToken);
+  localStorage.removeItem(LEGACY_KIOSK_TOKEN_KEY);
+  return legacyToken;
 }
 
-export function getToken() {
-  return localStorage.getItem(TOKEN_KEY) || '';
-}
-
-export function setToken(token) {
-  localStorage.setItem(TOKEN_KEY, token);
+export function setKioskToken(token) {
+  localStorage.setItem(KIOSK_TOKEN_KEY, token);
+  localStorage.removeItem(LEGACY_KIOSK_TOKEN_KEY);
 }
 
 export async function apiFetch(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-  const token = getToken();
-  if (token) headers['x-access-token'] = token;
-  const playerId = localStorage.getItem(PLAYER_ID_KEY);
-  if (playerId) headers['x-player-id'] = playerId;
-  if (kioskMode) headers['x-kiosk-mode'] = '1';
-  addGroupHeader(headers);
+  if (kioskMode) {
+    const token = getKioskToken();
+    if (token) headers['x-access-token'] = token;
+    headers['x-kiosk-mode'] = '1';
+  }
   // Tells the server this device currently sees test players (admin mode).
   // Needed for replace-style writes like the seating layout: a non-admin
   // client's state has test users filtered out, so its saves must not be
@@ -68,15 +80,10 @@ export async function apiFetch(path, options = {}) {
 
 // For endpoints that don't return JSON (e.g. the QR code SVG) — apiFetch
 // always tries to JSON.parse the body, which would silently swallow a
-// non-JSON response. Still attaches the access token like apiFetch does.
+// non-JSON response.
 export async function fetchText(path) {
   const headers = {};
-  const token = getToken();
-  if (token) headers['x-access-token'] = token;
-  const playerId = localStorage.getItem(PLAYER_ID_KEY);
-  if (playerId) headers['x-player-id'] = playerId;
   if (localStorage.getItem('respawn_admin') === '1') headers['x-admin-mode'] = '1';
-  addGroupHeader(headers);
   const res = await fetch(path, { headers });
   const text = await res.text();
   if (!res.ok) {
@@ -91,19 +98,13 @@ export async function fetchText(path) {
   return text;
 }
 
-// For binary downloads (the personalized agent ZIP): needs the access token
-// attached like every other call, but must hand back a Blob (with its
+// For binary downloads (the personalized agent ZIP): hands back a Blob (with its
 // filename) instead of trying to JSON.parse it, and read the server's error
 // JSON on failure the same way fetchText does.
 export async function fetchBlob(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (options.body) headers['Content-Type'] = 'application/json';
-  const token = getToken();
-  if (token) headers['x-access-token'] = token;
-  const playerId = localStorage.getItem(PLAYER_ID_KEY);
-  if (playerId) headers['x-player-id'] = playerId;
   if (localStorage.getItem('respawn_admin') === '1') headers['x-admin-mode'] = '1';
-  addGroupHeader(headers);
   const res = await fetch(path, { ...options, headers });
   if (!res.ok) {
     let message = `Fehler ${res.status}`;
@@ -129,28 +130,24 @@ export const api = {
   meta: () => apiFetch('/api/meta'),
   me: () => apiFetch('/api/me'),
 
+  onboarding: {
+    get: () => apiFetch('/api/me/onboarding'),
+    update: (data) => apiFetch('/api/me/onboarding', { method: 'PUT', body: JSON.stringify(data) }),
+    rating: {
+      start: (options = {}) => apiFetch('/api/me/onboarding/rating/start', { method: 'POST', body: JSON.stringify(options) }),
+      complete: () => apiFetch('/api/me/onboarding/rating/complete', { method: 'POST' }),
+      defer: () => apiFetch('/api/me/onboarding/rating/defer', { method: 'POST' }),
+    },
+  },
+
   groups: {
     list: () => apiFetch('/api/groups'),
-    get: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}`),
-    create: (data) => apiFetch('/api/groups', { method: 'POST', body: JSON.stringify(data) }),
-    update: (groupId, data) =>
-      apiFetch(`/api/groups/${encodeURIComponent(groupId)}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-      }),
-    archive: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}`, { method: 'DELETE' }),
     members: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/members`),
     updateMember: (groupId, playerId, role) =>
       apiFetch(`/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(playerId)}`, {
         method: 'PATCH',
         body: JSON.stringify({ role }),
       }),
-    removeMember: (groupId, playerId) =>
-      apiFetch(`/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(playerId)}`, {
-        method: 'DELETE',
-      }),
-    leave: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/leave`, { method: 'POST' }),
-    audit: (groupId, limit = 100) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/audit?limit=${limit}`),
     createTestUsers: (groupId, count) =>
       apiFetch(`/api/groups/${encodeURIComponent(groupId)}/test-users`, {
         method: 'POST',
@@ -158,20 +155,9 @@ export const api = {
       }),
     cleanupTestUsers: (groupId) =>
       apiFetch(`/api/groups/${encodeURIComponent(groupId)}/test-users`, { method: 'DELETE' }),
-    invitePreview: (code) => apiFetch(`/api/groups/invites/${encodeURIComponent(code)}`),
-    acceptInvite: (code) => apiFetch(`/api/groups/invites/${encodeURIComponent(code)}/accept`, { method: 'POST' }),
-    invites: (groupId) => apiFetch(`/api/groups/${encodeURIComponent(groupId)}/invites`),
-    createInvite: (groupId, data = {}) =>
-      apiFetch(`/api/groups/${encodeURIComponent(groupId)}/invites`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-    revokeInvite: (groupId, code) =>
-      apiFetch(`/api/groups/${encodeURIComponent(groupId)}/invites/${encodeURIComponent(code)}`, { method: 'DELETE' }),
   },
 
-  // Real per-user login (see docs/KONZEPT-USER-MANAGEMENT.md). Only used by
-  // authGate.js, and only once the server reports authMode: 'required'.
+  // Real per-user login (see docs/KONZEPT-USER-MANAGEMENT.md).
   auth: {
     register: (data) => apiFetch('/api/auth/register', { method: 'POST', body: JSON.stringify(data) }),
     claim: (data) => apiFetch('/api/auth/claim', { method: 'POST', body: JSON.stringify(data) }),
@@ -184,6 +170,7 @@ export const api = {
     invites: () => apiFetch('/api/auth/invites'),
     createInvite: (data) => apiFetch('/api/auth/invites', { method: 'POST', body: JSON.stringify(data) }),
     revokeInvite: (code) => apiFetch(`/api/auth/invites/${encodeURIComponent(code)}`, { method: 'DELETE' }),
+    testSession: (code) => apiFetch('/api/auth/test-session', { method: 'POST', body: JSON.stringify({ code }) }),
   },
 
   players: {
@@ -210,6 +197,7 @@ export const api = {
     update: (id, data) => apiFetch(`/api/games/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     remove: (id) => apiFetch(`/api/games/${id}`, { method: 'DELETE' }),
     promote: (id) => apiFetch(`/api/games/${id}/promote`, { method: 'POST' }),
+    demote: (id) => apiFetch(`/api/games/${id}/demote`, { method: 'POST' }),
     addProcess: (id, processName) =>
       apiFetch(`/api/games/${id}/processes`, { method: 'POST', body: JSON.stringify({ processName }) }),
     removeProcess: (id, processName) =>
@@ -317,17 +305,50 @@ export const api = {
 
   events: {
     list: () => apiFetch('/api/events'),
+    get: (id) => apiFetch(`/api/events/${id}`),
     active: () => apiFetch('/api/events/active'),
-    // data: { name, startsAt, endsAt, location?, description? }
+    activate: (eventId) =>
+      apiFetch('/api/me/active-event', { method: 'PUT', body: JSON.stringify({ eventId }) }),
+    // data: { name, startsAt, endsAt, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
     create: (data) => apiFetch('/api/events', { method: 'POST', body: JSON.stringify(data) }),
-    // fields: any subset of { name?, startsAt?, endsAt?, location?, description? }
+    // fields: any subset of { name?, startsAt?, endsAt?, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
     update: (id, fields) => apiFetch(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(fields) }),
     startTracking: (id) => apiFetch(`/api/events/${id}/tracking/start`, { method: 'POST' }),
+    restart: (id) => apiFetch(`/api/events/${id}/restart`, { method: 'POST' }),
     stopTracking: (id) => apiFetch(`/api/events/${id}/tracking/stop`, { method: 'POST' }),
     end: (id) => apiFetch(`/api/events/${id}/end`, { method: 'POST' }),
     cancel: (id) => apiFetch(`/api/events/${id}`, { method: 'DELETE' }),
     setParticipants: (id, playerIds) =>
       apiFetch(`/api/events/${id}/participants`, { method: 'PUT', body: JSON.stringify({ playerIds }) }),
+    inviteParticipant: (id, playerId) =>
+      apiFetch(`/api/events/${id}/invitations`, { method: 'POST', body: JSON.stringify({ playerId }) }),
+    removeParticipant: (id, playerId) =>
+      apiFetch(`/api/events/${id}/participants/${playerId}`, { method: 'DELETE' }),
+    setParticipantPaid: (id, playerId, paid) =>
+      apiFetch(`/api/events/${id}/participants/${playerId}/payment`, {
+        method: 'PATCH',
+        body: JSON.stringify({ paid }),
+      }),
+    acceptInvitation: (id) => apiFetch(`/api/events/${id}/invitation/accept`, { method: 'POST' }),
+    declineInvitation: (id) => apiFetch(`/api/events/${id}/invitation/decline`, { method: 'POST' }),
+  },
+
+  eventPolls: {
+    list: (eventId) => apiFetch(`/api/events/${eventId}/polls`),
+    get: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}`),
+    create: (eventId, data) => apiFetch(`/api/events/${eventId}/polls`, { method: 'POST', body: JSON.stringify(data) }),
+    update: (eventId, pollId, data) =>
+      apiFetch(`/api/events/${eventId}/polls/${pollId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    submitMyResponses: (eventId, pollId, responses) =>
+      apiFetch(`/api/events/${eventId}/polls/${pollId}/my-responses`, { method: 'PUT', body: JSON.stringify({ responses }) }),
+    sendReminders: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}/reminders`, { method: 'POST' }),
+    close: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}/close`, { method: 'POST' }),
+    reopen: (eventId, pollId, responseDueOn) =>
+      apiFetch(`/api/events/${eventId}/polls/${pollId}/reopen`, {
+        method: 'POST',
+        body: JSON.stringify(responseDueOn ? { responseDueOn } : {}),
+      }),
+    remove: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}`, { method: 'DELETE' }),
   },
 
   tournaments: {
@@ -441,6 +462,7 @@ export const api = {
   },
 
   admin: {
+    readiness: () => apiFetch('/api/admin/readiness'),
     players: () => apiFetch('/api/admin/players'),
     audit: (limit = 100) => apiFetch(`/api/admin/audit?limit=${limit}`),
     agentDiagnostics: () => apiFetch('/api/admin/agent-diagnostics'),
@@ -451,14 +473,20 @@ export const api = {
         : apiFetch('/api/admin/test-users', { method: 'POST', body: JSON.stringify({ count }) });
     },
     seedHallOfFame: () => apiFetch('/api/admin/test-data/hall-of-fame', { method: 'POST' }),
-    cleanupTestUsers: () => {
-      const groupId = sessionStorage.getItem(GROUP_KEY);
-      return groupId ? api.groups.cleanupTestUsers(groupId) : apiFetch('/api/admin/test-users', { method: 'DELETE' });
-    },
+    // The Admin panel promises to remove all marked test data, including the
+    // historical Test-LAN fixtures. The group endpoint only removes players.
+    cleanupTestUsers: () => apiFetch('/api/admin/test-users', { method: 'DELETE' }),
+    featureUsage: (eventId) =>
+      apiFetch(`/api/admin/feature-usage${eventId ? `?eventId=${encodeURIComponent(eventId)}` : ''}`),
+  },
+
+  feedback: {
+    create: (data) => apiFetch('/api/feedback', { method: 'POST', body: JSON.stringify(data) }),
+    list: (limit = 50) => apiFetch(`/api/feedback?limit=${limit}`),
   },
 
   foodOrders: {
-    list: () => apiFetch('/api/food-orders'),
+    list: (orderId = null) => apiFetch(`/api/food-orders${orderId ? `?orderId=${encodeURIComponent(orderId)}` : ''}`),
     create: (playerId, title, { sendAt, notes, link, paypalLink, tipPercent } = {}) =>
       apiFetch('/api/food-orders', {
         method: 'POST',
@@ -482,6 +510,11 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ paid }),
       }),
+    setGroupPaid: (orderId, itemIds, paid) =>
+      apiFetch(`/api/food-orders/${orderId}/items/bulk-paid`, {
+        method: 'PATCH',
+        body: JSON.stringify({ itemIds, paid }),
+      }),
     close: (orderId) => apiFetch(`/api/food-orders/${orderId}/close`, { method: 'POST' }),
     reopen: (orderId) => apiFetch(`/api/food-orders/${orderId}/reopen`, { method: 'POST' }),
     finalize: (orderId) => apiFetch(`/api/food-orders/${orderId}/finalize`, { method: 'POST' }),
@@ -496,12 +529,15 @@ export const api = {
     removeItem: (itemId, playerId) =>
       apiFetch(`/api/checklist/items/${itemId}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
     tasks: () => apiFetch('/api/checklist/tasks'),
-    createRequest: (playerId, title, description) =>
-      apiFetch('/api/checklist/tasks', { method: 'POST', body: JSON.stringify({ playerId, title, description }) }),
-    createTodo: (playerId, title, description, assigneePlayerIds) =>
+    createRequest: (playerId, title, description, assigneePlayerIds, dueAt) =>
+      apiFetch('/api/checklist/tasks', {
+        method: 'POST',
+        body: JSON.stringify({ playerId, title, description, assigneePlayerIds, dueAt }),
+      }),
+    createTodo: (playerId, title, description, assigneePlayerIds, dueAt) =>
       apiFetch('/api/checklist/tasks/todo', {
         method: 'POST',
-        body: JSON.stringify({ playerId, title, description, assigneePlayerIds }),
+        body: JSON.stringify({ playerId, title, description, assigneePlayerIds, dueAt }),
       }),
     claim: (taskId, playerId, comment) =>
       apiFetch(`/api/checklist/tasks/${taskId}/claim`, { method: 'POST', body: JSON.stringify({ playerId, comment }) }),
@@ -542,6 +578,10 @@ export const api = {
     start: (playerId, deviceId) =>
       apiFetch('/api/music/sessions', { method: 'POST', body: JSON.stringify({ playerId, deviceId }) }),
     search: (query) => apiFetch(`/api/music/search?q=${encodeURIComponent(query)}`),
+    playPlaylist: (playerId, playlistId) =>
+      apiFetch(`/api/music/playlists/${encodeURIComponent(playlistId)}/play`, {
+        method: 'POST', body: JSON.stringify({ playerId }),
+      }),
     request: (playerId, trackId) =>
       apiFetch('/api/music/requests', { method: 'POST', body: JSON.stringify({ playerId, trackId }) }),
     removeRequest: (playerId, requestId) =>

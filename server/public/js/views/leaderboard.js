@@ -6,18 +6,27 @@
 // two teams at once.
 
 import { api } from '../api.js';
-import { state } from '../state.js';
+import { state, catalogGames, gamesWithHistory, gameById } from '../state.js';
 import { escapeHtml, avatarHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
+import { emptyStateHtml } from '../emptyState.js';
+import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+
+const RESULT_HELP = 'Sieger aus Platz 1 oder höchstem Wert; beide Angaben sind optional.';
 
 export function renderLeaderboard(container, ctx) {
   const filterGameId = state.selectedGameId || '';
-  const gameOptions = `<option value="">Gesamt</option>${state.games
-    .map((g) => `<option value="${g.id}" ${g.id === filterGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`)
-    .join('')}`;
+  // Accepted games only — plus any game that already carries results, so a
+  // game moved back to the suggestions after it was played keeps its own
+  // ranking reachable instead of silently dropping out of the filter.
+  const lbGameOptions = [
+    { value: '', label: 'Gesamt' },
+    ...gamesWithHistory().map((g) => ({ value: g.id, label: g.name })),
+  ];
 
   const standings = state.leaderboard?.standings || [];
   const rows = standings
@@ -84,8 +93,7 @@ export function renderLeaderboard(container, ctx) {
     .join('');
 
   container.innerHTML = `
-    <div class="row-between">
-      <h1 class="view-title">Rang</h1>
+    <div class="row view-actions">
       <button type="button" class="btn btn-primary btn-sm" id="add-match-btn">Ergebnis eintragen</button>
     </div>
     <div class="grouped-page-sections">
@@ -93,17 +101,17 @@ export function renderLeaderboard(container, ctx) {
         <div class="grouped-page-section-title">
           <h2 id="leaderboard-filtered-title">Rangliste &amp; Spielzeit</h2>
         </div>
-        <label>
-          <span class="field-label">Spiel auswählen</span>
-          <select id="lb-filter">${gameOptions}</select>
-        </label>
+        <div>
+          <label class="field-label" for="lb-filter-search">Spiel auswählen</label>
+          ${searchSelectHtml('lb-filter', lbGameOptions, filterGameId, { placeholder: 'Spiel suchen…' })}
+        </div>
         <div class="stack">
           <section class="tournament-section-panel stack" aria-labelledby="leaderboard-ranking-title">
             <div class="grouped-page-section-title">
               <h2 id="leaderboard-ranking-title">Rangliste</h2>
             </div>
             <div class="leaderboard-list-grid">
-              ${standings.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('leaderboard'))}</span>Noch keine Ergebnisse.</div>` : rows}
+              ${standings.length === 0 ? emptyStateHtml('Noch keine Ergebnisse.', { icon: icon(domainIcon('leaderboard')) }) : rows}
             </div>
           </section>
           <section class="tournament-section-panel stack" aria-labelledby="leaderboard-playtime-title">
@@ -111,7 +119,7 @@ export function renderLeaderboard(container, ctx) {
               <h2 id="leaderboard-playtime-title">Spielzeit</h2>
             </div>
             <div class="leaderboard-list-grid">
-              ${playtime.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeRows}
+              ${playtime.length === 0 ? emptyStateHtml('Noch keine erfasste Spielzeit.', { icon: icon('timer') }) : playtimeRows}
             </div>
           </section>
         </div>
@@ -122,12 +130,13 @@ export function renderLeaderboard(container, ctx) {
           <h2 id="leaderboard-games-playtime-title">Spielzeit pro Spiel</h2>
         </div>
         <div class="leaderboard-list-grid">
-          ${playtimeByGame.length === 0 ? `<div class="empty-state"><span class="empty-state-icon">${icon('timer')}</span>Noch keine erfasste Spielzeit.</div>` : playtimeByGameRows}
+          ${playtimeByGame.length === 0 ? emptyStateHtml('Noch keine erfasste Spielzeit.', { icon: icon('timer') }) : playtimeByGameRows}
         </div>
       </section>
     </div>
   `;
 
+  wireSearchSelect(container, 'lb-filter', lbGameOptions);
   container.querySelector('#lb-filter').addEventListener('change', async (e) => {
     state.selectedGameId = e.target.value || null;
     const gameId = state.selectedGameId || undefined;
@@ -150,8 +159,16 @@ export function renderLeaderboard(container, ctx) {
 // the saved match back to that matchmaking_draws row and updates its actions
 // in the shared Historie.
 export function openMatchForm(ctx, options = {}) {
-  if (state.games.length === 0 || state.players.length === 0) {
-    return showToast('Dafür braucht es mindestens ein Spiel und 2 Spieler.', { error: true });
+  // A result is recorded for a game the group actually plays, so the picker
+  // offers accepted games only (see catalogGames()) — plus, when the dialog
+  // was opened from one specific draw, that draw's own game: a lineup drawn
+  // while the game was still in the catalog stays completable even after a
+  // demotion, and the server allows exactly that case (see matches.ts).
+  const selectableGames = catalogGames();
+  const drawGame = options.presetDrawId && options.presetGameId ? gameById(options.presetGameId) : null;
+  if (drawGame && !selectableGames.some((g) => g.id === drawGame.id)) selectableGames.push(drawGame);
+  if (selectableGames.length === 0 || state.players.length === 0) {
+    return showToast('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', { error: true });
   }
 
   let teamCount = options.presetTeams ? Math.max(2, options.presetTeams.length) : 2;
@@ -161,7 +178,21 @@ export function openMatchForm(ctx, options = {}) {
   // player in FFA) — the winner is then derived from those instead of asked
   // for separately, so there's no way for the two to disagree.
   let advancedMode = false;
-  const defaultGameId = options.presetGameId || state.selectedGameId || state.games[0].id;
+  // The ranking filter may still point at a game that is not selectable here
+  // (a played game that was moved back to the suggestions), so fall back
+  // instead of preselecting a value the picker does not offer. Silently
+  // swapping the game would let a result land on the wrong one, so say why:
+  // the dialog is opened straight out of a list filtered to that very game.
+  const preferredGameId = options.presetGameId || state.selectedGameId;
+  const preferredIsSelectable = selectableGames.some((g) => g.id === preferredGameId);
+  const defaultGameId = preferredIsSelectable ? preferredGameId : selectableGames[0].id;
+  if (preferredGameId && !preferredIsSelectable) {
+    const preferredName = state.games.find((g) => g.id === preferredGameId)?.name;
+    if (preferredName) {
+      showToast(`„${preferredName}“ ist nur ein Vorschlag – dafür lässt sich kein Ergebnis eintragen.`, { error: true });
+    }
+  }
+  const matchGameOptions = selectableGames.map((g) => ({ value: g.id, label: g.name }));
 
   const presetTeamIndexByPlayer = new Map();
   if (options.presetTeams) {
@@ -204,12 +235,10 @@ export function openMatchForm(ctx, options = {}) {
           <div class="grouped-page-section-title">
             <h2 id="match-mode-title">Modus</h2>
           </div>
-          <label>
-            <span class="field-label">Spiel</span>
-            <select id="match-game">
-              ${state.games.map((g) => `<option value="${g.id}" ${g.id === defaultGameId ? 'selected' : ''}>${escapeHtml(g.icon)} ${escapeHtml(g.name)}</option>`).join('')}
-            </select>
-          </label>
+          <div>
+            <label class="field-label" for="match-game-search">Spiel</label>
+            ${searchSelectHtml('match-game', matchGameOptions, defaultGameId, { placeholder: 'Spiel suchen…' })}
+          </div>
           <div>
             <label class="check-row">
               <input type="checkbox" id="match-ffa" />
@@ -241,6 +270,7 @@ export function openMatchForm(ctx, options = {}) {
         return dirty ? 'Das eingetragene Ergebnis inklusive Sieger, Werten und Platzierungen geht verloren.' : null;
       },
       onMount: (modalEl) => {
+        wireSearchSelect(modalEl, 'match-game', matchGameOptions);
         const bodyEl = modalEl.querySelector('#match-body');
 
         function renderTeamPickers() {
@@ -277,7 +307,10 @@ export function openMatchForm(ctx, options = {}) {
               </section>
               <section class="tournament-section-panel stack match-form-section" aria-labelledby="match-result-title">
                 <div class="grouped-page-section-title">
-                  <h2 id="match-result-title">Ergebnis</h2>
+                  <span class="title-with-info">
+                    <h2 id="match-result-title">Ergebnis</h2>
+                    ${infoTooltipHtml('match-team-result-help', 'Ergebnis', RESULT_HELP)}
+                  </span>
                 </div>
                 <div id="match-winner-section" ${advancedMode ? 'hidden' : ''}>
                   <div class="row" style="flex-wrap:wrap;">
@@ -286,10 +319,6 @@ export function openMatchForm(ctx, options = {}) {
                   </div>
                 </div>
                 <div id="match-scores-section" class="stack" ${advancedMode ? '' : 'hidden'}>
-                  <p class="muted match-result-help">
-                    Sieger wird automatisch aus Platz 1 bzw. dem höchsten Wert bestimmt. Beides ist optional
-                    und unabhängig voneinander — leer lassen, was nicht zutrifft.
-                  </p>
                   ${Array.from(
                     { length: teamCount },
                     (_, i) => `
@@ -303,6 +332,8 @@ export function openMatchForm(ctx, options = {}) {
               </section>
             </div>
           `;
+
+          wireInfoTooltips(bodyEl);
 
           bodyEl.querySelector('#match-teamcount').addEventListener('input', (e) => {
             // Capture whatever the user already picked before re-rendering,
@@ -365,21 +396,21 @@ export function openMatchForm(ctx, options = {}) {
               </section>
               <section class="tournament-section-panel stack match-form-section" aria-labelledby="match-result-title">
                 <div class="grouped-page-section-title">
-                  <h2 id="match-result-title">Ergebnis</h2>
+                  <span class="title-with-info">
+                    <h2 id="match-result-title">Ergebnis</h2>
+                    ${infoTooltipHtml('match-ffa-result-help', 'Ergebnis', RESULT_HELP)}
+                  </span>
                 </div>
                 <div id="match-ffa-winner-section" ${advancedMode ? 'hidden' : ''}>
                   <div id="match-ffa-winner"></div>
                 </div>
                 <div id="match-ffa-scores-section" class="stack" ${advancedMode ? '' : 'hidden'}>
-                  <p class="muted match-result-help">
-                    Sieger wird automatisch aus Platz 1 bzw. dem höchsten Wert bestimmt. Beides ist optional
-                    und unabhängig voneinander — leer lassen, was nicht zutrifft.
-                  </p>
                   <div id="match-ffa-scores"></div>
                 </div>
               </section>
             </div>
           `;
+          wireInfoTooltips(bodyEl);
           renderFfaWinnerOptions();
           renderFfaScoreOptions();
           bodyEl.querySelectorAll('[data-ffa-player]').forEach((cb) => {

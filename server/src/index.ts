@@ -4,12 +4,16 @@
 import http from 'http';
 import { Server } from 'socket.io';
 
-import { config, productionConfigError } from './config';
+import { config, productionConfigError, startupAccessConfigError } from './config';
 import './db'; // side-effect: open DB, create schema, seed defaults
+import { hasClaimedAdmin } from './accounts';
+import { runBootstrapAdmins } from './bootstrapAdmins';
 import { createApp } from './app';
-import { setIo, createSocketAuthGuard, registerArcadeKioskSockets } from './realtime';
-import { accessProtectionEnabled } from './auth';
+import { setIo, createSocketAuthGuard, registerScopedSockets } from './realtime';
 import { startOfflineSweeper } from './liveStatus';
+import { startFoodOrderPaymentReminder } from './foodOrderReminders';
+import { startEventPaymentReminder } from './eventPaymentReminders';
+import { startEventDatePollReminderSweep } from './eventDatePollReminders';
 import { startArcadeHeartbeat } from './arcade/arcadeTracking';
 import { registerArcadeSockets } from './arcade/arcade';
 import { registerTetrisSockets } from './arcade/tetris';
@@ -17,6 +21,9 @@ import { registerScribbleSockets } from './arcade/scribble';
 import { registerBlobbySockets } from './arcade/blobby';
 import { registerPongSockets } from './arcade/pong';
 import { registerSnakeSockets } from './arcade/snake';
+import { registerBattleshipSockets } from './arcade/battleship';
+import { registerChallengeRushSockets } from './arcade/challengeRush';
+import { registerArcadeSockets as registerArcadeRealtimeSockets } from './arcade/realtime';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -33,13 +40,27 @@ function start(): void {
     }
   }
 
+  // Seed any configured ready-to-use admin accounts (BOOTSTRAP_ADMIN_<n>_*)
+  // before the first request can arrive. Idempotent and a no-op when unset.
+  runBootstrapAdmins();
+
+  const claimedAdminExists = hasClaimedAdmin();
+  const accessError = startupAccessConfigError(claimedAdminExists);
+  if (accessError) {
+    // eslint-disable-next-line no-console
+    console.error(`FATAL: ${accessError}`);
+    process.exit(1);
+  }
+  const showLocalRecoveryInfo = !claimedAdminExists && process.env.LOCAL_GENERATED_RECOVERY_CODE === '1';
+
   const app = createApp();
   const server = http.createServer(app);
   const io = new Server(server);
   setIo(io);
 
   io.use(createSocketAuthGuard());
-  registerArcadeKioskSockets(io);
+  registerScopedSockets(io);
+  registerArcadeRealtimeSockets(io);
 
   registerArcadeSockets(io);
   registerTetrisSockets(io);
@@ -47,9 +68,15 @@ function start(): void {
   registerBlobbySockets(io);
   registerPongSockets(io);
   registerSnakeSockets(io);
+  registerBattleshipSockets(io);
+  registerChallengeRushSockets(io);
 
   // Periodically flip stale players to offline.
   startOfflineSweeper(io);
+  // Remind participants about every kind of open payment every two hours.
+  startFoodOrderPaymentReminder();
+  startEventPaymentReminder();
+  startEventDatePollReminderSweep();
   // Keeps players mid-arcade-match from being swept offline (arcade has no
   // agent report to keep live_status fresh — see arcadeTracking.ts).
   startArcadeHeartbeat();
@@ -71,12 +98,18 @@ function start(): void {
   });
 
   server.listen(config.port, () => {
-    // eslint-disable-next-line no-console
-    console.log(`Respawn server läuft auf http://localhost:${config.port}`);
-    if (config.authMode === 'legacy' && !accessProtectionEnabled()) {
+    const address = server.address();
+    const port = address && typeof address === 'object' ? address.port : config.port;
+    if (showLocalRecoveryInfo) {
       // eslint-disable-next-line no-console
-      console.log('Hinweis: Kein ACCESS_TOKEN gesetzt – Zugangsschutz ist deaktiviert.');
+      console.log('Frische lokale Datenbank: Für diesen Start wurde ein temporärer Erstzugang erzeugt.');
+      // eslint-disable-next-line no-console
+      console.log(`Öffne http://localhost:${port}/?claim=${config.adminRecoveryCode}`);
+      // eslint-disable-next-line no-console
+      console.log('Für einen dauerhaften Zugang ADMIN_RECOVERY_CODE oder BOOTSTRAP_ADMIN_1_NAME/PASSWORD setzen.');
     }
+    // eslint-disable-next-line no-console
+    console.log(`Respawn server läuft auf http://localhost:${port}`);
   });
 }
 

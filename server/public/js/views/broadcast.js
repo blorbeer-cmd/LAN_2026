@@ -1,45 +1,54 @@
-// "Durchsage" view: persists a message for the current group/event recipient
-// set. Phase 5c deliberately refreshes only the sending browser; delivery to
-// other devices, Push and Kiosk remain separate follow-up work.
+// "Durchsage" view: sends a time-limited message to the current group/event
+// through the shared in-app, kiosk and Web Push delivery pipeline.
 
 import { api } from '../api.js';
 import { escapeHtml, formatDateTime } from '../format.js';
 import { showToast } from '../toast.js';
-import { getMyId, whoAmICardHtml, wireWhoAmICard } from '../whoami.js';
+import { getMyId } from '../whoami.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { icon } from '../icons.js';
+import { emptyStateHtml } from '../emptyState.js';
 import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 
 let historyCache = null;
 let historyLoading = false;
+let historyStale = false;
+let historyRequestVersion = 0;
 let historyOpen = false;
 
 async function loadHistory(ctx) {
+  const version = ++historyRequestVersion;
   historyLoading = true;
+  historyStale = false;
   try {
     const res = await api.broadcasts.list();
-    historyCache = res.broadcasts;
+    if (version === historyRequestVersion) historyCache = res.broadcasts;
   } catch {
-    historyCache = [];
+    if (version === historyRequestVersion && historyCache === null) historyCache = [];
   } finally {
-    historyLoading = false;
-    ctx.rerender();
+    if (version === historyRequestVersion) {
+      historyLoading = false;
+      ctx.rerender();
+    }
   }
 }
 
-// Called from app.js on every broadcast:new socket event so the history
-// list is fresh next time this view renders.
-export function invalidateBroadcasts() {
-  historyCache = null;
+// Called from app.js on every broadcast lifecycle event so the history list
+// is fresh next time this view renders.
+export function invalidateBroadcasts({ hard = false } = {}) {
+  historyRequestVersion += 1;
+  historyLoading = false;
+  historyStale = true;
+  if (hard) historyCache = null;
 }
 
 function renderHistory(myId) {
-  if (historyLoading || historyCache === null) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
+  if (historyCache === null) {
+    return emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' });
   }
   if (historyCache.length === 0) {
-    return `<div class="empty-state"><span class="empty-state-icon">${icon(domainIcon('broadcast'))}</span>Noch keine Durchsagen.</div>`;
+    return emptyStateHtml('Noch keine Durchsagen.', { icon: icon(domainIcon('broadcast')) });
   }
   const now = Date.now();
   const rows = historyCache
@@ -64,7 +73,7 @@ function renderHistory(myId) {
 }
 
 export function renderBroadcast(container, ctx) {
-  if (historyCache === null && !historyLoading) loadHistory(ctx);
+  if ((historyCache === null || historyStale) && !historyLoading) loadHistory(ctx);
 
   const myId = getMyId();
 
@@ -81,7 +90,6 @@ export function renderBroadcast(container, ctx) {
   container.innerHTML = `
     <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
     <h1 class="view-title">Durchsage</h1>
-    ${whoAmICardHtml('broadcast-whoami', { marginBottom: 'var(--space-3)' })}
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="broadcast-new-title">
         <div class="grouped-page-section-title">
@@ -90,7 +98,7 @@ export function renderBroadcast(container, ctx) {
             ${infoTooltipHtml(
               'broadcast-delivery-help',
               'Neue Durchsage',
-              'Wird für die aktuelle Gruppe oder LAN gespeichert und erscheint in deiner Mitteilungshistorie. Andere Geräte, Push und Kiosk werden noch nicht automatisch beliefert.'
+              'Erreicht verbundene Geräte sofort, erscheint auf dem Kiosk und wird an Personen mit aktivierten Push-Mitteilungen gesendet.'
             )}
           </span>
         </div>
@@ -101,7 +109,7 @@ export function renderBroadcast(container, ctx) {
           </div>
           <div>
             <label for="broadcast-ends-at" class="field-label">Sichtbar bis</label>
-            ${dateTimeFieldHtml('broadcast-ends-at', displayEndsAt, { disabled: !myId })}
+            ${dateTimeFieldHtml('broadcast-ends-at', displayEndsAt, { disabled: !myId, label: 'Sichtbar bis' })}
           </div>
           <button type="submit" class="btn btn-primary" ${myId ? '' : 'disabled'}>Senden</button>
         </form>
@@ -119,7 +127,6 @@ export function renderBroadcast(container, ctx) {
     </div>
   `;
 
-  wireWhoAmICard(container, 'broadcast-whoami', ctx);
   wireDateTimeField(container, 'broadcast-ends-at');
   wireInfoTooltips(container);
 
@@ -147,14 +154,12 @@ export function renderBroadcast(container, ctx) {
     submitBtn.disabled = true;
     try {
       await api.broadcasts.send(myId, message, endsAt);
-      // Refresh only this browser from the durable REST history. This keeps
-      // the sender's center current without introducing delivery signals.
       window.dispatchEvent(new CustomEvent('respawn:notifications-refresh'));
       const currentInput = container.querySelector('#broadcast-message');
       const currentEndsAtInput = container.querySelector('#broadcast-ends-at');
       if (currentInput) currentInput.value = '';
       if (currentEndsAtInput) currentEndsAtInput.value = '';
-      historyCache = null;
+      invalidateBroadcasts();
       showToast('Durchsage gesendet.');
       ctx.rerender();
     } catch (err) {
@@ -169,7 +174,7 @@ export function renderBroadcast(container, ctx) {
       button.disabled = true;
       try {
         await api.broadcasts.end(button.dataset.endBroadcast, myId);
-        historyCache = null;
+        invalidateBroadcasts();
         showToast('Durchsage beendet.');
         ctx.rerender();
       } catch (err) {

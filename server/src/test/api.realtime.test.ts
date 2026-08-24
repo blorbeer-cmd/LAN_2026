@@ -1,6 +1,5 @@
-// Integration tests for the realtime path itself. Phase 5c deliberately
-// keeps organisation communication data-only, while the remaining tests
-// verify the Socket.IO wiring used by features that already deliver events.
+// Integration tests for Socket.IO delivery, including group broadcasts and
+// the transport/authentication wiring used by other realtime features.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,17 +8,21 @@ import type { AddressInfo } from 'net';
 import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import request from 'supertest';
-import { createApp } from '../app';
-import { setIo, Events, createSocketAuthGuard, registerArcadeKioskSockets, broadcastArcadeKiosk, arcadeWatcherPlayerIds } from '../realtime';
-import { db } from '../db';
+import { createTestApp } from './testApp';
+import { setIo, Events, createSocketAuthGuard, registerScopedSockets } from '../realtime';
+import { arcadeWatcherPlayerIds, broadcastArcadeKiosk, registerArcadeSockets } from '../arcade/realtime';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
+import { ensureAccountEventContext } from '../eventContext';
 import { createSession, SESSION_COOKIE_NAME } from '../sessions';
 import { nanoid } from 'nanoid';
 
-async function withServer(fn: (baseUrl: string) => Promise<void>): Promise<void> {
-  const app = createApp();
+async function withServer(fn: (baseUrl: string, io: Server) => Promise<void>): Promise<void> {
+  const app = createTestApp();
   const httpServer = http.createServer(app);
   const io = new Server(httpServer);
   io.use(createSocketAuthGuard(''));
+  registerScopedSockets(io);
+  registerArcadeSockets(io);
   setIo(io);
 
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
@@ -27,12 +30,16 @@ async function withServer(fn: (baseUrl: string) => Promise<void>): Promise<void>
   const baseUrl = `http://127.0.0.1:${port}`;
 
   try {
-    await fn(baseUrl);
+    await fn(baseUrl, io);
   } finally {
     io.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     setIo(null);
   }
+}
+
+function socketAck<T>(socket: ClientSocket, event: string, payload: unknown): Promise<T> {
+  return new Promise((resolve) => socket.emit(event, payload, resolve));
 }
 
 function connectClient(baseUrl: string, sessionToken?: string): Promise<ClientSocket> {
@@ -47,26 +54,36 @@ function connectClient(baseUrl: string, sessionToken?: string): Promise<ClientSo
   });
 }
 
-test('stored broadcasts do not deliver a Socket.IO event in Phase 5c', async () => {
+test('a new broadcast reaches every subscribed group member with its public payload', async () => {
   await withServer(async (baseUrl) => {
-    const clientA = await connectClient(baseUrl);
-    const clientB = await connectClient(baseUrl);
+    const player = await request(baseUrl).post('/api/players').send({ name: 'Realtime Test Player 2' });
+    assert.equal(player.status, 201);
+    const sessionToken = createSession(player.body.id);
+    const clientA = await connectClient(baseUrl, sessionToken);
+    const clientB = await connectClient(baseUrl, sessionToken);
     try {
-      let received = 0;
-      clientA.on(Events.broadcastNew, () => { received += 1; });
-      clientB.on(Events.broadcastNew, () => { received += 1; });
+      await socketAck(clientA, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
+      await socketAck(clientB, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
+      const received: unknown[] = [];
+      clientA.on(Events.broadcastNew, (payload) => received.push(payload));
+      clientB.on(Events.broadcastNew, (payload) => received.push(payload));
 
-      const player = await request(baseUrl).post('/api/players').send({ name: 'Realtime Test Player 2' });
-      assert.equal(player.status, 201);
       const sent = await request(baseUrl)
         .post('/api/broadcasts')
         .send({ playerId: player.body.id, message: 'Zweite Durchsage' });
       assert.equal(sent.status, 201);
 
-      // The HTTP response is produced after the route has finished. Give any
-      // accidentally queued Socket.IO packets one event-loop turn to arrive.
+      // The HTTP response is produced after the route has emitted. Give both
+      // clients one event-loop turn to consume their queued packets.
       await new Promise((resolve) => setTimeout(resolve, 50));
-      assert.equal(received, 0);
+      assert.equal(received.length, 2);
+      for (const payload of received as Array<Record<string, unknown>>) {
+        assert.equal(payload.id, sent.body.id);
+        assert.equal(payload.playerId, player.body.id);
+        assert.equal(payload.playerName, 'Realtime Test Player 2');
+        assert.equal(payload.message, 'Zweite Durchsage');
+        assert.equal('recipientIds' in payload, false, 'recipient snapshots stay in the REST response');
+      }
     } finally {
       clientA.close();
       clientB.close();
@@ -75,12 +92,12 @@ test('stored broadcasts do not deliver a Socket.IO event in Phase 5c', async () 
 });
 
 async function withGuardedServer(
-  accessToken: string,
+  kioskToken: string,
   fn: (baseUrl: string) => Promise<void>
 ): Promise<void> {
   const httpServer = http.createServer();
   const io = new Server(httpServer);
-  io.use(createSocketAuthGuard(accessToken));
+  io.use(createSocketAuthGuard(kioskToken));
 
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const port = (httpServer.address() as AddressInfo).port;
@@ -94,13 +111,13 @@ async function withGuardedServer(
   }
 }
 
-test('createSocketAuthGuard rejects a socket connecting with the wrong access token', async () => {
+test('createSocketAuthGuard rejects a kiosk socket with the wrong kiosk token', async () => {
   await withGuardedServer('secret-token', async (baseUrl) => {
     const rejected = new Promise<Error>((resolve) => {
       const socket = ioClient(baseUrl, {
         transports: ['websocket'],
         reconnection: false,
-        auth: { token: 'wrong-token' },
+        auth: { token: 'wrong-token', kiosk: true },
       });
       socket.on('connect_error', (err) => resolve(err));
       socket.on('connect', () => socket.close());
@@ -110,12 +127,12 @@ test('createSocketAuthGuard rejects a socket connecting with the wrong access to
   });
 });
 
-test('createSocketAuthGuard accepts a socket connecting with the right access token', async () => {
+test('createSocketAuthGuard accepts a kiosk socket with the right kiosk token', async () => {
   await withGuardedServer('secret-token', async (baseUrl) => {
     const socket = ioClient(baseUrl, {
       transports: ['websocket'],
       reconnection: false,
-      auth: { token: 'secret-token' },
+      auth: { token: 'secret-token', kiosk: true },
     });
     try {
       await new Promise<void>((resolve, reject) => {
@@ -129,18 +146,12 @@ test('createSocketAuthGuard accepts a socket connecting with the right access to
   });
 });
 
-test('createSocketAuthGuard lets any socket through when no access token is configured', async () => {
+test('createSocketAuthGuard rejects an anonymous socket when no kiosk token is configured', async () => {
   await withGuardedServer('', async (baseUrl) => {
     const socket = ioClient(baseUrl, { transports: ['websocket'], reconnection: false });
-    try {
-      await new Promise<void>((resolve, reject) => {
-        socket.on('connect', () => resolve());
-        socket.on('connect_error', reject);
-      });
-      assert.ok(socket.connected);
-    } finally {
-      socket.close();
-    }
+    const error = await new Promise<Error>((resolve) => socket.once('connect_error', resolve));
+    assert.match(error.message, /unauthorized/);
+    socket.close();
   });
 });
 
@@ -172,7 +183,7 @@ test('createSocketAuthGuard accepts a socket carrying a valid session cookie ins
   });
 });
 
-test('required socket auth rejects shared-token-only clients and binds payload identity to the session', async () => {
+test('socket auth rejects token-only clients and binds payload identity to the session', async () => {
   const playerId = nanoid();
   const spoofedPlayerId = nanoid();
   db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(
@@ -185,7 +196,7 @@ test('required socket auth rejects shared-token-only clients and binds payload i
 
   const httpServer = http.createServer();
   const io = new Server(httpServer);
-  io.use(createSocketAuthGuard('secret-token', 'required'));
+  io.use(createSocketAuthGuard());
   io.on('connection', (socket) => {
     socket.on('identity:test', (payload: { playerId?: string }, ack: (value: string | undefined) => void) => {
       ack(payload.playerId);
@@ -217,10 +228,10 @@ test('required socket auth rejects shared-token-only clients and binds payload i
   }
 });
 
-test('required socket auth accepts a read-only kiosk token and rejects mutation events', async () => {
+test('socket auth accepts a read-only kiosk token and rejects mutation events', async () => {
   const httpServer = http.createServer();
   const io = new Server(httpServer);
-  io.use(createSocketAuthGuard('legacy-token', 'required', 'kiosk-token'));
+  io.use(createSocketAuthGuard('kiosk-token'));
   let mutationReachedHandler = false;
   io.on('connection', (socket) => {
     socket.on('kiosk:subscribe', (ack?: (value: string) => void) => ack?.('ok'));
@@ -310,21 +321,12 @@ test('createSocketAuthGuard rejects a socket with neither a valid token nor a va
 });
 
 test('arcade watch list removes a finished match instead of re-adding a blank ghost entry', async () => {
-  const httpServer = http.createServer();
-  const io = new Server(httpServer);
-  registerArcadeKioskSockets(io);
+  await withServer(async (baseUrl, io) => {
+    const viewer = await request(baseUrl).post('/api/players').send({ name: 'Watch Finished Viewer' });
+    const client = await connectClient(baseUrl, createSession(viewer.body.id));
+    await socketAck(client, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
 
-  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
-  const port = (httpServer.address() as AddressInfo).port;
-  const baseUrl = `http://127.0.0.1:${port}`;
-  const client = ioClient(baseUrl, { transports: ['websocket'], reconnection: false });
-
-  try {
-    await new Promise<void>((resolve, reject) => {
-      client.on('connect', () => resolve());
-      client.on('connect_error', reject);
-    });
-
+    try {
     const matchId = 'watch-finished-match';
     const listed = new Promise<Array<{ matchId: string; gameType: string }>>((resolve) => {
       client.on('arcade:watch:list', (payload: { matches?: Array<{ matchId: string; gameType: string }> }) => {
@@ -334,9 +336,11 @@ test('arcade watch list removes a finished match instead of re-adding a blank gh
     broadcastArcadeKiosk(io, {
       matchId,
       gameType: 'pong',
+      groupId: DEFAULT_GROUP_ID,
+      eventId: BASE_EVENT_ID,
       running: true,
-      players: [{ id: 'p1', name: 'Pong One' }],
-      scores: [{ playerId: 'p1', name: 'Pong One', score: 0 }],
+      players: [{ id: viewer.body.id, name: 'Watch Finished Viewer' }],
+      scores: [{ playerId: viewer.body.id, name: 'Watch Finished Viewer', score: 0 }],
     });
     assert.equal((await listed).find((match) => match.matchId === matchId)?.gameType, 'pong');
 
@@ -350,61 +354,63 @@ test('arcade watch list removes a finished match instead of re-adding a blank gh
       });
     });
 
-    broadcastArcadeKiosk(io, { gameType: null, matchId });
+    broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
 
     assert.deepEqual(await ended, { matchId });
     assert.equal((await cleared).some((match) => match.matchId === matchId || match.gameType === null), false);
-  } finally {
-    client.close();
-    io.close();
-    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
-  }
+    } finally {
+      client.close();
+    }
+  });
 });
 
-test('arcade watchers may vote under a real non-participant identity, but participants get no second vote', async () => {
-  const httpServer = http.createServer();
-  const io = new Server(httpServer);
-  registerArcadeKioskSockets(io);
+test('arcade watcher voting uses the authenticated spectator identity', async () => {
   const suffix = `${Date.now()}-${Math.random()}`;
   const participantId = `watch-participant-${suffix}`;
   const spectatorId = `watch-spectator-${suffix}`;
   db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(participantId, 'Watch Participant', participantId, Date.now());
   db.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(spectatorId, 'Watch Spectator', spectatorId, Date.now());
+  const now = Date.now();
+  db.prepare("INSERT INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled) VALUES (?, ?, 'member', 'active', ?, 0)")
+    .run(DEFAULT_GROUP_ID, participantId, now);
+  db.prepare("INSERT INTO group_memberships (group_id, player_id, role, status, joined_at, outside_tracking_enabled) VALUES (?, ?, 'member', 'active', ?, 0)")
+    .run(DEFAULT_GROUP_ID, spectatorId, now);
+  ensureAccountEventContext(participantId);
+  ensureAccountEventContext(spectatorId);
 
-  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
-  const port = (httpServer.address() as AddressInfo).port;
-  const baseUrl = `http://127.0.0.1:${port}`;
-  const client = ioClient(baseUrl, { transports: ['websocket'], reconnection: false });
-
-  try {
-    await new Promise<void>((resolve, reject) => {
-      client.on('connect', () => resolve());
-      client.on('connect_error', reject);
-    });
+  await withServer(async (baseUrl, io) => {
+    const participant = await connectClient(baseUrl, createSession(participantId));
+    const spectator = await connectClient(baseUrl, createSession(spectatorId));
+    await socketAck(participant, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
+    await socketAck(spectator, 'scope:subscribe', { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
     const matchId = `watch-voting-${suffix}`;
+    try {
     broadcastArcadeKiosk(io, {
       matchId,
       gameType: 'scribble',
+      groupId: DEFAULT_GROUP_ID,
+      eventId: BASE_EVENT_ID,
       phase: 'drawing',
       players: [{ id: participantId, name: 'Watch Participant' }],
       strokes: [],
     });
 
     const participantJoin = await new Promise<unknown>((resolve) => {
-      client.emit('arcade:watch:join', { matchId, playerId: participantId }, resolve);
+      participant.emit('arcade:watch:join', { matchId, playerId: spectatorId }, resolve);
     });
     assert.deepEqual(participantJoin, { ok: true, matchId, votingPlayerId: null, canVote: false });
     assert.deepEqual(arcadeWatcherPlayerIds(io, matchId), []);
 
     const spectatorJoin = await new Promise<unknown>((resolve) => {
-      client.emit('arcade:watch:join', { matchId, playerId: spectatorId }, resolve);
+      spectator.emit('arcade:watch:join', { matchId, playerId: participantId }, resolve);
     });
     assert.deepEqual(spectatorJoin, { ok: true, matchId, votingPlayerId: spectatorId, canVote: true });
     assert.deepEqual(arcadeWatcherPlayerIds(io, matchId), [spectatorId]);
-  } finally {
-    client.close();
-    io.close();
-    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
-    db.prepare('DELETE FROM players WHERE id IN (?, ?)').run(participantId, spectatorId);
-  }
+    } finally {
+      broadcastArcadeKiosk(io, { gameType: null, matchId, groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID });
+      participant.close();
+      spectator.close();
+    }
+  });
+  db.prepare('DELETE FROM players WHERE id IN (?, ?)').run(participantId, spectatorId);
 });

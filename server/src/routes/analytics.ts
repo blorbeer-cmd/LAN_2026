@@ -5,6 +5,7 @@
 // day/time range (?from=&to=, epoch ms).
 
 import { Router } from 'express';
+import { isKnownArcadeBotId } from '../arcade/botIds';
 import { db } from '../db';
 import { formatDurationMs, computePlaytime, aggregateByGame, type PlaySession } from '../playtime';
 import {
@@ -21,7 +22,7 @@ import { parseTimeRangeQuery } from './queryHelpers';
 import { computeAwards } from '../awards';
 import { matchCountsByGame, biggestRivalry, bestDuo, biggestUnderdogWin, type MatchForUnderdog } from '../gameStats';
 import { ARCADE_TITLES } from './arcade';
-import { resolveGroupEventScope } from '../groupEventScope';
+import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
 
 export const analyticsRouter = Router();
 
@@ -44,7 +45,7 @@ interface GameRow {
 function loadAllSessions(
   groupId: string,
   gameId: string | null,
-  eventId: string | null = null,
+  eventIds: string[],
 ): Array<{
   player_id: string;
   game_id: string;
@@ -58,12 +59,11 @@ function loadAllSessions(
     clauses.push('game_id = ?');
     params.push(gameId);
   }
-  if (eventId) {
-    clauses.push('event_id = ?');
-    params.push(eventId);
-  }
+  const eventFilter = eventIdSql('event_id', eventIds);
+  clauses.push(eventFilter.clause);
+  params.push(...eventFilter.params);
   return db
-    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${clauses.join(' AND ')}`)
+    .prepare(`SELECT ps.player_id, ps.game_id, ps.started_at, ps.ended_at, ps.active_ms FROM play_sessions ps JOIN players p ON p.id = ps.player_id AND p.deactivated_at IS NULL WHERE ${clauses.map((clause) => clause.replace('group_id', 'ps.group_id').replace('game_id', 'ps.game_id').replace('event_id', 'ps.event_id')).join(' AND ')}`)
     .all(...params) as Array<{
     player_id: string;
     game_id: string;
@@ -77,7 +77,7 @@ function loadNamesFor(groupId: string, playerIds: string[], gameIds: string[]) {
   let players: PlayerRow[] = [];
   if (playerIds.length > 0) {
     const ph = playerIds.map(() => '?').join(',');
-    players = db.prepare(`SELECT id, name, color FROM players WHERE id IN (${ph})`).all(...playerIds) as PlayerRow[];
+    players = db.prepare(`SELECT id, name, color FROM players WHERE deactivated_at IS NULL AND id IN (${ph})`).all(...playerIds) as PlayerRow[];
   }
   let games: GameRow[] = [];
   if (gameIds.length > 0) {
@@ -110,12 +110,13 @@ function enrichDuration(d: SessionDuration, playerById: Map<string, PlayerRow>, 
 analyticsRouter.get('/overview', (req, res) => {
   const { gameId, eventId } = req.query;
   const filterGameId = typeof gameId === 'string' ? gameId : null;
-  const filterEventId = typeof eventId === 'string' ? eventId : null;
+  const eventScope = resolveAnalyticsEvents(req, eventId);
+  if (!eventScope.ok) return res.status(eventScope.status).json({ error: eventScope.error });
   const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(req.group!.id, filterGameId, filterEventId);
+  const rawRows = loadAllSessions(req.group!.id, filterGameId, eventScope.eventIds);
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -162,12 +163,13 @@ analyticsRouter.get('/sessions', (req, res) => {
   const { gameId, playerId, eventId } = req.query;
   const filterGameId = typeof gameId === 'string' ? gameId : null;
   const filterPlayerId = typeof playerId === 'string' ? playerId : null;
-  const filterEventId = typeof eventId === 'string' ? eventId : null;
+  const eventScope = resolveAnalyticsEvents(req, eventId);
+  if (!eventScope.ok) return res.status(eventScope.status).json({ error: eventScope.error });
   const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(req.group!.id, filterGameId, filterEventId).filter(
+  const rawRows = loadAllSessions(req.group!.id, filterGameId, eventScope.eventIds).filter(
     (r) => !filterPlayerId || r.player_id === filterPlayerId,
   );
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
@@ -195,6 +197,8 @@ analyticsRouter.get('/concurrency', (req, res) => {
   if (typeof gameId !== 'string' || !gameId) {
     return res.status(400).json({ error: 'gameId ist erforderlich.' });
   }
+  const eventScope = resolveAnalyticsEvents(req, req.query.eventId);
+  if (!eventScope.ok) return res.status(eventScope.status).json({ error: eventScope.error });
   const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
   if ('error' in range) return res.status(400).json({ error: range.error });
   if (range.from === undefined || range.to === undefined) {
@@ -211,7 +215,7 @@ analyticsRouter.get('/concurrency', (req, res) => {
   }
 
   const now = Date.now();
-  const rawRows = loadAllSessions(req.group!.id, gameId);
+  const rawRows = loadAllSessions(req.group!.id, gameId, eventScope.eventIds);
   const sessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -228,12 +232,13 @@ analyticsRouter.get('/concurrency', (req, res) => {
 // Multitasking-Meister, Nachteule, ...), optionally filtered by ?from=&to=.
 analyticsRouter.get('/awards', (req, res) => {
   const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' ? eventId : null;
+  const eventScope = resolveAnalyticsEvents(req, eventId);
+  if (!eventScope.ok) return res.status(eventScope.status).json({ error: eventScope.error });
   const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(req.group!.id, null, filterEventId);
+  const rawRows = loadAllSessions(req.group!.id, null, eventScope.eventIds);
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -269,12 +274,13 @@ analyticsRouter.get('/awards', (req, res) => {
 // optional ?eventId=&from=&to= filtering as the endpoints above.
 analyticsRouter.get('/games', (req, res) => {
   const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' ? eventId : null;
+  const eventScope = resolveAnalyticsEvents(req, eventId);
+  if (!eventScope.ok) return res.status(eventScope.status).json({ error: eventScope.error });
   const range = parseTimeRangeQuery(req.query as Record<string, unknown>);
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(req.group!.id, null, filterEventId);
+  const rawRows = loadAllSessions(req.group!.id, null, eventScope.eventIds);
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -318,13 +324,12 @@ interface MatchRow {
   result: string;
 }
 
-function loadAllMatches(groupId: string, eventId: string | null): MatchForUnderdog[] {
+function loadAllMatches(groupId: string, eventIds: string[]): MatchForUnderdog[] {
   const clauses: string[] = ['group_id = ?'];
   const params: string[] = [groupId];
-  if (eventId) {
-    clauses.push('event_id = ?');
-    params.push(eventId);
-  }
+  const eventFilter = eventIdSql('event_id', eventIds);
+  clauses.push(eventFilter.clause);
+  params.push(...eventFilter.params);
   const rows = db.prepare(`SELECT id, game_id, result FROM matches WHERE ${clauses.join(' AND ')}`).all(...params) as MatchRow[];
   return rows.map((r) => {
     const parsed = JSON.parse(r.result) as { teams: Array<{ playerIds: string[] }>; winnerTeamIndex: number | null };
@@ -344,13 +349,15 @@ function countBy<T>(rows: T[], key: (r: T) => string): Array<{ key: string; coun
 // since these are the kind of numbers people like comparing across LANs).
 analyticsRouter.get('/games-tournaments', (req, res) => {
   const { eventId } = req.query;
-  const filterEventId = typeof eventId === 'string' && eventId ? eventId : null;
+  const eventScope = resolveAnalyticsEvents(req, eventId);
+  if (!eventScope.ok) return res.status(eventScope.status).json({ error: eventScope.error });
 
-  const matches = loadAllMatches(req.group!.id, filterEventId);
+  const matches = loadAllMatches(req.group!.id, eventScope.eventIds);
   const matchCounts = matchCountsByGame(matches);
 
-  const eventClause = filterEventId ? 'AND event_id = ?' : '';
-  const eventParams = filterEventId ? [filterEventId] : [];
+  const eventFilter = eventIdSql('event_id', eventScope.eventIds);
+  const eventClause = `AND ${eventFilter.clause}`;
+  const eventParams = eventFilter.params;
 
   const tournamentRows = db
     .prepare(`SELECT format, status, game_id FROM tournaments WHERE group_id = ? ${eventClause}`)
@@ -467,6 +474,7 @@ interface ArcadeResultFullRow {
 interface ArcadeScoreEntry {
   playerId: string;
   name: string;
+  isBot?: boolean;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -479,12 +487,11 @@ analyticsRouter.get('/arcade', (req, res) => {
   if ('error' in range) return res.status(400).json({ error: range.error });
   const clauses = [`group_id = ?`, `reason = 'completed'`];
   const params: Array<string | number | null> = [req.group!.id];
-  if (req.query.eventId !== undefined) {
-    const event = resolveGroupEventScope(req.group!.id, req.query.eventId);
-    if (!event.ok) return res.status(event.status).json({ error: event.error });
-    clauses.push('event_id IS ?');
-    params.push(event.eventId);
-  }
+  const eventScope = resolveAnalyticsEvents(req, req.query.eventId);
+  if (!eventScope.ok) return res.status(eventScope.status).json({ error: eventScope.error });
+  const eventFilter = eventIdSql('event_id', eventScope.eventIds);
+  clauses.push(eventFilter.clause);
+  params.push(...eventFilter.params);
   if (range.from !== undefined) {
     clauses.push('started_at >= ?');
     params.push(range.from);
@@ -544,6 +551,7 @@ analyticsRouter.get('/arcade', (req, res) => {
     game.totalDurationMs += durationMs;
     game.longestDurationMs = Math.max(game.longestDurationMs, durationMs);
     for (const score of scores) {
+      if (score.isBot === true || isKnownArcadeBotId(score.playerId)) continue;
       game.players.add(score.playerId);
       allPlayers.add(score.playerId);
       const current = game.matchesByPlayer.get(score.playerId) ?? {

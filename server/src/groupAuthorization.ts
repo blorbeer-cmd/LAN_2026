@@ -1,6 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { writeAdminAudit } from './adminAudit';
-import { config } from './config';
 import { DEFAULT_GROUP_ID } from './db';
 import { getGroup, getGroupMembership, type GroupMembershipRow, type GroupRole, type GroupRow } from './groups';
 
@@ -52,7 +51,7 @@ function resolveMembership(req: Request, res: Response, groupId: string): boolea
 }
 
 export const requireGroupMembership: RequestHandler = (req, res, next): void => {
-  if (config.authMode === 'required' && !req.player) {
+  if (!req.player) {
     res.status(401).json({ error: 'Nicht angemeldet.' });
     return;
   }
@@ -61,23 +60,7 @@ export const requireGroupMembership: RequestHandler = (req, res, next): void => 
   next();
 };
 
-// Legacy deployments keep their single implicit group until required auth is
-// enabled. This compatibility path disappears with the final required-mode
-// rollout, but lets the existing non-auth API suite continue to exercise the
-// event domain during the migration.
-export const requireConfiguredGroupMembership: RequestHandler = (req, res, next): void => {
-  if (config.authMode === 'legacy') {
-    const group = getGroup(DEFAULT_GROUP_ID);
-    if (!group) {
-      res.status(500).json({ error: 'Startgruppe fehlt.' });
-      return;
-    }
-    req.group = group;
-    next();
-    return;
-  }
-  requireGroupMembership(req, res, next);
-};
+export const requireConfiguredGroupMembership = requireGroupMembership;
 
 function allowedRoles(minimum: GroupRole): GroupRole[] {
   if (minimum === 'owner') return ['owner'];
@@ -87,10 +70,6 @@ function allowedRoles(minimum: GroupRole): GroupRole[] {
 
 export function requireGroupRole(minimum: GroupRole): RequestHandler {
   return (req, res, next): void => {
-    if (config.authMode === 'legacy') {
-      next();
-      return;
-    }
     if (!req.group || !req.groupMembership) {
       res.status(500).json({ error: 'Gruppenkontext wurde nicht aufgelöst.' });
       return;
@@ -130,7 +109,7 @@ export function resolveGroupResource<T>(options: {
   paramName?: string;
 }): RequestHandler {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (config.authMode === 'required' && !req.player) {
+    if (!req.player) {
       res.status(401).json({ error: 'Nicht angemeldet.' });
       return;
     }
@@ -145,13 +124,6 @@ export function resolveGroupResource<T>(options: {
         details: { status: 404 },
       });
       res.status(404).json({ error: `${options.resourceType} nicht gefunden.` });
-      return;
-    }
-
-    if (config.authMode === 'legacy') {
-      req.group = getGroup(resolved.groupId);
-      req.groupResource = resolved.resource;
-      next();
       return;
     }
 

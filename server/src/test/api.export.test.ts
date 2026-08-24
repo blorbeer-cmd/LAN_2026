@@ -4,11 +4,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { nanoid } from 'nanoid';
 import request from 'supertest';
-import { createApp } from '../app';
-import { db } from '../db';
-import { getTrackingEventId } from '../events';
+import { createTestApp } from './testApp';
+import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
+import { TEST_ADMIN_ID } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 let gameId: string;
 let playerA: string;
 let playerB: string;
@@ -69,12 +69,14 @@ test('GET /api/export includes a completed tournament champion', async () => {
 });
 
 test('GET /api/export includes playtime-by-player/game and awards from recorded play sessions', async () => {
-  const eventId = getTrackingEventId();
+  await request(app)
+    .post(`/api/groups/${DEFAULT_GROUP_ID}/tracking-consent`)
+    .send({ playerId: playerA, granted: true });
   const now = Date.now();
   const oneHourAgo = now - 3_600_000;
   db.prepare(
-    'INSERT INTO play_sessions (id, player_id, game_id, event_id, started_at, ended_at, active_ms) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(nanoid(), playerA, gameId, eventId, oneHourAgo, now, 3_600_000);
+    'INSERT INTO play_sessions (id, player_id, game_id, event_id, group_id, started_at, ended_at, active_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(nanoid(), playerA, gameId, BASE_EVENT_ID, DEFAULT_GROUP_ID, oneHourAgo, now, 3_600_000);
 
   const res = await request(app).get('/api/export');
   assert.equal(res.status, 200);
@@ -106,6 +108,10 @@ test('GET /api/export/pdf renders the empty-state notes for an event with no dat
     .post('/api/events')
     .send({ name: 'Untouched Export Event', startsAt: Date.now(), endsAt: Date.now() + 3_600_000 });
   assert.equal(emptyEvent.status, 201);
+  const roster = await request(app)
+    .put(`/api/events/${emptyEvent.body.id}/participants`)
+    .send({ playerIds: [TEST_ADMIN_ID] });
+  assert.equal(roster.status, 200, JSON.stringify(roster.body));
 
   const res = await request(app)
     .get(`/api/export/pdf?eventId=${emptyEvent.body.id}`)

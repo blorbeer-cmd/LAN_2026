@@ -6,11 +6,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
-import { db } from '../db';
-import { pushTransport } from '../push';
+import { createTestApp } from './testApp';
+import { db, DEFAULT_GROUP_ID } from '../db';
+import { notifyPlayers, pushTransport } from '../push';
 
-const app = createApp();
+const app = createTestApp();
 let playerId: string;
 
 test('setup: a player', async () => {
@@ -24,21 +24,22 @@ test('GET /api/push/vapid-public-key returns a key', async () => {
   assert.ok(res.body.publicKey && res.body.publicKey.length > 0);
 });
 
-test('POST /api/push/subscribe rejects a missing playerId', async () => {
+test('POST /api/push/subscribe derives the player from the session', async () => {
   const res = await request(app)
     .post('/api/push/subscribe')
     .send({ subscription: { endpoint: 'https://example.com/x', keys: { p256dh: 'a', auth: 'b' } } });
-  assert.equal(res.status, 400);
+  assert.equal(res.status, 201);
+  await request(app).post('/api/push/unsubscribe').send({ endpoint: 'https://example.com/x' });
 });
 
-test('POST /api/push/subscribe rejects an unknown player', async () => {
+test('POST /api/push/subscribe rejects an invalid session identity', async () => {
   const res = await request(app)
     .post('/api/push/subscribe')
     .send({
       playerId: 'ghost',
       subscription: { endpoint: 'https://example.com/x', keys: { p256dh: 'a', auth: 'b' } },
     });
-  assert.equal(res.status, 404);
+  assert.equal(res.status, 401);
 });
 
 test('POST /api/push/subscribe rejects a malformed subscription', async () => {
@@ -94,9 +95,9 @@ test('GET /api/push/last reflects the most recently sent notification, regardles
 
 test('GET /api/push/current validates identity and skips resolved topics without deleting history', async () => {
   const missing = await request(app).get('/api/push/current');
-  assert.equal(missing.status, 400);
+  assert.equal(missing.status, 200);
   const unknown = await request(app).get('/api/push/current?playerId=ghost');
-  assert.equal(unknown.status, 404);
+  assert.equal(unknown.status, 401);
 
   await request(app).post('/api/votes/start');
   const whileOpen = await request(app).get(`/api/push/current?playerId=${playerId}`);
@@ -120,9 +121,9 @@ test('POST /api/push/:id/seen marks only this player\'s notification read and ke
   const pushId = current.body.entry.id as string;
 
   const missingPlayer = await request(app).post(`/api/push/${pushId}/seen`).send({});
-  assert.equal(missingPlayer.status, 400);
+  assert.equal(missingPlayer.status, 204);
   const unknownPlayer = await request(app).post(`/api/push/${pushId}/seen`).send({ playerId: 'ghost' });
-  assert.equal(unknownPlayer.status, 404);
+  assert.equal(unknownPlayer.status, 401);
   const missingPush = await request(app).post('/api/push/missing/seen').send({ playerId });
   assert.equal(missingPush.status, 404);
 
@@ -151,8 +152,8 @@ test('DELETE /api/push/:id hides a notification only for that player', async () 
   const pushId = ownBefore.body.entries.find((entry: { body: string }) => /Persönlich entfernbar/.test(entry.body)).id;
   assert.equal(ownBefore.body.entries.find((entry: { id: string }) => entry.id === pushId).seen, false);
 
-  assert.equal((await request(app).delete(`/api/push/${pushId}`).send({})).status, 400);
-  assert.equal((await request(app).delete(`/api/push/${pushId}`).send({ playerId: 'ghost' })).status, 404);
+  assert.equal((await request(app).delete(`/api/push/${pushId}`).send({})).status, 204);
+  assert.equal((await request(app).delete(`/api/push/${pushId}`).send({ playerId: 'ghost' })).status, 401);
   assert.equal((await request(app).delete('/api/push/missing').send({ playerId })).status, 404);
 
   const directId = 'push-hidden-not-recipient';
@@ -179,8 +180,8 @@ test('bulk notification actions stay scoped to one player', async () => {
   await request(app).post('/api/broadcasts').send({ playerId, message: 'Bulk-Aktion eins' });
   await request(app).post('/api/broadcasts').send({ playerId, message: 'Bulk-Aktion zwei' });
 
-  assert.equal((await request(app).post('/api/push/seen-all').send({})).status, 400);
-  assert.equal((await request(app).post('/api/push/seen-all').send({ playerId: 'ghost' })).status, 404);
+  assert.equal((await request(app).post('/api/push/seen-all').send({})).status, 200);
+  assert.equal((await request(app).post('/api/push/seen-all').send({ playerId: 'ghost' })).status, 401);
   const seen = await Promise.all([
     request(app).post('/api/push/seen-all').send({ playerId }),
     request(app).post('/api/push/seen-all').send({ playerId }),
@@ -192,8 +193,8 @@ test('bulk notification actions stay scoped to one player', async () => {
   const otherUnseen = await request(app).get(`/api/push/log?playerId=${other.body.id}`);
   assert.ok(otherUnseen.body.entries.some((entry: { seen: boolean }) => !entry.seen));
 
-  assert.equal((await request(app).delete('/api/push').send({})).status, 400);
-  assert.equal((await request(app).delete('/api/push').send({ playerId: 'ghost' })).status, 404);
+  assert.equal((await request(app).delete('/api/push').send({})).status, 200);
+  assert.equal((await request(app).delete('/api/push').send({ playerId: 'ghost' })).status, 401);
   const hidden = await Promise.all([
     request(app).delete('/api/push').send({ playerId }),
     request(app).delete('/api/push').send({ playerId }),
@@ -275,9 +276,9 @@ test('completed and cancelled drafts leave active banners', async () => {
 
 test('GET /api/push/log returns entries relevant to the player, with deep-link url', async () => {
   const missing = await request(app).get('/api/push/log');
-  assert.equal(missing.status, 400);
+  assert.equal(missing.status, 200);
   const unknown = await request(app).get('/api/push/log?playerId=ghost');
-  assert.equal(unknown.status, 404);
+  assert.equal(unknown.status, 401);
 
   await request(app).post('/api/broadcasts').send({ playerId, message: 'Feed-Eintrag für alle' });
 
@@ -409,7 +410,9 @@ test('finishing a round-robin round pushes the next round\'s teams', async (t) =
 
   // Leave no subscription behind for `playerId` — later tests in this file
   // assert exact push counts and would otherwise pick up this extra device.
-  await request(app).post('/api/push/unsubscribe').send({ endpoint: 'https://push.example.com/sub-rr' });
+  await request(app)
+    .post('/api/push/unsubscribe')
+    .send({ playerId, endpoint: 'https://push.example.com/sub-rr' });
 });
 
 test('a match-ready push names the lobby and its default host (the upper bracket team)', async (t) => {
@@ -489,7 +492,9 @@ test('a match-ready push names the lobby and its default host (the upper bracket
     .get(`tournament:${tournamentId}%`) as { count: number };
   assert.equal(unresolvedTournamentTopics.count, 0);
 
-  await request(app).post('/api/push/unsubscribe').send({ endpoint: 'https://push.example.com/sub-lobby' });
+  await request(app)
+    .post('/api/push/unsubscribe')
+    .send({ playerId, endpoint: 'https://push.example.com/sub-lobby' });
 });
 
 test('POST /api/push/unsubscribe requires an endpoint', async () => {
@@ -505,11 +510,105 @@ test('POST /api/push/unsubscribe removes a subscription', async (t) => {
       subscription: { endpoint: 'https://push.example.com/sub-2', keys: { p256dh: 'p', auth: 'a' } },
     });
 
-  const res = await request(app).post('/api/push/unsubscribe').send({ endpoint: 'https://push.example.com/sub-2' });
+  const res = await request(app)
+    .post('/api/push/unsubscribe')
+    .send({ playerId, endpoint: 'https://push.example.com/sub-2' });
   assert.equal(res.status, 204);
 
   const sendMock = t.mock.method(pushTransport, 'send', async () => {});
   await request(app).post('/api/votes/start');
   await request(app).post('/api/votes/cancel');
   assert.equal(sendMock.mock.calls.length, 0);
+});
+
+test('new group members can load the notification center before accepting a private event invitation', async () => {
+  const member = await request(app).post('/api/players').send({ name: 'Push Private Event Member' });
+  assert.equal(member.status, 201, JSON.stringify(member.body));
+
+  const event = await request(app)
+    .post('/api/events')
+    .send({
+      name: 'Push Private Event',
+      startsAt: Date.now(),
+      endsAt: Date.now() + 60_000,
+      visibilityScope: 'participants',
+    });
+  assert.equal(event.status, 201, JSON.stringify(event.body));
+
+  const started = await request(app).post(`/api/events/${event.body.id}/tracking/start`).send();
+  assert.equal(started.status, 200, JSON.stringify(started.body));
+  try {
+    const current = await request(app).get(`/api/push/current?playerId=${member.body.id}`);
+    assert.equal(current.status, 200, JSON.stringify(current.body));
+    assert.equal(current.body.entry, null);
+
+    const history = await request(app).get(`/api/push/log?playerId=${member.body.id}`);
+    assert.equal(history.status, 200, JSON.stringify(history.body));
+    assert.deepEqual(history.body.entries, []);
+
+    const explicitCurrent = await request(app).get(`/api/push/current?playerId=${member.body.id}&eventId=${event.body.id}`);
+    assert.equal(explicitCurrent.status, 404);
+    const explicitHistory = await request(app).get(`/api/push/log?playerId=${member.body.id}&eventId=${event.body.id}`);
+    assert.equal(explicitHistory.status, 200);
+    assert.deepEqual(explicitHistory.body.entries, []);
+
+    const seenAll = await request(app).post('/api/push/seen-all').send({ playerId: member.body.id });
+    assert.equal(seenAll.status, 200, JSON.stringify(seenAll.body));
+
+    const hiddenAll = await request(app).delete('/api/push').send({ playerId: member.body.id });
+    assert.equal(hiddenAll.status, 200, JSON.stringify(hiddenAll.body));
+  } finally {
+    const stopped = await request(app).post(`/api/events/${event.body.id}/tracking/stop`).send();
+    assert.equal(stopped.status, 200, JSON.stringify(stopped.body));
+  }
+});
+
+test('same notification type from different events keeps distinct visible event identity', async () => {
+  const now = Date.now();
+  const firstEventId = 'push-distinct-event-a';
+  const secondEventId = 'push-distinct-event-b';
+  for (const [id, name] of [
+    [firstEventId, 'LAN Nord'],
+    [secondEventId, 'LAN Süd'],
+  ]) {
+    db.prepare(
+      `INSERT OR IGNORE INTO events
+         (id, name, starts_at, ends_at, tracking_enabled, group_id, status, visibility_scope)
+       VALUES (?, ?, ?, ?, 0, ?, 'published', 'participants')`,
+    ).run(id, name, now, now + 60_000, DEFAULT_GROUP_ID);
+    db.prepare(
+      `INSERT INTO event_participants (event_id, player_id, status)
+       VALUES (?, ?, 'accepted')
+       ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted'`,
+    ).run(id, playerId);
+  }
+
+  notifyPlayers(
+    [playerId],
+    { title: 'Abstimmung offen', body: 'Bitte abstimmen', type: 'vote', targetId: 'round-1' },
+    'direct',
+    { key: 'vote:round-1' },
+    { groupId: DEFAULT_GROUP_ID, eventId: firstEventId },
+  );
+  notifyPlayers(
+    [playerId],
+    { title: 'Abstimmung offen', body: 'Bitte abstimmen', type: 'vote', targetId: 'round-1' },
+    'direct',
+    { key: 'vote:round-1' },
+    { groupId: DEFAULT_GROUP_ID, eventId: secondEventId },
+  );
+
+  const history = await request(app).get(`/api/push/log?playerId=${playerId}`);
+  const entries = history.body.entries.filter(
+    (entry: { notificationType: string; targetId: string }) =>
+      entry.notificationType === 'vote' && entry.targetId === 'round-1',
+  );
+  assert.deepEqual(
+    new Set(entries.map((entry: { eventId: string }) => entry.eventId)),
+    new Set([firstEventId, secondEventId]),
+  );
+  assert.deepEqual(
+    new Set(entries.map((entry: { eventName: string }) => entry.eventName)),
+    new Set(['LAN Nord', 'LAN Süd']),
+  );
 });

@@ -15,10 +15,12 @@ const SCRYPT_N = 16384;
 const SCRYPT_R = 8;
 const SCRYPT_P = 1;
 
-// This deployment intentionally uses password-only authentication. OWASP's
-// current guidance recommends at least 15 characters when MFA is absent;
-// passphrases remain unrestricted by composition rules.
-export const MIN_PASSWORD_LENGTH = 15;
+// This private LAN deployment intentionally imposes no minimum password
+// length beyond "not empty" — the operator has decided a friend-group
+// instance needs no length or composition rule. A single character is
+// accepted. The upper bound stays so a pathological input can't turn scrypt
+// hashing into a denial-of-service.
+export const MIN_PASSWORD_LENGTH = 1;
 export const MAX_PASSWORD_LENGTH = 200;
 
 export function isValidPassword(value: unknown): value is string {

@@ -7,11 +7,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
-import { db } from '../db';
-import { getTrackingEventId } from '../events';
+import { createTestApp } from './testApp';
+import { BASE_EVENT_ID, db } from '../db';
 
-const app = createApp();
+const app = createTestApp();
 
 interface PlayerBody {
   id: string;
@@ -28,6 +27,7 @@ test('POST /api/admin/test-users validates count', async () => {
 });
 
 test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, and sessions', async () => {
+  assert.equal((await request(app).post(`/api/events/${BASE_EVENT_ID}/tracking/start`).send({})).status, 200);
   const res = await request(app).post('/api/admin/test-users').send({ count: 4 });
   assert.equal(res.status, 201);
   assert.equal(res.body.created.length, 4);
@@ -60,15 +60,15 @@ test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, a
   // ...and same-edge adjacency produced auto seat neighbors ("Sichtbare
   // Monitore"). With 4 players on empty default sides (2 seats each), at
   // least one adjacent pair must exist.
-  const eventId = getTrackingEventId();
+  const eventId = BASE_EVENT_ID;
   const autoRows = db
-    .prepare("SELECT player_id, neighbor_id FROM seat_neighbors WHERE group_id = 'default-group' AND event_id IS NULL AND source = 'auto'")
-    .all() as Array<{ player_id: string; neighbor_id: string }>;
+    .prepare("SELECT player_id, neighbor_id FROM seat_neighbors WHERE group_id = 'default-group' AND event_id = ? AND source = 'auto'")
+    .all(eventId) as Array<{ player_id: string; neighbor_id: string }>;
   assert.ok(autoRows.some((r) => ids.includes(r.player_id) && ids.includes(r.neighbor_id)));
   // Plus the deliberately-manual extra pair from the seeder.
   const manualRows = db
-    .prepare("SELECT player_id FROM seat_neighbors WHERE group_id = 'default-group' AND event_id IS NULL AND source = 'manual'")
-    .all() as Array<{ player_id: string }>;
+    .prepare("SELECT player_id FROM seat_neighbors WHERE group_id = 'default-group' AND event_id = ? AND source = 'manual'")
+    .all(eventId) as Array<{ player_id: string }>;
   assert.ok(manualRows.some((r) => ids.includes(r.player_id)));
 
   // Finished play sessions in the tracking event for everyone.
@@ -125,7 +125,6 @@ test('DELETE /api/admin/test-users removes every marked player and historical te
   const layout = await request(app).get('/api/seating/layout');
   const seated = new Set(layout.body.layout.assignments.map((a: { playerId: string }) => a.playerId));
   assert.ok(ids.every((id) => !seated.has(id)), 'no test user should stay seated');
-  const eventId = getTrackingEventId();
   for (const id of ids) {
     assert.equal((db.prepare('SELECT COUNT(*) AS n FROM play_sessions WHERE player_id = ?').get(id) as { n: number }).n, 0);
     assert.equal((db.prepare('SELECT COUNT(*) AS n FROM seat_neighbors WHERE group_id = ? AND (player_id = ? OR neighbor_id = ?)').get('default-group', id, id) as { n: number }).n, 0);

@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "defaultBaseBranch": "main",
+  "branchPrefixes": {
+    "codex": "codex/",
+    "claude": "claude/"
+  },
+  "providerAuthorAllowlist": {
+    "codex": ["blorbeer-cmd", "chatgpt-codex-connector[bot]"],
+    "claude": ["blorbeer-cmd", "claude[bot]"]
+  },
+  "//providerReviewerAllowlist": "Who may satisfy the cross-review, deliberately separate from the author list. It holds agent identities only: a human approval is a human approval, never a substitute for the counter provider's review.",
+  "providerReviewerAllowlist": {
+    "codex": ["chatgpt-codex-connector[bot]"],
+    "claude": ["claude[bot]"]
+  },
+  "//crossReviewResultAuthors": "Trusted workflow identities that may publish a provider's structured, head-bound cross-review result when that integration does not submit a native GitHub review. This is deliberately not part of providerReviewerAllowlist.",
+  "crossReviewResultAuthors": {
+    "claude": ["github-actions[bot]"]
+  },
+  "//selfReviewResultAuthors": "Trusted workflow identities that may publish a structured, head-bound self-review result on a provider's behalf, alongside resultAuthorsFor's manual identities (the provider's own bot account or its human operator running the local launcher). Kept separate for the same reason as crossReviewResultAuthors: a workflow identity is not itself one of the provider's own identities.",
+  "selfReviewResultAuthors": {
+    "claude": ["github-actions[bot]"]
+  },
+  "//reviewStartFailureAuthors": "Trusted workflow identities that publish a head-bound start failure for either cross-review provider.",
+  "reviewStartFailureAuthors": ["github-actions[bot]"],
+  "//reviewModeLabels": "Set by the user, never by an agent: they decide who reviews the current head. The reconciler only removes one that was bound to an earlier head, so the choice is asked again per head SHA.",
+  "reviewModeLabels": {
+    "cross": "review:cross",
+    "self": "review:self",
+    "human": "review:human"
+  },
+  "//statusCommentAuthors": "Identities whose status comment may carry the review-mode binding. Narrower than the trusted-author check used to adopt a comment, because that one accepts every [bot] login and the binding decides whether an answer counts for this head.",
+  "statusCommentAuthors": ["github-actions[bot]", "claude[bot]", "blorbeer-cmd"],
+  "//reviewDecisionNotificationAuthors": "Only these identities may suppress the once-per-head active review-choice notification by publishing its machine-readable marker.",
+  "reviewDecisionNotificationAuthors": ["github-actions[bot]"],
+  "//codexDeliveryAuthors": "Human identities whose GitHub acknowledgement proves that a Codex task message was sent successfully. The adapter posts this only after send_message_to_thread returns successfully.",
+  "codexDeliveryAuthors": ["blorbeer-cmd"],
+  "//reviewWorkflowFiles": "The trusted workflow file that runs a given reviewer provider's cross-review, keyed by `reviewerProvider` — never assembled from pull-request-controlled text. The reconciler dispatches it directly when a labeled attempt already declined for the current head only because the head was not ready yet, and the head has since become eligible.",
+  "reviewWorkflowFiles": {
+    "claude": "agent-pipeline-claude-review.yml",
+    "codex": "agent-pipeline-codex-review.yml"
+  },
+  "//reviewCheckNames": "The head-bound check-run name a given reviewer provider publishes, keyed by `reviewerProvider`. The delivery adapter uses it to recognise that a selected cross-review is really queued or running instead of treating a workflow trigger as proof. These names must stay in sync with the job names in `reviewWorkflowFiles` and with `selfCheckNames`.",
+  "reviewCheckNames": {
+    "claude": "Run Claude cross-review",
+    "codex": "Request Codex cross-review"
+  },
+  "//deploymentWorkflowFile": "The workflow whose completed runs on the default base branch describe the post-merge CI/CD state. The delivery adapter reads only this file, never a workflow name taken from pull-request-controlled text.",
+  "deploymentWorkflowFile": "deploy.yml",
+  "//reviewRetriggerAuthors": "Only these identities may suppress a further automatic re-dispatch by publishing its machine-readable marker.",
+  "reviewRetriggerAuthors": ["github-actions[bot]"],
+  "//sensitivePathPrefixes": "Paths that always make the recommendation fall back to the independent cross-review, regardless of how small the diff looks.",
+  "sensitivePathPrefixes": [
+    ".github/",
+    "infra/",
+    "server/src/db",
+    "server/src/auth",
+    "server/src/routes/admin",
+    "agent/src/"
+  ],
+  "allowedScopes": ["root", "server", "frontend", "agent", "docs", "infra"],
+  "scopePathPrefixes": {
+    "server": ["server/src/", "server/package", "server/tsconfig"],
+    "frontend": ["server/public/", "server/src/test/e2e/"],
+    "agent": ["agent/"],
+    "docs": ["docs/"],
+    "infra": [".github/", "infra/", "scripts/agent-"]
+  },
+  "scopeSharedPaths": [
+    "AGENTS.md",
+    "DEVELOPMENT_GUIDELINES.md",
+    "README.md",
+    "docs/",
+    "server/DESIGN_SYSTEM.md"
+  ],
+  "uiPathPrefixes": ["server/public/"],
+  "protectedPathPrefixes": ["infra/"],
+  "//crossReviewEvidence": "What proves the counter provider reviewed the current head. `approval` demands a native approving review. `reviewed-and-resolved` accepts a native review of this exact head with no open findings, a credential-read-only structured result from a provider-specific trusted publisher, or a finding-free review the provider reported in a comment naming this exact head. An explicit changes-required result blocks under all of them.",
+  "//crossReviewEvidenceLimit": "A native review is bound to its commit SHA by GitHub. A structured provider result must carry the exact SHA in the trusted review-result marker. A reported clean pass must name its reviewed commit in the comment and come from the configured reviewer identity; the Codex integration submits a review only when it has findings, so without this a clean pass would block a head it had just reviewed. Reactions remain deliberately excluded because they carry no SHA and could silently apply to a later head.",
+  "crossReviewEvidence": "reviewed-and-resolved",
+  "//selfReviewMinimumEnforcement": "How strongly a self-review session must have been kept away from the code before its verdict opens the gate. `true` requires credentials without code write access — the strongest, but unreachable in environments whose only credentials can push. `verified` accepts a session the launcher ran with the editing tools removed in a throwaway worktree and checked afterwards to be untouched. `false` accepts a verdict nothing outside the prompt backed up and effectively turns the self-review gate into a formality.",
+  "selfReviewMinimumEnforcement": "verified",
+  "reviewPromptPath": ".github/agent-pipeline/review-session-prompt.md",
+  "statusContext": "Agent pipeline / ready for human merge",
+  "selfCheckNames": [
+    "Collect pull requests",
+    "Reconcile pull request",
+    "Select Claude review target",
+    "Run Claude cross-review",
+    "Announce missing Claude cross-review",
+    "Reconcile failed Claude review",
+    "Publish Claude cross-review",
+    "Reconcile Claude review result",
+    "Select Codex review target",
+    "Request Codex cross-review",
+    "Announce missing Codex cross-review",
+    "Reconcile missing Codex cross-review",
+    "Select Claude self-review target",
+    "Run Claude self-review",
+    "Announce missing Claude self-review",
+    "Reconcile failed Claude self-review",
+    "Publish Claude self-review",
+    "Reconcile Claude self-review result"
+  ],
+  "reviewTimeoutMinutes": 45,
+  "waitingEscalationHours": 2,
+  "labels": {
+    "pipeline": "agent:pipeline",
+    "implementing": "agent:implementing",
+    "ciFix": "agent:ci-fix",
+    "conflictFix": "agent:conflict-fix",
+    "review": "agent:review",
+    "reviewFallback": "agent:review-fallback",
+    "waiting": "agent:waiting",
+    "needsHuman": "agent:needs-human",
+    "readyForMerge": "agent:ready-for-merge",
+    "uiChanged": "ui:changed",
+    "noAuto": "agent:no-auto"
+  }
+}

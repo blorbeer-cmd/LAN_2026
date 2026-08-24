@@ -5,9 +5,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
+import { db } from '../db';
 
-const app = createApp();
+const app = createTestApp();
 let gameId: string;
 let playerIds: string[];
 
@@ -62,6 +63,18 @@ test('POST /api/tournaments rejects an unknown player', async () => {
     .post('/api/tournaments')
     .send({ gameId, format: 'round_robin', teams: [{ playerIds: ['ghost'] }, { playerIds: [playerIds[0]] }] });
   assert.equal(res.status, 404);
+});
+
+test('POST /api/tournaments rejects a deactivated player', async () => {
+  db.prepare('UPDATE players SET deactivated_at = ? WHERE id = ?').run(Date.now(), playerIds[0]);
+  try {
+    const res = await request(app)
+      .post('/api/tournaments')
+      .send({ gameId, format: 'round_robin', teams: soloTeams(playerIds) });
+    assert.equal(res.status, 404);
+  } finally {
+    db.prepare('UPDATE players SET deactivated_at = NULL WHERE id = ?').run(playerIds[0]);
+  }
 });
 
 test('POST /api/tournaments rejects a too-long lobbyName', async () => {

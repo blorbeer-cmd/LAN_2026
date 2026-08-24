@@ -4,9 +4,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 let gameId: string;
 let playerA: string;
 let playerB: string;
@@ -338,7 +338,8 @@ test('GET /api/matches filters by eventId', async () => {
   assert.ok(filtered.body.some((m: { id: string }) => m.id === created.body.id));
 
   const noneForFakeEvent = await request(app).get('/api/matches?eventId=nonexistent-event');
-  assert.deepEqual(noneForFakeEvent.body, []);
+  assert.equal(noneForFakeEvent.status, 404);
+  assert.deepEqual(noneForFakeEvent.body, { error: 'Event nicht gefunden.' });
 });
 
 test('PATCH /api/matches/:id rejects an invalid gameId', async () => {

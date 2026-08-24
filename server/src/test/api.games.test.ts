@@ -3,9 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createApp } from '../app';
+import { createTestApp } from './testApp';
 
-const app = createApp();
+const app = createTestApp();
 let createdId: string;
 
 test('GET /api/games returns the seeded default games with process names', async () => {
@@ -78,7 +78,28 @@ test('POST /api/games creates a game with defaults', async () => {
   assert.equal(res.body.min_team_size, 1);
   assert.equal(res.body.max_team_size, 5);
   assert.deepEqual(res.body.processNames, []);
+  assert.equal(res.body.considerSeatNeighborsDefault, false);
   createdId = res.body.id;
+});
+
+test('POST /api/games accepts considerSeatNeighborsDefault', async () => {
+  const res = await request(app)
+    .post('/api/games')
+    .send({ name: 'Sitznachbarn-Spiel', considerSeatNeighborsDefault: true });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.considerSeatNeighborsDefault, true);
+
+  const list = await request(app).get('/api/games');
+  const g = list.body.find((x: { id: string }) => x.id === res.body.id);
+  assert.equal(g.considerSeatNeighborsDefault, true);
+});
+
+test('POST /api/games rejects a non-boolean considerSeatNeighborsDefault', async () => {
+  const res = await request(app)
+    .post('/api/games')
+    .send({ name: 'Bad Sitznachbarn Game', considerSeatNeighborsDefault: 'yes' });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /considerSeatNeighborsDefault/);
 });
 
 test('POST /api/games rejects a duplicate name (case-insensitive), so votes/skills never split across two identical entries', async () => {
@@ -111,6 +132,22 @@ test('PATCH /api/games/:id updates fields', async () => {
 test('PATCH /api/games/:id 404s for an unknown id', async () => {
   const res = await request(app).patch('/api/games/nope').send({ icon: '🧪' });
   assert.equal(res.status, 404);
+});
+
+test('PATCH /api/games/:id updates considerSeatNeighborsDefault and leaves it untouched when omitted', async () => {
+  const res = await request(app).patch(`/api/games/${createdId}`).send({ considerSeatNeighborsDefault: true });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.considerSeatNeighborsDefault, true);
+
+  const untouched = await request(app).patch(`/api/games/${createdId}`).send({ icon: '🎯' });
+  assert.equal(untouched.status, 200);
+  assert.equal(untouched.body.considerSeatNeighborsDefault, true);
+});
+
+test('PATCH /api/games/:id rejects a non-boolean considerSeatNeighborsDefault', async () => {
+  const res = await request(app).patch(`/api/games/${createdId}`).send({ considerSeatNeighborsDefault: 1 });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /considerSeatNeighborsDefault/);
 });
 
 const TINY_PNG =
@@ -202,9 +239,9 @@ test('POST /api/games rejects a malformed trailer link', async () => {
   assert.equal(res.status, 400);
 });
 
-test('POST /api/games rejects an unknown playerId as suggester', async () => {
+test('POST /api/games rejects an invalid session identity', async () => {
   const res = await request(app).post('/api/games').send({ name: 'Orphan Suggestion', status: 'suggestion', playerId: 'nope' });
-  assert.equal(res.status, 404);
+  assert.equal(res.status, 401);
 });
 
 test('POST /api/games/:id/promote moves a suggestion into the catalog', async () => {
@@ -220,4 +257,98 @@ test('POST /api/games/:id/promote moves a suggestion into the catalog', async ()
 test('POST /api/games/:id/promote 404s for an unknown id', async () => {
   const res = await request(app).post('/api/games/nope/promote').send();
   assert.equal(res.status, 404);
+});
+
+test('GET /api/games/genres returns the fixed genre multiselect options', async () => {
+  const res = await request(app).get('/api/games/genres');
+  assert.equal(res.status, 200);
+  assert.ok(Array.isArray(res.body));
+  assert.ok(res.body.includes('Shooter'));
+  assert.ok(res.body.includes('Party'));
+  assert.ok(res.body.includes('MOBA'));
+  assert.ok(res.body.includes('4X'));
+  assert.equal(new Set(res.body).size, res.body.length, 'genres are offered exactly once');
+  assert.equal(res.body.at(-1), 'Sonstiges', 'the catch-all option stays last');
+});
+
+test('POST /api/games accepts the genres added after the original set', async () => {
+  const res = await request(app)
+    .post('/api/games')
+    .send({ name: 'Neue-Genres-Spiel', genres: ['MOBA', '4X', 'Battle Royale', 'Survival', 'Tower Defense'] });
+  assert.equal(res.status, 201);
+  assert.deepEqual(res.body.genres, ['MOBA', '4X', 'Battle Royale', 'Survival', 'Tower Defense']);
+});
+
+test('POST /api/games accepts genres and info', async () => {
+  const res = await request(app)
+    .post('/api/games')
+    .send({ name: 'Info-Genre-Spiel', genres: ['Shooter', 'Koop'], info: 'Nur mit Freunden.' });
+  assert.equal(res.status, 201);
+  assert.deepEqual(res.body.genres, ['Shooter', 'Koop']);
+  assert.equal(res.body.info, 'Nur mit Freunden.');
+});
+
+test('POST /api/games rejects an unknown genre', async () => {
+  const res = await request(app)
+    .post('/api/games')
+    .send({ name: 'Unbekanntes Genre', genres: ['Battle Royale FPS Extreme'] });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /Genre/);
+});
+
+test('POST /api/games rejects more than the allowed number of genres', async () => {
+  const res = await request(app)
+    .post('/api/games')
+    .send({ name: 'Zu viele Genres', genres: ['Shooter', 'Fighting', 'Racing', 'Sport', 'Party', 'Strategie'] });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /Genre/);
+});
+
+test('POST /api/games rejects too-long info', async () => {
+  const res = await request(app)
+    .post('/api/games')
+    .send({ name: 'Zu lange Info', info: 'x'.repeat(301) });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /Info/);
+});
+
+test('PATCH /api/games/:id updates genres and info, and clears them on null', async () => {
+  const created = await request(app).post('/api/games').send({ name: 'Patch-Info-Genre' });
+  const id = created.body.id;
+
+  const updated = await request(app).patch(`/api/games/${id}`).send({ genres: ['Party'], info: 'Bis zu 8 Spieler.' });
+  assert.equal(updated.status, 200);
+  assert.deepEqual(updated.body.genres, ['Party']);
+  assert.equal(updated.body.info, 'Bis zu 8 Spieler.');
+
+  const cleared = await request(app).patch(`/api/games/${id}`).send({ genres: null, info: null });
+  assert.equal(cleared.status, 200);
+  assert.deepEqual(cleared.body.genres, []);
+  assert.equal(cleared.body.info, null);
+});
+
+test('POST /api/games/:id/demote moves a catalog game back into suggestions', async () => {
+  const created = await request(app).post('/api/games').send({ name: 'Demote-Testspiel' });
+  const id = created.body.id;
+
+  const res = await request(app).post(`/api/games/${id}/demote`).send();
+  assert.equal(res.status, 200);
+  assert.equal(res.body.isSuggestion, true);
+  assert.equal(res.body.status, 'suggestion');
+
+  const again = await request(app).post(`/api/games/${id}/demote`).send();
+  assert.equal(again.status, 409);
+});
+
+test('POST /api/games/:id/demote 404s for an unknown id', async () => {
+  const res = await request(app).post('/api/games/nope/demote').send();
+  assert.equal(res.status, 404);
+});
+
+test('POST /api/games/:id/demote rejects a game that is already a suggestion', async () => {
+  const created = await request(app)
+    .post('/api/games')
+    .send({ name: 'Noch ein Vorschlag', status: 'suggestion', playerId: suggesterId });
+  const res = await request(app).post(`/api/games/${created.body.id}/demote`).send();
+  assert.equal(res.status, 409);
 });

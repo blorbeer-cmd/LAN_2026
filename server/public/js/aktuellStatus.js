@@ -11,9 +11,119 @@ import { domainIcon } from './domainIcons.js';
 
 let statusCache = null; // { tournaments, foodOrders, arcadeLobbies }
 let statusLoading = false;
+let statusRequest = null;
+let statusGeneration = 0;
 let missingSkillsCache = null;
 let missingSkillsLoadedForId = null;
 let missingSkillsLoading = false;
+
+const DISMISSED_STORAGE_PREFIX = 'respawn_home_current_dismissed';
+const MAX_DISMISSED_ITEMS = 100;
+const MAX_ITEM_ID_LENGTH = 200;
+export const FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS = 2 * 60 * 60 * 1000;
+const memoryDismissals = new Map();
+
+function dismissalScope({ playerId = getMyId(), eventId = state.activeEvent?.id ?? 'base' } = {}) {
+  if (!playerId) return null;
+  return `${DISMISSED_STORAGE_PREFIX}:${encodeURIComponent(playerId)}:${encodeURIComponent(eventId || 'base')}`;
+}
+
+function browserStorage(storage) {
+  if (storage !== undefined) return storage;
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function dismissedIds(scope, storage) {
+  const ids = new Set(memoryDismissals.get(scope) ?? []);
+  try {
+    const stored = JSON.parse(storage?.getItem(scope) ?? '[]');
+    if (Array.isArray(stored)) {
+      for (const id of stored.slice(-MAX_DISMISSED_ITEMS)) {
+        if (typeof id === 'string' && id.length > 0 && id.length <= MAX_ITEM_ID_LENGTH) ids.add(id);
+      }
+    }
+  } catch {
+    // A blocked or corrupt localStorage must not make Home unusable. The
+    // in-memory fallback still keeps the dismissal for this browser session.
+  }
+  return ids;
+}
+
+// "Aktuell" is derived live state rather than a second notification feed.
+// Dismissals therefore stay client-side, scoped to the signed-in identity
+// and active event, and use lifecycle-specific item ids (vote round, lobby
+// id, etc.) so the next genuinely new occurrence becomes visible again.
+export function dismissAktuellItem(itemId, options = {}) {
+  if (typeof itemId !== 'string' || itemId.length === 0 || itemId.length > MAX_ITEM_ID_LENGTH) return false;
+  const scope = dismissalScope(options);
+  if (!scope) return false;
+  const storage = browserStorage(options.storage);
+  const ids = dismissedIds(scope, storage);
+  ids.delete(itemId);
+  ids.add(itemId);
+  while (ids.size > MAX_DISMISSED_ITEMS) ids.delete(ids.values().next().value);
+  memoryDismissals.set(scope, ids);
+  try {
+    storage?.setItem(scope, JSON.stringify([...ids]));
+  } catch {
+    // See dismissedIds(): session-local behavior is the safe fallback.
+  }
+  return true;
+}
+
+export function filterDismissedAktuellItems(items, options = {}) {
+  const scope = dismissalScope(options);
+  if (!scope) return items;
+  const hidden = dismissedIds(scope, browserStorage(options.storage));
+  return items.filter((item) => !hidden.has(item.id));
+}
+
+export function missingSkillAktuellId(gameId, livePlayers = state.live) {
+  if (typeof gameId !== 'string' || !gameId) return null;
+  const starts = [];
+  for (const player of livePlayers ?? []) {
+    for (const game of player.games ?? []) {
+      if (game.game_id === gameId && Number.isFinite(game.since)) starts.push(game.since);
+    }
+  }
+  if (starts.length === 0) return null;
+  return `skill:${gameId}:${Math.min(...starts)}`;
+}
+
+// Food orders already have a stable Home identity. When the current player
+// still owes items, enrich that same entry instead of adding a second one for
+// the reminder push. A finalized order cannot be paid in the UI anymore, so
+// it does not become a payment nudge.
+export function foodOrderAktuellItem(order, myId, now = Date.now()) {
+  const unpaidOwnItems = myId
+    ? (order.items ?? []).filter((item) => item.playerId === myId && !item.paid)
+    : [];
+  const unpaidOwnItemCount = unpaidOwnItems.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
+  const paymentReminderDue =
+    unpaidOwnItems.length > 0 &&
+    !order.finalizedAt &&
+    Number.isFinite(order.closedAt) &&
+    now >= order.closedAt + FOOD_ORDER_PAYMENT_REMINDER_DELAY_MS;
+  const paymentDue = paymentReminderDue;
+  if (!order.open && !paymentDue) return null;
+
+  return {
+    id: paymentDue ? `food-order:${order.id}:payment` : `food-order:${order.id}`,
+    iconName: domainIcon('foodOrders'),
+    title: paymentDue ? `Sammelbestellung „${order.title}" bezahlen` : `Sammelbestellung „${order.title}"`,
+    sub: paymentDue
+      ? `${unpaidOwnItemCount} ${unpaidOwnItemCount === 1 ? 'Position' : 'Positionen'} noch offen`
+      : order.sendAt
+        ? `Versand ${formatDateTime(order.sendAt)} Uhr`
+        : 'Zeitpunkt noch offen',
+    navigate: 'foodOrders',
+    target: { type: 'order', id: order.id },
+  };
+}
 
 // Fired whenever a (re)load completes, so Home can re-render without its own
 // poll loop.
@@ -21,25 +131,50 @@ function notifyChanged() {
   window.dispatchEvent(new CustomEvent('respawn:aktuell-changed'));
 }
 
-async function loadStatus() {
+function statusScopeKey() {
+  return state.activeEvent?.id ?? 'base';
+}
+
+function loadStatus() {
+  if (statusRequest) return statusRequest;
+
+  const requestGeneration = statusGeneration;
+  const requestScope = statusScopeKey();
+  const isCurrent = () => requestGeneration === statusGeneration && requestScope === statusScopeKey();
   statusLoading = true;
-  try {
-    const [tournaments, foodOrders, arcadeLobbies] = await Promise.all([
-      api.tournaments.list(),
-      api.foodOrders.list(),
-      api.arcade.lobbies(),
-    ]);
-    statusCache = {
-      tournaments,
-      foodOrders: foodOrders.orders ?? [],
-      arcadeLobbies: arcadeLobbies.lobbies ?? [],
-    };
-  } catch {
-    statusCache = { tournaments: [], foodOrders: [], arcadeLobbies: [] };
-  } finally {
-    statusLoading = false;
-    notifyChanged();
-  }
+  const run = (async () => {
+    try {
+      const [tournaments, foodOrders, arcadeLobbies] = await Promise.all([
+        api.tournaments.list(),
+        api.foodOrders.list(),
+        api.arcade.lobbies(),
+      ]);
+      if (isCurrent()) {
+        statusCache = {
+          tournaments,
+          foodOrders: foodOrders.orders ?? [],
+          arcadeLobbies: arcadeLobbies.lobbies ?? [],
+        };
+      }
+    } catch {
+      if (isCurrent()) statusCache = { tournaments: [], foodOrders: [], arcadeLobbies: [] };
+    } finally {
+      if (statusRequest === run) {
+        statusRequest = null;
+        statusLoading = false;
+        if (isCurrent()) {
+          notifyChanged();
+        } else if (statusCache === null) {
+          // The active event changed while this request was in flight. Start
+          // exactly one fresh request for the new scope after releasing the
+          // single-flight slot; stale data and stale failures stay discarded.
+          void loadStatus();
+        }
+      }
+    }
+  })();
+  statusRequest = run;
+  return run;
 }
 
 async function loadMissingSkills(myId) {
@@ -69,6 +204,7 @@ export function ensureAktuellLoaded() {
 // Called on socket events that change this data (see app.js). Refetching
 // right away keeps an already-open Home view current.
 export function invalidateAktuellStatus() {
+  statusGeneration += 1;
   statusCache = null;
   loadStatus();
 }
@@ -86,15 +222,23 @@ const FORMAT_LABELS = {
   group_knockout: 'Gruppen + K.O.',
 };
 
-// { iconName, title, sub, navigate }[] — title/sub are raw text, not yet
-// HTML-escaped, so the caller escapes them while rendering.
+// { id, iconName, title, sub, navigate }[] — title/sub are raw text, not yet
+// HTML-escaped, so the caller escapes them while rendering. The id names the
+// live occurrence, not just its category, so dismissing one vote/lobby never
+// suppresses the next one.
 export function aktuellItems() {
   const items = [];
 
   // Personal nudge first — nobody else would otherwise learn you still owe
   // a rating for a game everyone can already see running.
   for (const g of missingSkillsCache ?? []) {
+    const id = missingSkillAktuellId(g.id);
+    // The digest is group-wide while state.live belongs to the active event.
+    // Only show a nudge when that event has a concrete live occurrence whose
+    // start can make a later play session visible again after dismissal.
+    if (!id) continue;
     items.push({
+      id,
       iconName: domainIcon('skill'),
       title: `Skill für ${g.name} bewerten`,
       sub: 'Wird gerade gespielt',
@@ -102,9 +246,24 @@ export function aktuellItems() {
     });
   }
 
+  // Pending event invitations need a response, so they get the same personal
+  // nudge as an unrated skill. The full card with Annehmen/Ablehnen lives in
+  // Profile now (see events.js's renderInvitationCard) rather than sitting
+  // directly above the Events tab's own cards.
+  for (const invitation of state.eventInvitations ?? []) {
+    items.push({
+      id: `event-invitation:${invitation.id}`,
+      iconName: domainIcon('events'),
+      title: `Einladung: ${invitation.name}`,
+      sub: 'Annehmen oder ablehnen im Profil',
+      navigate: 'profile',
+    });
+  }
+
   if (state.votes?.open) {
     const voters = state.votes.totalVoters ?? 0;
     items.push({
+      id: `vote:${state.votes.round}`,
       iconName: domainIcon('votes'),
       title: state.votes.title || 'Abstimmung läuft',
       sub: `${voters} Teilnehmer bisher`,
@@ -114,6 +273,7 @@ export function aktuellItems() {
 
   for (const t of (statusCache?.tournaments ?? []).filter((t) => t.status === 'active')) {
     items.push({
+      id: `tournament:${t.id}`,
       iconName: domainIcon('tournaments'),
       title: t.name,
       sub: `${t.gameName} · ${FORMAT_LABELS[t.format] ?? t.format}`,
@@ -121,17 +281,15 @@ export function aktuellItems() {
     });
   }
 
-  for (const o of (statusCache?.foodOrders ?? []).filter((o) => o.open)) {
-    items.push({
-      iconName: domainIcon('foodOrders'),
-      title: `Sammelbestellung „${o.title}"`,
-      sub: o.sendAt ? `Versand ${formatDateTime(o.sendAt)} Uhr` : 'Zeitpunkt noch offen',
-      navigate: 'foodOrders',
-    });
+  const myId = getMyId();
+  for (const o of statusCache?.foodOrders ?? []) {
+    const item = foodOrderAktuellItem(o, myId);
+    if (item) items.push(item);
   }
 
   for (const l of statusCache?.arcadeLobbies ?? []) {
     items.push({
+      id: `arcade-lobby:${l.gameType}:${l.id}`,
       iconName: domainIcon('arcade'),
       title: `${l.title}-Lobby offen`,
       sub: `Von ${l.hostName} · ${l.playerCount} ${l.playerCount === 1 ? 'wartet' : 'warten'}`,
@@ -139,5 +297,5 @@ export function aktuellItems() {
     });
   }
 
-  return items;
+  return filterDismissedAktuellItems(items);
 }

@@ -4,19 +4,21 @@
 // come back to browse repeatedly). Reached via a button on Profil.
 
 import { api } from '../api.js';
-import { state } from '../state.js';
+import { accessibleEvents, state } from '../state.js';
 import { escapeHtml, formatDateTime } from '../format.js';
 import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
+import { emptyStateHtml } from '../emptyState.js';
+import { eventSelectOptions } from '../eventStatus.js';
+import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 
 let statsCache = null;
 let statsLoading = false;
 let statsForPlayerId = null;
 let statsEventId = '';
 
-// Called from profile.js when the active identity changes ("Nicht du?"),
-// so a stale stranger's stats don't flash before the fresh fetch lands.
+// Clears cached personal stats before the next session-scoped fetch.
 export function invalidateMyStats() {
   statsCache = null;
   statsForPlayerId = null;
@@ -38,17 +40,40 @@ async function loadStats(playerId, eventId, ctx) {
   }
 }
 
-function renderEventOptions() {
-  const sorted = [...state.events].sort((a, b) => b.starts_at - a.starts_at);
-  const options = sorted
-    .map((e) => `<option value="${e.id}" ${e.id === statsEventId ? 'selected' : ''}>${escapeHtml(e.name)}</option>`)
-    .join('');
-  return `<option value="" ${statsEventId === '' ? 'selected' : ''}>Gesamt (alle Events)</option>${options}`;
+// Finished LANs are the point of this filter, so every option carries the
+// event's title plus its state as an icon — the same option shape the topbar
+// switcher, Auswertung's filter and Hall of Fame's LAN picker use.
+function eventFilterOptions() {
+  return eventSelectOptions(accessibleEvents(), { allEntryLabel: 'Gesamt (alle Events)' });
+}
+
+// Two accounts see different totals here, because each aggregate covers only
+// the events its own account took part in. Name that basis instead of letting
+// the difference look like a bug (docs/KONZEPT-EVENT-SICHTBARKEIT.md,
+// Abschnitt 4.4). Only for the "Gesamt" selection — with one event picked the
+// dropdown already says what the numbers cover.
+//
+// Exported and free of module state so the wording itself is testable: the
+// singular is the normal case for every account that has not accepted a LAN
+// invitation yet, so both halves of the sentence have to agree in number.
+export function dataBasisText(eventIds, selectedEventId) {
+  if (selectedEventId !== '') return '';
+  const count = eventIds?.length ?? 0;
+  if (count === 0) return '';
+  return count === 1
+    ? 'Aus einem Event, an dem du teilgenommen hast.'
+    : `Aus deinen ${count} Events, an denen du teilgenommen hast.`;
+}
+
+function dataBasisHtml(stats) {
+  const text = dataBasisText(stats.eventIds, statsEventId);
+  if (!text) return '';
+  return `<div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(text)}</div>`;
 }
 
 function renderStats() {
   if (statsLoading || !statsCache) {
-    return `<div class="empty-state" style="padding:var(--space-4);">Lädt…</div>`;
+    return emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' });
   }
   const s = statsCache;
 
@@ -95,7 +120,7 @@ function renderStats() {
           )
           .join('')}
       </div>`
-    : `<div class="empty-state" style="padding:var(--space-4);"><span class="empty-state-icon">${icon('award')}</span>Noch keine eigenen Awards.</div>`;
+    : emptyStateHtml('Noch keine eigenen Awards.', { style: 'padding:var(--space-4);', icon: icon('award') });
 
   const gamesHtml = s.games.length
     ? s.games
@@ -111,7 +136,7 @@ function renderStats() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Spielzeit erfasst.</div>`;
+    : emptyStateHtml('Noch keine Spielzeit erfasst.', { style: 'padding:var(--space-4);' });
 
   const eventsHtml = s.events.length
     ? s.events
@@ -123,7 +148,7 @@ function renderStats() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Events mit Spielzeit.</div>`;
+    : emptyStateHtml('Noch keine Events mit Spielzeit.', { style: 'padding:var(--space-4);' });
 
   const longestHtml = s.longestSessions.length
     ? s.longestSessions
@@ -138,11 +163,16 @@ function renderStats() {
         </div>`
         )
         .join('')
-    : `<div class="empty-state" style="padding:var(--space-4);">Noch keine Sessions.</div>`;
+    : emptyStateHtml('Noch keine Sessions.', { style: 'padding:var(--space-4);' });
 
   return `
     <div class="card stack">
-      <select id="my-stats-event">${renderEventOptions()}</select>
+      ${searchSelectHtml('my-stats-event', eventFilterOptions(), statsEventId, {
+        placeholder: 'Event suchen…',
+        ariaLabel: 'Veranstaltung',
+        label: 'Auswertbare Events',
+      })}
+      ${dataBasisHtml(s)}
     </div>
     ${kpis}
 
@@ -166,7 +196,7 @@ export function renderMyStats(container, ctx) {
   if (!me) {
     container.innerHTML = `
       <button type="button" class="btn btn-sm" data-navigate="profile">‹ Zurück zum Profil</button>
-      <div class="empty-state" style="margin-top:var(--space-4);"><span class="empty-state-icon">${icon('user')}</span>Bitte erst dein Profil einrichten.</div>
+      ${emptyStateHtml('Bitte erst dein Profil einrichten.', { style: 'margin-top:var(--space-4);', icon: icon('user') })}
     `;
     return;
   }
@@ -181,12 +211,12 @@ export function renderMyStats(container, ctx) {
     ${renderStats()}
   `;
 
-  const eventSelect = container.querySelector('#my-stats-event');
-  if (eventSelect) {
-    eventSelect.addEventListener('change', (e) => {
-      statsEventId = e.target.value;
+  wireSearchSelect(container, 'my-stats-event', eventFilterOptions(), {
+    emptyText: 'Kein passendes Event gefunden.',
+    onChange: (eventId) => {
+      statsEventId = eventId;
       statsForPlayerId = null;
       ctx.rerender();
-    });
-  }
+    },
+  });
 }
