@@ -138,6 +138,28 @@ test('re-rendering the same route keeps the shell and its content element alive'
   assert.match(container.innerHTML, /data-section-tab="arrivals" aria-current="page"/);
 });
 
+test('the shell rebuilds a same-route tab row when the event feature set changes', () => {
+  const container = stubContainer();
+  renderSectionShell(container, 'arrivals');
+  const writesWithAllTabs = container.writes;
+  assert.match(container.innerHTML, /data-section-tab="checklist"/);
+
+  // Arrivals remains a valid route, but To-Do and Packliste are unavailable
+  // without the tasks feature. Keeping the old shell here would leave stale,
+  // clickable tabs behind after an event switch.
+  renderSectionShell(container, 'arrivals', { event: { enabledFeatures: ['travel'] } });
+  assert.equal(container.writes, writesWithAllTabs + 1);
+  assert.match(container.innerHTML, /data-section-tab="arrivals"/);
+  assert.match(container.innerHTML, /data-section-tab="events"/);
+  assert.doesNotMatch(container.innerHTML, /data-section-tab="checklistPacking"/);
+  assert.doesNotMatch(container.innerHTML, /data-section-tab="checklist"/);
+
+  // Once the visible set is stable, ordinary background re-renders still
+  // preserve the content slot and any draft state owned by the sub-view.
+  renderSectionShell(container, 'arrivals', { event: { enabledFeatures: ['travel'] } });
+  assert.equal(container.writes, writesWithAllTabs + 1);
+});
+
 test('the shell rebuilds after a view outside every area replaced the container', () => {
   const container = stubContainer();
   renderSectionShell(container, 'checklist', {});

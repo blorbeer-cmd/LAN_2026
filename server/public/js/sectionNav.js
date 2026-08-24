@@ -94,9 +94,14 @@ export function renderSectionShell(container, view, { badges = {}, event } = {})
   const section = sectionForView(view);
   if (!section) throw new Error(`Kein Bereich für Ansicht ${view}`);
   const visibleTabs = sectionTabsForEvent(sectionKeyForView(view), event);
+  const visibleTabSignature = visibleTabs.map((tab) => tab.view).join(',');
 
   const existing = container.querySelector(':scope > .section-view');
-  if (existing && container.dataset.sectionView === view) {
+  if (
+    existing &&
+    container.dataset.sectionView === view &&
+    container.dataset.sectionTabs === visibleTabSignature
+  ) {
     for (const tab of visibleTabs) {
       const count = container.querySelector(`[data-section-tab="${tab.view}"] [data-section-tab-count]`);
       if (count) count.textContent = badgeText(badges[tab.view]);
@@ -118,5 +123,6 @@ export function renderSectionShell(container, view, { badges = {}, event } = {})
     <div class="section-view"></div>
   `;
   container.dataset.sectionView = view;
+  container.dataset.sectionTabs = visibleTabSignature;
   return container.querySelector(':scope > .section-view');
 }
