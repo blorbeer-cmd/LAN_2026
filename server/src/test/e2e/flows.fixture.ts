@@ -344,6 +344,14 @@ flowTest('shell', 'untabbed areas align compact cards while tabbed areas reserve
 
     await openOrgaTab('events');
     await page.waitForSelector('#orga-events-title');
+    assert.deepEqual(
+      await page.locator('.more-subpage-header--tabs .section-tabs').evaluate((tabs) => {
+        const style = getComputedStyle(tabs);
+        return { marginTop: style.marginTop, marginBottom: style.marginBottom };
+      }),
+      { marginTop: '0px', marginBottom: '0px' },
+      `Orga's tab row should not add spacing outside the shared header at ${width}px`,
+    );
     const orgaMetrics = await firstCardMetrics('Orga');
     tabbedMetrics.push(['Orga', orgaMetrics]);
     for (const [title, value] of tabbedMetrics) {

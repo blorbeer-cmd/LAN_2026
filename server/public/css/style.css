@@ -2730,6 +2730,7 @@ button.draft-pool-player {
   align-items: center;
   margin: 0;
 }
+.more-subpage-header--tabs .section-tabs,
 .section-page-header .section-tabs {
   margin: 0;
 }
@@ -2766,9 +2767,9 @@ button.draft-pool-player {
   }
 }
 
-/* Right-aligned page-level action next to an area's tab row (Turnier anlegen,
-   Ergebnis eintragen) — those used to share a row with the view title the
-   area shell now owns. */
+/* Right-aligned page-level action next to an area's tab row (for example
+   Turnier anlegen) — these used to share a row with the view title the area
+   shell now owns. */
 .view-actions {
   justify-content: flex-end;
   margin-bottom: var(--space-3);
