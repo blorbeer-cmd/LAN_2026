@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createTestApp, TEST_ADMIN_ID } from './testApp';
-import { db } from '../db';
+import { BASE_EVENT_ID, db } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
 import { advanceAutomaticReminder, dueAutomaticReminders } from '../eventDatePolls';
 import { runEventDatePollReminderSweepOnce } from '../eventDatePollReminders';
@@ -130,6 +130,19 @@ test('only confirmed event participants can see, create and answer polls; every 
       inviteePlayerIds: [alice],
     });
   assert.equal(customInvitees.status, 400, 'the client cannot narrow the participant roster');
+});
+
+test('the permanent base event cannot host polls through the API', async () => {
+  const before = db
+    .prepare('SELECT COUNT(*) AS count FROM event_date_polls WHERE event_id = ?')
+    .get(BASE_EVENT_ID) as { count: number };
+  const created = await createPoll(BASE_EVENT_ID, TEST_ADMIN_ID, { title: 'Unsichtbare Basis-Abstimmung' });
+  assert.equal(created.status, 409);
+  assert.match(created.body.error, /Allgemein/);
+  const after = db
+    .prepare('SELECT COUNT(*) AS count FROM event_date_polls WHERE event_id = ?')
+    .get(BASE_EVENT_ID) as { count: number };
+  assert.equal(after.count, before.count);
 });
 
 test('feasibility, choice and 1-5 rating modes enforce their distinct response semantics', async () => {
@@ -628,6 +641,47 @@ test('automatic poll reminders are scheduled two days and two hours before the d
   );
 });
 
+test('automatic reminder sweeps enroll newly accepted participants without a poll read', async () => {
+  const alice = 'poll-late-reminder-alice';
+  const bob = 'poll-late-reminder-bob';
+  createMember(alice, 'Poll Late Reminder Alice');
+  createMember(bob, 'Poll Late Reminder Bob');
+  const eventId = await createEvent('Poll Late Reminder Event', [alice]);
+  const created = await createPoll(eventId, alice, { responseDueOn: isoDate(6) });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
+  const invitation = await request(app)
+    .post(`/api/events/${eventId}/invitations`)
+    .set('x-test-player-id', TEST_ADMIN_ID)
+    .send({ playerId: bob });
+  assert.equal(invitation.status, 201);
+  assert.equal(
+    (await request(app).post(`/api/events/${eventId}/invitation/accept`).set('x-test-player-id', bob)).status,
+    200,
+  );
+  assert.equal(
+    db.prepare('SELECT 1 FROM event_date_poll_invitees WHERE poll_id = ? AND player_id = ?').get(created.body.id, bob),
+    undefined,
+    'acceptance alone does not depend on opening the poll view',
+  );
+
+  dueAutomaticReminders(Date.now());
+  const poll = db
+    .prepare('SELECT response_due_at AS responseDueAt FROM event_date_polls WHERE id = ?')
+    .get(created.body.id) as { responseDueAt: number };
+  const invitee = db
+    .prepare(
+      'SELECT automatic_reminder_due_at AS dueAt FROM event_date_poll_invitees WHERE poll_id = ? AND player_id = ?',
+    )
+    .get(created.body.id, bob) as { dueAt: number };
+  assert.equal(invitee.dueAt, poll.responseDueAt - 48 * 60 * 60 * 1000);
+  assert.ok(
+    dueAutomaticReminders(invitee.dueAt).some(
+      (entry) => entry.pollId === created.body.id && entry.playerId === bob && entry.stage === 1,
+    ),
+  );
+});
+
 test('newly accepted participants join an open poll automatically; removed participants lose access', async () => {
   const alice = 'poll-roster-alice';
   const bob = 'poll-roster-bob';
@@ -667,6 +721,48 @@ test('newly accepted participants join an open poll automatically; removed parti
   assert.equal(
     (await request(app).get(`/api/events/${eventId}/polls/${created.body.id}`).set('x-test-player-id', bob)).status,
     404,
+  );
+});
+
+test('closing freezes the result without responses from participants who already left', async () => {
+  const alice = 'poll-close-roster-alice';
+  const bob = 'poll-close-roster-bob';
+  createMember(alice, 'Poll Close Roster Alice');
+  createMember(bob, 'Poll Close Roster Bob');
+  const eventId = await createEvent('Poll Close Roster Event', [alice, bob]);
+  const created = await createPoll(eventId, alice, {
+    responseMode: 'single_choice',
+    options: [{ label: 'Variante A' }, { label: 'Variante B' }],
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
+  const aliceAnswer = await request(app)
+    .put(`/api/events/${eventId}/polls/${created.body.id}/my-responses`)
+    .set('x-test-player-id', alice)
+    .send({ responses: responsesFor(created.body, ['cannot', 'can']) });
+  assert.equal(aliceAnswer.status, 200, JSON.stringify(aliceAnswer.body));
+  const bobAnswer = await request(app)
+    .put(`/api/events/${eventId}/polls/${created.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: responsesFor(created.body, ['can', 'cannot']) });
+  assert.equal(bobAnswer.status, 200, JSON.stringify(bobAnswer.body));
+
+  const removed = await request(app)
+    .delete(`/api/events/${eventId}/participants/${bob}`)
+    .set('x-test-player-id', TEST_ADMIN_ID);
+  assert.equal(removed.status, 204);
+  const closed = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/close`)
+    .set('x-test-player-id', alice);
+  assert.equal(closed.status, 200, JSON.stringify(closed.body));
+  assert.deepEqual(closed.body.invitees.map((entry: { playerId: string }) => entry.playerId), [alice]);
+  assert.equal(closed.body.options[0].counts.can, 0);
+  assert.equal(closed.body.options[0].isRecommended, false);
+  assert.equal(closed.body.options[1].counts.can, 1);
+  assert.equal(closed.body.options[1].isRecommended, true);
+  assert.equal(
+    db.prepare('SELECT 1 FROM event_date_poll_responses WHERE poll_id = ? AND player_id = ?').get(created.body.id, bob),
+    undefined,
   );
 });
 

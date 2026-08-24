@@ -3,7 +3,7 @@
 // state machine lives in eventDatePolls.ts (legacy internal name).
 
 import { Router, type Request, type Response } from 'express';
-import { db } from '../db';
+import { BASE_EVENT_ID, db } from '../db';
 import { getEvent, type EventRow } from '../events';
 import { resolveGroupResource } from '../groupAuthorization';
 import { writeAdminAudit } from '../adminAudit';
@@ -364,6 +364,9 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
   if (!playerId) return;
   if (!hasAcceptedParticipation(event.id, playerId)) {
     return res.status(404).json({ error: 'Event nicht gefunden.' });
+  }
+  if (event.id === BASE_EVENT_ID) {
+    return res.status(409).json({ error: 'Für den Bereich Allgemein können keine Abstimmungen gestartet werden.' });
   }
   if (event.status === 'cancelled' || event.status === 'ended') {
     return res.status(409).json({ error: 'Für ein abgesagtes oder beendetes Event kann keine Runde gestartet werden.' });

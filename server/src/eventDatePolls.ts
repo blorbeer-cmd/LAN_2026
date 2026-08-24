@@ -187,6 +187,7 @@ export function materializeExpiredPollIfNeeded(pollId: string, now = Date.now())
       // Lost the race to another concurrent request — re-read its result.
       return { poll: getDatePoll(pollId)!, transitioned: false };
     }
+    freezeEligibleRoster(poll);
     clearAutomaticReminders(pollId);
     return { poll: getDatePoll(pollId)!, transitioned: true };
   })();
@@ -296,7 +297,7 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
   })();
 }
 
-function insertInvitees(pollId: string, playerIds: string[], now: number, responseDueAt: number): void {
+function insertInvitees(pollId: string, playerIds: string[], now: number, responseDueAt: number): number {
   const insertInvitee = db.prepare(
     `INSERT INTO event_date_poll_invitees
        (poll_id, player_id, invited_at, automatic_reminder_stage, automatic_reminder_due_at)
@@ -304,9 +305,56 @@ function insertInvitees(pollId: string, playerIds: string[], now: number, respon
      ON CONFLICT(poll_id, player_id) DO NOTHING`,
   );
   const plan = initialReminderPlan(responseDueAt, now);
+  let inserted = 0;
   for (const playerId of new Set(playerIds)) {
-    insertInvitee.run(pollId, playerId, now, plan.stage, plan.dueAt);
+    inserted += insertInvitee.run(pollId, playerId, now, plan.stage, plan.dueAt).changes;
   }
+  return inserted;
+}
+
+function activeAcceptedParticipantIds(eventId: string): string[] {
+  return (
+    db
+      .prepare(
+        `SELECT ep.player_id AS playerId
+         FROM event_participants ep
+         JOIN players p ON p.id = ep.player_id
+         WHERE ep.event_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
+           AND p.deactivated_at IS NULL`,
+      )
+      .all(eventId) as Array<{ playerId: string }>
+  ).map((row) => row.playerId);
+}
+
+// Poll reads normally keep an open round's invitees aligned with the current
+// accepted event roster. The background reminder sweep must do the same even
+// when a newly accepted participant has never opened the poll view.
+export function synchronizeOpenDatePollRosters(now = Date.now()): number {
+  return db.transaction(() => {
+    const polls = db.prepare("SELECT * FROM event_date_polls WHERE status = 'open'").all() as DatePollRow[];
+    let inserted = 0;
+    for (const poll of polls) {
+      inserted += insertInvitees(poll.id, activeAcceptedParticipantIds(poll.event_id), now, poll.response_due_at);
+    }
+    return inserted;
+  })();
+}
+
+// Once a round closes, its result must reflect exactly the people who were
+// eligible at that transition. Removing an ineligible invitee also removes
+// their responses through the existing composite foreign key cascade.
+function freezeEligibleRoster(poll: DatePollRow): void {
+  db.prepare(
+    `DELETE FROM event_date_poll_invitees
+     WHERE poll_id = ?
+       AND player_id NOT IN (
+         SELECT ep.player_id
+         FROM event_participants ep
+         JOIN players p ON p.id = ep.player_id
+         WHERE ep.event_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
+           AND p.deactivated_at IS NULL
+       )`,
+  ).run(poll.id, poll.event_id);
 }
 
 // ---------- automatic reminder scheduling ----------
@@ -630,6 +678,7 @@ export function closeDatePoll(poll: DatePollRow): PollMutationResult {
     if (updated.changes !== 1) {
       return { ok: false, code: 'not_open', error: 'Die Abstimmung läuft nicht mehr.' };
     }
+    freezeEligibleRoster(poll);
     clearAutomaticReminders(poll.id);
     return { ok: true, poll: getDatePoll(poll.id)! };
   })();
@@ -720,6 +769,7 @@ export interface DueAutomaticReminder {
 }
 
 export function dueAutomaticReminders(now = Date.now()): DueAutomaticReminder[] {
+  synchronizeOpenDatePollRosters(now);
   const rows = db
     .prepare(
       `SELECT edpi.poll_id AS pollId, edp.event_id AS eventId, edpi.player_id AS playerId,
