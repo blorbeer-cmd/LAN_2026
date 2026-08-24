@@ -467,13 +467,19 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
     'Allgemeines Event',
   );
   assert.match(await generalEventCard.innerText(), /Teilnehmende verwalten/);
+  assert.equal(
+    await generalEventCard.locator('[data-export-event]').count(),
+    0,
+    'general events must not offer the LAN keepsake PDF',
+  );
   await page.click('#new-event-btn');
   assert.deepEqual(
     await page.locator('#event-type option').allTextContents(),
     ['LAN-Party', 'Allgemeines Event'],
   );
+  assert.equal(await page.locator('#event-type-description').count(), 0);
   await page.selectOption('#event-type', 'general');
-  assert.match(await page.locator('#event-type-description').innerText(), /Feier, Reise, Ausflug/);
+  assert.equal(await page.locator('#event-type-description').count(), 0);
   await page.click('.modal-backdrop [data-close]');
 
   await openView('admin');

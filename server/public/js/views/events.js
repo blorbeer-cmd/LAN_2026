@@ -478,6 +478,12 @@ function renderInvitationPayment(event) {
     </div>`;
 }
 
+export function eventPdfExportAvailable(event) {
+  // The keepsake summarizes LAN-only competition and tracking data. Older
+  // event payloads without a type stay LAN-compatible.
+  return event?.eventType !== 'general';
+}
+
 function renderEventCard(event) {
   // Nothing about tracking, ending, the regular roster or the PDF keepsake is
   // meaningful before this event has an actual date — the date poll section
@@ -510,7 +516,7 @@ function renderEventCard(event) {
         ${trackingBtn}
         ${endBtn}
         ${hasDate ? `<button type="button" class="btn btn-sm" data-participants-event="${event.id}">${icon('users')} Teilnehmende verwalten</button>` : ''}
-        ${hasDate ? `<button type="button" class="btn btn-sm" data-export-event="${event.id}" title="Als PDF exportieren">${icon('file')} PDF</button>` : ''}
+        ${hasDate && eventPdfExportAvailable(event) ? `<button type="button" class="btn btn-sm" data-export-event="${event.id}" title="Als PDF exportieren">${icon('file')} PDF</button>` : ''}
       </div>
     </article>
   `;
@@ -680,8 +686,6 @@ function openEventForm(ctx, existing) {
         `<option value="${escapeHtml(eventType.key)}" ${eventType.key === selectedEventType ? 'selected' : ''}>${escapeHtml(eventType.title)}</option>`,
     )
     .join('');
-  const selectedEventTypeDescription = eventTypes.find((eventType) => eventType.key === selectedEventType)?.description ?? '';
-
   let capturedEl;
   const { close } = openModal(
     isEdit ? 'Event bearbeiten' : 'Neues Event',
@@ -694,7 +698,6 @@ function openEventForm(ctx, existing) {
         <div>
           <label for="event-type" class="field-label">Eventtyp</label>
           <select id="event-type" ${isEdit ? 'disabled' : ''}>${eventTypeSelectOptions}</select>
-          <p class="muted" id="event-type-description">${escapeHtml(selectedEventTypeDescription)}${isEdit ? ' Der Typ kann in diesem MVP nachträglich nicht geändert werden.' : ''}</p>
         </div>
         <div class="field-row">
           <div>
@@ -784,12 +787,6 @@ function openEventForm(ctx, existing) {
         wireDateTimeField(modalEl, 'event-ends');
         wireDateTimeField(modalEl, 'event-payment-due');
         wireInfoTooltips(modalEl);
-        modalEl.querySelector('#event-type')?.addEventListener('change', (event) => {
-          const option = eventTypes.find((entry) => entry.key === event.target.value);
-          const description = modalEl.querySelector('#event-type-description');
-          if (description) description.textContent = option?.description ?? '';
-        });
-
         modalEl.querySelector('#event-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const name = modalEl.querySelector('#event-name').value.trim();
