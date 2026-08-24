@@ -648,10 +648,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 83);
+  assert.equal(migrations.length, 84);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 83 }, (_, index) => index + 1),
+    Array.from({ length: 84 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1178,8 +1178,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 83 }, (_, index) => index + 1),
-    'every version 1..83 runs exactly once',
+    Array.from({ length: 84 }, (_, index) => index + 1),
+    'every version 1..84 runs exactly once',
   );
 });
 
@@ -2556,6 +2556,53 @@ test('migration 83 adds event feature snapshots with a complete LAN default and 
     'a restart must not overwrite an existing event snapshot',
   );
   assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 83').get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 84 collapses draft non-LAN types into the general preset without touching LAN events', () => {
+  const dbFile = makeTempDbPath('event-type-collapse');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture
+    .prepare(
+      `INSERT INTO events
+         (id, name, starts_at, ends_at, group_id, status, visibility_scope, event_type_key, preset_version)
+       VALUES (?, ?, ?, ?, 'default-group', 'published', 'participants', 'trip', 1)`,
+    )
+    .run('legacy-trip-event', 'Legacy Trip', now, now + 60_000);
+  const insertFeature = fixture.prepare(
+    `INSERT INTO event_features (event_id, feature_key, enabled, changed_at, changed_by)
+     VALUES (?, ?, 1, ?, NULL)`,
+  );
+  for (const featureKey of EVENT_FEATURE_KEYS) insertFeature.run('legacy-trip-event', featureKey, now);
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 84').run();
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT event_type_key AS eventType, preset_version AS presetVersion FROM events WHERE id = ?')
+      .get('legacy-trip-event'),
+    { eventType: 'general', presetVersion: 1 },
+  );
+  const enabledFeatures = migrated
+    .prepare('SELECT feature_key AS featureKey FROM event_features WHERE event_id = ? AND enabled = 1 ORDER BY rowid')
+    .all('legacy-trip-event') as Array<{ featureKey: string }>;
+  assert.deepEqual(
+    enabledFeatures.map((row) => row.featureKey),
+    ['tasks', 'travel', 'food', 'costs', 'music', 'seating'],
+  );
+  assert.deepEqual(
+    migrated
+      .prepare('SELECT event_type_key AS eventType FROM events WHERE id = ?')
+      .get('instance-base-event'),
+    { eventType: 'lan' },
+  );
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });

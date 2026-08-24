@@ -44,7 +44,15 @@ test('event type presets only reference known features and satisfy hard dependen
     }
   }
   assert.deepEqual(EVENT_TYPE_PRESETS.lan.recommendedFeatureKeys, EVENT_FEATURE_KEYS);
-  assert.deepEqual(EVENT_TYPE_PRESETS.custom.recommendedFeatureKeys, []);
-  assert.equal(isEventTypeKey('game-night'), true);
+  assert.deepEqual(EVENT_TYPE_PRESETS.general.recommendedFeatureKeys, [
+    'tasks',
+    'travel',
+    'food',
+    'costs',
+    'music',
+    'seating',
+  ]);
+  assert.equal(isEventTypeKey('general'), true);
+  assert.equal(isEventTypeKey('trip'), false);
   assert.equal(isEventTypeKey('unknown'), false);
 });

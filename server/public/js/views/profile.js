@@ -20,6 +20,7 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { confirmDialog, openModal } from '../modal.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { pendingEventInvitations, renderInvitationCard, wirePendingInvitationActions } from './events.js';
+import { eventHasFeature } from '../eventFeatures.js';
 
 const TRACKING_PAUSE_HELP = 'Pausiert Live-Status und Spielzeit. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
 const ACTIVITY_TRACKING_HELP = 'Erfasst zusätzlich, ob das Spielfenster im Vordergrund ist. Der Wert lässt sich später in der Agent-Steuerung ändern.';
@@ -281,7 +282,11 @@ export function renderProfile(container, ctx) {
     return;
   }
 
-  if (neighborsForPlayerId !== myId && !neighborsLoading) {
+  const gamesEnabled = eventHasFeature(state.activeEvent, 'games');
+  const trackingEnabled = eventHasFeature(state.activeEvent, 'tracking');
+  const monitorsEnabled = trackingEnabled && eventHasFeature(state.activeEvent, 'seating');
+
+  if (monitorsEnabled && neighborsForPlayerId !== myId && !neighborsLoading) {
     loadNeighbors(myId, ctx);
   }
   if (pushState === null) {
@@ -359,7 +364,7 @@ export function renderProfile(container, ctx) {
       </section>
 
       ${
-        state.games.length === 0 || hasAnyRating
+        !gamesEnabled || state.games.length === 0 || hasAnyRating
           ? ''
           : `<section class="card stack grouped-page-section profile-rating-nudge" aria-labelledby="profile-rating-title">
                <div class="grouped-page-section-title">
@@ -372,7 +377,7 @@ export function renderProfile(container, ctx) {
              </section>`
       }
 
-      <section class="card stack grouped-page-section" aria-labelledby="profile-agent-title">
+      ${trackingEnabled ? `<section class="card stack grouped-page-section" aria-labelledby="profile-agent-title">
         <div class="grouped-page-section-title"><h2 id="profile-agent-title">Live-Status-Agent</h2></div>
         <div class="profile-agent-steps">
           <div class="card stack profile-agent-step">
@@ -416,24 +421,24 @@ export function renderProfile(container, ctx) {
           </div>
           <p class="muted" style="font-size:var(--font-size-xs);margin-bottom:0;">Key in die Agent-Konfiguration eintragen.</p>
         </details>
-      </section>
+      </section>` : ''}
 
       <section class="card stack grouped-page-section" aria-labelledby="profile-push-title">
         <div class="grouped-page-section-title"><h2 id="profile-push-title">Push-Benachrichtigungen</h2></div>
         ${renderPushSection()}
       </section>
 
-      <section class="card stack grouped-page-section" aria-labelledby="profile-monitors-title">
+      ${monitorsEnabled ? `<section class="card stack grouped-page-section" aria-labelledby="profile-monitors-title">
         <div class="grouped-page-section-title"><h2 id="profile-monitors-title">Sichtbare Monitore</h2></div>
         ${renderNeighbors(myId)}
-      </section>
+      </section>` : ''}
 
-      <section class="card grouped-page-section" aria-labelledby="profile-stats-title">
+      ${trackingEnabled ? `<section class="card grouped-page-section" aria-labelledby="profile-stats-title">
         <div class="grouped-page-section-title">
           <h2 id="profile-stats-title">Meine Statistiken</h2>
           <button type="button" class="btn btn-sm" data-navigate="myStats">Ansehen</button>
         </div>
-      </section>
+      </section>` : ''}
     </div>
   `;
 
@@ -467,18 +472,20 @@ export function renderProfile(container, ctx) {
   // Fetched lazily (the roster list intentionally omits API keys) and only
   // ever for your own profile — see the players.js detail modal for the
   // admin-side equivalent.
-  api.players
-    .get(myId)
-    .then((full) => {
-      const input = container.querySelector('#profile-apikey');
-      if (input) input.value = full.api_key;
-    })
-    .catch(() => {
-      const input = container.querySelector('#profile-apikey');
-      if (input) input.value = 'Fehler beim Laden';
-    });
+  if (trackingEnabled) {
+    api.players
+      .get(myId)
+      .then((full) => {
+        const input = container.querySelector('#profile-apikey');
+        if (input) input.value = full.api_key;
+      })
+      .catch(() => {
+        const input = container.querySelector('#profile-apikey');
+        if (input) input.value = 'Fehler beim Laden';
+      });
+  }
 
-  container.querySelector('#tracking-paused').addEventListener('change', async (e) => {
+  container.querySelector('#tracking-paused')?.addEventListener('change', async (e) => {
     try {
       await api.players.update(myId, { trackingPaused: e.target.checked });
       await ctx.refresh();
@@ -488,7 +495,7 @@ export function renderProfile(container, ctx) {
     }
   });
 
-  container.querySelector('#profile-copy-key').addEventListener('click', async () => {
+  container.querySelector('#profile-copy-key')?.addEventListener('click', async () => {
     const value = container.querySelector('#profile-apikey').value;
     try {
       await navigator.clipboard.writeText(value);
@@ -502,7 +509,7 @@ export function renderProfile(container, ctx) {
   const profileColorTrigger = container.querySelector('#profile-color-trigger');
   profileColorTrigger.addEventListener('click', () => openProfileColorPicker(profileColorInput, profileColorTrigger));
 
-  container.querySelector('#profile-rotate-key').addEventListener('click', async () => {
+  container.querySelector('#profile-rotate-key')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Agent-Key wirklich erneuern? Der aktuell installierte Agent muss danach neu eingerichtet werden.', {
       title: 'Agent-Key erneuern',
       confirmText: 'Erneuern',
@@ -517,7 +524,7 @@ export function renderProfile(container, ctx) {
     }
   });
 
-  container.querySelector('#agent-download').addEventListener('click', async (e) => {
+  container.querySelector('#agent-download')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     btn.disabled = true;
     const originalLabel = btn.innerHTML;

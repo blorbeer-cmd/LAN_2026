@@ -33,8 +33,14 @@ test('event context keeps the personal workspace separate from invitations', () 
       endedEvents: [past],
       historicalEvents: [base, lan, past],
       eventInvitations: [invitation],
+      eventTypeOptions: [],
     },
   );
+});
+
+test('event type options are preserved for the event creation form', () => {
+  const options = [{ key: 'lan' }, { key: 'general' }];
+  assert.deepEqual(normalizeEventContext({ eventTypeOptions: options }).eventTypeOptions, options);
 });
 
 test("a member's own ended events default to an empty list", () => {

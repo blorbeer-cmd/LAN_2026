@@ -7,6 +7,7 @@ import { state } from './state.js';
 import { getMyId } from './whoami.js';
 import { currentPlayerHasAdminRole } from './adminAccess.js';
 import { normalizeSearchText } from './searchText.js';
+import { viewIsEnabledForEvent } from './eventFeatures.js';
 
 export { normalizeSearchText };
 
@@ -69,6 +70,10 @@ export function searchEntries(query, entries = SEARCH_ENTRIES, limit = 20) {
 
 export function searchEntriesVisibleToRole(entries, hasAdminAccess) {
   return entries.filter((entry) => !entry.adminOnly || hasAdminAccess);
+}
+
+export function searchEntriesVisibleForEvent(entries, event) {
+  return entries.filter((entry) => !entry.view || viewIsEnabledForEvent(entry.view, event));
 }
 
 function compactText(value, maxLength = 100) {
@@ -232,8 +237,14 @@ export function initGlobalSearch(onNavigate) {
           const input = backdrop.querySelector('#global-search-input');
           const summary = backdrop.querySelector('#global-search-summary');
           const resultsContainer = backdrop.querySelector('#global-search-results');
-          const visibleAreaEntries = searchEntriesVisibleToRole(SEARCH_ENTRIES, currentPlayerHasAdminRole());
-          let allEntries = [...visibleAreaEntries, ...createContentSearchEntries(state)];
+          const visibleAreaEntries = searchEntriesVisibleForEvent(
+            searchEntriesVisibleToRole(SEARCH_ENTRIES, currentPlayerHasAdminRole()),
+            state.activeEvent,
+          );
+          let allEntries = searchEntriesVisibleForEvent(
+            [...visibleAreaEntries, ...createContentSearchEntries(state)],
+            state.activeEvent,
+          );
           let results = [];
           let selectedIndex = 0;
 
@@ -329,7 +340,10 @@ export function initGlobalSearch(onNavigate) {
             // deliberately not preserved: a better-ranked late content match
             // (e.g. an exact order title over an area alias) may replace it.
             const previousSelection = selectedIndex > 0 ? results[selectedIndex] : null;
-            allEntries = [...visibleAreaEntries, ...contentEntries];
+            allEntries = searchEntriesVisibleForEvent(
+              [...visibleAreaEntries, ...contentEntries],
+              state.activeEvent,
+            );
             renderResults();
             if (previousSelection) {
               const restored = results.findIndex(

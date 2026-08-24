@@ -45,6 +45,13 @@ test('every account starts in the permanent base event', async () => {
   assert.ok(list.body.availableEvents.some((event: { id: string }) => event.id === BASE_EVENT_ID));
   assert.ok(Array.isArray(list.body.invitations));
   assert.ok(Array.isArray(list.body.managedEvents));
+  assert.deepEqual(
+    list.body.eventTypeOptions.map((option: { key: string; title: string }) => ({ key: option.key, title: option.title })),
+    [
+      { key: 'lan', title: 'LAN-Party' },
+      { key: 'general', title: 'Allgemeines Event' },
+    ],
+  );
   assert.equal(
     list.body.managedEvents.some((event: { id: string }) => event.id === BASE_EVENT_ID),
     false,
@@ -75,6 +82,52 @@ test('new events persist and expose the complete backwards-compatible LAN featur
   );
 });
 
+test('general events persist the shared non-LAN feature snapshot', async () => {
+  const created = await createEvent('Allgemeines Treffen', 60_000, { eventType: 'general' });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.eventType, 'general');
+  assert.equal(created.body.presetVersion, 1);
+  assert.deepEqual(created.body.enabledFeatures, ['tasks', 'travel', 'food', 'costs', 'music', 'seating']);
+
+  const featureRows = db
+    .prepare(
+      `SELECT feature_key AS featureKey, enabled, changed_by AS changedBy
+       FROM event_features WHERE event_id = ? ORDER BY rowid`,
+    )
+    .all(created.body.id);
+  assert.deepEqual(
+    featureRows,
+    EVENT_FEATURE_KEYS.map((featureKey) => ({
+      featureKey,
+      enabled: ['tasks', 'travel', 'food', 'costs', 'music', 'seating'].includes(featureKey) ? 1 : 0,
+      changedBy: TEST_ADMIN_ID,
+    })),
+  );
+});
+
+test('general events reject mutations in LAN-only areas before domain validation', async () => {
+  const created = await createEvent('Allgemeines Event ohne LAN-Bereiche', 60_000, { eventType: 'general' });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  accept(created.body.id, TEST_ADMIN_ID);
+  const activated = await request(app).put('/api/me/active-event').send({ eventId: created.body.id });
+  assert.equal(activated.status, 200, JSON.stringify(activated.body));
+
+  const vote = await request(app).post('/api/votes').send({});
+  assert.equal(vote.status, 404);
+  assert.match(vote.body.error, /nicht aktiviert/);
+
+  const match = await request(app).post('/api/matchmaking').send({});
+  assert.equal(match.status, 404);
+  assert.match(match.body.error, /nicht aktiviert/);
+
+  const tracking = await request(app).post(`/api/events/${created.body.id}/tracking/start`);
+  assert.equal(tracking.status, 404);
+  assert.match(tracking.body.error, /nicht aktiviert/);
+
+  const restored = await request(app).put('/api/me/active-event').send({ eventId: BASE_EVENT_ID });
+  assert.equal(restored.status, 200);
+});
+
 test('event creation validates name, required timestamps and ordering', async () => {
   assert.equal(
     (await request(app).post('/api/events').send({ name: '  ', startsAt: Date.now(), endsAt: Date.now() + 1_000 })).status,
@@ -96,12 +149,16 @@ test('event creation validates name, required timestamps and ordering', async ()
     .post('/api/events')
     .send({ name: 'Teilnehmende', startsAt, endsAt: startsAt + 60_000, visibilityScope: 'participants' });
   assert.equal(participantsOnly.status, 201, JSON.stringify(participantsOnly.body));
+  const invalidType = await request(app)
+    .post('/api/events')
+    .send({ name: 'Unbekannter Typ', startsAt, endsAt: startsAt + 60_000, eventType: 'trip' });
+  assert.equal(invalidType.status, 400);
+  assert.match(invalidType.body.error, /lan oder general/);
 });
 
-test('event type and feature snapshot fields stay explicitly read-only until enforcement is available', async () => {
+test('derived feature snapshot fields and post-creation type changes stay explicitly read-only', async () => {
   const startsAt = Date.now() + 60_000;
   const readOnlyFields: Array<[string, unknown]> = [
-    ['eventType', 'celebration'],
     ['presetVersion', 2],
     ['enabledFeatures', ['food']],
   ];
@@ -138,7 +195,7 @@ test('event type and feature snapshot fields stay explicitly read-only until enf
       .get(eventId) as { count: number }
   ).count;
 
-  for (const [field, value] of readOnlyFields) {
+  for (const [field, value] of [...readOnlyFields, ['eventType', 'general'] as [string, unknown]]) {
     const rejected = await request(app)
       .patch(`/api/events/${eventId}`)
       .send({ name: 'Darf nicht übernommen werden', [field]: value });

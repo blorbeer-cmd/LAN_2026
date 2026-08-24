@@ -8,6 +8,8 @@
 // therefore keep working exactly as before — only where a route is *presented*
 // changed, not what it is called.
 
+import { viewIsEnabledForEvent } from './eventFeatures.js';
+
 export const SECTIONS = Object.freeze({
   competition: Object.freeze({
     title: 'Match',
@@ -57,10 +59,14 @@ export function sectionForView(view) {
   return key ? SECTIONS[key] : null;
 }
 
+export function sectionTabsForEvent(key, event) {
+  return (SECTIONS[key]?.tabs ?? []).filter((tab) => viewIsEnabledForEvent(tab.view, event));
+}
+
 // The route a section opens on when it is entered from the bottom nav or the
-// "Mehr" hub: always its first tab.
-export function sectionEntryView(key) {
-  return SECTIONS[key]?.tabs[0]?.view ?? null;
+// "Mehr" hub: the first tab available for the active event.
+export function sectionEntryView(key, event) {
+  return sectionTabsForEvent(key, event)[0]?.view ?? null;
 }
 
 // Which nav entry should light up for the currently rendered route. A route
@@ -84,20 +90,21 @@ function badgeText(count) {
 // half-typed add-item field and its focus that way — and replacing the node
 // first would silently hand them an empty container on every background
 // refresh. Only the live tab counts are patched in place.
-export function renderSectionShell(container, view, { badges = {} } = {}) {
+export function renderSectionShell(container, view, { badges = {}, event } = {}) {
   const section = sectionForView(view);
   if (!section) throw new Error(`Kein Bereich für Ansicht ${view}`);
+  const visibleTabs = sectionTabsForEvent(sectionKeyForView(view), event);
 
   const existing = container.querySelector(':scope > .section-view');
   if (existing && container.dataset.sectionView === view) {
-    for (const tab of section.tabs) {
+    for (const tab of visibleTabs) {
       const count = container.querySelector(`[data-section-tab="${tab.view}"] [data-section-tab-count]`);
       if (count) count.textContent = badgeText(badges[tab.view]);
     }
     return existing;
   }
 
-  const tabs = section.tabs
+  const tabs = visibleTabs
     .map((tab) => {
       const active = tab.view === view;
       return `<button type="button" class="btn btn-sm section-tab${active ? ' btn-primary' : ''}"

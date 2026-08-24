@@ -9,7 +9,12 @@ import { nanoid } from 'nanoid';
 import { config } from './config';
 import { DEFAULT_QUIZ_QUESTIONS } from './arcade/quizQuestions';
 import { DEFAULT_SCRIBBLE_WORDS } from './arcade/scribbleWords';
-import { DEFAULT_EVENT_PRESET_VERSION, DEFAULT_EVENT_TYPE_KEY, EVENT_FEATURE_KEYS } from './eventFeatureCatalog';
+import {
+  DEFAULT_EVENT_PRESET_VERSION,
+  DEFAULT_EVENT_TYPE_KEY,
+  EVENT_FEATURE_KEYS,
+  EVENT_TYPE_PRESETS,
+} from './eventFeatureCatalog';
 
 // Ensure the data directory exists before opening a file-based DB. Skipped for
 // the in-memory database used in tests.
@@ -3992,6 +3997,37 @@ registerMigration({
   version: 83,
   name: 'add event types and feature snapshots',
   up: addEventTypesAndFeatureSnapshots,
+});
+
+// The first implementation draft offered several presets whose only product
+// difference was their initial feature list. The smaller MVP deliberately
+// keeps one LAN profile and one common profile for every other event. A branch
+// database that already tried one of the retired keys is normalized without
+// deleting any domain data; only its feature snapshot changes.
+function collapseEventTypesToLanAndGeneral(): void {
+  const generalPreset = EVENT_TYPE_PRESETS.general;
+  const changedAt = Date.now();
+  const legacyEvents = db
+    .prepare("SELECT id FROM events WHERE id != ? AND event_type_key NOT IN ('lan', 'general')")
+    .all(OUTSIDE_EVENTS_ID) as Array<{ id: string }>;
+  const updateFeature = db.prepare(
+    `UPDATE event_features
+     SET enabled = ?, changed_at = ?, changed_by = NULL
+     WHERE event_id = ? AND feature_key = ?`,
+  );
+  const enabled = new Set(generalPreset.recommendedFeatureKeys);
+  for (const event of legacyEvents) {
+    db.prepare("UPDATE events SET event_type_key = 'general', preset_version = ? WHERE id = ?")
+      .run(generalPreset.version, event.id);
+    for (const featureKey of EVENT_FEATURE_KEYS) {
+      updateFeature.run(enabled.has(featureKey) ? 1 : 0, changedAt, event.id, featureKey);
+    }
+  }
+}
+registerMigration({
+  version: 84,
+  name: 'collapse event types to lan and general',
+  up: collapseEventTypesToLanAndGeneral,
 });
 
 runRegisteredMigrations();

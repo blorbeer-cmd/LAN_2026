@@ -48,6 +48,7 @@ import { navGroupForView, sectionKeyForView } from './sectionNav.js';
 import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
 import { captureViewRenderState, restoreViewRenderState } from './viewRenderState.js';
 import { realtimeEventAffectsView } from './realtimeRefreshPolicy.js';
+import { viewIsEnabledForEvent } from './eventFeatures.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -135,7 +136,14 @@ async function runSharedRefresh() {
     // coordinator owns the snapshot that actually committed.
   } while (sharedRefreshDirty || !committed);
   renderEventContextSwitcher();
+  syncFeatureNavigation();
   if (sharedRefreshShouldRender) renderCurrent();
+}
+
+function syncFeatureNavigation() {
+  document.querySelectorAll('.nav-btn[data-view]').forEach((button) => {
+    button.hidden = !viewIsEnabledForEvent(button.dataset.view, state.activeEvent);
+  });
 }
 
 function queueSharedRefresh({ render = true } = {}) {
@@ -283,6 +291,7 @@ async function activateEvent(eventId, { navigate, searchTarget = null } = {}) {
       invalidateEventScopedCaches();
       await loadAll();
       renderEventContextSwitcher();
+      syncFeatureNavigation();
       await refreshNotificationBanner();
       renderCurrent();
     }
@@ -327,6 +336,11 @@ function wireEventContextSwitcher() {
 }
 
 function renderCurrent({ preserveState = true } = {}) {
+  if (playerDataReady && !viewIsEnabledForEvent(currentView, state.activeEvent)) {
+    switchView('home', { replace: true });
+    showToast('Dieser Bereich ist für das aktive Event nicht aktiviert.');
+    return;
+  }
   const revision = ++renderRevision;
   const view = currentView;
   const entry = VIEW_REGISTRY[view];
@@ -409,6 +423,10 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
   // Admin-only areas stay reachable through Admin links and deep links alike,
   // but never render for an account whose role no longer permits them.
   if (viewRequiresAdminRole(view) && playerDataReady && !currentPlayerHasAdminRole()) view = 'foodOrders';
+  if (playerDataReady && !viewIsEnabledForEvent(view, state.activeEvent)) {
+    view = 'home';
+    replace = true;
+  }
   const changed = view !== currentView;
   if (view !== 'foodOrders') clearFoodOrderTarget();
   pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
@@ -900,6 +918,7 @@ async function main() {
     .then(() => {
       playerDataReady = true;
       renderEventContextSwitcher();
+      syncFeatureNavigation();
       if (appReady) renderCurrentAfterPlayerDataLoad();
     })
     .catch((error) => {

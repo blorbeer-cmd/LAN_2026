@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { SECTIONS, navGroupForView, renderSectionShell, sectionEntryView, sectionForView, sectionKeyForView } from './sectionNav.js';
+import {
+  SECTIONS,
+  navGroupForView,
+  renderSectionShell,
+  sectionEntryView,
+  sectionForView,
+  sectionKeyForView,
+  sectionTabsForEvent,
+} from './sectionNav.js';
 import { VIEW_MANIFEST } from './viewManifest.js';
 
 test('every section tab is a real route and belongs to exactly one section', () => {
@@ -33,6 +41,21 @@ test('a section is entered on its first tab and its tabs share one nav group', (
   // A route outside every section stands for itself.
   assert.equal(navGroupForView('votes'), 'votes');
   assert.equal(sectionForView('votes'), null);
+});
+
+test('section tabs follow the active event feature snapshot', () => {
+  const generalEvent = {
+    enabledFeatures: ['tasks', 'travel', 'food', 'costs', 'music', 'seating'],
+  };
+  assert.equal(sectionEntryView('competition', generalEvent), null);
+  assert.equal(sectionEntryView('insights', generalEvent), null);
+  assert.equal(sectionEntryView('orga', generalEvent), 'arrivals');
+  assert.deepEqual(sectionTabsForEvent('orga', generalEvent).map((tab) => tab.view), [
+    'arrivals',
+    'events',
+    'checklistPacking',
+    'checklist',
+  ]);
 });
 
 // Minimal stand-in for the container element: it models exactly what the shell

@@ -11,6 +11,7 @@ import { fallbackEventContexts, fallbackPlayerEventContext } from './eventContex
 import {
   DEFAULT_EVENT_PRESET_VERSION,
   DEFAULT_EVENT_TYPE_KEY,
+  EVENT_TYPE_PRESETS,
   type EventTypeKey,
 } from './eventFeatureCatalog';
 import { createEventFeatureSnapshot } from './eventFeatures';
@@ -100,6 +101,7 @@ export interface CreateEventOptions {
   paypalLink?: string | null;
   paymentDueAt?: number | null;
   createdBy?: string | null;
+  eventTypeKey?: EventTypeKey;
 }
 
 // Just creates the event — tracking starts off, so this never wipes live
@@ -107,6 +109,7 @@ export interface CreateEventOptions {
 // separately once you actually want this event to go live.
 export function createEvent(name: string, options: CreateEventOptions): EventRow {
   const id = nanoid();
+  const eventTypeKey = options.eventTypeKey ?? DEFAULT_EVENT_TYPE_KEY;
   return db.transaction(() => {
     db.prepare(
       `INSERT INTO events
@@ -127,10 +130,12 @@ export function createEvent(name: string, options: CreateEventOptions): EventRow
       options.paypalLink ?? null,
       options.paymentDueAt ?? null,
       options.createdBy ?? null,
-      DEFAULT_EVENT_TYPE_KEY,
-      DEFAULT_EVENT_PRESET_VERSION,
+      eventTypeKey,
+      eventTypeKey === DEFAULT_EVENT_TYPE_KEY
+        ? DEFAULT_EVENT_PRESET_VERSION
+        : EVENT_TYPE_PRESETS[eventTypeKey].version,
     );
-    createEventFeatureSnapshot(id, DEFAULT_EVENT_TYPE_KEY, options.createdBy ?? null);
+    createEventFeatureSnapshot(id, eventTypeKey, options.createdBy ?? null);
     return getEvent(id)!;
   })();
 }

@@ -1,7 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { SEARCH_ENTRIES, createContentSearchEntries, normalizeSearchText, searchEntries, searchEntriesVisibleToRole } from './searchPalette.js';
+import {
+  SEARCH_ENTRIES,
+  createContentSearchEntries,
+  normalizeSearchText,
+  searchEntries,
+  searchEntriesVisibleForEvent,
+  searchEntriesVisibleToRole,
+} from './searchPalette.js';
 
 test('normalizeSearchText makes German labels accent-insensitive', () => {
   assert.equal(normalizeSearchText('  ÜBERSICHT & Grüße  '), 'ubersicht grusse');
@@ -53,6 +60,18 @@ test('Auswertung destinations require the real admin role, same as the rest of A
   assert.equal(adminViews.includes('leaderboard'), true);
   assert.equal(adminViews.includes('analytics'), true);
   assert.equal(adminViews.includes('hallOfFame'), true);
+});
+
+test('general events remove LAN-only areas from search results', () => {
+  const visibleViews = searchEntriesVisibleForEvent(SEARCH_ENTRIES, {
+    enabledFeatures: ['tasks', 'travel', 'food', 'costs', 'music', 'seating'],
+  }).map((entry) => entry.view);
+  assert.equal(visibleViews.includes('foodOrders'), true);
+  assert.equal(visibleViews.includes('arrivals'), true);
+  assert.equal(visibleViews.includes('matchmaking'), false);
+  assert.equal(visibleViews.includes('votes'), false);
+  assert.equal(visibleViews.includes('arcade'), false);
+  assert.equal(visibleViews.includes('leaderboard'), false);
 });
 
 test('content index finds players and an order by one of its items', () => {

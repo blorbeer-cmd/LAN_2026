@@ -106,7 +106,7 @@ export const EVENT_FEATURE_CATALOG: Readonly<Record<EventFeatureKey, EventFeatur
   },
 };
 
-export const EVENT_TYPE_KEYS = ['lan', 'celebration', 'game-night', 'trip', 'workshop', 'custom'] as const;
+export const EVENT_TYPE_KEYS = ['lan', 'general'] as const;
 
 export type EventTypeKey = (typeof EVENT_TYPE_KEYS)[number];
 
@@ -128,44 +128,12 @@ export const EVENT_TYPE_PRESETS: Readonly<Record<EventTypeKey, EventTypePreset>>
     recommendedFeatureKeys: EVENT_FEATURE_KEYS,
     suggestedFeatureKeys: [],
   },
-  celebration: {
-    key: 'celebration',
+  general: {
+    key: 'general',
     version: 1,
-    title: 'Gartenparty & Feier',
-    description: 'Geburtstag, Grillabend, Gartenparty oder private Feier',
-    recommendedFeatureKeys: ['tasks', 'food', 'costs', 'music'],
-    suggestedFeatureKeys: ['travel', 'seating'],
-  },
-  'game-night': {
-    key: 'game-night',
-    version: 1,
-    title: 'Spieleabend',
-    description: 'Brettspiel-, Konsolen- oder kleiner PC-Spieleabend',
-    recommendedFeatureKeys: ['food', 'music', 'games'],
-    suggestedFeatureKeys: ['tasks', 'costs', 'competition', 'arcade'],
-  },
-  trip: {
-    key: 'trip',
-    version: 1,
-    title: 'Reise & Ausflug',
-    description: 'Gruppenreise, gemeinsames Wochenende, Hütte oder Tagesausflug',
-    recommendedFeatureKeys: ['tasks', 'travel', 'food', 'costs'],
-    suggestedFeatureKeys: ['music', 'games', 'seating'],
-  },
-  workshop: {
-    key: 'workshop',
-    version: 1,
-    title: 'Workshop & Treffen',
-    description: 'Workshop, Vereinstreffen, Planungstag oder Community-Termin',
-    recommendedFeatureKeys: ['tasks'],
-    suggestedFeatureKeys: ['travel', 'food', 'costs', 'seating', 'kiosk'],
-  },
-  custom: {
-    key: 'custom',
-    version: 1,
-    title: 'Benutzerdefiniert',
-    description: 'Minimale Ausgangsbasis ohne optionale Eventbereiche',
-    recommendedFeatureKeys: [],
+    title: 'Allgemeines Event',
+    description: 'Feier, Reise, Ausflug, Spieleabend, Workshop oder anderes Treffen',
+    recommendedFeatureKeys: ['tasks', 'travel', 'food', 'costs', 'music', 'seating'],
     suggestedFeatureKeys: [],
   },
 };

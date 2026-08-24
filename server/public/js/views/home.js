@@ -17,6 +17,7 @@ import { renderSeatingPlan } from './seating.js';
 import { ensureAktuellLoaded, aktuellItems, dismissAktuellItem } from '../aktuellStatus.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { isAdmin } from '../admin.js';
+import { eventHasFeature, viewIsEnabledForEvent } from '../eventFeatures.js';
 
 const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
 
@@ -100,7 +101,9 @@ function statusRowHtml({ id, iconName, title, sub, navigate, target }) {
 }
 
 function renderStatus() {
-  const rows = aktuellItems().map((item) =>
+  const rows = aktuellItems()
+    .filter((item) => viewIsEnabledForEvent(item.navigate, state.activeEvent))
+    .map((item) =>
     statusRowHtml({
       id: escapeHtml(item.id),
       iconName: item.iconName,
@@ -212,13 +215,15 @@ function renderMyStatus(myId, players) {
 
 export function renderHome(container, ctx) {
   lastCtx = ctx;
+  const trackingEnabled = eventHasFeature(state.activeEvent, 'tracking');
+  const seatingEnabled = eventHasFeature(state.activeEvent, 'seating');
   const players = [...state.live].sort((a, b) => {
     const rankDiff = STATE_RANK[a.state] - STATE_RANK[b.state];
     if (rankDiff !== 0) return rankDiff;
     return a.name.localeCompare(b.name, 'de');
   });
 
-  if (players.length === 0) {
+  if (players.length === 0 && trackingEnabled) {
     container.innerHTML = `
       <h1 class="view-title">Home</h1>
       ${emptyStateHtml(`
@@ -280,14 +285,18 @@ export function renderHome(container, ctx) {
     <h1 class="view-title">Home</h1>
     <div class="grouped-page-sections">
       ${renderStatus()}
-      <section class="card grouped-page-section stack" aria-labelledby="home-live-title">
-        <div class="grouped-page-section-title"><h2 id="home-live-title">Live-Status</h2></div>
-        ${renderActiveGroups(players)}
-        ${renderMyStatus(myId, players)}
-        <div class="two-column-card-grid home-live-grid">${cards}</div>
-      </section>
-      ${renderLeaderboardTop()}
-      ${renderHomeSeating(ctx)}
+      ${
+        trackingEnabled
+          ? `<section class="card grouped-page-section stack" aria-labelledby="home-live-title">
+               <div class="grouped-page-section-title"><h2 id="home-live-title">Live-Status</h2></div>
+               ${renderActiveGroups(players)}
+               ${renderMyStatus(myId, players)}
+               <div class="two-column-card-grid home-live-grid">${cards}</div>
+             </section>
+             ${renderLeaderboardTop()}`
+          : ''
+      }
+      ${seatingEnabled ? renderHomeSeating(ctx) : ''}
     </div>
   `;
 

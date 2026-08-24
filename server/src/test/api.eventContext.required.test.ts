@@ -62,14 +62,14 @@ test('event-bound registration atomically joins base and target and selects the 
   // The active-event contract must return the stored snapshot, not infer the
   // complete LAN preset from the type. This direct fixture represents a later
   // individually customized event before its mutation API exists.
-  db.prepare("UPDATE events SET event_type_key = 'celebration' WHERE id = ?").run(target.id);
+  db.prepare("UPDATE events SET event_type_key = 'general' WHERE id = ?").run(target.id);
   db.prepare("UPDATE event_features SET enabled = 0 WHERE event_id = ? AND feature_key = 'arcade'").run(target.id);
 
   const active = await request(app).get('/api/me/active-event').set('Cookie', cookie);
   assert.equal(active.status, 200);
   assert.equal(active.body.id, target.id);
   assert.equal(active.body.isBase, false);
-  assert.equal(active.body.eventType, 'celebration');
+  assert.equal(active.body.eventType, 'general');
   assert.equal(active.body.presetVersion, 1);
   assert.deepEqual(active.body.enabledFeatures, EVENT_FEATURE_KEYS.filter((featureKey) => featureKey !== 'arcade'));
 

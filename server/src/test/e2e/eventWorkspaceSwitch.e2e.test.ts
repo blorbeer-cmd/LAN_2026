@@ -24,6 +24,7 @@ let page: Page;
 let cookie: string;
 let eventA: string;
 let eventB: string;
+let generalEvent: string;
 
 const test = createStatefulE2EDiagnosticTest(
   () => ({ browser, server: e2eServer }),
@@ -45,11 +46,11 @@ async function api(path: string, init: RequestInit = {}): Promise<{ status: numb
   return { status: res.status, body };
 }
 
-async function createAcceptedEvent(name: string, playerId: string): Promise<string> {
+async function createAcceptedEvent(name: string, playerId: string, eventType = 'lan'): Promise<string> {
   const now = Date.now();
   const created = await api('/api/events', {
     method: 'POST',
-    body: JSON.stringify({ name, startsAt: now, endsAt: now + 3_600_000 }),
+    body: JSON.stringify({ name, startsAt: now, endsAt: now + 3_600_000, eventType }),
   });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   const id = created.body.id as string;
@@ -125,6 +126,7 @@ before(async () => {
   const myId = me.body.id as string;
   eventA = await createAcceptedEvent('E2E Workspace A', myId);
   eventB = await createAcceptedEvent('E2E Workspace B', myId);
+  generalEvent = await createAcceptedEvent('E2E Allgemeines Event', myId, 'general');
 
   // Data that exists only in event A.
   await activate(eventA);
@@ -393,4 +395,46 @@ test('an open, actively-searched switcher survives an unrelated background refre
     'the open list must stay open across the unrelated refresh',
   );
   await page.keyboard.press('Escape');
+});
+
+test('a general event removes LAN-only whole areas across navigation, Home, Profile and Admin', async () => {
+  await switchWorkspaceInBrowser(generalEvent);
+
+  for (const view of ['matchmaking', 'votes', 'gameCatalog']) {
+    assert.equal(await page.locator(`.nav-btn[data-view="${view}"]`).isHidden(), true, `${view} must be hidden`);
+  }
+  assert.equal(await page.locator('.nav-btn[data-view="foodOrders"]').isVisible(), true);
+
+  await page.click('.nav-btn[data-view="home"]');
+  const home = await viewText();
+  assert.doesNotMatch(home, /Live-Status|Rangliste/);
+  assert.match(home, /Sitzplan/);
+
+  await openView('profile');
+  const profile = await viewText();
+  assert.doesNotMatch(profile, /Live-Status-Agent|Sichtbare Monitore|Meine Statistiken|Bock & Skill eintragen/);
+  assert.match(profile, /Push-Benachrichtigungen/);
+
+  await page.click('.nav-btn[data-view="more"]');
+  const more = await viewText();
+  assert.doesNotMatch(more, /Arcade/);
+  assert.match(more, /Jam|Orga/);
+
+  await page.click('[data-navigate="arrivals"]');
+  await page.click('[data-section-tab="events"]');
+  await page.click('#new-event-btn');
+  assert.deepEqual(
+    await page.locator('#event-type option').allTextContents(),
+    ['LAN-Party', 'Allgemeines Event'],
+  );
+  await page.selectOption('#event-type', 'general');
+  assert.match(await page.locator('#event-type-description').innerText(), /Feier, Reise, Ausflug/);
+  await page.click('.modal-backdrop [data-close]');
+
+  await openView('admin');
+  const admin = await viewText();
+  assert.doesNotMatch(admin, /LAN-Bereitschaft|Agent-Diagnose|Kioskverwaltung/);
+  assert.equal(await page.locator('[data-navigate="leaderboard"]').count(), 0);
+  assert.equal(await page.locator('[data-navigate="kiosk"]').count(), 0);
+  assert.match(admin, /Sitzplan|Eventverwaltung/);
 });

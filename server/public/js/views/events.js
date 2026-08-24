@@ -26,13 +26,31 @@ import { emptyStateHtml } from '../emptyState.js';
 import { eventStatusBadgeHtml } from '../eventStatus.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { formatEuroCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
+import { eventHasFeature } from '../eventFeatures.js';
 
-const EVENT_HELP = 'Nur ein Event gleichzeitig erfasst Live-Status und Spielzeit.';
+const EVENT_HELP = 'Eventtyp, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
 const KIOSK_HELP = 'Zeigt Live-Status, Vote, Rang und Turnier; ein eigener Token ist erforderlich.';
 const expandedEventParticipants = new Set();
 // Mirrors foodOrders.js's Historie collapse: ended events start collapsed and
 // this survives the section's own live re-renders.
 let eventHistoryOpen = false;
+
+const FALLBACK_EVENT_TYPE_OPTIONS = [
+  {
+    key: 'lan',
+    title: 'LAN-Party',
+    description: 'Vollständiger LAN-Funktionsumfang mit Spielen, Wettkampf, Arcade, Tracking und Kiosk.',
+  },
+  {
+    key: 'general',
+    title: 'Allgemeines Event',
+    description: 'Feier, Reise, Ausflug, Spieleabend, Workshop oder anderes Treffen.',
+  },
+];
+
+export function availableEventTypeOptions(options = state.eventTypeOptions) {
+  return Array.isArray(options) && options.length > 0 ? options : FALLBACK_EVENT_TYPE_OPTIONS;
+}
 
 function renderKioskSection() {
   return `
@@ -470,11 +488,13 @@ function renderInvitationPayment(event) {
 }
 
 function renderEventCard(event) {
-  const trackingBtn = event.isEnded
-    ? `<button type="button" class="btn btn-sm btn-primary" data-restart-event="${event.id}">Event wieder starten</button>`
-    : event.trackingEnabled
-      ? `<button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">${icon('pause')} Tracking stoppen</button>`
-      : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${event.id}">Tracking starten</button>`;
+  const trackingBtn = eventHasFeature(event, 'tracking')
+    ? event.isEnded
+      ? `<button type="button" class="btn btn-sm btn-primary" data-restart-event="${event.id}">Event wieder starten</button>`
+      : event.trackingEnabled
+        ? `<button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">${icon('pause')} Tracking stoppen</button>`
+        : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${event.id}">Tracking starten</button>`
+    : '';
   const endBtn = event.isEnded
     ? ''
     : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
@@ -640,6 +660,15 @@ function openEventForm(ctx, existing) {
   const isEdit = Boolean(existing);
   const now = Date.now();
   const defaultEnd = now + 24 * 60 * 60 * 1000;
+  const eventTypes = availableEventTypeOptions();
+  const selectedEventType = existing?.eventType ?? 'lan';
+  const eventTypeSelectOptions = eventTypes
+    .map(
+      (eventType) =>
+        `<option value="${escapeHtml(eventType.key)}" ${eventType.key === selectedEventType ? 'selected' : ''}>${escapeHtml(eventType.title)}</option>`,
+    )
+    .join('');
+  const selectedEventTypeDescription = eventTypes.find((eventType) => eventType.key === selectedEventType)?.description ?? '';
 
   let capturedEl;
   const { close } = openModal(
@@ -649,6 +678,11 @@ function openEventForm(ctx, existing) {
         <div>
           <label for="event-name" class="field-label">Name</label>
           <input type="text" id="event-name" maxlength="80" required autofocus value="${escapeHtml(existing?.name ?? '')}" placeholder="z.B. LAN Winter 2027" />
+        </div>
+        <div>
+          <label for="event-type" class="field-label">Eventtyp</label>
+          <select id="event-type" ${isEdit ? 'disabled' : ''}>${eventTypeSelectOptions}</select>
+          <p class="muted" id="event-type-description">${escapeHtml(selectedEventTypeDescription)}${isEdit ? ' Der Typ kann in diesem MVP nachträglich nicht geändert werden.' : ''}</p>
         </div>
         <div class="field-row">
           <div>
@@ -738,6 +772,11 @@ function openEventForm(ctx, existing) {
         wireDateTimeField(modalEl, 'event-ends');
         wireDateTimeField(modalEl, 'event-payment-due');
         wireInfoTooltips(modalEl);
+        modalEl.querySelector('#event-type')?.addEventListener('change', (event) => {
+          const option = eventTypes.find((entry) => entry.key === event.target.value);
+          const description = modalEl.querySelector('#event-type-description');
+          if (description) description.textContent = option?.description ?? '';
+        });
 
         modalEl.querySelector('#event-form').addEventListener('submit', async (e) => {
           e.preventDefault();
@@ -779,6 +818,7 @@ function openEventForm(ctx, existing) {
 
           const payload = {
             name,
+            ...(!isEdit ? { eventType: modalEl.querySelector('#event-type').value } : {}),
             startsAt: startsVal ? new Date(startsVal).getTime() : undefined,
             endsAt: endsVal ? new Date(endsVal).getTime() : null,
             location: location || null,
