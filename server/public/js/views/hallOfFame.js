@@ -4,7 +4,7 @@
 // from a button on Rangliste, same as Auswertungen/Turniere.
 
 import { api } from '../api.js';
-import { escapeHtml, avatarHtml, formatDate, lastInclusiveDayMs } from '../format.js';
+import { escapeHtml, avatarHtml, formatDate } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { domainIcon } from '../domainIcons.js';
@@ -92,7 +92,7 @@ function renderTournamentChampion(t, index) {
 }
 
 function renderEvent(e) {
-  const range = `${formatDate(e.startsAt)}${e.endsAt ? ' – ' + formatDate(lastInclusiveDayMs(e.endsAt)) : ' (läuft)'}`;
+  const range = `${formatDate(e.startsAt)}${e.endsAt ? ' – ' + formatDate(e.endsAt) : ' (läuft)'}`;
   const standings = e.overallStandings ?? [];
   const standingsHtml = standings.length
     ? `<div class="leaderboard-list-grid">${standings.map(renderEventStanding).join('')}</div>`

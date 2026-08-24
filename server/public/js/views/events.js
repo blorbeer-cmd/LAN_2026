@@ -17,7 +17,7 @@ import { api } from '../api.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { state } from '../state.js';
 import { icon } from '../icons.js';
-import { avatarHtml, escapeHtml, lastInclusiveDayMs } from '../format.js';
+import { avatarHtml, escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { dateTimeFieldHtml, wireDateTimeField } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
@@ -46,10 +46,10 @@ function renderKioskSection() {
 // fallback explicit so no view ever renders "Invalid Date" for them. The base
 // workspace is permanently open (startsAt set, endsAt null), so it has no end
 // date to print either, but for a different reason.
-function eventDateRange(e) {
+export function eventDateRange(e) {
   if (e.startsAt == null) return 'Termin wird noch abgestimmt';
   if (e.endsAt == null) return 'Dauerhaft geöffnet';
-  return `${new Date(e.startsAt).toLocaleDateString('de-DE')} – ${new Date(lastInclusiveDayMs(e.endsAt)).toLocaleDateString('de-DE')}`;
+  return `${new Date(e.startsAt).toLocaleDateString('de-DE')} – ${new Date(e.endsAt).toLocaleDateString('de-DE')}`;
 }
 
 function eventLocationUrl(location) {

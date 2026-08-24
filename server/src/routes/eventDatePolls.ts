@@ -262,16 +262,7 @@ function loadPollOr404(
     res.status(404).json({ error: 'Abstimmung nicht gefunden.' });
     return undefined;
   }
-  if (materialized.transitioned) {
-    writeAdminAudit({
-      groupId: event.group_id ?? undefined,
-      action: 'event_date_poll_deadline_closed',
-      targetType: 'event_date_poll',
-      targetId: poll.id,
-      details: { eventId: event.id },
-    });
-    broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
-  }
+  if (materialized.transitioned) finishLazyDeadlineClose(event, poll.id);
   return materialized.poll;
 }
 
@@ -333,6 +324,23 @@ function resolvePollReminders(event: EventRow, pollId: string, playerId?: string
   );
 }
 
+// materializeExpiredPollIfNeeded() deliberately performs only the atomic
+// status transition. Whichever request wins that transition must also perform
+// every observable completion side effect; the background sweep will skip the
+// now-closed row and therefore cannot repair an omitted audit, topic cleanup or
+// realtime refresh later.
+function finishLazyDeadlineClose(event: EventRow, pollId: string): void {
+  writeAdminAudit({
+    groupId: event.group_id ?? undefined,
+    action: 'event_date_poll_deadline_closed',
+    targetType: 'event_date_poll',
+    targetId: pollId,
+    details: { eventId: event.id },
+  });
+  resolvePollReminders(event, pollId);
+  broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+}
+
 // GET /api/events/:eventId/polls
 eventDatePollsRouter.get('/', resolveEventForPolls, (req, res) => {
   const event = req.groupResource as EventRow;
@@ -343,6 +351,7 @@ eventDatePollsRouter.get('/', resolveEventForPolls, (req, res) => {
   }
   const polls = getDatePolls(event.id).map((poll) => {
     const materialized = materializeExpiredPollIfNeeded(poll.id)!;
+    if (materialized.transitioned) finishLazyDeadlineClose(event, poll.id);
     return materialized.poll;
   });
   res.json(polls.map((poll) => serializeDatePoll(poll, event, playerId, req.groupMembership?.role)));

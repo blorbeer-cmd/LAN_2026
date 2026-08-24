@@ -5,6 +5,8 @@ import { createTestApp, TEST_ADMIN_ID } from './testApp';
 import { db } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
 import { advanceAutomaticReminder, dueAutomaticReminders } from '../eventDatePolls';
+import { runEventDatePollReminderSweepOnce } from '../eventDatePollReminders';
+import { Events, setIo } from '../realtime';
 
 const app = createTestApp();
 
@@ -688,20 +690,63 @@ test('only the poll creator manages a round, with accepted owner fallback after 
   assert.equal(ownerClose.status, 200, JSON.stringify(ownerClose.body));
 });
 
-test('an expired round closes lazily and idempotently on read', async () => {
+test('expired rounds close lazily with audit, realtime and reminder cleanup on list and detail reads', async () => {
   const alice = 'poll-expiry-alice';
+  const bob = 'poll-expiry-bob';
   createMember(alice, 'Poll Expiry Alice');
-  const eventId = await createEvent('Poll Expiry Event', [alice]);
-  const created = await createPoll(eventId, alice);
-  assert.equal(created.status, 201, JSON.stringify(created.body));
-  db.prepare('UPDATE event_date_polls SET response_due_at = ? WHERE id = ?').run(Date.now() - 1_000, created.body.id);
+  createMember(bob, 'Poll Expiry Bob');
+  const eventId = await createEvent('Poll Expiry Event', [alice, bob]);
+  const signals: string[] = [];
+  setIo({ emit: (event: string) => signals.push(event) } as never);
 
-  const first = await request(app).get(`/api/events/${eventId}/polls/${created.body.id}`).set('x-test-player-id', alice);
-  const second = await request(app).get(`/api/events/${eventId}/polls/${created.body.id}`).set('x-test-player-id', alice);
-  assert.equal(first.body.status, 'closed');
-  assert.equal(second.body.status, 'closed');
-  const auditCount = db
-    .prepare("SELECT COUNT(*) AS count FROM admin_log WHERE action = 'event_date_poll_deadline_closed' AND target_id = ?")
-    .get(created.body.id) as { count: number };
-  assert.equal(auditCount.count, 1);
+  const prepareRound = async (title: string) => {
+    const created = await createPoll(eventId, alice, { title });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const answered = await request(app)
+      .put(`/api/events/${eventId}/polls/${created.body.id}/my-responses`)
+      .set('x-test-player-id', alice)
+      .send({ responses: responsesFor(created.body, ['can', 'cannot']) });
+    assert.equal(answered.status, 200, JSON.stringify(answered.body));
+    const reminder = await request(app)
+      .post(`/api/events/${eventId}/polls/${created.body.id}/reminders`)
+      .set('x-test-player-id', alice);
+    assert.deepEqual(reminder.body.remindedPlayerIds, [bob]);
+    const topicKey = `event-poll-reminder:${created.body.id}:${bob}`;
+    db.prepare('UPDATE push_log SET expires_at = NULL WHERE topic_key = ?').run(topicKey);
+    return { pollId: created.body.id as string, topicKey };
+  };
+
+  const assertCompletedOnce = (pollId: string, topicKey: string) => {
+    const auditCount = db
+      .prepare("SELECT COUNT(*) AS count FROM admin_log WHERE action = 'event_date_poll_deadline_closed' AND target_id = ?")
+      .get(pollId) as { count: number };
+    assert.equal(auditCount.count, 1);
+    const topic = db
+      .prepare('SELECT resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?')
+      .get(topicKey) as { resolvedAt: number | null };
+    assert.ok(topic.resolvedAt, 'the reminder topic is no longer active after the deadline close');
+    assert.equal(signals.filter((event) => event === Events.eventsChanged).length, 1);
+  };
+
+  try {
+    const listRound = await prepareRound('Lazy close through list');
+    db.prepare('UPDATE event_date_polls SET response_due_at = ? WHERE id = ?').run(Date.now() - 1_000, listRound.pollId);
+    signals.length = 0;
+    const list = await request(app).get(`/api/events/${eventId}/polls`).set('x-test-player-id', alice);
+    assert.equal(list.status, 200);
+    assert.equal(list.body.find((poll: { id: string }) => poll.id === listRound.pollId)?.status, 'closed');
+    assertCompletedOnce(listRound.pollId, listRound.topicKey);
+
+    const detailRound = await prepareRound('Lazy close through detail');
+    db.prepare('UPDATE event_date_polls SET response_due_at = ? WHERE id = ?').run(Date.now() - 1_000, detailRound.pollId);
+    signals.length = 0;
+    const first = await request(app).get(`/api/events/${eventId}/polls/${detailRound.pollId}`).set('x-test-player-id', alice);
+    const second = await request(app).get(`/api/events/${eventId}/polls/${detailRound.pollId}`).set('x-test-player-id', alice);
+    assert.equal(first.body.status, 'closed');
+    assert.equal(second.body.status, 'closed');
+    runEventDatePollReminderSweepOnce();
+    assertCompletedOnce(detailRound.pollId, detailRound.topicKey);
+  } finally {
+    setIo(null);
+  }
 });
