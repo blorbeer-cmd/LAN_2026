@@ -8,6 +8,7 @@ import { createInvite } from '../invites';
 import { SESSION_COOKIE_NAME } from '../sessions';
 import { createTestApp, TEST_ADMIN_ID } from './testApp';
 import { historicallyParticipatedEventIds } from '../eventContext';
+import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 
 const app = createTestApp();
 
@@ -58,10 +59,19 @@ test('event-bound registration atomically joins base and target and selects the 
     used_by: null,
   });
 
+  // The active-event contract must return the stored snapshot, not infer the
+  // complete LAN preset from the type. This direct fixture represents a later
+  // individually customized event before its mutation API exists.
+  db.prepare("UPDATE events SET event_type_key = 'celebration' WHERE id = ?").run(target.id);
+  db.prepare("UPDATE event_features SET enabled = 0 WHERE event_id = ? AND feature_key = 'arcade'").run(target.id);
+
   const active = await request(app).get('/api/me/active-event').set('Cookie', cookie);
   assert.equal(active.status, 200);
   assert.equal(active.body.id, target.id);
   assert.equal(active.body.isBase, false);
+  assert.equal(active.body.eventType, 'celebration');
+  assert.equal(active.body.presetVersion, 1);
+  assert.deepEqual(active.body.enabledFeatures, EVENT_FEATURE_KEYS.filter((featureKey) => featureKey !== 'arcade'));
 
   const switched = await request(app)
     .put('/api/me/active-event')
@@ -70,6 +80,9 @@ test('event-bound registration atomically joins base and target and selects the 
   assert.equal(switched.status, 200);
   assert.equal(switched.body.id, BASE_EVENT_ID);
   assert.equal(switched.body.isBase, true);
+  assert.equal(switched.body.eventType, 'lan');
+  assert.equal(switched.body.presetVersion, 1);
+  assert.deepEqual(switched.body.enabledFeatures, [...EVENT_FEATURE_KEYS]);
 
   const unavailable = createEvent('Nicht freigegebenes Event', {
     startsAt: Date.now(),

@@ -98,6 +98,72 @@ test('event creation validates name, required timestamps and ordering', async ()
   assert.equal(participantsOnly.status, 201, JSON.stringify(participantsOnly.body));
 });
 
+test('event type and feature snapshot fields stay explicitly read-only until enforcement is available', async () => {
+  const startsAt = Date.now() + 60_000;
+  const readOnlyFields: Array<[string, unknown]> = [
+    ['eventType', 'celebration'],
+    ['presetVersion', 2],
+    ['enabledFeatures', ['food']],
+  ];
+  const eventCountBefore = (db.prepare('SELECT COUNT(*) AS count FROM events').get() as { count: number }).count;
+  for (const [field, value] of readOnlyFields) {
+    const rejected = await request(app)
+      .post('/api/events')
+      .send({
+        name: `Nicht schreibbar: ${field}`,
+        startsAt,
+        endsAt: startsAt + 60_000,
+        [field]: value,
+      });
+    assert.equal(rejected.status, 400, `${field} must not be silently ignored on create`);
+    assert.match(rejected.body.error, /schreibgeschützt/);
+  }
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM events').get() as { count: number }).count,
+    eventCountBefore,
+  );
+
+  const created = await createEvent('Unveränderte Eventkonfiguration');
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const eventId = created.body.id as string;
+  const storedBefore = db
+    .prepare('SELECT name, event_type_key, preset_version FROM events WHERE id = ?')
+    .get(eventId);
+  const featuresBefore = db
+    .prepare('SELECT feature_key, enabled FROM event_features WHERE event_id = ? ORDER BY rowid')
+    .all(eventId);
+  const auditCountBefore = (
+    db
+      .prepare("SELECT COUNT(*) AS count FROM admin_log WHERE action = 'event_updated' AND target_id = ?")
+      .get(eventId) as { count: number }
+  ).count;
+
+  for (const [field, value] of readOnlyFields) {
+    const rejected = await request(app)
+      .patch(`/api/events/${eventId}`)
+      .send({ name: 'Darf nicht übernommen werden', [field]: value });
+    assert.equal(rejected.status, 400, `${field} must not be silently ignored on update`);
+    assert.match(rejected.body.error, /schreibgeschützt/);
+  }
+  assert.deepEqual(
+    db.prepare('SELECT name, event_type_key, preset_version FROM events WHERE id = ?').get(eventId),
+    storedBefore,
+  );
+  assert.deepEqual(
+    db.prepare('SELECT feature_key, enabled FROM event_features WHERE event_id = ? ORDER BY rowid').all(eventId),
+    featuresBefore,
+  );
+  assert.equal(
+    (
+      db
+        .prepare("SELECT COUNT(*) AS count FROM admin_log WHERE action = 'event_updated' AND target_id = ?")
+        .get(eventId) as { count: number }
+    ).count,
+    auditCountBefore,
+    'rejected configuration writes must not create an event_updated audit record',
+  );
+});
+
 test('event creation and editing validate and expose contribution and accommodation costs', async () => {
   const startsAt = Date.now() + 60_000;
   const created = await request(app).post('/api/events').send({

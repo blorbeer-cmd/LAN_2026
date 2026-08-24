@@ -49,6 +49,7 @@ import { resolveKioskToken } from '../kioskTokens';
 import { getOrRepairActiveEvent, setActiveEventForPlayer, type EventContextEvent } from '../eventContext';
 import { broadcast, Events, switchPlayerEventScope } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
+import { getEnabledEventFeatures } from '../eventFeatures';
 
 export const apiRouter = Router();
 
@@ -130,6 +131,9 @@ function serializeActiveEvent(event: EventContextEvent) {
     endsAt: event.ends_at,
     status: event.status,
     isBase: event.id === BASE_EVENT_ID,
+    eventType: event.event_type_key,
+    presetVersion: event.preset_version,
+    enabledFeatures: getEnabledEventFeatures(event.id),
   };
 }
 

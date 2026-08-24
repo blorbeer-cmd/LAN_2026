@@ -44,6 +44,22 @@ import { getEnabledEventFeatures } from '../eventFeatures';
 
 export const eventsRouter = Router();
 
+const READ_ONLY_EVENT_CONFIGURATION_FIELDS = ['eventType', 'presetVersion', 'enabledFeatures'] as const;
+
+function requestsReadOnlyEventConfiguration(body: unknown): boolean {
+  return Boolean(
+    body &&
+    typeof body === 'object' &&
+    READ_ONLY_EVENT_CONFIGURATION_FIELDS.some((field) => Object.prototype.hasOwnProperty.call(body, field)),
+  );
+}
+
+function rejectReadOnlyEventConfiguration(res: Response) {
+  return res.status(400).json({
+    error: 'Eventtyp und Bereichsauswahl sind in diesem Ausbau noch schreibgeschützt.',
+  });
+}
+
 // One key per invited account so accepting or declining retires exactly that
 // invitation's notification and never a parallel one for another event.
 function eventInvitationTopicKey(eventId: string, playerId: string): string {
@@ -703,6 +719,7 @@ function parseOptionalPaypalLink(
 // event (if any) is currently tracking.
 // Body: { name, startsAt, endsAt, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
 eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin'), (req, res) => {
+  if (requestsReadOnlyEventConfiguration(req.body)) return rejectReadOnlyEventConfiguration(res);
   const {
     name,
     startsAt,
@@ -785,6 +802,7 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
   if (existing.id === BASE_EVENT_ID) {
     return res.status(409).json({ error: 'Das dauerhaft offene Basis-Event kann nicht bearbeitet werden.' });
   }
+  if (requestsReadOnlyEventConfiguration(req.body)) return rejectReadOnlyEventConfiguration(res);
 
   const {
     name,

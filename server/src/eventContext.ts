@@ -1,4 +1,5 @@
 import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
+import type { EventTypeKey } from './eventFeatureCatalog';
 
 export interface EventContextEvent {
   id: string;
@@ -7,6 +8,8 @@ export interface EventContextEvent {
   ends_at: number | null;
   status: 'draft' | 'published' | 'cancelled' | 'ended';
   group_id: string | null;
+  event_type_key: EventTypeKey;
+  preset_version: number;
 }
 
 export type EventAccessLevel = 'none' | 'teaser' | 'participant' | 'admin';
@@ -26,7 +29,7 @@ export function getSelectableEvent(eventId: string): EventContextEvent | undefin
   if (eventId === OUTSIDE_EVENTS_ID) return undefined;
   return db
     .prepare(
-      `SELECT id, name, starts_at, ends_at, status, group_id
+      `SELECT id, name, starts_at, ends_at, status, group_id, event_type_key, preset_version
        FROM events
        WHERE id = ? AND group_id = ? AND status = 'published' AND ended_at IS NULL`,
     )
@@ -98,7 +101,8 @@ export function getOrRepairActiveEvent(playerId: string): EventContextEvent {
     if (!getActivePlayer(playerId)) throw new Error('Active player required for event context.');
     const current = db
       .prepare(
-        `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id
+        `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id,
+                e.event_type_key, e.preset_version
          FROM player_event_contexts pec
          JOIN events e ON e.id = pec.active_event_id
          JOIN event_participants ep
@@ -120,7 +124,8 @@ export function setActiveEventForPlayer(playerId: string, eventId: string): Even
     if (!getActivePlayer(playerId)) return undefined;
     const event = db
       .prepare(
-        `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id
+        `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id,
+                e.event_type_key, e.preset_version
          FROM events e
          JOIN event_participants ep
            ON ep.event_id = e.id AND ep.player_id = ? AND ep.status = 'accepted'
