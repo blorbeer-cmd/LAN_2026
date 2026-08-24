@@ -139,6 +139,35 @@ test('GET /api/auth/invites keeps eventless reset and test-session links selecta
   }
 });
 
+test('POST /api/auth/invites rejects targeting a hidden test-fixture event', async () => {
+  // A real account accepted into a hidden Test-LAN/Allgemeines-Testevent
+  // fixture would lose access to its own active event once Admin mode is
+  // off, since is_test events are filtered out of every other read path.
+  const seeded = await request(app).post('/api/admin/test-users').set('Cookie', adminCookie).send({ count: 1 });
+  assert.equal(seeded.status, 201, JSON.stringify(seeded.body));
+  const testLan = db.prepare("SELECT id FROM events WHERE is_test = 1 AND name = 'Test-LAN'").get() as
+    | { id: string }
+    | undefined;
+  assert.ok(testLan, 'test-user seeding should have created the Test-LAN fixture event');
+
+  const registerRes = await request(app)
+    .post('/api/auth/invites')
+    .set('Cookie', adminCookie)
+    .send({ purpose: 'register', eventId: testLan!.id });
+  assert.equal(registerRes.status, 404);
+
+  const claimTarget = await request(app).post('/api/players').set('Cookie', adminCookie).send({ name: 'Claim Target' });
+  assert.equal(claimTarget.status, 201, JSON.stringify(claimTarget.body));
+  const claimRes = await request(app)
+    .post('/api/auth/invites')
+    .set('Cookie', adminCookie)
+    .send({ purpose: 'claim', playerId: claimTarget.body.id, eventId: testLan!.id });
+  assert.equal(claimRes.status, 404);
+
+  const cleaned = await request(app).delete('/api/admin/test-users').set('Cookie', adminCookie);
+  assert.equal(cleaned.status, 200, JSON.stringify(cleaned.body));
+});
+
 test('POST /api/auth/invites rejects a non-expiring code', async () => {
   const res = await request(app)
     .post('/api/auth/invites')
