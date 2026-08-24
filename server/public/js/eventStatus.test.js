@@ -17,19 +17,29 @@ test('the permanent base workspace reports itself as the base state', () => {
 });
 
 test('an ended event never reports as tracking', () => {
-  assert.equal(eventStatus({ isEnded: true }).key, 'ended');
-  assert.equal(eventStatus({ isEnded: true, trackingEnabled: true }).key, 'ended');
+  assert.equal(eventStatus({ isEnded: true, startsAt: 1_000 }).key, 'ended');
+  assert.equal(eventStatus({ isEnded: true, trackingEnabled: true, startsAt: 1_000 }).key, 'ended');
 });
 
 test('a tracking event is distinguished from a merely created one', () => {
-  assert.equal(eventStatus({ trackingEnabled: true }).key, 'tracking');
-  assert.equal(eventStatus({ trackingEnabled: false }).key, 'idle');
-  assert.equal(eventStatus({}).key, 'idle');
+  assert.equal(eventStatus({ trackingEnabled: true, startsAt: 1_000 }).key, 'tracking');
+  assert.equal(eventStatus({ trackingEnabled: false, startsAt: 1_000 }).key, 'idle');
+  assert.equal(eventStatus({ startsAt: 1_000 }).key, 'idle');
 });
 
 test('a missing event falls back to the neutral state instead of throwing', () => {
   assert.equal(eventStatus(undefined).key, 'idle');
   assert.equal(eventStatus(null).key, 'idle');
+});
+
+// A planning event (docs/plans/event-date-poll-concept.md) has no fixed
+// date yet — neither "tracking" nor "idle" describes that, and ended/base
+// still take priority the same way they always have.
+test('an event without a fixed date reports as planning', () => {
+  assert.equal(eventStatus({ startsAt: null }).key, 'planning');
+  assert.equal(eventStatus({ startsAt: null, trackingEnabled: false }).key, 'planning');
+  assert.equal(eventStatus({ startsAt: null, isBase: true }).key, 'base');
+  assert.equal(eventStatus({ startsAt: null, isEnded: true }).key, 'planning');
 });
 
 test('every state carries a German label and an icon for accessible status output', () => {
@@ -48,7 +58,7 @@ test('the switcher label stays at the event name', () => {
 });
 
 test('event status badges show only the icon while retaining an accessible label', () => {
-  const badge = eventStatusBadgeHtml({ isEnded: true });
+  const badge = eventStatusBadgeHtml({ isEnded: true, startsAt: 1_000 });
   assert.match(badge, /aria-label="Beendet"/);
   assert.match(badge, /title="Beendet"/);
   assert.doesNotMatch(badge, />Beendet<\/span>/);
@@ -61,7 +71,7 @@ test('the base workspace shows its fixed visible name, never its stored one', ()
 });
 
 test('a dropdown option is the event title plus its state as an icon', () => {
-  const option = eventSelectOption({ id: 'e1', name: 'Sommer-LAN', trackingEnabled: true });
+  const option = eventSelectOption({ id: 'e1', name: 'Sommer-LAN', trackingEnabled: true, startsAt: 1_000 });
   assert.deepEqual(option, {
     value: 'e1',
     label: 'Sommer-LAN',

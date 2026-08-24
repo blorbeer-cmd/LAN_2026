@@ -8,6 +8,7 @@
 import { Router } from 'express';
 import { db } from '../db';
 import { activeGroupPlayers } from '../groupPlayers';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
 import {
   requireGroupEventAccess,
   resolveRequestGroupEventScope,
@@ -41,7 +42,7 @@ function getPlayers(groupId: string, eventId: string): PlayerRow[] {
       `SELECT p.id, p.name, p.real_name, p.color, p.avatar, p.is_test
        FROM players p
        JOIN group_memberships gm ON gm.player_id = p.id AND gm.group_id = ? AND gm.status = 'active'
-       JOIN event_participants ep ON ep.player_id = p.id AND ep.event_id = ? AND ep.status = 'accepted'
+       JOIN event_participants ep ON ep.player_id = p.id AND ep.event_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
        WHERE p.deactivated_at IS NULL
        ORDER BY p.name COLLATE NOCASE`,
     )

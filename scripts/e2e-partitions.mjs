@@ -3,7 +3,11 @@ import path from "node:path";
 export const CORE_E2E_DOMAINS = Object.freeze({
   auth: Object.freeze(["access.e2e.test.ts", "authGate.e2e.test.ts"]),
   checklist: Object.freeze(["checklist.e2e.test.ts"]),
-  invitations: Object.freeze(["eventInvitations.e2e.test.ts", "eventWorkspaceSwitch.e2e.test.ts"]),
+  invitations: Object.freeze([
+    "eventInvitations.e2e.test.ts",
+    "eventWorkspaceSwitch.e2e.test.ts",
+    "eventDatePoll.e2e.test.ts",
+  ]),
   flows: Object.freeze([
     "foodOrders.e2e.test.ts",
     "flowsCompetition.e2e.test.ts",
