@@ -7,17 +7,19 @@
 import { test, before, after, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
-import { chromium, Browser, Page } from 'playwright';
+import { chromium, Browser, Page, type Locator } from 'playwright';
 import {
   addSessionCookie,
   authenticatedServerEnv,
   createE2EAccount,
   E2E_ADMIN_PASSWORD,
   E2E_KIOSK_TOKEN,
+  finishE2EOnboarding,
   loginE2EAdmin,
   type E2EAccount,
 } from './authHelpers';
-import { startE2EServer } from './e2eServer';
+import { StatefulE2EDiagnosticGuard, trackE2EContext } from './e2eDiagnostics';
+import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
 
@@ -25,18 +27,43 @@ let BASE_URL: string;
 // scenarios are kept in arcadeFlows.e2e.test.ts so changing them cannot select
 // the Core browser partition.
 let serverProcess: ChildProcess;
+let e2eServer: E2EServer;
 let browser: Browser;
 let page: Page;
 let adminCookie: string;
 let alice: E2EAccount;
 let bob: E2EAccount;
 const accountsByName = new Map<string, E2EAccount>();
+const flowDiagnostics = new StatefulE2EDiagnosticGuard(
+  () => ({ browser, server: e2eServer }),
+  { sharedState: 'server, browser context, and page' },
+);
 
-type FlowShard = 'shell' | 'competition' | 'community';
+type FlowShard = 'shell' | 'competition' | 'community' | 'food-orders';
 
 const flowShard = process.env.E2E_FLOW_SHARD as FlowShard | undefined;
-if (!flowShard || !['shell', 'competition', 'community'].includes(flowShard)) {
+if (!flowShard || !['shell', 'competition', 'community', 'food-orders'].includes(flowShard)) {
   throw new Error(`Unbekannter Core-Flow-Shard: ${flowShard ?? '(fehlt)'}`);
+}
+
+async function waitForTextDecoration(locator: Locator, expected: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  let lastObserved = 'Element nicht verfügbar';
+  while (Date.now() < deadline) {
+    try {
+      const actual = await locator.evaluate((element) => {
+        if (!element.isConnected) return null;
+        return getComputedStyle(element).textDecorationLine;
+      });
+      if (actual === expected) return;
+      lastObserved = actual ?? 'Element nicht verbunden';
+    } catch {
+      // A payment rerender can detach the current node between resolution and
+      // evaluation. The next locator evaluation resolves the current node.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`text-decoration-line sollte ${expected} sein, war zuletzt ${lastObserved}`);
 }
 
 function flowTest(
@@ -48,7 +75,9 @@ function flowTest(
     // All flows in a shard intentionally share one server session and one
     // Playwright page. Running sibling tests concurrently lets one flow
     // navigate or resize that page while another is asserting it.
-    test(name, { concurrency: false }, fn);
+    test(name, { concurrency: false }, (context) =>
+      flowDiagnostics.run(context, name, () => fn(context)),
+    );
   }
 }
 
@@ -60,7 +89,7 @@ async function setDateTimeField(id: string, value: string): Promise<void> {
 
 async function openMatchmakingHistory(): Promise<void> {
   const details = page.locator('details.history-details:has(summary:has-text("Historie"))');
-  if (!(await details.getAttribute('open'))) await details.locator('summary').click();
+  if ((await details.getAttribute('open')) === null) await details.locator('summary').click();
 }
 
 // Merged areas (see public/js/sectionNav.js): the bottom nav opens the area on
@@ -90,12 +119,17 @@ async function ensureAdminMode(): Promise<void> {
   const activateButton = page.locator('#admin-mode-activate');
   if (await activateButton.count()) await activateButton.click();
   await page.waitForSelector('#admin-banner:not([hidden])');
+  // setAdmin(true) exposes the persistent banner synchronously, while the
+  // admin view itself is rebuilt only after ctx.refresh() has finished. Wait
+  // for that second state as well so callers never inspect the old panel.
+  await page.waitForSelector('#admin-test-players-title');
 }
 
-// Orga is reached through "Mehr" rather than the bottom nav.
+// Orga is reached through "Mehr" rather than the bottom nav, opening on its
+// first tab ("arrivals"); switch to the requested tab from there.
 async function openOrgaTab(tab: string): Promise<void> {
   await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="checklist"]');
+  await page.click('[data-navigate="eventPolls"]');
   await page.click(`[data-section-tab="${tab}"]`);
 }
 
@@ -160,10 +194,11 @@ async function bootstrapAdminAccount(name: string): Promise<E2EAccount> {
 
 before(async () => {
   const server = await startE2EServer(authenticatedServerEnv());
+  e2eServer = server;
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   adminCookie = await loginE2EAdmin(BASE_URL);
-  alice = await bootstrapAdminAccount(flowShard === 'community' ? 'E2E Alice Pro' : 'E2E Alice');
+  alice = await bootstrapAdminAccount(['community', 'food-orders'].includes(flowShard) ? 'E2E Alice Pro' : 'E2E Alice');
   bob = await createE2EAccount(BASE_URL, adminCookie, 'E2E Bob');
   accountsByName.set(alice.name, alice);
   accountsByName.set(bob.name, bob);
@@ -195,6 +230,7 @@ after(async () => {
 
 flowTest('shell', 'fresh device uses the personal login and reaches the app with its verified account', async (t) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(context, 'fresh-device');
   const loginPage = await context.newPage();
   t.after(async () => context.close());
   await loginPage.goto(BASE_URL);
@@ -244,14 +280,29 @@ flowTest('shell', 'Orga Events tab and Profil use grouped help while admin tools
   await page.click('[aria-label="Mehr Informationen zu Events"]');
   await page.click('#new-event-btn');
   assert.equal(await page.getByText('Tracking', { exact: true }).count(), 0);
+  assert.equal(await page.locator('#event-cost').count(), 1);
+  assert.equal(await page.locator('#event-paypal').count(), 1);
+  assert.equal(await page.locator('#event-payment-due').count(), 1);
+  assert.equal(await page.locator('#event-cost.food-order-price-input').count(), 1);
+  assert.equal(
+    await page.locator('.food-order-paypal-label label[for="event-accommodation-cost"]').textContent(),
+    'Gesamtpreis Unterkunft',
+  );
+  assert.equal(await page.locator('.food-order-paypal-label label[for="event-paypal"]').textContent(), 'PayPal');
+  assert.equal(
+    await page.locator('.food-order-paypal-label label[for="event-payment-due"]').textContent(),
+    'Zahlungsziel',
+  );
+  assert.equal(await page.locator('.event-payment-label').count(), 0);
+  assert.match(await page.locator('#event-paypal').getAttribute('placeholder') ?? '', /E-Mail-Adresse/);
   await page.click('.modal[aria-label="Neues Event"] [data-close]');
   // TV-Kiosk is not an Orga tab (only "Kioskverwaltung" in Admin reaches it,
   // see "the authenticated admin role owns the seating editor and backup
-  // tools" below) — Orga itself only ever exposes these four tabs, sorted
+  // tools" below) — Orga itself only ever exposes these five tabs, sorted
   // alphabetically by their German label.
   assert.deepEqual(
     await page.locator('.section-tabs [data-section-tab]').evaluateAll((tabs) => tabs.map((tab) => tab.dataset.sectionTab)),
-    ['arrivals', 'events', 'checklistPacking', 'checklist']
+    ['eventPolls', 'arrivals', 'events', 'checklistPacking', 'checklist']
   );
 
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -340,6 +391,39 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
     // test ends (same viewport-leak safety net as the Orga Events test).
     await page.setViewportSize({ width: 390, height: 844 });
   });
+  // The bootstrap admin is intentionally created before onboarding is
+  // completed. Finish it here so the deep-link assertions exercise the
+  // admin-role load race instead of the onboarding tour taking over the
+  // requested initial view.
+  await finishE2EOnboarding(BASE_URL, adminCookie);
+  await addSessionCookie(page.context(), BASE_URL, adminCookie);
+  await page.goto(`${BASE_URL}/#adminFeatureUsage`);
+  // Playwright may treat a hash-only goto as same-document navigation when
+  // the shared page is already on the app root. Reload to exercise the real
+  // startup path that a bookmarked hash link uses.
+  await page.reload();
+  await page.waitForSelector('#admin-feature-usage-title');
+  await page.goto(`${BASE_URL}/#adminFeedback`);
+  await page.reload();
+  await page.waitForSelector('#admin-feedback-title');
+  // A regular member must not see the admin content behind the same deep link.
+  const memberContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const memberPage = await memberContext.newPage();
+  try {
+    await addSessionCookie(memberContext, BASE_URL, bob.cookie);
+    await memberPage.goto(`${BASE_URL}/#adminFeatureUsage`);
+    await memberPage.waitForFunction(() => {
+      const container = document.querySelector('#view-container');
+      return Boolean(
+        container?.querySelector('#admin-feature-usage-title')
+        || container?.querySelector('#order-new-btn')
+        || container?.textContent?.includes('Dieses Konto hat keine Admin-Rechte.'),
+      );
+    });
+    assert.equal(await memberPage.locator('#admin-feature-usage-title').count(), 0);
+  } finally {
+    await memberContext.close();
+  }
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await ensureAdminMode();
@@ -362,7 +446,21 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   // Auswertung (Rangliste/Statistiken/Hall of Fame) is reachable only from
   // here — it has no bottom-nav slot or "Mehr" entry of its own any more.
   assert.equal(await page.locator('[data-navigate="leaderboard"]').count(), 1);
-  assert.equal(await page.locator('.admin-tool-row').count(), 5);
+  assert.equal(await page.locator('[data-navigate="adminFeatureUsage"]').count(), 1);
+  assert.equal(await page.locator('[data-navigate="adminFeedback"]').count(), 1);
+  assert.equal(await page.locator('#admin-feature-usage-title').count(), 0);
+  assert.equal(await page.locator('#admin-feedback-title').count(), 0);
+  assert.equal(await page.locator('.admin-tool-row').count(), 7);
+  await page.click('[data-navigate="adminFeatureUsage"]');
+  await page.waitForSelector('#admin-feature-usage-title');
+  assert.equal(await page.locator('#admin-feedback-title').count(), 0);
+  await page.click('[data-navigate="admin"]');
+  await page.waitForSelector('#admin-tools-title');
+  await page.click('[data-navigate="adminFeedback"]');
+  await page.waitForSelector('#admin-feedback-title');
+  assert.equal(await page.locator('#admin-feature-usage-title').count(), 0);
+  await page.click('[data-navigate="admin"]');
+  await page.waitForSelector('#admin-tools-title');
   await page.click('[data-navigate="kiosk"]');
   await page.waitForSelector('a[href="/kiosk.html"]');
   assert.equal(await page.getByRole('heading', { name: 'TV-Kiosk' }).count(), 1);
@@ -398,7 +496,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('.seating-plan.is-editable');
   assert.equal(await page.locator('.seating-editor > .grouped-page-section').count(), 3);
-  assert.deepEqual(await page.locator('.seating-editor > .grouped-page-section h2 > span:first-child, .seating-editor > .grouped-page-section h2:not(:has(> span:first-child))').allTextContents(), ['Sitzplan', 'Spieler', 'Konfiguration']);
+  assert.deepEqual(await page.locator('.seating-editor > .grouped-page-section h2 > span:first-child, .seating-editor > .grouped-page-section h2:not(:has(> span:first-child))').allTextContents(), ['Sitzplan', 'Teilnehmende', 'Konfiguration']);
   assert.equal(await page.locator('.seating-pool-player').evaluateAll((players) => players.every((player) => getComputedStyle(player).borderRadius !== '999px')), true);
   // The unassigned-player pool is one column on phones and two from --bp-md
   // (DESIGN_SYSTEM.md: "phones keep one column"). The old bare 2-column
@@ -1753,6 +1851,35 @@ flowTest('community', 'Info: create an entry, see it rendered', async () => {
   await page.waitForSelector('.info-board-modal', { state: 'detached' });
 });
 
+flowTest('community', 'Modal: a pointer interaction started inside the dialog does not close it, but a real backdrop click still does', async () => {
+  // Regression for modal.js's backdrop click-to-close: a click event's target
+  // is the nearest common ancestor of its mousedown and mouseup targets, not
+  // necessarily where either one landed. Selecting text (or dragging a
+  // slider) that starts inside the dialog and ends on the bare backdrop used
+  // to report the backdrop as e.target and close the dialog mid-interaction.
+  await page.click('#info-btn');
+  await page.waitForSelector('.info-board-modal');
+  const title = page.locator('.info-board-modal .modal-header h2');
+  const titleBox = await title.boundingBox();
+  assert.ok(titleBox, 'modal title must be visible to anchor the drag');
+
+  await page.mouse.move(titleBox.x + titleBox.width / 2, titleBox.y + titleBox.height / 2);
+  await page.mouse.down();
+  // Drag out past the dialog onto the bare backdrop before releasing, the
+  // same motion a text selection or slider drag produces.
+  await page.mouse.move(5, 5, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(100);
+  assert.equal(await page.locator('.info-board-modal').count(), 1, 'a drag that started inside the dialog must not close it');
+
+  // A genuine backdrop click - both mousedown and mouseup on the bare
+  // backdrop - still closes the dialog as before.
+  await page.mouse.move(5, 5);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForSelector('.info-board-modal', { state: 'detached' });
+});
+
 flowTest('community', 'Info: a long entry scrolls within a bounded box instead of collapsing', async () => {
   await page.click('#info-btn');
   await page.waitForSelector('#info-new-btn');
@@ -1788,13 +1915,11 @@ flowTest('community', 'Info: a long entry scrolls within a bounded box instead o
   await page.waitForSelector('.info-board-modal', { state: 'detached' });
 });
 
-flowTest('community', 'Essensbestellung: open an order with a send time/notes/link, edit them, add priced/unpriced items, use the Warenkorb to pay and mark paid', async () => {
-  // Essen sits directly in the bottom nav for a non-admin device — it takes
-  // over Auswertung's slot there, so it is not also listed under "Mehr"
-  // (see more.js).
+flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus', async () => {
   await page.click('#nav-food-orders');
   await page.waitForSelector('#order-new-btn');
   await page.click('#order-new-btn');
+  await page.getByLabel('Speisekarte (optional)', { exact: true }).waitFor();
   await page.fill('#order-title', "Pizza bei Luigi's");
   await setDateTimeField('order-sendat', '2026-12-24T20:00');
   await page.fill('#order-notes', 'Mindestbestellwert 15€, bar zahlen');
@@ -1803,23 +1928,22 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await page.fill('#order-tip', '10');
   await page.click('#order-form button[type="submit"]');
   await page.waitForSelector('text=Pizza bei Luigi');
-  await page.waitForSelector('text=Versand 24.12., 20:00 Uhr');
+  await page.waitForSelector('text=24.12. 20:00 Uhr');
   await page.waitForSelector('text=Mindestbestellwert 15€, bar zahlen');
   await page.waitForSelector('a[href="https://luigis-pizza.example/karte"]');
+  assert.equal(await page.locator('a[href="https://paypal.me/luigi"] .ui-icon').count(), 1);
+  await page.getByRole('button', { name: 'Bestellübersicht', exact: true }).waitFor();
 
-  // The send time / notes / link are editable after the fact (independent of closing).
   await page.click('[data-edit-details]');
+  await page.getByLabel('Speisekarte', { exact: true }).waitFor();
   await setDateTimeField('sendat-input', '2026-12-24T21:30');
   await page.fill('#notes-input', 'Doch Kartenzahlung möglich');
   await page.click('#details-form button[type="submit"]');
-  await page.waitForSelector('text=Versand 24.12., 21:30 Uhr');
+  await page.waitForSelector('text=24.12. 21:30 Uhr');
   await page.waitForSelector('text=Doch Kartenzahlung möglich');
 
   assert.equal(await page.locator('[data-item-quantity]').inputValue(), '');
   assert.equal(await page.locator('[data-item-quantity]').getAttribute('placeholder'), 'Anzahl');
-  // The quantity field carries no decorative suffix span - it is a
-  // type="number" field, so numberStepper.js's own +/- overlay is the only
-  // control in its right-hand padding.
   assert.equal(await page.locator('.food-order-quantity-field > span').count(), 0);
   assert.equal(await page.locator('[data-item-quantity]').evaluate((input) => getComputedStyle(input).textAlign), 'left');
   await page.fill('[data-item-desc]', 'Margherita groß');
@@ -1828,12 +1952,14 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
   await page.click('[data-add-item-form] button[type="submit"]');
   await page.waitForSelector('text=Margherita');
   await page.waitForSelector('.food-order-item-amount:has-text("20,90 €")');
-  // The tip-inclusive total doesn't replace the position's actual price -
-  // both stay visible (quantity × unit price, plus the tip note).
   await page.waitForSelector('.food-order-item-amount:has-text("2 × 9,50 €")');
   await page.waitForSelector('.food-order-item-amount:has-text("inkl. 10% Trinkgeld")');
+  await page.waitForSelector('.food-order-group-tip:has-text("inkl. 10 % Trinkgeld")');
   await page.waitForSelector('.food-order-total:has-text("Gesamtsumme inkl. 10% Trinkgeld")');
-  assert.equal(await page.getByText('Zwischensumme', { exact: false }).count(), 0);
+  await page.waitForSelector('.food-order-overview:has-text("2 Positionen von 1 Person")');
+  await page.waitForSelector('.food-order-overview:has-text("0 von 1 bezahlt")');
+  await page.waitForSelector('.food-order-overview:has-text("Gesamt 20,90")');
+  await page.waitForSelector('.food-order-overview:has-text("offen 20,90")');
 
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'clipboard', {
@@ -1841,127 +1967,53 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
       value: { writeText: async (value: string) => { (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal = value; } },
     });
   });
-  await page.click('.food-order-item [data-copy-food-total]');
-  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
-  await page.waitForSelector('text=Summe kopiert: 20,90');
-
-  // Left to right, a position's own row reads: Bezahlt-Marke / quantity ×
-  // description / amount / copy+Warenkorb cluster / remove.
   const marghieRow = page.locator('.food-order-item', { hasText: 'Margherita' }).first();
-  const marghieRowOrder = await marghieRow.evaluate((row) =>
+  const rowOrder = await marghieRow.evaluate((row) =>
     Array.from(row.children).map((child) => {
-      if (child.matches('.food-order-paid-marker')) return 'bezahlt';
       if (child.matches('.food-order-item-description')) return 'description';
       if (child.matches('.food-order-item-amount')) return 'amount';
       if (child.matches('.food-order-item-action-cluster')) return 'cluster';
       return 'other';
     })
   );
-  assert.deepEqual(marghieRowOrder, ['bezahlt', 'description', 'amount', 'cluster', 'other']);
-  const clusterOrder = await marghieRow
-    .locator('.food-order-item-action-cluster')
-    .evaluate((cluster) =>
-      Array.from(cluster.children).map((child) => {
-        if (child.matches('[data-copy-food-total]')) return 'copy';
-        if (child.matches('.food-order-item-action-divider')) return 'divider';
-        if (child.matches('[data-toggle-cart]')) return 'cart';
-        return 'other';
-      })
-    );
-  assert.deepEqual(clusterOrder, ['copy', 'divider', 'cart']);
+  assert.deepEqual(rowOrder, ['description', 'amount', 'cluster', 'other']);
+  assert.equal(await marghieRow.locator('[data-toggle-group-paid], [data-group-pay]').count(), 0);
+  await marghieRow.locator('[data-copy-food-total]').click();
+  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
 
-  // No per-item "Bezahlen" action exists any more - exactly one Bezahlweg,
-  // over the Warenkorb (Leitentscheidung 1).
-  assert.equal(await page.locator('.food-order-item [data-pay-order]').count(), 0);
-  assert.equal(await marghieRow.locator('[data-toggle-cart]').getAttribute('aria-pressed'), 'false');
+  const group = page.locator('.food-order-group', { hasText: alice.name });
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt?")');
+  assert.equal(await group.locator('.food-order-paid-marker').getAttribute('aria-pressed'), 'false');
+  const openMarkerGeometry = await group.locator('.food-order-paid-marker').evaluate((marker) => {
+    const rect = marker.getBoundingClientRect();
+    return { left: rect.left, width: rect.width };
+  });
+  assert.equal(await group.locator('.food-order-group-amount').innerText(), '20,90 €');
+  assert.equal(await group.locator('[data-group-pay]').count(), 1);
+  assert.equal(await page.locator('.food-order-item [data-group-pay]').count(), 0);
+  const groupActionOrder = await group.locator('.food-order-group-actions').evaluate((actions) =>
+    Array.from(actions.children).map((child) => {
+      if (child.matches('[data-copy-food-total]')) return 'copy';
+      if (child.matches('[data-group-pay]')) return 'paypal';
+      if (child.matches('[data-toggle-group-paid]')) return 'paid';
+      if (child.matches('[data-remove-group]')) return 'remove';
+      return 'spacer';
+    })
+  );
+  assert.deepEqual(groupActionOrder, ['copy', 'paypal', 'paid', 'remove']);
 
-  // Putting Margherita into the Warenkorb builds the cart box: header with
-  // count badge, the position with a color dot and the orderer's name,
-  // "Summe", "Bezahlen · <Summe>" and "Alle als bezahlt markieren".
-  await marghieRow.locator('[data-toggle-cart]').click();
-  assert.equal(await marghieRow.locator('[data-toggle-cart]').getAttribute('aria-pressed'), 'true');
-  assert.equal(await marghieRow.evaluate((el) => el.classList.contains('is-in-cart')), true);
-  const cartBox = page.locator('.food-order-cart');
-  await cartBox.waitFor();
-  await page.waitForSelector('.food-order-cart-header:has-text("Warenkorb")');
-  await page.waitForSelector('.food-order-cart-header .badge:has-text("1")');
-  await page.waitForSelector('.food-order-cart-row:has-text("2 × Margherita groß")');
-  await page.waitForSelector('.food-order-cart-summary:has-text("20,90")');
-  await page.waitForSelector('.food-order-cart-pay:has-text("Bezahlen · 20,90 €")');
-  await page.waitForSelector('[data-cart-mark-paid]:has-text("Alle als bezahlt markieren")');
-
-  // Adding an unpriced item to the cart withholds the amount entirely
-  // (rather than silently undercounting it as 0).
-  await page.fill('[data-item-desc]', 'Wasser');
-  await page.fill('[data-item-quantity]', '1');
-  await page.click('[data-add-item-form] button[type="submit"]');
-  await page.waitForSelector('text=Wasser');
-  const wasserRow = page.locator('.food-order-item', { hasText: 'Wasser' });
-  await wasserRow.locator('[data-toggle-cart]').click();
-  await page.waitForSelector('.food-order-cart-header .badge:has-text("2")');
-  await page.waitForSelector('.food-order-cart-summary:has-text("Betrag offen")');
-  await page.waitForSelector('.food-order-cart-pay:has-text("Bezahlen · Betrag offen")');
-
-  // Each cart row has its own X to take a single item back out again,
-  // without any confirmation (reversible with one tap).
-  await cartBox.locator('.food-order-cart-row', { hasText: 'Wasser' }).locator('[data-cart-remove]').click();
-  await page.waitForSelector('.food-order-cart-header .badge:has-text("1")');
-  await page.waitForSelector('.food-order-cart-pay:has-text("Bezahlen · 20,90 €")');
-
-  // AP2.4: deleting a position needs a confirmation naming quantity and
-  // description, with a red "Löschen" - cancelling keeps the position.
-  await wasserRow.locator('[data-remove-item]').click();
-  await page.waitForSelector('[data-confirm]');
-  assert.equal(await page.locator('.modal h2').innerText(), '1 × Wasser löschen?');
-  assert.equal(await page.locator('.modal-body p').innerText(), 'Lässt sich nicht rückgängig machen.');
-  assert.equal(await page.locator('[data-confirm]').innerText(), 'Löschen');
-  assert.equal(await page.locator('[data-confirm]').evaluate((el) => el.classList.contains('btn-danger')), true);
-  await page.click('[data-cancel]');
-  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
-  await page.waitForSelector('text=Wasser');
-
-  // Confirming for real removes it.
-  await wasserRow.locator('[data-remove-item]').click();
-  await page.click('[data-confirm]');
-  await page.waitForSelector('.food-order-item:has-text("Wasser")', { state: 'detached' });
-
-  // window.open is stubbed in-page rather than asserting on a real popup's
-  // eventual URL: this sandbox has no route to the real paypal.me, and
-  // asserting on the stub also verifies the actual fix for the
-  // popup-blocking finding from #444 - the tab must open synchronously
-  // inside the click handler (captured as soon as window.open() is called)
-  // and only get its destination assigned once the async re-check resolves
-  // (captured via the stub's own location setter), not opened as a delayed
-  // window.open(url) call that Safari/iOS would silently block after an
-  // await.
   await page.evaluate(() => {
     const original = window.open;
-    (window as unknown as { __restoreWindowOpen: () => void }).__restoreWindowOpen = () => {
-      window.open = original;
-    };
+    (window as unknown as { __restoreWindowOpen: () => void }).__restoreWindowOpen = () => { window.open = original; };
     window.open = ((_url?: string, _target?: string, features?: string) => {
-      // Mirrors the WHATWG footgun the round-2 review caught: passing
-      // 'noopener' makes window.open() always return null, regardless of
-      // whether a browsing context was actually created. The fix opens the
-      // pre-open tab WITHOUT 'noopener' to keep a real reference, then
-      // severs .opener by hand - a stub that always returned a reference
-      // would hide a regression back to passing 'noopener' on that call.
-      if (features && features.includes('noopener')) {
-        return null;
-      }
+      if (features && features.includes('noopener')) return null;
       const fake = {
         opener: window,
         closed: false,
         _location: '',
-        get location() {
-          return this._location;
-        },
-        set location(value: string) {
-          this._location = value;
-        },
-        close() {
-          this.closed = true;
-        },
+        get location() { return this._location; },
+        set location(value: string) { this._location = value; },
+        close() { this.closed = true; },
       };
       (window as unknown as { __lastPopup: typeof fake }).__lastPopup = fake;
       return fake as unknown as Window;
@@ -1973,264 +2025,189 @@ flowTest('community', 'Essensbestellung: open an order with a send time/notes/li
       return popup ? { location: popup.location, closed: popup.closed } : null;
     });
 
-  // AP2.2 happy path: clicking the cart's "Bezahlen" opens a tab
-  // synchronously, redirects it to PayPal for the combined tip-inclusive
-  // amount, and only then asks "Bezahlt?" - "Noch nicht" changes nothing.
-  await page.click('[data-cart-pay]');
+  await group.locator('[data-group-pay]').click();
   await page.waitForFunction(() => (window as unknown as { __lastPopup?: { location: string } }).__lastPopup?.location);
   assert.deepEqual(await lastPopup(), { location: 'https://paypal.me/luigi/20.90EUR', closed: false });
-  // The manual opener-severing (replacing the 'noopener' argument that would
-  // have made window.open() return null outright) actually ran.
-  assert.equal(
-    await page.evaluate(() => (window as unknown as { __lastPopup?: { opener: unknown } }).__lastPopup?.opener),
-    null
-  );
+  assert.equal(await page.evaluate(() => (window as unknown as { __lastPopup?: { opener: unknown } }).__lastPopup?.opener), null);
   await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
-  assert.match(await page.locator('.modal-body p').first().innerText(), /20,90 € für 1 Position an PayPal übergeben\./);
+  assert.match(await page.locator('.modal-body p').first().innerText(), /20,90 € für .* an PayPal übergeben \(paypal\.me\)\./);
   await page.waitForSelector('.food-order-confirm-list li:has-text("2 × Margherita groß")');
-  await page.waitForSelector('text=Der Warenkorb wird danach geleert.');
+  assert.equal(await page.locator('[data-confirm-copy]').count(), 2);
+  assert.equal(
+    await page.locator('[data-confirm-copy-kind="paypal"]').getAttribute('data-confirm-copy'),
+    'https://paypal.me/luigi',
+  );
+  await page.locator('[data-confirm-copy-kind="paypal"]').click();
+  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), 'https://paypal.me/luigi');
+  await page.locator('[data-confirm-copy-kind="total"]').click();
+  assert.equal(await page.evaluate(() => (window as Window & { copiedFoodTotal?: string }).copiedFoodTotal), '20,90 €');
+  assert.equal(await page.locator('.modal h2:has-text("Bezahlt?")').count(), 1);
   await page.click('[data-confirm-cancel]');
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
-  // Declining keeps the position unpaid and still in the cart - no success
-  // is ever claimed since Respawn gets no callback from PayPal.
-  await page.waitForSelector('.food-order-item:not(.is-paid):has-text("Margherita")');
-  await page.waitForSelector('.food-order-cart-header .badge:has-text("1")');
+  assert.equal(await group.locator('.food-order-paid-marker').getAttribute('aria-pressed'), 'false');
 
-  // Paying for real: "Ja, bezahlt" marks every cart position paid and
-  // empties the cart. Marking it paid strikes through its amount too (fully
-  // settled, not merely renamed) and locks the row: only copy and the
-  // Bezahlt-Marke itself (the row's own reversing control) stay usable.
-  await page.click('[data-cart-pay]');
+  await group.locator('[data-group-pay]').click();
   await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
   await page.click('[data-confirm-ok]');
   await page.waitForSelector('text=1 Position als bezahlt markiert.');
-  await page.waitForSelector('.food-order-item.is-paid:has-text("Margherita")');
-  assert.equal(
-    await marghieRow.locator('.food-order-item-amount strong').evaluate((el) => getComputedStyle(el).textDecorationLine),
-    'line-through'
-  );
-  assert.equal(await marghieRow.locator('[data-toggle-cart]').isDisabled(), true);
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="true"]:has-text("Bezahlt")');
+  const paidMarkerGeometry = await group.locator('.food-order-paid-marker').evaluate((marker) => {
+    const rect = marker.getBoundingClientRect();
+    return { left: rect.left, width: rect.width };
+  });
+  assert.deepEqual(paidMarkerGeometry, openMarkerGeometry);
+  await waitForTextDecoration(group.locator('.food-order-group-amount'), 'line-through');
+  await waitForTextDecoration(marghieRow.locator('.food-order-item-description'), 'line-through');
+  await waitForTextDecoration(marghieRow.locator('.food-order-item-amount'), 'line-through');
   assert.equal(await marghieRow.locator('[data-remove-item]').isDisabled(), true);
   assert.equal(await marghieRow.locator('[data-copy-food-total]').isDisabled(), false);
-  assert.equal(await marghieRow.locator('[data-toggle-paid]').isDisabled(), false);
-  await page.waitForSelector('.food-order-cart', { state: 'detached' });
+  assert.equal(await marghieRow.locator('[data-group-pay]').count(), 0);
+  assert.equal(await group.locator('[data-group-pay]').isDisabled(), true);
+  assert.equal(await group.locator('[data-remove-group]').isDisabled(), true);
+  assert.match((await group.locator('.food-order-paid-marker').getAttribute('title')) ?? '', new RegExp('Bezahlt, bestätigt von ' + alice.name));
 
-  // Unmarking "Bezahlt" (the only way back on an otherwise locked row) makes
-  // the position selectable for the Warenkorb again.
-  await marghieRow.locator('[data-toggle-paid]').click();
-  await page.waitForSelector('.food-order-item:not(.is-paid):has-text("Margherita")');
-  await page.waitForSelector('.food-order-paid-marker:has-text("Offen")');
-  assert.equal(await marghieRow.locator('[data-toggle-cart]').isDisabled(), false);
-  assert.equal(await marghieRow.locator('[data-remove-item]').isDisabled(), false);
+  await group.locator('[data-toggle-group-paid]').click();
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt?")');
+  await waitForTextDecoration(marghieRow.locator('.food-order-item-description'), 'none');
 
-  // AP2.1: "Alle als bezahlt markieren" settles the whole cart at once
-  // without going through PayPal - the confirmation is reversible (blue),
-  // and cancelling changes nothing.
-  await marghieRow.locator('[data-toggle-cart]').click();
-  await page.fill('[data-item-desc]', 'Cola');
+  await page.fill('[data-item-desc]', 'Wasser');
   await page.fill('[data-item-quantity]', '1');
-  await page.fill('[data-item-price]', '2,50');
   await page.click('[data-add-item-form] button[type="submit"]');
-  await page.waitForSelector('text=Cola');
-  const colaRow = page.locator('.food-order-item', { hasText: 'Cola' });
-  await colaRow.locator('[data-toggle-cart]').click();
-  await page.waitForSelector('.food-order-cart-header .badge:has-text("2")');
-  await page.click('[data-cart-mark-paid]');
-  // Regression: the trigger button disables itself while the confirm dialog
-  // is pending, so a fast double-click/double-tap can't fire the handler
-  // twice and stack two confirmation modals.
-  assert.equal(await page.locator('[data-cart-mark-paid]').isDisabled(), true);
-  await page.waitForSelector('.modal h2:has-text("Alle als bezahlt markieren?")');
-  assert.equal(
-    await page.locator('.modal-body p').first().innerText(),
-    '2 Positionen · 23,65 €. Der Warenkorb wird geleert.'
-  );
-  assert.equal(
-    await page.locator('[data-confirm-ok]').evaluate((el) => el.classList.contains('btn-primary')),
-    true
-  );
+  await page.waitForSelector('text=Wasser');
+  assert.equal(await group.locator('.food-order-group-meta').innerText(), '3 Positionen · Preis fehlt');
+  assert.equal(await group.locator('.food-order-group-amount').innerText(), '20,90 €');
+  assert.equal(await group.locator('.food-order-group-copy').getAttribute('data-copy-food-total'), '20,90 €');
+  assert.equal(await group.locator('[data-group-pay]').isDisabled(), true);
+  await group.locator('[data-remove-group]').click();
+  await page.waitForSelector('.modal h2:has-text("Deine 2 Positionen löschen?")');
+  assert.equal(await page.locator('.food-order-confirm-list li').count(), 2);
+  assert.equal(await page.locator('.modal-body').getByText('Lässt sich nicht rückgängig machen.').count(), 1);
   await page.click('[data-confirm-cancel]');
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
-  await page.waitForSelector('.food-order-item:not(.is-paid):has-text("Margherita")');
-  await page.waitForSelector('.food-order-item:not(.is-paid):has-text("Cola")');
-  // Cancelling never triggers a rerender, so the disable/re-enable must be
-  // handled explicitly by the click handler rather than relying on the DOM
-  // swap from ctx.rerender() to reset it.
-  assert.equal(await page.locator('[data-cart-mark-paid]').isDisabled(), false);
+  const wasserRow = page.locator('.food-order-item', { hasText: 'Wasser' });
+  await wasserRow.locator('[data-remove-item]').click();
+  await page.waitForSelector('[data-confirm]');
+  assert.equal(await page.locator('.modal h2').innerText(), '1 × Wasser löschen?');
+  await page.click('[data-cancel]');
+  await wasserRow.waitFor();
+  await wasserRow.locator('[data-remove-item]').click();
+  await page.click('[data-confirm]');
+  await page.waitForSelector('.food-order-item:has-text("Wasser")', { state: 'detached' });
 
-  await page.click('[data-cart-mark-paid]');
+  // A previously paid group becomes payable again when a new priced position
+  // is added. The full group sum is shown and the already-paid item remains
+  // visible in the handoff. Only the newly added unpaid item is marked after
+  // confirmation.
+  await group.locator('[data-group-pay]').click();
+  await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
   await page.click('[data-confirm-ok]');
-  await page.waitForSelector('text=2 Positionen als bezahlt markiert.');
-  await page.waitForSelector('.food-order-item.is-paid:has-text("Margherita")');
-  await page.waitForSelector('.food-order-item.is-paid:has-text("Cola")');
-  await page.waitForSelector('.food-order-cart', { state: 'detached' });
-  // Regression: a single-orderer group (the only kind this order has at this
-  // point, before the AP3 group test adds a second orderer) gets the same
-  // dimmed "is-all-paid" treatment as a fully-settled multi-orderer group.
-  await page.waitForSelector('.food-order-group.is-all-paid');
-
-  // AP2.6: "Bezahlen" always re-checks with the server immediately before
-  // opening PayPal, since another device could have marked the same
-  // position paid in the exact window between this device's last render and
-  // the click.
-  await page.fill('[data-item-desc]', 'Nachos');
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="true"]:has-text("Bezahlt")');
+  await page.fill('[data-item-desc]', 'Nachtrag nach Bestätigung');
   await page.fill('[data-item-quantity]', '1');
-  await page.fill('[data-item-price]', '5,00');
+  await page.fill('[data-item-price]', '4,00');
   await page.click('[data-add-item-form] button[type="submit"]');
-  await page.waitForSelector('text=Nachos');
-  const nachosRow = page.locator('.food-order-item', { hasText: 'Nachos' });
-  const nachosId = await nachosRow.locator('[data-toggle-paid]').getAttribute('data-toggle-paid');
-  await nachosRow.locator('[data-toggle-cart]').click();
-
-  let intercepted = false;
-  await page.route(`${BASE_URL}/api/food-orders`, async (route) => {
-    if (intercepted) {
-      await route.continue();
-      return;
-    }
-    intercepted = true;
-    const response = await route.fetch();
-    const body = await response.json();
-    for (const o of body.orders) {
-      for (const item of o.items) {
-        if (item.id === nachosId) item.paid = true;
-      }
-    }
-    await route.fulfill({ response, json: body });
+  await page.waitForSelector('text=Nachtrag nach Bestätigung');
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt?")');
+  assert.equal(await group.locator('.food-order-group-amount').innerText(), '25,30 €');
+  const changedTotalMarkerGeometry = await group.locator('.food-order-paid-marker').evaluate((marker) => {
+    const rect = marker.getBoundingClientRect();
+    return { left: rect.left, width: rect.width };
   });
-  await page.click('[data-cart-pay]');
-  await page.waitForSelector('text=„Nachos“ ist inzwischen bereits als bezahlt markiert.');
-  // The synchronously-opened tab is closed again instead of ever being
-  // redirected to PayPal - the stale-state warning replaces the navigation,
-  // and no "Bezahlt?" confirmation is shown for a payment that never opened.
-  await page.waitForFunction(() => (window as unknown as { __lastPopup?: { closed: boolean } }).__lastPopup?.closed);
-  assert.deepEqual(await lastPopup(), { location: '', closed: true });
-  assert.equal(await page.locator('.modal-backdrop').count(), 0);
-  // The re-check's own fresh fetch also updates the row itself.
-  await page.waitForSelector('.food-order-item.is-paid:has-text("Nachos")');
-  await page.unroute(`${BASE_URL}/api/food-orders`);
+  assert.deepEqual(changedTotalMarkerGeometry, openMarkerGeometry);
+  assert.equal(await group.locator('[data-group-pay]').isDisabled(), false);
+  await group.locator('[data-group-pay]').click();
+  await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
+  assert.match(await page.locator('.modal-body p').first().innerText(), /25,30 € für/);
+  assert.equal(await page.locator('.food-order-confirm-list li').count(), 2);
+  await page.waitForSelector('.food-order-confirm-list li:has-text("2 × Margherita groß")');
+  await page.waitForSelector('.food-order-confirm-list li:has-text("Nachtrag nach Bestätigung")');
+  await page.click('[data-confirm-cancel]');
+  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+  await group.locator('[data-group-pay]').click();
+  await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
+  await page.click('[data-confirm-ok]');
+  await page.waitForSelector('text=1 Position als bezahlt markiert.');
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="true"]:has-text("Bezahlt")');
 
-  // Same idea, but the position itself is gone (its creator removed it) by
-  // the time the re-check resolves rather than merely being paid - the DOM
-  // must still catch up to the freshly fetched cache instead of leaving the
-  // stale, now-nonexistent row on screen.
-  await page.fill('[data-item-desc]', 'Erdnüsse');
-  await page.fill('[data-item-quantity]', '1');
-  await page.fill('[data-item-price]', '2,00');
-  await page.click('[data-add-item-form] button[type="submit"]');
-  await page.waitForSelector('text=Erdnüsse');
-  const peanutsRow = page.locator('.food-order-item', { hasText: 'Erdnüsse' });
-  const peanutsId = await peanutsRow.locator('[data-toggle-paid]').getAttribute('data-toggle-paid');
-  await peanutsRow.locator('[data-toggle-cart]').click();
-  let peanutsIntercepted = false;
-  await page.route(`${BASE_URL}/api/food-orders`, async (route) => {
-    if (peanutsIntercepted) {
-      await route.continue();
-      return;
-    }
-    peanutsIntercepted = true;
-    const response = await route.fetch();
-    const body = await response.json();
-    for (const o of body.orders) {
-      o.items = o.items.filter((item: { id: string }) => item.id !== peanutsId);
-    }
-    await route.fulfill({ response, json: body });
-  });
-  await page.click('[data-cart-pay]');
-  await page.waitForSelector('text=Diese Position existiert nicht mehr.');
-  await page.waitForFunction(() => (window as unknown as { __lastPopup?: { closed: boolean } }).__lastPopup?.closed);
-  assert.deepEqual(await lastPopup(), { location: '', closed: true });
-  // The re-check's fresh cache no longer contains this item, and the row is
-  // actually gone from the DOM instead of only showing a toast over stale
-  // markup.
-  await page.waitForSelector('.food-order-item:has-text("Erdnüsse")', { state: 'detached' });
-  await page.unroute(`${BASE_URL}/api/food-orders`);
-  await page.evaluate(() => (window as unknown as { __restoreWindowOpen: () => void }).__restoreWindowOpen());
-
-  // Clearing the PayPal link while an item is still in the cart must not
-  // crash the view (a selection can outlive the link it was made for) - the
-  // Warenkorb toggle disappears along with the cart box itself.
-  await page.fill('[data-item-desc]', 'Linkfrei-Test');
-  await page.fill('[data-item-quantity]', '1');
-  await page.click('[data-add-item-form] button[type="submit"]');
-  await page.waitForSelector('text=Linkfrei-Test');
-  const linkClearRow = page.locator('.food-order-item', { hasText: 'Linkfrei-Test' });
-  await linkClearRow.locator('[data-toggle-cart]').click();
-  await page.waitForSelector('.food-order-cart');
-  await page.click('[data-edit-details]');
-  await page.fill('#paypal-input', '');
-  await page.click('#details-form button[type="submit"]');
-  await page.waitForSelector('.food-order-cart', { state: 'detached' });
-  await page.waitForSelector('text=Linkfrei-Test');
-
-  // Restore it for the rest of the flow.
-  await page.click('[data-edit-details]');
-  await page.fill('#paypal-input', 'https://paypal.me/luigi');
-  await page.click('#details-form button[type="submit"]');
-  await page.waitForSelector('[data-toggle-cart]');
-
-  // Content search resolves an item description to its parent order and
-  // highlights that concrete order instead of only opening the Essen area.
   await page.keyboard.press('Control+K');
   await page.fill('#global-search-input', 'Margherita groß');
   await page.waitForSelector('.global-search-result:has-text("Pizza bei Luigi")');
   await page.click('.global-search-result:has-text("Pizza bei Luigi")');
   await page.waitForSelector('[data-order-card].search-target-highlight');
 
-  await page.click('[data-close-order]');
-  // confirmDialog is an in-app modal (not a native browser dialog).
-  await page.click('[data-confirm]');
-  await page.waitForSelector('[data-food-history]');
-  await page.click('[data-food-history] > summary');
-  // "Abgeschickt" (submitted, badge-paused) vs "Geschlossen" (finalized,
-  // badge-offline) are deliberately distinct labels/colors in the history.
-  await page.waitForSelector('.badge-paused >> text=Abgeschickt');
-
-  // Paid state survives closing, and stays togglable — settling up normally
-  // happens after the order is already closed.
-  await page.waitForSelector('.food-order-item.is-paid');
-  await page.locator('.food-order-item', { hasText: 'Margherita' }).locator('[data-toggle-paid]').click();
-  await page.waitForSelector('.food-order-item:not(.is-paid)');
-
-  // Closing only freezes items — the details stay correctable afterward.
-  await page.click('[data-edit-details]');
-  await setDateTimeField('sendat-input', '2026-12-24T22:00');
-  await page.click('#details-form button[type="submit"]');
-  await page.waitForSelector('text=Versand 24.12., 22:00 Uhr');
-
-  // Reopening a closed order un-freezes it: items can be added again.
+  // Keep the realtime follow-up GET pending while the close response is
+  // applied. The lifecycle change must render from that response directly:
+  // no one-line loading frame, no scroll reset, and the moved order remains
+  // visible in the automatically opened history.
+  let releaseCloseRefresh!: () => void;
+  let closeRefreshSeen!: () => void;
+  let closeRefreshFinished!: () => void;
+  const closeRefreshRelease = new Promise<void>((resolve) => { releaseCloseRefresh = resolve; });
+  const closeRefreshStarted = new Promise<void>((resolve) => { closeRefreshSeen = resolve; });
+  const closeRefreshDone = new Promise<void>((resolve) => { closeRefreshFinished = resolve; });
+  let closeRefreshBlocked = false;
+  const closeRefreshRoute = async (route: import('playwright').Route) => {
+    if (route.request().method() === 'GET' && !closeRefreshBlocked) {
+      closeRefreshBlocked = true;
+      closeRefreshSeen();
+      await closeRefreshRelease;
+      const response = await route.fetch();
+      await route.fulfill({ response });
+      closeRefreshFinished();
+      return;
+    }
+    await route.continue();
+  };
+  await page.route('**/api/food-orders', closeRefreshRoute);
+  const foodScroller = page.locator('#view-container');
+  const scrollTopBeforeClose = await foodScroller.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    return element.scrollTop;
+  });
+  assert.ok(scrollTopBeforeClose > 0);
+  try {
+    await page.click('[data-close-order]');
+    await page.click('[data-confirm]');
+    await closeRefreshStarted;
+    await page.waitForSelector('[data-food-history][open] .badge-paused:has-text("Abgeschickt")');
+    assert.equal(await page.getByText('Lädt…', { exact: true }).count(), 0);
+    assert.equal(await page.locator('[data-closed-order]', { hasText: 'Pizza bei Luigi' }).isVisible(), true);
+    assert.ok(await foodScroller.evaluate((element) => element.scrollTop > 0));
+  } finally {
+    releaseCloseRefresh();
+    if (closeRefreshBlocked) await closeRefreshDone;
+    await page.unroute('**/api/food-orders', closeRefreshRoute);
+  }
   await page.click('[data-reopen-order]');
   await page.waitForSelector('.badge-playing >> text=Offen');
   await page.fill('[data-item-desc]', 'Vergessene Cola');
   await page.fill('[data-item-quantity]', '1');
+  await page.fill('[data-item-price]', '2,50');
   await page.click('[data-add-item-form] button[type="submit"]');
   await page.waitForSelector('text=Vergessene Cola');
-
   await page.click('[data-close-order]');
   await page.click('[data-confirm]');
   await page.waitForSelector('.badge-paused >> text=Abgeschickt');
-
-  // Finalizing is the creator's terminal lock: no more reopening, editing,
-  // or paid toggling.
   await page.click('[data-finalize-order]');
   await page.click('[data-confirm]');
   await page.waitForSelector('.badge-offline >> text=Geschlossen');
-  await page.waitForSelector('[data-reopen-order]', { state: 'detached' });
-  await page.waitForSelector('[data-edit-details]', { state: 'detached' });
-  assert.equal(await page.locator('[data-toggle-paid]').first().isDisabled(), true);
-  // A finalized order is fully locked - the Warenkorb toggle on a still-
-  // unpaid position ("Vergessene Cola") must not stay open as a way to
-  // still trigger a real PayPal payment or bulk-mark after "Geschlossen".
-  await page.locator('[data-closed-order]', { hasText: 'Pizza bei Luigi' }).locator('.food-order-item', { hasText: 'Vergessene Cola' }).locator('[data-toggle-cart]').waitFor();
-  assert.equal(
-    await page.locator('[data-closed-order]', { hasText: 'Pizza bei Luigi' }).locator('.food-order-item', { hasText: 'Vergessene Cola' }).locator('[data-toggle-cart]').isDisabled(),
-    true
-  );
-});
+  const closedOrder = page.locator('[data-closed-order]', { hasText: 'Pizza bei Luigi' });
+  assert.equal(await closedOrder.locator('[data-reopen-order]').count(), 1);
+  assert.equal(await closedOrder.locator('[data-edit-details]').count(), 0);
+  assert.equal(await closedOrder.locator('[data-toggle-group-paid]').first().isDisabled(), true);
+  assert.equal(await closedOrder.locator('[data-group-pay]').first().isDisabled(), true);
 
-flowTest('community', 'Essensbestellung: orderer groups collapse/expand per AP3, force-open on add, "Alle ausklappen"', async () => {
-  // Alice (admin, community shard) creates the order - the creating person
-  // sees every group open from the start.
+  // Finalizing is reversible one lock step at a time: reopening a finalized
+  // order drops it back to "Abgeschickt", unlocking payment marking and
+  // metadata edits again while items stay frozen.
+  await closedOrder.locator('[data-reopen-order]').click();
+  await page.waitForSelector('.badge-paused >> text=Abgeschickt');
+  assert.equal(await closedOrder.locator('[data-edit-details]').count(), 1);
+  assert.equal(await closedOrder.locator('[data-toggle-group-paid]').first().isDisabled(), false);
+
+  await page.evaluate(() => (window as unknown as { __restoreWindowOpen: () => void }).__restoreWindowOpen());
+});
+flowTest('food-orders', 'Essensbestellung: orderer groups collapse/expand and pay as a group', async () => {
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
   await page.click('#order-new-btn');
   await page.fill('#order-title', 'Gruppen-Test-Bestellung');
@@ -2240,23 +2217,21 @@ flowTest('community', 'Essensbestellung: orderer groups collapse/expand per AP3,
 
   await groupOrderCard.locator('[data-item-desc]').fill('Alice-Snack');
   await groupOrderCard.locator('[data-item-quantity]').fill('1');
+  await groupOrderCard.locator('[data-item-price]').fill('3,00');
   await groupOrderCard.locator('[data-add-item-form] button[type="submit"]').click();
   await page.waitForSelector('text=Alice-Snack');
-
-  // A single-group order gets no collapse chrome at all (AP3.9).
   assert.equal(await groupOrderCard.locator('.food-order-group-toggle').count(), 0);
   assert.equal(await groupOrderCard.locator('[data-toggle-all-groups]').count(), 0);
+  assert.equal(await groupOrderCard.locator('.food-order-card-header-toggle').count(), 0);
 
   await switchIdentityAndOpenFoodOrders('E2E Bob');
   const bobFormCard = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' });
   await bobFormCard.locator('[data-item-desc]').fill('Bob Erster Snack');
   await bobFormCard.locator('[data-item-quantity]').fill('1');
+  await bobFormCard.locator('[data-item-price]').fill('1,00');
   await bobFormCard.locator('[data-add-item-form] button[type="submit"]').click();
   await page.waitForSelector('text=Bob Erster Snack');
 
-  // Now that there are two orderer groups, the collapse chrome and the
-  // "Alle ausklappen"/"Alle einklappen" toggle appear. Bob is not the
-  // creator, so his own group starts open and Alice's starts closed.
   const orderCard = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' });
   const bobGroup = orderCard.locator('.food-order-group', { hasText: 'E2E Bob' });
   const aliceGroup = orderCard.locator('.food-order-group', { hasText: 'E2E Alice Pro' });
@@ -2264,107 +2239,494 @@ flowTest('community', 'Essensbestellung: orderer groups collapse/expand per AP3,
   assert.equal(await bobGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'true');
   assert.equal(await aliceGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'false');
   assert.equal(await aliceGroup.locator('.food-order-group-items').isHidden(), true);
-  await page.waitForSelector('.food-order-group-meta:has-text("1 Position")');
-  // Neither group's own position has a price - the header must say so rather
-  // than showing a misleadingly complete "0,00 €" for an incomplete sum.
-  assert.equal(await bobGroup.locator('.food-order-group-amount').innerText(), 'Betrag offen');
+  assert.match(await bobGroup.locator('.food-order-group-toggle').innerText(), /E2E Bob \(du\)/);
+  assert.equal(await bobGroup.locator('.food-order-group-toggle[aria-expanded="true"] .food-order-group-meta').textContent(), '1 Position');
+  assert.equal(await bobGroup.locator('.food-order-group-amount').innerText(), '1,00 €');
+  assert.equal(await bobGroup.locator('.food-order-item-copy').getAttribute('title'), 'Betrag dieser Position kopieren');
 
-  // AP3.6: the toggle in the card header expands/collapses every group.
   await orderCard.locator('[data-toggle-all-groups]').click();
   await aliceGroup.locator('.food-order-group-toggle[aria-expanded="true"]').waitFor();
-  assert.equal(await aliceGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'true');
-  assert.equal(await aliceGroup.locator('.food-order-group-items').isHidden(), false);
   assert.equal(await orderCard.locator('[data-toggle-all-groups]').innerText(), 'Alle einklappen');
   await orderCard.locator('[data-toggle-all-groups]').click();
   assert.equal(await aliceGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'false');
 
-  // AP3.7/AP3.8: Bob's own group is collapsed right now (the "Alle
-  // einklappen" click above collapsed every group) - adding another own
-  // item forces it open again regardless of why it was collapsed.
   assert.equal(await bobGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'false');
   await bobFormCard.locator('[data-item-desc]').fill('Bob Zweiter Snack');
   await bobFormCard.locator('[data-item-quantity]').fill('1');
+  await bobFormCard.locator('[data-item-price]').fill('1,50');
   await bobFormCard.locator('[data-add-item-form] button[type="submit"]').click();
   await page.waitForSelector('text=Bob Zweiter Snack');
   assert.equal(await bobGroup.locator('.food-order-group-toggle').getAttribute('aria-expanded'), 'true');
 
-  // AP3.3/AP3.5: without a PayPal link nothing can be paid, so no group cart
-  // button is offered yet.
-  assert.equal(await bobGroup.locator('.food-order-group-cart-btn').count(), 0);
+  assert.equal(await bobGroup.locator('[data-group-pay]').count(), 0);
 
-  // Add a PayPal link so the group Warenkorb button appears, then exercise
-  // AP3.5's three states from Bob's own group.
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
   const detailsCard = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' });
-  // This is Alice's first render of this order in her fresh session, and she
-  // is the creator, so both groups already start expanded (AP3.6) - the
-  // "Alle ausklappen/einklappen" toolbar label must reflect that immediately
-  // rather than mislabeling it "Alle ausklappen" because it was computed
-  // before the start rule had populated the expand state.
-  await detailsCard.locator('.food-order-group-toggle[aria-expanded="true"]').first().waitFor();
-  assert.equal(
-    await detailsCard.locator('.food-order-group-toggle[aria-expanded="true"]').count(),
-    2
-  );
-  assert.equal(await detailsCard.locator('[data-toggle-all-groups]').innerText(), 'Alle einklappen');
   await detailsCard.locator('[data-edit-details]').click();
   await page.fill('#paypal-input', 'https://paypal.me/luigi');
-  await page.fill('#link-input', 'https://kept.example');
   await page.click('#details-form button[type="submit"]');
-  await page.waitForSelector('.food-order-group-cart-btn');
+  await page.waitForSelector('[data-group-pay]');
 
   const bobGroupAfterLink = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' }).locator('.food-order-group', { hasText: 'E2E Bob' });
-  const bobCartBtn = bobGroupAfterLink.locator('[data-group-cart-toggle]');
-  assert.equal(await bobCartBtn.getAttribute('aria-pressed'), 'false');
-  // Two of Bob's positions are unpaid at this point - selecting one leaves a
-  // mixed ("some") state, clicking again fills the rest to "all".
-  await bobGroupAfterLink.locator('.food-order-item', { hasText: 'Bob Erster Snack' }).first().locator('[data-toggle-cart]').click();
-  assert.equal(await bobCartBtn.evaluate((el) => el.classList.contains('is-some')), true);
-  await bobCartBtn.click();
-  assert.equal(await bobCartBtn.getAttribute('aria-pressed'), 'true');
-  await page.waitForSelector('.food-order-cart-header .badge:has-text("2")');
-  // Clicking the "all" state takes the whole group back out of the cart.
-  await bobCartBtn.click();
-  await page.waitForSelector('.food-order-cart', { state: 'detached' });
+  const bobMarker = bobGroupAfterLink.locator('[data-toggle-group-paid]');
+  await bobMarker.click();
+  await bobGroupAfterLink.locator('.food-order-paid-marker[aria-pressed="true"]:has-text("Bezahlt")').waitFor();
+  assert.equal(await bobGroupAfterLink.locator('[data-group-pay]').isDisabled(), true);
+  assert.equal(await bobGroupAfterLink.locator('[data-toggle-group-paid]').getAttribute('aria-pressed'), 'true');
+  assert.equal(await bobGroupAfterLink.locator('.food-order-item .food-order-paid-marker').count(), 0);
+  assert.equal(await bobGroupAfterLink.locator('[data-remove-group]').count(), 0);
 
-  // AP3.3: once every position of a group is paid, its header shows the
-  // green Bezahlt-Marke instead of an amount, and the group starts collapsed
-  // the next time the start rule would apply to a fresh order (checked via a
-  // freshly created single-purpose order below).
-  for (const desc of ['Bob Erster Snack', 'Bob Zweiter Snack']) {
-    const row = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' }).locator('.food-order-item', { hasText: desc }).first();
-    await row.locator('[data-toggle-paid]').click();
-    await page.waitForSelector(`.food-order-item.is-paid:has-text("${desc}")`);
-  }
-  await page.waitForSelector('.food-order-group-paid-badge:has-text("Bezahlt")');
-  assert.equal(
-    await page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' }).locator('.food-order-group', { hasText: 'E2E Bob' }).locator('[data-group-cart-toggle]').count(),
-    0
-  );
+  // The compact payment marker plus three action slots must remain inside the
+  // header at the narrowest supported phone width instead of being clipped.
+  await page.setViewportSize({ width: 320, height: 720 });
+  const narrowGroupLayout = await bobGroupAfterLink.locator('.food-order-group-header').evaluate((header) => {
+    const box = header.getBoundingClientRect();
+    const marker = header.querySelector('.food-order-paid-marker');
+    const controls = Array.from(header.querySelectorAll('.food-order-paid-marker, .food-order-group-amount, .food-order-group-actions button'));
+    return {
+      markerWidth: marker?.getBoundingClientRect().width ?? 0,
+      markerHeight: marker?.getBoundingClientRect().height ?? 0,
+      controlBounds: controls.map((control) => {
+        const rect = control.getBoundingClientRect();
+        return {
+          name: control.getAttribute('aria-label') ?? control.textContent?.trim() ?? control.tagName,
+          left: rect.left,
+          right: rect.right,
+          width: rect.width,
+        };
+      }),
+      headerBounds: { left: box.left, right: box.right },
+      controlsVisible: controls.every((control) => {
+        const rect = control.getBoundingClientRect();
+        return rect.width > 0 && rect.left >= box.left - 1 && rect.right <= box.right + 1;
+      }),
+      pageFits: document.documentElement.scrollWidth <= window.innerWidth,
+    };
+  });
+  assert.ok(narrowGroupLayout.markerWidth <= 100);
+  assert.ok(narrowGroupLayout.markerHeight >= 32);
+  assert.equal(narrowGroupLayout.controlsVisible, true, JSON.stringify(narrowGroupLayout));
+  assert.equal(narrowGroupLayout.pageFits, true);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  // Bob can undo the paid marker directly; reopening the group is an explicit
+  // toggle and does not require a second confirmation dialog.
+  await switchIdentityAndOpenFoodOrders('E2E Bob');
+  const bobPaidGroup = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' }).locator('.food-order-group', { hasText: 'E2E Bob' });
+  await bobPaidGroup.locator('[data-toggle-group-paid]').click();
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt?")');
 });
 
-flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for the creator/admin and can close the order', async () => {
+flowTest('food-orders', 'Essensbestellung: PayPal-Handoff verwirft veraltete Daten und bleibt synchron', async () => {
+  await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
+
+  type FoodScenario = { id: string; itemIds: string[]; title: string };
+  type ScenarioItem = { description: string; priceCents?: number };
+
+  const createScenario = async (title: string, items: ScenarioItem[], paypalLink = 'https://paypal.me/fresh-test', tipPercent?: number): Promise<FoodScenario> => {
+    const orderResponse = await page.request.post(`${BASE_URL}/api/food-orders`, {
+      data: { playerId: alice.id, title, paypalLink, ...(tipPercent === undefined ? {} : { tipPercent }) },
+    });
+    assert.equal(orderResponse.status(), 201, await orderResponse.text());
+    const order = await orderResponse.json() as { id: string };
+    let itemIds: string[] = [];
+    for (const item of items) {
+      const itemResponse = await page.request.post(`${BASE_URL}/api/food-orders/${order.id}/items`, {
+        data: {
+          playerId: alice.id,
+          description: item.description,
+          quantity: 1,
+          ...(item.priceCents === undefined ? {} : { priceCents: item.priceCents }),
+        },
+      });
+      assert.equal(itemResponse.status(), 201, await itemResponse.text());
+      const serialized = await itemResponse.json() as { items: Array<{ id: string }> };
+      itemIds = serialized.items.map((entry) => entry.id);
+    }
+    return { id: order.id, itemIds, title };
+  };
+
+  const openScenario = async (scenario: FoodScenario) => {
+    await page.reload();
+    await page.waitForSelector('#app:not([hidden])');
+    await page.click('#nav-food-orders');
+    // Use the generated id instead of the title: a failed/retried scenario
+    // can leave an older card with the same title in the shared test event.
+    // Matching that card makes the following group wait hang even though the
+    // newly created scenario has already rendered correctly.
+    const card = page.locator(`[data-order-card="${scenario.id}"]`);
+    await card.waitFor();
+    if (await card.locator('.food-order-card-body').getAttribute('hidden') !== null) {
+      await card.locator('.food-order-card-header-toggle').click();
+    }
+    await card.locator('.food-order-card-body').waitFor({ state: 'visible' });
+    const group = card.locator('.food-order-group', { hasText: 'E2E Alice Pro' });
+    await group.locator('.food-order-group-header').waitFor();
+    return { card, group };
+  };
+
+  const cleanupScenario = async (scenario: FoodScenario) => {
+    const response = await page.request.delete(`${BASE_URL}/api/food-orders/${scenario.id}`);
+    assert.ok([204, 404].includes(response.status()), await response.text());
+  };
+
+  // Keep the popup synchronous with the click while making its opener
+  // harmless, exactly like the production handoff hardening requires.
+  await page.evaluate(() => {
+    const original = window.open;
+    (window as unknown as { __restoreFreshPopup?: () => void }).__restoreFreshPopup = () => { window.open = original; };
+    window.open = ((_url?: string, _target?: string, _features?: string) => {
+      const popup = {
+        opener: window as unknown as Window,
+        closed: false,
+        _location: '',
+        get location() { return this._location; },
+        set location(value: string) { this._location = value; },
+        close() { this.closed = true; },
+      };
+      (window as unknown as { __freshPopup?: typeof popup }).__freshPopup = popup;
+      return popup as unknown as Window;
+    }) as typeof window.open;
+  });
+
+  const runStalePayCase = async (
+    title: string,
+    mutate: (scenario: FoodScenario) => Promise<void>,
+    expectedMessage: string,
+  ) => {
+    const scenario = await createScenario(title, [{ description: `${title} Position`, priceCents: 5_00 }]);
+    const { group } = await openScenario(scenario);
+    let intercepted = false;
+    const routeHandler = async (route: import('playwright').Route) => {
+      if (!intercepted && route.request().method() === 'GET') {
+        intercepted = true;
+        await mutate(scenario);
+      }
+      await route.continue();
+    };
+    await page.route('**/api/food-orders', routeHandler);
+    try {
+      await group.locator('[data-group-pay]').click();
+      await page.waitForSelector(`.toast-error:has-text("${expectedMessage}")`);
+      assert.equal(intercepted, true);
+    } finally {
+      await page.unroute('**/api/food-orders', routeHandler);
+    }
+    await cleanupScenario(scenario);
+  };
+
+  await runStalePayCase(
+    'Freshness gelöschte Position',
+    async (scenario) => {
+      const response = await page.request.delete(`${BASE_URL}/api/food-orders/${scenario.id}/items/${scenario.itemIds[0]}`, { data: { playerId: alice.id } });
+      assert.equal(response.status(), 200, await response.text());
+    },
+    'Eine Position existiert nicht mehr. Bitte Betrag prüfen.',
+  );
+  await runStalePayCase(
+    'Freshness bezahlte Position',
+    async (scenario) => {
+      const response = await page.request.patch(`${BASE_URL}/api/food-orders/${scenario.id}/items/${scenario.itemIds[0]}`, { data: { paid: true } });
+      assert.equal(response.status(), 200, await response.text());
+    },
+    'Diese Person wurde inzwischen bereits als bezahlt markiert.',
+  );
+  await runStalePayCase(
+    'Freshness entfernter PayPal-Link',
+    async (scenario) => {
+      const response = await page.request.patch(`${BASE_URL}/api/food-orders/${scenario.id}`, { data: { paypalLink: null } });
+      assert.equal(response.status(), 200, await response.text());
+    },
+    'Für diese Bestellung ist kein PayPal-Link mehr hinterlegt.',
+  );
+  await runStalePayCase(
+    'Freshness gelöschte Bestellung',
+    async (scenario) => {
+      const response = await page.request.delete(`${BASE_URL}/api/food-orders/${scenario.id}`);
+      assert.equal(response.status(), 204, await response.text());
+    },
+    'Diese Bestellung existiert nicht mehr.',
+  );
+  await runStalePayCase(
+    'Freshness abgeschlossene Bestellung',
+    async (scenario) => {
+      const closeResponse = await page.request.post(`${BASE_URL}/api/food-orders/${scenario.id}/close`);
+      assert.equal(closeResponse.status(), 200, await closeResponse.text());
+      const finalizeResponse = await page.request.post(`${BASE_URL}/api/food-orders/${scenario.id}/finalize`);
+      assert.equal(finalizeResponse.status(), 200, await finalizeResponse.text());
+    },
+    'Bestellung geschlossen – keine Änderungen mehr möglich',
+  );
+
+  const genericPaypalLink = 'https://www.paypal.com/myaccount/transfer/homepage/pay?recipient=luigi%40example.com';
+  const genericPaypalScenario = await createScenario(
+    'Freshness allgemeiner PayPal-Link',
+    [{ description: 'Allgemeiner PayPal-Link Position', priceCents: 5_00 }],
+    genericPaypalLink,
+  );
+  const { group: genericPaypalGroup } = await openScenario(genericPaypalScenario);
+  await page.evaluate(() => {
+    window.open = ((_url?: string, _target?: string, _features?: string) => {
+      const popup = {
+        opener: window as unknown as Window,
+        closed: false,
+        _location: '',
+        get location() { return this._location; },
+        set location(value: string) { this._location = value; },
+        close() { this.closed = true; },
+      };
+      (window as unknown as { __freshPopup?: typeof popup }).__freshPopup = popup;
+      return popup as unknown as Window;
+    }) as typeof window.open;
+  });
+  await genericPaypalGroup.locator('[data-group-pay]').click();
+  await page.waitForFunction(() => (window as unknown as { __freshPopup?: { location: string } }).__freshPopup?.location);
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const popup = (window as unknown as { __freshPopup?: { location: string; closed: boolean } }).__freshPopup;
+      return popup ? { location: popup.location, closed: popup.closed } : null;
+    }),
+    { location: genericPaypalLink, closed: false },
+  );
+  await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
+  assert.match(
+    await page.locator('.modal-body p').first().innerText(),
+    /PayPal geöffnet\. Die Summe 5,00 € für .* wird dort nicht vorausgefüllt\./,
+  );
+  await page.click('[data-confirm-cancel]');
+  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+  await cleanupScenario(genericPaypalScenario);
+
+  // In a mixed group, a paid legacy position may be present after a new item
+  // was added. It is still part of the initial group and its disappearance
+  // must abort the handoff, while the paid-state race only covers open items.
+  const mixedDeleteScenario = await createScenario('Freshness gelöschte Altposition', [
+    { description: 'Bereits bezahlte Altposition', priceCents: 5_00 },
+    { description: 'Offener Nachtrag', priceCents: 4_00 },
+  ]);
+  const paidResponse = await page.request.patch(`${BASE_URL}/api/food-orders/${mixedDeleteScenario.id}/items/${mixedDeleteScenario.itemIds[0]}`, { data: { paid: true } });
+  assert.equal(paidResponse.status(), 200, await paidResponse.text());
+  const { group: mixedDeleteGroup } = await openScenario(mixedDeleteScenario);
+  let mixedDeleteIntercepted = false;
+  const mixedDeleteRoute = async (route: import('playwright').Route) => {
+    if (!mixedDeleteIntercepted && route.request().method() === 'GET') {
+      mixedDeleteIntercepted = true;
+      // The real DELETE route correctly refuses paid positions. Simulate a
+      // stale server response instead, so this test still covers a previously
+      // paid legacy position disappearing from the complete initial group.
+      const response = await route.fetch();
+      const payload = await response.json() as { orders: Array<{ id: string; items: Array<{ id: string }> }> };
+      const targetOrder = payload.orders.find((order) => order.id === mixedDeleteScenario.id);
+      assert.ok(targetOrder);
+      targetOrder.items = targetOrder.items.filter((item) => item.id !== mixedDeleteScenario.itemIds[0]);
+      await route.fulfill({ response, json: payload });
+      return;
+    }
+    await route.continue();
+  };
+  await page.route('**/api/food-orders', mixedDeleteRoute);
+  try {
+    await mixedDeleteGroup.locator('[data-group-pay]').click();
+    await page.waitForSelector('.toast-error:has-text("Eine Position existiert nicht mehr. Bitte Betrag prüfen.")');
+    assert.equal(mixedDeleteIntercepted, true);
+  } finally {
+    await page.unroute('**/api/food-orders', mixedDeleteRoute);
+  }
+  await cleanupScenario(mixedDeleteScenario);
+
+  // A zero-priced position is still a valid priced position. Together with a
+  // missing price it must expose the 0,00 € subtotal and keep its copy action.
+  const zeroScenario = await createScenario('Freshness Nullbetrag plus offen', [
+    { description: 'Nullbetrag', priceCents: 0 },
+    { description: 'Preis noch offen' },
+  ]);
+  const { card: zeroCard, group: zeroGroup } = await openScenario(zeroScenario);
+  assert.match(await zeroCard.locator('.food-order-total').innerText(), /Gesamtsumme.*unvollständig[\s\S]*0,00/);
+  assert.equal(await zeroGroup.locator('.food-order-group-meta').innerText(), '2 Positionen · Preis fehlt');
+  assert.equal(await zeroGroup.locator('.food-order-group-amount').innerText(), '0,00 €');
+  assert.equal(await zeroGroup.locator('.food-order-group-copy').getAttribute('data-copy-food-total'), '0,00 €');
+  assert.equal(await zeroGroup.locator('[data-group-pay]').isDisabled(), true);
+  await zeroGroup.locator('[data-toggle-group-paid]').click();
+  await page.waitForSelector('.food-order-paid-marker[aria-pressed="true"]:has-text("Bezahlt")');
+  await waitForTextDecoration(zeroGroup.locator('.food-order-group-amount'), 'line-through');
+  await cleanupScenario(zeroScenario);
+
+  // Tip rounding is defined per payable line, so the group sum, order
+  // overview, total row and PayPal handoff must agree even when aggregation
+  // would round differently (two 1-cent lines at 50% tip are 0,04 €).
+  const roundingScenario = await createScenario('Trinkgeld-Rundung', [
+    { description: 'Ein-Cent-Position A', priceCents: 1 },
+    { description: 'Ein-Cent-Position B', priceCents: 1 },
+  ], 'https://paypal.me/rounding-test', 50);
+  const { card: roundingCard, group: roundingGroup } = await openScenario(roundingScenario);
+  assert.equal(await roundingGroup.locator('.food-order-group-amount').innerText(), '0,04 €');
+  assert.match(await roundingCard.locator('.food-order-overview').innerText(), /Gesamt 0,04 €/);
+  assert.match(await roundingCard.locator('.food-order-total').innerText(), /0,04 €/);
+  await cleanupScenario(roundingScenario);
+
+  // While the first fresh GET is paused, an item add triggers the realtime
+  // refresh path. The shared single-flight coordinator must settle on the
+  // current group snapshot: the new item belongs in the complete handoff
+  // amount and list, but remains open until the confirmation is accepted.
+  const concurrencyScenario = await createScenario('Freshness parallele Aktualisierung', [{ description: 'Erster Betrag', priceCents: 2_50 }]);
+  const { group: concurrencyGroup } = await openScenario(concurrencyScenario);
+  let firstRequestSeen!: () => void;
+  let releaseFirstRequest!: () => void;
+  let followUpGetSeen!: () => void;
+  const firstSeen = new Promise<void>((resolve) => { firstRequestSeen = resolve; });
+  const release = new Promise<void>((resolve) => { releaseFirstRequest = resolve; });
+  const followUpGet = new Promise<void>((resolve) => { followUpGetSeen = resolve; });
+  let orderListGetCount = 0;
+  const concurrencyRoute = async (route: import('playwright').Route) => {
+    if (route.request().method() === 'GET') {
+      orderListGetCount += 1;
+      if (orderListGetCount === 2) followUpGetSeen();
+      if (orderListGetCount === 1) {
+        firstRequestSeen();
+        await release;
+      }
+    }
+    await route.continue();
+  };
+  await page.route('**/api/food-orders', concurrencyRoute);
+  try {
+    await concurrencyGroup.locator('[data-group-pay]').click();
+    await firstSeen;
+    const addResponse = await page.request.post(`${BASE_URL}/api/food-orders/${concurrencyScenario.id}/items`, {
+      data: { playerId: alice.id, description: 'Nachtrag während Refresh', quantity: 1, priceCents: 1_00 },
+    });
+    assert.equal(addResponse.status(), 201, await addResponse.text());
+    assert.ok(orderListGetCount >= 1);
+    releaseFirstRequest();
+    await followUpGet;
+    await page.waitForSelector('.modal h2:has-text("Bezahlt?")');
+    assert.match(await page.locator('.modal-body p').first().innerText(), /3,50 € für/);
+    assert.equal(await page.locator('.food-order-confirm-list li').count(), 2);
+    assert.equal(await page.locator('.food-order-confirm-list li:has-text("Nachtrag während Refresh")').count(), 1);
+    await page.click('[data-confirm-cancel]');
+    await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+    await concurrencyGroup.locator('.food-order-item', { hasText: 'Nachtrag während Refresh' }).waitFor();
+  } finally {
+    await page.unroute('**/api/food-orders', concurrencyRoute);
+  }
+  await cleanupScenario(concurrencyScenario);
+
+  // Group deletion is confirmed against a visible snapshot. A position added
+  // while that dialog is open is outside the confirmed list and must survive.
+  const deleteSnapshotScenario = await createScenario('Freshness Löschen-Snapshot', [{ description: 'Vorhandene Position', priceCents: 1_00 }]);
+  const { card: deleteSnapshotCard, group: deleteSnapshotGroup } = await openScenario(deleteSnapshotScenario);
+  let deleteSnapshotIntercepted = false;
+  const deleteSnapshotRoute = async (route: import('playwright').Route) => {
+    if (!deleteSnapshotIntercepted && route.request().method() === 'GET') {
+      deleteSnapshotIntercepted = true;
+      const response = await page.request.post(`${BASE_URL}/api/food-orders/${deleteSnapshotScenario.id}/items`, {
+        data: { playerId: alice.id, description: 'Während Bestätigung ergänzt', quantity: 1, priceCents: 2_00 },
+      });
+      assert.equal(response.status(), 201, await response.text());
+    }
+    await route.continue();
+  };
+  await page.route('**/api/food-orders', deleteSnapshotRoute);
+  try {
+    await deleteSnapshotGroup.locator('[data-remove-group]').click();
+    await page.waitForSelector('.modal h2:has-text("Deine 1 Position löschen?")');
+    await page.click('[data-confirm-ok]');
+    await page.waitForSelector('text=Während Bestätigung ergänzt');
+    await deleteSnapshotCard.locator('.food-order-item', { hasText: 'Vorhandene Position' }).waitFor({ state: 'detached' });
+    assert.equal(await deleteSnapshotCard.locator('.food-order-item', { hasText: 'Während Bestätigung ergänzt' }).count(), 1);
+    assert.equal(deleteSnapshotIntercepted, true);
+  } finally {
+    await page.unroute('**/api/food-orders', deleteSnapshotRoute);
+  }
+  await cleanupScenario(deleteSnapshotScenario);
+
+  // Promise.all deletion is deliberately partial-safe: if one DELETE fails,
+  // the successful sibling is gone, the failed one remains, and the quiet
+  // authoritative refresh reconciles both without a loading frame.
+  const partialScenario = await createScenario('Freshness Teil-Löschen', [
+    { description: 'Teilweise entfernen', priceCents: 1_00 },
+    { description: 'Teilweise behalten', priceCents: 1_50 },
+  ]);
+  const { card: partialCard, group: partialGroup } = await openScenario(partialScenario);
+  const failingItemId = partialScenario.itemIds[1];
+  const partialRoute = async (route: import('playwright').Route) => {
+    if (route.request().method() === 'DELETE' && route.request().url().endsWith(`/items/${failingItemId}`)) {
+      await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'Simulierter Teilfehler' }) });
+      return;
+    }
+    await route.continue();
+  };
+  await page.route(`**/api/food-orders/${partialScenario.id}/items/${failingItemId}`, partialRoute);
+  try {
+    await partialGroup.locator('[data-remove-group]').click();
+    await page.waitForSelector('.modal h2:has-text("Deine 2 Positionen löschen?")');
+    await page.click('[data-confirm-ok]');
+    await page.waitForSelector('.toast-error');
+    await partialCard.locator('.food-order-item', { hasText: 'Teilweise entfernen' }).waitFor({ state: 'detached' });
+    await partialCard.locator('.food-order-item', { hasText: 'Teilweise behalten' }).waitFor();
+  } finally {
+    await page.unroute(`**/api/food-orders/${partialScenario.id}/items/${failingItemId}`, partialRoute);
+  }
+  await cleanupScenario(partialScenario);
+  await page.evaluate(() => (window as unknown as { __restoreFreshPopup?: () => void }).__restoreFreshPopup?.());
+});
+
+flowTest('food-orders', 'Essensbestellung: Bestellübersicht consolidates positions for the creator/admin and can close the order', async () => {
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
   await page.click('#order-new-btn');
-  await page.fill('#order-title', 'Bestellliste-Test');
+  await page.fill('#order-title', 'Bestellübersicht-Test');
   await page.fill('#order-tip', '10');
   await page.click('#order-form button[type="submit"]');
-  await page.waitForSelector('text=Bestellliste-Test');
-  const listOrderCard = page.locator('[data-order-card]', { hasText: 'Bestellliste-Test' });
+  await page.waitForSelector('text=Bestellübersicht-Test');
+  const listOrderCard = page.locator('[data-order-card]', { hasText: 'Bestellübersicht-Test' });
+  const listOrderId = await listOrderCard.getAttribute('data-order-card');
+  assert.ok(listOrderId);
+
+  // "Gruppen-Test-Bestellung" (from the previous test) is still open, so
+  // there are now two open orders at once - each card gets its own
+  // whole-order collapse toggle, independent of the per-orderer-group one.
+  // The just-created order stays open while the older one starts collapsed;
+  // that state must survive a live re-render triggered elsewhere (the item
+  // adds below).
+  const groupOrderCard = page.locator('[data-order-card]', { hasText: 'Gruppen-Test-Bestellung' });
+  await page.waitForSelector('.food-order-card-header-toggle');
+  assert.equal(await groupOrderCard.locator('.food-order-card-header-toggle').count(), 1);
+  assert.equal(await listOrderCard.locator('.food-order-card-header-toggle').count(), 1);
+  assert.equal(await groupOrderCard.locator('.food-order-card-header-toggle .food-order-card-title').innerText(), 'Gruppen-Test-Bestellung');
+  assert.equal(await groupOrderCard.locator('.food-order-card-body').getAttribute('hidden'), '');
+  assert.equal(await groupOrderCard.locator('.food-order-card-body').isVisible(), false);
+  assert.equal(await listOrderCard.locator('.food-order-card-body').isVisible(), true);
 
   const addItem = async (desc: string, quantity: string, price?: string) => {
     await listOrderCard.locator('[data-item-desc]').fill(desc);
     await listOrderCard.locator('[data-item-quantity]').fill(quantity);
     if (price) await listOrderCard.locator('[data-item-price]').fill(price);
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url() === `${BASE_URL}/api/food-orders/${listOrderId}/items` &&
+        response.request().method() === 'POST',
+    );
     await listOrderCard.locator('[data-add-item-form] button[type="submit"]').click();
-    await page.waitForSelector(`text=${desc}`);
+    const response = await responsePromise;
+    assert.equal(response.status(), 201, await response.text());
+    // Earlier orders in this shared shard contain the same descriptions.
+    // A page-wide or case-insensitive wait can therefore resolve before this
+    // exact add and live re-render finish, letting the next add race it.
+    await listOrderCard.getByText(`${quantity} × ${desc}`, { exact: true }).waitFor();
   };
   await addItem('Margherita', '1', '8,50');
   await addItem('margherita', '2', '8,50');
   await addItem('Wasser', '1');
 
+  // The three item-add re-renders above must not have silently re-expanded
+  // "Gruppen-Test-Bestellung" again - collapse state belongs to the person
+  // looking at it, same rule as the orderer-group toggle above.
+  assert.equal(await groupOrderCard.locator('.food-order-card-body').isVisible(), false);
+  await groupOrderCard.locator('.food-order-card-header-toggle').click();
+  await page.waitForSelector('[data-order-card]:has-text("Gruppen-Test-Bestellung") .food-order-card-body:not([hidden])');
+
   await listOrderCard.locator('[data-open-order-list]').click();
-  await page.waitForSelector('.modal h2:has-text("Bestellliste – Bestellliste-Test")');
+  await page.waitForSelector('.modal h2:has-text("Bestellübersicht – Bestellübersicht-Test")');
   // Same normalized description + same price merges into one consolidated
   // row (AP4.2) — 1 + 2 = 3 × Margherita.
   await page.waitForSelector('.food-order-consolidated-row:has-text("3 × Margherita")');
@@ -2376,19 +2738,31 @@ flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for
   await page.waitForSelector('.food-order-consolidated-totals:has-text("+ 10% Trinkgeld")');
   await page.waitForSelector('.food-order-consolidated-totals:has-text("Gesamt (unvollständig)")');
 
-  await page.evaluate(() => {
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText: async (value: string) => { (window as Window & { copiedList?: string }).copiedList = value; } },
-    });
-  });
-  await page.click('[data-copy-consolidated-list]');
-  await page.waitForSelector('text=Bestellliste kopiert.');
-  const copied = await page.evaluate(() => (window as Window & { copiedList?: string }).copiedList);
-  assert.match(copied ?? '', /^Bestellliste-Test\n\n3 × Margherita\n1 × Wasser\n\n/);
+  // The clipboard "Liste kopieren" action was removed - the dialog no longer
+  // offers it at all.
+  assert.equal(await page.locator('[data-copy-consolidated-list]').count(), 0);
 
-  // The dialog can close the still-open order directly (AP4.7) - only the
-  // creator sees that action here, matching the main card's own gating.
+  // A direct food-order link expands the target before the first populated
+  // render, even though multiple open orders currently exist.
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+  await page.goto(`${BASE_URL}/#foodOrders/${listOrderId}`);
+  await page.reload();
+  const directOrderCard = page.locator('[data-order-card]', { hasText: 'Bestellübersicht-Test' });
+  await directOrderCard.waitFor();
+  assert.equal(await directOrderCard.locator('.food-order-card-body').isVisible(), true);
+
+  // Home's Aktuell entry carries the same order target as a push/deep link,
+  // so tapping it also lands on the expanded card.
+  await page.click('.nav-btn[data-view="home"]');
+  const currentOrder = page.locator(`[data-current-item="food-order:${listOrderId}"]`);
+  await currentOrder.waitFor();
+  await currentOrder.locator('.home-current-navigate').click();
+  await directOrderCard.waitFor();
+  assert.equal(await directOrderCard.locator('.food-order-card-body').isVisible(), true);
+
+  // The dialog can close the still-open order directly (AP4.7).
+  await directOrderCard.locator('[data-open-order-list]').click();
   await page.click('[data-close-order-from-list]');
   await page.click('[data-confirm]');
   await page.waitForSelector('text=Bestellung ist noch offen.', { state: 'detached' });
@@ -2396,20 +2770,377 @@ flowTest('community', 'Essensbestellung: Bestellliste consolidates positions for
   await page.keyboard.press('Escape');
   await page.waitForSelector('.modal-backdrop', { state: 'detached' });
 
-  // Bob is neither the creator nor an admin, so he gets no "Bestellliste"
-  // entry point at all - not even for a closed order.
-  await switchIdentityAndOpenFoodOrders('E2E Bob');
-  await page.click('[data-food-history] > summary');
-  await page.waitForSelector('text=Bestellliste-Test');
+  // Sent orders live in the collapsed history. A reminder/push-style direct
+  // link must open that section so the requested order is immediately visible.
+  await page.goto(`${BASE_URL}/#foodOrders/${listOrderId}`);
+  await page.reload();
+  const directHistory = page.locator('[data-food-history]');
+  await directHistory.waitFor();
+  assert.equal(await directHistory.getAttribute('open'), '');
   assert.equal(
-    await page.locator('[data-closed-order]', { hasText: 'Bestellliste-Test' }).locator('[data-open-order-list]').count(),
-    0
+    await page.locator('[data-closed-order]', { hasText: 'Bestellübersicht-Test' }).isVisible(),
+    true,
+  );
+
+  // The list is visible to everyone, including a non-creator on a closed order.
+  await switchIdentityAndOpenFoodOrders('E2E Bob');
+  await page.waitForSelector('text=Bestellübersicht-Test');
+  assert.equal(
+    await page.locator('[data-closed-order]', { hasText: 'Bestellübersicht-Test' }).locator('[data-open-order-list]').count(),
+    1
   );
 
   // Leave the shared page back on Alice's identity - every later flow in
   // this shard assumes that starting point, same as before these food-order
   // tests started switching identities.
   await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
+});
+
+flowTest('food-orders', "Essensbestellung: the description field suggests the order's own existing positions while typing", async (t) => {
+  const realtimeProbeOrderIds: string[] = [];
+  t.after(async () => {
+    for (const probeOrderId of realtimeProbeOrderIds) {
+      const response = await page.request.delete(`${BASE_URL}/api/food-orders/${probeOrderId}`);
+      assert.ok([204, 404].includes(response.status()), await response.text());
+    }
+  });
+
+  await switchIdentityAndOpenFoodOrders('E2E Alice Pro');
+  await page.click('#order-new-btn');
+  await page.fill('#order-title', 'Vorschlags-Test');
+  await page.click('#order-form button[type="submit"]');
+  await page.waitForSelector('text=Vorschlags-Test');
+  const suggestOrderCard = page.locator('[data-order-card]', { hasText: 'Vorschlags-Test' });
+  if (await suggestOrderCard.locator('.food-order-card-body').getAttribute('hidden') !== null) {
+    await suggestOrderCard.locator('.food-order-card-header-toggle').click();
+  }
+
+  // A brand-new order's first position has nothing to suggest yet - the
+  // description field stays a plain text input without the search-select
+  // chrome.
+  assert.equal(await suggestOrderCard.locator('[data-desc-suggest]').count(), 0);
+
+  // Instrument document.addEventListener/removeEventListener before any
+  // dropdown-bearing render happens, so the counter below reflects the true
+  // number of 'pointerdown' listeners wireDescSuggest() has registered - not
+  // just a delta from some later point.
+  await page.evaluate(() => {
+    const w = window as unknown as { __pointerdownListenerCount: number };
+    w.__pointerdownListenerCount = 0;
+    const originalAdd = document.addEventListener.bind(document);
+    const originalRemove = document.removeEventListener.bind(document);
+    document.addEventListener = ((
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions
+    ) => {
+      if (type === 'pointerdown') w.__pointerdownListenerCount += 1;
+      return originalAdd(type, listener, options);
+    }) as typeof document.addEventListener;
+    document.removeEventListener = ((
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | EventListenerOptions
+    ) => {
+      if (type === 'pointerdown') w.__pointerdownListenerCount -= 1;
+      return originalRemove(type, listener, options);
+    }) as typeof document.removeEventListener;
+  });
+  const pointerdownListenerCount = () =>
+    page.evaluate(() => (window as unknown as { __pointerdownListenerCount: number }).__pointerdownListenerCount);
+
+  await suggestOrderCard.locator('[data-item-desc]').fill('Margherita groß');
+  await suggestOrderCard.locator('[data-item-price]').fill('8,50');
+  await suggestOrderCard.locator('[data-item-quantity]').fill('1');
+  await suggestOrderCard.locator('[data-add-item-form] button[type="submit"]').click();
+  await suggestOrderCard.locator('.food-order-item', { hasText: 'Margherita groß' }).waitFor();
+
+  // Once the order has a position, the field gains the dropdown - opening it
+  // via its toggle lists that exact existing description. Its render also
+  // registered wireDescSuggest()'s document-level pointerdown listener,
+  // alongside one for every other order-with-a-position card this shard's
+  // earlier flows have left open on the same shared page - so this reads the
+  // current count as a baseline instead of assuming a specific number.
+  const descField = suggestOrderCard.locator('[data-desc-suggest]');
+  await descField.waitFor();
+  const afterFirstPosition = await pointerdownListenerCount();
+
+  // renderFoodOrders() rebuilds the whole card - including this wrapper - on
+  // every realtime re-render, so add two more positions via the API
+  // (no click involved) to trigger two re-renders without any interaction.
+  // Each one re-wires the currently visible order-with-a-position cards'
+  // listeners while the old, now-detached wrappers' listeners are
+  // deliberately *not* removed yet - cleanup is lazy, the same as the shared
+  // search-select's own pattern - so the count should keep growing with
+  // every render that has no click in between.
+  const orderId = await suggestOrderCard.getAttribute('data-order-card');
+  await page.request.post(`${BASE_URL}/api/food-orders/${orderId}/items`, {
+    data: { playerId: alice.id, description: 'Wasser', quantity: 1 },
+  });
+  await suggestOrderCard.locator('.food-order-item', { hasText: 'Wasser' }).waitFor();
+  const afterWasser = await pointerdownListenerCount();
+  assert.ok(
+    afterWasser > afterFirstPosition,
+    'a re-render without any click should register at least one more pointerdown listener, not clean up the previous one'
+  );
+
+  await page.request.post(`${BASE_URL}/api/food-orders/${orderId}/items`, {
+    data: { playerId: alice.id, description: 'Cola', quantity: 1 },
+  });
+  await suggestOrderCard.locator('.food-order-item', { hasText: 'Cola' }).waitFor();
+  const afterCola = await pointerdownListenerCount();
+  assert.ok(afterCola > afterWasser, 'a second re-render without any click should again grow the listener count, not stay flat');
+
+  // A single pointerdown anywhere on the page must let every detached
+  // wrapper's listener remove itself - before the fix nothing ever called
+  // removeEventListener, so this count would only ever grow, unboundedly,
+  // over a multi-day event.
+  await page.click('h1.view-title');
+  const afterClick = await pointerdownListenerCount();
+  assert.ok(afterClick < afterCola, 'a single pointerdown must let the stale, detached listeners remove themselves again');
+
+  // Typing filters the open list live. The option also carries the price it
+  // was entered with, so it's visible before picking it.
+  await descField.locator('[data-desc-toggle]').click();
+  await page.waitForSelector('.food-order-desc-field .search-select-option:has-text("Margherita groß")');
+  assert.match(
+    (await page.locator('.food-order-desc-field .search-select-option', { hasText: 'Margherita groß' }).textContent()) ?? '',
+    /8,50/
+  );
+  await descField.locator('[data-item-desc]').fill('marg');
+  await page.waitForSelector('.food-order-desc-field .search-select-option:has-text("Margherita groß")');
+  assert.equal(await descField.locator('.search-select-option').count(), 1);
+
+  // Socket refreshes used to rebuild the open combobox continuously. Keep a
+  // probe order in the newest cache until after the deferred render so the
+  // test verifies both DOM stability and that the flush renders real data.
+  const createRealtimeProbe = async (title: string) => {
+    const refresh = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/api/food-orders' && response.request().method() === 'GET',
+    );
+    const response = await page.request.post(`${BASE_URL}/api/food-orders`, {
+      data: { playerId: alice.id, title },
+    });
+    assert.equal(response.status(), 201, await response.text());
+    const probe = await response.json() as { id: string };
+    realtimeProbeOrderIds.push(probe.id);
+    const refreshResponse = await refresh;
+    assert.equal(refreshResponse.status(), 200);
+    await refreshResponse.finished();
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    return probe.id;
+  };
+
+  await descField.evaluate((element) => { element.dataset.e2eInstance = 'outside-pointer'; });
+  await createRealtimeProbe('Realtime-Render-Probe A');
+  assert.equal(await descField.getAttribute('data-e2e-instance'), 'outside-pointer');
+
+  // A realistic press must not let the pointerdown-close flush detach the
+  // card toggle before pointerup/click. The first tap must collapse the card.
+  const cardToggle = suggestOrderCard.locator('.food-order-card-header-toggle');
+  await cardToggle.scrollIntoViewIfNeeded();
+  const cardToggleBox = await cardToggle.boundingBox();
+  assert.ok(cardToggleBox);
+  await page.mouse.move(cardToggleBox.x + cardToggleBox.width / 2, cardToggleBox.y + cardToggleBox.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(80);
+  await page.mouse.up();
+  await suggestOrderCard.locator('.food-order-card-body').waitFor({ state: 'hidden' });
+  await page.waitForFunction(() => document.querySelector('[data-desc-suggest][data-e2e-instance="outside-pointer"]') === null);
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe A' }).waitFor();
+
+  await cardToggle.click();
+  await suggestOrderCard.locator('.food-order-card-body').waitFor({ state: 'visible' });
+  const descInput = descField.locator('[data-item-desc]');
+  await descInput.fill('marg');
+  await descField.evaluate((element) => { element.dataset.e2eInstance = 'suggestion-click'; });
+  await createRealtimeProbe('Realtime-Render-Probe B');
+  assert.equal(await descField.getAttribute('data-e2e-instance'), 'suggestion-click');
+  assert.equal(await descField.locator('.search-select-option').count(), 1);
+
+  await descField.locator('.search-select-option', { hasText: 'Margherita groß' }).click();
+  assert.equal(await descField.locator('[data-item-desc]').inputValue(), 'Margherita groß');
+  assert.equal(await suggestOrderCard.locator('[data-item-price]').inputValue(), '8,50');
+  await page.waitForFunction(() => document.querySelector('[data-desc-suggest][data-e2e-instance="suggestion-click"]') === null);
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe B' }).waitFor();
+
+  // Shift+Tab closes the list in keydown, then moves focus before the deferred
+  // render replaces the card. The logically focused control must survive that
+  // replacement instead of dropping focus back to the document body.
+  await descInput.fill('marg');
+  await descField.evaluate((element) => { element.dataset.e2eInstance = 'keyboard-tab'; });
+  await createRealtimeProbe('Realtime-Render-Probe C');
+  assert.equal(await descField.getAttribute('data-e2e-instance'), 'keyboard-tab');
+  await descInput.press('Shift+Tab');
+  await page.waitForFunction(() => document.querySelector('[data-desc-suggest][data-e2e-instance="keyboard-tab"]') === null);
+  assert.equal(
+    await page.evaluate(() => document.activeElement !== document.body && document.querySelector('#view-container')?.contains(document.activeElement)),
+    true,
+    'the deferred render must restore the meaningful food-order control reached by Shift+Tab'
+  );
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe C' }).waitFor();
+
+  for (const probeOrderId of realtimeProbeOrderIds) {
+    const response = await page.request.delete(`${BASE_URL}/api/food-orders/${probeOrderId}`);
+    assert.equal(response.status(), 204, await response.text());
+  }
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe A' }).waitFor({ state: 'detached' });
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe B' }).waitFor({ state: 'detached' });
+  await page.locator('[data-order-card]', { hasText: 'Realtime-Render-Probe C' }).waitFor({ state: 'detached' });
+
+  // This field is free text (the main supported case per the PR description
+  // is typing something genuinely new), so an unmatched query keeps the list
+  // closed instead of showing an empty-state box - on a phone that box would
+  // sit right over the next field (quantity) and eat the tap meant for it.
+  // Playwright's .click() itself fails if another element intercepts the
+  // pointer at that point, so this also proves nothing is left overlapping.
+  await descField.locator('[data-item-desc]').fill('xyz-nicht-vorhanden');
+  assert.equal(await descField.evaluate((el) => el.classList.contains('is-open')), false);
+  const quantityInput = suggestOrderCard.locator('[data-item-quantity]');
+  await quantityInput.click();
+  assert.equal(await quantityInput.evaluate((el) => el === document.activeElement), true);
+
+  // Reopening with an empty query re-lists every suggestion. ArrowDown
+  // activates the first option and sets aria-activedescendant; typing
+  // further re-filters and must not leave that attribute pointing at an
+  // option id that may no longer be in the (rebuilt) list.
+  await descInput.fill('');
+  await page.waitForSelector('.food-order-desc-field .search-select-option');
+  await descInput.press('ArrowDown');
+  assert.ok(await descInput.getAttribute('aria-activedescendant'));
+  await descInput.press('a');
+  assert.equal(await descInput.getAttribute('aria-activedescendant'), null);
+
+  // A fresh open leaves no option pre-activated (activeIndex -1). ArrowUp
+  // from that state must land on the alphabetically last suggestion
+  // ("Wasser" of Cola/Margherita groß/Wasser) rather than skip past it, which
+  // the plain wrap-around arithmetic otherwise does starting from -1.
+  await descInput.fill('');
+  await page.waitForSelector('.food-order-desc-field .search-select-option');
+  await descInput.press('ArrowUp');
+  await descInput.press('Enter');
+  assert.equal(await descInput.inputValue(), 'Wasser');
+
+  // Picking a suggestion reuses its exact spelling instead of whatever was
+  // typed - the point being that the consolidated "Bestellübersicht" keeps
+  // merging repeat orders of the same item into one row instead of splitting
+  // it because someone spelled it slightly differently. It also syncs the
+  // price field to the picked suggestion, overwriting whatever price happens
+  // to already be typed for the new position.
+  const priceInput = suggestOrderCard.locator('[data-item-price]');
+  await priceInput.fill('1,00');
+  await descInput.fill('marg');
+  await descField.locator('.search-select-option', { hasText: 'Margherita groß' }).click();
+  assert.equal(await descInput.inputValue(), 'Margherita groß');
+  assert.equal(await priceInput.inputValue(), '8,50');
+
+  // ...and just as reliably clears it again when the next picked suggestion
+  // has no recorded price - a price auto-filled by an earlier pick must
+  // never silently survive picking a different, price-less suggestion
+  // afterwards.
+  await descInput.fill('');
+  await page.waitForSelector('.food-order-desc-field .search-select-option');
+  await descInput.press('ArrowUp');
+  await descInput.press('Enter');
+  assert.equal(await descInput.inputValue(), 'Wasser');
+  assert.equal(await priceInput.inputValue(), '');
+
+  await descInput.fill('marg');
+  await descField.locator('.search-select-option', { hasText: 'Margherita groß' }).click();
+  assert.equal(await descInput.inputValue(), 'Margherita groß');
+  assert.equal(await priceInput.inputValue(), '8,50');
+  await suggestOrderCard.locator('[data-item-quantity]').fill('2');
+  await suggestOrderCard.locator('[data-add-item-form] button[type="submit"]').click();
+
+  await suggestOrderCard.locator('[data-open-order-list]').click();
+  await page.waitForSelector('.modal h2:has-text("Bestellübersicht – Vorschlags-Test")');
+  await page.waitForSelector('.food-order-consolidated-row:has-text("3 × Margherita groß")');
+  await page.waitForSelector('.food-order-consolidated-row:has-text("1 × Wasser")');
+  await page.waitForSelector('.food-order-consolidated-row:has-text("1 × Cola")');
+  assert.equal(await page.locator('.food-order-consolidated-row').count(), 3);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.modal-backdrop', { state: 'detached' });
+
+  // The own-group delete is the only destructive bulk action and therefore
+  // shows the full list before it can be confirmed.
+  await suggestOrderCard.locator('[data-remove-group]').click();
+  await page.waitForSelector('.modal h2:has-text("Deine 4 Positionen löschen?")');
+  assert.equal(await page.locator('.food-order-confirm-list li').count(), 4);
+  await page.click('[data-confirm-ok]');
+  await page.waitForSelector('text=Noch nichts eingetragen.');
+});
+
+flowTest('food-orders', 'Essensbestellung: marking a position paid does not scroll the Essen view back to the top', async () => {
+  // Regression for the socket race behind the reported bug: PATCHing a
+  // position's paid state makes the server broadcast foodOrders:changed to
+  // every connected client, including the very device that just made the
+  // change - often before that device's own fetch() promise has even
+  // resolved. Handling that echo with a hard cache invalidate collapsed the
+  // whole card list down to a one-line "Lädt…" placeholder for a moment,
+  // which clamps .view-container's scrollTop to 0 - and it never recovered
+  // once the real content came back (see refreshFoodOrders in
+  // views/foodOrders.js, which now refetches quietly in place instead).
+  await page.click('#nav-food-orders');
+  await page.waitForSelector('#order-new-btn');
+  await page.click('#order-new-btn');
+  await page.fill('#order-title', 'Scroll-Test-Bestellung');
+  await page.click('#order-form button[type="submit"]');
+  await page.waitForSelector('text=Scroll-Test-Bestellung');
+
+  // Scoped to this order's own card throughout: earlier food-order-shard
+  // tests in this same file (shared page/session, see flowTest above) leave
+  // their own orders open with their own live add-item forms on screen, so
+  // bare page-level selectors here could hit the wrong order's form.
+  const orderCard = page.locator('[data-order-card]', { hasText: 'Scroll-Test-Bestellung' });
+  if (await orderCard.locator('.food-order-card-body').getAttribute('hidden') !== null) {
+    await orderCard.locator('.food-order-card-header-toggle').click();
+  }
+
+  // Enough positions for the order card alone to overflow the phone
+  // viewport's .view-container, so there is an actual scroll position to
+  // lose.
+  for (let i = 0; i < 15; i += 1) {
+    await orderCard.locator('[data-item-desc]').fill(`Scrolltest-Artikel ${i}`);
+    await orderCard.locator('[data-item-quantity]').fill('1');
+    await orderCard.locator('[data-item-price]').fill('1,00');
+    await orderCard.locator('[data-add-item-form] button[type="submit"]').click();
+    // Once the order has at least one position, the description field grows
+    // its own suggestion dropdown listing already-entered descriptions (see
+    // renderDescField) - a bare text match would then also hit that
+    // suggestion option, not just the newly added row itself.
+    await orderCard.locator('.food-order-item', { hasText: `Scrolltest-Artikel ${i}` }).waitFor();
+  }
+
+  const viewContainer = page.locator('#view-container');
+  assert.equal(
+    await viewContainer.evaluate((el) => el.scrollHeight > el.clientHeight),
+    true,
+    'the Essen view must actually be scrollable for this test to be meaningful'
+  );
+
+  // Center the target position in the viewport ourselves (native
+  // scrollIntoView, not Playwright's own actionability auto-scroll) so its
+  // toggle is already fully visible - other food-order cards this shard's
+  // earlier tests left on screen make "the very bottom of the page" an
+  // unreliable stand-in for "this row's own position", and a Playwright
+  // click that still had to nudge the page into view would move the exact
+  // scroll position this test checks.
+  const lastRow = orderCard.locator('.food-order-item', { hasText: 'Scrolltest-Artikel 14' });
+  await lastRow.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  const scrollTopBeforeToggle = await viewContainer.evaluate((el) => el.scrollTop);
+  assert.ok(scrollTopBeforeToggle > 0);
+
+  await lastRow.evaluate((row) => (row.closest('[data-order-card]')?.querySelector('[data-toggle-group-paid]') as HTMLElement | null)?.click());
+  await orderCard.locator('.food-order-paid-marker[aria-pressed="true"]:has-text("Bezahlt")').waitFor();
+  // Give the realtime echo of this device's own change time to arrive and
+  // (if the regression came back) trigger its reload.
+  await page.waitForTimeout(300);
+
+  const scrollTopAfterToggle = await viewContainer.evaluate((el) => el.scrollTop);
+  assert.ok(
+    scrollTopAfterToggle > scrollTopBeforeToggle - 4,
+    `expected the scroll position to stay near ${scrollTopBeforeToggle}, was ${scrollTopAfterToggle}`
+  );
 });
 
 flowTest('community', 'An- & Abreise: carpool marks the driver, enforces seats, driver can only delete', async () => {
@@ -2501,11 +3232,18 @@ flowTest(
     const badge = page.locator('[data-section-tab="checklist"] [data-section-tab-count]');
     const before = (await badge.textContent()) ?? '';
 
-    const created = await page.request.post(`${BASE_URL}/api/checklist/tasks/todo`, {
-      headers: { cookie: bob.cookie },
-      data: { playerId: bob.id, title: 'Kabeltrommel besorgen', assigneePlayerIds: [alice.id] },
+    // Playwright's page.request shares the browser context's cookie jar. An
+    // authenticated response renews its session cookie, so using Bob's
+    // explicit Cookie header there can silently switch the page itself to
+    // Bob once a racing response settles. Node fetch is intentionally
+    // isolated from that jar while the open Alice page receives the socket
+    // update this scenario needs.
+    const created = await fetch(`${BASE_URL}/api/checklist/tasks/todo`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: bob.cookie },
+      body: JSON.stringify({ playerId: bob.id, title: 'Kabeltrommel besorgen', assigneePlayerIds: [alice.id] }),
     });
-    assert.equal(created.status(), 201, await created.text());
+    assert.equal(created.status, 201, await created.text());
     // The changed tab count is the visible proof that the unrelated event's
     // re-render actually landed on this tab, not just that nothing happened.
     await page.waitForFunction(
@@ -2532,10 +3270,12 @@ flowTest(
     // orders by creation time and this one is now the oldest unseen. Clear
     // it so it does not leak into the "Durchsage" test's
     // #notification-highlight assertions right after this one.
-    await page.request.post(`${BASE_URL}/api/push/seen-all`, {
-      headers: { cookie: alice.cookie },
-      data: { playerId: alice.id },
+    const cleared = await fetch(`${BASE_URL}/api/push/seen-all`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: alice.cookie },
+      body: JSON.stringify({ playerId: alice.id }),
     });
+    assert.equal(cleared.status, 200, await cleared.text());
   }
 );
 
@@ -2712,7 +3452,8 @@ flowTest('community', 'the device back button steps back through in-app views in
   await page.waitForFunction(() => document.querySelector('.view-title')?.textContent === 'Vote');
 });
 
-flowTest('community', 'Aktuell: an open vote\'s title (if set) shows on Home\'s status card', async () => {
+flowTest('community', 'Aktuell: an open vote can be dismissed without hiding the next round', async (t) => {
+  t.after(async () => page.setViewportSize({ width: 390, height: 844 }));
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-title');
   await page.fill('#votes-title', 'Freitagabend-Runde');
@@ -2729,7 +3470,44 @@ flowTest('community', 'Aktuell: an open vote\'s title (if set) shows on Home\'s 
 
   await page.click('.nav-btn[data-view="home"]');
   await page.waitForSelector('section.grouped-page-section:has(h2:text-is("Aktuell"))');
-  await page.waitForSelector('text=Freitagabend-Runde');
+  const currentVote = page.locator(`[data-current-item="vote:${openedVote.round}"]`);
+  await currentVote.waitFor();
+  const dismissButton = currentVote.locator('[data-dismiss-current]');
+  assert.equal(await dismissButton.getAttribute('aria-label'), 'Freitagabend-Runde ausblenden');
+  await page.waitForFunction(() => {
+    const box = document.querySelector('[data-current-item] [data-dismiss-current]')?.getBoundingClientRect();
+    return Boolean(box && box.width >= 44 && box.height >= 44);
+  });
+  const mobileDismissBox = await dismissButton.boundingBox();
+  assert.ok(mobileDismissBox && mobileDismissBox.width >= 44 && mobileDismissBox.height >= 44);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+  await page.setViewportSize({ width: 900, height: 844 });
+  await currentVote.waitFor();
+  assert.ok(await dismissButton.isVisible());
+  await page.setViewportSize({ width: 390, height: 844 });
+  await dismissButton.focus();
+  await page.keyboard.press('Enter');
+  await currentVote.waitFor({ state: 'detached' });
+
+  // The personal dismissal survives a reload, just like removing an entry
+  // from Mitteilungen, without closing the shared vote itself.
+  await page.reload();
+  await page.waitForSelector('#app:not([hidden])');
+  await page.click('.nav-btn[data-view="home"]');
+  assert.equal(await page.locator(`[data-current-item="vote:${openedVote.round}"]`).count(), 0);
+  assert.equal((await (await page.request.get(`${BASE_URL}/api/votes`)).json()).open, true);
+
+  // A later lifecycle gets a new stable id and must be visible again.
+  await page.click('.nav-btn[data-view="votes"]');
+  await page.click('#votes-close');
+  await page.waitForSelector('#votes-start');
+  await page.fill('#votes-title', 'Samstagabend-Runde');
+  await page.click('#votes-start');
+  await page.waitForSelector('#votes-close');
+  const nextVote = await (await page.request.get(`${BASE_URL}/api/votes`)).json();
+  assert.notEqual(nextVote.round, openedVote.round);
+  await page.click('.nav-btn[data-view="home"]');
+  await page.waitForSelector(`[data-current-item="vote:${nextVote.round}"]:has-text("Samstagabend-Runde")`);
 
   // Leave no open round behind for later tests.
   await page.click('.nav-btn[data-view="votes"]');
@@ -3010,6 +3788,61 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   assert.equal(await page.getByText('LAN auswählen', { exact: true }).count(), 0);
   assert.equal(await page.locator('.hall-of-fame-event-section').count(), 2);
   assert.equal(await page.locator('.hall-of-fame-event-section.is-tournaments .hall-of-fame-tournament-row').count(), 3);
+
+  // A lifecycle change for an unrelated event used to hard-invalidate the
+  // Hall-of-Fame cache. The long result list collapsed to "Lädt…", clamped
+  // the shared scroll container to the top and rebuilt the focused picker.
+  // Cover the invariant at laptop and phone widths.
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    const viewContainer = page.locator('#view-container');
+    const before = await viewContainer.evaluate((element) => {
+      const picker = document.querySelector('#hall-event-select-search') as HTMLInputElement;
+      picker.focus({ preventScroll: true });
+      element.scrollTop = Math.min(1200, element.scrollHeight - element.clientHeight);
+      const probe = { mutations: 0, loadingFrames: 0 };
+      (window as any).__renderStabilityProbe?.observer?.disconnect();
+      const observer = new MutationObserver(() => {
+        probe.mutations += 1;
+        if (element.textContent?.includes('Lädt…')) probe.loadingFrames += 1;
+      });
+      observer.observe(element, { childList: true, subtree: true });
+      (window as any).__renderStabilityProbe = { probe, observer };
+      return element.scrollTop;
+    });
+    assert.ok(before > 100, `Hall of Fame must scroll at ${viewport.width}x${viewport.height}`);
+
+    const suffix = `${viewport.width}-${Date.now()}`;
+    const createdResponse = await page.request.post(`${BASE_URL}/api/events`, {
+      data: {
+        name: `Render-Stabilität ${suffix}`,
+        startsAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+        endsAt: Date.now() + 31 * 24 * 60 * 60 * 1000,
+      },
+    });
+    const createdText = await createdResponse.text();
+    assert.equal(createdResponse.status(), 201, createdText);
+    const created = JSON.parse(createdText) as { id: string };
+    await page.waitForFunction(() => (window as any).__renderStabilityProbe?.probe.mutations > 0);
+
+    const after = await viewContainer.evaluate((element) => ({
+      scrollTop: element.scrollTop,
+      activeId: (document.activeElement as HTMLElement | null)?.id ?? null,
+      loadingFrames: (window as any).__renderStabilityProbe.probe.loadingFrames,
+    }));
+    assert.ok(Math.abs(after.scrollTop - before) < 4, `scroll changed from ${before} to ${after.scrollTop}`);
+    assert.equal(after.activeId, 'hall-event-select-search');
+    assert.equal(after.loadingFrames, 0);
+
+    const mutationsBeforeCancel = await page.evaluate(() => (window as any).__renderStabilityProbe.probe.mutations);
+    const cancelled = await page.request.delete(`${BASE_URL}/api/events/${created.id}`);
+    assert.ok(cancelled.ok(), await cancelled.text());
+    await page.waitForFunction(
+      (previous) => (window as any).__renderStabilityProbe?.probe.mutations > previous,
+      mutationsBeforeCancel,
+    );
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   // The shared seating plan exposes the real live state compactly after the
   // gamer name: seeded players cover playing + paused while the regular

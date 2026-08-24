@@ -18,7 +18,8 @@ import {
   loginE2EAdmin,
   type E2EAccount,
 } from './authHelpers';
-import { startE2EServer } from './e2eServer';
+import { StatefulE2EDiagnosticGuard, trackE2EContext } from './e2eDiagnostics';
+import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
 
@@ -26,6 +27,7 @@ let BASE_URL: string;
 // Core changes therefore do not start this suite, and Arcade changes never
 // need to execute the unrelated Core cross-view scenarios.
 let serverProcess: ChildProcess;
+let e2eServer: E2EServer;
 let browser: Browser;
 let page: Page;
 let adminCookie: string;
@@ -33,6 +35,10 @@ let alice: E2EAccount;
 let bob: E2EAccount;
 let analyticsPlayer: E2EAccount | undefined;
 const accountsByName = new Map<string, E2EAccount>();
+const flowDiagnostics = new StatefulE2EDiagnosticGuard(
+  () => ({ browser, server: e2eServer }),
+  { sharedState: 'server, browser context, and page' },
+);
 
 type ArcadeFlowShard = 'smoke' | 'full';
 
@@ -46,7 +52,11 @@ function arcadeFlowTest(
   name: string,
   fn: (context: TestContext) => void | Promise<void>,
 ): void {
-  if (arcadeFlowShard === shard) test(name, fn);
+  if (arcadeFlowShard === shard) {
+    test(name, { concurrency: false }, (context) =>
+      flowDiagnostics.run(context, name, () => fn(context)),
+    );
+  }
 }
 
 async function waitForArcadeStylesheet(targetPage: Page): Promise<void> {
@@ -72,6 +82,7 @@ async function bootstrapAdminAccount(name: string): Promise<E2EAccount> {
 
 before(async () => {
   const server = await startE2EServer(authenticatedServerEnv());
+  e2eServer = server;
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   adminCookie = await loginE2EAdmin(BASE_URL);
@@ -111,6 +122,7 @@ after(async () => {
 
 arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close it again', async (t) => {
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(guestContext, 'arcade-smoke-guest');
   const guestPage = await guestContext.newPage();
   t.after(async () => guestContext.close());
   await addSessionCookie(guestContext, BASE_URL, bob.cookie);
@@ -213,6 +225,7 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby warns and closes the owne
   await waitForArcadeStylesheet(page);
 
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(guestContext, 'arcade-lobby-guest');
   const guestPage = await guestContext.newPage();
   try {
     await addSessionCookie(guestContext, BASE_URL, bob.cookie);
@@ -239,17 +252,24 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby warns and closes the owne
       await guestPage.click(`[data-game="${game}"]`);
       await guestPage.waitForSelector(`#${game}-create:not([disabled])`);
       await guestPage.click(`#${game}-create`);
-      const targetSelect = guestPage.locator(`.arcade-lobby-control-bar select[name="${game}-target"]:visible`);
-      await targetSelect.waitFor();
-      await guestPage.waitForFunction((gameName) => Array.from(
-        document.querySelectorAll(`.arcade-lobby-control-bar select[name="${gameName}-target"]`),
-      ).some((select) => Math.round(select.getBoundingClientRect().height) === 32), game);
-      assert.equal(
-        await targetSelect.inputValue(),
-        '7',
-      );
-      // Rounded: see the #admin-count assertion above for why.
-      assert.equal(await targetSelect.evaluate((select) => Math.round(select.getBoundingClientRect().height)), 32);
+      const targetStateHandle = await guestPage.waitForFunction((gameName) => {
+        const visibleSelects = Array.from(document.querySelectorAll<HTMLSelectElement>(
+          `.arcade-lobby-control-bar select[name="${gameName}-target"]`,
+        )).flatMap((select) => {
+          const bounds = select.getBoundingClientRect();
+          return bounds.width > 0 && bounds.height > 0
+            ? [{ value: select.value, height: Math.round(bounds.height) }]
+            : [];
+        });
+        return visibleSelects.length > 0
+          ? { visibleCount: visibleSelects.length, ...visibleSelects[0] }
+          : null;
+      }, game);
+      const targetState = await targetStateHandle.jsonValue();
+      await targetStateHandle.dispose();
+      // Snapshot value and geometry atomically: a realtime re-render can hide
+      // the matched select between two otherwise independent locator reads.
+      assert.deepEqual(targetState, { visibleCount: 1, value: '7', height: 32 });
 
       await page.click(`[data-game="${game}"]`);
       await page.waitForSelector(`[data-${game}-join]`);
@@ -298,6 +318,7 @@ arcadeFlowTest('full', 'Arcade: a lobby guest flags themselves ready and the hos
   // Reuses "E2E Bob" (added earlier) as the guest on a second device — see
   // the Scribble test below for why the roster must not grow here.
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(guestContext, 'arcade-ready-guest');
   const guestPage = await guestContext.newPage();
   guestPage.on('pageerror', (err) => console.error('[guest pageerror]', err.message));
   try {
@@ -342,6 +363,8 @@ arcadeFlowTest('full', 'Arcade: a non-player can watch a running quiz without se
 
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const spectatorContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(guestContext, 'arcade-quiz-guest');
+  await trackE2EContext(spectatorContext, 'arcade-quiz-spectator');
   const guestPage = await guestContext.newPage();
   const spectatorPage = await spectatorContext.newPage();
   try {
@@ -400,6 +423,8 @@ arcadeFlowTest('full', 'Arcade: Scribble - host draws, a second device guesses c
 
   const guesserContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const spectatorContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(guesserContext, 'arcade-scribble-guesser');
+  await trackE2EContext(spectatorContext, 'arcade-scribble-spectator');
   const guesserPage = await guesserContext.newPage();
   const spectatorPage = await spectatorContext.newPage();
   guesserPage.on('pageerror', (err) => console.error('[guesser pageerror]', err.message));

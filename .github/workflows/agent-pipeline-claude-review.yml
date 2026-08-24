@@ -163,6 +163,16 @@ jobs:
             Änderung verursachte Fehler, Regressionen, Sicherheitsprobleme, Zustandskonflikte und
             relevante Testlücken.
 
+            Technischer Hinweis zu review.diff:
+            - Die Datei ist die vollständige stdout-Ausgabe von `git diff` und besitzt absichtlich
+              weder eine Diff-Fußzeile noch eine besondere Abschlussmarke.
+            - Unified-Diff-Hunks enthalten nur die geänderten Zeilen und begrenzten Kontext. Der
+              letzte Hunk darf deshalb mitten in einem syntaktischen Quelltextkonstrukt enden. Das
+              allein bedeutet keine Trunkierung und ist kein Grund für `blocked`.
+            - Lies review.diff mit Read bei Bedarf paginiert bis EOF. Verwende `blocked` wegen
+              unvollständiger Eingabe nur, wenn Read tatsächlich weitere, nicht zugängliche Daten
+              meldet oder ein konkreter Lese-/Eingabefehler vorliegt.
+
             Gib ausschließlich das angeforderte strukturierte Ergebnis zurück. `pass` ist nur bei
             leerer Findings-Liste erlaubt. Jedes konkrete Finding verlangt `changes-required`.
             Verwende `blocked`, wenn eine verlässliche Prüfung unter diesen Grenzen nicht möglich ist.

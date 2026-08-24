@@ -4,6 +4,7 @@
 import { api } from '../api.js';
 import { confirmDialog, openModal } from '../modal.js';
 import { state } from '../state.js';
+import { eventHasFeature } from '../eventFeatures.js';
 import { escapeHtml, formatDateTime } from '../format.js';
 import { showToast } from '../toast.js';
 import { isAdmin, setAdmin } from '../admin.js';
@@ -14,12 +15,21 @@ import { getMyId } from '../whoami.js';
 import { currentGroup, refreshGroupContext } from '../groupContext.js';
 import { eventSelectOptions } from '../eventStatus.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
-import { emptyStateHtml } from '../emptyState.js';
 
 const ONBOARDING_HELP = 'Neue Person: Registrierungslink. Bestehendes Profil: Claim-Link. Vergessenes Passwort: Reset-Link.';
 const TEST_DATA_HELP = 'Legt Test-Spieler mit Sitzplatz, Bewertungen und Spielzeit an; zwei spielen gerade. Nur im Admin-Modus sichtbar.';
 const ADMIN_ROLE_HELP = 'Owner und Admins dürfen den Admin-Bereich verwalten. Mindestens ein aktiver Owner muss erhalten bleiben.';
 const AGENT_DIAGNOSTICS_HELP = 'Der Agent fragt den PC gezielt nur nach den hier hinterlegten Spiele-Prozessen. Andere laufende Programme sieht er gar nicht erst und sie verlassen den PC nie.';
+
+export const REGISTER_INVITE_DURATION_OPTIONS = Object.freeze([
+  { value: 24 * 60 * 60 * 1000, label: '24 Stunden' },
+  { value: 3 * 24 * 60 * 60 * 1000, label: '3 Tage' },
+  { value: 7 * 24 * 60 * 60 * 1000, label: '7 Tage' },
+  { value: 14 * 24 * 60 * 60 * 1000, label: '14 Tage' },
+  { value: 30 * 24 * 60 * 60 * 1000, label: '30 Tage' },
+  { value: 90 * 24 * 60 * 60 * 1000, label: '90 Tage' },
+]);
+export const DEFAULT_REGISTER_INVITE_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
 let agentDiagnostics = null;
 let diagnosticsLoading = false;
@@ -36,27 +46,11 @@ let readiness = null;
 let readinessLoading = false;
 let readinessError = null;
 
-// Bestandsdaten-Auswertung (docs/KONZEPT-FEATURE-NUTZUNGSANALYSE.md, Baustein A).
-let featureUsage = null;
-let featureUsageLoading = false;
-let featureUsageError = null;
-const featureUsageFilters = { eventId: '' };
-
-// In-app feedback (docs/KONZEPT-FEATURE-NUTZUNGSANALYSE.md, Baustein B).
-let feedbackEntries = null;
-let feedbackLoading = false;
-let feedbackError = null;
-let feedbackSentimentFilter = 'all'; // 'all' | 'positive' | 'negative' | 'problem' | 'idea'
-
 const READINESS_STATUS = {
   ready: { label: 'Bereit', badge: 'badge-playing' },
   warning: { label: 'Prüfen', badge: 'badge-paused' },
   error: { label: 'Fehler', badge: 'badge-overdue' },
 };
-
-const FEATURE_USAGE_AREAS = ['Wettkampf', 'Orga', 'Sonstiges'];
-
-const SENTIMENT_LABEL = { positive: 'Positiv', negative: 'Negativ', problem: 'Problem', idea: 'Idee' };
 
 function inviteUrl(invite) {
   const param = invite.purpose === 'register' ? 'invite' : invite.purpose === 'test_login' ? 'testSession' : invite.purpose;
@@ -67,29 +61,55 @@ function invitePurposeLabel(purpose) {
   if (purpose === 'claim') return 'Konto übernehmen';
   if (purpose === 'reset') return 'Passwort zurücksetzen';
   if (purpose === 'test_login') return 'Testsitzung';
-  return 'Neue Person';
+  return 'Registrierungslink';
+}
+
+export function formatInviteRemaining(expiresAt, now = Date.now()) {
+  if (expiresAt == null) return 'Gültig bis zum Widerruf';
+  const remainingMs = Number(expiresAt) - now;
+  if (!Number.isFinite(remainingMs) || remainingMs <= 0) return 'abgelaufen';
+  const minutes = Math.ceil(remainingMs / 60_000);
+  if (minutes < 60) return `noch ${minutes} ${minutes === 1 ? 'Minute' : 'Minuten'} gültig`;
+  const hours = Math.ceil(minutes / 60);
+  if (hours < 24) return `noch ${hours} ${hours === 1 ? 'Stunde' : 'Stunden'} gültig`;
+  const days = Math.ceil(hours / 24);
+  return `noch ${days} ${days === 1 ? 'Tag' : 'Tage'} gültig`;
+}
+
+export function inviteValidityLabel(expiresAt, now = Date.now()) {
+  if (expiresAt == null) return 'Gültig bis zum Widerruf';
+  return `${formatInviteRemaining(expiresAt, now)} · bis ${formatDateTime(expiresAt)} Uhr`;
 }
 
 function openInviteModal(invite) {
   const url = inviteUrl(invite);
   const target = invite.playerName ? ` für ${invite.playerName}` : '';
+  const usageCount = Number.isInteger(invite.usageCount) ? invite.usageCount : 0;
+  const reusable = invite.reusable || (invite.purpose === 'register' && invite.expiresAt == null);
+  const eventHint = invite.eventSelectable === false
+    ? `<div class="admin-invite-event"><span class="muted">Event</span><strong>${escapeHtml(invite.eventName || 'Ziel-Event')}</strong><span class="muted">Ziel-Event beendet oder abgesagt – neue Konten starten in Allgemein.</span></div>`
+    : invite.eventName
+      ? `<div class="admin-invite-event"><span class="muted">Event</span><strong>${escapeHtml(invite.eventName)}</strong></div>`
+      : '';
+  const validityHint = `${inviteValidityLabel(invite.expiresAt)}. ${reusable ? 'Mehrfach nutzbar.' : 'Der Link funktioniert nur einmal.'}`;
   const { el } = openModal(
     `${invitePurposeLabel(invite.purpose)}${escapeHtml(target)}`,
     `<div class="stack">
-      <label for="admin-invite-link">Einmal-Link</label>
-      <div class="row" style="gap:var(--space-2);">
+      <label for="admin-invite-link">Link</label>
+      ${eventHint}
+      <div class="invite-link-row">
         <input type="text" id="admin-invite-link" readonly value="${escapeHtml(url)}" style="flex:1;font-family:monospace;font-size:var(--font-size-xs);" />
         <button type="button" class="btn btn-sm" id="admin-invite-copy">Kopieren</button>
       </div>
       <button type="button" class="btn btn-sm" id="admin-invite-qr-toggle">${icon('scanQrCode')} QR-Code anzeigen</button>
       <div id="admin-invite-qr" style="text-align:center;" hidden></div>
-      <p class="muted" style="font-size:var(--font-size-xs);">Gültig bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}. Der Link funktioniert nur einmal.</p>
+      <p class="muted" style="font-size:var(--font-size-xs);">${validityHint} ${usageCount}× genutzt.</p>
     </div>`
   );
   el.querySelector('#admin-invite-copy').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(url);
-      showToast('Einmal-Link kopiert.');
+      showToast('Link kopiert.');
     } catch {
       showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
     }
@@ -203,163 +223,6 @@ async function loadReadiness(ctx, force = false, restoreFocusId = null) {
   }
 }
 
-async function loadFeatureUsage(ctx, force = false) {
-  if (featureUsageLoading || (featureUsage && !force)) return;
-  featureUsageLoading = true;
-  featureUsageError = null;
-  if (force) ctx.rerender();
-  try {
-    featureUsage = await api.admin.featureUsage(featureUsageFilters.eventId || undefined);
-  } catch (error) {
-    featureUsage = null;
-    featureUsageError = error.message;
-  } finally {
-    featureUsageLoading = false;
-    ctx.rerender();
-  }
-}
-
-async function loadFeedbackEntries(ctx, force = false) {
-  if (feedbackLoading || (feedbackEntries && !force)) return;
-  feedbackLoading = true;
-  feedbackError = null;
-  if (force) ctx.rerender();
-  try {
-    feedbackEntries = await api.feedback.list();
-  } catch (error) {
-    feedbackEntries = null;
-    feedbackError = error.message;
-  } finally {
-    feedbackLoading = false;
-    ctx.rerender();
-  }
-}
-
-// The group's whole event history, not just events the admin personally
-// joined (state.managedEvents, owner/admin only) — Bestandsdaten covers
-// everything the group produced, independent of the admin's own membership.
-function featureUsageEventOptions() {
-  const events = (state.managedEvents || []).filter((e) => !e.isOutsideEvents);
-  return eventSelectOptions(events, { allEntryLabel: 'Gesamter Verlauf' });
-}
-
-function featureUsageRowHtml(entry, rosterSize, eventFilterActive) {
-  const share = rosterSize > 0 ? Math.round((entry.players / rosterSize) * 100) : null;
-  const unscopedNote =
-    eventFilterActive && !entry.eventScoped
-      ? '<div class="muted" style="font-size:var(--font-size-xs);">Zeigt den gesamten Verlauf, nicht auf das gewählte Event eingrenzbar.</div>'
-      : '';
-  return `
-    <div class="row-between" style="padding:var(--space-2) 0;border-bottom:1px solid var(--border);">
-      <span>
-        <strong>${escapeHtml(entry.label)}</strong>
-        ${entry.detail ? `<div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(entry.detail)}</div>` : ''}
-        ${unscopedNote}
-      </span>
-      <span class="row-between" style="gap:var(--space-3);text-align:right;">
-        <span>${entry.players}${share !== null ? ` <span class="muted">(${share}%)</span>` : ''} Person(en)</span>
-        <span class="muted">${entry.total}×</span>
-      </span>
-    </div>`;
-}
-
-function featureUsageSectionHtml() {
-  const body = featureUsageError
-    ? `<div class="notice notice-warning row-between" style="gap:var(--space-2);">
-        <span>Bestandsdaten konnten nicht geladen werden.</span>
-        <button type="button" class="btn btn-sm" id="admin-feature-usage-retry">Erneut versuchen</button>
-      </div>`
-    : featureUsageLoading && featureUsage === null
-      ? '<div class="card muted">Bestandsdaten werden geladen…</div>'
-      : featureUsage
-        ? FEATURE_USAGE_AREAS.map((area) => {
-            const entries = featureUsage.entries.filter((entry) => entry.area === area);
-            if (entries.length === 0) return '';
-            return `<div class="card stack">
-              <div class="section-title">${escapeHtml(area)}</div>
-              ${entries.map((entry) => featureUsageRowHtml(entry, featureUsage.rosterSize, Boolean(featureUsageFilters.eventId))).join('')}
-            </div>`;
-          }).join('')
-        : '';
-
-  return `
-    <section class="card stack grouped-page-section" aria-labelledby="admin-feature-usage-title">
-      <div class="grouped-page-section-title">
-        <span class="title-with-info">
-          <h2 id="admin-feature-usage-title">Nutzungsauswertung</h2>
-          ${infoTooltipHtml(
-            'admin-feature-usage-help',
-            'Nutzungsauswertung',
-            'Zeigt, wie viele Personen jede Funktion bereits genutzt haben — direkt aus den vorhandenen Daten, ohne separate Erhebung. „Gesamter Verlauf“ zählt über alle Events der Gruppe; einzelne Zeilen sind nicht auf ein Event eingrenzbar und weisen das dann direkt aus.',
-          )}
-        </span>
-        <button type="button" class="btn btn-sm" id="admin-feature-usage-refresh" ${featureUsageLoading ? 'disabled' : ''}>Aktualisieren</button>
-      </div>
-      ${searchSelectHtml('admin-feature-usage-event', featureUsageEventOptions(), featureUsageFilters.eventId, {
-        placeholder: 'Event suchen…',
-        ariaLabel: 'Event',
-        label: 'Events',
-      })}
-      ${featureUsage ? `<div class="muted" style="font-size:var(--font-size-xs);">Aktueller Bestand: ${featureUsage.rosterSize} aktive Mitglieder.</div>` : ''}
-      <div class="stack">${body}</div>
-    </section>`;
-}
-
-function feedbackEntryHtml(entry) {
-  const sentiment = entry.sentiment ? ` <span class="badge">${escapeHtml(SENTIMENT_LABEL[entry.sentiment] ?? entry.sentiment)}</span>` : '';
-  return `
-    <div class="card stack" style="padding:var(--space-3);">
-      <div class="row-between">
-        <span>
-          <strong>${escapeHtml(entry.playerName || 'Unbekannt')}</strong>${sentiment}
-          <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(entry.view)} · ${escapeHtml(entry.eventName || '')} · ${formatDateTime(entry.createdAt)} Uhr</div>
-        </span>
-      </div>
-      <p style="margin:0;">${escapeHtml(entry.message)}</p>
-    </div>`;
-}
-
-function feedbackSentimentFilterHtml() {
-  const options = [{ value: 'all', label: 'Alle' }, ...Object.entries(SENTIMENT_LABEL).map(([value, label]) => ({ value, label }))];
-  return `
-    <div class="chip-list" role="group" aria-label="Nach Art filtern">
-      ${options
-        .map(
-          (o) => `<button type="button" class="chip${feedbackSentimentFilter === o.value ? ' is-active' : ''}"
-            aria-pressed="${feedbackSentimentFilter === o.value}" data-feedback-sentiment-filter="${o.value}">${escapeHtml(o.label)}</button>`,
-        )
-        .join('')}
-    </div>`;
-}
-
-function feedbackSectionHtml() {
-  const visibleEntries = (feedbackEntries || []).filter(
-    (entry) => feedbackSentimentFilter === 'all' || entry.sentiment === feedbackSentimentFilter,
-  );
-  const body = feedbackError
-    ? `<div class="notice notice-warning row-between" style="gap:var(--space-2);">
-        <span>Feedback konnte nicht geladen werden.</span>
-        <button type="button" class="btn btn-sm" id="admin-feedback-retry">Erneut versuchen</button>
-      </div>`
-    : feedbackLoading && feedbackEntries === null
-      ? '<div class="card muted">Feedback wird geladen…</div>'
-      : visibleEntries.length === 0
-        ? emptyStateHtml(
-            (feedbackEntries || []).length === 0 ? 'Noch kein Feedback eingegangen.' : 'Kein Feedback dieser Art.',
-          )
-        : `<div class="stack">${visibleEntries.map(feedbackEntryHtml).join('')}</div>`;
-
-  return `
-    <section class="card stack grouped-page-section" aria-labelledby="admin-feedback-title">
-      <div class="grouped-page-section-title">
-        <h2 id="admin-feedback-title">Feedback</h2>
-        <button type="button" class="btn btn-sm" id="admin-feedback-refresh" ${feedbackLoading ? 'disabled' : ''}>Aktualisieren</button>
-      </div>
-      ${feedbackError || (feedbackEntries || []).length === 0 ? '' : feedbackSentimentFilterHtml()}
-      ${body}
-    </section>`;
-}
-
 function roleLabel(role) {
   return { owner: 'Owner', admin: 'Admin', member: 'Mitglied' }[role] ?? role;
 }
@@ -421,21 +284,72 @@ async function refreshAdminData(ctx) {
   ]);
 }
 
-async function createLoginInvite(purpose, player, ctx) {
+export function registerInviteEventOptions() {
+  const events = (state.managedEvents || []).filter(
+    (event) => !event.isOutsideEvents && !event.isBase && !event.isEnded && event.status === 'published',
+  );
+  return eventSelectOptions(events, { allEntryLabel: 'Allgemein (kein zusätzliches Event)' });
+}
+
+function openRegisterInviteDialog(ctx) {
+  const eventOptions = registerInviteEventOptions();
+  const { el, close } = openModal(
+    'Registrierungslink erstellen',
+    `<form id="admin-register-invite-form" class="stack">
+      <p class="muted admin-register-invite-note">Der Link kann innerhalb der gewählten Dauer von mehreren neuen Personen genutzt werden.</p>
+      <div>
+        <label for="admin-register-expires" class="field-label">Gültig für</label>
+        <select id="admin-register-expires" required>
+          ${REGISTER_INVITE_DURATION_OPTIONS.map((option) => `<option value="${option.value}" ${option.value === DEFAULT_REGISTER_INVITE_DURATION_MS ? 'selected' : ''}>${option.label}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label for="admin-register-event-search" class="field-label">Direkte Event-Einladung (optional)</label>
+        ${searchSelectHtml('admin-register-event', eventOptions, '', {
+          placeholder: 'Event auswählen…',
+          label: 'Events für die Einladung',
+        })}
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Registrierungslink erstellen</button>
+    </form>`,
+  );
+  wireSearchSelect(el, 'admin-register-event', eventOptions, {
+    emptyText: 'Kein offenes Event gefunden.',
+  });
+  el.querySelector('#admin-register-invite-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+      const eventId = el.querySelector('#admin-register-event').value;
+      const expiresInMs = Number(el.querySelector('#admin-register-expires').value);
+      const created = await createLoginInvite('register', null, ctx, { expiresInMs, ...(eventId ? { eventId } : {}) });
+      if (created) close();
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
+async function createLoginInvite(purpose, player, ctx, options = {}) {
   try {
-    const invite = await withStepUp(() => api.auth.createInvite({ purpose, ...(player ? { playerId: player.id } : {}) }));
-    if (invite === undefined) return;
+    const invite = await withStepUp(() =>
+      api.auth.createInvite({ purpose, ...(player ? { playerId: player.id } : {}), ...options }),
+    );
+    if (invite === undefined) return false;
     const enriched = { ...invite, playerName: player?.name || null };
-    showToast('Einmal-Link erstellt.');
+    showToast(purpose === 'register' ? 'Registrierungslink erstellt.' : 'Link erstellt.');
     openInviteModal(enriched);
     await loadActiveInvites(ctx, true);
+    return true;
   } catch (error) {
     showToast(error.message, { error: true });
+    return false;
   }
 }
 
 async function revokeLoginInvite(invite, ctx) {
-  if (!(await confirmDialog('Diesen Einmal-Link wirklich widerrufen?', {
+  if (!(await confirmDialog('Diesen Einladungslink wirklich widerrufen?', {
     title: 'Link widerrufen',
     confirmText: 'Widerrufen',
     danger: true,
@@ -443,7 +357,7 @@ async function revokeLoginInvite(invite, ctx) {
   try {
     const result = await withStepUp(() => api.auth.revokeInvite(invite.code));
     if (result === undefined) return;
-    showToast('Einmal-Link widerrufen.');
+  showToast('Einladungslink widerrufen.');
     await loadActiveInvites(ctx, true);
   } catch (error) {
     showToast(error.message, { error: true });
@@ -559,13 +473,15 @@ function renderPanel(container, ctx) {
   if (adminMembers === null && !adminMembersLoading && !adminMembersError) loadAdminMembers(ctx);
   if (activeInvites === null && !activeInvitesLoading) loadActiveInvites(ctx);
   const adminModeActive = isAdmin();
+  const trackingEnabled = eventHasFeature(state.activeEvent, 'tracking');
+  const seatingEnabled = eventHasFeature(state.activeEvent, 'seating');
+  const kioskEnabled = eventHasFeature(state.activeEvent, 'kiosk');
+  const arcadeEnabled = eventHasFeature(state.activeEvent, 'arcade');
   const allPlayers = adminPlayers || [];
   const players = adminModeActive ? allPlayers : allPlayers.filter((player) => !player.is_test);
   const testCount = allPlayers.filter((player) => player.is_test).length;
-  if (agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
-  if (readiness === null && !readinessLoading && !readinessError) loadReadiness(ctx);
-  if (featureUsage === null && !featureUsageLoading && !featureUsageError) loadFeatureUsage(ctx);
-  if (feedbackEntries === null && !feedbackLoading && !feedbackError) loadFeedbackEntries(ctx);
+  if (trackingEnabled && agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
+  if (trackingEnabled && readiness === null && !readinessLoading && !readinessError) loadReadiness(ctx);
   const rows = players
     .map(
       (p) => `
@@ -607,16 +523,23 @@ function renderPanel(container, ctx) {
 
   const inviteRows = (activeInvites || [])
     .map(
-      (invite) => `<div class="row-between" style="gap:var(--space-2);">
+      (invite) => {
+        const eventLabel = invite.eventSelectable === false
+          ? 'Ziel-Event beendet oder abgesagt – Start in Allgemein'
+          : invite.eventName
+            ? escapeHtml(invite.eventName)
+            : '';
+        return `<div class="row-between" style="gap:var(--space-2);">
         <span>
           <strong>${escapeHtml(invite.playerName || invitePurposeLabel(invite.purpose))}</strong>
-          <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))} · bis ${escapeHtml(new Date(invite.expiresAt).toLocaleString('de-DE'))}</span>
+          <span class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(invitePurposeLabel(invite.purpose))}${eventLabel ? ` · ${eventLabel}` : ''} · ${invite.usageCount ?? 0}× genutzt · ${escapeHtml(inviteValidityLabel(invite.expiresAt))}</span>
         </span>
         <span class="row" style="gap:var(--space-2);">
           <button type="button" class="btn btn-sm" data-show-login-link="${invite.code}">Anzeigen</button>
           <button type="button" class="btn btn-sm btn-danger" data-revoke-login-link="${invite.code}">Widerrufen</button>
         </span>
-      </div>`
+      </div>`;
+      },
     )
     .join('');
 
@@ -684,10 +607,10 @@ function renderPanel(container, ctx) {
     <div class="grouped-page-sections">
       ${adminModeActive ? '' : `<section class="card stack grouped-page-section" aria-labelledby="admin-mode-title">
         <div class="grouped-page-section-title"><h2 id="admin-mode-title">Admin-Modus</h2></div>
-        <p class="muted">Aktiviere den Admin-Modus, um Test-Spieler in der App anzuzeigen und im Arcade-Bereich gegen die KI zu spielen.</p>
+        <p class="muted">Aktiviere den Admin-Modus, um Test-Spieler in der App anzuzeigen${arcadeEnabled ? ' und im Arcade-Bereich gegen die KI zu spielen' : ''}.</p>
         <button type="button" class="btn btn-primary btn-block" id="admin-mode-activate">Admin-Modus aktivieren</button>
       </section>`}
-      <section class="card stack grouped-page-section" aria-labelledby="admin-readiness-title">
+      ${trackingEnabled ? `<section class="card stack grouped-page-section" aria-labelledby="admin-readiness-title">
         <div class="grouped-page-section-title">
           <h2 id="admin-readiness-title">LAN-Bereitschaft</h2>
           <button type="button" class="btn btn-sm" id="admin-readiness-refresh" ${readinessLoading ? 'disabled' : ''}>Aktualisieren</button>
@@ -695,7 +618,7 @@ function renderPanel(container, ctx) {
         <div id="admin-readiness-status" class="stack" role="status" aria-live="polite" tabindex="-1">
           ${readinessBody}
         </div>
-      </section>
+      </section>` : ''}
       <section class="card stack grouped-page-section" aria-labelledby="admin-onboarding-title">
         <div class="grouped-page-section-title">
           <h2 id="admin-onboarding-title" class="title-with-info">
@@ -705,20 +628,28 @@ function renderPanel(container, ctx) {
         </div>
         <button type="button" class="btn btn-primary" id="admin-register-link">Link für neue Person erstellen</button>
         <div class="stack">${accountRows || '<span class="muted">Keine aktiven echten Konten vorhanden.</span>'}</div>
-        <div class="section-title">Aktive Einmal-Links</div>
+        <div class="section-title">Aktive Einladungslinks</div>
         <div class="stack">${activeInvitesLoading && activeInvites === null ? '<span class="muted">Links werden geladen…</span>' : inviteRows || '<span class="muted">Keine aktiven Links.</span>'}</div>
       </section>
       <section class="card stack grouped-page-section" aria-labelledby="admin-tools-title">
         <div class="grouped-page-section-title"><h2 id="admin-tools-title">Werkzeuge</h2></div>
         <div class="two-column-card-grid">
-          <div class="card admin-tool-row">
+          ${trackingEnabled ? `<div class="card admin-tool-row">
             <strong>Auswertung</strong>
             <button type="button" class="btn btn-primary btn-sm" data-navigate="leaderboard">Öffnen</button>
+          </div>` : ''}
+          <div class="card admin-tool-row">
+            <strong>Nutzungsauswertung</strong>
+            <a href="#adminFeatureUsage" class="btn btn-primary btn-sm" data-navigate="adminFeatureUsage">Öffnen</a>
           </div>
           <div class="card admin-tool-row">
+            <strong>Feedback</strong>
+            <a href="#adminFeedback" class="btn btn-primary btn-sm" data-navigate="adminFeedback">Öffnen</a>
+          </div>
+          ${seatingEnabled ? `<div class="card admin-tool-row">
             <strong>Sitzplan</strong>
             <button type="button" class="btn btn-primary btn-sm" data-navigate="seating">Öffnen</button>
-          </div>
+          </div>` : ''}
           <div class="card admin-tool-row">
             <strong>Backup</strong>
             <button type="button" class="btn btn-primary btn-sm" id="download-backup">Herunterladen</button>
@@ -727,10 +658,10 @@ function renderPanel(container, ctx) {
             <strong>Eventverwaltung</strong>
             <button type="button" class="btn btn-primary btn-sm" data-navigate="events">Öffnen</button>
           </div>
-          <div class="card admin-tool-row">
+          ${kioskEnabled ? `<div class="card admin-tool-row">
             <strong>Kioskverwaltung</strong>
             <button type="button" class="btn btn-primary btn-sm" data-navigate="kiosk">Öffnen</button>
-          </div>
+          </div>` : ''}
         </div>
       </section>
       ${adminModeActive ? `<section class="card stack grouped-page-section" aria-labelledby="admin-test-players-title">
@@ -769,7 +700,7 @@ function renderPanel(container, ctx) {
         }
         <div class="card">${rows || '<span class="muted">Noch keine Spieler.</span>'}</div>
       </section>
-      <section class="card stack grouped-page-section" aria-labelledby="admin-agent-title">
+      ${trackingEnabled ? `<section class="card stack grouped-page-section" aria-labelledby="admin-agent-title">
         <div class="grouped-page-section-title">
           <h2 id="admin-agent-title" class="title-with-info">
             <span>Agent-Diagnose</span>
@@ -780,9 +711,7 @@ function renderPanel(container, ctx) {
         <div class="card stack">
           ${diagnosticsLoading && agentDiagnostics === null ? '<div class="muted">Diagnose laden…</div>' : diagnosticRows || '<span class="muted">Noch keine Spieler.</span>'}
         </div>
-      </section>
-      ${featureUsageSectionHtml()}
-      ${feedbackSectionHtml()}
+      </section>` : ''}
     </div>
   `;
 
@@ -790,7 +719,7 @@ function renderPanel(container, ctx) {
     adminPlayers = null;
     setAdmin(true);
   });
-  container.querySelector('#admin-register-link')?.addEventListener('click', () => createLoginInvite('register', null, ctx));
+  container.querySelector('#admin-register-link')?.addEventListener('click', () => openRegisterInviteDialog(ctx));
   container.querySelectorAll('[data-create-login-link]').forEach((button) => {
     button.addEventListener('click', () => {
       const player = players.find((entry) => entry.id === button.dataset.playerId);
@@ -820,32 +749,12 @@ function renderPanel(container, ctx) {
   container.querySelector('#download-backup').addEventListener('click', () => downloadBackup(ctx));
   wireInfoTooltips(container);
 
-  container.querySelector('#admin-readiness-refresh').addEventListener('click', (event) =>
+  container.querySelector('#admin-readiness-refresh')?.addEventListener('click', (event) =>
     loadReadiness(ctx, true, event.currentTarget.id));
   container.querySelector('#admin-readiness-retry')?.addEventListener('click', (event) =>
     loadReadiness(ctx, true, event.currentTarget.id));
-  container.querySelector('#agent-diagnostics-refresh').addEventListener('click', () => loadAgentDiagnostics(ctx, true));
+  container.querySelector('#agent-diagnostics-refresh')?.addEventListener('click', () => loadAgentDiagnostics(ctx, true));
   container.querySelector('#admin-members-retry')?.addEventListener('click', () => loadAdminMembers(ctx, true));
-
-  container.querySelector('#admin-feature-usage-refresh')?.addEventListener('click', () => loadFeatureUsage(ctx, true));
-  container.querySelector('#admin-feature-usage-retry')?.addEventListener('click', () => loadFeatureUsage(ctx, true));
-  wireSearchSelect(container, 'admin-feature-usage-event', featureUsageEventOptions(), {
-    emptyText: 'Kein passendes Event gefunden.',
-    onChange: (eventId) => {
-      featureUsageFilters.eventId = eventId; // '' selects "Gesamter Verlauf"
-      featureUsage = null;
-      featureUsageError = null;
-      ctx.rerender();
-    },
-  });
-  container.querySelector('#admin-feedback-refresh')?.addEventListener('click', () => loadFeedbackEntries(ctx, true));
-  container.querySelector('#admin-feedback-retry')?.addEventListener('click', () => loadFeedbackEntries(ctx, true));
-  container.querySelectorAll('[data-feedback-sentiment-filter]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      feedbackSentimentFilter = btn.dataset.feedbackSentimentFilter;
-      ctx.rerender();
-    });
-  });
 
   container.querySelectorAll('[data-test-session]').forEach((btn) => {
     btn.addEventListener('click', () => {

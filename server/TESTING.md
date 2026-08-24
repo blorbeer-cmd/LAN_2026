@@ -104,9 +104,11 @@ Wiederholungsfall ab.
   CI kann `core` und `arcade` unabhängig starten.
 - Core enthält die gezielt auswählbaren Domänen `auth`, `checklist`, `invitations` und `flows`.
   Gemeinsame oder unbekannte Änderungen verwenden `all`; manuelle und tägliche Läufe führen immer
-  alle vier Domänen aus. Die ehemals monolithischen Cross-View-Flows registrieren ihre Tests in drei
-  unabhängigen, laufzeitbalancierten Prozessen für Shell, Wettbewerb und Community. Arcade enthält
-  die Arcade-, Stream-Renderer-,
+  alle vier Domänen aus. Die ehemals monolithischen Cross-View-Flows registrieren ihre Tests in vier
+  unabhängigen Prozessen für Shell, Wettbewerb, Community und Essensbestellungen. Der eigene
+  Food-Order-Owner hält deren umfangreiche, zustandsbehaftete Lebenszyklus-Szenarien aus dem
+  Community-Prozess heraus und startet sie mit einem frischen Server, Browser und Datenbestand.
+  Arcade enthält die Arcade-, Stream-Renderer-,
   Battleship- und Challenge-Rush-Suiten sowie den eigenständig authentifizierten Arcade-Auth-Pfad
   und die Arcade-Partition der Cross-View-Flows. Der vollständige Challenge-Rush-Lifecycle, die
   Snake-Arena-Legenden sowie Navigation, Multiplayer-Layouts und Scribble laufen in getrennten
@@ -121,6 +123,38 @@ Wiederholungsfall ab.
   parallele Läufe und andere Worktrees nicht mehr auf statisch reservierten Ports. Das gilt auch
   für zusätzliche Server innerhalb einer Testdatei, etwa den Forfait-Reconnect-Test. Der
   Agent-Server-Integrationstest unter `agent/` verwendet denselben `PORT=0`-Ablauf.
+- Die Browser-Fixtures sammeln bei einem Fehlschlag Browser-Konsole, Page- und Request-Fehler,
+  den letzten Server-Output und Metadaten sowie Screenshots und DOM-Snapshots noch offener Seiten.
+  Zusätzlich legt jeder gestartete E2E-Testprozess zuerst einen konservativen Owner-Marker an und
+  entfernt ihn nur nach Exit-Code 0. Dadurch bleiben auch Fehler in Datei-Hooks und
+  Einstiegspunkten ohne Diagnose-Wrapper sowie Signal-, Timeout-, OOM- und SIGKILL-Abbrüche dem
+  richtigen Retry zugeordnet. Auf Plattformen, die reguläres `SIGTERM`, `SIGINT` oder `SIGHUP` an
+  Node ausliefern, wird der Marker vor der signalgerechten Beendigung noch um die konkrete Ursache
+  ergänzt.
+  Nach einem roten Browserlauf setzt CI `E2E_RETRY_FAILED_ONLY=1` und wiederholt mit `E2E_TRACE=1`
+  ausschließlich die Owner-Dateien aus den Diagnosemetadaten. Mehrere Fehler werden dedupliziert,
+  die ursprüngliche Partitionsreihenfolge bleibt erhalten. Fehlende, ungültige oder nicht zur
+  gewählten Partition gehörende Metadaten des aktuellen Laufs brechen den Retry bewusst ab; es gibt
+  keinen stillen Fallback auf die vollständige Partition. Jeder Nicht-Retry-Lauf erhält ein eigenes
+  Unterverzeichnis und aktualisiert je Partition/Core-Auswahl einen kleinen Latest-Zeiger. Der
+  anschließende Retry liest ausschließlich dieses Unterverzeichnis; ältere lokale Artefakte,
+  beschädigte Metadaten früherer Läufe und parallel gepflegte andere Partitionen beeinflussen die
+  Auswahl daher nicht. Dadurch bleibt die gemessene Laufzeit unverfälscht und
+  ein reproduzierbarer Fehler erhält zusätzlich Playwright-Traces kurzlebiger Browser-Kontexte.
+  Die absichtlich zustandsbehafteten Cross-View-Owner und der Event-Workspace-Switch teilen
+  innerhalb ihres Prozesses veränderlichen Server-, Browser- und Seitenzustand. Nach dem ersten
+  Testfehler werden ihre verbleibenden Geschwister deshalb sofort als durch den Primärfehler
+  blockiert übersprungen, statt mit einem nicht mehr beweisbar sauberen Zustand weitere Timeouts
+  zu erzeugen. Der Primärfehler bleibt rot und erhält die normalen Diagnoseartefakte;
+  `stateful-summary.json` hält zusätzlich `primaryFailure`, `cascadeSuppressed` und `resetResult`
+  maschinenlesbar fest. Der gezielte Owner-Retry startet die Datei in einem frischen Prozess und
+  läuft dadurch wieder mit einem unverbrauchten Circuit Breaker.
+  Anschließend lädt CI das Diagnoseverzeichnis sieben Tage lang als
+  `*-failure-diagnostics`-Artefakt hoch. Lokal landen Fehler standardmäßig im ignorierten
+  Verzeichnis `test-results/e2e/runs/<lauf-id>`; mit `E2E_ARTIFACT_DIR=<pfad>` lässt sich dessen
+  Wurzelverzeichnis wählen. Derselbe arbeitsverzeichnisunabhängige Default gilt für Produzenten und
+  einen lokalen gezielten Retry. `E2E_TRACE=1` aktiviert dort bei Bedarf dieselben Traces wie in CI.
+  Erfolgreiche Tests entfernen ihre temporären Trace-Daten und Prozessmarker wieder.
 - `npm run test:e2e` setzt `E2E_FAST_TIMERS=1`. Der Schnellmodus verkürzt Arcade- und
   Challenge-Rush-Countdowns nur zusammen mit `NODE_ENV=test`; in Produktion und bei allen anderen
   Aufrufen bleiben die regulären Zeiten aktiv. Challenge Rush verkürzt im E2E-Schnellmodus seine

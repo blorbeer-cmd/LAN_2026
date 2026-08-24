@@ -14,6 +14,7 @@
 
 import { escapeHtml } from '../../format.js';
 import { showToast } from '../../toast.js';
+import { strokesForScribbleSync } from '../scribbleSync.js';
 import { getMyId } from '../../whoami.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { showCountdown, cancelCountdown } from '../countdown.js';
@@ -52,6 +53,7 @@ let choiceExpiresAt = null;
 let turnExpiresAt = null;
 let paused = false;
 let pausedRemainingMs = null;
+let guessHadFocusBeforePause = false;
 let lastTurnEnd = null; // { word, reason } shown briefly during 'reveal'
 let matchEnded = null; // { winner, scores, drawings } once finished
 // Live thumbs-up: valid for exactly one drawing at a time (whichever is
@@ -774,11 +776,9 @@ export function ensureScribbleSocket() {
     if (!match || payload.matchId !== match.matchId) return;
     paused = true;
     pausedRemainingMs = payload.remainingMs;
+    guessHadFocusBeforePause = document.activeElement?.id === 'scribble-guess-input';
     stopCountdown();
-    updateCountdownBadge();
-    if (canvasEl) canvasEl.style.pointerEvents = 'none';
-    // Rerender so the host's button flips to "Fortsetzen".
-    rerender();
+    updatePauseUi();
   });
 
   socket.on('scribble:match:resumed', (payload) => {
@@ -787,8 +787,7 @@ export function ensureScribbleSocket() {
     pausedRemainingMs = null;
     turnExpiresAt = payload.expiresAt;
     startCountdown();
-    if (canvasEl) canvasEl.style.pointerEvents = '';
-    rerender();
+    updatePauseUi();
   });
 
   socket.on('scribble:presence', (payload) => {
@@ -806,7 +805,7 @@ export function ensureScribbleSocket() {
       // Only a drawing-phase sync carries ops for a live canvas. A sync
       // during reveal/choosing must reset the mirror instead — the next
       // turn's canvas has to start blank, not replay stale artwork.
-      confirmedOps = sync.phase === 'drawing' ? sync.strokes ?? [] : [];
+      confirmedOps = strokesForScribbleSync(sync);
       confirmedStrokeCount = new Set(confirmedOps.map((op) => op.strokeId)).size;
       match = { matchId: sync.matchId, host: sync.host, players: sync.players, rounds: sync.rounds, turnDurationMs: sync.turnDurationMs };
       turn = {
@@ -1095,7 +1094,12 @@ function wireRoom(container) {
     const input = container.querySelector('#scribble-guess-input');
     const text = input.value.trim();
     if (!text) return;
+    // Keep the acknowledgement on the stable view container: a correct guess
+    // immediately replaces the form during the turn transition, while this
+    // state remains available to diagnostics and browser synchronization.
+    container.dataset.scribbleGuessResult = 'pending';
     socket.emit('scribble:guess', { matchId: match.matchId, playerId: myId(), text }, (res) => {
+      container.dataset.scribbleGuessResult = !res?.ok ? 'rejected' : res.correct ? 'correct' : 'wrong';
       if (!res?.ok) return showToast(res?.error || 'Tipp nicht angenommen.', { error: true });
       // Shown only to this guesser (the server never broadcasts it) - a
       // wrong-but-close guess is otherwise indistinguishable from any other
@@ -1106,14 +1110,7 @@ function wireRoom(container) {
     input.focus();
   });
 
-  container.querySelector('#scribble-pause')?.addEventListener('click', async () => {
-    const res = await emitWithAck('scribble:match:pause', { matchId: match.matchId, playerId: myId() });
-    if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
-  });
-  container.querySelector('#scribble-resume')?.addEventListener('click', async () => {
-    const res = await emitWithAck('scribble:match:resume', { matchId: match.matchId, playerId: myId() });
-    if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
-  });
+  wirePauseControl(container);
   container.querySelector('#scribble-finish')?.addEventListener('click', async () => {
     if (!(await confirmDialog('Match wirklich beenden?', { confirmText: 'Beenden', danger: true }))) return;
     const res = await emitWithAck('scribble:match:finish', { matchId: match.matchId, playerId: myId() });
@@ -1123,10 +1120,41 @@ function wireRoom(container) {
     if (!(await confirmDialog('Match wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return;
     const res = await emitWithAck('scribble:match:leave', { matchId: match.matchId, playerId: myId() });
     if (!res?.ok) return showToast(res?.error || 'Verlassen fehlgeschlagen.', { error: true });
-    // Unlike the 1v1 games, a Scribble match with 3+ players keeps running
-    // for everyone else — there's no incoming match:end for the leaver to
-    // react to, so this client has to clear its own state and navigate away.
     resetMatchState();
     navigate('arcade');
   });
+}
+
+function wirePauseControl(container) {
+  container.querySelector('#scribble-pause')?.addEventListener('click', async () => {
+    const res = await emitWithAck('scribble:match:pause', { matchId: match.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Pausieren fehlgeschlagen.', { error: true });
+  });
+  container.querySelector('#scribble-resume')?.addEventListener('click', async () => {
+    const res = await emitWithAck('scribble:match:resume', { matchId: match.matchId, playerId: myId() });
+    if (!res?.ok) showToast(res?.error || 'Fortsetzen fehlgeschlagen.', { error: true });
+  });
+}
+
+function updatePauseUi() {
+  updateCountdownBadge();
+  if (canvasEl) canvasEl.style.pointerEvents = paused ? 'none' : '';
+  toolbarEl?.querySelectorAll('button').forEach((button) => { button.disabled = paused; });
+  document.querySelectorAll('[data-word-id]').forEach((button) => { button.disabled = paused; });
+  const guessInput = document.querySelector('#scribble-guess-input');
+  const guessButton = document.querySelector('#scribble-guess-form button[type="submit"]');
+  if (guessInput) guessInput.disabled = paused;
+  if (guessButton) guessButton.disabled = paused;
+
+  const button = document.querySelector('#scribble-pause, #scribble-resume');
+  if (button) {
+    button.outerHTML = paused
+      ? '<button type="button" class="btn btn-sm btn-equal btn-primary" id="scribble-resume">Fortsetzen</button>'
+      : '<button type="button" class="btn btn-sm btn-equal" id="scribble-pause">Pausieren</button>';
+    wirePauseControl(document);
+  }
+  if (!paused && guessHadFocusBeforePause && guessInput) {
+    guessInput.focus();
+    guessHadFocusBeforePause = false;
+  }
 }

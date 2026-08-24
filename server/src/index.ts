@@ -11,6 +11,9 @@ import { runBootstrapAdmins } from './bootstrapAdmins';
 import { createApp } from './app';
 import { setIo, createSocketAuthGuard, registerScopedSockets } from './realtime';
 import { startOfflineSweeper } from './liveStatus';
+import { startFoodOrderPaymentReminder } from './foodOrderReminders';
+import { startEventPaymentReminder } from './eventPaymentReminders';
+import { startEventDatePollReminderSweep } from './eventDatePollReminders';
 import { startArcadeHeartbeat } from './arcade/arcadeTracking';
 import { registerArcadeSockets } from './arcade/arcade';
 import { registerTetrisSockets } from './arcade/tetris';
@@ -70,6 +73,10 @@ function start(): void {
 
   // Periodically flip stale players to offline.
   startOfflineSweeper(io);
+  // Remind participants about every kind of open payment every two hours.
+  startFoodOrderPaymentReminder();
+  startEventPaymentReminder();
+  startEventDatePollReminderSweep();
   // Keeps players mid-arcade-match from being swept offline (arcade has no
   // agent report to keep live_status fresh — see arcadeTracking.ts).
   startArcadeHeartbeat();

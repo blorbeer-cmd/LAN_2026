@@ -9,50 +9,77 @@
 
 import { api } from '../api.js';
 import { state } from '../state.js';
-import { escapeHtml, stateLabel, avatarHtml, gameChipsHtml } from '../format.js';
+import { escapeHtml, formatDateTime, stateLabel, avatarHtml, gameChipsHtml } from '../format.js';
 import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { renderSeatingPlan } from './seating.js';
-import { ensureAktuellLoaded, aktuellItems } from '../aktuellStatus.js';
+import { ensureAktuellLoaded, aktuellItems, dismissAktuellItem } from '../aktuellStatus.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { isAdmin } from '../admin.js';
+import { eventHasFeature, viewIsEnabledForEvent } from '../eventFeatures.js';
+import { eventTypeTitle } from '../eventTypes.js';
+import { domainIcon } from '../domainIcons.js';
+import { formatEuroCents } from '../paypal.js';
+import { dueBadgeInfo } from '../checklistDue.js';
+import { assignedTasks, ensureTasksLoaded, openTaskCount } from './checklist.js';
 
 const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
 
+const GENERAL_EVENT_LINKS = Object.freeze([
+  Object.freeze({ view: 'events', title: 'Eventdetails & Kosten', description: 'Zeitraum, Ort, Teilnehmende und Beiträge' }),
+  Object.freeze({ view: 'checklist', title: 'To-Dos', description: 'Aufgaben und Mitbring-Anfragen' }),
+  Object.freeze({ view: 'arrivals', title: 'An- & Abreise', description: 'Zeiten und Fahrgemeinschaften' }),
+  Object.freeze({ view: 'foodOrders', title: 'Essen', description: 'Gemeinsame Bestellungen' }),
+  Object.freeze({ view: 'music', title: 'Jam', description: 'Musik und gemeinsame Warteschlange' }),
+]);
+
 let seatingCache = null;
 let seatingLoading = false;
+let seatingStale = false;
+let seatingRequestVersion = 0;
+let seatingLoadError = false;
 
 window.addEventListener('seating:changed', () => {
-  seatingCache = null;
+  invalidateHomeSeating();
 });
 
 // A player's name/real name/avatar can change (players:changed) without the
 // seating layout itself changing — the cached board would otherwise keep
 // showing the old real name for the rest of the session on any device that
 // already loaded it (CLAUDE.md: realtime by default, no manual reload).
-export function invalidateHomeSeating() {
-  seatingCache = null;
+export function invalidateHomeSeating({ hard = false } = {}) {
+  seatingRequestVersion += 1;
+  seatingLoading = false;
+  seatingStale = true;
+  seatingLoadError = false;
+  if (hard) seatingCache = null;
 }
 
 async function loadSeating(ctx) {
+  const version = ++seatingRequestVersion;
   seatingLoading = true;
+  seatingStale = false;
+  seatingLoadError = false;
   try {
-    seatingCache = await api.seating.layout();
+    const result = await api.seating.layout();
+    if (version === seatingRequestVersion) seatingCache = result;
   } catch {
-    seatingCache = null;
+    if (version === seatingRequestVersion) seatingLoadError = seatingCache === null;
   } finally {
-    seatingLoading = false;
-    ctx.rerender();
+    if (version === seatingRequestVersion) {
+      seatingLoading = false;
+      ctx.rerender();
+    }
   }
 }
 
 function renderHomeSeating(ctx) {
-  if (seatingCache === null && !seatingLoading) loadSeating(ctx);
+  if ((seatingCache === null || seatingStale) && !seatingLoading && !seatingLoadError) loadSeating(ctx);
   return `<section class="card grouped-page-section live-seating stack" aria-labelledby="home-seating-title">
     <div class="grouped-page-section-title"><h2 id="home-seating-title">Sitzplan</h2></div>
-    ${seatingLoading || seatingCache === null
-      ? emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' })
+    ${seatingCache === null
+      ? emptyStateHtml(seatingLoadError ? 'Sitzplan konnte nicht geladen werden.' : 'Lädt…', { style: 'padding:var(--space-4);' })
       : renderSeatingPlan(seatingCache.layout, seatingCache.players)}
   </section>`;
 }
@@ -66,29 +93,37 @@ let lastCtx = null;
 window.addEventListener('respawn:aktuell-changed', () => lastCtx?.rerender());
 
 // Compact single-line row (the "Mehr" hub's list-row component, see
-// more.js) instead of a full card with its own button: the prominent header
-// banner (notificationBanner.js) already covers the "look at me" job for
-// the single latest thing, so these just need to be scannable at a glance,
-// with the whole row (not a separate button) as the tap target.
-function statusRowHtml({ iconName, title, sub, navigate }) {
+// more.js). Navigation and dismissal are sibling buttons so both remain
+// semantic, keyboard-operable controls without nesting one button in another.
+function statusRowHtml({ id, iconName, title, sub, navigate, target }) {
+  const targetAttrs = target?.type && target?.id
+    ? `data-navigate-target-type="${escapeHtml(target.type)}" data-navigate-target-id="${escapeHtml(target.id)}"`
+    : '';
   return `
-    <button type="button" class="card row list-row" data-navigate="${navigate}">
-      <span class="list-row-icon">${icon(iconName)}</span>
-      <span style="flex:1;min-width:0;">
-        <div class="player-name">${title}</div>
-        ${sub ? `<div class="muted list-row-desc">${sub}</div>` : ''}
-      </span>
-      <span class="muted">${icon('chevronRight')}</span>
-    </button>`;
+    <article class="card list-row home-current-row" data-current-item="${id}">
+      <button type="button" class="home-current-navigate" data-navigate="${navigate}" ${targetAttrs}>
+        <span class="list-row-icon">${icon(iconName)}</span>
+        <span class="home-current-copy">
+          <span class="player-name">${title}</span>
+          ${sub ? `<span class="muted list-row-desc">${sub}</span>` : ''}
+        </span>
+        <span class="muted">${icon('chevronRight')}</span>
+      </button>
+      <button type="button" class="icon-btn home-current-dismiss" data-dismiss-current="${id}" aria-label="${title} ausblenden" title="Meldung ausblenden">${icon('x')}</button>
+    </article>`;
 }
 
 function renderStatus() {
-  const rows = aktuellItems().map((item) =>
+  const rows = aktuellItems()
+    .filter((item) => viewIsEnabledForEvent(item.navigate, state.activeEvent))
+    .map((item) =>
     statusRowHtml({
+      id: escapeHtml(item.id),
       iconName: item.iconName,
       title: escapeHtml(item.title),
       sub: item.sub ? escapeHtml(item.sub) : '',
       navigate: item.navigate,
+      target: item.target,
     })
   );
 
@@ -99,6 +134,124 @@ function renderStatus() {
       <div class="card-grid">${rows.join('')}</div>
     </section>
   `;
+}
+
+function eventPeriod(event) {
+  const start = formatDateTime(event.startsAt);
+  return event.endsAt == null ? `Ab ${start}` : `${start} – ${formatDateTime(event.endsAt)}`;
+}
+
+function generalEventLinkHtml(item) {
+  const taskCount = item.view === 'checklist' ? openTaskCount() : 0;
+  const description = taskCount > 0
+    ? `${taskCount} ${taskCount === 1 ? 'To-Do ist' : 'To-Dos sind'} dir zugewiesen`
+    : item.description;
+  return `
+    <button type="button" class="card row list-row" data-navigate="${item.view}">
+      <span class="list-row-icon">${icon(domainIcon(item.view))}</span>
+      <span class="home-current-copy">
+        <span class="player-name">${escapeHtml(item.title)}</span>
+        <span class="muted list-row-desc">${escapeHtml(description)}</span>
+      </span>
+      <span class="muted">${icon('chevronRight')}</span>
+    </button>`;
+}
+
+function renderGeneralEventOverview() {
+  const event = state.activeEvent;
+  if (!event || event.eventType !== 'general') return '';
+  const participantCount = Array.isArray(event.participantIds) ? event.participantIds.length : null;
+  const links = GENERAL_EVENT_LINKS
+    .filter((item) => viewIsEnabledForEvent(item.view, event))
+    .map(generalEventLinkHtml)
+    .join('');
+  return `
+    <section class="card grouped-page-section stack" aria-labelledby="home-event-overview-title" data-home-event-overview>
+      <div class="grouped-page-section-title">
+        <h2 id="home-event-overview-title">Eventübersicht</h2>
+        <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
+      </div>
+      <div class="card stack">
+        <strong>${escapeHtml(event.name)}</strong>
+        <div class="event-card-detail">
+          <span class="event-card-detail-icon" aria-hidden="true">${icon('calendar')}</span>
+          <span class="event-card-detail-content">
+            <span class="event-card-detail-label">Zeitraum</span>
+            <span>${escapeHtml(eventPeriod(event))}</span>
+          </span>
+        </div>
+        ${event.location ? `<div class="event-card-detail">
+          <span class="event-card-detail-icon" aria-hidden="true">${icon('mapPin')}</span>
+          <span class="event-card-detail-content">
+            <span class="event-card-detail-label">Ort</span>
+            <span>${escapeHtml(event.location)}</span>
+          </span>
+        </div>` : ''}
+        ${event.description ? `<div class="event-card-detail">
+          <span class="event-card-detail-icon" aria-hidden="true">${icon('file')}</span>
+          <span class="event-card-detail-content">
+            <span class="event-card-detail-label">Hinweis</span>
+            <span>${escapeHtml(event.description)}</span>
+          </span>
+        </div>` : ''}
+        ${participantCount === null ? '' : `<div class="event-card-detail">
+          <span class="event-card-detail-icon" aria-hidden="true">${icon('users')}</span>
+          <span class="event-card-detail-content">
+            <span class="event-card-detail-label">Teilnehmende</span>
+            <span>${participantCount === 1 ? '1 teilnehmende Person' : `${participantCount} Teilnehmende`}</span>
+          </span>
+        </div>`}
+        ${event.costCents ? `<div class="event-card-detail">
+          <span class="event-card-detail-icon" aria-hidden="true">${icon('paypal')}</span>
+          <span class="event-card-detail-content">
+            <span class="event-card-detail-label">Beitrag pro Person</span>
+            <span>${escapeHtml(formatEuroCents(event.costCents))}</span>
+          </span>
+        </div>` : ''}
+      </div>
+    </section>
+    <section class="card grouped-page-section stack" aria-labelledby="home-organisation-title">
+      <div class="grouped-page-section-title"><h2 id="home-organisation-title">Organisation</h2></div>
+      <div class="card-grid">${links}</div>
+    </section>`;
+}
+
+function homeTaskHtml(task) {
+  const due = dueBadgeInfo(task.dueAt);
+  return `
+    <button type="button" class="card row list-row" data-navigate="checklist" data-home-assigned-task="${escapeHtml(task.id)}">
+      <span class="list-row-icon">${icon('check')}</span>
+      <span class="home-current-copy">
+        <span class="player-name">${escapeHtml(task.title)}</span>
+        <span class="muted list-row-desc">${task.type === 'item_request' ? 'Mitbring-Anfrage' : 'Aufgabe'}</span>
+      </span>
+      ${due ? `<span class="badge ${due.cls}">${escapeHtml(due.text)}</span>` : `<span class="muted">${icon('chevronRight')}</span>`}
+    </button>`;
+}
+
+function renderAssignedTodos() {
+  if (!eventHasFeature(state.activeEvent, 'tasks')) return '';
+  const tasks = assignedTasks();
+  const myId = getMyId();
+  let content;
+  if (tasks === null) content = emptyStateHtml('Lädt…');
+  else if (!myId) content = '<p class="muted">Wähle oben, wer du bist, um deine To-Dos zu sehen.</p>';
+  else if (tasks.length === 0) content = '<p class="muted">Aktuell liegt nichts bei dir.</p>';
+  else {
+    const visibleTasks = tasks.slice(0, 3);
+    const remaining = tasks.length - visibleTasks.length;
+    content = `
+      <div class="card-grid">${visibleTasks.map(homeTaskHtml).join('')}</div>
+      ${remaining > 0 ? `<p class="muted">${remaining === 1 ? 'Ein weiteres To-Do' : `${remaining} weitere To-Dos`} findest du in der vollständigen Liste.</p>` : ''}`;
+  }
+  return `
+    <section class="card grouped-page-section stack" aria-labelledby="home-todos-title" data-home-assigned-todos>
+      <div class="grouped-page-section-title">
+        <h2 id="home-todos-title">Meine To-Dos</h2>
+        <button type="button" class="btn btn-sm" data-navigate="checklist">Alle To-Dos</button>
+      </div>
+      ${content}
+    </section>`;
 }
 
 // Groups currently-playing players by game (FR-27): a quick glance at what's
@@ -193,20 +346,27 @@ function renderMyStatus(myId, players) {
 
 export function renderHome(container, ctx) {
   lastCtx = ctx;
+  const trackingEnabled = eventHasFeature(state.activeEvent, 'tracking');
+  const seatingEnabled = eventHasFeature(state.activeEvent, 'seating');
   const players = [...state.live].sort((a, b) => {
     const rankDiff = STATE_RANK[a.state] - STATE_RANK[b.state];
     if (rankDiff !== 0) return rankDiff;
     return a.name.localeCompare(b.name, 'de');
   });
 
-  if (players.length === 0) {
+  if (eventHasFeature(state.activeEvent, 'tasks')) ensureTasksLoaded(ctx);
+
+  if (players.length === 0 && trackingEnabled) {
     container.innerHTML = `
       <h1 class="view-title">Home</h1>
-      ${emptyStateHtml(`
-        <img src="/img/mascot.svg" alt="" width="72" height="66" class="mascot" />
-        Noch keine Spieler angelegt.<br />
-        <button type="button" class="btn btn-primary btn-sm" data-navigate="profile" style="margin-top:var(--space-3);">Eigenes Profil anlegen</button>
-      `)}`;
+      <div class="grouped-page-sections">
+        ${renderAssignedTodos()}
+        ${emptyStateHtml(`
+          <img src="/img/mascot.svg" alt="" width="72" height="66" class="mascot" />
+          Noch keine Spieler angelegt.<br />
+          <button type="button" class="btn btn-primary btn-sm" data-navigate="profile" style="margin-top:var(--space-3);">Eigenes Profil anlegen</button>
+        `)}
+      </div>`;
     return;
   }
 
@@ -260,15 +420,21 @@ export function renderHome(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Home</h1>
     <div class="grouped-page-sections">
+      ${renderGeneralEventOverview()}
+      ${renderAssignedTodos()}
       ${renderStatus()}
-      <section class="card grouped-page-section stack" aria-labelledby="home-live-title">
-        <div class="grouped-page-section-title"><h2 id="home-live-title">Live-Status</h2></div>
-        ${renderActiveGroups(players)}
-        ${renderMyStatus(myId, players)}
-        <div class="two-column-card-grid home-live-grid">${cards}</div>
-      </section>
-      ${renderLeaderboardTop()}
-      ${renderHomeSeating(ctx)}
+      ${
+        trackingEnabled
+          ? `<section class="card grouped-page-section stack" aria-labelledby="home-live-title">
+               <div class="grouped-page-section-title"><h2 id="home-live-title">Live-Status</h2></div>
+               ${renderActiveGroups(players)}
+               ${renderMyStatus(myId, players)}
+               <div class="two-column-card-grid home-live-grid">${cards}</div>
+             </section>
+             ${renderLeaderboardTop()}`
+          : ''
+      }
+      ${seatingEnabled ? renderHomeSeating(ctx) : ''}
     </div>
   `;
 
@@ -281,6 +447,14 @@ export function renderHome(container, ctx) {
       } catch (err) {
         showToast(err.message, { error: true });
       }
+    });
+  });
+
+  container.querySelectorAll('[data-dismiss-current]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!dismissAktuellItem(btn.dataset.dismissCurrent)) return;
+      showToast('Meldung ausgeblendet.');
+      ctx.rerender();
     });
   });
 }

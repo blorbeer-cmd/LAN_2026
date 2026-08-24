@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
 import { classifyChangedPaths } from "./ci-path-classifier.mjs";
 import { VIEW_MANIFEST } from "../server/public/js/viewManifest.js";
@@ -49,6 +49,23 @@ test("unknown E2E files fail closed into both partitions until the manifest is u
   const result = selected(["server/src/test/e2e/newScenario.e2e.test.ts"]);
   assert.equal(result.e2eCore, true);
   assert.equal(result.e2eArcade, true);
+});
+
+test("every browser E2E owner participates in failure diagnostics", () => {
+  const directory = new URL("../server/src/test/e2e/", import.meta.url);
+  const owners = readdirSync(directory).filter((file) => {
+    if (!file.endsWith(".ts")) return false;
+    return /\bchromium\b/.test(readFileSync(new URL(file, directory), "utf8"));
+  });
+  assert.ok(owners.length > 0, "expected browser E2E owners");
+  for (const owner of owners) {
+    const source = readFileSync(new URL(owner, directory), "utf8");
+    assert.match(
+      source,
+      /runWithE2EDiagnostics|createE2EDiagnosticTest|StatefulE2EDiagnosticGuard|createStatefulE2EDiagnosticTest/,
+      owner,
+    );
+  }
 });
 
 test("the kiosk remains a Core consumer and Arcade stylesheet versions stay synchronized", () => {
@@ -237,6 +254,32 @@ test("the workflow preserves the required aggregate Browser E2E check", () => {
     workflow,
     /name: Run measured Core E2E \(\$\{\{ needs\.changes\.outputs\.e2e_core_scope \}\}\)/,
   );
+});
+
+test("E2E trace retries have bounded time and job-level upload headroom", () => {
+  const workflow = readDeployWorkflow();
+  const expectations = [
+    ["e2e-core", "e2e-arcade-smoke", 35, "Core E2E", 10],
+    ["e2e-arcade-smoke", "e2e-arcade", 20, "Arcade smoke E2E", 5],
+    ["e2e-arcade", "browser-e2e", 35, "Arcade E2E", 10],
+    ["test-performance-confirm", "test-performance", 45, "repeated E2E", 10],
+  ];
+
+  for (const [job, nextJob, jobTimeout, retryName, retryTimeout] of expectations) {
+    const block = workflow.match(
+      new RegExp(`\\n  ${job}:\\n([\\s\\S]*?)\\n  ${nextJob}:`),
+    )?.[1];
+    assert.ok(block, `the ${job} job is missing`);
+    assert.match(block, new RegExp(`^    timeout-minutes: ${jobTimeout}$`, "m"));
+
+    const retry = block.match(
+      new RegExp(`      - name: Reproduce ${retryName} failure with tracing\\n([\\s\\S]*?)(?=\\n      - name:)`),
+    )?.[1];
+    assert.ok(retry, `the ${job} trace retry is missing`);
+    assert.match(retry, new RegExp(`^        timeout-minutes: ${retryTimeout}$`, "m"));
+    assert.match(retry, /^        continue-on-error: true$/m);
+    assert.match(retry, /^          E2E_RETRY_FAILED_ONLY: "1"$/m);
+  }
 });
 
 // Regression guard: without a status check function GitHub adds an implicit

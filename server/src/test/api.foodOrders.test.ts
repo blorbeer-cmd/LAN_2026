@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { createTestApp } from './testApp';
+import { createTestApp, sessionCookie } from './testApp';
 
 const app = createTestApp();
 
@@ -33,10 +33,23 @@ test('POST /api/food-orders validates title, player, sendAt, notes, link, paypal
     .post('/api/food-orders')
     .send({ playerId: alice.id, title: 'Pizza', link: 'javascript:alert(1)' });
   assert.equal(badLink.status, 400);
+  assert.equal(badLink.body.error, 'Speisekarte muss eine gültige http(s)-URL sein.');
   const badPaypalLink = await request(app)
     .post('/api/food-orders')
     .send({ playerId: alice.id, title: 'Pizza', paypalLink: 'javascript:alert(1)' });
   assert.equal(badPaypalLink.status, 400);
+  for (const paypalLink of [
+    'http://paypal.me/luigi',
+    'https://payments.example/luigi',
+    'https://paypal.me/luigi/500EUR',
+    'https://www.paypal.com/paypalme/luigi/500EUR',
+    'https://www.paypal.com/paypalme/luigi/500EUR?locale.x=de_DE',
+  ]) {
+    const unsafePaypalLink = await request(app)
+      .post('/api/food-orders')
+      .send({ playerId: alice.id, title: 'Pizza', paypalLink });
+    assert.equal(unsafePaypalLink.status, 400);
+  }
   const tipTooHigh = await request(app)
     .post('/api/food-orders')
     .send({ playerId: alice.id, title: 'Pizza', tipPercent: 101 });
@@ -115,6 +128,12 @@ test('PATCH /api/food-orders/:id sets, updates and clears send time, notes, link
   // sendAt untouched by a request that only mentions notes/link/paypalLink/tipPercent.
   assert.equal(withNotesAndLink.body.sendAt, laterSendAt);
 
+  const canonicalPaypalMe = await request(app)
+    .patch(`/api/food-orders/${orderId}`)
+    .send({ paypalLink: 'https://www.paypal.com/paypalme/alice' });
+  assert.equal(canonicalPaypalMe.status, 200, JSON.stringify(canonicalPaypalMe.body));
+  assert.equal(canonicalPaypalMe.body.paypalLink, 'https://www.paypal.com/paypalme/alice');
+
   const cleared = await request(app)
     .patch(`/api/food-orders/${orderId}`)
     .send({ sendAt: null, notes: null, link: null, paypalLink: null, tipPercent: null });
@@ -130,9 +149,14 @@ test('PATCH /api/food-orders/:id sets, updates and clears send time, notes, link
 
   const invalidLink = await request(app).patch(`/api/food-orders/${orderId}`).send({ link: 'not-a-url' });
   assert.equal(invalidLink.status, 400);
+  assert.equal(invalidLink.body.error, 'Speisekarte muss eine gültige http(s)-URL sein (oder null zum Entfernen).');
 
   const invalidPaypalLink = await request(app).patch(`/api/food-orders/${orderId}`).send({ paypalLink: 'not-a-url' });
   assert.equal(invalidPaypalLink.status, 400);
+  assert.equal(
+    (await request(app).patch(`/api/food-orders/${orderId}`).send({ paypalLink: 'https://payments.example/pay' })).status,
+    400,
+  );
 
   const invalidTipPercent = await request(app).patch(`/api/food-orders/${orderId}`).send({ tipPercent: 200 });
   assert.equal(invalidTipPercent.status, 400);
@@ -187,7 +211,7 @@ test('players can only remove their own items, and only while open', async () =>
   aliceItemId = readded.body.items.find((i: { playerId: string }) => i.playerId === alice.id).id;
 });
 
-test('PATCH /api/food-orders/:id/items/:itemId marks and unmarks an item as paid', async () => {
+test('PATCH /api/food-orders/:id/items/:itemId marks and unmarks an item as paid, recording who did it, and any group member may do it', async () => {
   const bad = await request(app).patch(`/api/food-orders/${orderId}/items/${aliceItemId}`).send({ paid: 'yes' });
   assert.equal(bad.status, 400);
 
@@ -197,15 +221,126 @@ test('PATCH /api/food-orders/:id/items/:itemId marks and unmarks an item as paid
   const missingItem = await request(app).patch(`/api/food-orders/${orderId}/items/nope`).send({ paid: true });
   assert.equal(missingItem.status, 404);
 
-  const marked = await request(app).patch(`/api/food-orders/${orderId}/items/${aliceItemId}`).send({ paid: true });
+  // Bob is neither the order's creator (Alice) nor an admin. Marking a
+  // position paid used to be creator/admin-only; now anyone who can also pay
+  // into the order may do it - the payment handoff's automatic mark-paid-after-
+  // paying flow is useless otherwise for every participant but the creator.
+  const marked = await request(app)
+    .patch(`/api/food-orders/${orderId}/items/${aliceItemId}`)
+    .send({ paid: true, playerId: bob.id });
   assert.equal(marked.status, 200);
   const markedItem = marked.body.items.find((i: { id: string }) => i.id === aliceItemId);
   assert.equal(markedItem.paid, true);
+  assert.equal(markedItem.paidBy, bob.id);
+  assert.equal(markedItem.paidByName, 'Hungriger Bob');
+  assert.ok(typeof markedItem.paidAt === 'number' && markedItem.paidAt > 0);
 
-  const unmarked = await request(app).patch(`/api/food-orders/${orderId}/items/${aliceItemId}`).send({ paid: false });
+  const paidDelete = await request(app)
+    .delete(`/api/food-orders/${orderId}/items/${aliceItemId}`)
+    .send({ playerId: alice.id });
+  assert.equal(paidDelete.status, 409);
+
+  // A stale second confirmation must not overwrite the first confirmer. The
+  // route's conditional update turns the read-then-write race into a 409.
+  const duplicateMark = await request(app)
+    .patch(`/api/food-orders/${orderId}/items/${aliceItemId}`)
+    .send({ paid: true, playerId: alice.id });
+  assert.equal(duplicateMark.status, 409);
+
+  // Unmarking clears the paid-by trail again, whoever does it.
+  const unmarked = await request(app)
+    .patch(`/api/food-orders/${orderId}/items/${aliceItemId}`)
+    .send({ paid: false, playerId: bob.id });
   assert.equal(unmarked.status, 200);
   const unmarkedItem = unmarked.body.items.find((i: { id: string }) => i.id === aliceItemId);
   assert.equal(unmarkedItem.paid, false);
+  assert.equal(unmarkedItem.paidBy, null);
+  assert.equal(unmarkedItem.paidAt, null);
+});
+
+test('bulk payment applies atomically when one item has changed concurrently', async () => {
+  const current = await request(app).get(`/api/food-orders?orderId=${orderId}`);
+  assert.equal(current.status, 200);
+  const currentOrder = current.body.orders.find((order: { id: string }) => order.id === orderId);
+  const bobItemId = currentOrder.items.find((item: { playerId: string }) => item.playerId === bob.id).id;
+
+  const marked = await request(app).patch(`/api/food-orders/${orderId}/items/${aliceItemId}`).send({ paid: true });
+  assert.equal(marked.status, 200);
+
+  const rejected = await request(app)
+    .patch(`/api/food-orders/${orderId}/items/bulk-paid`)
+    .send({ itemIds: [aliceItemId, bobItemId], paid: true });
+  assert.equal(rejected.status, 409);
+
+  const after = await request(app).get(`/api/food-orders?orderId=${orderId}`);
+  const afterItems = after.body.orders.find((order: { id: string }) => order.id === orderId).items;
+  assert.equal(afterItems.find((item: { id: string }) => item.id === aliceItemId).paid, true);
+  assert.equal(afterItems.find((item: { id: string }) => item.id === bobItemId).paid, false);
+
+  const reset = await request(app).patch(`/api/food-orders/${orderId}/items/bulk-paid`).send({ itemIds: [aliceItemId], paid: false });
+  assert.equal(reset.status, 200);
+});
+
+test('bulk payment marks every selected item and records the authenticated confirmer', async () => {
+  const current = await request(app).get(`/api/food-orders?orderId=${orderId}`);
+  const currentOrder = current.body.orders.find((order: { id: string }) => order.id === orderId);
+  const bobItemId = currentOrder.items.find((item: { playerId: string }) => item.playerId === bob.id).id;
+
+  // The body identity is deliberately Alice, but the explicit session is Bob:
+  // paid_by must come from the authenticated session, never from request data.
+  const marked = await request(app)
+    .patch(`/api/food-orders/${orderId}/items/bulk-paid`)
+    .set('Cookie', sessionCookie(bob.id))
+    .send({ itemIds: [aliceItemId, bobItemId], paid: true, playerId: alice.id });
+  assert.equal(marked.status, 200);
+  for (const itemId of [aliceItemId, bobItemId]) {
+    const item = marked.body.items.find((candidate: { id: string }) => candidate.id === itemId);
+    assert.equal(item.paid, true);
+    assert.equal(item.paidBy, bob.id);
+    assert.equal(item.paidByName, 'Hungriger Bob');
+    assert.ok(typeof item.paidAt === 'number' && item.paidAt > 0);
+  }
+
+  const reset = await request(app)
+    .patch(`/api/food-orders/${orderId}/items/bulk-paid`)
+    .set('Cookie', sessionCookie(alice.id))
+    .send({ itemIds: [aliceItemId, bobItemId], paid: false, playerId: bob.id });
+  assert.equal(reset.status, 200);
+});
+
+test('bulk payment validates its item set and rejects cross-order and finalized mutations', async () => {
+  const invalidBodies = [
+    { itemIds: [], paid: true },
+    { itemIds: [aliceItemId, aliceItemId], paid: true },
+    { itemIds: [aliceItemId], paid: 'yes' },
+    { itemIds: Array.from({ length: 101 }, (_, index) => `too-many-${index}`), paid: true },
+  ];
+  for (const body of invalidBodies) {
+    const invalid = await request(app).patch(`/api/food-orders/${orderId}/items/bulk-paid`).send(body);
+    assert.equal(invalid.status, 400);
+  }
+
+  const foreign = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: 'Fremde Position' });
+  const foreignItem = await request(app)
+    .post(`/api/food-orders/${foreign.body.id}/items`)
+    .send({ playerId: bob.id, description: 'Nicht in dieser Bestellung' });
+  const crossOrder = await request(app)
+    .patch(`/api/food-orders/${orderId}/items/bulk-paid`)
+    .send({ itemIds: [foreignItem.body.items[0].id], paid: true });
+  assert.equal(crossOrder.status, 404);
+  assert.equal((await request(app).delete(`/api/food-orders/${foreign.body.id}`)).status, 204);
+
+  const finalized = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: 'Bereits geschlossen' });
+  const finalizedItem = await request(app)
+    .post(`/api/food-orders/${finalized.body.id}/items`)
+    .send({ playerId: bob.id, description: 'Nicht mehr bezahlbar' });
+  await request(app).post(`/api/food-orders/${finalized.body.id}/close`);
+  await request(app).post(`/api/food-orders/${finalized.body.id}/finalize`);
+  const finalizedPayment = await request(app)
+    .patch(`/api/food-orders/${finalized.body.id}/items/bulk-paid`)
+    .send({ itemIds: [finalizedItem.body.items[0].id], paid: true });
+  assert.equal(finalizedPayment.status, 409);
+  assert.equal((await request(app).delete(`/api/food-orders/${finalized.body.id}`)).status, 204);
 });
 
 test('closing freezes the order: no more items, no second close', async () => {
@@ -286,6 +421,30 @@ test('GET /api/food-orders lists orders with items grouped data', async () => {
   assert.equal(order.items.length, 2);
 });
 
+test('GET /api/food-orders?orderId includes a targeted order outside the history limit', async () => {
+  for (let index = 0; index < 11; index += 1) {
+    const created = await request(app)
+      .post('/api/food-orders')
+      .send({ playerId: alice.id, title: `Neuere Bestellung ${index + 1}` });
+    assert.equal(created.status, 201);
+  }
+
+  const recent = await request(app).get('/api/food-orders');
+  assert.equal(recent.status, 200);
+  assert.equal(recent.body.orders.some((o: { id: string }) => o.id === orderId), false);
+
+  const targeted = await request(app).get(`/api/food-orders?orderId=${encodeURIComponent(orderId)}`);
+  assert.equal(targeted.status, 200);
+  assert.ok(targeted.body.orders.some((o: { id: string }) => o.id === orderId));
+  assert.notEqual(targeted.body.orders[0].id, orderId);
+  assert.ok(
+    targeted.body.orders.every(
+      (order: { createdAt: number }, index: number, orders: Array<{ createdAt: number }>) =>
+        index === 0 || orders[index - 1].createdAt >= order.createdAt,
+    ),
+  );
+});
+
 test('finalize requires the order to be closed first, and rejects an unknown order', async () => {
   const missing = await request(app).post('/api/food-orders/nope/finalize');
   assert.equal(missing.status, 404);
@@ -295,7 +454,7 @@ test('finalize requires the order to be closed first, and rejects an unknown ord
   assert.equal(notYetClosed.status, 409);
 });
 
-test('finalizing permanently locks the order: no reopen, items, paid or metadata changes, and no re-finalizing', async () => {
+test('finalizing locks items, paid and metadata changes while finalized, and rejects re-finalizing', async () => {
   const created = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: 'Getränke-Runde' });
   const finalizeOrderId = created.body.id;
   const item = await request(app)
@@ -308,9 +467,6 @@ test('finalizing permanently locks the order: no reopen, items, paid or metadata
   const finalized = await request(app).post(`/api/food-orders/${finalizeOrderId}/finalize`);
   assert.equal(finalized.status, 200);
   assert.ok(finalized.body.finalizedAt);
-
-  const reopenAfterFinalize = await request(app).post(`/api/food-orders/${finalizeOrderId}/reopen`);
-  assert.equal(reopenAfterFinalize.status, 409);
 
   const addAfterFinalize = await request(app)
     .post(`/api/food-orders/${finalizeOrderId}/items`)
@@ -329,6 +485,61 @@ test('finalizing permanently locks the order: no reopen, items, paid or metadata
 
   const secondFinalize = await request(app).post(`/api/food-orders/${finalizeOrderId}/finalize`);
   assert.equal(secondFinalize.status, 409);
+});
+
+test('reopening a finalized order undoes exactly the lock: paid marking and metadata work again, items stay frozen until fully reopened', async () => {
+  const created = await request(app).post('/api/food-orders').send({ playerId: alice.id, title: 'Zweite Getränke-Runde' });
+  const finalizeOrderId = created.body.id;
+  const item = await request(app)
+    .post(`/api/food-orders/${finalizeOrderId}/items`)
+    .send({ playerId: bob.id, description: 'Cola', priceCents: 200 });
+  const itemId = item.body.items[0].id;
+
+  await request(app).post(`/api/food-orders/${finalizeOrderId}/close`);
+  await request(app).post(`/api/food-orders/${finalizeOrderId}/finalize`);
+
+  // Reopening a finalized order clears the lock but only steps back one
+  // level: it lands back on "abgeschickt" (closed_at stays set), not fully
+  // open.
+  const unfinalized = await request(app).post(`/api/food-orders/${finalizeOrderId}/reopen`);
+  assert.equal(unfinalized.status, 200);
+  assert.equal(unfinalized.body.finalizedAt, null);
+  assert.equal(unfinalized.body.open, false);
+  assert.ok(unfinalized.body.closedAt);
+
+  const addStillFrozen = await request(app)
+    .post(`/api/food-orders/${finalizeOrderId}/items`)
+    .send({ playerId: bob.id, description: 'Immer noch zu spät' });
+  assert.equal(addStillFrozen.status, 409);
+
+  const paidAfterUnfinalize = await request(app)
+    .patch(`/api/food-orders/${finalizeOrderId}/items/${itemId}`)
+    .send({ paid: true });
+  assert.equal(paidAfterUnfinalize.status, 200);
+  assert.equal(paidAfterUnfinalize.body.items.find((i: { id: string }) => i.id === itemId).paid, true);
+
+  const metadataAfterUnfinalize = await request(app)
+    .patch(`/api/food-orders/${finalizeOrderId}`)
+    .send({ notes: 'doch noch bearbeitbar' });
+  assert.equal(metadataAfterUnfinalize.status, 200);
+  assert.equal(metadataAfterUnfinalize.body.notes, 'doch noch bearbeitbar');
+
+  // A second reopen steps back the remaining level, all the way to open.
+  const reopened = await request(app).post(`/api/food-orders/${finalizeOrderId}/reopen`);
+  assert.equal(reopened.status, 200);
+  assert.equal(reopened.body.open, true);
+  assert.equal(reopened.body.closedAt, null);
+
+  const addNowWorks = await request(app)
+    .post(`/api/food-orders/${finalizeOrderId}/items`)
+    .send({ playerId: bob.id, description: 'Jetzt geht es wieder' });
+  assert.equal(addNowWorks.status, 201);
+
+  // The order can be closed and finalized again from scratch.
+  await request(app).post(`/api/food-orders/${finalizeOrderId}/close`);
+  const refinalized = await request(app).post(`/api/food-orders/${finalizeOrderId}/finalize`);
+  assert.equal(refinalized.status, 200);
+  assert.ok(refinalized.body.finalizedAt);
 });
 
 test('DELETE /api/food-orders/:id removes an open order and its items, and rejects an unknown id', async () => {

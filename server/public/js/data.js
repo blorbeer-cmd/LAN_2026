@@ -28,12 +28,22 @@ export function normalizeEventContext(eventContext = {}) {
     managedEvents: canManage ? managedEvents : null,
     activeEvent: eventContext.activeEvent ?? null,
     availableEvents,
+    // Retained as an empty compatibility field for clients predating generic
+    // polls. Polls never grant event visibility or require reconfirmation.
+    plannedEvents: eventContext.plannedEvents ?? [],
+    // This account's own accepted events that have since ended. Deliberately
+    // absent from `availableEvents` (that list answers "where can I switch
+    // to", see routes/events.ts), but the Events tab's own Historie section
+    // renders it for a member the same way `managedEvents` already does for
+    // owner/admin.
+    endedEvents: eventContext.endedEvents ?? [],
     // Personal participation history: the allowlist the analytics endpoints
     // accept, so an event filter can never offer something they answer with
     // a 404. Falls back to the switchable workspaces so an older server
     // payload still yields a usable filter instead of an empty one.
     historicalEvents: eventContext.historicalEvents ?? availableEvents,
     eventInvitations: eventContext.invitations ?? [],
+    eventTypeOptions: eventContext.eventTypeOptions ?? [],
   };
 }
 

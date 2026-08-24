@@ -1,4 +1,4 @@
-import { test, before, after } from 'node:test';
+import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
@@ -10,11 +10,13 @@ import {
   loginE2EAdmin,
   promoteE2EAdmin,
 } from './authHelpers';
-import { startE2EServer } from './e2eServer';
+import { createE2EDiagnosticTest, trackE2EContext } from './e2eDiagnostics';
+import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
 
 let serverProcess: ChildProcess;
+let e2eServer: E2EServer;
 let browser: Browser;
 let adminCookie: string;
 const playerCookies = new Map<string, string>();
@@ -23,6 +25,8 @@ interface Actor {
   context: BrowserContext;
   page: Page;
 }
+
+const test = createE2EDiagnosticTest(() => ({ browser, server: e2eServer }));
 
 async function createPlayer(name: string): Promise<{ id: string }> {
   const account = await createE2EAccount(BASE_URL, adminCookie, name);
@@ -36,6 +40,7 @@ async function grantAdmin(playerId: string): Promise<void> {
 
 async function openArcadeAs(playerId: string, { adminMode = false } = {}): Promise<Actor> {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(context, `battleship-${playerId}`);
   const cookie = playerCookies.get(playerId);
   assert.ok(cookie);
   await addSessionCookie(context, BASE_URL, cookie);
@@ -111,6 +116,7 @@ before(async () => {
     NODE_ENV: 'test',
     E2E_FAST_TIMERS: '1',
   });
+  e2eServer = server;
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   adminCookie = await loginE2EAdmin(BASE_URL);

@@ -194,6 +194,8 @@ columns without making names or avatars too cramped.
 around the physical seating plan the same size; the compact size preserves that equality on phones.
 `--assignment-select-width` (112px) keeps repeated player-to-team selectors aligned independently
 of player-name length.
+`--payment-marker-width` (96px, 88px only below 360px) keeps the food-order payment toggle stable
+directly beside its PayPal action while the label, position count and amount change.
 `--notification-panel-width` (360px) caps the header notification center while it remains
 viewport-responsive on phones.
 `--search-panel-width` (640px) gives the global search palette enough room for titles and short
@@ -265,9 +267,11 @@ view and to new views unless a documented domain constraint requires a different
 10. **Keep account management behind the authenticated boundary.** The current roster is readable
     by every signed-in member, while only the session account can edit its own profile. Player
     creation, deletion, roles and foreign-profile editing remain admin-only actions.
-11. **Group related workflows into one area with tabs instead of adding nav entries.** The bottom
-    nav carries exactly the six during-party destinations Home, Match, Vote, Essen, Spiele and
-    Mehr; everything else lives under „Mehr“, the topbar, or (for the merged Rangliste/Statistiken/
+11. **Match primary navigation to the event type.** For LAN events, the bottom nav carries exactly
+    the six during-party destinations Home, Match, Vote, Essen, Spiele and Mehr. A general event
+    instead promotes its planning workflow to Home, An & Abreise, Packliste, To-Do, Abstimmungen
+    and Mehr; the remaining destinations live directly under „Mehr“. Everything else lives under
+    „Mehr“, the topbar, or (for the merged Rangliste/Statistiken/
     Hall-of-Fame area, „Auswertung“) inside the role-protected Admin area. Auswertung is not a
     bottom-nav destination: reaching it now always requires the real owner/admin role
     (`switchView()`'s redirect guard in `app.js`, checked via `currentPlayerHasAdminRole()`), so it
@@ -287,7 +291,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   (full width), `.btn-sm` (compact). Combine variant + size, e.g.
   `class="btn btn-primary btn-sm"`.
 - **Area tabs** — `.section-tabs` with `.section-tab` is the tab row of a merged top-level area
-  (Match, Auswertung, Orga; defined in `sectionNav.js`). It sits directly under the area's
+  (Match, Auswertung and LAN Orga; defined in `sectionNav.js`). General events present every Orga
+  route as a standalone page with its own title because those routes are their primary navigation,
+  not a secondary Orga collection. A tab row sits directly under the area's
   `.view-title`, outside any card, which is what keeps it distinguishable from the in-card control
   rows further down. Because each tab is a real route, the row is `<nav>` navigation rather than a
   toggle: the active tab carries `aria-current="page"` plus `.btn-primary`, never `aria-pressed`.
@@ -577,7 +583,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   update, removal and audit endpoints remain server-side compatibility interfaces and intentionally
   have no separate frontend commands.
   The seating editor follows the same grouped-page hierarchy: the editable plan comes first, followed
-  by „Spieler“ and „Konfiguration“. Unassigned players use the shared rectangular two-column player
+  by „Teilnehmende“ and „Konfiguration“. Unassigned participants use the shared rectangular two-column player
   rows instead of pills; phones keep one column. Empty seats use an accent border and only the
   centered white label „Frei“, without a redundant seat number. Players without a real name omit that empty second line so their
   gamertag remains vertically centered with the avatar. The automatic monitor-neighbor and save
@@ -618,12 +624,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Nested `.card` surfaces use the secondary elevated background so their hierarchy remains visible.
   `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
-  The „Mehr“ hub holds Mein Profil, Admin, Arcade, Durchsage, Jam and Orga — the destinations that
-  are not among the six bottom-nav entries. Mein Profil moved here from its former topbar icon
+  The LAN „Mehr“ hub holds Mein Profil, Admin, Arcade, Durchsage, Jam and Orga. For a general event,
+  it replaces the Orga wrapper with direct entries for Events and Essen; An & Abreise, Packliste,
+  To-Do and Abstimmungen already occupy the bottom nav. Mein Profil moved here from its former topbar icon
   (`#profile-btn`) to make room for the always-available Feedback icon there (see „Feedback“
   below); the needs-setup indicator that used to sit on that topbar icon now sits on the „Mehr“
-  bottom-nav icon instead. Essen is never listed here since it already has an
-  unconditional bottom-nav slot of its own (`more.js`); Auswertung is never listed here either —
+  bottom-nav icon instead. Essen is listed here only for general events; LAN events retain its
+  unconditional bottom-nav slot (`more.js`). Auswertung is never listed here —
   it has no general-audience entry point at all, living only behind Admin's „Auswertung“ tool card
   (see „Admin tools“). It keeps each destination's canonical icon
   directly beside its centered title so both read as one label; those icons are one spacing step smaller than standard list-row icons and
@@ -637,156 +644,83 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   persistent explanation below the form. Recent broadcasts live in one standard, initially
   collapsed „Historie“ section whose open state survives live re-renders; its entries use the
   responsive two-column row grid.
-- **Food orders** — Open and historical orders use one full-width nested card per row so their
-  metadata, orderer groups, Warenkorb, add-item form, total and actions stay aligned regardless of
-  content. Consecutive cards alternate blue and pink accent rails and omit decorative order, timer
-  and link symbols. The order itself is still a „Sammelbestellung“ throughout text, tooltips and the
-  push notification title — only the payment/selection mechanism inside it is called „Warenkorb“
-  (see below), replacing the earlier „Sammelzahlung“ naming. Payment goes exclusively through the
-  Warenkorb: there is no per-position „Bezahlen“ action any more, so there is exactly one place with
-  popup handling, staleness checks, confirmations and tests
-  (`docs/plans/food-order-cart-concept.md`). The responsive add-item row keeps description, explicit
-  quantity, unit price with euro suffix and the compact action together. Item totals multiply unit
-  price by quantity; clearly labeled subtotals per player and the order-wide total use consistent
-  German currency formatting. Quantity starts empty with the explicit placeholder „Anzahl“ instead of
-  implying one item. Quantity and price use the same wider field width. Quantity is a
-  `type="number"` field, so it is always enhanced app-wide by the shared number stepper (see „Number
-  stepper“ below); it carries no decorative suffix of its own (unlike price's euro suffix) since a
-  second, non-interactive × glyph in that same right-hand padding would sit underneath the stepper's
-  real +/- buttons and read as a third, broken control. An absent send time is plain text without a
-  misleading timer icon. Closing an order is the colorful full-width primary action below a divider;
-  the neutral „Hinzufügen“ action matches the adjacent fields' height instead of the shorter
-  `.btn-sm`. Closed orders live inside one standard, initially collapsed „Historie“ section whose
-  open state survives live re-renders. Every card — open, abgeschickt or geschlossen — carries a
-  stacked full-width „Bestellung löschen“ danger action below its other actions, since scrapping an
-  order stays possible at every lifecycle stage unlike the other, stage-gated mutations.
+- **Food orders** — Open and historical orders use one full-width nested card per row. Consecutive
+  open cards alternate blue and pink accent rails; orderer groups and position rows use no decorative
+  order, timer or link symbols. A send time is shown as `20.08. 19:30 Uhr`; without one the detail
+  line reads `Kein Zeitpunkt festgelegt`. The view keeps the existing free-text description suggestions,
+  quantity field, optional unit price with euro suffix, consolidated list and lifecycle actions.
 
-  A card's toolbar (below its metadata, above the positions) holds up to two secondary actions: an
-  „Alle ausklappen“/„Alle einklappen“ toggle for its orderer groups (only rendered once the order has
-  more than one), and „Bestellliste“ (see below, only for the creator and admins). Neither uses the
-  primary gradient — they support the workflow, they do not compete with „Bestellung abschicken“.
+  Payment is a per-person handoff, never a per-position action. Each orderer group shows the
+  quantity-weighted meta line (`<n> Positionen`, plus `Preis fehlt` when necessary), the complete
+  tip-inclusive person sum with a small `inkl. x % Trinkgeld` line when a tip is set, a copy action, a PayPal action when the order has a link, and one two-state
+  paid marker. `Bezahlt?` uses a dashed circle; `Bezahlt` uses a green check and names the confirmer.
+  Its fixed-width slot follows directly to the right of the PayPal action in the group action
+  cluster, so label, position and total changes do not move it.
+  The marker is derived from the group's items, is available to every authenticated member, and is
+  disabled only after finalization. Both marking and reversing happen directly without a confirmation;
+  the paid marker's tooltip names existing confirmers. A group delete is available only for the current
+  member's open, entirely unpaid group and confirms the complete position list. When a group is paid,
+  every one of its position descriptions and amounts is struck through; reversing removes that treatment.
+  Finalization itself is not permanent: the creator/an admin can reopen a finalized ("Geschlossen") order
+  back to the closed/"Abgeschickt" state through the same `Wieder öffnen` action shown for a merely closed
+  order, which restores paid marking and metadata edits (items stay frozen until a further reopen).
 
-  **Position row.** Left to right: the Bezahlt-Marke, quantity × description, the amount, then a
-  copy action, a hairline divider and the Warenkorb toggle grouped together, and finally remove —
-  the state marker leads, the amount is a plain value in the middle, and the two actions that change
-  the row (copy is read-only, so it sits outside that pairing) stay visually clustered while remove
-  stays a deliberate outlier at the far end. The description's own flex-grow pushes everything after
-  it toward the row's end; the row wraps onto further lines on narrow phones rather than overflowing,
-  and the copy/Warenkorb-toggle/remove slots each reserve their width even when empty (unpriced item,
-  no PayPal link, someone else's position) so rows stay aligned across the whole card.
-  - **Bezahlt-Marke** (`.food-order-paid-marker`) is a button, not a checkbox — the only way it could
-    show the German word in both states plus an icon. „Offen“ pairs a dashed-circle icon with muted
-    styling; „Bezahlt“ pairs a check icon with the green `--state-playing` treatment (the same green
-    already reused elsewhere for "done/winner/tracking", see the bracket/vote-winner and
-    seating-status precedents). A fixed `min-width` keeps the description behind it from shifting
-    when the label text changes length. It stays enabled even on an otherwise fully locked paid row —
-    it is that row's own reversing control — and is disabled only once the whole order is finalized.
-  - **Amount** (`.food-order-item-amount`) is plain display text, not a button: the tip-inclusive sum,
-    with the quantity × unit price and „inkl. x% Trinkgeld“ breakdown muted underneath when either
-    applies. An unpriced position shows „Betrag offen“ instead.
-  - **Copy** (unchanged behavior) copies exactly the displayed amount.
-  - **Warenkorb toggle** (`.food-order-item-cart-toggle`, `shoppingCart` icon) only renders when the
-    order has a PayPal link — without one nothing in it can ever be paid. `aria-pressed` pairs with a
-    German `title`/`aria-label` naming the toggle's current effect; the pressed state uses an inset
-    accent ring (not a real border, so the button never changes size) plus the row's own accent rail
-    (`.food-order-item.is-in-cart`) — state never rests on the ring alone. A paid position disables it
-    (nothing left to add to the cart).
-  - **Remove** keeps its own danger color, trash icon and explicit „Position entfernen“ label/tooltip,
-    disabled on a paid position, and now needs a confirmation before it takes effect: title „<Menge> ×
-    <Bezeichnung> löschen?“, text „Lässt sich nicht rückgängig machen.“, red `.btn-danger` „Löschen“ —
-    it is the one irreversible action a member can trigger directly from their own row.
+  The PayPal button is the only payment handoff. It opens a blank tab synchronously, clears its opener,
+  refreshes the order immediately before navigation, aborts when the order or any group item vanished,
+  was paid elsewhere, lost its link, or has an incomplete price, and then navigates to the exact
+  stored URL, appending the amount only for a bare `paypal.me` recipient link. A `Bezahlt?` dialog
+  opens immediately after navigation, explains whether the amount was prefilled, lists every displayed
+  position amount, and offers copy actions for both the total and stored PayPal address; only the
+  affirmative answer marks all group items paid. The local `paypal` icon is the filled brand path in
+  `icons.js`; other icons remain line icons.
 
-  Marking a position „Bezahlt“ automatically clears its own Warenkorb mark — a settled position has
-  nothing left to collect and cannot be re-added until „Bezahlt“ is unmarked again. „Gesamtsumme“
-  itself is set apart from the muted meta/info text around it (larger, bolder, default text color) so
-  it reads as a real total, with its own copy action directly beside the amount.
+  Position rows contain only quantity × description, amount, copy and delete. The displayed amount
+  includes quantity and tip; copy uses exactly that display string. There is no position-level paid
+  marker, selection state or row divider; their strike-through is derived from the person-level paid
+  state. Own open positions can be deleted after the existing confirmation; paid positions disable
+  deletion. Foreign and unavailable actions keep their reserved spacer so columns stay aligned. The
+  order summary counts quantity-weighted positions,
+  people, fully paid people and the open sum of people not fully confirmed. Missing prices show the
+  actual priced subtotal with `Preise unvollständig`; the total is labeled `(unvollständig)`.
 
-  **Warenkorb-Kasten** (`.food-order-cart`) appears only once at least one position is in the cart —
-  no explanatory subtitle, no separate primary-gradient pill competing with it. Its header names
-  „Warenkorb“ plus a count badge; each row below repeats the original orderer's color dot and name
-  next to quantity × description and the row's own amount, with its own X (`data-cart-remove`) to
-  take a single position back out — no confirmation needed there, a stray tap is one more tap to
-  undo. A „Summe“ row follows, then „Bezahlen · <Summe>“ (`wallet` icon — PayPal is not a card
-  payment, so `creditCard` was retired along with the old per-position pay button) and „Alle als
-  bezahlt markieren“ below it. „Bezahlen“ keeps the exact popup-blocking and staleness hardening from
-  the retired per-position action (synchronous blank tab, `popup.opener = null`, a fresh
-  `api.foodOrders.list()` re-check immediately before navigating it) — the tab only ever gets pointed
-  at PayPal once every cart position is confirmed to still exist and be unpaid. Immediately after
-  that navigation, a „Bezahlt?“ confirmation names the amount, position count and the position list
-  (with each orderer's name) plus „Der Warenkorb wird danach geleert.“; „Ja, bezahlt“ marks every
-  cart position paid and empties it, „Noch nicht“ (Escape, backdrop tap) changes nothing — no success
-  is ever claimed, since Respawn gets no callback from PayPal, only the member's own confirmation.
-  „Alle als bezahlt markieren“ skips PayPal entirely and asks the same kind of question (position
-  count, amount, „Der Warenkorb wird geleert.“) but keeps its confirm button blue rather than red: the
-  action is reversible by unmarking „Bezahlt“ again, unlike deleting a position. Both bulk paths share
-  one server contract: re-fetch first, skip anything already settled or gone elsewhere in the
-  meantime instead of double-marking it, PATCH the rest in parallel, and report the number of
-  positions actually changed rather than the number requested.
+  The detail-links row always contains `Bestellübersicht`, visible to everyone, with `margin-left:auto`.
+  The list deliberately contains no names or paid state: it consolidates normalized descriptions by
+  exact unit price and shows quantity, unit price, line total, subtotal and tip-inclusive total.
+  The order card puts title/status, creator/time metadata, info, summary, toolbar, groups, total,
+  add form and lifecycle actions in that order. The toolbar contains only
+  `Alle ausklappen`/`Alle einklappen`, aligned left. When more than one order is open, each card
+  starts collapsed; a sibling `aria-expanded` button controls its body, and a search/push target
+  expands exactly that card. A single open order has no card-collapse chrome. The same rule applies
+  independently inside Historie: once it holds more than one closed/finalized order, each of its
+  cards gets the identical collapsible header/chevron and starts collapsed too, while a single
+  history entry stays chrome-free. A target for a sent order opens the history section and expands
+  that specific card within it (when Historie holds more than one entry) instead of only the section
+  itself. Both expanded-state sets live in module state and survive live re-renders.
+  The add action is a normal `.btn` spanning the last grid columns and stretching to field height.
 
-  **Orderer groups.** Once an order has more than one orderer, each becomes its own bordered,
-  collapsible `.food-order-group` (a single-group order gets no collapse chrome at all — nothing to
-  fold). The header is one flex row, not a button wrapping other buttons: a toggle
-  (`.food-order-group-toggle`, `aria-expanded`, a rotating chevron, the orderer's color dot, name and
-  a meta line) on the left, the group's own open amount or green „Bezahlt“ badge in the middle, and a
-  three-state group Warenkorb button (`shoppingCart`, same icon in both directions — see below) as
-  siblings on the right. The meta line stays short: „<n> Positionen · <n> bezahlt · <n> im Korb“, the
-  last two segments only when they apply. The group's shown amount is exactly the sum of its own
-  still-open (unpaid) positions, tip included — the same amount its own Warenkorb button would add;
-  if any of those positions has no price, the amount shows „Betrag offen“ instead of a misleadingly
-  complete sum, the same fallback the Warenkorb cart box already uses. The group's full lifetime
-  total is not repeated here, it is readable from the rows themselves. Once
-  every position in a group is paid, the amount is replaced by the green Bezahlt badge and the group
-  Warenkorb button disappears (nothing left to add) — that state is derived from the positions on
-  every render, never a separate stored flag. The group's own accent stays deliberately restrained —
-  a subtle border/background only, never the blue rail — because that rail is reserved for individual
-  position rows; a mixed cart selection inside a group shows amber (`--state-paused`, reusing the
-  existing "gemischt/pausiert" color) plus a small dot on the button instead of blue, so „some
-  selected“ never looks like „all selected“. The three states read: no open position in the cart
-  (plain, click adds every open position), some (amber, click fills in the rest), all (accent-pressed,
-  click clears the whole group back out) — deliberately symmetric in both directions since a Warenkorb
-  selection is never itself binding.
-
-  On first render of an order, its own group starts open and every other group starts closed; the
-  creator sees every non-fully-paid group open from the start; a fully paid group always starts
-  closed regardless of who is looking. That rule runs at most once per order per browser session —
-  afterward the expand/collapse state belongs to the person looking at it and a realtime re-render
-  (someone else adding a position, marking something paid) must never re-collapse or re-expand a
-  group out from under them. Adding one's own position is the one exception: it force-opens that
-  person's own group again even if they had just collapsed it, so a freshly typed item is never
-  hidden immediately after adding it. The card toolbar's „Alle ausklappen“/„Alle einklappen“ toggle
-  (its own label reflecting whether every group is currently open) exists for the rare case someone
-  wants to scan every group at once, e.g. before closing the order.
-
-  **Bestellliste** (`.food-order-consolidated-*`, via `data-open-order-list`) is a dialog reachable
-  from the card toolbar for the creator and for admins, on both open and closed orders — before
-  submitting (to read off what to actually type into the delivery order) and after (to reconcile the
-  delivery). It consolidates by normalized description (collapsed whitespace, case-insensitive) plus
-  exact unit price; the same name at a different price stays its own row rather than merging into a
-  total that would then be wrong. Rows show quantity, name, unit price and line total only — no
-  names, paid states or Warenkorb marks, since this list answers a different question (what was
-  ordered, not who owes what) and is sorted with `localeCompare('de')` so umlauts land where a German
-  reader expects them. Prices stay tip-free per row; a subtotal, „+ x% Trinkgeld“ and a tip-inclusive
-  total follow underneath, each labeled „(unvollständig)“ whenever any row has no price at all rather
-  than silently treating it as free. „Liste kopieren“ puts the same content as plain text on the
-  clipboard — title, one „<n> × <Bezeichnung>“ line per row, then the sums — which is the dialog's
-  actual point: pasting into the order form, a phone note or the group chat. An open order is named
-  as such inside the dialog and can be submitted directly from there without leaving it; the dialog's
-  content keeps refreshing live while it stays open, since a frozen list would be the more dangerous
-  failure mode here.
-- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its four area tabs
-  are sorted alphabetically by their German label: „An- & Abreise“, „Events“, „Packliste“ and
+  Two hours after an order is sent, unpaid active members become eligible for a direct payment
+  reminder, repeated at most once per rolling two-hour window. Home's `Aktuell` list enriches the
+  existing order row instead of adding a duplicate. The
+  reminder uses the same order deep link and a durable per-player/event send timestamp independent of
+  the bounded push history.
+- **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its five area tabs
+  are sorted alphabetically by their German label: „Abstimmungen“, „An- & Abreise“, „Events“, „Packliste“ and
   „To-Do“ (the last two formerly the separate „Checkliste“ and „An- & Abreise“ areas;
   docs/KONZEPT-PACKLISTE-TICKETS.md Abschnitt 9 records the earlier „Packliste“→„Checkliste“
   rename — „Events“ is the former standalone „Einstellungen“ view, moved here because it is setup
   work like the rest of Orga rather than a personal preference screen; there is no longer a topbar
   settings icon). TV-Kiosk is deliberately not an Orga tab — it lives only behind Admin's
   „Kioskverwaltung“ tool card (see „Admin tools“) since opening the shared-screen dashboard is an
-  admin task, not something every member needs from Orga. The tab row's alphabetical order is
-  independent of the area's own entry point: „Mehr“ still opens Orga directly on To-Do (`more.js`
-  hardcodes the `checklist` route) because that is what people open the area to check, which also
-  keeps the persisted push url `/#checklist` landing where it always did; that tab label carries
+  admin task, not something every member needs from Orga. „Mehr“ opens Orga on its first tab,
+  „Abstimmungen“, like every other area (`sectionEntryView()` in `sectionNav.js`), so the tab row's
+  top-left tab is the one actually selected on arrival; the already persisted push url `/#checklist`
+  is unaffected and still lands directly on To-Do. That tab label carries
   the live count of the current identity's own open+taken items. The checklist's former in-view
   toggle is gone — its two halves are area tabs now, so no tab row nests inside another.
+  In a general event the same routes keep their data and deep links but lose the Orga wrapper:
+  An- & Abreise, Packliste and To-Do are direct bottom-nav pages, while Events is a direct entry
+  under „Mehr“. Each page owns its concise title and shows no Orga tab row. Abstimmungen occupies
+  the fifth bottom-nav slot and opens the shared event poll view directly.
   The personal list is unchanged: a compact checkbox row per item (Grundstock plus freely added/removable
   custom entries) with a checked item shown via muted, struck-through text instead of a separate
   badge, followed by the plain add-item field/button row.
@@ -811,13 +745,112 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   zugewiesen“ with „Freigeben“/„Erledigt“ actions instead. Completed To-Dos live in one standard,
   initially collapsed „Historie“ section whose open state survives live re-renders, same as Food
   orders.
+  The „Abstimmungen“ tab is the event-centric planning surface for free questions such as dates,
+  locations, duration or budget. It always uses the active event from the existing top-right
+  workspace switcher: neither the tab nor its create dialog contains a second event picker. With
+  „Allgemein“ active it shows an explicit select-an-event empty state. Visibility, creation and
+  voting all require confirmed participation in that event; being Owner/Admin or merely invited
+  never bypasses this boundary. Every confirmed participant may start a poll, while the creator of
+  that poll manages its deadline, reminders and rounds. The create dialog uses labelled fields,
+  repeatable free-text option rows and four explicit response modes: per-option „Passt / Wenn nötig
+  / Passt nicht / Offen“, exactly one choice, multiple choices with an optional maximum, or a
+  per-option rating from 1 to 5. It never exposes
+  a participant picker because the accepted event roster is the single source of truth.
+  The tab adds no own page heading or explanatory subtitle below the Orga tabs because the active
+  event is already visible in the top-right workspace switcher. Its compact „Abstimmung starten“
+  action has no decorative plus sign. The create dialog uses ordinary global text fields, one native
+  select for the four response modes (per-option feasibility, single choice, multiple choice and
+  per-option 1–5 rating), and contextual info beside response mode and deadline. Every free option
+  may additionally carry a short note and a validated HTTP-/HTTPS-link. A poll can be marked
+  anonymous in the same dialog; this permanently suppresses voter-to-answer mappings.
+  Each poll is one collapsible card. Its current round and response progress stay together; the
+  creator's compact „Bearbeiten“, „Erinnerung versenden (N)“, „Beenden“ and „Löschen“
+  actions remain in the card header while collapsed. They share one „Aktion“ menu; opening one
+  poll's menu closes every other poll menu, clicking outside or pressing Escape closes it, and its
+  card is raised above later siblings while the menu is open. Earlier rounds live in a nested,
+  initially collapsed history and show their best result, start time, creator and end time before
+  the detailed options. „Offen“ is both an explicit way to clear a per-option feasibility rating and
+  the resulting incomplete-response count. Repeated reminders reuse one stable notification-center
+  entry per poll and recipient, moving it to the top; automatic sends run 48 hours and 2 hours before
+  the deadline. While a round is open, its creator can edit title, description, deadline, option
+  notes and links and append further options; existing options cannot be removed from that dialog.
+  Adding options informs everyone who had already completed the round and makes those responses
+  incomplete until the added options have been answered. Option rows keep the title with a note
+  info-tooltip and an icon-only link immediately beside it, counts and compact response controls
+  within a shallow two-row layout. Single- and multiple-choice controls say „Wählen“; their
+  „Meiste Stimmen“ badge stays on the same title line as the option name. An optional
+  response-details disclosure is rendered only after a non-anonymous round has
+  ended; the server withholds those identities while a poll is open and for anonymous polls at every
+  status. Avatar, name and response timestamp share one vertically aligned voter row. Progress and
+  deadline appear once in the card header, not again above the option rows. Poll re-renders preserve
+  the visible card's scroll anchor. Ending a round immediately turns
+  its counts into the read-only result overview; there is no separate result-recording action. Event
+  cards do not embed or link to poll controls. A poll result changes no event field, schedule revision
+  or participation state.
+  A future explicit „apply to event“ interaction is outside the current UI.
   The „Events“ tab is reachable by every member, not only by owner/admin, because answering an
   invitation is a personal action. What it shows depends on the role: owner/admin receive the full
-  management surface — anlegen/bearbeiten, Tracking starten/stoppen, Teilnehmer einladen/entfernen
+  management surface — anlegen/bearbeiten, Tracking starten/stoppen, Teilnehmende einladen/entfernen
   and the PDF „Andenken“-Export — while a member gets read-only cards for the events they take
-  part in, without the „+ Event“ action, the participant count and the tracking state they never
-  receive. Pending invitations for the current identity lead the tab as a subsection for both.
-  Event cards use the standard two-column nested-card grid. TV-Kiosk (Admin's „Kioskverwaltung“
+  part in, without the „+ Event“ action or administrative invitation/decline controls; the card
+  includes the event-type badge, event-status badge plus the count and names of accepted
+  participants. Cards sort newest-first by start date. A finished event moves out of the active list into the tab's own
+  „Historie“ (the same collapsible-section pattern as Food orders): it starts collapsed and
+  preserves its open state across live re-renders. Pending invitations for the current identity are
+  deliberately absent from this tab — a teaser sitting directly above the Events cards made it too
+  easy to miss and cluttered the tab with the cards immediately following it. Instead, an
+  invitation surfaces as a personal Home „Aktuell“ nudge (see „Home overview“) that links into „Mein
+  Profil“, and Profile's own leading „Einladungen“ section is where it is actually answered
+  (`renderInvitationCard`/`pendingEventInvitations`/`wirePendingInvitationActions` in `events.js`,
+  reused by `profile.js` so the card markup and accept/decline wiring exist exactly once). Event
+  cards stay in one vertical column at
+  phone and laptop widths so payment and participant controls keep enough room. Their card hierarchy
+  deliberately mirrors Food orders: alternating accent rails and a concise title/status header lead
+  into one shared `.food-order-details` information box, followed by the separately collapsible
+  participant list. Date, location, note and payment information therefore never form competing
+  sibling boxes; an editable management card places „Bearbeiten“ in the information-box header like
+  an order does. The remaining management actions stay in a stable flex footer, and location links
+  are clickable without a separate copy
+  action when an event stores a web URL; plain locations remain text. Event creation and editing may
+  add one optional per-person cost plus the same PayPal input as food orders: either an e-mail address
+  or a complete HTTPS address on `paypal.me`/`paypal.com`. Cost and PayPal controls reuse the food-order price suffix
+  and contextual label layout so both fields stay aligned. Invitation cards disclose that cost
+  and its optional deadline before acceptance, without offering payment actions yet. Accepted
+  non-creators see only their own contribution and `Noch zu bezahlen`/`Bezahlt` state, the confirmer
+  and timestamp of their own payment, plus a personal toggle for recording or correcting it; foreign
+  payment states and aggregates are absent from both UI and API payload. A managing non-creator who
+  lacks payment-management rights receives only the boolean `paymentLocked` removal guard on roster
+  rows, without amount, actor or timestamp, so the blocked action has an explicit reason; this is
+  the sole administrative exception to the foreign-payment privacy rule. The visible full-width
+  PayPal action says `Bezahlen`. The handoff refreshes the event before opening PayPal,
+  prefills the EUR amount for PayPal.me, attempts to copy an e-mail recipient for the generic PayPal
+  flow and keeps that recipient visible in the confirmation if clipboard access is unavailable. It
+  asks „Bezahlt?“ afterwards; only an affirmative answer records the payment. The recorded event
+  creator instead receives the aggregate overview and the same `Offen`/`Bezahlt` toggle used by food
+  orders on every accepted participant row. There is no bulk-payment action. The edit form can also
+  record the accommodation's total invoice separately from the fixed contribution per person. The
+  creator's payment box compares snapshotted received contributions with that invoice. Confirmed
+  payments remain in the received total after a decline or account deactivation; a paid roster row
+  cannot be removed until its payment is explicitly reset. If the creator account becomes inactive
+  or is deleted, the group owner becomes the payment manager. The box shows the
+  current surplus/deficit, the projected result after every accepted person pays and the rounded
+  accommodation price per current acceptance; pending and declined invitations never enter that
+  per-head calculation. Payment controls keep the reset action visible for an already recorded
+  payment even if the current contribution was subsequently cleared, so roster and account-removal
+  guards never create a dead end. The card-level list
+  includes every invited account and labels each row as `Zugesagt`, `Einladung offen` or
+  `Abgelehnt`; its summary separates accepted and still-open invitation counts. Member cards remain
+  accepted-only and expose neither pending/declined identities nor that management status. Participant lists use
+  the shared collapsible-section behavior plus Food orders' leading chevron/name/meta header pattern,
+  start closed and preserve their open state across live re-renders. Their people remain one full-width
+  row per line at every breakpoint so payment proof and the creator's toggle have predictable room;
+  the separate management dialog proceeds directly to its rows without repeated counts or general
+  explanatory paragraphs. State-specific blockers remain explicit: an ended event shows once that
+  new invitations are unavailable, and a paid row associates its removal action with the instruction
+  to reset the payment first.
+  An optional date-only payment deadline starts reminders on that day; without one, contributions
+  become eligible two hours after acceptance. Further reminders run at most once per rolling two-hour
+  window, using durable reminder state independent of push history. TV-Kiosk (Admin's „Kioskverwaltung“
   card, not an Orga tab) is deliberately minimal — one grouped-page-section with a single
   full-width link that opens `/kiosk.html` in a new tab.
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
@@ -995,6 +1028,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   copyable `#RRGGBB` field, and explicit cancel/apply actions; it has no competing preset palette.
   Invalid hex input is visibly rejected and cannot be applied or copied. The chosen value remains a draft until the profile's
   main save action persists it.
+  A leading „Einladungen“ section (present only while pending event invitations exist) shows the
+  same invitation cards Orga's Events tab used to render inline — cost/deadline disclosure plus
+  Annehmen/Ablehnen — via events.js's shared `renderInvitationCard`.
 - **Leaderboard** — the „Rangliste“ tab and default entry of the „Auswertung“ area, reached only
   through Admin's „Auswertung“ tool card (see „Admin tools“). The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
@@ -1010,10 +1046,22 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   result entry. Team and free-for-all result inputs use the same aligned responsive grid.
 - **Home overview** — Home follows the same full-width grouped-card hierarchy as Tournaments,
   Teams and Vote. „Aktuell“, „Live-Status“, „Rangliste“ and „Sitzplan“ are separate main cards with
-  their heading inside the surface. Tappable current items, the personal status and player entries
-  remain nested cards on the secondary elevated background; „Gerade aktiv“ is a subsection of
-  „Live-Status“ rather than a competing page-level group. Main groups stay in one continuous column
-  at phone and laptop widths while their existing internal grids remain responsive.
+  their heading inside the surface. „Meine To-Dos“ shows up to three tasks assigned to the signed-in
+  identity for every event type, ordered by due date, and links to the complete list. Every current
+  item pairs its full-row navigation action with a
+  separate icon action that hides only that live occurrence for the signed-in identity and active
+  event on the current device; a new vote round, order, tournament or lobby remains visible again.
+  Tappable current items, the personal status and player entries remain nested cards on the
+  secondary elevated background; „Gerade aktiv“ is a subsection of
+  „Live-Status“ rather than a competing page-level group. A pending event invitation appears here as
+  a plain linking nudge into „Mein Profil“ (see aktuellStatus.js); the full card with
+  Annehmen/Ablehnen lives only in Profile, not in this list. Main groups stay in one continuous column
+  at phone and laptop widths while their existing internal grids remain responsive. A general event
+  replaces the LAN-only live and ranking groups with a leading event overview containing its type,
+  period, optional location/note, participant count and contribution. A separate „Organisation“
+  group links to the existing Eventdetails, To-Dos, An- & Abreise, Essen and Jam workflows; the
+  read-only seating plan remains its own full-width group below them. Arcade stays available for
+  both event types because its browser games do not depend on LAN tracking or competition areas.
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
   same card grouping as the other polished workflows without an accent rail.
   New/current-round controls come first, followed by separate full-width cards for „Letzter Vote“
@@ -1110,10 +1158,9 @@ space pattern rather than content-dependent card heights.
   balancing, the activity pulse means Skill, the hamburger means a Sammelbestellung, and the trophy
   is reserved for rankings, results and wins.
 - Do not use emoji, Unicode pictograms or external icon CDNs in navigation, headings,
-  buttons, status badges, chips, empty states or toasts. The Respawn logo, the mascot
-  illustration (`img/mascot.svg`, Home's no-players empty state) and the onboarding guide
-  asset (`img/guide-head.jpg`, first-login tour) are the intentional brand exceptions;
-  user-authored content such as game names may contain emoji.
+  buttons, status badges, chips, empty states or toasts. The Respawn logo and the mascot
+  illustration (`img/mascot.svg`, Home's no-players empty state) are the intentional brand
+  exceptions; user-authored content such as game names may contain emoji.
 - Colorful buttons (`.btn-primary`, `.btn-danger`, `.btn-ready`) carry text only — no leading
   icon; the color treatment already marks them as the significant action.
 - Decorative icons are hidden from assistive technology. Icon-only controls require

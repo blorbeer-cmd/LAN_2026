@@ -2,19 +2,23 @@
 // query parameter must not bypass the personal login, while a real account
 // session remains active across reloads.
 
-import { test, before, after } from 'node:test';
+import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
-import { startE2EServer } from './e2eServer';
+import { createE2EDiagnosticTest } from './e2eDiagnostics';
+import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
 const ADMIN_NAME = 'Access E2E Admin';
 const ADMIN_PASSWORD = 'access-e2e-admin-password';
 
 let serverProcess: ChildProcess;
+let e2eServer: E2EServer;
 let browser: Browser;
 let page: Page;
+
+const test = createE2EDiagnosticTest(() => ({ browser, server: e2eServer }));
 
 before(async () => {
   const server = await startE2EServer({
@@ -24,6 +28,7 @@ before(async () => {
     BOOTSTRAP_ADMIN_1_NAME: ADMIN_NAME,
     BOOTSTRAP_ADMIN_1_PASSWORD: ADMIN_PASSWORD,
   });
+  e2eServer = server;
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   browser = await chromium.launch();

@@ -52,6 +52,16 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
         return { account: response.body, cookie: cookie(response) };
       }
 
+      async function registerWithCode(code, name) {
+        const response = await request(app).post('/api/auth/register').send({
+          code,
+          name,
+          password: name.toLowerCase().replace(/ /g, '-') + '-secure-passphrase',
+        });
+        assert.equal(response.status, 201, JSON.stringify(response.body));
+        return { account: response.body, cookie: cookie(response) };
+      }
+
       const bob = await register('Invitation Bob');
       const carol = await register('Invitation Carol');
       const disabled = await register('Invitation Disabled');
@@ -95,7 +105,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal(invitationPushes.length, 1, 'a repeated invite must not notify a second time');
       assert.equal(invitationPushes[0].eventId, BASE_EVENT_ID);
       assert.equal(invitationPushes[0].audience, 'direct');
-      assert.equal(invitationPushes[0].url, '/#events');
+      assert.equal(invitationPushes[0].url, '/#profile');
       assert.deepEqual(JSON.parse(invitationPushes[0].playerIds), [bob.account.id]);
       assert.equal(invitationPushes[0].resolvedAt, null);
       // It is genuinely readable for the invitee, whatever workspace is
@@ -113,6 +123,7 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       assert.equal(invitedEvent.participationStatus, 'invited');
       assert.equal('participantIds' in invitedEvent, false);
       assert.equal('participants' in invitedEvent, false);
+      assert.equal('acceptedParticipants' in invitedEvent, false);
       assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, bob)).status, 404);
       assert.equal((await call(app, 'get', '/api/seating?eventId=' + event.body.id, owner)).status, 404);
       assert.equal((await call(app, 'post', '/api/events/' + event.body.id + '/tracking-consent', bob)).status, 409);
@@ -182,6 +193,32 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
 
       assert.equal((await call(app, 'post', '/api/events/' + declineEvent.body.id + '/invitation/accept', carol)).status, 409);
       assert.equal((await call(app, 'post', '/api/events/missing/invitation/accept', bob)).status, 404);
+
+      const linkedEvent = await call(app, 'post', '/api/events', owner).send({
+        name: 'Direct Link Event', startsAt: now, endsAt: now + 60_000,
+      });
+      assert.equal(linkedEvent.status, 201, JSON.stringify(linkedEvent.body));
+      const registrationLink = await request(app)
+        .post('/api/auth/invites')
+        .set('Cookie', owner.cookie)
+        .send({ purpose: 'register', eventId: linkedEvent.body.id });
+      assert.equal(registrationLink.status, 201, JSON.stringify(registrationLink.body));
+      assert.equal(registrationLink.body.eventId, linkedEvent.body.id);
+      assert.ok(registrationLink.body.expiresAt > Date.now());
+      assert.equal(registrationLink.body.reusable, true);
+      const linkedBob = await registerWithCode(registrationLink.body.code, 'Direct Link Bob');
+      const linkedAlice = await registerWithCode(registrationLink.body.code, 'Direct Link Alice');
+      for (const linkedAccount of [linkedAlice, linkedBob]) {
+        const active = await call(app, 'get', '/api/events/active', linkedAccount);
+        assert.equal(active.status, 200, JSON.stringify(active.body));
+        assert.equal(active.body.id, linkedEvent.body.id);
+      }
+      const linkedEventForMember = await call(app, 'get', '/api/events/' + linkedEvent.body.id, linkedAlice);
+      assert.equal(linkedEventForMember.status, 200, JSON.stringify(linkedEventForMember.body));
+      assert.deepEqual(
+        linkedEventForMember.body.acceptedParticipants.map((participant) => participant.name),
+        ['Direct Link Alice', 'Direct Link Bob'],
+      );
 
       const scopeEvent = await call(app, 'post', '/api/events', owner).send({
         name: 'Invitation Scope Event', startsAt: now, endsAt: now + 60_000, visibilityScope: 'participants',

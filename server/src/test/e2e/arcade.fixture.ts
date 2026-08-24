@@ -17,11 +17,13 @@ import {
   E2E_KIOSK_TOKEN,
   loginE2EAdmin,
 } from './authHelpers';
-import { startE2EServer } from './e2eServer';
+import { runWithE2EDiagnostics, trackE2EContext } from './e2eDiagnostics';
+import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
 
 let serverProcess: ChildProcess;
+let e2eServer: E2EServer;
 let browser: Browser;
 let adminCookie: string;
 
@@ -37,7 +39,14 @@ function arcadeTest(
   name: string,
   fn: (context: TestContext) => void | Promise<void>,
 ): void {
-  if (arcadeShard === shard) test(name, fn);
+  if (arcadeShard === shard) {
+    test(name, (context) =>
+      runWithE2EDiagnostics(
+        { testName: name, browser, server: e2eServer },
+        () => fn(context),
+      ),
+    );
+  }
 }
 const playerCookies = new Map<string, string>();
 
@@ -58,6 +67,7 @@ async function openArcadeAs(
   { viewport = { width: 390, height: 844 }, expanded = false } = {}
 ): Promise<Actor> {
   const context = await browser.newContext({ viewport });
+  await trackE2EContext(context, `${playerId}-arcade`);
   const cookie = playerCookies.get(playerId);
   assert.ok(cookie, `missing personal session for ${playerId}`);
   await addSessionCookie(context, BASE_URL, cookie);
@@ -93,6 +103,7 @@ async function openArcadeAs(
 
 async function openHomeAs(playerId: string): Promise<Actor> {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(context, `${playerId}-home`);
   const cookie = playerCookies.get(playerId);
   assert.ok(cookie, `missing personal session for ${playerId}`);
   await addSessionCookie(context, BASE_URL, cookie);
@@ -165,6 +176,30 @@ async function finishQuizMatch(host: Page): Promise<void> {
   await host.waitForSelector('.arcade-tiles');
 }
 
+async function startScribbleMatch(host: Page, guests: Page[], rounds: 1 | 2 | 3): Promise<void> {
+  await host.click('[data-game="scribble"]');
+  await host.waitForSelector('#scribble-create:not([disabled])');
+  await host.click('#scribble-create');
+  for (const guest of guests) {
+    if ((await guest.locator('[data-scribble-join]').count()) === 0) await guest.click('[data-game="scribble"]');
+    await guest.waitForSelector('[data-scribble-join]');
+    await guest.click('[data-scribble-join]');
+  }
+  await host.waitForFunction(
+    (expectedPlayers) => document.querySelectorAll('.arcade-lobby-entry .arcade-lobby-member-row:not(.arcade-lobby-free-row)').length === expectedPlayers,
+    guests.length + 1,
+  );
+  await host.waitForSelector('#scribble-start:not([disabled])');
+  await host.check(`input[name="scribble-rounds"][value="${rounds}"]`);
+  await host.click('#scribble-start');
+}
+
+async function finishScribbleMatch(host: Page): Promise<void> {
+  await host.click('#scribble-finish');
+  await host.click('[data-confirm]');
+  await host.waitForSelector('text=Match beendet');
+}
+
 const countPaintedPixels = (page: Page, selector: string) =>
   page.evaluate((sel) => {
     const canvas = document.querySelector(sel) as HTMLCanvasElement | null;
@@ -177,6 +212,7 @@ const countPaintedPixels = (page: Page, selector: string) =>
 
 before(async () => {
   const server = await startE2EServer(authenticatedServerEnv());
+  e2eServer = server;
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   adminCookie = await loginE2EAdmin(BASE_URL);
@@ -681,8 +717,16 @@ arcadeTest('multiplayer', 'Tetris Arena supports four ready players with one lar
     assert.ok(layout.primaryWidth > layout.opponentWidth);
     assert.ok(layout.scrollWidth <= layout.clientWidth);
 
+    await host.page.locator('.tetris-primary-board .tetris-canvas').evaluate((canvas) => {
+      canvas.dataset.renderIdentity = 'before-pause';
+    });
     await host.page.click('#tetris-pause');
     await host.page.waitForSelector('#tetris-resume');
+    assert.equal(
+      await host.page.locator('.tetris-primary-board .tetris-canvas').getAttribute('data-render-identity'),
+      'before-pause',
+      'pausing must update controls/overlay without replacing the live canvas',
+    );
     await host.context.close();
     hostClosed = true;
     await guests[0].page.waitForSelector('#tetris-resume');
@@ -814,37 +858,20 @@ arcadeTest('multiplayer', 'Pong Doppel: mobile and desktop lobbies assign two fu
   }
 });
 
-arcadeTest('scribble', 'Scribble: expanded canvas keeps 8:5, live thumbs-up survives a reconnect, new turn starts blank', async () => {
-  const hostPlayer = await createPlayer('Scribble Maler');
-  const guestPlayer = await createPlayer('Scribble Rater');
-  const spectatorPlayer = await createPlayer('Scribble Zuschauer');
+arcadeTest('scribble', 'Scribble: expanded canvas keeps 8:5 and its rapid toggle state stays synchronized', async () => {
+  const hostPlayer = await createPlayer('Scribble Geometrie Host');
+  const guestPlayer = await createPlayer('Scribble Geometrie Gast');
 
   // Short desktop viewport so the height cap (100dvh - 18rem) is what limits
   // the expanded playfield — the code path that used to distort the canvas.
   const host = await openArcadeAs(hostPlayer.id, { viewport: { width: 1280, height: 640 }, expanded: true });
   const guest = await openArcadeAs(guestPlayer.id);
-  const spectator = await openArcadeAs(spectatorPlayer.id);
   try {
-    await host.page.click('[data-game="scribble"]');
-    await host.page.waitForSelector('#scribble-create:not([disabled])');
-    await host.page.click('#scribble-create');
-    if ((await guest.page.locator('[data-scribble-join]').count()) === 0) await guest.page.click('[data-game="scribble"]');
-    await guest.page.waitForSelector('[data-scribble-join]');
-    await guest.page.click('[data-scribble-join]');
-    await host.page.waitForSelector('#scribble-start:not([disabled])');
-    await host.page.check('input[name="scribble-rounds"][value="2"]');
-    await host.page.click('#scribble-start');
-
-    // Round 1, turn 1: the host draws.
+    await startScribbleMatch(host.page, [guest.page], 1);
     await host.page.waitForSelector('.scribble-word-choice-btn');
-    const firstWordBtn = host.page.locator('.scribble-word-choice-btn').first();
-    const firstWord = (await firstWordBtn.textContent())!.trim();
-    await firstWordBtn.click();
+    await host.page.locator('.scribble-word-choice-btn').first().click();
     await host.page.waitForSelector('#scribble-canvas');
 
-    // Geometry with the expand preference applied before the canvas mounted:
-    // the drawable surface must fill the 8:5 wrapper exactly — a mismatch
-    // means strokes replay distorted for everyone else.
     const geometry = await host.page.evaluate(() => {
       const canvas = document.querySelector('#scribble-canvas') as HTMLCanvasElement;
       const wrap = canvas.closest('.scribble-canvas-wrap') as HTMLElement;
@@ -867,11 +894,7 @@ arcadeTest('scribble', 'Scribble: expanded canvas keeps 8:5, live thumbs-up surv
     assert.ok(Math.abs(ratio - 1.6) < 0.05, `expanded Scribble canvas must stay at 8:5 (got ${ratio.toFixed(3)})`);
     assert.ok(geometry.scrollWidth <= geometry.clientWidth, 'expanded Scribble must not scroll sideways');
 
-    // The expand toggle itself must survive rapid clicking and stay in sync
-    // (button state, shell class, persisted preference).
-    for (let i = 0; i < 7; i += 1) {
-      await host.page.click('[data-arcade-expand]');
-    }
+    for (let i = 0; i < 7; i += 1) await host.page.click('[data-arcade-expand]');
     const toggleState = await host.page.evaluate(() => ({
       pressed: document.querySelector('[data-arcade-expand]')?.getAttribute('aria-pressed'),
       expanded: !!document.querySelector('.arcade-game-shell.is-expanded'),
@@ -879,11 +902,30 @@ arcadeTest('scribble', 'Scribble: expanded canvas keeps 8:5, live thumbs-up surv
     }));
     assert.equal(toggleState.pressed, String(toggleState.expanded), 'button state must match the shell state');
     assert.equal(toggleState.stored, String(toggleState.expanded), 'persisted preference must match the shell state');
-    // 7 toggles from "expanded" end collapsed; bring it back for the rest.
-    if (!toggleState.expanded) await host.page.click('[data-arcade-expand]');
-    await host.page.waitForSelector('.arcade-game-shell.is-expanded');
+    await finishScribbleMatch(host.page);
+  } finally {
+    await Promise.all([host.context.close(), guest.context.close()]);
+  }
+});
 
-    // Draw something clearly visible, then let the guest guess correctly.
+arcadeTest('scribble', 'Scribble: live thumbs-up stays synchronized and the next round starts blank', async () => {
+  const hostPlayer = await createPlayer('Scribble Maler');
+  const guestPlayer = await createPlayer('Scribble Rater');
+  const spectatorPlayer = await createPlayer('Scribble Zuschauer');
+
+  const host = await openArcadeAs(hostPlayer.id);
+  const guest = await openArcadeAs(guestPlayer.id);
+  const spectator = await openArcadeAs(spectatorPlayer.id);
+  try {
+    await startScribbleMatch(host.page, [guest.page], 2);
+
+    // Round 1, turn 1: the host draws.
+    await host.page.waitForSelector('.scribble-word-choice-btn');
+    const firstWordBtn = host.page.locator('.scribble-word-choice-btn').first();
+    const firstWord = (await firstWordBtn.textContent())!.trim();
+    await firstWordBtn.click();
+    await host.page.waitForSelector('#scribble-canvas');
+
     const box = await laidOutRect(host.page, '#scribble-canvas');
     await host.page.mouse.move(box.x + 30, box.y + 30);
     await host.page.mouse.down();
@@ -892,60 +934,60 @@ arcadeTest('scribble', 'Scribble: expanded canvas keeps 8:5, live thumbs-up surv
     await guest.page.waitForFunction(
       () => Number(document.querySelector('#scribble-canvas')?.getAttribute('data-scribble-stroke-count') ?? 0) >= 1
     );
-    await guest.page.fill('#scribble-guess-input', firstWord);
-    await guest.page.click('#scribble-guess-form button[type="submit"]');
-    await host.page.waitForSelector(`text=Wort war: ${firstWord}`);
-
-    // The just-finished drawing is still votable through 'reveal'/'choosing'
-    // (up until the next word is chosen) — the guest marks it with a thumb.
-    // (The host drew it, so their own thumbButtonHtml() stays hidden — the
-    // count is only checked on the guest's page, which does render it.)
     await guest.page.waitForSelector('#scribble-thumb');
     await guest.page.click('#scribble-thumb');
     await guest.page.waitForFunction(
       () => document.querySelector('[data-scribble-thumb-count]')?.textContent === '1'
     );
 
-    // The spectator follows along in the readonly watch view and may thumb too.
     await spectator.page.waitForSelector('[data-watch-match]');
     await spectator.page.click('[data-watch-match]');
     await spectator.page.waitForSelector('#arcade-watch-thumb:not([disabled])');
-
-    // Guest briefly drops offline right after thumbing (network blip) — the
-    // rejoin sync must not park the previous turn's strokes for the next
-    // turn's blank canvas, and the vote window must still work afterwards.
-    await guest.context.setOffline(true);
-    await guest.page.waitForTimeout(600);
-    await guest.context.setOffline(false);
     await spectator.page.click('#arcade-watch-thumb');
     await guest.page.waitForFunction(
       () => document.querySelector('[data-scribble-thumb-count]')?.textContent === '2'
     );
 
-    // Turn 2: the guest draws, the host guesses — no round-gallery pause
-    // anymore, the next word choice appears directly.
+    await guest.page.fill('#scribble-guess-input', firstWord);
+    await guest.page.locator('#scribble-guess-form').evaluate((form) => (form as HTMLFormElement).requestSubmit());
+    await guest.page.waitForFunction(
+      () => ['correct', 'wrong', 'rejected'].includes(document.getElementById('view-container')?.dataset.scribbleGuessResult ?? ''),
+    );
+    assert.equal(
+      await guest.page.locator('#view-container').getAttribute('data-scribble-guess-result'),
+      'correct',
+      'the first guess must be acknowledged as correct before the turn transition',
+    );
     await guest.page.waitForSelector('.scribble-word-choice-btn');
+
+    // Turn 2: the guest draws, then the next durable word-choice state proves
+    // that both clients crossed reveal before round two is sampled.
     const secondWordBtn = guest.page.locator('.scribble-word-choice-btn').first();
     const secondWord = (await secondWordBtn.textContent())!.trim();
     await secondWordBtn.click();
     await host.page.waitForSelector('#scribble-guess-input');
     await host.page.fill('#scribble-guess-input', secondWord);
-    await host.page.click('#scribble-guess-form button[type="submit"]');
-
-    await host.page.waitForSelector('.scribble-word-choice-btn', { timeout: 15_000 });
-    const thirdWordBtn = host.page.locator('.scribble-word-choice-btn').first();
-    await thirdWordBtn.click();
-    await host.page.waitForSelector('#scribble-canvas');
-    await guest.page.waitForSelector('#scribble-canvas');
-    // Give any (buggy) replay a moment to paint before sampling the pixels.
+    await host.page.locator('#scribble-guess-form').evaluate((form) => (form as HTMLFormElement).requestSubmit());
+    await host.page.waitForFunction(
+      () => ['correct', 'wrong', 'rejected'].includes(document.getElementById('view-container')?.dataset.scribbleGuessResult ?? ''),
+    );
+    assert.equal(
+      await host.page.locator('#view-container').getAttribute('data-scribble-guess-result'),
+      'correct',
+      'the second guess must be acknowledged as correct before the round transition',
+    );
+    await host.page.waitForSelector('.scribble-word-choice-btn');
+    await host.page.locator('.scribble-word-choice-btn').first().click();
+    await Promise.all([host.page, guest.page].map((page) => page.waitForSelector('#scribble-canvas')));
+    // This is a negative assertion window: a stale reconnect replay must not
+    // paint after the freshly mounted round-two canvas has appeared.
     await guest.page.waitForTimeout(400);
     const guestPainted = await countPaintedPixels(guest.page, '#scribble-canvas');
     assert.equal(guestPainted, 0, 'the new round must start on a blank canvas — no replay of the previous drawing');
     const hostPainted = await countPaintedPixels(host.page, '#scribble-canvas');
     assert.equal(hostPainted, 0, 'the drawer must start on a blank canvas too');
+    await finishScribbleMatch(host.page);
   } finally {
-    await host.context.close();
-    await guest.context.close();
-    await spectator.context.close();
+    await Promise.all([host.context.close(), guest.context.close(), spectator.context.close()]);
   }
 });

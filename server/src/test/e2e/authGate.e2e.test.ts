@@ -7,11 +7,12 @@
 // api.auth.recovery.test.ts) purely to be able to mint the invite code this
 // test needs.
 
-import { test, before, after } from 'node:test';
+import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
-import { startE2EServer } from './e2eServer';
+import { createE2EDiagnosticTest, trackE2EContext } from './e2eDiagnostics';
+import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
 const RECOVERY_CODE = 'e2e-admin-recovery-code';
@@ -20,9 +21,12 @@ const PASSWORD = 'e2e new person password';
 const PASSWORD_AFTER_RESET = 'e2e password after reset';
 
 let serverProcess: ChildProcess;
+let e2eServer: E2EServer;
 let browser: Browser;
 let page: Page;
 let adminCookie: string;
+
+const test = createE2EDiagnosticTest(() => ({ browser, server: e2eServer }));
 
 // Mints a fresh 'register' invite code by bootstrapping one admin account
 // via the recovery code (plain HTTP, no browser involved) and having it
@@ -89,6 +93,7 @@ before(async () => {
     ADMIN_RECOVERY_CODE: RECOVERY_CODE,
     KIOSK_TOKEN: 'e2e-kiosk-token',
   });
+  e2eServer = server;
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   browser = await chromium.launch();
@@ -158,9 +163,16 @@ test('an invite link registers a new account and logs it straight in', async () 
   assert.ok(onboardingLayers.dialogZIndex > onboardingLayers.ringZIndex, 'the dialog must stay above the spotlight shadow');
   await page.setViewportSize({ width: 390, height: 844 });
 
-  // One click per STEPS entry in onboarding.js (3 total) reaches the
-  // mandatory rating phase after the compact core tour.
-  for (let step = 0; step < 3; step += 1) {
+  // One click per step reaches the mandatory rating phase after the core
+  // tour. The step count depends on the account's role (see buildSteps() in
+  // onboarding.js), so read it off the tour's own progress text ("Schritt 1
+  // von N") instead of hardcoding it.
+  const totalCoreSteps = await page.locator('.onboarding-progress').evaluate((element) => {
+    const match = element.textContent?.match(/von (\d+)/);
+    if (!match) throw new Error('onboarding progress text is missing the step count');
+    return Number(match[1]);
+  });
+  for (let step = 0; step < totalCoreSteps; step += 1) {
     await page.click('[data-onboarding-next]');
     await page.waitForSelector('#onboarding-root [role="dialog"]');
   }
@@ -182,11 +194,20 @@ test('an invite link registers a new account and logs it straight in', async () 
   // Regression coverage: a rerender triggered by a required slider's own
   // debounced save must not steal focus (and the page scroll with it) back
   // to the very first required row - it only used to happen for a row other
-  // than the first, so rate a later one via real keyboard input.
+  // than the first, so rate a later one via real keyboard input. The save
+  // chain is a 250ms debounce plus a real network round-trip and rerender
+  // (see the 'input' listener in gameCatalog.js), so this polls for the
+  // actual completion signal instead of guessing a fixed delay - a single
+  // point-in-time check after a hardcoded wait was flaky under CI load,
+  // where that chain can easily take longer than the guessed margin.
   const midSlider = requiredRows.nth(5).locator('input[type="range"]').first();
   await midSlider.focus();
   await page.keyboard.press('ArrowRight');
-  await page.waitForTimeout(350);
+  await page.waitForFunction(() => {
+    const row = document.querySelectorAll('.game-table-row.onboarding-required')[5];
+    const input = row?.querySelector('input[type="range"]');
+    return input != null && input === document.activeElement;
+  });
   assert.equal(
     await midSlider.evaluate((element) => element === document.activeElement),
     true,
@@ -213,6 +234,79 @@ test('an invite link registers a new account and logs it straight in', async () 
   // games were the required set.
   await page.waitForSelector('[data-tab="catalog"]');
   assert.equal(await page.locator('.game-table-row.onboarding-required').count(), 0);
+});
+
+test('admin onboarding reaches the event filter and the rating handoff', async () => {
+  const reset = await fetch(`${BASE_URL}/api/me/onboarding`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ status: 'pending', lastCoreStep: 0, ratingStatus: 'pending' }),
+  });
+  assert.equal(reset.status, 200, await reset.text());
+
+  const adminPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(adminPage.context(), 'auth-onboarding-admin');
+  try {
+    await adminPage.goto(BASE_URL);
+    await adminPage.waitForSelector('#auth-screen:not([hidden])');
+    await adminPage.fill('#auth-name', 'E2E Bootstrap Admin');
+    await adminPage.fill('#auth-password', 'e2e bootstrap password');
+    await adminPage.click('#auth-form button[type="submit"]');
+    await adminPage.waitForSelector('#app:not([hidden])');
+    await adminPage.waitForSelector('#onboarding-root [role="dialog"]');
+
+    await adminPage.waitForFunction(() =>
+      document.querySelector('.onboarding-progress')?.textContent?.includes('von 13') ?? false,
+      undefined,
+      { timeout: 10_000 },
+    );
+    const totalCoreSteps = await adminPage.locator('.onboarding-progress').evaluate((element) => {
+      const match = element.textContent?.match(/von (\d+)/);
+      if (!match) throw new Error('onboarding progress text is missing the step count');
+      return Number(match[1]);
+    });
+    assert.equal(totalCoreSteps, 13, 'admins must get the event-selection step before ratings');
+
+    let sawEventSelection = false;
+    for (let step = 0; step < totalCoreSteps; step += 1) {
+      const title = await adminPage.locator('#onboarding-title').textContent();
+      if (title === 'Event-Auswahl') {
+        sawEventSelection = true;
+        await adminPage.waitForSelector('#view-container[data-view="analytics"]');
+        await adminPage.waitForSelector('section[aria-label="Ansicht"] .search-select-control');
+        await adminPage.waitForSelector('.onboarding-target-ring');
+        const waitForSpotlightAlignment = async () => {
+          await adminPage.waitForFunction(() => {
+            const target = document.querySelector('section[aria-label="Ansicht"] .search-select-control')?.getBoundingClientRect();
+            const ring = document.querySelector('.onboarding-target-ring')?.getBoundingClientRect();
+            return Boolean(target && ring)
+              && Math.abs(target!.left - ring!.left) < 1
+              && Math.abs(target!.top - ring!.top) < 1
+              && Math.abs(target!.width - ring!.width) < 1
+              && Math.abs(target!.height - ring!.height) < 1;
+          }, undefined, { timeout: 5_000 });
+        };
+        await waitForSpotlightAlignment();
+
+        await adminPage.setViewportSize({ width: 420, height: 800 });
+        await waitForSpotlightAlignment();
+      }
+      await adminPage.click('[data-onboarding-next]');
+      if (step + 1 < totalCoreSteps) {
+        await adminPage.waitForFunction(
+          (previousTitle) => document.querySelector('#onboarding-title')?.textContent !== previousTitle,
+          title,
+          { timeout: 5_000 },
+        );
+      }
+    }
+    assert.equal(sawEventSelection, true);
+    await adminPage.waitForSelector('.game-table-row.onboarding-required input[type="range"]');
+    await adminPage.click('[data-onboarding-later]');
+    await adminPage.waitForFunction(() => !document.querySelector('#onboarding-root [role="dialog"]'));
+  } finally {
+    await adminPage.close();
+  }
 });
 
 test('logging out drops back to the login gate, and logging back in works', async () => {
@@ -266,6 +360,7 @@ test('a logged-in user can leave a stale action link without editing the URL', a
 
 test('the required-mode kiosk starts with its dedicated read-only token', async () => {
   const kioskPage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  await trackE2EContext(kioskPage.context(), 'auth-kiosk');
   try {
     await kioskPage.goto(`${BASE_URL}/kiosk.html?token=e2e-kiosk-token`);
     await kioskPage.waitForSelector('#kiosk-dashboard:not([hidden])');
@@ -302,6 +397,7 @@ test('a reset link replaces the password and signs the browser in with a fresh s
 
 test('admin creates, displays and revokes a registration link in the UI', async () => {
   const adminPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(adminPage.context(), 'auth-invite-admin');
   try {
     await adminPage.goto(BASE_URL);
     await adminPage.waitForSelector('#auth-screen:not([hidden])');
@@ -333,12 +429,21 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     );
     await adminPage.click('#admin-register-link');
 
+    await adminPage.waitForSelector('#admin-register-invite-form');
+    assert.equal(await adminPage.locator('#admin-register-expires').inputValue(), String(7 * 24 * 60 * 60 * 1000));
+    assert.equal(
+      (await adminPage.locator('#admin-register-expires option').allTextContents()).some((label) => /unbegrenzt/i.test(label)),
+      false,
+    );
+    await adminPage.click('#admin-register-invite-form button[type="submit"]');
     await adminPage.waitForSelector('#reauth-form');
     await adminPage.fill('#reauth-password', 'e2e bootstrap password');
     await adminPage.click('#reauth-form button[type="submit"]');
     await adminPage.waitForSelector('#admin-invite-link');
     const link = await adminPage.inputValue('#admin-invite-link');
-    assert.equal(new URL(link).searchParams.has('invite'), true);
+    const inviteCode = new URL(link).searchParams.get('invite');
+    assert.ok(inviteCode);
+    assert.match((await adminPage.locator('.modal-backdrop p.muted').last().textContent()) ?? '', /noch .* gültig/);
 
     await adminPage.click('#admin-invite-qr-toggle');
     await adminPage.waitForSelector('#admin-invite-qr svg');
@@ -351,9 +456,9 @@ test('admin creates, displays and revokes a registration link in the UI', async 
       'desktop onboarding must not introduce horizontal page scrolling',
     );
 
-    const activeLink = adminPage.locator('[data-show-login-link]').first();
+    const activeLink = adminPage.locator(`[data-show-login-link="${inviteCode}"]`);
     await activeLink.waitFor();
-    await adminPage.locator('[data-revoke-login-link]').first().click();
+    await adminPage.locator(`[data-revoke-login-link="${inviteCode}"]`).click();
     await adminPage.click('[data-confirm]');
     await activeLink.waitFor({ state: 'detached' });
   } finally {
@@ -372,6 +477,7 @@ test('switching from an admin to a new account clears the local admin mode', asy
   const { code } = JSON.parse(inviteText) as { code: string };
 
   const switchPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(switchPage.context(), 'auth-account-switch');
   try {
     await switchPage.goto(BASE_URL);
     await switchPage.waitForSelector('#auth-screen:not([hidden])');
@@ -412,6 +518,7 @@ test('admin roster retries role loading, serializes changes and follows group ro
   assert.ok(target);
 
   const adminPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(adminPage.context(), 'auth-roster-admin');
   let failNextMembersRequest = true;
   let rolePatchRequests = 0;
   adminPage.on('request', (request) => {
@@ -521,6 +628,7 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
   const [testPlayer, peerTestPlayer] = seededBody.created;
 
   const adminPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(adminPage.context(), 'auth-test-session-admin');
   let testSessionLink = '';
   try {
     await adminPage.goto(BASE_URL);
@@ -549,6 +657,7 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
   }
 
   const testPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(testPage.context(), 'auth-test-session-player');
   try {
     await testPage.goto(testSessionLink);
     await testPage.waitForSelector('#auth-screen:not([hidden])');

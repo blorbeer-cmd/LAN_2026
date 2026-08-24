@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { SECTIONS, navGroupForView, renderSectionShell, sectionEntryView, sectionForView, sectionKeyForView } from './sectionNav.js';
+import {
+  SECTIONS,
+  navGroupForView,
+  renderSectionShell,
+  sectionEntryView,
+  sectionForView,
+  sectionKeyForView,
+  sectionTabsForEvent,
+} from './sectionNav.js';
 import { VIEW_MANIFEST } from './viewManifest.js';
 
 test('every section tab is a real route and belongs to exactly one section', () => {
@@ -22,10 +30,10 @@ test('a section is entered on its first tab and its tabs share one nav group', (
   assert.equal(sectionEntryView('insights'), 'leaderboard');
   assert.equal(sectionEntryView('checklist'), null);
   // Orga's tabs are sorted alphabetically for display, so its first tab is
-  // "An- & Abreise" here - but more.js hardcodes the actual "Mehr" hub entry
-  // point to "checklist" (To-Do) independently of this order, which is what
-  // keeps the persisted push url "/#checklist" landing where it always did.
-  assert.equal(sectionEntryView('orga'), 'arrivals');
+  // "Abstimmungen" - more.js uses this as the "Mehr" hub entry point too, so
+  // the top-left tab is the one actually selected on arrival, like every
+  // other section.
+  assert.equal(sectionEntryView('orga'), 'eventPolls');
 
   assert.deepEqual(SECTIONS.competition.tabs.map((tab) => tab.view), ['matchmaking', 'tournaments']);
   assert.equal(navGroupForView('matchmaking'), navGroupForView('tournaments'));
@@ -33,6 +41,32 @@ test('a section is entered on its first tab and its tabs share one nav group', (
   // A route outside every section stands for itself.
   assert.equal(navGroupForView('votes'), 'votes');
   assert.equal(sectionForView('votes'), null);
+});
+
+test('general-event planning routes each represent their own bottom-nav entry', () => {
+  const generalEvent = { eventType: 'general' };
+  assert.equal(navGroupForView('arrivals', generalEvent), 'arrivals');
+  assert.equal(navGroupForView('checklistPacking', generalEvent), 'checklistPacking');
+  assert.equal(navGroupForView('checklist', generalEvent), 'checklist');
+  assert.equal(navGroupForView('eventPolls', generalEvent), 'eventPolls');
+  assert.equal(navGroupForView('events', generalEvent), 'events');
+  assert.equal(navGroupForView('arrivals', { eventType: 'lan' }), 'orga');
+});
+
+test('section tabs follow the active event feature snapshot', () => {
+  const generalEvent = {
+    enabledFeatures: ['tasks', 'travel', 'food', 'costs', 'music', 'seating'],
+  };
+  assert.equal(sectionEntryView('competition', generalEvent), null);
+  assert.equal(sectionEntryView('insights', generalEvent), null);
+  assert.equal(sectionEntryView('orga', generalEvent), 'eventPolls');
+  assert.deepEqual(sectionTabsForEvent('orga', generalEvent).map((tab) => tab.view), [
+    'eventPolls',
+    'arrivals',
+    'events',
+    'checklistPacking',
+    'checklist',
+  ]);
 });
 
 // Minimal stand-in for the container element: it models exactly what the shell
@@ -113,6 +147,44 @@ test('re-rendering the same route keeps the shell and its content element alive'
   assert.equal(container.writes, writesAfterFirst + 1);
   assert.equal(third, container.sectionView);
   assert.match(container.innerHTML, /data-section-tab="arrivals" aria-current="page"/);
+});
+
+test('general-event planning routes render as standalone pages without an Orga tab row', () => {
+  const container = stubContainer();
+  renderSectionShell(container, 'arrivals', {
+    event: { eventType: 'general', enabledFeatures: ['travel', 'tasks'] },
+  });
+  assert.match(container.innerHTML, /<h1 class="view-title">An- & Abreise<\/h1>/);
+  assert.doesNotMatch(container.innerHTML, /class="section-tabs"/);
+  assert.doesNotMatch(container.innerHTML, /data-section-tab=/);
+
+  renderSectionShell(container, 'checklist', {
+    event: { eventType: 'general', enabledFeatures: ['travel', 'tasks'] },
+  });
+  assert.match(container.innerHTML, /<h1 class="view-title">To-Do<\/h1>/);
+  assert.doesNotMatch(container.innerHTML, /class="section-tabs"/);
+});
+
+test('the shell rebuilds a same-route tab row when the event feature set changes', () => {
+  const container = stubContainer();
+  renderSectionShell(container, 'arrivals');
+  const writesWithAllTabs = container.writes;
+  assert.match(container.innerHTML, /data-section-tab="checklist"/);
+
+  // Arrivals remains a valid route, but To-Do and Packliste are unavailable
+  // without the tasks feature. Keeping the old shell here would leave stale,
+  // clickable tabs behind after an event switch.
+  renderSectionShell(container, 'arrivals', { event: { enabledFeatures: ['travel'] } });
+  assert.equal(container.writes, writesWithAllTabs + 1);
+  assert.match(container.innerHTML, /data-section-tab="arrivals"/);
+  assert.match(container.innerHTML, /data-section-tab="events"/);
+  assert.doesNotMatch(container.innerHTML, /data-section-tab="checklistPacking"/);
+  assert.doesNotMatch(container.innerHTML, /data-section-tab="checklist"/);
+
+  // Once the visible set is stable, ordinary background re-renders still
+  // preserve the content slot and any draft state owned by the sub-view.
+  renderSectionShell(container, 'arrivals', { event: { enabledFeatures: ['travel'] } });
+  assert.equal(container.writes, writesWithAllTabs + 1);
 });
 
 test('the shell rebuilds after a view outside every area replaced the container', () => {

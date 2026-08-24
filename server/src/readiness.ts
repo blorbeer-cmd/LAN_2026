@@ -1,6 +1,7 @@
 import { config } from './config';
 import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
 import { getBackupStatus } from './backupService';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 
 export type ReadinessState = 'ready' | 'warning' | 'error';
 
@@ -53,7 +54,7 @@ function eventCheck(groupId: string, now: number): ReadinessCheck {
   }
   const participants = (
     db
-      .prepare("SELECT COUNT(*) AS count FROM event_participants ep WHERE ep.event_id = ? AND ep.status = 'accepted'")
+      .prepare(`SELECT COUNT(*) AS count FROM event_participants ep WHERE ep.event_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}`)
       .get(event.id) as { count: number }
   ).count;
   return {

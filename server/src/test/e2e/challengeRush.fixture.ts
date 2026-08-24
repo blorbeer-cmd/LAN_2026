@@ -9,10 +9,16 @@ import {
   loginE2EAdmin,
   promoteE2EAdmin,
 } from './authHelpers';
-import { startE2EServer } from './e2eServer';
+import {
+  deferE2EContextClose,
+  runWithE2EDiagnostics,
+  trackE2EContext,
+} from './e2eDiagnostics';
+import { startE2EServer, type E2EServer } from './e2eServer';
 
 let BASE_URL: string;
 let serverProcess: ChildProcess;
+let e2eServer: E2EServer;
 let browser: Browser;
 const adminCookies = new Map<string, string>();
 const playerCookies = new Map<string, string>();
@@ -29,7 +35,14 @@ function challengeRushTest(
   name: string,
   fn: (context: TestContext) => void | Promise<void>,
 ): void {
-  if (challengeRushShard === shard) test(name, fn);
+  if (challengeRushShard === shard) {
+    test(name, (context) =>
+      runWithE2EDiagnostics(
+        { testName: name, browser, server: e2eServer },
+        () => fn(context),
+      ),
+    );
+  }
 }
 
 async function createPlayer(baseUrl: string = BASE_URL): Promise<string> {
@@ -47,6 +60,7 @@ async function makeAdmin(playerId: string): Promise<void> {
 
 async function openArcade(playerId: string, baseUrl: string = BASE_URL, { adminMode = false } = {}): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await trackE2EContext(context, `challenge-rush-${playerId}`);
   await addSessionCookie(context, baseUrl, playerCookies.get(`${baseUrl}:${playerId}`)!);
   const page = await context.newPage();
   await page.goto(baseUrl);
@@ -68,12 +82,13 @@ async function openArcade(playerId: string, baseUrl: string = BASE_URL, { adminM
       // the stable top-level navigation instead of extending every timeout.
     }
   }
-  await context.close();
+  await deferE2EContextClose(context);
   throw new Error('could not open the Arcade view');
 }
 
 before(async () => {
   const server = await startE2EServer(authenticatedServerEnv());
+  e2eServer = server;
   serverProcess = server.process;
   BASE_URL = server.baseUrl;
   adminCookies.set(BASE_URL, await loginE2EAdmin(BASE_URL));
@@ -113,7 +128,7 @@ challengeRushTest('scenarios', 'Challenge Rush admin can run selected tasks in c
     const finalBreakdown = (await actor.page.locator('.challenge-rush-final-breakdown').textContent()) ?? '';
     assert.ok(finalBreakdown.indexOf('Ziffernsumme') < finalBreakdown.indexOf(binaryTitle));
   } finally {
-    await actor.context.close();
+    await deferE2EContextClose(actor.context);
   }
 });
 
@@ -137,7 +152,7 @@ challengeRushTest('scenarios', 'Challenge Rush drops a hidden admin selection af
     await actor.page.waitForSelector('[data-cr-start]');
     assert.equal(await actor.page.locator('.challenge-rush-lobby-selection').count(), 0);
   } finally {
-    await actor.context.close();
+    await deferE2EContextClose(actor.context);
   }
 });
 
@@ -175,7 +190,7 @@ challengeRushTest('scenarios', 'Challenge Rush focuses timed targets after start
       await actor.page.locator(challenge.selector).press('Space');
       await actor.page.waitForSelector('#cr-ready-next:not([disabled])');
     } finally {
-      await actor.context.close();
+      await deferE2EContextClose(actor.context);
     }
   }
 });
@@ -233,7 +248,7 @@ challengeRushTest('scenarios', 'Challenge Rush pauses active time and reconnects
     await actor.page.evaluate(() => window.dispatchEvent(new Event('respawn:challenge-rush-connect')));
     await actor.page.waitForFunction((expected) => { const node = document.querySelector('.challenge-rush-stage'); return node?.getAttribute('data-reconnected') === 'true' && node.getAttribute('data-match-id') === expected.matchId && node.getAttribute('data-challenge-index') === expected.challengeIndex; }, beforePause);
   } finally {
-    await actor.context.close();
+    await deferE2EContextClose(actor.context);
   }
 });
 
@@ -393,7 +408,7 @@ challengeRushTest('scenarios', 'Challenge Rush hides the reaction target until p
     const breakdown = await actor.page.locator('.challenge-rush-final-breakdown').first().textContent();
     assert.ok(breakdown?.includes('Klick den Kreis'));
   } finally {
-    await actor.context.close();
+    await deferE2EContextClose(actor.context);
   }
 });
 
@@ -424,7 +439,7 @@ challengeRushTest('lifecycle', 'Challenge Rush plays every Phase 3 mini-challeng
       assert.ok(titles?.includes(title), `Ergebnis-Aufschlüsselung sollte "${title}" enthalten`);
     }
   } finally {
-    await actor.context.close();
+    await deferE2EContextClose(actor.context);
   }
 });
 
@@ -453,8 +468,8 @@ challengeRushTest('scenarios', 'Challenge Rush lets a guest leave a running matc
     await host.page.waitForFunction(() => document.body.textContent?.includes('Forfait') === true);
     assert.equal(await host.page.locator('.challenge-rush-stage').count(), 1);
   } finally {
-    await host.context.close();
-    await guest.context.close();
+    await deferE2EContextClose(host.context);
+    await deferE2EContextClose(guest.context);
   }
 });
 
@@ -496,8 +511,8 @@ challengeRushTest('scenarios', 'Challenge Rush unlocks a new lobby immediately a
       await guest.page.waitForSelector('#cr-create:not([disabled])', { timeout: 5_000 });
       assert.equal(await guest.page.locator('#cr-create').isDisabled(), false);
     } finally {
-      await host.context.close();
-      await guest.context.close();
+      await deferE2EContextClose(host.context);
+      await deferE2EContextClose(guest.context);
     }
   } finally {
     forfeitServer.process.kill();

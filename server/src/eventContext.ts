@@ -1,4 +1,6 @@
 import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID, OUTSIDE_EVENTS_ID } from './db';
+import type { EventTypeKey } from './eventFeatureCatalog';
+import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 
 export interface EventContextEvent {
   id: string;
@@ -7,6 +9,9 @@ export interface EventContextEvent {
   ends_at: number | null;
   status: 'draft' | 'published' | 'cancelled' | 'ended';
   group_id: string | null;
+  event_type_key: EventTypeKey;
+  preset_version: number;
+  schedule_revision: number;
 }
 
 export type EventAccessLevel = 'none' | 'teaser' | 'participant' | 'admin';
@@ -26,19 +31,26 @@ export function getSelectableEvent(eventId: string): EventContextEvent | undefin
   if (eventId === OUTSIDE_EVENTS_ID) return undefined;
   return db
     .prepare(
-      `SELECT id, name, starts_at, ends_at, status, group_id
+      `SELECT id, name, starts_at, ends_at, status, group_id,
+              event_type_key, preset_version, schedule_revision
        FROM events
        WHERE id = ? AND group_id = ? AND status = 'published' AND ended_at IS NULL`,
     )
     .get(eventId, DEFAULT_GROUP_ID) as EventContextEvent | undefined;
 }
 
-function acceptEventParticipation(playerId: string, eventId: string): void {
+// Takes the event's schedule_revision (not just its id) so the roster row
+// this writes is immediately a CURRENT confirmed participation, not just an
+// 'accepted' status — see eventParticipation.ts's ACCEPTED_EVENT_PARTICIPANT_SQL.
+// Every caller already has the event from getSelectableEvent() (which only
+// ever returns published, i.e. dated, events), so this never needs to look
+// the revision up separately.
+function acceptEventParticipation(playerId: string, event: EventContextEvent): void {
   db.prepare(
-    `INSERT INTO event_participants (event_id, player_id, status)
-     VALUES (?, ?, 'accepted')
-     ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted'`,
-  ).run(eventId, playerId);
+    `INSERT INTO event_participants (event_id, player_id, status, confirmed_schedule_revision)
+     VALUES (?, ?, 'accepted', ?)
+     ON CONFLICT(event_id, player_id) DO UPDATE SET status = 'accepted', confirmed_schedule_revision = excluded.confirmed_schedule_revision`,
+  ).run(event.id, playerId, event.schedule_revision);
 }
 
 function storeActiveEvent(playerId: string, eventId: string): void {
@@ -53,7 +65,7 @@ function storeActiveEvent(playerId: string, eventId: string): void {
 function ensureBaseParticipation(playerId: string): EventContextEvent {
   const baseEvent = getSelectableEvent(BASE_EVENT_ID);
   if (!baseEvent) throw new Error('Configured base event is missing or unavailable.');
-  acceptEventParticipation(playerId, BASE_EVENT_ID);
+  acceptEventParticipation(playerId, baseEvent);
   return baseEvent;
 }
 
@@ -63,14 +75,30 @@ function ensureBaseParticipation(playerId: string): EventContextEvent {
  * savepoints, so account, memberships, event participation, context and
  * invite consumption still commit or roll back together.
  */
-export function ensureAccountEventContext(playerId: string, preferredEventId = BASE_EVENT_ID): EventContextEvent {
+export interface EnsureAccountEventContextOptions {
+  // A reusable registration link stays valid after its target event is closed;
+  // in that case the new account gets the always-available base context.
+  fallbackToBase?: boolean;
+}
+
+export function ensureAccountEventContext(
+  playerId: string,
+  preferredEventId = BASE_EVENT_ID,
+  options: EnsureAccountEventContextOptions = {},
+): EventContextEvent {
   return db.transaction(() => {
     if (!getActivePlayer(playerId)) throw new Error('Active player required for event context.');
-    ensureBaseParticipation(playerId);
+    const baseEvent = ensureBaseParticipation(playerId);
 
     const preferredEvent = getSelectableEvent(preferredEventId);
-    if (!preferredEvent) throw new InvalidEventContextError();
-    acceptEventParticipation(playerId, preferredEvent.id);
+    if (!preferredEvent) {
+      if (options.fallbackToBase) {
+        storeActiveEvent(playerId, baseEvent.id);
+        return baseEvent;
+      }
+      throw new InvalidEventContextError();
+    }
+    acceptEventParticipation(playerId, preferredEvent);
     storeActiveEvent(playerId, preferredEvent.id);
     return preferredEvent;
   })();
@@ -82,11 +110,12 @@ export function getOrRepairActiveEvent(playerId: string): EventContextEvent {
     if (!getActivePlayer(playerId)) throw new Error('Active player required for event context.');
     const current = db
       .prepare(
-        `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id
+        `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id,
+                e.event_type_key, e.preset_version, e.schedule_revision
          FROM player_event_contexts pec
          JOIN events e ON e.id = pec.active_event_id
          JOIN event_participants ep
-           ON ep.event_id = e.id AND ep.player_id = pec.player_id AND ep.status = 'accepted'
+           ON ep.event_id = e.id AND ep.player_id = pec.player_id AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          WHERE pec.player_id = ? AND e.id != ? AND e.group_id = ?
            AND e.status = 'published' AND e.ended_at IS NULL`,
       )
@@ -104,10 +133,11 @@ export function setActiveEventForPlayer(playerId: string, eventId: string): Even
     if (!getActivePlayer(playerId)) return undefined;
     const event = db
       .prepare(
-        `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id
+        `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id,
+                e.event_type_key, e.preset_version, e.schedule_revision
          FROM events e
          JOIN event_participants ep
-           ON ep.event_id = e.id AND ep.player_id = ? AND ep.status = 'accepted'
+           ON ep.event_id = e.id AND ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          WHERE e.id = ? AND e.id != ? AND e.group_id = ?
            AND e.status = 'published' AND e.ended_at IS NULL`,
       )
@@ -171,8 +201,10 @@ export function eventAccessLevel(
   instanceRole: 'owner' | 'admin' | 'member' = 'member',
 ): EventAccessLevel {
   const event = db
-    .prepare('SELECT id FROM events WHERE id = ? AND id != ? AND group_id = ?')
-    .get(eventId, OUTSIDE_EVENTS_ID, DEFAULT_GROUP_ID);
+    .prepare('SELECT id, created_by, status FROM events WHERE id = ? AND id != ? AND group_id = ?')
+    .get(eventId, OUTSIDE_EVENTS_ID, DEFAULT_GROUP_ID) as
+    | { id: string; created_by: string | null; status: string }
+    | undefined;
   if (!event) return 'none';
   if (instanceRole === 'owner' || instanceRole === 'admin') return 'admin';
   const participation = db

@@ -22,8 +22,9 @@ let searchResultType = 'tracks';
 let searchLoading = false;
 let pairing = null;
 
-export function invalidateMusic() {
+export function invalidateMusic({ hard = false } = {}) {
   cacheStale = true;
+  if (hard) cache = null;
 }
 
 function scheduleRefresh(container, ctx) {

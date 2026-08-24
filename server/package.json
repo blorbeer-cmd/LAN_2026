@@ -6,7 +6,7 @@
   "type": "commonjs",
   "main": "dist/index.js",
   "engines": {
-    "node": ">=24"
+    "node": "24.x"
   },
   "scripts": {
     "prepare": "node scripts/setup-git-hooks.js || true",

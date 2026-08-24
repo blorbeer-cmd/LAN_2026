@@ -77,6 +77,9 @@
   --seating-seat-width-compact: calc(var(--avatar-size-lg) + var(--space-4));
   --seating-seat-height-compact: calc(var(--row-min-h) + var(--space-5));
   --assignment-select-width: 112px;
+  /* Fixed width keeps the food-order payment toggle stable beside the PayPal
+     action while its label, position count and amount change. */
+  --payment-marker-width: 96px;
   /* Stable Arcade creation geometry: mode-capable and fixed-mode games keep
      the primary lobby action in the same column while switching tiles. */
   --arcade-lobby-mode-width: 134px;
@@ -624,6 +627,368 @@ textarea {
   }
 }
 
+/* Event polls — follows the same card, compact row, selection-toolbar and
+   collapsible-section vocabulary used by Events, Essen, Vote and Checkliste. */
+.event-polls-page {
+  /* The view restores its own card anchor after live re-renders. Native scroll
+     anchoring would otherwise move the container a second time when the
+     focused response button is replaced. */
+  overflow-anchor: none;
+}
+.event-poll-round-header,
+.event-poll-option-header {
+  align-items: flex-start;
+}
+.event-poll-card-title strong {
+  margin: 0;
+}
+.event-poll-list {
+  gap: var(--space-3);
+}
+.event-poll-card {
+  position: relative;
+  padding: 0;
+  overflow: visible;
+}
+.event-poll-card.has-open-action-menu {
+  z-index: 20;
+}
+.event-poll-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+.event-poll-card-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--tap-target-size);
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.event-poll-card-toggle[aria-expanded='true'] .collapsible-section-chevron {
+  transform: rotate(90deg);
+}
+@media (hover: hover) {
+  .event-poll-card-toggle:hover {
+    background: var(--bg-elevated-2);
+  }
+}
+.event-poll-card-title,
+.event-poll-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.event-poll-card-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.event-poll-card-meta {
+  align-items: flex-end;
+  text-align: right;
+  min-width: 9rem;
+}
+.event-poll-card-side {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+}
+.event-poll-best-result {
+  max-width: 15rem;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-poll-action-menu {
+  position: relative;
+  z-index: 4;
+}
+.event-poll-action-menu[open] {
+  z-index: 21;
+}
+.event-poll-action-menu > summary {
+  list-style: none;
+  white-space: nowrap;
+}
+.event-poll-action-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.event-poll-action-menu-panel {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 12;
+  display: flex;
+  width: max-content;
+  min-width: 12rem;
+  flex-direction: column;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+}
+.event-poll-action-menu-panel button {
+  min-height: 36px;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.event-poll-action-menu-panel button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.event-poll-action-menu-panel button.is-danger {
+  color: var(--danger);
+}
+@media (hover: hover) {
+  .event-poll-action-menu-panel button:hover:not(:disabled) {
+    background: var(--bg-elevated-2);
+  }
+}
+.event-poll-card-content {
+  gap: var(--space-4);
+  padding: 0 var(--space-4) var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.event-poll-round {
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+}
+.event-poll-note {
+  margin: 0;
+}
+.event-poll-options {
+  gap: var(--space-2);
+}
+.event-poll-option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.event-poll-option-badges {
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  min-width: 7.5rem;
+  min-height: 24px;
+}
+.event-poll-option-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+.event-poll-option-title-row {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.event-poll-option-title-row strong {
+  overflow-wrap: anywhere;
+}
+.event-poll-option-link {
+  flex: none;
+  padding: 0;
+}
+.event-poll-option-title-row .info-tooltip-trigger {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+.event-poll-option-title-row .event-poll-option-link .ui-icon,
+.event-poll-option-title-row .info-tooltip-trigger .ui-icon {
+  width: 17px;
+  height: 17px;
+}
+.event-poll-option-response-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.event-poll-counts {
+  font-size: var(--font-size-sm);
+}
+.event-poll-response-toolbar {
+  width: fit-content;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.event-poll-response-toolbar .btn:not(.btn-primary) {
+  min-width: var(--tap-target-size);
+  background: var(--bg-elevated);
+}
+.event-poll-rating-toolbar .btn,
+.event-poll-rating-toolbar .btn:not(.btn-primary) {
+  min-width: 30px;
+  height: 30px;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+}
+.event-poll-choice-control {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+.event-poll-choice-control .selection-toolbar .event-poll-choice-btn {
+  height: auto;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+}
+.event-poll-form-option-details > summary {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.event-poll-save-row {
+  justify-content: flex-end;
+}
+.event-poll-result-title {
+  margin: 0;
+}
+.event-poll-edit-mode {
+  gap: var(--space-1);
+}
+.event-poll-history-round {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.event-poll-history-result {
+  color: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+.event-poll-history-details > summary {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.event-poll-history-details > .event-poll-options {
+  padding-top: var(--space-2);
+}
+.event-poll-ended-history > .collapsible-section-content {
+  padding-top: 0;
+}
+.event-poll-vote-details {
+  gap: var(--space-3);
+}
+.event-poll-vote-option {
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.event-poll-vote-group {
+  gap: var(--space-1);
+}
+.event-poll-vote-person {
+  gap: var(--space-3);
+  min-height: 28px;
+}
+.event-poll-vote-person .player-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.event-poll-voter-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.event-poll-vote-person time {
+  flex: none;
+  font-size: var(--font-size-xs);
+}
+.event-poll-form-option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.event-poll-form-option:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.event-poll-form-option > .row-between {
+  align-items: center;
+}
+.event-poll-form-option-details > summary {
+  font-size: var(--font-size-sm);
+}
+.event-poll-option-extra-fields {
+  margin-top: var(--space-2);
+}
+.event-poll-max-field {
+  grid-template-columns: minmax(0, 112px) minmax(0, 1fr);
+  align-items: center;
+}
+@media (max-width: 639px) { /* --bp-md */
+  .event-poll-card-header {
+    align-items: center;
+  }
+  .event-poll-card-toggle {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .event-poll-card-side {
+    align-self: stretch;
+    align-items: center;
+    justify-content: center;
+  }
+  .event-poll-card-meta {
+    min-width: 0;
+  }
+  .event-poll-best-result {
+    max-width: 8rem;
+  }
+  .event-poll-max-field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .event-poll-option-extra-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .event-poll-option-header {
+    grid-template-columns: minmax(0, 1fr) minmax(6.5rem, auto);
+  }
+  .event-poll-option-badges {
+    min-width: 6.5rem;
+  }
+  .event-poll-vote-person {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0;
+  }
+}
+
 /* Workspace switcher. Deliberately *not* its own control shape: it is the
    shared `.search-select` every other event and game dropdown uses, so it
    reads as the same kind of dropdown as the rest of the app. This wrapper
@@ -861,6 +1226,7 @@ textarea {
 
 .nav-btn {
   flex: 1;
+  min-width: 0;
   max-width: 120px;
   background: none;
   border: none;
@@ -875,6 +1241,10 @@ textarea {
   border-radius: var(--radius-sm);
   position: relative;
   transition: color 0.15s ease;
+}
+.nav-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 .nav-icon {
   display: grid;
@@ -1154,6 +1524,13 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* The food-order description dropdown's per-option price (see "Food orders"
+   in DESIGN_SYSTEM.md) - a plain trailing muted value, not a status icon. */
+.search-select-option-price {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
 }
 
 /* Status icon for the event dropdowns. It sits inside the field's own left
@@ -2490,6 +2867,49 @@ button.card {
   min-height: 2.4em;
   font-size: var(--font-size-xs);
 }
+.home-current-row {
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  padding: 0;
+  cursor: default;
+}
+.home-current-navigate {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: var(--row-min-h);
+  flex: 1;
+  padding: var(--card-padding);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.home-current-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.home-current-dismiss {
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
+  align-self: center;
+  flex: 0 0 var(--tap-target-size);
+  margin-right: var(--space-2);
+  color: var(--text-muted);
+}
+@media (hover: hover) {
+  .home-current-navigate:hover {
+    background: var(--bg-elevated-2);
+  }
+  .home-current-row:has(.home-current-navigate:hover) {
+    border-color: var(--accent);
+  }
+}
 .more-card {
   display: grid;
   grid-template-columns:
@@ -2958,9 +3378,8 @@ button.card {
 @media (min-width: 640px) { /* --bp-md */
   .two-column-card-grid.arrivals-carpool-grid > :only-child,
   .two-column-card-grid.arrivals-carpool-grid > :last-child:nth-child(odd),
-  .two-column-card-grid.orga-event-grid > :last-child:nth-child(odd),
   .two-column-card-grid.home-live-grid > :last-child:nth-child(odd) {
-    /* Entity cards (carpools, events, player status) keep sibling width; an
+    /* Entity cards (carpools, player status) keep sibling width; an
        odd final card must not stretch across the full row. */
     grid-column: auto;
   }
@@ -3022,6 +3441,19 @@ button.card {
 .invite-link-row .btn {
   height: var(--tap-target-size);
   white-space: nowrap;
+}
+.admin-invite-event {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.admin-register-invite-note {
+  margin: 0;
+  font-size: var(--font-size-sm);
 }
 .invite-qr-modal {
   display: flex;
@@ -3193,12 +3625,283 @@ button.card {
   gap: var(--space-2);
 }
 
-/* Divider between an event card's info block and its action buttons — keeps
-   the buttons from reading as glued to the text right above them, especially
-   once they wrap onto a second line. */
-.event-card-actions {
+/* ---------- Event cards ---------- */
+
+.event-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  height: 100%;
+  min-width: 0;
+}
+.event-card-header {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.event-card-header-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.event-card-detail-label {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.event-card h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+.event-card-info-details {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+}
+.event-card-info > .food-order-details-head:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.event-card-detail {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+}
+.event-card-detail-icon {
+  display: inline-flex;
+  flex: 0 0 var(--font-size-lg);
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+.event-card-detail-icon .ui-icon {
+  width: 1em;
+  height: 1em;
+}
+.event-card-detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.event-card-detail-label {
+  color: var(--text-muted);
+  font-weight: var(--font-weight-medium);
+}
+.event-card-description .event-card-detail-content > span:last-child {
+  white-space: pre-wrap;
+}
+.event-location-link {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: var(--space-1);
+}
+.event-location-text {
+  overflow-wrap: anywhere;
+}
+.event-card-payment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+}
+.event-card-info-details + .event-card-payment {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.event-payment-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.event-payment-member-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.event-payment-member-main {
+  display: flex;
+  flex: 1 1 16rem;
+  align-items: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.event-payment-member-main .event-card-detail {
+  flex: 1 1 auto;
+}
+.event-payment-member-actions .event-paypal-button {
+  flex: 0 0 auto;
+}
+.event-payment-amount {
+  font-size: var(--font-size-lg);
+  font-variant-numeric: tabular-nums;
+}
+.event-payment-due,
+.event-payment-proof,
+.event-payment-overview {
+  font-size: var(--font-size-xs);
+}
+.event-payment-proof {
+  color: var(--text-muted);
+}
+.event-settlement {
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
+}
+.event-settlement-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.event-settlement-metric {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.event-settlement-metric small,
+.event-settlement-metric > span {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.event-settlement-metric strong {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.event-settlement-balance {
+  align-items: center;
+}
+.payment-paypal-button {
+  width: var(--space-7);
+  height: var(--space-7);
+  padding: var(--space-1);
+}
+.event-card-participants {
+  display: block;
+}
+.event-participant-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.event-card-participants .collapsible-section-content {
+  padding-top: 0;
+}
+.event-participant-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.event-participant-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.event-participant-row:first-child {
+  border-top: 0;
+}
+.event-participant-name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.event-card-empty-copy {
+  margin: 0;
+  font-size: var(--font-size-xs);
+}
+.event-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--space-2);
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.event-card-actions .btn {
+  flex: 1 1 calc(50% - var(--space-2));
+  min-width: 0;
+}
+.event-participant-manager-list {
+  display: grid;
+  gap: var(--space-2);
+}
+.event-participant-manager-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+}
+.event-participant-manager-row > .player-name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.event-participant-manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+.event-participants-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+@media (max-width: 639px) {
+  .event-payment-heading {
+    align-items: flex-start;
+  }
+  .event-payment-member-main {
+    flex-basis: 100%;
+  }
+  .event-payment-member-actions .event-paypal-button {
+    margin-left: auto;
+  }
+  .event-participant-manager-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .event-participant-manager-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 /* ---------- Live board ---------- */
@@ -3883,12 +4586,23 @@ input[type='number'].tournament-score-input {
 .leaderboard-list-grid > .empty-state {
   grid-column: 1 / -1;
 }
-.food-order-card {
+.food-order-card,
+.event-card {
   position: relative;
   align-content: start;
   overflow: hidden;
 }
-.food-order-card::before {
+/* The card clips its own content by design (the accent rail below stays
+   flush with the rounded corners), but that same clip cut off the add-item
+   description field's suggestion dropdown (.search-select-list) whenever it
+   had less room below the input than the open list needed, hiding or
+   truncating later suggestions instead of letting them float over the next
+   card the way the shared .search-select component does everywhere else. */
+.food-order-card:has(.search-select.is-open) {
+  overflow: visible;
+}
+.food-order-card::before,
+.event-card::before {
   content: '';
   position: absolute;
   inset: var(--space-3) auto var(--space-3) 0;
@@ -3901,26 +4615,107 @@ input[type='number'].tournament-score-input {
 .food-order-grid > .food-order-card:nth-child(even)::before {
   background: var(--accent-3);
 }
+.orga-event-grid > .event-card:nth-child(odd)::before {
+  background: var(--accent);
+}
+.orga-event-grid > .event-card:nth-child(even)::before {
+  background: var(--accent-3);
+}
 .food-order-meta,
+.food-order-overview,
 .hall-of-fame-empty-result {
   font-size: var(--font-size-xs);
 }
 .food-order-details {
-  gap: var(--space-2);
   padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
 }
+.food-order-details-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.food-order-send-at {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.food-order-detail-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.food-order-details-note {
+  padding-top: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.food-order-detail-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+}
+.food-order-detail-links [data-open-order-list] {
+  margin-left: auto;
+}
 .food-order-card-toolbar {
   gap: var(--space-2);
   flex-wrap: wrap;
-  justify-content: space-between;
+  justify-content: flex-start;
 }
-/* Arbeitspaket 3: each orderer group is its own subtle nested surface,
-   distinguishing "open" from "fully paid" through border/background rather
-   than the accent rail (that stays reserved for position rows, see the
-   selected-cart-row treatment further below). */
+.food-order-card-header {
+  align-items: center;
+  min-height: var(--tap-target-size);
+}
+.food-order-card-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.food-order-card-header-toggle {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  min-height: var(--tap-target-size);
+  padding: 0;
+  cursor: pointer;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.food-order-card-header-end {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.food-order-card-chevron {
+  display: inline-flex;
+  color: var(--text-muted);
+  transition: transform var(--motion-fast);
+}
+.food-order-card-header-toggle[aria-expanded='true'] .food-order-card-chevron {
+  transform: rotate(90deg);
+}
+.food-order-card-body[hidden] {
+  display: none;
+}
+/* Each orderer group is its own subtle nested surface. */
 .food-order-group {
   gap: var(--space-2);
   padding: var(--space-3);
@@ -3930,17 +4725,18 @@ input[type='number'].tournament-score-input {
 }
 .food-order-group.is-all-paid {
   background: transparent;
-  opacity: 0.75;
+  opacity: 0.78;
 }
 .food-order-group-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
   gap: var(--space-2);
 }
-/* The toggle is one sibling of the header row, not a wrapper around the
-   amount/cart-button siblings ("kein Knopf im Knopf" - AP3.1). */
+/* The group toggle is one sibling of the payment and delete controls. */
 .food-order-group-toggle {
   display: flex;
   min-width: 0;
-  flex: 1;
   align-items: center;
   gap: var(--space-2);
   background: none;
@@ -3954,7 +4750,6 @@ input[type='number'].tournament-score-input {
 .food-order-group-static {
   display: flex;
   min-width: 0;
-  flex: 1;
   align-items: center;
   gap: var(--space-2);
 }
@@ -3976,71 +4771,61 @@ input[type='number'].tournament-score-input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.food-order-group-self-label {
+  font-weight: var(--font-weight-regular);
+}
 .food-order-group-meta {
   font-size: var(--font-size-xs);
 }
-.food-order-group-amount {
+.food-order-group-amount-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   flex-shrink: 0;
+}
+.food-order-group-tip {
+  font-size: var(--font-size-2xs);
+  white-space: nowrap;
+}
+.food-order-group-amount {
   font-weight: var(--font-weight-bold);
   font-variant-numeric: tabular-nums;
 }
-.food-order-group-paid-badge {
+.food-order-group-amount.is-paid {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.food-order-group-partial {
+  font-size: var(--font-size-2xs);
+  font-variant-numeric: tabular-nums;
+}
+.food-order-group-actions {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
   gap: var(--space-1);
-  color: var(--state-playing);
-  font-weight: var(--font-weight-medium);
-}
-/* Mixed state (some but not all open positions in the cart) uses amber
-   instead of the accent blue, plus a small dot, so it never rests on color
-   alone - the button's title/aria-label spells out the state too. */
-.food-order-group-cart-btn.is-some {
-  position: relative;
-  color: var(--state-paused);
-}
-.food-order-group-cart-btn.is-some::after {
-  content: '';
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-full);
-  background: var(--state-paused);
-}
-.food-order-group-cart-btn[aria-pressed='true'] {
-  color: var(--accent);
-  background: var(--bg-elevated-2);
-  box-shadow: inset 0 0 0 1px var(--accent);
+  margin-left: auto;
 }
 .food-order-group-items {
   padding-left: calc(var(--space-5) + var(--space-2));
   padding-top: var(--space-2);
 }
-/* One line per position, left to right: Bezahlt-Marke / quantity ×
-   description / amount / copy ┊ Warenkorb / remove. The description's
-   flex-grow pushes everything after it toward the row's end; flex-wrap lets
-   the row break onto further lines on narrow phones instead of overflowing. */
+/* One line per position: quantity × description / amount / copy / remove. */
 .food-order-item {
   flex-wrap: wrap;
   gap: var(--space-2);
   padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--border);
   font-size: var(--font-size-sm);
 }
-.food-order-item:last-child {
-  border-bottom: none;
-}
-/* The Bezahlt-Marke is a button (not a plain checkbox) so it can show the
-   word in both states plus an icon, and gets a fixed minimum width so the
-   description behind it doesn't shift when the label text changes length. */
-.food-order-paid-marker {
+/* The person's two-state payment marker stays stable as its label changes. */
+.payment-paid-marker {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
+  justify-content: center;
   gap: var(--space-1);
-  min-width: 84px;
+  width: var(--payment-marker-width);
+  min-height: var(--space-7);
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -4050,12 +4835,12 @@ input[type='number'].tournament-score-input {
   font-weight: var(--font-weight-medium);
   cursor: pointer;
 }
-.food-order-paid-marker.is-paid {
+.payment-paid-marker.is-paid {
   border-color: var(--state-playing);
   background: var(--state-playing-bg);
   color: var(--state-playing);
 }
-.food-order-paid-marker:disabled {
+.payment-paid-marker:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -4064,17 +4849,7 @@ input[type='number'].tournament-score-input {
   flex: 1;
   overflow-wrap: anywhere;
 }
-/* The amount sits in its own flex column (for the muted breakdown line
-   underneath it), so its "paid" strikethrough is set explicitly on both
-   inner pieces rather than relied on to propagate from the flex container. */
-.food-order-item.is-paid .food-order-item-description,
-.food-order-item.is-paid .food-order-item-amount strong,
-.food-order-item.is-paid .food-order-item-amount .muted {
-  color: var(--text-muted);
-  text-decoration: line-through;
-}
-/* Betrag ist Anzeige, kein Knopf (AP1.2) - a plain display block, unlike the
-   removed per-item "Bezahlen" action. */
+/* Betrag ist Anzeige, kein Knopf - a plain display block. */
 .food-order-item-amount {
   display: flex;
   flex-direction: column;
@@ -4089,28 +4864,12 @@ input[type='number'].tournament-score-input {
 .food-order-item-amount .muted {
   font-size: var(--font-size-xs);
 }
-.food-order-item.is-in-cart {
-  border-left: var(--space-1) solid var(--accent);
-  background: var(--bg-elevated-2);
-  padding-left: var(--space-2);
-  margin-left: calc(-1 * var(--space-2));
-}
-/* Copy and Warenkorb are grouped as one cluster with a hairline divider
-   between them (Leitentscheidung 2); remove stays visually outside that
-   cluster. Each slot reserves its own width even when the action is absent
-   (an unpriced item has no copy action; without a PayPal link there is no
-   Warenkorb toggle) via .food-order-item-action-spacer, so rows stay
-   aligned across the whole card. */
+/* Copy and remove keep stable slots, even when copying is unavailable. */
 .food-order-item-action-cluster {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
   flex-shrink: 0;
-}
-.food-order-item-action-divider {
-  width: 1px;
-  height: var(--space-5);
-  background: var(--border);
 }
 .food-order-item-action,
 .food-order-item-action-spacer {
@@ -4125,15 +4884,6 @@ input[type='number'].tournament-score-input {
 .food-order-item-action:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-/* Pressed state uses an inset ring rather than a real border so the button
-   keeps its exact size when toggled, and pairs that with the accent color.
-   It is never the only signal: an in-cart row also carries the accent rail,
-   and the button's own title/aria-label names its current state. */
-.food-order-item-cart-toggle[aria-pressed='true'] {
-  color: var(--accent);
-  background: var(--bg-elevated-2);
-  box-shadow: inset 0 0 0 1px var(--accent);
 }
 .food-order-item-remove {
   color: var(--danger);
@@ -4158,47 +4908,8 @@ input[type='number'].tournament-score-input {
   font-size: var(--font-size-lg);
   font-variant-numeric: tabular-nums;
 }
-/* Warenkorb-Kasten (AP1.5): appears only once something is inside it. */
-.food-order-cart {
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-}
-.food-order-cart-header {
-  font-size: var(--font-size-md);
-}
-.food-order-cart-rows {
-  gap: var(--space-2);
-}
-.food-order-cart-row {
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-}
-.food-order-cart-row-desc {
-  min-width: 0;
-  flex: 1;
-  overflow-wrap: anywhere;
-}
-.food-order-cart-row-amount {
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-}
-.food-order-cart-summary {
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--border);
-  font-weight: var(--font-weight-bold);
-}
-.food-order-cart-pay {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-}
-/* Used by confirmWithList (AP2.2/AP2.3) to show the affected positions
-   alongside the confirmation message - the same visual weight as the
-   removed selection breakdown it replaces. */
+/* Used by confirmWithList to show the affected positions alongside the
+   confirmation message. */
 .food-order-confirm-list {
   margin: 0;
   padding-left: var(--space-5);
@@ -4240,21 +4951,48 @@ input[type='number'].tournament-score-input {
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
   gap: var(--space-2);
 }
-.food-order-item-form > [data-item-desc] {
+.food-order-item-form > .food-order-desc-field {
   grid-column: 1 / -1;
 }
 .food-order-add-button {
   grid-column: -2 / -1;
-  justify-self: end;
-  padding-right: 0;
+  align-self: stretch;
+}
+.food-order-item.is-paid .food-order-item-description,
+.food-order-item.is-paid .food-order-item-amount {
+  text-decoration: line-through;
 }
 @media (max-width: 639px) { /* --bp-md */
+  /* Keep the name row and its action row independent on narrow phones. The
+     group header has too many deliberate, fixed-width controls to compress
+     into one line without clipping the payment marker or action buttons. */
+  .food-order-group-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  .food-order-group-toggle,
+  .food-order-group-static {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    width: 100%;
+  }
+  .food-order-group-amount-wrap {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: end;
+  }
+  .food-order-group-actions {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    min-width: 0;
+    width: 100%;
+    justify-content: flex-end;
+    margin-left: 0;
+  }
   .food-order-group-items {
     padding-left: 0;
   }
-  /* The Bezahlt-Marke and description share the first line; forcing the
-     amount block onto its own line lets copy/Warenkorb and remove wrap
-     together after it instead of interleaving with the leading controls. */
+  /* Keep the amount on its own line on narrow phones. */
   .food-order-item-amount {
     flex-basis: 100%;
     align-items: flex-start;
@@ -4267,13 +5005,20 @@ input[type='number'].tournament-score-input {
   .food-order-item-form {
     grid-template-columns: minmax(0, 1fr);
   }
-  .food-order-item-form > [data-item-desc],
+  .food-order-item-form > .food-order-desc-field,
   .food-order-add-button {
     grid-column: 1;
   }
   .food-order-add-button {
     width: 100%;
-    padding-right: var(--space-3);
+  }
+}
+@media (max-width: 359px) {
+  /* At the narrowest supported width all four payment actions still fit in
+     one line; both payment states retain the same compact marker width. */
+  .food-order-group-actions {
+    --payment-marker-width: 88px;
+    gap: 0;
   }
 }
 .food-order-quantity-field {
@@ -4307,9 +5052,6 @@ input.food-order-price-input {
   color: var(--text-muted);
   transform: translateY(-50%);
   pointer-events: none;
-}
-.food-order-add-button {
-  align-self: center;
 }
 .food-order-close-action {
   padding-top: var(--space-3);
@@ -4389,7 +5131,7 @@ input.food-order-price-input {
   .food-order-item-form {
     grid-template-columns: minmax(0, 1fr) repeat(2, var(--assignment-select-width)) auto;
   }
-  .food-order-item-form > [data-item-desc] {
+  .food-order-item-form > .food-order-desc-field {
     grid-column: auto;
   }
 }
@@ -4673,9 +5415,6 @@ input.food-order-price-input {
   left: var(--space-4);
   right: var(--space-4);
   bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + var(--space-4));
-  display: flex;
-  gap: var(--space-4);
-  align-items: flex-start;
   max-width: var(--search-panel-width);
   margin: 0 auto;
   padding: var(--space-4);
@@ -4693,48 +5432,6 @@ input.food-order-price-input {
 .onboarding-dialog--top {
   top: calc(var(--topbar-height) + var(--space-4));
   bottom: auto;
-}
-
-.onboarding-dialog-body {
-  min-width: 0;
-  flex: 1;
-}
-
-.onboarding-mascot {
-  position: relative;
-  flex: 0 0 96px; /* design-token-ok: guide illustration has its own fixed asset size */
-  width: 96px; /* design-token-ok: guide illustration has its own fixed asset size */
-  height: 96px; /* design-token-ok: guide illustration has its own fixed asset size */
-  overflow: hidden;
-  border-radius: var(--radius);
-  background: var(--bg);
-}
-
-/* Two identically positioned copies of the same portrait, each clipped to
-   one side of its drawn mouth line (~58% down the face) so nudging them
-   apart on their own animation opens a "mouth" gap between them instead of
-   just bobbing the whole head - see mascotHtml() in onboarding.js. */
-.onboarding-mascot-half {
-  position: absolute;
-  inset: 0;
-}
-
-.onboarding-mascot-half img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  mix-blend-mode: screen;
-}
-
-.onboarding-mascot-half-top {
-  clip-path: inset(0 0 42% 0);
-  animation: onboarding-speak-top 0.42s ease-in-out infinite alternate;
-}
-
-.onboarding-mascot-half-bottom {
-  clip-path: inset(58% 0 0 0);
-  animation: onboarding-speak-bottom 0.42s ease-in-out infinite alternate;
 }
 
 .onboarding-progress {
@@ -4863,24 +5560,6 @@ input.food-order-price-input {
   font-size: var(--font-size-xs);
 }
 
-@keyframes onboarding-speak-top {
-  from {
-    transform: translateY(0);
-  }
-  to {
-    transform: translateY(-3px); /* design-token-ok: half-pixel-scale mouth-gap nudge, smaller than --space-1 would allow at this 96px asset size */
-  }
-}
-
-@keyframes onboarding-speak-bottom {
-  from {
-    transform: translateY(0);
-  }
-  to {
-    transform: translateY(3px); /* design-token-ok: mirrors onboarding-speak-top's nudge on the jaw half */
-  }
-}
-
 @media (min-width: 640px) { /* --bp-md */
   .onboarding-dialog {
     bottom: var(--space-6);
@@ -4893,12 +5572,7 @@ input.food-order-price-input {
 
 @media (max-width: 639px) { /* --bp-md */
   .onboarding-rating-dialog {
-    gap: var(--space-2);
     padding: var(--space-3);
-  }
-
-  .onboarding-rating-dialog .onboarding-mascot {
-    display: none;
   }
 
   .onboarding-rating-dialog .onboarding-rating-actions {

@@ -35,12 +35,16 @@ const SHORT_FORMAT_LABELS = {
 
 let listCache = null;
 let listLoading = false;
+let listStale = false;
+let listRequestVersion = 0;
 let completedSectionOpen = false;
 
 let currentTournamentId = null; // null = list/create view
 let detailCache = null;
 let detailLoading = false;
 let detailForId = null;
+let detailStale = false;
+let detailRequestVersion = 0;
 let editingResultMatchId = null;
 
 let createOpen = false;
@@ -101,38 +105,63 @@ function recomputeSeatConflicts() {
 }
 
 async function loadList(ctx) {
+  const version = ++listRequestVersion;
   listLoading = true;
+  listStale = false;
   try {
-    listCache = await api.tournaments.list();
+    const result = await api.tournaments.list();
+    if (version === listRequestVersion) listCache = result;
   } catch (err) {
-    showToast(err.message, { error: true });
-    listCache = [];
+    if (version === listRequestVersion) {
+      showToast(err.message, { error: true });
+      if (listCache === null) listCache = [];
+    }
   } finally {
-    listLoading = false;
-    ctx.rerender();
+    if (version === listRequestVersion) {
+      listLoading = false;
+      ctx.rerender();
+    }
   }
 }
 
 async function loadDetail(id, ctx) {
+  const version = ++detailRequestVersion;
   detailLoading = true;
+  detailStale = false;
   try {
-    detailCache = await api.tournaments.get(id);
-    detailForId = id;
+    const result = await api.tournaments.get(id);
+    if (version === detailRequestVersion) {
+      detailCache = result;
+      detailForId = id;
+    }
   } catch (err) {
-    showToast(err.message, { error: true });
-    detailCache = null;
-    detailForId = id;
+    if (version === detailRequestVersion) {
+      showToast(err.message, { error: true });
+      if (detailForId !== id) detailCache = null;
+      detailForId = id;
+    }
   } finally {
-    detailLoading = false;
-    ctx.rerender();
+    if (version === detailRequestVersion) {
+      detailLoading = false;
+      ctx.rerender();
+    }
   }
 }
 
 // Called from app.js on every tournaments:changed socket event, so this
 // view's data is never more than one re-render stale.
-export function invalidateTournaments() {
-  listCache = null;
-  detailForId = null;
+export function invalidateTournaments({ hard = false } = {}) {
+  listRequestVersion += 1;
+  detailRequestVersion += 1;
+  listLoading = false;
+  detailLoading = false;
+  listStale = true;
+  detailStale = true;
+  if (hard) {
+    listCache = null;
+    detailCache = null;
+    detailForId = null;
+  }
 }
 
 // Called from app.js when a player taps a tournament notification toast, so
@@ -173,7 +202,7 @@ function resetCreateForm() {
 // ---------- list + create ----------
 
 function renderList(container, ctx) {
-  if (listCache === null && !listLoading) loadList(ctx);
+  if ((listCache === null || listStale) && !listLoading) loadList(ctx);
   if (createOpen) {
     container.innerHTML = '<div id="tourn-create" class="tournament-create-slot"></div>';
     renderCreateForm(container.querySelector('#tourn-create'), ctx);
@@ -224,7 +253,7 @@ function renderList(container, ctx) {
 
   let currentListHtml;
   let completedListHtml = '';
-  if (listLoading || listCache === null) {
+  if (listCache === null) {
     currentListHtml = emptyStateHtml('Lädt…');
   } else if (listCache.length === 0) {
     currentListHtml = emptyStateHtml('<br />Noch keine Turniere.', { icon: icon(domainIcon('tournaments')) });
@@ -693,7 +722,7 @@ function renderCreateForm(el, ctx) {
         currentTournamentId = created.id;
         detailCache = created;
         detailForId = created.id;
-        listCache = null;
+        listStale = true;
         showToast('Turnier erstellt.');
         ctx.rerender();
       } catch (err) {
@@ -1077,10 +1106,10 @@ function renderTournamentTeams(t) {
 }
 
 function renderDetail(container, ctx) {
-  if (detailForId !== currentTournamentId && !detailLoading) {
+  if ((detailForId !== currentTournamentId || detailStale) && !detailLoading) {
     loadDetail(currentTournamentId, ctx);
   }
-  if (detailLoading || !detailCache) {
+  if (detailForId !== currentTournamentId || !detailCache) {
     container.innerHTML = `
       <button type="button" class="btn btn-sm" id="tourn-back">‹ Zurück</button>
       ${emptyStateHtml('Lädt…')}`;
@@ -1181,7 +1210,8 @@ function renderDetail(container, ctx) {
       if (removed === undefined) return;
       currentTournamentId = null;
       editingResultMatchId = null;
-      listCache = null;
+      if (listCache) listCache = listCache.filter((entry) => entry.id !== t.id);
+      listStale = true;
       showToast('Turnier gelöscht.');
       ctx.rerender();
     } catch (err) {

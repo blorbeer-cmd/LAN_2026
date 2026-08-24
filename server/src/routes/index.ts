@@ -14,6 +14,7 @@ import { leaderboardRouter } from './leaderboard';
 import { statsRouter } from './stats';
 import { analyticsRouter } from './analytics';
 import { eventsRouter } from './events';
+import { eventDatePollsRouter } from './eventDatePolls';
 import { tournamentsRouter } from './tournaments';
 import { qrcodeRouter } from './qrcode';
 import { exportRouter } from './export';
@@ -49,6 +50,7 @@ import { resolveKioskToken } from '../kioskTokens';
 import { getOrRepairActiveEvent, setActiveEventForPlayer, type EventContextEvent } from '../eventContext';
 import { broadcast, Events, switchPlayerEventScope } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
+import { getEnabledEventFeatures, requireActiveEventFeatureMutation } from '../eventFeatures';
 
 export const apiRouter = Router();
 
@@ -130,6 +132,9 @@ function serializeActiveEvent(event: EventContextEvent) {
     endsAt: event.ends_at,
     status: event.status,
     isBase: event.id === BASE_EVENT_ID,
+    eventType: event.event_type_key,
+    presetVersion: event.preset_version,
+    enabledFeatures: getEnabledEventFeatures(event.id),
   };
 }
 
@@ -148,7 +153,7 @@ apiRouter.get('/me', requireUser, (req, res) => {
 });
 
 // The selected workspace is account-wide rather than tab-local. Switching is
-// allowed only to published events the account has accepted.
+// limited to published events for which the account is an accepted participant.
 apiRouter.get('/me/active-event', requireUser, (req, res) => {
   res.json(serializeActiveEvent(getOrRepairActiveEvent(req.player!.id)));
 });
@@ -180,34 +185,35 @@ apiRouter.use('/feedback', feedbackRouter);
 apiRouter.use('/groups', groupsRouter);
 
 apiRouter.use('/players', playersRouter);
-apiRouter.use('/games', gamesRouter);
-apiRouter.use('/skills', skillsRouter);
-apiRouter.use('/preferences', preferencesRouter);
-apiRouter.use('/live', liveRouter);
-apiRouter.use('/matchmaking', matchmakingRouter);
-apiRouter.use('/votes', votesRouter);
-apiRouter.use('/matches', matchesRouter);
+apiRouter.use('/games', requireActiveEventFeatureMutation('games'), gamesRouter);
+apiRouter.use('/skills', requireActiveEventFeatureMutation('games'), skillsRouter);
+apiRouter.use('/preferences', requireActiveEventFeatureMutation('games'), preferencesRouter);
+apiRouter.use('/live', requireActiveEventFeatureMutation('tracking'), liveRouter);
+apiRouter.use('/matchmaking', requireActiveEventFeatureMutation('competition'), matchmakingRouter);
+apiRouter.use('/votes', requireActiveEventFeatureMutation('games'), votesRouter);
+apiRouter.use('/matches', requireActiveEventFeatureMutation('competition'), matchesRouter);
 apiRouter.use('/leaderboard', leaderboardRouter);
 apiRouter.use('/stats', statsRouter);
 apiRouter.use('/analytics', analyticsRouter);
 apiRouter.use('/events', eventsRouter);
-apiRouter.use('/tournaments', tournamentsRouter);
+apiRouter.use('/events/:eventId/polls', eventDatePollsRouter);
+apiRouter.use('/tournaments', requireActiveEventFeatureMutation('competition'), tournamentsRouter);
 apiRouter.use('/qrcode', qrcodeRouter);
 apiRouter.use('/export', exportRouter);
 apiRouter.use('/hall-of-fame', hallOfFameRouter);
-apiRouter.use('/seating', seatingRouter);
-apiRouter.use('/pings', pingsRouter);
+apiRouter.use('/seating', requireActiveEventFeatureMutation('seating'), seatingRouter);
+apiRouter.use('/pings', requireActiveEventFeatureMutation('games'), pingsRouter);
 apiRouter.use('/digest', digestRouter);
 apiRouter.use('/push', pushRouter);
-apiRouter.use('/agent-download', agentDownloadRouter);
-apiRouter.use('/draft', draftRouter);
+apiRouter.use('/agent-download', requireActiveEventFeatureMutation('tracking'), agentDownloadRouter);
+apiRouter.use('/draft', requireActiveEventFeatureMutation('competition'), draftRouter);
 apiRouter.use('/broadcasts', broadcastsRouter);
 apiRouter.use('/info', infoBoardRouter);
-apiRouter.use('/food-orders', foodOrdersRouter);
-apiRouter.use('/checklist', checklistRouter);
-apiRouter.use('/quiz', quizRouter);
-apiRouter.use('/arcade', arcadeRouter);
-apiRouter.use('/arrivals', arrivalsRouter);
+apiRouter.use('/food-orders', requireActiveEventFeatureMutation('food'), foodOrdersRouter);
+apiRouter.use('/checklist', requireActiveEventFeatureMutation('tasks'), checklistRouter);
+apiRouter.use('/quiz', requireActiveEventFeatureMutation('arcade'), quizRouter);
+apiRouter.use('/arcade', requireActiveEventFeatureMutation('arcade'), arcadeRouter);
+apiRouter.use('/arrivals', requireActiveEventFeatureMutation('travel'), arrivalsRouter);
 apiRouter.use('/admin', adminRouter);
 apiRouter.use('/backup', backupRouter);
-apiRouter.use('/music', musicRouter);
+apiRouter.use('/music', requireActiveEventFeatureMutation('music'), musicRouter);

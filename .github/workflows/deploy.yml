@@ -134,7 +134,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.e2e_core == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Leave a bounded diagnostics window after the original E2E attempt. Without
+    # this headroom a trace retry can hit the job deadline, turn the result into
+    # `cancelled`, and prevent the diagnostic artifact from being uploaded.
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: server
@@ -177,14 +180,33 @@ jobs:
       - name: Prepare Core E2E build
         run: npm run test:e2e:prepare
       - name: Run measured Core E2E (${{ needs.changes.outputs.e2e_core_scope }})
+        env:
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
         run: npm run test:e2e:run:core -- "${{ needs.changes.outputs.e2e_core_scope }}"
+      - name: Reproduce Core E2E failure with tracing
+        if: failure()
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+          E2E_RETRY_FAILED_ONLY: "1"
+          E2E_TRACE: "1"
+        run: npm run test:e2e:run:core -- "${{ needs.changes.outputs.e2e_core_scope }}"
+      - name: Preserve Core E2E failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-core-failure-diagnostics
+          path: ${{ runner.temp }}/e2e-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
 
   e2e-arcade-smoke:
     name: Browser E2E Arcade smoke
     needs: changes
     if: needs.changes.outputs.e2e_arcade_smoke == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: server
@@ -218,14 +240,33 @@ jobs:
       - name: Prepare Arcade smoke E2E build
         run: npm run test:e2e:prepare
       - name: Run measured Arcade smoke E2E
+        env:
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
         run: npm run test:e2e:run:arcade-smoke
+      - name: Reproduce Arcade smoke E2E failure with tracing
+        if: failure()
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+          E2E_RETRY_FAILED_ONLY: "1"
+          E2E_TRACE: "1"
+        run: npm run test:e2e:run:arcade-smoke
+      - name: Preserve Arcade smoke E2E failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-arcade-smoke-failure-diagnostics
+          path: ${{ runner.temp }}/e2e-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
 
   e2e-arcade:
     name: Browser E2E Arcade
     needs: changes
     if: needs.changes.outputs.e2e_arcade == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: server
@@ -259,7 +300,26 @@ jobs:
       - name: Prepare Arcade E2E build
         run: npm run test:e2e:prepare
       - name: Run measured Arcade E2E
+        env:
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
         run: npm run test:e2e:run:arcade
+      - name: Reproduce Arcade E2E failure with tracing
+        if: failure()
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+          E2E_RETRY_FAILED_ONLY: "1"
+          E2E_TRACE: "1"
+        run: npm run test:e2e:run:arcade
+      - name: Preserve Arcade E2E failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-arcade-failure-diagnostics
+          path: ${{ runner.temp }}/e2e-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
 
   # Keep the established branch-protection context while the actual browser
   # coverage runs as independently selected Core, Arcade smoke and Arcade jobs.
@@ -325,7 +385,7 @@ jobs:
 
       - name: Preserve detector report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-performance-detection
           path: ${{ runner.temp }}/test-performance-detection.json
@@ -341,7 +401,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs['test-performance-detect'].outputs.suspicions) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: server
@@ -387,6 +447,7 @@ jobs:
         env:
           SUITE: ${{ matrix.suite }}
           BASELINE_MS: ${{ matrix.baselineMs }}
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
         shell: bash
         run: |
           case "$SUITE" in
@@ -408,12 +469,40 @@ jobs:
 
       - name: Preserve confirmation report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-performance-confirm-${{ matrix.suite }}
           path: ${{ runner.temp }}/test-performance-${{ matrix.suite }}.json
           if-no-files-found: ignore
           retention-days: 1
+
+      - name: Reproduce repeated E2E failure with tracing
+        if: failure() && matrix.suite != 'unit-integration'
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-artifacts
+          E2E_RETRY_FAILED_ONLY: "1"
+          E2E_TRACE: "1"
+          SUITE: ${{ matrix.suite }}
+        shell: bash
+        run: |
+          case "$SUITE" in
+            e2e-core) command="test:e2e:run:core" ;;
+            e2e-arcade) command="test:e2e:run:arcade" ;;
+            e2e-arcade-smoke) command="test:e2e:run:arcade-smoke" ;;
+            *) echo "Unknown E2E suite: $SUITE" >&2; exit 1 ;;
+          esac
+          npm run "$command"
+
+      - name: Preserve repeated E2E failure diagnostics
+        if: failure() && matrix.suite != 'unit-integration'
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-performance-${{ matrix.suite }}-e2e-failure-diagnostics
+          path: ${{ runner.temp }}/e2e-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
 
   # Stable branch-protection context. The detector and dynamic confirmation jobs may change or be
   # skipped, but this aggregate always reports exactly `Test performance` and fails closed.

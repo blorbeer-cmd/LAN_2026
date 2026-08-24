@@ -8,6 +8,8 @@
 // therefore keep working exactly as before — only where a route is *presented*
 // changed, not what it is called.
 
+import { viewIsEnabledForEvent } from './eventFeatures.js';
+
 export const SECTIONS = Object.freeze({
   competition: Object.freeze({
     title: 'Match',
@@ -25,14 +27,15 @@ export const SECTIONS = Object.freeze({
     ]),
   }),
   // Tabs are sorted alphabetically by their German label. The "Mehr" hub
-  // still opens this area directly on "checklist" (To-Do) regardless of tab
-  // order (see more.js), which keeps the already persisted push url
-  // "/#checklist" landing where it always did. TV-Kiosk is not a tab here —
-  // it lives only in Admin's "Kioskverwaltung" tool card, which is the
-  // single entry point now.
+  // opens this area on its first tab, "Abstimmungen", like every other
+  // section (see sectionEntryView below and more.js). The already persisted
+  // push url "/#checklist" is unaffected — it still routes straight to the
+  // To-Do tab. TV-Kiosk is not a tab here — it lives only in Admin's
+  // "Kioskverwaltung" tool card, which is the single entry point now.
   orga: Object.freeze({
     title: 'Orga',
     tabs: Object.freeze([
+      Object.freeze({ view: 'eventPolls', label: 'Abstimmungen' }),
       Object.freeze({ view: 'arrivals', label: 'An- & Abreise' }),
       Object.freeze({ view: 'events', label: 'Events' }),
       Object.freeze({ view: 'checklistPacking', label: 'Packliste' }),
@@ -57,16 +60,21 @@ export function sectionForView(view) {
   return key ? SECTIONS[key] : null;
 }
 
+export function sectionTabsForEvent(key, event) {
+  return (SECTIONS[key]?.tabs ?? []).filter((tab) => viewIsEnabledForEvent(tab.view, event));
+}
+
 // The route a section opens on when it is entered from the bottom nav or the
-// "Mehr" hub: always its first tab.
-export function sectionEntryView(key) {
-  return SECTIONS[key]?.tabs[0]?.view ?? null;
+// "Mehr" hub: the first tab available for the active event.
+export function sectionEntryView(key, event) {
+  return sectionTabsForEvent(key, event)[0]?.view ?? null;
 }
 
 // Which nav entry should light up for the currently rendered route. A route
 // inside an area highlights that area's button; everything else stands for
 // itself.
-export function navGroupForView(view) {
+export function navGroupForView(view, event) {
+  if (event?.eventType === 'general' && sectionKeyForView(view) === 'orga') return view;
   return sectionKeyForView(view) ?? view;
 }
 
@@ -84,20 +92,30 @@ function badgeText(count) {
 // half-typed add-item field and its focus that way — and replacing the node
 // first would silently hand them an empty container on every background
 // refresh. Only the live tab counts are patched in place.
-export function renderSectionShell(container, view, { badges = {} } = {}) {
+export function renderSectionShell(container, view, { badges = {}, event } = {}) {
   const section = sectionForView(view);
   if (!section) throw new Error(`Kein Bereich für Ansicht ${view}`);
+  const sectionKey = sectionKeyForView(view);
+  const visibleTabs = sectionTabsForEvent(sectionKey, event);
+  const standalone = event?.eventType === 'general' && sectionKey === 'orga';
+  const visibleTabSignature = standalone
+    ? `standalone:${view}`
+    : visibleTabs.map((tab) => tab.view).join(',');
 
   const existing = container.querySelector(':scope > .section-view');
-  if (existing && container.dataset.sectionView === view) {
-    for (const tab of section.tabs) {
+  if (
+    existing &&
+    container.dataset.sectionView === view &&
+    container.dataset.sectionTabs === visibleTabSignature
+  ) {
+    for (const tab of visibleTabs) {
       const count = container.querySelector(`[data-section-tab="${tab.view}"] [data-section-tab-count]`);
       if (count) count.textContent = badgeText(badges[tab.view]);
     }
     return existing;
   }
 
-  const tabs = section.tabs
+  const tabs = visibleTabs
     .map((tab) => {
       const active = tab.view === view;
       return `<button type="button" class="btn btn-sm section-tab${active ? ' btn-primary' : ''}"
@@ -105,11 +123,14 @@ export function renderSectionShell(container, view, { badges = {} } = {}) {
     })
     .join('');
 
+  const activeTab = visibleTabs.find((tab) => tab.view === view);
+  const title = standalone ? activeTab?.label ?? section.title : section.title;
   container.innerHTML = `
-    <h1 class="view-title">${section.title}</h1>
-    <nav class="section-tabs" aria-label="Bereiche in ${section.title}">${tabs}</nav>
+    <h1 class="view-title">${title}</h1>
+    ${standalone ? '' : `<nav class="section-tabs" aria-label="Bereiche in ${section.title}">${tabs}</nav>`}
     <div class="section-view"></div>
   `;
   container.dataset.sectionView = view;
+  container.dataset.sectionTabs = visibleTabSignature;
   return container.querySelector(':scope > .section-view');
 }
