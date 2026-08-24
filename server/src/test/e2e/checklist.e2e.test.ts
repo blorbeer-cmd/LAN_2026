@@ -31,7 +31,7 @@ const test = createE2EDiagnosticTest(() => ({ browser, server: e2eServer }));
 
 async function openChecklist(): Promise<void> {
   await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="arrivals"]');
+  await page.click('[data-navigate="eventPolls"]');
   await page.waitForSelector('.view-title:has-text("Orga")');
   await page.click('[data-section-tab="checklist"]');
 }

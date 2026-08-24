@@ -735,6 +735,10 @@ test("GET /api/events scopes the active event's participantIds to accepted parti
   const list = await request(app).get('/api/events');
   assert.equal(list.status, 200);
   assert.equal(list.body.activeEvent.id, eventId);
+  assert.equal(list.body.activeEvent.scheduleRevision, event.body.scheduleRevision);
+  const active = await request(app).get('/api/events/active');
+  assert.equal(active.status, 200);
+  assert.equal(active.body.scheduleRevision, event.body.scheduleRevision);
   const participantIds: string[] = list.body.activeEvent.participantIds;
   assert.ok(participantIds.includes(TEST_ADMIN_ID));
   assert.ok(participantIds.includes(acceptedPlayer.body.id));

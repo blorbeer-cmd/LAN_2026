@@ -58,11 +58,16 @@ export function seedHallOfFameTestData(changedBy: string | null = null): HallOfF
     const insertEvent = db.prepare(
       `INSERT INTO events
        (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at, is_test, group_id,
-        event_type_key, preset_version)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?, ?)`
+        event_type_key, preset_version, schedule_revision)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?, ?, 1)`
     );
+    // confirmed_schedule_revision = 1 matches the fixture event's own
+    // schedule_revision (set above) — otherwise these historical test
+    // participants would never count as CURRENT participation (see
+    // eventParticipation.ts's ACCEPTED_EVENT_PARTICIPANT_SQL) and Hall of
+    // Fame's per-LAN participant counts would come up empty.
     const insertParticipant = db.prepare(
-      'INSERT INTO event_participants (event_id, player_id) VALUES (?, ?)'
+      "INSERT INTO event_participants (event_id, player_id, status, confirmed_schedule_revision) VALUES (?, ?, 'accepted', 1)"
     );
     const insertMatch = db.prepare(
       'INSERT INTO matches (id, game_id, event_id, played_at, result, group_id) VALUES (?, ?, ?, ?, ?, ?)'

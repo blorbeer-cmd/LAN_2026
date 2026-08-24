@@ -3,7 +3,16 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { escapeHtml, formatSince, formatDateTime, formatDate, toDatetimeLocal, stateLabel, avatarHtml, gameChipsHtml } from './format.js';
+import {
+  escapeHtml,
+  formatSince,
+  formatDateTime,
+  formatDate,
+  toDatetimeLocal,
+  stateLabel,
+  avatarHtml,
+  gameChipsHtml,
+} from './format.js';
 
 test('escapeHtml neutralizes all five HTML-significant characters', () => {
   assert.equal(escapeHtml(`<b>"Tom & Jerry's"</b>`), '&lt;b&gt;&quot;Tom &amp; Jerry&#39;s&quot;&lt;/b&gt;');

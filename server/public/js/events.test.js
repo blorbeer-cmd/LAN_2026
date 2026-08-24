@@ -2,11 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   acceptedParticipantCount,
+  eventDateRange,
   eventSettlement,
   parseEventAccommodationCostCents,
   parseEventCostCents,
   renderEventLocation,
 } from './views/events.js';
+
+test('event date ranges keep a regular midnight end on its selected calendar day', () => {
+  const startsAt = new Date(2026, 8, 8, 18, 0).getTime();
+  const endsAt = new Date(2026, 8, 10, 0, 0).getTime();
+  assert.equal(eventDateRange({ startsAt, endsAt }), '8.9.2026 – 10.9.2026');
+});
 
 test('event locations are clickable only when they contain an HTTP(S) link and never render a copy action', () => {
   const html = renderEventLocation('https://lan.example.test/location', 'Winter LAN');

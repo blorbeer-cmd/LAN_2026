@@ -30,10 +30,10 @@ test('a section is entered on its first tab and its tabs share one nav group', (
   assert.equal(sectionEntryView('insights'), 'leaderboard');
   assert.equal(sectionEntryView('checklist'), null);
   // Orga's tabs are sorted alphabetically for display, so its first tab is
-  // "An- & Abreise" - more.js uses this as the "Mehr" hub entry point too, so
+  // "Abstimmungen" - more.js uses this as the "Mehr" hub entry point too, so
   // the top-left tab is the one actually selected on arrival, like every
   // other section.
-  assert.equal(sectionEntryView('orga'), 'arrivals');
+  assert.equal(sectionEntryView('orga'), 'eventPolls');
 
   assert.deepEqual(SECTIONS.competition.tabs.map((tab) => tab.view), ['matchmaking', 'tournaments']);
   assert.equal(navGroupForView('matchmaking'), navGroupForView('tournaments'));
@@ -48,6 +48,7 @@ test('general-event planning routes each represent their own bottom-nav entry', 
   assert.equal(navGroupForView('arrivals', generalEvent), 'arrivals');
   assert.equal(navGroupForView('checklistPacking', generalEvent), 'checklistPacking');
   assert.equal(navGroupForView('checklist', generalEvent), 'checklist');
+  assert.equal(navGroupForView('eventPolls', generalEvent), 'eventPolls');
   assert.equal(navGroupForView('events', generalEvent), 'events');
   assert.equal(navGroupForView('arrivals', { eventType: 'lan' }), 'orga');
 });
@@ -58,8 +59,9 @@ test('section tabs follow the active event feature snapshot', () => {
   };
   assert.equal(sectionEntryView('competition', generalEvent), null);
   assert.equal(sectionEntryView('insights', generalEvent), null);
-  assert.equal(sectionEntryView('orga', generalEvent), 'arrivals');
+  assert.equal(sectionEntryView('orga', generalEvent), 'eventPolls');
   assert.deepEqual(sectionTabsForEvent('orga', generalEvent).map((tab) => tab.view), [
+    'eventPolls',
     'arrivals',
     'events',
     'checklistPacking',

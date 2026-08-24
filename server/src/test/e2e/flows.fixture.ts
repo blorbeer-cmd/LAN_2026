@@ -129,7 +129,7 @@ async function ensureAdminMode(): Promise<void> {
 // first tab ("arrivals"); switch to the requested tab from there.
 async function openOrgaTab(tab: string): Promise<void> {
   await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="arrivals"]');
+  await page.click('[data-navigate="eventPolls"]');
   await page.click(`[data-section-tab="${tab}"]`);
 }
 
@@ -298,11 +298,11 @@ flowTest('shell', 'Orga Events tab and Profil use grouped help while admin tools
   await page.click('.modal[aria-label="Neues Event"] [data-close]');
   // TV-Kiosk is not an Orga tab (only "Kioskverwaltung" in Admin reaches it,
   // see "the authenticated admin role owns the seating editor and backup
-  // tools" below) — Orga itself only ever exposes these four tabs, sorted
+  // tools" below) — Orga itself only ever exposes these five tabs, sorted
   // alphabetically by their German label.
   assert.deepEqual(
     await page.locator('.section-tabs [data-section-tab]').evaluateAll((tabs) => tabs.map((tab) => tab.dataset.sectionTab)),
-    ['arrivals', 'events', 'checklistPacking', 'checklist']
+    ['eventPolls', 'arrivals', 'events', 'checklistPacking', 'checklist']
   );
 
   await page.setViewportSize({ width: 1280, height: 900 });

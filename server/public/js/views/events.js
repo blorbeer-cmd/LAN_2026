@@ -44,11 +44,14 @@ function renderKioskSection() {
   `;
 }
 
-// The base workspace is permanently open, so it has no end date to print.
-function eventDateRange(e) {
-  return e.endsAt == null
-    ? 'Dauerhaft geöffnet'
-    : `${new Date(e.startsAt).toLocaleDateString('de-DE')} – ${new Date(e.endsAt).toLocaleDateString('de-DE')}`;
+// Legacy planning events may have neither startsAt nor endsAt. Keep the
+// fallback explicit so no view ever renders "Invalid Date" for them. The base
+// workspace is permanently open (startsAt set, endsAt null), so it has no end
+// date to print either, but for a different reason.
+export function eventDateRange(e) {
+  if (e.startsAt == null) return 'Termin wird noch abgestimmt';
+  if (e.endsAt == null) return 'Dauerhaft geöffnet';
+  return `${new Date(e.startsAt).toLocaleDateString('de-DE')} – ${new Date(e.endsAt).toLocaleDateString('de-DE')}`;
 }
 
 function eventLocationUrl(location) {
@@ -423,13 +426,14 @@ function renderEventInfo(event, { editable = false, invitation = false } = {}) {
          </div>`
       : ''
   }`;
+  const dateLine = `<span class="food-order-send-at">
+      <span class="food-order-detail-icon" aria-hidden="true">${icon('calendar')}</span>
+      ${escapeHtml(eventDateRange(event))}
+    </span>`;
   return `
     <div class="food-order-details event-card-info">
       <div class="food-order-details-head">
-        <span class="food-order-send-at">
-          <span class="food-order-detail-icon" aria-hidden="true">${icon('calendar')}</span>
-          ${escapeHtml(eventDateRange(event))}
-        </span>
+        ${dateLine}
         ${editable ? `<button type="button" class="btn btn-sm" data-edit-event="${escapeHtml(event.id)}">Bearbeiten</button>` : ''}
       </div>
       ${additionalDetails ? `<div class="event-card-info-details">${additionalDetails}</div>` : ''}
@@ -475,14 +479,19 @@ function renderInvitationPayment(event) {
 }
 
 function renderEventCard(event) {
-  const trackingBtn = eventHasFeature(event, 'tracking')
-    ? event.isEnded
+  // Nothing about tracking, ending, the regular roster or the PDF keepsake is
+  // meaningful before this event has an actual date — the date poll section
+  // above already covers what to do instead ("Termin abstimmen"/"Termin
+  // festlegen").
+  const hasDate = event.startsAt != null;
+  const trackingBtn = !hasDate || !eventHasFeature(event, 'tracking')
+    ? ''
+    : event.isEnded
       ? `<button type="button" class="btn btn-sm btn-primary" data-restart-event="${event.id}">Event wieder starten</button>`
       : event.trackingEnabled
         ? `<button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">${icon('pause')} Tracking stoppen</button>`
-        : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${event.id}">Tracking starten</button>`
-    : '';
-  const endBtn = event.isEnded
+        : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${event.id}">Tracking starten</button>`;
+  const endBtn = !hasDate || event.isEnded
     ? ''
     : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
 
@@ -500,8 +509,8 @@ function renderEventCard(event) {
       <div class="event-card-actions">
         ${trackingBtn}
         ${endBtn}
-        <button type="button" class="btn btn-sm" data-participants-event="${event.id}">${icon('users')} Teilnehmende verwalten</button>
-        <button type="button" class="btn btn-sm" data-export-event="${event.id}" title="Als PDF exportieren">${icon('file')} PDF</button>
+        ${hasDate ? `<button type="button" class="btn btn-sm" data-participants-event="${event.id}">${icon('users')} Teilnehmende verwalten</button>` : ''}
+        ${hasDate ? `<button type="button" class="btn btn-sm" data-export-event="${event.id}" title="Als PDF exportieren">${icon('file')} PDF</button>` : ''}
       </div>
     </article>
   `;
@@ -526,11 +535,15 @@ function renderEventSection() {
   // rather than state.availableEvents, which deliberately excludes them (see
   // routes/events.ts) — merge both here so the split below can sort them into
   // the active list and the collapsed Historie the same way managedEvents does.
+  // plannedEvents is retained as an empty compatibility field. Only accepted
+  // participation controls whether a member sees an event here.
   const memberEvents = canManage
     ? []
-    : [...(state.availableEvents || []), ...(state.endedEvents || [])].filter((e) => !e.isBase);
+    : [...(state.availableEvents || []), ...(state.endedEvents || []), ...(state.plannedEvents || [])].filter(
+        (e) => !e.isBase,
+      );
   const events = (canManage ? realEvents : memberEvents).slice().sort(byStartsAtDescending);
-  const renderCard = canManage ? renderEventCard : renderMemberEventCard;
+  const renderCard = (event) => (canManage ? renderEventCard(event) : renderMemberEventCard(event));
   const activeEvents = events.filter((e) => !e.isEnded);
   const endedEvents = events.filter((e) => e.isEnded);
   const activeEmptyText = events.length === 0
@@ -544,7 +557,13 @@ function renderEventSection() {
           <h2 id="orga-events-title">Events</h2>
           ${infoTooltipHtml('orga-events-help', 'Events', EVENT_HELP)}
         </span>
-        ${canManage ? `<button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>` : ''}
+        ${
+          canManage
+            ? `<span class="row" style="gap:var(--space-2);">
+                 <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>
+               </span>`
+            : ''
+        }
       </div>
       ${
         activeEvents.length === 0
@@ -976,7 +995,6 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
   });
   wireInfoTooltips(container);
-
   container.querySelectorAll('[data-toggle-event-paid]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const eventId = btn.dataset.toggleEventPaid;

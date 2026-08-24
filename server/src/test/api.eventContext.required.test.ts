@@ -7,7 +7,7 @@ import { cancelEvent, createEvent, endEvent, removeEventParticipant } from '../e
 import { createInvite } from '../invites';
 import { SESSION_COOKIE_NAME } from '../sessions';
 import { createTestApp, TEST_ADMIN_ID } from './testApp';
-import { historicallyParticipatedEventIds } from '../eventContext';
+import { getOrRepairActiveEvent, historicallyParticipatedEventIds, setActiveEventForPlayer } from '../eventContext';
 import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
 
 const app = createTestApp();
@@ -54,6 +54,16 @@ test('event-bound registration atomically joins base and target and selects the 
   assert.deepEqual(db.prepare('SELECT active_event_id FROM player_event_contexts WHERE player_id = ?').get(playerId), {
     active_event_id: target.id,
   });
+  assert.equal(
+    getOrRepairActiveEvent(playerId).schedule_revision,
+    target.schedule_revision,
+    'the persisted active context retains the event schedule revision',
+  );
+  assert.equal(
+    setActiveEventForPlayer(playerId, target.id)?.schedule_revision,
+    target.schedule_revision,
+    'switching contexts returns the complete EventContextEvent shape',
+  );
   assert.deepEqual(db.prepare('SELECT used_at, used_by FROM invites WHERE code = ?').get(issued.body.code), {
     used_at: null,
     used_by: null,

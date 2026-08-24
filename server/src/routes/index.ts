@@ -14,6 +14,7 @@ import { leaderboardRouter } from './leaderboard';
 import { statsRouter } from './stats';
 import { analyticsRouter } from './analytics';
 import { eventsRouter } from './events';
+import { eventDatePollsRouter } from './eventDatePolls';
 import { tournamentsRouter } from './tournaments';
 import { qrcodeRouter } from './qrcode';
 import { exportRouter } from './export';
@@ -152,7 +153,7 @@ apiRouter.get('/me', requireUser, (req, res) => {
 });
 
 // The selected workspace is account-wide rather than tab-local. Switching is
-// allowed only to published events the account has accepted.
+// limited to published events for which the account is an accepted participant.
 apiRouter.get('/me/active-event', requireUser, (req, res) => {
   res.json(serializeActiveEvent(getOrRepairActiveEvent(req.player!.id)));
 });
@@ -195,6 +196,7 @@ apiRouter.use('/leaderboard', leaderboardRouter);
 apiRouter.use('/stats', statsRouter);
 apiRouter.use('/analytics', analyticsRouter);
 apiRouter.use('/events', eventsRouter);
+apiRouter.use('/events/:eventId/polls', eventDatePollsRouter);
 apiRouter.use('/tournaments', requireActiveEventFeatureMutation('competition'), tournamentsRouter);
 apiRouter.use('/qrcode', qrcodeRouter);
 apiRouter.use('/export', exportRouter);

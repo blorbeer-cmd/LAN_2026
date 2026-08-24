@@ -27,7 +27,7 @@ export const SECTIONS = Object.freeze({
     ]),
   }),
   // Tabs are sorted alphabetically by their German label. The "Mehr" hub
-  // opens this area on its first tab, "An- & Abreise", like every other
+  // opens this area on its first tab, "Abstimmungen", like every other
   // section (see sectionEntryView below and more.js). The already persisted
   // push url "/#checklist" is unaffected — it still routes straight to the
   // To-Do tab. TV-Kiosk is not a tab here — it lives only in Admin's
@@ -35,6 +35,7 @@ export const SECTIONS = Object.freeze({
   orga: Object.freeze({
     title: 'Orga',
     tabs: Object.freeze([
+      Object.freeze({ view: 'eventPolls', label: 'Abstimmungen' }),
       Object.freeze({ view: 'arrivals', label: 'An- & Abreise' }),
       Object.freeze({ view: 'events', label: 'Events' }),
       Object.freeze({ view: 'checklistPacking', label: 'Packliste' }),

@@ -30,6 +30,7 @@ test('event context keeps the personal workspace separate from invitations', () 
       managedEvents: null,
       activeEvent: lan,
       availableEvents: [base, lan],
+      plannedEvents: [],
       endedEvents: [past],
       historicalEvents: [base, lan, past],
       eventInvitations: [invitation],
@@ -41,6 +42,17 @@ test('event context keeps the personal workspace separate from invitations', () 
 test('event type options are preserved for the event creation form', () => {
   const options = [{ key: 'lan' }, { key: 'general' }];
   assert.deepEqual(normalizeEventContext({ eventTypeOptions: options }).eventTypeOptions, options);
+});
+
+test('legacy plannedEvents compatibility field passes through', () => {
+  const base = { id: 'base', name: 'Allgemein' };
+  const planning = { id: 'planning', name: 'LAN Winter 2027', status: 'draft' };
+
+  assert.deepEqual(
+    normalizeEventContext({ availableEvents: [base], plannedEvents: [planning] }).plannedEvents,
+    [planning],
+  );
+  assert.deepEqual(normalizeEventContext({ availableEvents: [base] }).plannedEvents, [], 'defaults to empty');
 });
 
 test("a member's own ended events default to an empty list", () => {

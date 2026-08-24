@@ -74,15 +74,23 @@ test('general events remove LAN-only areas from search results', () => {
   assert.equal(visibleViews.includes('leaderboard'), false);
 });
 
-test('content index finds players and an order by one of its items', () => {
+test('content index finds players, orders and polls including their options', () => {
   const entries = createContentSearchEntries(
     { players: [{ id: 'p1', name: 'Nebelwolf', real_name: 'Daniel' }], games: [], events: [] },
     {
       orders: [{ id: 'o1', title: 'Pizza bei Luigi', open: true, items: [{ playerName: 'Nebelwolf', description: 'Margherita groß' }] }],
+      polls: [
+        { id: 'poll-old', decisionKey: 'stay', roundNumber: 1, title: 'Alte Unterkunft', status: 'closed', options: [] },
+        { id: 'poll-new', decisionKey: 'stay', roundNumber: 2, title: 'Unterkunft auswählen', status: 'open', createdByName: 'Nebelwolf', options: [{ label: 'Haus am See', description: 'Mit Sauna' }] },
+      ],
     }
   );
   const player = searchEntries('Daniel', entries)[0];
   assert.deepEqual(player?.target, { type: 'player', id: 'p1' });
   assert.equal(player?.action, 'player');
   assert.deepEqual(searchEntries('Margherita', entries)[0]?.target, { type: 'order', id: 'o1' });
+  const poll = searchEntries('Sauna', entries)[0];
+  assert.equal(poll?.view, 'eventPolls');
+  assert.deepEqual(poll?.target, { type: 'poll', id: 'poll-new' });
+  assert.equal(searchEntries('Alte Unterkunft', entries).some((entry) => entry.target?.id === 'poll-old'), false);
 });

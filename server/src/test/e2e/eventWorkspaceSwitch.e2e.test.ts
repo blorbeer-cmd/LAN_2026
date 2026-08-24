@@ -413,8 +413,9 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
     await page.locator('.nav-btn:visible').evaluateAll((buttons) => buttons.map((button) => (button as HTMLElement).dataset.view)),
     ['home', 'arrivals', 'checklistPacking', 'checklist', 'eventPolls', 'more'],
   );
-  assert.equal(await page.locator('.nav-btn[data-view="eventPolls"]').isDisabled(), true);
-  assert.match(await page.locator('.nav-btn[data-view="eventPolls"]').getAttribute('title') ?? '', /noch nicht verfügbar/);
+  assert.equal(await page.locator('.nav-btn[data-view="eventPolls"]').isEnabled(), true);
+  await page.click('.nav-btn[data-view="eventPolls"]');
+  assert.match(await page.locator('#view-container > .view-title').innerText(), /Abstimmungen/);
 
   await page.click('.nav-btn[data-view="home"]');
   const home = await viewText();
@@ -507,6 +508,6 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
     ['home', 'matchmaking', 'votes', 'foodOrders', 'gameCatalog', 'more'],
   );
   await page.click('.nav-btn[data-view="more"]');
-  assert.equal(await page.locator('[data-navigate="arrivals"]').isVisible(), true);
+  assert.equal(await page.locator('[data-navigate="eventPolls"]').isVisible(), true);
   assert.match(await viewText(), /Orga/);
 });
