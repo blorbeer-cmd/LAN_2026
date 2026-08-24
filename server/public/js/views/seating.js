@@ -92,7 +92,7 @@ export function renderSeatingPlan(layout, players, { editable = false } = {}) {
     ${sideHtml(layout, players, 'top', editable)}
     ${sideHtml(layout, players, 'right', editable)}
     <div class="seating-table-center">
-      ${editable ? `<span class="muted">${selected ? 'Zielplatz antippen' : 'Spieler ziehen oder antippen'}</span>` : ''}
+      ${editable ? `<span class="muted">${selected ? 'Zielplatz antippen' : 'Person ziehen oder antippen'}</span>` : ''}
     </div>
     ${sideHtml(layout, players, 'bottom', editable)}
     ${sideHtml(layout, players, 'left', editable)}
@@ -116,9 +116,9 @@ function renderPool(layout, players) {
   const assigned = assignedIds(layout);
   const unassigned = players.filter((player) => !assigned.has(player.id));
   return `<section class="seating-pool card stack grouped-page-section" aria-labelledby="seating-players-title">
-    <div class="grouped-page-section-title"><h2 id="seating-players-title">Spieler</h2><span class="muted">${unassigned.length} frei</span></div>
+    <div class="grouped-page-section-title"><h2 id="seating-players-title">Teilnehmende</h2><span class="muted">${unassigned.length} frei</span></div>
     <div class="seating-player-pool" data-seat-pool>
-      ${unassigned.length ? unassigned.map((player) => `<div class="seating-pool-player ${selected?.playerId === player.id ? 'is-selected' : ''}" draggable="true" data-player-id="${player.id}">${avatarHtml(player, 28)}${seatNamesHtml(player)}</div>`).join('') : '<span class="muted">Alle Spieler sitzen bereits am Tisch.</span>'}
+      ${unassigned.length ? unassigned.map((player) => `<div class="seating-pool-player ${selected?.playerId === player.id ? 'is-selected' : ''}" draggable="true" data-player-id="${player.id}">${avatarHtml(player, 28)}${seatNamesHtml(player)}</div>`).join('') : '<span class="muted">Alle Teilnehmenden sitzen bereits am Tisch.</span>'}
     </div>
   </section>`;
 }

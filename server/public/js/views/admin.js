@@ -4,6 +4,7 @@
 import { api } from '../api.js';
 import { confirmDialog, openModal } from '../modal.js';
 import { state } from '../state.js';
+import { eventHasFeature } from '../eventFeatures.js';
 import { escapeHtml, formatDateTime } from '../format.js';
 import { showToast } from '../toast.js';
 import { isAdmin, setAdmin } from '../admin.js';
@@ -472,11 +473,15 @@ function renderPanel(container, ctx) {
   if (adminMembers === null && !adminMembersLoading && !adminMembersError) loadAdminMembers(ctx);
   if (activeInvites === null && !activeInvitesLoading) loadActiveInvites(ctx);
   const adminModeActive = isAdmin();
+  const trackingEnabled = eventHasFeature(state.activeEvent, 'tracking');
+  const seatingEnabled = eventHasFeature(state.activeEvent, 'seating');
+  const kioskEnabled = eventHasFeature(state.activeEvent, 'kiosk');
+  const arcadeEnabled = eventHasFeature(state.activeEvent, 'arcade');
   const allPlayers = adminPlayers || [];
   const players = adminModeActive ? allPlayers : allPlayers.filter((player) => !player.is_test);
   const testCount = allPlayers.filter((player) => player.is_test).length;
-  if (agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
-  if (readiness === null && !readinessLoading && !readinessError) loadReadiness(ctx);
+  if (trackingEnabled && agentDiagnostics === null && !diagnosticsLoading) loadAgentDiagnostics(ctx);
+  if (trackingEnabled && readiness === null && !readinessLoading && !readinessError) loadReadiness(ctx);
   const rows = players
     .map(
       (p) => `
@@ -602,10 +607,10 @@ function renderPanel(container, ctx) {
     <div class="grouped-page-sections">
       ${adminModeActive ? '' : `<section class="card stack grouped-page-section" aria-labelledby="admin-mode-title">
         <div class="grouped-page-section-title"><h2 id="admin-mode-title">Admin-Modus</h2></div>
-        <p class="muted">Aktiviere den Admin-Modus, um Test-Spieler in der App anzuzeigen und im Arcade-Bereich gegen die KI zu spielen.</p>
+        <p class="muted">Aktiviere den Admin-Modus, um Test-Spieler in der App anzuzeigen${arcadeEnabled ? ' und im Arcade-Bereich gegen die KI zu spielen' : ''}.</p>
         <button type="button" class="btn btn-primary btn-block" id="admin-mode-activate">Admin-Modus aktivieren</button>
       </section>`}
-      <section class="card stack grouped-page-section" aria-labelledby="admin-readiness-title">
+      ${trackingEnabled ? `<section class="card stack grouped-page-section" aria-labelledby="admin-readiness-title">
         <div class="grouped-page-section-title">
           <h2 id="admin-readiness-title">LAN-Bereitschaft</h2>
           <button type="button" class="btn btn-sm" id="admin-readiness-refresh" ${readinessLoading ? 'disabled' : ''}>Aktualisieren</button>
@@ -613,7 +618,7 @@ function renderPanel(container, ctx) {
         <div id="admin-readiness-status" class="stack" role="status" aria-live="polite" tabindex="-1">
           ${readinessBody}
         </div>
-      </section>
+      </section>` : ''}
       <section class="card stack grouped-page-section" aria-labelledby="admin-onboarding-title">
         <div class="grouped-page-section-title">
           <h2 id="admin-onboarding-title" class="title-with-info">
@@ -629,10 +634,10 @@ function renderPanel(container, ctx) {
       <section class="card stack grouped-page-section" aria-labelledby="admin-tools-title">
         <div class="grouped-page-section-title"><h2 id="admin-tools-title">Werkzeuge</h2></div>
         <div class="two-column-card-grid">
-          <div class="card admin-tool-row">
+          ${trackingEnabled ? `<div class="card admin-tool-row">
             <strong>Auswertung</strong>
             <button type="button" class="btn btn-primary btn-sm" data-navigate="leaderboard">Öffnen</button>
-          </div>
+          </div>` : ''}
           <div class="card admin-tool-row">
             <strong>Nutzungsauswertung</strong>
             <a href="#adminFeatureUsage" class="btn btn-primary btn-sm" data-navigate="adminFeatureUsage">Öffnen</a>
@@ -641,10 +646,10 @@ function renderPanel(container, ctx) {
             <strong>Feedback</strong>
             <a href="#adminFeedback" class="btn btn-primary btn-sm" data-navigate="adminFeedback">Öffnen</a>
           </div>
-          <div class="card admin-tool-row">
+          ${seatingEnabled ? `<div class="card admin-tool-row">
             <strong>Sitzplan</strong>
             <button type="button" class="btn btn-primary btn-sm" data-navigate="seating">Öffnen</button>
-          </div>
+          </div>` : ''}
           <div class="card admin-tool-row">
             <strong>Backup</strong>
             <button type="button" class="btn btn-primary btn-sm" id="download-backup">Herunterladen</button>
@@ -653,10 +658,10 @@ function renderPanel(container, ctx) {
             <strong>Eventverwaltung</strong>
             <button type="button" class="btn btn-primary btn-sm" data-navigate="events">Öffnen</button>
           </div>
-          <div class="card admin-tool-row">
+          ${kioskEnabled ? `<div class="card admin-tool-row">
             <strong>Kioskverwaltung</strong>
             <button type="button" class="btn btn-primary btn-sm" data-navigate="kiosk">Öffnen</button>
-          </div>
+          </div>` : ''}
         </div>
       </section>
       ${adminModeActive ? `<section class="card stack grouped-page-section" aria-labelledby="admin-test-players-title">
@@ -695,7 +700,7 @@ function renderPanel(container, ctx) {
         }
         <div class="card">${rows || '<span class="muted">Noch keine Spieler.</span>'}</div>
       </section>
-      <section class="card stack grouped-page-section" aria-labelledby="admin-agent-title">
+      ${trackingEnabled ? `<section class="card stack grouped-page-section" aria-labelledby="admin-agent-title">
         <div class="grouped-page-section-title">
           <h2 id="admin-agent-title" class="title-with-info">
             <span>Agent-Diagnose</span>
@@ -706,7 +711,7 @@ function renderPanel(container, ctx) {
         <div class="card stack">
           ${diagnosticsLoading && agentDiagnostics === null ? '<div class="muted">Diagnose laden…</div>' : diagnosticRows || '<span class="muted">Noch keine Spieler.</span>'}
         </div>
-      </section>
+      </section>` : ''}
     </div>
   `;
 
@@ -744,11 +749,11 @@ function renderPanel(container, ctx) {
   container.querySelector('#download-backup').addEventListener('click', () => downloadBackup(ctx));
   wireInfoTooltips(container);
 
-  container.querySelector('#admin-readiness-refresh').addEventListener('click', (event) =>
+  container.querySelector('#admin-readiness-refresh')?.addEventListener('click', (event) =>
     loadReadiness(ctx, true, event.currentTarget.id));
   container.querySelector('#admin-readiness-retry')?.addEventListener('click', (event) =>
     loadReadiness(ctx, true, event.currentTarget.id));
-  container.querySelector('#agent-diagnostics-refresh').addEventListener('click', () => loadAgentDiagnostics(ctx, true));
+  container.querySelector('#agent-diagnostics-refresh')?.addEventListener('click', () => loadAgentDiagnostics(ctx, true));
   container.querySelector('#admin-members-retry')?.addEventListener('click', () => loadAdminMembers(ctx, true));
 
   container.querySelectorAll('[data-test-session]').forEach((btn) => {

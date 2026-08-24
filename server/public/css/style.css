@@ -1226,6 +1226,7 @@ textarea {
 
 .nav-btn {
   flex: 1;
+  min-width: 0;
   max-width: 120px;
   background: none;
   border: none;
@@ -1240,6 +1241,10 @@ textarea {
   border-radius: var(--radius-sm);
   position: relative;
   transition: color 0.15s ease;
+}
+.nav-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 .nav-icon {
   display: grid;
@@ -3631,6 +3636,13 @@ button.card {
 }
 .event-card-header {
   align-items: flex-start;
+  flex-wrap: wrap;
+}
+.event-card-header-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 .event-card-detail-label {
   color: var(--text-muted);
