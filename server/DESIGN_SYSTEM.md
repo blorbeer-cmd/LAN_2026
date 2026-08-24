@@ -293,8 +293,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Area tabs** — `.section-tabs` with `.section-tab` is the tab row of a merged top-level area
   (Match, Auswertung and LAN Orga; defined in `sectionNav.js`). General events present every Orga
   route as a standalone page with its own title because those routes are their primary navigation,
-  not a secondary Orga collection. A tab row sits directly under the area's
-  `.view-title`, outside any card, which is what keeps it distinguishable from the in-card control
+  not a secondary Orga collection. Match and Auswertung use `.section-page-header`; LAN Orga uses
+  `.more-subpage-header--tabs`. All three place their tabs on a dedicated second row and therefore
+  share the intentional lower first-card edge. Every tab row remains outside any card, which keeps
+  it distinguishable from the in-card control
   rows further down. Because each tab is a real route, the row is `<nav>` navigation rather than a
   toggle: the active tab carries `aria-current="page"` plus `.btn-primary`, never `aria-pressed`.
   A tab may carry a live count in parentheses (Orga's „To-Do“ shows the current identity's own
@@ -302,13 +304,27 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   parentheses at all. That count is loaded once the area is entered on any of its tabs, not only the
   one that renders the underlying list, and is patched into all of the area's tab buttons in place. Tabs share the full width on phones for a comfortable tap target and size to
   their own label from `--bp-md`, because two tabs stretched across the wide content column would
-  read as banners rather than navigation. A page-level primary action that used to share a row with the view title
-  moves into a right-aligned `.row.view-actions` above the content („Turnier anlegen“,
-  „Ergebnis eintragen“).
+  read as banners rather than navigation. A primary action belongs in the first relevant card
+  header when that card exists (for example „Ergebnis eintragen“ beside „Rangliste & Spielzeit“),
+  so it does not insert a detached row between the area tabs and the content surface.
   Re-rendering the same tab reuses its existing `.section-view` element instead of rebuilding the
   shell, so a sub-view that reads its own previous DOM before redrawing (the Packliste's add-item
   draft and focus, the same survives-its-own-rerender pattern the Checkliste's To-Do form uses)
   keeps working across a background refresh triggered from outside that tab.
+- **Mehr subpage header** — `.more-subpage-header` with `.more-subpage-title-row` is the shared
+  header for the destinations reached through „Mehr“. It keeps the „Zurück“ action, page title and
+  an optional trailing action on one stable, compact row. These destinations share the same first-
+  card top edge as the untabbed main areas. Only `.more-subpage-header--tabs` reserves a lower row
+  for LAN Orga's tabs; at phone widths that reservation covers the wrapped two-row tab layout.
+  Long content or browser zoom may still grow either header rather than clipping controls.
+- **Untabbed page header** — a direct `.view-title` or `.page-title-row` reserves one compact touch-
+  target-height row plus the standard section gap. This keeps the first content surface on the
+  same top edge at phone and laptop widths; a trailing page action may share `.page-title-row`.
+- **Card headings** — headings inside cards use `--font-size-lg`, bold weight and the card's
+  standard top/left inset. `.grouped-page-section-title` and `.collapsible-section-header` align
+  heading text and trailing actions to the same top edge. A contextual-help trigger keeps its full
+  touch target through negative outer margin, so adding help never shifts only that heading
+  downward.
 - **Mode / setting choice** — pick the widget by the shape of the decision, not by habit: a native
   `<select>` for three or more mutually exclusive named options (tournament format); the
   `.btn`/`.btn-primary` two-or-three-way toggle (`aria-pressed`, usually inside `.selection-toolbar`)
@@ -641,7 +657,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   remains independently aligned at the right.
   The destinations below „Mehr“ follow this same hierarchy without adding decorative accent rails:
   their major workflows and datasets are main groups, while entries, players, orders and results
-  remain subordinate cards or rows inside those groups.
+  remain subordinate cards or rows inside those groups. Every destination returns to „Mehr“ from
+  the shared compact subpage header; Profile keeps „Abmelden“ as that header's trailing action,
+  while Orga alone uses the reserved second row for its tabs and may therefore start lower.
 - **Broadcasts** — „Neue Durchsage“ and the recent history are separate grouped sections. Delivery
   channels live in the shared contextual tooltip directly beside „Neue Durchsage“ instead of a
   persistent explanation below the form. Recent broadcasts live in one standard, initially

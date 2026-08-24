@@ -256,6 +256,113 @@ flowTest('shell', 'fresh device uses the personal login and reaches the app with
   assert.equal(await loginPage.inputValue('#profile-name'), alice.name);
 });
 
+flowTest('shell', 'untabbed areas align compact cards while tabbed areas reserve a second row', async (t) => {
+  t.after(async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+  });
+
+  type CardMetrics = {
+    top: number;
+    headingMetrics: { fontSize: string; inset: number } | null;
+  };
+  const firstCardMetrics = async (label: string): Promise<CardMetrics> => {
+    const metrics = await page.waitForFunction((areaLabel) => {
+      const card = document.querySelector('#view-container .card');
+      if (!card) return null;
+      const cardBox = card.getBoundingClientRect();
+      if (!cardBox.width || !cardBox.height) return null;
+      const heading = card.querySelector('h2');
+      const headingMetrics = heading
+        ? {
+            fontSize: getComputedStyle(heading).fontSize,
+            inset: Math.round(heading.getBoundingClientRect().top - cardBox.top),
+          }
+        : null;
+      return { label: areaLabel, top: Math.round(cardBox.y), headingMetrics };
+    }, label);
+    const value = await metrics.jsonValue();
+    assert.ok(value, `${label} should render a first card`);
+    return { top: value.top, headingMetrics: value.headingMetrics };
+  };
+
+  for (const width of [390, 900]) {
+    await page.setViewportSize({ width, height: 844 });
+    const metrics: Array<[string, CardMetrics]> = [];
+    const tabbedMetrics: Array<[string, CardMetrics]> = [];
+
+    await page.click('.nav-btn[data-view="matchmaking"]');
+    await page.waitForSelector('#view-container h1:text-is("Match")');
+    tabbedMetrics.push(['Match', await firstCardMetrics('Match')]);
+
+    for (const [view, title] of [
+      ['home', 'Home'],
+      ['votes', 'Vote'],
+      ['foodOrders', 'Essen'],
+      ['gameCatalog', 'Spiele'],
+      ['more', 'Mehr'],
+    ] as const) {
+      await page.click(`.nav-btn[data-view="${view}"]`);
+      await page.waitForSelector(`#view-container h1:text-is("${title}")`);
+      metrics.push([title, await firstCardMetrics(title)]);
+    }
+
+    for (const [view, title, readySelector] of [
+      ['profile', 'Mein Profil', '#profile-name'],
+      ['admin', 'Admin', '#admin-mode-title'],
+      ['arcade', 'Arcade', '#arcade-games-title'],
+      ['broadcast', 'Durchsage', '#broadcast-new-title'],
+      ['music', 'Jam', '#music-setup-title'],
+    ] as const) {
+      await page.click('.nav-btn[data-view="more"]');
+      await page.waitForSelector('.more-grid');
+      await page.click(`[data-navigate="${view}"]`);
+      await page.waitForSelector(readySelector);
+      metrics.push([title, await firstCardMetrics(title)]);
+      assert.equal(await page.locator('.more-subpage-header [data-navigate="more"]').count(), 1);
+    }
+
+    const alignedTops = new Set(metrics.map(([, value]) => value.top));
+    assert.equal(
+      alignedTops.size,
+      1,
+      `all compact areas should share one first-card edge at ${width}px: ${JSON.stringify(metrics)}`,
+    );
+
+    const headingMetrics = metrics
+      .map(([, value]) => value.headingMetrics)
+      .filter((value): value is NonNullable<CardMetrics['headingMetrics']> => value !== null);
+    assert.equal(new Set(headingMetrics.map((value) => value.fontSize)).size, 1);
+    assert.equal(new Set(headingMetrics.map((value) => value.inset)).size, 1);
+
+    await page.click('.nav-btn[data-view="more"]');
+    await page.waitForSelector('.more-grid');
+    await page.click('[data-navigate="admin"]');
+    await page.waitForSelector('#admin-mode-title');
+    await page.click('[data-navigate="leaderboard"]');
+    await page.waitForSelector('#view-container h1:text-is("Auswertung")');
+    tabbedMetrics.push(['Auswertung', await firstCardMetrics('Auswertung')]);
+
+    await openOrgaTab('events');
+    await page.waitForSelector('#orga-events-title');
+    const orgaMetrics = await firstCardMetrics('Orga');
+    tabbedMetrics.push(['Orga', orgaMetrics]);
+    for (const [title, value] of tabbedMetrics) {
+      assert.ok(value.top > metrics[0][1].top, `${title} tabs should reserve their own row at ${width}px`);
+      if (value.headingMetrics) assert.deepEqual(value.headingMetrics, headingMetrics[0]);
+    }
+    if (width === 900) {
+      assert.equal(
+        new Set(tabbedMetrics.map(([, value]) => value.top)).size,
+        1,
+        `desktop tabbed areas should share one first-card edge: ${JSON.stringify(tabbedMetrics)}`,
+      );
+    }
+    assert.equal(await page.locator('.more-subpage-header--tabs [data-navigate="more"]').count(), 1);
+    await page.click('.more-subpage-header--tabs [data-navigate="more"]');
+    await page.waitForSelector('.more-grid');
+  }
+});
+
 flowTest('shell', 'Orga Events tab and Profil use grouped help while admin tools stay out of regular Orga', async (t) => {
   // Switches to a desktop viewport partway through (for the desktop-only
   // profile layout checks below) and never switches back on its own —

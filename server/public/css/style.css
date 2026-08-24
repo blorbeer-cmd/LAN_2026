@@ -1859,13 +1859,6 @@ input[type='number']::-webkit-inner-spin-button {
   display: grid;
   gap: var(--space-4);
 }
-.profile-page-header {
-  align-items: flex-start;
-  margin-bottom: var(--space-4);
-}
-.profile-page-header .view-title {
-  margin-bottom: 0;
-}
 .profile-avatar-editor {
   display: flex;
   flex-direction: column;
@@ -2174,7 +2167,7 @@ button.draft-pool-player {
 }
 .collapsible-section-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
   min-height: var(--tap-target-size);
@@ -2669,6 +2662,76 @@ button.draft-pool-player {
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-black);
   margin: var(--space-1) 0 var(--space-4);
+}
+
+/* Untabbed page headers always occupy the same compact row. This preserves
+   the 124px first-card edge on both phone and laptop instead of letting the
+   smaller phone title line shorten only some views by a few pixels. */
+.view-container > .view-title,
+.page-title-row {
+  min-height: var(--tap-target-size);
+  margin-bottom: var(--space-2);
+}
+.view-container > .view-title {
+  display: flex;
+  align-items: center;
+  margin-top: 0;
+}
+.page-title-row {
+  align-items: center;
+}
+.page-title-row .view-title {
+  margin: 0;
+}
+
+/* Destinations reached from "Mehr" use the same compact title row as the
+   main navigation. Only Orga reserves a second row because its five area
+   tabs are navigation in their own right. */
+.more-subpage-header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--space-2);
+}
+.more-subpage-title-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: var(--tap-target-size);
+  align-items: center;
+  gap: var(--space-2);
+}
+.more-subpage-title-row .view-title {
+  min-width: 0;
+  margin: 0;
+}
+.more-subpage-header--tabs {
+  min-height: calc(var(--tap-target-size) + var(--tap-target-size) + var(--space-2));
+  gap: var(--space-2);
+  margin-bottom: 0;
+}
+@media (max-width: 639px) { /* --bp-md */
+  .more-subpage-header--tabs {
+    min-height: calc(var(--tap-target-size) + var(--tap-target-size) + var(--tap-target-size) + var(--space-1));
+  }
+}
+
+/* Every merged area keeps its tabs on a dedicated second header row. Match,
+   Auswertung and Orga therefore share the same intentional lower content
+   edge, while untabbed pages keep the compact single-row header above. */
+.section-page-header {
+  display: flex;
+  min-height: calc(var(--tap-target-size) + var(--tap-target-size) + var(--space-2));
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+.section-page-header .view-title {
+  display: flex;
+  min-height: var(--tap-target-size);
+  align-items: center;
+  margin: 0;
+}
+.section-page-header .section-tabs {
+  margin: 0;
 }
 
 .section-title {
@@ -4371,6 +4434,9 @@ input[type='number'].tournament-score-input {
 .vote-page-section {
   margin-top: var(--space-4);
 }
+.view-container > .view-title + .vote-page-section {
+  margin-top: 0;
+}
 .vote-ranking-columns {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -4517,7 +4583,7 @@ input[type='number'].tournament-score-input {
 }
 .grouped-page-section-title {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
 }
@@ -4535,6 +4601,24 @@ input[type='number'].tournament-score-input {
 .grouped-page-section-title h2 {
   margin: 0;
   font-size: var(--font-size-lg);
+}
+/* A 44px info target must remain easy to hit without making only the titles
+   carrying help sit lower than every other card heading. Its negative outer
+   margin keeps the hit area while removing that extra height from flex
+   layout. */
+.grouped-page-section-title .info-tooltip-trigger,
+.card h2.title-with-info .info-tooltip-trigger {
+  margin-block: calc(-1 * var(--space-3));
+}
+/* Bare h2 headings still appear in game/result cards. Keep their type scale
+   consistent with the structured grouped-page headers across every area. */
+.card h2 {
+  font-size: var(--font-size-lg);
+}
+.card > h2,
+.card > .row-between > h2,
+.card > .title-with-info > h2 {
+  margin: 0;
 }
 .grouped-page-section .card {
   background: var(--bg-elevated-2);

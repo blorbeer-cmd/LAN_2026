@@ -600,9 +600,11 @@ function renderPanel(container, ctx) {
         <div class="two-column-card-grid">${readinessChecks}</div>`;
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
-    <div class="row-between">
-      <h1 class="view-title">Admin</h1>
+    <div class="more-subpage-header">
+      <div class="more-subpage-title-row">
+        <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+        <h1 class="view-title">Admin</h1>
+      </div>
     </div>
     <div class="grouped-page-sections">
       ${adminModeActive ? '' : `<section class="card stack grouped-page-section" aria-labelledby="admin-mode-title">
@@ -798,8 +800,12 @@ export function renderAdmin(container, ctx) {
   if (!current?.is_admin) {
     if (isAdmin()) setAdmin(false);
     container.innerHTML = `
-      <button type="button" class="btn btn-sm" data-navigate="more">‹ Zurück</button>
-      <h1 class="view-title">${icon('shield')} Admin</h1>
+      <div class="more-subpage-header">
+        <div class="more-subpage-title-row">
+          <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+          <h1 class="view-title">Admin</h1>
+        </div>
+      </div>
       <div class="card"><p class="muted">Dieses Konto hat keine Admin-Rechte.</p></div>`;
     return;
   }

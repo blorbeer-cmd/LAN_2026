@@ -93,13 +93,11 @@ export function renderLeaderboard(container, ctx) {
     .join('');
 
   container.innerHTML = `
-    <div class="row view-actions">
-      <button type="button" class="btn btn-primary btn-sm" id="add-match-btn">Ergebnis eintragen</button>
-    </div>
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="leaderboard-filtered-title">
         <div class="grouped-page-section-title">
           <h2 id="leaderboard-filtered-title">Rangliste &amp; Spielzeit</h2>
+          <button type="button" class="btn btn-primary btn-sm" id="add-match-btn">Ergebnis eintragen</button>
         </div>
         <div>
           <label class="field-label" for="lb-filter-search">Spiel auswählen</label>

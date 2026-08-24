@@ -1834,11 +1834,11 @@ export function renderFoodOrders(container, ctx) {
   const focusAnchor = captureFoodOrderFocus(container);
 
   container.innerHTML = `
-    <div class="row-between">
+    <div class="row-between page-title-row">
       <h1 class="view-title">Essen</h1>
       <button type="button" class="btn btn-primary btn-sm" id="order-new-btn" ${myId ? '' : 'disabled'}>Bestellung öffnen</button>
     </div>
-    <div class="grouped-page-sections" style="margin-top:var(--space-3);">
+    <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="food-open-title">
         <div class="grouped-page-section-title"><h2 id="food-open-title">Offene Bestellungen</h2></div>
         ${openHtml}
