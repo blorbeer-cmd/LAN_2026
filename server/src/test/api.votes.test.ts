@@ -485,3 +485,37 @@ test('a runoff round restricted to the tied winners lets voters pick only among 
   const runoffClosed = await request(app).post('/api/votes/close');
   assert.deepEqual(runoffClosed.body.winnerGameIds, [gameCs2]);
 });
+
+test('closing with admin mode on never lets a test-only vote decide the persisted winner', async () => {
+  const started = await request(app).post('/api/votes/start').send({ mode: 'points' });
+  assert.equal(started.status, 201);
+
+  const ghost = await request(app).post('/api/players').send({ name: 'Ghost Voter' });
+  db.prepare('UPDATE players SET is_test = 1 WHERE id = ?').run(ghost.body.id);
+
+  // Real votes make CS2 the real winner (5 > 3)...
+  await request(app)
+    .post('/api/votes/points')
+    .send({
+      playerId: playerA,
+      entries: [
+        { gameId: gameCs2, points: 5 },
+        { gameId: gameRl, points: 3 },
+      ],
+    });
+  // ...only a test player votes for AoE2, with enough points to top the
+  // score if (and only if) test votes were allowed to decide the winner.
+  await request(app).post('/api/votes/points').send({ playerId: ghost.body.id, entries: [{ gameId: gameAoe2, points: 10 }] });
+
+  // Closing with admin mode on still shows the test player's points in the
+  // results view, but the persisted winner must not follow them.
+  const closed = await request(app).post('/api/votes/close').set('x-admin-mode', '1');
+  assert.equal(closed.status, 200);
+  assert.deepEqual(closed.body.winnerGameIds, [gameCs2]);
+  const aoe2Result = closed.body.results.find((r: { gameId: string }) => r.gameId === gameAoe2);
+  assert.equal(aoe2Result.points, 10);
+
+  // The same persisted winner is reported with admin mode off too.
+  const history = await request(app).get(`/api/votes/history/${closed.body.round}`);
+  assert.deepEqual(history.body.winnerGameIds, [gameCs2]);
+});

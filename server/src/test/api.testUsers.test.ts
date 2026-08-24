@@ -296,6 +296,15 @@ test('DELETE /api/admin/test-users removes every marked player and historical te
   const ids = (db.prepare('SELECT id FROM players WHERE is_test = 1').all() as Array<{ id: string }>).map((r) => r.id);
   assert.ok(ids.length > 0, 'previous test should have seeded users');
 
+  // An admin who joined one of the generated test events (e.g. Test-LAN) has
+  // it as their active_event_id, which ON DELETE RESTRICT would otherwise
+  // turn this cleanup into a 500 that deletes nothing.
+  const testLan = db.prepare("SELECT id FROM events WHERE is_test = 1 AND name = 'Test-LAN'").get() as
+    | { id: string }
+    | undefined;
+  assert.ok(testLan, 'previous test should have seeded the Test-LAN fixture event');
+  db.prepare('UPDATE player_event_contexts SET active_event_id = ? WHERE player_id = ?').run(testLan!.id, TEST_ADMIN_ID);
+
   const res = await request(app).delete('/api/admin/test-users');
   assert.equal(res.status, 200);
   assert.equal(res.body.deleted, ids.length);
@@ -303,6 +312,12 @@ test('DELETE /api/admin/test-users removes every marked player and historical te
   assert.equal(res.body.deletedEvents, 14);
 
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM players WHERE is_test = 1').get() as { n: number }).n, 0);
+  // The admin's active context fell back instead of leaving a dangling
+  // reference to the now-deleted Test-LAN event.
+  const adminContext = db
+    .prepare('SELECT active_event_id FROM player_event_contexts WHERE player_id = ?')
+    .get(TEST_ADMIN_ID) as { active_event_id: string };
+  assert.equal(adminContext.active_event_id, BASE_EVENT_ID);
   const layout = await request(app).get('/api/seating/layout');
   const seated = new Set(layout.body.layout.assignments.map((a: { playerId: string }) => a.playerId));
   assert.ok(ids.every((id) => !seated.has(id)), 'no test user should stay seated');

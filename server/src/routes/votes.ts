@@ -697,9 +697,15 @@ votesRouter.post('/close', requireGroupRole('admin'), (req, res) => {
   setState(scopedStateKey(OPEN_KEY, groupId, eventId), '0');
 
   const meta = getRoundMeta(groupId, state.round);
-  const results = buildResults(req.group!.id, state.round, state.mode, includesTestPlayers(req), meta.selectedGameIds);
-  const topScore = results[0]?.score ?? 0;
-  const winnerGameIds = topScore > 0 ? results.filter((r) => r.score === topScore).map((r) => r.gameId) : [];
+  // The persisted winner must not depend on whether the closing admin's
+  // device happens to have admin mode on: it's always derived from real
+  // votes only, so the same round can never end up with two different
+  // winners depending on incidental request state. Test-player points still
+  // show up in the admin-mode `results` view below, they just never decide.
+  const canonicalResults = buildResults(req.group!.id, state.round, state.mode, false, meta.selectedGameIds);
+  const topScore = canonicalResults[0]?.score ?? 0;
+  const winnerGameIds =
+    topScore > 0 ? canonicalResults.filter((r) => r.score === topScore).map((r) => r.gameId) : [];
 
   db.prepare('UPDATE vote_rounds SET closed_at = ?, winner_game_ids = ? WHERE group_id = ? AND round = ?').run(
     Date.now(),

@@ -8,6 +8,7 @@ import { db, DEFAULT_GROUP_ID } from './db';
 import { deleteTestUsers } from './testUsers';
 import { DEFAULT_EVENT_PRESET_VERSION, DEFAULT_EVENT_TYPE_KEY } from './eventFeatureCatalog';
 import { createEventFeatureSnapshot } from './eventFeatures';
+import { fallbackEventContexts } from './eventContext';
 
 const FIRST_TEST_YEAR = 2015;
 const LAST_TEST_YEAR = 2026;
@@ -40,6 +41,16 @@ function deleteHistoricalTestEventsInTransaction(): number {
 }
 
 function deleteTestEventsInTransaction(ownerGroupId?: string): number {
+  // Any admin who joined one of these events (e.g. the generated Test-LAN /
+  // Allgemeines Testevent fixtures) has it as their active_event_id, which
+  // ON DELETE RESTRICT would otherwise turn into a 500 on the delete below.
+  const testEventIds = (
+    ownerGroupId
+      ? db.prepare('SELECT id FROM events WHERE is_test = 1 AND group_id = ?').all(ownerGroupId)
+      : db.prepare('SELECT id FROM events WHERE is_test = 1').all()
+  ) as Array<{ id: string }>;
+  for (const { id } of testEventIds) fallbackEventContexts(id);
+
   const result = ownerGroupId
     ? db.prepare('DELETE FROM events WHERE is_test = 1 AND group_id = ?').run(ownerGroupId)
     : db.prepare('DELETE FROM events WHERE is_test = 1').run();
