@@ -18,9 +18,6 @@ export type EventPollResponseMode = 'feasibility' | 'single_choice' | 'multiple_
 export const FEASIBILITY_RESPONSE_VALUES: DatePollResponseValue[] = ['can', 'if_needed', 'cannot'];
 export const RATING_RESPONSE_VALUES: DatePollResponseValue[] = ['1', '2', '3', '4', '5'];
 export const RESPONSE_VALUES: DatePollResponseValue[] = [...FEASIBILITY_RESPONSE_VALUES, ...RATING_RESPONSE_VALUES];
-export const MIN_OPTIONS = 2;
-export const MAX_OPTIONS = 8;
-
 export const REMINDER_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const REMINDER_48H_BEFORE_MS = 48 * 60 * 60 * 1000;
 const REMINDER_2H_BEFORE_MS = 2 * 60 * 60 * 1000;
@@ -431,8 +428,8 @@ export function updateDatePoll(poll: DatePollRow, fields: UpdateDatePollFields):
     let addedOptionCount = 0;
     let previouslyAnsweredPlayerIds: string[] = [];
     if (nextOptions !== undefined) {
-      if (nextOptions.length < MIN_OPTIONS || nextOptions.length > MAX_OPTIONS) {
-        return { ok: false, code: 'invalid', error: `${MIN_OPTIONS} bis ${MAX_OPTIONS} Optionen sind erforderlich.` };
+      if (nextOptions.length === 0) {
+        return { ok: false, code: 'invalid', error: 'Mindestens eine Option ist erforderlich.' };
       }
       const existingIds = new Set(existingOptions.map((option) => option.id));
       const suppliedExistingIds = nextOptions.flatMap((option) => option.id ? [option.id] : []);
@@ -530,9 +527,6 @@ export function addDatePollOption(poll: DatePollRow, input: DatePollOptionInput)
     return { ok: false, code: 'not_open', error: 'Optionen können nur während einer offenen Runde ergänzt werden.' };
   }
   const existing = getDatePollOptions(poll.id);
-  if (existing.length >= MAX_OPTIONS) {
-    return { ok: false, code: 'invalid', error: `Höchstens ${MAX_OPTIONS} Optionen je Abstimmung.` };
-  }
   const position = existing.reduce((max, o) => Math.max(max, o.position), -1) + 1;
   const startsOn = input.startsOn ?? `0001-01-${String(position + 1).padStart(2, '0')}`;
   const endsOn = input.endsOn ?? startsOn;
@@ -546,9 +540,6 @@ export function addDatePollOption(poll: DatePollRow, input: DatePollOptionInput)
       return { ok: false, code: 'not_open', error: 'Die Abstimmung läuft nicht mehr.' };
     }
     const currentOptions = getDatePollOptions(poll.id);
-    if (currentOptions.length >= MAX_OPTIONS) {
-      return { ok: false, code: 'invalid', error: `Höchstens ${MAX_OPTIONS} Optionen je Abstimmung.` };
-    }
     if (currentOptions.some((option) => (option.label ?? '').toLocaleLowerCase('de') === label.toLocaleLowerCase('de'))) {
       return { ok: false, code: 'invalid', error: 'Diese Option ist bereits vorhanden.' };
     }

@@ -493,7 +493,7 @@ function openPollForm(event, ctx, previousRound = null) {
       </div>
       <div id="poll-max-wrap" ${initialMode === 'multiple_choice' ? '' : 'hidden'}>
         <label for="poll-max" class="field-label">Stimmen pro Person</label>
-        <div class="field-row event-poll-max-field"><input id="poll-max" type="number" min="1" max="8" value="${previousRound?.maxSelections ?? ''}" placeholder="Unbegrenzt" /><span class="muted">Leer lassen, wenn alle Optionen gewählt werden dürfen.</span></div>
+        <div class="field-row event-poll-max-field"><input id="poll-max" type="number" min="1" value="${previousRound?.maxSelections ?? ''}" placeholder="Unbegrenzt" /><span class="muted">Leer lassen, wenn alle Optionen gewählt werden dürfen.</span></div>
       </div>
       <div class="check-row">
         <input type="checkbox" id="poll-anonymous" ${previousRound?.anonymous ? 'checked' : ''} />
@@ -503,7 +503,7 @@ function openPollForm(event, ctx, previousRound = null) {
         </span>
       </div>
       <div class="stack">
-        <div class="row-between"><span class="field-label">Optionen</span><span class="muted">2 bis 8</span></div>
+        <span class="field-label">Optionen</span>
         <div class="stack" id="poll-option-rows">${initialOptions.map((value, index) => optionRowHtml(index, value)).join('')}</div>
         <button type="button" class="btn btn-sm" id="poll-add-option">Option hinzufügen</button>
       </div>
@@ -529,7 +529,6 @@ function openPollForm(event, ctx, previousRound = null) {
         modal.querySelector('#poll-max-wrap').hidden = eventChange.target.value !== 'multiple_choice';
       });
       modal.querySelector('#poll-add-option').addEventListener('click', () => {
-        if (modal.querySelectorAll('[data-poll-option-row]').length >= 8) return showToast('Höchstens acht Optionen sind möglich.', { error: true });
         dirty = true;
         modal.querySelector('#poll-option-rows').insertAdjacentHTML('beforeend', optionRowHtml(nextOptionIndex));
         modal.querySelector(`#poll-option-${nextOptionIndex}`)?.focus();
@@ -538,7 +537,7 @@ function openPollForm(event, ctx, previousRound = null) {
       modal.querySelector('#poll-option-rows').addEventListener('click', (eventClick) => {
         const button = eventClick.target.closest('[data-remove-poll-option]');
         if (!button) return;
-        if (modal.querySelectorAll('[data-poll-option-row]').length <= 2) return showToast('Mindestens zwei Optionen sind erforderlich.', { error: true });
+        if (modal.querySelectorAll('[data-poll-option-row]').length <= 1) return showToast('Mindestens eine Option ist erforderlich.', { error: true });
         dirty = true;
         button.closest('[data-poll-option-row]').remove();
       });
@@ -603,7 +602,7 @@ function openEditPollForm(event, poll, ctx) {
         <span class="muted">${escapeHtml(mode.label)}${poll.anonymous ? ' · Anonym' : ''}</span>
       </div>
       <div class="stack">
-        <div class="row-between"><span class="field-label">Optionen</span><span class="muted">2 bis 8</span></div>
+        <span class="field-label">Optionen</span>
         <div class="stack" id="poll-option-rows">${initialOptions.map((value, index) => optionRowHtml(index, value)).join('')}</div>
         <button type="button" class="btn btn-sm" id="poll-add-option">Option hinzufügen</button>
       </div>
@@ -625,7 +624,6 @@ function openEditPollForm(event, poll, ctx) {
       modal.querySelector('#event-poll-edit-form').addEventListener('input', markDirty);
       modal.querySelector('#event-poll-edit-form').addEventListener('change', markDirty);
       modal.querySelector('#poll-add-option').addEventListener('click', () => {
-        if (modal.querySelectorAll('[data-poll-option-row]').length >= 8) return showToast('Höchstens acht Optionen sind möglich.', { error: true });
         dirty = true;
         modal.querySelector('#poll-option-rows').insertAdjacentHTML('beforeend', optionRowHtml(nextOptionIndex));
         modal.querySelector(`#poll-option-${nextOptionIndex}`)?.focus();
