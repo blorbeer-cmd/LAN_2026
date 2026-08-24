@@ -13,6 +13,7 @@ import { requireRecentReauthentication } from '../sessions';
 import { getReadiness } from '../readiness';
 import { getOrRepairActiveEvent } from '../eventContext';
 import { computeFeatureUsage } from '../featureUsage';
+import { isAdminTestMode } from '../testDataVisibility';
 
 export const adminRouter = Router();
 
@@ -33,7 +34,7 @@ adminRouter.get('/feature-usage', requireAdmin, (req, res) => {
 
 adminRouter.get('/readiness', requireAdmin, async (req, res, next) => {
   try {
-    res.json(await getReadiness(req.group!.id));
+    res.json(await getReadiness(req.group!.id, isAdminTestMode(req)));
   } catch (error) {
     next(error);
   }
@@ -56,8 +57,9 @@ adminRouter.post('/test-users', requireAdmin, (req, res) => {
   });
   broadcast(Events.playersChanged, null, { groupId: req.group!.id });
   broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
   broadcastLiveBoards(req.group!.id);
-  res.status(201).json({ created, totalTestUsers: countTestUsers() });
+  res.status(201).json({ created, totalTestUsers: countTestUsers(req.group!.id) });
 });
 
 // POST /api/admin/test-data/hall-of-fame - replaces the marked historical
@@ -76,10 +78,10 @@ adminRouter.post('/test-data/hall-of-fame', requireAdmin, (req, res) => {
   }
 });
 
-// DELETE /api/admin/test-users - removes every test player and everything
-// hanging off them (skills, Bock, sessions, seats, neighbors, live rows).
+// DELETE /api/admin/test-users - removes every test player, both operational
+// test events, historical fixture LANs and everything hanging off them.
 adminRouter.delete('/test-users', requireAdmin, requireRecentReauthentication, (req, res) => {
-  const { deletedPlayers, deletedEvents } = deleteAllTestData();
+  const { deletedPlayers, deletedEvents } = deleteAllTestData(req.group!.id);
   writeAdminAudit({
     actorPlayerId: req.player?.id,
     action: 'test_users_deleted',

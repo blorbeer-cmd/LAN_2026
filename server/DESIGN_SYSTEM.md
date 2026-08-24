@@ -573,7 +573,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   into a tab row. Each tool card keeps its
   title, adjacent help tooltip and colorful primary action on one row; the seating and kiosk
   editors both return to Admin and remain role-protected independently of that mode. Dense 2015–2026 Hall-of-Fame fixtures ship with the local test data and
-  need no separate Admin action. The test-data fixture explanation and the existing test-player count live in adjacent
+  need no separate Admin action. Creating test players also maintains one Test-LAN and one general
+  test event with accepted and pending test identities; both events and every aggregate fixture contribution
+  stay hidden outside Admin mode. The test-data fixture explanation and the existing test-player count live in adjacent
   tooltips; the compact count input, „Test-Daten aufräumen“ and create action share one control row
   in that order. Cleanup removes every marked test player and test LAN
   without touching real events. The single-instance access context is not shown as a separate group

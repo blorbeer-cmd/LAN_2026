@@ -12,6 +12,7 @@ export interface EventContextEvent {
   event_type_key: EventTypeKey;
   preset_version: number;
   schedule_revision: number;
+  is_test: number;
 }
 
 export type EventAccessLevel = 'none' | 'teaser' | 'participant' | 'admin';
@@ -32,7 +33,7 @@ export function getSelectableEvent(eventId: string): EventContextEvent | undefin
   return db
     .prepare(
       `SELECT id, name, starts_at, ends_at, status, group_id,
-              event_type_key, preset_version, schedule_revision
+              event_type_key, preset_version, schedule_revision, is_test
        FROM events
        WHERE id = ? AND group_id = ? AND status = 'published' AND ended_at IS NULL`,
     )
@@ -111,7 +112,7 @@ export function getOrRepairActiveEvent(playerId: string): EventContextEvent {
     const current = db
       .prepare(
         `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id,
-                e.event_type_key, e.preset_version, e.schedule_revision
+                e.event_type_key, e.preset_version, e.schedule_revision, e.is_test
          FROM player_event_contexts pec
          JOIN events e ON e.id = pec.active_event_id
          JOIN event_participants ep
@@ -134,7 +135,7 @@ export function setActiveEventForPlayer(playerId: string, eventId: string): Even
     const event = db
       .prepare(
         `SELECT e.id, e.name, e.starts_at, e.ends_at, e.status, e.group_id,
-                e.event_type_key, e.preset_version, e.schedule_revision
+                e.event_type_key, e.preset_version, e.schedule_revision, e.is_test
          FROM events e
          JOIN event_participants ep
            ON ep.event_id = e.id AND ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}

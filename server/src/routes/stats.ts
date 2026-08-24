@@ -9,6 +9,7 @@ import { computePlaytime, aggregateByGame, formatDurationMs, type PlaySession } 
 import { clipSessionsToRange } from '../sessionStats';
 import { parseTimeRangeQuery } from './queryHelpers';
 import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
+import { includesTestPlayers } from '../testDataVisibility';
 
 export const statsRouter = Router();
 
@@ -39,7 +40,7 @@ statsRouter.get('/playtime', (req, res) => {
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const clauses: string[] = ['group_id = ?'];
-  const sqlParams: string[] = [req.group!.id];
+  const sqlParams: Array<string | number> = [req.group!.id];
   if (filterGameId) {
     clauses.push('game_id = ?');
     sqlParams.push(filterGameId);
@@ -48,8 +49,8 @@ statsRouter.get('/playtime', (req, res) => {
   clauses.push(eventFilter.clause);
   sqlParams.push(...eventFilter.params);
   const rows = db
-    .prepare(`SELECT ps.player_id, ps.game_id, ps.started_at, ps.ended_at, ps.active_ms FROM play_sessions ps JOIN players p ON p.id = ps.player_id AND p.deactivated_at IS NULL WHERE ${clauses.map((clause) => clause.replace('group_id', 'ps.group_id').replace('game_id', 'ps.game_id').replace('event_id', 'ps.event_id')).join(' AND ')}`)
-    .all(...sqlParams) as Array<{
+    .prepare(`SELECT ps.player_id, ps.game_id, ps.started_at, ps.ended_at, ps.active_ms FROM play_sessions ps JOIN players p ON p.id = ps.player_id AND p.deactivated_at IS NULL WHERE ${clauses.map((clause) => clause.replace('group_id', 'ps.group_id').replace('game_id', 'ps.game_id').replace('event_id', 'ps.event_id')).join(' AND ')} AND (? = 1 OR p.is_test = 0)`)
+    .all(...sqlParams, includesTestPlayers(req) ? 1 : 0) as Array<{
     player_id: string;
     game_id: string;
     started_at: number;

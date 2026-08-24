@@ -23,6 +23,11 @@ import { computeAwards } from '../awards';
 import { matchCountsByGame, biggestRivalry, bestDuo, biggestUnderdogWin, type MatchForUnderdog } from '../gameStats';
 import { ARCADE_TITLES } from './arcade';
 import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
+import {
+  includesTestPlayers,
+  matchResultContainsPlayerIds,
+  testPlayerIds,
+} from '../testDataVisibility';
 
 export const analyticsRouter = Router();
 
@@ -46,6 +51,7 @@ function loadAllSessions(
   groupId: string,
   gameId: string | null,
   eventIds: string[],
+  includeTestPlayers: boolean,
 ): Array<{
   player_id: string;
   game_id: string;
@@ -54,7 +60,7 @@ function loadAllSessions(
   active_ms: number;
 }> {
   const clauses: string[] = ['group_id = ?'];
-  const params: string[] = [groupId];
+  const params: Array<string | number> = [groupId];
   if (gameId) {
     clauses.push('game_id = ?');
     params.push(gameId);
@@ -63,8 +69,8 @@ function loadAllSessions(
   clauses.push(eventFilter.clause);
   params.push(...eventFilter.params);
   return db
-    .prepare(`SELECT ps.player_id, ps.game_id, ps.started_at, ps.ended_at, ps.active_ms FROM play_sessions ps JOIN players p ON p.id = ps.player_id AND p.deactivated_at IS NULL WHERE ${clauses.map((clause) => clause.replace('group_id', 'ps.group_id').replace('game_id', 'ps.game_id').replace('event_id', 'ps.event_id')).join(' AND ')}`)
-    .all(...params) as Array<{
+    .prepare(`SELECT ps.player_id, ps.game_id, ps.started_at, ps.ended_at, ps.active_ms FROM play_sessions ps JOIN players p ON p.id = ps.player_id AND p.deactivated_at IS NULL WHERE ${clauses.map((clause) => clause.replace('group_id', 'ps.group_id').replace('game_id', 'ps.game_id').replace('event_id', 'ps.event_id')).join(' AND ')} AND (? = 1 OR p.is_test = 0)`)
+    .all(...params, includeTestPlayers ? 1 : 0) as Array<{
     player_id: string;
     game_id: string;
     started_at: number;
@@ -116,7 +122,7 @@ analyticsRouter.get('/overview', (req, res) => {
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(req.group!.id, filterGameId, eventScope.eventIds);
+  const rawRows = loadAllSessions(req.group!.id, filterGameId, eventScope.eventIds, includesTestPlayers(req));
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -169,7 +175,7 @@ analyticsRouter.get('/sessions', (req, res) => {
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(req.group!.id, filterGameId, eventScope.eventIds).filter(
+  const rawRows = loadAllSessions(req.group!.id, filterGameId, eventScope.eventIds, includesTestPlayers(req)).filter(
     (r) => !filterPlayerId || r.player_id === filterPlayerId,
   );
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
@@ -215,7 +221,7 @@ analyticsRouter.get('/concurrency', (req, res) => {
   }
 
   const now = Date.now();
-  const rawRows = loadAllSessions(req.group!.id, gameId, eventScope.eventIds);
+  const rawRows = loadAllSessions(req.group!.id, gameId, eventScope.eventIds, includesTestPlayers(req));
   const sessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -238,7 +244,7 @@ analyticsRouter.get('/awards', (req, res) => {
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(req.group!.id, null, eventScope.eventIds);
+  const rawRows = loadAllSessions(req.group!.id, null, eventScope.eventIds, includesTestPlayers(req));
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -280,7 +286,7 @@ analyticsRouter.get('/games', (req, res) => {
   if ('error' in range) return res.status(400).json({ error: range.error });
 
   const now = Date.now();
-  const rawRows = loadAllSessions(req.group!.id, null, eventScope.eventIds);
+  const rawRows = loadAllSessions(req.group!.id, null, eventScope.eventIds, includesTestPlayers(req));
   const rawSessions: PlaySession[] = rawRows.map((r) => ({
     playerId: r.player_id,
     gameId: r.game_id,
@@ -324,14 +330,15 @@ interface MatchRow {
   result: string;
 }
 
-function loadAllMatches(groupId: string, eventIds: string[]): MatchForUnderdog[] {
+function loadAllMatches(groupId: string, eventIds: string[], includeTestPlayers: boolean): MatchForUnderdog[] {
   const clauses: string[] = ['group_id = ?'];
   const params: string[] = [groupId];
   const eventFilter = eventIdSql('event_id', eventIds);
   clauses.push(eventFilter.clause);
   params.push(...eventFilter.params);
   const rows = db.prepare(`SELECT id, game_id, result FROM matches WHERE ${clauses.join(' AND ')}`).all(...params) as MatchRow[];
-  return rows.map((r) => {
+  const hiddenPlayerIds = includeTestPlayers ? new Set<string>() : testPlayerIds();
+  return rows.filter((row) => !matchResultContainsPlayerIds(row.result, hiddenPlayerIds)).map((r) => {
     const parsed = JSON.parse(r.result) as { teams: Array<{ playerIds: string[] }>; winnerTeamIndex: number | null };
     return { id: r.id, gameId: r.game_id, teams: parsed.teams, winnerTeamIndex: parsed.winnerTeamIndex };
   });
@@ -352,7 +359,8 @@ analyticsRouter.get('/games-tournaments', (req, res) => {
   const eventScope = resolveAnalyticsEvents(req, eventId);
   if (!eventScope.ok) return res.status(eventScope.status).json({ error: eventScope.error });
 
-  const matches = loadAllMatches(req.group!.id, eventScope.eventIds);
+  const includeTestData = includesTestPlayers(req);
+  const matches = loadAllMatches(req.group!.id, eventScope.eventIds, includeTestData);
   const matchCounts = matchCountsByGame(matches);
 
   const eventFilter = eventIdSql('event_id', eventScope.eventIds);
@@ -379,8 +387,12 @@ analyticsRouter.get('/games-tournaments', (req, res) => {
   // player who's never rated a game isn't meaningfully "weaker" than one
   // who is.
   const skillRows = db
-    .prepare('SELECT player_id, game_id, rating FROM skills WHERE group_id = ?')
-    .all(req.group!.id) as Array<{
+    .prepare(
+      `SELECT s.player_id, s.game_id, s.rating
+       FROM skills s JOIN players p ON p.id = s.player_id
+       WHERE s.group_id = ? AND (? = 1 OR p.is_test = 0)`,
+    )
+    .all(req.group!.id, includeTestData ? 1 : 0) as Array<{
     player_id: string;
     game_id: string;
     rating: number;
@@ -508,6 +520,7 @@ analyticsRouter.get('/arcade', (req, res) => {
        ORDER BY started_at ASC`,
     )
     .all(...params) as ArcadeResultFullRow[];
+  const hiddenPlayerIds = includesTestPlayers(req) ? new Set<string>() : testPlayerIds();
 
   interface GameAgg {
     gameType: string;
@@ -530,7 +543,7 @@ analyticsRouter.get('/arcade', (req, res) => {
     const scores = (Array.isArray(parsed) ? parsed : []).filter(
       (s): s is ArcadeScoreEntry => !!s && typeof (s as ArcadeScoreEntry).playerId === 'string',
     );
-    if (scores.length === 0) continue;
+    if (scores.length === 0 || scores.some((score) => hiddenPlayerIds.has(score.playerId))) continue;
     countedMatches += 1;
 
     const durationMs = Math.max(0, row.ended_at - row.started_at);

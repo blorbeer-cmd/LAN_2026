@@ -5,6 +5,11 @@ import { Router } from 'express';
 import { db } from '../db';
 import { computeStandings, type MatchForScoring } from '../leaderboard';
 import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
+import {
+  includesTestPlayers,
+  matchResultContainsPlayerIds,
+  testPlayerIds,
+} from '../testDataVisibility';
 
 export const leaderboardRouter = Router();
 
@@ -34,7 +39,10 @@ leaderboardRouter.get('/', (req, res) => {
         )
   ) as Array<{ result: string }>;
 
-  const matches: MatchForScoring[] = rows.map((r) => JSON.parse(r.result));
+  const hiddenPlayerIds = includesTestPlayers(req) ? new Set<string>() : testPlayerIds();
+  const matches: MatchForScoring[] = rows
+    .filter((row) => !matchResultContainsPlayerIds(row.result, hiddenPlayerIds))
+    .map((r) => JSON.parse(r.result));
   const standings = computeStandings(matches);
 
   const playerIds = standings.map((s) => s.playerId);

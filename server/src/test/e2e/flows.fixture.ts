@@ -3775,10 +3775,22 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   }, seededBody.created.length);
   await page.waitForSelector('.badge-paused >> text=Test');
 
+  const regularEventList = await (await page.request.get(`${BASE_URL}/api/events`)).json() as {
+    managedEvents: Array<{ name: string; isTest: boolean }>;
+  };
+  assert.equal(regularEventList.managedEvents.filter((event) => event.isTest).length, 0);
+  const adminEventList = await (
+    await page.request.get(`${BASE_URL}/api/events`, { headers: { 'x-admin-mode': '1' } })
+  ).json() as { managedEvents: Array<{ name: string; isTest: boolean }> };
+  assert.deepEqual(
+    adminEventList.managedEvents.filter((event) => event.isTest).map((event) => event.name).sort(),
+    ['Allgemeines Testevent', 'Test-LAN'],
+  );
+
   assert.equal(await page.locator('#admin-seed-hall').count(), 0);
   const hallSeeded = await page.request.post(`${BASE_URL}/api/admin/test-data/hall-of-fame`);
   assert.ok(hallSeeded.ok(), `hall-of-fame seed failed (${hallSeeded.status()}): ${await hallSeeded.text()}`);
-  const hallData = await page.request.get(`${BASE_URL}/api/hall-of-fame`);
+  const hallData = await page.request.get(`${BASE_URL}/api/hall-of-fame`, { headers: { 'x-admin-mode': '1' } });
   const hallBody = await hallData.json() as { events: Array<{ eventName: string; overallStandings: unknown[]; tournamentChampions: unknown[] }> };
   const testLans = hallBody.events.filter((event) => event.eventName.startsWith('Respawn Test-LAN'));
   assert.equal(testLans.length, 12);

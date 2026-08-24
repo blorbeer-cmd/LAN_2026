@@ -36,6 +36,7 @@ export interface EventRow {
   preset_version: number;
   tracking_enabled: number;
   ended_at: number | null;
+  is_test: number;
   group_id: string | null;
   status: 'draft' | 'published' | 'cancelled' | 'ended';
   visibility_scope: 'group' | 'participants' | 'public';

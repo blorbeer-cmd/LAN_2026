@@ -18,6 +18,7 @@ import { activeGroupPlayers } from '../groupPlayers';
 import { activePlayerGroupIds, ensureDefaultGroupMembership, syncInstanceAdminForRole } from '../groups';
 import { resolveAccessibleGroupEventScope } from '../groupEventScope';
 import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
+import { includesTestPlayers } from '../testDataVisibility';
 import { getOrRepairActiveEvent } from '../eventContext';
 
 export const playersRouter = Router();
@@ -694,13 +695,17 @@ playersRouter.get('/:id/stats', ...withParamPlayerIdentity('id'), (req, res) => 
 
   // Awards are computed across everyone (a "record" only means something
   // relative to the rest of the group), then filtered down to this player's.
-  const allClauses: string[] = ['group_id = ?'];
-  const allParams: string[] = [req.group!.id];
+  const allClauses: string[] = ['ps.group_id = ?', '(? = 1 OR p.is_test = 0)'];
+  const allParams: Array<string | number> = [req.group!.id, includesTestPlayers(req) ? 1 : 0];
   const allEventFilter = eventIdSql('event_id', scope.eventIds);
-  allClauses.push(allEventFilter.clause);
+  allClauses.push(allEventFilter.clause.replace('event_id', 'ps.event_id'));
   allParams.push(...allEventFilter.params);
   const allRows = db
-    .prepare(`SELECT player_id, game_id, started_at, ended_at, active_ms FROM play_sessions WHERE ${allClauses.join(' AND ')}`)
+    .prepare(
+      `SELECT ps.player_id, ps.game_id, ps.started_at, ps.ended_at, ps.active_ms
+       FROM play_sessions ps JOIN players p ON p.id = ps.player_id
+       WHERE ${allClauses.join(' AND ')}`,
+    )
     .all(...allParams) as SessionRow[];
   const allSessions: PlaySession[] = allRows.map((r) => ({
     playerId: r.player_id,
