@@ -1,13 +1,14 @@
 // Reproducible admin fixtures that are deliberately stored in the real local
 // database so the polished overview screens can be judged with realistic
-// density. Every historical event is marked is_test and can therefore be
-// removed atomically without touching a real LAN.
+// density. Every fixture event is marked is_test and can therefore be hidden
+// outside Admin mode and removed atomically without touching a real LAN.
 
 import { nanoid } from 'nanoid';
 import { db, DEFAULT_GROUP_ID } from './db';
 import { deleteTestUsers } from './testUsers';
 import { DEFAULT_EVENT_PRESET_VERSION, DEFAULT_EVENT_TYPE_KEY } from './eventFeatureCatalog';
 import { createEventFeatureSnapshot } from './eventFeatures';
+import { fallbackEventContexts } from './eventContext';
 
 const FIRST_TEST_YEAR = 2015;
 const LAST_TEST_YEAR = 2026;
@@ -34,8 +35,25 @@ export interface TestDataCleanupResult {
   deletedEvents: number;
 }
 
-function deleteTestEventsInTransaction(): number {
-  const result = db.prepare('DELETE FROM events WHERE is_test = 1').run();
+function deleteHistoricalTestEventsInTransaction(): number {
+  const result = db.prepare("DELETE FROM events WHERE is_test = 1 AND name LIKE 'Respawn Test-LAN %'").run();
+  return result.changes;
+}
+
+function deleteTestEventsInTransaction(ownerGroupId?: string): number {
+  // Any admin who joined one of these events (e.g. the generated Test-LAN /
+  // Allgemeines Testevent fixtures) has it as their active_event_id, which
+  // ON DELETE RESTRICT would otherwise turn into a 500 on the delete below.
+  const testEventIds = (
+    ownerGroupId
+      ? db.prepare('SELECT id FROM events WHERE is_test = 1 AND group_id = ?').all(ownerGroupId)
+      : db.prepare('SELECT id FROM events WHERE is_test = 1').all()
+  ) as Array<{ id: string }>;
+  for (const { id } of testEventIds) fallbackEventContexts(id);
+
+  const result = ownerGroupId
+    ? db.prepare('DELETE FROM events WHERE is_test = 1 AND group_id = ?').run(ownerGroupId)
+    : db.prepare('DELETE FROM events WHERE is_test = 1').run();
   return result.changes;
 }
 
@@ -53,7 +71,7 @@ export function seedHallOfFameTestData(changedBy: string | null = null): HallOfF
 
     // Re-seeding is intentionally a replacement, not an append operation:
     // the resulting years/counts stay stable across repeated button presses.
-    deleteTestEventsInTransaction();
+    deleteHistoricalTestEventsInTransaction();
 
     const insertEvent = db.prepare(
       `INSERT INTO events
@@ -176,12 +194,12 @@ export function seedHallOfFameTestData(changedBy: string | null = null): HallOfF
   return seed();
 }
 
-export function deleteAllTestData(): TestDataCleanupResult {
+export function deleteAllTestData(ownerGroupId?: string): TestDataCleanupResult {
   const cleanup = db.transaction((): TestDataCleanupResult => {
     // Test events first: their matches/tournaments/orders are event-scoped
     // and disappear through FK cascades before test-player cleanup runs.
-    const deletedEvents = deleteTestEventsInTransaction();
-    const deletedPlayers = deleteTestUsers();
+    const deletedEvents = deleteTestEventsInTransaction(ownerGroupId);
+    const deletedPlayers = deleteTestUsers(ownerGroupId);
     return { deletedPlayers, deletedEvents };
   });
   return cleanup();

@@ -17,7 +17,7 @@ import { eventSelectOptions } from '../eventStatus.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 
 const ONBOARDING_HELP = 'Neue Person: Registrierungslink. Bestehendes Profil: Claim-Link. Vergessenes Passwort: Reset-Link.';
-const TEST_DATA_HELP = 'Legt Test-Spieler mit Sitzplatz, Bewertungen und Spielzeit an; zwei spielen gerade. Nur im Admin-Modus sichtbar.';
+const TEST_DATA_HELP = 'Legt Test-Spieler mit Sitzplatz, Bewertungen und Spielzeit sowie ein Test-LAN und ein allgemeines Testevent an. Nur im Admin-Modus sichtbar.';
 const ADMIN_ROLE_HELP = 'Owner und Admins dürfen den Admin-Bereich verwalten. Mindestens ein aktiver Owner muss erhalten bleiben.';
 const AGENT_DIAGNOSTICS_HELP = 'Der Agent fragt den PC gezielt nur nach den hier hinterlegten Spiele-Prozessen. Andere laufende Programme sieht er gar nicht erst und sie verlassen den PC nie.';
 
@@ -383,7 +383,7 @@ async function createTestUsers(count, ctx) {
   seedBusy = true;
   try {
     const res = await api.admin.createTestUsers(count);
-    showToast(`${res.created.length} Test-Spieler angelegt – mit Sitzplatz, Skills, Bock und Spielzeit.`);
+    showToast(`${res.created.length} Test-Spieler sowie zwei Testevents angelegt.`);
     await refreshAdminData(ctx);
   } catch (err) {
     showToast(err.message, { error: true });
@@ -393,14 +393,14 @@ async function createTestUsers(count, ctx) {
 }
 
 async function cleanupTestUsers(ctx) {
-  if (!(await confirmDialog('Alle markierten Testdaten löschen? Das entfernt Test-Spieler sowie historische Test-LANs mitsamt Ergebnissen und Turnieren.', { confirmText: 'Löschen', danger: true }))) return;
+  if (!(await confirmDialog('Alle markierten Testdaten löschen? Das entfernt Test-Spieler und Testevents mitsamt ihren Daten.', { confirmText: 'Löschen', danger: true }))) return;
   try {
     const res = await withStepUp(() => api.admin.cleanupTestUsers());
     if (res === undefined) return;
     const removed = (res.deletedPlayers ?? res.deleted ?? 0) + (res.deletedEvents ?? 0);
     showToast(
       removed > 0
-        ? `${res.deletedPlayers ?? res.deleted ?? 0} Test-Spieler und ${res.deletedEvents ?? 0} Test-LANs entfernt.`
+        ? `${res.deletedPlayers ?? res.deleted ?? 0} Test-Spieler und ${res.deletedEvents ?? 0} Testevents entfernt.`
         : 'Keine Testdaten vorhanden.'
     );
     await refreshAdminData(ctx);

@@ -7,6 +7,11 @@ import { db } from '../db';
 import { computeStandings, type MatchForScoring } from '../leaderboard';
 import { getCompletedTournamentSummaries } from './tournamentChampion';
 import { eventIdSql, resolveAnalyticsEvents } from '../analyticsEventScope';
+import {
+  includesTestPlayers,
+  matchResultContainsPlayerIds,
+  testPlayerIds,
+} from '../testDataVisibility';
 
 export const hallOfFameRouter = Router();
 
@@ -44,8 +49,12 @@ hallOfFameRouter.get('/', (req, res) => {
     starts_at: number;
     ends_at: number | null;
   }>;
-  const players = db.prepare('SELECT id, name, color, avatar FROM players WHERE deactivated_at IS NULL').all() as PlayerRow[];
+  const includeTestData = includesTestPlayers(req);
+  const players = db
+    .prepare('SELECT id, name, color, avatar FROM players WHERE deactivated_at IS NULL AND (? = 1 OR is_test = 0)')
+    .all(includeTestData ? 1 : 0) as PlayerRow[];
   const playerById = new Map(players.map((p) => [p.id, p]));
+  const hiddenPlayerIds = includeTestData ? new Set<string>() : testPlayerIds();
 
   const overallWinCounts = new Map<string, number>();
   const tournamentWinCounts = new Map<string, number>();
@@ -54,7 +63,9 @@ hallOfFameRouter.get('/', (req, res) => {
     const matchRows = db.prepare('SELECT result FROM matches WHERE event_id = ? AND group_id = ?').all(e.id, req.group!.id) as Array<{
       result: string;
     }>;
-    const matches: MatchForScoring[] = matchRows.map((r) => JSON.parse(r.result));
+    const matches: MatchForScoring[] = matchRows
+      .filter((row) => !matchResultContainsPlayerIds(row.result, hiddenPlayerIds))
+      .map((r) => JSON.parse(r.result));
     const standings = computeStandings(matches);
     const overallStandings = standings.map((standing) => ({
       ...playerSummary(playerById, standing.playerId),
@@ -70,19 +81,21 @@ hallOfFameRouter.get('/', (req, res) => {
       overallWinCounts.set(overallChampion.playerId, (overallWinCounts.get(overallChampion.playerId) ?? 0) + 1);
     }
 
-    const tournamentChampions = getCompletedTournamentSummaries(e.id, req.group!.id).map((t) => {
-      for (const playerId of t.championPlayerIds) {
-        tournamentWinCounts.set(playerId, (tournamentWinCounts.get(playerId) ?? 0) + 1);
-      }
-      return {
-        name: t.name,
-        format: t.format,
-        gameName: t.gameName,
-        gameIcon: t.gameIcon,
-        championTeamName: t.championTeamName,
-        championPlayers: t.championPlayerIds.map((id) => playerById.get(id)?.name ?? 'Unbekannt'),
-      };
-    });
+    const tournamentChampions = getCompletedTournamentSummaries(e.id, req.group!.id)
+      .filter((t) => !t.championPlayerIds.some((playerId) => hiddenPlayerIds.has(playerId)))
+      .map((t) => {
+        for (const playerId of t.championPlayerIds) {
+          tournamentWinCounts.set(playerId, (tournamentWinCounts.get(playerId) ?? 0) + 1);
+        }
+        return {
+          name: t.name,
+          format: t.format,
+          gameName: t.gameName,
+          gameIcon: t.gameIcon,
+          championTeamName: t.championTeamName,
+          championPlayers: t.championPlayerIds.map((id) => playerById.get(id)?.name ?? 'Unbekannt'),
+        };
+      });
 
     return {
       eventId: e.id,

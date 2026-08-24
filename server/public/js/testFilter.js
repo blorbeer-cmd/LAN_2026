@@ -1,9 +1,8 @@
 // Hides admin-seeded test players (players.is_test) from every view unless
 // the device is in admin mode. Filtering happens client-side at the API
-// boundary (see apiFetch in api.js): the server treats test players as
-// perfectly normal players — that's what makes their seeded data exercise
-// the real features — and this module strips them out of any response
-// before a view ever sees them. Deliberately not a security boundary
+// boundary (see apiFetch in api.js). Aggregate API queries also apply the
+// same mode before grouping, while this module strips player-carrying rows
+// out of every remaining response before a view sees them. Deliberately not a security boundary
 // (matches admin mode itself, a plain localStorage flag): on a private LAN
 // it only has to keep test noise out of everyone's UI, not defend against
 // tampering.

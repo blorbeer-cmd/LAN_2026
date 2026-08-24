@@ -2,7 +2,7 @@
 // /api/events/:eventId/polls. HTTP/validation/auth layer only — the actual
 // state machine lives in eventDatePolls.ts (legacy internal name).
 
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type RequestHandler, type Response } from 'express';
 import { BASE_EVENT_ID, db } from '../db';
 import { getEvent, type EventRow } from '../events';
 import { resolveGroupResource } from '../groupAuthorization';
@@ -16,6 +16,7 @@ import {
 import { isValidIsoDate } from '../localDate';
 import type { GroupRole } from '../groups';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from '../eventParticipation';
+import { isAdminTestMode } from '../testDataVisibility';
 import {
   RESPONSE_VALUES,
   canManageDatePoll,
@@ -47,7 +48,7 @@ import {
 
 export const eventDatePollsRouter = Router({ mergeParams: true });
 
-const resolveEventForPolls = resolveGroupResource<EventRow>({
+const resolveEventResourceForPolls = resolveGroupResource<EventRow>({
   resourceType: 'Event',
   paramName: 'eventId',
   load: (id) => {
@@ -55,6 +56,17 @@ const resolveEventForPolls = resolveGroupResource<EventRow>({
     return event ? { resource: event, groupId: event.group_id } : undefined;
   },
 });
+
+const resolveEventForPolls: RequestHandler = (req, res, next) => {
+  resolveEventResourceForPolls(req, res, () => {
+    const event = req.groupResource as EventRow;
+    if (event.is_test && !isAdminTestMode(req)) {
+      res.status(404).json({ error: 'Event nicht gefunden.' });
+      return;
+    }
+    next();
+  });
+};
 
 interface PlayerNameRow {
   id: string;

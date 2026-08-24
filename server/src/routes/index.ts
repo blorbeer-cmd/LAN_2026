@@ -1,7 +1,7 @@
 // Aggregates all feature routers under /api. Feature routers are added here as
 // they are built (players, games, skills, live, votes, matches).
 
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { playersRouter } from './players';
 import { gamesRouter } from './games';
 import { skillsRouter } from './skills';
@@ -47,10 +47,16 @@ import { requireConfiguredGroupMembership } from '../groupAuthorization';
 import { getGroup } from '../groups';
 import { BASE_EVENT_ID, DEFAULT_GROUP_ID } from '../db';
 import { resolveKioskToken } from '../kioskTokens';
-import { getOrRepairActiveEvent, setActiveEventForPlayer, type EventContextEvent } from '../eventContext';
+import {
+  getOrRepairActiveEvent,
+  getSelectableEvent,
+  setActiveEventForPlayer,
+  type EventContextEvent,
+} from '../eventContext';
 import { broadcast, Events, switchPlayerEventScope } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { getEnabledEventFeatures, requireActiveEventFeatureMutation } from '../eventFeatures';
+import { isAdminTestMode } from '../testDataVisibility';
 
 export const apiRouter = Router();
 
@@ -135,12 +141,21 @@ function serializeActiveEvent(event: EventContextEvent) {
     eventType: event.event_type_key,
     presetVersion: event.preset_version,
     enabledFeatures: getEnabledEventFeatures(event.id),
+    isTest: Boolean(event.is_test),
   };
+}
+
+function visibleActiveEvent(req: Request): EventContextEvent {
+  const activeEvent = getOrRepairActiveEvent(req.player!.id);
+  if (isAdminTestMode(req) || !activeEvent.is_test) return activeEvent;
+  const baseEvent = getSelectableEvent(BASE_EVENT_ID);
+  if (!baseEvent) throw new Error('Configured base event is missing or unavailable.');
+  return baseEvent;
 }
 
 apiRouter.get('/me', requireUser, (req, res) => {
   const p = req.player!;
-  const activeEvent = getOrRepairActiveEvent(p.id);
+  const activeEvent = visibleActiveEvent(req);
   res.json({
     id: p.id,
     name: p.name,
@@ -155,7 +170,7 @@ apiRouter.get('/me', requireUser, (req, res) => {
 // The selected workspace is account-wide rather than tab-local. Switching is
 // limited to published events for which the account is an accepted participant.
 apiRouter.get('/me/active-event', requireUser, (req, res) => {
-  res.json(serializeActiveEvent(getOrRepairActiveEvent(req.player!.id)));
+  res.json(serializeActiveEvent(visibleActiveEvent(req)));
 });
 
 apiRouter.put('/me/active-event', requireUser, (req, res) => {
@@ -166,6 +181,10 @@ apiRouter.put('/me/active-event', requireUser, (req, res) => {
   const previousEvent = getOrRepairActiveEvent(req.player!.id);
   const event = setActiveEventForPlayer(req.player!.id, eventId);
   if (!event) return res.status(404).json({ error: 'Event nicht gefunden oder nicht freigegeben.' });
+  if (event.is_test && !isAdminTestMode(req)) {
+    setActiveEventForPlayer(req.player!.id, previousEvent.id);
+    return res.status(404).json({ error: 'Event nicht gefunden oder nicht freigegeben.' });
+  }
   if (previousEvent.id !== event.id) {
     clearPlayerLiveStatus(req.player!.id, Date.now(), previousEvent.id);
     if (previousEvent.group_id) {

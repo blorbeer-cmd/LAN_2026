@@ -29,6 +29,8 @@ test('POST /api/admin/test-users validates count', async () => {
 
 test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, and sessions', async () => {
   assert.equal((await request(app).post(`/api/events/${BASE_EVENT_ID}/tracking/start`).send({})).status, 200);
+  const statsBefore = await request(app).get('/api/stats/playtime');
+  const votesBefore = await request(app).get('/api/votes');
   const res = await request(app).post('/api/admin/test-users').send({ count: 4 });
   assert.equal(res.status, 201);
   assert.equal(res.body.created.length, 4);
@@ -89,6 +91,112 @@ test('POST /api/admin/test-users seeds players with seats, neighbors, ratings, a
   const liveStates = new Map(board.body.map((e: { player_id: string; state: string }) => [e.player_id, e.state]));
   assert.equal(liveStates.get(ids[0]), 'playing');
   assert.equal(liveStates.get(ids[1]), 'playing');
+
+  // Player-carrying rows were already removable in the browser, but grouped
+  // values were not. The server now keeps both the per-game playtime and the
+  // Bock aggregate unchanged outside Admin mode, while Admin mode receives
+  // the complete fixture contribution.
+  const regularStats = await request(app).get('/api/stats/playtime');
+  assert.deepEqual(regularStats.body.totalsByGame, statsBefore.body.totalsByGame);
+  assert.ok(regularStats.body.entries.every((entry: { playerId: string }) => !ids.includes(entry.playerId)));
+  const adminStats = await request(app).get('/api/stats/playtime').set('x-admin-mode', '1');
+  assert.ok(adminStats.body.entries.some((entry: { playerId: string }) => ids.includes(entry.playerId)));
+
+  const beforeVoteByGame = new Map<string, { preferenceCount: number; totalPlaytimeMs: number }>(
+    votesBefore.body.catalogResults.map((row: { gameId: string; preferenceCount: number; totalPlaytimeMs: number }) => [
+      row.gameId,
+      { preferenceCount: row.preferenceCount, totalPlaytimeMs: row.totalPlaytimeMs },
+    ] as const),
+  );
+  const regularVotes = await request(app).get('/api/votes');
+  for (const row of regularVotes.body.catalogResults as Array<{
+    gameId: string;
+    preferenceCount: number;
+    totalPlaytimeMs: number;
+  }>) {
+    assert.deepEqual(
+      { preferenceCount: row.preferenceCount, totalPlaytimeMs: row.totalPlaytimeMs },
+      beforeVoteByGame.get(row.gameId),
+    );
+  }
+  const adminVotes = await request(app).get('/api/votes').set('x-admin-mode', '1');
+  assert.ok(
+    adminVotes.body.catalogResults.some(
+      (row: { gameId: string; preferenceCount: number }) =>
+        row.preferenceCount === (beforeVoteByGame.get(row.gameId)?.preferenceCount ?? 0) + ids.length,
+    ),
+  );
+
+  // The same seed maintains two operational test events. Each test identity
+  // is accepted to one and pending on the other, so both roster states are
+  // available without involving real accounts.
+  const testEvents = db
+    .prepare(
+      `SELECT id, name, event_type_key AS eventType FROM events
+       WHERE is_test = 1 AND name IN ('Test-LAN', 'Allgemeines Testevent')
+       ORDER BY name`,
+    )
+    .all() as Array<{ id: string; name: string; eventType: string }>;
+  assert.deepEqual(
+    testEvents.map((event) => ({ name: event.name, eventType: event.eventType })),
+    [
+      { name: 'Allgemeines Testevent', eventType: 'general' },
+      { name: 'Test-LAN', eventType: 'lan' },
+    ],
+  );
+  for (const event of testEvents) {
+    const statuses = db
+      .prepare('SELECT status, COUNT(*) AS n FROM event_participants WHERE event_id = ? GROUP BY status')
+      .all(event.id) as Array<{ status: string; n: number }>;
+    assert.deepEqual(
+      Object.fromEntries(statuses.map((row) => [row.status, row.n])),
+      { accepted: 2, invited: 2 },
+    );
+    assert.ok(
+      (db.prepare('SELECT COUNT(*) AS n FROM event_features WHERE event_id = ?').get(event.id) as { n: number }).n > 0,
+    );
+  }
+
+  const regularEvents = await request(app).get('/api/events');
+  assert.ok(regularEvents.body.managedEvents.every((event: { isTest: boolean }) => !event.isTest));
+  const adminEvents = await request(app).get('/api/events').set('x-admin-mode', '1');
+  assert.deepEqual(
+    adminEvents.body.managedEvents.filter((event: { isTest: boolean }) => event.isTest).map((event: { name: string }) => event.name).sort(),
+    ['Allgemeines Testevent', 'Test-LAN'],
+  );
+  assert.equal((await request(app).get(`/api/events/${testEvents[0].id}`)).status, 404);
+  assert.equal((await request(app).get(`/api/events/${testEvents[0].id}`).set('x-admin-mode', '1')).status, 200);
+
+  const invitedTestPlayerId = (
+    db.prepare("SELECT player_id AS id FROM event_participants WHERE event_id = ? AND status = 'invited' LIMIT 1").get(
+      testEvents[0].id,
+    ) as { id: string }
+  ).id;
+  const testIdentityEvents = await request(app).get('/api/events').set('x-test-player-id', invitedTestPlayerId);
+  assert.ok(testIdentityEvents.body.invitations.every((event: { isTest: boolean }) => !event.isTest));
+
+  const acceptedTestPlayerId = (
+    db.prepare("SELECT player_id AS id FROM event_participants WHERE event_id = ? AND status = 'accepted' LIMIT 1").get(
+      testEvents[0].id,
+    ) as { id: string }
+  ).id;
+  assert.equal(
+    (
+      await request(app)
+        .get(`/api/live?eventId=${testEvents[0].id}`)
+        .set('x-test-player-id', acceptedTestPlayerId)
+    ).status,
+    404,
+  );
+  assert.equal(
+    (
+      await request(app)
+        .get(`/api/live?eventId=${testEvents[0].id}`)
+        .set('x-test-player-id', acceptedTestPlayerId)
+        .set('x-admin-mode', '1')
+    ).status,
+    200,
+  );
 });
 
 test('POST /api/admin/test-data/hall-of-fame creates dense marked history across years', async () => {
@@ -98,7 +206,8 @@ test('POST /api/admin/test-data/hall-of-fame creates dense marked history across
 
   const events = db
     .prepare(
-      'SELECT id, name, is_test, event_type_key AS eventType, preset_version AS presetVersion FROM events WHERE is_test = 1 ORDER BY starts_at',
+      `SELECT id, name, is_test, event_type_key AS eventType, preset_version AS presetVersion
+       FROM events WHERE is_test = 1 AND name LIKE 'Respawn Test-LAN %' ORDER BY starts_at`,
     )
     .all() as Array<{ id: string; name: string; is_test: number; eventType: string; presetVersion: number }>;
   assert.equal(events.length, 12);
@@ -113,7 +222,7 @@ test('POST /api/admin/test-data/hall-of-fame creates dense marked history across
               MIN(ef.changed_by) AS changedBy, MAX(ef.changed_by) AS maxChangedBy
        FROM event_features ef
        JOIN events e ON e.id = ef.event_id
-       WHERE e.is_test = 1
+       WHERE e.is_test = 1 AND e.name LIKE 'Respawn Test-LAN %'
        GROUP BY ef.event_id`,
     )
     .all() as Array<{
@@ -134,7 +243,13 @@ test('POST /api/admin/test-data/hall-of-fame creates dense marked history across
     ),
   );
 
-  const eventList = await request(app).get('/api/events');
+  const regularEventList = await request(app).get('/api/events');
+  const regularManagedTestEvents = regularEventList.body.managedEvents.filter((event: { name: string }) =>
+    event.name.startsWith('Respawn Test-LAN'),
+  );
+  assert.equal(regularManagedTestEvents.length, 0);
+
+  const eventList = await request(app).get('/api/events').set('x-admin-mode', '1');
   const managedTestEvents = eventList.body.managedEvents.filter((event: { name: string }) =>
     event.name.startsWith('Respawn Test-LAN'),
   );
@@ -148,8 +263,13 @@ test('POST /api/admin/test-data/hall-of-fame creates dense marked history across
     ),
   );
 
-  const hall = await request(app).get('/api/hall-of-fame');
-  assert.equal(hall.status, 200);
+  const regularHall = await request(app).get('/api/hall-of-fame');
+  assert.equal(regularHall.status, 200);
+  assert.equal(
+    regularHall.body.events.filter((event: { eventName: string }) => event.eventName.startsWith('Respawn Test-LAN')).length,
+    0,
+  );
+  const hall = await request(app).get('/api/hall-of-fame').set('x-admin-mode', '1');
   const testEvents = hall.body.events.filter((event: { eventName: string }) => event.eventName.startsWith('Respawn Test-LAN'));
   assert.equal(testEvents.length, 12);
   assert.ok(testEvents.every((event: { overallStandings: unknown[]; tournamentChampions: unknown[] }) =>
@@ -164,7 +284,7 @@ test('POST /api/admin/test-data/hall-of-fame creates dense marked history across
         .prepare(
           `SELECT COUNT(*) AS count
            FROM event_features ef JOIN events e ON e.id = ef.event_id
-           WHERE e.is_test = 1 AND ef.enabled = 1`,
+           WHERE e.is_test = 1 AND e.name LIKE 'Respawn Test-LAN %' AND ef.enabled = 1`,
         )
         .get() as { count: number }
     ).count,
@@ -176,13 +296,28 @@ test('DELETE /api/admin/test-users removes every marked player and historical te
   const ids = (db.prepare('SELECT id FROM players WHERE is_test = 1').all() as Array<{ id: string }>).map((r) => r.id);
   assert.ok(ids.length > 0, 'previous test should have seeded users');
 
+  // An admin who joined one of the generated test events (e.g. Test-LAN) has
+  // it as their active_event_id, which ON DELETE RESTRICT would otherwise
+  // turn this cleanup into a 500 that deletes nothing.
+  const testLan = db.prepare("SELECT id FROM events WHERE is_test = 1 AND name = 'Test-LAN'").get() as
+    | { id: string }
+    | undefined;
+  assert.ok(testLan, 'previous test should have seeded the Test-LAN fixture event');
+  db.prepare('UPDATE player_event_contexts SET active_event_id = ? WHERE player_id = ?').run(testLan!.id, TEST_ADMIN_ID);
+
   const res = await request(app).delete('/api/admin/test-users');
   assert.equal(res.status, 200);
   assert.equal(res.body.deleted, ids.length);
   assert.equal(res.body.deletedPlayers, ids.length);
-  assert.equal(res.body.deletedEvents, 12);
+  assert.equal(res.body.deletedEvents, 14);
 
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM players WHERE is_test = 1').get() as { n: number }).n, 0);
+  // The admin's active context fell back instead of leaving a dangling
+  // reference to the now-deleted Test-LAN event.
+  const adminContext = db
+    .prepare('SELECT active_event_id FROM player_event_contexts WHERE player_id = ?')
+    .get(TEST_ADMIN_ID) as { active_event_id: string };
+  assert.equal(adminContext.active_event_id, BASE_EVENT_ID);
   const layout = await request(app).get('/api/seating/layout');
   const seated = new Set(layout.body.layout.assignments.map((a: { playerId: string }) => a.playerId));
   assert.ok(ids.every((id) => !seated.has(id)), 'no test user should stay seated');

@@ -14,7 +14,8 @@ import { isNonEmptyString } from '../validation';
 import { writeAdminAudit } from '../adminAudit';
 import { broadcast, broadcastInstanceSignal, disconnectKioskTokenSockets, Events } from '../realtime';
 import { requireGroupMembership, requireGroupRole } from '../groupAuthorization';
-import { countTestUsers, createTestUsers, deleteTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
+import { countTestUsers, createTestUsers, MAX_TEST_USERS_PER_CALL } from '../testUsers';
+import { deleteAllTestData } from '../testData';
 import { getOrRepairActiveEvent } from '../eventContext';
 import { broadcastLiveBoards } from '../liveStatus';
 import { setGroupTrackingConsent } from '../trackingContexts';
@@ -251,6 +252,7 @@ groupsRouter.post('/:groupId/test-users', requireGroupMembership, requireGroupRo
   });
   broadcast(Events.playersChanged, null, { groupId: req.group!.id });
   broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
   broadcastLiveBoards(req.group!.id);
   res.status(201).json({ created, totalTestUsers: countTestUsers(req.group!.id) });
 });
@@ -261,7 +263,7 @@ groupsRouter.delete(
   requireGroupRole('admin'),
   requireRecentReauthentication,
   (req, res) => {
-    const deleted = deleteTestUsers(req.group!.id);
+    const { deletedPlayers: deleted, deletedEvents } = deleteAllTestData(req.group!.id);
     writeAdminAudit({
       actorPlayerId: req.player!.id,
       groupId: req.group!.id,
@@ -269,11 +271,12 @@ groupsRouter.delete(
       targetType: 'test_user_batch',
       details: { count: deleted },
     });
-    if (deleted > 0) {
+    if (deleted > 0 || deletedEvents > 0) {
       broadcast(Events.playersChanged, null, { groupId: req.group!.id });
       broadcast(Events.skillsChanged, null, { groupId: req.group!.id });
+      broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
       broadcastLiveBoards(req.group!.id);
     }
-    res.json({ deleted });
+    res.json({ deleted, deletedPlayers: deleted, deletedEvents });
   },
 );

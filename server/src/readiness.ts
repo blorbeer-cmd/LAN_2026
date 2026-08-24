@@ -26,23 +26,24 @@ interface AgentRow {
   last_report_at: number | null;
 }
 
-function relevantEvent(groupId: string, now: number): RelevantEvent | undefined {
+function relevantEvent(groupId: string, now: number, includeTestEvents: boolean): RelevantEvent | undefined {
   return db
     .prepare(
       `SELECT id, name, starts_at, tracking_enabled
        FROM events
        WHERE group_id = ? AND id NOT IN (?, ?) AND ended_at IS NULL AND status != 'cancelled'
+         AND (? = 1 OR is_test = 0)
        ORDER BY tracking_enabled DESC,
                 CASE WHEN starts_at >= ? THEN 0 ELSE 1 END,
                 CASE WHEN starts_at >= ? THEN starts_at END ASC,
                 starts_at DESC
        LIMIT 1`,
     )
-    .get(groupId, OUTSIDE_EVENTS_ID, BASE_EVENT_ID, now, now) as RelevantEvent | undefined;
+    .get(groupId, OUTSIDE_EVENTS_ID, BASE_EVENT_ID, includeTestEvents ? 1 : 0, now, now) as RelevantEvent | undefined;
 }
 
-function eventCheck(groupId: string, now: number): ReadinessCheck {
-  const event = relevantEvent(groupId, now);
+function eventCheck(groupId: string, now: number, includeTestEvents: boolean): ReadinessCheck {
+  const event = relevantEvent(groupId, now, includeTestEvents);
   if (!event) {
     return {
       id: 'event',
@@ -202,7 +203,7 @@ async function backupCheck(): Promise<ReadinessCheck> {
   };
 }
 
-export async function getReadiness(groupId: string): Promise<{
+export async function getReadiness(groupId: string, includeTestEvents = false): Promise<{
   generatedAt: number;
   overall: ReadinessState;
   checks: ReadinessCheck[];
@@ -211,7 +212,7 @@ export async function getReadiness(groupId: string): Promise<{
   db.prepare('SELECT 1').get();
   const checks: ReadinessCheck[] = [
     { id: 'database', label: 'Server & Datenbank', status: 'ready', summary: 'Server und SQLite antworten.', details: [] },
-    eventCheck(groupId, now),
+    eventCheck(groupId, now, includeTestEvents),
     agentsCheck(groupId, now),
     processMappingsCheck(groupId),
     kioskCheck(groupId),

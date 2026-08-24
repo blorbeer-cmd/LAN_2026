@@ -7,15 +7,17 @@
 // clicking at once serialize cleanly instead of double-booking seats.
 //
 // The frontend hides is_test players outside admin mode (see
-// public/js/testFilter.js); the server treats them as perfectly normal
-// players everywhere else, which is what makes seeded data flow through the
-// real features (playtime, awards, matchmaking) without special cases.
+// public/js/testFilter.js). Aggregate read paths additionally exclude them
+// server-side because a browser cannot remove their contribution after a
+// query has already grouped away the player id.
 
 import { nanoid } from 'nanoid';
 import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from './db';
 import { addPlayersToLayout, removePlayersFromLayouts } from './seatingLayout';
 import { ensureAccountEventContext } from './eventContext';
 import { setEventTrackingConsent } from './trackingContexts';
+import { EVENT_TYPE_PRESETS } from './eventFeatureCatalog';
+import { createEventFeatureSnapshot } from './eventFeatures';
 
 // Avatar color palette for generated players (single source of truth since
 // the profile editor moved to a free color picker without presets). Six of
@@ -52,6 +54,26 @@ export const MAX_TEST_USERS_PER_CALL = 20;
 
 const HOUR_MS = 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+const TEST_EVENT_TEMPLATES = [
+  {
+    name: 'Test-LAN',
+    eventTypeKey: 'lan',
+    startsAfterMs: 7 * DAY_MS,
+    durationMs: 3 * DAY_MS,
+    location: 'Testlocation LAN',
+    description: 'Admin-Testevent für einen vollständigen LAN-Ablauf.',
+  },
+  {
+    name: 'Allgemeines Testevent',
+    eventTypeKey: 'general',
+    startsAfterMs: 2 * DAY_MS,
+    durationMs: 4 * HOUR_MS,
+    location: 'Testlocation Allgemein',
+    description: 'Admin-Testevent für eine allgemeine Veranstaltung.',
+  },
+] as const;
 
 function randInt(min: number, max: number): number {
   return min + Math.floor(Math.random() * (max - min + 1));
@@ -80,6 +102,66 @@ function pickName(taken: Set<string>): string {
     const candidate = `${NAME_POOL[randInt(0, NAME_POOL.length - 1)]} ${n}`;
     if (!taken.has(candidate.toLowerCase())) return candidate;
   }
+}
+
+function ensureTestEvents(ownerGroupId: string, now: number): void {
+  const findEvent = db.prepare('SELECT id, schedule_revision FROM events WHERE group_id = ? AND is_test = 1 AND name = ?');
+  const insertEvent = db.prepare(
+    `INSERT INTO events
+      (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at,
+        is_test, group_id, status, visibility_scope, event_type_key, preset_version, schedule_revision)
+     VALUES (?, ?, ?, ?, ?, ?, 0, NULL, 1, ?, 'published', 'participants', ?, ?, 1)`,
+  );
+  const insertParticipant = db.prepare(
+    `INSERT INTO event_participants (event_id, player_id, status, confirmed_schedule_revision)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(event_id, player_id) DO UPDATE SET
+       status = excluded.status,
+       confirmed_schedule_revision = excluded.confirmed_schedule_revision`,
+  );
+  const testPlayers = db
+    .prepare(
+      `SELECT p.id
+       FROM players p
+       JOIN group_memberships gm ON gm.player_id = p.id
+       WHERE p.is_test = 1 AND p.test_owner_group_id = ?
+         AND gm.group_id = ? AND gm.status = 'active'
+       ORDER BY p.created_at, p.id`,
+    )
+    .all(ownerGroupId, ownerGroupId) as Array<{ id: string }>;
+
+  TEST_EVENT_TEMPLATES.forEach((template, eventIndex) => {
+    let event = findEvent.get(ownerGroupId, template.name) as
+      | { id: string; schedule_revision: number }
+      | undefined;
+    if (!event) {
+      const id = nanoid();
+      const startsAt = now + template.startsAfterMs;
+      insertEvent.run(
+        id,
+        template.name,
+        startsAt,
+        startsAt + template.durationMs,
+        template.location,
+        template.description,
+        ownerGroupId,
+        template.eventTypeKey,
+        EVENT_TYPE_PRESETS[template.eventTypeKey].version,
+      );
+      createEventFeatureSnapshot(id, template.eventTypeKey, null);
+      event = { id, schedule_revision: 1 };
+    }
+
+    testPlayers.forEach((player, playerIndex) => {
+      const status = (playerIndex + eventIndex) % 2 === 0 ? 'accepted' : 'invited';
+      insertParticipant.run(
+        event!.id,
+        player.id,
+        status,
+        status === 'accepted' ? event!.schedule_revision : null,
+      );
+    });
+  });
 }
 
 export function createTestUsers(
@@ -205,6 +287,11 @@ export function createTestUsers(
       insertManual.run(ownerGroupId, seatingEventId, a.id, b.id, a.name, b.name);
       insertManual.run(ownerGroupId, seatingEventId, b.id, a.id, b.name, a.name);
     }
+
+    // Two realistic event cards exercise both the LAN and the general-event
+    // workflows. Every test identity is accepted to one and still invited to
+    // the other, so both states stay visible without touching real accounts.
+    ensureTestEvents(ownerGroupId, now);
 
     return created;
   });

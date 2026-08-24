@@ -2,11 +2,20 @@ import { BASE_EVENT_ID, db, OUTSIDE_EVENTS_ID } from './db';
 import type { Request, Response } from 'express';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 import { getOrRepairActiveEvent } from './eventContext';
+import { isAdminTestMode } from './testDataVisibility';
 
 export type GroupEventScope = string | null;
 
 export type GroupEventResolution =
   { ok: true; eventId: GroupEventScope } | { ok: false; status: 400 | 404; error: string };
+
+function isHiddenTestEvent(req: Request, eventId: string): boolean {
+  if (isAdminTestMode(req)) return false;
+  const event = db.prepare('SELECT is_test FROM events WHERE id = ?').get(eventId) as
+    | { is_test: number }
+    | undefined;
+  return Boolean(event?.is_test);
+}
 
 // Low-level resolver for explicit/background scopes. Request-facing defaults
 // are resolved separately from the account's persisted workspace below.
@@ -38,11 +47,24 @@ export function resolveGroupEventScope(groupId: string, requestedEventId: unknow
 // only by authorized history/administration and kiosk reads.
 export function resolveRequestGroupEventScope(req: Request, requestedEventId: unknown): GroupEventResolution {
   const hasExplicitSelector = typeof requestedEventId === 'string' && requestedEventId.length > 0;
-  if (hasExplicitSelector) return resolveGroupEventScope(req.group!.id, requestedEventId);
-  if (req.kioskScope?.eventId) return resolveGroupEventScope(req.group!.id, req.kioskScope.eventId);
+  if (hasExplicitSelector) {
+    const scope = resolveGroupEventScope(req.group!.id, requestedEventId);
+    if (!scope.ok || scope.eventId === null) return scope;
+    return isHiddenTestEvent(req, scope.eventId)
+      ? { ok: false, status: 404, error: 'Event nicht gefunden.' }
+      : scope;
+  }
+  if (req.kioskScope?.eventId) {
+    const scope = resolveGroupEventScope(req.group!.id, req.kioskScope.eventId);
+    if (!scope.ok || scope.eventId === null) return scope;
+    return isHiddenTestEvent(req, scope.eventId)
+      ? { ok: false, status: 404, error: 'Event nicht gefunden.' }
+      : scope;
+  }
   if (!req.player) return { ok: false, status: 404, error: 'Event nicht gefunden.' };
   const activeEvent = getOrRepairActiveEvent(req.player.id);
   if (activeEvent.group_id !== req.group!.id) return { ok: false, status: 404, error: 'Event nicht gefunden.' };
+  if (activeEvent.is_test && !isAdminTestMode(req)) return resolveGroupEventScope(req.group!.id, undefined);
   return { ok: true, eventId: activeEvent.id };
 }
 
@@ -56,7 +78,7 @@ export function resolveRequestGroupEventScope(req: Request, requestedEventId: un
 // not silently turn this shared guard into a participation-only check.
 export function requestCanUseEventWorkspace(req: Request, eventId: GroupEventScope): boolean {
   if (eventId === null) return false;
-  if (req.kioskScope) return req.kioskScope.eventId === eventId;
+  if (req.kioskScope) return req.kioskScope.eventId === eventId && !isHiddenTestEvent(req, eventId);
   if (!req.player || !req.group) return false;
   // Group boundary and participation in one statement: this runs on every
   // event-scoped request, so the check must not cost an extra round trip
@@ -67,9 +89,10 @@ export function requestCanUseEventWorkspace(req: Request, eventId: GroupEventSco
         `SELECT 1 FROM event_participants ep
          JOIN events e ON e.id = ep.event_id
          WHERE ep.event_id = ? AND ep.player_id = ? AND e.group_id = ?
-           AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}`,
+           AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
+           AND (? = 1 OR e.is_test = 0)`,
       )
-      .get(eventId, req.player.id, req.group.id),
+      .get(eventId, req.player.id, req.group.id, isAdminTestMode(req) ? 1 : 0),
   );
 }
 

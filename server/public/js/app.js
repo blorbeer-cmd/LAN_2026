@@ -122,6 +122,7 @@ function syncArcadeStylesheet(entry) {
 // vote being cast or the round being closed — only the former deserves a
 // "hey, go vote" nudge.
 let lastVoteRound = null;
+let voteRealtimeRefreshVersion = 0;
 
 async function runSharedRefresh() {
   // Give the socket echo and the mutation response one task window to meet.
@@ -724,7 +725,18 @@ function wireSocket() {
     invalidateMissingSkills(); // a newly-running game may now need a skill rating
     if (currentView === 'home' || currentView === 'seating') renderCurrent();
   });
-  socket.on('votes:changed', (payload) => {
+  socket.on('votes:changed', async () => {
+    const refreshVersion = ++voteRealtimeRefreshVersion;
+    let payload;
+    try {
+      // Vote aggregates cannot be filtered safely after the server has
+      // grouped away player ids. Refetch through apiFetch so this device's
+      // Admin-mode header decides whether fixture contributions are present.
+      payload = await api.votes.get();
+    } catch {
+      return;
+    }
+    if (refreshVersion !== voteRealtimeRefreshVersion) return;
     const isNewRound = payload.open && payload.round !== lastVoteRound;
     if (!payload.open) invalidateVoteHistory(); // round just closed/cancelled
     lastVoteRound = payload.round;

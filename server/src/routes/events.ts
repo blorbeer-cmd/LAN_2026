@@ -2,7 +2,7 @@
 // control tracking independently for the requesting account's selected
 // account. Ending an event is separate from just pausing its tracking.
 
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type RequestHandler, type Response } from 'express';
 import {
   cancelEvent,
   listEvents,
@@ -49,6 +49,7 @@ import {
   EVENT_TYPE_PRESETS,
   isEventTypeKey,
 } from '../eventFeatureCatalog';
+import { isAdminTestMode } from '../testDataVisibility';
 
 export const eventsRouter = Router();
 
@@ -121,13 +122,24 @@ async function startTrackingWithBackup(id: string, reopenEnded = false) {
   return enqueueEventLifecycle(operation);
 }
 
-const resolveEvent = resolveGroupResource<EventRow>({
+const resolveEventResource = resolveGroupResource<EventRow>({
   resourceType: 'Event',
   load: (id) => {
     const event = getEvent(id);
     return event ? { resource: event, groupId: event.group_id } : undefined;
   },
 });
+
+const resolveEvent: RequestHandler = (req, res, next) => {
+  resolveEventResource(req, res, () => {
+    const event = req.groupResource as EventRow;
+    if (event.is_test && !isAdminTestMode(req)) {
+      res.status(404).json({ error: 'Event nicht gefunden.' });
+      return;
+    }
+    next();
+  });
+};
 
 // The management shape is a strict superset of the summary shape below, so a
 // reader never has to know which of the two it got: both name the same value
@@ -309,6 +321,7 @@ function serializeEventSummary(
     eventType: event.event_type_key,
     presetVersion: event.preset_version,
     enabledFeatures: getEnabledEventFeatures(event.id),
+    isTest: Boolean(event.is_test),
     trackingEnabled: Boolean(event.tracking_enabled),
     isEnded: Boolean(event.ended_at),
     ...(includeAcceptedParticipants
@@ -329,7 +342,12 @@ function serializeEventSummary(
 eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
   const playerId = req.player!.id;
   const canManage = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
-  const activeEvent = getEvent(getOrRepairActiveEvent(playerId).id)!;
+  const includeTestEvents = isAdminTestMode(req);
+  const testEventClause = includeTestEvents ? '' : 'AND e.is_test = 0';
+  const storedActiveEvent = getEvent(getOrRepairActiveEvent(playerId).id)!;
+  const activeEvent = !includeTestEvents && storedActiveEvent.is_test
+    ? getEvent(BASE_EVENT_ID)!
+    : storedActiveEvent;
   const availableEvents = db
     .prepare(
       `SELECT e.*
@@ -337,6 +355,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        JOIN event_participants ep ON ep.event_id = e.id
        WHERE ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
+         ${testEventClause}
        ORDER BY e.id = ? DESC, e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id, BASE_EVENT_ID) as EventRow[];
@@ -347,6 +366,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        JOIN event_participants ep ON ep.event_id = e.id
        WHERE ep.player_id = ? AND ep.status = 'invited'
          AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
+         ${testEventClause}
        ORDER BY e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
@@ -364,6 +384,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        JOIN event_participants ep ON ep.event_id = e.id
        WHERE ep.player_id = ? AND ep.status = 'accepted'
          AND e.id != ? AND e.group_id = ? AND e.status = 'ended'
+         ${testEventClause}
        ORDER BY e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
@@ -393,12 +414,13 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        JOIN event_participation_history h ON h.event_id = e.id
        WHERE h.player_id = ? AND h.accepted_at IS NOT NULL
          AND e.id != ? AND e.group_id = ? AND e.status != 'cancelled'
+         ${testEventClause}
        ORDER BY e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
     )
     .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
   const managedEvents = canManage
     ? listEvents(req.group!.id)
-        .filter((event) => event.id !== BASE_EVENT_ID)
+        .filter((event) => event.id !== BASE_EVENT_ID && (includeTestEvents || !event.is_test))
         .map((event) => serializeEvent(event, playerId, req.groupMembership?.role))
     : undefined;
   res.json({
@@ -428,12 +450,14 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
 // GET /api/events/active - this account's persisted workspace.
 eventsRouter.get('/active', requireConfiguredGroupMembership, (req, res) => {
   const activeEvent = getEvent(getOrRepairActiveEvent(req.player!.id).id)!;
-  res.json(serializeEventSummary(activeEvent));
+  res.json(serializeEventSummary(!isAdminTestMode(req) && activeEvent.is_test ? getEvent(BASE_EVENT_ID)! : activeEvent));
 });
 
 eventsRouter.get('/:id', resolveEvent, (req, res) => {
   const event = req.groupResource as EventRow;
-  if (event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
+  if (event.id === OUTSIDE_EVENTS_ID) {
+    return res.status(404).json({ error: 'Event nicht gefunden.' });
+  }
   const access = eventAccessLevel(event.id, req.player!.id, req.groupMembership!.role);
   if (access === 'none') return res.status(404).json({ error: 'Event nicht gefunden.' });
   if (access === 'teaser') return res.json({ ...serializeEventSummary(event), participationStatus: 'invited' });
