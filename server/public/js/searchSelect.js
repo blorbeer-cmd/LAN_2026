@@ -74,6 +74,31 @@ export function wireSearchSelect(container, id, options, { onChange, emptyText =
   const labelForValue = () => optionForValue()?.label ?? '';
   const isOpen = () => !list.hidden;
 
+  // A modal is its own scroll container and therefore clips absolutely
+  // positioned descendants at its edges. Keep the listbox inside that
+  // visible boundary, flipping it above the field when the modal has more
+  // room there; the list's existing local scrollbar handles longer results.
+  const updateListPlacement = () => {
+    wrapper.classList.remove('opens-upward');
+    list.style.removeProperty('--search-select-available-height');
+    const modal = wrapper.closest('.modal');
+    if (!modal || list.hidden) return;
+
+    const modalRect = modal.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const listRect = list.getBoundingClientRect();
+    const boundaryTop = modalRect.top + modal.clientTop;
+    const boundaryBottom = boundaryTop + modal.clientHeight;
+    const listGap = Math.max(0, listRect.top - wrapperRect.bottom);
+    const availableBelow = Math.max(0, boundaryBottom - listRect.top);
+    const availableAbove = Math.max(0, wrapperRect.top - boundaryTop - listGap);
+    const opensUpward = listRect.height > availableBelow && availableAbove > availableBelow;
+    const availableHeight = opensUpward ? availableAbove : availableBelow;
+
+    wrapper.classList.toggle('opens-upward', opensUpward);
+    list.style.setProperty('--search-select-available-height', `${Math.floor(availableHeight)}px`);
+  };
+
   // Keep the collapsed control's status icon in step with the selection, so
   // the state stays readable once the list is closed again.
   const updateValueIcon = () => {
@@ -110,6 +135,7 @@ export function wireSearchSelect(container, id, options, { onChange, emptyText =
       list.innerHTML = `<div class="search-select-empty">${escapeHtml(emptyText)}</div>`;
       activeIndex = -1;
       search.removeAttribute('aria-activedescendant');
+      updateListPlacement();
       return;
     }
 
@@ -118,6 +144,7 @@ export function wireSearchSelect(container, id, options, { onChange, emptyText =
       .join('');
     const selectedIndex = filteredOptions.findIndex((option) => option.value === hidden.value);
     activeIndex = selectedIndex >= 0 ? selectedIndex : 0;
+    updateListPlacement();
     updateActiveOption();
   };
 
@@ -132,6 +159,8 @@ export function wireSearchSelect(container, id, options, { onChange, emptyText =
     if (restore) search.value = labelForValue();
     list.hidden = true;
     updateExpandedState(false);
+    wrapper.classList.remove('opens-upward');
+    list.style.removeProperty('--search-select-available-height');
     search.removeAttribute('aria-activedescendant');
     activeIndex = -1;
   };
