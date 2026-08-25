@@ -1,6 +1,6 @@
 # Konzept: Einladungs- und Zusage-Workflow
 
-Stand: August 2026 · Status: **Entwurf** (Rev. 2 – noch nicht umgesetzt)
+Stand: August 2026 · Status: **umgesetzt** (Rev. 2, Blöcke 1–4)
 
 Dieses Dokument beschreibt, wie aus der heutigen einmaligen Ja/Nein-Frage eine änderbare Antwort
 wird. Der Kern in einem Satz: **Eine Zusage darf jederzeit zurückgenommen werden, und eine Absage
@@ -134,13 +134,18 @@ als Anzeigewert für „Zusage zum alten Termin“ erhalten.
 Selbstbedienung ist der Normalfall. Gesperrt wird nur dort, wo eine Änderung nachweislich mehr
 kaputt macht, als sie hilft:
 
-| Situation | Absage selbst möglich | Begründung |
-|---|---|---|
-| Regelfall vor Eventbeginn | ja | darum geht es |
-| Zahlung erfasst (`paid = 1`) | nein | spiegelt die bestehende Sperre beim Entfernen ([`server/src/routes/events.ts`](../server/src/routes/events.ts)); Geld zurück ist eine Orga-Entscheidung |
-| Event läuft oder ist beendet | nein | die Teilnahme ist Tatsache, keine Absicht mehr |
-| Event abgesagt (`status = 'cancelled'`) | nein | es gibt nichts mehr zu beantworten |
-| Basis-Event | nein | bestehender 409-Pfad, Invariante 2 aus `KONZEPT-EVENT-SICHTBARKEIT.md` |
+| Situation | Zusage zurückziehen | Offene Einladung ablehnen | Begründung |
+|---|---|---|---|
+| Regelfall vor Eventbeginn | ja | ja | darum geht es |
+| Zahlung erfasst (`paid = 1`) | nein | nein | spiegelt die bestehende Sperre beim Entfernen ([`server/src/routes/events.ts`](../server/src/routes/events.ts)); Geld zurück ist eine Orga-Entscheidung |
+| Event läuft | nein | ja | die erteilte Zusage ist dann Tatsache, keine Absicht mehr; eine noch unbeantwortete Einladung ist es nicht |
+| Event beendet | nein | nein | es gibt nichts mehr zu beantworten |
+| Event abgesagt (`status = 'cancelled'`) | nein | nein | es gibt nichts mehr zu beantworten |
+| Basis-Event | nein | nein | bestehender 409-Pfad, Invariante 2 aus `KONZEPT-EVENT-SICHTBARKEIT.md` |
+
+Zusagen bleibt in derselben Logik möglich, solange das Event weder beendet noch abgesagt ist und
+keine Zahlung erfasst wurde – auch während es läuft, damit eine Einladung mitten im Event noch
+angenommen werden kann.
 
 In jedem gesperrten Fall zeigt die Oberfläche den Grund im Klartext und verweist auf die Orga,
 statt den Knopf kommentarlos verschwinden zu lassen.
@@ -258,10 +263,12 @@ Vertrag danach:
 - Ein Wechsel in den jeweils anderen Zustand ist erlaubt, solange keine Sperre aus Abschnitt 3.3
   greift; die Antwort ist `200` mit dem neuen Zustand.
 - Eine identische Antwort bleibt idempotent (`200`, `changed: false`).
-- Gesperrte Fälle antworten `409` mit maschinenlesbarem `reason`: `locked_paid`, `locked_started`,
-  `locked_cancelled`, `locked_base_event`.
-- Kein Teilnahmedatensatz vorhanden → `404`. Damit bleibt ausgeschlossen, dass sich jemand selbst
-  in ein Event einlädt.
+- Gesperrte Fälle antworten `409` mit maschinenlesbarem `reason`: `paid`, `started`, `ended`,
+  `cancelled`.
+- Kein Teilnahmedatensatz vorhanden → `409` mit `reason: 'not_invited'`. Damit bleibt
+  ausgeschlossen, dass sich jemand selbst in ein Event einlädt, und der bestehende Vertrag der
+  beiden Routen bleibt unverändert; ein Wechsel auf `404` hätte ältere Clients ohne Nutzen
+  gebrochen.
 - `respondToEventInvitation` bleibt die einzige Schreibstelle und behält seinen bedingten
   `UPDATE` als Rennschutz; die Bedingung wandert von „noch nicht für diese Revision bestätigt“ auf
   „aktueller Status ist nicht bereits der Zielstatus“.
@@ -316,6 +323,8 @@ Frontend (`server/public/js/events.test.js`):
 
 ## 8. Umsetzung in Blöcken
 
+Alle vier Blöcke sind umgesetzt; die Tabelle bleibt als Aufriss der Änderung erhalten.
+
 | Block | Inhalt | Für Nutzer sichtbar |
 |---|---|---|
 | 1 | `respondToEventInvitation` entriegeln, Sperrregeln samt `reason`, Kontext- und Live-Status-Aufräumen bei Absage, Tests | nein |
@@ -358,14 +367,18 @@ Umsetzung. Sie sind hier festgehalten, damit die jetzige Lösung sie später nic
 
 ---
 
-## 11. Offene Entscheidungen
+## 11. Getroffene Entscheidungen
 
-1. **Nachricht beim Entfernen** – Vorschlag steht in Abschnitt 5: Push nur bei vorherigem Status
-   `invited` oder `accepted`, nicht nach eigener Absage. Alternative wäre „immer“ (einfacher zu
-   erklären, aber irritierend für Leute, die selbst abgesagt haben) oder „nie“ (spart Code, lässt
-   aber eine Ausladung kommentarlos passieren).
-2. **Push an die Orga bei jeder Absage oder nur bei zurückgezogener Zusage?** Vorschlag: nur bei
-   zurückgezogener Zusage, sonst wird die Orga bei jeder Einladungsrunde zugespamt.
-3. **Sichtbarkeit abgesagter Events im Event-Bereich: dauerhaft oder einklappbar?** Vorschlag: eine
-   eigene, standardmäßig eingeklappte Sektion „Abgesagt“ – sichtbar genug für die Rückkehr, ruhig
-   genug, um nicht zu stören.
+Alle drei wurden entsprechend dem jeweiligen Vorschlag entschieden und sind so umgesetzt:
+
+1. **Nachricht beim Entfernen** – Push nur bei vorherigem Status `invited` oder `accepted`, nicht
+   nach eigener Absage (Abschnitt 5).
+2. **Push an die Orga** – nur bei zurückgezogener Zusage, nicht bei einer Absage auf eine noch
+   offene Einladung; sonst wäre die Orga bei jeder Einladungsrunde zugespamt.
+3. **Darstellung abgesagter Events** – eigene, standardmäßig eingeklappte Sektion „Abgesagt“ im
+   Events-Bereich: sichtbar genug für die Rückkehr, ruhig genug, um nicht zu stören.
+
+Zusätzlich in der Umsetzung entschieden: Die Sperre „Event läuft bereits“ trifft ausschließlich das
+Zurückziehen einer Zusage. Eine noch offene Einladung bleibt auch während des laufenden Events in
+beide Richtungen beantwortbar, sonst könnte eine Einladung mitten in der LAN nicht mehr
+beantwortet werden.
