@@ -28,7 +28,7 @@ import {
   type UpdateEventFields,
   type EventRow,
 } from '../events';
-import { BASE_EVENT_ID, db } from '../db';
+import { BASE_EVENT_ID, SCHEDULE_KEY_SQL, db } from '../db';
 import { broadcast, Events, switchPlayerEventScope } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { notifyPlayers, resolvePushTopic } from '../push';
@@ -180,7 +180,7 @@ function myParticipationField(eventId: string, viewerId: string) {
                 SELECT 1 FROM event_calendar_confirmations confirmation
                 WHERE confirmation.event_id = ep.event_id
                   AND confirmation.player_id = ep.player_id
-                  AND confirmation.schedule_revision = e.schedule_revision
+                  AND confirmation.schedule_key = ${SCHEDULE_KEY_SQL}
               ) AS calendarConfirmed
        FROM event_participants ep
        JOIN events e ON e.id = ep.event_id
@@ -667,7 +667,7 @@ eventsRouter.post('/:id/calendar-confirmation', resolveEvent, (req, res) => {
     details: {
       eventId: event.id,
       playerId,
-      scheduleRevision: result.scheduleRevision,
+      scheduleKey: result.scheduleKey,
       confirmedAt: result.confirmedAt,
       changed: result.changed,
     },
@@ -677,7 +677,7 @@ eventsRouter.post('/:id/calendar-confirmation', resolveEvent, (req, res) => {
     eventId: event.id,
     calendarConfirmed: true,
     confirmedAt: result.confirmedAt,
-    scheduleRevision: result.scheduleRevision,
+    scheduleKey: result.scheduleKey,
     changed: result.changed,
   });
 });

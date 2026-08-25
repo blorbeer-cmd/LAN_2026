@@ -1,4 +1,4 @@
-import { db } from './db';
+import { SCHEDULE_KEY_SQL, db } from './db';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 import {
   EVENT_REMINDER_TOPIC_PREFIX,
@@ -21,24 +21,34 @@ interface ReminderRow {
   groupId: string;
   eventName: string;
   startsAt: number;
-  scheduleRevision: number;
+  scheduleKey: string;
   playerId: string;
+}
+
+// A calendar entry is a copy of the period, so the period itself identifies
+// what was confirmed and what a reminder was already sent for. Moving the
+// date produces a new key and therefore a fresh confirmation and a fresh
+// round of reminders — deliberately independent of a participant's
+// accept/decline, which a reschedule leaves standing (see routes/events.ts's
+// "Deine Zusage bleibt bestehen"). Must match SCHEDULE_KEY_SQL.
+export function eventScheduleKey(startsAt: number, endsAt: number): string {
+  return `${startsAt}-${endsAt}`;
 }
 
 export function eventReminderTopicKey(
   kind: ReminderKind,
   eventId: string,
   playerId: string,
-  scheduleRevision: number,
+  scheduleKey: string,
 ): string {
-  return `${EVENT_REMINDER_TOPIC_PREFIX}${kind}:${eventId}:${playerId}:${scheduleRevision}`;
+  return `${EVENT_REMINDER_TOPIC_PREFIX}${kind}:${eventId}:${playerId}:${scheduleKey}`;
 }
 
 function dueCalendarReminders(now: number): ReminderRow[] {
   return db
     .prepare(
       `SELECT e.id AS eventId, e.group_id AS groupId, e.name AS eventName,
-              e.starts_at AS startsAt, e.schedule_revision AS scheduleRevision,
+              e.starts_at AS startsAt, ${SCHEDULE_KEY_SQL} AS scheduleKey,
               ep.player_id AS playerId
        FROM events e
        JOIN event_participants ep ON ep.event_id = e.id
@@ -48,11 +58,11 @@ function dueCalendarReminders(now: number): ReminderRow[] {
        LEFT JOIN event_calendar_confirmations confirmation
          ON confirmation.event_id = e.id
         AND confirmation.player_id = ep.player_id
-        AND confirmation.schedule_revision = e.schedule_revision
+        AND confirmation.schedule_key = ${SCHEDULE_KEY_SQL}
        LEFT JOIN event_reminder_deliveries delivery
          ON delivery.event_id = e.id
         AND delivery.player_id = ep.player_id
-        AND delivery.schedule_revision = e.schedule_revision
+        AND delivery.schedule_key = ${SCHEDULE_KEY_SQL}
         AND delivery.kind = 'calendar'
        WHERE e.group_id IS NOT NULL
          AND e.status = 'published'
@@ -81,7 +91,7 @@ function dueUpcomingReminders(now: number): Array<ReminderRow & { kind: 'upcomin
   return db
     .prepare(
       `SELECT e.id AS eventId, e.group_id AS groupId, e.name AS eventName,
-              e.starts_at AS startsAt, e.schedule_revision AS scheduleRevision,
+              e.starts_at AS startsAt, ${SCHEDULE_KEY_SQL} AS scheduleKey,
               ep.player_id AS playerId,
               CASE
                 WHEN e.starts_at - ? <= ? THEN 'upcoming_day'
@@ -95,6 +105,7 @@ function dueUpcomingReminders(now: number): Array<ReminderRow & { kind: 'upcomin
          AND e.ended_at IS NULL
          AND e.is_test = 0
          AND e.starts_at IS NOT NULL
+         AND e.ends_at IS NOT NULL
          AND e.starts_at > ?
          AND e.starts_at - ? <= ?
          AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
@@ -104,7 +115,7 @@ function dueUpcomingReminders(now: number): Array<ReminderRow & { kind: 'upcomin
            SELECT 1 FROM event_reminder_deliveries delivery
            WHERE delivery.event_id = e.id
              AND delivery.player_id = ep.player_id
-             AND delivery.schedule_revision = e.schedule_revision
+             AND delivery.schedule_key = ${SCHEDULE_KEY_SQL}
              AND delivery.kind = CASE
                WHEN e.starts_at - ? <= ? THEN 'upcoming_day'
                ELSE 'upcoming_week'
@@ -127,7 +138,7 @@ function dueStefanCalendarFollowups(now: number): ReminderRow[] {
   return db
     .prepare(
       `SELECT e.id AS eventId, e.group_id AS groupId, e.name AS eventName,
-              e.starts_at AS startsAt, e.schedule_revision AS scheduleRevision,
+              e.starts_at AS startsAt, ${SCHEDULE_KEY_SQL} AS scheduleKey,
               ep.player_id AS playerId
        FROM events e
        JOIN event_participants ep ON ep.event_id = e.id
@@ -135,7 +146,7 @@ function dueStefanCalendarFollowups(now: number): ReminderRow[] {
        JOIN event_calendar_confirmations confirmation
          ON confirmation.event_id = e.id
         AND confirmation.player_id = ep.player_id
-        AND confirmation.schedule_revision = e.schedule_revision
+        AND confirmation.schedule_key = ${SCHEDULE_KEY_SQL}
        WHERE e.group_id IS NOT NULL
          AND e.status = 'published'
          AND e.ended_at IS NULL
@@ -152,7 +163,7 @@ function dueStefanCalendarFollowups(now: number): ReminderRow[] {
            SELECT 1 FROM event_reminder_deliveries delivery
            WHERE delivery.event_id = e.id
              AND delivery.player_id = ep.player_id
-             AND delivery.schedule_revision = e.schedule_revision
+             AND delivery.schedule_key = ${SCHEDULE_KEY_SQL}
              AND delivery.kind = 'stefan_calendar_followup'
          )
        ORDER BY e.starts_at, e.id, ep.player_id`,
@@ -167,11 +178,11 @@ function dueStefanCalendarFollowups(now: number): ReminderRow[] {
 function recordDelivery(row: ReminderRow, kind: ReminderKind, now: number): void {
   db.prepare(
     `INSERT INTO event_reminder_deliveries
-       (event_id, player_id, schedule_revision, kind, first_sent_at, last_sent_at)
+       (event_id, player_id, schedule_key, kind, first_sent_at, last_sent_at)
      VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(event_id, player_id, schedule_revision, kind)
+     ON CONFLICT(event_id, player_id, schedule_key, kind)
      DO UPDATE SET last_sent_at = excluded.last_sent_at`,
-  ).run(row.eventId, row.playerId, row.scheduleRevision, kind, now, now);
+  ).run(row.eventId, row.playerId, row.scheduleKey, kind, now, now);
 }
 
 function sendCalendarReminder(row: ReminderRow, now: number): boolean {
@@ -186,7 +197,7 @@ function sendCalendarReminder(row: ReminderRow, now: number): boolean {
     },
     'direct',
     {
-      key: eventReminderTopicKey('calendar', row.eventId, row.playerId, row.scheduleRevision),
+      key: eventReminderTopicKey('calendar', row.eventId, row.playerId, row.scheduleKey),
       expiresAt: row.startsAt,
     },
     { groupId: row.groupId, eventId: row.eventId },
@@ -209,7 +220,7 @@ function sendStefanCalendarFollowup(row: ReminderRow, now: number): boolean {
     },
     'direct',
     {
-      key: eventReminderTopicKey(kind, row.eventId, row.playerId, row.scheduleRevision),
+      key: eventReminderTopicKey(kind, row.eventId, row.playerId, row.scheduleKey),
       expiresAt: row.startsAt,
     },
     { groupId: row.groupId, eventId: row.eventId },
@@ -238,7 +249,7 @@ function sendUpcomingReminder(
     },
     'direct',
     {
-      key: eventReminderTopicKey(kind, row.eventId, row.playerId, row.scheduleRevision),
+      key: eventReminderTopicKey(kind, row.eventId, row.playerId, row.scheduleKey),
       expiresAt: row.startsAt,
     },
     { groupId: row.groupId, eventId: row.eventId },
@@ -265,7 +276,7 @@ export function runEventReminderSweepOnce(now = Date.now()): { calendar: number;
 }
 
 export type ConfirmEventCalendarResult =
-  | { ok: true; changed: boolean; confirmedAt: number; scheduleRevision: number }
+  | { ok: true; changed: boolean; confirmedAt: number; scheduleKey: string }
   | { ok: false; reason: 'not_accepted' | 'not_upcoming' };
 
 export function confirmEventCalendar(
@@ -275,7 +286,7 @@ export function confirmEventCalendar(
 ): ConfirmEventCalendarResult {
   const row = db
     .prepare(
-      `SELECT e.group_id AS groupId, e.schedule_revision AS scheduleRevision,
+      `SELECT e.group_id AS groupId,
               e.status, e.starts_at AS startsAt, e.ends_at AS endsAt,
               e.ended_at AS endedAt, ep.status AS participationStatus
        FROM events e
@@ -286,7 +297,6 @@ export function confirmEventCalendar(
     .get(playerId, eventId) as
     | {
         groupId: string | null;
-        scheduleRevision: number;
         status: string;
         startsAt: number | null;
         endsAt: number | null;
@@ -304,29 +314,30 @@ export function confirmEventCalendar(
   ) {
     return { ok: false, reason: 'not_upcoming' };
   }
+  const scheduleKey = eventScheduleKey(row.startsAt, row.endsAt);
 
   const existing = db
     .prepare(
       `SELECT confirmed_at AS confirmedAt
        FROM event_calendar_confirmations
-       WHERE event_id = ? AND player_id = ? AND schedule_revision = ?`,
+       WHERE event_id = ? AND player_id = ? AND schedule_key = ?`,
     )
-    .get(eventId, playerId, row.scheduleRevision) as { confirmedAt: number } | undefined;
+    .get(eventId, playerId, scheduleKey) as { confirmedAt: number } | undefined;
   const confirmedAt = existing?.confirmedAt ?? now;
   const changed = db
     .prepare(
       `INSERT OR IGNORE INTO event_calendar_confirmations
-         (event_id, player_id, schedule_revision, confirmed_at)
+         (event_id, player_id, schedule_key, confirmed_at)
        VALUES (?, ?, ?, ?)`,
     )
-    .run(eventId, playerId, row.scheduleRevision, confirmedAt).changes === 1;
+    .run(eventId, playerId, scheduleKey, confirmedAt).changes === 1;
 
   resolvePushTopic(
-    eventReminderTopicKey('calendar', eventId, playerId, row.scheduleRevision),
+    eventReminderTopicKey('calendar', eventId, playerId, scheduleKey),
     false,
     { groupId: row.groupId, eventId },
   );
-  return { ok: true, changed, confirmedAt, scheduleRevision: row.scheduleRevision };
+  return { ok: true, changed, confirmedAt, scheduleKey };
 }
 
 export function startEventReminderSweep(): NodeJS.Timeout {

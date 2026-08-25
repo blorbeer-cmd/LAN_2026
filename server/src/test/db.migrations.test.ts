@@ -162,61 +162,104 @@ test('legacy game_catalog tables are merged into games and preferences', () => {
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migration 93 preserves reminder deliveries and allows the Stefan followup kind', () => {
-  const dbFile = makeTempDbPath('stefan-calendar-followup-kind');
+test('migrations 93 and 94 re-key calendar state by period, keeping data and the Stefan kind', () => {
+  const dbFile = makeTempDbPath('calendar-state-schedule-key');
   runMigrations(dbFile);
 
   const fixture = new Database(dbFile);
   fixture.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(
-    'migration-93-player',
+    'migration-94-player',
     '$t3vYb0y',
-    'migration-93-key',
+    'migration-94-key',
     1,
   );
   fixture.prepare(
     `INSERT INTO events
        (id, name, starts_at, ends_at, group_id, status, visibility_scope, schedule_revision)
      VALUES (?, ?, ?, ?, ?, 'published', 'participants', 1)`,
-  ).run('migration-93-event', 'Migration 93 Event', 100, 200, 'default-group');
+  ).run('migration-94-event', 'Migration 94 Event', 100, 200, 'default-group');
   fixture.prepare(
     `INSERT INTO event_participants (event_id, player_id, status)
-     VALUES ('migration-93-event', 'migration-93-player', 'accepted')`,
+     VALUES ('migration-94-event', 'migration-94-player', 'accepted')`,
   ).run();
-  fixture.prepare(
-    `INSERT INTO event_reminder_deliveries
-       (event_id, player_id, schedule_revision, kind, first_sent_at, last_sent_at)
-     VALUES ('migration-93-event', 'migration-93-player', 1, 'calendar', 10, 10)`,
-  ).run();
-  fixture.prepare('DELETE FROM schema_migrations WHERE version = 93').run();
+  // Rebuild the migration-92 shape so the upgrade path itself is exercised,
+  // not just the final schema.
+  fixture.exec(`
+    DROP TABLE event_reminder_deliveries;
+    DROP TABLE event_calendar_confirmations;
+    CREATE TABLE event_calendar_confirmations (
+      event_id          TEXT NOT NULL,
+      player_id         TEXT NOT NULL,
+      schedule_revision INTEGER NOT NULL,
+      confirmed_at      INTEGER NOT NULL,
+      PRIMARY KEY (event_id, player_id, schedule_revision),
+      FOREIGN KEY (event_id, player_id)
+        REFERENCES event_participants(event_id, player_id) ON DELETE CASCADE
+    );
+    CREATE TABLE event_reminder_deliveries (
+      event_id          TEXT NOT NULL,
+      player_id         TEXT NOT NULL,
+      schedule_revision INTEGER NOT NULL,
+      kind              TEXT NOT NULL CHECK (kind IN ('calendar', 'upcoming_week', 'upcoming_day')),
+      first_sent_at     INTEGER NOT NULL,
+      last_sent_at      INTEGER NOT NULL,
+      PRIMARY KEY (event_id, player_id, schedule_revision, kind),
+      FOREIGN KEY (event_id, player_id)
+        REFERENCES event_participants(event_id, player_id) ON DELETE CASCADE
+    );
+    INSERT INTO event_calendar_confirmations
+      (event_id, player_id, schedule_revision, confirmed_at)
+      VALUES ('migration-94-event', 'migration-94-player', 1, 5);
+    INSERT INTO event_reminder_deliveries
+      (event_id, player_id, schedule_revision, kind, first_sent_at, last_sent_at)
+      VALUES ('migration-94-event', 'migration-94-player', 1, 'calendar', 10, 10);
+    DELETE FROM schema_migrations WHERE version IN (93, 94);
+  `);
   fixture.close();
 
   runMigrations(dbFile);
   runMigrations(dbFile);
 
   const migrated = new Database(dbFile);
+  // Both rows survive, re-keyed onto the event's period.
   assert.deepEqual(
     migrated
       .prepare(
-        `SELECT kind, first_sent_at AS firstSentAt, last_sent_at AS lastSentAt
-         FROM event_reminder_deliveries
-         WHERE event_id = 'migration-93-event' AND player_id = 'migration-93-player'`,
+        `SELECT schedule_key AS scheduleKey, confirmed_at AS confirmedAt
+         FROM event_calendar_confirmations WHERE event_id = 'migration-94-event'`,
       )
       .all(),
-    [{ kind: 'calendar', firstSentAt: 10, lastSentAt: 10 }],
+    [{ scheduleKey: '100-200', confirmedAt: 5 }],
+  );
+  assert.deepEqual(
+    migrated
+      .prepare(
+        `SELECT schedule_key AS scheduleKey, kind, first_sent_at AS firstSentAt, last_sent_at AS lastSentAt
+         FROM event_reminder_deliveries WHERE event_id = 'migration-94-event'`,
+      )
+      .all(),
+    [{ scheduleKey: '100-200', kind: 'calendar', firstSentAt: 10, lastSentAt: 10 }],
   );
   migrated.prepare(
     `INSERT INTO event_reminder_deliveries
-       (event_id, player_id, schedule_revision, kind, first_sent_at, last_sent_at)
-     VALUES ('migration-93-event', 'migration-93-player', 1, 'stefan_calendar_followup', 20, 20)`,
+       (event_id, player_id, schedule_key, kind, first_sent_at, last_sent_at)
+     VALUES ('migration-94-event', 'migration-94-player', '100-200', 'stefan_calendar_followup', 20, 20)`,
   ).run();
   assert.throws(
     () => migrated.prepare(
       `INSERT INTO event_reminder_deliveries
-         (event_id, player_id, schedule_revision, kind, first_sent_at, last_sent_at)
-       VALUES ('migration-93-event', 'migration-93-player', 1, 'unexpected', 30, 30)`,
+         (event_id, player_id, schedule_key, kind, first_sent_at, last_sent_at)
+       VALUES ('migration-94-event', 'migration-94-player', '100-200', 'unexpected', 30, 30)`,
     ).run(),
     /CHECK constraint failed/,
   );
+  // A different period is a different row, which is what makes a reschedule
+  // ask for a fresh confirmation.
+  migrated.prepare(
+    `INSERT INTO event_calendar_confirmations
+       (event_id, player_id, schedule_key, confirmed_at)
+     VALUES ('migration-94-event', 'migration-94-player', '300-400', 40)`,
+  ).run();
   assert.deepEqual(migrated.pragma('foreign_key_check'), []);
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
@@ -708,10 +751,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 93);
+  assert.equal(migrations.length, 94);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 93 }, (_, index) => index + 1),
+    Array.from({ length: 94 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -762,6 +805,14 @@ test('records the complete migration history and does not duplicate it on restar
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'event_reminder_deliveries'")
     .get() as { sql: string }).sql;
   assert.match(eventReminderDeliveriesSql, /stefan_calendar_followup/);
+  for (const table of ['event_calendar_confirmations', 'event_reminder_deliveries']) {
+    const columns = migrated.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    assert.ok(
+      columns.some((column) => column.name === 'schedule_key'),
+      `${table} is keyed by the event period, not the dormant schedule revision`,
+    );
+    assert.equal(columns.some((column) => column.name === 'schedule_revision'), false);
+  }
   const playerColumns = migrated.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
   assert.ok(playerColumns.some((column) => column.name === 'deactivated_at'));
   assert.ok(playerColumns.some((column) => column.name === 'test_owner_group_id'));
@@ -1248,8 +1299,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 93 }, (_, index) => index + 1),
-    'every version 1..93 runs exactly once',
+    Array.from({ length: 94 }, (_, index) => index + 1),
+    'every version 1..94 runs exactly once',
   );
 });
 

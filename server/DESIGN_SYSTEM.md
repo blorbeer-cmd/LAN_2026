@@ -841,9 +841,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   while the RFC-5545 `.ics` download covers native and other compatible calendar apps. An accepted
   participant explicitly confirms the handoff below those actions because external providers expose no
   reliable import callback. The confirmation becomes a compact „Im Kalender eingetragen“ state and is
-  bound to the event's current schedule revision, so a later reschedule asks for confirmation again.
-  Pending invitations, ended events and incomplete periods omit the action group. Two-hour and weekly
-  calendar nudges stop after confirmation; general one-week and one-day event reminders do not. The
+  bound to the event's current start/end period, so moving the date asks for confirmation again while
+  the participant's acceptance itself deliberately stays valid. Pending invitations, ended events and
+  incomplete periods omit the action group. Two-hour and weekly calendar nudges stop after
+  confirmation; general one-week and one-day event reminders do not, and a moved period announces
+  itself again on its own approach. The
   account `$t3vYb0y` gets the deliberate Stefan gag: its confirmation opens one additional themed
   safety question, and one week after confirmation it receives one final direct calendar check while
   the event is still upcoming. Event creation and editing may

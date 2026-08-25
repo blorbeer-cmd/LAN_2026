@@ -4650,6 +4650,70 @@ registerMigration({
   up: addStefanCalendarFollowupReminderKind,
 });
 
+// Migrations 92/93 keyed both tables on events.schedule_revision, which only
+// the date-poll concept's "Erneute Bestätigung erforderlich" ever meant to
+// advance — a plain metadata reschedule deliberately leaves it (and the
+// participants' acceptance) alone, and in practice nothing increments it at
+// all. A calendar entry is a literal copy of the period, so it goes stale the
+// moment that period moves, regardless of whether the person still attends.
+// Key both tables on the period itself instead; SCHEDULE_KEY_SQL builds the
+// same value the application does.
+export const SCHEDULE_KEY_SQL = "(e.starts_at || '-' || e.ends_at)";
+
+function keyCalendarStateByPeriod(): void {
+  db.exec(`
+    CREATE TABLE event_calendar_confirmations_rebuilt_94 (
+      event_id     TEXT NOT NULL,
+      player_id    TEXT NOT NULL,
+      schedule_key TEXT NOT NULL,
+      confirmed_at INTEGER NOT NULL,
+      PRIMARY KEY (event_id, player_id, schedule_key),
+      FOREIGN KEY (event_id, player_id)
+        REFERENCES event_participants(event_id, player_id) ON DELETE CASCADE
+    );
+    -- Best effort for rows written under the old key: the period they were
+    -- actually confirmed against was never recorded, so the event's current
+    -- one is the only available answer. Rows whose event has since lost a
+    -- complete period cannot be expressed as a key and are dropped, which
+    -- fails safe — the participant is asked to confirm again.
+    INSERT OR IGNORE INTO event_calendar_confirmations_rebuilt_94
+      (event_id, player_id, schedule_key, confirmed_at)
+      SELECT c.event_id, c.player_id, ${SCHEDULE_KEY_SQL}, c.confirmed_at
+      FROM event_calendar_confirmations c
+      JOIN events e ON e.id = c.event_id
+      WHERE e.starts_at IS NOT NULL AND e.ends_at IS NOT NULL;
+    DROP TABLE event_calendar_confirmations;
+    ALTER TABLE event_calendar_confirmations_rebuilt_94 RENAME TO event_calendar_confirmations;
+
+    CREATE TABLE event_reminder_deliveries_rebuilt_94 (
+      event_id      TEXT NOT NULL,
+      player_id     TEXT NOT NULL,
+      schedule_key  TEXT NOT NULL,
+      kind          TEXT NOT NULL CHECK (kind IN ('calendar', 'stefan_calendar_followup', 'upcoming_week', 'upcoming_day')),
+      first_sent_at INTEGER NOT NULL,
+      last_sent_at  INTEGER NOT NULL,
+      PRIMARY KEY (event_id, player_id, schedule_key, kind),
+      FOREIGN KEY (event_id, player_id)
+        REFERENCES event_participants(event_id, player_id) ON DELETE CASCADE
+    );
+    INSERT OR IGNORE INTO event_reminder_deliveries_rebuilt_94
+      (event_id, player_id, schedule_key, kind, first_sent_at, last_sent_at)
+      SELECT d.event_id, d.player_id, ${SCHEDULE_KEY_SQL}, d.kind, d.first_sent_at, d.last_sent_at
+      FROM event_reminder_deliveries d
+      JOIN events e ON e.id = d.event_id
+      WHERE e.starts_at IS NOT NULL AND e.ends_at IS NOT NULL;
+    DROP TABLE event_reminder_deliveries;
+    ALTER TABLE event_reminder_deliveries_rebuilt_94 RENAME TO event_reminder_deliveries;
+    CREATE INDEX idx_event_reminder_deliveries_due
+      ON event_reminder_deliveries(kind, last_sent_at);
+  `);
+}
+registerMigration({
+  version: 94,
+  name: 'key calendar confirmations and reminders by the event period',
+  up: keyCalendarStateByPeriod,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
