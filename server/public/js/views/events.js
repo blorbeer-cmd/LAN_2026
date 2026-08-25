@@ -28,6 +28,11 @@ import { isGroupAdmin } from '../groupContext.js';
 import { formatEuroCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
 import { eventHasFeature } from '../eventFeatures.js';
 import { availableEventTypeOptions, eventTypeTitle } from '../eventTypes.js';
+import {
+  eventCalendarFilename,
+  eventCalendarIcs,
+  eventCalendarLinks,
+} from '../calendarExport.js';
 
 const EVENT_HELP = 'Eventtyp, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
 const KIOSK_HELP = 'Zeigt Live-Status, Vote, Rang und Turnier; ein eigener Token ist erforderlich.';
@@ -77,6 +82,60 @@ export function renderEventLocation(location) {
         ${href ? `<a class="event-location-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${value}</a>` : `<span class="event-location-text">${value}</span>`}
       </span>
     </div>`;
+}
+
+export function renderEventCalendarActions(event, { invitation = false } = {}) {
+  const links = invitation || event.isEnded ? null : eventCalendarLinks(event);
+  if (!links) return '';
+  const canConfirm = event.myParticipation?.status === 'accepted';
+  const confirmation = canConfirm
+    ? event.myParticipation.calendarConfirmed
+      ? `<span class="badge badge-online event-calendar-confirmed" tabindex="-1" data-event-calendar-confirmed="${escapeHtml(event.id)}">Im Kalender eingetragen</span>`
+      : `<div class="event-calendar-confirmation">
+           <button type="button" class="btn btn-sm btn-primary" data-confirm-event-calendar="${escapeHtml(event.id)}">Übernahme bestätigen</button>
+           <span class="muted">Beendet die Kalender-Erinnerungen.</span>
+         </div>`
+    : '';
+  return `
+    <div class="event-calendar-actions" role="group" aria-label="Event zum Kalender hinzufügen">
+      <span class="event-card-detail-label">Zum Kalender hinzufügen</span>
+      <div class="event-calendar-action-buttons">
+        <a class="btn btn-sm" href="${escapeHtml(links.google)}" target="_blank" rel="noopener noreferrer" data-event-calendar="google">Google Kalender</a>
+        <a class="btn btn-sm" href="${escapeHtml(links.outlook)}" target="_blank" rel="noopener noreferrer" data-event-calendar="outlook">Outlook</a>
+        <button type="button" class="btn btn-sm" data-download-event-calendar="${escapeHtml(event.id)}">Kalenderdatei</button>
+      </div>
+      ${confirmation}
+    </div>`;
+}
+
+function calendarEventById(eventId) {
+  const candidates = [
+    ...(state.managedEvents || []),
+    ...(state.availableEvents || []),
+    ...(state.endedEvents || []),
+    ...(state.plannedEvents || []),
+  ];
+  return candidates.find((event) => event.id === eventId) ?? null;
+}
+
+function downloadEventCalendar(event) {
+  const contents = eventCalendarIcs(event);
+  if (!contents) {
+    showToast('Für dieses Event ist noch kein vollständiger Zeitraum festgelegt.', { error: true });
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([contents], { type: 'text/calendar;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = eventCalendarFilename(event);
+  // Same sequence as downloadExport(): the anchor has to be in the document
+  // for the synthetic click to start a download, and the object URL must
+  // outlive that click — revoking it in the next statement can cancel the
+  // download before the browser has read the blob.
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function acceptedParticipants(event) {
@@ -437,6 +496,7 @@ function renderEventInfo(event, { editable = false, invitation = false } = {}) {
         ${editable ? `<button type="button" class="btn btn-sm" data-edit-event="${escapeHtml(event.id)}">Bearbeiten</button>` : ''}
       </div>
       ${additionalDetails ? `<div class="event-card-info-details">${additionalDetails}</div>` : ''}
+      ${renderEventCalendarActions(event, { invitation })}
       ${invitation ? renderInvitationPayment(event) : renderEventPayment(event)}
     </div>`;
 }
@@ -993,6 +1053,37 @@ export function renderOrgaEvents(container, ctx) {
 
   container.querySelectorAll('[data-export-event]').forEach((btn) => {
     btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
+  });
+  container.querySelectorAll('[data-download-event-calendar]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const event = calendarEventById(btn.dataset.downloadEventCalendar);
+      if (event) downloadEventCalendar(event);
+    });
+  });
+  container.querySelectorAll('[data-confirm-event-calendar]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const eventId = btn.dataset.confirmEventCalendar;
+      const event = calendarEventById(eventId);
+      if (
+        event?.myParticipation?.calendarConfirmationNeedsExtraCheck &&
+        !(await confirmDialog('Hast du den Termin wirklich eingetragen, Stefan??!!', {
+          title: 'Ganz sicher, Stefan?',
+          confirmText: 'Ja, wirklich',
+        }))
+      ) return;
+      btn.disabled = true;
+      try {
+        await api.events.confirmCalendar(eventId);
+        await ctx.refresh();
+        [...container.querySelectorAll('[data-event-calendar-confirmed]')]
+          .find((candidate) => candidate.dataset.eventCalendarConfirmed === eventId)
+          ?.focus();
+        showToast('Kalenderübernahme bestätigt. Weitere Kalender-Erinnerungen sind beendet.');
+      } catch (err) {
+        btn.disabled = false;
+        showToast(err.message, { error: true });
+      }
+    });
   });
   wireInfoTooltips(container);
   container.querySelectorAll('[data-toggle-event-paid]').forEach((btn) => {

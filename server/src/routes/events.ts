@@ -28,7 +28,7 @@ import {
   type UpdateEventFields,
   type EventRow,
 } from '../events';
-import { BASE_EVENT_ID, db } from '../db';
+import { BASE_EVENT_ID, SCHEDULE_KEY_SQL, db } from '../db';
 import { broadcast, Events, switchPlayerEventScope } from '../realtime';
 import { clearPlayerLiveStatus, getLiveBoard } from '../liveStatus';
 import { notifyPlayers, resolvePushTopic } from '../push';
@@ -50,6 +50,7 @@ import {
   isEventTypeKey,
 } from '../eventFeatureCatalog';
 import { isAdminTestMode } from '../testDataVisibility';
+import { confirmEventCalendar, STEFAN_CALENDAR_GAG_USERNAME } from '../eventReminders';
 
 export const eventsRouter = Router();
 
@@ -172,9 +173,38 @@ function acceptedParticipantsForViewer(eventId: string, viewerId: string | undef
 // that row to tell the affected member they must reconfirm.
 function myParticipationField(eventId: string, viewerId: string) {
   const row = db
-    .prepare('SELECT status, confirmed_schedule_revision AS confirmedScheduleRevision FROM event_participants WHERE event_id = ? AND player_id = ?')
-    .get(eventId, viewerId) as { status: 'invited' | 'accepted' | 'declined'; confirmedScheduleRevision: number | null } | undefined;
-  return { myParticipation: row ? { status: row.status, confirmedScheduleRevision: row.confirmedScheduleRevision } : null };
+    .prepare(
+      `SELECT ep.status, ep.confirmed_schedule_revision AS confirmedScheduleRevision,
+              p.name AS playerName,
+              EXISTS (
+                SELECT 1 FROM event_calendar_confirmations confirmation
+                WHERE confirmation.event_id = ep.event_id
+                  AND confirmation.player_id = ep.player_id
+                  AND confirmation.schedule_key = ${SCHEDULE_KEY_SQL}
+              ) AS calendarConfirmed
+       FROM event_participants ep
+       JOIN events e ON e.id = ep.event_id
+       JOIN players p ON p.id = ep.player_id
+       WHERE ep.event_id = ? AND ep.player_id = ?`,
+    )
+    .get(eventId, viewerId) as
+    | {
+        status: 'invited' | 'accepted' | 'declined';
+        confirmedScheduleRevision: number | null;
+        calendarConfirmed: number;
+        playerName: string;
+      }
+    | undefined;
+  return {
+    myParticipation: row
+      ? {
+          status: row.status,
+          confirmedScheduleRevision: row.confirmedScheduleRevision,
+          calendarConfirmed: row.calendarConfirmed === 1,
+          calendarConfirmationNeedsExtraCheck: row.playerName === STEFAN_CALENDAR_GAG_USERNAME,
+        }
+      : null,
+  };
 }
 
 function eventParticipantsForViewer(eventId: string, viewerId: string | undefined, revealAllPayments: boolean) {
@@ -612,6 +642,45 @@ function answerEventInvitation(response: 'accepted' | 'declined') {
 
 eventsRouter.post('/:id/invitation/accept', resolveEvent, answerEventInvitation('accepted'));
 eventsRouter.post('/:id/invitation/decline', resolveEvent, answerEventInvitation('declined'));
+
+// The external calendar providers and an ICS download do not expose a
+// trustworthy import callback. The participant therefore confirms the
+// current schedule revision explicitly; a later date change naturally makes
+// this confirmation stale without deleting its history.
+eventsRouter.post('/:id/calendar-confirmation', resolveEvent, (req, res) => {
+  const event = req.groupResource as EventRow;
+  const playerId = requestPlayerId(req);
+  if (!playerId) return res.status(400).json({ error: 'Spieleridentität ist erforderlich.' });
+
+  const result = confirmEventCalendar(event.id, playerId);
+  if (!result.ok) {
+    if (result.reason === 'not_accepted') return res.status(404).json({ error: 'Event nicht gefunden.' });
+    return res.status(409).json({ error: 'Nur laufende oder bevorstehende Events mit vollständigem Zeitraum können bestätigt werden.' });
+  }
+
+  writeAdminAudit({
+    actorPlayerId: playerId,
+    groupId: req.group!.id,
+    action: result.changed ? 'event_calendar_confirmed' : 'event_calendar_confirmation_repeated',
+    targetType: 'event_participant',
+    targetId: `${event.id}:${playerId}`,
+    details: {
+      eventId: event.id,
+      playerId,
+      scheduleKey: result.scheduleKey,
+      confirmedAt: result.confirmedAt,
+      changed: result.changed,
+    },
+  });
+  broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
+  return res.json({
+    eventId: event.id,
+    calendarConfirmed: true,
+    confirmedAt: result.confirmedAt,
+    scheduleKey: result.scheduleKey,
+    changed: result.changed,
+  });
+});
 
 // PATCH /api/events/:id/participants/:playerId/payment - an accepted
 // participant may correct only their own state. The recorded event creator

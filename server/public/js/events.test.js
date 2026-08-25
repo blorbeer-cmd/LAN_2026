@@ -7,6 +7,7 @@ import {
   eventSettlement,
   parseEventAccommodationCostCents,
   parseEventCostCents,
+  renderEventCalendarActions,
   renderEventLocation,
 } from './views/events.js';
 
@@ -30,6 +31,46 @@ test('event locations are clickable only when they contain an HTTP(S) link and n
   const plain = renderEventLocation('Bei Tim');
   assert.match(plain, /<span class="event-location-text">Bei Tim<\/span>/);
   assert.doesNotMatch(plain, /event-location-link/);
+});
+
+test('scheduled event cards offer Google, Outlook and an ICS calendar file', () => {
+  const event = {
+    id: 'calendar-event',
+    name: 'Kalender LAN',
+    startsAt: Date.UTC(2026, 8, 8, 16, 0),
+    endsAt: Date.UTC(2026, 8, 10, 10, 0),
+  };
+  const html = renderEventCalendarActions(event);
+  assert.match(html, /data-event-calendar="google"/);
+  assert.match(html, /data-event-calendar="outlook"/);
+  assert.match(html, /data-download-event-calendar="calendar-event"/);
+  assert.doesNotMatch(html, /data-confirm-event-calendar/);
+
+  const unconfirmed = renderEventCalendarActions({
+    ...event,
+    myParticipation: { status: 'accepted', calendarConfirmed: false },
+  });
+  assert.match(unconfirmed, /data-confirm-event-calendar="calendar-event"/);
+  assert.match(unconfirmed, /Beendet die Kalender-Erinnerungen/);
+
+  const confirmed = renderEventCalendarActions({
+    ...event,
+    myParticipation: { status: 'accepted', calendarConfirmed: true },
+  });
+  assert.match(confirmed, /data-event-calendar-confirmed="calendar-event"/);
+  assert.match(confirmed, /Im Kalender eingetragen/);
+  assert.doesNotMatch(confirmed, /data-confirm-event-calendar/);
+
+  assert.doesNotMatch(renderEventCalendarActions({ startsAt: null, endsAt: null }), /Kalender/);
+  assert.doesNotMatch(renderEventCalendarActions({
+    startsAt: Date.UTC(2026, 8, 8),
+    endsAt: Date.UTC(2026, 8, 9),
+    isEnded: true,
+  }), /Kalender/);
+  assert.doesNotMatch(renderEventCalendarActions({
+    startsAt: Date.UTC(2026, 8, 8),
+    endsAt: Date.UTC(2026, 8, 9),
+  }, { invitation: true }), /Kalender/);
 });
 
 test('event costs parse German decimal input into positive cents', () => {

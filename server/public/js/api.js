@@ -331,6 +331,7 @@ export const api = {
       }),
     acceptInvitation: (id) => apiFetch(`/api/events/${id}/invitation/accept`, { method: 'POST' }),
     declineInvitation: (id) => apiFetch(`/api/events/${id}/invitation/decline`, { method: 'POST' }),
+    confirmCalendar: (id) => apiFetch(`/api/events/${id}/calendar-confirmation`, { method: 'POST' }),
   },
 
   eventPolls: {

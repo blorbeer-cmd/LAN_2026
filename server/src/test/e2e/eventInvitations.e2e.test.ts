@@ -1,6 +1,7 @@
 import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
+import { readFile } from 'node:fs/promises';
 import { chromium, Browser, Page } from 'playwright';
 import { finishE2EOnboarding } from './authHelpers';
 import { createE2EDiagnosticTest, trackE2EContext } from './e2eDiagnostics';
@@ -10,7 +11,7 @@ let BASE_URL: string;
 const RECOVERY_CODE = 'event-invitations-e2e-recovery';
 const OWNER_NAME = 'E2E Event Owner';
 const OWNER_PASSWORD = 'e2e event owner secure passphrase';
-const MEMBER_NAME = 'E2E Event Member';
+const MEMBER_NAME = '$t3vYb0y';
 const MEMBER_PASSWORD = 'e2e event member secure passphrase';
 const EVENT_NAME = 'E2E Einladung LAN';
 
@@ -160,6 +161,8 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.match((await ownerEventCard.locator('.event-settlement').textContent()) ?? '', /100,00/);
   assert.equal(await ownerEventCard.locator('.event-card-info [data-edit-event]').count(), 1);
   assert.equal(await ownerEventCard.locator('.event-card-actions [data-edit-event]').count(), 0);
+  assert.equal(await ownerEventCard.locator('.event-calendar-actions').count(), 1);
+  assert.equal(await ownerEventCard.locator('[data-event-calendar], [data-download-event-calendar]').count(), 3);
   assert.equal(await ownerEventCard.locator('.event-card-kicker').count(), 0, 'event cards do not repeat their type above the title');
   assert.equal(
     await ownerEventCard.evaluate((card) => {
@@ -266,12 +269,64 @@ test('manager invites a member who accepts and both open clients update', async 
   await memberPage.waitForSelector('#view-container[data-view="events"]');
   const memberEventCard = memberPage.locator(`[data-event-card="${eventId}"]`);
   await memberEventCard.waitFor();
-  assert.match((await memberEventCard.textContent()) ?? '', new RegExp(MEMBER_NAME));
+  assert.ok(((await memberEventCard.textContent()) ?? '').includes(MEMBER_NAME));
   assert.equal(
     await memberEventCard.locator('a.event-location-link').getAttribute('href'),
     'https://maps.example.test/respawn',
   );
   assert.equal(await memberEventCard.locator('[data-copy-event-location]').count(), 0);
+  const googleCalendarUrl = new URL(
+    (await memberEventCard.locator('[data-event-calendar="google"]').getAttribute('href')) as string,
+  );
+  assert.equal(googleCalendarUrl.origin, 'https://calendar.google.com');
+  assert.equal(googleCalendarUrl.searchParams.get('text'), EVENT_NAME);
+  assert.equal(googleCalendarUrl.searchParams.get('location'), 'https://maps.example.test/respawn');
+  assert.match(googleCalendarUrl.searchParams.get('dates') ?? '', /^\d{8}T\d{6}Z\/\d{8}T\d{6}Z$/);
+  const outlookCalendarUrl = new URL(
+    (await memberEventCard.locator('[data-event-calendar="outlook"]').getAttribute('href')) as string,
+  );
+  assert.equal(outlookCalendarUrl.origin, 'https://outlook.live.com');
+  assert.equal(outlookCalendarUrl.searchParams.get('subject'), EVENT_NAME);
+  assert.equal(outlookCalendarUrl.searchParams.get('location'), 'https://maps.example.test/respawn');
+  const calendarDownload = memberPage.waitForEvent('download');
+  const calendarFileButton = memberEventCard.locator(`[data-download-event-calendar="${eventId}"]`);
+  await calendarFileButton.focus();
+  await calendarFileButton.press('Enter');
+  const downloadedCalendar = await calendarDownload;
+  assert.equal(downloadedCalendar.suggestedFilename(), `${EVENT_NAME}.ics`);
+  const calendarPath = await downloadedCalendar.path();
+  assert.ok(calendarPath);
+  const calendarContents = await readFile(calendarPath, 'utf8');
+  assert.match(calendarContents, /BEGIN:VCALENDAR\r?\n/);
+  assert.match(calendarContents, new RegExp(`UID:${eventId}@respawn\\.local`));
+  assert.match(calendarContents, /SUMMARY:E2E Einladung LAN\r?\n/);
+  assert.match(calendarContents, /LOCATION:https:\/\/maps\.example\.test\/respawn\r?\n/);
+  assert.match((await memberEventCard.textContent()) ?? '', /Beendet die Kalender-Erinnerungen/);
+  const confirmationResponse = memberPage.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url() === `${BASE_URL}/api/events/${eventId}/calendar-confirmation`,
+  );
+  const confirmCalendarButton = memberEventCard.locator(`[data-confirm-event-calendar="${eventId}"]`);
+  await confirmCalendarButton.focus();
+  await confirmCalendarButton.press('Enter');
+  const stefanConfirmation = memberPage.locator('[role="alertdialog"]', {
+    hasText: 'Hast du den Termin wirklich eingetragen, Stefan??!!',
+  });
+  await stefanConfirmation.waitFor();
+  assert.match((await stefanConfirmation.textContent()) ?? '', /Ganz sicher, Stefan\?/);
+  await stefanConfirmation.locator('[data-confirm]').focus();
+  await stefanConfirmation.locator('[data-confirm]').press('Enter');
+  assert.equal((await confirmationResponse).status(), 200);
+  const calendarConfirmed = memberEventCard.locator(`[data-event-calendar-confirmed="${eventId}"]`);
+  await calendarConfirmed.waitFor();
+  assert.match((await calendarConfirmed.textContent()) ?? '', /Im Kalender eingetragen/);
+  assert.equal(await memberEventCard.locator('[data-confirm-event-calendar]').count(), 0);
+  assert.equal(
+    await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    true,
+    'calendar actions must remain usable without horizontal scrolling on a phone',
+  );
   const paypalButton = memberEventCard.locator(`[data-pay-event="${eventId}"]`);
   assert.equal(await memberEventCard.locator('.event-card-info.food-order-details .event-card-payment-member').count(), 1);
   assert.match((await memberEventCard.textContent()) ?? '', /Dein Beitrag/);
@@ -391,7 +446,7 @@ test('manager invites a member who accepts and both open clients update', async 
   const creatorPaymentButton = memberRow.locator(`[data-modal-toggle-event-paid="${memberId}"]`);
   assert.equal(await creatorPaymentButton.getAttribute('aria-pressed'), 'true');
   assert.equal(await creatorPaymentButton.textContent(), 'Bezahlt');
-  assert.match((await memberRow.textContent()) ?? '', new RegExp(`Bezahlt von ${MEMBER_NAME}`));
+  assert.ok(((await memberRow.textContent()) ?? '').includes(`Bezahlt von ${MEMBER_NAME}`));
   assert.doesNotMatch((await memberRow.textContent()) ?? '', /Zahlung zuerst zurücksetzen/);
   const lockedRemoveButton = memberRow.locator('[data-remove-participant]');
   assert.equal(await lockedRemoveButton.getAttribute('disabled'), null);
