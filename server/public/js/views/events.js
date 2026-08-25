@@ -128,7 +128,13 @@ function downloadEventCalendar(event) {
   const link = document.createElement('a');
   link.href = url;
   link.download = eventCalendarFilename(event);
+  // Same sequence as downloadExport(): the anchor has to be in the document
+  // for the synthetic click to start a download, and the object URL must
+  // outlive that click — revoking it in the next statement can cancel the
+  // download before the browser has read the blob.
+  document.body.appendChild(link);
   link.click();
+  link.remove();
   URL.revokeObjectURL(url);
 }
 

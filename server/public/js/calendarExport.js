@@ -74,11 +74,14 @@ export function eventCalendarFilename(event) {
   const safeName = Array.from(String(event?.name ?? 'Event'), (character) =>
     character.charCodeAt(0) < 32 || '<>:"/\\|?*'.includes(character) ? '-' : character,
   ).join('');
+  // Truncate before stripping trailing dots/spaces: cutting an over-long name
+  // at 80 characters can itself land on a space or dot, which is exactly what
+  // the strip exists to keep out of the filename.
   const base = safeName
     .trim()
     .replace(/\s+/g, ' ')
-    .replace(/[. ]+$/g, '')
-    .slice(0, 80);
+    .slice(0, 80)
+    .replace(/[. ]+$/g, '');
   return `${base || 'Event'}.ics`;
 }
 

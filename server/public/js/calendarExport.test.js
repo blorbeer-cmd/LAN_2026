@@ -66,3 +66,13 @@ test('calendar filenames stay readable and avoid reserved filename characters', 
   assert.equal(eventCalendarFilename({ name: '  LAN: Finale / 2026?  ' }), 'LAN- Finale - 2026-.ics');
   assert.equal(eventCalendarFilename({ name: '...' }), 'Event.ics');
 });
+
+test('truncating an over-long event name never leaves a trailing space or dot', () => {
+  const truncatedAtSpace = eventCalendarFilename({ name: `${'A'.repeat(79)} Nachtrag` });
+  assert.equal(truncatedAtSpace, `${'A'.repeat(79)}.ics`);
+  assert.doesNotMatch(truncatedAtSpace, /[. ]\.ics$/);
+
+  const truncatedAtDot = eventCalendarFilename({ name: `${'B'.repeat(79)}.. Finale` });
+  assert.equal(truncatedAtDot, `${'B'.repeat(79)}.ics`);
+  assert.doesNotMatch(truncatedAtDot, /[. ]\.ics$/);
+});
