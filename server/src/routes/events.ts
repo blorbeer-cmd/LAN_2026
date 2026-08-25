@@ -43,7 +43,7 @@ import { writeAdminAudit } from '../adminAudit';
 import { setEventTrackingConsent } from '../trackingContexts';
 import { activeGroupPlayers } from '../groupPlayers';
 import { createPersistentBackup } from '../backupService';
-import { eventAccessLevel, getOrRepairActiveEvent } from '../eventContext';
+import { eventAccessLevel, fallbackPlayerEventContext, getOrRepairActiveEvent } from '../eventContext';
 import { getEnabledEventFeatures, isEventFeatureEnabled } from '../eventFeatures';
 import {
   DEFAULT_EVENT_TYPE_KEY,
@@ -779,7 +779,16 @@ function answerEventInvitation(response: 'accepted' | 'declined') {
     // removal does: a workspace the account may no longer select, and a live
     // status inside an event it just left.
     if (result.changed && response === 'declined') {
-      if (wasActiveContext) switchPlayerEventScope(playerId, req.group!.id, BASE_EVENT_ID);
+      if (wasActiveContext) {
+        // The persisted context has to move first: switchPlayerEventScope only
+        // re-scopes currently connected sockets, so without this the stored
+        // active_event_id would keep pointing at an event this account no
+        // longer participates in until some later request happens to repair
+        // it. removeEventParticipant does the same through
+        // fallbackPlayerEventContext.
+        fallbackPlayerEventContext(playerId, event.id);
+        switchPlayerEventScope(playerId, req.group!.id, BASE_EVENT_ID);
+      }
       if (result.previousStatus === 'accepted' && event.tracking_enabled) {
         clearPlayerLiveStatus(playerId, Date.now(), event.id);
         broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id, event.id), {

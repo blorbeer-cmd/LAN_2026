@@ -267,6 +267,17 @@ test('event invitation lifecycle enforces roles, identity, transitions and atomi
       const withdrawal = await call(app, 'post', '/api/events/' + futureEvent.body.id + '/invitation/decline', carol);
       assert.equal(withdrawal.status, 200, JSON.stringify(withdrawal.body));
       assert.equal(withdrawal.body.changed, true);
+      // Asserted straight from the table, before any read that would repair
+      // it: the stored context must not keep pointing at an event this
+      // account no longer participates in, or anything reading it without a
+      // repair (agent activity via activeTrackingContexts) silently finds no
+      // context at all.
+      assert.equal(
+        db.prepare('SELECT active_event_id AS activeEventId FROM player_event_contexts WHERE player_id = ?')
+          .get(carol.account.id).activeEventId,
+        BASE_EVENT_ID,
+        'withdrawing must persist the fallback workspace, not only re-scope sockets',
+      );
       assert.equal((await call(app, 'get', '/api/events/active', carol)).body.id, BASE_EVENT_ID);
       // The organizer hears about a withdrawn yes, because it changes what
       // they are planning with.
