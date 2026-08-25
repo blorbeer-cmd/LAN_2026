@@ -848,7 +848,28 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   itself again on its own approach. The
   account `$t3vYb0y` gets the deliberate Stefan gag: its confirmation opens one additional themed
   safety question, and one week after confirmation it receives one final direct calendar check while
-  the event is still upcoming. Event creation and editing may
+  the event is still upcoming.
+  Directly below the calendar group, the same information box carries the second deliberate gag of
+  this area: „Paralleltermin?“ plus „Ausrede generieren“ opens the Ausreden-Generator
+  (`eventExcuses.js`, `renderEventExcuseActions`/`wireEventExcuseActions` in `events.js`). It writes
+  an excuse for whatever *other* appointment collides with the event, so no entry ever names the
+  event itself — the text is meant to be sent to the organizer of the competing date. The action
+  appears on management cards, member cards and pending invitations alike, because deciding against
+  a parallel obligation is a personal act, and disappears once an event has ended. The dialog is a
+  shared `openModal()` instance with the standard `.chip`/`.chip.is-active` category filter (Alle
+  plus eight categories, the same filter pattern as Orga's To-Do Art chips), one nested result
+  surface with an `aria-live="polite"` region so „Neue Ausrede“ is announced without rebuilding the
+  dialog, and the two equal-width actions „Neue Ausrede“ and „Kopieren“. It carries no explanatory
+  copy above the filter: the title, the chips and the excuse itself already say what the dialog is,
+  and a sentence repeating the event name and a pool count only pushed the actual result down.
+  Every excuse is tagged with
+  the absence lengths it fits: a single evening, a two-to-three-day weekend or a longer trip, so a
+  three-day LAN never gets an excuse written for one afternoon. Every category stays usable at every
+  length — the pool is kept wide enough that no category collapses to a handful of entries for long
+  events. An event whose date is still being
+  polled receives the date-free subset instead, because its texts cannot fill a period honestly. The
+  „Glaubwürdigkeit N/5“ badge is part of the joke and derives from the rendered text itself — length
+  plus concrete numbers — since detail is what the whole feature trades on. Event creation and editing may
   add one optional per-person cost plus the same PayPal input as food orders: either an e-mail address
   or a complete HTTPS address on `paypal.me`/`paypal.com`. Cost and PayPal controls reuse the food-order price suffix
   and contextual label layout so both fields stay aligned. Invitation cards disclose that cost

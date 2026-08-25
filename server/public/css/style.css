@@ -3888,6 +3888,64 @@ button.card {
     align-items: center;
   }
 }
+
+/* Ausreden-Generator: the same separated label/action block as the calendar
+   group above it, so the information box keeps one rhythm no matter which of
+   the two an event actually offers. */
+.event-excuse-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.event-excuse-actions .btn {
+  align-self: stretch;
+  min-width: 0;
+  white-space: normal;
+}
+.event-excuse-actions + .event-card-payment {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+@media (min-width: 640px) { /* --bp-md */
+  .event-excuse-actions .btn {
+    align-self: flex-start;
+  }
+}
+.excuse-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+}
+.excuse-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.excuse-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.excuse-empty {
+  margin: 0;
+}
+.excuse-dialog-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+@media (min-width: 640px) { /* --bp-md */
+  .excuse-dialog-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .event-payment-heading {
   display: flex;
   align-items: center;
