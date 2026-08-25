@@ -540,7 +540,9 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
     const cardInset = await page.locator('#view-container .card').first().evaluate((card) => {
       const container = document.querySelector('#view-container');
       if (!container) throw new Error('View container missing');
-      return Math.round(card.getBoundingClientRect().top - container.getBoundingClientRect().top);
+      return Math.round(
+        card.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop,
+      );
     });
     assert.equal(cardInset, 68, `${title} should share the compact first-card inset`);
   };
