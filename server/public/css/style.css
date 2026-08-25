@@ -1495,13 +1495,20 @@ select {
   top: calc(100% + var(--space-1));
   right: 0;
   left: 0;
-  max-height: var(--search-select-results-max-height);
+  max-height: min(
+    var(--search-select-results-max-height),
+    var(--search-select-available-height, var(--search-select-results-max-height))
+  );
   overflow-y: auto;
   padding: var(--space-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
   box-shadow: var(--shadow);
+}
+.search-select.opens-upward .search-select-list {
+  top: auto;
+  bottom: calc(100% + var(--space-1));
 }
 .search-select-option {
   display: flex;

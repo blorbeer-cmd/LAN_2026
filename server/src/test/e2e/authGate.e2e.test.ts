@@ -397,6 +397,7 @@ test('a reset link replaces the password and signs the browser in with a fresh s
 
 test('admin creates, displays and revokes a registration link in the UI', async () => {
   const adminPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const eventIds: string[] = [];
   await trackE2EContext(adminPage.context(), 'auth-invite-admin');
   try {
     await adminPage.goto(BASE_URL);
@@ -406,6 +407,22 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await adminPage.click('#auth-form button[type="submit"]');
     await adminPage.waitForSelector('#app:not([hidden])');
     await adminPage.waitForTimeout(500);
+
+    const startsAt = Date.now() + 24 * 60 * 60 * 1000;
+    for (let index = 0; index < 4; index += 1) {
+      const created = await adminPage.request.post(`${BASE_URL}/api/events`, {
+        data: {
+          name: `Dropdown LAN ${index + 1}`,
+          startsAt: startsAt + index * 24 * 60 * 60 * 1000,
+          endsAt: startsAt + (index + 1) * 24 * 60 * 60 * 1000,
+        },
+      });
+      const createdText = await created.text();
+      assert.equal(created.status(), 201, createdText);
+      eventIds.push((JSON.parse(createdText) as { id: string }).id);
+    }
+    await adminPage.reload();
+    await adminPage.waitForSelector('#app:not([hidden])');
 
     await adminPage.click('.nav-btn[data-view="more"]');
     await adminPage.click('[data-navigate="admin"]');
@@ -435,6 +452,46 @@ test('admin creates, displays and revokes a registration link in the UI', async 
       (await adminPage.locator('#admin-register-expires option').allTextContents()).some((label) => /unbegrenzt/i.test(label)),
       false,
     );
+    await adminPage.setViewportSize({ width: 557, height: 406 });
+    await adminPage.click('#admin-register-event-search');
+    const dropdownGeometry = await adminPage.locator('#admin-register-event-list').evaluate((list) => {
+      const modal = list.closest('.modal');
+      const wrapper = list.closest('.search-select');
+      if (!modal || !wrapper) return null;
+      const listRect = list.getBoundingClientRect();
+      const modalRect = modal.getBoundingClientRect();
+      return {
+        opensUpward: wrapper.classList.contains('opens-upward'),
+        listTop: listRect.top,
+        listBottom: listRect.bottom,
+        modalTop: modalRect.top,
+        modalBottom: modalRect.bottom,
+      };
+    });
+    assert.ok(dropdownGeometry);
+    assert.equal(dropdownGeometry.opensUpward, true);
+    assert.ok(dropdownGeometry.listTop >= dropdownGeometry.modalTop);
+    assert.ok(dropdownGeometry.listBottom <= dropdownGeometry.modalBottom);
+    await adminPage.keyboard.press('Escape');
+
+    await adminPage.setViewportSize({ width: 1024, height: 800 });
+    await adminPage.click('#admin-register-event-search');
+    const laptopGeometry = await adminPage.locator('#admin-register-event-list').evaluate((list) => {
+      const modal = list.closest('.modal');
+      if (!modal) return null;
+      const listRect = list.getBoundingClientRect();
+      const modalRect = modal.getBoundingClientRect();
+      return {
+        listTop: listRect.top,
+        listBottom: listRect.bottom,
+        modalTop: modalRect.top,
+        modalBottom: modalRect.bottom,
+      };
+    });
+    assert.ok(laptopGeometry);
+    assert.ok(laptopGeometry.listTop >= laptopGeometry.modalTop);
+    assert.ok(laptopGeometry.listBottom <= laptopGeometry.modalBottom);
+    await adminPage.keyboard.press('Escape');
     await adminPage.click('#admin-register-invite-form button[type="submit"]');
     await adminPage.waitForSelector('#reauth-form');
     await adminPage.fill('#reauth-password', 'e2e bootstrap password');
@@ -462,6 +519,9 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await adminPage.click('[data-confirm]');
     await activeLink.waitFor({ state: 'detached' });
   } finally {
+    for (const eventId of eventIds) {
+      await adminPage.request.delete(`${BASE_URL}/api/events/${eventId}`);
+    }
     await adminPage.close();
   }
 });
