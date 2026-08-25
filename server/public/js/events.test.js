@@ -8,7 +8,9 @@ import {
   parseEventAccommodationCostCents,
   parseEventCostCents,
   renderEventCalendarActions,
+  renderEventExcuseActions,
   renderEventLocation,
+  renderInvitationCard,
 } from './views/events.js';
 
 test('the LAN keepsake PDF stays available only for LAN-compatible events', () => {
@@ -152,4 +154,23 @@ test('accepted participant count follows the visible accepted participant list',
     }),
     1,
   );
+});
+
+test('every upcoming event card offers the excuse generator, ended ones do not', () => {
+  const event = { id: 'excuse-event', name: 'Winter LAN' };
+  const html = renderEventExcuseActions(event);
+  assert.match(html, /data-event-excuse="excuse-event"/);
+  assert.match(html, /Ausrede generieren/);
+  assert.equal(renderEventExcuseActions({ ...event, isEnded: true }), '');
+});
+
+test('a pending invitation carries the excuse action but no calendar handoff', () => {
+  const html = renderInvitationCard({
+    id: 'invited-event',
+    name: 'Sommer LAN',
+    startsAt: Date.UTC(2026, 8, 8, 16, 0),
+    endsAt: Date.UTC(2026, 8, 10, 10, 0),
+  });
+  assert.match(html, /data-event-excuse="invited-event"/);
+  assert.doesNotMatch(html, /data-event-calendar=/);
 });

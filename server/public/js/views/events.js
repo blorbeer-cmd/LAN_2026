@@ -33,6 +33,13 @@ import {
   eventCalendarIcs,
   eventCalendarLinks,
 } from '../calendarExport.js';
+import {
+  EXCUSE_CATEGORIES,
+  eventExcusePool,
+  eventExcuseProfile,
+  excuseCategoryLabel,
+  pickEventExcuse,
+} from '../eventExcuses.js';
 
 const EVENT_HELP = 'Eventtyp, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
 const KIOSK_HELP = 'Zeigt Live-Status, Vote, Rang und Turnier; ein eigener Token ist erforderlich.';
@@ -108,12 +115,127 @@ export function renderEventCalendarActions(event, { invitation = false } = {}) {
     </div>`;
 }
 
-function calendarEventById(eventId) {
+// The gag action of the Events cards: an event that is still ahead can collide
+// with something else, and this writes the excuse for that other appointment
+// (see eventExcuses.js). An ended event has nothing left to collide with.
+export function renderEventExcuseActions(event) {
+  if (!event || event.isEnded) return '';
+  return `
+    <div class="event-excuse-actions">
+      <span class="event-card-detail-label">Paralleltermin?</span>
+      <button type="button" class="btn btn-sm" data-event-excuse="${escapeHtml(event.id)}">Ausrede generieren</button>
+    </div>`;
+}
+
+function excuseDurationLabel(profile) {
+  if (profile.duration === 'unknown') return 'für einen noch offenen Termin';
+  if (profile.duration === 'short') return 'für einen einzelnen Tag';
+  return `für ${profile.days} Tage`;
+}
+
+function renderExcuseResult(excuse) {
+  if (!excuse) {
+    return '<p class="muted excuse-empty">Für diese Kategorie und Dauer ist gerade keine Ausrede im Vorrat.</p>';
+  }
+  return `
+    <blockquote class="excuse-text">${escapeHtml(excuse.text)}</blockquote>
+    <div class="excuse-meta">
+      <span class="badge">${escapeHtml(excuseCategoryLabel(excuse.category))}</span>
+      <span class="badge badge-online">Glaubwürdigkeit ${excuse.credibility}/5</span>
+    </div>`;
+}
+
+// Keeps "Neue Ausrede" from repeating itself while a decent alternative is
+// left; the window is small enough that a narrow category filter still works.
+const EXCUSE_HISTORY_LIMIT = 10;
+
+function openExcuseDialog(event) {
+  const profile = eventExcuseProfile(event);
+  const recentIds = [];
+  let category = 'alle';
+  let current = null;
+
+  const categoryChips = [{ id: 'alle', label: 'Alle' }, ...EXCUSE_CATEGORIES]
+    .map(
+      (entry) =>
+        `<button type="button" class="chip${entry.id === 'alle' ? ' is-active' : ''}" aria-pressed="${entry.id === 'alle'}" data-excuse-category="${escapeHtml(entry.id)}">${escapeHtml(entry.label)}</button>`,
+    )
+    .join('');
+
+  openModal('Ausreden-Generator', `
+    <div class="stack excuse-dialog">
+      <p class="muted excuse-dialog-intro">Für alles, was parallel zu „${escapeHtml(event.name ?? 'diesem Event')}“ läuft — ${escapeHtml(excuseDurationLabel(profile))}. ${eventExcusePool(event).length} Ausreden im Vorrat.</p>
+      <div class="chip-list excuse-category-filter" role="group" aria-label="Kategorie">${categoryChips}</div>
+      <div class="excuse-result" data-excuse-result aria-live="polite"></div>
+      <div class="excuse-dialog-actions">
+        <button type="button" class="btn btn-primary" data-excuse-next>Neue Ausrede</button>
+        <button type="button" class="btn" data-excuse-copy>Kopieren</button>
+      </div>
+    </div>
+  `, {
+    onMount: (backdrop) => {
+      const result = backdrop.querySelector('[data-excuse-result]');
+      const copyBtn = backdrop.querySelector('[data-excuse-copy]');
+      const draw = () => {
+        current = pickEventExcuse(event, { category, recentIds });
+        if (current) {
+          recentIds.push(current.id);
+          if (recentIds.length > EXCUSE_HISTORY_LIMIT) recentIds.shift();
+        }
+        copyBtn.disabled = !current;
+        result.innerHTML = renderExcuseResult(current);
+      };
+
+      backdrop.querySelectorAll('[data-excuse-category]').forEach((chip) => {
+        chip.addEventListener('click', () => {
+          category = chip.dataset.excuseCategory;
+          backdrop.querySelectorAll('[data-excuse-category]').forEach((candidate) => {
+            const active = candidate === chip;
+            candidate.classList.toggle('is-active', active);
+            candidate.setAttribute('aria-pressed', String(active));
+          });
+          // A category switch is a new request, not a continuation: the small
+          // repeat window would otherwise hide the first excuses of a narrow
+          // category that the previous draw happened to use up.
+          recentIds.length = 0;
+          draw();
+        });
+      });
+      backdrop.querySelector('[data-excuse-next]').addEventListener('click', draw);
+      copyBtn.addEventListener('click', async () => {
+        if (!current) return;
+        try {
+          await navigator.clipboard.writeText(current.text);
+          showToast('Ausrede kopiert. Viel Erfolg.');
+        } catch {
+          showToast('Kopieren hat nicht geklappt. Die Ausrede steht weiter im Dialog.', { error: true });
+        }
+      });
+      draw();
+      backdrop.querySelector('[data-excuse-next]').focus();
+    },
+  });
+}
+
+export function wireEventExcuseActions(container) {
+  container.querySelectorAll('[data-event-excuse]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const event = eventCardById(btn.dataset.eventExcuse);
+      if (event) openExcuseDialog(event);
+    });
+  });
+}
+
+// Every event that can currently be on screen as a card, including the pending
+// invitations Profile renders — those carry no calendar actions, but they do
+// carry the excuse action, and both are wired through this one lookup.
+function eventCardById(eventId) {
   const candidates = [
     ...(state.managedEvents || []),
     ...(state.availableEvents || []),
     ...(state.endedEvents || []),
     ...(state.plannedEvents || []),
+    ...(state.eventInvitations || []),
   ];
   return candidates.find((event) => event.id === eventId) ?? null;
 }
@@ -497,6 +619,7 @@ function renderEventInfo(event, { editable = false, invitation = false } = {}) {
       </div>
       ${additionalDetails ? `<div class="event-card-info-details">${additionalDetails}</div>` : ''}
       ${renderEventCalendarActions(event, { invitation })}
+      ${renderEventExcuseActions(event)}
       ${invitation ? renderInvitationPayment(event) : renderEventPayment(event)}
     </div>`;
 }
@@ -686,6 +809,7 @@ export function pendingEventInvitations() {
 // an explicit, still-present target instead of being left to fall back to
 // <body>.
 export function wirePendingInvitationActions(container, ctx) {
+  wireEventExcuseActions(container);
   container.querySelectorAll('[data-accept-invitation], [data-decline-invitation]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const accept = Boolean(btn.dataset.acceptInvitation);
@@ -1054,16 +1178,17 @@ export function renderOrgaEvents(container, ctx) {
   container.querySelectorAll('[data-export-event]').forEach((btn) => {
     btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));
   });
+  wireEventExcuseActions(container);
   container.querySelectorAll('[data-download-event-calendar]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const event = calendarEventById(btn.dataset.downloadEventCalendar);
+      const event = eventCardById(btn.dataset.downloadEventCalendar);
       if (event) downloadEventCalendar(event);
     });
   });
   container.querySelectorAll('[data-confirm-event-calendar]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const eventId = btn.dataset.confirmEventCalendar;
-      const event = calendarEventById(eventId);
+      const event = eventCardById(eventId);
       if (
         event?.myParticipation?.calendarConfirmationNeedsExtraCheck &&
         !(await confirmDialog('Hast du den Termin wirklich eingetragen, Stefan??!!', {
