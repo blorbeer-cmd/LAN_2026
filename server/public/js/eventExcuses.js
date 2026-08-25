@@ -20,7 +20,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Fits any length of absence.
 const ANY = Object.freeze(['short', 'medium', 'long']);
-// Needs a real period because the text prints concrete dates.
+// Needs a real period because the text prints concrete dates. A text that
+// prints a start *and* an end date must use MULTI instead: on a single-day
+// event both resolve to the same date, and "von 12.09. bis 12.09." reads as a
+// copy-paste slip. `{zeitraum}` is the placeholder that already collapses that
+// case, so it is the safe choice here.
 const DATED = Object.freeze(['short', 'medium', 'long']);
 // At least two calendar days — the only buckets where `{tage}` is >= 2 and the
 // plural in the German text is correct.
@@ -731,7 +735,7 @@ export const EVENT_EXCUSES = Object.freeze([
     id: 'rufbereitschaft',
     category: 'beruf',
     durations: DATED,
-    text: 'Ich habe Rufbereitschaft mit 15 Minuten Reaktionszeit, eingetragen für {zeitraum}. Es gibt keinen Tauschpartner, und 15 Minuten sind exakt so bemessen, dass man in dieser Zeit gar nichts unternehmen kann.',
+    text: 'Ich habe für {zeitraum} Rufbereitschaft mit 15 Minuten Reaktionszeit eingetragen. Es gibt keinen Tauschpartner, und 15 Minuten sind exakt so bemessen, dass man in dieser Zeit gar nichts unternehmen kann.',
   },
   {
     id: 'inventur',
@@ -871,7 +875,7 @@ export const EVENT_EXCUSES = Object.freeze([
     id: 'strangsanierung',
     category: 'schicksal',
     durations: DATED,
-    text: 'Der Vermieter hat von {start} bis {ende} das Wasser abgestellt, Strangsanierung. Die Handwerker brauchen Zugang zu Bad und Küche, und in der Ankündigung steht ausdrücklich, dass die Wohnung während der Arbeiten zugänglich sein muss.',
+    text: 'Der Vermieter hat für {zeitraum} das Wasser abgestellt, Strangsanierung. Die Handwerker brauchen Zugang zu Bad und Küche, und in der Ankündigung steht ausdrücklich, dass die Wohnung während der Arbeiten zugänglich sein muss.',
   },
   {
     id: 'sternwarte',

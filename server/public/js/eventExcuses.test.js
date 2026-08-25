@@ -110,6 +110,41 @@ test('every offered excuse renders without a leftover placeholder', () => {
   }
 });
 
+test('an excuse printing both dates is kept away from single-day events', () => {
+  // On a single-day event `{start}` and `{ende}` resolve to the same date, so
+  // such a text would print "von 12.09. bis 12.09." — the copy-paste look that
+  // eventExcuseProfile()'s collapsed `range` exists to avoid. `{zeitraum}` is
+  // the placeholder that already handles it.
+  for (const entry of EVENT_EXCUSES) {
+    if (!entry.text.includes('{start}') || !entry.text.includes('{ende}')) continue;
+    assert.equal(
+      entry.durations.includes('short'),
+      false,
+      `${entry.id} prints a start and an end date and must not be offered for a single-day event`,
+    );
+  }
+
+  const sameDay = eventExcuseProfile(EVENTS.short);
+  assert.equal(sameDay.start, sameDay.end);
+  for (const entry of eventExcusePool(EVENTS.short)) {
+    const text = fillExcuseText(entry.text, sameDay);
+    assert.doesNotMatch(text, /(\d{2}\.\d{2}\.)[^\d]{1,12}\1/, `${entry.id} repeats the same date twice`);
+  }
+});
+
+test('a filled-in date never collides with the sentence punctuation around it', () => {
+  // Every printed date already ends in a period, so a placeholder in
+  // sentence-final position renders "12.09..". That reads as a typo, and a
+  // typo is exactly what an excuse trading on detail cannot afford.
+  for (const event of Object.values(EVENTS)) {
+    const profile = eventExcuseProfile(event);
+    for (const entry of eventExcusePool(event)) {
+      const text = fillExcuseText(entry.text, profile);
+      assert.doesNotMatch(text, /\.\./, `${entry.id} renders a doubled period for a ${profile.duration} event`);
+    }
+  }
+});
+
 test('a day count is filled in and survives a missing period', () => {
   assert.match(fillExcuseText('Genau {tage} Tage.', eventExcuseProfile(EVENTS.medium)), /Genau 3 Tage\./);
   assert.match(
