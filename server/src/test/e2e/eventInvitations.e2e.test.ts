@@ -1,6 +1,7 @@
 import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
+import { readFile } from 'node:fs/promises';
 import { chromium, Browser, Page } from 'playwright';
 import { finishE2EOnboarding } from './authHelpers';
 import { createE2EDiagnosticTest, trackE2EContext } from './e2eDiagnostics';
@@ -160,6 +161,8 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.match((await ownerEventCard.locator('.event-settlement').textContent()) ?? '', /100,00/);
   assert.equal(await ownerEventCard.locator('.event-card-info [data-edit-event]').count(), 1);
   assert.equal(await ownerEventCard.locator('.event-card-actions [data-edit-event]').count(), 0);
+  assert.equal(await ownerEventCard.locator('.event-calendar-actions').count(), 1);
+  assert.equal(await ownerEventCard.locator('[data-event-calendar], [data-download-event-calendar]').count(), 3);
   assert.equal(await ownerEventCard.locator('.event-card-kicker').count(), 0, 'event cards do not repeat their type above the title');
   assert.equal(
     await ownerEventCard.evaluate((card) => {
@@ -272,6 +275,37 @@ test('manager invites a member who accepts and both open clients update', async 
     'https://maps.example.test/respawn',
   );
   assert.equal(await memberEventCard.locator('[data-copy-event-location]').count(), 0);
+  const googleCalendarUrl = new URL(
+    (await memberEventCard.locator('[data-event-calendar="google"]').getAttribute('href')) as string,
+  );
+  assert.equal(googleCalendarUrl.origin, 'https://calendar.google.com');
+  assert.equal(googleCalendarUrl.searchParams.get('text'), EVENT_NAME);
+  assert.equal(googleCalendarUrl.searchParams.get('location'), 'https://maps.example.test/respawn');
+  assert.match(googleCalendarUrl.searchParams.get('dates') ?? '', /^\d{8}T\d{6}Z\/\d{8}T\d{6}Z$/);
+  const outlookCalendarUrl = new URL(
+    (await memberEventCard.locator('[data-event-calendar="outlook"]').getAttribute('href')) as string,
+  );
+  assert.equal(outlookCalendarUrl.origin, 'https://outlook.live.com');
+  assert.equal(outlookCalendarUrl.searchParams.get('subject'), EVENT_NAME);
+  assert.equal(outlookCalendarUrl.searchParams.get('location'), 'https://maps.example.test/respawn');
+  const calendarDownload = memberPage.waitForEvent('download');
+  const calendarFileButton = memberEventCard.locator(`[data-download-event-calendar="${eventId}"]`);
+  await calendarFileButton.focus();
+  await calendarFileButton.press('Enter');
+  const downloadedCalendar = await calendarDownload;
+  assert.equal(downloadedCalendar.suggestedFilename(), `${EVENT_NAME}.ics`);
+  const calendarPath = await downloadedCalendar.path();
+  assert.ok(calendarPath);
+  const calendarContents = await readFile(calendarPath, 'utf8');
+  assert.match(calendarContents, /BEGIN:VCALENDAR\r?\n/);
+  assert.match(calendarContents, new RegExp(`UID:${eventId}@respawn\\.local`));
+  assert.match(calendarContents, /SUMMARY:E2E Einladung LAN\r?\n/);
+  assert.match(calendarContents, /LOCATION:https:\/\/maps\.example\.test\/respawn\r?\n/);
+  assert.equal(
+    await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    true,
+    'calendar actions must remain usable without horizontal scrolling on a phone',
+  );
   const paypalButton = memberEventCard.locator(`[data-pay-event="${eventId}"]`);
   assert.equal(await memberEventCard.locator('.event-card-info.food-order-details .event-card-payment-member').count(), 1);
   assert.match((await memberEventCard.textContent()) ?? '', /Dein Beitrag/);

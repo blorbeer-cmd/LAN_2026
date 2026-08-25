@@ -833,8 +833,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   participant list. Date, location, note and payment information therefore never form competing
   sibling boxes; an editable management card places „Bearbeiten“ in the information-box header like
   an order does. The remaining management actions stay in a stable flex footer, and location links
-  are clickable without a separate copy
-  action when an event stores a web URL; plain locations remain text. Event creation and editing may
+  are clickable without a separate copy action when an event stores a web URL; plain locations remain
+  text. A current event with a complete start/end period offers „Google Kalender“, „Outlook“ and
+  „Kalenderdatei“ directly inside that same information box; the first two open a prefilled web event,
+  while the RFC-5545 `.ics` download covers native and other compatible calendar apps. Pending
+  invitations, ended events and incomplete periods omit the action group. Event creation and editing may
   add one optional per-person cost plus the same PayPal input as food orders: either an e-mail address
   or a complete HTTPS address on `paypal.me`/`paypal.com`. Cost and PayPal controls reuse the food-order price suffix
   and contextual label layout so both fields stay aligned. Invitation cards disclose that cost

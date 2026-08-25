@@ -3834,6 +3834,36 @@ button.card {
   margin-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
+.event-calendar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.event-calendar-action-buttons {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+.event-calendar-action-buttons .btn {
+  min-width: 0;
+  white-space: normal;
+}
+.event-calendar-action-buttons a.btn {
+  text-align: center;
+  text-decoration: none;
+}
+.event-calendar-actions + .event-card-payment {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+@media (min-width: 640px) { /* --bp-md */
+  .event-calendar-action-buttons {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
 .event-payment-heading {
   display: flex;
   align-items: center;
