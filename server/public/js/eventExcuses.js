@@ -216,6 +216,55 @@ export const EVENT_EXCUSES = Object.freeze([
     text: 'Ich bekomme eine periradikuläre Therapie an der Lendenwirbelsäule, also eine Spritze unter CT-Kontrolle direkt an die Nervenwurzel. Danach darf ich 24 Stunden nicht Auto fahren und nicht allein bleiben, weil das Bein wegsacken kann.',
   },
 
+  {
+    id: 'fersensporn',
+    category: 'krankheit',
+    durations: ANY,
+    text: 'Plantarfasziitis rechts, dazu ein Fersensporn von 6 Millimetern im Röntgen. Ich laufe in Einlagen, dehne dreimal täglich an der Treppenstufe und darf nicht länger als zehn Minuten am Stück stehen. Ein Stehempfang ist damit ausgeschlossen.',
+  },
+  {
+    id: 'nesselsucht',
+    category: 'krankheit',
+    durations: ANY,
+    text: 'Chronische Nesselsucht, gerade ein Schub. Ich nehme die vierfache Dosis Antihistaminikum, bin davon fahruntüchtig, und die Quaddeln kommen bei Wärme und Druck sofort wieder. Ich müsste den ganzen Abend im Kühlen stehen und dürfte von niemandem umarmt werden.',
+  },
+  {
+    id: 'schluesselbein',
+    category: 'krankheit',
+    durations: ANY,
+    text: 'Schlüsselbeinbruch links nach einem Sturz mit dem Rad, Mittelschaft, konservativ im Rucksackverband. Ich schlafe halb sitzend, darf den Arm nicht über 90 Grad heben und habe in zehn Tagen die Kontrollaufnahme.',
+  },
+  {
+    id: 'bissschiene',
+    category: 'krankheit',
+    durations: ANY,
+    text: 'Ich trage nach einer Bissverlagerung eine kieferorthopädische Schiene, 22 Stunden am Tag, herausnehmbar nur zum Essen. Sprechen geht damit, aber ich klinge wie jemand, der vom Zahnarztstuhl aus telefoniert.',
+  },
+  {
+    id: 'nierenbecken',
+    category: 'krankheit',
+    durations: ANY,
+    text: 'Aufsteigende Nierenbeckenentzündung. Fieber, Flankenschmerz, Antibiotikum über zehn Tage und die klare Ansage, Kälte zu meiden und drei Liter am Tag zu trinken. Ich bin gerade das Gegenteil von gesellschaftsfähig.',
+  },
+  {
+    id: 'bandscheibe-stufenbett',
+    category: 'krankheit',
+    durations: MULTI,
+    text: 'Bandscheibenvorfall L5/S1 mit Ausstrahlung ins linke Bein. {tage} Tage Stufenbettlagerung, Novaminsulfon zur Nacht und eine Physiotherapeutin, die mich jeden Morgen um acht erwartet. Sitzen ist die schlechteste aller Haltungen, und eine Veranstaltung besteht überwiegend aus Sitzen.',
+  },
+  {
+    id: 'netzhaut-laser',
+    category: 'krankheit',
+    durations: MULTI,
+    text: 'Mein Netzhautloch wurde gelasert. {tage} Tage kein Bücken, kein Heben, keine Erschütterung, dazu die Kopfhaltung, die der Augenarzt vorgegeben hat. Bei einem Netzhautriss diskutiert man nicht über Ausnahmen.',
+  },
+  {
+    id: 'provisorium',
+    category: 'krankheit',
+    durations: SHORT,
+    text: 'Mir ist heute Vormittag das Provisorium auf Zahn 36 abgegangen, und die Praxis hat mir den letzten Notfalltermin am späten Nachmittag gegeben. Ohne Provisorium wandert der Nachbarzahn, und dann passt die fertige Krone nicht mehr.',
+  },
+
   // ---------- Familie ----------
   {
     id: 'goldene-hochzeit',
@@ -336,6 +385,49 @@ export const EVENT_EXCUSES = Object.freeze([
     category: 'familie',
     durations: MEDIUM,
     text: 'Meine Tochter zieht ins Studentenwohnheim: Zimmerübergabe, Möbelaufbau und die obligatorische Fahrt zum Möbelhaus, bei der wir feststellen werden, dass die Kommode drei Zentimeter zu breit ist.',
+  },
+
+  {
+    id: 'patentante-80',
+    category: 'familie',
+    durations: ANY,
+    text: 'Meine Patentante wird 80 und hat sich als einziges Geschenk gewünscht, dass alle 14 Enkel und Patenkinder gleichzeitig an einem Tisch sitzen. Das hat seit 2011 nicht funktioniert, und ich bin nicht derjenige, an dem es diesmal scheitert.',
+  },
+  {
+    id: 'wohnungsaufloesung',
+    category: 'familie',
+    durations: ANY,
+    text: 'Wir lösen die Wohnung meiner verstorbenen Großmutter auf. Der Nachmieter zieht am Ersten ein, wir sind zu dritt, und es sind 60 Jahre Haushalt inklusive eines Kellers, den sie selbst „das Archiv“ genannt hat.',
+  },
+  {
+    id: 'einschulung',
+    category: 'familie',
+    durations: ANY,
+    text: 'Einschulung meines Neffen, mit Gottesdienst, Schultüte und einem Fotomarathon, bei dem ich der Einzige mit einer Kamera bin, die nicht nach zwei Minuten den Geist aufgibt.',
+  },
+  {
+    id: 'ferienbetreuung',
+    category: 'familie',
+    durations: MULTI,
+    text: 'Die Ferienbetreuung ist ausgefallen, und die Schicht meiner Frau war nicht zu tauschen. Ich habe {tage} Tage zwei Kinder im Grundschulalter, und die beiden haben bereits einen Plan, der ausschließlich aus Freibad besteht.',
+  },
+  {
+    id: 'mutter-hueft-op',
+    category: 'familie',
+    durations: MULTI,
+    text: 'Meine Mutter kommt nach der Hüft-Operation zu uns, weil die Kurzzeitpflege keinen Platz hatte. {tage} Tage Rollator, Kompressionsstrümpfe anziehen und Krankengymnastik im Wohnzimmer. Alleine lassen kann ich sie nicht.',
+  },
+  {
+    id: 'ferienwohnung',
+    category: 'familie',
+    durations: MULTI,
+    text: 'Wir haben eine Ferienwohnung für {tage} Tage gebucht, seit November, mit Anzahlung und einer Stornoregel, die nichts erstattet. Meine Kinder wissen davon, und Kinder vergessen so etwas nie.',
+  },
+  {
+    id: 'elterngespraech',
+    category: 'familie',
+    durations: SHORT,
+    text: 'Ich habe einen Termin beim Klassenlehrer wegen der Empfehlung fürs Halbjahreszeugnis. Der Mann bietet drei Nachmittage im ganzen Schuljahr an, und an dieser Empfehlung hängt die weiterführende Schule.',
   },
 
   // ---------- Haus & Hof ----------
@@ -460,6 +552,43 @@ export const EVENT_EXCUSES = Object.freeze([
     text: 'Wohnungsübergabe der alten Wohnung: Protokoll, Zählerstände, Schlüsselzahl. Der Vermieter bringt seinen Sohn mit, der „sich auskennt“. Wenn ich nicht dabei bin, wird jede Schramme im Haus meine Schramme.',
   },
 
+  {
+    id: 'statiker',
+    category: 'haushalt',
+    durations: ANY,
+    text: 'Unsere Kellertreppe hat sich gesenkt, ein Riss läuft quer durch die Wand, und morgen kommt der Statiker. Bis dahin darf nichts verrückt werden, und ich muss ihm die Rissbreiten der letzten drei Wochen dokumentiert vorlegen.',
+  },
+  {
+    id: 'einbruchspuren',
+    category: 'haushalt',
+    durations: ANY,
+    text: 'Bei uns wurde am Kellerfenster gehebelt. Die Polizei hat es aufgenommen, der Schlüsseldienst tauscht heute sämtliche Zylinder, und bis alle drei Parteien ihre neuen Schlüssel haben, bekomme ich das Haus nicht zu.',
+  },
+  {
+    id: 'parkett',
+    category: 'haushalt',
+    durations: MULTI,
+    text: 'Wir schleifen das Parkett ab: drei Durchgänge, danach zweimal Öl mit Trocknungszeit, zusammen {tage} Tage, in denen die Räume nicht betreten werden dürfen und ich stündlich für Durchzug sorge.',
+  },
+  {
+    id: 'badsanierung',
+    category: 'haushalt',
+    durations: MULTI,
+    text: 'Unser Bad wird saniert. {tage} Tage ohne Dusche, mit einer Toilette im Keller und einem Fliesenleger, der um halb sieben klingelt und danach den ganzen Tag jemanden im Haus braucht.',
+  },
+  {
+    id: 'container',
+    category: 'haushalt',
+    durations: MULTI,
+    text: 'Vor dem Haus steht ein Container mit Stellgenehmigung für genau {tage} Tage. Jeder weitere Tag kostet extra, und der halbe Keller ist noch drin.',
+  },
+  {
+    id: 'gartenhaus',
+    category: 'haushalt',
+    durations: LONG,
+    text: 'Wir bauen ein Gartenhaus in Eigenleistung. Das Fundament ist gegossen, der Bausatz liegt unter einer Plane auf dem Rasen, und die Prognose gibt mir genau {tage} trockene Tage. Danach steht die Feuchtigkeit im Holz.',
+  },
+
   // ---------- Tiere ----------
   {
     id: 'katze-frisst-nicht',
@@ -550,6 +679,43 @@ export const EVENT_EXCUSES = Object.freeze([
     category: 'tier',
     durations: MEDIUM,
     text: 'Unser Welpe zieht genau an diesem Wochenende ein. Die ersten Tage entscheiden über Stubenreinheit, Alleinbleiben und ungefähr alles Weitere, und der Züchter hat den Übergabetermin seit acht Wochen festgelegt.',
+  },
+
+  {
+    id: 'katze-diabetes',
+    category: 'tier',
+    durations: ANY,
+    text: 'Meine Katze ist Diabetikerin. Insulin morgens und abends im Abstand von exakt zwölf Stunden, dazu Blutzuckerkontrolle am Ohr. Verschiebt sich das um mehr als eine Stunde, kippt sie in die Unterzuckerung.',
+  },
+  {
+    id: 'giftkoeder',
+    category: 'tier',
+    durations: ANY,
+    text: 'In unserem Park liegen Giftköder, zwei Hunde sind bereits in der Klinik. Ich gehe nur noch mit Maulkorb und zu Zeiten raus, in denen ich den Boden sehe, und allein lasse ich ihn im Moment gar nicht.',
+  },
+  {
+    id: 'vergesellschaftung',
+    category: 'tier',
+    durations: ANY,
+    text: 'Wir vergesellschaften zwei Katzen, die einander bisher ausschließlich hassen. Die Verhaltensberaterin hat einen Zehn-Tage-Plan mit stundenweisem Sichtkontakt, und dabei muss durchgehend jemand danebensitzen.',
+  },
+  {
+    id: 'hundepension',
+    category: 'tier',
+    durations: MULTI,
+    text: 'Meine Hundepension hat drei Tage vorher abgesagt, Magen-Darm im ganzen Bestand. Ich habe für {tage} Tage weder Platz noch Sitter, und mein Hund bleibt keine vier Stunden allein, ohne die Nachbarschaft darüber zu informieren.',
+  },
+  {
+    id: 'wurfkiste',
+    category: 'tier',
+    durations: MULTI,
+    text: 'Unsere Hündin bekommt Welpen, der errechnete Termin liegt genau darin. Ich bin {tage} Tage in Rufbereitschaft mit Wurfkiste, Waage und der Nummer der Tierklinik am Kühlschrank.',
+  },
+  {
+    id: 'tierheim-vertretung',
+    category: 'tier',
+    durations: LONG,
+    text: 'Ich habe die Urlaubsvertretung im Tierheim übernommen, {tage} Tage Frühdienst: 28 Hunde, 40 Katzen, Beginn um sechs Uhr. Zugesagt habe ich im Winter, als das noch angenehm weit weg war.',
   },
 
   // ---------- Behörde ----------
@@ -644,6 +810,61 @@ export const EVENT_EXCUSES = Object.freeze([
     text: 'Ich bin in der Freiwilligen Feuerwehr und habe die Belastungsübung in der Atemschutzstrecke. Die ist jährlich Pflicht, sonst verliere ich die Atemschutztauglichkeit und darf ein Jahr lang nicht mehr unter Gerät.',
   },
 
+  {
+    id: 'grundsteuer',
+    category: 'amt',
+    durations: ANY,
+    text: 'Ich muss eine Grundsteuererklärung nachreichen, das Finanzamt hat ein Zwangsgeld angedroht und eine letzte Frist gesetzt. Mir fehlen noch zwei Werte aus dem Liegenschaftskataster, und die bekomme ich nur persönlich.',
+  },
+  {
+    id: 'schoeffe-hauptverhandlung',
+    category: 'amt',
+    durations: MULTI,
+    text: 'Ich bin Schöffe am Amtsgericht und für eine Hauptverhandlung eingeteilt, die auf {tage} Fortsetzungstermine angesetzt ist. Ein Schöffe kann nicht einfach fehlen: dann platzt der Prozess und beginnt komplett von vorn.',
+  },
+  {
+    id: 'erhebungsbeauftragter',
+    category: 'amt',
+    durations: MULTI,
+    text: 'Der Zensus hat mich als Erhebungsbeauftragten verpflichtet. {tage} Tage Haushaltsbefragungen nach einem Bezirksplan, den ich nicht selbst gemacht habe, mit Terminen, die ich den Leuten bereits zugesagt habe.',
+  },
+  {
+    id: 'reservistenuebung',
+    category: 'amt',
+    durations: MULTI,
+    text: 'Ich bin Reservist und zu einer Übung einberufen, {tage} Tage. Der Einberufungsbescheid ist zugestellt, mein Arbeitgeber ist informiert, und einen Antrag auf Befreiung hätte ich sechs Wochen vorher stellen müssen.',
+  },
+  {
+    id: 'katastrophenschutz',
+    category: 'amt',
+    durations: MULTI,
+    text: 'Ich bin im Katastrophenschutz eingeteilt, und wir haben eine angeordnete Bereitschaftsübung über {tage} Tage mit Unterkunft am Standort. Angeordnet heißt angeordnet; das ist kein Vereinsausflug.',
+  },
+  {
+    id: 'nebenklage',
+    category: 'amt',
+    durations: MULTI,
+    text: 'Als Nebenkläger habe ich Anwesenheitsrecht in einem Verfahren, das über {tage} Verhandlungstage terminiert ist. Ich habe zwei Jahre auf diesen Termin gewartet und werde ihn nicht aus dem Protokoll erfahren.',
+  },
+  {
+    id: 'sozialversicherungspruefung',
+    category: 'amt',
+    durations: MULTI,
+    text: 'Die Rentenversicherung prüft bei uns die Sozialversicherung der letzten vier Jahre, {tage} Tage vor Ort. Ich führe die Lohnunterlagen, also sitzt der Prüfer die ganze Zeit direkt neben mir.',
+  },
+  {
+    id: 'sachkundenachweis',
+    category: 'amt',
+    durations: LONG,
+    text: 'Ich hole den gesetzlich vorgeschriebenen Sachkundenachweis nach, {tage} Tage Lehrgang mit Anwesenheitsnachweis und schriftlicher Prüfung am letzten Tag. Ohne ihn darf ich meine Tätigkeit ab dem Quartalswechsel nicht mehr ausüben.',
+  },
+  {
+    id: 'wahlvorstand-lang',
+    category: 'amt',
+    durations: LONG,
+    text: 'Ich bin als Beisitzer im Wahlvorstand eingeteilt, dazu zwei vorbereitende Schulungen und die Briefwahlauszählung. Zusammen mit dem Wahlwochenende sind das {tage} Tage, an denen ich der Gemeinde gehöre.',
+  },
+
   // ---------- Technik ----------
   {
     id: 'serverraum',
@@ -728,6 +949,55 @@ export const EVENT_EXCUSES = Object.freeze([
     category: 'technik',
     durations: ANY,
     text: 'Der Verein hat mich zum Datenschutzbeauftragten gemacht, und wir haben eine Betroffenenanfrage. Ab Eingang läuft eine Frist von einem Monat, wir sind in der letzten Woche, und das Löschkonzept muss vorher stehen.',
+  },
+
+  {
+    id: 'gemeindestream',
+    category: 'technik',
+    durations: ANY,
+    text: 'Ich betreue den Livestream der Gemeinde, und die Kamera ist ausgefallen. Bis Ersatz da ist, baue ich die Übertragung aus zwei Laptops und einer Webcam neu auf, und getestet werden muss das vorher auch noch.',
+  },
+  {
+    id: 'passwortmanager',
+    category: 'technik',
+    durations: ANY,
+    text: 'Mein Passwortmanager lässt sich nach einem Update nicht mehr entsperren. Ich stelle gerade aus einem Offline-Backup 240 Zugänge wieder her und ändere alles, was in der Zwischenzeit unsicher geworden ist.',
+  },
+  {
+    id: 'vereins-migration',
+    category: 'technik',
+    durations: MULTI,
+    text: 'Wir migrieren die Vereins-EDV auf einen neuen Server, {tage} Tage Umstellungsfenster mit Parallelbetrieb. Ich bin der Einzige, der beide Systeme kennt, und die Mitgliederverwaltung darf in dieser Zeit nicht ausfallen.',
+  },
+  {
+    id: 'hochzeitsvideo',
+    category: 'technik',
+    durations: MULTI,
+    text: 'Ich schneide das Video einer Hochzeit, 480 Gigabyte Rohmaterial. Der Export läuft {tage} Tage über Nacht, und das Paar hat einen Termin, den ich zugesagt habe, bevor ich das Material gesehen hatte.',
+  },
+  {
+    id: 'heizungssteuerung',
+    category: 'technik',
+    durations: MULTI,
+    text: 'Unsere Heizungssteuerung ist ausgefallen und läuft im Notbetrieb. Der Techniker kommt gestaffelt an {tage} Tagen, weil die Ersatzplatine erst geliefert werden muss, und in der Zwischenzeit stelle ich alles von Hand nach.',
+  },
+  {
+    id: 'rendering',
+    category: 'technik',
+    durations: MULTI,
+    text: 'Ich rendere eine Architekturvisualisierung für einen Bekannten. Der Rechner läuft {tage} Tage durch, und bei jedem Absturz beginnt das Bild von vorn. Abgestürzt ist er bisher zweimal.',
+  },
+  {
+    id: 'hausverkabelung',
+    category: 'technik',
+    durations: LONG,
+    text: 'Ich verkabele das ganze Haus mit Netzwerk: Kabelkanäle, 14 Dosen, Patchfeld und Messprotokoll. Ich habe mir dafür {tage} Tage genommen, weil danach der Maler kommt und alles zu ist.',
+  },
+  {
+    id: 'fehlalarm',
+    category: 'technik',
+    durations: SHORT,
+    text: 'Unsere Alarmanlage löst seit gestern grundlos aus, zuletzt um 3:40 Uhr. Der Servicetechniker kommt heute in einem Vier-Stunden-Fenster, und bis dahin ist die Anlage abgeschaltet, was ich nicht unbeaufsichtigt lassen möchte.',
   },
 
   // ---------- Beruf ----------
@@ -822,6 +1092,55 @@ export const EVENT_EXCUSES = Object.freeze([
     text: 'Für unser Förderprojekt läuft der Verwendungsnachweis. Alle Belege müssen eingereicht sein, und die Frist ist eine Ausschlussfrist: einen Tag zu spät, und wir zahlen 40.000 Euro zurück. Ich habe die Belege, also habe ich das Problem.',
   },
 
+  {
+    id: 'betriebsversammlung',
+    category: 'beruf',
+    durations: ANY,
+    text: 'Wir haben eine außerordentliche Betriebsversammlung wegen der angekündigten Umstrukturierung. Ich bin Ersatzmitglied im Betriebsrat und rücke nach, weil ein ordentliches Mitglied ausfällt.',
+  },
+  {
+    id: 'kammerpruefung',
+    category: 'beruf',
+    durations: ANY,
+    text: 'Ich habe die Ladung zur mündlichen Prüfung bei der Handwerkskammer, dazu die vorgeschaltete Arbeitsprobe. Einen Ersatztermin gibt es erst im nächsten Prüfungszyklus, also in einem halben Jahr.',
+  },
+  {
+    id: 'audit',
+    category: 'beruf',
+    durations: MULTI,
+    text: 'Bei uns läuft das Überwachungsaudit nach ISO 9001, {tage} Tage mit externem Auditor. Ich bin Qualitätsbeauftragter, führe durch den Betrieb und beantworte jede Frage zur Dokumentenlenkung. Ohne mich fällt das Zertifikat.',
+  },
+  {
+    id: 'systemwechsel-buchhaltung',
+    category: 'beruf',
+    durations: MULTI,
+    text: 'Wir machen den Systemwechsel in der Buchhaltung zum Monatsersten: {tage} Tage Saldenübernahme, Abstimmung und Testbuchungen. Danach lässt sich nichts mehr rückabwickeln.',
+  },
+  {
+    id: 'klassenfahrt',
+    category: 'beruf',
+    durations: MULTI,
+    text: 'Ich begleite eine Klassenfahrt als Elternteil, {tage} Tage mit 27 Kindern, Aufsichtspflicht rund um die Uhr und einem Programm, in dem das Wort „Freizeit“ nicht vorkommt.',
+  },
+  {
+    id: 'ernte',
+    category: 'beruf',
+    durations: MULTI,
+    text: 'Wir haben Ernte. Der Mähdrescher ist gemietet, das Wetterfenster ist {tage} Tage lang, und wenn es danach regnet, steht das Getreide bis zum nächsten trockenen Abschnitt. Familienbetrieb heißt: alle.',
+  },
+  {
+    id: 'montage',
+    category: 'beruf',
+    durations: LONG,
+    text: 'Ich bin auf Montage, {tage} Tage auswärts, Hotel gebucht und Baustellenzugang beantragt. Zurück bin ich frühestens am Abend danach, und der Kunde zahlt keine zweite Anreise.',
+  },
+  {
+    id: 'notdienst',
+    category: 'beruf',
+    durations: SHORT,
+    text: 'Ich habe Notdienst, einen 24-Stunden-Dienst mit Anwesenheitspflicht, eingeteilt von der Kammer. Tauschen kann ich nur mit jemandem, der dieselbe Qualifikation hat, und davon gibt es in unserem Umkreis genau zwei.',
+  },
+
   // ---------- Höhere Gewalt ----------
   {
     id: 'steuerkette',
@@ -912,6 +1231,48 @@ export const EVENT_EXCUSES = Object.freeze([
     category: 'schicksal',
     durations: ANY,
     text: 'Meine Nachbarin ist 88, und ihr Notrufarmband hat den Geist aufgegeben. Bis der Dienst ein neues bringt, schaue ich dreimal täglich nach ihr: morgens, mittags, abends. Sie zählt mit.',
+  },
+  {
+    id: 'fahrerflucht',
+    category: 'schicksal',
+    durations: ANY,
+    text: 'Mir ist beim Rückwärtsfahren jemand ins Auto gefahren und dann weitergefahren. Ich habe Fahrerflucht angezeigt, das Auto ist nicht verkehrssicher, und die Werkstatt sagt frühestens Ende der Woche.',
+  },
+  {
+    id: 'nachbarbrand',
+    category: 'schicksal',
+    durations: ANY,
+    text: 'Bei meinem Nachbarn hat es gebrannt. Unser Treppenhaus ist verrußt, der Strom im Steigschacht ist abgeschaltet, und die Hausverwaltung braucht jemanden vor Ort, der den Gutachtern die Wohnungen öffnet.',
+  },
+  {
+    id: 'tasche-gestohlen',
+    category: 'schicksal',
+    durations: ANY,
+    text: 'Mir wurde die Tasche gestohlen, mit Ausweis, Karten und Autoschlüssel. Ich habe alles gesperrt, brauche eine Anzeige für die Versicherung und einen neuen Funkschlüssel, den es nur beim Vertragshändler gibt.',
+  },
+  {
+    id: 'keller-hochwasser',
+    category: 'schicksal',
+    durations: MULTI,
+    text: 'Bei uns stand der Keller unter Wasser. Ich pumpe seit gestern, die Feuerwehr hat die Straße wieder freigegeben, und die Trocknung läuft {tage} Tage. Was da unten stand, sortiere ich gerade in „bleibt“ und „Container“.',
+  },
+  {
+    id: 'notstromaggregat',
+    category: 'schicksal',
+    durations: MULTI,
+    text: 'Bei uns ist die Hauptleitung defekt, wir hängen an einem Notstromaggregat, das der Netzbetreiber aufgestellt hat. Die Reparatur dauert {tage} Tage, und getankt werden muss das Ding auch von jemandem.',
+  },
+  {
+    id: 'umbuchung',
+    category: 'schicksal',
+    durations: MULTI,
+    text: 'Mein Rückflug ist gestrichen, die Airline hat mich auf eine Verbindung {tage} Tage später umgebucht. Alles Frühere ist ausgebucht, und ein eigenes Ticket kostet mehr als die gesamte Reise.',
+  },
+  {
+    id: 'freunde-eingesprungen',
+    category: 'schicksal',
+    durations: LONG,
+    text: 'Ich bin bei Freunden eingesprungen, deren Vater plötzlich ins Krankenhaus musste: {tage} Tage Haus, Garten und zwei Katzen hüten, 180 Kilometer von hier. Das war einer der Momente, in denen man nicht lange überlegt.',
   },
 ]);
 

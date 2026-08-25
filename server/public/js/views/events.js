@@ -33,13 +33,7 @@ import {
   eventCalendarIcs,
   eventCalendarLinks,
 } from '../calendarExport.js';
-import {
-  EXCUSE_CATEGORIES,
-  eventExcusePool,
-  eventExcuseProfile,
-  excuseCategoryLabel,
-  pickEventExcuse,
-} from '../eventExcuses.js';
+import { EXCUSE_CATEGORIES, excuseCategoryLabel, pickEventExcuse } from '../eventExcuses.js';
 
 const EVENT_HELP = 'Eventtyp, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
 const KIOSK_HELP = 'Zeigt Live-Status, Vote, Rang und Turnier; ein eigener Token ist erforderlich.';
@@ -127,12 +121,6 @@ export function renderEventExcuseActions(event) {
     </div>`;
 }
 
-function excuseDurationLabel(profile) {
-  if (profile.duration === 'unknown') return 'für einen noch offenen Termin';
-  if (profile.duration === 'short') return 'für einen einzelnen Tag';
-  return `für ${profile.days} Tage`;
-}
-
 function renderExcuseResult(excuse) {
   if (!excuse) {
     return '<p class="muted excuse-empty">Für diese Kategorie und Dauer ist gerade keine Ausrede im Vorrat.</p>';
@@ -150,7 +138,6 @@ function renderExcuseResult(excuse) {
 const EXCUSE_HISTORY_LIMIT = 10;
 
 function openExcuseDialog(event) {
-  const profile = eventExcuseProfile(event);
   const recentIds = [];
   let category = 'alle';
   let current = null;
@@ -164,7 +151,6 @@ function openExcuseDialog(event) {
 
   openModal('Ausreden-Generator', `
     <div class="stack excuse-dialog">
-      <p class="muted excuse-dialog-intro">Für alles, was parallel zu „${escapeHtml(event.name ?? 'diesem Event')}“ läuft — ${escapeHtml(excuseDurationLabel(profile))}. ${eventExcusePool(event).length} Ausreden im Vorrat.</p>
       <div class="chip-list excuse-category-filter" role="group" aria-label="Kategorie">${categoryChips}</div>
       <div class="excuse-result" data-excuse-result aria-live="polite"></div>
       <div class="excuse-dialog-actions">

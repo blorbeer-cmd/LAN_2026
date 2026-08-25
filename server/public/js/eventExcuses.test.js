@@ -47,11 +47,18 @@ test('an excuse never names the Respawn event it is an excuse for', () => {
 });
 
 test('every category stays offerable for every event duration', () => {
+  // Not just "not empty": a category that collapses to two entries for long
+  // events repeats itself immediately once someone filters to it, which is
+  // what the generator exists to avoid.
+  const MINIMUM_PER_CATEGORY = 8;
   for (const [name, event] of Object.entries(EVENTS)) {
-    assert.ok(eventExcusePool(event).length >= 60, `${name} offers only ${eventExcusePool(event).length} excuses`);
+    assert.ok(eventExcusePool(event).length >= 100, `${name} offers only ${eventExcusePool(event).length} excuses`);
     for (const category of EXCUSE_CATEGORIES) {
       const pool = eventExcusePool(event, { category: category.id });
-      assert.ok(pool.length > 0, `${category.id} has no excuse for a ${name} event`);
+      assert.ok(
+        pool.length >= MINIMUM_PER_CATEGORY,
+        `${category.id} offers only ${pool.length} excuses for a ${name} event`,
+      );
       assert.ok(
         pool.every((entry) => entry.category === category.id),
         `${category.id} pool leaked a foreign category`,
