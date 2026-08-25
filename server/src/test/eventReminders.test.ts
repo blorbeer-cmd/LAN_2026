@@ -292,3 +292,21 @@ test('a first sweep inside the final day sends only the day reminder', () => {
     cleanupFixture(fixture.eventId, fixture.playerId);
   }
 });
+
+// An event's scheduled end time passing does not by itself make it "ended" —
+// ended_at is only set by an explicit admin action (see events.ts endEvent).
+// A participant confirming the calendar handoff shortly after the event's
+// nominal end, before anyone has closed it, must still succeed: the client's
+// display gate and the reminder sweep above both key off ended_at, not endsAt.
+test('a past endsAt does not block confirmation before the event is explicitly ended', () => {
+  const now = Date.now();
+  const fixture = createReminderFixture(now - 4 * 60 * 60 * 1000);
+
+  try {
+    const confirmed = confirmEventCalendar(fixture.eventId, fixture.playerId, now);
+    assert.equal(confirmed.ok, true);
+    assert.equal(confirmed.ok && confirmed.changed, true);
+  } finally {
+    cleanupFixture(fixture.eventId, fixture.playerId);
+  }
+});

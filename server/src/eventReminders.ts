@@ -300,8 +300,7 @@ export function confirmEventCalendar(
     row.status !== 'published' ||
     row.endedAt !== null ||
     row.startsAt === null ||
-    row.endsAt === null ||
-    row.endsAt <= now
+    row.endsAt === null
   ) {
     return { ok: false, reason: 'not_upcoming' };
   }
