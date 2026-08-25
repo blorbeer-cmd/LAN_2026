@@ -87,6 +87,15 @@ export function renderEventLocation(location) {
 export function renderEventCalendarActions(event, { invitation = false } = {}) {
   const links = invitation || event.isEnded ? null : eventCalendarLinks(event);
   if (!links) return '';
+  const canConfirm = event.myParticipation?.status === 'accepted';
+  const confirmation = canConfirm
+    ? event.myParticipation.calendarConfirmed
+      ? `<span class="badge badge-online event-calendar-confirmed" tabindex="-1" data-event-calendar-confirmed="${escapeHtml(event.id)}">Im Kalender eingetragen</span>`
+      : `<div class="event-calendar-confirmation">
+           <button type="button" class="btn btn-sm btn-primary" data-confirm-event-calendar="${escapeHtml(event.id)}">Übernahme bestätigen</button>
+           <span class="muted">Beendet die Kalender-Erinnerungen.</span>
+         </div>`
+    : '';
   return `
     <div class="event-calendar-actions" role="group" aria-label="Event zum Kalender hinzufügen">
       <span class="event-card-detail-label">Zum Kalender hinzufügen</span>
@@ -95,6 +104,7 @@ export function renderEventCalendarActions(event, { invitation = false } = {}) {
         <a class="btn btn-sm" href="${escapeHtml(links.outlook)}" target="_blank" rel="noopener noreferrer" data-event-calendar="outlook">Outlook</a>
         <button type="button" class="btn btn-sm" data-download-event-calendar="${escapeHtml(event.id)}">Kalenderdatei</button>
       </div>
+      ${confirmation}
     </div>`;
 }
 
@@ -1042,6 +1052,23 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', () => {
       const event = calendarEventById(btn.dataset.downloadEventCalendar);
       if (event) downloadEventCalendar(event);
+    });
+  });
+  container.querySelectorAll('[data-confirm-event-calendar]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const eventId = btn.dataset.confirmEventCalendar;
+      btn.disabled = true;
+      try {
+        await api.events.confirmCalendar(eventId);
+        await ctx.refresh();
+        [...container.querySelectorAll('[data-event-calendar-confirmed]')]
+          .find((candidate) => candidate.dataset.eventCalendarConfirmed === eventId)
+          ?.focus();
+        showToast('Kalenderübernahme bestätigt. Weitere Kalender-Erinnerungen sind beendet.');
+      } catch (err) {
+        btn.disabled = false;
+        showToast(err.message, { error: true });
+      }
     });
   });
   wireInfoTooltips(container);

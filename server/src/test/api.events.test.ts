@@ -6,6 +6,7 @@ import { BASE_EVENT_ID, DEFAULT_GROUP_ID, db } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
 import { recordPushLog } from '../push';
 import { EVENT_FEATURE_KEYS } from '../eventFeatureCatalog';
+import { eventReminderTopicKey } from '../eventReminders';
 
 const app = createTestApp();
 const EVENT_MINIMUM_DURATION_MS = 5 * 60_000;
@@ -58,6 +59,82 @@ test('every account starts in the permanent base event', async () => {
     false,
     'the immutable base workspace is not rendered as a manageable LAN event',
   );
+});
+
+test('accepted participants confirm a calendar import for the current schedule revision', async () => {
+  const marker = Date.now();
+  const memberId = `calendar-confirm-member-${marker}`;
+  const outsiderId = `calendar-confirm-outsider-${marker}`;
+  const startsAt = marker + 14 * 24 * 60 * 60 * 1000;
+  createMember(memberId, `Calendar Confirm Member ${marker}`);
+  createMember(outsiderId, `Calendar Confirm Outsider ${marker}`);
+  const created = await createEvent(`Calendar Confirmation ${marker}`, EVENT_MINIMUM_DURATION_MS, {
+    startsAt,
+    endsAt: startsAt + EVENT_MINIMUM_DURATION_MS,
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const eventId = created.body.id as string;
+  accept(eventId, memberId);
+
+  const outsider = await request(app)
+    .post(`/api/events/${eventId}/calendar-confirmation`)
+    .set('x-test-player-id', outsiderId);
+  assert.equal(outsider.status, 404);
+
+  const before = await request(app).get('/api/events').set('x-test-player-id', memberId);
+  const beforeEvent = before.body.availableEvents.find((event: { id: string }) => event.id === eventId);
+  assert.equal(beforeEvent.myParticipation.calendarConfirmed, false);
+
+  const topic = eventReminderTopicKey('calendar', eventId, memberId, 1);
+  recordPushLog(
+    [memberId],
+    {
+      title: 'Event in den Kalender eintragen',
+      body: 'Bitte bestätigen.',
+      type: 'event-calendar-reminder',
+      targetId: eventId,
+    },
+    'direct',
+    { key: topic, expiresAt: startsAt },
+    { groupId: DEFAULT_GROUP_ID, eventId },
+  );
+
+  const confirmed = await request(app)
+    .post(`/api/events/${eventId}/calendar-confirmation`)
+    .set('x-test-player-id', memberId);
+  assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
+  assert.equal(confirmed.body.calendarConfirmed, true);
+  assert.equal(confirmed.body.changed, true);
+  assert.equal(confirmed.body.scheduleRevision, 1);
+  assert.ok(confirmed.body.confirmedAt);
+  assert.notEqual(
+    (db.prepare('SELECT resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?').get(topic) as {
+      resolvedAt: number | null;
+    }).resolvedAt,
+    null,
+  );
+
+  const repeated = await request(app)
+    .post(`/api/events/${eventId}/calendar-confirmation`)
+    .set('x-test-player-id', memberId);
+  assert.equal(repeated.status, 200);
+  assert.equal(repeated.body.changed, false);
+  assert.equal(repeated.body.confirmedAt, confirmed.body.confirmedAt);
+
+  const after = await request(app).get('/api/events').set('x-test-player-id', memberId);
+  const afterEvent = after.body.availableEvents.find((event: { id: string }) => event.id === eventId);
+  assert.equal(afterEvent.myParticipation.calendarConfirmed, true);
+
+  db.prepare('UPDATE events SET schedule_revision = 2 WHERE id = ?').run(eventId);
+  const rescheduled = await request(app).get('/api/events').set('x-test-player-id', memberId);
+  const rescheduledEvent = rescheduled.body.availableEvents.find((event: { id: string }) => event.id === eventId);
+  assert.equal(rescheduledEvent.myParticipation.calendarConfirmed, false);
+  const reconfirmed = await request(app)
+    .post(`/api/events/${eventId}/calendar-confirmation`)
+    .set('x-test-player-id', memberId);
+  assert.equal(reconfirmed.status, 200);
+  assert.equal(reconfirmed.body.changed, true);
+  assert.equal(reconfirmed.body.scheduleRevision, 2);
 });
 
 test('event collections list the earliest start first', async () => {

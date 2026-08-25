@@ -648,10 +648,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 91);
+  assert.equal(migrations.length, 92);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 91 }, (_, index) => index + 1),
+    Array.from({ length: 92 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -692,6 +692,12 @@ test('records the complete migration history and does not duplicate it on restar
   assert.ok(pushSeen, 'push_log_seen should be created for legacy databases');
   const pushHidden = migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'push_log_hidden'").get();
   assert.ok(pushHidden, 'push_log_hidden should be created for legacy databases');
+  for (const table of ['event_calendar_confirmations', 'event_reminder_deliveries']) {
+    assert.ok(
+      migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table),
+      `${table} should be created for legacy databases`,
+    );
+  }
   const playerColumns = migrated.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
   assert.ok(playerColumns.some((column) => column.name === 'deactivated_at'));
   assert.ok(playerColumns.some((column) => column.name === 'test_owner_group_id'));
@@ -1178,8 +1184,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 91 }, (_, index) => index + 1),
-    'every version 1..91 runs exactly once',
+    Array.from({ length: 92 }, (_, index) => index + 1),
+    'every version 1..92 runs exactly once',
   );
 });
 

@@ -836,8 +836,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   are clickable without a separate copy action when an event stores a web URL; plain locations remain
   text. A current event with a complete start/end period offers „Google Kalender“, „Outlook“ and
   „Kalenderdatei“ directly inside that same information box; the first two open a prefilled web event,
-  while the RFC-5545 `.ics` download covers native and other compatible calendar apps. Pending
-  invitations, ended events and incomplete periods omit the action group. Event creation and editing may
+  while the RFC-5545 `.ics` download covers native and other compatible calendar apps. An accepted
+  participant explicitly confirms the handoff below those actions because external providers expose no
+  reliable import callback. The confirmation becomes a compact „Im Kalender eingetragen“ state and is
+  bound to the event's current schedule revision, so a later reschedule asks for confirmation again.
+  Pending invitations, ended events and incomplete periods omit the action group. Two-hour and weekly
+  calendar nudges stop after confirmation; general one-week and one-day event reminders do not. Event creation and editing may
   add one optional per-person cost plus the same PayPal input as food orders: either an e-mail address
   or a complete HTTPS address on `paypal.me`/`paypal.com`. Cost and PayPal controls reuse the food-order price suffix
   and contextual label layout so both fields stay aligned. Invitation cards disclose that cost

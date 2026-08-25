@@ -301,6 +301,20 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.match(calendarContents, new RegExp(`UID:${eventId}@respawn\\.local`));
   assert.match(calendarContents, /SUMMARY:E2E Einladung LAN\r?\n/);
   assert.match(calendarContents, /LOCATION:https:\/\/maps\.example\.test\/respawn\r?\n/);
+  assert.match((await memberEventCard.textContent()) ?? '', /Beendet die Kalender-Erinnerungen/);
+  const confirmationResponse = memberPage.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url() === `${BASE_URL}/api/events/${eventId}/calendar-confirmation`,
+  );
+  const confirmCalendarButton = memberEventCard.locator(`[data-confirm-event-calendar="${eventId}"]`);
+  await confirmCalendarButton.focus();
+  await confirmCalendarButton.press('Enter');
+  assert.equal((await confirmationResponse).status(), 200);
+  const calendarConfirmed = memberEventCard.locator(`[data-event-calendar-confirmed="${eventId}"]`);
+  await calendarConfirmed.waitFor();
+  assert.match((await calendarConfirmed.textContent()) ?? '', /Im Kalender eingetragen/);
+  assert.equal(await memberEventCard.locator('[data-confirm-event-calendar]').count(), 0);
   assert.equal(
     await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     true,

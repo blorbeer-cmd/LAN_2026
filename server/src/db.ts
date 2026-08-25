@@ -4583,6 +4583,41 @@ registerMigration({
   up: enableArcadeForGeneralEvents,
 });
 
+// External calendar providers expose no import receipt. Keep explicit
+// confirmations and reminder deliveries per participant and schedule
+// revision; the composite foreign key clears both if the roster row leaves.
+function addEventCalendarReminderState(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS event_calendar_confirmations (
+      event_id          TEXT NOT NULL,
+      player_id         TEXT NOT NULL,
+      schedule_revision INTEGER NOT NULL,
+      confirmed_at      INTEGER NOT NULL,
+      PRIMARY KEY (event_id, player_id, schedule_revision),
+      FOREIGN KEY (event_id, player_id)
+        REFERENCES event_participants(event_id, player_id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS event_reminder_deliveries (
+      event_id          TEXT NOT NULL,
+      player_id         TEXT NOT NULL,
+      schedule_revision INTEGER NOT NULL,
+      kind               TEXT NOT NULL CHECK (kind IN ('calendar', 'upcoming_week', 'upcoming_day')),
+      first_sent_at      INTEGER NOT NULL,
+      last_sent_at       INTEGER NOT NULL,
+      PRIMARY KEY (event_id, player_id, schedule_revision, kind),
+      FOREIGN KEY (event_id, player_id)
+        REFERENCES event_participants(event_id, player_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_event_reminder_deliveries_due
+      ON event_reminder_deliveries(kind, last_sent_at);
+  `);
+}
+registerMigration({
+  version: 92,
+  name: 'add event calendar reminder state',
+  up: addEventCalendarReminderState,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

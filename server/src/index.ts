@@ -14,6 +14,7 @@ import { startOfflineSweeper } from './liveStatus';
 import { startFoodOrderPaymentReminder } from './foodOrderReminders';
 import { startEventPaymentReminder } from './eventPaymentReminders';
 import { startEventDatePollReminderSweep } from './eventDatePollReminders';
+import { startEventReminderSweep } from './eventReminders';
 import { startArcadeHeartbeat } from './arcade/arcadeTracking';
 import { registerArcadeSockets } from './arcade/arcade';
 import { registerTetrisSockets } from './arcade/tetris';
@@ -77,6 +78,7 @@ function start(): void {
   startFoodOrderPaymentReminder();
   startEventPaymentReminder();
   startEventDatePollReminderSweep();
+  startEventReminderSweep();
   // Keeps players mid-arcade-match from being swept offline (arcade has no
   // agent report to keep live_status fresh — see arcadeTracking.ts).
   startArcadeHeartbeat();

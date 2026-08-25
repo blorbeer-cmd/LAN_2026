@@ -3855,6 +3855,19 @@ button.card {
   text-align: center;
   text-decoration: none;
 }
+.event-calendar-confirmation {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.event-calendar-confirmed {
+  align-self: flex-start;
+}
+.event-calendar-confirmed:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .event-calendar-actions + .event-card-payment {
   margin-top: var(--space-3);
   border-top: 1px solid var(--border);
@@ -3862,6 +3875,10 @@ button.card {
 @media (min-width: 640px) { /* --bp-md */
   .event-calendar-action-buttons {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .event-calendar-confirmation {
+    flex-direction: row;
+    align-items: center;
   }
 }
 .event-payment-heading {
