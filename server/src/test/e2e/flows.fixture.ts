@@ -267,7 +267,9 @@ flowTest('shell', 'untabbed areas align compact cards while tabbed areas reserve
   };
   const firstCardMetrics = async (label: string): Promise<CardMetrics> => {
     const metrics = await page.waitForFunction((areaLabel) => {
-      const card = document.querySelector('#view-container .card');
+      const container = document.querySelector('#view-container');
+      if (!container) return null;
+      const card = container.querySelector('.card');
       if (!card) return null;
       const cardBox = card.getBoundingClientRect();
       if (!cardBox.width || !cardBox.height) return null;
@@ -278,7 +280,13 @@ flowTest('shell', 'untabbed areas align compact cards while tabbed areas reserve
             inset: Math.round(heading.getBoundingClientRect().top - cardBox.top),
           }
         : null;
-      return { label: areaLabel, top: Math.round(cardBox.y), headingMetrics };
+      // Relative to the scroll box, not the viewport: #view-container is the
+      // element that scrolls, so a raw viewport y compares "edge minus
+      // scroll offset" across areas and would differ purely because one view
+      // happened to be scrolled. The comparisons below (one shared edge, and
+      // a tabbed header reserving more room) are about the edge itself.
+      const top = Math.round(cardBox.top - container.getBoundingClientRect().top + container.scrollTop);
+      return { label: areaLabel, top, headingMetrics };
     }, label);
     const value = await metrics.jsonValue();
     assert.ok(value, `${label} should render a first card`);
@@ -537,10 +545,28 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
     assert.equal(await header.count(), 1);
     assert.equal(await header.locator('.more-subpage-title-row h1.view-title').innerText(), title);
     assert.equal(await header.locator('[data-navigate="admin"]').count(), 1);
-    const cardInset = await page.locator('#view-container .card').first().evaluate((card) => {
+    // #view-container is itself the scroll box (overflow-y: auto in
+    // style.css), so comparing two viewport rects measures "inset minus
+    // however far the view happens to be scrolled" rather than the layout
+    // inset this asserts. switchView() resets scrollTop, but only around the
+    // synchronous render — these admin views show a loading state first and
+    // swap in their real content from an async fetch, and the reload() above
+    // lets the browser restore a scroll offset of its own. A leftover offset
+    // of 124px is what produced the reported -56 (68 - 124).
+    //
+    // Adding scrollTop back makes this measure the inset itself, so it stays
+    // exact and still fails on a real layout change - it just no longer
+    // depends on an unrelated variable the test never controlled. Querying
+    // the card inside the same evaluation additionally keeps resolution and
+    // measurement in one task, so an async re-render cannot land between them.
+    const cardInset = await page.evaluate(() => {
       const container = document.querySelector('#view-container');
       if (!container) throw new Error('View container missing');
-      return Math.round(card.getBoundingClientRect().top - container.getBoundingClientRect().top);
+      const card = container.querySelector('.card');
+      if (!card) throw new Error('No card rendered inside the view container');
+      return Math.round(
+        card.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop,
+      );
     });
     assert.equal(cardInset, 68, `${title} should share the compact first-card inset`);
   };
