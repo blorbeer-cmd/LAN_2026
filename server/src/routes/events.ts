@@ -50,7 +50,7 @@ import {
   isEventTypeKey,
 } from '../eventFeatureCatalog';
 import { isAdminTestMode } from '../testDataVisibility';
-import { confirmEventCalendar } from '../eventReminders';
+import { confirmEventCalendar, STEFAN_CALENDAR_GAG_USERNAME } from '../eventReminders';
 
 export const eventsRouter = Router();
 
@@ -175,6 +175,7 @@ function myParticipationField(eventId: string, viewerId: string) {
   const row = db
     .prepare(
       `SELECT ep.status, ep.confirmed_schedule_revision AS confirmedScheduleRevision,
+              p.name AS playerName,
               EXISTS (
                 SELECT 1 FROM event_calendar_confirmations confirmation
                 WHERE confirmation.event_id = ep.event_id
@@ -183,6 +184,7 @@ function myParticipationField(eventId: string, viewerId: string) {
               ) AS calendarConfirmed
        FROM event_participants ep
        JOIN events e ON e.id = ep.event_id
+       JOIN players p ON p.id = ep.player_id
        WHERE ep.event_id = ? AND ep.player_id = ?`,
     )
     .get(eventId, viewerId) as
@@ -190,6 +192,7 @@ function myParticipationField(eventId: string, viewerId: string) {
         status: 'invited' | 'accepted' | 'declined';
         confirmedScheduleRevision: number | null;
         calendarConfirmed: number;
+        playerName: string;
       }
     | undefined;
   return {
@@ -198,6 +201,7 @@ function myParticipationField(eventId: string, viewerId: string) {
           status: row.status,
           confirmedScheduleRevision: row.confirmedScheduleRevision,
           calendarConfirmed: row.calendarConfirmed === 1,
+          calendarConfirmationNeedsExtraCheck: row.playerName === STEFAN_CALENDAR_GAG_USERNAME,
         }
       : null,
   };

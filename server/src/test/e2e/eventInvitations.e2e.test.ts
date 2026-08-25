@@ -11,7 +11,7 @@ let BASE_URL: string;
 const RECOVERY_CODE = 'event-invitations-e2e-recovery';
 const OWNER_NAME = 'E2E Event Owner';
 const OWNER_PASSWORD = 'e2e event owner secure passphrase';
-const MEMBER_NAME = 'E2E Event Member';
+const MEMBER_NAME = '$t3vYb0y';
 const MEMBER_PASSWORD = 'e2e event member secure passphrase';
 const EVENT_NAME = 'E2E Einladung LAN';
 
@@ -269,7 +269,7 @@ test('manager invites a member who accepts and both open clients update', async 
   await memberPage.waitForSelector('#view-container[data-view="events"]');
   const memberEventCard = memberPage.locator(`[data-event-card="${eventId}"]`);
   await memberEventCard.waitFor();
-  assert.match((await memberEventCard.textContent()) ?? '', new RegExp(MEMBER_NAME));
+  assert.ok(((await memberEventCard.textContent()) ?? '').includes(MEMBER_NAME));
   assert.equal(
     await memberEventCard.locator('a.event-location-link').getAttribute('href'),
     'https://maps.example.test/respawn',
@@ -310,6 +310,13 @@ test('manager invites a member who accepts and both open clients update', async 
   const confirmCalendarButton = memberEventCard.locator(`[data-confirm-event-calendar="${eventId}"]`);
   await confirmCalendarButton.focus();
   await confirmCalendarButton.press('Enter');
+  const stefanConfirmation = memberPage.locator('[role="alertdialog"]', {
+    hasText: 'Hast du den Termin wirklich eingetragen, Stefan??!!',
+  });
+  await stefanConfirmation.waitFor();
+  assert.match((await stefanConfirmation.textContent()) ?? '', /Ganz sicher, Stefan\?/);
+  await stefanConfirmation.locator('[data-confirm]').focus();
+  await stefanConfirmation.locator('[data-confirm]').press('Enter');
   assert.equal((await confirmationResponse).status(), 200);
   const calendarConfirmed = memberEventCard.locator(`[data-event-calendar-confirmed="${eventId}"]`);
   await calendarConfirmed.waitFor();
@@ -439,7 +446,7 @@ test('manager invites a member who accepts and both open clients update', async 
   const creatorPaymentButton = memberRow.locator(`[data-modal-toggle-event-paid="${memberId}"]`);
   assert.equal(await creatorPaymentButton.getAttribute('aria-pressed'), 'true');
   assert.equal(await creatorPaymentButton.textContent(), 'Bezahlt');
-  assert.match((await memberRow.textContent()) ?? '', new RegExp(`Bezahlt von ${MEMBER_NAME}`));
+  assert.ok(((await memberRow.textContent()) ?? '').includes(`Bezahlt von ${MEMBER_NAME}`));
   assert.doesNotMatch((await memberRow.textContent()) ?? '', /Zahlung zuerst zurücksetzen/);
   const lockedRemoveButton = memberRow.locator('[data-remove-participant]');
   assert.equal(await lockedRemoveButton.getAttribute('disabled'), null);

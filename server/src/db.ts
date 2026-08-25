@@ -4618,6 +4618,38 @@ registerMigration({
   up: addEventCalendarReminderState,
 });
 
+// Migration 92 shipped with a closed reminder-kind allowlist. Rebuild the
+// child table so the deliberately one-off Stefan follow-up can be stored
+// durably without weakening the constraint for arbitrary values.
+function addStefanCalendarFollowupReminderKind(): void {
+  db.exec(`
+    CREATE TABLE event_reminder_deliveries_rebuilt_93 (
+      event_id          TEXT NOT NULL,
+      player_id         TEXT NOT NULL,
+      schedule_revision INTEGER NOT NULL,
+      kind               TEXT NOT NULL CHECK (kind IN ('calendar', 'stefan_calendar_followup', 'upcoming_week', 'upcoming_day')),
+      first_sent_at      INTEGER NOT NULL,
+      last_sent_at       INTEGER NOT NULL,
+      PRIMARY KEY (event_id, player_id, schedule_revision, kind),
+      FOREIGN KEY (event_id, player_id)
+        REFERENCES event_participants(event_id, player_id) ON DELETE CASCADE
+    );
+    INSERT INTO event_reminder_deliveries_rebuilt_93
+      (event_id, player_id, schedule_revision, kind, first_sent_at, last_sent_at)
+      SELECT event_id, player_id, schedule_revision, kind, first_sent_at, last_sent_at
+      FROM event_reminder_deliveries;
+    DROP TABLE event_reminder_deliveries;
+    ALTER TABLE event_reminder_deliveries_rebuilt_93 RENAME TO event_reminder_deliveries;
+    CREATE INDEX idx_event_reminder_deliveries_due
+      ON event_reminder_deliveries(kind, last_sent_at);
+  `);
+}
+registerMigration({
+  version: 93,
+  name: 'add Stefan calendar followup reminder kind',
+  up: addStefanCalendarFollowupReminderKind,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

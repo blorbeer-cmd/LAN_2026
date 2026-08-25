@@ -162,6 +162,66 @@ test('legacy game_catalog tables are merged into games and preferences', () => {
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+test('migration 93 preserves reminder deliveries and allows the Stefan followup kind', () => {
+  const dbFile = makeTempDbPath('stefan-calendar-followup-kind');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)').run(
+    'migration-93-player',
+    '$t3vYb0y',
+    'migration-93-key',
+    1,
+  );
+  fixture.prepare(
+    `INSERT INTO events
+       (id, name, starts_at, ends_at, group_id, status, visibility_scope, schedule_revision)
+     VALUES (?, ?, ?, ?, ?, 'published', 'participants', 1)`,
+  ).run('migration-93-event', 'Migration 93 Event', 100, 200, 'default-group');
+  fixture.prepare(
+    `INSERT INTO event_participants (event_id, player_id, status)
+     VALUES ('migration-93-event', 'migration-93-player', 'accepted')`,
+  ).run();
+  fixture.prepare(
+    `INSERT INTO event_reminder_deliveries
+       (event_id, player_id, schedule_revision, kind, first_sent_at, last_sent_at)
+     VALUES ('migration-93-event', 'migration-93-player', 1, 'calendar', 10, 10)`,
+  ).run();
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 93').run();
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile);
+  assert.deepEqual(
+    migrated
+      .prepare(
+        `SELECT kind, first_sent_at AS firstSentAt, last_sent_at AS lastSentAt
+         FROM event_reminder_deliveries
+         WHERE event_id = 'migration-93-event' AND player_id = 'migration-93-player'`,
+      )
+      .all(),
+    [{ kind: 'calendar', firstSentAt: 10, lastSentAt: 10 }],
+  );
+  migrated.prepare(
+    `INSERT INTO event_reminder_deliveries
+       (event_id, player_id, schedule_revision, kind, first_sent_at, last_sent_at)
+     VALUES ('migration-93-event', 'migration-93-player', 1, 'stefan_calendar_followup', 20, 20)`,
+  ).run();
+  assert.throws(
+    () => migrated.prepare(
+      `INSERT INTO event_reminder_deliveries
+         (event_id, player_id, schedule_revision, kind, first_sent_at, last_sent_at)
+       VALUES ('migration-93-event', 'migration-93-player', 1, 'unexpected', 30, 30)`,
+    ).run(),
+    /CHECK constraint failed/,
+  );
+  assert.deepEqual(migrated.pragma('foreign_key_check'), []);
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('historical test LANs are marked and food-order quantity/paid/paid_by/paid_at/finalized/paypal/tip columns default safely during upgrade', () => {
   const dbFile = makeTempDbPath('test-data-and-food-quantity');
   const now = Date.now();
@@ -648,10 +708,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 92);
+  assert.equal(migrations.length, 93);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 92 }, (_, index) => index + 1),
+    Array.from({ length: 93 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -698,6 +758,10 @@ test('records the complete migration history and does not duplicate it on restar
       `${table} should be created for legacy databases`,
     );
   }
+  const eventReminderDeliveriesSql = (migrated
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'event_reminder_deliveries'")
+    .get() as { sql: string }).sql;
+  assert.match(eventReminderDeliveriesSql, /stefan_calendar_followup/);
   const playerColumns = migrated.prepare('PRAGMA table_info(players)').all() as Array<{ name: string }>;
   assert.ok(playerColumns.some((column) => column.name === 'deactivated_at'));
   assert.ok(playerColumns.some((column) => column.name === 'test_owner_group_id'));
@@ -1184,8 +1248,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 92 }, (_, index) => index + 1),
-    'every version 1..92 runs exactly once',
+    Array.from({ length: 93 }, (_, index) => index + 1),
+    'every version 1..93 runs exactly once',
   );
 });
 

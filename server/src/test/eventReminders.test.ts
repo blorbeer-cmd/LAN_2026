@@ -6,21 +6,23 @@ import { ensureDefaultGroupMembership } from '../groups';
 import {
   EVENT_CALENDAR_FIRST_REMINDER_DELAY_MS,
   EVENT_CALENDAR_REMINDER_INTERVAL_MS,
+  EVENT_STEFAN_CONFIRMATION_FOLLOWUP_DELAY_MS,
   EVENT_UPCOMING_DAY_DELAY_MS,
   EVENT_UPCOMING_WEEK_DELAY_MS,
+  STEFAN_CALENDAR_GAG_USERNAME,
   confirmEventCalendar,
   eventReminderTopicKey,
   runEventReminderSweepOnce,
 } from '../eventReminders';
 
-function createReminderFixture(startsAt: number) {
+function createReminderFixture(startsAt: number, playerName?: string) {
   const playerId = nanoid();
   const eventId = nanoid();
   const acceptedAt = Date.now();
   db.prepare(
     `INSERT INTO players (id, name, api_key, created_at)
      VALUES (?, ?, ?, ?)`,
-  ).run(playerId, `Calendar Reminder ${playerId}`, nanoid(), acceptedAt);
+  ).run(playerId, playerName ?? `Calendar Reminder ${playerId}`, nanoid(), acceptedAt);
   ensureDefaultGroupMembership(playerId);
   db.prepare(
     `INSERT INTO events
@@ -126,6 +128,45 @@ test('a changed schedule revision requires a fresh calendar confirmation', () =>
         .prepare('SELECT COUNT(*) AS count FROM event_calendar_confirmations WHERE event_id = ? AND player_id = ?')
         .get(fixture.eventId, fixture.playerId) as { count: number }).count,
       2,
+    );
+  } finally {
+    cleanupFixture(fixture.eventId, fixture.playerId);
+  }
+});
+
+test('Stefan receives one extra calendar check a week after confirming', () => {
+  const confirmedAt = Date.now();
+  const fixture = createReminderFixture(
+    confirmedAt + 30 * 24 * 60 * 60 * 1000,
+    STEFAN_CALENDAR_GAG_USERNAME,
+  );
+  const followupDue = confirmedAt + EVENT_STEFAN_CONFIRMATION_FOLLOWUP_DELAY_MS;
+  const topic = eventReminderTopicKey('stefan_calendar_followup', fixture.eventId, fixture.playerId, 1);
+
+  try {
+    assert.equal(confirmEventCalendar(fixture.eventId, fixture.playerId, confirmedAt).ok, true);
+    assert.deepEqual(runEventReminderSweepOnce(followupDue - 1), { calendar: 0, upcoming: 0 });
+    assert.deepEqual(runEventReminderSweepOnce(followupDue), { calendar: 1, upcoming: 0 });
+    assert.deepEqual(runEventReminderSweepOnce(followupDue + 1), { calendar: 0, upcoming: 0 });
+
+    const push = db
+      .prepare(
+        `SELECT title, body, notification_type AS notificationType, topic_key AS topicKey
+         FROM push_log WHERE topic_key = ?`,
+      )
+      .get(topic) as Record<string, string>;
+    assert.equal(push.title, 'Ist der Termin wirklich im Kalender, Stefan??');
+    assert.match(push.body, /steht wirklich drin/);
+    assert.equal(push.notificationType, 'event-calendar-stefan-followup');
+    assert.equal(push.topicKey, topic);
+    assert.deepEqual(
+      db
+        .prepare(
+          `SELECT kind FROM event_reminder_deliveries
+           WHERE event_id = ? AND player_id = ? AND schedule_revision = 1`,
+        )
+        .all(fixture.eventId, fixture.playerId),
+      [{ kind: 'stefan_calendar_followup' }],
     );
   } finally {
     cleanupFixture(fixture.eventId, fixture.playerId);

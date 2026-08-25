@@ -8,11 +8,13 @@ import {
 
 export const EVENT_CALENDAR_FIRST_REMINDER_DELAY_MS = 2 * 60 * 60 * 1000;
 export const EVENT_CALENDAR_REMINDER_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+export const EVENT_STEFAN_CONFIRMATION_FOLLOWUP_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
 export const EVENT_UPCOMING_WEEK_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
 export const EVENT_UPCOMING_DAY_DELAY_MS = 24 * 60 * 60 * 1000;
 export const EVENT_REMINDER_SWEEP_INTERVAL_MS = 30 * 60 * 1000;
+export const STEFAN_CALENDAR_GAG_USERNAME = '$t3vYb0y';
 
-type ReminderKind = 'calendar' | 'upcoming_week' | 'upcoming_day';
+type ReminderKind = 'calendar' | 'stefan_calendar_followup' | 'upcoming_week' | 'upcoming_day';
 
 interface ReminderRow {
   eventId: string;
@@ -121,6 +123,47 @@ function dueUpcomingReminders(now: number): Array<ReminderRow & { kind: 'upcomin
     ) as Array<ReminderRow & { kind: 'upcoming_week' | 'upcoming_day' }>;
 }
 
+function dueStefanCalendarFollowups(now: number): ReminderRow[] {
+  return db
+    .prepare(
+      `SELECT e.id AS eventId, e.group_id AS groupId, e.name AS eventName,
+              e.starts_at AS startsAt, e.schedule_revision AS scheduleRevision,
+              ep.player_id AS playerId
+       FROM events e
+       JOIN event_participants ep ON ep.event_id = e.id
+       JOIN players p ON p.id = ep.player_id
+       JOIN event_calendar_confirmations confirmation
+         ON confirmation.event_id = e.id
+        AND confirmation.player_id = ep.player_id
+        AND confirmation.schedule_revision = e.schedule_revision
+       WHERE e.group_id IS NOT NULL
+         AND e.status = 'published'
+         AND e.ended_at IS NULL
+         AND e.is_test = 0
+         AND e.starts_at IS NOT NULL
+         AND e.ends_at IS NOT NULL
+         AND e.starts_at > ?
+         AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
+         AND p.deactivated_at IS NULL
+         AND p.is_test = 0
+         AND p.name = ?
+         AND confirmation.confirmed_at <= ?
+         AND NOT EXISTS (
+           SELECT 1 FROM event_reminder_deliveries delivery
+           WHERE delivery.event_id = e.id
+             AND delivery.player_id = ep.player_id
+             AND delivery.schedule_revision = e.schedule_revision
+             AND delivery.kind = 'stefan_calendar_followup'
+         )
+       ORDER BY e.starts_at, e.id, ep.player_id`,
+    )
+    .all(
+      now,
+      STEFAN_CALENDAR_GAG_USERNAME,
+      now - EVENT_STEFAN_CONFIRMATION_FOLLOWUP_DELAY_MS,
+    ) as ReminderRow[];
+}
+
 function recordDelivery(row: ReminderRow, kind: ReminderKind, now: number): void {
   db.prepare(
     `INSERT INTO event_reminder_deliveries
@@ -150,6 +193,29 @@ function sendCalendarReminder(row: ReminderRow, now: number): boolean {
   );
   if (!delivery) return false;
   recordDelivery(row, 'calendar', now);
+  return true;
+}
+
+function sendStefanCalendarFollowup(row: ReminderRow, now: number): boolean {
+  const kind = 'stefan_calendar_followup';
+  const delivery = notifyPlayers(
+    [row.playerId],
+    {
+      title: 'Ist der Termin wirklich im Kalender, Stefan??',
+      body: `Nur zur Sicherheit: „${row.eventName}“ steht wirklich drin, oder?`,
+      url: '/#events',
+      type: 'event-calendar-stefan-followup',
+      targetId: row.eventId,
+    },
+    'direct',
+    {
+      key: eventReminderTopicKey(kind, row.eventId, row.playerId, row.scheduleRevision),
+      expiresAt: row.startsAt,
+    },
+    { groupId: row.groupId, eventId: row.eventId },
+  );
+  if (!delivery) return false;
+  recordDelivery(row, kind, now);
   return true;
 }
 
@@ -186,6 +252,9 @@ export function runEventReminderSweepOnce(now = Date.now()): { calendar: number;
   let calendar = 0;
   for (const row of dueCalendarReminders(now)) {
     if (sendCalendarReminder(row, now)) calendar += 1;
+  }
+  for (const row of dueStefanCalendarFollowups(now)) {
+    if (sendStefanCalendarFollowup(row, now)) calendar += 1;
   }
 
   let upcoming = 0;

@@ -841,7 +841,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   reliable import callback. The confirmation becomes a compact „Im Kalender eingetragen“ state and is
   bound to the event's current schedule revision, so a later reschedule asks for confirmation again.
   Pending invitations, ended events and incomplete periods omit the action group. Two-hour and weekly
-  calendar nudges stop after confirmation; general one-week and one-day event reminders do not. Event creation and editing may
+  calendar nudges stop after confirmation; general one-week and one-day event reminders do not. The
+  account `$t3vYb0y` gets the deliberate Stefan gag: its confirmation opens one additional themed
+  safety question, and one week after confirmation it receives one final direct calendar check while
+  the event is still upcoming. Event creation and editing may
   add one optional per-person cost plus the same PayPal input as food orders: either an e-mail address
   or a complete HTTPS address on `paypal.me`/`paypal.com`. Cost and PayPal controls reuse the food-order price suffix
   and contextual label layout so both fields stay aligned. Invitation cards disclose that cost

@@ -1057,6 +1057,14 @@ export function renderOrgaEvents(container, ctx) {
   container.querySelectorAll('[data-confirm-event-calendar]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const eventId = btn.dataset.confirmEventCalendar;
+      const event = calendarEventById(eventId);
+      if (
+        event?.myParticipation?.calendarConfirmationNeedsExtraCheck &&
+        !(await confirmDialog('Hast du den Termin wirklich eingetragen, Stefan??!!', {
+          title: 'Ganz sicher, Stefan?',
+          confirmText: 'Ja, wirklich',
+        }))
+      ) return;
       btn.disabled = true;
       try {
         await api.events.confirmCalendar(eventId);
