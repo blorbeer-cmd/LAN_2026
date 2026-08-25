@@ -14,6 +14,9 @@ test('event context keeps the personal workspace separate from invitations', () 
   const base = { id: 'base', name: 'Allgemein' };
   const lan = { id: 'lan', name: 'Sommer-LAN' };
   const invitation = { id: 'winter', name: 'Winter-LAN', participantStatus: 'invited' };
+  // A declined event keeps its own list: still visible as a teaser, never part
+  // of the workspaces the account can switch into.
+  const declined = { id: 'spring', name: 'Frühlings-LAN', participationStatus: 'declined' };
 
   const past = { id: 'past', name: 'LAN 2024', isEnded: true };
 
@@ -24,6 +27,7 @@ test('event context keeps the personal workspace separate from invitations', () 
       endedEvents: [past],
       historicalEvents: [base, lan, past],
       invitations: [invitation],
+      declinedEvents: [declined],
     }),
     {
       events: [base, lan],
@@ -34,6 +38,7 @@ test('event context keeps the personal workspace separate from invitations', () 
       endedEvents: [past],
       historicalEvents: [base, lan, past],
       eventInvitations: [invitation],
+      declinedEvents: [declined],
       eventTypeOptions: [],
     },
   );
