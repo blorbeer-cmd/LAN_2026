@@ -409,9 +409,22 @@ test('an open, actively-searched switcher survives an unrelated background refre
 test('a general event removes LAN-only whole areas across navigation, Home, Profile and Admin', async () => {
   await switchWorkspaceInBrowser(generalEvent);
 
+  const expectedNavViews = ['home', 'arrivals', 'checklistPacking', 'checklist', 'eventPolls', 'more'];
+  // The switcher's enabled state confirms that its own refresh settled, but
+  // the event-feature navigation follows through a separate render signal.
+  // Wait for that observable contract instead of racing it on a loaded CI
+  // runner; the assertion below still fails if the general-event nav never
+  // arrives or contains the wrong destinations.
+  await page.waitForFunction(
+    (expected) => Array.from(document.querySelectorAll<HTMLElement>('.nav-btn'))
+      .filter((button) => button.getClientRects().length > 0)
+      .map((button) => button.dataset.view)
+      .join(',') === expected.join(','),
+    expectedNavViews,
+  );
   assert.deepEqual(
     await page.locator('.nav-btn:visible').evaluateAll((buttons) => buttons.map((button) => (button as HTMLElement).dataset.view)),
-    ['home', 'arrivals', 'checklistPacking', 'checklist', 'eventPolls', 'more'],
+    expectedNavViews,
   );
   assert.equal(await page.locator('.nav-btn[data-view="eventPolls"]').isEnabled(), true);
   await page.click('.nav-btn[data-view="eventPolls"]');
