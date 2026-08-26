@@ -236,7 +236,7 @@ function renderAssignedTodos() {
   let content;
   if (tasks === null) content = emptyStateHtml('Lädt…');
   else if (!myId) content = '<p class="muted">Wähle oben, wer du bist, um deine To-Dos zu sehen.</p>';
-  else if (tasks.length === 0) content = '<p class="muted">Aktuell liegt nichts bei dir.</p>';
+  else if (tasks.length === 0) content = '<p class="muted">Noch keine To-Dos für dich.</p>';
   else {
     const visibleTasks = tasks.slice(0, 3);
     const remaining = tasks.length - visibleTasks.length;

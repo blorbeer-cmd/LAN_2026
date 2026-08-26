@@ -3271,7 +3271,7 @@ flowTest('food-orders', "Essensbestellung: the description field suggests the or
   await page.waitForSelector('.modal h2:has-text("Deine 4 Positionen löschen?")');
   assert.equal(await page.locator('.food-order-confirm-list li').count(), 4);
   await page.click('[data-confirm-ok]');
-  await page.waitForSelector('text=Noch nichts eingetragen.');
+  await page.waitForSelector('text=Noch keine Positionen.');
 });
 
 flowTest('food-orders', 'Essensbestellung: marking a position paid does not scroll the Essen view back to the top', async () => {

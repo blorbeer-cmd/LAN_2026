@@ -597,7 +597,7 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
 
 function renderItems(order, myId, { locked = false } = {}) {
   if (order.items.length === 0) {
-    return `<div class="muted" style="font-size:var(--font-size-sm);padding:var(--space-2) 0;">Noch nichts eingetragen.</div>`;
+    return `<div class="muted" style="font-size:var(--font-size-sm);padding:var(--space-2) 0;">Noch keine Positionen.</div>`;
   }
   const grouped = itemsGroupedByPlayer(order);
 
