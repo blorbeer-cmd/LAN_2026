@@ -23,8 +23,10 @@ import {
   isParticipant,
   removeEventParticipant,
   respondToEventInvitation,
+  eventParticipationLockReason,
   setParticipants,
   OUTSIDE_EVENTS_ID,
+  type EventParticipationLockReason,
   type UpdateEventFields,
   type EventRow,
 } from '../events';
@@ -41,7 +43,7 @@ import { writeAdminAudit } from '../adminAudit';
 import { setEventTrackingConsent } from '../trackingContexts';
 import { activeGroupPlayers } from '../groupPlayers';
 import { createPersistentBackup } from '../backupService';
-import { eventAccessLevel, getOrRepairActiveEvent } from '../eventContext';
+import { eventAccessLevel, fallbackPlayerEventContext, getOrRepairActiveEvent } from '../eventContext';
 import { getEnabledEventFeatures, isEventFeatureEnabled } from '../eventFeatures';
 import {
   DEFAULT_EVENT_TYPE_KEY,
@@ -88,6 +90,90 @@ function eventTypeOptions() {
 // invitation's notification and never a parallel one for another event.
 function eventInvitationTopicKey(eventId: string, playerId: string): string {
   return `event-invitation:${eventId}:${playerId}`;
+}
+
+// The organizer's counterpart of the invitation topic: one open item per
+// person and event, retired again when that person re-accepts.
+function withdrawnAcceptanceTopicKey(eventId: string, playerId: string): string {
+  return `event-withdrawn-acceptance:${eventId}:${playerId}`;
+}
+
+const PARTICIPATION_LOCK_MESSAGES: Record<EventParticipationLockReason, string> = {
+  paid: 'Für diese Teilnahme ist bereits eine Zahlung erfasst. Die Orga muss sie zuerst zurücksetzen.',
+  started: 'Das Event läuft bereits. Bitte wende dich direkt an die Orga.',
+  ended: 'Das Event ist beendet.',
+  cancelled: 'Das Event wurde abgesagt.',
+};
+
+// Who has to hear about a change to the roster they are planning with: the
+// group's active owners/admins plus the recorded event creator, who may be a
+// plain member. The person acting is never told about their own decision.
+function eventOrganizerPlayerIds(event: EventRow, groupId: string, excludePlayerId: string): string[] {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT gm.player_id AS playerId
+       FROM group_memberships gm
+       JOIN players p ON p.id = gm.player_id
+       WHERE gm.group_id = ? AND gm.status = 'active' AND p.deactivated_at IS NULL
+         AND (gm.role IN ('owner', 'admin') OR gm.player_id = ?)`,
+    )
+    .all(groupId, event.created_by ?? '') as Array<{ playerId: string }>;
+  return rows.map((row) => row.playerId).filter((playerId) => playerId !== excludePlayerId);
+}
+
+// Removal is the only way an event disappears from someone's app completely,
+// so it is announced — but only to someone who was still counting on it. After
+// their own decline the removal merely tidies up a decision they made
+// themselves, and "du wurdest entfernt" would read like a punishment for it.
+function notifyRemovedParticipant(
+  event: EventRow,
+  playerId: string,
+  previousStatus: string,
+  groupId: string,
+): void {
+  if (previousStatus !== 'invited' && previousStatus !== 'accepted') return;
+  notifyPlayers(
+    [playerId],
+    {
+      title: 'Teilnahme entfernt',
+      body: `${event.name}: Du bist nicht mehr als Teilnehmer eingetragen.`,
+      url: '/#events',
+    },
+    'direct',
+    { key: `event-participation-removed:${event.id}:${playerId}` },
+    { groupId, eventId: BASE_EVENT_ID },
+  );
+}
+
+// A withdrawn acceptance changes what the organizer is planning with, so it is
+// the one answer that reaches them actively. A plain "no" to a still-open
+// invitation stays silent: that is the normal answer to a question they just
+// asked, and it is visible in the roster either way.
+//
+// Deliberately scoped to the base event, the same reason the invitation push
+// itself uses: notifyPlayers only delivers to accepted participants of its
+// scope event, and an organizer need not be a participant of this one.
+function notifyOrganizersOfWithdrawnAcceptance(
+  event: EventRow,
+  playerId: string,
+  previousStatus: string,
+  groupId: string,
+): void {
+  if (previousStatus !== 'accepted') return;
+  const recipients = eventOrganizerPlayerIds(event, groupId, playerId);
+  if (recipients.length === 0) return;
+  const player = db.prepare('SELECT name FROM players WHERE id = ?').get(playerId) as { name: string } | undefined;
+  notifyPlayers(
+    recipients,
+    {
+      title: 'Zusage zurückgezogen',
+      body: `${event.name}: ${player?.name ?? 'Ein Teilnehmer'} hat die Zusage zurückgezogen.`,
+      url: '/#events',
+    },
+    'direct',
+    { key: withdrawnAcceptanceTopicKey(event.id, playerId) },
+    { groupId, eventId: BASE_EVENT_ID },
+  );
 }
 
 let eventLifecycleQueue: Promise<void> = Promise.resolve();
@@ -171,10 +257,11 @@ function acceptedParticipantsForViewer(eventId: string, viewerId: string | undef
 // "currently confirmed" predicate — acceptedParticipants deliberately hides a
 // stale (pre-reschedule, unconfirmed) row, but the date poll UI needs exactly
 // that row to tell the affected member they must reconfirm.
-function myParticipationField(eventId: string, viewerId: string) {
+function myParticipationField(event: EventRow, viewerId: string) {
+  const eventId = event.id;
   const row = db
     .prepare(
-      `SELECT ep.status, ep.confirmed_schedule_revision AS confirmedScheduleRevision,
+      `SELECT ep.status, ep.paid, ep.confirmed_schedule_revision AS confirmedScheduleRevision,
               p.name AS playerName,
               EXISTS (
                 SELECT 1 FROM event_calendar_confirmations confirmation
@@ -190,20 +277,38 @@ function myParticipationField(eventId: string, viewerId: string) {
     .get(eventId, viewerId) as
     | {
         status: 'invited' | 'accepted' | 'declined';
+        paid: number;
         confirmedScheduleRevision: number | null;
         calendarConfirmed: number;
         playerName: string;
       }
     | undefined;
+  if (!row) return { myParticipation: null };
+  // The client needs to know both that an answer is possible and, when it is
+  // not, why — a control that silently vanishes leaves someone wondering
+  // whether the app is broken (DESIGN_SYSTEM.md, "Disabled actions stay
+  // understandable"). The base workspace is answered nowhere, so it reports
+  // neither direction as open.
+  const answerable = eventId !== BASE_EVENT_ID && eventId !== OUTSIDE_EVENTS_ID;
+  const paid = Boolean(row.paid);
+  const acceptLock = answerable
+    ? eventParticipationLockReason(event, { from: row.status, to: 'accepted' }, paid)
+    : null;
+  const declineLock = answerable
+    ? eventParticipationLockReason(event, { from: row.status, to: 'declined' }, paid)
+    : null;
   return {
-    myParticipation: row
-      ? {
-          status: row.status,
-          confirmedScheduleRevision: row.confirmedScheduleRevision,
-          calendarConfirmed: row.calendarConfirmed === 1,
-          calendarConfirmationNeedsExtraCheck: row.playerName === STEFAN_CALENDAR_GAG_USERNAME,
-        }
-      : null,
+    myParticipation: {
+      status: row.status,
+      confirmedScheduleRevision: row.confirmedScheduleRevision,
+      calendarConfirmed: row.calendarConfirmed === 1,
+      calendarConfirmationNeedsExtraCheck: row.playerName === STEFAN_CALENDAR_GAG_USERNAME,
+      canAccept: answerable && row.status !== 'accepted' && acceptLock === null,
+      canDecline: answerable && row.status !== 'declined' && declineLock === null,
+      // The reason blocking the change away from the current answer, which is
+      // the only one the card has room to explain.
+      lockReason: (row.status === 'accepted' ? declineLock : acceptLock) ?? null,
+    },
   };
 }
 
@@ -271,7 +376,7 @@ function serializeMemberEvent(event: EventRow, playerId: string, viewerRole: Gro
     createdBy: event.created_by,
     ...managementFields,
     ...(managementFields.canManagePayments ? { accommodationCostCents: event.accommodation_cost_cents } : {}),
-    ...myParticipationField(event.id, playerId),
+    ...myParticipationField(event, playerId),
   };
 }
 
@@ -301,7 +406,7 @@ function serializeEvent(
       event.id === OUTSIDE_EVENTS_ID
         ? undefined
         : eventParticipantsForViewer(event.id, viewerId, revealAllPayments),
-    ...(event.id === OUTSIDE_EVENTS_ID || !viewerId ? {} : myParticipationField(event.id, viewerId)),
+    ...(event.id === OUTSIDE_EVENTS_ID || !viewerId ? {} : myParticipationField(event as EventRow, viewerId)),
   };
 }
 
@@ -366,9 +471,22 @@ function serializeEventSummary(
   };
 }
 
-// GET /api/events - the account's active workspace, accepted workspaces and
-// invitation teasers. Admins additionally receive the full
-// management list.
+// An open or declined invitation is the same teaser: name, period, location,
+// description, cost — plus the viewer's own answer and what they may do with
+// it. No roster, no foreign answers, no event data (see
+// docs/KONZEPT-EVENT-SICHTBARKEIT.md Abschnitt 3.2).
+function serializeTeaserEvent(event: EventRow, playerId: string) {
+  const participation = myParticipationField(event, playerId);
+  return {
+    ...serializeEventSummary(event),
+    ...participation,
+    participationStatus: participation.myParticipation?.status ?? 'invited',
+  };
+}
+
+// GET /api/events - the account's active workspace, accepted workspaces,
+// invitation teasers and the events this account declined. Admins additionally
+// receive the full management list.
 eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
   const playerId = req.player!.id;
   const canManage = req.groupMembership?.role === 'owner' || req.groupMembership?.role === 'admin';
@@ -395,6 +513,21 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        FROM events e
        JOIN event_participants ep ON ep.event_id = e.id
        WHERE ep.player_id = ? AND ep.status = 'invited'
+         AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
+         ${testEventClause}
+       ORDER BY e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
+    )
+    .all(playerId, OUTSIDE_EVENTS_ID, req.group!.id) as EventRow[];
+  // Declining is a decision, not an exit: the teaser stays reachable so the
+  // event remains findable and the answer can be reversed. Same teaser shape
+  // and same filters as `invitations`; only an organizer withdrawing the
+  // invitation removes the row and with it this entry.
+  const declinedEvents = db
+    .prepare(
+      `SELECT e.*
+       FROM events e
+       JOIN event_participants ep ON ep.event_id = e.id
+       WHERE ep.player_id = ? AND ep.status = 'declined'
          AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
          ${testEventClause}
        ORDER BY e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
@@ -472,7 +605,8 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
     plannedEvents: plannedEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
     endedEvents: endedEvents.map((event) => serializeMemberEvent(event, playerId, req.groupMembership?.role)),
     historicalEvents: historicalEvents.map((event) => serializeEventSummary(event)),
-    invitations: invitations.map((event) => ({ ...serializeEventSummary(event), participationStatus: 'invited' })),
+    invitations: invitations.map((event) => serializeTeaserEvent(event, playerId)),
+    declinedEvents: declinedEvents.map((event) => serializeTeaserEvent(event, playerId)),
     ...(managedEvents ? { managedEvents } : {}),
   });
 });
@@ -490,7 +624,7 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
   }
   const access = eventAccessLevel(event.id, req.player!.id, req.groupMembership!.role);
   if (access === 'none') return res.status(404).json({ error: 'Event nicht gefunden.' });
-  if (access === 'teaser') return res.json({ ...serializeEventSummary(event), participationStatus: 'invited' });
+  if (access === 'teaser') return res.json(serializeTeaserEvent(event, req.player!.id));
   if (access === 'participant') {
     const managementFields = paymentManagementFields(event, req.player!.id, req.groupMembership?.role);
     return res.json({
@@ -500,6 +634,10 @@ eventsRouter.get('/:id', resolveEvent, (req, res) => {
       ...(managementFields.canManagePayments ? { accommodationCostCents: event.accommodation_cost_cents } : {}),
       participantIds: getParticipantIds(event.id),
       acceptedParticipants: acceptedParticipantsForViewer(event.id, req.player!.id, managementFields.canManagePayments),
+      // Own answer and what may still be done with it, the same field the
+      // event lists carry — a card rendered from this detail response needs
+      // it to offer (or explain the absence of) the withdrawal action.
+      ...myParticipationField(event, req.player!.id),
     });
   }
   return res.json(serializeEvent(event, req.player!.id, req.groupMembership?.role));
@@ -611,13 +749,15 @@ function answerEventInvitation(response: 'accepted' | 'declined') {
     const playerId = requestPlayerId(req);
     if (!playerId) return res.status(400).json({ error: 'Spieleridentität ist erforderlich.' });
 
+    const wasActiveContext = activeContextPlayerIds(event.id).includes(playerId);
     const result = respondToEventInvitation(event.id, playerId, response);
     if (!result.ok) {
       return res.status(409).json({
         error:
-          result.currentStatus === null
+          result.reason === 'not_invited'
             ? 'Für dieses Event liegt keine Einladung vor.'
-            : 'Die Einladung ist nicht mehr offen.',
+            : PARTICIPATION_LOCK_MESSAGES[result.reason],
+        reason: result.reason,
         currentStatus: result.currentStatus,
       });
     }
@@ -627,8 +767,45 @@ function answerEventInvitation(response: 'accepted' | 'declined') {
       action: response === 'accepted' ? 'event_invitation_accepted' : 'event_invitation_declined',
       targetType: 'event_participant',
       targetId: `${event.id}:${playerId}`,
-      details: { eventId: event.id, playerId, status: response, changed: result.changed },
+      details: {
+        eventId: event.id,
+        playerId,
+        status: response,
+        previousStatus: result.previousStatus,
+        changed: result.changed,
+      },
     });
+    // Withdrawing an acceptance leaves the same two loose ends an organizer's
+    // removal does: a workspace the account may no longer select, and a live
+    // status inside an event it just left.
+    if (result.changed && response === 'declined') {
+      if (wasActiveContext) {
+        // The persisted context has to move first: switchPlayerEventScope only
+        // re-scopes currently connected sockets, so without this the stored
+        // active_event_id would keep pointing at an event this account no
+        // longer participates in until some later request happens to repair
+        // it. removeEventParticipant does the same through
+        // fallbackPlayerEventContext.
+        fallbackPlayerEventContext(playerId, event.id);
+        switchPlayerEventScope(playerId, req.group!.id, BASE_EVENT_ID);
+      }
+      if (result.previousStatus === 'accepted' && event.tracking_enabled) {
+        clearPlayerLiveStatus(playerId, Date.now(), event.id);
+        broadcast(Events.liveStatusChanged, getLiveBoard(req.group!.id, event.id), {
+          groupId: req.group!.id,
+          eventId: event.id,
+        });
+      }
+      notifyOrganizersOfWithdrawnAcceptance(event, playerId, result.previousStatus, req.group!.id);
+    }
+    // Saying yes again retires the organizer's withdrawal notice, so their
+    // banner stops reporting a cancellation that no longer holds.
+    if (result.changed && response === 'accepted') {
+      resolvePushTopic(withdrawnAcceptanceTopicKey(event.id, playerId), false, {
+        groupId: req.group!.id,
+        eventId: BASE_EVENT_ID,
+      });
+    }
     broadcast(Events.eventsChanged, null, { groupId: req.group!.id });
     // The invitation has been answered, so its notification stops being an
     // open item. Same base-event scope the invitation push was recorded in.
@@ -636,7 +813,11 @@ function answerEventInvitation(response: 'accepted' | 'declined') {
       groupId: req.group!.id,
       eventId: BASE_EVENT_ID,
     });
-    return res.json({ playerId: result.participant.playerId, status: result.participant.status });
+    return res.json({
+      playerId: result.participant.playerId,
+      status: result.participant.status,
+      changed: result.changed,
+    });
   };
 }
 
@@ -758,6 +939,11 @@ eventsRouter.delete('/:id/participants/:playerId', resolveEvent, requireGroupRol
     groupId: req.group!.id,
     eventId: BASE_EVENT_ID,
   });
+  resolvePushTopic(withdrawnAcceptanceTopicKey(event.id, req.params.playerId), false, {
+    groupId: req.group!.id,
+    eventId: BASE_EVENT_ID,
+  });
+  notifyRemovedParticipant(event, req.params.playerId, previousStatus, req.group!.id);
   if (wasActiveContext) switchPlayerEventScope(req.params.playerId, req.group!.id, BASE_EVENT_ID);
 
   if (previousStatus === 'accepted' && event.tracking_enabled) {

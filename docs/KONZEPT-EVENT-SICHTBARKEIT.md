@@ -90,8 +90,8 @@ folgt verwendet:
 |---|---|---|
 | kein Datensatz | keine | keine |
 | `invited` | Einladungsteaser | annehmen oder ablehnen |
-| `accepted` | vollständiger Event-Arbeitsraum | lesen, im Rahmen der normalen Rollen schreiben, als Arbeits-Event auswählen |
-| `declined` | keine normale Sichtbarkeit | nur in der persönlichen Einladungshistorie sichtbar |
+| `accepted` | vollständiger Event-Arbeitsraum | lesen, im Rahmen der normalen Rollen schreiben, als Arbeits-Event auswählen, die Zusage bis zum Eventbeginn selbst zurückziehen |
+| `declined` | keine normale Sichtbarkeit, aber weiterhin der Einladungsteaser | in der persönlichen Einladungshistorie sichtbar und jederzeit erneut zusagbar |
 | `removed` | keine operative Sichtbarkeit | eigene rechtmäßig entstandene Historie bleibt in persönlichen Auswertungen erhalten |
 
 Für eine belastbare Historie werden Annahme und Entfernung nicht mehr durch Löschen des einzigen

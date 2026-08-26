@@ -11,6 +11,8 @@ import {
   renderEventExcuseActions,
   renderEventLocation,
   renderInvitationCard,
+  renderDeclinedEventCard,
+  renderMemberParticipationActions,
 } from './views/events.js';
 
 test('the LAN keepsake PDF stays available only for LAN-compatible events', () => {
@@ -173,4 +175,49 @@ test('a pending invitation carries the excuse action but no calendar handoff', (
   });
   assert.match(html, /data-event-excuse="invited-event"/);
   assert.doesNotMatch(html, /data-event-calendar=/);
+});
+
+test('an accepted member card offers the withdrawal, or names why it is blocked', () => {
+  const event = { id: 'member-event', name: 'Winter LAN' };
+  const open = renderMemberParticipationActions({
+    ...event,
+    myParticipation: { status: 'accepted', canDecline: true, lockReason: null },
+  });
+  assert.match(open, /data-decline-participation="member-event"/);
+  assert.match(open, /Teilnahme absagen/);
+
+  const locked = renderMemberParticipationActions({
+    ...event,
+    myParticipation: { status: 'accepted', canDecline: false, lockReason: 'paid' },
+  });
+  assert.doesNotMatch(locked, /data-decline-participation/);
+  assert.match(locked, /Zahlung ist bereits erfasst/);
+
+  // A still-open invitation is answered on its own invitation card, not here.
+  assert.equal(
+    renderMemberParticipationActions({ ...event, myParticipation: { status: 'invited', canDecline: true } }),
+    '',
+  );
+});
+
+test('a declined event stays a teaser with the way back', () => {
+  const event = {
+    id: 'declined-event',
+    name: 'Sommer LAN',
+    startsAt: Date.UTC(2026, 8, 8, 16, 0),
+    endsAt: Date.UTC(2026, 8, 10, 10, 0),
+    myParticipation: { status: 'declined', canAccept: true, lockReason: null },
+  };
+  const html = renderDeclinedEventCard(event);
+  assert.match(html, /badge-offline">Abgesagt</);
+  assert.match(html, /data-accept-participation="declined-event"/);
+  // Teaser rules: no roster, and no calendar handoff before acceptance.
+  assert.doesNotMatch(html, /event-participant-list|data-event-calendar=/);
+
+  const locked = renderDeclinedEventCard({
+    ...event,
+    myParticipation: { status: 'declined', canAccept: false, lockReason: 'ended' },
+  });
+  assert.doesNotMatch(locked, /data-accept-participation/);
+  assert.match(locked, /Das Event ist beendet/);
 });

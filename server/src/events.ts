@@ -420,12 +420,10 @@ export function inviteParticipant(eventId: string, playerId: string): InvitePart
       return { participant: { playerId, status: 'invited', paid: false }, changed: true };
     }
     if (existing.status === 'declined') {
-      // Reopening as 'invited' must also clear confirmed_schedule_revision:
-      // otherwise a re-invited person whose stale value already equals the
-      // event's current revision would find respondToEventInvitation's
-      // guard permanently closed (it only reopens for a revision mismatch),
-      // even though their actual status is 'invited' and clearly not yet
-      // answered again.
+      // Reopening as 'invited' also clears confirmed_schedule_revision, which
+      // is what marks an answer as belonging to the event's current period:
+      // a re-invited row has explicitly not been answered again yet, so it
+      // must not keep claiming a confirmation for the schedule it carries.
       db.prepare(
         "UPDATE event_participants SET status = 'invited', confirmed_schedule_revision = NULL WHERE event_id = ? AND player_id = ?",
       ).run(eventId, playerId);
@@ -439,63 +437,110 @@ export function inviteParticipant(eventId: string, playerId: string): InvitePart
   return transaction();
 }
 
-export type RespondToEventInvitationResult =
-  | { ok: true; participant: EventParticipantRow; changed: boolean }
-  | { ok: false; currentStatus: EventParticipationStatus | null };
+// Why an answer can be blocked. Everything else is a normal, freely
+// repeatable decision — see docs/KONZEPT-EINLADUNGS-WORKFLOW.md Abschnitt 3.3.
+export type EventParticipationLockReason = 'paid' | 'started' | 'ended' | 'cancelled';
 
-// A participant "confirms" (accepts or declines) for the event's CURRENT
-// schedule revision — not just its raw status column. Two situations both
-// count as "not yet confirmed for this revision" and are therefore open to a
-// fresh answer: a brand new invitation (status 'invited',
-// confirmed_schedule_revision NULL) and a stale accepted/declined row left
-// over from before a reschedule (confirmed_schedule_revision < the event's
-// current schedule_revision — see docs/plans/event-date-poll-concept.md's
-// "Erneute Bestätigung erforderlich"). Once confirmed_schedule_revision
-// matches the current revision, the answer is locked the same way it always
-// was: an identical resubmit is a no-op, a flip to the other answer is 409.
+export type RespondToEventInvitationResult =
+  | {
+      ok: true;
+      participant: EventParticipantRow;
+      changed: boolean;
+      previousStatus: EventParticipationStatus;
+    }
+  | { ok: false; reason: 'not_invited'; currentStatus: null }
+  | { ok: false; reason: EventParticipationLockReason; currentStatus: EventParticipationStatus };
+
+export interface EventParticipationLockInput {
+  status: string;
+  starts_at: number | null;
+  ended_at: number | null;
+}
+
+// The locks are deliberately asymmetric. A running event only blocks
+// withdrawing an acceptance — by then the participation is a fact rather than
+// an intention. Everything else about a running event stays answerable:
+// an organizer inviting someone mid-LAN must still get a usable yes, and a
+// plain no to that invitation is exactly the answer they asked for. A payment
+// recorded against the row is the organizer's to reverse, the same reason
+// removing a paid roster row is blocked in routes/events.ts.
+export function eventParticipationLockReason(
+  event: EventParticipationLockInput,
+  change: { from: EventParticipationStatus; to: 'accepted' | 'declined' },
+  paid: boolean,
+  now = Date.now(),
+): EventParticipationLockReason | null {
+  if (paid) return 'paid';
+  if (event.status === 'cancelled') return 'cancelled';
+  if (event.ended_at !== null || event.status === 'ended') return 'ended';
+  if (
+    change.from === 'accepted' &&
+    change.to === 'declined' &&
+    event.starts_at !== null &&
+    event.starts_at <= now
+  ) {
+    return 'started';
+  }
+  return null;
+}
+
+// An invitation is answered as often as the person changes their mind: a
+// yes may be withdrawn and a no may be reconsidered, as long as no lock above
+// applies. Only an actual change stamps confirmed_schedule_revision, which
+// records which schedule the current answer was given for so a later
+// reschedule can still be shown as "answered for the old date"
+// (docs/plans/event-date-poll-concept.md) — it no longer gates the answer.
 export function respondToEventInvitation(
   eventId: string,
   playerId: string,
   response: 'accepted' | 'declined',
 ): RespondToEventInvitationResult {
   const transaction = db.transaction((): RespondToEventInvitationResult => {
-    const event = db.prepare('SELECT schedule_revision FROM events WHERE id = ?').get(eventId) as
-      | { schedule_revision: number }
-      | undefined;
+    const event = db
+      .prepare('SELECT schedule_revision, status, starts_at, ended_at FROM events WHERE id = ?')
+      .get(eventId) as (EventParticipationLockInput & { schedule_revision: number }) | undefined;
     const existing = db
-      .prepare('SELECT status, confirmed_schedule_revision AS confirmedRevision FROM event_participants WHERE event_id = ? AND player_id = ?')
-      .get(eventId, playerId) as { status: EventParticipationStatus; confirmedRevision: number | null } | undefined;
-    if (!existing || !event) return { ok: false, currentStatus: existing?.status ?? null };
+      .prepare('SELECT status, paid FROM event_participants WHERE event_id = ? AND player_id = ?')
+      .get(eventId, playerId) as { status: EventParticipationStatus; paid: number } | undefined;
+    if (!existing || !event) return { ok: false, reason: 'not_invited', currentStatus: null };
 
-    // The conditional write is the database-side race guard: only a row that
-    // is still unconfirmed for the current revision can be claimed by either
-    // response, and only one of two concurrent requests can win it.
+    // Repeating the answer that already stands changes nothing, so it stays
+    // idempotent even for an event that has since been locked. Otherwise a
+    // client retrying its own last answer would suddenly see a conflict.
+    if (existing.status === response) {
+      return {
+        ok: true,
+        participant: { playerId, status: response, paid: Boolean(existing.paid) },
+        changed: false,
+        previousStatus: existing.status,
+      };
+    }
+
+    const lock = eventParticipationLockReason(
+      event,
+      { from: existing.status, to: response },
+      Boolean(existing.paid),
+    );
+    if (lock) return { ok: false, reason: lock, currentStatus: existing.status };
+
+    // The conditional write is the database-side race guard: of two concurrent
+    // requests for the same new answer exactly one performs the change, and
+    // the other reports the identical result as unchanged.
     const updated = db
       .prepare(
         `UPDATE event_participants SET status = ?, confirmed_schedule_revision = ?
-         WHERE event_id = ? AND player_id = ?
-           AND (confirmed_schedule_revision IS NULL OR confirmed_schedule_revision != ?)`,
+         WHERE event_id = ? AND player_id = ? AND status != ?`,
       )
-      .run(response, event.schedule_revision, eventId, playerId, event.schedule_revision);
-    if (updated.changes === 1) {
-      const paid = db
-        .prepare('SELECT paid FROM event_participants WHERE event_id = ? AND player_id = ?')
-        .get(eventId, playerId) as { paid: number };
-      return { ok: true, participant: { playerId, status: response, paid: Boolean(paid.paid) }, changed: true };
-    }
-
-    // Already confirmed for this revision (or lost the race above) — re-read
-    // and preserve idempotency only for an identical outcome.
-    const current = db
-      .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
-      .get(eventId, playerId) as { status: EventParticipationStatus } | undefined;
-    if (current?.status === response) {
-      const paid = db
-        .prepare('SELECT paid FROM event_participants WHERE event_id = ? AND player_id = ?')
-        .get(eventId, playerId) as { paid: number };
-      return { ok: true, participant: { playerId, status: response, paid: Boolean(paid.paid) }, changed: false };
-    }
-    return { ok: false, currentStatus: current?.status ?? null };
+      .run(response, event.schedule_revision, eventId, playerId, response);
+    const paid = db
+      .prepare('SELECT paid FROM event_participants WHERE event_id = ? AND player_id = ?')
+      .get(eventId, playerId) as { paid: number };
+    return {
+      ok: true,
+      participant: { playerId, status: response, paid: Boolean(paid.paid) },
+      changed: updated.changes === 1,
+      previousStatus: existing.status,
+    };
   });
   return transaction();
 }
