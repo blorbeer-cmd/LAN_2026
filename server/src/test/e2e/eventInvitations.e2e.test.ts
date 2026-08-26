@@ -14,6 +14,8 @@ const OWNER_PASSWORD = 'e2e event owner secure passphrase';
 const MEMBER_NAME = '$t3vYb0y';
 const MEMBER_PASSWORD = 'e2e event member secure passphrase';
 const EVENT_NAME = 'E2E Einladung LAN';
+const OUTSIDER_NAME = 'E2E Ohne Event';
+const OUTSIDER_PASSWORD = 'e2e event outsider secure passphrase';
 
 let serverProcess: ChildProcess;
 let e2eServer: E2EServer;
@@ -437,6 +439,63 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.equal(activeEvent.status(), 200);
   assert.equal(((await activeEvent.json()) as { id: string }).id, eventId);
   await mirrorPage.close();
+
+  // An- & Abreise's "Alle Zeiten" is scoped to the people who accepted this
+  // event. GET /api/players hands every client the whole instance roster, so
+  // an account that has nothing to do with the event would otherwise sit in
+  // the table forever as a permanent "offen" row.
+  assert.equal(
+    (await ownerPage.request.post(`${BASE_URL}/api/auth/reauth`, { data: { password: OWNER_PASSWORD } })).status(),
+    204,
+  );
+  const outsiderInvite = await ownerPage.request.post(`${BASE_URL}/api/auth/invites`, { data: { purpose: 'register' } });
+  assert.equal(outsiderInvite.status(), 201);
+  const outsiderRegistration = await fetch(`${BASE_URL}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      code: ((await outsiderInvite.json()) as { code: string }).code,
+      name: OUTSIDER_NAME,
+      password: OUTSIDER_PASSWORD,
+    }),
+  });
+  assert.equal(outsiderRegistration.status, 201);
+
+  // The roster is only fetched on load, so pick the new account up first and
+  // confirm the member's own client really does receive it.
+  await memberPage.reload();
+  await memberPage.waitForSelector('#app:not([hidden])');
+  const memberRoster = await memberPage.request.get(`${BASE_URL}/api/players`);
+  assert.equal(memberRoster.status(), 200);
+  assert.equal(
+    ((await memberRoster.json()) as Array<{ name: string }>).some((player) => player.name === OUTSIDER_NAME),
+    true,
+    'the roster the client renders from does contain the uninvolved account',
+  );
+
+  await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'arrivals' })));
+  await memberPage.waitForSelector('#view-container[data-view="arrivals"] .arrivals-times-row');
+  await memberPage.locator('.arrivals-times-row', { hasText: MEMBER_NAME }).waitFor();
+  assert.equal(
+    await memberPage.locator('.arrivals-times-row', { hasText: OUTSIDER_NAME }).count(),
+    0,
+    'the times table skips accounts that never accepted this event',
+  );
+  // The manager runs this event without attending it (the roster above reads
+  // "1 Zusage"), so they are no more part of the times table than a stranger.
+  assert.equal(
+    await memberPage.locator('.arrivals-times-row', { hasText: OWNER_NAME }).count(),
+    0,
+    'managing an event is not the same as having accepted it',
+  );
+  assert.equal(
+    await memberPage.locator('.arrivals-times-row').count(),
+    1,
+    'the sole accepted participant is the only row in the times table',
+  );
+  await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
+  await memberPage.waitForSelector('#view-container[data-view="events"]');
+  await memberPage.locator(`[data-event-card="${eventId}"]`).waitFor();
 
   await ownerPage.locator('.modal-backdrop [data-close]').click();
   await ownerPage.click(`[data-participants-event="${eventId}"]`);
