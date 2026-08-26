@@ -15,28 +15,13 @@ import { getMyId } from './whoami.js';
 import { isAdmin, setAdmin } from './admin.js';
 import { currentPlayerHasAdminRole } from './adminAccess.js';
 import { filterTestUsers } from './testFilter.js';
-import { invalidateHomeSeating } from './views/home.js';
 import { initNotificationBanner, refreshNotificationBanner } from './notificationBanner.js';
-import { invalidateMissingSkills, invalidateAktuellStatus } from './aktuellStatus.js';
-import { invalidateMatchmakingHistory, invalidateMatchmakingDraft, setDraftState } from './views/matchmaking.js';
-import { invalidateBroadcasts } from './views/broadcast.js';
-import { invalidateInfoBoard, openInfoBoard } from './views/infoBoard.js';
+import { setDraftState } from './views/matchmaking.js';
+import { openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
-import { clearFoodOrderTarget, invalidateFoodOrders, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
-import { invalidateEventPolls } from './views/eventPolls.js';
-import { invalidateChecklist } from './views/checklist.js';
-import { invalidateSkillSuggestions, focusGameCatalog } from './views/gameCatalog.js';
-import { invalidateArrivals } from './views/arrivals.js';
-import { invalidateVoteEventScope, invalidateVoteHistory } from './views/votes.js';
-import { invalidateTournaments, focusTournament, showTournamentLanding } from './views/tournament.js';
-import { invalidateHallOfFame } from './views/hallOfFame.js';
-import { invalidateSeating } from './views/seating.js';
-import { invalidateAdminMemberships, invalidateAdminReadiness } from './views/admin.js';
-import { invalidateAdminFeatureUsage } from './views/adminFeatureUsage.js';
-import { invalidateMusic } from './views/music.js';
-import { invalidateAnalytics } from './views/analytics.js';
-import { invalidateMyStats } from './views/myStats.js';
-import { invalidateSeatNeighbors } from './views/profile.js';
+import { clearFoodOrderTarget, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
+import { focusGameCatalog } from './views/gameCatalog.js';
+import { focusTournament, showTournamentLanding } from './views/tournament.js';
 import { eventSelectOptions, eventStatus, eventSwitcherLabel } from './eventStatus.js';
 import { searchSelectHtml, wireSearchSelect } from './searchSelect.js';
 import { icon, installIconReplacement } from './icons.js';
@@ -51,6 +36,8 @@ import { captureViewRenderState, restoreViewRenderState } from './viewRenderStat
 import { realtimeEventAffectsView } from './realtimeRefreshPolicy.js';
 import { viewIsEnabledForEvent } from './eventFeatures.js';
 import { bottomNavItemsForEvent } from './bottomNav.js';
+import { invalidateEventScopedViews, invalidateViewCaches, invalidateViewsAfterReconnect } from './viewLifecycle.js';
+import { viewDefinition } from './viewManifest.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -99,7 +86,7 @@ function syncArcadeStylesheet(entry) {
     link.rel = 'stylesheet';
     // bump ?v= when arcade.css changes so no cached copy survives a reload
     // (keep in sync with kiosk.html's static link)
-    link.href = '/css/arcade.css?v=2';
+    link.href = '/css/arcade.css?v=3';
     const loaded = new Promise((resolve, reject) => {
       link.addEventListener('load', () => {
         link.dataset.loaded = 'true';
@@ -205,41 +192,6 @@ const ctx = {
   rerender: () => renderCurrent(),
 };
 
-// Everything a view kept from the workspace it was rendered in. loadAll()
-// refreshes `state`, but every view module that fetches from its own endpoint
-// caches outside `state` — those survive the switch and would keep the
-// previous event's data on screen.
-//
-// This list is the complete set of event-scoped caches; the contract test in
-// eventScopedCaches.test.js fails when a view gains an invalidator that is
-// neither listed here nor declared event-independent, so it cannot silently
-// drift again.
-function invalidateEventScopedCaches() {
-  invalidateAktuellStatus();
-  invalidateMatchmakingHistory({ hard: true });
-  invalidateMatchmakingDraft();
-  invalidateVoteEventScope();
-  invalidateTournaments({ hard: true });
-  invalidateHomeSeating({ hard: true });
-  invalidateSeating({ hard: true });
-  invalidateBroadcasts({ hard: true });
-  invalidateInfoBoard();
-  invalidateFoodOrders();
-  invalidateEventPolls();
-  invalidateChecklist(undefined, { hard: true });
-  invalidateArrivals({ hard: true });
-  invalidateMusic({ hard: true });
-  invalidateAnalytics();
-  invalidateMyStats();
-  invalidateHallOfFame({ hard: true });
-  invalidateAdminReadiness();
-  invalidateAdminFeatureUsage();
-  invalidateSeatNeighbors();
-  // Not a view cache but the same problem: a drawn lineup belongs to the
-  // event it was drawn in, and nothing in loadAll() overwrites it.
-  state.lastMatchmaking = null;
-}
-
 // The topbar workspace switcher is the same searchable dropdown as every
 // other event picker (and as the game pickers in Match): title plus the state
 // as an icon, visible collapsed and on every row of the open list. It is
@@ -326,7 +278,7 @@ async function activateEvent(eventId, { navigate, searchTarget = null } = {}) {
     // reader tapped. Skip the switch, keep the navigation.
     if (eventId && state.activeEvent?.id !== eventId) {
       await api.events.activate(eventId);
-      invalidateEventScopedCaches();
+      invalidateEventScopedViews(VIEW_REGISTRY);
       await loadAll();
       renderEventContextSwitcher();
       syncFeatureNavigation();
@@ -383,7 +335,9 @@ function renderCurrent({ preserveState = true } = {}) {
   const view = currentView;
   const entry = VIEW_REGISTRY[view];
   if (!entry) return;
-  const renderState = preserveState ? captureViewRenderState(viewContainer) : null;
+  const renderState = preserveState && entry.lifecycle.preserveState
+    ? captureViewRenderState(viewContainer)
+    : null;
   const stylesheetReady = syncArcadeStylesheet(entry);
   if (entry.render) {
     entry.render(viewContainer, ctx);
@@ -439,7 +393,8 @@ function focusPendingSearchTarget() {
 }
 
 function viewRequiresAdminRole(view) {
-  return sectionKeyForView(view) === 'insights' || ['adminFeatureUsage', 'adminFeedback'].includes(view);
+  const definition = viewDefinition(view);
+  return definition?.requiresRole === 'admin' && Boolean(definition.deniedView);
 }
 
 function renderCurrentAfterPlayerDataLoad() {
@@ -466,7 +421,9 @@ function renderCurrentAfterPlayerDataLoad() {
 function switchView(view, { fromHistory = false, replace = false, searchTarget = null } = {}) {
   // Admin-only areas stay reachable through Admin links and deep links alike,
   // but never render for an account whose role no longer permits them.
-  if (viewRequiresAdminRole(view) && playerDataReady && !currentPlayerHasAdminRole()) view = 'foodOrders';
+  if (viewRequiresAdminRole(view) && playerDataReady && !currentPlayerHasAdminRole()) {
+    view = viewDefinition(view).deniedView;
+  }
   if (playerDataReady && !viewIsEnabledForEvent(view, state.activeEvent)) {
     view = 'home';
     replace = true;
@@ -517,16 +474,10 @@ function wireAdminMode() {
     setAdmin(false);
     showToast('Admin-Modus verlassen.');
   });
-  // Both the Home board and the Sitzplan editor embed their own snapshot of
-  // player data, so a visibility change must drop them too — otherwise a test
-  // player stays readable on Home's seating plan after admin mode is left.
-  const invalidateVisibilityCaches = () => {
-    invalidateHomeSeating();
-    invalidateSeating();
-  };
+  // Views declare whether their cache depends on test-player visibility.
+  const invalidateVisibilityCaches = () => invalidateViewCaches(VIEW_REGISTRY, 'visibility:changed');
   window.addEventListener('respawn:admin-changed', () => {
     updateAdminIndicator();
-    invalidateMusic();
     invalidateVisibilityCaches();
     ctx.refresh();
   });
@@ -633,23 +584,7 @@ function wireSocket() {
       // Socket.IO does not replay arbitrary application events. Invalidate
       // every secondary cache and reload the central REST state after the
       // transport reconnects.
-      invalidateMissingSkills();
-      invalidateAktuellStatus();
-      invalidateSkillSuggestions();
-      invalidateMatchmakingHistory();
-      invalidateVoteHistory();
-      invalidateHallOfFame();
-      invalidateHomeSeating();
-      invalidateSeating();
-      invalidateChecklist();
-      invalidateTournaments();
-      invalidateBroadcasts();
-      invalidateInfoBoard();
-      invalidateFoodOrders();
-      invalidateArrivals();
-      invalidateAdminMemberships();
-      invalidateAdminReadiness();
-      invalidateMusic();
+      invalidateViewsAfterReconnect(VIEW_REGISTRY);
       await refreshGroupContext({ throwOnError: true });
       await Promise.all([loadAll(), refreshNotificationBanner({ throwOnError: true })]);
       playerDataReady = true;
@@ -687,31 +622,11 @@ function wireSocket() {
   ];
   sharedStateEvents.forEach((event) =>
     socket.on(event, () => {
-      if (event === 'players:changed' || event === 'games:changed' || event === 'skills:changed') {
-        invalidateMissingSkills();
-      }
-      if (event !== 'events:changed') {
-        invalidateSkillSuggestions();
-      }
-      if (event === 'players:changed') {
-        invalidateHomeSeating();
-        invalidateSeating();
-        invalidateChecklist({ scope: 'tasks' });
-        invalidateTournaments();
-        invalidateBroadcasts();
-        invalidateArrivals();
-        if (currentView === 'foodOrders') void refreshFoodOrders(ctx);
-        else invalidateFoodOrders();
-      }
-      if (event === 'games:changed' || event === 'leaderboard:changed') {
-        invalidateMatchmakingHistory();
-        invalidateHallOfFame();
-        invalidateTournaments();
-      }
-      if (event === 'events:changed') {
-        invalidateAdminReadiness();
-        invalidateEventPolls();
-      }
+      const refreshesOpenFoodOrders = event === 'players:changed' && currentView === 'foodOrders';
+      invalidateViewCaches(VIEW_REGISTRY, event, {
+        excludeViews: refreshesOpenFoodOrders ? ['foodOrders'] : [],
+      });
+      if (refreshesOpenFoodOrders) void refreshFoodOrders(ctx);
       void queueSharedRefresh({ render: realtimeEventAffectsView(event, currentView) });
     })
   );
@@ -722,7 +637,7 @@ function wireSocket() {
   socket.on('live:changed', (payload) => {
     // Socket payloads bypass apiFetch, so the test-user filter must run here.
     state.live = filterTestUsers(payload);
-    invalidateMissingSkills(); // a newly-running game may now need a skill rating
+    invalidateViewCaches(VIEW_REGISTRY, 'live:changed');
     if (currentView === 'home' || currentView === 'seating') renderCurrent();
   });
   socket.on('votes:changed', async () => {
@@ -738,7 +653,7 @@ function wireSocket() {
     }
     if (refreshVersion !== voteRealtimeRefreshVersion) return;
     const isNewRound = payload.open && payload.round !== lastVoteRound;
-    if (!payload.open) invalidateVoteHistory(); // round just closed/cancelled
+    if (!payload.open) invalidateViewCaches(VIEW_REGISTRY, 'votes:closed');
     lastVoteRound = payload.round;
 
     state.votes = payload;
@@ -785,13 +700,13 @@ function wireSocket() {
   });
   socket.on('matchmaking:generated', (payload) => {
     state.lastMatchmaking = payload;
-    invalidateMatchmakingHistory();
+    invalidateViewCaches(VIEW_REGISTRY, 'matchmaking:generated');
     if (currentView === 'matchmaking') renderCurrent();
   });
   // A draw's teams were fine-tuned (player moved) or a result was just
   // entered for it — refetch so everyone's history view stays in sync.
   socket.on('matchmaking:draws-changed', (payload) => {
-    invalidateMatchmakingHistory();
+    invalidateViewCaches(VIEW_REGISTRY, 'matchmaking:draws-changed');
     // A result was just recorded for this draw elsewhere — the "gerade
     // ausgelost" panel (if still showing that same draw) disappears too,
     // not just the history entry.
@@ -801,8 +716,7 @@ function wireSocket() {
     if (currentView === 'matchmaking') renderCurrent();
   });
   socket.on('tournaments:changed', (payload) => {
-    invalidateTournaments();
-    invalidateAktuellStatus();
+    invalidateViewCaches(VIEW_REGISTRY, 'tournaments:changed');
     if (currentView === 'tournaments' || currentView === 'home') renderCurrent();
 
     // Same pattern as the vote nudge: only the players actually named in
@@ -823,7 +737,7 @@ function wireSocket() {
   // header notification center so new entries appear without a reload.
   socket.on('push:sent', () => {
     refreshNotificationBanner();
-    invalidateAktuellStatus();
+    invalidateViewCaches(VIEW_REGISTRY, 'push:sent');
   });
   // A short-lived push topic was closed, completed or reached its deadline.
   // Refresh the center so its server-backed state remains current.
@@ -840,7 +754,7 @@ function wireSocket() {
   // different payload shapes.
   ['arcade:lobbies', 'tetris:lobbies', 'scribble:lobbies', 'pong:lobbies', 'blobby:lobbies', 'snake:lobbies', 'battleship:lobbies', 'challenge-rush:lobbies'].forEach((event) =>
     socket.on(event, () => {
-      invalidateAktuellStatus();
+      invalidateViewCaches(VIEW_REGISTRY, 'arcade:lobbies-changed');
       if (currentView === 'home') renderCurrent();
     })
   );
@@ -852,7 +766,7 @@ function wireSocket() {
   // pinning the result to the top of the page.
   socket.on('draft:changed', (payload) => {
     setDraftState(payload);
-    invalidateMatchmakingHistory();
+    invalidateViewCaches(VIEW_REGISTRY, 'draft:changed');
     if (currentView === 'matchmaking') renderCurrent();
     if (payload?.started && getMyId() && currentView !== 'matchmaking') {
       showToast('Captain-Draft gestartet – tippen zum Zusehen', {
@@ -871,33 +785,32 @@ function wireSocket() {
   // Durchsagen land as a toast on every device — except the sender's, who
   // already got a "gesendet" confirmation from the form itself.
   socket.on('broadcast:new', (payload) => {
-    invalidateBroadcasts();
+    invalidateViewCaches(VIEW_REGISTRY, 'broadcast:new');
     if (currentView === 'broadcast') renderCurrent();
     if (payload && payload.playerId !== getMyId()) {
       showToast(`${payload.playerName}: ${payload.message}`, { duration: 8000 });
     }
   });
   socket.on('broadcasts:changed', () => {
-    invalidateBroadcasts();
+    invalidateViewCaches(VIEW_REGISTRY, 'broadcasts:changed');
     if (currentView === 'broadcast') renderCurrent();
   });
 
   // The Info dialog refreshes itself while it is open; nothing else on screen
   // depends on those entries.
-  socket.on('info:changed', invalidateInfoBoard);
+  socket.on('info:changed', () => invalidateViewCaches(VIEW_REGISTRY, 'info:changed'));
 
   socket.on('foodOrders:changed', (payload) => {
-    invalidateAktuellStatus();
+    invalidateViewCaches(VIEW_REGISTRY, 'foodOrders:changed', {
+      excludeViews: currentView === 'foodOrders' ? ['foodOrders'] : [],
+    });
     if (currentView === 'foodOrders') {
       // Silent background refetch (see refreshFoodOrders) instead of the
       // hard invalidate+"Lädt…" reload every other live update uses - that
       // would flash and jump the view back to the top on every payment
       // toggle, including the echo of this device's own change.
       refreshFoodOrders(ctx);
-    } else {
-      invalidateFoodOrders();
-      if (currentView === 'home') renderCurrent();
-    }
+    } else if (currentView === 'home') renderCurrent();
     const myId = getMyId();
     if (payload?.notify && myId && myId !== payload.notify.excludePlayerId && currentView !== 'foodOrders') {
       showToast(payload.notify.message, {
@@ -908,25 +821,25 @@ function wireSocket() {
   });
 
   socket.on('arrivals:changed', () => {
-    invalidateArrivals();
+    invalidateViewCaches(VIEW_REGISTRY, 'arrivals:changed');
     if (currentView === 'arrivals') renderCurrent();
   });
   socket.on('checklist:changed', (payload) => {
     // The payload says whether tasks or someone's items changed; passing it on
     // keeps an unrelated half of the cache (and the Packliste draft it feeds)
     // from being thrown away.
-    invalidateChecklist(payload);
+    invalidateViewCaches(VIEW_REGISTRY, 'checklist:changed', { payload });
     // Every Orga tab re-renders, not just the two checklist ones: the To-Dos
     // tab count belongs to the area shell and is visible from all of them.
     if (sectionKeyForView(currentView) === 'orga') renderCurrent();
   });
 
   socket.on('music:changed', () => {
-    invalidateMusic();
+    invalidateViewCaches(VIEW_REGISTRY, 'music:changed');
     if (currentView === 'music') renderCurrent();
   });
   socket.on('event-context:changed', async () => {
-    invalidateEventScopedCaches();
+    invalidateEventScopedViews(VIEW_REGISTRY);
     await loadAll();
     renderEventContextSwitcher();
     await refreshNotificationBanner();
@@ -934,7 +847,7 @@ function wireSocket() {
   });
   socket.on('groups:changed', async () => {
     await refreshGroupContext();
-    invalidateAdminMemberships();
+    invalidateViewCaches(VIEW_REGISTRY, 'groups:changed');
     if (['admin', 'adminFeatureUsage', 'adminFeedback'].includes(currentView)) renderCurrent();
   });
 }

@@ -2,37 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { DOMAIN_ICONS, domainIcon } from './domainIcons.js';
+import { SECTION_MANIFEST, VIEW_MANIFEST } from './viewManifest.js';
 
 test('bottom navigation and More define every canonical view icon', () => {
-  assert.deepEqual(DOMAIN_ICONS, {
-    home: 'house',
-    tournaments: 'swords',
-    matchmaking: 'scale',
-    votes: 'vote',
-    eventPolls: 'vote',
-    leaderboard: 'trophy',
-    more: 'menu',
-    admin: 'shield',
-    arrivals: 'van',
-    analytics: 'chart',
-    hallOfFame: 'landmark',
-    infoBoard: 'info',
-    competition: 'swords',
-    insights: 'trophy',
-    orga: 'clipboard',
-    checklistPacking: 'clipboard',
-    live: 'radioTower',
-    foodOrders: 'hamburger',
-    checklist: 'listChecks',
-    arcade: 'joystick',
-    broadcast: 'megaphone',
-    gameCatalog: 'gamepad',
-    skill: 'activity',
-    music: 'music',
-    events: 'calendar',
-    feedback: 'messageSquare',
-    profile: 'circleUser',
-  });
+  for (const [view, definition] of Object.entries(VIEW_MANIFEST)) {
+    assert.equal(DOMAIN_ICONS[view], definition.iconKey, view);
+  }
+  for (const [section, definition] of Object.entries(SECTION_MANIFEST)) {
+    assert.equal(DOMAIN_ICONS[section], definition.iconKey, section);
+  }
+  assert.equal(DOMAIN_ICONS.infoBoard, 'info');
+  assert.equal(DOMAIN_ICONS.live, 'radioTower');
+  assert.equal(DOMAIN_ICONS.skill, 'activity');
 });
 
 test('packing and To-Do use distinct symbols', () => {

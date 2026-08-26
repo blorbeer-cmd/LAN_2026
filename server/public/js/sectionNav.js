@@ -10,40 +10,16 @@
 
 import { viewIsEnabledForEvent } from './eventFeatures.js';
 import { backButtonHtml } from './backButton.js';
+import { SECTION_MANIFEST, sectionViews } from './viewManifest.js';
 
-export const SECTIONS = Object.freeze({
-  competition: Object.freeze({
-    title: 'Match',
-    tabs: Object.freeze([
-      Object.freeze({ view: 'matchmaking', label: 'Teams' }),
-      Object.freeze({ view: 'tournaments', label: 'Turniere' }),
-    ]),
-  }),
-  insights: Object.freeze({
-    title: 'Auswertung',
-    tabs: Object.freeze([
-      Object.freeze({ view: 'leaderboard', label: 'Rangliste' }),
-      Object.freeze({ view: 'analytics', label: 'Statistiken' }),
-      Object.freeze({ view: 'hallOfFame', label: 'Hall of Fame' }),
-    ]),
-  }),
-  // Tabs are sorted alphabetically by their German label. The "Mehr" hub
-  // opens this area on its first tab, "Abstimmungen", like every other
-  // section (see sectionEntryView below and more.js). The already persisted
-  // push url "/#checklist" is unaffected — it still routes straight to the
-  // To-Do tab. TV-Kiosk is not a tab here — it lives only in Admin's
-  // "Kioskverwaltung" tool card, which is the single entry point now.
-  orga: Object.freeze({
-    title: 'Orga',
-    tabs: Object.freeze([
-      Object.freeze({ view: 'eventPolls', label: 'Abstimmungen' }),
-      Object.freeze({ view: 'arrivals', label: 'An- & Abreise' }),
-      Object.freeze({ view: 'events', label: 'Events' }),
-      Object.freeze({ view: 'checklistPacking', label: 'Packliste' }),
-      Object.freeze({ view: 'checklist', label: 'To-Do' }),
-    ]),
-  }),
-});
+// Tabs and labels come from the route registry. The section manifest only
+// supplies the shared area label/icon and optional navigation metadata.
+export const SECTIONS = Object.freeze(Object.fromEntries(
+  Object.entries(SECTION_MANIFEST).map(([key, section]) => [key, Object.freeze({
+    title: section.label,
+    tabs: Object.freeze(sectionViews(key)),
+  })])
+));
 
 // view -> section key, for every route that belongs to one.
 const SECTION_BY_VIEW = Object.freeze(

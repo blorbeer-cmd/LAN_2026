@@ -12,34 +12,10 @@ import { currentPlayerHasAdminRole } from '../adminAccess.js';
 import { sectionEntryView } from '../sectionNav.js';
 import { state } from '../state.js';
 import { viewIsEnabledForEvent } from '../eventFeatures.js';
-
-const COMMON_ITEMS = Object.freeze([
-  // Moved out of the topbar to make room for the always-available Feedback
-  // icon there; still just as reachable, one tap into "Mehr".
-  { view: 'profile', title: 'Mein Profil' },
-  { view: 'admin', title: 'Admin' },
-  { view: 'arcade', title: 'Arcade' },
-  { view: 'broadcast', title: 'Durchsage' },
-  { view: 'music', title: 'Jam' },
-]);
-
-const LAN_ITEMS = Object.freeze([
-  // Opens on Orga's own first tab, same as every other area entered from
-  // "Mehr" or the bottom nav (see sectionNav.js's sectionEntryView) — so the
-  // tab row's top-left tab is the one actually selected on arrival.
-  { section: 'orga', title: 'Orga', iconKey: 'orga' },
-]);
-
-const GENERAL_ITEMS = Object.freeze([
-  { view: 'events', title: 'Events' },
-  { view: 'foodOrders', title: 'Essen' },
-]);
+import { moreNavigationEntries } from '../viewManifest.js';
 
 export function moreItemsForEvent(event) {
-  return [
-    ...COMMON_ITEMS,
-    ...(event?.eventType === 'general' ? GENERAL_ITEMS : LAN_ITEMS),
-  ];
+  return moreNavigationEntries(event?.eventType === 'general' ? 'general' : 'lan');
 }
 
 export function renderMore(container) {
@@ -50,14 +26,14 @@ export function renderMore(container) {
     (item) =>
       item.view &&
       viewIsEnabledForEvent(item.view, state.activeEvent) &&
-      (item.view !== 'admin' || currentPlayerHasAdminRole()),
+      (item.requiresRole !== 'admin' || currentPlayerHasAdminRole()),
   );
   const rows = visibleItems
     .map(
       (item) => `
     <button type="button" class="card row list-row more-card" data-navigate="${item.view}">
       <span class="more-card-label">
-        <span class="list-row-icon">${icon(domainIcon(item.iconKey ?? item.view))}</span>
+        <span class="list-row-icon">${icon(domainIcon(item.iconKey))}</span>
         <span class="player-name more-card-title">${item.title}</span>
       </span>
       <span class="muted more-card-chevron">${icon('chevronRight')}</span>

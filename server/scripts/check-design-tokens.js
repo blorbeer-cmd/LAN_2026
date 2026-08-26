@@ -1,18 +1,12 @@
 #!/usr/bin/env node
 // Pre-commit guard for the design system (see server/DESIGN_SYSTEM.md).
 //
-// By default, the hardcoded-value rules only look at the ADDED lines of the
-// staged diff under server/public. The undefined-custom-property rule needs a
-// complete, internally consistent frontend snapshot, so it reads the full Git
-// index locally and the full HEAD tree when CI passes `--base-ref`. Neither
-// mode reads unrelated unstaged working-tree changes. That's deliberate: the
-// codebase
-// still has a known, documented set of off-scale spacing values and other
-// intentional exceptions (see DESIGN_SYSTEM.md, "When a value genuinely
-// doesn't fit"); re-checking every existing line on every commit would mean
-// either fixing all of those right now or maintaining a baseline/allowlist
-// file that drifts out of sync with the code. Checking only new lines avoids
-// both — it enforces the rule going forward without touching existing debt.
+// The undefined-custom-property rule and the cleaned legacy rules read a full,
+// internally consistent frontend snapshot: the Git index locally and the HEAD
+// tree when CI passes `--base-ref`. Neither mode reads unrelated unstaged
+// working-tree changes. Color, typography and radius debt remains guarded on
+// added lines; spacing and responsive-breakpoint annotations are clean across
+// the existing frontend and are therefore enforced on the complete snapshot.
 //
 // A new line that's a genuine, deliberate exception (not an oversight) can
 // still pass by adding a `design-token-ok` comment on the same source line,
@@ -63,7 +57,7 @@ const RULES = [
   },
   {
     name: 'hardcoded spacing (gap/padding/margin)',
-    test: (line) => /(gap|padding|margin(-top|-bottom|-left|-right)?):\s*-?[0-9.]+px/.test(line),
+    test: hasHardcodedSpacing,
     exempt: isCustomPropertyDefinition,
   },
   {
@@ -72,6 +66,12 @@ const RULES = [
     exempt: isCustomPropertyDefinition,
   },
 ];
+
+function hasHardcodedSpacing(line) {
+  return /(?:^|[\s;{'"])(?:gap|padding|margin(?:-top|-bottom|-left|-right)?)\s*:[^;\n]*-?(?:\d*\.)?\d+px\b/.test(
+    line,
+  );
+}
 
 // Defining a custom property (`--bracket-pair-gap: 20px;`) is how a shared
 // value is introduced, not a bypass of one — mirrors the hex-color rule's
@@ -193,10 +193,46 @@ function findUndefinedCustomProperties(sources) {
   return undefinedReferences;
 }
 
+function findLegacySnapshotViolations(sources) {
+  const violations = [];
+
+  for (const { file, source } of sources) {
+    if (EXEMPT_FILES.has(file)) continue;
+    const lines = source.split('\n');
+    lines.forEach((line, index) => {
+      if (line.includes('design-token-ok')) return;
+      if (hasHardcodedSpacing(line)) {
+        violations.push({
+          file,
+          line: index + 1,
+          rule: 'hardcoded spacing (full frontend)',
+          source: line.trim(),
+        });
+      }
+      if (
+        path.extname(file) === '.css' &&
+        /@media\s*\(\s*(?:min|max)-(?:width|height)\s*:/.test(line) &&
+        !line.includes('--bp-')
+      ) {
+        violations.push({
+          file,
+          line: index + 1,
+          rule: 'unannotated responsive breakpoint (full frontend)',
+          source: line.trim(),
+        });
+      }
+    });
+  }
+
+  return violations;
+}
+
 function main() {
   const files = changedFiles();
   const violations = [];
-  const undefinedCustomProperties = findUndefinedCustomProperties(frontendSources());
+  const sources = frontendSources();
+  const undefinedCustomProperties = findUndefinedCustomProperties(sources);
+  const legacySnapshotViolations = findLegacySnapshotViolations(sources);
 
   for (const file of files) {
     for (const line of addedLines(file)) {
@@ -209,7 +245,7 @@ function main() {
     }
   }
 
-  if (undefinedCustomProperties.length === 0 && violations.length === 0) {
+  if (undefinedCustomProperties.length === 0 && violations.length === 0 && legacySnapshotViolations.length === 0) {
     return 0;
   }
 
@@ -221,6 +257,18 @@ function main() {
     console.error(
       '\nDefine each property in the design-system tokens, set it dynamically with style.setProperty(...), ' +
         'or provide an intentional var(--name, fallback) value.\n',
+    );
+  }
+
+  if (legacySnapshotViolations.length > 0) {
+    console.error('\n✗ Design-token check failed — cleaned legacy contract regressed:\n');
+    for (const violation of legacySnapshotViolations) {
+      console.error(`  ${violation.file}:${violation.line} [${violation.rule}]`);
+      console.error(`    ${violation.source}`);
+    }
+    console.error(
+      '\nUse a spacing token and annotate standard @media values with their --bp-* token. ' +
+        'Document a genuine exception with a same-line "design-token-ok" reason.\n',
     );
   }
 
@@ -247,4 +295,4 @@ if (require.main === module) {
   process.exitCode = main();
 }
 
-module.exports = { findUndefinedCustomProperties, frontendSources, main };
+module.exports = { findLegacySnapshotViolations, findUndefinedCustomProperties, frontendSources, main };

@@ -437,7 +437,7 @@ function openGameDetail(gameId, ctx) {
   const processChips = game.processNames
     .map(
       (pn) => `
-      <span class="chip">${escapeHtml(pn)} <button type="button" class="icon-btn" data-remove-proc="${escapeHtml(pn)}" aria-label="Entfernen" style="font-size:var(--font-size-xs);padding:0 2px;">${icon('x')}</button></span>`
+      <span class="chip">${escapeHtml(pn)} <button type="button" class="icon-btn" data-remove-proc="${escapeHtml(pn)}" aria-label="Entfernen" style="font-size:var(--font-size-xs);padding:0 var(--space-1);">${icon('x')}</button></span>`
     )
     .join('');
   const suggestedProcessNames = game.processNames.length === 0 ? suggestProcessNames(game.name) : [];
