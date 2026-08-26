@@ -3,39 +3,21 @@
 // every call site: a trophy means a result/win, while an active tournament
 // is represented by crossed swords everywhere.
 import { icon } from './icons.js';
+import { SECTION_MANIFEST, VIEW_MANIFEST } from './viewManifest.js';
 
-export const DOMAIN_ICONS = Object.freeze({
-  home: 'house',
-  tournaments: 'swords',
-  matchmaking: 'scale',
-  votes: 'vote',
-  eventPolls: 'vote',
-  leaderboard: 'trophy',
-  more: 'menu',
-  admin: 'shield',
-  arrivals: 'van',
-  analytics: 'chart',
-  hallOfFame: 'landmark',
+const SHARED_DOMAIN_ICONS = Object.freeze({
   // Info lives in the topbar as the conventional "i" instead of a pinned note:
   // it is one small always-available control, not an area in the nav.
   infoBoard: 'info',
-  // Merged top-level areas (see sectionNav.js). Each one reuses the symbol of
-  // its leading tab so the nav keeps the meaning it already had.
-  competition: 'swords',
-  insights: 'trophy',
-  orga: 'clipboard',
-  checklistPacking: 'clipboard',
   live: 'radioTower',
-  foodOrders: 'hamburger',
-  checklist: 'listChecks',
-  arcade: 'joystick',
-  broadcast: 'megaphone',
-  gameCatalog: 'gamepad',
   skill: 'activity',
-  music: 'music',
-  events: 'calendar',
   feedback: 'messageSquare',
-  profile: 'circleUser',
+});
+
+export const DOMAIN_ICONS = Object.freeze({
+  ...Object.fromEntries(Object.entries(VIEW_MANIFEST).map(([view, definition]) => [view, definition.iconKey])),
+  ...Object.fromEntries(Object.entries(SECTION_MANIFEST).map(([section, definition]) => [section, definition.iconKey])),
+  ...SHARED_DOMAIN_ICONS,
 });
 
 export function domainIcon(key, fallback = 'bell') {

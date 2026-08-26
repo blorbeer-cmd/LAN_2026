@@ -220,7 +220,7 @@ function renderCarpools(myId) {
         ${
           myId
             ? ''
-            : `<div class="muted" style="font-size:var(--font-size-sm);padding:0 12px 12px;">Wähle oben, wer du bist, um Fahrgemeinschaften anzulegen oder beizutreten.</div>`
+            : `<div class="muted" style="font-size:var(--font-size-sm);padding:0 var(--space-3) var(--space-3);">Wähle oben, wer du bist, um Fahrgemeinschaften anzulegen oder beizutreten.</div>`
         }
       </div>
     </section>`;

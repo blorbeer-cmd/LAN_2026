@@ -31,10 +31,25 @@ import { availableEventTypeOptions, eventTypeTitle } from '../eventTypes.js';
 import {
   eventCalendarFilename,
   eventCalendarIcs,
-  eventCalendarLinks,
 } from '../calendarExport.js';
 import { backButtonHtml } from '../backButton.js';
 import { EXCUSE_CATEGORIES, excuseCategoryLabel, pickEventExcuse } from '../eventExcuses.js';
+import {
+  acceptedParticipantCount as countAcceptedParticipants,
+  acceptedParticipants as selectAcceptedParticipants,
+  eventPdfExportAvailable,
+  eventSettlement as calculateEventSettlement,
+  parseEventAccommodationCostCents,
+  parseEventCostCents,
+} from '../eventModel.js';
+import { eventDateRange, renderEventCalendarActions, renderEventLocation } from '../eventPresentation.js';
+
+export { eventDateRange, renderEventCalendarActions, renderEventLocation } from '../eventPresentation.js';
+export {
+  eventPdfExportAvailable,
+  parseEventAccommodationCostCents,
+  parseEventCostCents,
+} from '../eventModel.js';
 
 const EVENT_HELP = 'Eventtyp, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
 const KIOSK_HELP = 'Zeigt Live-Status, Vote, Rang und Turnier; ein eigener Token ist erforderlich.';
@@ -52,65 +67,6 @@ function renderKioskSection() {
       <a href="/kiosk.html" target="_blank" rel="noopener" class="btn btn-block">Kiosk-Ansicht öffnen</a>
     </section>
   `;
-}
-
-// Legacy planning events may have neither startsAt nor endsAt. Keep the
-// fallback explicit so no view ever renders "Invalid Date" for them. The base
-// workspace is permanently open (startsAt set, endsAt null), so it has no end
-// date to print either, but for a different reason.
-export function eventDateRange(e) {
-  if (e.startsAt == null) return 'Termin wird noch abgestimmt';
-  if (e.endsAt == null) return 'Dauerhaft geöffnet';
-  return `${new Date(e.startsAt).toLocaleDateString('de-DE')} – ${new Date(e.endsAt).toLocaleDateString('de-DE')}`;
-}
-
-function eventLocationUrl(location) {
-  const trimmed = location.trim();
-  const candidate = trimmed.startsWith('www.') ? `https://${trimmed}` : trimmed;
-  try {
-    const url = new URL(candidate);
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
-  } catch {
-    return null;
-  }
-}
-
-export function renderEventLocation(location) {
-  if (!location) return '';
-  const href = eventLocationUrl(location);
-  const value = escapeHtml(location);
-  return `
-    <div class="event-card-detail event-card-location">
-      <span class="event-card-detail-icon" aria-hidden="true">${icon('mapPin')}</span>
-      <span class="event-card-detail-content">
-        <span class="event-card-detail-label">Ort</span>
-        ${href ? `<a class="event-location-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${value}</a>` : `<span class="event-location-text">${value}</span>`}
-      </span>
-    </div>`;
-}
-
-export function renderEventCalendarActions(event, { invitation = false } = {}) {
-  const links = invitation || event.isEnded ? null : eventCalendarLinks(event);
-  if (!links) return '';
-  const canConfirm = event.myParticipation?.status === 'accepted';
-  const confirmation = canConfirm
-    ? event.myParticipation.calendarConfirmed
-      ? `<span class="badge badge-online event-calendar-confirmed" tabindex="-1" data-event-calendar-confirmed="${escapeHtml(event.id)}">Im Kalender eingetragen</span>`
-      : `<div class="event-calendar-confirmation">
-           <button type="button" class="btn btn-sm btn-primary" data-confirm-event-calendar="${escapeHtml(event.id)}">Übernahme bestätigen</button>
-           <span class="muted">Beendet die Kalender-Erinnerungen.</span>
-         </div>`
-    : '';
-  return `
-    <div class="event-calendar-actions" role="group" aria-label="Event zum Kalender hinzufügen">
-      <span class="event-card-detail-label">Zum Kalender hinzufügen</span>
-      <div class="event-calendar-action-buttons">
-        <a class="btn btn-sm" href="${escapeHtml(links.google)}" target="_blank" rel="noopener noreferrer" data-event-calendar="google">Google Kalender</a>
-        <a class="btn btn-sm" href="${escapeHtml(links.outlook)}" target="_blank" rel="noopener noreferrer" data-event-calendar="outlook">Outlook</a>
-        <button type="button" class="btn btn-sm" data-download-event-calendar="${escapeHtml(event.id)}">Kalenderdatei</button>
-      </div>
-      ${confirmation}
-    </div>`;
 }
 
 // The gag action of the Events cards: an event that is still ahead can collide
@@ -252,50 +208,15 @@ function downloadEventCalendar(event) {
 }
 
 function acceptedParticipants(event) {
-  if (Array.isArray(event.acceptedParticipants)) return event.acceptedParticipants;
-  const acceptedIds = new Set(
-    event.participantIds ??
-      (event.participants ?? [])
-        .filter((participant) => participant.status === 'accepted')
-        .map((participant) => participant.playerId),
-  );
-  const paidById = new Map((event.participants ?? []).map((participant) => [participant.playerId, Boolean(participant.paid)]));
-  return state.players
-    .filter((player) => acceptedIds.has(player.id))
-    .map((player) => ({ playerId: player.id, name: player.name, paid: paidById.get(player.id) ?? false }));
+  return selectAcceptedParticipants(event, state.players);
 }
 
 export function acceptedParticipantCount(event) {
-  return acceptedParticipants(event).length;
+  return countAcceptedParticipants(event, state.players);
 }
 
 export function eventSettlement(event) {
-  const participants = acceptedParticipants(event);
-  const contributionCents = event.costCents ?? 0;
-  const currentPaidParticipants = participants.filter((participant) => participant.paid);
-  const paidCents = event.settlementPaidCents ?? currentPaidParticipants.reduce(
-    (sum, participant) => sum + (participant.paidAmountCents ?? 0),
-    0,
-  );
-  const paidCount = event.settlementPaidCount ?? currentPaidParticipants.length;
-  const unpaidCount = participants.length - currentPaidParticipants.length;
-  const expectedCents = paidCents + unpaidCount * contributionCents;
-  const accommodationCents = event.accommodationCostCents ?? null;
-  return {
-    participantCount: participants.length,
-    paidCount,
-    unpaidCount,
-    paidCents,
-    missingAmountCount: event.settlementMissingAmountCount ?? 0,
-    expectedCents,
-    accommodationCents,
-    perHeadCents:
-      accommodationCents !== null && participants.length > 0
-        ? Math.round(accommodationCents / participants.length)
-        : null,
-    balanceCents: accommodationCents === null ? null : paidCents - accommodationCents,
-    expectedBalanceCents: accommodationCents === null ? null : expectedCents - accommodationCents,
-  };
+  return calculateEventSettlement(event, state.players);
 }
 
 function paymentProof(participant) {
@@ -384,33 +305,6 @@ function renderAcceptedParticipants(event, { includeInvitationStatuses = false }
           : '<p class="muted event-card-empty-copy">Noch niemand zugesagt.</p>'}
       </div>
     </details>`;
-}
-
-function parseEventEuroCents(raw, maxEuro) {
-  const trimmed = (raw ?? '').trim().replace('€', '').trim();
-  if (!trimmed) return null;
-  let normalized;
-  if (trimmed.includes(',')) {
-    if (!/^\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?$|^\d+(?:,\d{1,2})?$/.test(trimmed)) return NaN;
-    normalized = trimmed.replaceAll('.', '').replace(',', '.');
-  } else if (/^\d{1,3}(?:\.\d{3})+$/.test(trimmed)) {
-    normalized = trimmed.replaceAll('.', '');
-  } else if (/^\d+(?:\.\d{1,2})?$/.test(trimmed)) {
-    normalized = trimmed;
-  } else {
-    return NaN;
-  }
-  const value = Number(normalized);
-  if (!Number.isFinite(value) || value <= 0 || value > maxEuro) return NaN;
-  return Math.round(value * 100);
-}
-
-export function parseEventCostCents(raw) {
-  return parseEventEuroCents(raw, 10_000);
-}
-
-export function parseEventAccommodationCostCents(raw) {
-  return parseEventEuroCents(raw, 100_000);
 }
 
 function balanceBadge(balanceCents) {
@@ -724,12 +618,6 @@ function renderInvitationPayment(event) {
       </div>
       ${event.paymentDueAt ? `<span class="muted event-payment-due">Zahlungsziel: ${escapeHtml(new Date(event.paymentDueAt).toLocaleDateString('de-DE'))}</span>` : ''}
     </div>`;
-}
-
-export function eventPdfExportAvailable(event) {
-  // The keepsake summarizes LAN-only competition and tracking data. Older
-  // event payloads without a type stay LAN-compatible.
-  return event?.eventType !== 'general';
 }
 
 export function renderEventCard(event) {

@@ -1,0 +1,1052 @@
+/* ---------- Login screen ---------- */
+
+.login-screen {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+.login-card {
+  width: 100%;
+  max-width: 340px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-6);
+  text-align: center;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.login-card h1 {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-3xl);
+}
+
+/* ---------- Toasts ---------- */
+
+/* ---------- Countdown overlay (public/js/arcade/countdown.js) ----------
+   Shared "3 · 2 · 1 · Los!" intro for every arcade game. Full-screen, with a
+   dim blurred backdrop so the board behind stays faintly visible, and a big
+   gradient number in the brand style that pops in per second. */
+.countdown-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 9, 18, 0.62);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.countdown-num-wrap {
+  position: relative;
+  display: inline-block;
+  /* Blur headroom must live INSIDE this box: with GPU compositing (real
+     browsers, Retina — not headless test runners) both Blink and Gecko cut
+     the glow child off at the wrap's own bounds, no matter how far the
+     child's box extends beyond it. Symmetric padding keeps the text
+     centered and gives the 16px blur (3σ ≈ 48px) room on every side. */
+  padding: 4.5rem; /* design-token-ok: blur headroom sized to the glow's 3-sigma radius, see comment above */
+}
+.countdown-num {
+  font-size: clamp(4rem, 22vw, 8rem);
+  font-weight: var(--font-weight-black);
+  /* Deliberately NOT italic: SF Pro's italic terminals are sheared at an
+     angle (top of "L", "!"), which reads as the glyphs being clipped. */
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+/* Two stacked copies of the same text instead of one element trying to be
+   both glowing AND gradient-filled: any `filter`/`text-shadow` on an element
+   that also has `background-clip: text` gets clipped to a hard box in every
+   engine we've tested — fine for a plain rectangle of glyphs, but a visible
+   cut wherever the actual ink (an italic ascender, the "!") pokes past it.
+   A plain solid-colour blurred copy behind a crisp gradient-clipped copy on
+   top has no such interaction and glows cleanly on every edge. The room the
+   blur needs comes from the wrap's padding (see above) — the glow layer
+   itself must NOT reach outside the wrap, or GPU compositing clips it. */
+.countdown-num-glow {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-2);
+  filter: blur(16px);
+  opacity: 0.85;
+}
+.countdown-num-fill {
+  position: relative;
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.countdown-pop {
+  animation: countdown-pop 0.85s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes countdown-pop {
+  0% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.92;
+    transform: scale(1);
+  }
+}
+
+.toast-container {
+  position: fixed;
+  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: calc(100% - 32px);
+  max-width: 420px;
+  pointer-events: none;
+}
+.toast {
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-size-sm);
+  box-shadow: var(--shadow);
+  text-align: center;
+  animation: toast-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+}
+.toast.toast-error {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.toast.toast-clickable {
+  cursor: pointer;
+  border-color: var(--accent);
+}
+
+/* ---------- Modal / dialog (settings, forms) ---------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 9, 18, 0.55);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 50;
+  animation: backdrop-in 0.18s ease;
+}
+@media (min-width: 640px) { /* --bp-md */
+  .modal-backdrop {
+    align-items: center;
+  }
+}
+.modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: var(--space-5);
+  width: 100%;
+  max-width: 480px;
+  max-height: 85dvh;
+  overflow-y: auto;
+  /* Bottom sheet slides up on phones… */
+  animation: sheet-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+/* ---------- First-login onboarding ---------- */
+
+#onboarding-root {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.onboarding-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  /* Only used on steps with no highlighted target (see onboarding.js) - a
+     step that highlights something instead relies on the ring's own
+     spotlight shadow below, so the two never stack into a double-dark
+     overlay. Lower than the previous 0.78 so the dimmed page underneath
+     stays legible instead of nearly invisible. */
+  opacity: 0.5;
+  pointer-events: auto;
+}
+
+.onboarding-dialog {
+  position: fixed;
+  z-index: 42;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + var(--space-4));
+  max-width: var(--search-panel-width);
+  margin: 0 auto;
+  padding: var(--space-4);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+}
+
+/* Used instead of the default bottom anchor when the step's highlighted
+   target sits in the lower half of the viewport (the bottom nav) - keeps
+   the explanation text from sitting directly over the icon it's pointing
+   at. Set by onboarding.js after measuring the target. */
+.onboarding-dialog--top {
+  top: calc(var(--topbar-height) + var(--space-4));
+  bottom: auto;
+}
+
+.onboarding-progress {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.onboarding-dialog h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-lg);
+}
+
+.onboarding-dialog p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.onboarding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.onboarding-actions-spacer {
+  flex: 1 1 auto;
+}
+
+.onboarding-rating-dialog {
+  /* Only the dialog's own controls stay clickable (see the button rule
+     below) - everything else, including its own background, lets clicks
+     and taps fall through to whatever required game row is scrolled behind
+     it, the same passthrough technique `.sticky-actions` already uses for
+     the same "fixed bar over a scrollable list" shape. Combined with the
+     onboarding-rating-list spacer below, every required row is reachable
+     either way; this is the fallback for the brief moments (a resize, a
+     font-size change) where the measured spacer hasn't caught up yet. */
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  pointer-events: none;
+}
+
+.onboarding-rating-dialog button,
+.onboarding-rating-dialog input,
+.onboarding-rating-dialog [tabindex] {
+  pointer-events: auto;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .onboarding-rating-dialog {
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+  }
+}
+
+.onboarding-rating-list {
+  padding-bottom: var(--onboarding-rating-spacer);
+}
+
+.onboarding-rating-progress {
+  margin-top: var(--space-3) !important;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.onboarding-rating-actions {
+  justify-content: flex-end;
+}
+
+.onboarding-target-highlight {
+  border-radius: var(--radius-sm);
+}
+
+.onboarding-target-ring {
+  position: fixed;
+  z-index: 41;
+  pointer-events: none;
+  border-radius: var(--radius-sm);
+  /* The huge fourth spread value is the actual highlighting mechanism: it
+     dims the whole viewport except this element's own box, which stays
+     fully transparent - so the highlighted icon renders at full brightness
+     instead of sitting dimmed under a separate full-screen backdrop (see
+     onboarding.js, which skips rendering .onboarding-backdrop whenever a
+     step has a target for exactly this reason). */
+  box-shadow:
+    0 0 0 var(--space-1) var(--accent),
+    var(--shadow-glow-accent),
+    0 0 0 9999px color-mix(in srgb, var(--bg) 50%, transparent);
+}
+
+.game-table-row.onboarding-required {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.onboarding-required-badge {
+  flex: 0 0 auto;
+}
+
+.onboarding-rating-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+}
+
+.onboarding-rating-banner-copy {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.onboarding-rating-banner-copy strong,
+.onboarding-rating-banner-copy span {
+  display: block;
+}
+
+.onboarding-rating-banner-copy span {
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+@media (min-width: 640px) { /* --bp-md */
+  .onboarding-dialog {
+    bottom: var(--space-6);
+  }
+
+  .onboarding-dialog--top {
+    bottom: auto;
+  }
+}
+
+@media (max-width: 639px) { /* --bp-md */
+  .onboarding-rating-dialog {
+    padding: var(--space-3);
+  }
+
+  .onboarding-rating-dialog .onboarding-rating-actions {
+    flex-wrap: nowrap;
+    gap: var(--space-1);
+    margin-top: var(--space-3);
+  }
+
+  .onboarding-rating-dialog .onboarding-rating-actions .btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: var(--space-2);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+  }
+}
+
+@media (min-width: 640px) { /* --bp-md */
+  .modal {
+    border-radius: var(--radius-lg);
+    /* …and gently scales in as a centered dialog on wider screens. */
+    animation-name: dialog-in;
+    animation-duration: 0.18s;
+  }
+}
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(28px);
+    opacity: 0.5;
+  }
+}
+@keyframes dialog-in {
+  from {
+    transform: scale(0.96) translateY(6px);
+    opacity: 0;
+  }
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+.modal-header h2 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+/* Info dialog (topbar "i"): reference material — WLAN, Discord, server IPs,
+   house rules — that people look up mid-conversation, so it opens over the
+   current view instead of replacing it. Same width cap as the search palette,
+   since both hold a list of short titles plus one line of content. */
+.info-board-modal .modal {
+  max-width: var(--search-panel-width);
+}
+.info-board-dialog .two-column-card-grid {
+  margin-top: var(--space-2);
+}
+
+/* Global command palette: fast navigation across every area without adding
+   a search service or a second navigation hierarchy. */
+.global-search-modal .modal {
+  max-width: var(--search-panel-width);
+  padding: var(--space-4);
+}
+.global-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.global-search-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+#global-search-input {
+  width: 100%;
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+}
+.global-search-summary {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.global-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 55dvh;
+  overflow-y: auto;
+}
+.global-search-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.global-search-result.is-selected {
+  border-color: var(--accent);
+  background: var(--bg-elevated-2);
+}
+.global-search-result-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.global-search-result-main .muted,
+.global-search-result-description {
+  font-size: var(--font-size-xs);
+}
+.global-search-empty {
+  padding: var(--space-5);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.search-target-highlight {
+  border-color: var(--accent) !important;
+  box-shadow: var(--shadow-glow-accent);
+}
+
+/* ---------- Shared physical seating plan ---------- */
+.seating-editor {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.seating-plan {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 1.35fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(150px, 1fr) auto;
+  grid-template-areas:
+    "top top top"
+    "left center right"
+    "bottom bottom bottom";
+  gap: var(--space-3);
+  align-items: stretch;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: radial-gradient(circle at center, rgba(91, 140, 255, 0.1), transparent 58%), var(--bg);
+  overflow: hidden;
+}
+
+.seating-side-top { grid-area: top; }
+.seating-side-right { grid-area: right; }
+.seating-side-bottom { grid-area: bottom; }
+.seating-side-left { grid-area: left; }
+
+.seating-side {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.seating-side-right,
+.seating-side-left {
+  justify-content: center;
+}
+.seating-side-label {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.seating-side-seats {
+  display: flex;
+  align-items: center;
+  /* "safe" falls back to flex-start once the row overflows its scroll
+     container, so every seat stays reachable by scrolling — plain "center"
+     splits the overflow evenly left/right, and the left half sits outside
+     the scrollable range and can never be reached (see .seating-plan's
+     overflow-x on phones). */
+  justify-content: safe center;
+  gap: var(--space-2);
+}
+.seating-side-right .seating-side-seats,
+.seating-side-left .seating-side-seats {
+  flex-direction: column;
+}
+.seating-table-center {
+  grid-area: center;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-2);
+  border: 2px solid rgba(145, 99, 245, .45);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(145, 99, 245, .2), rgba(91, 140, 255, .12));
+  color: var(--text-muted);
+}
+.seating-seat {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: var(--seating-seat-width);
+  height: var(--seating-seat-height); /* fits the gamer name plus the small real-name line below it */
+  min-width: var(--seating-seat-width);
+  min-height: var(--seating-seat-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-align: center;
+  transition: border-color .15s ease, background .15s ease, transform .15s ease;
+}
+.seating-seat:not(.is-occupied) {
+  border-color: var(--accent);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+}
+.seating-seat.is-occupied {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  gap: var(--space-2);
+}
+/* Gamer name + small real-name line beneath it (see seatNamesHtml in
+   seating.js) — the real-name span is always rendered, just visibility:
+   hidden when unset, so every seat reserves the same two-line height. */
+.seating-seat-names {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+}
+.seating-seat-name,
+.seating-seat-realname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.seating-seat-name-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+.seating-seat-realname {
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+}
+.seating-seat-name {
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+.seating-status-indicator {
+  flex: 0 0 var(--space-2);
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--danger);
+}
+.seating-status-indicator.is-playing,
+.seating-status-indicator.is-online,
+.seating-status-indicator.is-paused {
+  animation: seating-status-pulse 1.8s ease-in-out infinite;
+  will-change: transform, box-shadow;
+}
+.seating-status-indicator.is-playing {
+  --seating-status-halo: var(--state-playing-bg);
+  background: var(--state-playing);
+}
+.seating-status-indicator.is-online {
+  --seating-status-halo: var(--accent-bg);
+  background: var(--accent);
+}
+.seating-status-indicator.is-paused {
+  --seating-status-halo: var(--state-paused-bg);
+  background: var(--state-paused);
+  animation-duration: 2.4s;
+}
+@keyframes seating-status-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 var(--seating-status-halo);
+  }
+  50% {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 var(--space-1) var(--seating-status-halo);
+  }
+}
+.seating-seat-realname.is-empty {
+  display: none;
+}
+.seating-seat.is-drag-target {
+  border-color: var(--accent);
+  background: rgba(91, 140, 255, .2);
+  transform: scale(1.04);
+}
+/* Tap-to-place: the picked-up player… */
+.seating-seat.is-selected,
+.seating-pool-player.is-selected {
+  border-color: var(--accent);
+  background: rgba(91, 140, 255, .2);
+}
+/* …and every seat they could land on (also used while dragging). */
+.seating-plan.is-moving .seating-seat:not(.is-occupied) {
+  border-color: var(--accent);
+}
+.seating-player-pool.is-drag-target {
+  border-color: var(--accent);
+  background: rgba(91, 140, 255, .12);
+}
+.seating-seat-free-label {
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+}
+.seating-plan.is-editable .seating-seat.is-occupied,
+.seating-pool-player {
+  cursor: grab;
+}
+.seating-plan.is-editable .seating-seat.is-occupied:active,
+.seating-pool-player:active { cursor: grabbing; }
+.seating-plan.is-editable.is-moving .seating-seat { cursor: pointer; }
+@media (hover: hover) {
+  .seating-plan.is-editable .seating-seat.is-occupied:hover,
+  .seating-pool-player:hover {
+    border-color: var(--accent);
+  }
+}
+.seating-controls,
+.seating-pool { display: grid; gap: var(--space-3); }
+.seating-control-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+}
+.seating-control-grid label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.seating-control-grid input { min-width: 0; }
+.seating-save-status {
+  display: flex;
+  align-items: center;
+  font-size: var(--font-size-xs);
+}
+.seating-player-pool {
+  min-height: calc(var(--tap-target-size) + var(--space-3));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: var(--space-2);
+}
+.seating-pool-player {
+  min-width: 0;
+  min-height: var(--tap-target-size);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+}
+@media (max-width: 859px) { /* --bp-lg */
+  .seating-plan {
+    --seating-seat-width: calc(var(--selection-card-min-width) - var(--space-8));
+  }
+}
+
+@media (max-width: 639px) { /* --bp-md */
+  .seating-plan {
+    --seating-seat-width: var(--seating-seat-width-compact);
+    --seating-seat-height: var(--seating-seat-height-compact);
+    grid-template-columns: var(--seating-seat-width) minmax(130px, 1.5fr) var(--seating-seat-width);
+    padding: var(--space-2);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .seating-seat { flex-direction: column; }
+  .seating-seat-names {
+    max-width: calc(var(--seating-seat-width) - var(--space-2));
+    align-items: center;
+    text-align: center;
+  }
+  .seating-control-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 640px) { /* --bp-md */
+  .seating-player-pool {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 480px) { /* --bp-sm */
+  .view-title {
+    font-size: var(--font-size-2xl);
+  }
+}
+
+
+/* ---------- Shared music session ---------- */
+
+.oauth-callback-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+}
+.oauth-callback-card {
+  width: min(100%, var(--search-panel-width));
+}
+.music-setup-card,
+.music-connect-card {
+  align-items: stretch;
+}
+.music-config-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.music-pairing-panel {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.music-pairing-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.music-pairing-title {
+  display: grid;
+  gap: var(--space-1);
+}
+.music-pairing-title small {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.music-pairing-validity {
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+}
+.music-pairing-code {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 64px;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+}
+.music-pairing-code strong {
+  min-width: 0;
+  font-size: clamp(var(--font-size-xl), 3vw, 1.65rem);
+  letter-spacing: 0.2em;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.music-pairing-copy {
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated-2);
+}
+.music-pairing-copy:hover,
+.music-pairing-copy:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.music-pairing-hint {
+  margin: 0;
+}
+.music-config-list code {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  overflow-wrap: anywhere;
+}
+.music-copy-row,
+.music-device-picker,
+.music-search-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+.music-copy-row .icon-btn {
+  min-width: var(--tap-target-size);
+  min-height: var(--tap-target-size);
+}
+.music-account-row {
+  gap: var(--space-3);
+}
+.music-device-area {
+  display: grid;
+  gap: var(--space-2);
+}
+.music-now-playing {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+.music-cover {
+  width: calc(var(--tap-target-size) + var(--space-7));
+  height: calc(var(--tap-target-size) + var(--space-7));
+  flex: 0 0 auto;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+.music-cover-placeholder {
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--text-muted);
+}
+.music-track-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.music-track-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.music-progress {
+  height: var(--space-1);
+  margin-top: var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--border);
+}
+.music-progress > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  border-radius: inherit;
+  background: var(--accent-gradient);
+  will-change: transform;
+}
+.music-duration {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.music-no-playback {
+  grid-column: 1 / -1;
+}
+.music-host-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.music-warning {
+  border-color: var(--state-paused);
+  color: var(--state-paused);
+}
+.music-search-results {
+  margin-top: var(--space-3);
+}
+.music-result-type-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  width: 100%;
+}
+.music-result-type-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+.music-search-result {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+.music-search-cover,
+.music-queue-cover {
+  width: var(--avatar-size-lg);
+  height: var(--avatar-size-lg);
+  flex: 0 0 auto;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+.music-queue-list {
+  display: grid;
+  gap: var(--space-2);
+}
+.music-queue-row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+.music-queue-list.is-sortable .music-queue-row {
+  grid-template-columns: auto auto auto minmax(0, 1fr) auto auto;
+}
+.music-queue-drag,
+.music-queue-order-actions {
+  display: flex;
+  align-items: center;
+}
+.music-queue-drag {
+  color: var(--text-muted);
+  cursor: grab;
+}
+.music-queue-row.is-dragging {
+  opacity: 0.55;
+}
+.music-queue-row.is-drag-target {
+  border-color: var(--accent);
+}
+.music-queue-order-actions {
+  gap: var(--space-1);
+}
+.music-queue-position {
+  width: var(--space-6);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+@media (max-width: 639px) { /* --bp-md */
+  .music-device-picker,
+  .music-search-form,
+  .music-host-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .music-now-playing {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .music-duration {
+    grid-column: 2;
+  }
+  .music-queue-row {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+  }
+  .music-queue-list.is-sortable .music-queue-row {
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto;
+  }
+  .music-queue-duration {
+    display: none;
+  }
+  .music-search-result {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .music-search-result .btn {
+    grid-column: 1 / -1;
+  }
+}

@@ -25,8 +25,28 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { currentPlayerHasAdminRole } from '../adminAccess.js';
 import { formatEuroCents as formatCents, normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
+import {
+  captureFoodOrderViewState,
+  restoreFoodOrderDrafts,
+  restoreFoodOrderFocus,
+  restoreFoodOrderViewport,
+} from '../foodOrderViewState.js';
+import {
+  addTipToCents,
+  buildConsolidatedRows,
+  foodOrderDescriptionSuggestions,
+  groupPaymentState,
+  parsePriceToCents,
+} from '../foodOrderModel.js';
 
 export { normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
+export {
+  addTipToCents,
+  buildConsolidatedRows,
+  foodOrderDescriptionSuggestions,
+  groupPaymentState,
+  parsePriceToCents,
+} from '../foodOrderModel.js';
 
 let cache = null;
 let loading = false;
@@ -346,16 +366,6 @@ function refreshFoodOrdersAfterMutationError(ctx) {
   void refreshFoodOrders(ctx);
 }
 
-// "4,50" / "4.50" / "4" -> 450 cents; null for empty, NaN for garbage.
-export function parsePriceToCents(raw) {
-  const trimmed = (raw || '').trim().replace('€', '').trim();
-  if (!trimmed) return null;
-  const normalized = trimmed.replace(',', '.');
-  const value = Number(normalized);
-  if (!Number.isFinite(value) || value < 0) return NaN;
-  return Math.round(value * 100);
-}
-
 async function copyFoodOrderValue(value, label) {
   if (!navigator.clipboard?.writeText) {
     showToast('Kopieren ist in diesem Browser nicht verfügbar.', { error: true });
@@ -382,10 +392,6 @@ function copyPaypalEmailToClipboard(email) {
 
 function copyPaypalAddressToClipboard(address) {
   return copyFoodOrderValue(address, 'PayPal-Adresse');
-}
-
-export function addTipToCents(cents, tipPercent) {
-  return Math.round(cents * (1 + (tipPercent || 0) / 100));
 }
 
 function itemsGroupedByPlayer(order) {
@@ -482,10 +488,6 @@ function groupMetaLine(items) {
 
 function groupPaidNames(items) {
   return [...new Set(items.filter((item) => item.paid).map((item) => item.paidByName).filter(Boolean))];
-}
-
-export function groupPaymentState(items) {
-  return items.length > 0 && items.every((item) => item.paid) ? 'paid' : 'open';
 }
 
 function applyLocalPaidState(items, paid) {
@@ -1338,10 +1340,6 @@ async function handleRemoveGroup(order, playerId, myId, ctx) {
 
 // --- AP4: consolidated order list -----------------------------------------
 
-function normalizeDescription(desc) {
-  return desc.trim().replace(/\s+/g, ' ').toLowerCase();
-}
-
 // Distinct descriptions already entered in this order, for the add-item
 // field's suggestion dropdown: same normalized-description dedup as
 // buildConsolidatedRows, keeping the first-seen original spelling (and the
@@ -1349,37 +1347,9 @@ function normalizeDescription(desc) {
 // exact wording the consolidated list already keys on and its price, without
 // retyping either. Sorted with the German locale like the consolidated list
 // itself.
-export function foodOrderDescriptionSuggestions(items) {
-  const seen = new Map();
-  for (const item of items) {
-    const norm = normalizeDescription(item.description);
-    if (!seen.has(norm)) {
-      seen.set(norm, { label: item.description.trim().replace(/\s+/g, ' '), priceCents: item.priceCents ?? null });
-    }
-  }
-  return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label, 'de'));
-}
-
 // AP4.2: groups by normalized description + exact unit price; same name at
 // a different price stays its own row (merging it would silently
 // undercount or overcount that row's total).
-export function buildConsolidatedRows(items) {
-  const rows = new Map();
-  for (const item of items) {
-    const norm = normalizeDescription(item.description);
-    const key = `${norm}|${item.priceCents === null ? 'null' : item.priceCents}`;
-    if (!rows.has(key)) {
-      rows.set(key, {
-        description: item.description.trim().replace(/\s+/g, ' '),
-        priceCents: item.priceCents,
-        quantity: 0,
-      });
-    }
-    rows.get(key).quantity += item.quantity ?? 1;
-  }
-  return [...rows.values()].sort((a, b) => a.description.localeCompare(b.description, 'de'));
-}
-
 function consolidatedTotals(items, tipPercent) {
   const pricedItems = items.filter((item) => item.priceCents !== null);
   const incomplete = items.length > pricedItems.length;
@@ -1657,106 +1627,6 @@ function openDetailsForm(ctx, order) {
   );
 }
 
-function visibleOrderViewportAnchors(container) {
-  const viewport = container.getBoundingClientRect();
-  return [...container.querySelectorAll('[data-order-card], [data-closed-order]')]
-    .map((element) => {
-      const rect = element.getBoundingClientRect();
-      return {
-        id: element.dataset.orderCard ?? element.dataset.closedOrder,
-        offset: rect.top - viewport.top,
-        visible: rect.bottom > viewport.top && rect.top < viewport.bottom,
-      };
-    })
-    .filter((anchor) => anchor.id && anchor.visible)
-    .sort((a, b) => Math.abs(a.offset) - Math.abs(b.offset));
-}
-
-function restoreOrderViewportAnchor(container, anchors, previousScrollTop) {
-  container.scrollTop = previousScrollTop;
-  const viewportTop = container.getBoundingClientRect().top;
-  const cards = [...container.querySelectorAll('[data-order-card], [data-closed-order]')];
-  for (const anchor of anchors) {
-    const element = cards.find((card) => (card.dataset.orderCard ?? card.dataset.closedOrder) === anchor.id);
-    if (!element || element.getClientRects().length === 0) continue;
-    container.scrollTop += element.getBoundingClientRect().top - viewportTop - anchor.offset;
-    return;
-  }
-}
-
-const FOOD_ORDER_FOCUSABLE_SELECTOR = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',');
-
-function visibleFoodOrderFocusTargets(scope) {
-  return [...scope.querySelectorAll(FOOD_ORDER_FOCUSABLE_SELECTOR)].filter(
-    (element) => !element.closest('[hidden]') && element.getClientRects().length > 0
-  );
-}
-
-function foodOrderFocusScope(container, element) {
-  const card = element.closest('[data-order-card], [data-closed-order]');
-  if (!card || !container.contains(card)) return { kind: 'view', id: null, element: container };
-  if (card.dataset.orderCard) return { kind: 'open', id: card.dataset.orderCard, element: card };
-  return { kind: 'closed', id: card.dataset.closedOrder, element: card };
-}
-
-function captureFoodOrderFocus(container) {
-  const active = document.activeElement;
-  if (!(active instanceof HTMLElement) || !container.contains(active)) return null;
-  const scope = foodOrderFocusScope(container, active);
-  const attributes = [...active.attributes]
-    .filter(
-      ({ name }) =>
-        name === 'id' ||
-        name === 'class' ||
-        name === 'name' ||
-        name === 'type' ||
-        name === 'href' ||
-        name === 'aria-label' ||
-        (name.startsWith('data-') && !name.startsWith('data-e2e-'))
-    )
-    .map(({ name, value }) => [name, value]);
-  const targets = visibleFoodOrderFocusTargets(scope.element);
-  return {
-    scopeKind: scope.kind,
-    scopeId: scope.id,
-    tagName: active.tagName,
-    attributes,
-    text: active.textContent?.trim() ?? '',
-    index: targets.indexOf(active),
-  };
-}
-
-function restoreFoodOrderFocus(container, anchor) {
-  if (!anchor) return;
-  const scope =
-    anchor.scopeKind === 'view'
-      ? container
-      : [...container.querySelectorAll('[data-order-card], [data-closed-order]')].find((card) =>
-          anchor.scopeKind === 'open' ? card.dataset.orderCard === anchor.scopeId : card.dataset.closedOrder === anchor.scopeId
-        );
-  if (!scope) return;
-  const targets = visibleFoodOrderFocusTargets(scope);
-  let target = targets.find(
-    (element) =>
-      element.tagName === anchor.tagName &&
-      anchor.attributes.every(([name, value]) => element.getAttribute(name) === value)
-  );
-  if (!target && anchor.attributes.length === 0) {
-    const indexedTarget = targets[anchor.index];
-    if (indexedTarget?.tagName === anchor.tagName && indexedTarget.textContent?.trim() === anchor.text) {
-      target = indexedTarget;
-    }
-  }
-  target?.focus({ preventScroll: true });
-}
-
 export function renderFoodOrders(container, ctx) {
   if (
     !forceInteractiveRender &&
@@ -1771,22 +1641,7 @@ export function renderFoodOrders(container, ctx) {
 
   const myId = getMyId();
 
-  // Every teammate adding an item fires foodOrders:changed and re-renders
-  // this view on all devices — preserve what THIS user is mid-typing in the
-  // add-item forms, or their half-written "Margherita" vanishes whenever
-  // someone else is faster.
-  const prevForms = new Map();
-  container.querySelectorAll('[data-add-item-form]').forEach((f) => {
-    const desc = f.querySelector('[data-item-desc]');
-    const quantity = f.querySelector('[data-item-quantity]');
-    const price = f.querySelector('[data-item-price]');
-    prevForms.set(f.dataset.addItemForm, {
-      desc: desc?.value ?? '',
-      quantity: quantity?.value ?? '',
-      price: price?.value ?? '',
-      focus: document.activeElement === desc ? 'desc' : document.activeElement === quantity ? 'quantity' : document.activeElement === price ? 'price' : null,
-    });
-  });
+  const renderState = captureFoodOrderViewState(container);
   const orders = cache || [];
   const openOrders = orders.filter((o) => o.open);
   const closedOrders = orders.filter((o) => !o.open);
@@ -1829,10 +1684,6 @@ export function renderFoodOrders(container, ctx) {
   // scrollable container's own scrollTop to 0 - restoring it below is what
   // keeps e.g. marking several positions paid in a row from jumping the
   // whole view back to the top after every single toggle.
-  const scrollTop = container.scrollTop;
-  const viewportAnchors = visibleOrderViewportAnchors(container);
-  const focusAnchor = captureFoodOrderFocus(container);
-
   container.innerHTML = `
     <div class="row-between page-title-row">
       <h1 class="view-title">Essen</h1>
@@ -1861,23 +1712,10 @@ export function renderFoodOrders(container, ctx) {
       }
     </div>
   `;
-  restoreOrderViewportAnchor(container, viewportAnchors, scrollTop);
+  restoreFoodOrderViewport(container, renderState);
 
   wireInfoTooltips(container);
-
-  container.querySelectorAll('[data-add-item-form]').forEach((f) => {
-    const prev = prevForms.get(f.dataset.addItemForm);
-    if (!prev) return;
-    const desc = f.querySelector('[data-item-desc]');
-    const quantity = f.querySelector('[data-item-quantity]');
-    const price = f.querySelector('[data-item-price]');
-    if (prev.desc) desc.value = prev.desc;
-    quantity.value = prev.quantity;
-    if (prev.price) price.value = prev.price;
-    if (prev.focus === 'desc') desc.focus({ preventScroll: true });
-    if (prev.focus === 'quantity') quantity.focus({ preventScroll: true });
-    if (prev.focus === 'price') price.focus({ preventScroll: true });
-  });
+  restoreFoodOrderDrafts(container, renderState);
 
   container.querySelectorAll('[data-desc-suggest]').forEach((wrapper) => wireDescSuggest(wrapper));
 
@@ -2111,6 +1949,6 @@ export function renderFoodOrders(container, ctx) {
     });
   });
 
-  restoreFoodOrderFocus(container, focusAnchor);
+  restoreFoodOrderFocus(container, renderState);
   refreshConsolidatedListDialog(myId);
 }
