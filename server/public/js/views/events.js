@@ -42,6 +42,9 @@ const expandedEventParticipants = new Set();
 // Mirrors foodOrders.js's Historie collapse: ended events start collapsed and
 // this survives the section's own live re-renders.
 let eventHistoryOpen = false;
+// Same pattern for the declined events: present enough to come back from,
+// quiet enough not to compete with the events actually being planned.
+let declinedEventsOpen = false;
 
 function renderKioskSection() {
   return `
@@ -223,6 +226,7 @@ function eventCardById(eventId) {
     ...(state.endedEvents || []),
     ...(state.plannedEvents || []),
     ...(state.eventInvitations || []),
+    ...(state.declinedEvents || []),
   ];
   return candidates.find((event) => event.id === eventId) ?? null;
 }
@@ -611,6 +615,37 @@ function renderEventInfo(event, { editable = false, invitation = false } = {}) {
     </div>`;
 }
 
+// Why an answer is currently blocked. The server decides this
+// (routes/events.ts's myParticipation.lockReason); the card only has to say it
+// out loud, because a control that silently disappears reads as a bug.
+const PARTICIPATION_LOCK_TEXTS = {
+  paid: 'Deine Zahlung ist bereits erfasst. Für eine Absage wende dich an die Orga.',
+  started: 'Das Event läuft bereits. Für eine Absage wende dich an die Orga.',
+  ended: 'Das Event ist beendet.',
+  cancelled: 'Das Event wurde abgesagt.',
+};
+
+function participationLockNote(event) {
+  const text = PARTICIPATION_LOCK_TEXTS[event.myParticipation?.lockReason];
+  return text ? `<span class="muted event-participation-note">${escapeHtml(text)}</span>` : '';
+}
+
+// A member's own answer stays on the card for as long as it can be changed:
+// a yes remains reversible and a no remains reversible the same way. Owner and
+// admin cards keep their management footer instead — they already edit any
+// roster row, their own included.
+export function renderMemberParticipationActions(event) {
+  if (event.myParticipation?.status !== 'accepted') return '';
+  return `
+    <div class="event-card-actions">
+      ${
+        event.myParticipation.canDecline
+          ? `<button type="button" class="btn btn-sm" data-decline-participation="${escapeHtml(event.id)}">Teilnahme absagen</button>`
+          : participationLockNote(event)
+      }
+    </div>`;
+}
+
 // Read-only card for a member's own accepted events. The same information is
 // useful to admins, so both card variants share the detail and accepted-roster
 // blocks while only the management card receives lifecycle actions.
@@ -626,6 +661,32 @@ function renderMemberEventCard(event) {
       </div>
       ${renderEventInfo(event)}
       ${renderAcceptedParticipants(event)}
+      ${renderMemberParticipationActions(event)}
+    </article>
+  `;
+}
+
+// A declined event keeps exactly the teaser it was answered from — no roster,
+// no event data — plus the way back. Rendered in its own collapsed section so
+// it stays findable without competing with the events actually being planned.
+export function renderDeclinedEventCard(event) {
+  return `
+    <article class="card stack event-card event-card-declined" data-declined-event="${escapeHtml(event.id)}">
+      <div class="row-between food-order-card-header event-card-header">
+        <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
+        <span class="event-card-header-badges">
+          <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
+          <span class="badge badge-offline">Abgesagt</span>
+        </span>
+      </div>
+      ${renderEventInfo(event, { invitation: true })}
+      <div class="event-card-actions">
+        ${
+          event.myParticipation?.canAccept
+            ? `<button type="button" class="btn btn-primary btn-sm" data-accept-participation="${escapeHtml(event.id)}">Doch zusagen</button>`
+            : participationLockNote(event)
+        }
+      </div>
     </article>
   `;
 }
@@ -716,6 +777,13 @@ function renderEventSection() {
   const renderCard = (event) => (canManage ? renderEventCard(event) : renderMemberEventCard(event));
   const activeEvents = events.filter((e) => !e.isEnded);
   const endedEvents = events.filter((e) => e.isEnded);
+  // An owner/admin already sees every event of the group as a management card,
+  // so their own declined ones must not appear a second time down here.
+  const renderedIds = new Set(events.map((e) => e.id));
+  const declinedEvents = (state.declinedEvents || [])
+    .filter((e) => !renderedIds.has(e.id))
+    .slice()
+    .sort(compareEventsByStartAscending);
   const activeEmptyText = events.length === 0
     ? (canManage ? 'Noch keine Events angelegt.' : 'Du nimmst noch an keinem eigenen Event teil.')
     : (canManage ? 'Keine laufenden Events.' : 'Aktuell kein laufendes Event.');
@@ -724,7 +792,7 @@ function renderEventSection() {
     <section class="card stack grouped-page-section" aria-labelledby="orga-events-title">
       <div class="grouped-page-section-title">
         <span class="title-with-info">
-          <h2 id="orga-events-title">Events</h2>
+          <h2 id="orga-events-title" tabindex="-1">Events</h2>
           ${infoTooltipHtml('orga-events-help', 'Events', EVENT_HELP)}
         </span>
         ${
@@ -739,6 +807,22 @@ function renderEventSection() {
         activeEvents.length === 0
           ? emptyStateHtml(activeEmptyText, { icon: icon('calendar') })
           : `<div class="stack orga-event-grid">${activeEvents.map(renderCard).join('')}</div>`
+      }
+      ${
+        declinedEvents.length > 0
+          ? `<details class="card grouped-page-section collapsible-section" data-declined-events ${declinedEventsOpen ? 'open' : ''}>
+               <summary class="collapsible-section-header">
+                 <h2>Abgesagt</h2>
+                 <span class="collapsible-section-summary-end">
+                   <span class="badge badge-offline">${declinedEvents.length}</span>
+                   <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+                 </span>
+               </summary>
+               <div class="collapsible-section-content">
+                 <div class="stack orga-event-grid">${declinedEvents.map(renderDeclinedEventCard).join('')}</div>
+               </div>
+             </details>`
+          : ''
       }
       ${
         endedEvents.length > 0
@@ -808,6 +892,51 @@ export function wirePendingInvitationActions(container, ctx) {
         await ctx.refresh();
         (container.querySelector('#profile-invitations-title') || container.querySelector('#profile-view-title'))?.focus();
         showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
+      } catch (err) {
+        btn.disabled = false;
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+}
+
+// Withdrawing an acceptance and taking a declined event back, both from the
+// Events tab. The declined event's card moves between the active list and the
+// "Abgesagt" section, so focus goes to the stable section heading rather than
+// to a button that no longer exists after the refresh.
+export function wireParticipationAnswerActions(container, ctx) {
+  container.querySelectorAll('[data-decline-participation]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const eventId = btn.dataset.declineParticipation;
+      const event = eventCardById(eventId);
+      if (
+        !(await confirmDialog(
+          `Teilnahme an „${event?.name ?? 'diesem Event'}" absagen? Die Orga wird informiert; zusagen kannst du danach jederzeit wieder.`,
+          { title: 'Teilnahme absagen', confirmText: 'Absagen', danger: true },
+        ))
+      ) return;
+      btn.disabled = true;
+      try {
+        await api.events.declineInvitation(eventId);
+        await ctx.refresh();
+        container.querySelector('#orga-events-title')?.focus();
+        showToast('Teilnahme abgesagt.');
+      } catch (err) {
+        btn.disabled = false;
+        showToast(err.message, { error: true });
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-accept-participation]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const eventId = btn.dataset.acceptParticipation;
+      btn.disabled = true;
+      try {
+        await api.events.acceptInvitation(eventId);
+        await ctx.refresh();
+        container.querySelector('#orga-events-title')?.focus();
+        showToast('Teilnahme zugesagt.');
       } catch (err) {
         btn.disabled = false;
         showToast(err.message, { error: true });
@@ -1161,6 +1290,12 @@ export function renderOrgaEvents(container, ctx) {
   container.querySelector('[data-event-history]')?.addEventListener('toggle', (e) => {
     eventHistoryOpen = e.currentTarget.open;
   });
+
+  container.querySelector('[data-declined-events]')?.addEventListener('toggle', (e) => {
+    declinedEventsOpen = e.currentTarget.open;
+  });
+
+  wireParticipationAnswerActions(container, ctx);
 
   container.querySelectorAll('[data-export-event]').forEach((btn) => {
     btn.addEventListener('click', () => downloadExport(btn.dataset.exportEvent));

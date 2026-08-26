@@ -839,7 +839,19 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   invitation surfaces as a personal Home „Aktuell“ nudge (see „Home overview“) that links into „Mein
   Profil“, and Profile's own leading „Einladungen“ section is where it is actually answered
   (`renderInvitationCard`/`pendingEventInvitations`/`wirePendingInvitationActions` in `events.js`,
-  reused by `profile.js` so the card markup and accept/decline wiring exist exactly once). Event
+  reused by `profile.js` so the card markup and accept/decline wiring exist exactly once).
+  An *answered* participation is different: it stays on this tab, because this is where the member
+  already looks at the events they are part of. An accepted member card carries „Teilnahme absagen“
+  in its footer (`renderMemberParticipationActions`) for as long as the server reports
+  `myParticipation.canDecline`; where it does not, the same footer names the reason instead
+  (`lockReason`: recorded payment, running, ended or cancelled event) rather than dropping the
+  control silently. Declining is not leaving: the event moves into this tab's own „Abgesagt“
+  section — the same collapsible-section pattern as „Historie“, likewise collapsed by default and
+  preserving its open state — where it stays as a teaser card with „Doch zusagen“
+  (`renderDeclinedEventCard`). Only an organizer withdrawing the invitation removes the event from
+  the member's app entirely, and that removal notifies them unless they had declined themselves.
+  Owner/admin cards carry no such footer: their management surface already edits every roster row,
+  their own included, so a declined event of theirs is never listed twice. Event
   cards stay in one vertical column at
   phone and laptop widths so payment and participant controls keep enough room. Their card hierarchy
   deliberately mirrors Food orders: alternating accent rails and a concise title/status header lead

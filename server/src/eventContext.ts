@@ -212,6 +212,12 @@ export function eventAccessLevel(
     .prepare('SELECT status FROM event_participants WHERE event_id = ? AND player_id = ?')
     .get(eventId, playerId) as { status: 'invited' | 'accepted' | 'declined' } | undefined;
   if (participation?.status === 'accepted') return 'participant';
-  if (participation?.status === 'invited') return 'teaser';
+  // A declined invitation keeps the teaser it was answered from, so the event
+  // stays findable in the personal invitation history and the decision can be
+  // reversed (docs/KONZEPT-EINLADUNGS-WORKFLOW.md Abschnitt 4, and the
+  // "nur in der persönlichen Einladungshistorie sichtbar" row of
+  // docs/KONZEPT-EVENT-SICHTBARKEIT.md Abschnitt 3.2). Only an organizer
+  // withdrawing the invitation removes the row and with it every access.
+  if (participation?.status === 'invited' || participation?.status === 'declined') return 'teaser';
   return 'none';
 }

@@ -43,6 +43,10 @@ export function normalizeEventContext(eventContext = {}) {
     // payload still yields a usable filter instead of an empty one.
     historicalEvents: eventContext.historicalEvents ?? availableEvents,
     eventInvitations: eventContext.invitations ?? [],
+    // Declined events keep their teaser so the decision stays reversible (see
+    // routes/events.ts). They are deliberately absent from availableEvents:
+    // answering again is possible, switching into the workspace is not.
+    declinedEvents: eventContext.declinedEvents ?? [],
     eventTypeOptions: eventContext.eventTypeOptions ?? [],
   };
 }
