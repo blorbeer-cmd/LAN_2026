@@ -419,7 +419,7 @@ function renderCurrentVote({ allowRunoff = false } = {}) {
     return emptyStateHtml('Lädt…', { className: 'vote-empty-state', style: 'padding:var(--space-4);' });
   }
   if (historyCache.length === 0) {
-    return emptyStateHtml('<span>Noch keine Abstimmung durchgeführt.</span>', {
+    return emptyStateHtml('Noch keine Abstimmung durchgeführt.', {
       className: 'vote-empty-state',
       style: 'padding:var(--space-4);',
       icon: icon(domainIcon('votes')),
@@ -453,7 +453,7 @@ function renderHistory() {
     return emptyStateHtml('Lädt…', { className: 'vote-empty-state', style: 'padding:var(--space-4);' });
   }
   if (historyCache.length === 0) {
-    return emptyStateHtml('<span>Noch keine vergangenen Abstimmungen.</span>', {
+    return emptyStateHtml('Noch keine vergangenen Abstimmungen.', {
       className: 'vote-empty-state',
       style: 'padding:var(--space-4);',
       icon: icon(domainIcon('votes')),
@@ -501,7 +501,7 @@ async function openHistoryRoundDetail(round) {
     }
   } catch (err) {
     const bodyEl = el.querySelector('.modal-body');
-    if (bodyEl) bodyEl.innerHTML = emptyStateHtml(escapeHtml(err.message));
+    if (bodyEl) bodyEl.innerHTML = emptyStateHtml(err.message);
   }
 }
 

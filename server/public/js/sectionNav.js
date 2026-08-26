@@ -9,7 +9,7 @@
 // changed, not what it is called.
 
 import { viewIsEnabledForEvent } from './eventFeatures.js';
-import { icon } from './icons.js';
+import { backButtonHtml } from './backButton.js';
 
 export const SECTIONS = Object.freeze({
   competition: Object.freeze({
@@ -132,7 +132,7 @@ export function renderSectionShell(container, view, { badges = {}, event } = {})
   const heading = sectionKey === 'orga' && !standalone
     ? `<div class="more-subpage-header more-subpage-header--tabs">
          <div class="more-subpage-title-row">
-           <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+           ${backButtonHtml({ view: 'more' })}
            <h1 class="view-title">${title}</h1>
          </div>
          ${tabNavigation}

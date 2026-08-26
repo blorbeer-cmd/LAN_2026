@@ -236,7 +236,7 @@ function renderAssignedTodos() {
   let content;
   if (tasks === null) content = emptyStateHtml('Lädt…');
   else if (!myId) content = '<p class="muted">Wähle oben, wer du bist, um deine To-Dos zu sehen.</p>';
-  else if (tasks.length === 0) content = '<p class="muted">Aktuell liegt nichts bei dir.</p>';
+  else if (tasks.length === 0) content = '<p class="muted">Noch keine To-Dos für dich.</p>';
   else {
     const visibleTasks = tasks.slice(0, 3);
     const remaining = tasks.length - visibleTasks.length;
@@ -338,7 +338,7 @@ function renderMyStatus(myId, players) {
         <span class="badge ${badgeClass}">${stateLabel(me.state)}</span>
       </span>
       <button type="button" class="btn btn-primary btn-sm" data-toggle-pause="${me.player_id}" data-paused="${me.state === 'paused' ? '1' : '0'}">
-        ${me.state === 'paused' ? 'Bin wieder da' : 'Pause / Essen'}
+        ${me.state === 'paused' ? 'Bin wieder da' : 'Pause'}
       </button>
     </div>
   `;
@@ -361,11 +361,11 @@ export function renderHome(container, ctx) {
       <h1 class="view-title">Home</h1>
       <div class="grouped-page-sections">
         ${renderAssignedTodos()}
-        ${emptyStateHtml(`
-          <img src="/img/mascot.svg" alt="" width="72" height="66" class="mascot" />
-          Noch keine Spieler angelegt.<br />
-          <button type="button" class="btn btn-primary btn-sm" data-navigate="profile" style="margin-top:var(--space-3);">Eigenes Profil anlegen</button>
-        `)}
+        ${emptyStateHtml({
+          title: 'Noch keine Spieler angelegt',
+          illustration: { src: '/img/mascot.svg', alt: '', width: 72, height: 66, className: 'mascot' },
+          action: { label: 'Eigenes Profil anlegen', navigate: 'profile' },
+        })}
       </div>`;
     return;
   }
@@ -379,7 +379,7 @@ export function renderHome(container, ctx) {
       const isMe = p.player_id === myId;
 
       // No note line here on purpose: the only note the UI ever sets is the
-      // fixed "Pause / Essen" string (see renderMyStatus's toggle below),
+      // fixed "Pause" string (see renderMyStatus's toggle below),
       // which just restates the "Pause" badge already shown — rendering it
       // was the last source of a tile being taller than its siblings, which
       // visibly resized the whole .card-grid row (that stretches every card
@@ -442,7 +442,7 @@ export function renderHome(container, ctx) {
     btn.addEventListener('click', async () => {
       const isPaused = btn.dataset.paused === '1';
       try {
-        await api.live.setNote(btn.dataset.togglePause, isPaused ? null : 'Pause / Essen');
+        await api.live.setNote(btn.dataset.togglePause, isPaused ? null : 'Pause');
         await ctx.refresh();
       } catch (err) {
         showToast(err.message, { error: true });

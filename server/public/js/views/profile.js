@@ -21,6 +21,7 @@ import { confirmDialog, openModal } from '../modal.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { pendingEventInvitations, renderInvitationCard, wirePendingInvitationActions } from './events.js';
 import { eventHasFeature } from '../eventFeatures.js';
+import { backButtonHtml } from '../backButton.js';
 
 const TRACKING_PAUSE_HELP = 'Pausiert Live-Status und Spielzeit. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
 const ACTIVITY_TRACKING_HELP = 'Erfasst zusätzlich, ob das Spielfenster im Vordergrund ist. Der Wert lässt sich später in der Agent-Steuerung ändern.';
@@ -308,7 +309,7 @@ export function renderProfile(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+        ${backButtonHtml({ view: 'more' })}
         <h1 class="view-title" id="profile-view-title" tabindex="-1">Mein Profil</h1>
         <button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>
       </div>

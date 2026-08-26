@@ -189,12 +189,12 @@ function renderCarpoolSection(direction, title, myId) {
       <div class="row-between">
         <strong>${title}</strong>
         <span class="row">
-          <button type="button" class="btn btn-sm btn-primary" data-new-carpool="${direction}" ${myId && !committed ? '' : 'disabled'}>+ Neu</button>
+          <button type="button" class="btn btn-sm btn-primary" data-new-carpool="${direction}" ${myId && !committed ? '' : 'disabled'}>Fahrt anlegen</button>
           ${
             committed
               ? infoTooltipHtml(
                   `arrivals-new-${direction}-disabled-help`,
-                  'Warum ist „+ Neu“ deaktiviert?',
+                  'Warum ist „Fahrt anlegen“ deaktiviert?',
                   'Du bist bereits Fahrer oder Mitfahrer einer anderen Fahrgemeinschaft dieser Richtung.',
                   'warning'
                 )
@@ -322,7 +322,7 @@ function renderPeopleList() {
 }
 
 // Shared create/edit form: `existing` is null for a new carpool (direction
-// is fixed then, chosen from the section the "+ Neu" button lives in) or an
+// is fixed then, chosen from the section the "Fahrt anlegen" button lives in) or an
 // existing carpool object to edit in place (direction can't change - editing
 // only touches the driver's plan, not which list it's listed under).
 function openCarpoolForm(direction, myId, ctx, existing = null) {

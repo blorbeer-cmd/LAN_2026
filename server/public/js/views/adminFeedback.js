@@ -5,7 +5,7 @@ import { api } from '../api.js';
 import { escapeHtml, formatDateTime } from '../format.js';
 import { currentPlayerHasAdminRole } from '../adminAccess.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { icon } from '../icons.js';
+import { backButtonHtml } from '../backButton.js';
 
 const SENTIMENT_LABEL = { positive: 'Positiv', negative: 'Negativ', problem: 'Problem', idea: 'Idee' };
 
@@ -78,7 +78,7 @@ function renderAccessDenied(container) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück zum Admin</button>
+        ${backButtonHtml({ view: 'admin' })}
         <h1 class="view-title">Feedback</h1>
       </div>
     </div>
@@ -95,7 +95,7 @@ export function renderAdminFeedback(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück zum Admin</button>
+        ${backButtonHtml({ view: 'admin' })}
         <h1 class="view-title">Feedback</h1>
       </div>
     </div>

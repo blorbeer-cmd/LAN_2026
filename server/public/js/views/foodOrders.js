@@ -597,7 +597,7 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
 
 function renderItems(order, myId, { locked = false } = {}) {
   if (order.items.length === 0) {
-    return `<div class="muted" style="font-size:var(--font-size-sm);padding:var(--space-2) 0;">Noch nichts eingetragen.</div>`;
+    return `<div class="muted" style="font-size:var(--font-size-sm);padding:var(--space-2) 0;">Noch keine Positionen.</div>`;
   }
   const grouped = itemsGroupedByPlayer(order);
 
@@ -1403,7 +1403,7 @@ function renderConsolidatedListBody(order) {
         </div>`
         )
         .join('')
-    : emptyStateHtml('Noch nichts eingetragen.');
+    : emptyStateHtml('Noch keine Positionen.');
   return `
     ${order.open ? `<div class="muted food-order-consolidated-open-note">Bestellung ist noch offen.</div>` : ''}
     <div class="stack food-order-consolidated-rows">${rowsHtml}</div>
@@ -1820,7 +1820,7 @@ export function renderFoodOrders(container, ctx) {
     loading || cache === null
       ? emptyStateHtml('Lädt…')
       : openOrders.length === 0
-        ? emptyStateHtml('Gerade keine offene Bestellung.')
+        ? emptyStateHtml('Noch keine offene Bestellung.')
         : `<div class="two-column-card-grid food-order-grid">${openOrders
             .map((o) => renderOpenOrder(o, myId, { collapsible: openOrders.length > 1 }))
             .join('')}</div>`;

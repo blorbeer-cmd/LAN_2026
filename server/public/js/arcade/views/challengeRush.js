@@ -9,6 +9,7 @@ import { cancelCountdown } from '../countdown.js';
 import { confirmDialog } from '../../modal.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { emptyStateHtml } from '../../emptyState.js';
+import { backButtonHtml } from '../../backButton.js';
 
 const COLOR_WORD_LABELS = { red: 'Rot', blue: 'Blau', green: 'Grün', yellow: 'Gelb' };
 const COLOR_WORD_VARS = { red: 'var(--danger)', blue: 'var(--accent)', green: 'var(--state-playing)', yellow: 'var(--state-paused)' };
@@ -600,7 +601,7 @@ export function renderChallengeRush(container, _ctx) {
     : match?.phase === 'result'
       ? `${resultView()}${matchControlsHtml()}`
       : `${challengeView()}${matchControlsHtml()}<section class="card stack"><h2>Zwischenstand</h2><div class="challenge-rush-scoreboard">${scoreText(scores)}</div></section>`;
-  container.innerHTML = `<div class="arcade-game-shell"><button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button><h1 class="view-title">Challenge Rush</h1><div class="arcade-toolbar">${arcadeMuteControlHtml()}</div>${body}</div>`;
+  container.innerHTML = `<div class="arcade-game-shell">${backButtonHtml({ view: 'arcade' })}<h1 class="view-title">Challenge Rush</h1><div class="arcade-toolbar">${arcadeMuteControlHtml()}</div>${body}</div>`;
   if (match?.phase === 'countdown' && !match?.paused) updateReadingCountdown();
   if (match?.challenge?.key === 'odd-one-out' && match.phase === 'playing' && !match.paused && !iCompleted) {
     applyOddOneOutPresentation(container, match.challenge.data?.oddIndex);

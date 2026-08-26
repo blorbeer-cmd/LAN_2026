@@ -1,6 +1,5 @@
 import { connectSocket } from '../../socket.js';
 import { escapeHtml } from '../../format.js';
-import { icon } from '../../icons.js';
 import { showToast } from '../../toast.js';
 import { confirmDialog } from '../../modal.js';
 import { getMyId } from '../../whoami.js';
@@ -11,6 +10,7 @@ import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcade
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
 import { emptyStateHtml } from '../../emptyState.js';
+import { backButtonHtml } from '../../backButton.js';
 
 const COLS = 32;
 const ROWS = 20;
@@ -286,7 +286,7 @@ function updateRosterDisplay() {
 export function renderSnake(container) {
   ensureSnakeSocket();
   if (!match) {
-    container.innerHTML = `<button class="btn btn-sm" data-navigate="arcade">${icon('chevronLeft')} Zurück</button><h1 class="view-title">Snake</h1>${renderSnakeLobbyCard()}`;
+    container.innerHTML = `${backButtonHtml({ view: 'arcade' })}<h1 class="view-title">Snake</h1>${renderSnakeLobbyCard()}`;
     wireSnakeLobbyCard(container);
     return;
   }

@@ -25,6 +25,7 @@ import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcade
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
 import { emptyStateHtml } from '../../emptyState.js';
+import { backButtonHtml } from '../../backButton.js';
 
 const COLS = 10;
 const ROWS = 20;
@@ -626,7 +627,7 @@ export function renderTetris(container, _ctx) {
   if (!match) {
     // The play view is only for live matches; anything else belongs in Arcade.
     container.innerHTML = `
-      <button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button>
+      ${backButtonHtml({ view: 'arcade' })}
       ${emptyStateHtml('Kein laufendes Tetris-Match.', { style: 'margin-top:var(--space-4);' })}`;
     return;
   }

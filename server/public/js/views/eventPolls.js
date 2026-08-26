@@ -946,7 +946,15 @@ function schedulePollViewportAnchorRestore(container, anchors, previousScrollTop
 export function renderEventPolls(container, ctx) {
   const event = state.activeEvent;
   if (!event || event.isBase || event.id === 'base') {
-    container.innerHTML = emptyStateHtml('<h2>Event auswählen</h2><p class="muted">Lege das Event zuerst an und wähle es oben rechts aus. Alle Abstimmungen in diesem Tab gehören anschließend zum aktiven Event.</p>', { icon: icon('vote') });
+    container.innerHTML = emptyStateHtml({
+      title: 'Event wählen',
+      body: 'Abstimmungen gehören immer zum aktiven Event.',
+      icon: icon('vote'),
+      action: { id: 'choose-event-context', label: 'Event wählen' },
+    });
+    container.querySelector('#choose-event-context')?.addEventListener('click', () => {
+      document.getElementById('event-context-switcher-search')?.focus();
+    });
     return;
   }
   loadPolls(event.id, ctx);
@@ -963,7 +971,11 @@ export function renderEventPolls(container, ctx) {
   let content;
   if (cached?.loading && !groups.length) content = emptyStateHtml('Abstimmungen werden geladen…');
   else if (cached?.error) content = `<div class="card stack"><p class="muted">${escapeHtml(cached.error)}</p><button type="button" class="btn btn-sm" id="retry-event-polls">Erneut versuchen</button></div>`;
-  else if (!groups.length) content = emptyStateHtml('<h2>Noch keine Abstimmung</h2><p class="muted">Starte eine Abstimmung mit freien Optionen. Sie verändert das Event nicht.</p>', { icon: icon('vote') });
+  else if (!groups.length) content = emptyStateHtml({
+    title: 'Noch keine Abstimmung',
+    body: 'Starte eine freie Event-Umfrage.',
+    icon: icon('vote'),
+  });
   else content = `
     ${activeGroups.length ? `<div class="stack event-poll-list">${activeGroups.map(renderPollGroup).join('')}</div>` : ''}
     ${renderEndedPolls(endedGroups, event.id)}`;

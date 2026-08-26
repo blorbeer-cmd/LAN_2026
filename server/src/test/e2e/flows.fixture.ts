@@ -256,6 +256,21 @@ flowTest('shell', 'fresh device uses the personal login and reaches the app with
   assert.equal(await loginPage.inputValue('#profile-name'), alice.name);
 });
 
+flowTest('shell', 'Abstimmungen: the empty state opens the existing event switcher directly', async () => {
+  await openOrgaTab('eventPolls');
+  await page.waitForSelector('#choose-event-context');
+  assert.equal((await page.locator('.empty-state-title').textContent())?.trim(), 'Event wählen');
+  assert.equal(await page.getByText('oben rechts', { exact: false }).count(), 0);
+
+  await page.click('#choose-event-context');
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.id),
+    'event-context-switcher-search',
+  );
+  assert.equal(await page.locator('#event-context-switcher-list').isVisible(), true);
+  await page.keyboard.press('Escape');
+});
+
 flowTest('shell', 'untabbed areas align compact cards while tabbed areas reserve a second row', async (t) => {
   t.after(async () => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -326,7 +341,10 @@ flowTest('shell', 'untabbed areas align compact cards while tabbed areas reserve
       await page.click(`[data-navigate="${view}"]`);
       await page.waitForSelector(readySelector);
       metrics.push([title, await firstCardMetrics(title)]);
-      assert.equal(await page.locator('.more-subpage-header [data-navigate="more"]').count(), 1);
+      const backButton = page.locator('.more-subpage-header [data-navigate="more"]');
+      assert.equal(await backButton.count(), 1);
+      assert.equal((await backButton.textContent())?.trim(), 'Zurück');
+      assert.equal(await backButton.locator('svg').count(), 1);
     }
 
     const alignedTops = new Set(metrics.map(([, value]) => value.top));
@@ -401,6 +419,7 @@ flowTest('shell', 'Orga Events tab and Profil use grouped help while admin tools
   await page.click('[aria-label="Mehr Informationen zu Events"]');
   await page.waitForSelector('#orga-events-help:not([hidden])');
   await page.click('[aria-label="Mehr Informationen zu Events"]');
+  assert.equal((await page.locator('#new-event-btn').textContent())?.trim(), 'Event anlegen');
   await page.click('#new-event-btn');
   assert.equal(await page.getByText('Tracking', { exact: true }).count(), 0);
   assert.equal(await page.locator('#event-cost').count(), 1);
@@ -1160,8 +1179,10 @@ flowTest('competition', 'full click-through: players, matchmaking, voting, leade
   // Manual pause override (FR-28): the pause toggle lives in the "Dein
   // Status" bar, not on the player's own tile. Toggle pause, see the badge
   // flip, then toggle back.
+  assert.equal((await page.locator('[data-toggle-pause]').textContent())?.trim(), 'Pause');
   await page.click('[data-toggle-pause]');
   await page.waitForSelector('.badge-paused');
+  assert.equal((await page.locator('[data-toggle-pause]').textContent())?.trim(), 'Bin wieder da');
   await page.click('[data-toggle-pause]');
   await page.waitForFunction(() => !document.querySelector('.badge-paused'));
 });
@@ -3250,7 +3271,7 @@ flowTest('food-orders', "Essensbestellung: the description field suggests the or
   await page.waitForSelector('.modal h2:has-text("Deine 4 Positionen löschen?")');
   assert.equal(await page.locator('.food-order-confirm-list li').count(), 4);
   await page.click('[data-confirm-ok]');
-  await page.waitForSelector('text=Noch nichts eingetragen.');
+  await page.waitForSelector('text=Noch keine Positionen.');
 });
 
 flowTest('food-orders', 'Essensbestellung: marking a position paid does not scroll the Essen view back to the top', async () => {
@@ -3332,6 +3353,7 @@ flowTest('community', 'An- & Abreise: carpool marks the driver, enforces seats, 
 
   await openOrgaTab('arrivals');
   await page.waitForSelector('[data-new-carpool="arrival"]');
+  assert.equal((await page.locator('[data-new-carpool="arrival"]').textContent())?.trim(), 'Fahrt anlegen');
 
   // Current identity is still "E2E Alice Pro" - she creates the carpool and
   // becomes its driver, with just 1 free passenger seat.
