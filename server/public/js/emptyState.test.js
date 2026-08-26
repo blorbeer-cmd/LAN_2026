@@ -10,6 +10,11 @@ test('plain text renders a bare empty-state div with no icon span', () => {
   assert.equal(html, '<div class="empty-state">Noch keine Daten.</div>');
 });
 
+test('plain text is escaped', () => {
+  const html = emptyStateHtml('<strong>x</strong>');
+  assert.equal(html, '<div class="empty-state">&lt;strong&gt;x&lt;/strong&gt;</div>');
+});
+
 test('an icon option wraps it in the empty-state-icon span before the text', () => {
   const html = emptyStateHtml('Noch keine Events.', { icon: '<svg>x</svg>' });
   assert.equal(
@@ -28,7 +33,23 @@ test('style renders a style attribute matching existing call sites', () => {
   assert.match(html, /^<div class="empty-state" style="padding:var\(--space-4\);">/);
 });
 
-test('text is passed through unescaped, matching the existing escapeHtml(...) call-site contract', () => {
-  const html = emptyStateHtml('<strong>x</strong>');
-  assert.match(html, /<strong>x<\/strong>/);
+test('structured content renders escaped title, body and a canonical action', () => {
+  const html = emptyStateHtml({
+    title: 'Event <wählen>',
+    body: 'Aktives Event & Kontext',
+    action: { id: 'choose-event', label: 'Event wählen' },
+  });
+  assert.match(html, /empty-state-structured/);
+  assert.match(html, /Event &lt;wählen&gt;/);
+  assert.match(html, /Aktives Event &amp; Kontext/);
+  assert.match(html, /id="choose-event"/);
+  assert.match(html, />Event wählen<\/button>/);
+});
+
+test('structured illustration attributes are escaped', () => {
+  const html = emptyStateHtml({
+    title: 'Leer',
+    illustration: { src: '/img/mascot.svg', alt: '', width: 72, height: 66, className: 'mascot' },
+  });
+  assert.match(html, /<img src="\/img\/mascot\.svg" alt="" width="72" height="66" class="mascot" \/>/);
 });

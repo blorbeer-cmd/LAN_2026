@@ -290,6 +290,17 @@ Components are plain CSS classes (no JS component library) in `style.css`:
 - **Button** — `.btn` (default), `.btn-primary`, `.btn-danger`, `.btn-block`
   (full width), `.btn-sm` (compact). Combine variant + size, e.g.
   `class="btn btn-primary btn-sm"`.
+- **Back navigation** — `backButtonHtml({ view, id, label })` in `backButton.js` renders every
+  compact view-level back action with Lucide's `chevronLeft` and the visible default label
+  „Zurück“. `view` creates normal route navigation; `id` supports a local sub-view handler. Do not
+  hand-roll the arrow, use Unicode chevrons or repeat the destination in the visible label when the
+  surrounding header already names it.
+- **Empty state** — `emptyStateHtml()` in `emptyState.js` accepts a safe plain-text shorthand for
+  loading and one-line states. States that need hierarchy use the structured contract
+  `{ title, body, icon, illustration, action, className, style }`; title, body and action labels are
+  escaped and the action is rendered as a standard button. This replaces raw HTML fragments and
+  keeps the visible vocabulary concise: „Noch keine …“ for an unused collection, „Keine … gefunden“
+  for a filtered result and a direct action such as „Event wählen“ when recovery is possible.
 - **Area tabs** — `.section-tabs` with `.section-tab` is the tab row of a merged top-level area
   (Match, Auswertung and LAN Orga; defined in `sectionNav.js`). General events present every Orga
   route as a standalone page with its own title because those routes are their primary navigation,
@@ -772,7 +783,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   The „Abstimmungen“ tab is the event-centric planning surface for free questions such as dates,
   locations, duration or budget. It always uses the active event from the existing top-right
   workspace switcher: neither the tab nor its create dialog contains a second event picker. With
-  „Allgemein“ active it shows an explicit select-an-event empty state. Visibility, creation and
+  „Allgemein“ active it shows the structured „Event wählen“ empty state; its direct action focuses
+  and opens that existing switcher without describing a screen position. Visibility, creation and
   voting all require confirmed participation in that event; being Owner/Admin or merely invited
   never bypasses this boundary. Every confirmed participant may start a poll, while the creator of
   that poll manages its deadline, reminders and rounds. The create dialog uses labelled fields,
@@ -816,7 +828,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   invitation is a personal action. What it shows depends on the role: owner/admin receive the full
   management surface — anlegen/bearbeiten, Tracking starten/stoppen, Teilnehmende einladen/entfernen
   and the PDF „Andenken“-Export — while a member gets read-only cards for the events they take
-  part in, without the „+ Event“ action or administrative invitation/decline controls; the card
+  part in, without the „Event anlegen“ action or administrative invitation/decline controls; the card
   includes the event-type badge, event-status badge plus the count and names of accepted
   participants. Cards sort from the earliest start date to the latest; events without a fixed date
   follow the scheduled events. A finished event moves out of the active list into the tab's own
@@ -1120,6 +1132,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   group links to the existing Eventdetails, To-Dos, An- & Abreise, Essen and Jam workflows; the
   read-only seating plan remains its own full-width group below them. Arcade stays available for
   both event types because its browser games do not depend on LAN tracking or competition areas.
+  The personal live-state action says only „Pause“ while active and „Bin wieder da“ while paused;
+  it stores the equally concise manual note „Pause“ instead of combining several possible reasons
+  into one ambiguous label.
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
   same card grouping as the other polished workflows without an accent rail.
   New/current-round controls come first, followed by separate full-width cards for „Letzter Vote“

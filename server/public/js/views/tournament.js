@@ -19,6 +19,7 @@ import { withStepUp } from '../reauth.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 import { matchesSelectionSearch, selectionSearchHtml, wireSelectionSearch } from '../selectionSearch.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { backButtonHtml } from '../backButton.js';
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -256,7 +257,7 @@ function renderList(container, ctx) {
   if (listCache === null) {
     currentListHtml = emptyStateHtml('Lädt…');
   } else if (listCache.length === 0) {
-    currentListHtml = emptyStateHtml('<br />Noch keine Turniere.', { icon: icon(domainIcon('tournaments')) });
+    currentListHtml = emptyStateHtml('Noch keine Turniere.', { icon: icon(domainIcon('tournaments')) });
   } else {
     const activeTournaments = listCache.filter((t) => t.status !== 'completed');
     const completedTournaments = listCache.filter((t) => t.status === 'completed');
@@ -1111,7 +1112,7 @@ function renderDetail(container, ctx) {
   }
   if (detailForId !== currentTournamentId || !detailCache) {
     container.innerHTML = `
-      <button type="button" class="btn btn-sm" id="tourn-back">‹ Zurück</button>
+      ${backButtonHtml({ id: 'tourn-back' })}
       ${emptyStateHtml('Lädt…')}`;
     container.querySelector('#tourn-back').addEventListener('click', () => {
       currentTournamentId = null;
@@ -1161,7 +1162,7 @@ function renderDetail(container, ctx) {
 
   container.innerHTML = `
     <div class="row-between">
-      <button type="button" class="btn btn-sm" id="tourn-back">‹ Zurück</button>
+      ${backButtonHtml({ id: 'tourn-back' })}
       <button type="button" class="btn btn-sm btn-danger" id="tourn-delete">Löschen</button>
     </div>
     <h2 class="view-title">${escapeHtml(t.name)}</h2>

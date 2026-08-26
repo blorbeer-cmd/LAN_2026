@@ -31,6 +31,7 @@ import { infoTooltipHtml, wireInfoTooltips } from '../../infoTooltip.js';
 import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
 import { searchSelectHtml, wireSearchSelect } from '../../searchSelect.js';
 import { emptyStateHtml } from '../../emptyState.js';
+import { backButtonHtml } from '../../backButton.js';
 
 // The Arcade opens as a launcher: a compact grid of playable game tiles.
 // Picking one reveals that game's lobby below.
@@ -586,7 +587,7 @@ export function renderArcade(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+        ${backButtonHtml({ view: 'more' })}
         <h1 class="view-title">Arcade</h1>
       </div>
     </div>
@@ -714,7 +715,7 @@ export function renderQuizRoom(container, ctx) {
   ensureSocket(ctx);
   if (!match) {
     container.innerHTML = `
-      <button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button>
+      ${backButtonHtml({ view: 'arcade' })}
       ${emptyStateHtml('Kein laufendes Quiz-Match.', { style: 'margin-top:var(--space-4);' })}`;
     return;
   }

@@ -33,6 +33,7 @@ import {
   eventCalendarIcs,
   eventCalendarLinks,
 } from '../calendarExport.js';
+import { backButtonHtml } from '../backButton.js';
 import { EXCUSE_CATEGORIES, excuseCategoryLabel, pickEventExcuse } from '../eventExcuses.js';
 
 const EVENT_HELP = 'Eventtyp, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
@@ -729,7 +730,7 @@ function renderEventSection() {
         ${
           canManage
             ? `<span class="row" style="gap:var(--space-2);">
-                 <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">+ Event</button>
+                 <button type="button" class="btn btn-primary btn-sm" id="new-event-btn">Event anlegen</button>
                </span>`
             : ''
         }
@@ -1115,7 +1116,7 @@ export function renderOrgaKiosk(container) {
     container.innerHTML = `
       <div class="more-subpage-header">
         <div class="more-subpage-title-row">
-          <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+          ${backButtonHtml({ view: 'more' })}
           <h1 class="view-title">TV-Kiosk</h1>
         </div>
       </div>
@@ -1129,7 +1130,7 @@ export function renderOrgaKiosk(container) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
+        ${backButtonHtml({ view: 'admin' })}
         <h1 class="view-title title-with-info">
           <span>TV-Kiosk</span>
           ${infoTooltipHtml('orga-kiosk-help', 'TV-Kiosk', KIOSK_HELP)}

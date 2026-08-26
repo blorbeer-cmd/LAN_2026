@@ -10,6 +10,7 @@ import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcade
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
 import { emptyStateHtml } from '../../emptyState.js';
+import { backButtonHtml } from '../../backButton.js';
 
 const W = 1000;
 const H = 600;
@@ -401,7 +402,7 @@ function matchControlsHtml(host) {
 }
 export function renderBlobby(container) {
   ensureBlobbySocket();
-  if (!match) { container.innerHTML = `<button class="btn btn-sm" data-navigate="arcade">‹ Arcade</button>${emptyStateHtml('Kein laufendes Blobby-Volley-Match.')}`; return; }
+  if (!match) { container.innerHTML = `${backButtonHtml({ view: 'arcade' })}${emptyStateHtml('Kein laufendes Blobby-Volley-Match.')}`; return; }
   const host = match.host?.id === myId();
   const roster = matchRosterHtml(match.players, {
     winnerIds: match.winners?.map((winner) => winner.id) ?? [],

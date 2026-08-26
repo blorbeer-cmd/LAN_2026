@@ -26,6 +26,7 @@ import { arcadeToolbarHtml, matchRosterHtml, wireArcadeToolbar } from '../arcade
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
 import { emptyStateHtml } from '../../emptyState.js';
+import { backButtonHtml } from '../../backButton.js';
 
 const SWATCHES = [
   '#1a1a1a',
@@ -979,7 +980,7 @@ export function renderScribbleRoom(container) {
   if (!match) {
     // The play view is only for live matches; anything else belongs in Arcade.
     container.innerHTML = `
-      <button type="button" class="btn btn-sm" data-navigate="arcade">‹ Arcade</button>
+      ${backButtonHtml({ view: 'arcade' })}
       ${emptyStateHtml('Kein laufendes Scribble-Match.', { style: 'margin-top:var(--space-4);' })}`;
     return;
   }

@@ -145,7 +145,7 @@ test('create a To-Do as one member, claim and complete it as another, "Mir zugew
   await page.waitForSelector('.toast:has-text("erledigt")');
   // Bob's only assigned To-Do just moved into Historie, so "Mir zugewiesen"
   // falls back to its empty state.
-  await page.waitForSelector('.empty-state:has-text("Aktuell liegt nichts bei dir.")');
+  await page.waitForSelector('.empty-state:has-text("Noch keine To-Dos für dich.")');
 
   await page.locator('details[data-checklist-history] summary').click();
   const historyCard = page.locator('details[data-checklist-history] [data-checklist-task]', { hasText: 'Mehrfachsteckdosen mitbringen' });

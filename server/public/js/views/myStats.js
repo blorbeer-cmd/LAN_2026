@@ -12,6 +12,7 @@ import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { eventSelectOptions } from '../eventStatus.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
+import { backButtonHtml } from '../backButton.js';
 
 let statsCache = null;
 let statsLoading = false;
@@ -195,7 +196,7 @@ export function renderMyStats(container, ctx) {
   const me = state.players.find((p) => p.id === myId);
   if (!me) {
     container.innerHTML = `
-      <button type="button" class="btn btn-sm" data-navigate="profile">‹ Zurück zum Profil</button>
+      ${backButtonHtml({ view: 'profile' })}
       ${emptyStateHtml('Bitte erst dein Profil einrichten.', { style: 'margin-top:var(--space-4);', icon: icon('user') })}
     `;
     return;
@@ -206,7 +207,7 @@ export function renderMyStats(container, ctx) {
   }
 
   container.innerHTML = `
-    <button type="button" class="btn btn-sm" data-navigate="profile">‹ Zurück zum Profil</button>
+    ${backButtonHtml({ view: 'profile' })}
     <h1 class="view-title">Meine Statistiken</h1>
     ${renderStats()}
   `;

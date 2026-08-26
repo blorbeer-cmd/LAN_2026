@@ -6,6 +6,7 @@ import { getMyId } from '../whoami.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { confirmDialog } from '../modal.js';
+import { backButtonHtml } from '../backButton.js';
 
 const JAM_HELP =
   'Ein Musik-PC oder Kiosk-Pi steuert Spotify lokal; nur dort ist ein Spotify-Konto nötig. Alle können Wiedergabe, Playlists und Songwünsche gemeinsam steuern.';
@@ -532,7 +533,7 @@ function wireConnection(container, ctx) {
         }
       });
     } catch (error) {
-      area.innerHTML = emptyStateHtml(escapeHtml(error.message));
+      area.innerHTML = emptyStateHtml(error.message);
     }
   });
 }
@@ -556,7 +557,7 @@ function wireSession(container, ctx) {
     } catch (error) {
       searchResults = null;
       searchLoading = false;
-      target.innerHTML = emptyStateHtml(escapeHtml(error.message));
+      target.innerHTML = emptyStateHtml(error.message);
     }
   });
   container.querySelector('#music-toggle-playback')?.addEventListener('click', async () => {
@@ -605,7 +606,7 @@ export function renderMusic(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+        ${backButtonHtml({ view: 'more' })}
         <h1 class="view-title title-with-info" data-music-view-root>
           <span>Jam</span>
           ${infoTooltipHtml('music-help', 'Jam', JAM_HELP)}

@@ -11,6 +11,7 @@ import { arcadeToolbarHtml, wireArcadeToolbar } from '../arcadeUi.js';
 import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../../infoTooltip.js';
 import { emptyStateHtml } from '../../emptyState.js';
+import { backButtonHtml } from '../../backButton.js';
 
 const SIZE = 10;
 const SHIPS = [
@@ -284,7 +285,7 @@ function renderResult() {
 export function renderBattleship(container) {
   ensureBattleshipSocket();
   if (!match) {
-    container.innerHTML = `<button type="button" class="btn btn-sm" data-navigate="arcade">${icon('chevronLeft')} Zurück</button><h1 class="view-title">Battleship</h1>${renderBattleshipLobbyCard()}`;
+    container.innerHTML = `${backButtonHtml({ view: 'arcade' })}<h1 class="view-title">Battleship</h1>${renderBattleshipLobbyCard()}`;
     wireBattleshipLobbyCard(container);
     return;
   }

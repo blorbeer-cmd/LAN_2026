@@ -1403,7 +1403,7 @@ function renderConsolidatedListBody(order) {
         </div>`
         )
         .join('')
-    : emptyStateHtml('Noch nichts eingetragen.');
+    : emptyStateHtml('Noch keine Positionen.');
   return `
     ${order.open ? `<div class="muted food-order-consolidated-open-note">Bestellung ist noch offen.</div>` : ''}
     <div class="stack food-order-consolidated-rows">${rowsHtml}</div>
@@ -1820,7 +1820,7 @@ export function renderFoodOrders(container, ctx) {
     loading || cache === null
       ? emptyStateHtml('Lädt…')
       : openOrders.length === 0
-        ? emptyStateHtml('Gerade keine offene Bestellung.')
+        ? emptyStateHtml('Noch keine offene Bestellung.')
         : `<div class="two-column-card-grid food-order-grid">${openOrders
             .map((o) => renderOpenOrder(o, myId, { collapsible: openOrders.length > 1 }))
             .join('')}</div>`;

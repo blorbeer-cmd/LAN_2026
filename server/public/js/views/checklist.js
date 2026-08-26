@@ -507,14 +507,14 @@ export function renderChecklist(container, ctx, activeTab = 'todos') {
     tasksCache === null
       ? emptyStateHtml('Lädt…')
       : mineTasks.length === 0
-        ? emptyStateHtml('Aktuell liegt nichts bei dir.')
+        ? emptyStateHtml('Noch keine To-Dos für dich.')
         : `<div class="two-column-card-grid">${mineTasks.map((t) => renderTaskCard(t, myId, 'mine')).join('')}</div>`;
 
   const openHtml =
     tasksCache === null
       ? emptyStateHtml('Lädt…')
       : openFiltered.length === 0
-        ? emptyStateHtml('Gerade nichts Offenes.')
+        ? emptyStateHtml('Noch keine offenen To-Dos.')
         : `<div class="two-column-card-grid">${openFiltered.map((t) => renderTaskCard(t, myId, 'open')).join('')}</div>`;
 
   const underwayHtml =

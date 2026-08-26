@@ -10,10 +10,10 @@ import { api } from '../api.js';
 import { state } from '../state.js';
 import { escapeHtml, avatarHtml, stateLabel } from '../format.js';
 import { showToast } from '../toast.js';
-import { icon } from '../icons.js';
 import { isGroupAdmin } from '../groupContext.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
+import { backButtonHtml } from '../backButton.js';
 
 const SIDES = ['top', 'right', 'bottom', 'left'];
 const LABELS = { top: 'Oben', right: 'Rechts', bottom: 'Unten', left: 'Links' };
@@ -302,7 +302,7 @@ export function renderSeating(container, ctx) {
     container.innerHTML = `
       <div class="more-subpage-header">
         <div class="more-subpage-title-row">
-          <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+          ${backButtonHtml({ view: 'more' })}
           <h1 class="view-title">Sitzplan</h1>
         </div>
       </div>
@@ -317,7 +317,7 @@ export function renderSeating(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        <button type="button" class="btn btn-sm" data-navigate="admin">${icon('chevronLeft')} Zurück</button>
+        ${backButtonHtml({ view: 'admin' })}
         <h1 class="view-title">Sitzplan</h1>
       </div>
     </div>

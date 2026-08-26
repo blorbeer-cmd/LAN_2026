@@ -15,6 +15,7 @@ import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
+import { backButtonHtml } from '../backButton.js';
 
 let historyCache = null;
 let historyLoading = false;
@@ -108,7 +109,7 @@ export function renderBroadcast(container, ctx) {
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
-        <button type="button" class="btn btn-sm" data-navigate="more">${icon('chevronLeft')} Zurück</button>
+        ${backButtonHtml({ view: 'more' })}
         <h1 class="view-title">Durchsage</h1>
       </div>
     </div>
