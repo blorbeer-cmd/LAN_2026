@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import checker from './check-design-tokens.js';
 
-const { findUndefinedCustomProperties } = checker;
+const { findLegacySnapshotViolations, findUndefinedCustomProperties } = checker;
 const checkerPath = fileURLToPath(new URL('./check-design-tokens.js', import.meta.url));
 
 test('accepts custom properties defined anywhere in the frontend sources', () => {
@@ -48,6 +48,87 @@ test('reports every undefined custom property with its source line', () => {
       file: 'server/public/css/style.css',
       line: 2,
       name: '--radius-missing',
+    },
+  ]);
+});
+
+test('checks cleaned legacy spacing across the complete frontend snapshot', () => {
+  const findings = findLegacySnapshotViolations([
+    {
+      file: 'server/public/css/style.css',
+      source: [
+        '.ok { padding: var(--space-2); }',
+        '.regression { padding: var(--space-2) 18px; }',
+        '.intentional { margin: 0 2px; } /* design-token-ok: optical alignment */',
+      ].join('\n'),
+    },
+  ]);
+
+  assert.deepEqual(findings, [
+    {
+      file: 'server/public/css/style.css',
+      line: 2,
+      rule: 'hardcoded spacing (full frontend)',
+      source: '.regression { padding: var(--space-2) 18px; }',
+    },
+  ]);
+});
+
+test('checks directional, logical and grid spacing across the complete frontend snapshot', () => {
+  const findings = findLegacySnapshotViolations([
+    {
+      file: 'server/public/css/style.css',
+      source: [
+        '.directional { padding-right: 38px; }',
+        '.logical { margin-inline: 10px; }',
+        '.rows { row-gap: 10px; }',
+        '.columns { column-gap: var(--space-2); }',
+        ':root { --card-padding: 18px; }',
+      ].join('\n'),
+    },
+  ]);
+
+  assert.deepEqual(findings, [
+    {
+      file: 'server/public/css/style.css',
+      line: 1,
+      rule: 'hardcoded spacing (full frontend)',
+      source: '.directional { padding-right: 38px; }',
+    },
+    {
+      file: 'server/public/css/style.css',
+      line: 2,
+      rule: 'hardcoded spacing (full frontend)',
+      source: '.logical { margin-inline: 10px; }',
+    },
+    {
+      file: 'server/public/css/style.css',
+      line: 3,
+      rule: 'hardcoded spacing (full frontend)',
+      source: '.rows { row-gap: 10px; }',
+    },
+  ]);
+});
+
+test('requires responsive breakpoint comments in the complete stylesheet snapshot', () => {
+  const findings = findLegacySnapshotViolations([
+    {
+      file: 'server/public/css/style.css',
+      source: [
+        '@media (min-width: 640px) { /* --bp-md */',
+        '@media (max-width: 639px) {',
+        '@media (max-width: 900px) { /* design-token-ok: kiosk layout */',
+        '@media (prefers-reduced-motion: reduce) {',
+      ].join('\n'),
+    },
+  ]);
+
+  assert.deepEqual(findings, [
+    {
+      file: 'server/public/css/style.css',
+      line: 2,
+      rule: 'unannotated responsive breakpoint (full frontend)',
+      source: '@media (max-width: 639px) {',
     },
   ]);
 });

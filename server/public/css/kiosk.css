@@ -164,7 +164,7 @@
 
 /* 900px is intentionally its own value, not --bp-lg (860px): even a compact
    kiosk stays a fixed 2x2 dashboard instead of introducing page scroll. */
-@media (max-width: 900px) {
+@media (max-width: 900px) { /* design-token-ok: fixed kiosk dashboard breakpoint explained above */
   .kiosk-grid {
     gap: var(--space-2);
     padding: var(--space-2);
@@ -342,7 +342,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-@media (max-height: 800px) {
+@media (max-height: 800px) { /* design-token-ok: short kiosk viewport keeps all four panels visible */
   .kiosk-vote-results {
     gap: 0 var(--space-1);
   }

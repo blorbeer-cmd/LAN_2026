@@ -3,7 +3,15 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { createLazyRenderer, createViewRegistry, VIEW_MANIFEST } from './viewManifest.js';
+import {
+  bottomNavigationEntries,
+  createLazyRenderer,
+  createViewRegistry,
+  moreNavigationEntries,
+  searchableViewEntries,
+  sectionViews,
+  VIEW_MANIFEST,
+} from './viewManifest.js';
 
 const jsDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,12 +48,30 @@ test('the view manifest resolves every Arcade route export and every Core render
     'every Arcade renderer file must be classified by the manifest and every declaration must exist',
   );
 
-  const registry = createViewRegistry(coreRenderers, async () => ({}));
+  const registry = createViewRegistry(coreRenderers, {}, async () => ({}));
   assert.deepEqual(Object.keys(registry), Object.keys(VIEW_MANIFEST));
   for (const [name, entry] of Object.entries(registry)) {
     assert.equal(entry.area, VIEW_MANIFEST[name].area, name);
     assert.equal(typeof (entry.area === 'core' ? entry.render : entry.resolveRenderer), 'function', name);
   }
+});
+
+test('every route carries the shared navigation and lifecycle contract', () => {
+  for (const [view, entry] of Object.entries(VIEW_MANIFEST)) {
+    assert.ok(entry.label, `${view}: label`);
+    assert.ok(entry.iconKey, `${view}: iconKey`);
+    assert.ok(['core', 'arcade'].includes(entry.area), `${view}: area`);
+    assert.ok(Array.isArray(entry.lifecycle.invalidateOn), `${view}: invalidateOn`);
+    assert.ok(Array.isArray(entry.lifecycle.refreshOn), `${view}: refreshOn`);
+    assert.equal(typeof entry.lifecycle.preserveState, 'boolean', `${view}: preserveState`);
+    if (entry.requiresRole) assert.equal(entry.requiresRole, 'admin', `${view}: requiresRole`);
+  }
+
+  assert.deepEqual(sectionViews('competition').map((entry) => entry.view), ['matchmaking', 'tournaments']);
+  assert.deepEqual(bottomNavigationEntries('lan').map((entry) => entry.view), ['home', 'matchmaking', 'votes', 'foodOrders', 'gameCatalog', 'more']);
+  assert.deepEqual(bottomNavigationEntries('general').map((entry) => entry.view), ['home', 'arrivals', 'checklistPacking', 'checklist', 'eventPolls', 'more']);
+  assert.deepEqual(moreNavigationEntries('lan').map((entry) => entry.view ?? entry.section), ['profile', 'admin', 'arcade', 'broadcast', 'music', 'orga']);
+  assert.ok(searchableViewEntries().every((entry) => entry.view && entry.title && entry.description));
 });
 
 test('lazy renderers reuse a successful import and retry a failed fetch with a fresh URL', async () => {

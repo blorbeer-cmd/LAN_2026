@@ -21,6 +21,7 @@ import { renderAdminFeatureUsage } from './views/adminFeatureUsage.js';
 import { renderAdminFeedback } from './views/adminFeedback.js';
 import { renderMusic } from './views/music.js';
 import { createViewRegistry } from './viewManifest.js';
+import { VIEW_LIFECYCLE_HANDLERS } from './viewLifecycle.js';
 import { renderSectionShell, sectionKeyForView } from './sectionNav.js';
 import { state } from './state.js';
 
@@ -68,6 +69,6 @@ export const VIEW_REGISTRY = createViewRegistry({
   adminFeatureUsage: renderAdminFeatureUsage,
   adminFeedback: renderAdminFeedback,
   music: renderMusic,
-});
+}, VIEW_LIFECYCLE_HANDLERS);
 
 export const isKnownView = (view) => Object.hasOwn(VIEW_REGISTRY, view);

@@ -1361,13 +1361,15 @@ between two spacing steps) has been rounded onto the scale.
 
 `server/scripts/check-design-tokens.js` runs automatically on every commit
 (installed via `npm install` → the `prepare` script wires git to
-`.githooks/pre-commit`). It only looks at the **added lines** of the staged
-diff under `server/public/**/*.{css,js}` — not the whole codebase — so it
-enforces the rule going forward without requiring every existing off-scale
-value to be fixed or allowlisted first.
+`.githooks/pre-commit`). Color, typography and radius rules look at the
+**added lines** of the staged diff under `server/public/**/*.{css,js}`. The
+cleaned spacing and responsive-breakpoint contracts additionally cover the
+complete frontend snapshot, so a later edit cannot quietly reintroduce legacy
+off-scale padding or remove a required breakpoint annotation elsewhere.
 
 It checks the complete frontend snapshot for references to undefined CSS custom
-properties: the full staged Git index locally and the full committed `HEAD` tree
+properties, hardcoded `gap`/`padding`/`margin` values and unannotated
+width/height media queries: the full staged Git index locally and the full committed `HEAD` tree
 with `--base-ref` in CI. It never mixes either snapshot with unrelated unstaged
 working-tree changes. A property set dynamically with `style.setProperty(...)`
 counts as defined; a `var(--name, fallback)` reference is also valid without a
@@ -1377,7 +1379,6 @@ check also catches removal of a definition that is still referenced elsewhere.
 For the added lines in the staged or branch diff, it additionally blocks:
 - a hardcoded hex color outside a `--token: #...` definition itself,
 - a hardcoded `font-size`/`font-weight`,
-- a hardcoded `gap`/`padding`/`margin`,
 - a hardcoded `border-radius`,
 
 unless the value already exists as a `var(--...)` reference.
@@ -1391,9 +1392,11 @@ border-radius: 2px; /* design-token-ok: scaled to this bar's own height */
 
 Run it manually any time with `npm run check:tokens` (from `server/`). It
 does **not** check colors/spacing outside `server/public` (e.g. `agent/`),
-and it does not check `box-shadow` or breakpoint values — those needed either
-too much judgment (glows are legitimately different sizes for different
-elements) or too much false-positive risk to check mechanically.
+and it does not check `box-shadow` values — glows legitimately need different
+geometry for different elements. Media-query literals remain necessary because
+CSS custom properties cannot be used in conditions; the checker requires the
+matching `/* --bp-* */` reference, or a same-line `design-token-ok` reason for a
+domain-specific device breakpoint such as the kiosk dashboard.
 
 Because the local script reads the staged diff and full staged index, an unstaged
 change produces no finding and cannot block an unrelated commit. Before relying on
