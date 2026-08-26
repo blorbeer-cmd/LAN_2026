@@ -630,20 +630,43 @@ function participationLockNote(event) {
   return text ? `<span class="muted event-participation-note">${escapeHtml(text)}</span>` : '';
 }
 
-// A member's own answer stays on the card for as long as it can be changed:
-// a yes remains reversible and a no remains reversible the same way. Owner and
-// admin cards keep their management footer instead — they already edit any
-// roster row, their own included.
-export function renderMemberParticipationActions(event) {
-  if (event.myParticipation?.status !== 'accepted') return '';
-  return `
-    <div class="event-card-actions">
-      ${
-        event.myParticipation.canDecline
-          ? `<button type="button" class="btn btn-sm" data-decline-participation="${escapeHtml(event.id)}">Teilnahme absagen</button>`
-          : participationLockNote(event)
-      }
-    </div>`;
+// The own answer stays on the card for as long as it can be changed: a yes
+// remains reversible and a no remains reversible the same way. This belongs on
+// every card variant, management cards included — organizing an event is not
+// the same as attending it, and "Teilnehmende verwalten" only offers removing
+// a roster row, which is a different act from answering for oneself.
+// A still-open invitation is deliberately absent: it is answered on its own
+// invitation card in "Mein Profil".
+export function ownParticipationAction(event, { primary = true } = {}) {
+  const participation = event.myParticipation;
+  if (!participation || participation.status === 'invited') return '';
+  if (participation.status === 'accepted') {
+    return participation.canDecline
+      ? `<button type="button" class="btn btn-sm" data-decline-participation="${escapeHtml(event.id)}">Teilnahme absagen</button>`
+      : participationLockNote(event);
+  }
+  return participation.canAccept
+    ? `<button type="button" class="btn${primary ? ' btn-primary' : ''} btn-sm" data-accept-participation="${escapeHtml(event.id)}">Doch zusagen</button>`
+    : participationLockNote(event);
+}
+
+// Own footer for the card variants that have none of their own. The management
+// card instead places the same action inside its existing footer, so a card
+// never grows a second action row.
+export function renderOwnParticipationActions(event) {
+  const action = ownParticipationAction(event);
+  return action ? `<div class="event-card-actions">${action}</div>` : '';
+}
+
+// A management card is the only place an owner/admin sees an event they
+// declined themselves: their declined events never move into the member
+// "Abgesagt" section, because the management list already holds every event of
+// the group. The state therefore has to be readable on the card itself instead
+// of being implied by the action beside it.
+function ownDeclinedBadge(event) {
+  return event.myParticipation?.status === 'declined'
+    ? '<span class="badge badge-offline">Du: Abgesagt</span>'
+    : '';
 }
 
 // Read-only card for a member's own accepted events. The same information is
@@ -661,7 +684,7 @@ function renderMemberEventCard(event) {
       </div>
       ${renderEventInfo(event)}
       ${renderAcceptedParticipants(event)}
-      ${renderMemberParticipationActions(event)}
+      ${renderOwnParticipationActions(event)}
     </article>
   `;
 }
@@ -680,13 +703,7 @@ export function renderDeclinedEventCard(event) {
         </span>
       </div>
       ${renderEventInfo(event, { invitation: true })}
-      <div class="event-card-actions">
-        ${
-          event.myParticipation?.canAccept
-            ? `<button type="button" class="btn btn-primary btn-sm" data-accept-participation="${escapeHtml(event.id)}">Doch zusagen</button>`
-            : participationLockNote(event)
-        }
-      </div>
+      <div class="event-card-actions">${ownParticipationAction(event)}</div>
     </article>
   `;
 }
@@ -715,7 +732,7 @@ export function eventPdfExportAvailable(event) {
   return event?.eventType !== 'general';
 }
 
-function renderEventCard(event) {
+export function renderEventCard(event) {
   // Nothing about tracking, ending, the regular roster or the PDF keepsake is
   // meaningful before this event has an actual date — the date poll section
   // above already covers what to do instead ("Termin abstimmen"/"Termin
@@ -738,6 +755,7 @@ function renderEventCard(event) {
         <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
         <span class="event-card-header-badges">
           <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
+          ${ownDeclinedBadge(event)}
           ${eventStatusBadgeHtml(event)}
         </span>
       </div>
@@ -748,6 +766,7 @@ function renderEventCard(event) {
         ${endBtn}
         ${hasDate ? `<button type="button" class="btn btn-sm" data-participants-event="${event.id}">${icon('users')} Teilnehmende verwalten</button>` : ''}
         ${hasDate && eventPdfExportAvailable(event) ? `<button type="button" class="btn btn-sm" data-export-event="${event.id}" title="Als PDF exportieren">${icon('file')} PDF</button>` : ''}
+        ${ownParticipationAction(event, { primary: false })}
       </div>
     </article>
   `;

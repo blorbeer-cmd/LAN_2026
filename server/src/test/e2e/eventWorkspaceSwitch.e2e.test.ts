@@ -530,3 +530,45 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   assert.equal(await page.locator('[data-navigate="eventPolls"]').isVisible(), true);
   assert.match(await viewText(), /Orga/);
 });
+
+// The organizer is the account most likely to answer for itself here: they see
+// every event of the group as a management card, and their own answer was
+// missing from exactly that card — an owner had no way to withdraw an
+// acceptance at all. A dedicated future-dated event keeps this independent of
+// the events the tests above switch between, and of the "already running" lock
+// that deliberately blocks withdrawing from an event that has started.
+test('an organizer can withdraw and restore their own participation on the management card', async () => {
+  const startsAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+  const created = await api('/api/events', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'E2E Orga Eigene Teilnahme', startsAt, endsAt: startsAt + 3_600_000 }),
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const eventId = created.body.id as string;
+  const me = await api('/api/me');
+  const roster = await api(`/api/events/${eventId}/participants`, {
+    method: 'PUT',
+    body: JSON.stringify({ playerIds: [me.body.id] }),
+  });
+  assert.equal(roster.status, 200, JSON.stringify(roster.body));
+
+  // Events is an Orga tab rather than a "Mehr" destination of its own, so this
+  // routes straight to it the same way the other event fixtures do.
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));
+  await page.waitForSelector('#view-container[data-view="events"]');
+  await page.waitForSelector(`[data-event-card="${eventId}"]`);
+  const card = page.locator(`[data-event-card="${eventId}"]`);
+  await card.locator(`[data-decline-participation="${eventId}"]`).click();
+  await page.click('[data-confirm]');
+  await card.locator(`[data-accept-participation="${eventId}"]`).waitFor();
+  assert.match((await card.textContent()) ?? '', /Du: Abgesagt/);
+  // Declined means no workspace: the switcher must not offer it any more.
+  assert.doesNotMatch(
+    (await page.locator('#event-context').textContent()) ?? '',
+    /E2E Orga Eigene Teilnahme/,
+  );
+
+  await card.locator(`[data-accept-participation="${eventId}"]`).click();
+  await card.locator(`[data-decline-participation="${eventId}"]`).waitFor();
+  assert.doesNotMatch((await card.textContent()) ?? '', /Du: Abgesagt/);
+});
