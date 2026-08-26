@@ -68,7 +68,7 @@ const RULES = [
 ];
 
 function hasHardcodedSpacing(line) {
-  return /(?:^|[\s;{'"])(?:gap|padding|margin(?:-top|-bottom|-left|-right)?)\s*:[^;\n]*-?(?:\d*\.)?\d+px\b/.test(
+  return /(?:^|[\s;{'"])(?:(?:row-|column-|grid-)?gap|(?:padding|margin)(?:-(?:top|bottom|left|right|block(?:-start|-end)?|inline(?:-start|-end)?))?)\s*:[^;\n]*-?(?:\d*\.)?\d+px\b/.test(
     line,
   );
 }

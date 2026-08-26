@@ -91,7 +91,7 @@ export const VIEW_MANIFEST = Object.freeze({
   matchmaking: defineView({
     label: 'Teams', section: 'competition', sectionOrder: 0, iconKey: 'scale', eventFeature: 'competition',
     search: search('Match', 'Auslosen, Captain Draft und Historie', 'match wettkampf teams auslosen matchmaking captain draft kraft team-historie ergebnis-historie', 98),
-    navigation: Object.freeze({ bottom: Object.freeze({ lan: Object.freeze({ order: 1, label: 'Match', ariaLabel: 'Match: Teams und Turniere', iconKey: 'swords' }) }) }),
+    navigation: Object.freeze({ bottom: Object.freeze({ lan: Object.freeze({ order: 1, label: 'Match', ariaLabel: 'Match: Teams und Turniere', iconKey: 'competition' }) }) }),
     lifecycle: lifecycle('matchmaking', { eventScoped: true, reconnect: true, invalidateOn: [
       CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard,
       'matchmaking:generated', 'matchmaking:draws-changed', 'draft:changed',
@@ -263,7 +263,9 @@ export function bottomNavigationEntries(eventType = 'lan') {
         view,
         label: navigation.label ?? definition.label,
         ariaLabel: navigation.ariaLabel ?? navigation.label ?? definition.label,
-        iconKey: navigation.iconKey ?? definition.iconKey,
+        // Navigation carries semantic domain keys. domainIcons.js remains the
+        // single resolver from those stable meanings to concrete Lucide names.
+        iconKey: navigation.iconKey ?? view,
         ...navigation,
       }];
     })
@@ -275,12 +277,12 @@ export function moreNavigationEntries(eventType = 'lan') {
   const views = Object.entries(VIEW_MANIFEST).flatMap(([view, definition]) => {
     const navigation = definition.navigation?.more;
     if (!navigation?.eventTypes.includes(eventType)) return [];
-    return [{ view, title: definition.label, iconKey: definition.iconKey, requiresRole: definition.requiresRole, order: navigation.order }];
+    return [{ view, title: definition.label, iconKey: view, requiresRole: definition.requiresRole, order: navigation.order }];
   });
   const sections = Object.entries(SECTION_MANIFEST).flatMap(([section, definition]) => {
     const navigation = definition.navigation?.more;
     if (!navigation?.eventTypes.includes(eventType)) return [];
-    return [{ section, title: definition.label, iconKey: definition.iconKey, order: navigation.order }];
+    return [{ section, title: definition.label, iconKey: section, order: navigation.order }];
   });
   return [...views, ...sections]
     .sort((a, b) => a.order - b.order)

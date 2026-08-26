@@ -74,6 +74,42 @@ test('checks cleaned legacy spacing across the complete frontend snapshot', () =
   ]);
 });
 
+test('checks directional, logical and grid spacing across the complete frontend snapshot', () => {
+  const findings = findLegacySnapshotViolations([
+    {
+      file: 'server/public/css/style.css',
+      source: [
+        '.directional { padding-right: 38px; }',
+        '.logical { margin-inline: 10px; }',
+        '.rows { row-gap: 10px; }',
+        '.columns { column-gap: var(--space-2); }',
+        ':root { --card-padding: 18px; }',
+      ].join('\n'),
+    },
+  ]);
+
+  assert.deepEqual(findings, [
+    {
+      file: 'server/public/css/style.css',
+      line: 1,
+      rule: 'hardcoded spacing (full frontend)',
+      source: '.directional { padding-right: 38px; }',
+    },
+    {
+      file: 'server/public/css/style.css',
+      line: 2,
+      rule: 'hardcoded spacing (full frontend)',
+      source: '.logical { margin-inline: 10px; }',
+    },
+    {
+      file: 'server/public/css/style.css',
+      line: 3,
+      rule: 'hardcoded spacing (full frontend)',
+      source: '.rows { row-gap: 10px; }',
+    },
+  ]);
+});
+
 test('requires responsive breakpoint comments in the complete stylesheet snapshot', () => {
   const findings = findLegacySnapshotViolations([
     {

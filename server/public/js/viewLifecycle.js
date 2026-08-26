@@ -146,7 +146,7 @@ export const VIEW_LIFECYCLE_HANDLERS = Object.freeze({
   profile: Object.freeze({ [EVENT_SCOPE_CHANGE]: invalidateSeatNeighbors }),
 });
 
-const APP_LIFECYCLE_HANDLERS = Object.freeze({
+export const APP_LIFECYCLE_HANDLERS = Object.freeze({
   [EVENT_SCOPE_CHANGE]: () => {
     invalidateInfoBoard();
     state.lastMatchmaking = null;

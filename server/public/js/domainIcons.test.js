@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { DOMAIN_ICONS, domainIcon } from './domainIcons.js';
-import { SECTION_MANIFEST, VIEW_MANIFEST } from './viewManifest.js';
+import {
+  SECTION_MANIFEST,
+  VIEW_MANIFEST,
+  bottomNavigationEntries,
+  moreNavigationEntries,
+} from './viewManifest.js';
 
 test('bottom navigation and More define every canonical view icon', () => {
   for (const [view, definition] of Object.entries(VIEW_MANIFEST)) {
@@ -22,6 +27,25 @@ test('packing and To-Do use distinct symbols', () => {
   assert.equal(domainIcon('competition'), domainIcon('tournaments'));
   assert.equal(domainIcon('insights'), domainIcon('leaderboard'));
   assert.notEqual(domainIcon('checklistPacking'), domainIcon('checklist'));
+});
+
+test('navigation resolves semantic domain keys to the established symbols', () => {
+  assert.deepEqual(
+    bottomNavigationEntries('lan').map((entry) => domainIcon(entry.iconKey)),
+    ['house', 'swords', 'vote', 'hamburger', 'gamepad', 'menu'],
+  );
+  assert.deepEqual(
+    bottomNavigationEntries('general').map((entry) => domainIcon(entry.iconKey)),
+    ['house', 'van', 'clipboard', 'listChecks', 'vote', 'menu'],
+  );
+  assert.deepEqual(
+    moreNavigationEntries('lan').map((entry) => domainIcon(entry.iconKey)),
+    ['circleUser', 'shield', 'joystick', 'megaphone', 'music', 'clipboard'],
+  );
+  assert.deepEqual(
+    moreNavigationEntries('general').map((entry) => domainIcon(entry.iconKey)),
+    ['circleUser', 'shield', 'joystick', 'megaphone', 'music', 'calendar', 'hamburger'],
+  );
 });
 
 test('unknown domains use the requested fallback', () => {

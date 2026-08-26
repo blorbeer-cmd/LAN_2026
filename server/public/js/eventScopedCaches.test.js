@@ -5,6 +5,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { VIEW_MANIFEST } from './viewManifest.js';
 
+// The lifecycle module owns browser views whose module-level listeners are
+// intentionally wired against window. Supply the minimal event target that
+// lets this Node contract test import the real executable handler registry.
+globalThis.window ??= { addEventListener() {} };
+const { APP_LIFECYCLE_HANDLERS, VIEW_LIFECYCLE_HANDLERS } = await import('./viewLifecycle.js');
+
 const jsDir = dirname(fileURLToPath(import.meta.url));
 const lifecycleSource = readFileSync(join(jsDir, 'viewLifecycle.js'), 'utf8');
 const appSource = readFileSync(join(jsDir, 'app.js'), 'utf8');
@@ -66,18 +72,50 @@ test('known event-scoped views declare the workspace boundary in the registry', 
   }
 });
 
-test('the event switch still drops every secondary cache and drawn lineup', () => {
-  for (const name of [
-    'invalidateAktuellStatus', 'invalidateMatchmakingHistory',
-    'invalidateMatchmakingDraft', 'invalidateVoteEventScope',
-    'invalidateTournaments', 'invalidateHomeSeating', 'invalidateSeating',
-    'invalidateBroadcasts', 'invalidateInfoBoard', 'invalidateFoodOrders',
-    'invalidateEventPolls', 'invalidateChecklist', 'invalidateArrivals',
-    'invalidateMusic', 'invalidateAnalytics', 'invalidateMyStats',
-    'invalidateHallOfFame', 'invalidateAdminReadiness',
-    'invalidateAdminFeatureUsage', 'invalidateSeatNeighbors',
-  ]) {
-    assert.ok(lifecycleSource.includes(name), `${name} must stay in viewLifecycle.js`);
+test('every registered view handler is enabled by its lifecycle declaration', () => {
+  for (const [view, handlers] of Object.entries(VIEW_LIFECYCLE_HANDLERS)) {
+    for (const eventName of Object.keys(handlers)) {
+      assert.ok(
+        VIEW_MANIFEST[view].lifecycle.invalidateOn.includes(eventName),
+        `${view}.${eventName} must be reachable through invalidateViewCaches()`,
+      );
+    }
   }
-  assert.match(lifecycleSource, /state\.lastMatchmaking = null/);
+});
+
+test('the event switch still drops every secondary cache and drawn lineup', () => {
+  const expectedInvalidators = {
+    home: ['invalidateAktuellStatus', 'invalidateHomeSeating'],
+    matchmaking: ['invalidateMatchmakingHistory', 'invalidateMatchmakingDraft'],
+    votes: ['invalidateVoteEventScope'],
+    tournaments: ['invalidateTournaments'],
+    seating: ['invalidateSeating'],
+    broadcast: ['invalidateBroadcasts'],
+    foodOrders: ['invalidateFoodOrders'],
+    eventPolls: ['invalidateEventPolls'],
+    checklist: ['invalidateChecklist'],
+    arrivals: ['invalidateArrivals'],
+    music: ['invalidateMusic'],
+    analytics: ['invalidateAnalytics'],
+    myStats: ['invalidateMyStats'],
+    hallOfFame: ['invalidateHallOfFame'],
+    admin: ['invalidateAdminReadiness'],
+    adminFeatureUsage: ['invalidateAdminFeatureUsage'],
+    profile: ['invalidateSeatNeighbors'],
+    app: ['invalidateInfoBoard'],
+  };
+
+  for (const [owner, names] of Object.entries(expectedInvalidators)) {
+    const handler = owner === 'app'
+      ? APP_LIFECYCLE_HANDLERS['event-context:changed']
+      : VIEW_LIFECYCLE_HANDLERS[owner]?.['event-context:changed'];
+    assert.equal(typeof handler, 'function', `${owner} needs an event-context:changed handler`);
+    for (const name of names) {
+      assert.ok(
+        handler.toString().includes(name),
+        `${owner}.${name} must be reachable from its event-context:changed handler`,
+      );
+    }
+  }
+  assert.match(APP_LIFECYCLE_HANDLERS['event-context:changed'].toString(), /state\.lastMatchmaking = null/);
 });

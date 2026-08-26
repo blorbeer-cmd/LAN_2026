@@ -1061,7 +1061,7 @@
   background: linear-gradient(
     135deg,
     color-mix(in srgb, var(--accent) 12%, transparent),
-    color-mix(in srgb, var(--accent-2) 10%, transparent)
+    color-mix(in srgb, var(--accent-3) 10%, transparent)
   );
 }
 
@@ -1070,7 +1070,7 @@
   width: 100%;
   aspect-ratio: 8 / 5;
   border-radius: var(--radius);
-  box-shadow: var(--shadow-glow-brand);
+  box-shadow: 0 0 30px color-mix(in srgb, var(--accent-2) 18%, transparent); /* design-token-ok: broad low-opacity glow is scaled to the game canvas */
   touch-action: none;
 }
 
