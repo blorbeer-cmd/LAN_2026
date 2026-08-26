@@ -35,7 +35,12 @@ export const CORE_REALTIME_VIEW_DEPENDENCIES = Object.freeze({
   // 'profile' is included because pending invitations now live in its own
   // "Einladungen" section (see events.js/profile.js) instead of the Events
   // tab, so an invitation arriving while Profile is open must redraw it too.
-  'events:changed': Object.freeze(['home', 'events', 'profile', 'analytics', 'hallOfFame', 'myStats', 'admin']),
+  // 'arrivals' because its "Alle Zeiten" table lists the event's accepted
+  // participants (eventPlayers(), read at render time from
+  // state.activeEvent.participantIds). Somebody else accepting or withdrawing
+  // changes that set through events:changed alone - without this the table
+  // keeps the old roster until an unrelated redraw or a tab switch.
+  'events:changed': Object.freeze(['home', 'events', 'profile', 'analytics', 'hallOfFame', 'myStats', 'admin', 'arrivals']),
 });
 
 export function realtimeEventAffectsView(eventName, view) {

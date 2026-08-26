@@ -10,6 +10,13 @@ test('unrelated event lifecycle changes do not redraw interactive catalog views'
   assert.equal(realtimeEventAffectsView('events:changed', 'profile'), true);
 });
 
+// The An-/Abreise times table renders the event's accepted participants, so a
+// roster change has to redraw it even though the arrivals endpoint itself
+// reports nothing.
+test('a changed participant roster redraws the arrival and departure times', () => {
+  assert.equal(realtimeEventAffectsView('events:changed', 'arrivals'), true);
+});
+
 test('shared entity changes redraw only views that consume them', () => {
   assert.equal(realtimeEventAffectsView('skills:changed', 'gameCatalog'), true);
   assert.equal(realtimeEventAffectsView('skills:changed', 'broadcast'), false);
