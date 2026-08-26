@@ -3,7 +3,7 @@
 // or departure.
 
 import { api } from '../api.js';
-import { state } from '../state.js';
+import { eventPlayers } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
@@ -268,10 +268,21 @@ function carpoolDriverName(direction, playerId) {
   return carpool?.createdByName ?? null;
 }
 
+// Only the people who actually accepted the current event belong here.
+// state.players is the whole instance roster (GET /api/players is not event
+// scoped), so the table used to pad itself with everyone who was merely
+// invited, declined or has nothing to do with this LAN - a wall of permanent
+// "offen" rows around the handful of real answers. eventPlayers() is the same
+// accepted-only set the team pickers draw from and falls back to the full
+// roster while the active event's participant ids are still unknown, so the
+// list is never empty just because the events payload has not landed yet.
+export function arrivalsPeopleRows(arrivals) {
+  const byPlayer = new Map((arrivals || []).map((a) => [a.player_id, a]));
+  return eventPlayers().map((p) => ({ player: p, entry: byPlayer.get(p.id) || null }));
+}
+
 function renderPeopleList() {
-  const byPlayer = new Map((cache?.arrivals || []).map((a) => [a.player_id, a]));
-  const rows = [...state.players]
-    .map((p) => ({ player: p, entry: byPlayer.get(p.id) || null }))
+  const rows = arrivalsPeopleRows(cache?.arrivals)
     .sort(comparePeopleRows)
     .map(({ player, entry }) => {
       const arrival = entry?.arrival_at ? formatDateTime(entry.arrival_at) : 'offen';
@@ -299,7 +310,16 @@ function renderPeopleList() {
 
   return `
     <section class="card stack grouped-page-section" aria-labelledby="arrivals-times-title">
-      <div class="grouped-page-section-title"><h2 id="arrivals-times-title">Alle Zeiten</h2></div>
+      <div class="grouped-page-section-title">
+        <h2 id="arrivals-times-title" class="title-with-info">
+          <span>Alle Zeiten</span>
+          ${infoTooltipHtml(
+            'arrivals-times-scope-help',
+            'Wer steht hier?',
+            'Nur Personen, die für dieses Event zugesagt haben. Wer eingeladen ist, abgesagt oder die Zusage zurückgezogen hat, taucht hier nicht auf.'
+          )}
+        </h2>
+      </div>
       <div class="arrivals-mobile-sort" aria-label="Zeiten sortieren">
         <span class="muted">Sortieren:</span>
         ${renderPeopleSortButton('player', 'Person')}
@@ -315,7 +335,7 @@ function renderPeopleList() {
                  <span role="columnheader">${renderPeopleSortButton('departure', 'Abreise')}</span>
                  <span role="columnheader">Notiz</span>
                </div>${rows}`
-            : emptyStateHtml('Noch keine Teilnehmenden.')
+            : emptyStateHtml('Noch hat niemand zugesagt.')
         }
       </div>
     </section>`;
