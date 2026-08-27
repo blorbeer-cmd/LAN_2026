@@ -841,17 +841,23 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   (`renderInvitationCard`/`pendingEventInvitations`/`wirePendingInvitationActions` in `events.js`,
   reused by `profile.js` so the card markup and accept/decline wiring exist exactly once).
   An *answered* participation is different: it stays on this tab, because this is where the member
-  already looks at the events they are part of. An accepted member card carries „Teilnahme absagen“
-  in its footer (`renderMemberParticipationActions`) for as long as the server reports
-  `myParticipation.canDecline`; where it does not, the same footer names the reason instead
-  (`lockReason`: recorded payment, running, ended or cancelled event) rather than dropping the
-  control silently. Declining is not leaving: the event moves into this tab's own „Abgesagt“
+  already looks at the events they are part of. Every card variant therefore carries the account's
+  own answer through `ownParticipationAction`: „Teilnahme absagen“ while the server reports
+  `myParticipation.canDecline`, „Doch zusagen“ while it reports `canAccept`, and otherwise the
+  reason in plain words (`lockReason`: recorded payment, running, ended or cancelled event) rather
+  than a control that silently disappears. A member card gets its own footer for it; the management
+  card places the same action at the end of its existing footer so no card grows a second action
+  row, and marks the state with a „Du: Abgesagt“ badge in its header — organizing an event is not
+  the same as attending it, and „Teilnehmende verwalten“ only removes a roster row, which is a
+  different act from answering for oneself. A still-open invitation stays out of all of this; it is
+  answered on its invitation card in „Mein Profil“.
+  Declining is not leaving: for a member the event moves into this tab's own „Abgesagt“
   section — the same collapsible-section pattern as „Historie“, likewise collapsed by default and
   preserving its open state — where it stays as a teaser card with „Doch zusagen“
-  (`renderDeclinedEventCard`). Only an organizer withdrawing the invitation removes the event from
-  the member's app entirely, and that removal notifies them unless they had declined themselves.
-  Owner/admin cards carry no such footer: their management surface already edits every roster row,
-  their own included, so a declined event of theirs is never listed twice. Event
+  (`renderDeclinedEventCard`). An owner/admin keeps seeing it as a management card instead, since
+  that list already holds every event of the group, and it is therefore never listed twice. Only an
+  organizer withdrawing the invitation removes the event from someone's app entirely, and that
+  removal notifies them unless they had declined themselves. Event
   cards stay in one vertical column at
   phone and laptop widths so payment and participant controls keep enough room. Their card hierarchy
   deliberately mirrors Food orders: alternating accent rails and a concise title/status header lead

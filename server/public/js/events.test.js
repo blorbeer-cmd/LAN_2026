@@ -12,7 +12,8 @@ import {
   renderEventLocation,
   renderInvitationCard,
   renderDeclinedEventCard,
-  renderMemberParticipationActions,
+  renderEventCard,
+  renderOwnParticipationActions,
 } from './views/events.js';
 
 test('the LAN keepsake PDF stays available only for LAN-compatible events', () => {
@@ -179,14 +180,14 @@ test('a pending invitation carries the excuse action but no calendar handoff', (
 
 test('an accepted member card offers the withdrawal, or names why it is blocked', () => {
   const event = { id: 'member-event', name: 'Winter LAN' };
-  const open = renderMemberParticipationActions({
+  const open = renderOwnParticipationActions({
     ...event,
     myParticipation: { status: 'accepted', canDecline: true, lockReason: null },
   });
   assert.match(open, /data-decline-participation="member-event"/);
   assert.match(open, /Teilnahme absagen/);
 
-  const locked = renderMemberParticipationActions({
+  const locked = renderOwnParticipationActions({
     ...event,
     myParticipation: { status: 'accepted', canDecline: false, lockReason: 'paid' },
   });
@@ -195,9 +196,36 @@ test('an accepted member card offers the withdrawal, or names why it is blocked'
 
   // A still-open invitation is answered on its own invitation card, not here.
   assert.equal(
-    renderMemberParticipationActions({ ...event, myParticipation: { status: 'invited', canDecline: true } }),
+    renderOwnParticipationActions({ ...event, myParticipation: { status: 'invited', canDecline: true } }),
     '',
   );
+});
+
+test('an organizer answers their own participation on the management card', () => {
+  const event = {
+    id: 'managed-event',
+    name: 'Winter LAN',
+    startsAt: Date.UTC(2026, 8, 8, 16, 0),
+    endsAt: Date.UTC(2026, 8, 10, 10, 0),
+    myParticipation: { status: 'accepted', canDecline: true, lockReason: null },
+  };
+  const accepted = renderEventCard(event);
+  assert.match(accepted, /data-decline-participation="managed-event"/);
+  assert.doesNotMatch(accepted, /Du: Abgesagt/);
+
+  // Their declined events never move into the member "Abgesagt" section, so
+  // both the state and the way back have to live on this card.
+  const declined = renderEventCard({
+    ...event,
+    myParticipation: { status: 'declined', canAccept: true, lockReason: null },
+  });
+  assert.match(declined, /badge-offline">Du: Abgesagt</);
+  assert.match(declined, /data-accept-participation="managed-event"/);
+  // The management footer keeps its own primary actions to itself.
+  assert.doesNotMatch(declined, /btn-primary btn-sm" data-accept-participation/);
+
+  // Organizing an event one is not part of offers nothing to answer.
+  assert.doesNotMatch(renderEventCard({ ...event, myParticipation: null }), /data-(accept|decline)-participation/);
 });
 
 test('a declined event stays a teaser with the way back', () => {
