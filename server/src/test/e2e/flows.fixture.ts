@@ -547,6 +547,21 @@ flowTest('shell', 'Orga Events tab and Profil use grouped help while admin tools
   await page.click('[data-profile-color-apply]');
   assert.equal(await page.inputValue('#profile-color'), appliedColor);
   assert.equal(await page.getByText('Erweitertes Tracking', { exact: true }).count(), 1);
+  const profileSectionKeys = ['password', 'agent', 'push', 'monitors'];
+  for (const key of profileSectionKeys) {
+    await page.click(`[data-profile-section="${key}"] > summary`);
+  }
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:rerender')));
+  assert.deepEqual(
+    await page.locator('[data-profile-section]').evaluateAll((sections) =>
+      sections.map((section) => ({ key: (section as HTMLElement).dataset.profileSection, open: (section as HTMLDetailsElement).open })),
+    ),
+    profileSectionKeys.map((key) => ({ key, open: true })),
+    'profile groups should stay open across a view re-render',
+  );
+  for (const key of profileSectionKeys) {
+    await page.click(`[data-profile-section="${key}"] > summary`);
+  }
   assert.equal(await page.locator('.profile-identity-editor').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
   assert.equal(await page.getByText('Auf diesem Gerät aus.', { exact: true }).count(), 0);
   assert.equal(await page.getByText('Auf diesem Gerät aktiv.', { exact: true }).count(), 0);
@@ -1307,6 +1322,7 @@ flowTest('competition', 'Vote: game-limit selection survives an unrelated re-ren
   await page.fill('#votes-game-search', 'Kein Treffer XYZ');
   await page.waitForSelector('[data-vote-game-search-empty]:not([hidden])');
   await page.fill('#votes-game-search', '');
+  assert.equal(await page.locator('[data-vote-game-catalog]').getAttribute('open'), '');
   await page.click('[data-selection-search]:has(#votes-game-search) [data-selection-search-close]');
   await page.click('#votes-select-all');
   await voteGameCheckboxes.nth(0).uncheck();
@@ -1315,6 +1331,7 @@ flowTest('competition', 'Vote: game-limit selection survives an unrelated re-ren
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:rerender')));
 
   await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
+  assert.equal(await page.locator('[data-vote-game-catalog]').getAttribute('open'), '', 'the catalog should stay open across an unrelated re-render');
   assert.equal(await voteGameCheckboxes.nth(0).isChecked(), false, 'a manual deselection must survive an unrelated re-render');
   assert.equal(await voteGameCheckboxes.nth(1).isChecked(), false);
 
@@ -1395,7 +1412,9 @@ flowTest('competition', 'Vote: genre filter scopes the game-limit list, select-a
   await page.request.patch(`${BASE_URL}/api/games/${cs2.id}`, { data: { genres: ['Shooter'] } });
   await page.request.patch(`${BASE_URL}/api/games/${rocketLeague.id}`, { data: { genres: ['Racing'] } });
   await page.waitForSelector('[data-vote-genre-filter="Shooter"]');
+  assert.equal(await page.locator('[data-vote-game-catalog]').getAttribute('open'), '', 'the catalog should stay open after a socket-driven re-render');
   await page.click('[data-vote-genre-filter="Shooter"]');
+  assert.equal(await page.locator('[data-vote-game-catalog]').getAttribute('open'), '', 'the catalog should stay open after applying a genre filter');
   const visibleRows = page.locator('#votes-game-select label.check-row');
   await page.waitForFunction(() => document.querySelectorAll('#votes-game-select label.check-row').length === 1);
   assert.equal(await visibleRows.count(), 1, 'only the Shooter-tagged game should be listed while filtered');
@@ -3935,6 +3954,15 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   await page.waitForSelector('#admin-readiness-refresh:not([disabled])');
   assert.equal(await page.locator('#admin-readiness-status').getAttribute('role'), 'status');
   assert.equal(await page.locator('#admin-readiness-status').getAttribute('aria-live'), 'polite');
+  await page.click('[data-admin-readiness-details] > summary');
+  await page.click('#admin-readiness-refresh');
+  await page.waitForSelector('#admin-readiness-refresh:not([disabled])');
+  assert.equal(
+    await page.locator('[data-admin-readiness-details]').getAttribute('open'),
+    '',
+    'readiness details should stay open across a successful refresh',
+  );
+  await page.click('[data-admin-readiness-details] > summary');
 
   let failNextReadiness = true;
   await page.route('**/api/admin/readiness', async (route) => {

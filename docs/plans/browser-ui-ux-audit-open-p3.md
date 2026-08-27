@@ -49,6 +49,11 @@ erhalten. Ein erfolgreich angelegtes Turnier ersetzt den Entwurfs-Eintrag durch 
   Benachrichtigungen und Monitore sind klar benannte, einklappbare Gruppen.
 - Arcade stellt das aktive Spiel voran. Der Launcher wird dann zum kompakten „Spiel wechseln“.
 
+Die einklappbaren Gruppen verwenden stabile `data-*`-Selektoren. Ihr Offen-Zustand bleibt über den
+zentralen `viewRenderState`-Mechanismus bei lokalen, API- und Socket-bedingten Re-Renders erhalten,
+ohne einen zweiten langlebigen View-Zustand über Navigation oder Identitätswechsel hinweg
+einzuführen.
+
 ### Begriffstrennung
 
 Die organisatorische Route `eventPolls` heißt sichtbar „Umfragen“ beziehungsweise
@@ -69,5 +74,7 @@ spielbezogene „Abstimmung“ bleiben unverändert.
 
 Unit-Tests decken Hash-Parsing und Roundtrips ab. Browser-E2E deckt Einladung/Handoff,
 Mitteilungsstatus, Teilnehmer-Handoff nach Eventanlage, Turnier-History und Reload sowie
-Arcade-History, Deep Link, Reload und sichtbaren Zurückweg ab. Bestehende Eventteilnahme-, Vote-,
-Admin-, Profil- und Arcade-Suiten bleiben Teil der Abnahme.
+Arcade-History, Deep Link, Reload und sichtbaren Zurückweg ab. Browser-Regressionen sichern zudem
+den Offen-Zustand der neuen Profil-, Admin- und Vote-Gruppen bei lokalen, API- und
+Socket-bedingten Re-Renders. Bestehende Eventteilnahme-, Vote-, Admin-, Profil- und Arcade-Suiten
+bleiben Teil der Abnahme.

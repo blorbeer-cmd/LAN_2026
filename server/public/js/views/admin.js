@@ -598,7 +598,7 @@ function renderPanel(container, ctx) {
           </span>
           <span class="badge ${overallStatus.badge}">${overallStatus.label}</span>
         </div>
-        <details class="collapsible-section">
+        <details class="collapsible-section" data-admin-readiness-details>
           <summary class="collapsible-section-header">
             <span>Prüfdetails</span>
             <span class="collapsible-section-summary-end">
