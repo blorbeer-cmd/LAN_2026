@@ -20,6 +20,7 @@ import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 import { pruneRosterSelection, rosterPickerHtml, wireRosterPicker } from '../rosterPicker.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { backButtonHtml } from '../backButton.js';
+import { localRouteKey } from '../appRoute.js';
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -64,6 +65,7 @@ let createSelectedPlayerId = null; // touch/keyboard fallback for moving a propo
 let createSeatConflicts = null; // { conflicts, considered } from the last proposal, for the seating note
 let createAvoidPairs = []; // seat-neighbor pairs from the last proposal, to re-flag conflicts after a manual move
 let createPlayerSearchQuery = '';
+let appliedRouteKey = null;
 
 // Re-derives each player's seatConflict flag/neighbor names (and the
 // seating-note count) from createAvoidPairs — needed after a manual
@@ -165,20 +167,18 @@ export function invalidateTournaments({ hard = false } = {}) {
   }
 }
 
-// Called from app.js when a player taps a tournament notification toast, so
-// switching to the Turniere tab lands directly on that tournament's board
-// instead of the list.
-export function focusTournament(id) {
-  currentTournamentId = id;
-  detailForId = null;
+function applyLocalRoute(route) {
+  const key = localRouteKey(route);
+  if (key === appliedRouteKey) return;
+  appliedRouteKey = key;
   editingResultMatchId = null;
-}
-
-export function showTournamentLanding() {
-  currentTournamentId = null;
-  detailCache = null;
-  detailForId = null;
-  editingResultMatchId = null;
+  if (route?.kind === 'create') {
+    createOpen = true;
+    currentTournamentId = null;
+    return;
+  }
+  createOpen = false;
+  currentTournamentId = route?.kind === 'detail' ? route.id : null;
 }
 
 function resetCreateForm() {
@@ -275,14 +275,12 @@ function renderList(container, ctx) {
   `;
 
   container.querySelector('#tourn-new-btn').addEventListener('click', () => {
-    createOpen = true;
-    ctx.rerender();
+    ctx.navigateLocal({ kind: 'create' });
   });
 
   container.querySelectorAll('[data-open-tournament]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      currentTournamentId = btn.dataset.openTournament;
-      ctx.rerender();
+      ctx.navigateLocal({ kind: 'detail', id: btn.dataset.openTournament });
     });
   });
 
@@ -313,7 +311,7 @@ function renderCreateForm(el, ctx) {
     </div>`;
     el.querySelector('#tourn-create-close').addEventListener('click', () => {
       resetCreateForm();
-      ctx.rerender();
+      ctx.backLocal(null);
     });
     return;
   }
@@ -514,7 +512,7 @@ function renderCreateForm(el, ctx) {
     )
       return;
     resetCreateForm();
-    ctx.rerender();
+    ctx.backLocal(null);
   });
 
   wireSearchSelect(el, 'tourn-game', gameSelectOptions);
@@ -703,7 +701,7 @@ function renderCreateForm(el, ctx) {
         detailForId = created.id;
         listStale = true;
         showToast('Turnier erstellt.');
-        ctx.rerender();
+        ctx.navigateLocal({ kind: 'detail', id: created.id }, { replace: true });
       } catch (err) {
         showToast(err.message, { error: true });
       }
@@ -745,9 +743,7 @@ function renderDetail(container, ctx) {
       ${backButtonHtml({ id: 'tourn-back' })}
       ${emptyStateHtml('Lädt…')}`;
     container.querySelector('#tourn-back').addEventListener('click', () => {
-      currentTournamentId = null;
-      editingResultMatchId = null;
-      ctx.rerender();
+      ctx.backLocal(null);
     });
     return;
   }
@@ -836,9 +832,7 @@ function renderDetail(container, ctx) {
   });
 
   container.querySelector('#tourn-back').addEventListener('click', () => {
-    currentTournamentId = null;
-    editingResultMatchId = null;
-    ctx.rerender();
+    ctx.backLocal(null);
   });
 
   container.querySelector('#tourn-delete').addEventListener('click', async () => {
@@ -851,7 +845,7 @@ function renderDetail(container, ctx) {
       if (listCache) listCache = listCache.filter((entry) => entry.id !== t.id);
       listStale = true;
       showToast('Turnier gelöscht.');
-      ctx.rerender();
+      ctx.navigateLocal(null, { replace: true });
     } catch (err) {
       showToast(err.message, { error: true });
     }
@@ -914,6 +908,7 @@ function renderDetail(container, ctx) {
 // ---------- entry point ----------
 
 export function renderTournaments(container, ctx) {
+  applyLocalRoute(ctx.localRoute());
   if (currentTournamentId) {
     renderDetail(container, ctx);
   } else {

@@ -20,6 +20,7 @@ import {
 } from './authHelpers';
 import { StatefulE2EDiagnosticGuard, trackE2EContext } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
+import { selectArcadeGame } from './arcadeHelpers';
 
 let BASE_URL: string;
 
@@ -134,7 +135,7 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
   await waitForArcadeStylesheet(page);
   // Arcade is a launcher; select the quiz tile before its lobby controls
   // become visible (module state is intentionally reset on a fresh run).
-  await page.click('[data-game="quiz"]');
+  await selectArcadeGame(page, 'quiz');
   await page.waitForSelector('#quiz-create-lobby');
   const mobileInsets = await page.locator('#quiz-create-lobby').evaluate((button) => {
     const buttonRect = button.getBoundingClientRect();
@@ -161,7 +162,7 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
   });
   const noModeLayout = await createButtonLayout('#quiz-create-lobby');
   assert.ok(Math.abs(noModeLayout.left - noModeLayout.right) <= 1, 'the no-mode create action must be centered');
-  await page.click('[data-game="scribble"]');
+  await selectArcadeGame(page, 'scribble');
   await page.waitForSelector('#scribble-create');
   assert.deepEqual(await createButtonLayout('#scribble-create'), noModeLayout);
 
@@ -173,7 +174,7 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
   ] as const;
   let modeLayout: Awaited<ReturnType<typeof createButtonLayout>> | null = null;
   for (const [game, createSelector, duelSelector] of duelDefaults) {
-    await page.click(`[data-game="${game}"]`);
+    await selectArcadeGame(page, game);
     await page.waitForSelector(createSelector);
     assert.equal(await page.locator(duelSelector).getAttribute('aria-pressed'), 'true');
     const currentLayout = await createButtonLayout(createSelector);
@@ -182,7 +183,7 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
   }
 
   if (mobileViewport) await page.setViewportSize(mobileViewport);
-  await page.click('[data-game="quiz"]');
+  await selectArcadeGame(page, 'quiz');
   await page.waitForSelector('#quiz-create-lobby');
   await page.click('#quiz-create-lobby');
   await page.waitForSelector('[data-close-lobby]');
@@ -207,9 +208,9 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
 
   // An open lobby must not lock the launcher to its game. The host can still
   // inspect another game's lobbies and return without closing their own.
-  await page.click('[data-game="tetris"]');
+  await selectArcadeGame(page, 'tetris');
   await page.waitForSelector('#tetris-create');
-  await page.click('[data-game="quiz"]');
+  await selectArcadeGame(page, 'quiz');
   await page.waitForSelector('[data-close-lobby]');
 
   await page.click('[data-close-lobby]');
@@ -236,20 +237,20 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby warns and closes the owne
     await waitForArcadeStylesheet(guestPage);
 
     for (const game of ['pong', 'blobby'] as const) {
-      if ((await page.locator('#quiz-create-lobby').count()) === 0) await page.click('[data-game="quiz"]');
+      if ((await page.locator('#quiz-create-lobby').count()) === 0) await selectArcadeGame(page, 'quiz');
       await page.waitForSelector('#quiz-create-lobby:not([disabled])');
       await page.click('#quiz-create-lobby');
       await page.waitForSelector('[data-close-lobby]');
 
       // Opening another lobby uses the same guarded switch flow.
-      await page.click('[data-game="tetris"]');
+      await selectArcadeGame(page, 'tetris');
       await page.click('#tetris-create');
       await page.waitForSelector('text=Wenn du eine neue Lobby öffnest, wird deine eigene Lobby aufgelöst.');
       await page.click('[data-cancel]');
-      await page.click('[data-game="quiz"]');
+      await selectArcadeGame(page, 'quiz');
       await page.waitForSelector('[data-close-lobby]');
 
-      await guestPage.click(`[data-game="${game}"]`);
+      await selectArcadeGame(guestPage, game);
       await guestPage.waitForSelector(`#${game}-create:not([disabled])`);
       await guestPage.click(`#${game}-create`);
       const targetStateHandle = await guestPage.waitForFunction((gameName) => {
@@ -271,17 +272,17 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby warns and closes the owne
       // the matched select between two otherwise independent locator reads.
       assert.deepEqual(targetState, { visibleCount: 1, value: '7', height: 32 });
 
-      await page.click(`[data-game="${game}"]`);
+      await selectArcadeGame(page, game);
       await page.waitForSelector(`[data-${game}-join]`);
       await page.click(`[data-${game}-join]`);
       await page.waitForSelector('text=Wenn du dieser Lobby beitrittst, wird deine eigene Lobby aufgelöst.');
 
       // Cancelling must keep the owned lobby intact.
       await page.click('[data-cancel]');
-      await page.click('[data-game="quiz"]');
+      await selectArcadeGame(page, 'quiz');
       await page.waitForSelector('[data-close-lobby]');
 
-      await page.click(`[data-game="${game}"]`);
+      await selectArcadeGame(page, game);
       await page.click(`[data-${game}-join]`);
       await page.click('[data-confirm]');
       await page.waitForSelector(`[data-${game}-leave]`);
@@ -290,12 +291,12 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby warns and closes the owne
         ['Verlassen', 'Bereit?'],
       );
 
-      await page.click('[data-game="quiz"]');
+      await selectArcadeGame(page, 'quiz');
       await page.waitForSelector('text=Keine offene Quiz-Lobby.');
 
       await guestPage.waitForSelector(`[data-${game}-close]`);
       await guestPage.click(`[data-${game}-close]`);
-      await page.click(`[data-game="${game}"]`);
+      await selectArcadeGame(page, game);
       await page.waitForSelector(`text=Keine offene ${game === 'pong' ? 'Pong' : 'Blobby-Volley'}-Lobby.`);
     }
   } finally {
@@ -303,7 +304,7 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby warns and closes the owne
     // letting a switch confirmation intercept every later scenario.
     await page.keyboard.press('Escape');
     if ((await page.locator('[data-game="quiz"]').count()) > 0) {
-      if ((await page.locator('#quiz-create-lobby').count()) === 0) await page.click('[data-game="quiz"]');
+      if ((await page.locator('#quiz-create-lobby').count()) === 0) await selectArcadeGame(page, 'quiz');
       const closeOwnedLobby = page.locator('[data-close-lobby]:visible');
       if ((await closeOwnedLobby.count()) > 0) {
         await closeOwnedLobby.click();
@@ -327,11 +328,11 @@ arcadeFlowTest('full', 'Arcade: a lobby guest flags themselves ready and the hos
     await guestPage.waitForSelector('.nav-btn[data-view="more"]');
     await guestPage.click('.nav-btn[data-view="more"]');
     await guestPage.click('[data-navigate="arcade"]');
-    await guestPage.click('[data-game="quiz"]');
+    await selectArcadeGame(guestPage, 'quiz');
 
     // Host opens the lobby, guest joins. The quiz tile is a toggle and the
     // previous test left its panel expanded — only click it if it's closed.
-    if ((await page.locator('#quiz-create-lobby').count()) === 0) await page.click('[data-game="quiz"]');
+    if ((await page.locator('#quiz-create-lobby').count()) === 0) await selectArcadeGame(page, 'quiz');
     await page.waitForSelector('#quiz-create-lobby:not([disabled])');
     await page.click('#quiz-create-lobby');
     await guestPage.waitForSelector('[data-join-lobby]');
@@ -373,9 +374,9 @@ arcadeFlowTest('full', 'Arcade: a non-player can watch a running quiz without se
     await guestPage.waitForSelector('.nav-btn[data-view="more"]');
     await guestPage.click('.nav-btn[data-view="more"]');
     await guestPage.click('[data-navigate="arcade"]');
-    await guestPage.click('[data-game="quiz"]');
+    await selectArcadeGame(guestPage, 'quiz');
 
-    if ((await page.locator('#quiz-create-lobby').count()) === 0) await page.click('[data-game="quiz"]');
+    if ((await page.locator('#quiz-create-lobby').count()) === 0) await selectArcadeGame(page, 'quiz');
     await page.waitForSelector('#quiz-create-lobby:not([disabled])');
     await page.click('#quiz-create-lobby');
     await guestPage.waitForSelector('[data-join-lobby]');
@@ -435,7 +436,7 @@ arcadeFlowTest('full', 'Arcade: Scribble - host draws, a second device guesses c
     await guesserPage.waitForSelector('.nav-btn[data-view="more"]');
     await guesserPage.click('.nav-btn[data-view="more"]');
     await guesserPage.click('[data-navigate="arcade"]');
-    await guesserPage.click('[data-game="scribble"]');
+    await selectArcadeGame(guesserPage, 'scribble');
 
     await addSessionCookie(spectatorContext, BASE_URL, analyticsPlayer.cookie);
     await spectatorPage.goto(BASE_URL);
@@ -448,7 +449,7 @@ arcadeFlowTest('full', 'Arcade: Scribble - host draws, a second device guesses c
     // first, keeping this test deterministic about who does what.
     await page.click('.nav-btn[data-view="more"]');
     await page.click('[data-navigate="arcade"]');
-    await page.click('[data-game="scribble"]');
+    await selectArcadeGame(page, 'scribble');
     await page.waitForSelector('#scribble-create:not([disabled])');
     await page.click('#scribble-create');
 

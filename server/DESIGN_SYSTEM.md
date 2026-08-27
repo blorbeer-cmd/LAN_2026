@@ -269,7 +269,7 @@ view and to new views unless a documented domain constraint requires a different
     creation, deletion, roles and foreign-profile editing remain admin-only actions.
 11. **Match primary navigation to the event type.** For LAN events, the bottom nav carries exactly
     the six during-party destinations Home, Match, Vote, Essen, Spiele and Mehr. A general event
-    instead promotes its planning workflow to Home, An & Abreise, Packliste, To-Do, Abstimmungen
+    instead promotes its planning workflow to Home, An & Abreise, Packliste, To-Do, Umfragen
     and Mehr; the remaining destinations live directly under „Mehr“. Everything else lives under
     „Mehr“, the topbar, or (for the merged Rangliste/Statistiken/
     Hall-of-Fame area, „Auswertung“) inside the role-protected Admin area. Auswertung is not a
@@ -584,10 +584,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Visible-monitor choices form exactly two columns from `--bp-md`, with phones kept to one column.
 - **Admin tools** — Account invitations and claim/reset links live in Admin's authenticated
   onboarding group; their QR codes open in the shared centered modal.
-  Admin begins with one „LAN-Bereitschaft“ group: its overall badge and responsive
-  two-column check cards cover Server/SQLite, Event and participants, agent coverage/version,
-  process mappings, Kiosk and the latest persistent backup. Every card pairs its semantic badge
-  with a textual summary and actionable detail; loading and retry errors stay inside the group.
+  Frequently used „Werkzeuge“ lead the authenticated content. A compact „LAN-Bereitschaft“ group
+  follows: its overall badge stays directly visible, while the responsive check cards for
+  Server/SQLite, Event and participants, agent coverage/version, process mappings, Kiosk and the
+  latest persistent backup start inside „Prüfdetails“. Every card pairs its semantic badge with a
+  textual summary and actionable detail; loading and retry errors stay inside the group.
   Backup and seating-plan editing are absent from regular member views and live
   together as nested tool cards in the role-protected Admin area. Admin settings and tools remain
   visible to owners/admins without activating the device-local Admin mode; that mode only reveals
@@ -659,7 +660,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
   The LAN „Mehr“ hub holds Mein Profil, Admin, Arcade, Durchsage, Jam and Orga. For a general event,
   it replaces the Orga wrapper with direct entries for Events and Essen; An & Abreise, Packliste,
-  To-Do and Abstimmungen already occupy the bottom nav. Mein Profil moved here from its former topbar icon
+  To-Do and Umfragen already occupy the bottom nav. Mein Profil moved here from its former topbar icon
   (`#profile-btn`) to make room for the always-available Feedback icon there (see „Feedback“
   below); the needs-setup indicator that used to sit on that topbar icon now sits on the „Mehr“
   bottom-nav icon instead. Essen is listed here only for general events; LAN events retain its
@@ -739,7 +740,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   reminder uses the same order deep link and a durable per-player/event send timestamp independent of
   the bounded push history.
 - **Orga** — the area that holds the LAN's preparation, reached through „Mehr“. Its five area tabs
-  are sorted alphabetically by their German label: „Abstimmungen“, „An- & Abreise“, „Events“, „Packliste“ and
+  are sorted alphabetically by their German label: „Umfragen“, „An- & Abreise“, „Events“, „Packliste“ and
   „To-Do“ (the last two formerly the separate „Checkliste“ and „An- & Abreise“ areas;
   docs/KONZEPT-PACKLISTE-TICKETS.md Abschnitt 9 records the earlier „Packliste“→„Checkliste“
   rename — „Events“ is the former standalone „Einstellungen“ view, moved here because it is setup
@@ -747,14 +748,14 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   settings icon). TV-Kiosk is deliberately not an Orga tab — it lives only behind Admin's
   „Kioskverwaltung“ tool card (see „Admin tools“) since opening the shared-screen dashboard is an
   admin task, not something every member needs from Orga. „Mehr“ opens Orga on its first tab,
-  „Abstimmungen“, like every other area (`sectionEntryView()` in `sectionNav.js`), so the tab row's
+  „Umfragen“, like every other area (`sectionEntryView()` in `sectionNav.js`), so the tab row's
   top-left tab is the one actually selected on arrival; the already persisted push url `/#checklist`
   is unaffected and still lands directly on To-Do. That tab label carries
   the live count of the current identity's own open+taken items. The checklist's former in-view
   toggle is gone — its two halves are area tabs now, so no tab row nests inside another.
   In a general event the same routes keep their data and deep links but lose the Orga wrapper:
   An- & Abreise, Packliste and To-Do are direct bottom-nav pages, while Events is a direct entry
-  under „Mehr“. Each page owns its concise title and shows no Orga tab row. Abstimmungen occupies
+  under „Mehr“. Each page owns its concise title and shows no Orga tab row. Umfragen occupies
   the fifth bottom-nav slot and opens the shared event poll view directly.
   The personal list is unchanged: a compact checkbox row per item (Grundstock plus freely added/removable
   custom entries) with a checked item shown via muted, struck-through text instead of a separate
@@ -780,7 +781,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   zugewiesen“ with „Freigeben“/„Erledigt“ actions instead. Completed To-Dos live in one standard,
   initially collapsed „Historie“ section whose open state survives live re-renders, same as Food
   orders.
-  The „Abstimmungen“ tab is the event-centric planning surface for free questions such as dates,
+  The „Umfragen“ tab is the event-centric planning surface for free questions such as dates,
   locations, duration or budget. It always uses the active event from the existing top-right
   workspace switcher: neither the tab nor its create dialog contains a second event picker. With
   „Allgemein“ active it shows the structured „Event wählen“ empty state; its direct action focuses
@@ -793,7 +794,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   per-option rating from 1 to 5. It never exposes
   a participant picker because the accepted event roster is the single source of truth.
   The tab adds no own page heading or explanatory subtitle below the Orga tabs because the active
-  event is already visible in the top-right workspace switcher. Its compact „Abstimmung starten“
+  event is already visible in the top-right workspace switcher. Its compact „Umfrage starten“
   action has no decorative plus sign. The create dialog uses ordinary global text fields, one native
   select for the four response modes (per-option feasibility, single choice, multiple choice and
   per-option 1–5 rating), and contextual info beside response mode and deadline. Every free option
@@ -978,6 +979,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   action uses the primary button treatment next to the destructive delete action.
 - **Arcade** — The launcher follows the grouped-page hierarchy with separate full-width cards for
   „Spiele“, optional running games, the selected game and „Statistiken“.
+  Without a selection, the game grid remains the launcher. With a selection, the active game moves
+  first and the grid becomes the collapsed „Spiel wechseln“ control below it. The selected game is
+  represented by `#arcade/<spiel>` so browser back/forward, reload and „Spielauswahl“ agree.
   Game choices are horizontal nested cards with their Lucide game icon, name and an explicit
   „… offen“ lobby badge; they form one column on phones and exactly two from `--bp-md`. Running
   games reuse the same responsive two-column rhythm. The tile badge is the only separate open-lobby
@@ -1118,7 +1122,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   main save action persists it.
   A leading „Einladungen“ section (present only while pending event invitations exist) shows the
   same invitation cards Orga's Events tab used to render inline — cost/deadline disclosure plus
-  Annehmen/Ablehnen — via events.js's shared `renderInvitationCard`.
+  Annehmen/Ablehnen — via events.js's shared `renderInvitationCard`. Acceptance replaces the card
+  with „Event öffnen“; the invitation becomes read notification history and the action switches the
+  active event. Security, Agent, notifications and visible monitors are clearly named collapsible
+  groups below the always-visible identity editor.
 - **Leaderboard** — the „Rangliste“ tab and default entry of the „Auswertung“ area, reached only
   through Admin's „Auswertung“ tool card (see „Admin tools“). The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
@@ -1155,7 +1162,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   into one ambiguous label.
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
   same card grouping as the other polished workflows without an accent rail.
-  New/current-round controls come first, followed by separate full-width cards for „Letzter Vote“
+  New/current-round controls come first. The new-round form shows the current selection and search
+  before the complete, initially collapsed game catalog; an active search opens that catalog.
+  Draft selection, query, focus, scroll and open state survive same-view renders. Separate
+  full-width cards for „Letzter Vote“
   and „Top 10 nach Bock-Level“. An open round exposes a bordered participation counter with the
   submitted and eligible-player totals, updated through the existing realtime refresh. In points
   mode, an open round that the current identity hasn't submitted yet also shows its own rating

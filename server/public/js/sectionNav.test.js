@@ -30,7 +30,7 @@ test('a section is entered on its first tab and its tabs share one nav group', (
   assert.equal(sectionEntryView('insights'), 'leaderboard');
   assert.equal(sectionEntryView('checklist'), null);
   // Orga's tabs are sorted alphabetically for display, so its first tab is
-  // "Abstimmungen" - more.js uses this as the "Mehr" hub entry point too, so
+  // "Umfragen" - more.js uses this as the "Mehr" hub entry point too, so
   // the top-left tab is the one actually selected on arrival, like every
   // other section.
   assert.equal(sectionEntryView('orga'), 'eventPolls');

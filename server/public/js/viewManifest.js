@@ -115,9 +115,9 @@ export const VIEW_MANIFEST = Object.freeze({
     lifecycle: lifecycle('events'),
   }),
   eventPolls: defineView({
-    label: 'Abstimmungen', section: 'orga', sectionOrder: 0, iconKey: 'vote',
+    label: 'Umfragen', section: 'orga', sectionOrder: 0, iconKey: 'vote',
     search: search('Orga', 'Zeitraum, Ort, Dauer und Budget gemeinsam planen', 'orga umfrage termin ort unterkunft dauer budget planung interessiert', 86),
-    navigation: Object.freeze({ bottom: Object.freeze({ general: Object.freeze({ order: 4, labelBreakAfter: 6, ariaLabel: 'Abstimmungen' }) }) }),
+    navigation: Object.freeze({ bottom: Object.freeze({ general: Object.freeze({ order: 4, labelBreakAfter: 6, ariaLabel: 'Umfragen' }) }) }),
     lifecycle: lifecycle('eventPolls', { eventScoped: true, invalidateOn: [CORE_REALTIME_EVENTS.events] }),
   }),
   kiosk: defineView({

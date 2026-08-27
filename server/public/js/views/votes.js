@@ -617,6 +617,10 @@ export function renderVotes(container, ctx) {
         </label>`
       )
       .join('');
+    const selectedGames = voteFilterVisibleGames().filter((game) => !excludedGameIds.has(game.id));
+    const selectedGamesHtml = selectedGames.length
+      ? `${selectedGames.slice(0, 10).map((game) => `<span class="chip">${escapeHtml(game.name)}</span>`).join('')}${selectedGames.length > 10 ? `<span class="chip">+${selectedGames.length - 10} weitere</span>` : ''}`
+      : '<span class="muted">Noch kein Spiel ausgewählt.</span>';
     openSectionHtml = `
       <section class="card vote-page-section vote-workflow-section stack" aria-labelledby="vote-start-title">
         <div class="tournament-create-step-title">
@@ -638,19 +642,34 @@ export function renderVotes(container, ctx) {
           <textarea class="vote-info-input" id="votes-info" maxlength="500" rows="1" placeholder="z.B. Nur Spiele für 4 Leute"></textarea>
         </label>
         <div id="votes-game-select-wrap" class="stack vote-game-select-wrap">
+          <div class="stack" style="gap:var(--space-2);">
+            <strong>Ausgewählt (${selectedGames.length})</strong>
+            <div class="chip-list">${selectedGamesHtml}</div>
+          </div>
           <div class="selection-toolbar">
             <button type="button" class="icon-btn selection-toolbar-icon" id="votes-select-all" aria-label="Sichtbare Spiele markieren" data-tooltip="Sichtbare markieren">${icon('listChecks')}</button>
             <button type="button" class="icon-btn selection-toolbar-icon selection-toolbar-icon--clear" id="votes-select-none" aria-label="Sichtbare Spiele abwählen" data-tooltip="Sichtbare abwählen">${icon('listX')}</button>
             ${selectionSearchHtml('votes-game-search', voteGameSearchQuery, { placeholder: 'Spiele suchen…', label: 'Spiele suchen' })}
           </div>
-          ${voteGenreFilterHtml}
-          <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
-          <p class="muted" data-vote-game-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>
-          ${
-            genreFilteredGames.length === 0
-              ? `<p class="muted" style="font-size:var(--font-size-xs);">Keine Spiele mit den gewählten Genres.</p>`
-              : ''
-          }
+          <details class="collapsible-section" data-vote-game-catalog ${voteGameSearchQuery ? 'open' : ''}>
+            <summary class="collapsible-section-header">
+              <span>Vollständiger Katalog</span>
+              <span class="collapsible-section-summary-end">
+                <span class="badge badge-neutral">${genreFilteredGames.length}</span>
+                <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+              </span>
+            </summary>
+            <div class="collapsible-section-content stack">
+              ${voteGenreFilterHtml}
+              <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
+              <p class="muted" data-vote-game-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>
+              ${
+                genreFilteredGames.length === 0
+                  ? `<p class="muted" style="font-size:var(--font-size-xs);">Keine Spiele mit den gewählten Genres.</p>`
+                  : ''
+              }
+            </div>
+          </details>
         </div>
         <div class="sticky-actions">
           <button type="button" class="btn btn-primary btn-block" id="votes-start">Abstimmung starten</button>
@@ -800,6 +819,7 @@ export function renderVotes(container, ctx) {
     emptySelector: '[data-vote-game-search-empty]',
     onQueryChange: (query) => {
       voteGameSearchQuery = query;
+      if (query) container.querySelector('[data-vote-game-catalog]').open = true;
     },
   });
 

@@ -598,7 +598,50 @@ function renderPanel(container, ctx) {
           </span>
           <span class="badge ${overallStatus.badge}">${overallStatus.label}</span>
         </div>
-        <div class="two-column-card-grid">${readinessChecks}</div>`;
+        <details class="collapsible-section">
+          <summary class="collapsible-section-header">
+            <span>Prüfdetails</span>
+            <span class="collapsible-section-summary-end">
+              <span class="badge badge-neutral">${readiness?.checks?.length ?? 0}</span>
+              <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+            </span>
+          </summary>
+          <div class="collapsible-section-content two-column-card-grid">${readinessChecks}</div>
+        </details>`;
+
+  const toolsSectionHtml = `<section class="card stack grouped-page-section" aria-labelledby="admin-tools-title">
+    <div class="grouped-page-section-title"><h2 id="admin-tools-title">Werkzeuge</h2></div>
+    <div class="two-column-card-grid">
+      ${trackingEnabled ? `<div class="card admin-tool-row">
+        <strong>Auswertung</strong>
+        <button type="button" class="btn btn-primary btn-sm" data-navigate="leaderboard">Öffnen</button>
+      </div>` : ''}
+      <div class="card admin-tool-row">
+        <strong>Nutzungsauswertung</strong>
+        <a href="#adminFeatureUsage" class="btn btn-primary btn-sm" data-navigate="adminFeatureUsage">Öffnen</a>
+      </div>
+      <div class="card admin-tool-row">
+        <strong>Feedback</strong>
+        <a href="#adminFeedback" class="btn btn-primary btn-sm" data-navigate="adminFeedback">Öffnen</a>
+      </div>
+      ${seatingEnabled ? `<div class="card admin-tool-row">
+        <strong>Sitzplan</strong>
+        <button type="button" class="btn btn-primary btn-sm" data-navigate="seating">Öffnen</button>
+      </div>` : ''}
+      <div class="card admin-tool-row">
+        <strong>Backup</strong>
+        <button type="button" class="btn btn-primary btn-sm" id="download-backup">Herunterladen</button>
+      </div>
+      <div class="card admin-tool-row">
+        <strong>Eventverwaltung</strong>
+        <button type="button" class="btn btn-primary btn-sm" data-navigate="events">Öffnen</button>
+      </div>
+      ${kioskEnabled ? `<div class="card admin-tool-row">
+        <strong>Kioskverwaltung</strong>
+        <button type="button" class="btn btn-primary btn-sm" data-navigate="kiosk">Öffnen</button>
+      </div>` : ''}
+    </div>
+  </section>`;
 
   container.innerHTML = `
     <div class="more-subpage-header">
@@ -613,6 +656,7 @@ function renderPanel(container, ctx) {
         <p class="muted">Aktiviere den Admin-Modus, um Test-Spieler in der App anzuzeigen${arcadeEnabled ? ' und im Arcade-Bereich gegen die KI zu spielen' : ''}.</p>
         <button type="button" class="btn btn-primary btn-block" id="admin-mode-activate">Admin-Modus aktivieren</button>
       </section>`}
+      ${toolsSectionHtml}
       ${trackingEnabled ? `<section class="card stack grouped-page-section" aria-labelledby="admin-readiness-title">
         <div class="grouped-page-section-title">
           <h2 id="admin-readiness-title">LAN-Bereitschaft</h2>
@@ -633,39 +677,6 @@ function renderPanel(container, ctx) {
         <div class="stack">${accountRows || '<span class="muted">Keine aktiven echten Konten vorhanden.</span>'}</div>
         <div class="section-title">Aktive Einladungslinks</div>
         <div class="stack">${activeInvitesLoading && activeInvites === null ? '<span class="muted">Links werden geladen…</span>' : inviteRows || '<span class="muted">Keine aktiven Links.</span>'}</div>
-      </section>
-      <section class="card stack grouped-page-section" aria-labelledby="admin-tools-title">
-        <div class="grouped-page-section-title"><h2 id="admin-tools-title">Werkzeuge</h2></div>
-        <div class="two-column-card-grid">
-          ${trackingEnabled ? `<div class="card admin-tool-row">
-            <strong>Auswertung</strong>
-            <button type="button" class="btn btn-primary btn-sm" data-navigate="leaderboard">Öffnen</button>
-          </div>` : ''}
-          <div class="card admin-tool-row">
-            <strong>Nutzungsauswertung</strong>
-            <a href="#adminFeatureUsage" class="btn btn-primary btn-sm" data-navigate="adminFeatureUsage">Öffnen</a>
-          </div>
-          <div class="card admin-tool-row">
-            <strong>Feedback</strong>
-            <a href="#adminFeedback" class="btn btn-primary btn-sm" data-navigate="adminFeedback">Öffnen</a>
-          </div>
-          ${seatingEnabled ? `<div class="card admin-tool-row">
-            <strong>Sitzplan</strong>
-            <button type="button" class="btn btn-primary btn-sm" data-navigate="seating">Öffnen</button>
-          </div>` : ''}
-          <div class="card admin-tool-row">
-            <strong>Backup</strong>
-            <button type="button" class="btn btn-primary btn-sm" id="download-backup">Herunterladen</button>
-          </div>
-          <div class="card admin-tool-row">
-            <strong>Eventverwaltung</strong>
-            <button type="button" class="btn btn-primary btn-sm" data-navigate="events">Öffnen</button>
-          </div>
-          ${kioskEnabled ? `<div class="card admin-tool-row">
-            <strong>Kioskverwaltung</strong>
-            <button type="button" class="btn btn-primary btn-sm" data-navigate="kiosk">Öffnen</button>
-          </div>` : ''}
-        </div>
       </section>
       ${adminModeActive ? `<section class="card stack grouped-page-section" aria-labelledby="admin-test-players-title">
         <div class="grouped-page-section-title">

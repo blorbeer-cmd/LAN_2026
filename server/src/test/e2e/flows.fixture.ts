@@ -256,7 +256,7 @@ flowTest('shell', 'fresh device uses the personal login and reaches the app with
   assert.equal(await loginPage.inputValue('#profile-name'), alice.name);
 });
 
-flowTest('shell', 'Abstimmungen: the empty state opens the existing event switcher directly', async () => {
+flowTest('shell', 'Umfragen: the empty state opens the existing event switcher directly', async () => {
   await openOrgaTab('eventPolls');
   await page.waitForSelector('#choose-event-context');
   assert.equal((await page.locator('.empty-state-title').textContent())?.trim(), 'Event wählen');
@@ -1382,6 +1382,7 @@ flowTest('competition', 'Vote: genre filter scopes the game-limit list, select-a
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-start');
   await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
+  await page.click('[data-vote-game-catalog] > summary');
   // Manually deselect a game that the upcoming "Shooter" filter will hide -
   // its excluded state must survive untouched by the filtered select-all/none.
   const rocketLeagueCheckbox = `[data-vote-game-checkbox][value="${rocketLeague.id}"]`;
@@ -1737,6 +1738,7 @@ flowTest('shell', 'Spiele: suggest a game (duplicate name rejected), promote it,
   await page.click('.nav-btn[data-view="votes"]');
   await page.waitForSelector('#votes-start');
   await page.waitForSelector('#votes-game-select-wrap:not([hidden])');
+  await page.click('[data-vote-game-catalog] > summary');
   await page.locator('#votes-game-select label.check-row', { hasText: 'Counter-Strike 2' }).waitFor();
   assert.equal(
     await page.locator('#votes-game-select label.check-row', { hasText: 'E2E Partyspiel' }).count(),
@@ -1834,8 +1836,15 @@ flowTest('shell', 'Turnier: create a K.O. bracket from proposed teams and play i
   await page.click('[data-section-tab="tournaments"]');
   await page.waitForSelector('#tourn-new-btn');
   await page.click('#tourn-new-btn');
+  assert.equal(new URL(page.url()).hash, '#tournaments/new');
   assert.equal(await page.locator('#tourn-new-btn').count(), 0);
   assert.equal(await page.locator('[data-open-tournament], [data-completed-tournaments]').count(), 0);
+  await page.goBack();
+  await page.waitForSelector('#tourn-new-btn');
+  assert.equal(new URL(page.url()).hash, '#tournaments');
+  await page.goForward();
+  await page.waitForSelector('#tourn-propose');
+  assert.equal(new URL(page.url()).hash, '#tournaments/new');
 
   // Propose balanced teams from the checked players (all by default), then
   // create — the submit button only unlocks once a proposal exists.
@@ -1995,6 +2004,11 @@ flowTest('shell', 'Turnier: create a K.O. bracket from proposed teams and play i
   // Bracket renders with clickable team buttons; click winners until the
   // tournament reports itself finished.
   await page.waitForSelector('.bracket-match');
+  assert.match(new URL(page.url()).hash, /^#tournaments\/.+/);
+  const tournamentDetailHash = new URL(page.url()).hash;
+  await page.reload();
+  await page.waitForSelector('.bracket-match');
+  assert.equal(new URL(page.url()).hash, tournamentDetailHash);
   for (let i = 0; i < 8; i++) {
     const btn = page.locator('button.bracket-team-row:not(.is-tbd)').first();
     if ((await btn.count()) === 0) break;
@@ -2880,11 +2894,17 @@ flowTest('food-orders', 'Essensbestellung: Bestellübersicht consolidates positi
   await page.click('#order-new-btn');
   await page.fill('#order-title', 'Bestellübersicht-Test');
   await page.fill('#order-tip', '10');
+  const createOrderResponse = page.waitForResponse(
+    (response) => response.url() === `${BASE_URL}/api/food-orders` && response.request().method() === 'POST',
+  );
   await page.click('#order-form button[type="submit"]');
-  await page.waitForSelector('text=Bestellübersicht-Test');
-  const listOrderCard = page.locator('[data-order-card]', { hasText: 'Bestellübersicht-Test' });
-  const listOrderId = await listOrderCard.getAttribute('data-order-card');
-  assert.ok(listOrderId);
+  const createdOrderResponse = await createOrderResponse;
+  assert.equal(createdOrderResponse.status(), 201, await createdOrderResponse.text());
+  const createdOrder = await createdOrderResponse.json() as { id: string; open: boolean };
+  assert.equal(createdOrder.open, true);
+  const listOrderId = createdOrder.id;
+  const listOrderCard = page.locator(`[data-order-card="${listOrderId}"]`);
+  await listOrderCard.waitFor();
 
   // "Gruppen-Test-Bestellung" (from the previous test) is still open, so
   // there are now two open orders at once - each card gets its own

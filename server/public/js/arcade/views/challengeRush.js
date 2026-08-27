@@ -37,7 +37,9 @@ let oddOneOutSheet = null;
 const myId = () => getMyId();
 const currentView = () => document.getElementById('view-container')?.dataset.view;
 const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
-function navigate(view) { window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view })); }
+function navigate(view, options = {}) {
+  window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: { view, ...options } }));
+}
 function emit(event, payload) { return new Promise((resolve) => socket?.emit(event, payload, resolve)); }
 function clearRevealTimers() { revealTimers.forEach(clearTimeout); revealTimers = []; }
 function clearTrialTimer() { if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null; }
@@ -298,7 +300,10 @@ export function ensureChallengeRushSocket() {
     // until a manual "Verlassen" or a page reload.
     const wasVisible = currentView() === 'challengeRush';
     match = null;
-    if (wasVisible) { showToast('Challenge Rush wegen Zeitüberschreitung verlassen.', { error: true }); navigate('arcade'); }
+    if (wasVisible) {
+      showToast('Challenge Rush wegen Zeitüberschreitung verlassen.', { error: true });
+      navigate('arcade', { replace: true, localRoute: { kind: 'game', id: 'challenge-rush' } });
+    }
   }); });
   window.addEventListener('respawn:challenge-rush-disconnect', () => socket?.disconnect());
   window.addEventListener('respawn:challenge-rush-connect', () => socket?.connect());

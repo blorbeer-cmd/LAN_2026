@@ -151,7 +151,7 @@ export function createContentSearchEntries(appState, content = {}) {
   const pollEntries = [...latestPolls.values()].map((poll) => ({
     view: 'eventPolls',
     title: poll.title,
-    category: 'Abstimmung',
+    category: 'Event-Umfrage',
     description: `${poll.status === 'open' ? 'Läuft' : 'Beendet'}${poll.createdByName ? ` · von ${poll.createdByName}` : ''}`,
     aliases: `${poll.note ?? ''} ${(poll.options ?? []).map((option) => `${option.label ?? ''} ${option.description ?? ''}`).join(' ')}`,
     priority: 90,
