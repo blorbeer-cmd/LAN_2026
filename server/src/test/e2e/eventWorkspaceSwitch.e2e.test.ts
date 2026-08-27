@@ -428,7 +428,7 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   );
   assert.equal(await page.locator('.nav-btn[data-view="eventPolls"]').isEnabled(), true);
   await page.click('.nav-btn[data-view="eventPolls"]');
-  assert.match(await page.locator('#view-container > .view-title').innerText(), /Abstimmungen/);
+  assert.match(await page.locator('#view-container > .view-title').innerText(), /Umfragen/);
 
   await page.click('.nav-btn[data-view="home"]');
   const home = await viewText();
@@ -457,7 +457,7 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   await openView('profile');
   const profile = await viewText();
   assert.doesNotMatch(profile, /Live-Status-Agent|Sichtbare Monitore|Meine Statistiken|Bock & Skill eintragen/);
-  assert.match(profile, /Push-Benachrichtigungen/);
+  assert.match(profile, /Benachrichtigungen/);
 
   await page.click('.nav-btn[data-view="more"]');
   const more = await viewText();

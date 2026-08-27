@@ -250,6 +250,27 @@ arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and s
     assert.ok(firstLoad.some((request) => request === '/js/arcade/views/arcade.js'));
     assert.equal(new Set(firstLoad).size, firstLoad.length, 'each Arcade asset should load once');
 
+    await actor.page.click('[data-game="snake"]');
+    await actor.page.waitForSelector('#arcade-active-game-title:has-text("Snake")');
+    assert.equal(new URL(actor.page.url()).hash, '#arcade/snake');
+    assert.equal(
+      await actor.page.locator('#arcade-active-game-title').evaluate((heading) => {
+        const active = heading.closest('.grouped-page-section')?.getBoundingClientRect();
+        const picker = document.querySelector('.arcade-game-picker')?.getBoundingClientRect();
+        return Boolean(active && picker && active.top < picker.top);
+      }),
+      true,
+      'the active game is placed before the compact game switcher',
+    );
+    await actor.page.goBack();
+    await actor.page.waitForSelector('#arcade-active-game-title', { state: 'detached' });
+    assert.equal(new URL(actor.page.url()).hash, '#arcade');
+    await actor.page.goForward();
+    await actor.page.waitForSelector('#arcade-active-game-title:has-text("Snake")');
+    await actor.page.click('#arcade-game-back');
+    await actor.page.waitForSelector('#arcade-active-game-title', { state: 'detached' });
+    assert.equal(new URL(actor.page.url()).hash, '#arcade');
+
     await actor.page.click('.nav-btn[data-view="home"]');
     await actor.page.waitForFunction(() => !document.getElementById('arcade-stylesheet'));
     await navigateToArcade(actor.page);
@@ -262,10 +283,15 @@ arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and s
     );
 
     const direct = await actor.context.newPage();
-    await direct.goto(`${BASE_URL}/#arcade`);
-    await direct.waitForSelector('.arcade-tiles');
+    await direct.goto(`${BASE_URL}/#arcade/snake`);
+    await direct.waitForSelector('#arcade-active-game-title:has-text("Snake")');
     await direct.waitForSelector('#arcade-stylesheet[data-loaded="true"]', { state: 'attached' });
     assert.equal(await activeView(direct), 'arcade');
+    await direct.reload();
+    await direct.waitForSelector('#arcade-active-game-title:has-text("Snake")');
+    await direct.click('#arcade-game-back');
+    await direct.waitForSelector('#arcade-active-game-title', { state: 'detached' });
+    assert.equal(new URL(direct.url()).hash, '#arcade');
     await direct.close();
   } finally {
     await actor.context.close();

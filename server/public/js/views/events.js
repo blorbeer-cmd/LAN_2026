@@ -34,6 +34,7 @@ import {
 } from '../calendarExport.js';
 import { backButtonHtml } from '../backButton.js';
 import { EXCUSE_CATEGORIES, excuseCategoryLabel, pickEventExcuse } from '../eventExcuses.js';
+import { settleNotificationTarget } from '../notificationBanner.js';
 import {
   acceptedParticipantCount as countAcceptedParticipants,
   acceptedParticipants as selectAcceptedParticipants,
@@ -60,6 +61,11 @@ let eventHistoryOpen = false;
 // Same pattern for the declined events: present enough to come back from,
 // quiet enough not to compete with the events actually being planned.
 let declinedEventsOpen = false;
+let acceptedInvitationHandoff = null;
+
+globalThis.window?.addEventListener('respawn:identity-changed', () => {
+  acceptedInvitationHandoff = null;
+});
 
 function renderKioskSection() {
   return `
@@ -780,6 +786,18 @@ export function pendingEventInvitations() {
   return getMyId() ? state.eventInvitations || [] : [];
 }
 
+export function acceptedInvitationHandoffHtml() {
+  if (!acceptedInvitationHandoff) return '';
+  return `
+    <section class="card stack grouped-page-section" aria-labelledby="profile-accepted-invitation-title">
+      <div class="grouped-page-section-title">
+        <h2 id="profile-accepted-invitation-title" tabindex="-1">Einladung angenommen</h2>
+      </div>
+      <p class="muted">Du nimmst an „${escapeHtml(acceptedInvitationHandoff.name)}“ teil.</p>
+      <button type="button" class="btn btn-primary btn-block" data-open-accepted-event="${escapeHtml(acceptedInvitationHandoff.id)}">Event öffnen</button>
+    </section>`;
+}
+
 // Reused only by Profile's "Einladungen" section today, so it targets that
 // page's own headings directly (the same direct-ID pattern the previous
 // Events-tab handler used for #orga-invitations-title/#orga-events-title):
@@ -792,18 +810,40 @@ export function wirePendingInvitationActions(container, ctx) {
     btn.addEventListener('click', async () => {
       const accept = Boolean(btn.dataset.acceptInvitation);
       const eventId = btn.dataset.acceptInvitation || btn.dataset.declineInvitation;
+      const invitation = (state.eventInvitations || []).find((event) => event.id === eventId);
       btn.disabled = true;
       try {
         if (accept) await api.events.acceptInvitation(eventId);
         else await api.events.declineInvitation(eventId);
+        await settleNotificationTarget(`event-invitation:${eventId}:${getMyId()}`);
+        acceptedInvitationHandoff = accept
+          ? { id: eventId, name: invitation?.name ?? 'diesem Event' }
+          : null;
         await ctx.refresh();
-        (container.querySelector('#profile-invitations-title') || container.querySelector('#profile-view-title'))?.focus();
+        window.dispatchEvent(new CustomEvent('respawn:notifications-refresh'));
+        (
+          container.querySelector('#profile-accepted-invitation-title')
+          || container.querySelector('#profile-invitations-title')
+          || container.querySelector('#profile-view-title')
+        )?.focus();
         showToast(accept ? 'Einladung angenommen.' : 'Einladung abgelehnt.');
       } catch (err) {
         btn.disabled = false;
         showToast(err.message, { error: true });
       }
     });
+  });
+  container.querySelector('[data-open-accepted-event]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      await ctx.openEvent(button.dataset.openAcceptedEvent, 'home');
+      acceptedInvitationHandoff = null;
+      window.dispatchEvent(new CustomEvent('respawn:notifications-refresh'));
+    } catch (error) {
+      button.disabled = false;
+      showToast(error?.message ?? 'Das Event konnte nicht geöffnet werden.', { error: true });
+    }
   });
 }
 
@@ -1047,10 +1087,12 @@ function openEventForm(ctx, existing) {
               await ctx.refresh();
               showToast('Event aktualisiert.');
             } else {
-              await api.events.create(payload);
+              const created = await api.events.create(payload);
               close();
               await ctx.refresh();
-              showToast('Event angelegt.');
+              const managedEvent = (state.managedEvents || []).find((event) => event.id === created.id) ?? created;
+              showToast('Event angelegt. Jetzt Teilnehmende einladen.');
+              openParticipantsForm(ctx, managedEvent);
             }
           } catch (err) {
             showToast(err.message, { error: true });

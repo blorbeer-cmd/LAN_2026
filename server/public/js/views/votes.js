@@ -37,7 +37,6 @@ import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
 import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
-import { GAME_GENRES } from '../gameGenres.js';
 import { matchesSelectionSearch, selectionSearchHtml, wireSelectionSearch } from '../selectionSearch.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { isGroupAdmin } from '../groupContext.js';
@@ -145,19 +144,6 @@ let voteSelectionDirty = false;
 let voteGameSearchQuery = '';
 let lastRenderedRoundOpen = false;
 
-// Genre chip filter narrowing which games are *visible* in the game-limit
-// checkbox grid above (OR semantics, same as the Spiele view's list filter).
-// Purely a view filter — it never touches excludedGameIds, so games hidden
-// by the filter keep whatever checked state they already had.
-let voteGenreFilter = new Set();
-
-// Genres actually carried by at least one catalog game right now — the same
-// set the chip list itself is built from. Suggestions are not on the ballot
-// (see catalogGames()), so their genres must not offer a chip either.
-function usedVoteGenres() {
-  return GAME_GENRES.filter((g) => catalogGames().some((game) => (game.genres ?? []).includes(g)));
-}
-
 function sortVoteGames(games, results = state.votes?.catalogResults ?? []) {
   const preferences = new Map(results.map((result) => [result.gameId, result.avgPreference ?? -1]));
   return [...games].sort((a, b) => {
@@ -181,27 +167,8 @@ function resetVoteGameSelection() {
   voteSelectionDirty = false;
 }
 
-// Games currently visible under the genre filter above — the single source
-// of truth for what "Alle markieren"/"Auswahl aufheben" and the start action
-// itself are allowed to touch, so a narrowed filter never affects games it
-// doesn't show.
-function voteFilterVisibleGames() {
-  if (voteGenreFilter.size === 0) return sortVoteGames(catalogGames());
-  // A game that lost its last genre (retagged/deleted elsewhere in the SPA
-  // session) leaves voteGenreFilter holding a genre no chip still offers —
-  // silently prune it here instead of matching against a filter the user
-  // has no visible control left to clear, which would otherwise show an
-  // empty grid or reject the start action with nothing left checked.
-  const active = usedVoteGenres();
-  for (const genre of voteGenreFilter) {
-    if (!active.includes(genre)) voteGenreFilter.delete(genre);
-  }
-  if (voteGenreFilter.size === 0) return sortVoteGames(catalogGames());
-  return sortVoteGames(catalogGames().filter((g) => (g.genres ?? []).some((genre) => voteGenreFilter.has(genre))));
-}
-
 function voteSearchVisibleGames() {
-  return voteFilterVisibleGames().filter((game) => matchesSelectionSearch(game.name, voteGameSearchQuery));
+  return sortVoteGames(catalogGames()).filter((game) => matchesSelectionSearch(game.name, voteGameSearchQuery));
 }
 
 // Guards the points sliders against a re-render landing mid-drag (another
@@ -596,19 +563,7 @@ export function renderVotes(container, ctx) {
       </section>`;
   } else {
     initializeVoteGameSelection(votes);
-    const genreFilteredGames = voteFilterVisibleGames();
-    const activeVoteGenres = usedVoteGenres();
-    const voteGenreFilterHtml = activeVoteGenres.length
-      ? `<div class="chip-list" role="group" aria-label="Nach Genre filtern">
-           ${activeVoteGenres
-             .map(
-               (g) =>
-                 `<button type="button" class="chip${voteGenreFilter.has(g) ? ' is-active' : ''}" data-vote-genre-filter="${escapeHtml(g)}" aria-pressed="${voteGenreFilter.has(g)}">${escapeHtml(g)}</button>`,
-             )
-             .join('')}
-         </div>`
-      : '';
-    const gameCheckboxes = genreFilteredGames
+    const gameCheckboxes = sortVoteGames(catalogGames())
       .map(
         (g) => `
         <label class="check-row" data-vote-game-search-item data-selection-search="${escapeHtml(g.name)}">
@@ -643,14 +598,8 @@ export function renderVotes(container, ctx) {
             <button type="button" class="icon-btn selection-toolbar-icon selection-toolbar-icon--clear" id="votes-select-none" aria-label="Sichtbare Spiele abwählen" data-tooltip="Sichtbare abwählen">${icon('listX')}</button>
             ${selectionSearchHtml('votes-game-search', voteGameSearchQuery, { placeholder: 'Spiele suchen…', label: 'Spiele suchen' })}
           </div>
-          ${voteGenreFilterHtml}
           <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
           <p class="muted" data-vote-game-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>
-          ${
-            genreFilteredGames.length === 0
-              ? `<p class="muted" style="font-size:var(--font-size-xs);">Keine Spiele mit den gewählten Genres.</p>`
-              : ''
-          }
         </div>
         <div class="sticky-actions">
           <button type="button" class="btn btn-primary btn-block" id="votes-start">Abstimmung starten</button>
@@ -814,21 +763,12 @@ export function renderVotes(container, ctx) {
     ctx.rerender();
   });
 
-  container.querySelectorAll('[data-vote-genre-filter]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const g = btn.dataset.voteGenreFilter;
-      if (voteGenreFilter.has(g)) voteGenreFilter.delete(g);
-      else voteGenreFilter.add(g);
-      ctx.rerender();
-    });
-  });
-
   const startBtn = container.querySelector('#votes-start');
   if (startBtn) {
     startBtn.addEventListener('click', async () => {
       const title = container.querySelector('#votes-title')?.value.trim() || undefined;
       const info = container.querySelector('#votes-info')?.value.trim() || undefined;
-      const gameIds = voteFilterVisibleGames()
+      const gameIds = sortVoteGames(catalogGames())
         .filter((g) => !excludedGameIds.has(g.id))
         .map((g) => g.id);
       if (gameIds.length === 0) {

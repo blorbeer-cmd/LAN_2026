@@ -261,10 +261,28 @@ test('manager invites a member who accepts and both open clients update', async 
   await acceptButton.focus();
   await acceptButton.press('Enter');
   await pending.waitFor({ state: 'detached' });
+  const openAcceptedEvent = memberPage.locator(`[data-open-accepted-event="${eventId}"]`);
+  await openAcceptedEvent.waitFor();
+  assert.equal(await openAcceptedEvent.textContent(), 'Event öffnen');
+  await memberPage.click('#notifications-btn');
+  await invitationNotification.waitFor();
+  assert.equal(
+    await invitationNotification.evaluate((entry) => entry.classList.contains('is-unread')),
+    false,
+    'the resolved invitation remains as read history instead of an open notification',
+  );
+  await memberPage.click('#notifications-btn');
   await ownerRefresh;
   const acceptedRosterRow = ownerParticipantList.locator('[data-event-participation-status="accepted"]', { hasText: MEMBER_NAME });
   await acceptedRosterRow.waitFor({ state: 'attached' });
   assert.match((await ownerParticipantList.locator('.food-order-group-meta').textContent()) ?? '', /1 Zusage/);
+
+  await openAcceptedEvent.click();
+  await memberPage.waitForSelector('#view-container[data-view="home"]');
+  await memberPage.waitForFunction(
+    (acceptedEventId) => (document.getElementById('event-context-switcher') as HTMLInputElement | null)?.value === acceptedEventId,
+    eventId,
+  );
 
   // The accepted event's own card only ever lived on the Events tab.
   await memberPage.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'events' })));

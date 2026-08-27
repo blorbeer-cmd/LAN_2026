@@ -324,6 +324,41 @@ export async function refreshNotificationBanner({ throwOnError = false } = {}) {
   }
 }
 
+// A workflow can retire its own actionable notification without deleting the
+// historical entry. The target id is the server's stable topic key, so this
+// works even when the notification itself belongs to the base workspace (as
+// event invitations do before the invitee may enter the target event).
+export async function settleNotificationTarget(targetId) {
+  const playerId = getMyId();
+  if (!playerId || !targetId) return;
+  let matching = entries.filter((entry) => entry.targetId === targetId && !entry.seen);
+  if (matching.length === 0) {
+    try {
+      const response = await api.push.log(playerId);
+      matching = response.entries.filter((entry) => entry.targetId === targetId && !entry.seen);
+    } catch {
+      // The invitation mutation already succeeded. The ordinary refresh event
+      // below retries the center without turning that success into an error.
+      return;
+    }
+  }
+  if (matching.length === 0) return;
+  entries.filter((entry) => entry.targetId === targetId).forEach((entry) => {
+    entry.seen = true;
+  });
+  if (matching.some((entry) => entry.id === highlightEntry?.id)) {
+    highlightEntry = null;
+    clearHighlightExpiryTimer();
+  }
+  renderBanner();
+  try {
+    await Promise.all(matching.map((entry) => api.push.seen(entry.id, playerId)));
+  } catch (error) {
+    await refreshNotificationBanner();
+    showToast(error.message, { error: true });
+  }
+}
+
 export function initNotificationBanner() {
   const button = buttonEl();
   const center = document.querySelector('[data-notification-center]');

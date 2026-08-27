@@ -19,7 +19,12 @@ import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { confirmDialog, openModal } from '../modal.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { pendingEventInvitations, renderInvitationCard, wirePendingInvitationActions } from './events.js';
+import {
+  acceptedInvitationHandoffHtml,
+  pendingEventInvitations,
+  renderInvitationCard,
+  wirePendingInvitationActions,
+} from './events.js';
 import { eventHasFeature } from '../eventFeatures.js';
 import { backButtonHtml } from '../backButton.js';
 
@@ -315,6 +320,7 @@ export function renderProfile(container, ctx) {
       </div>
     </div>
     <div class="grouped-page-sections">
+      ${acceptedInvitationHandoffHtml()}
       ${
         pendingInvitations.length > 0
           ? `<section class="card stack grouped-page-section" aria-labelledby="profile-invitations-title">
@@ -350,8 +356,9 @@ export function renderProfile(container, ctx) {
         </div>
       </section>
 
-      <section class="card stack grouped-page-section" aria-labelledby="profile-password-title">
-               <div class="grouped-page-section-title"><h2 id="profile-password-title">Passwort ändern</h2></div>
+      <details class="card grouped-page-section collapsible-section" data-profile-section="password" aria-labelledby="profile-password-title" open>
+               <summary class="collapsible-section-header"><h2 id="profile-password-title">Sicherheit &amp; Passwort</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
+               <div class="collapsible-section-content">
                <form class="stack" id="profile-password-form">
                  <div class="profile-password-fields">
                    <div class="row">
@@ -365,7 +372,8 @@ export function renderProfile(container, ctx) {
                  </div>
                  <button type="submit" class="btn btn-primary btn-block">Passwort speichern</button>
                </form>
-      </section>
+               </div>
+      </details>
 
       ${
         !gamesEnabled || state.games.length === 0 || hasAnyRating
@@ -381,8 +389,9 @@ export function renderProfile(container, ctx) {
              </section>`
       }
 
-      ${trackingEnabled ? `<section class="card stack grouped-page-section" aria-labelledby="profile-agent-title">
-        <div class="grouped-page-section-title"><h2 id="profile-agent-title">Live-Status-Agent</h2></div>
+      ${trackingEnabled ? `<details class="card grouped-page-section collapsible-section" data-profile-section="agent" aria-labelledby="profile-agent-title" open>
+        <summary class="collapsible-section-header"><h2 id="profile-agent-title">Live-Status &amp; Agent</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
+        <div class="collapsible-section-content stack">
         <div class="profile-agent-steps">
           <div class="card stack profile-agent-step">
             <span class="muted profile-agent-step-label">Schritt 1</span>
@@ -425,17 +434,18 @@ export function renderProfile(container, ctx) {
           </div>
           <p class="muted" style="font-size:var(--font-size-xs);margin-bottom:0;">Key in die Agent-Konfiguration eintragen.</p>
         </details>
-      </section>` : ''}
+        </div>
+      </details>` : ''}
 
-      <section class="card stack grouped-page-section" aria-labelledby="profile-push-title">
-        <div class="grouped-page-section-title"><h2 id="profile-push-title">Push-Benachrichtigungen</h2></div>
-        ${renderPushSection()}
-      </section>
+      <details class="card grouped-page-section collapsible-section" data-profile-section="push" aria-labelledby="profile-push-title" open>
+        <summary class="collapsible-section-header"><h2 id="profile-push-title">Benachrichtigungen</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
+        <div class="collapsible-section-content">${renderPushSection()}</div>
+      </details>
 
-      ${monitorsEnabled ? `<section class="card stack grouped-page-section" aria-labelledby="profile-monitors-title">
-        <div class="grouped-page-section-title"><h2 id="profile-monitors-title">Sichtbare Monitore</h2></div>
-        ${renderNeighbors(myId)}
-      </section>` : ''}
+      ${monitorsEnabled ? `<details class="card grouped-page-section collapsible-section" data-profile-section="monitors" aria-labelledby="profile-monitors-title" open>
+        <summary class="collapsible-section-header"><h2 id="profile-monitors-title">Sichtbare Monitore</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
+        <div class="collapsible-section-content">${renderNeighbors(myId)}</div>
+      </details>` : ''}
 
       ${trackingEnabled ? `<section class="card grouped-page-section" aria-labelledby="profile-stats-title">
         <div class="grouped-page-section-title">

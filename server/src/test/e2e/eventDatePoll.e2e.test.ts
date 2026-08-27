@@ -12,7 +12,7 @@ const OWNER_NAME = 'E2E Poll Owner';
 const OWNER_PASSWORD = 'e2e poll owner secure passphrase';
 const MEMBER_NAME = 'E2E Poll Member';
 const MEMBER_PASSWORD = 'e2e poll member secure passphrase';
-const EVENT_NAME = 'LAN Abstimmungen E2E';
+const EVENT_NAME = 'LAN Umfragen E2E';
 
 let serverProcess: ChildProcess;
 let e2eServer: E2EServer;
@@ -183,6 +183,10 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await ownerPage.fill('#event-name', EVENT_NAME);
   await ownerPage.fill('#event-location', 'Bestehender Ort');
   await ownerPage.click('#event-form button[type="submit"]');
+  const participantHandoff = ownerPage.locator('.modal-backdrop', { hasText: `Teilnehmende – ${EVENT_NAME}` });
+  await participantHandoff.waitFor();
+  assert.match((await ownerPage.locator('.toast').last().textContent()) ?? '', /Jetzt Teilnehmende einladen/);
+  await participantHandoff.locator('[data-close]').click();
   const eventCard = ownerPage.locator('.event-card', { hasText: EVENT_NAME });
   await eventCard.waitFor();
   const eventId = (await eventCard.getAttribute('data-event-card')) as string;
@@ -206,7 +210,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await ownerPage.waitForSelector('[data-section-tab="eventPolls"][aria-current="page"]');
   assert.equal(await ownerPage.locator('#poll-event-select').count(), 0);
   assert.equal(await ownerPage.locator('.event-polls-page h1').count(), 0, 'the tab adds no duplicate event heading');
-  assert.equal(await ownerPage.locator('#new-event-poll').textContent(), 'Abstimmung starten');
+  assert.equal(await ownerPage.locator('#new-event-poll').textContent(), 'Umfrage starten');
 
   await createPoll(ownerPage, {
     title: 'Welcher Zeitraum passt?',
@@ -247,7 +251,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.equal(await refreshed.locator('[data-view-poll-votes]').count(), 0, 'names stay hidden while voting is open');
   await choosePollAction(refreshed, '[data-close-poll]');
   await ownerPage.locator('.modal-backdrop [data-confirm]').click();
-  await ownerPage.locator('.toast', { hasText: 'Abstimmung beendet' }).waitFor();
+  await ownerPage.locator('.toast', { hasText: 'Umfrage beendet' }).waitFor();
   await ownerPage.locator('.event-poll-ended-history').evaluate((details) => {
     (details as HTMLDetailsElement).open = true;
     details.dispatchEvent(new Event('toggle'));
@@ -366,7 +370,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await memberPage.click('#event-poll-edit-form #poll-add-option');
   await memberPage.locator('#event-poll-edit-form [data-poll-option-input]').last().fill('Dessert');
   await memberPage.click('#event-poll-edit-form button[type="submit"]');
-  await memberPage.locator('.toast', { hasText: 'Bereits abgestimmte Teilnehmer wurden informiert' }).waitFor();
+  await memberPage.locator('.toast', { hasText: 'Personen mit geänderter Antwort wurden informiert' }).waitFor();
   await memberPage.waitForFunction(() => {
     const poll = Array.from(document.querySelectorAll('[data-poll-group]')).find((element) => element.textContent?.includes('Welche Verpflegung?'));
     return poll?.querySelectorAll('.event-poll-option').length === 4;
@@ -442,7 +446,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.match((await anonymousPoll.locator('.event-poll-counts').first().textContent()) ?? '', /1 Stimme/);
   await choosePollAction(anonymousPoll, '[data-close-poll]');
   await ownerPage.locator('.modal-backdrop [data-confirm]').click();
-  await ownerPage.locator('.toast', { hasText: 'Abstimmung beendet' }).waitFor();
+  await ownerPage.locator('.toast', { hasText: 'Umfrage beendet' }).waitFor();
   assert.equal(await anonymousPoll.locator('[data-view-poll-votes]').count(), 0, 'anonymous votes never expose identities');
 
   await createPoll(ownerPage, {

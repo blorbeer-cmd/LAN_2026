@@ -21,7 +21,6 @@ import { openInfoBoard } from './views/infoBoard.js';
 import { openPlayerDetail } from './views/playerDetail.js';
 import { clearFoodOrderTarget, prepareFoodOrderTarget, refreshFoodOrders } from './views/foodOrders.js';
 import { focusGameCatalog } from './views/gameCatalog.js';
-import { focusTournament, showTournamentLanding } from './views/tournament.js';
 import { eventSelectOptions, eventStatus, eventSwitcherLabel } from './eventStatus.js';
 import { searchSelectHtml, wireSearchSelect } from './searchSelect.js';
 import { icon, installIconReplacement } from './icons.js';
@@ -38,12 +37,14 @@ import { viewIsEnabledForEvent } from './eventFeatures.js';
 import { bottomNavItemsForEvent } from './bottomNav.js';
 import { invalidateEventScopedViews, invalidateViewCaches, invalidateViewsAfterReconnect } from './viewLifecycle.js';
 import { viewDefinition } from './viewManifest.js';
+import { appHash, localRouteKey, parseAppHash } from './appRoute.js';
 
 installIconReplacement();
 installDomainIcons();
 initNumberStepper();
 
 let currentView = 'home';
+let currentLocalRoute = null;
 // The topbar has no room for a persistent Feedback icon at the narrowest
 // supported phone width (verified: even one more 44px icon overflows a
 // 320px viewport), so Feedback lives in the "Mehr" hub instead and needs
@@ -58,17 +59,6 @@ let renderRevision = 0;
 let sharedRefreshPromise = null;
 let sharedRefreshDirty = false;
 let sharedRefreshShouldRender = false;
-
-function parseFoodOrderHash(hash) {
-  const parts = String(hash || '').replace(/^#/, '').split('/');
-  if (!['foodOrders', 'eventPolls'].includes(parts[0])) return null;
-  if (!parts[1]) return { view: parts[0], target: null };
-  try {
-    return { view: parts[0], target: { type: parts[0] === 'foodOrders' ? 'order' : 'poll', id: decodeURIComponent(parts[1]) } };
-  } catch {
-    return { view: parts[0], target: null };
-  }
-}
 
 function syncArcadeStylesheet(entry) {
   const linkId = 'arcade-stylesheet';
@@ -190,6 +180,14 @@ const ctx = {
   // network round trip. Use when a view already updated `state` itself
   // (e.g. a freshly drawn matchmaking result).
   rerender: () => renderCurrent(),
+  localRoute: () => currentLocalRoute,
+  navigateLocal: (localRoute, options = {}) =>
+    switchView(currentView, { localRoute, replace: options.replace === true }),
+  backLocal: (fallback = null) => {
+    if (history.state?.localParent) history.back();
+    else switchView(currentView, { localRoute: fallback, replace: true });
+  },
+  openEvent: (eventId, view = 'home') => activateEvent(eventId, { navigate: view }),
 };
 
 // The topbar workspace switcher is the same searchable dropdown as every
@@ -418,7 +416,10 @@ function renderCurrentAfterPlayerDataLoad() {
 // reachable via the back button (e.g. a watch view whose match has ended;
 // re-pushing would trap back/forward between the stale entry and its
 // redirect target).
-function switchView(view, { fromHistory = false, replace = false, searchTarget = null } = {}) {
+function switchView(
+  view,
+  { fromHistory = false, replace = false, searchTarget = null, localRoute = undefined } = {},
+) {
   // Admin-only areas stay reachable through Admin links and deep links alike,
   // but never render for an account whose role no longer permits them.
   if (viewRequiresAdminRole(view) && playerDataReady && !currentPlayerHasAdminRole()) {
@@ -428,11 +429,14 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
     view = 'home';
     replace = true;
   }
-  const changed = view !== currentView;
+  const nextLocalRoute = localRoute === undefined ? (view === currentView ? currentLocalRoute : null) : localRoute;
+  const changed = view !== currentView || localRouteKey(nextLocalRoute) !== localRouteKey(currentLocalRoute);
+  const localParent = !fromHistory && changed && Boolean(nextLocalRoute);
   if (view !== 'foodOrders') clearFoodOrderTarget();
   pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
   if (view === 'foodOrders' && searchTarget?.type === 'order') prepareFoodOrderTarget(searchTarget.id);
   currentView = view;
+  currentLocalRoute = nextLocalRoute;
   if (view !== 'more') lastSubstantiveView = view;
   // Realtime game modules use this marker to ignore updates while another
   // view is active. Without it, a running game can rebuild the current DOM
@@ -454,9 +458,17 @@ function switchView(view, { fromHistory = false, replace = false, searchTarget =
   renderCurrent({ preserveState: !changed && !searchTarget });
   if (!searchTarget) viewContainer.scrollTop = 0;
   if (replace) {
-    history.replaceState({ view }, '');
+    history.replaceState(
+      { view, localRoute: currentLocalRoute, localParent: history.state?.localParent === true },
+      '',
+      appHash(view, currentLocalRoute, searchTarget),
+    );
   } else if (!fromHistory && changed) {
-    history.pushState({ view }, '');
+    history.pushState(
+      { view, localRoute: currentLocalRoute, localParent },
+      '',
+      appHash(view, currentLocalRoute, searchTarget),
+    );
   }
 }
 
@@ -501,8 +513,7 @@ function wireNav() {
 
   document.querySelectorAll('.nav-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
-      if (btn.dataset.view === 'tournaments') showTournamentLanding();
-      switchView(btn.dataset.view);
+      switchView(btn.dataset.view, { localRoute: null });
     });
   });
   // Feedback is reachable from every view via this topbar icon; the view it
@@ -525,8 +536,7 @@ function wireNav() {
     // the tournament list instead of whichever board was open last.
     const tab = e.target.closest('[data-section-tab]');
     if (tab) {
-      if (tab.dataset.sectionTab === 'tournaments') showTournamentLanding();
-      switchView(tab.dataset.sectionTab);
+      switchView(tab.dataset.sectionTab, { localRoute: null });
       return;
     }
     const detail = e.target.closest('[data-open-player-detail]');
@@ -551,7 +561,12 @@ function wireNav() {
   // detail is either the view name or { view, replace } (see switchView).
   window.addEventListener('respawn:navigate', (e) => {
     const detail = typeof e.detail === 'string' ? { view: e.detail } : e.detail ?? {};
-    if (isKnownView(detail.view)) switchView(detail.view, { replace: detail.replace === true });
+    if (isKnownView(detail.view)) {
+      switchView(detail.view, {
+        replace: detail.replace === true,
+        localRoute: detail.localRoute,
+      });
+    }
   });
   window.addEventListener('respawn:rerender', () => renderCurrent());
   window.addEventListener('respawn:group-changed', () => ctx.refresh());
@@ -561,8 +576,10 @@ function wireNav() {
   // recorded state (extremely old entry, or a browser that fired this
   // without one) falls back to today's usual landing view.
   window.addEventListener('popstate', (e) => {
-    const view = e.state?.view || (getMyId() ? 'home' : 'profile');
-    switchView(view, { fromHistory: true });
+    const hashRoute = parseAppHash(location.hash);
+    const view = e.state?.view || hashRoute.view || (getMyId() ? 'home' : 'profile');
+    const localRoute = e.state?.localRoute ?? hashRoute.localRoute;
+    switchView(view, { fromHistory: true, localRoute, searchTarget: hashRoute.searchTarget });
   });
 
   // Tapping a push notification while the app is already open: the service
@@ -727,8 +744,9 @@ function wireSocket() {
       showToast(payload.notify.message, {
         duration: 5000,
         onClick: () => {
-          focusTournament(payload.tournamentId);
-          switchView('tournaments');
+          switchView('tournaments', {
+            localRoute: { kind: 'detail', id: payload.tournamentId },
+          });
         },
       });
     }
@@ -869,10 +887,13 @@ async function main() {
       else openPlayerDetail(entry.target.id);
       return;
     }
-    if (entry.target?.type === 'tournament') focusTournament(entry.target.id);
     if (entry.target?.type === 'game') focusGameCatalog(entry.target.id);
     switchView(entry.view, {
       searchTarget: entry.target?.type === 'tournament' ? null : entry.target,
+      localRoute:
+        entry.target?.type === 'tournament'
+          ? { kind: 'detail', id: entry.target.id }
+          : null,
     });
   });
   wireAdminMode();
@@ -914,11 +935,13 @@ async function main() {
   // A push notification's deep link (e.g. /#votes, opened by sw.js when no
   // app window existed yet) overrides that default so the tap actually lands
   // where the notification promised.
-  const hashTarget = parseFoodOrderHash(location.hash);
-  const hashView = hashTarget?.view ?? location.hash.slice(1);
+  const hashRoute = parseAppHash(location.hash);
+  const hashView = hashRoute.view;
   // A reload keeps the view the browser was on (stored on the history entry
   // by switchView) instead of bouncing back to Home mid-workflow.
   const restoredView = history.state?.view;
+  const restoredLocalRoute = history.state?.localRoute ?? null;
+  const restoredLocalParent = history.state?.localParent === true;
   const initialView = isKnownView(hashView)
     ? hashView
     : isKnownView(restoredView)
@@ -927,8 +950,17 @@ async function main() {
   // Establishes the base history entry the very first popstate can land on
   // (replace, not push — this page load shouldn't cost an extra back-step)
   // before any tab switch starts pushing entries on top of it.
-  history.replaceState({ view: initialView }, '');
-  switchView(initialView, { fromHistory: true, searchTarget: hashTarget?.target ?? null });
+  const initialLocalRoute = isKnownView(hashView) ? hashRoute.localRoute : restoredLocalRoute;
+  history.replaceState(
+    { view: initialView, localRoute: initialLocalRoute, localParent: restoredLocalParent },
+    '',
+    appHash(initialView, initialLocalRoute, hashRoute.searchTarget),
+  );
+  switchView(initialView, {
+    fromHistory: true,
+    localRoute: initialLocalRoute,
+    searchTarget: hashRoute.searchTarget,
+  });
   // The core tour's step list depends on the admin role, which only exists
   // on state.players once initialDataLoad resolves (see loadAll() above).
   // The app itself stays interactive regardless - only starting the tour

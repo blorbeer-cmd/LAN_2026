@@ -32,6 +32,7 @@ import { isOwnFinishedMatch } from '../arcadeWatchFilter.js';
 import { searchSelectHtml, wireSearchSelect } from '../../searchSelect.js';
 import { emptyStateHtml } from '../../emptyState.js';
 import { backButtonHtml } from '../../backButton.js';
+import { localRouteKey } from '../../appRoute.js';
 
 // The Arcade opens as a launcher: a compact grid of playable game tiles.
 // Picking one reveals that game's lobby below.
@@ -94,6 +95,7 @@ let statsLoading = false;
 let scribbleGallery = [];
 let activeStatsGame = null;
 let activeGame = null; // which game tile is expanded
+let appliedRouteKey = null;
 let quizOpponent = 'human';
 let match = null;
 let currentQuestion = null;
@@ -571,6 +573,14 @@ function activeGameHtml() {
 }
 
 export function renderArcade(container, ctx) {
+  const route = ctx.localRoute();
+  const routeKey = localRouteKey(route);
+  if (routeKey !== appliedRouteKey) {
+    activeGame = route?.kind === 'game' && GAMES.some((game) => game.id === route.id && !game.soon)
+      ? route.id
+      : null;
+    appliedRouteKey = routeKey;
+  }
   ensureSocket(ctx);
   ensureTetrisSocket();
   ensureScribbleSocket();
@@ -592,18 +602,12 @@ export function renderArcade(container, ctx) {
       </div>
     </div>
     <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section" aria-labelledby="arcade-games-title">
-        <div class="grouped-page-section-title"><h2 id="arcade-games-title">Spiele</h2></div>
-        <div class="arcade-tiles">
-          ${GAMES.map((g) => gameTileHtml(g, cg, openLobbyCount(g.id))).join('')}
-        </div>
-      </section>
-      ${runningMatchesOverviewHtml()}
       ${
         activeGameDefinition
           ? `<section class="card stack grouped-page-section" aria-labelledby="arcade-active-game-title">
                <div class="grouped-page-section-title">
                  <div class="row arcade-active-game-title">
+                   ${activeGame ? backButtonHtml({ id: 'arcade-game-back', label: 'Spielauswahl' }) : ''}
                    <h2 id="arcade-active-game-title">${escapeHtml(activeGameDefinition.name)}</h2>
                    ${infoTooltipHtml(`arcade-${activeGameDefinition.id}-game-info`, activeGameDefinition.name, activeGameDefinition.help)}
                  </div>
@@ -612,6 +616,13 @@ export function renderArcade(container, ctx) {
              </section>`
           : ''
       }
+      <${activeGameDefinition ? 'details' : 'section'} class="card stack grouped-page-section arcade-game-picker" ${activeGameDefinition ? '' : 'aria-labelledby="arcade-games-title"'}>
+        <${activeGameDefinition ? 'summary' : 'div'} class="grouped-page-section-title"><h2 id="arcade-games-title">${activeGameDefinition ? 'Spiel wechseln' : 'Spiele'}</h2></${activeGameDefinition ? 'summary' : 'div'}>
+        <div class="arcade-tiles">
+          ${GAMES.map((g) => gameTileHtml(g, cg, openLobbyCount(g.id))).join('')}
+        </div>
+      </${activeGameDefinition ? 'details' : 'section'}>
+      ${runningMatchesOverviewHtml()}
       <section class="card stack grouped-page-section" aria-labelledby="arcade-stats-title">
         <div class="grouped-page-section-title"><h2 id="arcade-stats-title">Statistiken</h2></div>
         ${arcadeStatsHtml()}
@@ -633,10 +644,10 @@ export function renderArcade(container, ctx) {
       const id = btn.dataset.game;
       const def = GAMES.find((g) => g.id === id);
       if (def?.soon) return showToast(`${def.name} kommt bald!`);
-      activeGame = activeGame === id ? null : id;
-      ctx.rerender();
+      ctx.navigateLocal(activeGame === id ? null : { kind: 'game', id });
     });
   });
+  container.querySelector('#arcade-game-back')?.addEventListener('click', () => ctx.backLocal(null));
 
   container.querySelectorAll('[data-watch-match]').forEach((btn) => {
     btn.addEventListener('click', () => startArcadeWatch(btn.dataset.watchMatch));

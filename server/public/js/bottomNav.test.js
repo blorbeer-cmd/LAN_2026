@@ -26,7 +26,7 @@ test('general events promote planning and polls into the bottom navigation', () 
     'An & Abreise',
     'Packliste',
     'To-Do',
-    'Abstimmungen',
+    'Umfragen',
     'Mehr',
   ]);
   assert.equal(items.some((item) => item.id === 'nav-food-orders'), false);

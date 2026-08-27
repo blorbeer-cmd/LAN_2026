@@ -97,11 +97,11 @@ function formatDateTime(timestamp) {
 }
 
 function pollStatusInfo(status) {
-  if (status === 'open') return { label: 'Abstimmung läuft', badge: 'badge-playing' };
-  if (status === 'closed') return { label: 'Abstimmung beendet', badge: 'badge-paused' };
-  if (status === 'scheduled') return { label: 'Abstimmung beendet', badge: 'badge-paused' };
+  if (status === 'open') return { label: 'Umfrage läuft', badge: 'badge-playing' };
+  if (status === 'closed') return { label: 'Umfrage beendet', badge: 'badge-paused' };
+  if (status === 'scheduled') return { label: 'Umfrage beendet', badge: 'badge-paused' };
   if (status === 'superseded') return { label: 'Frühere Runde', badge: 'badge-offline' };
-  return { label: 'Abstimmung abgebrochen', badge: 'badge-offline' };
+  return { label: 'Umfrage abgebrochen', badge: 'badge-offline' };
 }
 
 function groupPolls(polls) {
@@ -332,7 +332,7 @@ function renderPollActions(poll) {
     }
     if (poll.canManage) {
       actions.push(`<button type="button" data-reopen-poll="${escapeHtml(poll.id)}">Wieder öffnen</button>`);
-      actions.push(`<button type="button" data-new-poll-round="${escapeHtml(poll.id)}">Erneut abstimmen</button>`);
+      actions.push(`<button type="button" data-new-poll-round="${escapeHtml(poll.id)}">Neue Runde</button>`);
       actions.push(`<button type="button" class="is-danger" data-delete-poll="${escapeHtml(poll.id)}">Löschen</button>`);
     }
   }
@@ -370,7 +370,7 @@ function renderHistoryRound(poll) {
       <div class="row-between"><strong>Runde ${poll.roundNumber}</strong><span class="badge ${status.badge}">${status.label}</span></div>
       <span class="event-poll-history-result">${bestResult ? `Sieger: ${escapeHtml(bestResult)}` : 'Ergebnis: Keine Stimmen'}</span>
       <span class="muted">Gestartet: ${formatDateTime(poll.createdAt)} · von ${escapeHtml(poll.createdByName ?? 'Unbekannt')}</span>
-      <span class="muted">Beendet: ${formatDateTime(poll.updatedAt)} · Frist: ${formatDate(poll.responseDueAt)} · ${answered} von ${poll.invitees.length} abgestimmt${poll.anonymous ? ' · Anonym' : ''}</span>
+      <span class="muted">Beendet: ${formatDateTime(poll.updatedAt)} · Frist: ${formatDate(poll.responseDueAt)} · ${answered} von ${poll.invitees.length} beantwortet${poll.anonymous ? ' · Anonym' : ''}</span>
       <details class="event-poll-history-details">
         <summary>Ergebnisdetails</summary>
         <div class="stack event-poll-options">${poll.options.map((option) => renderOption(poll, option)).join('')}</div>
@@ -397,7 +397,7 @@ function renderEndedPolls(groups, eventId) {
   return `
     <details class="collapsible-section event-poll-ended-history" data-poll-history="${escapeHtml(key)}" ${expandedHistories.has(key) ? 'open' : ''}>
       <summary class="collapsible-section-header">
-        <span class="row"><span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span><span>Beendete Abstimmungen (${groups.length})</span></span>
+        <span class="row"><span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span><span>Beendete Umfragen (${groups.length})</span></span>
       </summary>
       <div class="collapsible-section-content stack event-poll-list">${groups.map(renderPollGroup).join('')}</div>
     </details>`;
@@ -417,7 +417,7 @@ function renderPollGroup(group) {
           <span class="event-poll-card-title"><strong>${escapeHtml(latest.title)}</strong><span class="muted">von ${escapeHtml(latest.createdByName ?? 'Unbekannt')} · Runde ${latest.roundNumber}</span><span class="muted">Gestartet: ${formatDate(latest.createdAt)} · Frist: ${formatDate(latest.responseDueAt)}</span></span>
         </button>
         <div class="event-poll-card-side">
-          <span class="event-poll-card-meta"><span class="badge ${status.badge}">${status.label}</span><span class="muted">${answered}/${latest.invitees.length} abgestimmt</span>${bestResult ? `<span class="event-poll-best-result" title="Bestes Ergebnis: ${escapeHtml(bestResult)}">Ergebnis: ${escapeHtml(bestResult)}</span>` : ''}</span>
+          <span class="event-poll-card-meta"><span class="badge ${status.badge}">${status.label}</span><span class="muted">${answered}/${latest.invitees.length} beantwortet</span>${bestResult ? `<span class="event-poll-best-result" title="Bestes Ergebnis: ${escapeHtml(bestResult)}">Ergebnis: ${escapeHtml(bestResult)}</span>` : ''}</span>
           ${renderPollActions(latest)}
         </div>
       </header>
@@ -478,9 +478,9 @@ function openPollForm(event, ctx, previousRound = null) {
   let nextOptionIndex = initialOptions.length;
   let dirty = false;
   let capturedModal;
-  const { close } = openModal(previousRound ? `Erneut abstimmen · ${previousRound.title}` : 'Abstimmung starten', `
+  const { close } = openModal(previousRound ? `Neue Runde · ${previousRound.title}` : 'Umfrage starten', `
     <form id="event-poll-form" class="stack">
-      <div><label for="poll-title" class="field-label">Titel</label><input type="text" id="poll-title" maxlength="100" required value="${escapeHtml(previousRound?.title ?? '')}" placeholder="Worüber möchtet ihr abstimmen?" autofocus /></div>
+      <div><label for="poll-title" class="field-label">Titel</label><input type="text" id="poll-title" maxlength="100" required value="${escapeHtml(previousRound?.title ?? '')}" placeholder="Was möchtet ihr gemeinsam klären?" autofocus /></div>
       <div><label for="poll-note" class="field-label">Beschreibung (optional)</label><textarea id="poll-note" maxlength="500" rows="2" placeholder="Kurzer Kontext für alle Teilnehmer">${escapeHtml(previousRound?.note ?? '')}</textarea></div>
       <div>
         <div class="title-with-info">
@@ -498,8 +498,8 @@ function openPollForm(event, ctx, previousRound = null) {
       <div class="check-row">
         <input type="checkbox" id="poll-anonymous" ${previousRound?.anonymous ? 'checked' : ''} />
         <span class="title-with-info tournament-option-label">
-          <label for="poll-anonymous">Anonyme Abstimmung</label>
-          ${infoTooltipHtml('poll-anonymous-help', 'Anonyme Abstimmung', 'Stimmen bleiben dauerhaft anonym. Auch nach Ende der Abstimmung ist nicht sichtbar, wer wie abgestimmt hat.')}
+          <label for="poll-anonymous">Anonyme Umfrage</label>
+          ${infoTooltipHtml('poll-anonymous-help', 'Anonyme Umfrage', 'Antworten bleiben dauerhaft anonym. Auch nach Ende der Umfrage ist nicht sichtbar, wer wie geantwortet hat.')}
         </span>
       </div>
       <div class="stack">
@@ -509,12 +509,12 @@ function openPollForm(event, ctx, previousRound = null) {
       </div>
       <div>
         <div class="title-with-info">
-          <label for="poll-due-date" class="field-label">Abstimmungsfrist</label>
-          ${infoTooltipHtml('poll-due-help', 'Abstimmungsfrist', 'Teilnehmer mit noch offener Antwort werden automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
+          <label for="poll-due-date" class="field-label">Antwortfrist</label>
+          ${infoTooltipHtml('poll-due-help', 'Antwortfrist', 'Teilnehmer mit noch offener Antwort werden automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
         </div>
-        ${dateTimeFieldHtml('poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: false, label: 'Abstimmungsfrist' })}
+        ${dateTimeFieldHtml('poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: false, label: 'Antwortfrist' })}
       </div>
-      <button type="submit" class="btn btn-primary btn-block">${previousRound ? 'Erneut abstimmen' : 'Abstimmung starten'}</button>
+      <button type="submit" class="btn btn-primary btn-block">${previousRound ? 'Neue Runde starten' : 'Umfrage starten'}</button>
     </form>`, {
     confirmClose: () => (dirty && capturedModal ? 'Die eingegebenen Angaben gehen verloren.' : null),
     onMount: (modal) => {
@@ -551,7 +551,7 @@ function openPollForm(event, ctx, previousRound = null) {
         const optionError = validateOptionValues(options);
         if (optionError) return showToast(optionError, { error: true });
         const responseDueOn = readIsoDate(modal, 'poll-due');
-        if (!responseDueOn) return showToast('Bitte eine Abstimmungsfrist wählen.', { error: true });
+        if (!responseDueOn) return showToast('Bitte eine Antwortfrist wählen.', { error: true });
         const responseMode = modal.querySelector('#poll-mode').value;
         const rawMax = modal.querySelector('#poll-max').value;
         const maxSelections = responseMode === 'multiple_choice' && rawMax ? Number(rawMax) : null;
@@ -572,7 +572,7 @@ function openPollForm(event, ctx, previousRound = null) {
           await replaceCachedPoll(event.id, createdPoll, ctx);
           dirty = false;
           close();
-          showToast(previousRound ? 'Neue Abstimmungsrunde gestartet.' : 'Abstimmung gestartet.');
+          showToast(previousRound ? 'Neue Umfragerunde gestartet.' : 'Umfrage gestartet.');
         } catch (error) {
           submitButton.disabled = false;
           showToast(error.message, { error: true });
@@ -593,7 +593,7 @@ function openEditPollForm(event, poll, ctx) {
   let dirty = false;
   let capturedModal;
   const mode = MODE_INFO[poll.responseMode] ?? MODE_INFO.feasibility;
-  const { close } = openModal('Abstimmung bearbeiten', `
+  const { close } = openModal('Umfrage bearbeiten', `
     <form id="event-poll-edit-form" class="stack">
       <div><label for="poll-edit-title" class="field-label">Titel</label><input type="text" id="poll-edit-title" maxlength="100" required value="${escapeHtml(poll.title)}" autofocus /></div>
       <div><label for="poll-edit-note" class="field-label">Beschreibung (optional)</label><textarea id="poll-edit-note" maxlength="500" rows="2" placeholder="Kurzer Kontext für alle Teilnehmer">${escapeHtml(poll.note ?? '')}</textarea></div>
@@ -608,10 +608,10 @@ function openEditPollForm(event, poll, ctx) {
       </div>
       <div>
         <div class="title-with-info">
-          <label for="poll-edit-due-date" class="field-label">Abstimmungsfrist</label>
-          ${infoTooltipHtml(`poll-edit-due-help-${poll.id}`, 'Abstimmungsfrist', 'Teilnehmer mit noch offener Antwort werden automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
+          <label for="poll-edit-due-date" class="field-label">Antwortfrist</label>
+          ${infoTooltipHtml(`poll-edit-due-help-${poll.id}`, 'Antwortfrist', 'Teilnehmer mit noch offener Antwort werden automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
         </div>
-        ${dateTimeFieldHtml('poll-edit-due', poll.responseDueAt, { dateOnly: true, clearable: false, label: 'Abstimmungsfrist' })}
+        ${dateTimeFieldHtml('poll-edit-due', poll.responseDueAt, { dateOnly: true, clearable: false, label: 'Antwortfrist' })}
       </div>
       <button type="submit" class="btn btn-primary btn-block">Speichern</button>
     </form>`, {
@@ -643,7 +643,7 @@ function openEditPollForm(event, poll, ctx) {
         const optionError = validateOptionValues(options);
         if (optionError) return showToast(optionError, { error: true });
         const responseDueOn = readIsoDate(modal, 'poll-edit-due');
-        if (!responseDueOn) return showToast('Bitte eine Abstimmungsfrist wählen.', { error: true });
+        if (!responseDueOn) return showToast('Bitte eine Antwortfrist wählen.', { error: true });
         submitEvent.submitter.disabled = true;
         try {
           const updatedPoll = await api.eventPolls.update(event.id, poll.id, {
@@ -662,8 +662,8 @@ function openEditPollForm(event, poll, ctx) {
           dirty = false;
           close();
           showToast(addedOptionCount > 0
-            ? 'Abstimmung gespeichert. Bereits abgestimmte Teilnehmer wurden informiert.'
-            : 'Abstimmung gespeichert.');
+            ? 'Umfrage gespeichert. Personen mit geänderter Antwort wurden informiert.'
+            : 'Umfrage gespeichert.');
         } catch (error) {
           submitEvent.submitter.disabled = false;
           showToast(error.message, { error: true });
@@ -675,11 +675,11 @@ function openEditPollForm(event, poll, ctx) {
 
 function openReopenForm(event, poll, ctx) {
   let dirty = false;
-  const { close } = openModal('Abstimmung wieder öffnen', `
+  const { close } = openModal('Umfrage wieder öffnen', `
     <form id="reopen-poll-form" class="stack">
       <p class="muted">Lege eine neue Frist fest. Danach können alle bestätigten Eventteilnehmer ihre Antwort wieder ändern.</p>
-      <div><label for="reopen-poll-due-date" class="field-label">Neue Abstimmungsfrist</label>${dateTimeFieldHtml('reopen-poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: false, label: 'Neue Abstimmungsfrist' })}</div>
-      <button type="submit" class="btn btn-primary btn-block">Abstimmung wieder öffnen</button>
+      <div><label for="reopen-poll-due-date" class="field-label">Neue Antwortfrist</label>${dateTimeFieldHtml('reopen-poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: false, label: 'Neue Antwortfrist' })}</div>
+      <button type="submit" class="btn btn-primary btn-block">Umfrage wieder öffnen</button>
     </form>`, {
     confirmClose: () => (dirty ? 'Die gewählte Frist geht verloren.' : null),
     onMount: (modal) => {
@@ -695,7 +695,7 @@ function openReopenForm(event, poll, ctx) {
           await replaceCachedPoll(event.id, updatedPoll, ctx);
           dirty = false;
           close();
-          showToast('Abstimmung wieder geöffnet.');
+          showToast('Umfrage wieder geöffnet.');
         } catch (error) {
           eventSubmit.submitter.disabled = false;
           showToast(error.message, { error: true });
@@ -813,7 +813,7 @@ function wirePollActions(container, event, polls, ctx) {
   }));
   container.querySelectorAll('[data-save-poll]').forEach((button) => button.addEventListener('click', async () => {
     const poll = findPoll(polls, button.dataset.savePoll);
-    if (!poll || !responseDraftIsValid(poll)) return showToast('Bitte die Abstimmung vollständig beantworten.', { error: true });
+    if (!poll || !responseDraftIsValid(poll)) return showToast('Bitte die Umfrage vollständig beantworten.', { error: true });
     const viewportAnchor = pollViewportAnchor(container, button.closest('[data-poll-group]')?.dataset.pollGroup);
     button.disabled = true;
     const draft = responseDraftFor(poll);
@@ -839,13 +839,13 @@ function wirePollActions(container, event, polls, ctx) {
     if (poll) openEditPollForm(event, poll, ctx);
   }));
   container.querySelectorAll('[data-close-poll]').forEach((button) => button.addEventListener('click', async () => {
-    const confirmed = await confirmDialog('Danach können keine Stimmen mehr abgegeben werden. Das Ergebnis bleibt in dieser Runde sichtbar und die Abstimmung kann später wieder geöffnet werden.', { title: 'Abstimmung beenden?', confirmText: 'Beenden' });
+    const confirmed = await confirmDialog('Danach können keine Antworten mehr abgegeben werden. Das Ergebnis bleibt in dieser Runde sichtbar und die Umfrage kann später wieder geöffnet werden.', { title: 'Umfrage beenden?', confirmText: 'Beenden' });
     if (!confirmed) return;
     button.disabled = true;
     try {
       const updatedPoll = await api.eventPolls.close(event.id, button.dataset.closePoll);
       await replaceCachedPoll(event.id, updatedPoll, ctx);
-      showToast('Abstimmung beendet.');
+      showToast('Umfrage beendet.');
     } catch (error) {
       button.disabled = false;
       showToast(error.message, { error: true });
@@ -855,7 +855,7 @@ function wirePollActions(container, event, polls, ctx) {
     button.disabled = true;
     try {
       const result = await api.eventPolls.sendReminders(event.id, button.dataset.remindPoll);
-      showToast(result.remindedPlayerIds.length ? `${result.remindedPlayerIds.length} noch nicht abgestimmte Person(en) erinnert.` : 'Aktuell musste niemand erinnert werden.');
+      showToast(result.remindedPlayerIds.length ? `${result.remindedPlayerIds.length} Person(en) mit offener Antwort erinnert.` : 'Aktuell musste niemand erinnert werden.');
     } catch (error) {
       showToast(error.message, { error: true });
     } finally {
@@ -873,13 +873,13 @@ function wirePollActions(container, event, polls, ctx) {
   container.querySelectorAll('[data-delete-poll]').forEach((button) => button.addEventListener('click', async () => {
     const poll = findPoll(polls, button.dataset.deletePoll);
     if (!poll) return;
-    const confirmed = await confirmDialog('Die Abstimmung wird einschließlich aller Runden und abgegebenen Stimmen dauerhaft gelöscht.', { title: 'Abstimmung löschen?', confirmText: 'Löschen', danger: true });
+    const confirmed = await confirmDialog('Die Umfrage wird einschließlich aller Runden und abgegebenen Antworten dauerhaft gelöscht.', { title: 'Umfrage löschen?', confirmText: 'Löschen', danger: true });
     if (!confirmed) return;
     button.disabled = true;
     try {
       await api.eventPolls.remove(event.id, poll.id);
       await removeCachedPollSeries(event.id, poll.decisionKey, ctx);
-      showToast('Abstimmung gelöscht.');
+      showToast('Umfrage gelöscht.');
     } catch (error) {
       button.disabled = false;
       showToast(error.message, { error: true });
@@ -948,7 +948,7 @@ export function renderEventPolls(container, ctx) {
   if (!event || event.isBase || event.id === 'base') {
     container.innerHTML = emptyStateHtml({
       title: 'Event wählen',
-      body: 'Abstimmungen gehören immer zum aktiven Event.',
+      body: 'Umfragen gehören immer zum aktiven Event.',
       icon: icon('vote'),
       action: { id: 'choose-event-context', label: 'Event wählen' },
     });
@@ -969,10 +969,10 @@ export function renderEventPolls(container, ctx) {
     if (preferred) expandedPolls.add(preferred.key);
   }
   let content;
-  if (cached?.loading && !groups.length) content = emptyStateHtml('Abstimmungen werden geladen…');
+  if (cached?.loading && !groups.length) content = emptyStateHtml('Umfragen werden geladen…');
   else if (cached?.error) content = `<div class="card stack"><p class="muted">${escapeHtml(cached.error)}</p><button type="button" class="btn btn-sm" id="retry-event-polls">Erneut versuchen</button></div>`;
   else if (!groups.length) content = emptyStateHtml({
-    title: 'Noch keine Abstimmung',
+    title: 'Noch keine Umfrage',
     body: 'Starte eine freie Event-Umfrage.',
     icon: icon('vote'),
   });
@@ -984,7 +984,7 @@ export function renderEventPolls(container, ctx) {
   container.innerHTML = `
     <div class="stack event-polls-page" data-event-polls-event="${escapeHtml(event.id)}">
       <div class="row view-actions event-polls-page-actions">
-        <button type="button" class="btn btn-primary btn-sm" id="new-event-poll">Abstimmung starten</button>
+        <button type="button" class="btn btn-primary btn-sm" id="new-event-poll">Umfrage starten</button>
       </div>
       ${content}
     </div>`;
