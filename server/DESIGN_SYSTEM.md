@@ -202,6 +202,10 @@ viewport-responsive on phones.
 descriptions while the shared modal remains full-width on phones.
 `--search-select-results-max-height` (320px) keeps a long searchable option list usable without
 letting it cover the full page; additional results scroll inside the dark listbox.
+`--shell-bottom-inset` reserves the phone/laptop bottom navigation plus safe area and becomes zero
+for the wide desktop side rail. `--desktop-nav-width` (220px) fixes that rail's readable target
+width, while `--desktop-supporting-pane-min-width` (320px) prevents supporting dashboard cards from
+collapsing below a useful scan width.
 
 ## Breakpoints
 
@@ -215,7 +219,7 @@ not consumed via `var()`.
 | `--bp-sm` | 480px | View-title size bump |
 | `--bp-md` | 640px | Card grid columns, modal layout (sheet → centered dialog) |
 | `--bp-lg` | 860px | Content max-width bump |
-| `--bp-xl` | 1280px | Content max-width bump (wide desktop) |
+| `--bp-xl` | 1280px | Wide desktop side rail, adaptive page columns and content max-width bump |
 
 The kiosk dashboard's own breakpoint (900px, `kiosk.css`) is intentionally
 **not** `--bp-lg` — it's a different device class (TV/monitor) with its own
@@ -267,10 +271,12 @@ view and to new views unless a documented domain constraint requires a different
 10. **Keep account management behind the authenticated boundary.** The current roster is readable
     by every signed-in member, while only the session account can edit its own profile. Player
     creation, deletion, roles and foreign-profile editing remain admin-only actions.
-11. **Match primary navigation to the event type.** For LAN events, the bottom nav carries exactly
+11. **Match primary navigation to the event type.** For LAN events, primary navigation carries exactly
     the six during-party destinations Home, Match, Vote, Essen, Spiele and Mehr. A general event
     instead promotes its planning workflow to Home, An & Abreise, Packliste, To-Do, Umfragen
-    and Mehr; the remaining destinations live directly under „Mehr“. Everything else lives under
+    and Mehr; the remaining destinations live directly under „Mehr“. It is a bottom bar below
+    `--bp-xl` and the same ordered, event-aware set becomes a left side rail at `--bp-xl`; no route,
+    permission or destination changes with viewport width. Everything else lives under
     „Mehr“, the topbar, or (for the merged Rangliste/Statistiken/
     Hall-of-Fame area, „Auswertung“) inside the role-protected Admin area. Auswertung is not a
     bottom-nav destination: reaching it now always requires the real owner/admin role

@@ -1708,3 +1708,44 @@ input.food-order-price-input {
     column-gap: var(--space-6);
   }
 }
+
+/* Wide screens expose overview and supporting context together without
+   changing the DOM order used by phones, keyboard navigation or reloads. */
+@media (min-width: 1280px) { /* --bp-xl */
+  .home-desktop-layout,
+  .admin-desktop-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(var(--desktop-supporting-pane-min-width), 1fr);
+    align-items: start;
+  }
+  .home-desktop-layout > [aria-labelledby='home-event-overview-title'],
+  .home-desktop-layout > [aria-labelledby='home-current-title'],
+  .home-desktop-layout > [aria-labelledby='home-live-title'] {
+    grid-column: 1;
+  }
+  .home-desktop-layout > [aria-labelledby='home-organisation-title'],
+  .home-desktop-layout > [aria-labelledby='home-todos-title'],
+  .home-desktop-layout > [aria-labelledby='home-leaderboard-title'] {
+    grid-column: 2;
+  }
+  .home-desktop-layout > [aria-labelledby='home-seating-title'] {
+    grid-column: 1 / -1;
+  }
+  .home-desktop-layout > .empty-state {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .admin-desktop-layout > [aria-labelledby='admin-mode-title'] {
+    grid-column: 1 / -1;
+  }
+  .admin-desktop-layout > [aria-labelledby='admin-tools-title'],
+  .admin-desktop-layout > [aria-labelledby='admin-onboarding-title'],
+  .admin-desktop-layout > [aria-labelledby='admin-players-title'] {
+    grid-column: 1;
+  }
+  .admin-desktop-layout > [aria-labelledby='admin-readiness-title'],
+  .admin-desktop-layout > [aria-labelledby='admin-test-players-title'],
+  .admin-desktop-layout > [aria-labelledby='admin-agent-title'] {
+    grid-column: 2;
+  }
+}

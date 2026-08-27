@@ -46,7 +46,10 @@
   --shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
   --nav-height: 64px;
   --topbar-height: 56px;
+  --shell-bottom-inset: calc(var(--nav-height) + env(safe-area-inset-bottom));
   --content-max-width: 720px;
+  --desktop-nav-width: 220px;
+  --desktop-supporting-pane-min-width: 320px;
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
   /* Spacing scale — every card/row/section gap and padding in this file
@@ -456,7 +459,7 @@ textarea {
   right: 0;
   z-index: 30;
   width: min(var(--notification-panel-width), calc(100vw - var(--space-4)));
-  max-height: calc(100dvh - var(--topbar-height) - var(--nav-height) - var(--space-6));
+  max-height: calc(100dvh - var(--topbar-height) - var(--shell-bottom-inset) - var(--space-6));
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1163,7 +1166,7 @@ textarea {
      but the scrollbar parks at the window's right edge instead of floating
      mid-screen at the column's edge on a wide display. */
   padding: var(--space-4) max(var(--space-4), calc((100% - var(--content-max-width)) / 2))
-    calc(var(--nav-height) + env(safe-area-inset-bottom) + var(--space-6));
+    calc(var(--shell-bottom-inset) + var(--space-6));
   width: 100%;
 }
 /* Re-applied by switchView() on every tab change (and only there — realtime
@@ -1183,10 +1186,9 @@ textarea {
 }
 
 /* On a laptop/desktop screen, a 720px-capped column leaves most of the
-   display empty. Widen the content area in steps as there's room for it —
-   the bottom nav intentionally does NOT follow this (see .bottom-nav-inner
-   below), so navigation stays a tight, thumb/click-friendly cluster instead
-   of spreading thin across a wide window. */
+   display empty. Widen the content area in steps as there's room for it.
+   At --bp-xl, the same six event-aware destinations move into a side rail;
+   routes, permissions and information architecture stay identical. */
 @media (min-width: 860px) { /* --bp-lg */
   :root {
     --content-max-width: 1080px;
@@ -1195,6 +1197,17 @@ textarea {
 @media (min-width: 1280px) { /* --bp-xl */
   :root {
     --content-max-width: 1320px;
+    --shell-bottom-inset: 0px;
+  }
+  .notification-highlight,
+  .connection-status,
+  .admin-banner,
+  .view-container {
+    margin-left: var(--desktop-nav-width);
+  }
+  .view-container {
+    width: calc(100% - var(--desktop-nav-width));
+    padding-bottom: var(--space-6);
   }
 }
 
@@ -1222,6 +1235,27 @@ textarea {
   max-width: 720px;
   height: 100%;
   margin: 0 auto;
+}
+
+@media (min-width: 1280px) { /* --bp-xl */
+  .bottom-nav {
+    top: var(--topbar-height);
+    right: auto;
+    width: var(--desktop-nav-width);
+    height: auto;
+    padding: var(--space-4);
+    border-top: 0;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+  }
+  .bottom-nav-inner {
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: var(--space-2);
+    max-width: none;
+    height: auto;
+    margin: 0;
+  }
 }
 
 .nav-btn {
@@ -1327,6 +1361,35 @@ textarea {
 }
 .nav-btn.active .nav-label {
   font-weight: var(--font-weight-bold);
+}
+
+@media (min-width: 1280px) { /* --bp-xl */
+  .nav-btn {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: none;
+    min-height: var(--tap-target-size);
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--font-size-sm);
+  }
+  .nav-btn::before {
+    top: 50%;
+    left: 0;
+    width: var(--space-1);
+    height: calc(100% - var(--space-2));
+    border-radius: var(--radius-full);
+    background: var(--accent-gradient);
+    transform: translateY(-50%) scaleY(0.55);
+  }
+  .nav-btn.active::before {
+    transform: translateY(-50%) scaleY(1);
+  }
+  .nav-btn.active .nav-icon {
+    transform: translateX(var(--space-1));
+  }
 }
 
 /* ---------- Buttons & inputs ---------- */

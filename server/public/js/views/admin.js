@@ -650,7 +650,7 @@ function renderPanel(container, ctx) {
         <h1 class="view-title">Admin</h1>
       </div>
     </div>
-    <div class="grouped-page-sections">
+    <div class="grouped-page-sections admin-desktop-layout">
       ${adminModeActive ? '' : `<section class="card stack grouped-page-section" aria-labelledby="admin-mode-title">
         <div class="grouped-page-section-title"><h2 id="admin-mode-title">Admin-Modus</h2></div>
         <p class="muted">Aktiviere den Admin-Modus, um Test-Spieler in der App anzuzeigen${arcadeEnabled ? ' und im Arcade-Bereich gegen die KI zu spielen' : ''}.</p>

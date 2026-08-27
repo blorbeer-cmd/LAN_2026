@@ -13,6 +13,24 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+@media (min-width: 1280px) { /* --bp-xl */
+  .arcade-desktop-layout.has-active-game {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(var(--desktop-supporting-pane-min-width), 1fr);
+    align-items: start;
+  }
+  .arcade-desktop-layout.has-active-game > [aria-labelledby='arcade-active-game-title'] {
+    grid-row: 1 / span 3;
+  }
+  .arcade-desktop-layout.has-active-game > .arcade-game-picker,
+  .arcade-desktop-layout.has-active-game > [aria-labelledby='arcade-running-title'],
+  .arcade-desktop-layout.has-active-game > [aria-labelledby='arcade-stats-title'] {
+    grid-column: 2;
+  }
+  .arcade-desktop-layout.has-active-game .arcade-tiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .arcade-tile {
   display: flex;
   align-items: center;

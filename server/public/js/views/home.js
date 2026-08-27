@@ -359,7 +359,7 @@ export function renderHome(container, ctx) {
   if (players.length === 0 && trackingEnabled) {
     container.innerHTML = `
       <h1 class="view-title">Home</h1>
-      <div class="grouped-page-sections">
+      <div class="grouped-page-sections home-desktop-layout">
         ${renderAssignedTodos()}
         ${emptyStateHtml({
           title: 'Noch keine Spieler angelegt',
@@ -419,7 +419,7 @@ export function renderHome(container, ctx) {
 
   container.innerHTML = `
     <h1 class="view-title">Home</h1>
-    <div class="grouped-page-sections">
+    <div class="grouped-page-sections home-desktop-layout">
       ${renderGeneralEventOverview()}
       ${renderAssignedTodos()}
       ${renderStatus()}

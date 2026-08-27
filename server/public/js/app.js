@@ -55,6 +55,7 @@ let appReady = false;
 let playerDataReady = false;
 const viewContainer = document.getElementById('view-container');
 let pendingSearchTarget = null;
+let pendingViewHeadingFocus = false;
 let renderRevision = 0;
 let sharedRefreshPromise = null;
 let sharedRefreshDirty = false;
@@ -76,7 +77,7 @@ function syncArcadeStylesheet(entry) {
     link.rel = 'stylesheet';
     // bump ?v= when arcade.css changes so no cached copy survives a reload
     // (keep in sync with kiosk.html's static link)
-    link.href = '/css/arcade.css?v=3';
+    link.href = '/css/arcade.css?v=4';
     const loaded = new Promise((resolve, reject) => {
       link.addEventListener('load', () => {
         link.dataset.loaded = 'true';
@@ -153,10 +154,10 @@ function syncFeatureNavigation() {
 function syncBottomNavigationActiveState() {
   const activeGroup = navGroupForView(currentView, state.activeEvent);
   document.querySelectorAll('.nav-btn').forEach((button) => {
-    button.classList.toggle(
-      'active',
-      !button.disabled && navGroupForView(button.dataset.view, state.activeEvent) === activeGroup,
-    );
+    const active = !button.disabled && navGroupForView(button.dataset.view, state.activeEvent) === activeGroup;
+    button.classList.toggle('active', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
   });
 }
 
@@ -340,7 +341,7 @@ function renderCurrent({ preserveState = true } = {}) {
   if (entry.render) {
     entry.render(viewContainer, ctx);
     restoreViewRenderState(viewContainer, renderState);
-    focusPendingSearchTarget();
+    finishRenderedViewFocus();
     return;
   }
 
@@ -350,7 +351,7 @@ function renderCurrent({ preserveState = true } = {}) {
       if (revision !== renderRevision || view !== currentView) return;
       renderFn(viewContainer, ctx);
       restoreViewRenderState(viewContainer, renderState);
-      focusPendingSearchTarget();
+      finishRenderedViewFocus();
     })
     .catch((error) => {
       if (revision !== renderRevision || view !== currentView) return;
@@ -360,6 +361,20 @@ function renderCurrent({ preserveState = true } = {}) {
       viewContainer.innerHTML = '<section class="card grouped-page-section"><p class="muted">Arcade konnte nicht geladen werden.</p><button class="btn" data-retry-arcade>Erneut versuchen</button></section>';
       showToast('Arcade konnte nicht geladen werden.', { error: true });
     });
+}
+
+function focusPendingViewHeading() {
+  if (!pendingViewHeadingFocus) return;
+  const heading = viewContainer.querySelector('h1, h2');
+  if (!(heading instanceof HTMLElement)) return;
+  heading.tabIndex = -1;
+  heading.focus({ preventScroll: true });
+  pendingViewHeadingFocus = false;
+}
+
+function finishRenderedViewFocus() {
+  focusPendingSearchTarget();
+  if (!pendingSearchTarget) focusPendingViewHeading();
 }
 
 function focusPendingSearchTarget() {
@@ -432,11 +447,19 @@ function switchView(
   const nextLocalRoute = localRoute === undefined ? (view === currentView ? currentLocalRoute : null) : localRoute;
   const changed = view !== currentView || localRouteKey(nextLocalRoute) !== localRouteKey(currentLocalRoute);
   const localParent = !fromHistory && changed && Boolean(nextLocalRoute);
+  const navigationOrigin = document.activeElement;
+  pendingViewHeadingFocus = changed && (
+    fromHistory
+    || navigationOrigin === document.body
+    || navigationOrigin === viewContainer
+    || (navigationOrigin instanceof HTMLElement && viewContainer.contains(navigationOrigin))
+  );
   if (view !== 'foodOrders') clearFoodOrderTarget();
   pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
   if (view === 'foodOrders' && searchTarget?.type === 'order') prepareFoodOrderTarget(searchTarget.id);
   currentView = view;
   currentLocalRoute = nextLocalRoute;
+  document.title = `${viewDefinition(view)?.label ?? 'Respawn'} · Respawn`;
   if (view !== 'more') lastSubstantiveView = view;
   // Realtime game modules use this marker to ignore updates while another
   // view is active. Without it, a running game can rebuild the current DOM

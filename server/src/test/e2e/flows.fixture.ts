@@ -256,6 +256,119 @@ flowTest('shell', 'fresh device uses the personal login and reaches the app with
   assert.equal(await loginPage.inputValue('#profile-name'), alice.name);
 });
 
+flowTest('shell', 'wide desktop adapts the shared shell and pilot views without changing mobile navigation', async (t) => {
+  t.after(async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.click('.nav-btn[data-view="home"]');
+  await page.waitForSelector('#view-container h1:text-is("Home")');
+
+  const desktopShell = await page.evaluate(() => {
+    const topbar = document.querySelector('.topbar')?.getBoundingClientRect();
+    const nav = document.querySelector('.bottom-nav')?.getBoundingClientRect();
+    const navInner = document.querySelector('.bottom-nav-inner');
+    const navButton = document.querySelector('.nav-btn:not([hidden])');
+    const view = document.querySelector('#view-container')?.getBoundingClientRect();
+    if (!topbar || !nav || !navInner || !navButton || !view) return null;
+    return {
+      nav: { left: Math.round(nav.left), top: Math.round(nav.top), right: Math.round(nav.right) },
+      topbarBottom: Math.round(topbar.bottom),
+      viewLeft: Math.round(view.left),
+      navDirection: getComputedStyle(navInner).flexDirection,
+      buttonDirection: getComputedStyle(navButton).flexDirection,
+      buttonWidth: Math.round(navButton.getBoundingClientRect().width),
+      navInnerWidth: Math.round(navInner.getBoundingClientRect().width),
+    };
+  });
+  assert.ok(desktopShell);
+  assert.equal(desktopShell.nav.left, 0);
+  assert.equal(desktopShell.nav.top, desktopShell.topbarBottom);
+  assert.ok(desktopShell.viewLeft >= desktopShell.nav.right);
+  assert.equal(desktopShell.navDirection, 'column');
+  assert.equal(desktopShell.buttonDirection, 'row');
+  assert.equal(desktopShell.buttonWidth, desktopShell.navInnerWidth);
+  assert.equal(await page.locator('.nav-btn:not([hidden])').count(), 6);
+  assert.equal(await page.locator('.nav-btn[aria-current="page"]').getAttribute('data-view'), 'home');
+  assert.equal(await page.title(), 'Home · Respawn');
+
+  const homeColumns = await page.locator('.home-desktop-layout').evaluate((layout) => ({
+    display: getComputedStyle(layout).display,
+    columns: getComputedStyle(layout).gridTemplateColumns.split(' ').length,
+  }));
+  assert.deepEqual(homeColumns, { display: 'grid', columns: 2 });
+
+  await page.click('.nav-btn[data-view="more"]');
+  await page.click('[data-navigate="profile"]');
+  await page.waitForSelector('#profile-name');
+  assert.equal(await page.title(), 'Mein Profil · Respawn');
+  assert.equal(await page.locator('.nav-btn[aria-current="page"]').getAttribute('data-view'), 'more');
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.textContent?.trim()),
+    'Mein Profil',
+  );
+
+  await page.goBack();
+  await page.waitForSelector('#view-container h1:text-is("Mehr")');
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent?.trim()), 'Mehr');
+
+  await page.click('[data-navigate="admin"]');
+  await page.waitForSelector('#admin-tools-title');
+  const adminColumnsHandle = await page.waitForFunction(() => {
+    const layout = document.querySelector('.admin-desktop-layout');
+    const tools = layout?.querySelector('[aria-labelledby="admin-tools-title"]')?.getBoundingClientRect();
+    const readiness = layout?.querySelector('[aria-labelledby="admin-readiness-title"]')?.getBoundingClientRect();
+    if (!layout?.isConnected || getComputedStyle(layout).display !== 'grid' || !tools || !readiness) return null;
+    return {
+      display: getComputedStyle(layout).display,
+      toolsLeft: Math.round(tools.left),
+      readinessLeft: Math.round(readiness.left),
+    };
+  });
+  const adminColumns = await adminColumnsHandle.jsonValue();
+  assert.ok(adminColumns);
+  assert.equal(adminColumns.display, 'grid');
+  assert.ok(adminColumns.readinessLeft > adminColumns.toolsLeft);
+
+  await page.click('.nav-btn[data-view="more"]');
+  await page.click('[data-navigate="arcade"]');
+  await page.waitForSelector('#arcade-games-title');
+  await page.click('[data-game="quiz"]');
+  await page.waitForSelector('#arcade-active-game-title');
+  const arcadeColumns = await page.locator('.arcade-desktop-layout').evaluate((layout) => {
+    const active = layout.querySelector('[aria-labelledby="arcade-active-game-title"]')?.getBoundingClientRect();
+    const picker = layout.querySelector('.arcade-game-picker')?.getBoundingClientRect();
+    return {
+      display: getComputedStyle(layout).display,
+      activeLeft: active ? Math.round(active.left) : null,
+      pickerLeft: picker ? Math.round(picker.left) : null,
+    };
+  });
+  assert.equal(arcadeColumns.display, 'grid');
+  assert.ok(arcadeColumns.activeLeft !== null && arcadeColumns.pickerLeft !== null);
+  assert.ok(arcadeColumns.pickerLeft > arcadeColumns.activeLeft);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileShell = await page.evaluate(() => {
+    const nav = document.querySelector('.bottom-nav')?.getBoundingClientRect();
+    const navInner = document.querySelector('.bottom-nav-inner');
+    const arcadeLayout = document.querySelector('.arcade-desktop-layout');
+    if (!nav || !navInner || !arcadeLayout) return null;
+    return {
+      navBottom: Math.round(nav.bottom),
+      navWidth: Math.round(nav.width),
+      navDirection: getComputedStyle(navInner).flexDirection,
+      arcadeDisplay: getComputedStyle(arcadeLayout).display,
+    };
+  });
+  assert.ok(mobileShell);
+  assert.equal(mobileShell.navBottom, 844);
+  assert.equal(mobileShell.navWidth, 390);
+  assert.equal(mobileShell.navDirection, 'row');
+  assert.equal(mobileShell.arcadeDisplay, 'flex');
+});
+
 flowTest('shell', 'Umfragen: the empty state opens the existing event switcher directly', async () => {
   await openOrgaTab('eventPolls');
   await page.waitForSelector('#choose-event-context');
