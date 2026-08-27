@@ -356,7 +356,7 @@ export function renderProfile(container, ctx) {
         </div>
       </section>
 
-      <details class="card grouped-page-section collapsible-section" data-profile-section="password" aria-labelledby="profile-password-title">
+      <details class="card grouped-page-section collapsible-section" data-profile-section="password" aria-labelledby="profile-password-title" open>
                <summary class="collapsible-section-header"><h2 id="profile-password-title">Sicherheit &amp; Passwort</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
                <div class="collapsible-section-content">
                <form class="stack" id="profile-password-form">
@@ -389,7 +389,7 @@ export function renderProfile(container, ctx) {
              </section>`
       }
 
-      ${trackingEnabled ? `<details class="card grouped-page-section collapsible-section" data-profile-section="agent" aria-labelledby="profile-agent-title">
+      ${trackingEnabled ? `<details class="card grouped-page-section collapsible-section" data-profile-section="agent" aria-labelledby="profile-agent-title" open>
         <summary class="collapsible-section-header"><h2 id="profile-agent-title">Live-Status &amp; Agent</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
         <div class="collapsible-section-content stack">
         <div class="profile-agent-steps">
@@ -437,12 +437,12 @@ export function renderProfile(container, ctx) {
         </div>
       </details>` : ''}
 
-      <details class="card grouped-page-section collapsible-section" data-profile-section="push" aria-labelledby="profile-push-title">
+      <details class="card grouped-page-section collapsible-section" data-profile-section="push" aria-labelledby="profile-push-title" open>
         <summary class="collapsible-section-header"><h2 id="profile-push-title">Benachrichtigungen</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
         <div class="collapsible-section-content">${renderPushSection()}</div>
       </details>
 
-      ${monitorsEnabled ? `<details class="card grouped-page-section collapsible-section" data-profile-section="monitors" aria-labelledby="profile-monitors-title">
+      ${monitorsEnabled ? `<details class="card grouped-page-section collapsible-section" data-profile-section="monitors" aria-labelledby="profile-monitors-title" open>
         <summary class="collapsible-section-header"><h2 id="profile-monitors-title">Sichtbare Monitore</h2><span class="collapsible-section-chevron">${icon('chevronRight')}</span></summary>
         <div class="collapsible-section-content">${renderNeighbors(myId)}</div>
       </details>` : ''}

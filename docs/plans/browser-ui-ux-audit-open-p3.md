@@ -44,12 +44,13 @@ erhalten. Ein erfolgreich angelegtes Turnier ersetzt den Entwurfs-Eintrag durch 
 - Admin zeigt Werkzeuge vor Diagnoseinhalten. Die Bereitschaft zeigt den Gesamtstatus direkt und
   legt Einzelprüfungen unter „Prüfdetails“ ab. Alle bisherigen Aktionen und Inhalte bleiben
   vorhanden.
-- Vote zeigt ausgewählte Spiele und Suche vor dem vollständigen, einklappbaren Katalog.
 - Profil hält Identität und dringende Eventaktionen offen; Sicherheit, Agent,
-  Benachrichtigungen und Monitore sind klar benannte, einklappbare Gruppen.
+  Benachrichtigungen und Monitore sind klar benannte, einklappbare Gruppen. Sie starten
+  ausgeklappt und behalten einen vom Nutzer geänderten Offen-Zustand bei lokalen Re-Renders.
 - Arcade stellt das aktive Spiel voran. Der Launcher wird dann zum kompakten „Spiel wechseln“.
 
-Die einklappbaren Gruppen verwenden stabile `data-*`-Selektoren. Ihr Offen-Zustand bleibt über den
+Die einklappbaren Profil- und Admin-Gruppen verwenden stabile `data-*`-Selektoren. Ihr
+Offen-Zustand bleibt über den
 zentralen `viewRenderState`-Mechanismus bei lokalen, API- und Socket-bedingten Re-Renders erhalten,
 ohne einen zweiten langlebigen View-Zustand über Navigation oder Identitätswechsel hinweg
 einzuführen.
@@ -69,12 +70,15 @@ spielbezogene „Abstimmung“ bleiben unverändert.
   Auditumfang ausgeschlossen.
 - Keine kosmetischen Dateisplits, kein Framework-Wechsel und keine neue Produktionsabhängigkeit.
 - Keine Umbenennung bestehender Routen, API-Verträge oder gespeicherter Poll-/Vote-Daten.
+- Auf Nutzerwunsch bleibt die vollständige Vote-Spieleliste direkt sichtbar. Der im Audit
+  vorgesehene einklappbare Katalog wird nicht umgesetzt; die Genrefilterung der Vote-Auswahl wurde
+  entfernt. Suche, Top-10-Vorauswahl, manuelle Auswahl und Entwurfserhalt bleiben bestehen.
 
 ## Regressionen
 
 Unit-Tests decken Hash-Parsing und Roundtrips ab. Browser-E2E deckt Einladung/Handoff,
 Mitteilungsstatus, Teilnehmer-Handoff nach Eventanlage, Turnier-History und Reload sowie
 Arcade-History, Deep Link, Reload und sichtbaren Zurückweg ab. Browser-Regressionen sichern zudem
-den Offen-Zustand der neuen Profil-, Admin- und Vote-Gruppen bei lokalen, API- und
-Socket-bedingten Re-Renders. Bestehende Eventteilnahme-, Vote-, Admin-, Profil- und Arcade-Suiten
-bleiben Teil der Abnahme.
+den initial offenen und anschließend nutzergesteuerten Zustand der Profil-Gruppen sowie den
+Offen-Zustand der Admin-Gruppe bei Re-Renders. Bestehende Eventteilnahme-, Vote-, Admin-, Profil-
+und Arcade-Suiten bleiben Teil der Abnahme.

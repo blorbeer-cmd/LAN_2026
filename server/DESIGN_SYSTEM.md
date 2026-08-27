@@ -1125,7 +1125,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Annehmen/Ablehnen — via events.js's shared `renderInvitationCard`. Acceptance replaces the card
   with „Event öffnen“; the invitation becomes read notification history and the action switches the
   active event. Security, Agent, notifications and visible monitors are clearly named collapsible
-  groups below the always-visible identity editor.
+  groups below the always-visible identity editor. They start expanded; a user's manual collapse
+  survives same-view re-renders.
 - **Leaderboard** — the „Rangliste“ tab and default entry of the „Auswertung“ area, reached only
   through Admin's „Auswertung“ tool card (see „Admin tools“). The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
@@ -1162,10 +1163,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   into one ambiguous label.
 - **Voting** — The page titles are the concise navigation labels „Teams“ and „Vote“. Vote uses the
   same card grouping as the other polished workflows without an accent rail.
-  New/current-round controls come first. The new-round form shows the current selection and search
-  before the complete, initially collapsed game catalog; an active search opens that catalog.
-  Draft selection, query, focus, scroll and open state survive same-view renders. Separate
-  full-width cards for „Letzter Vote“
+  New/current-round controls come first. The new-round form keeps its searchable full game list
+  directly visible and deliberately offers no additional genre filter. Draft selection, query,
+  focus and scroll survive same-view renders. Separate full-width cards for „Letzter Vote“
   and „Top 10 nach Bock-Level“. An open round exposes a bordered participation counter with the
   submitted and eligible-player totals, updated through the existing realtime refresh. In points
   mode, an open round that the current identity hasn't submitted yet also shows its own rating
