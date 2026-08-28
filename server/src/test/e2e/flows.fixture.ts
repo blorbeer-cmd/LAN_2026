@@ -125,18 +125,27 @@ async function ensureAdminMode(): Promise<void> {
   await page.waitForSelector('#admin-test-players-title');
 }
 
-// Orga is reached through "Mehr" rather than the bottom nav, opening on its
-// first tab ("arrivals"); switch to the requested tab from there.
+// Desktop exposes every Orga destination directly. Compact layouts retain
+// the established Mehr entry and the shared tab shell.
 async function openOrgaTab(tab: string): Promise<void> {
+  const desktopEntry = page.locator(`.desktop-nav-btn[data-view="${tab}"]`);
+  if (await desktopEntry.isVisible()) {
+    await desktopEntry.click();
+    return;
+  }
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="eventPolls"]');
   await page.click(`[data-section-tab="${tab}"]`);
 }
 
-// Phones reach "Mein Profil" through "Mehr". The wide desktop shell also has
-// a direct account action in the top ribbon; this helper deliberately keeps
-// exercising the compact/mobile information architecture.
+// Phones reach "Mein Profil" through Mehr; wide desktop uses the bottom
+// utility block of the grouped rail.
 async function openProfile(): Promise<void> {
+  const desktopEntry = page.locator('.desktop-nav-btn[data-view="profile"]');
+  if (await desktopEntry.isVisible()) {
+    await desktopEntry.click();
+    return;
+  }
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="profile"]');
 }
@@ -263,26 +272,27 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   });
 
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await page.click('.nav-btn[data-view="home"]');
+  await page.click('.desktop-nav-btn[data-view="home"]');
   await page.waitForSelector('#view-container h1:text-is("Home")');
 
   const desktopShell = await page.evaluate(() => {
     const topbar = document.querySelector('.topbar')?.getBoundingClientRect();
-    const nav = document.querySelector('.bottom-nav')?.getBoundingClientRect();
-    const navInner = document.querySelector('.bottom-nav-inner');
-    const navButton = document.querySelector('.nav-btn:not([hidden])');
+    const navElement = document.querySelector('.desktop-nav');
+    const nav = navElement?.getBoundingClientRect();
+    const navMain = document.querySelector('.desktop-nav-main');
+    const navButton = document.querySelector('.desktop-nav-btn');
     const viewElement = document.querySelector('#view-container');
     const view = viewElement?.getBoundingClientRect();
-    if (!topbar || !nav || !navInner || !navButton || !viewElement || !view) return null;
+    if (!topbar || !navElement || !nav || !navMain || !navButton || !viewElement || !view) return null;
     const viewStyle = getComputedStyle(viewElement);
     return {
       nav: { left: Math.round(nav.left), top: Math.round(nav.top), right: Math.round(nav.right) },
       topbarBottom: Math.round(topbar.bottom),
       viewLeft: Math.round(view.left),
-      navDirection: getComputedStyle(navInner).flexDirection,
-      buttonDirection: getComputedStyle(navButton).flexDirection,
+      navDirection: getComputedStyle(navElement).flexDirection,
+      navMainOverflow: getComputedStyle(navMain).overflowY,
       buttonWidth: Math.round(navButton.getBoundingClientRect().width),
-      navInnerWidth: Math.round(navInner.getBoundingClientRect().width),
+      navMainWidth: Math.round(navMain.getBoundingClientRect().width),
       contentWidth: Math.round(
         view.width
         - Number.parseFloat(viewStyle.paddingLeft)
@@ -295,13 +305,19 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   assert.equal(desktopShell.nav.top, desktopShell.topbarBottom);
   assert.ok(desktopShell.viewLeft >= desktopShell.nav.right);
   assert.equal(desktopShell.navDirection, 'column');
+  assert.equal(desktopShell.navMainOverflow, 'auto');
   assert.ok(desktopShell.nav.right < 200);
-  assert.equal(desktopShell.buttonDirection, 'row');
-  assert.equal(desktopShell.buttonWidth, desktopShell.navInnerWidth);
+  assert.ok(desktopShell.buttonWidth < desktopShell.navMainWidth);
   assert.ok(desktopShell.contentWidth >= 1500);
-  assert.equal(await page.locator('.nav-btn:not([hidden])').count(), 6);
-  assert.equal(await page.locator('#profile-btn').isVisible(), true);
-  assert.equal(await page.locator('.nav-btn[aria-current="page"]').getAttribute('data-view'), 'home');
+  assert.equal(await page.locator('.bottom-nav').isHidden(), true);
+  assert.deepEqual(await page.locator('.desktop-nav-heading').allTextContents(), ['LAN', 'Orga', 'Sonstiges']);
+  assert.equal(await page.locator('.desktop-nav-btn[data-view="more"]').count(), 0);
+  assert.equal(await page.locator('.desktop-nav-btn[data-view="profile"]').isVisible(), true);
+  assert.equal(await page.locator('.desktop-nav-btn[data-desktop-action="feedback"]').isVisible(), true);
+  assert.equal(await page.locator('.desktop-nav-btn[data-view="admin"]').isVisible(), true);
+  assert.equal(await page.locator('#feedback-btn').isHidden(), true);
+  assert.equal(await page.locator('#profile-btn').count(), 0);
+  assert.equal(await page.locator('.desktop-nav-btn[aria-current="page"]').getAttribute('data-view'), 'home');
   assert.equal(await page.title(), 'Home · Respawn');
 
   const homeColumns = await page.locator('.home-desktop-layout').evaluate((layout) => ({
@@ -315,23 +331,27 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   }));
   assert.equal(homeSectionTops.todos, homeSectionTops.live);
 
-  await page.click('#profile-btn');
+  await page.click('.desktop-nav-btn[data-view="profile"]');
   await page.waitForSelector('#profile-name');
   assert.equal(await page.title(), 'Mein Profil · Respawn');
   assert.equal(await page.locator('.nav-btn[aria-current="page"]').getAttribute('data-view'), 'more');
-  assert.equal(await page.locator('#profile-btn').evaluate((element) => element.classList.contains('active')), true);
   assert.equal(
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.id),
-    'profile-btn',
+    await page.locator('.desktop-nav-btn[data-view="profile"]').getAttribute('aria-current'),
+    'page',
   );
+  assert.equal(
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.view),
+    'profile',
+  );
+  assert.equal(await page.locator('.more-subpage-title-row [data-navigate="more"]').isHidden(), true);
 
   await page.goBack();
   await page.waitForSelector('#view-container h1:text-is("Home")');
   assert.equal(await page.evaluate(() => document.activeElement?.textContent?.trim()), 'Home');
 
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="admin"]');
+  await page.click('.desktop-nav-btn[data-view="admin"]');
   await page.waitForSelector('#admin-tools-title');
+  assert.equal(await page.locator('.desktop-nav-btn[aria-current="page"]').getAttribute('data-view'), 'admin');
   const adminColumnsHandle = await page.waitForFunction(() => {
     const layout = document.querySelector('.admin-desktop-layout');
     const tools = layout?.querySelector('[aria-labelledby="admin-tools-title"]')?.getBoundingClientRect();
@@ -351,9 +371,9 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   assert.ok(adminColumns.readinessLeft > adminColumns.toolsLeft);
   assert.equal(adminColumns.readinessTop, adminColumns.toolsTop);
 
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="arcade"]');
+  await page.click('.desktop-nav-btn[data-view="arcade"]');
   await page.waitForSelector('#arcade-games-title');
+  assert.equal(await page.locator('.desktop-nav-btn[aria-current="page"]').getAttribute('data-view'), 'arcade');
   await page.click('[data-game="quiz"]');
   await page.waitForSelector('#arcade-active-game-title');
   const arcadeColumns = await page.locator('.arcade-desktop-layout').evaluate((layout) => {
@@ -376,12 +396,14 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   const mobileShell = await page.evaluate(() => {
     const nav = document.querySelector('.bottom-nav')?.getBoundingClientRect();
     const navInner = document.querySelector('.bottom-nav-inner');
+    const desktopNav = document.querySelector('.desktop-nav');
     const arcadeLayout = document.querySelector('.arcade-desktop-layout');
-    if (!nav || !navInner || !arcadeLayout) return null;
+    if (!nav || !navInner || !desktopNav || !arcadeLayout) return null;
     return {
       navBottom: Math.round(nav.bottom),
       navWidth: Math.round(nav.width),
       navDirection: getComputedStyle(navInner).flexDirection,
+      desktopNavDisplay: getComputedStyle(desktopNav).display,
       arcadeDisplay: getComputedStyle(arcadeLayout).display,
     };
   });
@@ -389,8 +411,10 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   assert.equal(mobileShell.navBottom, 844);
   assert.equal(mobileShell.navWidth, 390);
   assert.equal(mobileShell.navDirection, 'row');
+  assert.equal(mobileShell.desktopNavDisplay, 'none');
   assert.equal(mobileShell.arcadeDisplay, 'flex');
-  assert.equal(await page.locator('#profile-btn').isHidden(), true);
+  assert.equal(await page.locator('#feedback-btn').isVisible(), true);
+  assert.equal(await page.locator('.nav-btn:not([hidden])').count(), 6);
 });
 
 flowTest('shell', 'Umfragen: the empty state opens the existing event switcher directly', async () => {
@@ -4139,18 +4163,17 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   // gamer name: seeded players cover playing + paused while the regular
   // roster also supplies an offline seat. The title/ARIA label keeps the
   // three colors understandable without relying on color alone.
-  await page.click('.nav-btn[data-view="home"]');
+  await page.click('.desktop-nav-btn[data-view="home"]');
   await page.waitForSelector('.live-seating .seating-status-indicator.is-playing[aria-label="Status: Spielt"]');
   await page.waitForSelector(`.live-seating [data-player-id="${pausedTestPlayer.id}"] .seating-status-indicator.is-paused[aria-label="Status: Pause"]`);
   await page.waitForSelector('.live-seating .seating-status-indicator.is-offline[aria-label="Status: Offline"]');
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="admin"]');
+  await page.click('.desktop-nav-btn[data-view="admin"]');
   await ensureAdminMode();
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector(`.seating-plan.is-editable [data-player-id="${pausedTestPlayer.id}"] .seating-status-indicator.is-paused`);
 
   // Visible on Home's roster board while in admin mode...
-  await page.click('.nav-btn[data-view="home"]');
+  await page.click('.desktop-nav-btn[data-view="home"]');
   await page.waitForSelector('button[data-player]:has-text("Test Alex")');
 
   // ...gone everywhere once admin mode is left via the banner.
@@ -4161,8 +4184,7 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   // Reload leaves admin mode inactive until it is explicitly activated again.
   await page.reload();
   await page.waitForSelector('#app:not([hidden])');
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="admin"]');
+  await page.click('.desktop-nav-btn[data-view="admin"]');
   await ensureAdminMode();
   await page.click('#admin-cleanup');
   // confirmDialog is an in-app modal (not a native browser dialog).

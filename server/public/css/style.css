@@ -1139,23 +1139,6 @@ textarea {
   height: 44px;
   padding: var(--space-3);
 }
-.topbar .topbar-profile-btn {
-  display: none;
-}
-.topbar-profile-btn.needs-setup {
-  position: relative;
-}
-.topbar-profile-btn.needs-setup::after {
-  content: '';
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--state-paused);
-  box-shadow: 0 0 0 2px var(--bg-elevated);
-}
 .nav-btn.needs-setup .nav-icon {
   position: relative;
 }
@@ -1204,8 +1187,9 @@ textarea {
 
 /* On a laptop/desktop screen, a 720px-capped column leaves most of the
    display empty. Widen the content area in steps as there's room for it.
-   At --bp-xl, the same six event-aware destinations move into a side rail;
-   routes, permissions and information architecture stay identical. */
+   At --bp-xl, the compact bottom bar gives way to the grouped desktop rail;
+   routes and permissions remain shared while frequent secondary areas become
+   direct destinations. */
 @media (min-width: 860px) { /* --bp-lg */
   :root {
     --content-max-width: 1080px;
@@ -1228,13 +1212,13 @@ textarea {
       max(var(--space-4), calc((100% - var(--desktop-nav-width) - var(--content-max-width)) / 2))
       var(--space-6);
   }
-  .topbar .topbar-profile-btn {
-    display: inline-flex;
+  .topbar #feedback-btn {
+    display: none;
   }
-  .topbar .topbar-profile-btn.active {
-    color: var(--accent);
-    background: var(--accent-bg);
-  }
+}
+
+.desktop-nav {
+  display: none;
 }
 
 .bottom-nav {
@@ -1265,22 +1249,128 @@ textarea {
 
 @media (min-width: 1280px) { /* --bp-xl */
   .bottom-nav {
-    top: var(--topbar-height);
-    right: auto;
-    width: var(--desktop-nav-width);
-    height: auto;
-    padding: var(--space-3);
-    border-top: 0;
-    border-right: 1px solid var(--border);
-    overflow-y: auto;
+    display: none;
   }
-  .bottom-nav-inner {
+  .desktop-nav {
+    position: fixed;
+    top: var(--topbar-height);
+    bottom: 0;
+    left: 0;
+    z-index: 10;
+    display: flex;
+    width: var(--desktop-nav-width);
+    min-height: 0;
     flex-direction: column;
-    justify-content: flex-start;
+    background: var(--bg-elevated);
+    border-right: 1px solid var(--border);
+  }
+  .desktop-nav-main {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: var(--space-3);
+    scrollbar-gutter: stable;
+  }
+  .desktop-nav-utilities {
+    flex: 0 0 auto;
+    padding: var(--space-2) var(--space-3) var(--space-3);
+    border-top: 1px solid var(--border);
+    background: var(--bg-elevated);
+  }
+  .desktop-nav-group + .desktop-nav-group {
+    margin-top: var(--space-3);
+    padding-top: var(--space-2);
+    border-top: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+  }
+  .desktop-nav-heading {
+    display: block;
+    padding: 0 var(--space-2) var(--space-1);
+    color: var(--text-muted);
+    font-size: var(--font-size-2xs);
+    font-weight: var(--font-weight-bold);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .desktop-nav-btn {
+    position: relative;
+    display: flex;
+    width: 100%;
+    min-height: var(--tap-target-size);
+    align-items: center;
     gap: var(--space-2);
-    max-width: none;
-    height: auto;
-    margin: 0;
+    padding: var(--space-2);
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+  .desktop-nav-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: var(--space-1);
+    height: calc(100% - var(--space-2));
+    border-radius: var(--radius-full);
+    background: var(--accent-gradient);
+    opacity: 0;
+    transform: translateY(-50%) scaleY(0.55);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    pointer-events: none;
+  }
+  .desktop-nav-btn.active {
+    color: var(--accent);
+    font-weight: var(--font-weight-bold);
+    background: var(--accent-bg);
+  }
+  .desktop-nav-btn.active::before {
+    opacity: 1;
+    transform: translateY(-50%) scaleY(1);
+  }
+  .desktop-nav-icon {
+    position: relative;
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+  }
+  .desktop-nav-icon .ui-icon {
+    width: 18px;
+    height: 18px;
+  }
+  .desktop-nav-btn.needs-setup .desktop-nav-icon::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--state-paused);
+    box-shadow: 0 0 0 2px var(--bg-elevated);
+  }
+}
+
+@media (min-width: 1280px) and (hover: hover) { /* --bp-xl */
+  .desktop-nav-btn:hover:not(.active) {
+    color: var(--text);
+    background: var(--bg-elevated-2);
+  }
+}
+
+@media (min-width: 1280px) { /* --bp-xl */
+  /* These destinations are direct desktop navigation items. Their compact
+     mobile back control would otherwise lead to the now-hidden More hub and
+     contradict the browser's real history. */
+  .more-subpage-title-row > [data-navigate='more'] {
+    display: none;
+  }
+  .more-subpage-title-row {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 }
 
@@ -1387,39 +1477,6 @@ textarea {
 }
 .nav-btn.active .nav-label {
   font-weight: var(--font-weight-bold);
-}
-
-@media (min-width: 1280px) { /* --bp-xl */
-  .nav-btn {
-    flex: 0 0 auto;
-    width: 100%;
-    max-width: none;
-    min-height: var(--tap-target-size);
-    flex-direction: row;
-    justify-content: flex-start;
-    gap: var(--space-2);
-    padding: var(--space-2);
-    font-size: var(--font-size-xs);
-    white-space: nowrap;
-  }
-  .nav-btn.active {
-    background: var(--accent-bg);
-  }
-  .nav-btn::before {
-    top: 50%;
-    left: 0;
-    width: var(--space-1);
-    height: calc(100% - var(--space-2));
-    border-radius: var(--radius-full);
-    background: var(--accent-gradient);
-    transform: translateY(-50%) scaleY(0.55);
-  }
-  .nav-btn.active::before {
-    transform: translateY(-50%) scaleY(1);
-  }
-  .nav-btn.active .nav-icon {
-    transform: none;
-  }
 }
 
 /* ---------- Buttons & inputs ---------- */

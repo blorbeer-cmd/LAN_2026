@@ -3,20 +3,21 @@
 ## Decision
 
 Respawn remains one responsive browser application. At the existing `--bp-xl` breakpoint (1280px)
-the six event-aware primary destinations move from the bottom bar into a compact left side rail. The topbar,
-route registry, permissions, event-specific navigation order and „Mehr“ hub remain shared with
-phone and laptop layouts.
+the compact bottom bar gives way to a grouped left side rail. Phone and laptop layouts retain their
+six event-aware destinations and the „Mehr“ hub; desktop exposes the same routes directly.
 
-The wide top ribbon restores „Mein Profil“ as a direct account shortcut. It is
-an additional desktop entry point to the same route, not a seventh primary destination: „Mehr“,
-permissions, history and the mobile path remain unchanged.
+The rail has four scanning levels: Home; LAN (Match, Vote, Spiele); Orga (Events, Umfragen,
+An- & Abreise, Packliste, To-Dos, Essen); and Sonstiges (Durchsage, Arcade, Jam). Feedback, the
+role-gated Admin entry and Mein Profil form a stable utility block at the bottom. Empty or disabled
+feature groups are filtered from the active event snapshot. Home and Admin are never duplicated.
 
-This is a presentation change, not a second desktop information architecture. It avoids duplicated
-navigation state and keeps deep links, browser history and role boundaries identical on every
-device. The rail reuses the current buttons, icons, labels and active-group calculation. The active
-destination additionally exposes `aria-current="page"`; route changes update the document title and
-move focus to the rendered heading only when the initiating control disappears or browser history
-causes the change. Persistent rail buttons retain focus.
+The desktop grouping is a wider-screen information hierarchy, not a second route system. It keeps
+deep links, browser history and role boundaries identical on every device. Child routes resolve to
+their stable parent destination (for example Turnierdetail to Match and an active Arcade game to
+Arcade). The active destination exposes `aria-current="page"`; route changes update the document
+title and move focus to the rendered heading only when the initiating control disappears or browser
+history causes the change. Persistent rail buttons retain focus. Mobile back controls leading to
+„Mehr“ are hidden at desktop width because those destinations are already top-level there.
 
 ## Adaptive pilot views
 
@@ -35,8 +36,9 @@ without counting the rail twice in its centering calculation.
 
 ## Deliberate limits
 
-- The rail does not expand „Mehr“ into additional desktop-only destinations; that would make route
-  discovery and permission behavior viewport-dependent.
+- The rail does not duplicate Home, Admin, Feedback or Profile in multiple desktop locations. Info,
+  search, event selection and notifications remain in the top ribbon because they operate across
+  the current view rather than replacing it.
 - Vote and Profile receive no new composition in this stage. The full searchable Vote catalog and
   the initially expanded Profile groups stay as most recently approved.
 - Games is unchanged because the existing filters already solve list access and no new browser
@@ -45,8 +47,8 @@ without counting the rail twice in its centering calculation.
 
 ## Verification contract
 
-Browser regression coverage checks the rail/bar breakpoint, unchanged destination set, the
-desktop-only profile shortcut,
-`aria-current`, document titles, focus after subpage navigation, the three pilot compositions and a
-mobile fallback. Required frontend lint, build, token checks, unit/integration tests and the full E2E
-suite remain mandatory before the draft pull request is ready for review.
+Browser regression coverage checks the rail/bar breakpoint, group order, feature and role filters,
+utility placement, exact active destination, document titles, focus after subpage navigation, the
+three pilot compositions and the unchanged mobile fallback. Required frontend lint, build, token
+checks, unit/integration tests and the full E2E suite remain mandatory before the draft pull request
+is ready for review.

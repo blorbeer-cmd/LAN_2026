@@ -16,7 +16,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
   <!-- bump ?v= when the stylesheet changes so no cached copy survives a reload -->
-  <link rel="stylesheet" href="/css/style.css?v=45" />
+  <link rel="stylesheet" href="/css/style.css?v=46" />
   <link rel="stylesheet" href="/css/domains.css?v=3" />
   <link rel="stylesheet" href="/css/overlays.css?v=1" />
   <!-- app.js adds this sheet only while an Arcade view is active. -->
@@ -44,7 +44,6 @@
           <div id="notifications-panel" class="notification-center-panel" role="region" aria-label="Mitteilungen" hidden></div>
         </div>
         <button id="feedback-btn" class="icon-btn" type="button" aria-label="Feedback geben" title="Feedback"></button>
-        <button id="profile-btn" class="icon-btn topbar-profile-btn" type="button" aria-label="Mein Profil" title="Mein Profil"></button>
       </div>
     </header>
 
@@ -60,6 +59,11 @@
     </div>
 
     <main id="view-container" class="view-container"></main>
+
+    <nav class="desktop-nav" aria-label="Desktop-Navigation">
+      <div id="desktop-nav-main" class="desktop-nav-main"></div>
+      <div id="desktop-nav-utilities" class="desktop-nav-utilities"></div>
+    </nav>
 
     <nav class="bottom-nav" aria-label="Hauptnavigation">
       <div class="bottom-nav-inner">

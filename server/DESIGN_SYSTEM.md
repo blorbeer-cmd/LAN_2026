@@ -277,9 +277,12 @@ view and to new views unless a documented domain constraint requires a different
     the six during-party destinations Home, Match, Vote, Essen, Spiele and Mehr. A general event
     instead promotes its planning workflow to Home, An & Abreise, Packliste, To-Do, Umfragen
     and Mehr; the remaining destinations live directly under „Mehr“. It is a bottom bar below
-    `--bp-xl` and the same ordered, event-aware set becomes a left side rail at `--bp-xl`; no route,
-    permission or destination changes with viewport width. Everything else lives under
-    „Mehr“, the topbar, or (for the merged Rangliste/Statistiken/
+    `--bp-xl`. At `--bp-xl`, a grouped direct rail replaces the „Mehr“ detour: Home, LAN, Orga and
+    Sonstiges form the main scrollable area; Feedback, role-gated Admin and Mein Profil stay pinned
+    below it. The active event snapshot and the same role checks filter both navigation surfaces, so
+    routes and permissions never change with viewport width even though desktop presents more of
+    them directly. Everything else lives under „Mehr“ on compact layouts, in the topbar, or (for the
+    merged Rangliste/Statistiken/
     Hall-of-Fame area, „Auswertung“) inside the role-protected Admin area. Auswertung is not a
     bottom-nav destination: reaching it now always requires the real owner/admin role
     (`switchView()`'s redirect guard in `app.js`, checked via `currentPlayerHasAdminRole()`), so it
@@ -669,9 +672,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   The LAN „Mehr“ hub holds Mein Profil, Admin, Arcade, Durchsage, Jam and Orga. For a general event,
     it replaces the Orga wrapper with direct entries for Events and Essen; An & Abreise, Packliste,
     To-Do and Umfragen already occupy the bottom nav. Mein Profil remains here as the compact/mobile
-    path. From `--bp-xl`, the top ribbon additionally restores `#profile-btn` as the conventional
-    direct account shortcut; it opens the same route and carries the setup indicator without changing
-    the six primary destinations. Essen is listed here only for general events; LAN events retain its
+    path. From `--bp-xl`, the bottom bar and „Mehr“ detour are replaced visually by a grouped direct
+    rail: Home; LAN; Orga; Sonstiges; plus the bottom utilities Feedback, role-gated Admin and Mein
+    Profil. The active event feature snapshot removes unavailable entries and empty groups. Profile
+    and Feedback are not duplicated in the desktop top ribbon. Essen is listed in „Mehr“ only for
+    general events; LAN events retain its
   unconditional bottom-nav slot (`more.js`). Auswertung is never listed here —
   it has no general-audience entry point at all, living only behind Admin's „Auswertung“ tool card
   (see „Admin tools“). It keeps each destination's canonical icon
@@ -680,9 +685,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   remains independently aligned at the right.
   The destinations below „Mehr“ follow this same hierarchy without adding decorative accent rails:
   their major workflows and datasets are main groups, while entries, players, orders and results
-  remain subordinate cards or rows inside those groups. Every destination returns to „Mehr“ from
-  the shared compact subpage header; Profile keeps „Abmelden“ as that header's trailing action,
-  while Orga alone uses the reserved second row for its tabs and may therefore start lower.
+  remain subordinate cards or rows inside those groups. Phone and laptop destinations return to
+  „Mehr“ from the shared compact subpage header; the corresponding control is hidden on wide desktop
+  because the destination is already direct in the rail. Profile keeps „Abmelden“ as that header's
+  trailing action, while Orga alone uses the reserved second row for its tabs and may therefore start
+  lower.
 - **Broadcasts** — „Neue Durchsage“ and the recent history are separate grouped sections. Delivery
   channels live in the shared contextual tooltip directly beside „Neue Durchsage“ instead of a
   persistent explanation below the form. Recent broadcasts live in one standard, initially
@@ -965,10 +972,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `openModal()` instance, its entry form and delete confirmation can open on top of it — `modal.js`
   delivers Escape only to the topmost open `.modal-backdrop`, so cancelling a nested confirmation
   never takes the dialog underneath it down too.
-- **Feedback** — the topbar's `#feedback-btn` (the canonical `feedback` icon from
-  `domainIcons.js`) opens the feedback dialog as a modal over whatever view is open, the same
-  reachable-from-anywhere pattern as Info. It automatically captures the view that was open when
-  the icon was tapped, so a report never needs to explain where it happened. A submission picks one
+- **Feedback** — the compact topbar's `#feedback-btn` and the wide desktop rail utility (both using
+  the canonical `feedback` icon from `domainIcons.js`) open the same feedback dialog over whatever
+  view is open. It automatically captures the view that was open when the action was used, so a
+  report never needs to explain where it happened. A submission picks one
   of four distinct sentiments — Positiv, Negativ, Problem, Idee — through the shared
   `.selection-toolbar` toggle rather than a free-text category, plus a message field. Admin's
   Feedback section lists submissions newest first and filters them by the same four sentiments plus

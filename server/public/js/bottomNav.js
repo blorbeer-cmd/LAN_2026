@@ -1,8 +1,96 @@
 // The fixed six-slot navigation is derived from the shared view registry so
 // route, label, icon and event profile cannot drift apart.
 
-import { bottomNavigationEntries } from './viewManifest.js';
+import { viewIsEnabledForEvent } from './eventFeatures.js';
+import { bottomNavigationEntries, viewDefinition } from './viewManifest.js';
+
+const DESKTOP_GROUPS = Object.freeze([
+  Object.freeze({ key: 'start', label: '', entries: Object.freeze([{ view: 'home' }]) }),
+  Object.freeze({
+    key: 'lan',
+    label: 'LAN',
+    entries: Object.freeze([
+      { view: 'matchmaking', label: 'Match', iconKey: 'competition' },
+      { view: 'votes' },
+      { view: 'gameCatalog' },
+    ]),
+  }),
+  Object.freeze({
+    key: 'orga',
+    label: 'Orga',
+    entries: Object.freeze([
+      { view: 'events' },
+      { view: 'eventPolls' },
+      { view: 'arrivals' },
+      { view: 'checklistPacking' },
+      { view: 'checklist' },
+      { view: 'foodOrders' },
+    ]),
+  }),
+  Object.freeze({
+    key: 'other',
+    label: 'Sonstiges',
+    entries: Object.freeze([
+      { view: 'broadcast' },
+      { view: 'arcade' },
+      { view: 'music' },
+    ]),
+  }),
+]);
+
+const DESKTOP_UTILITY_ENTRIES = Object.freeze([
+  Object.freeze({ action: 'feedback', label: 'Feedback', iconKey: 'feedback' }),
+  Object.freeze({ view: 'admin' }),
+  Object.freeze({ view: 'profile' }),
+]);
+
+const DESKTOP_PARENT_BY_VIEW = Object.freeze({
+  tournaments: 'matchmaking',
+  myStats: 'profile',
+  leaderboard: 'admin',
+  analytics: 'admin',
+  hallOfFame: 'admin',
+  seating: 'admin',
+  kiosk: 'admin',
+  adminFeatureUsage: 'admin',
+  adminFeedback: 'admin',
+});
+
+function desktopEntry(entry, event, { isAdmin }) {
+  if (entry.action) return entry;
+  const definition = viewDefinition(entry.view);
+  if (!definition || !viewIsEnabledForEvent(entry.view, event)) return null;
+  if (definition.requiresRole === 'admin' && !isAdmin) return null;
+  return Object.freeze({
+    view: entry.view,
+    label: entry.label ?? definition.label,
+    // Keep the semantic view key here. `domainIcon()` owns the concrete
+    // Lucide mapping and otherwise falls back to the generic bell icon.
+    iconKey: entry.iconKey ?? entry.view,
+  });
+}
 
 export function bottomNavItemsForEvent(event) {
   return bottomNavigationEntries(event?.eventType === 'general' ? 'general' : 'lan');
+}
+
+export function desktopNavItemsForEvent(event, { isAdmin = false } = {}) {
+  const context = { isAdmin };
+  const groups = DESKTOP_GROUPS.map((group) => Object.freeze({
+    key: group.key,
+    label: group.key === 'lan' && event?.eventType === 'general' ? 'Event' : group.label,
+    entries: Object.freeze(group.entries.map((entry) => desktopEntry(entry, event, context)).filter(Boolean)),
+  })).filter((group) => group.entries.length > 0);
+  const utilities = DESKTOP_UTILITY_ENTRIES
+    .map((entry) => desktopEntry(entry, event, context))
+    .filter(Boolean);
+  return Object.freeze({ groups: Object.freeze(groups), utilities: Object.freeze(utilities) });
+}
+
+export function desktopNavTargetForView(view) {
+  const definition = viewDefinition(view);
+  if (definition?.area === 'arcade') return 'arcade';
+  if (definition?.section === 'competition') return 'matchmaking';
+  if (definition?.section === 'insights') return 'admin';
+  return DESKTOP_PARENT_BY_VIEW[view] ?? view;
 }

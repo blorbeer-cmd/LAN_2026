@@ -34,7 +34,11 @@ import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
 import { captureViewRenderState, restoreViewRenderState } from './viewRenderState.js';
 import { realtimeEventAffectsView } from './realtimeRefreshPolicy.js';
 import { viewIsEnabledForEvent } from './eventFeatures.js';
-import { bottomNavItemsForEvent } from './bottomNav.js';
+import {
+  bottomNavItemsForEvent,
+  desktopNavItemsForEvent,
+  desktopNavTargetForView,
+} from './bottomNav.js';
 import { invalidateEventScopedViews, invalidateViewCaches, invalidateViewsAfterReconnect } from './viewLifecycle.js';
 import { viewDefinition } from './viewManifest.js';
 import { appHash, localRouteKey, parseAppHash } from './appRoute.js';
@@ -148,6 +152,7 @@ function syncFeatureNavigation() {
     button.title = routeAvailable ? '' : `${item.label} sind in diesem Stand noch nicht verfügbar.`;
     button.hidden = !viewIsEnabledForEvent(button.dataset.view, state.activeEvent);
   });
+  renderDesktopNavigation();
   syncBottomNavigationActiveState();
 }
 
@@ -159,8 +164,53 @@ function syncBottomNavigationActiveState() {
     if (active) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
-  const profileButton = document.getElementById('profile-btn');
-  profileButton?.classList.toggle('active', currentView === 'profile');
+}
+
+function syncDesktopNavigationActiveState() {
+  const activeTarget = desktopNavTargetForView(currentView);
+  document.querySelectorAll('.desktop-nav-btn[data-view]').forEach((button) => {
+    const active = button.dataset.view === activeTarget;
+    button.classList.toggle('active', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+  document.querySelector('.desktop-nav-btn[data-view="profile"]')
+    ?.classList.toggle('needs-setup', !getMyId());
+}
+
+function desktopNavButtonHtml(entry) {
+  const target = entry.action
+    ? `data-desktop-action="${entry.action}"`
+    : `data-view="${entry.view}"`;
+  return `<button type="button" class="desktop-nav-btn" ${target} aria-label="${entry.label}">
+    <span class="desktop-nav-icon">${icon(domainIcon(entry.iconKey))}</span>
+    <span class="desktop-nav-label">${entry.label}</span>
+  </button>`;
+}
+
+function renderDesktopNavigation() {
+  const desktopNav = desktopNavItemsForEvent(state.activeEvent, {
+    isAdmin: currentPlayerHasAdminRole(),
+  });
+  const root = document.querySelector('.desktop-nav');
+  const main = document.getElementById('desktop-nav-main');
+  const utilities = document.getElementById('desktop-nav-utilities');
+  const signature = JSON.stringify(desktopNav);
+  if (root.dataset.signature !== signature) {
+    main.innerHTML = desktopNav.groups.map((group) => `
+      <div class="desktop-nav-group" data-desktop-nav-group="${group.key}">
+        ${group.label ? `<span class="desktop-nav-heading">${group.label}</span>` : ''}
+        ${group.entries.map(desktopNavButtonHtml).join('')}
+      </div>`).join('');
+    utilities.innerHTML = desktopNav.utilities.map(desktopNavButtonHtml).join('');
+    root.dataset.signature = signature;
+    root.querySelectorAll('.desktop-nav-btn[data-view]').forEach((button) => {
+      button.addEventListener('click', () => switchView(button.dataset.view, { localRoute: null }));
+    });
+    root.querySelector('[data-desktop-action="feedback"]')
+      ?.addEventListener('click', () => openFeedbackModal(lastSubstantiveView));
+  }
+  syncDesktopNavigationActiveState();
 }
 
 function queueSharedRefresh({ render = true } = {}) {
@@ -470,6 +520,7 @@ function switchView(
   // A nav button stands for a whole area, so every route inside that area
   // (e.g. Teams inside Wettkampf) keeps its button lit — see sectionNav.js.
   syncBottomNavigationActiveState();
+  syncDesktopNavigationActiveState();
   // Restart the view-enter animation (see .view-enter in style.css). Only on
   // deliberate navigation — realtime-triggered re-renders of the same view
   // must never flash, so renderCurrent() alone doesn't do this.
@@ -477,10 +528,11 @@ function switchView(
   void viewContainer.offsetWidth; // force reflow so removing+adding re-triggers
   viewContainer.classList.add('view-enter');
   // A little indicator points new/unset devices at self-onboarding (name,
-  // avatar, skills, agent key). Phones use "Mehr"; wide desktops also expose
-  // the restored account action in the top ribbon.
+  // avatar, skills, agent key). Phones use "Mehr"; wide desktops expose the
+  // direct profile utility at the bottom of the side rail.
   document.querySelector('.nav-btn[data-view="more"]').classList.toggle('needs-setup', !getMyId());
-  document.getElementById('profile-btn').classList.toggle('needs-setup', !getMyId());
+  document.querySelector('.desktop-nav-btn[data-view="profile"]')
+    ?.classList.toggle('needs-setup', !getMyId());
   renderCurrent({ preserveState: !changed && !searchTarget });
   if (!searchTarget) viewContainer.scrollTop = 0;
   if (replace) {
@@ -535,8 +587,8 @@ function wireNav() {
   document.getElementById('notifications-btn').insertAdjacentHTML('afterbegin', icon('bell'));
   document.getElementById('info-btn').innerHTML = icon(domainIcon('infoBoard'));
   document.getElementById('feedback-btn').innerHTML = icon(domainIcon('feedback'));
-  document.getElementById('profile-btn').innerHTML = icon('circleUser');
   document.querySelector('.admin-banner-label').insertAdjacentHTML('afterbegin', icon('shield'));
+  renderDesktopNavigation();
 
   document.querySelectorAll('.nav-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -546,7 +598,6 @@ function wireNav() {
   // Feedback is reachable from every view via this topbar icon; the view it
   // was opened from is captured automatically (see lastSubstantiveView).
   document.getElementById('feedback-btn').addEventListener('click', () => openFeedbackModal(lastSubstantiveView));
-  document.getElementById('profile-btn').addEventListener('click', () => switchView('profile'));
   // Info is reference material people look up mid-conversation, so it opens
   // over whatever they were doing instead of costing them their current view.
   document.getElementById('info-btn').addEventListener('click', () => openInfoBoard());
