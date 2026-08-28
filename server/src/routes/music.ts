@@ -443,18 +443,32 @@ musicRouter.post('/sessions', ...withBodyPlayerIdentity, asyncRoute(async (req, 
   const data = await issueMusicControllerCommand<{ devices?: Array<Record<string, unknown>> }>(req.group!.id, 'devices');
   const device = data.devices?.find((entry) => entry.id === deviceId);
   if (!device || typeof device.name !== 'string') return res.status(404).json({ error: 'Spotify-Gerät ist nicht mehr verfügbar.' });
-  const session: MusicSessionRow = {
-    id: nanoid(), group_id: req.group!.id, event_id: requestEventId(res), host_player_id: player.id, device_id: deviceId,
-    device_name: device.name, status: 'active', current_track_uri: null, current_track_json: null,
-    playback_context_json: null,
-    playback_is_playing: 0, playback_progress_ms: 0, playback_updated_at: null,
-    started_at: Date.now(), ended_at: null,
-  };
-  db.prepare(
-    `INSERT INTO music_sessions (id, group_id, event_id, host_player_id, device_id, device_name, status, started_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`,
-  ).run(session.id, session.group_id, session.event_id, session.host_player_id, session.device_id, session.device_name, session.started_at);
-  musicChanged(req.group!.id, requestEventId(res));
+  const deviceName = device.name;
+  const eventId = requestEventId(res);
+  // The controller round trip above is a real await: the requested event can
+  // end (and release its own session, see endActiveMusicSession in
+  // events.ts) or another request can grab the group-wide session lock while
+  // this one is suspended. Recheck both and insert inside one synchronous
+  // transaction so nothing can interleave between the recheck and the write.
+  const session = db.transaction((): MusicSessionRow | null => {
+    const event = db.prepare('SELECT ended_at FROM events WHERE id = ?').get(eventId) as { ended_at: number | null } | undefined;
+    if (!event || event.ended_at !== null) return null;
+    if (activeSessionConflict(req.group!.id, eventId)) return null;
+    const row: MusicSessionRow = {
+      id: nanoid(), group_id: req.group!.id, event_id: eventId, host_player_id: player.id, device_id: deviceId,
+      device_name: deviceName, status: 'active', current_track_uri: null, current_track_json: null,
+      playback_context_json: null,
+      playback_is_playing: 0, playback_progress_ms: 0, playback_updated_at: null,
+      started_at: Date.now(), ended_at: null,
+    };
+    db.prepare(
+      `INSERT INTO music_sessions (id, group_id, event_id, host_player_id, device_id, device_name, status, started_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`,
+    ).run(row.id, row.group_id, row.event_id, row.host_player_id, row.device_id, row.device_name, row.started_at);
+    return row;
+  })();
+  if (!session) return res.status(409).json({ error: 'Event ist inzwischen beendet oder es läuft bereits ein anderer Jam.' });
+  musicChanged(req.group!.id, eventId);
   res.status(201).json(sessionPayload(session));
 }));
 
