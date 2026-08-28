@@ -5,6 +5,7 @@ import { createTestApp, TEST_ADMIN_ID } from './testApp';
 import { BASE_EVENT_ID, db } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
 import { advanceAutomaticReminder, dueAutomaticReminders } from '../eventDatePolls';
+import { ensureAccountEventContext } from '../eventContext';
 import { runEventDatePollReminderSweepOnce } from '../eventDatePollReminders';
 import { Events, setIo } from '../realtime';
 import { PUSH_LOG_LIMIT } from '../push';
@@ -133,17 +134,30 @@ test('only confirmed event participants can see, create and answer polls; every 
   assert.equal(customInvitees.status, 400, 'the client cannot narrow the participant roster');
 });
 
-test('the permanent base event cannot host polls through the API', async () => {
-  const before = db
-    .prepare('SELECT COUNT(*) AS count FROM event_date_polls WHERE event_id = ?')
-    .get(BASE_EVENT_ID) as { count: number };
-  const created = await createPoll(BASE_EVENT_ID, TEST_ADMIN_ID, { title: 'Unsichtbare Basis-Abstimmung' });
-  assert.equal(created.status, 409);
-  assert.match(created.body.error, /Allgemein/);
-  const after = db
-    .prepare('SELECT COUNT(*) AS count FROM event_date_polls WHERE event_id = ?')
-    .get(BASE_EVENT_ID) as { count: number };
-  assert.equal(after.count, before.count);
+test('the permanent base event can host polls, visible to every accepted base participant', async () => {
+  const alice = 'poll-base-alice';
+  const bob = 'poll-base-bob';
+  createMember(alice, 'Poll Base Alice');
+  createMember(bob, 'Poll Base Bob');
+  // Every active account is auto-accepted into the base event on login/registration
+  // (ensureAccountEventContext/ensureBaseParticipation); this mirrors that runtime
+  // path instead of relying on incidental setup order in earlier tests.
+  ensureAccountEventContext(alice, BASE_EVENT_ID);
+  ensureAccountEventContext(bob, BASE_EVENT_ID);
+
+  const created = await createPoll(BASE_EVENT_ID, alice, { title: 'Allgemeine Basis-Abstimmung' });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.createdBy, alice);
+  assert.ok(
+    created.body.invitees.map((entry: { playerId: string }) => entry.playerId).includes(bob),
+    'the base event roster includes every other accepted base participant, not just the creator',
+  );
+  const pollId = created.body.id as string;
+
+  assert.equal(
+    (await request(app).get(`/api/events/${BASE_EVENT_ID}/polls/${pollId}`).set('x-test-player-id', bob)).status,
+    200,
+  );
 });
 
 test('polls accept one option and grow beyond the former eight-option cap', async () => {
