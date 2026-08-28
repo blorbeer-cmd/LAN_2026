@@ -494,6 +494,12 @@ textarea {
   border-top: 1px solid var(--border);
   background: var(--bg-elevated);
 }
+/* Added only while an "Erledigte aufräumen" cleanup action joins the two
+   standing bulk actions, so all three keep equal width instead of the
+   default two-up grid squeezing a third button into one column. */
+.notification-center-toolbar--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
 .notification-center-list {
   display: flex;
   flex-direction: column;
@@ -508,6 +514,12 @@ textarea {
 .notification-center-entry.is-unread {
   border-left: var(--space-1) solid var(--accent);
   background: var(--bg-elevated-2);
+}
+/* A resolved/expired entry stays in the history and stays clickable (see
+   isFeedEntryObsolete) - it just recedes visually so a returning player's
+   eye lands on what still needs attention. Never combined with is-unread. */
+.notification-center-entry.is-obsolete {
+  opacity: 0.7;
 }
 .notification-center-entry-head,
 .notification-center-entry-title,

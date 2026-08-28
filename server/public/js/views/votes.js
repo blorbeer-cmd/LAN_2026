@@ -30,7 +30,7 @@
 
 import { api } from '../api.js';
 import { icon } from '../icons.js';
-import { state, catalogGames } from '../state.js';
+import { state, catalogGames, eventPlayers } from '../state.js';
 import { escapeHtml, formatDate, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
@@ -506,7 +506,10 @@ export function renderVotes(container, ctx) {
     draftKey = mineCacheKey;
   }
 
-  const totalPlayers = state.players.length;
+  // Eligible voters are the active event's accepted participants, not every
+  // group member — an invited-but-not-yet-accepted person must not inflate
+  // the "X von Y" denominator (see eventPlayers()).
+  const totalPlayers = eventPlayers().length;
 
   let openSectionHtml = '';
   if (votes.open) {

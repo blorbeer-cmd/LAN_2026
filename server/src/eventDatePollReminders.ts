@@ -5,6 +5,7 @@
 import { db } from './db';
 import {
   EVENT_POLL_REMINDER_TOPIC_PREFIX,
+  EVENT_POLL_OPEN_TOPIC_PREFIX,
   notifyPlayers,
   resolvePushTopic,
 } from './push';
@@ -26,6 +27,18 @@ function eventNameAndGroup(eventId: string): EventNameGroupRow | undefined {
 function pollReminderTopicKey(pollId: string, playerId?: string): string {
   const base = `${EVENT_POLL_REMINDER_TOPIC_PREFIX}${pollId}`;
   return playerId ? `${base}:${playerId}` : base;
+}
+
+// Mirrors eventDatePolls.ts's own pollOpenTopicPrefix/pollUpdateTopicPrefix
+// (its per-recipient "Neue Abstimmung"/"wieder geöffnet" and "Abstimmung
+// ergänzt" topics) so a lazily auto-closed poll resolves the same
+// notifications the explicit /close route does.
+function pollOpenTopicPrefix(pollId: string): string {
+  return `${EVENT_POLL_OPEN_TOPIC_PREFIX}${pollId}`;
+}
+
+function pollUpdateTopicPrefix(pollId: string): string {
+  return `event-poll-updated:${pollId}`;
 }
 
 // Sends every automatic reminder whose scheduled instant has passed, then
@@ -77,6 +90,18 @@ export function runEventDatePollReminderSweepOnce(now = Date.now()): { reminded:
         if (event?.group_id) {
           resolvePushTopic(
             pollReminderTopicKey(poll.id),
+            true,
+            { groupId: event.group_id, eventId },
+            false,
+          );
+          resolvePushTopic(
+            pollOpenTopicPrefix(poll.id),
+            true,
+            { groupId: event.group_id, eventId },
+            false,
+          );
+          resolvePushTopic(
+            pollUpdateTopicPrefix(poll.id),
             true,
             { groupId: event.group_id, eventId },
             false,

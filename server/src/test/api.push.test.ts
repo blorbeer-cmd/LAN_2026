@@ -224,6 +224,45 @@ test('broadcast pushes disappear when ended by their creator or after their dead
   assert.ok(!/Automatisch ablaufen/.test(current.body.entry?.body ?? ''));
 });
 
+test('GET /api/push/log exposes resolvedAt, set only once the underlying workflow resolves', async () => {
+  const created = await request(app).post('/api/broadcasts').send({ playerId, message: 'ResolvedAt sichtbar' });
+  assert.equal(created.status, 201);
+  const before = await request(app).get(`/api/push/log?playerId=${playerId}`);
+  const beforeEntry = before.body.entries.find((entry: { body: string }) => /ResolvedAt sichtbar/.test(entry.body));
+  assert.ok(beforeEntry);
+  assert.equal(beforeEntry.resolvedAt, null);
+
+  await request(app).post(`/api/broadcasts/${created.body.id}/end`).send({ playerId });
+  const after = await request(app).get(`/api/push/log?playerId=${playerId}`);
+  const afterEntry = after.body.entries.find((entry: { id: string }) => entry.id === beforeEntry.id);
+  assert.ok(typeof afterEntry.resolvedAt === 'number' && afterEntry.resolvedAt > 0);
+});
+
+test('DELETE /api/push/resolved hides only resolved or expired entries, leaving open ones and other players untouched', async () => {
+  const other = await request(app).post('/api/players').send({ name: 'Push Resolved Other' });
+  await request(app).post('/api/broadcasts').send({ playerId, message: 'Bleibt offen' });
+  const ended = await request(app).post('/api/broadcasts').send({ playerId, message: 'Wird aufgeraeumt' });
+  await request(app).post(`/api/broadcasts/${ended.body.id}/end`).send({ playerId });
+  await request(app)
+    .post('/api/broadcasts')
+    .send({ playerId, message: 'Laeuft automatisch ab', endsAt: Date.now() + 50 });
+  await new Promise((resolve) => setTimeout(resolve, 75));
+
+  assert.equal((await request(app).delete('/api/push/resolved').send({ playerId: 'ghost' })).status, 401);
+
+  const cleaned = await request(app).delete('/api/push/resolved').send({ playerId });
+  assert.equal(cleaned.status, 200);
+  assert.ok(cleaned.body.changed >= 2, 'both the ended and the expired broadcast are cleaned up');
+
+  const ownAfter = await request(app).get(`/api/push/log?playerId=${playerId}`);
+  assert.ok(ownAfter.body.entries.some((entry: { body: string }) => /Bleibt offen/.test(entry.body)));
+  assert.ok(!ownAfter.body.entries.some((entry: { body: string }) => /Wird aufgeraeumt/.test(entry.body)));
+  assert.ok(!ownAfter.body.entries.some((entry: { body: string }) => /Laeuft automatisch ab/.test(entry.body)));
+
+  const otherAfter = await request(app).get(`/api/push/log?playerId=${other.body.id}`);
+  assert.ok(otherAfter.body.entries.some((entry: { body: string }) => /Wird aufgeraeumt/.test(entry.body)));
+});
+
 test('closed and expired food-order pushes are omitted from active banners', async () => {
   const order = await request(app)
     .post('/api/food-orders')

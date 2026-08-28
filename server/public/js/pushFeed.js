@@ -60,6 +60,14 @@ export function feedEntryIcon(entry) {
   return domainIcon(feedLinkView(entry?.url));
 }
 
+// An entry is obsolete once its underlying workflow resolved server-side
+// (see push.ts's resolvePushTopic — a poll ended, a broadcast beaten) or its
+// own expiry passed. It stays in the notification center as history either
+// way; only its urgency (unread state, action button) is affected.
+export function isFeedEntryObsolete(entry, now = Date.now()) {
+  return Boolean(entry?.resolvedAt) || (entry?.expiresAt != null && entry.expiresAt <= now);
+}
+
 // Bell + title + body markup for the read-only Kiosk banner.
 export function bannerContentHtml(entry) {
   const title = entry?.eventName ? `${entry.eventName} · ${feedEntryTitle(entry)}` : feedEntryTitle(entry);

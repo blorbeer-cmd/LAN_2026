@@ -181,7 +181,7 @@ async function loadContentSearchEntries() {
     api.arrivals.list(),
     api.tournaments.list(),
     myId ? api.push.log(myId) : Promise.resolve({ entries: [] }),
-    state.activeEvent && !state.activeEvent.isBase && state.activeEvent.id !== 'base'
+    state.activeEvent
       ? api.eventPolls.list(state.activeEvent.id)
       : Promise.resolve([]),
   ];

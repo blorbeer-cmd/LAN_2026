@@ -945,16 +945,8 @@ function schedulePollViewportAnchorRestore(container, anchors, previousScrollTop
 
 export function renderEventPolls(container, ctx) {
   const event = state.activeEvent;
-  if (!event || event.isBase || event.id === 'base') {
-    container.innerHTML = emptyStateHtml({
-      title: 'Event wählen',
-      body: 'Umfragen gehören immer zum aktiven Event.',
-      icon: icon('vote'),
-      action: { id: 'choose-event-context', label: 'Event wählen' },
-    });
-    container.querySelector('#choose-event-context')?.addEventListener('click', () => {
-      document.getElementById('event-context-switcher-search')?.focus();
-    });
+  if (!event) {
+    container.innerHTML = emptyStateHtml('Umfragen werden geladen…');
     return;
   }
   loadPolls(event.id, ctx);

@@ -5,8 +5,10 @@ import { createTestApp, TEST_ADMIN_ID } from './testApp';
 import { BASE_EVENT_ID, db } from '../db';
 import { ensureDefaultGroupMembership } from '../groups';
 import { advanceAutomaticReminder, dueAutomaticReminders } from '../eventDatePolls';
+import { ensureAccountEventContext } from '../eventContext';
 import { runEventDatePollReminderSweepOnce } from '../eventDatePollReminders';
 import { Events, setIo } from '../realtime';
+import { PUSH_LOG_LIMIT } from '../push';
 
 const app = createTestApp();
 
@@ -132,17 +134,30 @@ test('only confirmed event participants can see, create and answer polls; every 
   assert.equal(customInvitees.status, 400, 'the client cannot narrow the participant roster');
 });
 
-test('the permanent base event cannot host polls through the API', async () => {
-  const before = db
-    .prepare('SELECT COUNT(*) AS count FROM event_date_polls WHERE event_id = ?')
-    .get(BASE_EVENT_ID) as { count: number };
-  const created = await createPoll(BASE_EVENT_ID, TEST_ADMIN_ID, { title: 'Unsichtbare Basis-Abstimmung' });
-  assert.equal(created.status, 409);
-  assert.match(created.body.error, /Allgemein/);
-  const after = db
-    .prepare('SELECT COUNT(*) AS count FROM event_date_polls WHERE event_id = ?')
-    .get(BASE_EVENT_ID) as { count: number };
-  assert.equal(after.count, before.count);
+test('the permanent base event can host polls, visible to every accepted base participant', async () => {
+  const alice = 'poll-base-alice';
+  const bob = 'poll-base-bob';
+  createMember(alice, 'Poll Base Alice');
+  createMember(bob, 'Poll Base Bob');
+  // Every active account is auto-accepted into the base event on login/registration
+  // (ensureAccountEventContext/ensureBaseParticipation); this mirrors that runtime
+  // path instead of relying on incidental setup order in earlier tests.
+  ensureAccountEventContext(alice, BASE_EVENT_ID);
+  ensureAccountEventContext(bob, BASE_EVENT_ID);
+
+  const created = await createPoll(BASE_EVENT_ID, alice, { title: 'Allgemeine Basis-Abstimmung' });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.createdBy, alice);
+  assert.ok(
+    created.body.invitees.map((entry: { playerId: string }) => entry.playerId).includes(bob),
+    'the base event roster includes every other accepted base participant, not just the creator',
+  );
+  const pollId = created.body.id as string;
+
+  assert.equal(
+    (await request(app).get(`/api/events/${BASE_EVENT_ID}/polls/${pollId}`).set('x-test-player-id', bob)).status,
+    200,
+  );
 });
 
 test('polls accept one option and grow beyond the former eight-option cap', async () => {
@@ -636,6 +651,329 @@ test('manual reminders target only confirmed participants who have not answered 
   assert.ok(repeatedPushes[0].createdAt > 1, 'the existing reminder rises to the top');
 });
 
+// Regression for a notification-center gap: "Neue Abstimmung" used to carry
+// no topic key at all, so closing the poll could never resolve it - it sat
+// in a returning player's history looking exactly as actionable as it did
+// the day the poll opened. Reopening must give the reused topic key a fresh,
+// unresolved occurrence rather than leaving it stuck resolved from the
+// earlier close.
+test('closing a poll resolves its "Neue Abstimmung" notification; reopening reactivates it', async () => {
+  const alice = 'poll-open-notify-alice';
+  const bob = 'poll-open-notify-bob';
+  createMember(alice, 'Poll Open Notify Alice');
+  createMember(bob, 'Poll Open Notify Bob');
+  const eventId = await createEvent('Poll Open Notify Event', [alice, bob]);
+  const created = await createPoll(eventId, alice);
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const topicKey = `event-poll-open:${created.body.id}:${bob}`;
+
+  const openLog = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const openEntry = openLog.body.entries.find((entry: { title: string }) => entry.title === 'Neue Abstimmung');
+  assert.ok(openEntry, 'bob was notified about the new poll');
+  assert.equal(openEntry.resolvedAt, null);
+
+  const closed = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/close`)
+    .set('x-test-player-id', alice);
+  assert.equal(closed.status, 200, JSON.stringify(closed.body));
+  const afterClose = db
+    .prepare('SELECT resolved_at AS resolvedAt FROM push_log WHERE topic_key = ? AND resolved_at IS NOT NULL')
+    .get(topicKey) as { resolvedAt: number } | undefined;
+  assert.ok(afterClose, 'bob\'s "Neue Abstimmung" topic is resolved once the poll closes');
+  const closedLog = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const closedEntry = closedLog.body.entries.find((entry: { id: string }) => entry.id === openEntry.id);
+  assert.ok(closedEntry.resolvedAt, 'the notification center entry itself now reflects the resolution');
+
+  const reopened = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/reopen`)
+    .set('x-test-player-id', alice)
+    .send({});
+  assert.equal(reopened.status, 200, JSON.stringify(reopened.body));
+  const reopenLog = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const reopenEntry = reopenLog.body.entries.find((entry: { title: string }) => entry.title === 'Abstimmung');
+  assert.ok(reopenEntry, 'bob was notified the poll reopened');
+  assert.equal(reopenEntry.resolvedAt, null, 'the reopened poll is actionable again, not stuck resolved');
+  // The topic is deduplicated (isDeduplicatedPushTopic in push.ts), so the
+  // reopen reuses and refreshes the same row instead of leaving the earlier,
+  // now-resolved one behind as a second, permanently-obsolete entry.
+  assert.equal(reopenEntry.id, openEntry.id, 'reopening reuses the same notification-center entry');
+  const rowCountAfterReopen = db
+    .prepare('SELECT COUNT(*) AS count FROM push_log WHERE topic_key = ?')
+    .get(topicKey) as { count: number };
+  assert.equal(rowCountAfterReopen.count, 1, 'exactly one row backs the poll-open topic, not one per occurrence');
+
+  const closedAgain = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/close`)
+    .set('x-test-player-id', alice);
+  assert.equal(closedAgain.status, 200, JSON.stringify(closedAgain.body));
+  const finalLog = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const finalEntries = finalLog.body.entries.filter((entry: { id: string }) => entry.id === openEntry.id);
+  assert.equal(finalEntries.length, 1, 'still exactly one entry for this poll after a second close');
+  assert.ok(finalEntries[0].resolvedAt, 'and it is resolved again');
+});
+
+test('reopening a poll never rewrites a since-muted recipient\'s earlier notification', async () => {
+  const alice = 'poll-reopen-recipients-alice';
+  const bob = 'poll-reopen-recipients-bob';
+  const carol = 'poll-reopen-recipients-carol';
+  createMember(alice, 'Poll Reopen Recipients Alice');
+  createMember(bob, 'Poll Reopen Recipients Bob');
+  createMember(carol, 'Poll Reopen Recipients Carol');
+  const eventId = await createEvent('Poll Reopen Recipients Event', [alice, bob, carol]);
+  const created = await createPoll(eventId, alice);
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const bobTopicKey = `event-poll-open:${created.body.id}:${bob}`;
+  const carolTopicKey = `event-poll-open:${created.body.id}:${carol}`;
+
+  const bobOpenLog = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const openEntry = bobOpenLog.body.entries.find((entry: { title: string }) => entry.title === 'Neue Abstimmung');
+  assert.ok(openEntry, 'bob was notified about the new poll');
+
+  const closed = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/close`)
+    .set('x-test-player-id', alice);
+  assert.equal(closed.status, 200, JSON.stringify(closed.body));
+
+  // Bob mutes this event's notifications before the poll reopens - he stays
+  // an accepted participant, so the reopen route still lists him as an
+  // invitee, but push.ts's mute filter drops him from the actually-eligible
+  // recipients this occurrence reaches.
+  const group = db.prepare('SELECT id FROM groups LIMIT 1').get() as { id: string };
+  db.prepare('INSERT INTO push_mutes (group_id, player_id, event_id, muted_at) VALUES (?, ?, ?, ?)').run(
+    group.id,
+    bob,
+    eventId,
+    Date.now(),
+  );
+
+  const reopened = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/reopen`)
+    .set('x-test-player-id', alice)
+    .send({});
+  assert.equal(reopened.status, 200, JSON.stringify(reopened.body));
+
+  // Each recipient keys to their own row (pollOpenTopicKey includes the
+  // playerId), so an occurrence that skips bob cannot touch his row at all -
+  // unlike a single row shared across recipients, which would either drop
+  // him or rewrite his settled history into a reopening he never received.
+  const bobRowAfterReopen = db
+    .prepare('SELECT resolved_at AS resolvedAt, title FROM push_log WHERE topic_key = ?')
+    .get(bobTopicKey) as { resolvedAt: number | null; title: string };
+  assert.ok(bobRowAfterReopen.resolvedAt, 'bob\'s original notice is still resolved, not reactivated by an occurrence he was muted out of');
+  assert.equal(bobRowAfterReopen.title, 'Neue Abstimmung', 'and its content still reflects what bob actually received');
+
+  const carolRowAfterReopen = db
+    .prepare('SELECT resolved_at AS resolvedAt, title FROM push_log WHERE topic_key = ?')
+    .get(carolTopicKey) as { resolvedAt: number | null; title: string };
+  assert.equal(carolRowAfterReopen.resolvedAt, null, 'carol is still eligible and reached by the reopen notice');
+  assert.equal(carolRowAfterReopen.title, 'Abstimmung');
+
+  const bobLogAfterReopen = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const bobEntryAfterReopen = bobLogAfterReopen.body.entries.find((entry: { id: string }) => entry.id === openEntry.id);
+  assert.ok(bobEntryAfterReopen, 'bob still sees his original notification-center entry after the reopen');
+  assert.ok(bobEntryAfterReopen.resolvedAt, 'and it still reads as resolved, matching the row it is backed by');
+});
+
+test('creating a poll invites everyone with one push-log row per recipient, well within the shared group cap', async () => {
+  const alice = 'poll-burst-alice';
+  const invitees = Array.from({ length: 10 }, (_, index) => `poll-burst-invitee-${index}`);
+  createMember(alice, 'Poll Burst Alice');
+  for (const id of invitees) createMember(id, `Poll Burst Invitee ${id}`);
+  const eventId = await createEvent('Poll Burst Event', [alice, ...invitees]);
+
+  const group = db.prepare('SELECT id FROM groups LIMIT 1').get() as { id: string };
+  const beforeCount = (
+    db.prepare('SELECT COUNT(*) AS count FROM push_log WHERE group_id = ?').get(group.id) as { count: number }
+  ).count;
+
+  const created = await createPoll(eventId, alice);
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
+  const afterCount = (
+    db.prepare('SELECT COUNT(*) AS count FROM push_log WHERE group_id = ?').get(group.id) as { count: number }
+  ).count;
+  assert.equal(
+    afterCount - beforeCount,
+    invitees.length,
+    'one push_log row per invited recipient - the per-recipient topic keys (pollOpenTopicKey) that fix the ' +
+      'reopen/expiry findings above trade a single shared row for one per invitee',
+  );
+  const ownRows = db
+    .prepare('SELECT COUNT(*) AS count FROM push_log WHERE topic_key LIKE ?')
+    .get(`event-poll-open:${created.body.id}:%`) as { count: number };
+  assert.equal(ownRows.count, invitees.length);
+
+  // PUSH_LOG_LIMIT is the shared history budget for the whole group across
+  // every notification type. It must stay comfortably above what a single
+  // full-group poll invite/reopen burst consumes, or that burst would evict
+  // other players' unrelated recent history (event invitations, food-order
+  // reminders, ...) out of the notification center.
+  assert.ok(
+    PUSH_LOG_LIMIT >= invitees.length * 10,
+    'the shared cap has headroom for several poll-sized bursts, not just a single one',
+  );
+});
+
+test('extending a poll\'s deadline keeps its "Neue Abstimmung" notification from expiring early', async () => {
+  const alice = 'poll-expiry-sync-alice';
+  const bob = 'poll-expiry-sync-bob';
+  createMember(alice, 'Poll Expiry Sync Alice');
+  createMember(bob, 'Poll Expiry Sync Bob');
+  const eventId = await createEvent('Poll Expiry Sync Event', [alice, bob]);
+  const created = await createPoll(eventId, alice, { responseDueOn: isoDate(2) });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const topicKey = `event-poll-open:${created.body.id}:${bob}`;
+
+  const before = db
+    .prepare('SELECT expires_at AS expiresAt FROM push_log WHERE topic_key = ?')
+    .get(topicKey) as { expiresAt: number };
+  assert.equal(before.expiresAt, created.body.responseDueAt);
+
+  const extendedDueOn = isoDate(10);
+  const patched = await request(app)
+    .patch(`/api/events/${eventId}/polls/${created.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ responseDueOn: extendedDueOn });
+  assert.equal(patched.status, 200, JSON.stringify(patched.body));
+  assert.ok(patched.body.responseDueAt > before.expiresAt, 'the deadline actually moved further out');
+
+  const after = db
+    .prepare('SELECT expires_at AS expiresAt FROM push_log WHERE topic_key = ?')
+    .get(topicKey) as { expiresAt: number };
+  assert.equal(
+    after.expiresAt,
+    patched.body.responseDueAt,
+    'the notification\'s own expiry follows the extended deadline, so it does not read as obsolete before the poll actually closes',
+  );
+
+  const log = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const entry = log.body.entries.find((item: { title: string }) => item.title === 'Neue Abstimmung');
+  assert.ok(entry);
+  assert.equal(entry.expiresAt, patched.body.responseDueAt);
+});
+
+test('extending a poll\'s deadline also keeps an outstanding "Abstimmung ergänzt" notice from expiring early', async () => {
+  const alice = 'poll-update-expiry-sync-alice';
+  const bob = 'poll-update-expiry-sync-bob';
+  createMember(alice, 'Poll Update Expiry Sync Alice');
+  createMember(bob, 'Poll Update Expiry Sync Bob');
+  const eventId = await createEvent('Poll Update Expiry Sync Event', [alice, bob]);
+  const created = await createPoll(eventId, alice, { responseDueOn: isoDate(2) });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
+  const answered = await request(app)
+    .put(`/api/events/${eventId}/polls/${created.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: responsesFor(created.body, ['can', 'if_needed']) });
+  assert.equal(answered.status, 200, JSON.stringify(answered.body));
+
+  const addedOption = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/options`)
+    .set('x-test-player-id', alice)
+    .send({ label: 'Berlin' });
+  assert.equal(addedOption.status, 201, JSON.stringify(addedOption.body));
+  const updateTopicKey = `event-poll-updated:${created.body.id}:${bob}`;
+
+  const before = db
+    .prepare('SELECT expires_at AS expiresAt FROM push_log WHERE topic_key = ?')
+    .get(updateTopicKey) as { expiresAt: number };
+  assert.equal(
+    before.expiresAt,
+    created.body.responseDueAt,
+    'bob was notified about the added option, expiring with the original deadline',
+  );
+
+  const extendedDueOn = isoDate(10);
+  const patched = await request(app)
+    .patch(`/api/events/${eventId}/polls/${created.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ responseDueOn: extendedDueOn });
+  assert.equal(patched.status, 200, JSON.stringify(patched.body));
+  assert.ok(patched.body.responseDueAt > before.expiresAt, 'the deadline actually moved further out');
+
+  const after = db
+    .prepare('SELECT expires_at AS expiresAt FROM push_log WHERE topic_key = ?')
+    .get(updateTopicKey) as { expiresAt: number };
+  assert.equal(
+    after.expiresAt,
+    patched.body.responseDueAt,
+    'the outstanding "Abstimmung ergänzt" notice follows the extended deadline too, so it does not read as ' +
+      'obsolete while bob\'s response to the added option is still outstanding',
+  );
+
+  const log = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const entry = log.body.entries.find((item: { title: string }) => item.title === 'Abstimmung ergänzt');
+  assert.ok(entry);
+  assert.equal(entry.expiresAt, patched.body.responseDueAt);
+});
+
+test('an "Abstimmung ergänzt" notice resolves once completed, or once the poll closes for anyone still outstanding', async () => {
+  const alice = 'poll-update-resolve-alice';
+  const bob = 'poll-update-resolve-bob';
+  const carol = 'poll-update-resolve-carol';
+  createMember(alice, 'Poll Update Resolve Alice');
+  createMember(bob, 'Poll Update Resolve Bob');
+  createMember(carol, 'Poll Update Resolve Carol');
+  const eventId = await createEvent('Poll Update Resolve Event', [alice, bob, carol]);
+  const created = await createPoll(eventId, alice);
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
+  for (const playerId of [bob, carol]) {
+    const answered = await request(app)
+      .put(`/api/events/${eventId}/polls/${created.body.id}/my-responses`)
+      .set('x-test-player-id', playerId)
+      .send({ responses: responsesFor(created.body, ['can', 'if_needed']) });
+    assert.equal(answered.status, 200, JSON.stringify(answered.body));
+  }
+
+  const addedOption = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/options`)
+    .set('x-test-player-id', alice)
+    .send({ label: 'Berlin' });
+  assert.equal(addedOption.status, 201, JSON.stringify(addedOption.body));
+  const bobUpdateTopicKey = `event-poll-updated:${created.body.id}:${bob}`;
+  const carolUpdateTopicKey = `event-poll-updated:${created.body.id}:${carol}`;
+
+  const bothOutstanding = db
+    .prepare('SELECT topic_key AS topicKey, resolved_at AS resolvedAt FROM push_log WHERE topic_key IN (?, ?)')
+    .all(bobUpdateTopicKey, carolUpdateTopicKey) as Array<{ topicKey: string; resolvedAt: number | null }>;
+  assert.equal(bothOutstanding.length, 2);
+  assert.ok(bothOutstanding.every((row) => row.resolvedAt === null), 'both notices start outstanding');
+
+  // Bob completes the added option too - his own notice resolves immediately,
+  // without waiting on carol or on the poll closing.
+  const bobCompletes = await request(app)
+    .put(`/api/events/${eventId}/polls/${created.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: responsesFor(addedOption.body, ['can', 'if_needed', 'can']) });
+  assert.equal(bobCompletes.status, 200, JSON.stringify(bobCompletes.body));
+
+  const bobRowAfterAnswer = db
+    .prepare('SELECT resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?')
+    .get(bobUpdateTopicKey) as { resolvedAt: number | null };
+  assert.ok(bobRowAfterAnswer.resolvedAt, 'bob\'s notice resolves once his response is complete again');
+  const carolRowAfterBobAnswers = db
+    .prepare('SELECT resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?')
+    .get(carolUpdateTopicKey) as { resolvedAt: number | null };
+  assert.equal(carolRowAfterBobAnswers.resolvedAt, null, 'carol never answered Berlin, so hers is still outstanding');
+
+  // Carol never gets around to it; closing the poll resolves her leftover
+  // notice too, since no further response is possible once it is closed.
+  const closed = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/close`)
+    .set('x-test-player-id', alice);
+  assert.equal(closed.status, 200, JSON.stringify(closed.body));
+
+  const carolRowAfterClose = db
+    .prepare('SELECT resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?')
+    .get(carolUpdateTopicKey) as { resolvedAt: number | null };
+  assert.ok(carolRowAfterClose.resolvedAt, 'the poll closing resolves carol\'s still-outstanding notice too');
+
+  const carolLog = await request(app).get('/api/push/log').set('x-test-player-id', carol).query({ playerId: carol });
+  const carolEntry = carolLog.body.entries.find((item: { title: string }) => item.title === 'Abstimmung ergänzt');
+  assert.ok(carolEntry?.resolvedAt, 'and the notification-center entry reflects it, making it eligible for cleanup');
+});
+
 test('automatic poll reminders are scheduled two days and two hours before the deadline', async () => {
   const alice = 'poll-auto-reminder-alice';
   createMember(alice, 'Poll Auto Reminder Alice');
@@ -854,6 +1192,13 @@ test('expired rounds close lazily with audit, realtime and reminder cleanup on l
       .prepare('SELECT resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?')
       .get(topicKey) as { resolvedAt: number | null };
     assert.ok(topic.resolvedAt, 'the reminder topic is no longer active after the deadline close');
+    const openTopic = db
+      .prepare('SELECT resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?')
+      .get(`event-poll-open:${pollId}:${bob}`) as { resolvedAt: number | null };
+    assert.ok(
+      openTopic.resolvedAt,
+      'the "Neue Abstimmung" notification is also resolved so a returning player sees the poll as no longer actionable',
+    );
     assert.equal(signals.filter((event) => event === Events.eventsChanged).length, 1);
   };
 

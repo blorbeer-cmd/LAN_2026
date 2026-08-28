@@ -278,6 +278,26 @@ export function stopTracking(id: string): EventRow | undefined {
   return getEvent(id);
 }
 
+// A Jam session holds a group-wide exclusive lock (one shared physical
+// controller device can only relay commands for one event at a time — see
+// activeSessionConflict in routes/music.ts), so an event that ends while its
+// Jam is still marked active would otherwise block every other event's Jam
+// forever. Releasing it here mirrors the manual POST /api/music/end DB
+// update, minus the live Spotify pause call: this runs synchronously from
+// plain event-lifecycle code with no controller connection to await, and by
+// the time an event is closed for good nobody is expected to still be
+// relying on that specific session's live controls.
+function endActiveMusicSession(eventId: string, now: number): void {
+  const session = db.prepare("SELECT id FROM music_sessions WHERE event_id = ? AND status = 'active'").get(eventId) as
+    | { id: string }
+    | undefined;
+  if (!session) return;
+  db.transaction(() => {
+    db.prepare("UPDATE music_sessions SET status = 'ended', ended_at = ? WHERE id = ?").run(now, session.id);
+    db.prepare("UPDATE music_requests SET status = 'failed' WHERE session_id = ? AND status IN ('sending', 'queued')").run(session.id);
+  })();
+}
+
 // Closes an event for good — stops tracking first if it was on (same live
 // status wipe as stopTracking), then marks it ended so it can't be
 // re-tracked. Valid on any real event regardless of current tracking state
@@ -286,10 +306,12 @@ export function endEvent(id: string): EventRow | undefined {
   const event = getEvent(id);
   if (!event || event.id === OUTSIDE_EVENTS_ID || event.id === BASE_EVENT_ID) return undefined;
 
+  const now = Date.now();
   const wasTracking = Boolean(event.tracking_enabled);
-  db.prepare("UPDATE events SET tracking_enabled = 0, ended_at = ?, status = 'ended' WHERE id = ?").run(Date.now(), id);
+  db.prepare("UPDATE events SET tracking_enabled = 0, ended_at = ?, status = 'ended' WHERE id = ?").run(now, id);
   if (wasTracking) closeEventContexts(id);
   fallbackEventContexts(id);
+  endActiveMusicSession(id, now);
   return getEvent(id);
 }
 

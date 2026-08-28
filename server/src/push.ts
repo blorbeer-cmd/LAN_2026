@@ -13,8 +13,12 @@ import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 
 // Only recent entries matter (the Kiosk shows the latest one, the personal
 // notification center a short list) - trimmed on every insert so this never
-// grows unbounded over a multi-day LAN party.
-const PUSH_LOG_LIMIT = 50;
+// grows unbounded over a multi-day LAN party. Shared across the whole group
+// and every notification type (broadcasts, poll/food-order/event reminders,
+// ...), so it needs enough headroom to absorb a single burst - e.g. creating
+// a date poll invites every accepted participant in one call - without
+// crowding out unrelated recent history for other players.
+export const PUSH_LOG_LIMIT = 200;
 
 const VAPID_PUBLIC_KEY = 'vapid_public_key';
 const VAPID_PRIVATE_KEY = 'vapid_private_key';
@@ -91,12 +95,14 @@ export interface PushTopic {
 export const FOOD_ORDER_PAYMENT_REMINDER_TOPIC_PREFIX = 'food-order-payment-reminder:';
 export const EVENT_POLL_REMINDER_TOPIC_PREFIX = 'event-poll-reminder:';
 export const EVENT_REMINDER_TOPIC_PREFIX = 'event-reminder:';
+export const EVENT_POLL_OPEN_TOPIC_PREFIX = 'event-poll-open:';
 
 export function isDeduplicatedPushTopic(topicKey: string): boolean {
   return (
     topicKey.startsWith(FOOD_ORDER_PAYMENT_REMINDER_TOPIC_PREFIX) ||
     topicKey.startsWith(EVENT_POLL_REMINDER_TOPIC_PREFIX) ||
-    topicKey.startsWith(EVENT_REMINDER_TOPIC_PREFIX)
+    topicKey.startsWith(EVENT_REMINDER_TOPIC_PREFIX) ||
+    topicKey.startsWith(EVENT_POLL_OPEN_TOPIC_PREFIX)
   );
 }
 
@@ -123,6 +129,7 @@ export interface PushLogEntry {
   url: string | null;
   audience: PushAudience;
   expiresAt: number | null;
+  resolvedAt: number | null;
   createdAt: number;
 }
 
@@ -292,8 +299,9 @@ function visiblePushIdsFor(
 }
 
 // Bulk actions stay personal, just like their single-entry counterparts.
-// One transaction and one realtime signal avoid a burst of up to 50 writes
-// and socket refreshes when someone clears the whole center.
+// One transaction and one realtime signal avoid a burst of up to
+// PUSH_LOG_LIMIT writes and socket refreshes when someone clears the whole
+// center.
 export function markAllPushSeen(groupId: string, eventId: string | null, playerId: string): number {
   const entries = visiblePushIdsFor(groupId, eventId, playerId).filter((entry) => !entry.seen);
   if (entries.length === 0) return 0;
@@ -335,7 +343,7 @@ export function getPushLogEntriesFor(
       `SELECT id, group_id AS groupId, event_id AS eventId, event_name_snapshot AS eventName,
               notification_type AS notificationType, target_id AS targetId, title, body, url, audience,
               player_ids AS playerIds, topic_key AS topicKey, expires_at AS expiresAt,
-              created_at AS createdAt,
+              resolved_at AS resolvedAt, created_at AS createdAt,
               EXISTS (
                 SELECT 1 FROM push_log_seen
                 WHERE push_log_seen.push_id = push_log.id AND push_log_seen.player_id = ?
@@ -370,7 +378,8 @@ export function getPushLogEntriesForPlayer(
     .prepare(
       `SELECT id, group_id AS groupId, event_id AS eventId, event_name_snapshot AS eventName,
               notification_type AS notificationType, target_id AS targetId, title, body, url, audience,
-              player_ids AS playerIds, topic_key AS topicKey, expires_at AS expiresAt, created_at AS createdAt,
+              player_ids AS playerIds, topic_key AS topicKey, expires_at AS expiresAt,
+              resolved_at AS resolvedAt, created_at AS createdAt,
               EXISTS (
                 SELECT 1 FROM push_log_seen
                 WHERE push_log_seen.push_id = push_log.id AND push_log_seen.player_id = ?
@@ -433,6 +442,29 @@ export function hideAllPushForPlayerAcrossEvents(playerId: string): number {
   return changes;
 }
 
+// An entry is obsolete once its underlying workflow resolved (its topic was
+// closed - a poll ended, a broadcast beaten) or its own expiry passed, even
+// though it stays in the notification center as history either way.
+function isPushLogEntryObsolete(entry: { resolvedAt: number | null; expiresAt: number | null }, now: number): boolean {
+  return entry.resolvedAt !== null || (entry.expiresAt !== null && entry.expiresAt <= now);
+}
+
+// Same per-player scoping as the other bulk actions, but limited to entries
+// a returning player no longer needs to act on - the cleanup someone reaches
+// for after being away, without touching still-open ones.
+export function hideResolvedPushForPlayer(playerId: string): number {
+  const now = Date.now();
+  const entries = getPushLogEntriesForPlayer(playerId, PUSH_LOG_LIMIT).filter((entry) => isPushLogEntryObsolete(entry, now));
+  if (entries.length === 0) return 0;
+  const insert = db.prepare('INSERT OR IGNORE INTO push_log_hidden (push_id, player_id, hidden_at) VALUES (?, ?, ?)');
+  const hiddenAt = Date.now();
+  const changes = db.transaction(() =>
+    entries.reduce((sum, entry) => sum + insert.run(entry.id, playerId, hiddenAt).changes, 0)
+  )();
+  if (changes > 0) broadcastPushRefreshForPlayer(playerId);
+  return changes;
+}
+
 // Resolving a topic only removes it from active banners; the notification
 // center keeps the original push as history. includeChildren handles
 // tournament-wide completion, where pending match/stage notifications end too.
@@ -465,13 +497,21 @@ export function updatePushTopicExpiry(
   topicKey: string,
   expiresAt: number | null,
   scope: PushScope = { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID },
+  includeChildren = false,
 ): void {
   const normalizedScope = normalizedPushScope(scope);
-  const result = db
-    .prepare(
-      'UPDATE push_log SET expires_at = ? WHERE group_id = ? AND event_id IS ? AND resolved_at IS NULL AND topic_key = ?',
-    )
-    .run(expiresAt, normalizedScope.groupId, normalizedScope.eventId, topicKey);
+  const result = includeChildren
+    ? db
+        .prepare(
+          `UPDATE push_log SET expires_at = ?
+           WHERE group_id = ? AND event_id IS ? AND resolved_at IS NULL AND (topic_key = ? OR topic_key GLOB ?)`,
+        )
+        .run(expiresAt, normalizedScope.groupId, normalizedScope.eventId, topicKey, `${topicKey}:*`)
+    : db
+        .prepare(
+          'UPDATE push_log SET expires_at = ? WHERE group_id = ? AND event_id IS ? AND resolved_at IS NULL AND topic_key = ?',
+        )
+        .run(expiresAt, normalizedScope.groupId, normalizedScope.eventId, topicKey);
   if (result.changes > 0) broadcast(Events.pushChanged, { groupId: normalizedScope.groupId }, normalizedScope);
 }
 
@@ -577,12 +617,20 @@ export function recordPushLog(
   const existing = topic && isDeduplicatedPushTopic(topic.key)
     ? db
         .prepare(
-          `SELECT id FROM push_log
+          `SELECT id, player_ids AS playerIds FROM push_log
            WHERE group_id = ? AND event_id IS ? AND topic_key = ?
            ORDER BY created_at DESC LIMIT 1`,
         )
-        .get(normalizedScope.groupId, normalizedScope.eventId, topic.key) as { id: string } | undefined
+        .get(normalizedScope.groupId, normalizedScope.eventId, topic.key) as
+        | { id: string; playerIds: string | null }
+        | undefined
     : undefined;
+  // A shared topic's earlier occurrence may have reached a recipient who is
+  // no longer part of this one (left the event, muted it since); union
+  // rather than replace so their record of it survives in their own history.
+  const storedPlayerIds = existing?.playerIds
+    ? Array.from(new Set([...(JSON.parse(existing.playerIds) as string[]), ...playerIds]))
+    : playerIds;
   const entry: PushLogEntry = {
     id: existing?.id ?? nanoid(),
     groupId: normalizedScope.groupId,
@@ -595,6 +643,7 @@ export function recordPushLog(
     url: payload.url ?? null,
     audience,
     expiresAt: topic?.expiresAt ?? null,
+    resolvedAt: null,
     createdAt: Date.now(),
   };
   db.transaction(() => {
@@ -612,7 +661,7 @@ export function recordPushLog(
         entry.body,
         entry.url,
         entry.audience,
-        JSON.stringify(playerIds),
+        JSON.stringify(storedPlayerIds),
         topic?.key ?? null,
         entry.expiresAt,
         entry.createdAt,

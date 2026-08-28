@@ -393,7 +393,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.notification-center` with `.notification-center-panel`, `.notification-center-toolbar` and
   `.notification-center-entry` keeps the full personal history plus single/bulk read/remove state;
   unread entries use the accent edge and elevated background without an additional „Neu“ badge;
-  the two bulk actions share the complete sticky footer width in equal columns below the history.
+  obsolete entries (their underlying workflow resolved, or their own expiry passed) show a quiet
+  `Obsolet`/`Abgelaufen` badge and never count as unread. The sticky footer holds two bulk actions
+  in equal columns, growing to three equal columns only while at least one obsolete entry is
+  present, which adds a targeted „Obsolete aufräumen“ action ahead of the other two.
 - **Connection status** — `.connection-status` is the single global technical-state strip below the
   topbar. A short initial Socket.IO connection stays hidden to avoid startup flicker; offline and
   reconnect states remain visible with explicit German text until a confirmed reconnect hides the
@@ -815,9 +818,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   orders.
   The „Umfragen“ tab is the event-centric planning surface for free questions such as dates,
   locations, duration or budget. It always uses the active event from the existing top-right
-  workspace switcher: neither the tab nor its create dialog contains a second event picker. With
-  „Allgemein“ active it shows the structured „Event wählen“ empty state; its direct action focuses
-  and opens that existing switcher without describing a screen position. Visibility, creation and
+  workspace switcher, including the permanently open „Allgemein“ base event: neither the tab nor
+  its create dialog contains a second event picker. Visibility, creation and
   voting all require confirmed participation in that event; being Owner/Admin or merely invited
   never bypasses this boundary. Every confirmed participant may start a poll, while the creator of
   that poll manages its deadline, reminders and rounds. The create dialog uses labelled fields,
