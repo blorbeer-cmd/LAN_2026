@@ -697,6 +697,60 @@ test('closing a poll resolves its "Neue Abstimmung" notification; reopening reac
   assert.ok(finalEntries[0].resolvedAt, 'and it is resolved again');
 });
 
+test('reopening a poll keeps a since-muted recipient\'s earlier notification in their own history', async () => {
+  const alice = 'poll-reopen-recipients-alice';
+  const bob = 'poll-reopen-recipients-bob';
+  const carol = 'poll-reopen-recipients-carol';
+  createMember(alice, 'Poll Reopen Recipients Alice');
+  createMember(bob, 'Poll Reopen Recipients Bob');
+  createMember(carol, 'Poll Reopen Recipients Carol');
+  const eventId = await createEvent('Poll Reopen Recipients Event', [alice, bob, carol]);
+  const created = await createPoll(eventId, alice);
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const topicKey = `event-poll-open:${created.body.id}`;
+
+  const bobOpenLog = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const openEntry = bobOpenLog.body.entries.find((entry: { title: string }) => entry.title === 'Neue Abstimmung');
+  assert.ok(openEntry, 'bob was notified about the new poll');
+
+  const closed = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/close`)
+    .set('x-test-player-id', alice);
+  assert.equal(closed.status, 200, JSON.stringify(closed.body));
+
+  // Bob mutes this event's notifications before the poll reopens - he stays
+  // an accepted participant, so the "wieder geöffnet" send still targets him,
+  // but push.ts's mute filter drops him from the actually-eligible recipient
+  // set the dedup row records for this occurrence.
+  const group = db.prepare('SELECT id FROM groups LIMIT 1').get() as { id: string };
+  db.prepare('INSERT INTO push_mutes (group_id, player_id, event_id, muted_at) VALUES (?, ?, ?, ?)').run(
+    group.id,
+    bob,
+    eventId,
+    Date.now(),
+  );
+
+  const reopened = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/reopen`)
+    .set('x-test-player-id', alice)
+    .send({});
+  assert.equal(reopened.status, 200, JSON.stringify(reopened.body));
+
+  const rowAfterReopen = db.prepare('SELECT player_ids AS playerIds FROM push_log WHERE topic_key = ?').get(topicKey) as {
+    playerIds: string;
+  };
+  const storedPlayerIds = JSON.parse(rowAfterReopen.playerIds) as string[];
+  assert.ok(storedPlayerIds.includes(carol), 'carol is still eligible and reached by the reopen notice');
+  assert.ok(
+    storedPlayerIds.includes(bob),
+    'bob is muted out of this occurrence\'s delivery, but the shared row keeps his earlier record instead of losing it',
+  );
+
+  const bobLogAfterReopen = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const bobEntryAfterReopen = bobLogAfterReopen.body.entries.find((entry: { id: string }) => entry.id === openEntry.id);
+  assert.ok(bobEntryAfterReopen, 'bob still sees his original notification-center entry after the reopen');
+});
+
 test('extending a poll\'s deadline keeps its "Neue Abstimmung" notification from expiring early', async () => {
   const alice = 'poll-expiry-sync-alice';
   const bob = 'poll-expiry-sync-bob';
@@ -731,6 +785,61 @@ test('extending a poll\'s deadline keeps its "Neue Abstimmung" notification from
 
   const log = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
   const entry = log.body.entries.find((item: { title: string }) => item.title === 'Neue Abstimmung');
+  assert.ok(entry);
+  assert.equal(entry.expiresAt, patched.body.responseDueAt);
+});
+
+test('extending a poll\'s deadline also keeps an outstanding "Abstimmung ergänzt" notice from expiring early', async () => {
+  const alice = 'poll-update-expiry-sync-alice';
+  const bob = 'poll-update-expiry-sync-bob';
+  createMember(alice, 'Poll Update Expiry Sync Alice');
+  createMember(bob, 'Poll Update Expiry Sync Bob');
+  const eventId = await createEvent('Poll Update Expiry Sync Event', [alice, bob]);
+  const created = await createPoll(eventId, alice, { responseDueOn: isoDate(2) });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
+  const answered = await request(app)
+    .put(`/api/events/${eventId}/polls/${created.body.id}/my-responses`)
+    .set('x-test-player-id', bob)
+    .send({ responses: responsesFor(created.body, ['can', 'if_needed']) });
+  assert.equal(answered.status, 200, JSON.stringify(answered.body));
+
+  const addedOption = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/options`)
+    .set('x-test-player-id', alice)
+    .send({ label: 'Berlin' });
+  assert.equal(addedOption.status, 201, JSON.stringify(addedOption.body));
+  const updateTopicKey = `event-poll-updated:${created.body.id}:${bob}`;
+
+  const before = db
+    .prepare('SELECT expires_at AS expiresAt FROM push_log WHERE topic_key = ?')
+    .get(updateTopicKey) as { expiresAt: number };
+  assert.equal(
+    before.expiresAt,
+    created.body.responseDueAt,
+    'bob was notified about the added option, expiring with the original deadline',
+  );
+
+  const extendedDueOn = isoDate(10);
+  const patched = await request(app)
+    .patch(`/api/events/${eventId}/polls/${created.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ responseDueOn: extendedDueOn });
+  assert.equal(patched.status, 200, JSON.stringify(patched.body));
+  assert.ok(patched.body.responseDueAt > before.expiresAt, 'the deadline actually moved further out');
+
+  const after = db
+    .prepare('SELECT expires_at AS expiresAt FROM push_log WHERE topic_key = ?')
+    .get(updateTopicKey) as { expiresAt: number };
+  assert.equal(
+    after.expiresAt,
+    patched.body.responseDueAt,
+    'the outstanding "Abstimmung ergänzt" notice follows the extended deadline too, so it does not read as ' +
+      'obsolete while bob\'s response to the added option is still outstanding',
+  );
+
+  const log = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const entry = log.body.entries.find((item: { title: string }) => item.title === 'Abstimmung ergänzt');
   assert.ok(entry);
   assert.equal(entry.expiresAt, patched.body.responseDueAt);
 });

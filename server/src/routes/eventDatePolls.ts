@@ -297,8 +297,12 @@ function pollReminderTopicKey(pollId: string, playerId?: string): string {
   return playerId ? `${base}:${playerId}` : base;
 }
 
+function pollUpdateTopicPrefix(pollId: string): string {
+  return `event-poll-updated:${pollId}`;
+}
+
 function pollUpdateTopicKey(pollId: string, playerId: string): string {
-  return `event-poll-updated:${pollId}:${playerId}`;
+  return `${pollUpdateTopicPrefix(pollId)}:${playerId}`;
 }
 
 // Unlike the per-player reminder/update topics above, this one has no
@@ -669,11 +673,14 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
     // Keeps the "Neue Abstimmung" notification's own expiry in step with a
     // deadline extension - otherwise it would read as obsolete (and be
     // swept up by "Obsolete aufräumen") at the old deadline even though the
-    // poll itself is still open and answerable.
-    updatePushTopicExpiry(pollOpenTopicKey(poll.id), result.poll.response_due_at, {
-      groupId: event.group_id!,
-      eventId: event.id,
-    });
+    // poll itself is still open and answerable. The per-recipient "Abstimmung
+    // ergänzt" notices from an earlier option addition need the same sync:
+    // without it, a deadline-only extension leaves their expiry at the old
+    // date, so they'd read as obsolete while that recipient's response is
+    // still incomplete.
+    const pollScope = { groupId: event.group_id!, eventId: event.id };
+    updatePushTopicExpiry(pollOpenTopicKey(poll.id), result.poll.response_due_at, pollScope);
+    updatePushTopicExpiry(pollUpdateTopicPrefix(poll.id), result.poll.response_due_at, pollScope, true);
   }
   if (result.addedOptionCount > 0) {
     notifyPreviouslyAnsweredPlayers(event, result.poll, result.previouslyAnsweredPlayerIds);

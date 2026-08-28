@@ -492,13 +492,21 @@ export function updatePushTopicExpiry(
   topicKey: string,
   expiresAt: number | null,
   scope: PushScope = { groupId: DEFAULT_GROUP_ID, eventId: BASE_EVENT_ID },
+  includeChildren = false,
 ): void {
   const normalizedScope = normalizedPushScope(scope);
-  const result = db
-    .prepare(
-      'UPDATE push_log SET expires_at = ? WHERE group_id = ? AND event_id IS ? AND resolved_at IS NULL AND topic_key = ?',
-    )
-    .run(expiresAt, normalizedScope.groupId, normalizedScope.eventId, topicKey);
+  const result = includeChildren
+    ? db
+        .prepare(
+          `UPDATE push_log SET expires_at = ?
+           WHERE group_id = ? AND event_id IS ? AND resolved_at IS NULL AND (topic_key = ? OR topic_key GLOB ?)`,
+        )
+        .run(expiresAt, normalizedScope.groupId, normalizedScope.eventId, topicKey, `${topicKey}:*`)
+    : db
+        .prepare(
+          'UPDATE push_log SET expires_at = ? WHERE group_id = ? AND event_id IS ? AND resolved_at IS NULL AND topic_key = ?',
+        )
+        .run(expiresAt, normalizedScope.groupId, normalizedScope.eventId, topicKey);
   if (result.changes > 0) broadcast(Events.pushChanged, { groupId: normalizedScope.groupId }, normalizedScope);
 }
 
@@ -604,12 +612,20 @@ export function recordPushLog(
   const existing = topic && isDeduplicatedPushTopic(topic.key)
     ? db
         .prepare(
-          `SELECT id FROM push_log
+          `SELECT id, player_ids AS playerIds FROM push_log
            WHERE group_id = ? AND event_id IS ? AND topic_key = ?
            ORDER BY created_at DESC LIMIT 1`,
         )
-        .get(normalizedScope.groupId, normalizedScope.eventId, topic.key) as { id: string } | undefined
+        .get(normalizedScope.groupId, normalizedScope.eventId, topic.key) as
+        | { id: string; playerIds: string | null }
+        | undefined
     : undefined;
+  // A shared topic's earlier occurrence may have reached a recipient who is
+  // no longer part of this one (left the event, muted it since); union
+  // rather than replace so their record of it survives in their own history.
+  const storedPlayerIds = existing?.playerIds
+    ? Array.from(new Set([...(JSON.parse(existing.playerIds) as string[]), ...playerIds]))
+    : playerIds;
   const entry: PushLogEntry = {
     id: existing?.id ?? nanoid(),
     groupId: normalizedScope.groupId,
@@ -640,7 +656,7 @@ export function recordPushLog(
         entry.body,
         entry.url,
         entry.audience,
-        JSON.stringify(playerIds),
+        JSON.stringify(storedPlayerIds),
         topic?.key ?? null,
         entry.expiresAt,
         entry.createdAt,

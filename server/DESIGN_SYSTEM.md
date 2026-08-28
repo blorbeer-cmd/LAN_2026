@@ -377,7 +377,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.notification-center` with `.notification-center-panel`, `.notification-center-toolbar` and
   `.notification-center-entry` keeps the full personal history plus single/bulk read/remove state;
   unread entries use the accent edge and elevated background without an additional „Neu“ badge;
-  the two bulk actions share the complete sticky footer width in equal columns below the history.
+  obsolete entries (their underlying workflow resolved, or their own expiry passed) show a quiet
+  `Obsolet`/`Abgelaufen` badge and never count as unread. The sticky footer holds two bulk actions
+  in equal columns, growing to three equal columns only while at least one obsolete entry is
+  present, which adds a targeted „Obsolete aufräumen“ action ahead of the other two.
 - **Connection status** — `.connection-status` is the single global technical-state strip below the
   topbar. A short initial Socket.IO connection stays hidden to avoid startup flicker; offline and
   reconnect states remain visible with explicit German text until a confirmed reconnect hides the
