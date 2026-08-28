@@ -1399,6 +1399,13 @@ eventsRouter.post('/:id/end', resolveEvent, requireGroupRole('admin'), async (re
     groupId: req.group!.id,
     eventId: req.params.id,
   });
+  // Ending an event may have released a Jam session that was still marked
+  // active for it (see endActiveMusicSession in events.ts); refresh anyone
+  // still looking at that event's Jam view.
+  broadcast(Events.musicChanged, { groupId: req.group!.id, eventId: req.params.id }, {
+    groupId: req.group!.id,
+    eventId: req.params.id,
+  });
   res.json(serializeEvent(updated, req.player?.id, req.groupMembership?.role));
 });
 

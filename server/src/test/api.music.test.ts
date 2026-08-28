@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { Response as SuperAgentResponse } from 'superagent';
 import request from 'supertest';
 import { BASE_EVENT_ID, db, DEFAULT_GROUP_ID } from '../db';
-import { createTestApp } from './testApp';
+import { createTestApp, TEST_ADMIN_ID } from './testApp';
 
 const app = createTestApp();
 let controllerToken = '';
@@ -309,4 +309,72 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
     spotifyDisplayName: 'LAN DJ',
   });
   assert.equal(repairedWithoutDownload.status, 201);
+});
+
+test('ending an event releases a Jam session still marked active for it', async () => {
+  const now = Date.now();
+  const eventA = `music-end-a-${now}`;
+  const eventB = `music-end-b-${now}`;
+  for (const [id, name] of [[eventA, 'Music End A'], [eventB, 'Music End B']] as const) {
+    db.prepare(
+      `INSERT INTO events (id, name, starts_at, ends_at, group_id, status, visibility_scope)
+       VALUES (?, ?, ?, ?, ?, 'published', 'participants')`,
+    ).run(id, name, now - 1_000, now + 60_000, DEFAULT_GROUP_ID);
+    db.prepare("INSERT INTO event_participants (event_id, player_id, status) VALUES (?, ?, 'accepted')").run(id, TEST_ADMIN_ID);
+  }
+  db.prepare('UPDATE player_event_contexts SET active_event_id = ?, updated_at = ? WHERE player_id = ?').run(eventA, now, TEST_ADMIN_ID);
+
+  const pairing = await request(app).post('/api/music/pairing').send({});
+  assert.equal(pairing.status, 200);
+  const registered = await request(app).post('/api/music/controller/register').send({
+    pairingCode: pairing.body.code, label: 'Endcheck Pi', spotifyDisplayName: 'Endcheck DJ',
+  });
+  assert.equal(registered.status, 201);
+  const token = registered.body.controllerToken;
+  await request(app).post('/api/music/controller/heartbeat').set('x-music-controller-token', token).send({
+    playback: null,
+    connectionStatus: { spotify: 'connected', message: null },
+  });
+
+  let busy = false;
+  const loop = setInterval(async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      const polled = await request(app).get('/api/music/controller/commands').set('x-music-controller-token', token);
+      const command = polled.body.command;
+      if (command) {
+        await request(app)
+          .post(`/api/music/controller/commands/${command.id}/result`)
+          .set('x-music-controller-token', token)
+          .send({ ok: true, data: controllerData(command.type, command.payload || {}) });
+      }
+    } finally {
+      busy = false;
+    }
+  }, 5);
+
+  try {
+    const started = await request(app).post('/api/music/sessions').send({ deviceId: 'speaker-1' });
+    assert.equal(started.status, 201);
+
+    db.prepare('UPDATE player_event_contexts SET active_event_id = ?, updated_at = ? WHERE player_id = ?')
+      .run(eventB, Date.now(), TEST_ADMIN_ID);
+    const blocked = await request(app).post('/api/music/sessions').send({ deviceId: 'speaker-1' });
+    assert.equal(blocked.status, 409);
+    assert.match(blocked.body.error, /anderen Event/);
+
+    const ended = await request(app).post(`/api/events/${eventA}/end`).send({});
+    assert.equal(ended.status, 200);
+
+    const sessionRow = db.prepare('SELECT status, ended_at FROM music_sessions WHERE id = ?').get(started.body.id) as
+      { status: string; ended_at: number | null };
+    assert.equal(sessionRow.status, 'ended', 'ending the event auto-ends its still-active Jam session');
+    assert.ok(sessionRow.ended_at);
+
+    const restarted = await request(app).post('/api/music/sessions').send({ deviceId: 'speaker-1' });
+    assert.equal(restarted.status, 201, 'a different event can now start its own Jam');
+  } finally {
+    clearInterval(loop);
+  }
 });
