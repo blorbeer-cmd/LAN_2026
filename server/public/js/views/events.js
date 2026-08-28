@@ -53,7 +53,7 @@ export {
 } from '../eventModel.js';
 
 const EVENT_HELP = 'Eventtyp, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
-const KIOSK_HELP = 'Zeigt Live-Status, Vote, Rang und Turnier; ein eigener Token ist erforderlich.';
+const KIOSK_HELP = 'Jedes LAN-Event besitzt ein eigenes Kiosk-Konto. Alle Konten verwenden das gemeinsam konfigurierte Kiosk-Passwort und können ausschließlich die TV-Ansicht öffnen.';
 const expandedEventParticipants = new Set();
 // Mirrors foodOrders.js's Historie collapse: ended events start collapsed and
 // this survives the section's own live re-renders.
@@ -68,9 +68,29 @@ globalThis.window?.addEventListener('respawn:identity-changed', () => {
 });
 
 function renderKioskSection() {
+  const accounts = (state.managedEvents || [])
+    .filter((event) => event.eventType === 'lan' && !event.isBase && !event.isOutsideEvents)
+    .map((event) => {
+      const username = `kiosk-${event.id}`;
+      return `
+        <div class="card stack">
+          <div class="row-between">
+            <strong>${escapeHtml(event.name)}</strong>
+            ${eventStatusBadgeHtml(event)}
+          </div>
+          <div>
+            <span class="field-label">Kiosk-Konto</span>
+            <code>${escapeHtml(username)}</code>
+          </div>
+          <a href="/kiosk.html?account=${encodeURIComponent(username)}" target="_blank" rel="noopener" class="btn btn-block">Kiosk für dieses Event öffnen</a>
+        </div>`;
+    })
+    .join('');
   return `
     <section class="card stack grouped-page-section">
-      <a href="/kiosk.html" target="_blank" rel="noopener" class="btn btn-block">Kiosk-Ansicht öffnen</a>
+      <p class="muted">Für jedes LAN-Event wird das Kiosk-Konto automatisch angelegt. Alle verwenden dasselbe konfigurierte Passwort.</p>
+      <a href="/kiosk.html" target="_blank" rel="noopener" class="btn btn-block">Kiosk-Anmeldung öffnen</a>
+      ${accounts || emptyStateHtml('Noch kein LAN-Event vorhanden.')}
     </section>
   `;
 }

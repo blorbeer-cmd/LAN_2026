@@ -191,11 +191,14 @@ angelegt werden (`BOOTSTRAP_ADMIN_<n>_NAME` / `BOOTSTRAP_ADMIN_<n>_PASSWORD`). D
 idempotent und überschreibt kein bereits gesetztes Passwort; Details und Betriebshinweise stehen in
 [`../docs/BOOTSTRAP-ADMINS.md`](../docs/BOOTSTRAP-ADMINS.md).
 
-Der gemeinsam genutzte Bildschirm erhält einen separaten `KIOSK_TOKEN` und wird
-einmalig über `/kiosk.html?token=<KIOSK_TOKEN>` eingerichtet. Dieser Zugang ist serverseitig auf die
-vom Dashboard benötigten GET-Endpunkte und das Socket-Ereignis `kiosk:subscribe` begrenzt. Ohne
-`KIOSK_TOKEN` bleibt der Kiosk gesperrt. Die spätere eventbezogene Token-Ausgabe
-aus dem User-Management-Konzept ersetzt diesen vorläufigen installationsweiten Token.
+Für jedes LAN-Event legt der Server automatisch ein eigenes Konto `kiosk-<eventId>` an; bestehende
+LAN-Events werden beim Upgrade nachgezogen. Die Konten stehen in der Admin-Kioskverwaltung und
+verwenden alle `KIOSK_PASSWORD` als gemeinsames Passwort. Ist diese Variable nicht gesetzt, dient
+`KIOSK_TOKEN` aus Kompatibilitätsgründen zugleich als gemeinsames Passwort. Eine erfolgreiche
+Anmeldung auf `/kiosk.html` erzeugt ausschließlich einen zufälligen, exakt auf dieses Event
+begrenzten Kiosk-Token: kein Spielerkonto, keine Browser-Session und kein Zugriff auf andere APIs.
+Der direkte Aufruf `/kiosk.html?token=<KIOSK_TOKEN>` bleibt für bereits eingerichtete Displays
+kompatibel. Ohne `KIOSK_PASSWORD` und `KIOSK_TOKEN` bleibt der Kiosk gesperrt.
 
 Eine Instanz bedient genau eine Freundesgruppe (`docs/plans/reset-single-group.md`); es gibt keine
 API oder Oberfläche mehr, um weitere Gruppen anzulegen, ihnen beizutreten oder sie zu verlassen. Die

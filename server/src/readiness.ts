@@ -126,25 +126,29 @@ function processMappingsCheck(groupId: string): ReadinessCheck {
 }
 
 function kioskCheck(groupId: string): ReadinessCheck {
+  const accounts = config.kioskPassword
+    ? (
+        db.prepare('SELECT COUNT(*) AS count FROM kiosk_accounts WHERE group_id = ?').get(groupId) as {
+          count: number;
+        }
+      ).count
+    : 0;
   const persisted = (
     db.prepare('SELECT COUNT(*) AS count FROM kiosk_tokens WHERE group_id = ? AND revoked_at IS NULL').get(groupId) as {
       count: number;
     }
   ).count;
   const environmentToken = groupId === DEFAULT_GROUP_ID && Boolean(config.kioskToken);
-  const configured = persisted + (environmentToken ? 1 : 0);
+  const configured = accounts + persisted + (environmentToken ? 1 : 0);
   return {
     id: 'kiosk',
     label: 'Kiosk',
     status: configured > 0 ? 'ready' : 'warning',
     summary: configured > 0 ? `${configured} aktiver Kiosk-Zugang` : 'Kein aktiver Kiosk-Zugang.',
-    // No frontend surface issues kiosk tokens — not before and not after the
-    // area reorganisation — so this names the two mechanisms that actually
-    // exist instead of pointing at a screen.
     details:
       configured > 0
         ? []
-        : ['Vor dem TV-Aufbau einen Kiosk-Zugang einrichten: KIOSK_TOKEN in der Serverkonfiguration setzen oder einen Kiosk-Token über die Admin-API ausstellen.'],
+        : ['Vor dem TV-Aufbau KIOSK_PASSWORD oder KIOSK_TOKEN in der Serverkonfiguration setzen.'],
   };
 }
 

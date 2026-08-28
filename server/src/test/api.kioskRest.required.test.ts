@@ -18,6 +18,7 @@ test('a token-only kiosk loads one exact event and honours archival', () => {
     const { createHash } = require('crypto');
     const { createApp } = require(${JSON.stringify(APP_JS_PATH)});
     const { BASE_EVENT_ID, db } = require(${JSON.stringify(DB_JS_PATH)});
+    const { createEvent } = require(${JSON.stringify(path.join(__dirname, '..', 'events.js'))});
 
     const KIOSK = 'required-kiosk-token';
     const GROUP = 'default-group';
@@ -33,16 +34,69 @@ test('a token-only kiosk loads one exact event and honours archival', () => {
     // NOT NULL column and the recipient trigger (json_each('[]') is empty),
     // and the kiosk banner query filters on audience/scope, never player_ids.
     let seq = 0;
-    function pushRow(title, eventId) {
+    function pushRow(title, eventId, createdAt = Date.now() + seq) {
       db.prepare(
         "INSERT INTO push_log (id, group_id, event_id, title, body, url, audience, player_ids, topic_key, expires_at, resolved_at, created_at) " +
         "VALUES (?, ?, ?, ?, '', NULL, 'all', '[]', NULL, NULL, NULL, ?)"
-      ).run('push-' + seq, GROUP, eventId, title, Date.now() + seq);
+      ).run('push-' + seq, GROUP, eventId, title, createdAt);
       seq += 1;
     }
 
     (async () => {
       const app = createApp();
+
+      // Every real LAN gets a separate identity, while a general meeting
+      // does not. The identity is not a player and its password login only
+      // returns an event-scoped kiosk token — never a browser session.
+      const now = Date.now();
+      const lanEvent = createEvent('Automatisches Kiosk-LAN', {
+        startsAt: now,
+        endsAt: now + 3600000,
+        eventTypeKey: 'lan',
+      });
+      const generalEvent = createEvent('Allgemeines Treffen', {
+        startsAt: now,
+        endsAt: now + 3600000,
+        eventTypeKey: 'general',
+      });
+      const kioskAccount = db.prepare(
+        'SELECT username FROM kiosk_accounts WHERE event_id = ?'
+      ).get(lanEvent.id);
+      assert.equal(kioskAccount.username, 'kiosk-' + lanEvent.id);
+      assert.equal(db.prepare('SELECT 1 FROM kiosk_accounts WHERE event_id = ?').get(generalEvent.id), undefined);
+      assert.equal(db.prepare('SELECT 1 FROM players WHERE name = ?').get(kioskAccount.username), undefined);
+
+      const badLogin = await request(app).post('/api/kiosk/login').send({
+        username: kioskAccount.username,
+        password: 'wrong',
+      });
+      assert.equal(badLogin.status, 401);
+      const login = await request(app).post('/api/kiosk/login').send({
+        username: kioskAccount.username,
+        password: 'shared-kiosk-password',
+      });
+      assert.equal(login.status, 200, JSON.stringify(login.body));
+      assert.equal(login.body.eventId, lanEvent.id);
+      assert.ok(login.body.token);
+      assert.equal(
+        (await request(app).get('/api/live').set('x-kiosk-mode', '1').set('x-access-token', login.body.token)).status,
+        200,
+      );
+      assert.equal(
+        (await request(app).get('/api/players').set('x-kiosk-mode', '1').set('x-access-token', login.body.token)).status,
+        401,
+      );
+      pushRow('Kiosk-Konto Durchsage', lanEvent.id);
+      const accountPush = await request(app)
+        .get('/api/push/last')
+        .set('x-kiosk-mode', '1')
+        .set('x-access-token', login.body.token);
+      assert.equal(accountPush.status, 200);
+      assert.equal(accountPush.body.entry.title, 'Kiosk-Konto Durchsage');
+      assert.equal(
+        (await request(app).post('/api/auth/login').send({ name: kioskAccount.username, password: 'shared-kiosk-password' })).status,
+        401,
+      );
 
       // #1 — /push/last must be a read-only kiosk path; before the fix a
       // token-only kiosk 401s here and its whole Promise.all refresh fails.
@@ -70,6 +124,14 @@ test('a token-only kiosk loads one exact event and honours archival', () => {
       assert.equal(afterEvent.body.entry.title, 'Aktuelles Event');
       assert.equal((await kioskGet(app, '/api/push/last')).body.entry.title, 'Allgemein');
 
+      // SQLite timestamps have millisecond precision. Two pushes created in
+      // one millisecond still have a deterministic newest entry: the row
+      // inserted last, rather than whichever tie the query planner returns.
+      const sameTimestamp = Date.now() + 100;
+      pushRow('Gleichstand alt', 'kiosk-evt', sameTimestamp);
+      pushRow('Gleichstand neu', 'kiosk-evt', sameTimestamp);
+      assert.equal((await eventKioskGet(app, '/api/push/last')).body.entry.title, 'Gleichstand neu');
+
       // #2 — the env token keeps reading until the resolved group is archived,
       // then every kiosk GET is rejected (parity with the socket delivery).
       const beforeArchive = await kioskGet(app, '/api/live');
@@ -93,6 +155,7 @@ test('a token-only kiosk loads one exact event and honours archival', () => {
       DB_FILE: ':memory:',
       COOKIE_SECURE: '0',
       KIOSK_TOKEN: 'required-kiosk-token',
+      KIOSK_PASSWORD: 'shared-kiosk-password',
       ADMIN_RECOVERY_CODE: 'kiosk-rest-recovery-code',
     },
     encoding: 'utf8',

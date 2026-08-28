@@ -627,6 +627,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   behavior use adjacent info tooltips; the monitor explanation sits directly beside „Sitzplan“
   instead of occupying a separate row below the plan.
 - **Kiosk dashboard** — Kiosk is a fixed, read-only TV canvas with no page or card scrollbars. Its
+  header offers a keyboard-accessible „Vollbild“ toggle and reflects whether browser fullscreen is
+  currently active. Browsers without Fullscreen API support omit the unavailable control.
+  Its
   four primary cards remain a 2×2 grid and distribute live players, rankings, tournament standings,
   groups and matches across internal columns, ordered Live-Status and Rangliste above Abstimmung
   and Turnier. Vote status is a centered icon/text stack. Only the
@@ -942,8 +945,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   An optional date-only payment deadline starts reminders on that day; without one, contributions
   become eligible two hours after acceptance. Further reminders run at most once per rolling two-hour
   window, using durable reminder state independent of push history. TV-Kiosk (Admin's „Kioskverwaltung“
-  card, not an Orga tab) is deliberately minimal — one grouped-page-section with a single
-  full-width link that opens `/kiosk.html` in a new tab.
+  card, not an Orga tab) stays one grouped section but lists one automatic account for every LAN
+  event, including its stable `kiosk-<eventId>` username and a prefilled link to `/kiosk.html`.
+  The standalone page shows a centered account/password card until its event-scoped credential is
+  established; this identity never becomes a player or a regular app session.
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
   grid. „Nach LAN“ uses one directly labeled event dropdown and shows every overall placement for
   the selected LAN, followed by tournament winners in the same leaderboard-row structure. Blue and

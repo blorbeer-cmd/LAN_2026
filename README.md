@@ -199,7 +199,7 @@ SSH (Port 22) bleibt offen, aber nur Key-Auth, kein Root-Login, `fail2ban`.
    | `SSH_PRIVATE_KEY` | Inhalt von `respawn-deploy` (**ohne** `.pub`) |
    | `CF_TUNNEL_TOKEN` | Token aus Schritt 2 |
    | `APP_ADMIN_RECOVERY_CODE` | starkes, einmaliges Bootstrap-/Recovery-Secret, z. B. `openssl rand -hex 32`; nicht an Teilnehmende verteilen |
-   | `APP_KIOSK_TOKEN` | eigener starker Read-only-Token für `/kiosk.html`; z. B. `openssl rand -hex 32` |
+   | `APP_KIOSK_TOKEN` | starkes gemeinsames Passwort für die automatischen LAN-Kiosk-Konten und kompatibler Read-only-Token; z. B. `openssl rand -hex 32` |
    | `GHCR_PULL_TOKEN` | GitHub → Settings → Developer settings → **Tokens (classic)** (fine-grained Tokens haben **kein** Packages-Permission – GitHub-seitige Lücke, nicht behebbar; und da das Repo nicht dir gehört, tauchte es dort im Repo-Auswahldialog ohnehin nicht auf). Scopes: `read:packages` + `repo` (`repo` sorgt dafür, dass GitHub deine bestehenden Collaborator-Rechte auf dem privaten Repo für das Package durchreicht). Ablaufdatum setzen und dir merken, das Secret + `.env` auf dem Server (siehe "Alltag" unten) danach zu erneuern. **Bewusst kein Fix "Package auf public stellen"** – das Image bleibt privat, der Server authentifiziert sich stattdessen selbst beim Pullen. |
 
 4. **`Provision Hetzner Server`-Workflow manuell starten** (Actions-Tab → Workflow auswählen →
@@ -264,7 +264,8 @@ Recovery-Code oder ein bereits beanspruchtes Admin-Konto.
 | `BACKUP_RETENTION` | `20` | Maximale Anzahl persistenter Snapshots; ältere Dateien werden nach einem erfolgreichen Backup entfernt. |
 | `ADMIN_RECOVERY_CODE` | *(leer)* | Starkes Bootstrap-/Recovery-Secret für den ersten beziehungsweise letzten Admin. In Produktion Pflicht. |
 | `BOOTSTRAP_ADMIN_<n>_NAME` / `BOOTSTRAP_ADMIN_<n>_PASSWORD` | *(leer)* | Optionale, beim Start angelegte fertige Admin-Konten (Slot `n` = 1…20), damit du nicht den Recovery-Weg gehen musst. Idempotent, überschreibt kein bestehendes Passwort. Details in [`docs/BOOTSTRAP-ADMINS.md`](docs/BOOTSTRAP-ADMINS.md). |
-| `KIOSK_TOKEN` | *(leer = Kiosk gesperrt)* | Separater Read-only-Zugang für die Kiosk-GET-Endpunkte und `kiosk:subscribe`; Aufruf als `/kiosk.html?token=...`. |
+| `KIOSK_PASSWORD` | *(fällt auf `KIOSK_TOKEN` zurück)* | Gemeinsames Passwort der automatisch für alle LAN-Events angelegten Konten `kiosk-<eventId>`. Die Anmeldung auf `/kiosk.html` erzeugt nur einen eventgebundenen Read-only-Token. |
+| `KIOSK_TOKEN` | *(leer = Kiosk gesperrt)* | Kompatibler installationsweiter Read-only-Token für Kiosk-GET-Endpunkte und `kiosk:subscribe`; dient ohne separates `KIOSK_PASSWORD` zugleich als gemeinsames Kiosk-Passwort. |
 | `COOKIE_SECURE` | `1` | Sichere Session-Cookies; nur für bewusstes lokales HTTP-Hosting mit `0` abschalten. |
 | `OFFLINE_TIMEOUT_MS` | `60000` | Nach wie vielen ms ohne Agent-Meldung ein Spieler als „offline" gilt. |
 | `EXPECTED_AGENT_VERSION` | `1.0.0` | Version, die die LAN-Bereitschaft als aktuell bewertet. Abweichende oder unbekannte Agent-Versionen werden vor dem Event hervorgehoben. |

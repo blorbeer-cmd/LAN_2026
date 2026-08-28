@@ -128,6 +128,10 @@ export async function fetchBlob(path, options = {}) {
 
 export const api = {
   meta: () => apiFetch('/api/meta'),
+
+  kiosk: {
+    login: (data) => apiFetch('/api/kiosk/login', { method: 'POST', body: JSON.stringify(data) }),
+  },
   me: () => apiFetch('/api/me'),
 
   onboarding: {

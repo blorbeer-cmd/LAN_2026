@@ -13,7 +13,7 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
-export function issueKioskToken(groupId: string, requestedEventId: string | null, createdBy: string, label: string | null): { token: string; scope: KioskTokenScope } {
+export function issueKioskToken(groupId: string, requestedEventId: string | null, createdBy: string | null, label: string | null): { token: string; scope: KioskTokenScope } {
   const eventId = requestedEventId ?? BASE_EVENT_ID;
   const event = db.prepare('SELECT 1 FROM events WHERE id = ? AND group_id = ?').get(eventId, groupId);
   if (!event) throw new Error('Kiosk token requires a matching event.');

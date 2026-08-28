@@ -13,6 +13,36 @@
   flex-direction: column;
 }
 
+.kiosk-login-screen {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+}
+.kiosk-login-card {
+  width: min(100%, 30rem);
+  padding: var(--space-6);
+}
+.kiosk-login-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.kiosk-login-brand h1,
+.kiosk-login-brand p {
+  margin: 0;
+}
+.kiosk-login-card label {
+  display: block;
+}
+.kiosk-login-card input {
+  width: 100%;
+}
+.kiosk-login-card .form-error {
+  margin: 0;
+  color: var(--danger);
+}
+
 .kiosk-header {
   display: flex;
   align-items: center;
@@ -25,6 +55,14 @@
 }
 .kiosk-header .topbar-title {
   font-size: var(--font-size-xl);
+}
+.kiosk-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.kiosk-header-actions .btn {
+  min-height: var(--tap-target-size);
 }
 .kiosk-clock {
   font-variant-numeric: tabular-nums;

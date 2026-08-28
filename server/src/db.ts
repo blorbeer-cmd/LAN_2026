@@ -4714,6 +4714,43 @@ registerMigration({
   up: keyCalendarStateByPeriod,
 });
 
+// Kiosk identities deliberately live outside players. That makes it
+// impossible for them to enter rosters, rankings, statistics, invitations or
+// push recipient lists, while their login can still mint the narrow kiosk
+// token already enforced by the HTTP and Socket.IO boundaries.
+function addPerEventKioskAccounts(): void {
+  db.exec(`
+    CREATE TABLE kiosk_accounts (
+      event_id      TEXT PRIMARY KEY,
+      group_id      TEXT NOT NULL,
+      username      TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      created_at    INTEGER NOT NULL,
+      last_login_at INTEGER,
+      FOREIGN KEY (group_id, event_id) REFERENCES events(group_id, id) ON DELETE CASCADE
+    );
+    INSERT INTO kiosk_accounts (event_id, group_id, username, created_at, last_login_at)
+      SELECT id, group_id, 'kiosk-' || id, COALESCE(starts_at, 0), NULL
+      FROM events
+      WHERE event_type_key = 'lan'
+        AND group_id IS NOT NULL
+        AND id NOT IN ('${BASE_EVENT_ID}', '${OUTSIDE_EVENTS_ID}');
+    CREATE TRIGGER create_kiosk_account_for_lan_event
+      AFTER INSERT ON events
+      WHEN NEW.event_type_key = 'lan'
+        AND NEW.group_id IS NOT NULL
+        AND NEW.id NOT IN ('${BASE_EVENT_ID}', '${OUTSIDE_EVENTS_ID}')
+      BEGIN
+        INSERT OR IGNORE INTO kiosk_accounts (event_id, group_id, username, created_at, last_login_at)
+        VALUES (NEW.id, NEW.group_id, 'kiosk-' || NEW.id, COALESCE(NEW.starts_at, 0), NULL);
+      END;
+  `);
+}
+registerMigration({
+  version: 95,
+  name: 'add per-event kiosk accounts',
+  up: addPerEventKioskAccounts,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin
