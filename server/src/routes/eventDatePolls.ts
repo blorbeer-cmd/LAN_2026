@@ -10,8 +10,10 @@ import { writeAdminAudit } from '../adminAudit';
 import { broadcast, Events } from '../realtime';
 import {
   EVENT_POLL_REMINDER_TOPIC_PREFIX,
+  EVENT_POLL_OPEN_TOPIC_PREFIX,
   notifyPlayers,
   resolvePushTopic,
+  updatePushTopicExpiry,
 } from '../push';
 import { isValidIsoDate } from '../localDate';
 import type { GroupRole } from '../groups';
@@ -276,9 +278,28 @@ function loadPollOr404(
   return materialized.poll;
 }
 
-function notifyInvitees(groupId: string, eventId: string, playerIds: string[], title: string, body: string, url: string): void {
-  if (playerIds.length === 0) return;
-  notifyPlayers(playerIds, { title, body, url }, 'direct', undefined, { groupId, eventId });
+// One notifyPlayers call per recipient (not a single batch call sharing one
+// topic) so each invitee's "Neue Abstimmung"/"wieder geöffnet" notice keys to
+// its own deduplicated row (pollOpenTopicKey below) - see the comment there.
+function notifyInvitees(
+  groupId: string,
+  eventId: string,
+  playerIds: string[],
+  title: string,
+  body: string,
+  url: string,
+  pollId: string,
+  expiresAt: number | null,
+): void {
+  for (const playerId of playerIds) {
+    notifyPlayers(
+      [playerId],
+      { title, body, url },
+      'direct',
+      { key: pollOpenTopicKey(pollId, playerId), expiresAt },
+      { groupId, eventId },
+    );
+  }
 }
 
 function pollReminderTopicKey(pollId: string, playerId?: string): string {
@@ -286,8 +307,27 @@ function pollReminderTopicKey(pollId: string, playerId?: string): string {
   return playerId ? `${base}:${playerId}` : base;
 }
 
+function pollUpdateTopicPrefix(pollId: string): string {
+  return `event-poll-updated:${pollId}`;
+}
+
 function pollUpdateTopicKey(pollId: string, playerId: string): string {
-  return `event-poll-updated:${pollId}:${playerId}`;
+  return `${pollUpdateTopicPrefix(pollId)}:${playerId}`;
+}
+
+// Per-recipient like the reminder/update topics above (not one topic shared
+// by every invitee): a shared row's title/body/resolved state applies to
+// every attached recipient uniformly, so it cannot represent one invitee
+// having answered, muted the event or missed a later reopen while another
+// hasn't. It is still a deduplicated topic (isDeduplicatedPushTopic) per
+// recipient, so a reopen refreshes that one player's existing row instead of
+// leaving their earlier, now-resolved notice behind as a second entry.
+function pollOpenTopicPrefix(pollId: string): string {
+  return `${EVENT_POLL_OPEN_TOPIC_PREFIX}${pollId}`;
+}
+
+function pollOpenTopicKey(pollId: string, playerId: string): string {
+  return `${pollOpenTopicPrefix(pollId)}:${playerId}`;
 }
 
 function notifyPreviouslyAnsweredPlayers(event: EventRow, poll: DatePollRow, playerIds: string[]): void {
@@ -326,12 +366,23 @@ function notifyPollReminder(event: EventRow, poll: DatePollRow, playerId: string
   );
 }
 
-function resolvePollReminders(event: EventRow, pollId: string, playerId?: string): void {
-  resolvePushTopic(
-    pollReminderTopicKey(pollId, playerId),
-    playerId === undefined,
-    { groupId: event.group_id!, eventId: event.id },
-  );
+// Resolves a poll's outstanding notifications. With a playerId (someone just
+// completed their response), only that player's own reminder, "Neue
+// Abstimmung"/"wieder geöffnet" notice and any outstanding "Abstimmung
+// ergänzt" notice resolve - the poll itself is still open for everyone else.
+// Without one (group-wide close/delete), every player's copy of all three
+// resolves together, so a returning player's notification center can mark
+// the whole poll as no longer actionable.
+function resolvePollNotifications(event: EventRow, pollId: string, playerId?: string): void {
+  const scope = { groupId: event.group_id!, eventId: event.id };
+  resolvePushTopic(pollReminderTopicKey(pollId, playerId), playerId === undefined, scope);
+  if (playerId === undefined) {
+    resolvePushTopic(pollOpenTopicPrefix(pollId), true, scope);
+    resolvePushTopic(pollUpdateTopicPrefix(pollId), true, scope);
+  } else {
+    resolvePushTopic(pollOpenTopicKey(pollId, playerId), false, scope);
+    resolvePushTopic(pollUpdateTopicKey(pollId, playerId), false, scope);
+  }
 }
 
 // materializeExpiredPollIfNeeded() deliberately performs only the atomic
@@ -347,7 +398,7 @@ function finishLazyDeadlineClose(event: EventRow, pollId: string): void {
     targetId: pollId,
     details: { eventId: event.id },
   });
-  resolvePollReminders(event, pollId);
+  resolvePollNotifications(event, pollId);
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
 }
 
@@ -539,6 +590,8 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
     'Neue Abstimmung',
     `${event.name}: ${(title?.trim() || 'Neue Abstimmung')} — bitte antworten.`,
     `/#eventPolls/${result.poll.id}`,
+    result.poll.id,
+    result.poll.response_due_at,
   );
   res.status(201).json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
 });
@@ -635,6 +688,19 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
     details: { eventId: event.id, addedOptionCount: result.addedOptionCount },
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+  if (responseDueOn !== undefined) {
+    // Keeps the "Neue Abstimmung" notification's own expiry in step with a
+    // deadline extension - otherwise it would read as obsolete (and be
+    // swept up by "Obsolete aufräumen") at the old deadline even though the
+    // poll itself is still open and answerable. The per-recipient "Abstimmung
+    // ergänzt" notices from an earlier option addition need the same sync:
+    // without it, a deadline-only extension leaves their expiry at the old
+    // date, so they'd read as obsolete while that recipient's response is
+    // still incomplete.
+    const pollScope = { groupId: event.group_id!, eventId: event.id };
+    updatePushTopicExpiry(pollOpenTopicPrefix(poll.id), result.poll.response_due_at, pollScope, true);
+    updatePushTopicExpiry(pollUpdateTopicPrefix(poll.id), result.poll.response_due_at, pollScope, true);
+  }
   if (result.addedOptionCount > 0) {
     notifyPreviouslyAnsweredPlayers(event, result.poll, result.previouslyAnsweredPlayerIds);
   }
@@ -718,7 +784,7 @@ eventDatePollsRouter.put('/:pollId/my-responses', resolveEventForPolls, (req, re
   if (!result.ok) {
     return res.status(result.code === 'not_open' ? 409 : result.code === 'not_invitee' ? 404 : 400).json({ error: result.error });
   }
-  if (hasAnsweredDatePoll(poll.id, playerId)) resolvePollReminders(event, poll.id, playerId);
+  if (hasAnsweredDatePoll(poll.id, playerId)) resolvePollNotifications(event, poll.id, playerId);
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
   res.json(serializeDatePoll(getDatePollForEvent(event.id, poll.id)!, event, playerId, req.groupMembership?.role));
 });
@@ -768,7 +834,7 @@ eventDatePollsRouter.post('/:pollId/close', resolveEventForPolls, (req, res) => 
   }
   const result = closeDatePoll(poll);
   if (!result.ok) return res.status(409).json({ error: result.error });
-  resolvePollReminders(event, poll.id);
+  resolvePollNotifications(event, poll.id);
 
   writeAdminAudit({
     actorPlayerId: playerId,
@@ -817,7 +883,16 @@ eventDatePollsRouter.post('/:pollId/reopen', resolveEventForPolls, (req, res) =>
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
   const invitees = acceptedParticipantIds(event.id).filter((id) => id !== playerId);
-  notifyInvitees(event.group_id!, event.id, invitees, 'Abstimmung', `${event.name}: Die Abstimmung wurde wieder geöffnet.`, `/#eventPolls/${poll.id}`);
+  notifyInvitees(
+    event.group_id!,
+    event.id,
+    invitees,
+    'Abstimmung',
+    `${event.name}: Die Abstimmung wurde wieder geöffnet.`,
+    `/#eventPolls/${poll.id}`,
+    poll.id,
+    result.poll.response_due_at,
+  );
   res.json(serializeDatePoll(result.poll, event, playerId, req.groupMembership?.role));
 });
 
@@ -833,17 +908,11 @@ eventDatePollsRouter.delete('/:pollId', resolveEventForPolls, (req, res) => {
   if (!canManageDatePoll(poll, event, playerId, req.groupMembership?.role)) {
     return res.status(403).json({ error: 'Nur der Ersteller oder eine berechtigte Vertretung kann löschen.' });
   }
-  const series = getDatePolls(event.id).filter((entry) => entry.decision_key === poll.decision_key);
-  const inviteesByPoll = new Map(series.map((entry) => [entry.id, getDatePollInvitees(entry.id)]));
   const deletedPollIds = deleteDatePollSeries(poll);
   for (const deletedPollId of deletedPollIds) {
-    resolvePollReminders(event, deletedPollId);
-    for (const invitee of inviteesByPoll.get(deletedPollId) ?? []) {
-      resolvePushTopic(pollUpdateTopicKey(deletedPollId, invitee.player_id), false, {
-        groupId: event.group_id!,
-        eventId: event.id,
-      });
-    }
+    // Resolves every player's reminder, "Neue Abstimmung"/"wieder geöffnet"
+    // and "Abstimmung ergänzt" notice for this round in one call.
+    resolvePollNotifications(event, deletedPollId);
   }
 
   writeAdminAudit({

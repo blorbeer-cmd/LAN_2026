@@ -430,6 +430,8 @@ export const api = {
       apiFetch(`/api/push/${id}`, { method: 'DELETE', body: JSON.stringify({ playerId }) }),
     hideAll: (playerId) =>
       apiFetch('/api/push', { method: 'DELETE', body: JSON.stringify({ playerId }) }),
+    hideResolved: (playerId) =>
+      apiFetch('/api/push/resolved', { method: 'DELETE', body: JSON.stringify({ playerId }) }),
   },
 
   agent: {

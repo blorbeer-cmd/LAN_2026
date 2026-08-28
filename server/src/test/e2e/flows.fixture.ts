@@ -3487,12 +3487,33 @@ flowTest('community', 'Durchsage: notification center can navigate, mark read an
   await page.click('#notifications-btn');
   const endedNotification = page.locator('.notification-center-entry:has-text("Turnier startet gleich!")');
   await endedNotification.waitFor();
-  await page.waitForSelector('.notification-center-entry.is-unread:has-text("Turnier startet gleich!")');
-  await page.click('[data-notifications-seen-all]');
-  await page.waitForFunction(() => document.querySelectorAll('.notification-center-entry.is-unread').length === 0);
-  await page.click('[data-notifications-hide-all]');
-  await page.click('[data-confirm]');
-  await page.click('#notifications-btn');
+  // Ending the broadcast before anyone opened this notification resolves it
+  // server-side (resolvePushTopic in routes/broadcasts.ts): the center shows
+  // it as already settled rather than as something still needing attention,
+  // even though it was never explicitly marked read.
+  await endedNotification.locator('text=Obsolet').waitFor();
+  assert.ok(!((await endedNotification.getAttribute('class')) ?? '').includes('is-unread'));
+  // "Alle gelesen" has nothing to do here either: every visible entry is
+  // already obsolete, so it stays disabled instead of offering a click with
+  // no visible effect.
+  assert.ok(await page.isDisabled('[data-notifications-seen-all]'));
+  // The dedicated cleanup action only ever removes settled entries like this
+  // one, leaving anything still open untouched.
+  await page.click('[data-notifications-hide-resolved]');
+  await endedNotification.waitFor({ state: 'detached' });
+  // Earlier flows in this shared fixture may have left their own, unrelated
+  // entries in this player's history — clear those the regular way so the
+  // panel is guaranteed empty for the next flow, regardless of what "Obsolete
+  // aufräumen" already removed above.
+  if ((await page.locator('.notification-center-entry').count()) > 0) {
+    await page.click('[data-notifications-hide-all]');
+    // Confirming lands a pointerdown outside `.notification-center`, which the
+    // panel's own document-level listener reads as "click outside" and closes
+    // it — even though the deletion underneath still goes through. Reopen it
+    // to actually observe the resulting empty state below.
+    await page.click('[data-confirm]');
+    await page.click('#notifications-btn');
+  }
   await page.waitForSelector('text=Keine Mitteilungen.');
   await page.click('[data-notification-close]');
 
