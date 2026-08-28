@@ -636,6 +636,50 @@ test('manual reminders target only confirmed participants who have not answered 
   assert.ok(repeatedPushes[0].createdAt > 1, 'the existing reminder rises to the top');
 });
 
+// Regression for a notification-center gap: "Neue Abstimmung" used to carry
+// no topic key at all, so closing the poll could never resolve it - it sat
+// in a returning player's history looking exactly as actionable as it did
+// the day the poll opened. Reopening must give the reused topic key a fresh,
+// unresolved occurrence rather than leaving it stuck resolved from the
+// earlier close.
+test('closing a poll resolves its "Neue Abstimmung" notification; reopening reactivates it', async () => {
+  const alice = 'poll-open-notify-alice';
+  const bob = 'poll-open-notify-bob';
+  createMember(alice, 'Poll Open Notify Alice');
+  createMember(bob, 'Poll Open Notify Bob');
+  const eventId = await createEvent('Poll Open Notify Event', [alice, bob]);
+  const created = await createPoll(eventId, alice);
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const topicKey = `event-poll-open:${created.body.id}`;
+
+  const openLog = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const openEntry = openLog.body.entries.find((entry: { title: string }) => entry.title === 'Neue Abstimmung');
+  assert.ok(openEntry, 'bob was notified about the new poll');
+  assert.equal(openEntry.resolvedAt, null);
+
+  const closed = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/close`)
+    .set('x-test-player-id', alice);
+  assert.equal(closed.status, 200, JSON.stringify(closed.body));
+  const afterClose = db
+    .prepare('SELECT resolved_at AS resolvedAt FROM push_log WHERE topic_key = ? AND resolved_at IS NOT NULL')
+    .get(topicKey) as { resolvedAt: number } | undefined;
+  assert.ok(afterClose, 'the shared "Neue Abstimmung" topic is resolved once the poll closes');
+  const closedLog = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const closedEntry = closedLog.body.entries.find((entry: { id: string }) => entry.id === openEntry.id);
+  assert.ok(closedEntry.resolvedAt, 'the notification center entry itself now reflects the resolution');
+
+  const reopened = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/reopen`)
+    .set('x-test-player-id', alice)
+    .send({});
+  assert.equal(reopened.status, 200, JSON.stringify(reopened.body));
+  const reopenLog = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const reopenEntry = reopenLog.body.entries.find((entry: { title: string }) => entry.title === 'Abstimmung');
+  assert.ok(reopenEntry, 'bob was notified the poll reopened');
+  assert.equal(reopenEntry.resolvedAt, null, 'the reopened poll is actionable again, not stuck resolved');
+});
+
 test('automatic poll reminders are scheduled two days and two hours before the deadline', async () => {
   const alice = 'poll-auto-reminder-alice';
   createMember(alice, 'Poll Auto Reminder Alice');
@@ -854,6 +898,13 @@ test('expired rounds close lazily with audit, realtime and reminder cleanup on l
       .prepare('SELECT resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?')
       .get(topicKey) as { resolvedAt: number | null };
     assert.ok(topic.resolvedAt, 'the reminder topic is no longer active after the deadline close');
+    const openTopic = db
+      .prepare('SELECT resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?')
+      .get(`event-poll-open:${pollId}`) as { resolvedAt: number | null };
+    assert.ok(
+      openTopic.resolvedAt,
+      'the "Neue Abstimmung" notification is also resolved so a returning player sees the poll as no longer actionable',
+    );
     assert.equal(signals.filter((event) => event === Events.eventsChanged).length, 1);
   };
 

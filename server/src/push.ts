@@ -123,6 +123,7 @@ export interface PushLogEntry {
   url: string | null;
   audience: PushAudience;
   expiresAt: number | null;
+  resolvedAt: number | null;
   createdAt: number;
 }
 
@@ -335,7 +336,7 @@ export function getPushLogEntriesFor(
       `SELECT id, group_id AS groupId, event_id AS eventId, event_name_snapshot AS eventName,
               notification_type AS notificationType, target_id AS targetId, title, body, url, audience,
               player_ids AS playerIds, topic_key AS topicKey, expires_at AS expiresAt,
-              created_at AS createdAt,
+              resolved_at AS resolvedAt, created_at AS createdAt,
               EXISTS (
                 SELECT 1 FROM push_log_seen
                 WHERE push_log_seen.push_id = push_log.id AND push_log_seen.player_id = ?
@@ -370,7 +371,8 @@ export function getPushLogEntriesForPlayer(
     .prepare(
       `SELECT id, group_id AS groupId, event_id AS eventId, event_name_snapshot AS eventName,
               notification_type AS notificationType, target_id AS targetId, title, body, url, audience,
-              player_ids AS playerIds, topic_key AS topicKey, expires_at AS expiresAt, created_at AS createdAt,
+              player_ids AS playerIds, topic_key AS topicKey, expires_at AS expiresAt,
+              resolved_at AS resolvedAt, created_at AS createdAt,
               EXISTS (
                 SELECT 1 FROM push_log_seen
                 WHERE push_log_seen.push_id = push_log.id AND push_log_seen.player_id = ?
@@ -423,6 +425,29 @@ export function markAllPushSeenForPlayer(playerId: string): number {
 
 export function hideAllPushForPlayerAcrossEvents(playerId: string): number {
   const entries = getPushLogEntriesForPlayer(playerId, PUSH_LOG_LIMIT);
+  if (entries.length === 0) return 0;
+  const insert = db.prepare('INSERT OR IGNORE INTO push_log_hidden (push_id, player_id, hidden_at) VALUES (?, ?, ?)');
+  const hiddenAt = Date.now();
+  const changes = db.transaction(() =>
+    entries.reduce((sum, entry) => sum + insert.run(entry.id, playerId, hiddenAt).changes, 0)
+  )();
+  if (changes > 0) broadcastPushRefreshForPlayer(playerId);
+  return changes;
+}
+
+// An entry is obsolete once its underlying workflow resolved (its topic was
+// closed - a poll ended, a broadcast beaten) or its own expiry passed, even
+// though it stays in the notification center as history either way.
+function isPushLogEntryObsolete(entry: { resolvedAt: number | null; expiresAt: number | null }, now: number): boolean {
+  return entry.resolvedAt !== null || (entry.expiresAt !== null && entry.expiresAt <= now);
+}
+
+// Same per-player scoping as the other bulk actions, but limited to entries
+// a returning player no longer needs to act on - the cleanup someone reaches
+// for after being away, without touching still-open ones.
+export function hideResolvedPushForPlayer(playerId: string): number {
+  const now = Date.now();
+  const entries = getPushLogEntriesForPlayer(playerId, PUSH_LOG_LIMIT).filter((entry) => isPushLogEntryObsolete(entry, now));
   if (entries.length === 0) return 0;
   const insert = db.prepare('INSERT OR IGNORE INTO push_log_hidden (push_id, player_id, hidden_at) VALUES (?, ?, ?)');
   const hiddenAt = Date.now();
@@ -595,6 +620,7 @@ export function recordPushLog(
     url: payload.url ?? null,
     audience,
     expiresAt: topic?.expiresAt ?? null,
+    resolvedAt: null,
     createdAt: Date.now(),
   };
   db.transaction(() => {

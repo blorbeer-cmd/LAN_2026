@@ -6,7 +6,14 @@ import { api } from './api.js';
 import { getMyId } from './whoami.js';
 import { icon } from './icons.js';
 import { escapeHtml, formatDateTime } from './format.js';
-import { feedEntryIcon, feedEntryTitle, feedLinkTarget, feedLinkView, FEED_LINK_LABELS } from './pushFeed.js';
+import {
+  feedEntryIcon,
+  feedEntryTitle,
+  feedLinkTarget,
+  feedLinkView,
+  FEED_LINK_LABELS,
+  isFeedEntryObsolete,
+} from './pushFeed.js';
 import { showToast } from './toast.js';
 import { confirmDialog } from './modal.js';
 import { emptyStateHtml } from './emptyState.js';
@@ -57,18 +64,27 @@ function scheduleHighlightExpiry() {
   highlightExpiryTimer = window.setTimeout(refreshNotificationBanner, Math.min(delay, 2_147_483_647));
 }
 
+// An obsolete entry (its workflow resolved, or it expired - see
+// isFeedEntryObsolete) never reads as unread, even before it has actually
+// been opened: a returning player scanning the center after an absence
+// should see at a glance which entries still need attention.
 export function entryHtml(entry) {
   const view = feedLinkView(entry.url);
   const target = feedLinkTarget(entry.url);
+  const obsolete = isFeedEntryObsolete(entry);
+  const unread = !entry.seen && !obsolete;
   const directBadge = entry.audience === 'direct' ? '<span class="badge badge-paused">Für dich</span>' : '';
   const eventBadge = entry.eventName
     ? `<span class="badge badge-event">${escapeHtml(entry.eventName)}</span>`
     : '';
-  return `<article class="notification-center-entry${entry.seen ? '' : ' is-unread'}" data-notification-entry="${entry.id}">
+  const obsoleteBadge = obsolete
+    ? `<span class="badge badge-neutral">${entry.resolvedAt ? 'Erledigt' : 'Abgelaufen'}</span>`
+    : '';
+  return `<article class="notification-center-entry${unread ? ' is-unread' : ''}${obsolete ? ' is-obsolete' : ''}" data-notification-entry="${entry.id}">
     <div class="row-between notification-center-entry-head">
       <span class="row notification-center-entry-title">
         <span class="notification-center-entry-icon">${icon(feedEntryIcon(entry))}</span>
-        <strong>${escapeHtml(feedEntryTitle(entry))}</strong>${eventBadge}${directBadge}
+        <strong>${escapeHtml(feedEntryTitle(entry))}</strong>${eventBadge}${directBadge}${obsoleteBadge}
       </span>
       <time class="muted notification-center-time">${formatDateTime(entry.createdAt)}</time>
     </div>
@@ -76,7 +92,7 @@ export function entryHtml(entry) {
     <div class="notification-center-actions">
       ${view ? `<button type="button" class="btn btn-sm" data-notification-navigate="${view}" data-notification-target="${escapeHtml(target?.id ?? '')}" data-notification-event-id="${escapeHtml(entry.eventId ?? '')}" data-notification-id="${entry.id}">${FEED_LINK_LABELS[view]}</button>` : ''}
       <span class="notification-center-entry-tools">
-        ${entry.seen ? '' : `<button type="button" class="icon-btn notification-center-seen" data-notification-seen="${entry.id}" aria-label="Als gelesen markieren" title="Als gelesen markieren">${icon('circleCheck')}</button>`}
+        ${unread ? `<button type="button" class="icon-btn notification-center-seen" data-notification-seen="${entry.id}" aria-label="Als gelesen markieren" title="Als gelesen markieren">${icon('circleCheck')}</button>` : ''}
         <button type="button" class="icon-btn notification-center-remove" data-notification-hide="${entry.id}" aria-label="Mitteilung entfernen" title="Mitteilung entfernen">${icon('trash')}</button>
       </span>
     </div>
@@ -193,6 +209,33 @@ async function hideAllEntries() {
   }
 }
 
+// Unlike hideAllEntries, this never needs a confirmation dialog: it only
+// ever removes entries that are already obsolete, never one a player might
+// still act on.
+async function hideResolvedEntries() {
+  const playerId = getMyId();
+  if (!playerId) return;
+  const obsoleteIds = new Set(entries.filter((entry) => isFeedEntryObsolete(entry)).map((entry) => entry.id));
+  if (obsoleteIds.size === 0) return;
+  const previousEntries = entries;
+  const previousHighlight = highlightEntry;
+  entries = entries.filter((entry) => !obsoleteIds.has(entry.id));
+  if (highlightEntry && obsoleteIds.has(highlightEntry.id)) {
+    highlightEntry = null;
+    clearHighlightExpiryTimer();
+  }
+  renderBanner();
+  try {
+    await api.push.hideResolved(playerId);
+  } catch (err) {
+    entries = previousEntries;
+    highlightEntry = previousHighlight;
+    scheduleHighlightExpiry();
+    renderBanner();
+    showToast(err.message, { error: true });
+  }
+}
+
 function renderHighlight() {
   const container = highlightEl();
   if (!container) return;
@@ -235,7 +278,8 @@ export function renderBanner() {
   renderHighlight();
 
   const myId = getMyId();
-  const unreadCount = myId === loadedForId ? entries.filter((entry) => !entry.seen).length : 0;
+  const unreadCount =
+    myId === loadedForId ? entries.filter((entry) => !entry.seen && !isFeedEntryObsolete(entry)).length : 0;
   count.textContent = unreadCount > 9 ? '9+' : String(unreadCount);
   count.hidden = unreadCount === 0;
   button.classList.toggle('has-unread', unreadCount > 0);
@@ -255,16 +299,21 @@ export function renderBanner() {
       </div>
     </div>
     ${panelContentHtml(myId)}
-    ${entries.length > 0 ? `<div class="notification-center-toolbar">
+    ${entries.length > 0 ? (() => {
+      const hasObsolete = entries.some((entry) => isFeedEntryObsolete(entry));
+      return `<div class="notification-center-toolbar${hasObsolete ? ' notification-center-toolbar--3' : ''}">
+      ${hasObsolete ? '<button type="button" class="btn btn-sm" data-notifications-hide-resolved>Erledigte aufräumen</button>' : ''}
       <button type="button" class="btn btn-sm" data-notifications-seen-all ${entries.every((entry) => entry.seen) ? 'disabled' : ''}>Alle gelesen</button>
       <button type="button" class="btn btn-sm btn-danger" data-notifications-hide-all>Alle löschen</button>
-    </div>` : ''}
+    </div>`;
+    })() : ''}
   `;
 
   panel.querySelector('[data-notification-close]')?.addEventListener('click', () => {
     setOpen(false);
     button.focus();
   });
+  panel.querySelector('[data-notifications-hide-resolved]')?.addEventListener('click', hideResolvedEntries);
   panel.querySelector('[data-notifications-seen-all]')?.addEventListener('click', markAllSeen);
   panel.querySelector('[data-notifications-hide-all]')?.addEventListener('click', hideAllEntries);
   panel.querySelectorAll('[data-notification-seen]').forEach((control) => {

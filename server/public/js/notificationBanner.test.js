@@ -40,3 +40,34 @@ test('a notification event id is escaped before it reaches the markup', () => {
   assert.doesNotMatch(html, /<script>/);
   assert.match(html, /data-notification-event-id="&quot;&gt;/);
 });
+
+test('a resolved entry never reads as unread, even before it was opened', () => {
+  const html = entryHtml({ ...baseEntry, seen: false, resolvedAt: Date.now() - 1000 });
+
+  assert.doesNotMatch(html, /is-unread/);
+  assert.match(html, /is-obsolete/);
+  assert.match(html, /badge-neutral">Erledigt</);
+  assert.doesNotMatch(html, /notification-center-seen/, 'the redundant "mark as seen" action is hidden once obsolete');
+});
+
+test('an expired-but-unresolved entry is labeled distinctly from a resolved one', () => {
+  const html = entryHtml({ ...baseEntry, seen: false, resolvedAt: null, expiresAt: Date.now() - 1000 });
+
+  assert.match(html, /is-obsolete/);
+  assert.match(html, /badge-neutral">Abgelaufen</);
+});
+
+test('an obsolete entry keeps its navigate action and remove button', () => {
+  const html = entryHtml({ ...baseEntry, url: '/#votes', seen: false, resolvedAt: Date.now() - 1000 });
+
+  assert.match(html, /data-notification-navigate="votes"/, 'still one click away, e.g. to see a poll result');
+  assert.match(html, /data-notification-hide=/);
+});
+
+test('a still-open entry with a future expiry is unaffected', () => {
+  const html = entryHtml({ ...baseEntry, seen: false, resolvedAt: null, expiresAt: Date.now() + 60_000 });
+
+  assert.match(html, /is-unread/);
+  assert.doesNotMatch(html, /is-obsolete/);
+  assert.doesNotMatch(html, /badge-neutral/);
+});

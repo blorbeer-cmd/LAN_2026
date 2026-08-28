@@ -19,6 +19,7 @@ import {
   getPushLogEntriesForPlayer,
   markAllPushSeenForPlayer,
   hideAllPushForPlayerAcrossEvents,
+  hideResolvedPushForPlayer,
 } from '../push';
 import { withBodyPlayerIdentity, withQueryPlayerIdentity } from '../sessions';
 import { requireGroupEventAccess, resolveRequestGroupEventScope } from '../groupEventScope';
@@ -138,6 +139,20 @@ pushRouter.delete('/', ...withBodyPlayerIdentity, (req, res) => {
     return res.status(404).json({ error: 'Spieler nicht gefunden.' });
   }
   res.json({ changed: hideAllPushForPlayerAcrossEvents(playerId) });
+});
+
+// DELETE /api/push/resolved - hide only the already-resolved or expired
+// entries for this player (e.g. after a longer absence), leaving anything
+// still open untouched. Registered before the /:id catch-all below.
+pushRouter.delete('/resolved', ...withBodyPlayerIdentity, (req, res) => {
+  const { playerId } = req.body ?? {};
+  if (typeof playerId !== 'string' || !playerId) {
+    return res.status(400).json({ error: 'playerId ist erforderlich.' });
+  }
+  if (!activeGroupPlayers(req.group!.id, [playerId]).has(playerId)) {
+    return res.status(404).json({ error: 'Spieler nicht gefunden.' });
+  }
+  res.json({ changed: hideResolvedPushForPlayer(playerId) });
 });
 
 // POST /api/push/:id/seen - mark one notification read for this player. It
