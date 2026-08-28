@@ -786,9 +786,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   orders.
   The „Umfragen“ tab is the event-centric planning surface for free questions such as dates,
   locations, duration or budget. It always uses the active event from the existing top-right
-  workspace switcher: neither the tab nor its create dialog contains a second event picker. With
-  „Allgemein“ active it shows the structured „Event wählen“ empty state; its direct action focuses
-  and opens that existing switcher without describing a screen position. Visibility, creation and
+  workspace switcher, including the permanently open „Allgemein“ base event: neither the tab nor
+  its create dialog contains a second event picker. Visibility, creation and
   voting all require confirmed participation in that event; being Owner/Admin or merely invited
   never bypasses this boundary. Every confirmed participant may start a poll, while the creator of
   that poll manages its deadline, reminders and rounds. The create dialog uses labelled fields,

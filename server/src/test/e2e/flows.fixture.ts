@@ -256,19 +256,11 @@ flowTest('shell', 'fresh device uses the personal login and reaches the app with
   assert.equal(await loginPage.inputValue('#profile-name'), alice.name);
 });
 
-flowTest('shell', 'Umfragen: the empty state opens the existing event switcher directly', async () => {
+flowTest('shell', 'Umfragen: works for the permanently open "Allgemein" base event without forcing an event switch', async () => {
   await openOrgaTab('eventPolls');
-  await page.waitForSelector('#choose-event-context');
-  assert.equal((await page.locator('.empty-state-title').textContent())?.trim(), 'Event wählen');
-  assert.equal(await page.getByText('oben rechts', { exact: false }).count(), 0);
-
-  await page.click('#choose-event-context');
-  assert.equal(
-    await page.evaluate(() => document.activeElement?.id),
-    'event-context-switcher-search',
-  );
-  assert.equal(await page.locator('#event-context-switcher-list').isVisible(), true);
-  await page.keyboard.press('Escape');
+  await page.waitForSelector('#new-event-poll');
+  assert.equal(await page.locator('#choose-event-context').count(), 0);
+  assert.equal((await page.locator('.empty-state-title').textContent())?.trim(), 'Noch keine Umfrage');
 });
 
 flowTest('shell', 'untabbed areas align compact cards while tabbed areas reserve a second row', async (t) => {
