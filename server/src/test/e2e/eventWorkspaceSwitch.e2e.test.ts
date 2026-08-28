@@ -535,8 +535,10 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   );
   assert.equal(await page.locator('[data-home-event-overview] .badge').isVisible(), true);
   await page.setViewportSize({ width: 1280, height: 720 });
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
 
   await switchWorkspaceInBrowser(eventA);
+  await page.waitForFunction(() => document.querySelector('.desktop-nav-btn[data-view="matchmaking"]')?.getClientRects().length);
   const lanDesktopViews = await page.locator('.desktop-nav-btn[data-view]:visible').evaluateAll((buttons) =>
     buttons.map((button) => (button as HTMLElement).dataset.view));
   for (const view of ['home', 'matchmaking', 'votes', 'gameCatalog', 'eventPolls', 'arcade', 'profile']) {

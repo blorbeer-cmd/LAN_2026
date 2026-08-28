@@ -27,6 +27,7 @@ import {
 } from './events.js';
 import { eventHasFeature } from '../eventFeatures.js';
 import { backButtonHtml } from '../backButton.js';
+import { layoutModeForPlayer, LAYOUT_MODES, setLayoutModeForPlayer } from '../layoutMode.js';
 
 const TRACKING_PAUSE_HELP = 'Pausiert Live-Status und Spielzeit. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
 const ACTIVITY_TRACKING_HELP = 'Erfasst zusätzlich, ob das Spielfenster im Vordergrund ist. Der Wert lässt sich später in der Agent-Steuerung ändern.';
@@ -310,6 +311,7 @@ export function renderProfile(container, ctx) {
   // renderInvitationCard/pendingEventInvitations, also linked from Home's
   // "Aktuell" list in aktuellStatus.js).
   const pendingInvitations = pendingEventInvitations();
+  const layoutPreference = layoutModeForPlayer(myId);
 
   container.innerHTML = `
     <div class="more-subpage-header">
@@ -319,7 +321,7 @@ export function renderProfile(container, ctx) {
         <button type="button" class="btn btn-sm" id="profile-logout">Abmelden</button>
       </div>
     </div>
-    <div class="grouped-page-sections">
+    <div class="grouped-page-sections profile-desktop-layout">
       ${acceptedInvitationHandoffHtml()}
       ${
         pendingInvitations.length > 0
@@ -353,6 +355,20 @@ export function renderProfile(container, ctx) {
             </div>
           </div>
           <button type="button" class="btn btn-primary btn-block" id="profile-save">Speichern</button>
+        </div>
+      </section>
+
+      <section class="card stack grouped-page-section" aria-labelledby="profile-layout-title">
+        <div class="grouped-page-section-title">
+          <h2 id="profile-layout-title">Ansicht</h2>
+        </div>
+        <p class="muted profile-layout-hint">Automatisch nutzt auf großen Bildschirmen die Desktop-Leiste und sonst die kompakte Laptop-Navigation.</p>
+        <div class="profile-layout-options" role="group" aria-label="Ansichtsmodus">
+          ${[
+            { value: LAYOUT_MODES.auto, label: 'Automatisch' },
+            { value: LAYOUT_MODES.desktop, label: 'Desktop' },
+            { value: LAYOUT_MODES.laptop, label: 'Laptop' },
+          ].map((option) => `<button type="button" class="btn profile-layout-option${layoutPreference === option.value ? ' btn-primary' : ''}" data-layout-preference="${option.value}" aria-pressed="${layoutPreference === option.value}">${option.label}</button>`).join('')}
         </div>
       </section>
 
@@ -456,8 +472,52 @@ export function renderProfile(container, ctx) {
     </div>
   `;
 
+  // Keep account settings and LAN-specific preferences scannable in two
+  // independent desktop columns. The larger three-step agent setup remains a
+  // full-width sequence; invitation handoffs stay above everything because
+  // they require an immediate decision.
+  const profileLayout = container.querySelector('.profile-desktop-layout');
+  const dashboardColumns = document.createElement('div');
+  dashboardColumns.className = 'adaptive-dashboard-columns profile-dashboard-columns';
+  const accountColumn = document.createElement('div');
+  accountColumn.className = 'adaptive-dashboard-column profile-dashboard-account';
+  const lanColumn = document.createElement('div');
+  lanColumn.className = 'adaptive-dashboard-column profile-dashboard-lan';
+  [
+    'section[aria-label="Profildaten"]',
+    '[aria-labelledby="profile-layout-title"]',
+    '[aria-labelledby="profile-password-title"]',
+    '[aria-labelledby="profile-push-title"]',
+  ].forEach((selector) => {
+    const section = profileLayout.querySelector(selector);
+    if (section) accountColumn.append(section);
+  });
+  [
+    '[aria-labelledby="profile-rating-title"]',
+    '[aria-labelledby="profile-monitors-title"]',
+    '[aria-labelledby="profile-stats-title"]',
+  ].forEach((selector) => {
+    const section = profileLayout.querySelector(selector);
+    if (section) lanColumn.append(section);
+  });
+  dashboardColumns.append(accountColumn, lanColumn);
+  const agentSection = profileLayout.querySelector('[aria-labelledby="profile-agent-title"]');
+  profileLayout.insertBefore(dashboardColumns, agentSection);
+
   wireInfoTooltips(container);
   wirePendingInvitationActions(container, ctx);
+
+  container.querySelectorAll('[data-layout-preference]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const preference = setLayoutModeForPlayer(myId, button.dataset.layoutPreference);
+      container.querySelectorAll('[data-layout-preference]').forEach((candidate) => {
+        const active = candidate.dataset.layoutPreference === preference;
+        candidate.classList.toggle('btn-primary', active);
+        candidate.setAttribute('aria-pressed', String(active));
+      });
+      window.dispatchEvent(new Event('respawn:layout-mode-changed'));
+    });
+  });
 
   container.querySelector('#profile-logout').addEventListener('click', () => logout());
   container.querySelectorAll('[data-password-toggle]').forEach((button) => {

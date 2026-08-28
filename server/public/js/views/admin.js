@@ -712,7 +712,7 @@ function renderPanel(container, ctx) {
               ? '<div class="muted">Rollen werden geladen…</div>'
               : ''
         }
-        <div class="card">${rows || '<span class="muted">Noch keine Spieler.</span>'}</div>
+        <div class="card admin-player-list">${rows || '<span class="muted">Noch keine Spieler.</span>'}</div>
       </section>
       ${trackingEnabled ? `<section class="card stack grouped-page-section" aria-labelledby="admin-agent-title">
         <div class="grouped-page-section-title">
@@ -722,12 +722,34 @@ function renderPanel(container, ctx) {
           </h2>
           <button type="button" class="btn btn-sm" id="agent-diagnostics-refresh">Aktualisieren</button>
         </div>
-        <div class="card stack">
+        <div class="card stack admin-diagnostics-grid">
           ${diagnosticsLoading && agentDiagnostics === null ? '<div class="muted">Diagnose laden…</div>' : diagnosticRows || '<span class="muted">Noch keine Spieler.</span>'}
         </div>
       </section>` : ''}
     </div>
   `;
+
+  // Desktop uses full-width priority rows instead of a permanently narrow
+  // supporting rail. Closely related cards share a row; long user and
+  // diagnostic collections then get their own three-column grids below.
+  const adminLayout = container.querySelector('.admin-desktop-layout');
+  const overviewRow = document.createElement('div');
+  overviewRow.className = 'admin-dashboard-row admin-dashboard-overview';
+  const accessRow = document.createElement('div');
+  accessRow.className = 'admin-dashboard-row admin-dashboard-access';
+  ['[aria-labelledby="admin-tools-title"]', '[aria-labelledby="admin-readiness-title"]'].forEach((selector) => {
+    const section = adminLayout.querySelector(selector);
+    if (section) overviewRow.append(section);
+  });
+  ['[aria-labelledby="admin-onboarding-title"]', '[aria-labelledby="admin-test-players-title"]'].forEach((selector) => {
+    const section = adminLayout.querySelector(selector);
+    if (section) accessRow.append(section);
+  });
+  const usersSection = adminLayout.querySelector('[aria-labelledby="admin-players-title"]');
+  const diagnosticsSection = adminLayout.querySelector('[aria-labelledby="admin-agent-title"]');
+  adminLayout.append(overviewRow, accessRow);
+  if (usersSection) adminLayout.append(usersSection);
+  if (diagnosticsSection) adminLayout.append(diagnosticsSection);
 
   container.querySelector('#admin-mode-activate')?.addEventListener('click', () => {
     adminPlayers = null;

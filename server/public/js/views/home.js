@@ -161,10 +161,6 @@ function renderGeneralEventOverview() {
   const event = state.activeEvent;
   if (!event || event.eventType !== 'general') return '';
   const participantCount = Array.isArray(event.participantIds) ? event.participantIds.length : null;
-  const links = GENERAL_EVENT_LINKS
-    .filter((item) => viewIsEnabledForEvent(item.view, event))
-    .map(generalEventLinkHtml)
-    .join('');
   return `
     <section class="card grouped-page-section stack" aria-labelledby="home-event-overview-title" data-home-event-overview>
       <div class="grouped-page-section-title">
@@ -209,7 +205,17 @@ function renderGeneralEventOverview() {
           </span>
         </div>` : ''}
       </div>
-    </section>
+    </section>`;
+}
+
+function renderGeneralEventOrganisation() {
+  const event = state.activeEvent;
+  if (!event || event.eventType !== 'general') return '';
+  const links = GENERAL_EVENT_LINKS
+    .filter((item) => viewIsEnabledForEvent(item.view, event))
+    .map(generalEventLinkHtml)
+    .join('');
+  return `
     <section class="card grouped-page-section stack" aria-labelledby="home-organisation-title">
       <div class="grouped-page-section-title"><h2 id="home-organisation-title">Organisation</h2></div>
       <div class="card-grid">${links}</div>
@@ -287,8 +293,8 @@ function renderActiveGroups(players) {
   `;
 }
 
-// Leaderboard snapshot: the top six use the otherwise empty card width as
-// two compact columns on larger screens and stay a single list on phones.
+// Leaderboard snapshot: the top six become a compact three-column overview
+// on wide desktops and stay a linear ranking on smaller screens.
 function renderLeaderboardTop() {
   // The Auswertung area (leaderboard/analytics/hallOfFame) is only reachable
   // with the device-local Admin mode active (see app.js's switchView()) — a
@@ -297,27 +303,22 @@ function renderLeaderboardTop() {
   if (!isAdmin()) return '';
   const standings = state.leaderboard?.standings || [];
   if (standings.length === 0) return '';
-  const columns = [standings.slice(0, 3), standings.slice(3, 6)]
-    .filter((column) => column.length > 0)
-    .map(
-      (column, columnIndex) => `<div class="home-leaderboard-column">${column
-        .map((s, rowIndex) => {
-          const rank = columnIndex * 3 + rowIndex + 1;
-          return `
+  const rows = standings.slice(0, 6)
+    .map((s, index) => {
+      const rank = index + 1;
+      return `
       <div class="lb-row ${rank === 1 ? 'rank-1' : ''}">
         <span class="lb-rank">${rank}</span>
         ${avatarHtml(s, 28)}
         <span class="player-name" style="flex:1;">${escapeHtml(s.name)}</span>
         <span class="lb-points">${s.points} P</span>
       </div>`;
-        })
-        .join('')}</div>`
-    )
+    })
     .join('');
   return `
     <section class="card grouped-page-section stack" aria-labelledby="home-leaderboard-title">
       <div class="grouped-page-section-title"><h2 id="home-leaderboard-title">Rangliste</h2></div>
-      <div class="home-leaderboard-columns">${columns}</div>
+      <div class="leaderboard-list-grid home-leaderboard-grid">${rows}</div>
       <button type="button" class="btn btn-sm btn-block" data-navigate="leaderboard">Gesamte Rangliste ${icon('chevronRight')}</button>
     </section>
   `;
@@ -360,7 +361,7 @@ export function renderHome(container, ctx) {
     container.innerHTML = `
       <h1 class="view-title">Home</h1>
       <div class="grouped-page-sections home-desktop-layout">
-        ${renderAssignedTodos()}
+        <div class="home-priority-grid">${renderAssignedTodos()}</div>
         ${emptyStateHtml({
           title: 'Noch keine Spieler angelegt',
           illustration: { src: '/img/mascot.svg', alt: '', width: 72, height: 66, className: 'mascot' },
@@ -420,9 +421,12 @@ export function renderHome(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Home</h1>
     <div class="grouped-page-sections home-desktop-layout">
+      <div class="home-priority-grid">
+        ${renderAssignedTodos()}
+        ${renderStatus()}
+      </div>
       ${renderGeneralEventOverview()}
-      ${renderAssignedTodos()}
-      ${renderStatus()}
+      ${renderGeneralEventOrganisation()}
       ${
         trackingEnabled
           ? `<section class="card grouped-page-section stack" aria-labelledby="home-live-title">
@@ -430,11 +434,11 @@ export function renderHome(container, ctx) {
                ${renderActiveGroups(players)}
                ${renderMyStatus(myId, players)}
                <div class="two-column-card-grid home-live-grid">${cards}</div>
-             </section>
-             ${renderLeaderboardTop()}`
+             </section>`
           : ''
       }
       ${seatingEnabled ? renderHomeSeating(ctx) : ''}
+      ${trackingEnabled ? renderLeaderboardTop() : ''}
     </div>
   `;
 

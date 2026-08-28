@@ -6,6 +6,21 @@ import {
   desktopNavItemsForEvent,
   desktopNavTargetForView,
 } from './bottomNav.js';
+import {
+  bottomNavigationEntries,
+  desktopNavigationEntries,
+  moreNavigationEntries,
+  sectionViews,
+} from './viewManifest.js';
+
+function compactDestinationSet(eventType) {
+  const bottom = bottomNavigationEntries(eventType)
+    .filter((entry) => entry.view !== 'more')
+    .map((entry) => entry.view);
+  const more = moreNavigationEntries(eventType).flatMap((entry) =>
+    entry.section ? sectionViews(entry.section).map((sectionEntry) => sectionEntry.view) : [entry.view]);
+  return [...new Set([...bottom, ...more])].sort();
+}
 
 test('LAN events keep the established bottom navigation', () => {
   assert.deepEqual(
@@ -97,4 +112,14 @@ test('desktop child routes highlight their stable parent destination', () => {
   assert.equal(desktopNavTargetForView('analytics'), 'admin');
   assert.equal(desktopNavTargetForView('myStats'), 'profile');
   assert.equal(desktopNavTargetForView('eventPolls'), 'eventPolls');
+});
+
+test('the manifest keeps every compact destination reachable in the desktop rail', () => {
+  for (const eventType of ['lan', 'general']) {
+    assert.deepEqual(
+      desktopNavigationEntries(eventType).map((entry) => entry.view).sort(),
+      compactDestinationSet(eventType),
+      eventType,
+    );
+  }
 });

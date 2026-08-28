@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildOnboardingSteps } from './onboarding.js';
+import { buildOnboardingSteps, visibleOnboardingTarget } from './onboarding.js';
 
 test('onboarding keeps the event-selection step admin-only', () => {
   const memberSteps = buildOnboardingSteps(false);
@@ -21,4 +21,17 @@ test('onboarding keeps the event-selection step admin-only', () => {
   assert.equal(memberSteps.at(-1)?.view, 'gameCatalog');
   assert.equal(memberSteps.length - 1, 10);
   assert.equal(adminSteps.length - 1, 12);
+});
+
+test('onboarding targets the visible shell variant instead of a hidden duplicate', () => {
+  const hiddenCompactTarget = { getClientRects: () => [] };
+  const visibleDesktopTarget = { getClientRects: () => [{ width: 160, height: 44 }] };
+  const queryRoot = { querySelectorAll: () => [hiddenCompactTarget, visibleDesktopTarget] };
+  assert.equal(visibleOnboardingTarget('.any-selector', queryRoot), visibleDesktopTarget);
+
+  const steps = buildOnboardingSteps(true);
+  for (const view of ['home', 'matchmaking', 'votes', 'profile', 'arcade', 'broadcast', 'music', 'admin']) {
+    const step = steps.find((entry) => entry.view === view);
+    assert.match(step.target, new RegExp(`desktop-nav-btn\\[data-view="${view}"\\]`), view);
+  }
 });

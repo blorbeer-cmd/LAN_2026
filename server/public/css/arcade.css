@@ -14,20 +14,20 @@
   }
 }
 @media (min-width: 1280px) { /* --bp-xl */
-  .arcade-desktop-layout.has-active-game {
+  :root[data-layout-mode='desktop'] .arcade-desktop-layout.has-active-game {
     display: grid;
     grid-template-columns: minmax(0, 2fr) minmax(var(--desktop-supporting-pane-min-width), 1fr);
     align-items: start;
   }
-  .arcade-desktop-layout.has-active-game > [aria-labelledby='arcade-active-game-title'] {
+  :root[data-layout-mode='desktop'] .arcade-desktop-layout.has-active-game > [aria-labelledby='arcade-active-game-title'] {
     grid-row: 1 / span 3;
   }
-  .arcade-desktop-layout.has-active-game > .arcade-game-picker,
-  .arcade-desktop-layout.has-active-game > [aria-labelledby='arcade-running-title'],
-  .arcade-desktop-layout.has-active-game > [aria-labelledby='arcade-stats-title'] {
+  :root[data-layout-mode='desktop'] .arcade-desktop-layout.has-active-game > .arcade-game-picker,
+  :root[data-layout-mode='desktop'] .arcade-desktop-layout.has-active-game > [aria-labelledby='arcade-running-title'],
+  :root[data-layout-mode='desktop'] .arcade-desktop-layout.has-active-game > [aria-labelledby='arcade-stats-title'] {
     grid-column: 2;
   }
-  .arcade-desktop-layout.has-active-game .arcade-tiles {
+  :root[data-layout-mode='desktop'] .arcade-desktop-layout.has-active-game .arcade-tiles {
     grid-template-columns: minmax(0, 1fr);
   }
 }

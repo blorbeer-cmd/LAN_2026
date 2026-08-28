@@ -30,6 +30,14 @@ function search(category, description, aliases, priority) {
   return Object.freeze({ category, description, aliases, priority });
 }
 
+function desktopNavigation(group, order, {
+  eventTypes = ['lan', 'general'],
+  label,
+  iconKey,
+} = {}) {
+  return Object.freeze({ group, order, eventTypes: Object.freeze(eventTypes), label, iconKey });
+}
+
 const REFRESH_ON = Object.freeze({
   home: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills, CORE_REALTIME_EVENTS.leaderboard, CORE_REALTIME_EVENTS.events],
   matchmaking: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills, CORE_REALTIME_EVENTS.leaderboard],
@@ -81,7 +89,10 @@ export const VIEW_MANIFEST = Object.freeze({
   home: defineView({
     label: 'Home', iconKey: 'house',
     search: search('Bereich', 'Aktuelles, Live-Status und Überblick', 'start übersicht dashboard', 100),
-    navigation: Object.freeze({ bottom: Object.freeze({ lan: Object.freeze({ order: 0, ariaLabel: 'Home' }), general: Object.freeze({ order: 0, ariaLabel: 'Home' }) }) }),
+    navigation: Object.freeze({
+      bottom: Object.freeze({ lan: Object.freeze({ order: 0, ariaLabel: 'Home' }), general: Object.freeze({ order: 0, ariaLabel: 'Home' }) }),
+      desktop: desktopNavigation('start', 0),
+    }),
     lifecycle: lifecycle('home', { eventScoped: true, reconnect: true, invalidateOn: [
       CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills,
       'live:changed', 'tournaments:changed', 'push:sent', 'foodOrders:changed',
@@ -91,7 +102,10 @@ export const VIEW_MANIFEST = Object.freeze({
   matchmaking: defineView({
     label: 'Teams', section: 'competition', sectionOrder: 0, iconKey: 'scale', eventFeature: 'competition',
     search: search('Match', 'Auslosen, Captain Draft und Historie', 'match wettkampf teams auslosen matchmaking captain draft kraft team-historie ergebnis-historie', 98),
-    navigation: Object.freeze({ bottom: Object.freeze({ lan: Object.freeze({ order: 1, label: 'Match', ariaLabel: 'Match: Teams und Turniere', iconKey: 'competition' }) }) }),
+    navigation: Object.freeze({
+      bottom: Object.freeze({ lan: Object.freeze({ order: 1, label: 'Match', ariaLabel: 'Match: Teams und Turniere', iconKey: 'competition' }) }),
+      desktop: desktopNavigation('lan', 0, { eventTypes: ['lan'], label: 'Match', iconKey: 'competition' }),
+    }),
     lifecycle: lifecycle('matchmaking', { eventScoped: true, reconnect: true, invalidateOn: [
       CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.leaderboard,
       'matchmaking:generated', 'matchmaking:draws-changed', 'draft:changed',
@@ -100,7 +114,10 @@ export const VIEW_MANIFEST = Object.freeze({
   votes: defineView({
     label: 'Vote', iconKey: 'vote', eventFeature: 'games',
     search: search('Bereich', 'Gemeinsam das nächste Spiel wählen', 'abstimmung voting punkte spielwahl', 97),
-    navigation: Object.freeze({ bottom: Object.freeze({ lan: Object.freeze({ order: 2, ariaLabel: 'Abstimmung' }) }) }),
+    navigation: Object.freeze({
+      bottom: Object.freeze({ lan: Object.freeze({ order: 2, ariaLabel: 'Abstimmung' }) }),
+      desktop: desktopNavigation('lan', 1, { eventTypes: ['lan'] }),
+    }),
     lifecycle: lifecycle('votes', { eventScoped: true, reconnect: true, invalidateOn: ['votes:closed'] }),
   }),
   leaderboard: defineView({
@@ -111,13 +128,19 @@ export const VIEW_MANIFEST = Object.freeze({
   events: defineView({
     label: 'Events', section: 'orga', sectionOrder: 2, iconKey: 'calendar',
     search: search('Orga', 'Events anlegen, Tracking und Teilnehmer verwalten', 'orga einstellungen setup konfiguration tracking teilnehmer einladung', 85),
-    navigation: Object.freeze({ more: Object.freeze({ eventTypes: Object.freeze(['general']), order: 5 }) }),
+    navigation: Object.freeze({
+      more: Object.freeze({ eventTypes: Object.freeze(['general']), order: 5 }),
+      desktop: desktopNavigation('orga', 0),
+    }),
     lifecycle: lifecycle('events'),
   }),
   eventPolls: defineView({
     label: 'Umfragen', section: 'orga', sectionOrder: 0, iconKey: 'vote',
     search: search('Orga', 'Zeitraum, Ort, Dauer und Budget gemeinsam planen', 'orga umfrage termin ort unterkunft dauer budget planung interessiert', 86),
-    navigation: Object.freeze({ bottom: Object.freeze({ general: Object.freeze({ order: 4, labelBreakAfter: 6, ariaLabel: 'Umfragen' }) }) }),
+    navigation: Object.freeze({
+      bottom: Object.freeze({ general: Object.freeze({ order: 4, labelBreakAfter: 6, ariaLabel: 'Umfragen' }) }),
+      desktop: desktopNavigation('orga', 1),
+    }),
     lifecycle: lifecycle('eventPolls', { eventScoped: true, invalidateOn: [CORE_REALTIME_EVENTS.events] }),
   }),
   kiosk: defineView({
@@ -132,7 +155,10 @@ export const VIEW_MANIFEST = Object.freeze({
   profile: defineView({
     label: 'Mein Profil', iconKey: 'circleUser',
     search: search('Bereich', 'Profil, Agent und Push-Benachrichtigungen', 'account ich agent benachrichtigung', 90),
-    navigation: Object.freeze({ more: Object.freeze({ eventTypes: Object.freeze(['lan', 'general']), order: 0 }) }),
+    navigation: Object.freeze({
+      more: Object.freeze({ eventTypes: Object.freeze(['lan', 'general']), order: 0 }),
+      desktop: desktopNavigation('utility', 2),
+    }),
     lifecycle: lifecycle('profile', { eventScoped: true }),
   }),
   tournaments: defineView({
@@ -163,7 +189,10 @@ export const VIEW_MANIFEST = Object.freeze({
   broadcast: defineView({
     label: 'Durchsage', iconKey: 'megaphone',
     search: search('Bereich', 'Eine Mitteilung an alle Geräte senden', 'ansage nachricht push kiosk', 63),
-    navigation: Object.freeze({ more: Object.freeze({ eventTypes: Object.freeze(['lan', 'general']), order: 3 }) }),
+    navigation: Object.freeze({
+      more: Object.freeze({ eventTypes: Object.freeze(['lan', 'general']), order: 3 }),
+      desktop: desktopNavigation('other', 0),
+    }),
     lifecycle: lifecycle('broadcast', { eventScoped: true, reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.players, 'broadcast:new', 'broadcasts:changed'] }),
   }),
   foodOrders: defineView({
@@ -172,37 +201,53 @@ export const VIEW_MANIFEST = Object.freeze({
     navigation: Object.freeze({
       bottom: Object.freeze({ lan: Object.freeze({ order: 3, ariaLabel: 'Essen: Sammelbestellungen koordinieren', id: 'nav-food-orders' }) }),
       more: Object.freeze({ eventTypes: Object.freeze(['general']), order: 6 }),
+      desktop: desktopNavigation('orga', 5),
     }),
     lifecycle: lifecycle('foodOrders', { eventScoped: true, reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.players, 'foodOrders:changed'] }),
   }),
   checklist: defineView({
     label: 'To-Do', section: 'orga', sectionOrder: 4, iconKey: 'listChecks', eventFeature: 'tasks',
     search: search('Orga', 'Aufgaben und Mitbring-Anfragen der Gruppe', 'orga checkliste todo aufgabe anfrage mitbringen', 66),
-    navigation: Object.freeze({ bottom: Object.freeze({ general: Object.freeze({ order: 3, ariaLabel: 'To-Do' }) }) }),
+    navigation: Object.freeze({
+      bottom: Object.freeze({ general: Object.freeze({ order: 3, ariaLabel: 'To-Do' }) }),
+      desktop: desktopNavigation('orga', 4, { label: 'To-Dos' }),
+    }),
     lifecycle: lifecycle('checklist', { eventScoped: true, reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.players, 'checklist:changed'] }),
   }),
   checklistPacking: defineView({
     label: 'Packliste', section: 'orga', sectionOrder: 3, iconKey: 'clipboard', eventFeature: 'tasks',
     search: search('Orga', 'Persönliche Packliste für die LAN', 'orga checkliste packen mitnehmen', 66),
-    navigation: Object.freeze({ bottom: Object.freeze({ general: Object.freeze({ order: 2, ariaLabel: 'Packliste' }) }) }),
+    navigation: Object.freeze({
+      bottom: Object.freeze({ general: Object.freeze({ order: 2, ariaLabel: 'Packliste' }) }),
+      desktop: desktopNavigation('orga', 3),
+    }),
     lifecycle: lifecycle('checklistPacking', { eventScoped: true }),
   }),
   gameCatalog: defineView({
     label: 'Spiele', iconKey: 'gamepad', eventFeature: 'games',
     search: search('Bereich', 'Bock, Skill und Spielekatalog', 'games katalog bewertung skill bock', 75),
-    navigation: Object.freeze({ bottom: Object.freeze({ lan: Object.freeze({ order: 4, ariaLabel: 'Spiele' }) }) }),
+    navigation: Object.freeze({
+      bottom: Object.freeze({ lan: Object.freeze({ order: 4, ariaLabel: 'Spiele' }) }),
+      desktop: desktopNavigation('lan', 2, { eventTypes: ['lan'] }),
+    }),
     lifecycle: lifecycle('gameCatalog', { reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.games, CORE_REALTIME_EVENTS.skills, CORE_REALTIME_EVENTS.leaderboard] }),
   }),
   arrivals: defineView({
     label: 'An- & Abreise', section: 'orga', sectionOrder: 1, iconKey: 'van', eventFeature: 'travel',
     search: search('Orga', 'Zeiten und Fahrgemeinschaften planen', 'orga anreise abreise ankunft abfahrt fahrt carpool', 65),
-    navigation: Object.freeze({ bottom: Object.freeze({ general: Object.freeze({ order: 1, label: 'An & Abreise', ariaLabel: 'An- und Abreise' }) }) }),
+    navigation: Object.freeze({
+      bottom: Object.freeze({ general: Object.freeze({ order: 1, label: 'An & Abreise', ariaLabel: 'An- und Abreise' }) }),
+      desktop: desktopNavigation('orga', 2),
+    }),
     lifecycle: lifecycle('arrivals', { eventScoped: true, reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.players, CORE_REALTIME_EVENTS.events, 'arrivals:changed'] }),
   }),
   admin: defineView({
     label: 'Admin', iconKey: 'shield', requiresRole: 'admin',
     search: search('Bereich', 'Einladungslink, Sitzplan, Backup, Test-Spieler, Rechte und Diagnose', 'moderation verwaltung diagnose einladung invite sitzplan backup', 60),
-    navigation: Object.freeze({ more: Object.freeze({ eventTypes: Object.freeze(['lan', 'general']), order: 1 }) }),
+    navigation: Object.freeze({
+      more: Object.freeze({ eventTypes: Object.freeze(['lan', 'general']), order: 1 }),
+      desktop: desktopNavigation('utility', 1),
+    }),
     lifecycle: lifecycle('admin', { eventScoped: true, reconnect: true, invalidateOn: [CORE_REALTIME_EVENTS.events, 'groups:changed'] }),
   }),
   adminFeatureUsage: defineView({
@@ -213,13 +258,19 @@ export const VIEW_MANIFEST = Object.freeze({
   music: defineView({
     label: 'Jam', iconKey: 'music', eventFeature: 'music',
     search: search('Bereich', 'Spotify-Titel und Playlists gemeinsam abspielen', 'spotify musik songs playlist queue warteschlange', 64),
-    navigation: Object.freeze({ more: Object.freeze({ eventTypes: Object.freeze(['lan', 'general']), order: 4 }) }),
+    navigation: Object.freeze({
+      more: Object.freeze({ eventTypes: Object.freeze(['lan', 'general']), order: 4 }),
+      desktop: desktopNavigation('other', 2),
+    }),
     lifecycle: lifecycle('music', { eventScoped: true, reconnect: true, invalidateOn: ['music:changed', 'visibility:changed'] }),
   }),
   arcade: defineView({
     area: 'arcade', label: 'Arcade', iconKey: 'joystick', eventFeature: 'arcade', module: './arcade/views/arcade.js', exportName: 'renderArcade',
     search: search('Bereich', 'Minigame-Lobbies öffnen und mitspielen', 'quiz tetris scribble pong blobby snake minigame', 74),
-    navigation: Object.freeze({ more: Object.freeze({ eventTypes: Object.freeze(['lan', 'general']), order: 2 }) }),
+    navigation: Object.freeze({
+      more: Object.freeze({ eventTypes: Object.freeze(['lan', 'general']), order: 2 }),
+      desktop: desktopNavigation('other', 1),
+    }),
   }),
   arcadeWatch: defineView({ area: 'arcade', label: 'Arcade-Zuschauen', iconKey: 'joystick', eventFeature: 'arcade', module: './arcade/views/arcadeWatch.js', exportName: 'renderArcadeWatch' }),
   quizRoom: defineView({ area: 'arcade', label: 'Quiz', iconKey: 'joystick', eventFeature: 'arcade', module: './arcade/views/arcade.js', exportName: 'renderQuizRoom' }),
@@ -286,6 +337,24 @@ export function moreNavigationEntries(eventType = 'lan') {
   });
   return [...views, ...sections]
     .sort((a, b) => a.order - b.order)
+    .map(({ order: _order, ...entry }) => Object.freeze(entry));
+}
+
+export function desktopNavigationEntries(eventType = 'lan') {
+  const groupOrder = Object.freeze({ start: 0, lan: 1, orga: 2, other: 3, utility: 4 });
+  return Object.entries(VIEW_MANIFEST)
+    .flatMap(([view, definition]) => {
+      const navigation = definition.navigation?.desktop;
+      if (!navigation?.eventTypes.includes(eventType)) return [];
+      return [{
+        view,
+        group: navigation.group,
+        label: navigation.label ?? definition.label,
+        iconKey: navigation.iconKey ?? view,
+        order: navigation.order,
+      }];
+    })
+    .sort((a, b) => groupOrder[a.group] - groupOrder[b.group] || a.order - b.order)
     .map(({ order: _order, ...entry }) => Object.freeze(entry));
 }
 

@@ -320,16 +320,54 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   assert.equal(await page.locator('.desktop-nav-btn[aria-current="page"]').getAttribute('data-view'), 'home');
   assert.equal(await page.title(), 'Home · Respawn');
 
-  const homeColumns = await page.locator('.home-desktop-layout').evaluate((layout) => ({
+  const homeColumns = await page.locator('.home-priority-grid').evaluate((layout) => ({
     display: getComputedStyle(layout).display,
     columns: getComputedStyle(layout).gridTemplateColumns.split(' ').length,
   }));
   assert.deepEqual(homeColumns, { display: 'grid', columns: 2 });
-  const homeSectionTops = await page.evaluate(() => ({
-    todos: Math.round(document.querySelector('[aria-labelledby="home-todos-title"]')?.getBoundingClientRect().top ?? -1),
-    live: Math.round(document.querySelector('[aria-labelledby="home-live-title"]')?.getBoundingClientRect().top ?? -2),
-  }));
-  assert.equal(homeSectionTops.todos, homeSectionTops.live);
+  const homeSectionFlow = await page.evaluate(() => {
+    const rect = (selector: string) => document.querySelector(selector)?.getBoundingClientRect();
+    const todos = rect('[aria-labelledby="home-todos-title"]');
+    const live = rect('[aria-labelledby="home-live-title"]');
+    const leaderboard = rect('[aria-labelledby="home-leaderboard-title"]');
+    const seating = rect('[aria-labelledby="home-seating-title"]');
+    const priority = rect('.home-priority-grid');
+    if (!todos || !live) return null;
+    return {
+      todosTop: Math.round(todos.top),
+      liveTop: Math.round(live.top),
+      priorityBottom: priority ? Math.round(priority.bottom) : null,
+      seatingGap: seating ? Math.round(seating.top - live.bottom) : null,
+      leaderboardGap: leaderboard && seating ? Math.round(leaderboard.top - seating.bottom) : null,
+    };
+  });
+  assert.ok(homeSectionFlow);
+  assert.ok(homeSectionFlow.priorityBottom !== null);
+  assert.ok(homeSectionFlow.liveTop > homeSectionFlow.priorityBottom);
+  assert.equal(
+    await page.locator('.home-live-grid').evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length),
+    3,
+  );
+  if (homeSectionFlow.seatingGap !== null) {
+    assert.ok(homeSectionFlow.seatingGap >= 8 && homeSectionFlow.seatingGap <= 32);
+  }
+  if (homeSectionFlow.leaderboardGap !== null) {
+    assert.ok(homeSectionFlow.leaderboardGap >= 8 && homeSectionFlow.leaderboardGap <= 32);
+    assert.equal(
+      await page.locator('.home-leaderboard-grid').evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length),
+      3,
+    );
+  }
+
+  await page.click('.desktop-nav-btn[data-view="matchmaking"]');
+  await page.waitForSelector('#view-container[data-view="matchmaking"] .tournament-player-grid');
+  assert.equal(
+    await page.locator('#view-container[data-view="matchmaking"] .tournament-player-grid').first()
+      .evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length),
+    3,
+  );
+  await page.click('.desktop-nav-btn[data-view="home"]');
+  await page.waitForSelector('#view-container h1:text-is("Home")');
 
   await page.click('.desktop-nav-btn[data-view="profile"]');
   await page.waitForSelector('#profile-name');
@@ -344,6 +382,25 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
     'profile',
   );
   assert.equal(await page.locator('.more-subpage-title-row [data-navigate="more"]').isHidden(), true);
+  const profileColumns = await page.locator('.profile-dashboard-columns').evaluate((layout) => {
+    const account = layout.querySelector('.profile-dashboard-account')?.getBoundingClientRect();
+    const lan = layout.querySelector('.profile-dashboard-lan')?.getBoundingClientRect();
+    const agent = document.querySelector('[aria-labelledby="profile-agent-title"]')?.getBoundingClientRect();
+    return {
+      display: getComputedStyle(layout).display,
+      accountLeft: account ? Math.round(account.left) : null,
+      accountTop: account ? Math.round(account.top) : null,
+      lanLeft: lan ? Math.round(lan.left) : null,
+      lanTop: lan ? Math.round(lan.top) : null,
+      agentWidth: agent ? Math.round(agent.width) : null,
+      layoutWidth: Math.round(layout.getBoundingClientRect().width),
+    };
+  });
+  assert.equal(profileColumns.display, 'grid');
+  assert.ok(profileColumns.accountLeft !== null && profileColumns.lanLeft !== null);
+  assert.ok(profileColumns.lanLeft > profileColumns.accountLeft);
+  assert.equal(profileColumns.lanTop, profileColumns.accountTop);
+  assert.equal(profileColumns.agentWidth, profileColumns.layoutWidth);
 
   await page.goBack();
   await page.waitForSelector('#view-container h1:text-is("Home")');
@@ -353,16 +410,20 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   await page.waitForSelector('#admin-tools-title');
   assert.equal(await page.locator('.desktop-nav-btn[aria-current="page"]').getAttribute('data-view'), 'admin');
   const adminColumnsHandle = await page.waitForFunction(() => {
-    const layout = document.querySelector('.admin-desktop-layout');
-    const tools = layout?.querySelector('[aria-labelledby="admin-tools-title"]')?.getBoundingClientRect();
-    const readiness = layout?.querySelector('[aria-labelledby="admin-readiness-title"]')?.getBoundingClientRect();
-    if (!layout?.isConnected || getComputedStyle(layout).display !== 'grid' || !tools || !readiness) return null;
+    const overview = document.querySelector('.admin-dashboard-overview');
+    const access = document.querySelector('.admin-dashboard-access');
+    const tools = overview?.querySelector('[aria-labelledby="admin-tools-title"]')?.getBoundingClientRect();
+    const readiness = overview?.querySelector('[aria-labelledby="admin-readiness-title"]')?.getBoundingClientRect();
+    const users = document.querySelector('[aria-labelledby="admin-players-title"]')?.getBoundingClientRect();
+    if (!overview?.isConnected || !access?.isConnected || getComputedStyle(overview).display !== 'grid' || !tools || !readiness || !users) return null;
     return {
-      display: getComputedStyle(layout).display,
+      display: getComputedStyle(overview).display,
       toolsLeft: Math.round(tools.left),
       toolsTop: Math.round(tools.top),
       readinessLeft: Math.round(readiness.left),
       readinessTop: Math.round(readiness.top),
+      usersTop: Math.round(users.top),
+      accessBottom: Math.round(access.getBoundingClientRect().bottom),
     };
   });
   const adminColumns = await adminColumnsHandle.jsonValue();
@@ -370,29 +431,98 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   assert.equal(adminColumns.display, 'grid');
   assert.ok(adminColumns.readinessLeft > adminColumns.toolsLeft);
   assert.equal(adminColumns.readinessTop, adminColumns.toolsTop);
+  assert.ok(adminColumns.usersTop - adminColumns.accessBottom >= 8);
+  assert.ok(adminColumns.usersTop - adminColumns.accessBottom <= 32);
+  assert.equal(
+    await page.locator('.admin-player-list').evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length),
+    3,
+  );
 
   await page.click('.desktop-nav-btn[data-view="arcade"]');
   await page.waitForSelector('#arcade-games-title');
   assert.equal(await page.locator('.desktop-nav-btn[aria-current="page"]').getAttribute('data-view'), 'arcade');
   await page.click('[data-game="quiz"]');
   await page.waitForSelector('#arcade-active-game-title');
-  const arcadeColumns = await page.locator('.arcade-desktop-layout').evaluate((layout) => {
+  const arcadeColumnsHandle = await page.waitForFunction(() => {
+    const layout = document.querySelector('.arcade-desktop-layout');
+    if (!layout?.isConnected || getComputedStyle(layout).display !== 'grid') return null;
     const active = layout.querySelector('[aria-labelledby="arcade-active-game-title"]')?.getBoundingClientRect();
     const picker = layout.querySelector('.arcade-game-picker')?.getBoundingClientRect();
+    if (!active || !picker) return null;
     return {
       display: getComputedStyle(layout).display,
-      activeLeft: active ? Math.round(active.left) : null,
-      activeTop: active ? Math.round(active.top) : null,
-      pickerLeft: picker ? Math.round(picker.left) : null,
-      pickerTop: picker ? Math.round(picker.top) : null,
+      activeLeft: Math.round(active.left),
+      activeTop: Math.round(active.top),
+      pickerLeft: Math.round(picker.left),
+      pickerTop: Math.round(picker.top),
     };
   });
+  const arcadeColumns = await arcadeColumnsHandle.jsonValue();
+  assert.ok(arcadeColumns);
   assert.equal(arcadeColumns.display, 'grid');
   assert.ok(arcadeColumns.activeLeft !== null && arcadeColumns.pickerLeft !== null);
   assert.ok(arcadeColumns.pickerLeft > arcadeColumns.activeLeft);
   assert.equal(arcadeColumns.pickerTop, arcadeColumns.activeTop);
 
+  await page.click('.desktop-nav-btn[data-view="profile"]');
+  await page.waitForSelector('button[data-layout-preference="laptop"]');
+  await page.click('button[data-layout-preference="laptop"]');
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
+  assert.equal(await page.getAttribute('html', 'data-layout-preference'), 'laptop');
+  assert.equal(await page.locator('button[data-layout-preference="laptop"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('.desktop-nav').isHidden(), true);
+  assert.equal(await page.locator('.bottom-nav').isVisible(), true);
+  assert.equal(await page.locator('.profile-dashboard-columns').evaluate((layout) => getComputedStyle(layout).display), 'flex');
+
+  // The choice survives a reload in the current session.
+  await page.reload();
+  await page.waitForSelector('#app:not([hidden])');
+  assert.equal(await page.getAttribute('html', 'data-layout-mode'), 'laptop');
+  assert.equal(await page.getAttribute('html', 'data-layout-preference'), 'laptop');
+  await page.click('button[data-layout-preference="desktop"]');
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
+  assert.equal(await page.locator('.desktop-nav').isVisible(), true);
+  assert.equal(await page.locator('.bottom-nav').isHidden(), true);
+  await page.click('.desktop-nav-btn[data-view="arcade"]');
+  await page.waitForSelector('.arcade-desktop-layout');
+
+  // A separate session verifies a real logout/login without invalidating the
+  // fixture's shared admin cookie for the tests that follow. The same account
+  // gets the same browser-side preference back before #app becomes visible.
+  const persistenceContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  await trackE2EContext(persistenceContext, 'layout-mode-persistence');
+  const persistencePage = await persistenceContext.newPage();
+  try {
+    await persistencePage.goto(BASE_URL);
+    await persistencePage.waitForSelector('#auth-screen:not([hidden])');
+    await persistencePage.fill('#auth-name', alice.name);
+    await persistencePage.fill('#auth-password', alice.password);
+    await persistencePage.click('#auth-form button[type="submit"]');
+    await persistencePage.waitForSelector('#app:not([hidden])');
+    await persistencePage.goto(`${BASE_URL}/#profile`);
+    await persistencePage.waitForSelector('button[data-layout-preference="laptop"]');
+    await persistencePage.click('button[data-layout-preference="laptop"]');
+    await persistencePage.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
+    await persistencePage.click('#profile-logout');
+    await persistencePage.waitForSelector('#auth-screen:not([hidden])');
+    await persistencePage.fill('#auth-name', alice.name);
+    await persistencePage.fill('#auth-password', alice.password);
+    await persistencePage.click('#auth-form button[type="submit"]');
+    await persistencePage.waitForSelector('#app:not([hidden])');
+    assert.equal(await persistencePage.getAttribute('html', 'data-layout-mode'), 'laptop');
+    assert.equal(await persistencePage.getAttribute('html', 'data-layout-preference'), 'laptop');
+    assert.equal(await persistencePage.locator('.bottom-nav').isVisible(), true);
+  } finally {
+    await persistenceContext.close();
+  }
+
+  await page.click('.desktop-nav-btn[data-view="profile"]');
+  await page.click('button[data-layout-preference="auto"]');
+  await page.waitForFunction(() => document.documentElement.dataset.layoutPreference === 'auto' && document.documentElement.dataset.layoutMode === 'desktop');
+  await page.click('.desktop-nav-btn[data-view="arcade"]');
+  await page.waitForSelector('.arcade-desktop-layout');
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
   const mobileShell = await page.evaluate(() => {
     const nav = document.querySelector('.bottom-nav')?.getBoundingClientRect();
     const navInner = document.querySelector('.bottom-nav-inner');
@@ -635,6 +765,7 @@ flowTest('shell', 'Orga Events tab and Profil use grouped help while admin tools
   );
 
   await page.setViewportSize({ width: 1280, height: 900 });
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
   await openProfile();
   await page.waitForSelector('#profile-name');
   assert.equal(await page.locator('.profile-agent-step').count(), 3);
@@ -708,7 +839,7 @@ flowTest('shell', 'Orga Events tab and Profil use grouped help while admin tools
   await page.click('[data-profile-color-apply]');
   assert.equal(await page.inputValue('#profile-color'), appliedColor);
   assert.equal(await page.getByText('Erweitertes Tracking', { exact: true }).count(), 1);
-  const profileSectionKeys = ['password', 'agent', 'push', 'monitors'];
+  const profileSectionKeys = ['password', 'push', 'monitors', 'agent'];
   assert.deepEqual(
     await page.locator('[data-profile-section]').evaluateAll((sections) =>
       sections.map((section) => ({ key: (section as HTMLElement).dataset.profileSection, open: (section as HTMLDetailsElement).open })),
@@ -1346,7 +1477,7 @@ flowTest('competition', 'full click-through: players, matchmaking, voting, leade
   assert.deepEqual(liveNameTypography, leaderboardNameTypography, 'player names should use one shared typography');
   await page.setViewportSize({ width: 900, height: 844 });
   assert.equal(
-    await page.locator('.home-leaderboard-columns').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
+    await page.locator('.home-leaderboard-grid').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
     2,
     'home leaderboard should use two columns when the card has enough width'
   );
@@ -4110,6 +4241,11 @@ flowTest('shell', 'Admin: the verified role exposes tools and can temporarily hi
   // Cover the invariant at laptop and phone widths.
   for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
+    await page.waitForFunction(
+      (mode) => document.documentElement.dataset.layoutMode === mode,
+      viewport.width >= 1280 ? 'desktop' : 'laptop',
+    );
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     const viewContainer = page.locator('#view-container');
     const before = await viewContainer.evaluate((element) => {
       const picker = document.querySelector('#hall-event-select-search') as HTMLInputElement;

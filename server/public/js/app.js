@@ -42,6 +42,7 @@ import {
 import { invalidateEventScopedViews, invalidateViewCaches, invalidateViewsAfterReconnect } from './viewLifecycle.js';
 import { viewDefinition } from './viewManifest.js';
 import { appHash, localRouteKey, parseAppHash } from './appRoute.js';
+import { applyLayoutModeForPlayer, layoutModeForPlayer, LAYOUT_MODES } from './layoutMode.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -64,6 +65,7 @@ let renderRevision = 0;
 let sharedRefreshPromise = null;
 let sharedRefreshDirty = false;
 let sharedRefreshShouldRender = false;
+let pendingEventActivations = 0;
 
 function syncArcadeStylesheet(entry) {
   const linkId = 'arcade-stylesheet';
@@ -81,7 +83,7 @@ function syncArcadeStylesheet(entry) {
     link.rel = 'stylesheet';
     // bump ?v= when arcade.css changes so no cached copy survives a reload
     // (keep in sync with kiosk.html's static link)
-    link.href = '/css/arcade.css?v=4';
+    link.href = '/css/arcade.css?v=5';
     const loaded = new Promise((resolve, reject) => {
       link.addEventListener('load', () => {
         link.dataset.loaded = 'true';
@@ -313,6 +315,12 @@ function renderEventContextSwitcher() {
       }
     },
   });
+  if (pendingEventActivations > 0) {
+    const search = container.querySelector('#event-context-switcher-search');
+    const toggle = container.querySelector('.search-select-toggle');
+    if (search) search.disabled = true;
+    if (toggle) toggle.disabled = true;
+  }
 }
 
 // Every caller (the switcher above and followEventDeepLink) funnels through
@@ -324,20 +332,36 @@ let activateEventQueue = Promise.resolve();
 
 async function activateEvent(eventId, { navigate, searchTarget = null } = {}) {
   const run = async () => {
-    // A missing eventId is not an error: a notification stored before this
-    // release carries no event, and its destination is still the thing the
-    // reader tapped. Skip the switch, keep the navigation.
-    if (eventId && state.activeEvent?.id !== eventId) {
-      await api.events.activate(eventId);
-      invalidateEventScopedViews(VIEW_REGISTRY);
-      await loadAll();
+    try {
+      // A missing eventId is not an error: a notification stored before this
+      // release carries no event, and its destination is still the thing the
+      // reader tapped. Skip the switch, keep the navigation.
+      if (eventId && state.activeEvent?.id !== eventId) {
+        await api.events.activate(eventId);
+        invalidateEventScopedViews(VIEW_REGISTRY);
+        // A socket echo can start a newer central snapshot while this request
+        // is in flight. loadAll() deliberately declines to commit the older
+        // response in that case, so keep reconciling until this switch owns a
+        // committed snapshot instead of rendering whichever workspace was in
+        // state before the collision.
+        let committed = false;
+        while (!committed) committed = await loadAll();
+        syncFeatureNavigation();
+        await refreshNotificationBanner();
+        renderCurrent();
+      }
+      if (navigate && isKnownView(navigate)) switchView(navigate, { searchTarget });
+    } finally {
+      pendingEventActivations = Math.max(0, pendingEventActivations - 1);
+      // A realtime refresh may rebuild the switcher while activation is
+      // pending. Rebuild it one final time only after the queued switch has
+      // reconciled every event-scoped surface, so no intermediate enabled
+      // control can be mistaken for completion.
       renderEventContextSwitcher();
-      syncFeatureNavigation();
-      await refreshNotificationBanner();
-      renderCurrent();
     }
-    if (navigate && isKnownView(navigate)) switchView(navigate, { searchTarget });
   };
+  pendingEventActivations += 1;
+  renderEventContextSwitcher();
   const queued = activateEventQueue.then(run, run);
   // A failure must not wedge every switch queued after it — only the caller
   // that triggered it should see the rejection.
@@ -598,6 +622,15 @@ function wireNav() {
   // Feedback is reachable from every view via this topbar icon; the view it
   // was opened from is captured automatically (see lastSubstantiveView).
   document.getElementById('feedback-btn').addEventListener('click', () => openFeedbackModal(lastSubstantiveView));
+  const desktopLayoutQuery = window.matchMedia('(min-width: 1280px)');
+  desktopLayoutQuery.addEventListener('change', () => {
+    if (layoutModeForPlayer(getMyId()) !== LAYOUT_MODES.auto) return;
+    const previous = document.documentElement.dataset.layoutMode;
+    applyLayoutModeForPlayer(getMyId(), { wide: desktopLayoutQuery.matches });
+    if (document.documentElement.dataset.layoutMode !== previous) {
+      window.dispatchEvent(new Event('respawn:layout-mode-changed'));
+    }
+  });
   // Info is reference material people look up mid-conversation, so it opens
   // over whatever they were doing instead of costing them their current view.
   document.getElementById('info-btn').addEventListener('click', () => openInfoBoard());
