@@ -159,6 +159,8 @@ function syncBottomNavigationActiveState() {
     if (active) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
+  const profileButton = document.getElementById('profile-btn');
+  profileButton?.classList.toggle('active', currentView === 'profile');
 }
 
 function queueSharedRefresh({ render = true } = {}) {
@@ -474,10 +476,11 @@ function switchView(
   viewContainer.classList.remove('view-enter');
   void viewContainer.offsetWidth; // force reflow so removing+adding re-triggers
   viewContainer.classList.add('view-enter');
-  // A little indicator on the "Mehr" nav button (which now leads to "Mein
-  // Profil") points new/unset devices at self-onboarding (name, avatar,
-  // skills, agent key) instead of leaving them to stumble onto it.
+  // A little indicator points new/unset devices at self-onboarding (name,
+  // avatar, skills, agent key). Phones use "Mehr"; wide desktops also expose
+  // the restored account action in the top ribbon.
   document.querySelector('.nav-btn[data-view="more"]').classList.toggle('needs-setup', !getMyId());
+  document.getElementById('profile-btn').classList.toggle('needs-setup', !getMyId());
   renderCurrent({ preserveState: !changed && !searchTarget });
   if (!searchTarget) viewContainer.scrollTop = 0;
   if (replace) {
@@ -532,6 +535,7 @@ function wireNav() {
   document.getElementById('notifications-btn').insertAdjacentHTML('afterbegin', icon('bell'));
   document.getElementById('info-btn').innerHTML = icon(domainIcon('infoBoard'));
   document.getElementById('feedback-btn').innerHTML = icon(domainIcon('feedback'));
+  document.getElementById('profile-btn').innerHTML = icon('circleUser');
   document.querySelector('.admin-banner-label').insertAdjacentHTML('afterbegin', icon('shield'));
 
   document.querySelectorAll('.nav-btn').forEach((btn) => {
@@ -542,6 +546,7 @@ function wireNav() {
   // Feedback is reachable from every view via this topbar icon; the view it
   // was opened from is captured automatically (see lastSubstantiveView).
   document.getElementById('feedback-btn').addEventListener('click', () => openFeedbackModal(lastSubstantiveView));
+  document.getElementById('profile-btn').addEventListener('click', () => switchView('profile'));
   // Info is reference material people look up mid-conversation, so it opens
   // over whatever they were doing instead of costing them their current view.
   document.getElementById('info-btn').addEventListener('click', () => openInfoBoard());

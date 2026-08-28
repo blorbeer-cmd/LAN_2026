@@ -1716,6 +1716,7 @@ input.food-order-price-input {
   .admin-desktop-layout {
     display: grid;
     grid-template-columns: minmax(0, 2fr) minmax(var(--desktop-supporting-pane-min-width), 1fr);
+    grid-auto-flow: dense;
     align-items: start;
   }
   .home-desktop-layout > [aria-labelledby='home-event-overview-title'],

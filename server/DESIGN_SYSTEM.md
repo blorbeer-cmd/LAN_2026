@@ -203,9 +203,11 @@ descriptions while the shared modal remains full-width on phones.
 `--search-select-results-max-height` (320px) keeps a long searchable option list usable without
 letting it cover the full page; additional results scroll inside the dark listbox.
 `--shell-bottom-inset` reserves the phone/laptop bottom navigation plus safe area and becomes zero
-for the wide desktop side rail. `--desktop-nav-width` (220px) fixes that rail's readable target
-width, while `--desktop-supporting-pane-min-width` (320px) prevents supporting dashboard cards from
-collapsing below a useful scan width.
+for the wide desktop side rail. `--desktop-nav-width` (176px) keeps that rail compact while labels
+remain visible, while `--desktop-supporting-pane-min-width` (320px) prevents supporting dashboard
+cards from collapsing below a useful scan width. Wide-desktop content may grow to 1600px; its
+centering calculation explicitly subtracts the rail so the navigation never narrows the usable
+content column by accident.
 
 ## Breakpoints
 
@@ -665,11 +667,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
   The LAN „Mehr“ hub holds Mein Profil, Admin, Arcade, Durchsage, Jam and Orga. For a general event,
-  it replaces the Orga wrapper with direct entries for Events and Essen; An & Abreise, Packliste,
-  To-Do and Umfragen already occupy the bottom nav. Mein Profil moved here from its former topbar icon
-  (`#profile-btn`) to make room for the always-available Feedback icon there (see „Feedback“
-  below); the needs-setup indicator that used to sit on that topbar icon now sits on the „Mehr“
-  bottom-nav icon instead. Essen is listed here only for general events; LAN events retain its
+    it replaces the Orga wrapper with direct entries for Events and Essen; An & Abreise, Packliste,
+    To-Do and Umfragen already occupy the bottom nav. Mein Profil remains here as the compact/mobile
+    path. From `--bp-xl`, the top ribbon additionally restores `#profile-btn` as the conventional
+    direct account shortcut; it opens the same route and carries the setup indicator without changing
+    the six primary destinations. Essen is listed here only for general events; LAN events retain its
   unconditional bottom-nav slot (`more.js`). Auswertung is never listed here —
   it has no general-audience entry point at all, living only behind Admin's „Auswertung“ tool card
   (see „Admin tools“). It keeps each destination's canonical icon

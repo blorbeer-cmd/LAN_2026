@@ -48,7 +48,7 @@
   --topbar-height: 56px;
   --shell-bottom-inset: calc(var(--nav-height) + env(safe-area-inset-bottom));
   --content-max-width: 720px;
-  --desktop-nav-width: 220px;
+  --desktop-nav-width: 176px;
   --desktop-supporting-pane-min-width: 320px;
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
@@ -1139,6 +1139,23 @@ textarea {
   height: 44px;
   padding: var(--space-3);
 }
+.topbar .topbar-profile-btn {
+  display: none;
+}
+.topbar-profile-btn.needs-setup {
+  position: relative;
+}
+.topbar-profile-btn.needs-setup::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--state-paused);
+  box-shadow: 0 0 0 2px var(--bg-elevated);
+}
 .nav-btn.needs-setup .nav-icon {
   position: relative;
 }
@@ -1196,7 +1213,7 @@ textarea {
 }
 @media (min-width: 1280px) { /* --bp-xl */
   :root {
-    --content-max-width: 1320px;
+    --content-max-width: 1600px;
     --shell-bottom-inset: 0px;
   }
   .notification-highlight,
@@ -1207,7 +1224,16 @@ textarea {
   }
   .view-container {
     width: calc(100% - var(--desktop-nav-width));
-    padding-bottom: var(--space-6);
+    padding: var(--space-4)
+      max(var(--space-4), calc((100% - var(--desktop-nav-width) - var(--content-max-width)) / 2))
+      var(--space-6);
+  }
+  .topbar .topbar-profile-btn {
+    display: inline-flex;
+  }
+  .topbar .topbar-profile-btn.active {
+    color: var(--accent);
+    background: var(--accent-bg);
   }
 }
 
@@ -1243,7 +1269,7 @@ textarea {
     right: auto;
     width: var(--desktop-nav-width);
     height: auto;
-    padding: var(--space-4);
+    padding: var(--space-3);
     border-top: 0;
     border-right: 1px solid var(--border);
     overflow-y: auto;
@@ -1371,9 +1397,13 @@ textarea {
     min-height: var(--tap-target-size);
     flex-direction: row;
     justify-content: flex-start;
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--font-size-sm);
+    gap: var(--space-2);
+    padding: var(--space-2);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+  }
+  .nav-btn.active {
+    background: var(--accent-bg);
   }
   .nav-btn::before {
     top: 50%;
@@ -1388,7 +1418,7 @@ textarea {
     transform: translateY(-50%) scaleY(1);
   }
   .nav-btn.active .nav-icon {
-    transform: translateX(var(--space-1));
+    transform: none;
   }
 }
 

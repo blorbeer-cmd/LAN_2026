@@ -3,9 +3,13 @@
 ## Decision
 
 Respawn remains one responsive browser application. At the existing `--bp-xl` breakpoint (1280px)
-the six event-aware primary destinations move from the bottom bar into a left side rail. The topbar,
+the six event-aware primary destinations move from the bottom bar into a compact left side rail. The topbar,
 route registry, permissions, event-specific navigation order and „Mehr“ hub remain shared with
 phone and laptop layouts.
+
+The wide top ribbon restores „Mein Profil“ as a direct account shortcut. It is
+an additional desktop entry point to the same route, not a seventh primary destination: „Mehr“,
+permissions, history and the mobile path remain unchanged.
 
 This is a presentation change, not a second desktop information architecture. It avoids duplicated
 navigation state and keeps deep links, browser history and role boundaries identical on every
@@ -25,7 +29,9 @@ causes the change. Persistent rail buttons retain focus.
 
 The DOM order is unchanged and remains the reading, keyboard and narrow-screen order. CSS grid only
 changes visual placement at `--bp-xl`, so mobile, laptop, reload and live rerender behavior continue
-to use the existing implementation.
+to use the existing implementation. Dense placement fills the main and supporting columns from the
+same top edge when an optional preceding group is absent; the wide content column grows to 1600px
+without counting the rail twice in its centering calculation.
 
 ## Deliberate limits
 
@@ -39,7 +45,8 @@ to use the existing implementation.
 
 ## Verification contract
 
-Browser regression coverage checks the rail/bar breakpoint, unchanged destination set,
+Browser regression coverage checks the rail/bar breakpoint, unchanged destination set, the
+desktop-only profile shortcut,
 `aria-current`, document titles, focus after subpage navigation, the three pilot compositions and a
 mobile fallback. Required frontend lint, build, token checks, unit/integration tests and the full E2E
 suite remain mandatory before the draft pull request is ready for review.

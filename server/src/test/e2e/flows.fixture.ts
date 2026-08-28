@@ -133,8 +133,9 @@ async function openOrgaTab(tab: string): Promise<void> {
   await page.click(`[data-section-tab="${tab}"]`);
 }
 
-// "Mein Profil" moved out of the topbar into "Mehr" to make room for the
-// always-available Feedback icon there.
+// Phones reach "Mein Profil" through "Mehr". The wide desktop shell also has
+// a direct account action in the top ribbon; this helper deliberately keeps
+// exercising the compact/mobile information architecture.
 async function openProfile(): Promise<void> {
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="profile"]');
@@ -261,7 +262,7 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
     await page.setViewportSize({ width: 390, height: 844 });
   });
 
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await page.click('.nav-btn[data-view="home"]');
   await page.waitForSelector('#view-container h1:text-is("Home")');
 
@@ -270,8 +271,10 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
     const nav = document.querySelector('.bottom-nav')?.getBoundingClientRect();
     const navInner = document.querySelector('.bottom-nav-inner');
     const navButton = document.querySelector('.nav-btn:not([hidden])');
-    const view = document.querySelector('#view-container')?.getBoundingClientRect();
-    if (!topbar || !nav || !navInner || !navButton || !view) return null;
+    const viewElement = document.querySelector('#view-container');
+    const view = viewElement?.getBoundingClientRect();
+    if (!topbar || !nav || !navInner || !navButton || !viewElement || !view) return null;
+    const viewStyle = getComputedStyle(viewElement);
     return {
       nav: { left: Math.round(nav.left), top: Math.round(nav.top), right: Math.round(nav.right) },
       topbarBottom: Math.round(topbar.bottom),
@@ -280,6 +283,11 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
       buttonDirection: getComputedStyle(navButton).flexDirection,
       buttonWidth: Math.round(navButton.getBoundingClientRect().width),
       navInnerWidth: Math.round(navInner.getBoundingClientRect().width),
+      contentWidth: Math.round(
+        view.width
+        - Number.parseFloat(viewStyle.paddingLeft)
+        - Number.parseFloat(viewStyle.paddingRight)
+      ),
     };
   });
   assert.ok(desktopShell);
@@ -287,9 +295,12 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   assert.equal(desktopShell.nav.top, desktopShell.topbarBottom);
   assert.ok(desktopShell.viewLeft >= desktopShell.nav.right);
   assert.equal(desktopShell.navDirection, 'column');
+  assert.ok(desktopShell.nav.right < 200);
   assert.equal(desktopShell.buttonDirection, 'row');
   assert.equal(desktopShell.buttonWidth, desktopShell.navInnerWidth);
+  assert.ok(desktopShell.contentWidth >= 1500);
   assert.equal(await page.locator('.nav-btn:not([hidden])').count(), 6);
+  assert.equal(await page.locator('#profile-btn').isVisible(), true);
   assert.equal(await page.locator('.nav-btn[aria-current="page"]').getAttribute('data-view'), 'home');
   assert.equal(await page.title(), 'Home · Respawn');
 
@@ -298,21 +309,27 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
     columns: getComputedStyle(layout).gridTemplateColumns.split(' ').length,
   }));
   assert.deepEqual(homeColumns, { display: 'grid', columns: 2 });
+  const homeSectionTops = await page.evaluate(() => ({
+    todos: Math.round(document.querySelector('[aria-labelledby="home-todos-title"]')?.getBoundingClientRect().top ?? -1),
+    live: Math.round(document.querySelector('[aria-labelledby="home-live-title"]')?.getBoundingClientRect().top ?? -2),
+  }));
+  assert.equal(homeSectionTops.todos, homeSectionTops.live);
 
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="profile"]');
+  await page.click('#profile-btn');
   await page.waitForSelector('#profile-name');
   assert.equal(await page.title(), 'Mein Profil · Respawn');
   assert.equal(await page.locator('.nav-btn[aria-current="page"]').getAttribute('data-view'), 'more');
+  assert.equal(await page.locator('#profile-btn').evaluate((element) => element.classList.contains('active')), true);
   assert.equal(
-    await page.evaluate(() => document.activeElement?.textContent?.trim()),
-    'Mein Profil',
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.id),
+    'profile-btn',
   );
 
   await page.goBack();
-  await page.waitForSelector('#view-container h1:text-is("Mehr")');
-  assert.equal(await page.evaluate(() => document.activeElement?.textContent?.trim()), 'Mehr');
+  await page.waitForSelector('#view-container h1:text-is("Home")');
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent?.trim()), 'Home');
 
+  await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
   await page.waitForSelector('#admin-tools-title');
   const adminColumnsHandle = await page.waitForFunction(() => {
@@ -323,13 +340,16 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
     return {
       display: getComputedStyle(layout).display,
       toolsLeft: Math.round(tools.left),
+      toolsTop: Math.round(tools.top),
       readinessLeft: Math.round(readiness.left),
+      readinessTop: Math.round(readiness.top),
     };
   });
   const adminColumns = await adminColumnsHandle.jsonValue();
   assert.ok(adminColumns);
   assert.equal(adminColumns.display, 'grid');
   assert.ok(adminColumns.readinessLeft > adminColumns.toolsLeft);
+  assert.equal(adminColumns.readinessTop, adminColumns.toolsTop);
 
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="arcade"]');
@@ -342,12 +362,15 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
     return {
       display: getComputedStyle(layout).display,
       activeLeft: active ? Math.round(active.left) : null,
+      activeTop: active ? Math.round(active.top) : null,
       pickerLeft: picker ? Math.round(picker.left) : null,
+      pickerTop: picker ? Math.round(picker.top) : null,
     };
   });
   assert.equal(arcadeColumns.display, 'grid');
   assert.ok(arcadeColumns.activeLeft !== null && arcadeColumns.pickerLeft !== null);
   assert.ok(arcadeColumns.pickerLeft > arcadeColumns.activeLeft);
+  assert.equal(arcadeColumns.pickerTop, arcadeColumns.activeTop);
 
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileShell = await page.evaluate(() => {
@@ -367,6 +390,7 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   assert.equal(mobileShell.navWidth, 390);
   assert.equal(mobileShell.navDirection, 'row');
   assert.equal(mobileShell.arcadeDisplay, 'flex');
+  assert.equal(await page.locator('#profile-btn').isHidden(), true);
 });
 
 flowTest('shell', 'Umfragen: the empty state opens the existing event switcher directly', async () => {
