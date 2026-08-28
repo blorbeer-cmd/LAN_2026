@@ -3493,8 +3493,10 @@ flowTest('community', 'Durchsage: notification center can navigate, mark read an
   // even though it was never explicitly marked read.
   await endedNotification.locator('text=Erledigt').waitFor();
   assert.ok(!((await endedNotification.getAttribute('class')) ?? '').includes('is-unread'));
-  await page.click('[data-notifications-seen-all]');
-  await page.waitForFunction(() => document.querySelectorAll('.notification-center-entry.is-unread').length === 0);
+  // "Alle gelesen" has nothing to do here either: every visible entry is
+  // already obsolete, so it stays disabled instead of offering a click with
+  // no visible effect.
+  assert.ok(await page.isDisabled('[data-notifications-seen-all]'));
   // The dedicated cleanup action only ever removes settled entries like this
   // one, leaving anything still open untouched.
   await page.click('[data-notifications-hide-resolved]');

@@ -678,6 +678,61 @@ test('closing a poll resolves its "Neue Abstimmung" notification; reopening reac
   const reopenEntry = reopenLog.body.entries.find((entry: { title: string }) => entry.title === 'Abstimmung');
   assert.ok(reopenEntry, 'bob was notified the poll reopened');
   assert.equal(reopenEntry.resolvedAt, null, 'the reopened poll is actionable again, not stuck resolved');
+  // The topic is deduplicated (isDeduplicatedPushTopic in push.ts), so the
+  // reopen reuses and refreshes the same row instead of leaving the earlier,
+  // now-resolved one behind as a second, permanently-obsolete entry.
+  assert.equal(reopenEntry.id, openEntry.id, 'reopening reuses the same notification-center entry');
+  const rowCountAfterReopen = db
+    .prepare('SELECT COUNT(*) AS count FROM push_log WHERE topic_key = ?')
+    .get(topicKey) as { count: number };
+  assert.equal(rowCountAfterReopen.count, 1, 'exactly one row backs the poll-open topic, not one per occurrence');
+
+  const closedAgain = await request(app)
+    .post(`/api/events/${eventId}/polls/${created.body.id}/close`)
+    .set('x-test-player-id', alice);
+  assert.equal(closedAgain.status, 200, JSON.stringify(closedAgain.body));
+  const finalLog = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const finalEntries = finalLog.body.entries.filter((entry: { id: string }) => entry.id === openEntry.id);
+  assert.equal(finalEntries.length, 1, 'still exactly one entry for this poll after a second close');
+  assert.ok(finalEntries[0].resolvedAt, 'and it is resolved again');
+});
+
+test('extending a poll\'s deadline keeps its "Neue Abstimmung" notification from expiring early', async () => {
+  const alice = 'poll-expiry-sync-alice';
+  const bob = 'poll-expiry-sync-bob';
+  createMember(alice, 'Poll Expiry Sync Alice');
+  createMember(bob, 'Poll Expiry Sync Bob');
+  const eventId = await createEvent('Poll Expiry Sync Event', [alice, bob]);
+  const created = await createPoll(eventId, alice, { responseDueOn: isoDate(2) });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const topicKey = `event-poll-open:${created.body.id}`;
+
+  const before = db
+    .prepare('SELECT expires_at AS expiresAt FROM push_log WHERE topic_key = ?')
+    .get(topicKey) as { expiresAt: number };
+  assert.equal(before.expiresAt, created.body.responseDueAt);
+
+  const extendedDueOn = isoDate(10);
+  const patched = await request(app)
+    .patch(`/api/events/${eventId}/polls/${created.body.id}`)
+    .set('x-test-player-id', alice)
+    .send({ responseDueOn: extendedDueOn });
+  assert.equal(patched.status, 200, JSON.stringify(patched.body));
+  assert.ok(patched.body.responseDueAt > before.expiresAt, 'the deadline actually moved further out');
+
+  const after = db
+    .prepare('SELECT expires_at AS expiresAt FROM push_log WHERE topic_key = ?')
+    .get(topicKey) as { expiresAt: number };
+  assert.equal(
+    after.expiresAt,
+    patched.body.responseDueAt,
+    'the notification\'s own expiry follows the extended deadline, so it does not read as obsolete before the poll actually closes',
+  );
+
+  const log = await request(app).get('/api/push/log').set('x-test-player-id', bob).query({ playerId: bob });
+  const entry = log.body.entries.find((item: { title: string }) => item.title === 'Neue Abstimmung');
+  assert.ok(entry);
+  assert.equal(entry.expiresAt, patched.body.responseDueAt);
 });
 
 test('automatic poll reminders are scheduled two days and two hours before the deadline', async () => {

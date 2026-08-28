@@ -5,6 +5,7 @@
 import { db } from './db';
 import {
   EVENT_POLL_REMINDER_TOPIC_PREFIX,
+  EVENT_POLL_OPEN_TOPIC_PREFIX,
   notifyPlayers,
   resolvePushTopic,
 } from './push';
@@ -32,7 +33,7 @@ function pollReminderTopicKey(pollId: string, playerId?: string): string {
 // "wieder geöffnet" topic) so a lazily auto-closed poll resolves the same
 // notification the explicit /close route does.
 function pollOpenTopicKey(pollId: string): string {
-  return `event-poll-open:${pollId}`;
+  return `${EVENT_POLL_OPEN_TOPIC_PREFIX}${pollId}`;
 }
 
 // Sends every automatic reminder whose scheduled instant has passed, then

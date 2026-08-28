@@ -91,12 +91,14 @@ export interface PushTopic {
 export const FOOD_ORDER_PAYMENT_REMINDER_TOPIC_PREFIX = 'food-order-payment-reminder:';
 export const EVENT_POLL_REMINDER_TOPIC_PREFIX = 'event-poll-reminder:';
 export const EVENT_REMINDER_TOPIC_PREFIX = 'event-reminder:';
+export const EVENT_POLL_OPEN_TOPIC_PREFIX = 'event-poll-open:';
 
 export function isDeduplicatedPushTopic(topicKey: string): boolean {
   return (
     topicKey.startsWith(FOOD_ORDER_PAYMENT_REMINDER_TOPIC_PREFIX) ||
     topicKey.startsWith(EVENT_POLL_REMINDER_TOPIC_PREFIX) ||
-    topicKey.startsWith(EVENT_REMINDER_TOPIC_PREFIX)
+    topicKey.startsWith(EVENT_REMINDER_TOPIC_PREFIX) ||
+    topicKey.startsWith(EVENT_POLL_OPEN_TOPIC_PREFIX)
   );
 }
 

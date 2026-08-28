@@ -27,7 +27,7 @@ let loadedForId = null;
 let loading = false;
 let loadError = false;
 let isOpen = false;
-let highlightExpiryTimer = null;
+let expiryRefreshTimer = null;
 
 function buttonEl() {
   return document.getElementById('notifications-btn');
@@ -50,18 +50,33 @@ function setOpen(nextOpen) {
   renderBanner();
 }
 
-function clearHighlightExpiryTimer() {
-  if (highlightExpiryTimer !== null) window.clearTimeout(highlightExpiryTimer);
-  highlightExpiryTimer = null;
+function clearExpiryRefreshTimer() {
+  if (expiryRefreshTimer !== null) window.clearTimeout(expiryRefreshTimer);
+  expiryRefreshTimer = null;
 }
 
-function scheduleHighlightExpiry() {
-  clearHighlightExpiryTimer();
-  if (!highlightEntry?.expiresAt) return;
-  const delay = Math.max(0, highlightEntry.expiresAt - Date.now());
+// The earliest still-future expiresAt across the highlight banner and the
+// full loaded list: any of them can flip an entry from active to obsolete
+// (see isFeedEntryObsolete) purely by the clock, with no server push to
+// trigger a refresh. Without this, an entry already rendered as unread could
+// keep reading that way - and the "Erledigte aufräumen" action could stay
+// hidden - until some unrelated refresh happens to reload the panel.
+function nextExpiryTimestamp() {
+  const now = Date.now();
+  const candidates = [highlightEntry?.expiresAt, ...entries.map((entry) => entry.expiresAt)].filter(
+    (expiresAt) => typeof expiresAt === 'number' && expiresAt > now,
+  );
+  return candidates.length > 0 ? Math.min(...candidates) : null;
+}
+
+function scheduleNextExpiryRefresh() {
+  clearExpiryRefreshTimer();
+  const nextExpiry = nextExpiryTimestamp();
+  if (nextExpiry === null) return;
+  const delay = Math.max(0, nextExpiry - Date.now());
   // Browser timers cap at a signed 32-bit integer. Very distant deadlines
   // simply re-check and schedule the remaining interval later.
-  highlightExpiryTimer = window.setTimeout(refreshNotificationBanner, Math.min(delay, 2_147_483_647));
+  expiryRefreshTimer = window.setTimeout(refreshNotificationBanner, Math.min(delay, 2_147_483_647));
 }
 
 // An obsolete entry (its workflow resolved, or it expired - see
@@ -123,7 +138,6 @@ async function markSeen(entryId, { navigate, eventId, target = null } = {}) {
   const previousHighlight = highlightEntry;
   if (highlightEntry?.id === entryId) {
     highlightEntry = null;
-    clearHighlightExpiryTimer();
   }
   renderBanner();
   try {
@@ -135,7 +149,6 @@ async function markSeen(entryId, { navigate, eventId, target = null } = {}) {
   } catch (err) {
     entry.seen = false;
     highlightEntry = previousHighlight;
-    scheduleHighlightExpiry();
     renderBanner();
     showToast(err.message, { error: true });
   }
@@ -149,7 +162,6 @@ async function hideEntry(entryId) {
   entries = entries.filter((item) => item.id !== entryId);
   if (highlightEntry?.id === entryId) {
     highlightEntry = null;
-    clearHighlightExpiryTimer();
   }
   renderBanner();
   try {
@@ -157,7 +169,6 @@ async function hideEntry(entryId) {
   } catch (err) {
     entries = previousEntries;
     highlightEntry = previousHighlight;
-    scheduleHighlightExpiry();
     renderBanner();
     showToast(err.message, { error: true });
   }
@@ -172,14 +183,12 @@ async function markAllSeen() {
     entry.seen = true;
   });
   highlightEntry = null;
-  clearHighlightExpiryTimer();
   renderBanner();
   try {
     await api.push.seenAll(playerId);
   } catch (err) {
     entries = previousEntries;
     highlightEntry = previousHighlight;
-    scheduleHighlightExpiry();
     renderBanner();
     showToast(err.message, { error: true });
   }
@@ -196,14 +205,12 @@ async function hideAllEntries() {
   const previousHighlight = highlightEntry;
   entries = [];
   highlightEntry = null;
-  clearHighlightExpiryTimer();
   renderBanner();
   try {
     await api.push.hideAll(playerId);
   } catch (err) {
     entries = previousEntries;
     highlightEntry = previousHighlight;
-    scheduleHighlightExpiry();
     renderBanner();
     showToast(err.message, { error: true });
   }
@@ -222,7 +229,6 @@ async function hideResolvedEntries() {
   entries = entries.filter((entry) => !obsoleteIds.has(entry.id));
   if (highlightEntry && obsoleteIds.has(highlightEntry.id)) {
     highlightEntry = null;
-    clearHighlightExpiryTimer();
   }
   renderBanner();
   try {
@@ -230,7 +236,6 @@ async function hideResolvedEntries() {
   } catch (err) {
     entries = previousEntries;
     highlightEntry = previousHighlight;
-    scheduleHighlightExpiry();
     renderBanner();
     showToast(err.message, { error: true });
   }
@@ -241,7 +246,6 @@ function renderHighlight() {
   if (!container) return;
   const view = highlightEntry ? feedLinkView(highlightEntry.url) : null;
   if (!highlightEntry || !getMyId()) {
-    clearHighlightExpiryTimer();
     container.hidden = true;
     container.innerHTML = '';
     return;
@@ -276,6 +280,10 @@ export function renderBanner() {
   if (!button || !panel || !count) return;
 
   renderHighlight();
+  // Re-arms against the current entries/highlight state on every render, so
+  // the individual mutators below no longer need to reason about the timer
+  // themselves - see nextExpiryTimestamp's own comment.
+  scheduleNextExpiryRefresh();
 
   const myId = getMyId();
   const unreadCount =
@@ -303,7 +311,7 @@ export function renderBanner() {
       const hasObsolete = entries.some((entry) => isFeedEntryObsolete(entry));
       return `<div class="notification-center-toolbar${hasObsolete ? ' notification-center-toolbar--3' : ''}">
       ${hasObsolete ? '<button type="button" class="btn btn-sm" data-notifications-hide-resolved>Erledigte aufräumen</button>' : ''}
-      <button type="button" class="btn btn-sm" data-notifications-seen-all ${entries.every((entry) => entry.seen) ? 'disabled' : ''}>Alle gelesen</button>
+      <button type="button" class="btn btn-sm" data-notifications-seen-all ${entries.every((entry) => entry.seen || isFeedEntryObsolete(entry)) ? 'disabled' : ''}>Alle gelesen</button>
       <button type="button" class="btn btn-sm btn-danger" data-notifications-hide-all>Alle löschen</button>
     </div>`;
     })() : ''}
@@ -339,7 +347,6 @@ export async function refreshNotificationBanner({ throwOnError = false } = {}) {
   if (!myId) {
     entries = [];
     highlightEntry = null;
-    clearHighlightExpiryTimer();
     loadedForId = null;
     loading = false;
     loadError = false;
@@ -355,13 +362,11 @@ export async function refreshNotificationBanner({ throwOnError = false } = {}) {
     if (thisEpoch !== epoch) return;
     entries = res.entries;
     highlightEntry = current.entry;
-    scheduleHighlightExpiry();
     loadedForId = myId;
   } catch (error) {
     if (thisEpoch !== epoch) return;
     entries = [];
     highlightEntry = null;
-    clearHighlightExpiryTimer();
     loadedForId = myId;
     loadError = true;
     if (throwOnError) throw error;
@@ -397,7 +402,6 @@ export async function settleNotificationTarget(targetId) {
   });
   if (matching.some((entry) => entry.id === highlightEntry?.id)) {
     highlightEntry = null;
-    clearHighlightExpiryTimer();
   }
   renderBanner();
   try {
@@ -429,7 +433,6 @@ export function initNotificationBanner() {
     isOpen = false;
     entries = [];
     highlightEntry = null;
-    clearHighlightExpiryTimer();
     loadedForId = null;
     loadError = false;
     refreshNotificationBanner();

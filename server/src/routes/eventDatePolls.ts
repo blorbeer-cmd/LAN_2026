@@ -10,8 +10,10 @@ import { writeAdminAudit } from '../adminAudit';
 import { broadcast, Events } from '../realtime';
 import {
   EVENT_POLL_REMINDER_TOPIC_PREFIX,
+  EVENT_POLL_OPEN_TOPIC_PREFIX,
   notifyPlayers,
   resolvePushTopic,
+  updatePushTopicExpiry,
   type PushTopic,
 } from '../push';
 import { isValidIsoDate } from '../localDate';
@@ -302,9 +304,12 @@ function pollUpdateTopicKey(pollId: string, playerId: string): string {
 // Unlike the per-player reminder/update topics above, this one has no
 // recipient suffix: "Neue Abstimmung"/"wieder geöffnet" go out once to every
 // invitee, so one shared topic covers all of them and resolves together
-// when the poll closes (resolvePollNotifications below).
+// when the poll closes (resolvePollNotifications below). It is a
+// deduplicated topic (isDeduplicatedPushTopic) so a reopen reuses and
+// refreshes the same notification-center row instead of leaving the earlier,
+// now-resolved one behind as a second entry.
 function pollOpenTopicKey(pollId: string): string {
-  return `event-poll-open:${pollId}`;
+  return `${EVENT_POLL_OPEN_TOPIC_PREFIX}${pollId}`;
 }
 
 function notifyPreviouslyAnsweredPlayers(event: EventRow, poll: DatePollRow, playerIds: string[]): void {
@@ -660,6 +665,16 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
     details: { eventId: event.id, addedOptionCount: result.addedOptionCount },
   });
   broadcast(Events.eventsChanged, null, { groupId: event.group_id! });
+  if (responseDueOn !== undefined) {
+    // Keeps the "Neue Abstimmung" notification's own expiry in step with a
+    // deadline extension - otherwise it would read as obsolete (and be
+    // swept up by "Erledigte aufräumen") at the old deadline even though the
+    // poll itself is still open and answerable.
+    updatePushTopicExpiry(pollOpenTopicKey(poll.id), result.poll.response_due_at, {
+      groupId: event.group_id!,
+      eventId: event.id,
+    });
+  }
   if (result.addedOptionCount > 0) {
     notifyPreviouslyAnsweredPlayers(event, result.poll, result.previouslyAnsweredPlayerIds);
   }
