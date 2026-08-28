@@ -500,7 +500,8 @@ export function renderProfile(container, ctx) {
     const section = profileLayout.querySelector(selector);
     if (section) lanColumn.append(section);
   });
-  dashboardColumns.append(accountColumn, lanColumn);
+  dashboardColumns.append(accountColumn);
+  if (lanColumn.children.length > 0) dashboardColumns.append(lanColumn);
   const agentSection = profileLayout.querySelector('[aria-labelledby="profile-agent-title"]');
   profileLayout.insertBefore(dashboardColumns, agentSection);
 

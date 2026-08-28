@@ -1728,6 +1728,9 @@ input.food-order-price-input {
   :root[data-layout-mode='desktop'] .profile-dashboard-columns {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  :root[data-layout-mode='desktop'] .profile-dashboard-columns > :only-child {
+    grid-column: 1 / -1;
+  }
   :root[data-layout-mode='desktop'] .home-priority-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
