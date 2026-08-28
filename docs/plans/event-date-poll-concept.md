@@ -21,8 +21,9 @@ Umfangs.
 - Das Event wird zuerst über den bestehenden Event-Bereich angelegt.
 - Das aktive Event wird ausschließlich im vorhandenen Event-Umschalter oben rechts gewählt. Im
   Abstimmungs-Tab und im Erstell-Dialog gibt es keine zweite Eventauswahl.
-- Mit aktivem Basis-Kontext „Allgemein“ zeigt der Tab einen eindeutigen Hinweis, zuerst ein Event zu
-  wählen.
+- Der dauerhaft geöffnete Basis-Kontext „Allgemein“ ist ein vollwertiges Event für diesen Tab: Der
+  Teilnehmerkreis besteht aus jedem aktiven Konto (automatisch bestätigter Teilnehmer des
+  Basis-Events), sodass dort ohne Umschalten auf ein echtes Event abgestimmt werden kann.
 - Sichtbarkeit und Aktionen folgen dem etablierten Event-Teilnehmermodell: Nur Personen mit
   bestätigter Teilnahme (`accepted`) können Abstimmungen dieses Events sehen, erstellen oder
   beantworten. Eventänderungen machen diese Zusage nicht ungültig.
@@ -311,7 +312,8 @@ Zugriffsgrenze wird nicht lediglich im Browser ausgeblendet.
 ## 10. Abnahmekriterien
 
 - Der Tab liegt unter Orga und verwendet ausschließlich das oben rechts aktive Event.
-- „Allgemein“ zeigt eine verständliche Leerseite; es gibt keine zweite Eventauswahl.
+- „Allgemein“ funktioniert wie jedes andere Event (Liste, Erstellen, Beantworten); es gibt keine
+  zweite Eventauswahl.
 - Nur bestätigte Teilnehmer sehen den Bereich; Adminrechte allein reichen nicht.
 - Jeder bestätigte Teilnehmer kann eine Abstimmung erstellen.
 - Der Dialog ist auf Mobil- und Desktopbreite übersichtlich und folgt dem Designsystem.
