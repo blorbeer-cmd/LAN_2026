@@ -3491,7 +3491,7 @@ flowTest('community', 'Durchsage: notification center can navigate, mark read an
   // server-side (resolvePushTopic in routes/broadcasts.ts): the center shows
   // it as already settled rather than as something still needing attention,
   // even though it was never explicitly marked read.
-  await endedNotification.locator('text=Erledigt').waitFor();
+  await endedNotification.locator('text=Obsolet').waitFor();
   assert.ok(!((await endedNotification.getAttribute('class')) ?? '').includes('is-unread'));
   // "Alle gelesen" has nothing to do here either: every visible entry is
   // already obsolete, so it stays disabled instead of offering a click with
@@ -3503,7 +3503,7 @@ flowTest('community', 'Durchsage: notification center can navigate, mark read an
   await endedNotification.waitFor({ state: 'detached' });
   // Earlier flows in this shared fixture may have left their own, unrelated
   // entries in this player's history — clear those the regular way so the
-  // panel is guaranteed empty for the next flow, regardless of what "Erledigte
+  // panel is guaranteed empty for the next flow, regardless of what "Obsolete
   // aufräumen" already removed above.
   if ((await page.locator('.notification-center-entry').count()) > 0) {
     await page.click('[data-notifications-hide-all]');

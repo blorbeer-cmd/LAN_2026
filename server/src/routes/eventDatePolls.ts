@@ -668,7 +668,7 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
   if (responseDueOn !== undefined) {
     // Keeps the "Neue Abstimmung" notification's own expiry in step with a
     // deadline extension - otherwise it would read as obsolete (and be
-    // swept up by "Erledigte aufräumen") at the old deadline even though the
+    // swept up by "Obsolete aufräumen") at the old deadline even though the
     // poll itself is still open and answerable.
     updatePushTopicExpiry(pollOpenTopicKey(poll.id), result.poll.response_due_at, {
       groupId: event.group_id!,

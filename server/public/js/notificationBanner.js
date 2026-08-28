@@ -59,7 +59,7 @@ function clearExpiryRefreshTimer() {
 // full loaded list: any of them can flip an entry from active to obsolete
 // (see isFeedEntryObsolete) purely by the clock, with no server push to
 // trigger a refresh. Without this, an entry already rendered as unread could
-// keep reading that way - and the "Erledigte aufräumen" action could stay
+// keep reading that way - and the "Obsolete aufräumen" action could stay
 // hidden - until some unrelated refresh happens to reload the panel.
 function nextExpiryTimestamp() {
   const now = Date.now();
@@ -93,7 +93,7 @@ export function entryHtml(entry) {
     ? `<span class="badge badge-event">${escapeHtml(entry.eventName)}</span>`
     : '';
   const obsoleteBadge = obsolete
-    ? `<span class="badge badge-neutral">${entry.resolvedAt ? 'Erledigt' : 'Abgelaufen'}</span>`
+    ? `<span class="badge badge-neutral">${entry.resolvedAt ? 'Obsolet' : 'Abgelaufen'}</span>`
     : '';
   return `<article class="notification-center-entry${unread ? ' is-unread' : ''}${obsolete ? ' is-obsolete' : ''}" data-notification-entry="${entry.id}">
     <div class="row-between notification-center-entry-head">
@@ -310,7 +310,7 @@ export function renderBanner() {
     ${entries.length > 0 ? (() => {
       const hasObsolete = entries.some((entry) => isFeedEntryObsolete(entry));
       return `<div class="notification-center-toolbar${hasObsolete ? ' notification-center-toolbar--3' : ''}">
-      ${hasObsolete ? '<button type="button" class="btn btn-sm" data-notifications-hide-resolved>Erledigte aufräumen</button>' : ''}
+      ${hasObsolete ? '<button type="button" class="btn btn-sm" data-notifications-hide-resolved>Obsolete aufräumen</button>' : ''}
       <button type="button" class="btn btn-sm" data-notifications-seen-all ${entries.every((entry) => entry.seen || isFeedEntryObsolete(entry)) ? 'disabled' : ''}>Alle gelesen</button>
       <button type="button" class="btn btn-sm btn-danger" data-notifications-hide-all>Alle löschen</button>
     </div>`;

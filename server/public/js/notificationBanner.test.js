@@ -46,7 +46,7 @@ test('a resolved entry never reads as unread, even before it was opened', () => 
 
   assert.doesNotMatch(html, /is-unread/);
   assert.match(html, /is-obsolete/);
-  assert.match(html, /badge-neutral">Erledigt</);
+  assert.match(html, /badge-neutral">Obsolet</);
   assert.doesNotMatch(html, /notification-center-seen/, 'the redundant "mark as seen" action is hidden once obsolete');
 });
 
