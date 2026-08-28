@@ -27,7 +27,7 @@ export function createApp(): express.Express {
   // Public metadata needed before login by the dedicated kiosk client.
   app.get('/api/meta', (_req, res) => {
     res.json({
-      kioskProtection: Boolean(config.kioskToken),
+      kioskProtection: Boolean(config.kioskPassword || config.kioskToken),
     });
   });
 

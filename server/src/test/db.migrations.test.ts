@@ -162,7 +162,7 @@ test('legacy game_catalog tables are merged into games and preferences', () => {
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
-test('migrations 93 and 94 re-key calendar state by period, keeping data and the Stefan kind', () => {
+test('migrations 93 through 95 keep calendar data and backfill LAN kiosk accounts', () => {
   const dbFile = makeTempDbPath('calendar-state-schedule-key');
   runMigrations(dbFile);
 
@@ -213,7 +213,9 @@ test('migrations 93 and 94 re-key calendar state by period, keeping data and the
     INSERT INTO event_reminder_deliveries
       (event_id, player_id, schedule_revision, kind, first_sent_at, last_sent_at)
       VALUES ('migration-94-event', 'migration-94-player', 1, 'calendar', 10, 10);
-    DELETE FROM schema_migrations WHERE version IN (93, 94);
+    DROP TRIGGER create_kiosk_account_for_lan_event;
+    DROP TABLE kiosk_accounts;
+    DELETE FROM schema_migrations WHERE version IN (93, 94, 95);
   `);
   fixture.close();
 
@@ -239,6 +241,15 @@ test('migrations 93 and 94 re-key calendar state by period, keeping data and the
       )
       .all(),
     [{ scheduleKey: '100-200', kind: 'calendar', firstSentAt: 10, lastSentAt: 10 }],
+  );
+  assert.deepEqual(
+    migrated
+      .prepare(
+        `SELECT event_id AS eventId, group_id AS groupId, username
+         FROM kiosk_accounts WHERE event_id = 'migration-94-event'`,
+      )
+      .get(),
+    { eventId: 'migration-94-event', groupId: 'default-group', username: 'kiosk-migration-94-event' },
   );
   migrated.prepare(
     `INSERT INTO event_reminder_deliveries
@@ -751,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 94);
+  assert.equal(migrations.length, 95);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 94 }, (_, index) => index + 1),
+    Array.from({ length: 95 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1299,8 +1310,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 94 }, (_, index) => index + 1),
-    'every version 1..94 runs exactly once',
+    Array.from({ length: 95 }, (_, index) => index + 1),
+    'every version 1..95 runs exactly once',
   );
 });
 
@@ -2803,10 +2814,12 @@ test('migrations 89 through 91 add event types, collapse legacy presets and enab
     )
     .run('legacy-feature-event', 'Legacy Feature Event', now, now + 60_000);
   legacy.exec(`
+    DROP TRIGGER create_kiosk_account_for_lan_event;
+    DROP TABLE kiosk_accounts;
     DROP TABLE event_features;
     ALTER TABLE events DROP COLUMN event_type_key;
     ALTER TABLE events DROP COLUMN preset_version;
-    DELETE FROM schema_migrations WHERE version IN (89, 90, 91);
+    DELETE FROM schema_migrations WHERE version IN (89, 90, 91, 95);
   `);
   legacy.close();
 

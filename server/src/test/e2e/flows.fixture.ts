@@ -3700,6 +3700,29 @@ flowTest('community', 'Kiosk: centers tournament content and shows only the late
   });
 
   await page.setViewportSize({ width: 1280, height: 720 });
+
+  // A newly created LAN can sign in with its automatic account and the one
+  // shared password. This creates no normal browser session; the page only
+  // stores the resulting event-scoped kiosk token.
+  const loginEventResponse = await page.request.post(`${BASE_URL}/api/events`, {
+    data: {
+      name: 'Kiosk Login E2E',
+      startsAt: Date.now() + 7_200_000,
+      endsAt: Date.now() + 10_800_000,
+      eventType: 'lan',
+    },
+  });
+  assert.equal(loginEventResponse.status(), 201, await loginEventResponse.text());
+  const loginEvent = await loginEventResponse.json();
+  await page.goto(`${BASE_URL}/kiosk.html?account=${encodeURIComponent(`kiosk-${loginEvent.id}`)}`);
+  await page.waitForSelector('[data-kiosk-login]');
+  assert.equal(await page.inputValue('[data-kiosk-login] input[name="username"]'), `kiosk-${loginEvent.id}`);
+  await page.fill('[data-kiosk-login] input[name="password"]', E2E_KIOSK_TOKEN);
+  await page.click('[data-kiosk-login] button[type="submit"]');
+  await page.waitForSelector('.kiosk-header .brand-title');
+  await page.evaluate(() => localStorage.removeItem('respawn_kiosk_token'));
+  assert.equal((await page.request.delete(`${BASE_URL}/api/events/${loginEvent.id}`)).status(), 200);
+
   await page.goto(`${BASE_URL}/kiosk.html?token=${E2E_KIOSK_TOKEN}`);
   assert.equal((await page.locator('.kiosk-header .brand-title').textContent())?.trim(), 'Respawn');
   assert.deepEqual(
@@ -3714,6 +3737,20 @@ flowTest('community', 'Kiosk: centers tournament content and shows only the late
   await page.waitForSelector('#kiosk-broadcast >> text=Kiosk-Test-Pizza');
   await page.waitForSelector('.kiosk-broadcast-time');
   await page.waitForSelector('.notification-banner-body');
+  await page.click('#kiosk-fullscreen');
+  await page.waitForSelector('#kiosk-fullscreen[aria-pressed="true"]');
+  await page.click('#kiosk-fullscreen');
+  await page.waitForSelector('#kiosk-fullscreen[aria-pressed="false"]');
+
+  await page.request.post(`${BASE_URL}/api/broadcasts`, {
+    data: { playerId, message: 'Kiosk-Live-Durchsage alt' },
+  });
+  await page.waitForSelector('#kiosk-broadcast >> text=Kiosk-Live-Durchsage alt');
+  await page.request.post(`${BASE_URL}/api/broadcasts`, {
+    data: { playerId, message: 'Kiosk-Live-Durchsage neu' },
+  });
+  await page.waitForSelector('#kiosk-broadcast >> text=Kiosk-Live-Durchsage neu');
+  assert.equal(await page.locator('#kiosk-broadcast >> text=Kiosk-Live-Durchsage alt').count(), 0);
   await page.waitForSelector('.kiosk-vote-overview >> text=Stichwahl läuft');
   await page.waitForSelector('.kiosk-vote-overview >> text=Zwischenstand');
   await page.waitForSelector('.kiosk-vote-overview >> text=1 Teilnehmer');
@@ -3757,6 +3794,24 @@ flowTest('community', 'Kiosk: centers tournament content and shows only the late
     true,
     'kiosk cards must not introduce internal scrollbars'
   );
+  // Reconnect is a cache-recovery boundary: changes made while the display
+  // was offline must appear immediately after Socket.IO reconnects, without
+  // waiting for another domain event or the periodic safety refresh.
+  await page.context().setOffline(true);
+  await page.waitForTimeout(250);
+  const offlineCancel = await fetch(`${BASE_URL}/api/votes/cancel`, {
+    method: 'POST',
+    headers: { cookie: adminCookie },
+  });
+  assert.equal(offlineCancel.status, 200, await offlineCancel.clone().text());
+  const offlineStart = await fetch(`${BASE_URL}/api/votes/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({ mode: 'single', title: 'Kiosk nach Reconnect', gameIds: [games[0].id, games[1].id] }),
+  });
+  assert.equal(offlineStart.status, 201, await offlineStart.clone().text());
+  await page.context().setOffline(false);
+  await page.waitForSelector('.kiosk-vote-overview >> text=Kiosk nach Reconnect', { timeout: 10_000 });
   await page.request.post(`${BASE_URL}/api/votes/cancel`);
   const kioskGames = games.slice(0, 10) as Array<{ id: string }>;
   await page.request.post(`${BASE_URL}/api/votes/start`, {

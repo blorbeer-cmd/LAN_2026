@@ -12,12 +12,14 @@ Setze für Produktion im selben `.env`-Schritt zuerst:
 
 ```
 ADMIN_RECOVERY_CODE=<starkes Secret, z. B. `openssl rand -hex 32`>
-KIOSK_TOKEN=<eigenes Secret; ohne diesen bleibt der TV-/Kiosk-Zugang gesperrt>
+KIOSK_TOKEN=<gemeinsames Passwort der LAN-Kiosk-Konten; ohne dieses bleibt der TV-Kiosk gesperrt>
 ```
 
 - `ADMIN_RECOVERY_CODE` ist in Produktion **Pflicht**: Ohne ihn verweigert
   der Server bewusst den Start (Break-Glass für den ersten/letzten Admin). Geheim halten, nicht an
   Teilnehmende verteilen.
+- `KIOSK_TOKEN` dient bestehenden Installationen zugleich als kompatibler Direkt-Token. Optional
+  kann ein separates `KIOSK_PASSWORD` nur für die automatischen Event-Konten gesetzt werden.
 Diese beiden Zeilen und die `BOOTSTRAP_ADMIN_*`-Zeilen unten trägst du **gemeinsam in einem Rutsch**
 ein und startest danach einmal neu (siehe „Wo eintragen").
 

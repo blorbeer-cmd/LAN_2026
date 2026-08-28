@@ -20,6 +20,7 @@ setKioskMode(true);
 
 const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
 const GAME_NAMES = { quiz: 'Gaming-Quiz', tetris: 'Tetris', scribble: 'Scribble', blobby: 'Blobby Volley', pong: 'Pong', snake: 'Snake', 'challenge-rush': 'Challenge Rush' };
+const KIOSK_REFRESH_INTERVAL_MS = 60_000;
 const cssColor = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 function drawLegacyKioskCanvas(canvas, game) {
@@ -160,8 +161,6 @@ function renderArcadeStream(game) {
   drawKioskCanvas(canvas, game);
 }
 
-// A kiosk is set up once via ?token=… and then left running, so there is no
-// interactive login fallback when its dedicated credential is missing.
 async function ensureAccess() {
   const fromUrl = new URLSearchParams(location.search).get('token');
   if (fromUrl) setKioskToken(fromUrl);
@@ -173,8 +172,59 @@ async function ensureAccess() {
     if (fromUrl) history.replaceState(null, '', `${location.pathname}${location.hash}`);
     return true;
   } catch {
+    setKioskToken('');
     return false;
   }
+}
+
+function renderKioskLogin() {
+  const root = document.getElementById('kiosk-root');
+  const account = new URLSearchParams(location.search).get('account') || '';
+  root.innerHTML = `
+    <main class="kiosk-login-screen">
+      <form class="card stack kiosk-login-card" data-kiosk-login>
+        <div class="kiosk-login-brand">
+          <img src="/img/logo.svg" alt="" width="48" height="48" />
+          <div>
+            <h1>TV-Kiosk</h1>
+            <p class="muted">Mit dem Konto dieses LAN-Events anmelden.</p>
+          </div>
+        </div>
+        <label>
+          <span class="field-label">Kiosk-Konto</span>
+          <input name="username" type="text" autocomplete="username" maxlength="100" required value="${escapeHtml(account)}" />
+        </label>
+        <label>
+          <span class="field-label">Passwort</span>
+          <input name="password" type="password" autocomplete="current-password" maxlength="200" required />
+        </label>
+        <p class="form-error" data-kiosk-login-error role="alert" hidden></p>
+        <button type="submit" class="btn btn-primary btn-block">Kiosk öffnen</button>
+      </form>
+    </main>`;
+
+  const form = root.querySelector('[data-kiosk-login]');
+  const error = root.querySelector('[data-kiosk-login-error]');
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const submit = form.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    error.hidden = true;
+    try {
+      const data = new FormData(form);
+      const result = await api.kiosk.login({
+        username: String(data.get('username') || '').trim(),
+        password: String(data.get('password') || ''),
+      });
+      setKioskToken(result.token);
+      history.replaceState(null, '', `${location.pathname}${location.hash}`);
+      location.reload();
+    } catch (loginError) {
+      error.textContent = loginError.message;
+      error.hidden = false;
+      submit.disabled = false;
+    }
+  });
 }
 
 function renderLive(players) {
@@ -435,10 +485,13 @@ function renderTournament(t) {
 // announcement instead of lingering. The shared content markup lives in
 // pushFeed.js; this Kiosk version is not clickable.
 let pushBannerExpiryTimer = null;
+let pushRefreshVersion = 0;
 
 async function refreshPushBanner() {
+  const requestVersion = ++pushRefreshVersion;
   try {
     const current = await api.push.last();
+    if (requestVersion !== pushRefreshVersion) return;
     renderBroadcastBanner(current.entry);
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -581,8 +634,11 @@ function renderMusicBar(payload) {
 }
 
 async function refreshMusic() {
+  const requestVersion = nextRefreshVersion('music');
   try {
-    renderMusicBar(await api.music.kiosk());
+    const music = await api.music.kiosk();
+    if (!isLatestRefresh('music', requestVersion)) return;
+    renderMusicBar(music);
   } catch (error) {
     // Music is optional; a Spotify outage must never disturb the four
     // primary kiosk cards.
@@ -603,42 +659,61 @@ function logRefreshFailure(scope, error) {
   console.error(`Kiosk ${scope} refresh failed:`, error);
 }
 
+const refreshVersions = new Map();
+
+function nextRefreshVersion(scope) {
+  const version = (refreshVersions.get(scope) ?? 0) + 1;
+  refreshVersions.set(scope, version);
+  return version;
+}
+
+function isLatestRefresh(scope, version) {
+  return refreshVersions.get(scope) === version;
+}
+
 async function refreshLive() {
+  const requestVersion = nextRefreshVersion('live');
   try {
-    updateHtml('kiosk-live', renderLive(await api.live.board()));
+    const live = await api.live.board();
+    if (!isLatestRefresh('live', requestVersion)) return;
+    updateHtml('kiosk-live', renderLive(live));
   } catch (error) {
     logRefreshFailure('live', error);
   }
 }
 
 async function refreshVotes() {
+  const requestVersion = nextRefreshVersion('vote');
   try {
-    updateHtml('kiosk-votes', renderVotes(await api.votes.kiosk()));
+    const votes = await api.votes.kiosk();
+    if (!isLatestRefresh('vote', requestVersion)) return;
+    updateHtml('kiosk-votes', renderVotes(votes));
   } catch (error) {
     logRefreshFailure('vote', error);
   }
 }
 
 async function refreshLeaderboard() {
+  const requestVersion = nextRefreshVersion('leaderboard');
   try {
     const leaderboard = await api.leaderboard.get();
+    if (!isLatestRefresh('leaderboard', requestVersion)) return;
     updateHtml('kiosk-leaderboard', renderLeaderboard(leaderboard.standings));
   } catch (error) {
     logRefreshFailure('leaderboard', error);
   }
 }
 
-let tournamentRefreshVersion = 0;
 async function refreshTournament() {
-  const requestVersion = ++tournamentRefreshVersion;
+  const requestVersion = nextRefreshVersion('tournament');
   try {
     const tournaments = await api.tournaments.list();
-    if (requestVersion !== tournamentRefreshVersion) return;
+    if (!isLatestRefresh('tournament', requestVersion)) return;
     const active = tournaments.find((t) => t.status === 'active') || tournaments[0] || null;
     updateHtml('kiosk-tournament-title', `${icon(domainIcon('tournaments'))} ${active ? escapeHtml(active.name) : 'Turnier'}`);
     if (active) {
       const detail = await api.tournaments.get(active.id);
-      if (requestVersion !== tournamentRefreshVersion) return;
+      if (!isLatestRefresh('tournament', requestVersion)) return;
       updateHtml('kiosk-tournament', renderTournament(detail));
     } else {
       updateHtml('kiosk-tournament', emptyStateHtml('Kein offenes Turnier.'));
@@ -707,25 +782,60 @@ function updateClock() {
   });
 }
 
+function wireFullscreenControl() {
+  const button = document.getElementById('kiosk-fullscreen');
+  if (!button) return;
+  if (!document.fullscreenEnabled || typeof document.documentElement.requestFullscreen !== 'function') {
+    button.hidden = true;
+    return;
+  }
+
+  const update = () => {
+    const active = document.fullscreenElement !== null;
+    button.textContent = active ? 'Vollbild beenden' : 'Vollbild';
+    button.setAttribute('aria-pressed', String(active));
+    button.title = active ? 'Vollbild beenden' : 'Vollbild aktivieren';
+  };
+
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch (error) {
+      logRefreshFailure('fullscreen', error);
+    } finally {
+      button.disabled = false;
+      update();
+    }
+  });
+  document.addEventListener('fullscreenchange', update);
+  update();
+}
+
 async function main() {
   const ok = await ensureAccess();
   if (!ok) {
-    document.getElementById('kiosk-root').innerHTML = emptyStateHtml(
-      'Kein Zugriff — diese Seite mit <code>?token=…</code> öffnen (wie der Einladungslink).',
-      { style: 'padding:var(--space-8);font-size:var(--font-size-lg);' },
-    );
+    renderKioskLogin();
     return;
   }
 
   updateClock();
+  wireFullscreenControl();
   setInterval(updateClock, 1000);
   setInterval(refreshMusic, 5_000);
-  await refreshAll();
+  setInterval(refreshAll, KIOSK_REFRESH_INTERVAL_MS);
 
   const socket = connectSocket({ kiosk: true });
 
   socket.on('arcade:kiosk:game', renderArcadeStream);
-  socket.emit('kiosk:subscribe');
+  socket.on('connect', () => {
+    // Socket.IO creates a fresh server-side socket after every reconnect.
+    // Replay Arcade state and refetch all REST-backed cards so changes made
+    // while the display was offline cannot leave the kiosk stale.
+    socket.emit('kiosk:subscribe');
+    void refreshAll();
+  });
 
   socket.on('live:changed', refreshLive);
   // A rename can affect every card that contains a player snapshot. Each
@@ -739,11 +849,16 @@ async function main() {
   // Last-push banner: a big banner across the top of the shared screen — the
   // whole point of putting it on the kiosk is that people look up from their
   // own machines. It stays until superseded, resolved or expired.
-  socket.on('push:sent', (payload) => {
-    renderBroadcastBanner(payload);
+  socket.on('push:sent', () => {
+    // The persisted feed is authoritative. Fetching it avoids an older
+    // in-flight response or burst of socket payloads replacing the newest
+    // banner on the shared screen.
+    void refreshPushBanner();
     playPushSound();
   });
   socket.on('push:changed', refreshPushBanner);
+
+  await refreshAll();
 }
 
 main().catch((err) => {
