@@ -3720,6 +3720,45 @@ flowTest('community', 'Kiosk: centers tournament content and shows only the late
   await page.fill('[data-kiosk-login] input[name="password"]', E2E_KIOSK_TOKEN);
   await page.click('[data-kiosk-login] button[type="submit"]');
   await page.waitForSelector('.kiosk-header .brand-title');
+
+  // Regression test for the review finding on ensureAccess(): this kiosk is
+  // set up once with ?token=... and then left running unattended for the
+  // whole LAN, so a transient failure (network blip, timeout, a 5xx from the
+  // server restarting mid-deploy) while re-checking access on reload must not
+  // wipe an otherwise valid, persisted token — only a genuine 401 means the
+  // credential itself is bad.
+  const loginKioskToken = await page.evaluate(() => localStorage.getItem('respawn_kiosk_token'));
+  assert.ok(loginKioskToken, 'kiosk login should have stored a token');
+  const transientFailureRoute = (route: import('playwright').Route) =>
+    route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Kiosk-Serverfehler (Test)' }) });
+  await page.route('**/api/live', transientFailureRoute);
+  try {
+    await page.reload();
+    await page.waitForSelector('[data-kiosk-login]');
+  } finally {
+    await page.unroute('**/api/live', transientFailureRoute);
+  }
+  assert.equal(
+    await page.evaluate(() => localStorage.getItem('respawn_kiosk_token')),
+    loginKioskToken,
+    'a transient failure while checking kiosk access must not clear the stored token',
+  );
+
+  const invalidTokenRoute = (route: import('playwright').Route) =>
+    route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'Nicht angemeldet.' }) });
+  await page.route('**/api/live', invalidTokenRoute);
+  try {
+    await page.reload();
+    await page.waitForSelector('[data-kiosk-login]');
+  } finally {
+    await page.unroute('**/api/live', invalidTokenRoute);
+  }
+  assert.equal(
+    await page.evaluate(() => localStorage.getItem('respawn_kiosk_token')),
+    '',
+    'a genuine 401 while checking kiosk access must clear the stale token',
+  );
+
   await page.evaluate(() => localStorage.removeItem('respawn_kiosk_token'));
   assert.equal((await page.request.delete(`${BASE_URL}/api/events/${loginEvent.id}`)).status(), 200);
 

@@ -171,8 +171,12 @@ async function ensureAccess() {
     await api.live.board();
     if (fromUrl) history.replaceState(null, '', `${location.pathname}${location.hash}`);
     return true;
-  } catch {
-    setKioskToken('');
+  } catch (err) {
+    // Only a confirmed 401 (invalid/revoked token) means the stored credential
+    // is actually bad. A network failure, timeout or transient 5xx (e.g. the
+    // server restarting mid-deploy) must not wipe an otherwise valid kiosk
+    // token that this unattended screen has no way to re-enter itself.
+    if (err?.status === 401) setKioskToken('');
     return false;
   }
 }
