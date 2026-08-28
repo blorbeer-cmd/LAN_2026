@@ -7,6 +7,7 @@ import { ensureDefaultGroupMembership } from '../groups';
 import { advanceAutomaticReminder, dueAutomaticReminders } from '../eventDatePolls';
 import { runEventDatePollReminderSweepOnce } from '../eventDatePollReminders';
 import { Events, setIo } from '../realtime';
+import { PUSH_LOG_LIMIT } from '../push';
 
 const app = createTestApp();
 
@@ -757,6 +758,46 @@ test('reopening a poll never rewrites a since-muted recipient\'s earlier notific
   const bobEntryAfterReopen = bobLogAfterReopen.body.entries.find((entry: { id: string }) => entry.id === openEntry.id);
   assert.ok(bobEntryAfterReopen, 'bob still sees his original notification-center entry after the reopen');
   assert.ok(bobEntryAfterReopen.resolvedAt, 'and it still reads as resolved, matching the row it is backed by');
+});
+
+test('creating a poll invites everyone with one push-log row per recipient, well within the shared group cap', async () => {
+  const alice = 'poll-burst-alice';
+  const invitees = Array.from({ length: 10 }, (_, index) => `poll-burst-invitee-${index}`);
+  createMember(alice, 'Poll Burst Alice');
+  for (const id of invitees) createMember(id, `Poll Burst Invitee ${id}`);
+  const eventId = await createEvent('Poll Burst Event', [alice, ...invitees]);
+
+  const group = db.prepare('SELECT id FROM groups LIMIT 1').get() as { id: string };
+  const beforeCount = (
+    db.prepare('SELECT COUNT(*) AS count FROM push_log WHERE group_id = ?').get(group.id) as { count: number }
+  ).count;
+
+  const created = await createPoll(eventId, alice);
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
+  const afterCount = (
+    db.prepare('SELECT COUNT(*) AS count FROM push_log WHERE group_id = ?').get(group.id) as { count: number }
+  ).count;
+  assert.equal(
+    afterCount - beforeCount,
+    invitees.length,
+    'one push_log row per invited recipient - the per-recipient topic keys (pollOpenTopicKey) that fix the ' +
+      'reopen/expiry findings above trade a single shared row for one per invitee',
+  );
+  const ownRows = db
+    .prepare('SELECT COUNT(*) AS count FROM push_log WHERE topic_key LIKE ?')
+    .get(`event-poll-open:${created.body.id}:%`) as { count: number };
+  assert.equal(ownRows.count, invitees.length);
+
+  // PUSH_LOG_LIMIT is the shared history budget for the whole group across
+  // every notification type. It must stay comfortably above what a single
+  // full-group poll invite/reopen burst consumes, or that burst would evict
+  // other players' unrelated recent history (event invitations, food-order
+  // reminders, ...) out of the notification center.
+  assert.ok(
+    PUSH_LOG_LIMIT >= invitees.length * 10,
+    'the shared cap has headroom for several poll-sized bursts, not just a single one',
+  );
 });
 
 test('extending a poll\'s deadline keeps its "Neue Abstimmung" notification from expiring early', async () => {

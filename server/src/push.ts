@@ -13,8 +13,12 @@ import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 
 // Only recent entries matter (the Kiosk shows the latest one, the personal
 // notification center a short list) - trimmed on every insert so this never
-// grows unbounded over a multi-day LAN party.
-const PUSH_LOG_LIMIT = 50;
+// grows unbounded over a multi-day LAN party. Shared across the whole group
+// and every notification type (broadcasts, poll/food-order/event reminders,
+// ...), so it needs enough headroom to absorb a single burst - e.g. creating
+// a date poll invites every accepted participant in one call - without
+// crowding out unrelated recent history for other players.
+export const PUSH_LOG_LIMIT = 200;
 
 const VAPID_PUBLIC_KEY = 'vapid_public_key';
 const VAPID_PRIVATE_KEY = 'vapid_private_key';
@@ -295,8 +299,9 @@ function visiblePushIdsFor(
 }
 
 // Bulk actions stay personal, just like their single-entry counterparts.
-// One transaction and one realtime signal avoid a burst of up to 50 writes
-// and socket refreshes when someone clears the whole center.
+// One transaction and one realtime signal avoid a burst of up to
+// PUSH_LOG_LIMIT writes and socket refreshes when someone clears the whole
+// center.
 export function markAllPushSeen(groupId: string, eventId: string | null, playerId: string): number {
   const entries = visiblePushIdsFor(groupId, eventId, playerId).filter((entry) => !entry.seen);
   if (entries.length === 0) return 0;
