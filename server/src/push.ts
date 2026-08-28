@@ -173,7 +173,7 @@ export function getLastPushLogEntry(groupId: string, eventId: string): PushLogEn
               expires_at AS expiresAt, created_at AS createdAt
        FROM push_log
        WHERE group_id = ? AND event_id IS ? AND audience = 'all' AND ${ACTIVE_PUSH_SQL}
-       ORDER BY created_at DESC LIMIT 1`
+       ORDER BY created_at DESC, rowid DESC LIMIT 1`
     )
     .get(groupId, eventId, Date.now()) as PushLogEntry | undefined;
   return row ?? null;

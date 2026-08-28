@@ -34,6 +34,7 @@ import { arrivalsRouter } from './arrivals';
 import { adminRouter } from './admin';
 import { backupRouter } from './backup';
 import { authRouter } from './auth';
+import { kioskAccessRouter } from './kioskAccess';
 import { groupsRouter } from './groups';
 import { pingsRouter } from './pings';
 import { musicRouter } from './music';
@@ -66,6 +67,7 @@ apiRouter.get('/health', (_req, res) => {
 });
 
 apiRouter.use('/auth', authRouter);
+apiRouter.use('/kiosk', kioskAccessRouter);
 
 // The dedicated playback device is intentionally not a Respawn player. It
 // authenticates with its own paired controller token and therefore reaches
