@@ -259,17 +259,18 @@ arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and s
       await actor.page.locator('#arcade-active-game-title').evaluate((heading) => {
         const active = heading.closest('.grouped-page-section')?.getBoundingClientRect();
         const picker = document.querySelector('.arcade-game-picker')?.getBoundingClientRect();
-        return Boolean(active && picker && active.top < picker.top);
+        return Boolean(active && picker && picker.top < active.top);
       }),
       true,
-      'the active game is placed before the compact game switcher',
+      'the selected game lobby is placed below the game selection',
     );
+    assert.equal(await actor.page.locator('#arcade-game-back').count(), 0);
     await actor.page.goBack();
     await actor.page.waitForSelector('#arcade-active-game-title', { state: 'detached' });
     assert.equal(new URL(actor.page.url()).hash, '#arcade');
     await actor.page.goForward();
     await actor.page.waitForSelector('#arcade-active-game-title:has-text("Snake")');
-    await actor.page.click('#arcade-game-back');
+    await actor.page.click('[data-game="snake"]');
     await actor.page.waitForSelector('#arcade-active-game-title', { state: 'detached' });
     assert.equal(new URL(actor.page.url()).hash, '#arcade');
 
@@ -291,7 +292,8 @@ arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and s
     assert.equal(await activeView(direct), 'arcade');
     await direct.reload();
     await direct.waitForSelector('#arcade-active-game-title:has-text("Snake")');
-    await direct.click('#arcade-game-back');
+    assert.equal(await direct.locator('#arcade-game-back').count(), 0);
+    await direct.click('[data-game="snake"]');
     await direct.waitForSelector('#arcade-active-game-title', { state: 'detached' });
     assert.equal(new URL(direct.url()).hash, '#arcade');
     await direct.close();

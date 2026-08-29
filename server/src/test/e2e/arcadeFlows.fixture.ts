@@ -205,15 +205,15 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
     if (!activeGame || !gamePicker || !gameGrid) return null;
     return {
       activeLeft: Math.round(activeGame.left),
-      activeBottom: Math.round(activeGame.bottom),
+      activeTop: Math.round(activeGame.top),
       pickerLeft: Math.round(gamePicker.left),
-      pickerTop: Math.round(gamePicker.top),
+      pickerBottom: Math.round(gamePicker.bottom),
       gameColumns: getComputedStyle(gameGrid).gridTemplateColumns.split(' ').length,
     };
   });
   assert.ok(ownedLobbyLayout);
   assert.equal(ownedLobbyLayout.pickerLeft, ownedLobbyLayout.activeLeft);
-  assert.ok(ownedLobbyLayout.pickerTop > ownedLobbyLayout.activeBottom);
+  assert.ok(ownedLobbyLayout.pickerBottom < ownedLobbyLayout.activeTop);
   assert.equal(ownedLobbyLayout.gameColumns, 3);
   if (mobileViewport) await page.setViewportSize(mobileViewport);
 
