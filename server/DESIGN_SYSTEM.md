@@ -1096,7 +1096,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   canvas dims their snake and marks the shrinking safe zone with the shared danger treatment.
   Numbered head markers and a matching `Schlange N · Name` legend identify every participant
   without relying on color; the same legend appears in player, spectator and kiosk contexts. The
-  local match view also names the current participant's color in a prominent badge from the start.
+  local match view names the current participant's color in a large full-width banner from the start.
+  The same color and snake number appear in the countdown itself, whose translucent overlay leaves the
+  board unblurred so players can orient themselves before movement begins.
   Snake uses a 48×30 logical field in the existing 8:5 canvas, making cells and snakes smaller in
   relation to the available play area without shrinking the visible board.
   Challenge Rush also exposes the Admin-mode-gated opponent switch plus its test-challenge
