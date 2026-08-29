@@ -459,9 +459,9 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
     if (!active || !picker || !tiles) return null;
     return {
       activeLeft: Math.round(active.left),
-      activeBottom: Math.round(active.bottom),
+      activeTop: Math.round(active.top),
       pickerLeft: Math.round(picker.left),
-      pickerTop: Math.round(picker.top),
+      pickerBottom: Math.round(picker.bottom),
       tileColumns: getComputedStyle(tiles).gridTemplateColumns.split(' ').length,
     };
   });
@@ -469,7 +469,7 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   assert.ok(arcadeColumns);
   assert.ok(arcadeColumns.activeLeft !== null && arcadeColumns.pickerLeft !== null);
   assert.equal(arcadeColumns.pickerLeft, arcadeColumns.activeLeft);
-  assert.ok(arcadeColumns.pickerTop > arcadeColumns.activeBottom);
+  assert.ok(arcadeColumns.pickerBottom < arcadeColumns.activeTop);
   assert.equal(arcadeColumns.tileColumns, 3);
 
   await page.click('.desktop-nav-btn[data-view="profile"]');

@@ -1023,10 +1023,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   action uses the primary button treatment next to the destructive delete action.
 - **Arcade** — The launcher follows the grouped-page hierarchy with separate full-width cards for
   „Spiele“, optional running games, the selected game and „Statistiken“.
-  Without a selection, the game grid remains the launcher. With a selection, the active game moves
-  first and the full-width game grid remains directly available below it, including while the
-  current player owns a lobby. The selected game is
-  represented by `#arcade/<spiel>` so browser back/forward, reload and „Spielauswahl“ agree.
+  The game grid remains the first visible group with or without a selection. Once a game is selected,
+  its lobby group follows directly below the grid; there is no separate „Spielauswahl“ back action.
+  The selected game is represented by `#arcade/<spiel>` so browser back/forward, reload and the
+  highlighted game tile agree.
   Game choices are horizontal nested cards with their Lucide game icon, name and an explicit
   „… offen“ lobby badge; they form one column on phones, exactly two from `--bp-md` and three in
   desktop mode from `--bp-xl`. Running
