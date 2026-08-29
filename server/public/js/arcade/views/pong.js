@@ -11,6 +11,7 @@ import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
 import { emptyStateHtml } from '../../emptyState.js';
 import { backButtonHtml } from '../../backButton.js';
+import { projectPongWorld } from '../pongPrediction.js';
 
 const W = 960;
 const H = 540;
@@ -22,7 +23,6 @@ const PLAYER_COLORS = ['#5b8cff', '#ef5da8']; // design-token-ok: canvas paddles
 let socket = null;
 let lobbies = [];
 let match = null;
-let previous = null;
 let latest = null;
 let latestAt = 0;
 let animation = null;
@@ -62,7 +62,7 @@ export function ensurePongSocket() {
   });
   socket.on('pong:match:start', (payload) => {
     match = { ...payload, ended: false, winner: null, paused: false, running: false };
-    previous = latest = null;
+    latest = null;
     trail.length = 0;
     impact = null;
     navigate('pong');
@@ -73,7 +73,6 @@ export function ensurePongSocket() {
       impact = { x: payload.world.ball.x, y: payload.world.ball.y, life: 1 };
       playArcadeSound('pong-hit');
     }
-    previous = latest;
     latest = payload;
     latestAt = performance.now();
     if (match) {
@@ -305,29 +304,6 @@ function bindKeyboard() {
   });
 }
 
-function lerp(from, to, progress) {
-  return from + (to - from) * progress;
-}
-
-function interpolatedWorld() {
-  if (!latest?.world) return null;
-  if (!previous?.world) return latest.world;
-  const progress = Math.min(1, (performance.now() - latestAt + 50) / 100);
-  return {
-    ball: {
-      x: lerp(previous.world.ball.x, latest.world.ball.x, progress),
-      y: lerp(previous.world.ball.y, latest.world.ball.y, progress),
-    },
-    paddles: latest.world.paddles.map((paddle, index) => ({
-      x: paddle.x,
-      y: lerp(previous.world.paddles[index].y, paddle.y, progress),
-      team: paddle.team,
-      lane: paddle.lane,
-      playerId: paddle.playerId,
-    })),
-  };
-}
-
 function drawArena(context) {
   const gradient = context.createLinearGradient(0, 0, W, H);
   gradient.addColorStop(0, '#0e1530'); // design-token-ok: canvas arena uses a dark platform-tinted surface.
@@ -367,16 +343,17 @@ function playerInitials(playerId, players = match?.players ?? []) {
 }
 
 function drawPaddle(context, paddle, color) {
+  const paddleHeight = paddle.height ?? latest?.render?.paddleHeight ?? PADDLE_HEIGHT;
   context.save();
   context.shadowColor = color;
   context.shadowBlur = 24;
-  const fill = context.createLinearGradient(paddle.x, paddle.y, paddle.x + PADDLE_WIDTH, paddle.y + PADDLE_HEIGHT);
+  const fill = context.createLinearGradient(paddle.x, paddle.y, paddle.x + PADDLE_WIDTH, paddle.y + paddleHeight);
   fill.addColorStop(0, '#ffffff'); // design-token-ok: canvas highlight keeps neon paddles legible.
   fill.addColorStop(0.22, color);
   fill.addColorStop(1, color);
   context.fillStyle = fill;
   context.beginPath();
-  context.roundRect(paddle.x, paddle.y, PADDLE_WIDTH, PADDLE_HEIGHT, 8);
+  context.roundRect(paddle.x, paddle.y, PADDLE_WIDTH, paddleHeight, 8);
   context.fill();
   const label = playerInitials(paddle.playerId);
   if (label) {
@@ -388,7 +365,7 @@ function drawPaddle(context, paddle, color) {
     context.fillText(
       label,
       paddle.team === 'left' ? paddle.x + PADDLE_WIDTH + 9 : paddle.x - 9,
-      paddle.y + PADDLE_HEIGHT / 2
+      paddle.y + paddleHeight / 2
     );
   }
   context.restore();
@@ -428,7 +405,7 @@ function paint() {
   const canvas = document.querySelector('#pong-canvas');
   if (!canvas) return stopAnimation();
   const context = canvas.getContext('2d');
-  const world = interpolatedWorld();
+  const world = projectPongWorld(latest, performance.now() - latestAt);
   drawArena(context);
   if (world) {
     world.paddles.forEach((paddle) => drawPaddle(context, paddle, PLAYER_COLORS[paddle.team === 'left' ? 0 : 1]));
@@ -530,7 +507,7 @@ function wireGame(container) {
   });
   container.querySelector('#pong-back')?.addEventListener('click', () => {
     match = null;
-    previous = latest = null;
+    latest = null;
     trail.length = 0;
     stopAnimation();
     navigate('arcade');

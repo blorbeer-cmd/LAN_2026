@@ -11,7 +11,7 @@ import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships }
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 
 const TICK_MS = 1000 / 60;
-const SNAPSHOT_MS = 50;
+const SNAPSHOT_MS = 30;
 const COUNTDOWN_MS = arcadeTiming.countdownMs;
 const DEFAULT_DUEL_TARGET_SCORE = 7;
 const DEFAULT_DOUBLES_TARGET_SCORE = 21;
@@ -144,10 +144,17 @@ function snapshot(io: Server, match: Match) {
     serverTime: Date.now(),
     running: match.running,
     paused: match.paused,
+    rallyResumeAt: match.rallyResumeAt,
     world: match.world,
     scores: scorePayload(match),
     targetScore: match.targetScore,
-    render: { width: PONG_WIDTH, height: PONG_HEIGHT, paddleWidth: PADDLE_WIDTH, paddleHeight: PADDLE_HEIGHT, ballRadius: BALL_RADIUS },
+    render: {
+      width: PONG_WIDTH,
+      height: PONG_HEIGHT,
+      paddleWidth: PADDLE_WIDTH,
+      paddleHeight: match.world.paddles[0]?.height ?? PADDLE_HEIGHT,
+      ballRadius: BALL_RADIUS,
+    },
   };
   emitArcadeRoom(io, match.room, 'pong:state', payload, match);
   broadcastArcadeKiosk(io, { gameType: 'pong', groupId: match.groupId, eventId: match.eventId, ...payload, players: match.players });
@@ -186,8 +193,10 @@ function steerBot(match: Match) {
     const input = match.inputs.get(paddle.playerId);
     if (!input) continue;
     const ballApproaching = paddle.team === 'left' ? match.world.ball.vx < 0 : match.world.ball.vx > 0;
-    const idleTarget = (PONG_HEIGHT - PADDLE_HEIGHT) / 2;
-    const target = ballApproaching ? match.world.ball.y - PADDLE_HEIGHT / 2 : idleTarget;
+    const minY = paddle.lane === 'lower' ? PONG_HEIGHT / 2 : 0;
+    const maxY = paddle.lane === 'upper' ? PONG_HEIGHT / 2 - paddle.height : PONG_HEIGHT - paddle.height;
+    const idleTarget = (minY + maxY) / 2;
+    const target = ballApproaching ? match.world.ball.y - paddle.height / 2 : idleTarget;
     const deadZone = ballApproaching ? 24 : 42;
     input.up = target < paddle.y - deadZone;
     input.down = target > paddle.y + deadZone;

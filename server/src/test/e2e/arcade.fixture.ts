@@ -359,6 +359,8 @@ arcadeTest('navigation', 'classic Snake guest returns to the Arcade immediately 
       guest.page.waitForSelector('#snake-canvas'),
       host.page.waitForSelector('#snake-pause'),
     ]);
+    assert.match(await host.page.locator('.snake-player-identity').innerText(), /Deine Farbe: Blau/);
+    assert.match(await guest.page.locator('.snake-player-identity').innerText(), /Deine Farbe: Pink/);
     // Keep the match alive while the guest handles the confirmation dialog.
     // Under loaded CI runners an unpaused classic round can end first and
     // replace the view, turning this navigation assertion into a timing race.
