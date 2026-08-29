@@ -309,6 +309,11 @@
   grid-auto-rows: minmax(0, 1fr);
   gap: var(--space-2);
 }
+.kiosk-vote-results.is-compact {
+  flex: 0 0 auto;
+  grid-auto-rows: auto;
+  align-content: start;
+}
 .kiosk-vote-result {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

@@ -282,7 +282,8 @@ function renderKioskVoteRows(vote, { concealed = false, highlightLeading = true 
   const visibleResults = scored.slice(0, 10);
   let previousScore = null;
   let rank = 0;
-  return `<div class="kiosk-vote-results">${visibleResults
+  const compactClass = visibleResults.length <= 4 ? ' is-compact' : '';
+  return `<div class="kiosk-vote-results${compactClass}">${visibleResults
     .map((result, index) => {
       if (previousScore === null || result.score !== previousScore) rank = index + 1;
       previousScore = result.score;
@@ -366,6 +367,7 @@ function renderVotes(votes) {
     return emptyStateHtml('Keine offene Abstimmung.', { className: 'kiosk-vote-state' });
   }
   const heading = vote.mode === 'single' ? 'Stichwahl läuft' : 'Abstimmung läuft';
+  const eligibleVoters = Number.isFinite(vote.eligibleVoters) ? vote.eligibleVoters : vote.totalVoters;
   return `
     <div class="kiosk-vote-overview">
       <div class="kiosk-vote-header">
@@ -373,7 +375,7 @@ function renderVotes(votes) {
           <strong>${heading}</strong>
           ${vote.title ? `<span class="muted">${escapeHtml(vote.title)}</span>` : ''}
         </span>
-        <span class="badge badge-playing">${vote.totalVoters} Teilnehmer</span>
+        <span class="badge badge-playing">${vote.totalVoters} / ${eligibleVoters} abgestimmt</span>
       </div>
       <div class="section-title kiosk-vote-section-title">Zwischenstand</div>
       ${renderKioskVoteRows(vote, { concealed: true })}
@@ -846,6 +848,7 @@ async function main() {
   // updater still patches only when its rendered HTML actually changed.
   socket.on('players:changed', () => Promise.all([refreshLive(), refreshLeaderboard(), refreshTournament()]));
   socket.on('votes:changed', refreshVotes);
+  socket.on('events:changed', refreshVotes);
   socket.on('leaderboard:changed', refreshLeaderboard);
   socket.on('tournaments:changed', refreshTournament);
   socket.on('music:changed', refreshMusic);

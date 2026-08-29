@@ -4147,7 +4147,12 @@ flowTest('community', 'Kiosk: centers tournament content and shows only the late
   assert.equal(await page.locator('#kiosk-broadcast >> text=Kiosk-Live-Durchsage alt').count(), 0);
   await page.waitForSelector('.kiosk-vote-overview >> text=Stichwahl läuft');
   await page.waitForSelector('.kiosk-vote-overview >> text=Zwischenstand');
-  await page.waitForSelector('.kiosk-vote-overview >> text=1 Teilnehmer');
+  await page.waitForFunction(() => {
+    const text = document.querySelector('.kiosk-vote-header .badge')?.textContent ?? '';
+    return /^1 \/ \d+ abgestimmt$/.test(text.trim());
+  });
+  assert.equal(await page.locator('.kiosk-vote-results.is-compact').count(), 1);
+  assert.equal(await page.locator('.kiosk-vote-results.is-compact').evaluate((element) => getComputedStyle(element).flexGrow), '0');
   assert.equal(await page.locator('.kiosk-vote-header').evaluate((element) => getComputedStyle(element).alignItems), 'center');
   await page.waitForSelector('.kiosk-vote-result.is-concealed >> text=1 Stimme');
   assert.equal(await page.locator(`.kiosk-vote-result:has-text("${games[1].name}")`).count(), 0);
