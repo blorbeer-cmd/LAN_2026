@@ -250,13 +250,16 @@ test('event kiosks receive only their exact event and only sanitized refresh pay
     const kiosk = await connectKiosk(baseUrl, token);
     try {
       const tournamentChanges = payloads(kiosk, Events.tournamentsChanged);
+      const eventChanges = payloads(kiosk, Events.eventsChanged);
       const banners = payloads(kiosk, Events.pushSent);
+      broadcast(Events.eventsChanged, { privateEvent: 'secret' }, { groupId: DEFAULT_GROUP_ID, eventId: eventA });
       broadcast(Events.tournamentsChanged, { privateLobby: 'secret' }, { groupId: DEFAULT_GROUP_ID, eventId: eventA });
       broadcast(Events.tournamentsChanged, { foreign: true }, { groupId: DEFAULT_GROUP_ID, eventId: eventB });
       broadcast(Events.pushSent, { title: 'Event A' }, { groupId: DEFAULT_GROUP_ID, eventId: eventA });
       broadcast(Events.pushSent, { title: 'Event B' }, { groupId: DEFAULT_GROUP_ID, eventId: eventB });
       await settle();
       assert.deepEqual(tournamentChanges, [null]);
+      assert.deepEqual(eventChanges, [null]);
       assert.deepEqual(banners, [{ title: 'Event A' }]);
     } finally {
       kiosk.close();

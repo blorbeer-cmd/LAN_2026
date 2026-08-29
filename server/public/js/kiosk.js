@@ -848,6 +848,7 @@ async function main() {
   // updater still patches only when its rendered HTML actually changed.
   socket.on('players:changed', () => Promise.all([refreshLive(), refreshLeaderboard(), refreshTournament()]));
   socket.on('votes:changed', refreshVotes);
+  socket.on('events:changed', refreshVotes);
   socket.on('leaderboard:changed', refreshLeaderboard);
   socket.on('tournaments:changed', refreshTournament);
   socket.on('music:changed', refreshMusic);

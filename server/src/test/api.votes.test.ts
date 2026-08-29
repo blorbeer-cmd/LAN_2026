@@ -87,6 +87,18 @@ test('GET /api/votes/kiosk exposes the live tally for the shared display', async
   assert.equal(cs2Result.score, 2);
 });
 
+test('GET /api/votes/kiosk keeps submitted and eligible voters in the same roster', async () => {
+  const leavingVoterId = playerA;
+  try {
+    db.prepare('UPDATE players SET deactivated_at = ? WHERE id = ?').run(Date.now(), leavingVoterId);
+    const res = await request(app).get('/api/votes/kiosk');
+    assert.equal(res.body.current.totalVoters, 1);
+    assert.equal(res.body.current.eligibleVoters, 2);
+  } finally {
+    db.prepare('UPDATE players SET deactivated_at = NULL WHERE id = ?').run(leavingVoterId);
+  }
+});
+
 test('a player cannot submit a second single-mode vote in the same round', async () => {
   const repeated = await request(app).post('/api/votes').send({ playerId: playerA, gameId: gameRl });
   assert.equal(repeated.status, 409);
