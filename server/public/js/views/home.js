@@ -421,11 +421,11 @@ export function renderHome(container, ctx) {
   container.innerHTML = `
     <h1 class="view-title">Home</h1>
     <div class="grouped-page-sections home-desktop-layout">
+      ${renderGeneralEventOverview()}
       <div class="home-priority-grid">
         ${renderAssignedTodos()}
         ${renderStatus()}
       </div>
-      ${renderGeneralEventOverview()}
       ${renderGeneralEventOrganisation()}
       ${
         trackingEnabled

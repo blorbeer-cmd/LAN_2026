@@ -539,12 +539,35 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
 
   await switchWorkspaceInBrowser(eventA);
   await page.waitForFunction(() => document.querySelector('.desktop-nav-btn[data-view="matchmaking"]')?.getClientRects().length);
-  const lanDesktopViews = await page.locator('.desktop-nav-btn[data-view]:visible').evaluateAll((buttons) =>
-    buttons.map((button) => (button as HTMLElement).dataset.view));
-  for (const view of ['home', 'matchmaking', 'votes', 'gameCatalog', 'eventPolls', 'arcade', 'profile']) {
-    assert.ok(lanDesktopViews.includes(view), `${view} must be directly reachable on wide LAN screens`);
-  }
-  assert.equal(lanDesktopViews.includes('more'), false);
+  const expectedLanDesktopViews = [
+    'home',
+    'matchmaking',
+    'votes',
+    'gameCatalog',
+    'events',
+    'eventPolls',
+    'arrivals',
+    'checklistPacking',
+    'checklist',
+    'foodOrders',
+    'broadcast',
+    'arcade',
+    'music',
+    'admin',
+    'profile',
+  ];
+  await page.waitForFunction(
+    (expected) => Array.from(document.querySelectorAll<HTMLElement>('.desktop-nav-btn[data-view]'))
+      .filter((button) => button.getClientRects().length > 0)
+      .map((button) => button.dataset.view)
+      .join(',') === expected.join(','),
+    expectedLanDesktopViews,
+  );
+  assert.deepEqual(
+    await page.locator('.desktop-nav-btn[data-view]:visible').evaluateAll((buttons) =>
+      buttons.map((button) => (button as HTMLElement).dataset.view)),
+    expectedLanDesktopViews,
+  );
   await openView('eventPolls');
   await page.waitForSelector('#view-container[data-view="eventPolls"]');
   assert.match(await viewText(), /Umfragen/);

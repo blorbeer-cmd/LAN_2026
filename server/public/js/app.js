@@ -262,7 +262,17 @@ function renderEventContextSwitcher() {
   // next render once the reader closes it again.
   const openSearch = container.querySelector('#event-context-switcher-search');
   const openList = container.querySelector('#event-context-switcher-list');
-  if (openList && !openList.hidden && document.activeElement === openSearch) return;
+  if (openList && !openList.hidden && document.activeElement === openSearch) {
+    // A queued activation (e.g. from a deep link) still has to disable the
+    // switcher even while the reader keeps it open and focused, so a pick
+    // made in this window is visibly blocked instead of only silently queued.
+    if (pendingEventActivations > 0) {
+      const toggle = container.querySelector('.search-select-toggle');
+      openSearch.disabled = true;
+      if (toggle) toggle.disabled = true;
+    }
+    return;
+  }
   const events = selectableEventWorkspaces();
   container.hidden = events.length === 0;
   if (events.length === 0) {
@@ -449,12 +459,15 @@ function focusPendingViewHeading() {
 }
 
 function finishRenderedViewFocus() {
-  focusPendingSearchTarget();
-  if (!pendingSearchTarget) focusPendingViewHeading();
+  if (!focusPendingSearchTarget()) focusPendingViewHeading();
 }
 
+// Returns whether a pending search target was found and focused on this
+// render pass, so the caller does not also steal that focus back to the
+// view heading. A target that isn't found yet (e.g. it hasn't rendered into
+// the DOM on this pass) stays pending and is retried on the next render.
 function focusPendingSearchTarget() {
-  if (!pendingSearchTarget || pendingSearchTarget.view !== currentView) return;
+  if (!pendingSearchTarget || pendingSearchTarget.view !== currentView) return false;
   const { type, id } = pendingSearchTarget.target;
   // No `player`/`info` entry: both open as a dialog instead of navigating to a
   // view that would then have to highlight a row (see initGlobalSearch below).
@@ -468,7 +481,7 @@ function focusPendingSearchTarget() {
     poll: [...viewContainer.querySelectorAll('[data-poll-card]')].filter((el) => el.dataset.pollCard === id),
   }[type] ?? [];
   const element = candidates[0];
-  if (!element) return;
+  if (!element) return false;
   let enclosingDetails = element.closest('details');
   while (enclosingDetails) {
     enclosingDetails.open = true;
@@ -477,8 +490,10 @@ function focusPendingSearchTarget() {
   element.classList.add('search-target-highlight');
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   element.scrollIntoView({ block: 'center', behavior: reducedMotion ? 'auto' : 'smooth' });
-  if (element.matches('button, a, input, [tabindex]')) element.focus({ preventScroll: true });
+  const focused = element.matches('button, a, input, [tabindex]');
+  if (focused) element.focus({ preventScroll: true });
   pendingSearchTarget = null;
+  return focused;
 }
 
 function viewRequiresAdminRole(view) {

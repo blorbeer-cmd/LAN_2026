@@ -512,6 +512,19 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
     assert.equal(await persistencePage.getAttribute('html', 'data-layout-mode'), 'laptop');
     assert.equal(await persistencePage.getAttribute('html', 'data-layout-preference'), 'laptop');
     assert.equal(await persistencePage.locator('.bottom-nav').isVisible(), true);
+
+    // The storage key is scoped by account id (see layoutMode.js), so a
+    // different account logging in on this same device/browser must not
+    // inherit alice's stored "laptop" choice.
+    await persistencePage.click('#profile-logout');
+    await persistencePage.waitForSelector('#auth-screen:not([hidden])');
+    await persistencePage.fill('#auth-name', bob.name);
+    await persistencePage.fill('#auth-password', bob.password);
+    await persistencePage.click('#auth-form button[type="submit"]');
+    await persistencePage.waitForSelector('#app:not([hidden])');
+    assert.equal(await persistencePage.getAttribute('html', 'data-layout-preference'), 'auto');
+    assert.equal(await persistencePage.getAttribute('html', 'data-layout-mode'), 'desktop');
+    assert.equal(await persistencePage.locator('.desktop-nav').isVisible(), true);
   } finally {
     await persistenceContext.close();
   }
@@ -922,6 +935,21 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
     assert.equal(await memberPage.locator('#admin-feature-usage-title').count(), 0);
   } finally {
     await memberContext.close();
+  }
+  // The same role gate applies to the wide-viewport desktop rail, which
+  // filters `.desktop-nav-btn` entries independently of the old bottom-nav
+  // "more" list — a regular member must not see the Admin destination there.
+  const wideMemberContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  const wideMemberPage = await wideMemberContext.newPage();
+  try {
+    await addSessionCookie(wideMemberContext, BASE_URL, bob.cookie);
+    await wideMemberPage.goto(BASE_URL);
+    await wideMemberPage.waitForSelector('#app:not([hidden])');
+    await wideMemberPage.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
+    await wideMemberPage.waitForSelector('.desktop-nav-btn[data-view]');
+    assert.equal(await wideMemberPage.locator('.desktop-nav-btn[data-view="admin"]').count(), 0);
+  } finally {
+    await wideMemberContext.close();
   }
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="admin"]');
