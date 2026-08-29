@@ -992,6 +992,11 @@ arcadeTest('scribble', 'Scribble: live thumbs-up stays synchronized and the next
       'correct',
       'the first guess must be acknowledged as correct before the turn transition',
     );
+    await guest.page.waitForSelector('[data-scribble-guess-feedback-result="correct"]');
+    assert.match(
+      (await guest.page.locator('[data-scribble-guess-feedback-result="correct"]').textContent()) ?? '',
+      /^Richtig! \+\d+ Punkte$/,
+    );
     await guest.page.waitForSelector('.scribble-word-choice-btn');
 
     // Turn 2: the guest draws, then the next durable word-choice state proves

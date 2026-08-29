@@ -55,6 +55,7 @@ let turnExpiresAt = null;
 let paused = false;
 let pausedRemainingMs = null;
 let guessHadFocusBeforePause = false;
+let lastGuessFeedback = null; // { result: 'correct' | 'wrong' | 'rejected', text: string }
 let lastTurnEnd = null; // { word, reason } shown briefly during 'reveal'
 let matchEnded = null; // { winner, scores, drawings } once finished
 // Live thumbs-up: valid for exactly one drawing at a time (whichever is
@@ -151,6 +152,7 @@ function resetMatchState() {
   turnExpiresAt = null;
   paused = false;
   pausedRemainingMs = null;
+  lastGuessFeedback = null;
   lastTurnEnd = null;
   matchEnded = null;
   thumbsToken = null;
@@ -626,7 +628,10 @@ function drawingAreaHtml() {
 function lastDrawingThumbHtml() {
   if (!lastTurnEnd?.drawing || turn?.phase === 'drawing') return '';
   return `<div class="row-between" style="margin-top:var(--space-3);gap:var(--space-2);">
-    <span class="muted">Wort war: ${escapeHtml(lastTurnEnd.word ?? '')}</span>
+    <div class="row" style="gap:var(--space-2);">
+      <span class="muted">Wort war: ${escapeHtml(lastTurnEnd.word ?? '')}</span>
+      ${lastGuessFeedback?.result === 'correct' ? `<span class="badge badge-playing" data-scribble-guess-feedback-result="correct">${escapeHtml(lastGuessFeedback.text)}</span>` : ''}
+    </div>
     ${thumbButtonHtml()}
   </div>`;
 }
@@ -699,6 +704,7 @@ export function ensureScribbleSocket() {
     turnExpiresAt = payload.phase === 'drawing' ? payload.expiresAt : null;
     paused = false;
     if (payload.phase === 'drawing') {
+      lastGuessFeedback = null;
       thumbsToken = payload.thumbsToken ?? null;
       thumbsCount = 0;
       myThumbActive = false;
@@ -1127,15 +1133,23 @@ function wireRoom(container) {
     const feedback = container.querySelector('#scribble-guess-feedback');
     if (feedback) feedback.textContent = 'Tipp wird geprüft …';
     socket.emit('scribble:guess', { matchId: match.matchId, playerId: myId(), text }, (res) => {
-      container.dataset.scribbleGuessResult = !res?.ok ? 'rejected' : res.correct ? 'correct' : 'wrong';
+      const result = !res?.ok ? 'rejected' : res.correct ? 'correct' : 'wrong';
+      const resultText = !res?.ok
+        ? res?.error || 'Tipp nicht angenommen.'
+        : res.correct
+          ? `Richtig! +${res.points ?? 0} Punkte`
+          : res.close
+            ? 'Knapp dran!'
+            : 'Noch nicht richtig.';
+      container.dataset.scribbleGuessResult = result;
+      lastGuessFeedback = { result, text: resultText };
       if (sequence === guessSequence && feedback?.isConnected) {
-        feedback.textContent = !res?.ok
-          ? res?.error || 'Tipp nicht angenommen.'
-          : res.correct
-            ? `Richtig! +${res.points ?? 0} Punkte`
-            : res.close
-              ? 'Knapp dran!'
-              : 'Noch nicht richtig.';
+        feedback.textContent = resultText;
+      } else if (result === 'correct' && turn?.phase !== 'drawing') {
+        // A correct guess can end the turn immediately. If the phase-change
+        // render already removed the form before this acknowledgement arrives,
+        // redraw once more so the persistent result badge is still visible.
+        rerender();
       }
       if (!res?.ok) return showToast(res?.error || 'Tipp nicht angenommen.', { error: true });
       // Shown only to this guesser (the server never broadcasts it) - a
