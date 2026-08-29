@@ -162,3 +162,80 @@ test('a token-only kiosk loads one exact event and honours archival', () => {
   });
   if (!out.includes('KIOSK_REST_OK')) throw new Error('kiosk REST assertions did not complete:\n' + out);
 });
+
+test('an unconfigured installation generates and persists its own kiosk password', () => {
+  const script = `
+    const assert = require('assert/strict');
+    const request = require('supertest');
+    const { createApp } = require(${JSON.stringify(APP_JS_PATH)});
+    const { db } = require(${JSON.stringify(DB_JS_PATH)});
+    const { createEvent } = require(${JSON.stringify(path.join(__dirname, '..', 'events.js'))});
+
+    function cookie(response) {
+      return response.headers['set-cookie'][0].split(';')[0];
+    }
+
+    (async () => {
+      const app = createApp();
+
+      const now = Date.now();
+      const lanEvent = createEvent('Auto-Generated-Kiosk-LAN', {
+        startsAt: now,
+        endsAt: now + 3600000,
+        eventTypeKey: 'lan',
+      });
+      const kioskAccount = db.prepare('SELECT username FROM kiosk_accounts WHERE event_id = ?').get(lanEvent.id);
+
+      const generatedRow = db.prepare("SELECT value FROM app_state WHERE key = 'generated_kiosk_password'").get();
+      assert.ok(generatedRow, 'a password must be generated and persisted when no env var is configured');
+      assert.match(generatedRow.value, /^[0-9a-f]{64}$/, 'the generated password should be a strong random hex string');
+
+      const badLogin = await request(app).post('/api/kiosk/login').send({
+        username: kioskAccount.username,
+        password: 'not-the-generated-password',
+      });
+      assert.equal(badLogin.status, 401);
+
+      const goodLogin = await request(app).post('/api/kiosk/login').send({
+        username: kioskAccount.username,
+        password: generatedRow.value,
+      });
+      assert.equal(goodLogin.status, 200, JSON.stringify(goodLogin.body));
+      assert.ok(goodLogin.body.token);
+
+      // Admin-only: exposes the exact same live credential, never to an
+      // unauthenticated caller.
+      const anonAttempt = await request(app).get('/api/admin/kiosk-password');
+      assert.equal(anonAttempt.status, 401);
+
+      const adminResponse = await request(app).post('/api/auth/register').send({
+        code: 'unconfigured-kiosk-admin-recovery-code',
+        name: 'Kiosk Admin',
+        password: 'unconfigured kiosk admin passphrase',
+      });
+      assert.equal(adminResponse.status, 201, JSON.stringify(adminResponse.body));
+      const adminCookie = cookie(adminResponse);
+
+      const passwordResponse = await request(app).get('/api/admin/kiosk-password').set('Cookie', adminCookie);
+      assert.equal(passwordResponse.status, 200);
+      assert.equal(passwordResponse.body.password, generatedRow.value);
+
+      console.log('KIOSK_AUTOGEN_OK');
+    })().catch((err) => {
+      console.error(err);
+      process.exit(1);
+    });
+  `;
+  const out = execFileSync(process.execPath, ['-e', script], {
+    env: {
+      ...process.env,
+      DB_FILE: ':memory:',
+      COOKIE_SECURE: '0',
+      KIOSK_TOKEN: '',
+      KIOSK_PASSWORD: '',
+      ADMIN_RECOVERY_CODE: 'unconfigured-kiosk-admin-recovery-code',
+    },
+    encoding: 'utf8',
+  });
+  if (!out.includes('KIOSK_AUTOGEN_OK')) throw new Error('kiosk auto-generated password assertions did not complete:\n' + out);
+});

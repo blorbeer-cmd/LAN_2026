@@ -264,7 +264,7 @@ Recovery-Code oder ein bereits beanspruchtes Admin-Konto.
 | `BACKUP_RETENTION` | `20` | Maximale Anzahl persistenter Snapshots; ältere Dateien werden nach einem erfolgreichen Backup entfernt. |
 | `ADMIN_RECOVERY_CODE` | *(leer)* | Starkes Bootstrap-/Recovery-Secret für den ersten beziehungsweise letzten Admin. In Produktion Pflicht. |
 | `BOOTSTRAP_ADMIN_<n>_NAME` / `BOOTSTRAP_ADMIN_<n>_PASSWORD` | *(leer)* | Optionale, beim Start angelegte fertige Admin-Konten (Slot `n` = 1…20), damit du nicht den Recovery-Weg gehen musst. Idempotent, überschreibt kein bestehendes Passwort. Details in [`docs/BOOTSTRAP-ADMINS.md`](docs/BOOTSTRAP-ADMINS.md). |
-| `KIOSK_PASSWORD` | *(fällt auf `KIOSK_TOKEN` zurück)* | Gemeinsames Passwort der automatisch für alle LAN-Events angelegten Konten `kiosk-<eventId>`. Die Anmeldung auf `/kiosk.html` erzeugt nur einen eventgebundenen Read-only-Token. |
+| `KIOSK_PASSWORD` | *(fällt auf `KIOSK_TOKEN` zurück, sonst automatisch generiert)* | Gemeinsames Passwort der automatisch für alle LAN-Events angelegten Konten `kiosk-<eventId>`. Ohne beide Variablen erzeugt der Server beim ersten Bedarf ein zufälliges Passwort und speichert es dauerhaft in der DB; Admins sehen es in der Kioskverwaltung. Die Anmeldung auf `/kiosk.html` erzeugt nur einen eventgebundenen Read-only-Token. |
 | `KIOSK_TOKEN` | *(leer = Kiosk gesperrt)* | Kompatibler installationsweiter Read-only-Token für Kiosk-GET-Endpunkte und `kiosk:subscribe`; dient ohne separates `KIOSK_PASSWORD` zugleich als gemeinsames Kiosk-Passwort. |
 | `COOKIE_SECURE` | `1` | Sichere Session-Cookies; nur für bewusstes lokales HTTP-Hosting mit `0` abschalten. |
 | `OFFLINE_TIMEOUT_MS` | `60000` | Nach wie vielen ms ohne Agent-Meldung ein Spieler als „offline" gilt. |

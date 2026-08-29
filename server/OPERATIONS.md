@@ -194,11 +194,15 @@ idempotent und überschreibt kein bereits gesetztes Passwort; Details und Betrie
 Für jedes LAN-Event legt der Server automatisch ein eigenes Konto `kiosk-<eventId>` an; bestehende
 LAN-Events werden beim Upgrade nachgezogen. Die Konten stehen in der Admin-Kioskverwaltung und
 verwenden alle `KIOSK_PASSWORD` als gemeinsames Passwort. Ist diese Variable nicht gesetzt, dient
-`KIOSK_TOKEN` aus Kompatibilitätsgründen zugleich als gemeinsames Passwort. Eine erfolgreiche
+`KIOSK_TOKEN` aus Kompatibilitätsgründen zugleich als gemeinsames Passwort. Sind beide leer,
+generiert der Server beim ersten Bedarf selbst ein zufälliges Passwort und speichert es dauerhaft
+in der DB (`app_state`, gleiches Muster wie die VAPID-Push-Keys); Admins sehen es in der
+Kioskverwaltung, sodass kein manuelles Setup nötig ist. Eine erfolgreiche
 Anmeldung auf `/kiosk.html` erzeugt ausschließlich einen zufälligen, exakt auf dieses Event
 begrenzten Kiosk-Token: kein Spielerkonto, keine Browser-Session und kein Zugriff auf andere APIs.
 Der direkte Aufruf `/kiosk.html?token=<KIOSK_TOKEN>` bleibt für bereits eingerichtete Displays
-kompatibel. Ohne `KIOSK_PASSWORD` und `KIOSK_TOKEN` bleibt der Kiosk gesperrt.
+kompatibel, bleibt aber ohne gesetztes `KIOSK_TOKEN` gesperrt (kein Auto-Fallback für diesen
+installationsweiten Direkt-Token).
 
 Eine Instanz bedient genau eine Freundesgruppe (`docs/plans/reset-single-group.md`); es gibt keine
 API oder Oberfläche mehr, um weitere Gruppen anzulegen, ihnen beizutreten oder sie zu verlassen. Die

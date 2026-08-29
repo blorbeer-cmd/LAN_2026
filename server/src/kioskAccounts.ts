@@ -1,12 +1,34 @@
-import { createHash, timingSafeEqual } from 'crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { config } from './config';
-import { db } from './db';
+import { db, getState, setState } from './db';
 
 export interface KioskAccount {
   eventId: string;
   groupId: string;
   username: string;
   eventName: string;
+}
+
+const GENERATED_KIOSK_PASSWORD_KEY = 'generated_kiosk_password';
+
+// KIOSK_PASSWORD/KIOSK_TOKEN stay the explicit operator override. Without
+// either, a strong password is generated once and persisted in app_state (the
+// gitignored DB file, not the repo — same pattern as push.ts's VAPID keys),
+// so every installation gets a working shared kiosk login without manual
+// .env setup. Admins can read it back in Kioskverwaltung (routes/admin.ts).
+function ensureKioskPassword(): string {
+  if (config.kioskPassword) return config.kioskPassword;
+  const existing = getState(GENERATED_KIOSK_PASSWORD_KEY);
+  if (existing) return existing;
+  const generated = randomBytes(32).toString('hex');
+  setState(GENERATED_KIOSK_PASSWORD_KEY, generated);
+  return generated;
+}
+
+const kioskPassword = ensureKioskPassword();
+
+export function getKioskPassword(): string {
+  return kioskPassword;
 }
 
 export function findKioskAccount(username: string): KioskAccount | null {
@@ -27,8 +49,8 @@ export function findKioskAccount(username: string): KioskAccount | null {
 
 export function verifyKioskPassword(password: string): boolean {
   const actual = createHash('sha256').update(password).digest();
-  const expected = createHash('sha256').update(config.kioskPassword).digest();
-  return Boolean(config.kioskPassword) && timingSafeEqual(actual, expected);
+  const expected = createHash('sha256').update(kioskPassword).digest();
+  return timingSafeEqual(actual, expected);
 }
 
 export function recordKioskLogin(eventId: string): void {

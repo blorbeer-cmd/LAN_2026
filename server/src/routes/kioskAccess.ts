@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { config } from '../config';
 import { issueKioskToken } from '../kioskTokens';
 import { findKioskAccount, recordKioskLogin, verifyKioskPassword } from '../kioskAccounts';
 import {
@@ -27,9 +26,6 @@ kioskAccessRouter.post('/login', (req, res) => {
   const { username, password } = req.body ?? {};
   if (!isNonEmptyString(username, 100) || typeof password !== 'string' || password.length < 1 || password.length > 200) {
     return res.status(400).json({ error: 'Kiosk-Konto und Passwort sind erforderlich.' });
-  }
-  if (!config.kioskPassword) {
-    return res.status(503).json({ error: 'Das gemeinsame Kiosk-Passwort ist noch nicht konfiguriert.' });
   }
 
   const trimmedUsername = username.trim();
