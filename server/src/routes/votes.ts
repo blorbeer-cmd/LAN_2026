@@ -333,6 +333,17 @@ function countRoundVoters(groupId: string, round: number, includeTestData: boole
   ).n;
 }
 
+function countEligibleVoters(groupId: string, eventId: string, includeTestData: boolean): number {
+  const recipientIds = voteNotificationPlayerIds(groupId, eventId);
+  if (includeTestData || recipientIds.length === 0) return recipientIds.length;
+  const placeholders = recipientIds.map(() => '?').join(',');
+  return (
+    db
+      .prepare(`SELECT COUNT(*) AS n FROM players WHERE is_test = 0 AND id IN (${placeholders})`)
+      .get(...recipientIds) as { n: number }
+  ).n;
+}
+
 function buildPayload(
   groupId: string,
   eventId: string,
@@ -379,6 +390,7 @@ votesRouter.get('/kiosk', (req, res) => {
   const meta = getRoundMeta(groupId, state.round);
   const currentResults = state.open ? buildResults(groupId, state.round, state.mode, false, meta.selectedGameIds) : [];
   const currentTotalVoters = state.open ? countRoundVoters(groupId, state.round, false) : 0;
+  const currentEligibleVoters = state.open ? countEligibleVoters(groupId, eventId, false) : 0;
   const closedRound = state.open
     ? undefined
     : (db
@@ -405,6 +417,7 @@ votesRouter.get('/kiosk', (req, res) => {
           ...meta,
           results: currentResults,
           totalVoters: currentTotalVoters,
+          eligibleVoters: currentEligibleVoters,
         }
       : null,
     recentResult,

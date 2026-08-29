@@ -81,6 +81,7 @@ test('GET /api/votes/kiosk exposes the live tally for the shared display', async
   assert.equal(res.status, 200);
   assert.equal(res.body.current.mode, 'single');
   assert.equal(res.body.current.totalVoters, 2);
+  assert.equal(res.body.current.eligibleVoters, 3); // two voters plus the seeded admin participant
   const cs2Result = res.body.current.results.find((result: { gameId: string }) => result.gameId === gameCs2);
   assert.equal(cs2Result.votes, 2);
   assert.equal(cs2Result.score, 2);
