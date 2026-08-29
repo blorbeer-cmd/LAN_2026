@@ -601,7 +601,7 @@ export function renderArcade(container, ctx) {
         <h1 class="view-title">Arcade</h1>
       </div>
     </div>
-    <div class="grouped-page-sections arcade-desktop-layout${activeGameDefinition ? ' has-active-game' : ''}">
+    <div class="grouped-page-sections">
       ${
         activeGameDefinition
           ? `<section class="card stack grouped-page-section" aria-labelledby="arcade-active-game-title">
@@ -616,12 +616,12 @@ export function renderArcade(container, ctx) {
              </section>`
           : ''
       }
-      <${activeGameDefinition ? 'details' : 'section'} class="card stack grouped-page-section arcade-game-picker" ${activeGameDefinition ? '' : 'aria-labelledby="arcade-games-title"'}>
-        <${activeGameDefinition ? 'summary' : 'div'} class="grouped-page-section-title"><h2 id="arcade-games-title">${activeGameDefinition ? 'Spiel wechseln' : 'Spiele'}</h2></${activeGameDefinition ? 'summary' : 'div'}>
+      <section class="card stack grouped-page-section arcade-game-picker" aria-labelledby="arcade-games-title">
+        <div class="grouped-page-section-title"><h2 id="arcade-games-title">Spiele</h2></div>
         <div class="arcade-tiles">
           ${GAMES.map((g) => gameTileHtml(g, cg, openLobbyCount(g.id))).join('')}
         </div>
-      </${activeGameDefinition ? 'details' : 'section'}>
+      </section>
       ${runningMatchesOverviewHtml()}
       <section class="card stack grouped-page-section" aria-labelledby="arcade-stats-title">
         <div class="grouped-page-section-title"><h2 id="arcade-stats-title">Statistiken</h2></div>

@@ -38,6 +38,9 @@ const myId = () => getMyId();
 const currentView = () => document.getElementById('view-container')?.dataset.view;
 const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
 const navigate = (view) => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view }));
+const rerenderIfBattleshipVisible = () => {
+  if (currentView() === 'battleship' || currentView() === 'arcade') rerender();
+};
 const emitAck = (event, payload) => new Promise((resolve) => {
   if (pendingAction) return resolve({ ok: false, error: 'Eine Aktion wird noch verarbeitet.' });
   pendingAction = event;
@@ -76,10 +79,10 @@ export function ensureBattleshipSocket() {
       };
       cancelCountdown();
     }
-    rerender();
+    rerenderIfBattleshipVisible();
   });
-  socket.on('disconnect', () => { connectionState = 'offline'; rerender(); });
-  socket.on('connect_error', () => { connectionState = 'offline'; rerender(); });
+  socket.on('disconnect', () => { connectionState = 'offline'; rerenderIfBattleshipVisible(); });
+  socket.on('connect_error', () => { connectionState = 'offline'; rerenderIfBattleshipVisible(); });
   socket.on('battleship:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
     if (!match && currentView() === 'arcade') rerender();
