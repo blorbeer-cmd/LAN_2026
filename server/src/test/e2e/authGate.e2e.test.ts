@@ -244,7 +244,7 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
   });
   assert.equal(reset.status, 200, await reset.text());
 
-  const adminPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const adminPage = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
   await trackE2EContext(adminPage.context(), 'auth-onboarding-admin');
   try {
     await adminPage.goto(BASE_URL);
@@ -266,6 +266,19 @@ test('admin onboarding reaches the event filter and the rating handoff', async (
       return Number(match[1]);
     });
     assert.equal(totalCoreSteps, 13, 'admins must get the event-selection step before ratings');
+
+    assert.equal(await adminPage.locator('html').getAttribute('data-layout-mode'), 'desktop');
+    await adminPage.waitForSelector('.desktop-nav-btn[data-view="home"]:visible');
+    await adminPage.waitForSelector('.onboarding-target-ring');
+    await adminPage.waitForFunction(() => {
+      const target = document.querySelector('.desktop-nav-btn[data-view="home"]')?.getBoundingClientRect();
+      const ring = document.querySelector('.onboarding-target-ring')?.getBoundingClientRect();
+      return Boolean(target && ring && target.width > 0 && target.height > 0)
+        && Math.abs(target!.left - ring!.left) < 1
+        && Math.abs(target!.top - ring!.top) < 1
+        && Math.abs(target!.width - ring!.width) < 1
+        && Math.abs(target!.height - ring!.height) < 1;
+    }, undefined, { timeout: 5_000 });
 
     let sawEventSelection = false;
     for (let step = 0; step < totalCoreSteps; step += 1) {

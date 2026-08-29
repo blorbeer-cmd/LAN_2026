@@ -202,6 +202,14 @@ viewport-responsive on phones.
 descriptions while the shared modal remains full-width on phones.
 `--search-select-results-max-height` (320px) keeps a long searchable option list usable without
 letting it cover the full page; additional results scroll inside the dark listbox.
+`--shell-bottom-inset` reserves the phone/laptop bottom navigation plus safe area and becomes zero
+for the wide desktop side rail. `--desktop-nav-width` (176px) keeps that rail compact while labels
+remain visible, while `--desktop-supporting-pane-min-width` (320px) prevents supporting dashboard
+cards from collapsing below a useful scan width. Wide-desktop content may grow to 1600px; its
+centering calculation explicitly subtracts the rail so the navigation never narrows the usable
+content column by accident. Mein Profil offers Automatic/Desktop/Laptop as one account-scoped shell
+choice. Automatic follows `--bp-xl`; below that breakpoint every preference intentionally retains
+compact geometry.
 
 ## Breakpoints
 
@@ -215,7 +223,7 @@ not consumed via `var()`.
 | `--bp-sm` | 480px | View-title size bump |
 | `--bp-md` | 640px | Card grid columns, modal layout (sheet → centered dialog) |
 | `--bp-lg` | 860px | Content max-width bump |
-| `--bp-xl` | 1280px | Content max-width bump (wide desktop) |
+| `--bp-xl` | 1280px | Wide desktop side rail, adaptive page columns and content max-width bump |
 
 The kiosk dashboard's own breakpoint (900px, `kiosk.css`) is intentionally
 **not** `--bp-lg` — it's a different device class (TV/monitor) with its own
@@ -267,11 +275,19 @@ view and to new views unless a documented domain constraint requires a different
 10. **Keep account management behind the authenticated boundary.** The current roster is readable
     by every signed-in member, while only the session account can edit its own profile. Player
     creation, deletion, roles and foreign-profile editing remain admin-only actions.
-11. **Match primary navigation to the event type.** For LAN events, the bottom nav carries exactly
+11. **Match primary navigation to the event type.** For LAN events, primary navigation carries exactly
     the six during-party destinations Home, Match, Vote, Essen, Spiele and Mehr. A general event
     instead promotes its planning workflow to Home, An & Abreise, Packliste, To-Do, Umfragen
-    and Mehr; the remaining destinations live directly under „Mehr“. Everything else lives under
-    „Mehr“, the topbar, or (for the merged Rangliste/Statistiken/
+    and Mehr; the remaining destinations live directly under „Mehr“. It is a bottom bar below
+    `--bp-xl`. At `--bp-xl`, the account's Profile setting chooses between that
+    compact shell and a grouped direct rail: Home, LAN, Orga and Sonstiges form the main scrollable
+    area; Feedback, role-gated Admin and Mein Profil stay pinned below it. The choice is stored as
+    `respawn_layout_mode:<verified-account-id>`, survives logout/reload and is restored before the
+    authenticated app becomes visible. Automatic is the default and resolves against `--bp-xl` on
+    every breakpoint change. It changes neither routes nor permissions. The active event
+    snapshot and the same role checks filter both navigation surfaces. Everything else lives under
+    „Mehr“ on compact layouts, in the topbar, or (for the
+    merged Rangliste/Statistiken/
     Hall-of-Fame area, „Auswertung“) inside the role-protected Admin area. Auswertung is not a
     bottom-nav destination: reaching it now always requires the real owner/admin role
     (`switchView()`'s redirect guard in `app.js`, checked via `currentPlayerHasAdminRole()`), so it
@@ -453,7 +469,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Only the chosen mode's `.tournament-section-panel` renders below — the two workflows never compete
   for space — while the shared game picker and the loaded history stay visible regardless of mode.
   Draw participants and draft participants are independent `.tournament-player-grid` checkbox
-  selections; captains are then chosen only from the prepared draft roster. One tooltip beside
+  selections; captains are then chosen only from the prepared draft roster. In Desktop mode these
+  Match-specific player grids use three equal columns; Laptop and phone keep the existing responsive
+  one/two-column fallback. One tooltip beside
   „Captain Draft“ explains the complete participant/captain/pick sequence; the Captains label has no
   duplicate tooltip or empty-state instruction. `.captain-selection-group` keeps its label close to
   the associated player grid. Both selections use the standard checkbox-card state without an
@@ -592,6 +610,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Server/SQLite, Event and participants, agent coverage/version, process mappings, Kiosk and the
   latest persistent backup start inside „Prüfdetails“. Every card pairs its semantic badge with a
   textual summary and actionable detail; loading and retry errors stay inside the group.
+  In Desktop mode, Werkzeuge/Bereitschaft and Kontozugang/Testdaten form two priority rows. Benutzer
+  and Agent-Diagnose then span the content width and lay out their repeated entries in three columns.
+  Long diagnostics remain below the frequent tools instead of narrowing the complete admin workflow.
   Backup and seating-plan editing are absent from regular member views and live
   together as nested tool cards in the role-protected Admin area. Admin settings and tools remain
   visible to owners/admins without activating the device-local Admin mode; that mode only reveals
@@ -664,12 +685,21 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Nested `.card` surfaces use the secondary elevated background so their hierarchy remains visible.
   `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
+  `.adaptive-dashboard-columns` contains two semantic `.adaptive-dashboard-column` reading groups
+  for views such as Profile. They stack in DOM/focus order on compact layouts and flow independently
+  when Desktop is selected at `--bp-xl`; never recreate the former single grid where a tall card in
+  one column delayed the next card in the other. Home and Admin instead use explicit priority rows
+  whose repeated participant/user collections become three columns only in Desktop mode.
   The LAN „Mehr“ hub holds Mein Profil, Admin, Arcade, Durchsage, Jam and Orga. For a general event,
-  it replaces the Orga wrapper with direct entries for Events and Essen; An & Abreise, Packliste,
-  To-Do and Umfragen already occupy the bottom nav. Mein Profil moved here from its former topbar icon
-  (`#profile-btn`) to make room for the always-available Feedback icon there (see „Feedback“
-  below); the needs-setup indicator that used to sit on that topbar icon now sits on the „Mehr“
-  bottom-nav icon instead. Essen is listed here only for general events; LAN events retain its
+    it replaces the Orga wrapper with direct entries for Events and Essen; An & Abreise, Packliste,
+    To-Do and Umfragen already occupy the bottom nav. Mein Profil remains here as the compact/mobile
+    path. From `--bp-xl`, selecting Desktop replaces the bottom bar and „Mehr“ detour visually with
+    a grouped direct rail: Home; LAN; Orga; Sonstiges; plus the bottom utilities Feedback,
+    role-gated Admin and Mein Profil. The active event feature snapshot removes unavailable entries
+    and empty groups. Profile and Feedback are not duplicated in the desktop top ribbon; the ribbon
+    contains only global tools. The account-scoped Automatic/Desktop/Laptop choice lives in Mein
+    Profil so it remains reachable in every shell. Essen is listed in „Mehr“ only for
+    general events; LAN events retain its
   unconditional bottom-nav slot (`more.js`). Auswertung is never listed here —
   it has no general-audience entry point at all, living only behind Admin's „Auswertung“ tool card
   (see „Admin tools“). It keeps each destination's canonical icon
@@ -678,9 +708,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   remains independently aligned at the right.
   The destinations below „Mehr“ follow this same hierarchy without adding decorative accent rails:
   their major workflows and datasets are main groups, while entries, players, orders and results
-  remain subordinate cards or rows inside those groups. Every destination returns to „Mehr“ from
-  the shared compact subpage header; Profile keeps „Abmelden“ as that header's trailing action,
-  while Orga alone uses the reserved second row for its tabs and may therefore start lower.
+  remain subordinate cards or rows inside those groups. Phone and laptop destinations return to
+  „Mehr“ from the shared compact subpage header; the corresponding control is hidden on wide desktop
+  because the destination is already direct in the rail. Profile keeps „Abmelden“ as that header's
+  trailing action, while Orga alone uses the reserved second row for its tabs and may therefore start
+  lower.
 - **Broadcasts** — „Neue Durchsage“ and the recent history are separate grouped sections. Delivery
   channels live in the shared contextual tooltip directly beside „Neue Durchsage“ instead of a
   persistent explanation below the form. Recent broadcasts live in one standard, initially
@@ -964,10 +996,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `openModal()` instance, its entry form and delete confirmation can open on top of it — `modal.js`
   delivers Escape only to the topmost open `.modal-backdrop`, so cancelling a nested confirmation
   never takes the dialog underneath it down too.
-- **Feedback** — the topbar's `#feedback-btn` (the canonical `feedback` icon from
-  `domainIcons.js`) opens the feedback dialog as a modal over whatever view is open, the same
-  reachable-from-anywhere pattern as Info. It automatically captures the view that was open when
-  the icon was tapped, so a report never needs to explain where it happened. A submission picks one
+- **Feedback** — the compact topbar's `#feedback-btn` and the wide desktop rail utility (both using
+  the canonical `feedback` icon from `domainIcons.js`) open the same feedback dialog over whatever
+  view is open. It automatically captures the view that was open when the action was used, so a
+  report never needs to explain where it happened. A submission picks one
   of four distinct sentiments — Positiv, Negativ, Problem, Idee — through the shared
   `.selection-toolbar` toggle rather than a free-text category, plus a message field. Admin's
   Feedback section lists submissions newest first and filters them by the same four sentiments plus
@@ -1133,7 +1165,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   with „Event öffnen“; the invitation becomes read notification history and the action switches the
   active event. Security, Agent, notifications and visible monitors are clearly named collapsible
   groups below the always-visible identity editor. They start expanded; a user's manual collapse
-  survives same-view re-renders.
+  survives same-view re-renders. In Desktop mode, identity/password/notifications form the account
+  column while ratings/visible monitors/statistics form the LAN-profile column. Pending invitations
+  remain above both columns; the three-step Agent setup remains full width below them. The account
+  column also contains the three-way view preference; changing it updates the shell without losing
+  the current profile state.
 - **Leaderboard** — the „Rangliste“ tab and default entry of the „Auswertung“ area, reached only
   through Admin's „Auswertung“ tool card (see „Admin tools“). The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
@@ -1159,7 +1195,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   „Live-Status“ rather than a competing page-level group. A pending event invitation appears here as
   a plain linking nudge into „Mein Profil“ (see aktuellStatus.js); the full card with
   Annehmen/Ablehnen lives only in Profile, not in this list. Main groups stay in one continuous column
-  at phone and laptop widths while their existing internal grids remain responsive. A general event
+  at phone and laptop widths while their existing internal grids remain responsive. In Desktop mode,
+  „Meine To-Dos“ and „Aktuell“ share the first priority row, followed by a three-column Live-Status,
+  the full-width seating plan and a three-column top-six ranking. If only one priority card exists it
+  spans the row. A general event
   replaces the LAN-only live and ranking groups with a leading event overview containing its type,
   period, optional location/note, participant count and contribution. A separate „Organisation“
   group links to the existing Eventdetails, To-Dos, An- & Abreise, Essen and Jam workflows; the

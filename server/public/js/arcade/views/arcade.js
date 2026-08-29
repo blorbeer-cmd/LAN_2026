@@ -601,7 +601,7 @@ export function renderArcade(container, ctx) {
         <h1 class="view-title">Arcade</h1>
       </div>
     </div>
-    <div class="grouped-page-sections">
+    <div class="grouped-page-sections arcade-desktop-layout${activeGameDefinition ? ' has-active-game' : ''}">
       ${
         activeGameDefinition
           ? `<section class="card stack grouped-page-section" aria-labelledby="arcade-active-game-title">

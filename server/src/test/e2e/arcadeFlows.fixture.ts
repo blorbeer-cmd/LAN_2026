@@ -61,7 +61,7 @@ function arcadeFlowTest(
 }
 
 async function waitForArcadeStylesheet(targetPage: Page): Promise<void> {
-  await targetPage.waitForSelector('#arcade-stylesheet[href="/css/arcade.css?v=3"]', { state: 'attached' });
+  await targetPage.waitForSelector('#arcade-stylesheet[href="/css/arcade.css?v=5"]', { state: 'attached' });
   await targetPage.waitForFunction(() => {
     const link = document.querySelector('#arcade-stylesheet');
     return link instanceof HTMLLinkElement && link.sheet !== null;
@@ -149,17 +149,23 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
 
   const mobileViewport = page.viewportSize();
   await page.setViewportSize({ width: 1280, height: 800 });
-  const createButtonLayout = async (selector: string) => page.locator(selector).evaluate((button) => {
-    const buttonRect = button.getBoundingClientRect();
-    const cardRect = button.closest('.arcade-lobby-card')!.getBoundingClientRect();
-    return {
-      left: Math.round(buttonRect.left - cardRect.left),
-      right: Math.round(cardRect.right - buttonRect.right),
-      top: Math.round(buttonRect.top - cardRect.top),
-      width: Math.round(buttonRect.width),
-      height: Math.round(buttonRect.height),
-    };
-  });
+  const createButtonLayout = async (selector: string) => {
+    await page.waitForFunction((candidate) => {
+      const button = document.querySelector(candidate);
+      return Boolean(button && button.getClientRects().length > 0);
+    }, selector);
+    return page.locator(selector).evaluate((button) => {
+      const buttonRect = button.getBoundingClientRect();
+      const cardRect = button.closest('.arcade-lobby-card')!.getBoundingClientRect();
+      return {
+        left: Math.round(buttonRect.left - cardRect.left),
+        right: Math.round(cardRect.right - buttonRect.right),
+        top: Math.round(buttonRect.top - cardRect.top),
+        width: Math.round(buttonRect.width),
+        height: Math.round(buttonRect.height),
+      };
+    });
+  };
   const noModeLayout = await createButtonLayout('#quiz-create-lobby');
   assert.ok(Math.abs(noModeLayout.left - noModeLayout.right) <= 1, 'the no-mode create action must be centered');
   await selectArcadeGame(page, 'scribble');

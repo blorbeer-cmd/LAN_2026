@@ -7,6 +7,16 @@
   overflow: hidden;
 }
 
+/* Kiosk has no account and therefore no `data-layout-mode` preference to
+   read; it keeps the wide content column it always had at this breakpoint
+   instead of borrowing the account-scoped desktop-mode variable (which
+   would tie kiosk's width to an unrelated player preference feature). */
+@media (min-width: 1280px) { /* --bp-xl */
+  .kiosk-body {
+    --content-max-width: 1320px;
+  }
+}
+
 #kiosk-root {
   height: 100dvh;
   display: flex;

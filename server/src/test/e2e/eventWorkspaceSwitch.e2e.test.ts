@@ -101,14 +101,17 @@ async function switchWorkspaceInBrowser(eventId: string): Promise<void> {
   await page.waitForSelector('#event-context .search-select-toggle:not([disabled])');
 }
 
-// The bottom nav only carries the six primary views; everything else is
-// reached through the "Mehr" hub, whose cards use data-navigate.
+// Wide screens expose direct destinations in the grouped side rail; phones
+// retain the six-slot bottom nav and reach secondary destinations via Mehr.
 async function openView(view: string): Promise<void> {
-  const direct = await page.$(`[data-view="${view}"]`);
-  if (direct) {
-    await direct.click();
+  const desktopDirect = page.locator(`.desktop-nav-btn[data-view="${view}"]:visible`);
+  const mobileDirect = page.locator(`.nav-btn[data-view="${view}"]:visible`);
+  if (await desktopDirect.count()) {
+    await desktopDirect.click();
+  } else if (await mobileDirect.count()) {
+    await mobileDirect.click();
   } else {
-    await page.click('[data-view="more"]');
+    await page.click('.nav-btn[data-view="more"]:visible');
     await page.waitForSelector(`[data-navigate="${view}"]`);
     await page.click(`[data-navigate="${view}"]`);
   }
@@ -215,10 +218,9 @@ test('an info board entry stays inside the event it was written in', async () =>
 
 test('the personal statistics event filter only offers accepted workspaces', async () => {
   await switchWorkspaceInBrowser(eventB);
-  // "Meine Statistiken" hangs off the profile view rather than the nav or the
-  // "Mehr" hub, and is reached through its "Ansehen" action.
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="profile"]');
+  // "Meine Statistiken" hangs off the profile view and is reached through
+  // its "Ansehen" action on both shell variants.
+  await openView('profile');
   await page.waitForSelector('[data-navigate="myStats"]');
   await page.click('[data-navigate="myStats"]');
   // The event dropdown only exists once the first stats payload has arrived.
@@ -409,28 +411,42 @@ test('an open, actively-searched switcher survives an unrelated background refre
 test('a general event removes LAN-only whole areas across navigation, Home, Profile and Admin', async () => {
   await switchWorkspaceInBrowser(generalEvent);
 
-  const expectedNavViews = ['home', 'arrivals', 'checklistPacking', 'checklist', 'eventPolls', 'more'];
+  const expectedNavViews = [
+    'home',
+    'events',
+    'eventPolls',
+    'arrivals',
+    'checklistPacking',
+    'checklist',
+    'foodOrders',
+    'broadcast',
+    'arcade',
+    'music',
+    'admin',
+    'profile',
+  ];
   // The switcher's enabled state confirms that its own refresh settled, but
   // the event-feature navigation follows through a separate render signal.
   // Wait for that observable contract instead of racing it on a loaded CI
   // runner; the assertion below still fails if the general-event nav never
   // arrives or contains the wrong destinations.
   await page.waitForFunction(
-    (expected) => Array.from(document.querySelectorAll<HTMLElement>('.nav-btn'))
+    (expected) => Array.from(document.querySelectorAll<HTMLElement>('.desktop-nav-btn[data-view]'))
       .filter((button) => button.getClientRects().length > 0)
       .map((button) => button.dataset.view)
       .join(',') === expected.join(','),
     expectedNavViews,
   );
   assert.deepEqual(
-    await page.locator('.nav-btn:visible').evaluateAll((buttons) => buttons.map((button) => (button as HTMLElement).dataset.view)),
+    await page.locator('.desktop-nav-btn[data-view]:visible').evaluateAll((buttons) =>
+      buttons.map((button) => (button as HTMLElement).dataset.view)),
     expectedNavViews,
   );
-  assert.equal(await page.locator('.nav-btn[data-view="eventPolls"]').isEnabled(), true);
-  await page.click('.nav-btn[data-view="eventPolls"]');
+  assert.equal(await page.locator('.desktop-nav-btn[data-view="eventPolls"]').isEnabled(), true);
+  await openView('eventPolls');
   assert.match(await page.locator('#view-container > .view-title').innerText(), /Umfragen/);
 
-  await page.click('.nav-btn[data-view="home"]');
+  await openView('home');
   const home = await viewText();
   assert.doesNotMatch(home, /Live-Status|Rangliste/);
   for (const text of [
@@ -459,21 +475,20 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   assert.doesNotMatch(profile, /Live-Status-Agent|Sichtbare Monitore|Meine Statistiken|Bock & Skill eintragen/);
   assert.match(profile, /Benachrichtigungen/);
 
-  await page.click('.nav-btn[data-view="more"]');
-  const more = await viewText();
-  assert.match(more, /Arcade|Jam|Events|Essen/);
-  assert.doesNotMatch(more, /Orga/);
-  assert.equal(await page.locator('[data-navigate="arcade"]').isVisible(), true);
+  assert.equal(await page.locator('.desktop-nav-btn[data-view="arcade"]').isVisible(), true);
+  assert.equal(await page.locator('.desktop-nav-btn[data-view="music"]').isVisible(), true);
+  assert.equal(await page.locator('.desktop-nav-btn[data-view="events"]').isVisible(), true);
+  assert.equal(await page.locator('.desktop-nav-btn[data-view="foodOrders"]').isVisible(), true);
+  assert.equal(await page.locator('.desktop-nav-btn[data-view="more"]').count(), 0);
 
-  await page.click('.nav-btn[data-view="arrivals"]');
+  await openView('arrivals');
   await page.waitForSelector('#arrivals-times-title');
   assert.doesNotMatch(await viewText(), /Spieler/);
   assert.match(await viewText(), /Person|Teilnehmende/i);
   assert.match(await page.locator('#view-container > .view-title').innerText(), /An- & Abreise/);
   assert.equal(await page.locator('#view-container > .section-tabs').count(), 0);
 
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="events"]');
+  await openView('events');
   const generalEventCard = page.locator(`[data-event-card="${generalEvent}"]`);
   assert.equal(
     await generalEventCard.locator('.event-card-header-badges .badge').first().innerText(),
@@ -509,7 +524,7 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   assert.doesNotMatch(seating, /Spieler/);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.click('.nav-btn[data-view="home"]');
+  await openView('home');
   await page.waitForSelector('[data-home-event-overview]');
   await page.waitForSelector('[data-home-assigned-todos]');
   assert.match(await page.locator('[data-home-assigned-todos]').innerText(), /Meine To-Dos|Alle To-Dos/);
@@ -520,15 +535,42 @@ test('a general event removes LAN-only whole areas across navigation, Home, Prof
   );
   assert.equal(await page.locator('[data-home-event-overview] .badge').isVisible(), true);
   await page.setViewportSize({ width: 1280, height: 720 });
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
 
   await switchWorkspaceInBrowser(eventA);
-  assert.deepEqual(
-    await page.locator('.nav-btn:visible').evaluateAll((buttons) => buttons.map((button) => (button as HTMLElement).dataset.view)),
-    ['home', 'matchmaking', 'votes', 'foodOrders', 'gameCatalog', 'more'],
+  await page.waitForFunction(() => document.querySelector('.desktop-nav-btn[data-view="matchmaking"]')?.getClientRects().length);
+  const expectedLanDesktopViews = [
+    'home',
+    'matchmaking',
+    'votes',
+    'gameCatalog',
+    'events',
+    'eventPolls',
+    'arrivals',
+    'checklistPacking',
+    'checklist',
+    'foodOrders',
+    'broadcast',
+    'arcade',
+    'music',
+    'admin',
+    'profile',
+  ];
+  await page.waitForFunction(
+    (expected) => Array.from(document.querySelectorAll<HTMLElement>('.desktop-nav-btn[data-view]'))
+      .filter((button) => button.getClientRects().length > 0)
+      .map((button) => button.dataset.view)
+      .join(',') === expected.join(','),
+    expectedLanDesktopViews,
   );
-  await page.click('.nav-btn[data-view="more"]');
-  assert.equal(await page.locator('[data-navigate="eventPolls"]').isVisible(), true);
-  assert.match(await viewText(), /Orga/);
+  assert.deepEqual(
+    await page.locator('.desktop-nav-btn[data-view]:visible').evaluateAll((buttons) =>
+      buttons.map((button) => (button as HTMLElement).dataset.view)),
+    expectedLanDesktopViews,
+  );
+  await openView('eventPolls');
+  await page.waitForSelector('#view-container[data-view="eventPolls"]');
+  assert.match(await viewText(), /Umfragen/);
 });
 
 // The organizer is the account most likely to answer for itself here: they see

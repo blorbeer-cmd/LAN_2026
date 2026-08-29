@@ -10,7 +10,7 @@
 
 import { viewIsEnabledForEvent } from './eventFeatures.js';
 import { backButtonHtml } from './backButton.js';
-import { SECTION_MANIFEST, sectionViews } from './viewManifest.js';
+import { SECTION_MANIFEST, sectionViews, viewDefinition } from './viewManifest.js';
 
 // Tabs and labels come from the route registry. The section manifest only
 // supplies the shared area label/icon and optional navigation metadata.
@@ -47,12 +47,21 @@ export function sectionEntryView(key, event) {
   return sectionTabsForEvent(key, event)[0]?.view ?? null;
 }
 
-// Which nav entry should light up for the currently rendered route. A route
-// inside an area highlights that area's button; everything else stands for
-// itself.
+// Which primary-nav entry should light up for the currently rendered route.
+// Direct event navigation wins, routes presented through "Mehr" keep that
+// parent highlighted, and a remaining route inside a tabbed area highlights
+// the shared area button.
 export function navGroupForView(view, event) {
-  if (event?.eventType === 'general' && sectionKeyForView(view) === 'orga') return view;
-  return sectionKeyForView(view) ?? view;
+  const eventType = event?.eventType;
+  const definition = viewDefinition(view);
+  const sectionKey = sectionKeyForView(view);
+  if (eventType && definition?.navigation?.bottom?.[eventType]) {
+    return eventType === 'general' && sectionKey === 'orga' ? view : sectionKey ?? view;
+  }
+  if (eventType && definition?.navigation?.more?.eventTypes?.includes(eventType)) return 'more';
+  if (eventType && SECTION_MANIFEST[sectionKey]?.navigation?.more?.eventTypes?.includes(eventType)) return 'more';
+  if (eventType === 'general' && sectionKey === 'orga') return view;
+  return sectionKey ?? view;
 }
 
 function badgeText(count) {

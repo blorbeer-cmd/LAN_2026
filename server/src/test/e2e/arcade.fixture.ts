@@ -84,21 +84,12 @@ async function openArcadeAs(
     expanded
   );
   await page.reload();
-  await page.waitForSelector('.nav-btn[data-view="more"]');
-  // Freshly created players still broadcast players:changed refreshes that
-  // re-render the "Mehr" view mid-click — retry the two-step navigation
-  // instead of failing on a detached button.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.click('.nav-btn[data-view="more"]', { timeout: 4000 }).catch(() => undefined);
-    try {
-      await page.click('[data-navigate="arcade"]', { timeout: 4000 });
-      await page.waitForSelector('.arcade-tiles', { timeout: 4000 });
-      return { context, page };
-    } catch {
-      // late realtime re-render replaced the view — try again
-    }
-  }
-  throw new Error('could not open the Arcade view');
+  await page.waitForFunction(() =>
+    Array.from(document.querySelectorAll<HTMLElement>(
+      '.desktop-nav-btn[data-view="arcade"], .nav-btn[data-view="more"]',
+    )).some((button) => button.getClientRects().length > 0));
+  await navigateToArcade(page);
+  return { context, page };
 }
 
 async function openHomeAs(playerId: string): Promise<Actor> {
@@ -116,10 +107,21 @@ async function openHomeAs(playerId: string): Promise<Actor> {
   return { context, page };
 }
 
+async function clickArcadeDestination(page: Page): Promise<void> {
+  const desktopArcade = page.locator('.desktop-nav-btn[data-view="arcade"]:visible');
+  if (await desktopArcade.count()) {
+    await desktopArcade.click({ timeout: 4_000 });
+    return;
+  }
+  await page.click('.nav-btn[data-view="more"]:visible', { timeout: 4_000 });
+  await page.click('[data-navigate="arcade"]', { timeout: 4_000 });
+}
+
 async function navigateToArcade(page: Page): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.click('.nav-btn[data-view="more"]');
-    await page.click('[data-navigate="arcade"]');
+    // Freshly created players still broadcast players:changed refreshes that
+    // can replace the mobile "Mehr" view or a direct desktop item mid-click.
+    await clickArcadeDestination(page).catch(() => undefined);
     try {
       await page.waitForSelector('.arcade-tiles', { timeout: 4_000 });
       return;
@@ -310,8 +312,7 @@ arcadeTest('navigation', 'an obsolete or failed Arcade import cannot replace or 
   await stale.page.route('**/js/arcade/views/arcade.js', delayArcade);
 
   try {
-    await stale.page.click('.nav-btn[data-view="more"]');
-    await stale.page.click('[data-navigate="arcade"]');
+    await clickArcadeDestination(stale.page);
     await stale.page.waitForSelector('text=Arcade wird geladen');
     await stale.page.click('.nav-btn[data-view="home"]');
     releaseImport();
@@ -327,8 +328,7 @@ arcadeTest('navigation', 'an obsolete or failed Arcade import cannot replace or 
   const failArcade = (route: import('playwright').Route) => route.abort('failed');
   await failed.page.route('**/js/arcade/views/arcade.js', failArcade);
   try {
-    await failed.page.click('.nav-btn[data-view="more"]');
-    await failed.page.click('[data-navigate="arcade"]');
+    await clickArcadeDestination(failed.page);
     await failed.page.waitForSelector('text=Arcade konnte nicht geladen werden.');
     await failed.page.click('.nav-btn[data-view="home"]');
     assert.equal(await activeView(failed.page), 'home');

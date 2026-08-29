@@ -107,7 +107,7 @@
 
 .toast-container {
   position: fixed;
-  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + 12px);
+  bottom: calc(var(--shell-bottom-inset) + var(--space-3));
   left: 50%;
   transform: translateX(-50%);
   z-index: 100;
@@ -202,7 +202,7 @@
   z-index: 42;
   left: var(--space-4);
   right: var(--space-4);
-  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + var(--space-4));
+  bottom: calc(var(--shell-bottom-inset) + var(--space-4));
   max-width: var(--search-panel-width);
   margin: 0 auto;
   padding: var(--space-4);
