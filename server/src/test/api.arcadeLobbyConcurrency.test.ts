@@ -17,6 +17,7 @@ import { registerBattleshipSockets } from '../arcade/battleship';
 import { registerChallengeRushSockets } from '../arcade/challengeRush';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
 import { clearLobbyPushThrottle } from '../arcade/lobbyPush';
+import { ensureAccountEventContext } from '../eventContext';
 
 function connect(baseUrl: string): Promise<ClientSocket> {
   return new Promise((resolve, reject) => {
@@ -62,6 +63,7 @@ test('every human Arcade lobby creates and resolves a join notification', async 
   try {
     const bystander = await request(baseUrl).post('/api/players').send({ name: 'Arcade Push Bystander' });
     assert.equal(bystander.status, 201);
+    ensureAccountEventContext(bystander.body.id);
 
     for (const game of games) {
       const host = await request(baseUrl).post('/api/players').send({ name: `${game.name} Push Host` });
@@ -72,13 +74,15 @@ test('every human Arcade lobby creates and resolves a join notification', async 
 
       const topicKey = `arcade-lobby:${game.type}:${created.lobbyId}`;
       const notification = db.prepare(
-        'SELECT title, url, resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?',
-      ).get(topicKey) as { title: string; url: string; resolvedAt: number | null } | undefined;
-      assert.deepEqual(notification, {
-        title: `Neue ${game.name}-Lobby`,
-        url: `/#arcade/${game.type}`,
-        resolvedAt: null,
-      });
+        'SELECT title, url, player_ids AS playerIds, resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?',
+      ).get(topicKey) as { title: string; url: string; playerIds: string; resolvedAt: number | null } | undefined;
+      assert.ok(notification);
+      assert.equal(notification.title, `Neue ${game.name}-Lobby`);
+      assert.equal(notification.url, `/#arcade/${game.type}`);
+      assert.equal(notification.resolvedAt, null);
+      const playerIds = JSON.parse(notification.playerIds) as string[];
+      assert.ok(playerIds.includes(bystander.body.id), `${game.name} push must reach the bystander`);
+      assert.equal(playerIds.includes(host.body.id), false, `${game.name} push must exclude the host`);
 
       const left = await emitAck(client, game.leave, { lobbyId: created.lobbyId, playerId: host.body.id });
       assert.equal(left.ok, true, `${game.name} host must be able to close the lobby`);
