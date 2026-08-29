@@ -52,7 +52,16 @@ export function ensureSnakeSocket() {
     world = null;
     prevMyScore = null;
     navigate('snake');
-    requestAnimationFrame(() => showCountdown(payload.beginsAt));
+    const playerIndex = payload.players.findIndex((player) => player.id === myId());
+    const identity = playerIndex >= 0 ? snakeColor(playerIndex) : null;
+    const announcement = identity
+      ? {
+          label: identity.label,
+          color: `var(${identity.token})`,
+          detail: payload.mode === 'arena' ? `Schlange ${playerIndex + 1}` : '',
+        }
+      : null;
+    requestAnimationFrame(() => showCountdown(payload.beginsAt, undefined, { announcement }));
   });
   socket.on('snake:state', (payload) => {
     world = payload.world;
@@ -315,7 +324,7 @@ export function renderSnake(container) {
   const playerIndex = match.players.findIndex((player) => player.id === myId());
   const identity = playerIndex >= 0 ? snakeColor(playerIndex) : null;
   const identityHtml = identity
-    ? `<div class="row" style="justify-content:center;margin-bottom:var(--space-3);"><div class="badge badge-online snake-player-identity" role="status"><span class="snake-player-color" style="--snake-player-color:var(${identity.token});" aria-hidden="true"></span><strong>Deine Farbe: ${identity.label}</strong>${match.mode === 'arena' ? `<span>· Schlange ${playerIndex + 1}</span>` : ''}</div></div>`
+    ? `<div class="snake-player-identity" style="--snake-player-color:var(${identity.token});" role="status"><span class="snake-player-color" aria-hidden="true"></span><span class="snake-player-identity-copy"><span class="snake-player-identity-prompt">Deine Farbe</span><strong>${identity.label}</strong>${match.mode === 'arena' ? `<span class="snake-player-identity-detail">Schlange ${playerIndex + 1}</span>` : ''}</span></div>`
     : '';
   container.innerHTML = `<div class="arcade-game-shell"><div class="row"><h1 class="view-title">Snake</h1>${match.mode === 'arena' ? '<span class="badge">Arena</span>' : ''}</div>${arcadeToolbarHtml()}${identityHtml}
     <div id="snake-roster">${roster}</div>

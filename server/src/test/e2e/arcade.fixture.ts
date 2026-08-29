@@ -356,11 +356,24 @@ arcadeTest('navigation', 'classic Snake guest returns to the Arcade immediately 
     await host.page.waitForSelector('#snake-start:not([disabled])');
     await host.page.click('#snake-start');
     await Promise.all([
+      host.page.waitForSelector('.countdown-player-identity'),
+      guest.page.waitForSelector('.countdown-player-identity'),
+    ]);
+    assert.match(await host.page.locator('.countdown-player-identity').innerText(), /Du bist\s+Blau/);
+    assert.match(await guest.page.locator('.countdown-player-identity').innerText(), /Du bist\s+Pink/);
+    const countdownBackdropFilter = await host.page.locator('.countdown-overlay').evaluate((element) => {
+      const styles = getComputedStyle(element);
+      return `${styles.backdropFilter} ${styles.getPropertyValue('-webkit-backdrop-filter')}`;
+    });
+    assert.doesNotMatch(countdownBackdropFilter, /blur/i);
+    await Promise.all([
       guest.page.waitForSelector('#snake-canvas'),
       host.page.waitForSelector('#snake-pause'),
     ]);
-    assert.match(await host.page.locator('.snake-player-identity').innerText(), /Deine Farbe: Blau/);
-    assert.match(await guest.page.locator('.snake-player-identity').innerText(), /Deine Farbe: Pink/);
+    assert.match(await host.page.locator('.snake-player-identity').innerText(), /Deine Farbe\s+Blau/);
+    assert.match(await guest.page.locator('.snake-player-identity').innerText(), /Deine Farbe\s+Pink/);
+    const playerColorBox = await host.page.locator('.snake-player-color').boundingBox();
+    assert.ok(playerColorBox && playerColorBox.width >= 32);
     // Keep the match alive while the guest handles the confirmation dialog.
     // Under loaded CI runners an unpaused classic round can end first and
     // replace the view, turning this navigation assertion into a timing race.
