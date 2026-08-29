@@ -132,6 +132,18 @@
   color: transparent;
   -webkit-text-fill-color: transparent;
 }
+@media (max-height: 480px) { /* design-token-ok: viewport-height fallback; width breakpoints do not model short screens */
+  .countdown-num-wrap {
+    padding: var(--space-1);
+  }
+  .countdown-num {
+    font-size: clamp(
+      var(--font-size-3xl),
+      18vh,
+      calc(var(--font-size-3xl) + var(--font-size-3xl))
+    );
+  }
+}
 .countdown-pop {
   animation: countdown-pop 0.85s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
