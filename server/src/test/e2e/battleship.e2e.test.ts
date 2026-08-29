@@ -71,10 +71,9 @@ async function randomFleet(page: Page): Promise<{ ships: number[]; water: number
   return { ships, water: Array.from({ length: 100 }, (_, cell) => cell).filter((cell) => !occupied.has(cell)) };
 }
 
-// Mirrors the server-side `validPlacements` fixture: five horizontal ships stacked two rows apart,
-// all starting at column 0, so clicking just the row-start cell places each ship in turn (the
-// placement grid auto-advances `selectedShip` after every valid placement).
-const MANUAL_SHIP_START_CELLS = [0, 20, 40, 60, 80];
+// Five horizontal ships packed into two rows. Several endpoints touch, which keeps the manual
+// placement flow deterministic while exercising the visual boundary between adjacent ships.
+const MANUAL_SHIP_START_CELLS = [0, 5, 10, 13, 16];
 
 async function readPlacedFleet(page: Page): Promise<{ ships: number[]; water: number[] }> {
   const ships = await page.locator('.battleship-placement-grid .is-ship').evaluateAll((cells) =>
@@ -245,12 +244,31 @@ test('Battleship: ships can be placed manually one at a time, and a sunk ship st
     await host.page.waitForSelector('#battleship-submit-setup:not([disabled])');
     assert.equal(await host.page.locator('.info-tooltip-trigger--warning').count(), 0);
 
+    const adjacentSegments = await host.page
+      .locator('[data-place-cell="3"], [data-place-cell="4"], [data-place-cell="5"]')
+      .evaluateAll((cells) => cells.map((cell) => ({
+        shipId: (cell as HTMLElement).dataset.shipId,
+        shipCode: (cell as HTMLElement).dataset.shipCode,
+        className: (cell as HTMLElement).className,
+      })));
+    assert.deepEqual(adjacentSegments.map(({ shipId, shipCode }) => ({ shipId, shipCode })), [
+      { shipId: 'carrier', shipCode: 'F' },
+      { shipId: 'carrier', shipCode: 'F' },
+      { shipId: 'battleship', shipCode: 'S' },
+    ]);
+    assert.match(adjacentSegments[0].className, /has-next-segment/, 'segments of one ship must be visibly connected');
+    assert.doesNotMatch(adjacentSegments[1].className, /has-next-segment/, 'the connector must stop at the ship endpoint');
+    assert.match(adjacentSegments[1].className, /is-ship-end/, 'the final carrier segment must expose its endpoint');
+    assert.match(adjacentSegments[2].className, /is-ship-start/, 'the touching battleship segment must expose its start');
+
     const hostFleet = await readPlacedFleet(host.page);
     const guestFleet = await manualFleet(guest.page);
     await host.page.click('#battleship-submit-setup');
     await guest.page.click('#battleship-submit-setup');
     await host.page.waitForSelector('[data-fire-cell]');
     await guest.page.waitForSelector('[data-fire-cell]');
+    assert.equal(await host.page.locator('[data-own-cell="4"][data-ship-code="F"].is-ship-end').count(), 1);
+    assert.equal(await host.page.locator('[data-own-cell="5"][data-ship-code="S"].is-ship-start').count(), 1);
 
     const hostGoesFirst = (await host.page.locator('[data-fire-cell]:not([disabled])').count()) > 0;
     const attacker = hostGoesFirst ? host : guest;
