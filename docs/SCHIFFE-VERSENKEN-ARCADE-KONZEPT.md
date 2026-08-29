@@ -205,6 +205,9 @@ Damit bedeuten „Bereit“ und „Flotte bereit“ jeweils genau eine Sache.
 - Primärfläche ist das eigene 10×10-Raster als semantisches CSS-Grid aus Buttons, nicht Canvas.
   Das ermöglicht sichtbaren Tastaturfokus, Koordinatenansagen und mindestens 44×44 CSS-Pixel große
   Touchziele bei lokalem Scrollen auf sehr schmalen Geräten.
+- Zusammengehörige Schiffssegmente sind sichtbar verbunden und tragen im Raster dasselbe kurze
+  Schiffskennzeichen. Die Verbindung endet an der Schiffskante, sodass auch direkt aneinanderliegende
+  Schiffe beim Platzieren, auf dem eigenen Raster und in der Endaufdeckung eindeutig getrennt bleiben.
 - Über dem Raster stehen die fünf Schiffe als auswählbare Zeilen mit Name, Länge und Status.
 - Ablauf: Schiff wählen, Orientierung über „Drehen“ setzen, Startfeld antippen. Drag-and-drop darf
   später als Komfortfunktion hinzukommen, ist aber nie der einzige Eingabeweg.
