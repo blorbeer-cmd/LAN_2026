@@ -83,7 +83,7 @@ function syncArcadeStylesheet(entry) {
     link.rel = 'stylesheet';
     // bump ?v= when arcade.css changes so no cached copy survives a reload
     // (keep in sync with kiosk.html's static link)
-    link.href = '/css/arcade.css?v=5';
+    link.href = '/css/arcade.css?v=6';
     const loaded = new Promise((resolve, reject) => {
       link.addEventListener('load', () => {
         link.dataset.loaded = 'true';

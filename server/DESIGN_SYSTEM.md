@@ -979,8 +979,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   window, using durable reminder state independent of push history. TV-Kiosk (Admin's „Kioskverwaltung“
   card, not an Orga tab) stays one grouped section but lists one automatic account for every LAN
   event, including its stable `kiosk-<eventId>` username and a prefilled link to `/kiosk.html`.
-  The standalone page shows a centered account/password card until its event-scoped credential is
-  established; this identity never becomes a player or a regular app session.
+  The section leads directly with the shared login password itself (configured or generated once
+  on first use — see server/OPERATIONS.md) as one compact label/value/copy-icon row, so admins never
+  need server/.env access just to read out a working kiosk login. It has no repeated explanation or
+  unscoped login action above the event cards. Each event card provides one primary `Kiosk öffnen`
+  action with its account already selected. The standalone page shows a centered
+  account/password card until its event-scoped credential is established; this identity never
+  becomes a player or a regular app session.
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
   grid. „Nach LAN“ uses one directly labeled event dropdown and shows every overall placement for
   the selected LAN, followed by tournament winners in the same leaderboard-row structure. Blue and
@@ -1018,11 +1023,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   action uses the primary button treatment next to the destructive delete action.
 - **Arcade** — The launcher follows the grouped-page hierarchy with separate full-width cards for
   „Spiele“, optional running games, the selected game and „Statistiken“.
-  Without a selection, the game grid remains the launcher. With a selection, the active game moves
-  first and the grid becomes the collapsed „Spiel wechseln“ control below it. The selected game is
-  represented by `#arcade/<spiel>` so browser back/forward, reload and „Spielauswahl“ agree.
+  The game grid remains the first visible group with or without a selection. Once a game is selected,
+  its lobby group follows directly below the grid; there is no separate „Spielauswahl“ back action.
+  The selected game is represented by `#arcade/<spiel>` so browser back/forward, reload and the
+  highlighted game tile agree.
   Game choices are horizontal nested cards with their Lucide game icon, name and an explicit
-  „… offen“ lobby badge; they form one column on phones and exactly two from `--bp-md`. Running
+  „… offen“ lobby badge; they form one column on phones, exactly two from `--bp-md` and three in
+  desktop mode from `--bp-xl`. Running
   games reuse the same responsive two-column rhythm. The tile badge is the only separate open-lobby
   overview; selecting a game reveals all of its lobbies in the dedicated main group. Goal and
   controls live in one tooltip directly beside that selected game's title instead of a second
@@ -1082,8 +1089,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Statistics use the concise title „Statistiken“ and one full-width game dropdown whose options
   include each game's match count. The selected game is not repeated above its results. Those
   results follow directly without another enclosing card or accent rail; player rows reuse
-  `.leaderboard-list-grid` for the shared one-/two-column ranking presentation and spell out wins
-  and losses in German. Tetris Duell and Tetris Arena are separate dropdown entries so an Arena's
+  `.leaderboard-list-grid` for the shared one-/two-column ranking presentation, gain a third column
+  in desktop mode from `--bp-xl` and spell out wins and losses in German. Tetris Duell and Tetris
+  Arena are separate dropdown entries so an Arena's
   many non-winning placements do not distort the duel win rate. Arena rows instead show wins,
   Top-3 finishes, average placement, cleared lines, sent garbage and knockouts. Matches containing
   bots appear as separate „KI-Test“ entries and never alter the human-only Duell/Arena rankings.

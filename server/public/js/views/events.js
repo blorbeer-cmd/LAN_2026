@@ -35,6 +35,7 @@ import {
 import { backButtonHtml } from '../backButton.js';
 import { EXCUSE_CATEGORIES, excuseCategoryLabel, pickEventExcuse } from '../eventExcuses.js';
 import { settleNotificationTarget } from '../notificationBanner.js';
+import { copyText } from '../clipboard.js';
 import {
   acceptedParticipantCount as countAcceptedParticipants,
   acceptedParticipants as selectAcceptedParticipants,
@@ -53,7 +54,7 @@ export {
 } from '../eventModel.js';
 
 const EVENT_HELP = 'Eventtyp, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
-const KIOSK_HELP = 'Jedes LAN-Event besitzt ein eigenes Kiosk-Konto. Alle Konten verwenden das gemeinsam konfigurierte Kiosk-Passwort und können ausschließlich die TV-Ansicht öffnen.';
+const KIOSK_HELP = 'Jedes LAN-Event besitzt ein eigenes Kiosk-Konto. Alle Konten verwenden dasselbe gemeinsame Kiosk-Passwort und können ausschließlich die TV-Ansicht öffnen.';
 const expandedEventParticipants = new Set();
 // Mirrors foodOrders.js's Historie collapse: ended events start collapsed and
 // this survives the section's own live re-renders.
@@ -62,10 +63,42 @@ let eventHistoryOpen = false;
 // quiet enough not to compete with the events actually being planned.
 let declinedEventsOpen = false;
 let acceptedInvitationHandoff = null;
+// Fetched once per session (the shared kiosk password is stable once
+// generated — see server/src/kioskAccounts.ts) and cached across successful
+// re-renders of the Kioskverwaltung tool. Transient failures remain retryable.
+let kioskPasswordState = { status: 'idle', value: '', error: null };
 
 globalThis.window?.addEventListener('respawn:identity-changed', () => {
   acceptedInvitationHandoff = null;
 });
+
+async function loadKioskPassword(ctx) {
+  if (kioskPasswordState.status === 'loading' || kioskPasswordState.status === 'loaded') return;
+  kioskPasswordState = { status: 'loading', value: '', error: null };
+  try {
+    const { password } = await api.admin.kioskPassword();
+    kioskPasswordState = { status: 'loaded', value: password, error: null };
+  } catch (err) {
+    kioskPasswordState = { status: 'error', value: '', error: err.message };
+  }
+  ctx.rerender();
+}
+
+function renderKioskPasswordRow() {
+  if (kioskPasswordState.status === 'loaded') {
+    return `<div class="tournament-lobby-credential kiosk-password-credential">
+      <span>Passwort</span><strong>${escapeHtml(kioskPasswordState.value)}</strong>
+      <button type="button" class="icon-btn tournament-lobby-copy" data-copy-kiosk-password title="Kiosk-Passwort kopieren" aria-label="Kiosk-Passwort kopieren">${icon('copy')}</button>
+    </div>`;
+  }
+  if (kioskPasswordState.status === 'error') {
+    return `<div class="row-between">
+      <span class="muted" style="font-size:var(--font-size-xs);">Passwort konnte nicht geladen werden: ${escapeHtml(kioskPasswordState.error)}</span>
+      <button type="button" class="btn btn-secondary" data-retry-kiosk-password>Erneut versuchen</button>
+    </div>`;
+  }
+  return `<p class="muted" style="font-size:var(--font-size-xs);">Lädt…</p>`;
+}
 
 function renderKioskSection() {
   const accounts = (state.managedEvents || [])
@@ -82,14 +115,13 @@ function renderKioskSection() {
             <span class="field-label">Kiosk-Konto</span>
             <code>${escapeHtml(username)}</code>
           </div>
-          <a href="/kiosk.html?account=${encodeURIComponent(username)}" target="_blank" rel="noopener" class="btn btn-block">Kiosk für dieses Event öffnen</a>
+          <a href="/kiosk.html?account=${encodeURIComponent(username)}" target="_blank" rel="noopener" class="btn btn-primary btn-block kiosk-open-link">Kiosk öffnen</a>
         </div>`;
     })
     .join('');
   return `
     <section class="card stack grouped-page-section">
-      <p class="muted">Für jedes LAN-Event wird das Kiosk-Konto automatisch angelegt. Alle verwenden dasselbe konfigurierte Passwort.</p>
-      <a href="/kiosk.html" target="_blank" rel="noopener" class="btn btn-block">Kiosk-Anmeldung öffnen</a>
+      ${renderKioskPasswordRow()}
       ${accounts || emptyStateHtml('Noch kein LAN-Event vorhanden.')}
     </section>
   `;
@@ -1209,7 +1241,7 @@ function openParticipantsForm(ctx, event) {
   );
 }
 
-export function renderOrgaKiosk(container) {
+export function renderOrgaKiosk(container, ctx) {
   if (!isGroupAdmin()) {
     container.innerHTML = `
       <div class="more-subpage-header">
@@ -1225,6 +1257,7 @@ export function renderOrgaKiosk(container) {
       </div>`;
     return;
   }
+  if (kioskPasswordState.status === 'idle') loadKioskPassword(ctx);
   container.innerHTML = `
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
@@ -1240,6 +1273,17 @@ export function renderOrgaKiosk(container) {
     </div>
   `;
   wireInfoTooltips(container);
+  container.querySelector('[data-retry-kiosk-password]')?.addEventListener('click', () => {
+    loadKioskPassword(ctx);
+  });
+  container.querySelector('[data-copy-kiosk-password]')?.addEventListener('click', async () => {
+    try {
+      await copyText(kioskPasswordState.value);
+      showToast('Passwort kopiert.');
+    } catch {
+      showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
+    }
+  });
 }
 
 export function renderOrgaEvents(container, ctx) {

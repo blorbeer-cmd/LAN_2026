@@ -444,25 +444,24 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   await page.click('[data-game="quiz"]');
   await page.waitForSelector('#arcade-active-game-title');
   const arcadeColumnsHandle = await page.waitForFunction(() => {
-    const layout = document.querySelector('.arcade-desktop-layout');
-    if (!layout?.isConnected || getComputedStyle(layout).display !== 'grid') return null;
-    const active = layout.querySelector('[aria-labelledby="arcade-active-game-title"]')?.getBoundingClientRect();
-    const picker = layout.querySelector('.arcade-game-picker')?.getBoundingClientRect();
-    if (!active || !picker) return null;
+    const active = document.querySelector('[aria-labelledby="arcade-active-game-title"]')?.getBoundingClientRect();
+    const picker = document.querySelector('.arcade-game-picker')?.getBoundingClientRect();
+    const tiles = document.querySelector('.arcade-tiles');
+    if (!active || !picker || !tiles) return null;
     return {
-      display: getComputedStyle(layout).display,
       activeLeft: Math.round(active.left),
       activeTop: Math.round(active.top),
       pickerLeft: Math.round(picker.left),
-      pickerTop: Math.round(picker.top),
+      pickerBottom: Math.round(picker.bottom),
+      tileColumns: getComputedStyle(tiles).gridTemplateColumns.split(' ').length,
     };
   });
   const arcadeColumns = await arcadeColumnsHandle.jsonValue();
   assert.ok(arcadeColumns);
-  assert.equal(arcadeColumns.display, 'grid');
   assert.ok(arcadeColumns.activeLeft !== null && arcadeColumns.pickerLeft !== null);
-  assert.ok(arcadeColumns.pickerLeft > arcadeColumns.activeLeft);
-  assert.equal(arcadeColumns.pickerTop, arcadeColumns.activeTop);
+  assert.equal(arcadeColumns.pickerLeft, arcadeColumns.activeLeft);
+  assert.ok(arcadeColumns.pickerBottom < arcadeColumns.activeTop);
+  assert.equal(arcadeColumns.tileColumns, 3);
 
   await page.click('.desktop-nav-btn[data-view="profile"]');
   await page.waitForSelector('button[data-layout-preference="laptop"]');
@@ -484,7 +483,7 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   assert.equal(await page.locator('.desktop-nav').isVisible(), true);
   assert.equal(await page.locator('.bottom-nav').isHidden(), true);
   await page.click('.desktop-nav-btn[data-view="arcade"]');
-  await page.waitForSelector('.arcade-desktop-layout');
+  await page.waitForSelector('.arcade-game-picker');
 
   // A separate session verifies a real logout/login without invalidating the
   // fixture's shared admin cookie for the tests that follow. The same account
@@ -533,14 +532,14 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   await page.click('button[data-layout-preference="auto"]');
   await page.waitForFunction(() => document.documentElement.dataset.layoutPreference === 'auto' && document.documentElement.dataset.layoutMode === 'desktop');
   await page.click('.desktop-nav-btn[data-view="arcade"]');
-  await page.waitForSelector('.arcade-desktop-layout');
+  await page.waitForSelector('.arcade-game-picker');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
   const mobileShell = await page.evaluate(() => {
     const nav = document.querySelector('.bottom-nav')?.getBoundingClientRect();
     const navInner = document.querySelector('.bottom-nav-inner');
     const desktopNav = document.querySelector('.desktop-nav');
-    const arcadeLayout = document.querySelector('.arcade-desktop-layout');
+    const arcadeLayout = document.querySelector('.grouped-page-sections');
     if (!nav || !navInner || !desktopNav || !arcadeLayout) return null;
     return {
       navBottom: Math.round(nav.bottom),
@@ -988,11 +987,38 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   assert.equal(await page.locator('#admin-feature-usage-title').count(), 0);
   await page.click('[data-navigate="admin"]');
   await page.waitForSelector('#admin-tools-title');
+  let rejectFirstKioskPasswordRequest = true;
+  const kioskPasswordUrl = '**/api/admin/kiosk-password';
+  await page.route(kioskPasswordUrl, async (route) => {
+    if (rejectFirstKioskPasswordRequest) {
+      rejectFirstKioskPasswordRequest = false;
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Vorübergehend nicht verfügbar' }),
+      });
+      return;
+    }
+    await route.continue();
+  });
   await page.click('[data-navigate="kiosk"]');
-  await page.waitForSelector('a[href="/kiosk.html"]');
+  await page.waitForSelector('[data-retry-kiosk-password]');
+  await page.click('[data-retry-kiosk-password]');
+  await page.waitForSelector('[data-copy-kiosk-password]');
+  await page.unroute(kioskPasswordUrl);
   await assertCompactAdminHeader('TV-Kiosk');
   assert.equal(await page.getByRole('heading', { name: 'TV-Kiosk' }).count(), 1);
   assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
+  assert.equal(await page.locator('a[href="/kiosk.html"]').count(), 0);
+  assert.equal(await page.locator('.kiosk-password-credential').count(), 1);
+  assert.deepEqual(
+    await page.locator('a[href^="/kiosk.html?account="]').allTextContents(),
+    await page.locator('a[href^="/kiosk.html?account="]').evaluateAll((links) => links.map(() => 'Kiosk öffnen')),
+  );
+  assert.equal(
+    await page.locator('a[href^="/kiosk.html?account="]:not(.btn-primary):not(.kiosk-open-link)').count(),
+    0,
+  );
   assert.equal(await page.locator('#orga-kiosk-help').count(), 1);
   await page.click('[data-navigate="admin"]');
   await page.waitForSelector('#admin-tools-title');

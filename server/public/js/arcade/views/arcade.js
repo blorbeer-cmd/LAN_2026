@@ -601,13 +601,18 @@ export function renderArcade(container, ctx) {
         <h1 class="view-title">Arcade</h1>
       </div>
     </div>
-    <div class="grouped-page-sections arcade-desktop-layout${activeGameDefinition ? ' has-active-game' : ''}">
+    <div class="grouped-page-sections">
+      <section class="card stack grouped-page-section arcade-game-picker" aria-labelledby="arcade-games-title">
+        <div class="grouped-page-section-title"><h2 id="arcade-games-title">Spiele</h2></div>
+        <div class="arcade-tiles">
+          ${GAMES.map((g) => gameTileHtml(g, cg, openLobbyCount(g.id))).join('')}
+        </div>
+      </section>
       ${
         activeGameDefinition
           ? `<section class="card stack grouped-page-section" aria-labelledby="arcade-active-game-title">
                <div class="grouped-page-section-title">
                  <div class="row arcade-active-game-title">
-                   ${activeGame ? backButtonHtml({ id: 'arcade-game-back', label: 'Spielauswahl' }) : ''}
                    <h2 id="arcade-active-game-title">${escapeHtml(activeGameDefinition.name)}</h2>
                    ${infoTooltipHtml(`arcade-${activeGameDefinition.id}-game-info`, activeGameDefinition.name, activeGameDefinition.help)}
                  </div>
@@ -616,12 +621,6 @@ export function renderArcade(container, ctx) {
              </section>`
           : ''
       }
-      <${activeGameDefinition ? 'details' : 'section'} class="card stack grouped-page-section arcade-game-picker" ${activeGameDefinition ? '' : 'aria-labelledby="arcade-games-title"'}>
-        <${activeGameDefinition ? 'summary' : 'div'} class="grouped-page-section-title"><h2 id="arcade-games-title">${activeGameDefinition ? 'Spiel wechseln' : 'Spiele'}</h2></${activeGameDefinition ? 'summary' : 'div'}>
-        <div class="arcade-tiles">
-          ${GAMES.map((g) => gameTileHtml(g, cg, openLobbyCount(g.id))).join('')}
-        </div>
-      </${activeGameDefinition ? 'details' : 'section'}>
       ${runningMatchesOverviewHtml()}
       <section class="card stack grouped-page-section" aria-labelledby="arcade-stats-title">
         <div class="grouped-page-section-title"><h2 id="arcade-stats-title">Statistiken</h2></div>
@@ -647,8 +646,6 @@ export function renderArcade(container, ctx) {
       ctx.navigateLocal(activeGame === id ? null : { kind: 'game', id });
     });
   });
-  container.querySelector('#arcade-game-back')?.addEventListener('click', () => ctx.backLocal(null));
-
   container.querySelectorAll('[data-watch-match]').forEach((btn) => {
     btn.addEventListener('click', () => startArcadeWatch(btn.dataset.watchMatch));
   });
