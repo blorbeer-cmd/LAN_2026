@@ -1080,6 +1080,16 @@
   touch-action: none;
 }
 
+.snake-player-color {
+  width: var(--space-3);
+  height: var(--space-3);
+  flex: 0 0 auto;
+  border: 1px solid var(--text);
+  border-radius: var(--radius-full);
+  background: var(--snake-player-color);
+  box-shadow: 0 0 var(--space-2) var(--snake-player-color);
+}
+
 .snake-overlay {
   position: absolute;
   inset: 0;

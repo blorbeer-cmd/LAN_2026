@@ -11,9 +11,10 @@ import { playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
 import { emptyStateHtml } from '../../emptyState.js';
 import { backButtonHtml } from '../../backButton.js';
+import { snakeColor } from '../shared/snakeColors.js';
 
-const COLS = 32;
-const ROWS = 20;
+const DEFAULT_COLS = 48;
+const DEFAULT_ROWS = 30;
 
 let socket = null;
 let lobbies = [];
@@ -60,6 +61,7 @@ export function ensureSnakeSocket() {
       match.running = payload.running;
       match.paused = payload.paused;
       match.host = payload.host ?? match.host;
+      match.render = payload.render ?? match.render;
     }
     const myIndex = match?.players?.findIndex((p) => p.id === myId()) ?? -1;
     const myScore = myIndex >= 0 ? world?.snakes?.[myIndex]?.score : undefined;
@@ -217,12 +219,14 @@ function paintBoard() {
   canvas.height = Math.max(1, Math.round(height * ratio));
   const context = canvas.getContext('2d');
   context.scale(ratio, ratio);
-  const cellWidth = width / COLS;
-  const cellHeight = height / ROWS;
+  const columns = match?.render?.width ?? DEFAULT_COLS;
+  const rows = match?.render?.height ?? DEFAULT_ROWS;
+  const cellWidth = width / columns;
+  const cellHeight = height / rows;
   context.fillStyle = '#101426'; // design-token-ok: canvas background matches the arcade board surface.
   context.fillRect(0, 0, width, height);
   const cssColor = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  const bounds = world.safeBounds ?? { minX: 0, maxX: COLS - 1, minY: 0, maxY: ROWS - 1 };
+  const bounds = world.safeBounds ?? { minX: 0, maxX: columns - 1, minY: 0, maxY: rows - 1 };
   if (world.mode === 'arena') {
     const left = bounds.minX * cellWidth;
     const top = bounds.minY * cellHeight;
@@ -239,11 +243,10 @@ function paintBoard() {
   }
   context.strokeStyle = 'rgba(145,99,245,.10)';
   context.lineWidth = 1;
-  for (let x = 1; x < COLS; x++) { context.beginPath(); context.moveTo(x * cellWidth, 0); context.lineTo(x * cellWidth, height); context.stroke(); }
-  for (let y = 1; y < ROWS; y++) { context.beginPath(); context.moveTo(0, y * cellHeight); context.lineTo(width, y * cellHeight); context.stroke(); }
-  const colors = ['--accent', '--accent-3', '--state-playing', '--state-paused', '--accent-2', '--danger', '--rank-1-gold', '--text'];
+  for (let x = 1; x < columns; x++) { context.beginPath(); context.moveTo(x * cellWidth, 0); context.lineTo(x * cellWidth, height); context.stroke(); }
+  for (let y = 1; y < rows; y++) { context.beginPath(); context.moveTo(0, y * cellHeight); context.lineTo(width, y * cellHeight); context.stroke(); }
   world.snakes.forEach((snake, snakeIndex) => {
-    const glow = cssColor(colors[snakeIndex % colors.length]);
+    const glow = cssColor(snakeColor(snakeIndex).token);
     snake.body.forEach((part, partIndex) => {
       context.globalAlpha = snake.alive ? 1 : 0.3;
       context.shadowColor = glow;
@@ -257,7 +260,7 @@ function paintBoard() {
       const head = snake.body[0];
       context.shadowBlur = 0;
       context.fillStyle = cssColor('--bg');
-      context.font = `700 ${Math.max(10, Math.min(cellWidth, cellHeight) * .55)}px sans-serif`;
+      context.font = `700 ${Math.min(cellWidth, cellHeight) * .62}px sans-serif`; // design-token-ok: canvas head numbers scale with the logical cell size.
       context.textAlign = 'center';
       context.textBaseline = 'middle';
       context.fillText(`${snakeIndex + 1}`, (head.x + .5) * cellWidth, (head.y + .52) * cellHeight);
@@ -309,7 +312,12 @@ export function renderSnake(container) {
       : isPlayer
         ? `<div class="arcade-match-controls">${leaveButton || '<button class="btn btn-sm btn-equal btn-danger" id="snake-leave-match">Verlassen</button>'}</div>`
         : '';
-  container.innerHTML = `<div class="arcade-game-shell"><div class="row"><h1 class="view-title">Snake</h1>${match.mode === 'arena' ? '<span class="badge">Arena</span>' : ''}</div>${arcadeToolbarHtml()}
+  const playerIndex = match.players.findIndex((player) => player.id === myId());
+  const identity = playerIndex >= 0 ? snakeColor(playerIndex) : null;
+  const identityHtml = identity
+    ? `<div class="row" style="justify-content:center;margin-bottom:var(--space-3);"><div class="badge badge-online snake-player-identity" role="status"><span class="snake-player-color" style="--snake-player-color:var(${identity.token});" aria-hidden="true"></span><strong>Deine Farbe: ${identity.label}</strong>${match.mode === 'arena' ? `<span>· Schlange ${playerIndex + 1}</span>` : ''}</div></div>`
+    : '';
+  container.innerHTML = `<div class="arcade-game-shell"><div class="row"><h1 class="view-title">Snake</h1>${match.mode === 'arena' ? '<span class="badge">Arena</span>' : ''}</div>${arcadeToolbarHtml()}${identityHtml}
     <div id="snake-roster">${roster}</div>
     <div class="card snake-game"><canvas id="snake-canvas"></canvas>${match.paused ? '<div class="snake-overlay">Pause</div>' : ''}</div>
     ${controls}${result}</div>`;

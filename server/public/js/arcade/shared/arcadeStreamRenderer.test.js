@@ -51,8 +51,8 @@ test('the Pong stream draws both full paddles inside the real 960 by 540 world',
       ],
       world: {
         paddles: [
-          { x: 48, y: 100, team: 'left', lane: 'upper', playerId: 'ada' },
-          { x: 896, y: 200, team: 'right', lane: 'lower', playerId: 'grace' },
+          { x: 48, y: 100, height: 80, team: 'left', lane: 'upper', playerId: 'ada' },
+          { x: 896, y: 200, height: 80, team: 'right', lane: 'lower', playerId: 'grace' },
         ],
         ball: { x: 480, y: 270 },
       },
@@ -64,9 +64,9 @@ test('the Pong stream draws both full paddles inside the real 960 by 540 world',
 
   assert.equal(canvas.width, 960);
   assert.equal(canvas.height, 540);
-  assert.deepEqual(rectangles.filter(([, , width, height]) => width === 16 && height === 112), [
-    [48, 100, 16, 112],
-    [896, 200, 16, 112],
+  assert.deepEqual(rectangles.filter(([, , width, height]) => width === 16 && height === 80), [
+    [48, 100, 16, 80],
+    [896, 200, 16, 80],
   ]);
   assert.deepEqual(labels.map(([label]) => label), ['AL', 'GH']);
   assert.deepEqual(arcs.at(-1), [480, 270, 12, 0, Math.PI * 2]);

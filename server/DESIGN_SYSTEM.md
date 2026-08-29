@@ -1075,7 +1075,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   two explicit teams with two slots each, require all four participants to be ready and award the
   shared team score and win to both teammates. Pong follows Atari's Pong-4 rules: each participant
   controls a separate paddle that remains in its assigned upper/lower half, player initials and roster
-  lane labels identify all four paddles, and Doppel defaults to 21 points.
+  lane labels identify all four paddles, and Doppel defaults to 21 points. Each Doppel paddle is
+  shorter than a Duell paddle so four defended lanes do not make rallies automatic. The ball gains
+  speed continuously during a rally as well as on paddle contact; the browser predicts the short
+  interval between authoritative server snapshots so that this higher speed still renders smoothly.
   Both games reach a Doppel AI match through the same two switches — „Doppel“ plus „KI“ — where
   the host and one bot teammate play against two bot opponents.
   Statistics use the concise title „Statistiken“ and one full-width game dropdown whose options
@@ -1095,7 +1098,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Arena matches keep eliminated players visibly in the roster with a textual status, while the
   canvas dims their snake and marks the shrinking safe zone with the shared danger treatment.
   Numbered head markers and a matching `Schlange N · Name` legend identify every participant
-  without relying on color; the same legend appears in player, spectator and kiosk contexts.
+  without relying on color; the same legend appears in player, spectator and kiosk contexts. The
+  local match view also names the current participant's color in a prominent badge from the start.
+  Snake uses a 48×30 logical field in the existing 8:5 canvas, making cells and snakes smaller in
+  relation to the available play area without shrinking the visible board.
   Challenge Rush also exposes the Admin-mode-gated opponent switch plus its test-challenge
   selection; playing the bot solo draws
   from its ten original single-payload challenges, since the bot cannot yet play the thirty

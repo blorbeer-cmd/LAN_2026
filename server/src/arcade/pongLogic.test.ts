@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BALL_RADIUS, PADDLE_HEIGHT, PONG_HEIGHT, PONG_WIDTH, createWorld, pongPointScorerName, stepWorld } from './pongLogic';
+import { BALL_MAX_SPEED, BALL_RADIUS, DOUBLES_PADDLE_HEIGHT, PADDLE_HEIGHT, PONG_HEIGHT, PONG_WIDTH, createWorld, pongPointScorerName, stepWorld } from './pongLogic';
 
 const idle = { up: false, down: false };
 
@@ -46,7 +46,7 @@ test('every paddle contact accelerates the ball up to a controlled maximum', () 
     world.ball.x = paddleIndex === 0
       ? paddle.x + 20
       : paddle.x - BALL_RADIUS + 1;
-    world.ball.y = paddle.y + PADDLE_HEIGHT / 2;
+    world.ball.y = paddle.y + paddle.height / 2;
     world.ball.vx = paddleIndex === 0
       ? -Math.abs(world.ball.vx)
       : Math.abs(world.ball.vx);
@@ -57,8 +57,17 @@ test('every paddle contact accelerates the ball up to a controlled maximum', () 
   }
 
   assert.ok(speeds[1] > speeds[0]);
-  assert.equal(speeds.at(-1), 900);
-  assert.ok(speeds.every((speed) => speed <= 900));
+  assert.equal(speeds.at(-1), BALL_MAX_SPEED);
+  assert.ok(speeds.every((speed) => speed <= BALL_MAX_SPEED));
+});
+
+test('ball gains speed throughout a rally even without paddle contact', () => {
+  const world = createWorld();
+  const initialSpeed = Math.hypot(world.ball.vx, world.ball.vy);
+
+  for (let step = 0; step < 10; step++) stepWorld(world, [idle, idle], 0.05);
+
+  assert.ok(Math.hypot(world.ball.vx, world.ball.vy) > initialSpeed);
 });
 
 test('crossing a goal awards the opposite player', () => {
@@ -75,6 +84,7 @@ test('doubles creates two independently moving paddles for each team', () => {
   const world = createWorld('right', 'doubles', ['blue-top', 'blue-bottom', 'pink-top', 'pink-bottom']);
   assert.deepEqual(world.paddles.map((paddle) => paddle.team), ['left', 'left', 'right', 'right']);
   assert.deepEqual(world.paddles.map((paddle) => paddle.lane), ['upper', 'lower', 'upper', 'lower']);
+  assert.deepEqual(world.paddles.map((paddle) => paddle.height), Array(4).fill(DOUBLES_PADDLE_HEIGHT));
   assert.deepEqual(
     world.paddles.map((paddle) => paddle.playerId),
     ['blue-top', 'blue-bottom', 'pink-top', 'pink-bottom']
@@ -106,9 +116,9 @@ test('doubles paddles remain inside their assigned upper or lower half', () => {
     ], 1 / 60);
   }
 
-  assert.equal(world.paddles[0].y, PONG_HEIGHT / 2 - PADDLE_HEIGHT);
+  assert.equal(world.paddles[0].y, PONG_HEIGHT / 2 - DOUBLES_PADDLE_HEIGHT);
   assert.equal(world.paddles[1].y, PONG_HEIGHT / 2);
-  assert.equal(world.paddles[2].y, PONG_HEIGHT / 2 - PADDLE_HEIGHT);
+  assert.equal(world.paddles[2].y, PONG_HEIGHT / 2 - DOUBLES_PADDLE_HEIGHT);
   assert.equal(world.paddles[3].y, PONG_HEIGHT / 2);
 });
 
@@ -116,7 +126,7 @@ test('ball bounces off the second paddle of a doubles team', () => {
   const world = createWorld('left', 'doubles');
   const paddle = world.paddles[1];
   world.ball.x = paddle.x + 20;
-  world.ball.y = paddle.y + PADDLE_HEIGHT / 2;
+  world.ball.y = paddle.y + paddle.height / 2;
   world.ball.vx = -420;
   world.ball.vy = 0;
 

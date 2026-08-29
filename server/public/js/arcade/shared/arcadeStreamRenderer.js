@@ -1,4 +1,6 @@
 // Static kiosk and lazy Arcade views intentionally share this pure canvas renderer.
+import { snakeColor } from './snakeColors.js';
+
 const GAME_CANVAS_SIZES = {
   scribble: [800, 500],
   tetris: [800, 450],
@@ -136,8 +138,8 @@ function drawTetris(ctx, game, width, height) {
 
 function drawSnake(ctx, game, width, height) {
   const world = game.world;
-  const columns = game.render?.width ?? 32;
-  const rows = game.render?.height ?? 20;
+  const columns = game.render?.width ?? 48;
+  const rows = game.render?.height ?? 30;
   const cellWidth = width / columns;
   const cellHeight = height / rows;
   const bounds = world.safeBounds ?? { minX: 0, maxX: columns - 1, minY: 0, maxY: rows - 1 };
@@ -163,10 +165,9 @@ function drawSnake(ctx, game, width, height) {
     ctx.beginPath(); ctx.moveTo(0, y * cellHeight); ctx.lineTo(width, y * cellHeight); ctx.stroke();
   }
   ctx.globalAlpha = 1;
-  const snakeColors = ['--accent', '--accent-3', '--state-playing', '--state-paused', '--accent-2', '--danger', '--rank-1-gold', '--text'];
   world.snakes.forEach((snake, index) => {
     ctx.globalAlpha = snake.alive === false ? 0.3 : 1;
-    ctx.fillStyle = cssColor(snakeColors[index % snakeColors.length]);
+    ctx.fillStyle = cssColor(snakeColor(index).token);
     snake.body.forEach((part) => ctx.fillRect(part.x * cellWidth + 1, part.y * cellHeight + 1, cellWidth - 2, cellHeight - 2));
     if (world.mode === 'arena' && snake.body[0]) {
       const head = snake.body[0];
@@ -198,8 +199,9 @@ function drawPong(ctx, game, width, height) {
   ctx.setLineDash([]);
   world.paddles.forEach((paddle, index) => {
     const isRightTeam = paddle.team ? paddle.team === 'right' : index > 0;
+    const paddleHeight = paddle.height ?? render.paddleHeight;
     ctx.fillStyle = isRightTeam ? cssColor('--accent-3') : cssColor('--accent');
-    ctx.fillRect(paddle.x * scaleX, paddle.y * scaleY, render.paddleWidth * scaleX, render.paddleHeight * scaleY);
+    ctx.fillRect(paddle.x * scaleX, paddle.y * scaleY, render.paddleWidth * scaleX, paddleHeight * scaleY);
     const name = game.players?.find((player) => player.id === paddle.playerId)?.name?.trim();
     if (name) {
       const parts = name.split(/\s+/);
@@ -211,7 +213,7 @@ function drawPong(ctx, game, width, height) {
       ctx.fillText(
         label,
         (paddle.x + (isRightTeam ? 0 : render.paddleWidth)) * scaleX + (isRightTeam ? -9 : 9),
-        (paddle.y + render.paddleHeight / 2) * scaleY
+        (paddle.y + paddleHeight / 2) * scaleY
       );
     }
   });
