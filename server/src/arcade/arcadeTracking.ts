@@ -109,6 +109,37 @@ export function endArcadeSession(playerIds: string[], key: ArcadeGameKey, immuta
   });
 }
 
+// Arcade matches only exist in this server process. After a restart there
+// cannot be a matching live game anymore, but the persisted tracking rows
+// from an interrupted match would otherwise be picked up by the heartbeat
+// below and kept "playing" forever. Close only built-in Arcade sessions;
+// agent-reported PC games and the surrounding presence context stay intact.
+export function recoverInterruptedArcadeSessions(): void {
+  const selectOpenSessions = db.prepare(
+    `SELECT ps.id, ps.started_at AS startedAt, tlc.last_seen AS lastSeen
+     FROM play_sessions ps
+     JOIN games g ON g.id = ps.game_id
+     LEFT JOIN tracking_live_contexts tlc
+       ON tlc.player_id = ps.player_id
+      AND tlc.group_id = ps.group_id
+      AND tlc.event_id IS ps.event_id
+     WHERE ps.ended_at IS NULL AND g.arcade_key IS NOT NULL`,
+  );
+
+  const closeSession = db.prepare('UPDATE play_sessions SET ended_at = ? WHERE id = ? AND ended_at IS NULL');
+  const recover = db.transaction(() => {
+    const openSessions = selectOpenSessions.all() as Array<{ id: string; startedAt: number; lastSeen: number | null }>;
+    for (const session of openSessions) {
+      closeSession.run(Math.max(session.startedAt, session.lastSeen ?? session.startedAt), session.id);
+    }
+    db.prepare(
+      `DELETE FROM tracking_live_games
+       WHERE game_id IN (SELECT id FROM games WHERE arcade_key IS NOT NULL)`,
+    ).run();
+  });
+  recover();
+}
+
 // Every player currently in an open arcade session, across all games.
 function activeArcadePlayerIds(): string[] {
   const ids = ARCADE_GAME_KEYS.map((key) => arcadeGameId(key as ArcadeGameKey)).filter((id): id is string => Boolean(id));
