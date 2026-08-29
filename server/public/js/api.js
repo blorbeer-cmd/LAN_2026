@@ -491,6 +491,11 @@ export const api = {
   feedback: {
     create: (data) => apiFetch('/api/feedback', { method: 'POST', body: JSON.stringify(data) }),
     list: (limit = 50) => apiFetch(`/api/feedback?limit=${limit}`),
+    setResolved: (id, resolved) =>
+      apiFetch(`/api/feedback/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ resolved }),
+      }),
   },
 
   foodOrders: {

@@ -1009,7 +1009,8 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `.selection-toolbar` toggle rather than a free-text category, plus a message field. Admin's
   Feedback section lists submissions newest first and filters them by the same four sentiments plus
   „Alle“ through the shared `.chip`/`.chip.is-active` pattern (mirroring Spiele's genre chips and
-  Orga's To-Do Art filter).
+  Orga's To-Do Art filter). Every entry has a persistent „Erledigt“ checkbox; clearing it reopens
+  the entry without deleting the original message or its captured context.
 - **Arrival carpools** — the „An- & Abreise“ tab of Orga. Anreise and Abreise remain separate
   full-width accented panels. Their
   carpool cards use two columns from `--bp-md`, but an odd final card deliberately keeps one-column

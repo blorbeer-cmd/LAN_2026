@@ -927,6 +927,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   await page.waitForSelector('#admin-feedback-title');
   await assertCompactAdminHeader('Feedback');
   // A regular member must not see the admin content behind the same deep link.
+  let feedbackId = '';
   const memberContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const memberPage = await memberContext.newPage();
   try {
@@ -941,9 +942,65 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
       );
     });
     assert.equal(await memberPage.locator('#admin-feature-usage-title').count(), 0);
+    feedbackId = await memberPage.evaluate(async () => {
+      const response = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: 'E2E Feedback zum Abhaken',
+          view: 'home',
+          device: 'mobile',
+          sentiment: 'problem',
+        }),
+      });
+      if (!response.ok) throw new Error(`Feedback setup failed with ${response.status}`);
+      return (await response.json()).id;
+    });
   } finally {
     await memberContext.close();
   }
+  await page.click('#admin-feedback-refresh');
+  const feedbackToggle = page.locator(`[data-feedback-resolved="${feedbackId}"]`);
+  await feedbackToggle.waitFor();
+  await feedbackToggle.check();
+  await page.waitForFunction(
+    (id) => {
+      const input = document.querySelector(`[data-feedback-resolved="${id}"]`) as HTMLInputElement | null;
+      return Boolean(input?.checked && !input.disabled);
+    },
+    feedbackId,
+  );
+  await feedbackToggle.uncheck();
+  await page.waitForFunction(
+    (id) => {
+      const input = document.querySelector(`[data-feedback-resolved="${id}"]`) as HTMLInputElement | null;
+      return Boolean(input && !input.checked && !input.disabled);
+    },
+    feedbackId,
+  );
+
+  // Desktop only hides back actions that return to the direct "Mehr" hub.
+  // Admin subpages keep their compact back button before the title instead
+  // of stretching it across the first grid column.
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
+  const feedbackHeaderLayout = await page.locator('.more-subpage-title-row').evaluate((row) => {
+    const button = row.querySelector('[data-navigate="admin"]')?.getBoundingClientRect();
+    const title = row.querySelector('h1')?.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    if (!button || !title) throw new Error('Feedback header controls are missing');
+    return {
+      buttonWidth: Math.round(button.width),
+      rowWidth: Math.round(rowRect.width),
+      buttonRight: Math.round(button.right),
+      titleLeft: Math.round(title.left),
+      centerDifference: Math.round(Math.abs(button.top + button.height / 2 - (title.top + title.height / 2))),
+    };
+  });
+  assert.ok(feedbackHeaderLayout.buttonWidth < feedbackHeaderLayout.rowWidth / 2, 'the back button must stay compact');
+  assert.ok(feedbackHeaderLayout.buttonRight < feedbackHeaderLayout.titleLeft, 'the title must follow the back button');
+  assert.ok(feedbackHeaderLayout.centerDifference <= 1, 'the back button and title must stay vertically aligned');
+  await page.setViewportSize({ width: 390, height: 844 });
   // The same role gate applies to the wide-viewport desktop rail, which
   // filters `.desktop-nav-btn` entries independently of the old bottom-nav
   // "more" list — a regular member must not see the Admin destination there.

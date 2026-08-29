@@ -6,6 +6,7 @@ import { escapeHtml, formatDateTime } from '../format.js';
 import { currentPlayerHasAdminRole } from '../adminAccess.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { backButtonHtml } from '../backButton.js';
+import { showToast } from '../toast.js';
 
 const SENTIMENT_LABEL = { positive: 'Positiv', negative: 'Negativ', problem: 'Problem', idea: 'Idee' };
 
@@ -13,6 +14,7 @@ let feedbackEntries = null;
 let feedbackLoading = false;
 let feedbackError = null;
 let feedbackSentimentFilter = 'all'; // 'all' | 'positive' | 'negative' | 'problem' | 'idea'
+const updatingFeedbackIds = new Set();
 
 async function loadFeedbackEntries(ctx, force = false) {
   if (feedbackLoading || (feedbackEntries && !force)) return;
@@ -32,16 +34,37 @@ async function loadFeedbackEntries(ctx, force = false) {
 
 function feedbackEntryHtml(entry) {
   const sentiment = entry.sentiment ? ` <span class="badge">${escapeHtml(SENTIMENT_LABEL[entry.sentiment] ?? entry.sentiment)}</span>` : '';
+  const updating = updatingFeedbackIds.has(entry.id);
   return `
-    <div class="card stack" style="padding:var(--space-3);">
-      <div class="row-between">
-        <span>
+    <div class="card stack" style="padding:var(--space-3);" data-feedback-entry="${escapeHtml(entry.id)}">
+      <div class="row-between" style="align-items:flex-start;flex-wrap:wrap;">
+        <span style="min-width:0;flex:1 1 auto;">
           <strong>${escapeHtml(entry.playerName || 'Unbekannt')}</strong>${sentiment}
           <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(entry.view)} · ${escapeHtml(entry.eventName || '')} · ${formatDateTime(entry.createdAt)} Uhr</div>
         </span>
+        <label class="check-row">
+          <input type="checkbox" data-feedback-resolved="${escapeHtml(entry.id)}" ${entry.resolvedAt ? 'checked' : ''} ${updating ? 'disabled' : ''} />
+          <span>Erledigt</span>
+        </label>
       </div>
       <p style="margin:0;">${escapeHtml(entry.message)}</p>
     </div>`;
+}
+
+async function setFeedbackResolved(id, resolved, ctx) {
+  if (updatingFeedbackIds.has(id)) return;
+  updatingFeedbackIds.add(id);
+  ctx.rerender();
+  try {
+    const updated = await api.feedback.setResolved(id, resolved);
+    feedbackEntries = (feedbackEntries || []).map((entry) => (entry.id === id ? { ...entry, ...updated } : entry));
+    showToast(resolved ? 'Feedback erledigt.' : 'Feedback wieder geöffnet.');
+  } catch (error) {
+    showToast(error.message, { error: true });
+  } finally {
+    updatingFeedbackIds.delete(id);
+    ctx.rerender();
+  }
 }
 
 function feedbackSentimentFilterHtml() {
@@ -116,6 +139,11 @@ export function renderAdminFeedback(container, ctx) {
     button.addEventListener('click', () => {
       feedbackSentimentFilter = button.dataset.feedbackSentimentFilter;
       ctx.rerender();
+    });
+  });
+  container.querySelectorAll('[data-feedback-resolved]').forEach((input) => {
+    input.addEventListener('change', () => {
+      void setFeedbackResolved(input.dataset.feedbackResolved, input.checked, ctx);
     });
   });
 }

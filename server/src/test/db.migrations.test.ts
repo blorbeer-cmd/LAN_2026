@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 95);
+  assert.equal(migrations.length, 96);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 95 }, (_, index) => index + 1),
+    Array.from({ length: 96 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -842,6 +842,8 @@ test('records the complete migration history and does not duplicate it on restar
   assert.ok(participantColumns.some((column) => column.name === 'paid'));
   assert.ok(participantColumns.some((column) => column.name === 'paid_by'));
   assert.ok(participantColumns.some((column) => column.name === 'paid_at'));
+  const feedbackColumns = migrated.prepare('PRAGMA table_info(feedback_entries)').all() as Array<{ name: string }>;
+  assert.ok(feedbackColumns.some((column) => column.name === 'resolved_at'));
   assert.ok(migrated.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'event_payment_reminders'").get());
   const arcadeResultColumns = migrated.prepare('PRAGMA table_info(arcade_results)').all() as Array<{ name: string }>;
   assert.ok(arcadeResultColumns.some((column) => column.name === 'source_match_id'));
@@ -859,6 +861,36 @@ test('records the complete migration history and does not duplicate it on restar
   }>;
   assert.equal(seatingEvent.find((column) => column.name === 'event_id')?.notnull, 0);
   assert.ok(migrated.prepare("SELECT id FROM groups WHERE id = 'default-group'").get());
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 96 adds feedback resolution without losing legacy entries and is restart-safe', () => {
+  const dbFile = makeTempDbPath('feedback-resolution');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  fixture.prepare(
+    `INSERT INTO feedback_entries
+       (id, group_id, event_id, player_id, view, sentiment, message, device, created_at)
+     VALUES ('legacy-feedback', 'default-group', 'instance-base-event', NULL,
+             'home', 'idea', 'Legacy feedback stays intact.', 'desktop', 1)`,
+  ).run();
+  fixture.exec(`
+    ALTER TABLE feedback_entries DROP COLUMN resolved_at;
+    DELETE FROM schema_migrations WHERE version = 96;
+  `);
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+  assert.doesNotThrow(() => runMigrations(dbFile), 'the feedback-resolution migration must be restart-safe');
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated.prepare('SELECT message, resolved_at AS resolvedAt FROM feedback_entries WHERE id = ?').get('legacy-feedback'),
+    { message: 'Legacy feedback stays intact.', resolvedAt: null },
+  );
+  assert.ok(migrated.prepare('SELECT 1 FROM schema_migrations WHERE version = 96').get());
   migrated.close();
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
@@ -1310,8 +1342,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 95 }, (_, index) => index + 1),
-    'every version 1..95 runs exactly once',
+    Array.from({ length: 96 }, (_, index) => index + 1),
+    'every version 1..96 runs exactly once',
   );
 });
 
