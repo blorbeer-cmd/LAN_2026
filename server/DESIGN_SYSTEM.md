@@ -979,8 +979,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   window, using durable reminder state independent of push history. TV-Kiosk (Admin's „Kioskverwaltung“
   card, not an Orga tab) stays one grouped section but lists one automatic account for every LAN
   event, including its stable `kiosk-<eventId>` username and a prefilled link to `/kiosk.html`.
-  The standalone page shows a centered account/password card until its event-scoped credential is
-  established; this identity never becomes a player or a regular app session.
+  The section leads directly with the shared login password itself (configured or generated once
+  on first use — see server/OPERATIONS.md) as one compact label/value/copy-icon row, so admins never
+  need server/.env access just to read out a working kiosk login. It has no repeated explanation or
+  unscoped login action above the event cards. Each event card provides one primary `Kiosk öffnen`
+  action with its account already selected. The standalone page shows a centered
+  account/password card until its event-scoped credential is established; this identity never
+  becomes a player or a regular app session.
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
   grid. „Nach LAN“ uses one directly labeled event dropdown and shows every overall placement for
   the selected LAN, followed by tournament winners in the same leaderboard-row structure. Blue and

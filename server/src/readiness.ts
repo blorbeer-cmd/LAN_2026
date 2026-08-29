@@ -126,13 +126,15 @@ function processMappingsCheck(groupId: string): ReadinessCheck {
 }
 
 function kioskCheck(groupId: string): ReadinessCheck {
-  const accounts = config.kioskPassword
-    ? (
-        db.prepare('SELECT COUNT(*) AS count FROM kiosk_accounts WHERE group_id = ?').get(groupId) as {
-          count: number;
-        }
-      ).count
-    : 0;
+  // Every LAN event gets its kiosk account automatically, and the shared
+  // login password is always available (explicitly configured or generated
+  // on first use — see kioskAccounts.ts), so a login-account count no longer
+  // depends on any env var being set.
+  const accounts = (
+    db.prepare('SELECT COUNT(*) AS count FROM kiosk_accounts WHERE group_id = ?').get(groupId) as {
+      count: number;
+    }
+  ).count;
   const persisted = (
     db.prepare('SELECT COUNT(*) AS count FROM kiosk_tokens WHERE group_id = ? AND revoked_at IS NULL').get(groupId) as {
       count: number;
@@ -145,10 +147,7 @@ function kioskCheck(groupId: string): ReadinessCheck {
     label: 'Kiosk',
     status: configured > 0 ? 'ready' : 'warning',
     summary: configured > 0 ? `${configured} aktiver Kiosk-Zugang` : 'Kein aktiver Kiosk-Zugang.',
-    details:
-      configured > 0
-        ? []
-        : ['Vor dem TV-Aufbau KIOSK_PASSWORD oder KIOSK_TOKEN in der Serverkonfiguration setzen.'],
+    details: configured > 0 ? [] : ['Vor dem TV-Aufbau ein LAN-Event anlegen – das Kiosk-Konto wird automatisch erstellt.'],
   };
 }
 

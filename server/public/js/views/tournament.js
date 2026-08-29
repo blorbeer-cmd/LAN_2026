@@ -21,6 +21,7 @@ import { pruneRosterSelection, rosterPickerHtml, wireRosterPicker } from '../ros
 import { emptyStateHtml } from '../emptyState.js';
 import { backButtonHtml } from '../backButton.js';
 import { localRouteKey } from '../appRoute.js';
+import { copyText } from '../clipboard.js';
 
 const FORMAT_LABELS = {
   single_elimination: 'K.O.-Turnier',
@@ -709,31 +710,6 @@ function renderCreateForm(el, ctx) {
   }
 }
 
-async function copyTournamentText(value) {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(value);
-      return;
-    }
-  } catch {
-    // Browsers can expose Clipboard but still reject it on an HTTP LAN URL.
-    // Fall through to the selection-based copy path below.
-  }
-
-  const field = document.createElement('textarea');
-  field.value = value;
-  field.setAttribute('readonly', '');
-  field.style.position = 'fixed';
-  field.style.inset = '0';
-  field.style.opacity = '0';
-  document.body.appendChild(field);
-  field.select();
-  field.setSelectionRange(0, value.length);
-  const copied = document.execCommand('copy');
-  field.remove();
-  if (!copied) throw new Error('Copy failed');
-}
-
 function renderDetail(container, ctx) {
   if ((detailForId !== currentTournamentId || detailStale) && !detailLoading) {
     loadDetail(currentTournamentId, ctx);
@@ -823,7 +799,7 @@ function renderDetail(container, ctx) {
       const value = isPassword ? t.lobbyPassword : match?.lobbyName;
       if (!value) return;
       try {
-        await copyTournamentText(value);
+        await copyText(value);
         showToast(isPassword ? 'Passwort kopiert.' : 'Lobbyname kopiert.');
       } catch {
         showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });
