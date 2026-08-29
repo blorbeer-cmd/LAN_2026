@@ -10,6 +10,35 @@ import path from 'path';
 
 const APP_JS_PATH = path.join(__dirname, '..', 'app.js');
 const DB_JS_PATH = path.join(__dirname, '..', 'db.js');
+const KIOSK_ACCOUNTS_JS_PATH = path.join(__dirname, '..', 'kioskAccounts.js');
+
+test('an empty KIOSK_PASSWORD falls back to an explicitly configured KIOSK_TOKEN', () => {
+  const script = `
+    const assert = require('assert/strict');
+    const { db } = require(${JSON.stringify(DB_JS_PATH)});
+    const { getKioskPassword } = require(${JSON.stringify(KIOSK_ACCOUNTS_JS_PATH)});
+
+    assert.equal(getKioskPassword(), 'compatibility-kiosk-token');
+    assert.equal(
+      db.prepare("SELECT value FROM app_state WHERE key = 'generated_kiosk_password'").get(),
+      undefined,
+      'an explicit compatibility token must not be replaced by a generated password',
+    );
+    console.log('KIOSK_EMPTY_PASSWORD_FALLBACK_OK');
+  `;
+  const out = execFileSync(process.execPath, ['-e', script], {
+    env: {
+      ...process.env,
+      DB_FILE: ':memory:',
+      KIOSK_TOKEN: 'compatibility-kiosk-token',
+      KIOSK_PASSWORD: '',
+    },
+    encoding: 'utf8',
+  });
+  if (!out.includes('KIOSK_EMPTY_PASSWORD_FALLBACK_OK')) {
+    throw new Error('empty kiosk password fallback assertions did not complete:\n' + out);
+  }
+});
 
 test('a token-only kiosk loads one exact event and honours archival', () => {
   const script = `

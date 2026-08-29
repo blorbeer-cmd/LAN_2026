@@ -35,6 +35,7 @@ import {
 import { backButtonHtml } from '../backButton.js';
 import { EXCUSE_CATEGORIES, excuseCategoryLabel, pickEventExcuse } from '../eventExcuses.js';
 import { settleNotificationTarget } from '../notificationBanner.js';
+import { copyText } from '../clipboard.js';
 import {
   acceptedParticipantCount as countAcceptedParticipants,
   acceptedParticipants as selectAcceptedParticipants,
@@ -63,10 +64,8 @@ let eventHistoryOpen = false;
 let declinedEventsOpen = false;
 let acceptedInvitationHandoff = null;
 // Fetched once per session (the shared kiosk password is stable once
-// generated — see server/src/kioskAccounts.ts) and cached across re-renders
-// of the Kioskverwaltung tool, the same one-shot pattern as loadReadiness in
-// admin.js but without a force-refresh action, since there is nothing here
-// an admin would need to manually re-check.
+// generated — see server/src/kioskAccounts.ts) and cached across successful
+// re-renders of the Kioskverwaltung tool. Transient failures remain retryable.
 let kioskPasswordState = { status: 'idle', value: '', error: null };
 
 globalThis.window?.addEventListener('respawn:identity-changed', () => {
@@ -74,7 +73,7 @@ globalThis.window?.addEventListener('respawn:identity-changed', () => {
 });
 
 async function loadKioskPassword(ctx) {
-  if (kioskPasswordState.status !== 'idle') return;
+  if (kioskPasswordState.status === 'loading' || kioskPasswordState.status === 'loaded') return;
   kioskPasswordState = { status: 'loading', value: '', error: null };
   try {
     const { password } = await api.admin.kioskPassword();
@@ -93,7 +92,10 @@ function renderKioskPasswordRow() {
     </div>`;
   }
   if (kioskPasswordState.status === 'error') {
-    return `<p class="muted" style="font-size:var(--font-size-xs);">Passwort konnte nicht geladen werden: ${escapeHtml(kioskPasswordState.error)}</p>`;
+    return `<div class="row-between">
+      <span class="muted" style="font-size:var(--font-size-xs);">Passwort konnte nicht geladen werden: ${escapeHtml(kioskPasswordState.error)}</span>
+      <button type="button" class="btn btn-secondary" data-retry-kiosk-password>Erneut versuchen</button>
+    </div>`;
   }
   return `<p class="muted" style="font-size:var(--font-size-xs);">Lädt…</p>`;
 }
@@ -1271,9 +1273,12 @@ export function renderOrgaKiosk(container, ctx) {
     </div>
   `;
   wireInfoTooltips(container);
+  container.querySelector('[data-retry-kiosk-password]')?.addEventListener('click', () => {
+    loadKioskPassword(ctx);
+  });
   container.querySelector('[data-copy-kiosk-password]')?.addEventListener('click', async () => {
     try {
-      await navigator.clipboard.writeText(kioskPasswordState.value);
+      await copyText(kioskPasswordState.value);
       showToast('Passwort kopiert.');
     } catch {
       showToast('Kopieren nicht möglich – bitte manuell markieren.', { error: true });

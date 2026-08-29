@@ -24,7 +24,7 @@ KIOSK_TOKEN=<optional: gemeinsames Passwort der LAN-Kiosk-Konten und Direkt-Toke
   ersten Bedarf selbst ein zufälliges Kiosk-Passwort und speichert es dauerhaft in der DB; Admins
   sehen es in der Kioskverwaltung – der TV-Kiosk-Login bleibt also auch ohne manuelle Konfiguration
   nutzbar.
-Diese Zeile und die `BOOTSTRAP_ADMIN_*`-Zeilen unten trägst du **gemeinsam in einem Rutsch**
+Den Recovery-Code und die `BOOTSTRAP_ADMIN_*`-Zeilen unten trägst du **gemeinsam in einem Rutsch**
 ein und startest danach einmal neu (siehe „Wo eintragen").
 
 ## Was eintragen
@@ -55,9 +55,10 @@ Bootstrap läuft einmal beim Hochfahren.
 ### A) Docker auf dem Hetzner-Server
 
 1. `ssh deploy@<HETZNER_HOST>`
-2. `sudo nano /opt/respawn/.env` – falls `ADMIN_RECOVERY_CODE` und `KIOSK_TOKEN` dort
-   noch **nicht** stehen, zuerst die zwei Zeilen aus „Voraussetzung" oben ergänzen
-   und danach die `BOOTSTRAP_ADMIN_*`-Zeilen ans Ende hängen.
+2. `sudo nano /opt/respawn/.env` – falls `ADMIN_RECOVERY_CODE` dort noch **nicht** steht,
+   zuerst diese Pflichtzeile aus „Voraussetzung" ergänzen und danach die
+   `BOOTSTRAP_ADMIN_*`-Zeilen ans Ende hängen. `KIOSK_TOKEN` oder `KIOSK_PASSWORD` nur ergänzen,
+   wenn du den optionalen kompatiblen Direktzugriff beziehungsweise ein eigenes Passwort brauchst.
 3. Neu starten, damit die Variablen greifen:
    ```bash
    cd /opt/respawn && docker compose up -d --wait app
@@ -71,7 +72,7 @@ Bootstrap läuft einmal beim Hochfahren.
 Entweder in deiner `.env`/Startumgebung setzen oder direkt beim Start mitgeben:
 
 ```bash
-ADMIN_RECOVERY_CODE=... KIOSK_TOKEN=... \
+ADMIN_RECOVERY_CODE=... \
 BOOTSTRAP_ADMIN_1_NAME=Alice BOOTSTRAP_ADMIN_1_PASSWORD=... \
 BOOTSTRAP_ADMIN_2_NAME=Bob   BOOTSTRAP_ADMIN_2_PASSWORD=... \
 node dist/index.js

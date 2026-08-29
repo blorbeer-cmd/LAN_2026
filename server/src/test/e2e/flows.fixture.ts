@@ -988,8 +988,25 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   assert.equal(await page.locator('#admin-feature-usage-title').count(), 0);
   await page.click('[data-navigate="admin"]');
   await page.waitForSelector('#admin-tools-title');
+  let rejectFirstKioskPasswordRequest = true;
+  const kioskPasswordUrl = '**/api/admin/kiosk-password';
+  await page.route(kioskPasswordUrl, async (route) => {
+    if (rejectFirstKioskPasswordRequest) {
+      rejectFirstKioskPasswordRequest = false;
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Vorübergehend nicht verfügbar' }),
+      });
+      return;
+    }
+    await route.continue();
+  });
   await page.click('[data-navigate="kiosk"]');
+  await page.waitForSelector('[data-retry-kiosk-password]');
+  await page.click('[data-retry-kiosk-password]');
   await page.waitForSelector('[data-copy-kiosk-password]');
+  await page.unroute(kioskPasswordUrl);
   await assertCompactAdminHeader('TV-Kiosk');
   assert.equal(await page.getByRole('heading', { name: 'TV-Kiosk' }).count(), 1);
   assert.equal(await page.locator('.grouped-page-sections > .grouped-page-section').count(), 1);
