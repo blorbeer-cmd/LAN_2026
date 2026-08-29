@@ -6,22 +6,25 @@ import {
   snakeArenaBotCount,
   SNAKE_ARENA_MAX_PLAYERS,
   SNAKE_ARENA_SHRINK_TICKS,
+  SNAKE_HEIGHT,
+  SNAKE_WIDTH,
   stepWorld,
 } from './snakeLogic';
 
-test('classic Snake keeps the existing two-player board', () => {
+test('classic Snake uses the expanded two-player board', () => {
   const world = createWorld();
   assert.equal(world.mode, 'classic');
   assert.equal(world.snakes.length, 2);
-  assert.deepEqual(world.food, { x: 16, y: 5 });
-  assert.deepEqual(world.safeBounds, { minX: 0, maxX: 31, minY: 0, maxY: 19 });
+  assert.deepEqual(world.food, { x: 24, y: 8 });
+  assert.deepEqual(world.safeBounds, { minX: 0, maxX: SNAKE_WIDTH - 1, minY: 0, maxY: SNAKE_HEIGHT - 1 });
+  assert.equal(SNAKE_WIDTH / SNAKE_HEIGHT, 8 / 5);
 });
 
 test('Snake Arena creates distinct starting positions for up to eight players', () => {
   const world = createWorld(SNAKE_ARENA_MAX_PLAYERS, 'arena');
   const occupied = world.snakes.flatMap((snake) => snake.body.map((cell) => `${cell.x}:${cell.y}`));
   assert.equal(world.snakes.length, SNAKE_ARENA_MAX_PLAYERS);
-  assert.deepEqual(world.food, { x: 16, y: 8 });
+  assert.deepEqual(world.food, { x: 24, y: 12 });
   assert.equal(new Set(occupied).size, occupied.length);
   assert.throws(() => createWorld(2, 'arena'), /3 to 8/);
   assert.throws(() => createWorld(9, 'arena'), /3 to 8/);
@@ -41,7 +44,7 @@ test('Snake Arena shrinks symmetrically and eliminates a head beyond the safe zo
 
   const deaths = stepWorld(world);
 
-  assert.deepEqual(world.safeBounds, { minX: 1, maxX: 30, minY: 1, maxY: 18 });
+  assert.deepEqual(world.safeBounds, { minX: 1, maxX: 46, minY: 1, maxY: 28 });
   assert.deepEqual(deaths, [0]);
   assert.equal(world.snakes[0].alive, false);
 });
