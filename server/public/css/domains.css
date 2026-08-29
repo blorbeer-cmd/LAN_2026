@@ -1733,7 +1733,7 @@ input.food-order-price-input {
   }
   :root[data-layout-mode='desktop'] .home-priority-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
+    align-items: stretch;
   }
   :root[data-layout-mode='desktop'] .home-priority-grid > :only-child {
     grid-column: 1 / -1;

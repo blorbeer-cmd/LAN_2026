@@ -323,11 +323,13 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   const homeColumns = await page.locator('.home-priority-grid').evaluate((layout) => ({
     display: getComputedStyle(layout).display,
     columns: getComputedStyle(layout).gridTemplateColumns.split(' ').length,
+    alignItems: getComputedStyle(layout).alignItems,
   }));
-  assert.deepEqual(homeColumns, { display: 'grid', columns: 2 });
+  assert.deepEqual(homeColumns, { display: 'grid', columns: 2, alignItems: 'stretch' });
   const homeSectionFlow = await page.evaluate(() => {
     const rect = (selector: string) => document.querySelector(selector)?.getBoundingClientRect();
     const todos = rect('[aria-labelledby="home-todos-title"]');
+    const current = rect('[aria-labelledby="home-current-title"]');
     const live = rect('[aria-labelledby="home-live-title"]');
     const leaderboard = rect('[aria-labelledby="home-leaderboard-title"]');
     const seating = rect('[aria-labelledby="home-seating-title"]');
@@ -335,6 +337,9 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
     if (!todos || !live) return null;
     return {
       todosTop: Math.round(todos.top),
+      todosBottom: Math.round(todos.bottom),
+      currentTop: current ? Math.round(current.top) : null,
+      currentBottom: current ? Math.round(current.bottom) : null,
       liveTop: Math.round(live.top),
       priorityBottom: priority ? Math.round(priority.bottom) : null,
       seatingGap: seating ? Math.round(seating.top - live.bottom) : null,
@@ -343,6 +348,10 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   });
   assert.ok(homeSectionFlow);
   assert.ok(homeSectionFlow.priorityBottom !== null);
+  if (homeSectionFlow.currentTop !== null && homeSectionFlow.currentBottom !== null) {
+    assert.equal(homeSectionFlow.currentTop, homeSectionFlow.todosTop);
+    assert.equal(homeSectionFlow.currentBottom, homeSectionFlow.todosBottom);
+  }
   assert.ok(homeSectionFlow.liveTop > homeSectionFlow.priorityBottom);
   assert.equal(
     await page.locator('.home-live-grid').evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length),
