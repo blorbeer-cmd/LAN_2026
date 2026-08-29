@@ -6,6 +6,7 @@ import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { playerMayUseArcadeAi } from './adminAccess';
 import { arcadeTiming } from './timing';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
+import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { recordArcadeResult } from './arcadeData';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
@@ -228,6 +229,7 @@ function startMatch(io: Server, lobby: Lobby): Match {
   matches.set(id, match);
   releaseLobbyMemberships(lobby.players.map((player) => player.id), 'battleship', lobby.id);
   lobbies.delete(lobby.id);
+  resolveArcadeLobbyPush('battleship', lobby);
   emitLobbies(io);
   startArcadeSession(realPlayerIds(match.players), 'battleship', match);
   emitArcadeRoom(io, room, 'battleship:match:start', { matchId: id, host: match.host, players: match.players, mode: lobby.mode }, match);
@@ -243,6 +245,7 @@ function removeFromLobbies(io: Server, socketId: string) {
     if (entry[0] === lobby.host.id) {
       releaseLobbyMemberships(lobby.players.map((player) => player.id), 'battleship', id);
       lobbies.delete(id);
+      resolveArcadeLobbyPush('battleship', lobby);
     } else {
       releaseLobbyMembership(entry[0], 'battleship', id);
       lobby.players = lobby.players.filter((player) => player.id !== entry[0]);
@@ -278,6 +281,7 @@ export function registerBattleshipSockets(io: Server): void {
       lobbies.set(lobby.id, lobby);
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
+      notifyArcadeLobbyOpened('battleship', lobby);
     });
 
     socket.on('battleship:lobby:bot', (payload: { playerId?: string }, ack?: (result: unknown) => void) => {
@@ -317,6 +321,7 @@ export function registerBattleshipSockets(io: Server): void {
       if (payload.playerId === lobby.host.id) {
         releaseLobbyMemberships(lobby.players.map((player) => player.id), 'battleship', lobby.id);
         lobbies.delete(lobby.id);
+        resolveArcadeLobbyPush('battleship', lobby);
       } else if (payload.playerId && lobby.players.some((player) => player.id === payload.playerId)) {
         releaseLobbyMembership(payload.playerId, 'battleship', lobby.id);
         lobby.players = lobby.players.filter((player) => player.id !== payload.playerId);

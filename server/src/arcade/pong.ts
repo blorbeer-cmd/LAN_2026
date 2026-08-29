@@ -8,6 +8,7 @@ import { broadcastArcadeKiosk } from './realtime';
 import { recordArcadeResult } from './arcadeData';
 import { arcadeTiming } from './timing';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
+import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 
 const TICK_MS = 1000 / 60;
@@ -248,7 +249,7 @@ function removeFromLobbies(io: Server, socketId: string) {
   for (const [id, lobby] of lobbies) {
     const entry = [...lobby.socketIds].find(([, sid]) => sid === socketId);
     if (!entry) continue;
-    if (entry[0] === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'pong', id); lobbies.delete(id); }
+    if (entry[0] === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'pong', id); lobbies.delete(id); resolveArcadeLobbyPush('pong', lobby); }
     else {
       releaseLobbyMembership(entry[0], 'pong', id);
       lobby.socketIds.delete(entry[0]);
@@ -287,6 +288,7 @@ export function registerPongSockets(io: Server): void {
       lobbies.set(lobby.id, lobby);
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
+      notifyArcadeLobbyOpened('pong', lobby);
     });
 
     socket.on('pong:lobby:bot', (payload: { playerId?: string; mode?: PongMode }, ack?: (result: unknown) => void) => {
@@ -328,7 +330,7 @@ export function registerPongSockets(io: Server): void {
     socket.on('pong:lobby:leave', (payload: { lobbyId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null;
       if (!lobby || !canUseLobby(socket, lobby) || !socketControlsPlayer(socket, lobby, payload.playerId)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' });
-      if (lobby && payload.playerId === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'pong', lobby.id); lobbies.delete(lobby.id); }
+      if (lobby && payload.playerId === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'pong', lobby.id); lobbies.delete(lobby.id); resolveArcadeLobbyPush('pong', lobby); }
       else if (lobby && payload.playerId) {
         releaseLobbyMembership(payload.playerId, 'pong', lobby.id);
         lobby.players = lobby.players.filter((player) => player.id !== payload.playerId);
@@ -389,6 +391,7 @@ export function registerPongSockets(io: Server): void {
       matches.set(id, match);
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'pong', lobby.id);
       lobbies.delete(lobby.id);
+      resolveArcadeLobbyPush('pong', lobby);
       emitLobbies(io);
       const beginsAt = Date.now() + COUNTDOWN_MS;
       emitArcadeRoom(io, room, 'pong:match:start', { matchId: id, mode: match.mode, host: match.host, players: match.players, beginsAt, targetScore }, match);

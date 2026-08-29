@@ -9,6 +9,7 @@ import { broadcastArcadeKiosk } from './realtime';
 import { recordArcadeResult } from './arcadeData';
 import { arcadeTiming } from './timing';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
+import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 
 const TICK_MS = 1000 / 60;
@@ -209,7 +210,7 @@ function removeFromLobbies(io: Server, socketId: string) {
   for (const [id, lobby] of lobbies) {
     const entry = [...lobby.socketIds].find(([, sid]) => sid === socketId);
     if (!entry) continue;
-    if (entry[0] === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'blobby', id); lobbies.delete(id); }
+    if (entry[0] === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'blobby', id); lobbies.delete(id); resolveArcadeLobbyPush('blobby', lobby); }
     else { releaseLobbyMembership(entry[0], 'blobby', id); lobby.socketIds.delete(entry[0]); lobby.ready.delete(entry[0]); lobby.players = lobby.players.filter((p) => p.id !== entry[0]); }
     changed = true;
   }
@@ -238,6 +239,7 @@ export function registerBlobbySockets(io: Server): void {
       if (!claimLobbyMembership(player.id, 'blobby', lobby.id)) return ack?.({ ok: false, error: 'Du bist bereits in einer anderen Arcade-Lobby.' });
       removeFromLobbies(io, socket.id);
       lobbies.set(lobby.id, lobby); emitLobbies(io); ack?.({ ok: true, lobbyId: lobby.id });
+      notifyArcadeLobbyOpened('blobby', lobby);
     });
     socket.on('blobby:lobby:bot', (payload: { playerId?: string; mode?: BlobbyMode }, ack?: (r: unknown) => void) => {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
@@ -273,7 +275,7 @@ export function registerBlobbySockets(io: Server): void {
     socket.on('blobby:lobby:leave', (payload: { lobbyId?: string; playerId?: string }, ack?: (r: unknown) => void) => {
       const lobby = typeof payload?.lobbyId === 'string' ? lobbies.get(payload.lobbyId) : null;
       if (!lobby || !canUseLobby(socket, lobby) || !socketControlsPlayer(socket, lobby, payload.playerId)) return ack?.({ ok: false, error: 'Lobbyzugriff verweigert.' });
-      if (lobby.host.id === payload.playerId) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'blobby', lobby.id); lobbies.delete(lobby.id); }
+      if (lobby.host.id === payload.playerId) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'blobby', lobby.id); lobbies.delete(lobby.id); resolveArcadeLobbyPush('blobby', lobby); }
       else { releaseLobbyMembership(payload.playerId, 'blobby', lobby.id); lobby.players = lobby.players.filter((p) => p.id !== payload.playerId); lobby.socketIds.delete(payload.playerId); lobby.ready.delete(payload.playerId); }
       emitLobbies(io); ack?.({ ok: true });
     });
@@ -304,7 +306,7 @@ export function registerBlobbySockets(io: Server): void {
         scores: new Map<TeamSide, number>([['left', 0], ['right', 0]]),
         loop: null, running: false, paused: false, lastTick: Date.now(), lastSnapshot: 0, startedAt: Date.now(), rallyResumeAt: 0, targetScore,
       };
-      matches.set(id, match); releaseLobbyMemberships(lobby.players.map((p) => p.id), 'blobby', lobby.id); lobbies.delete(lobby.id); emitLobbies(io);
+      matches.set(id, match); releaseLobbyMemberships(lobby.players.map((p) => p.id), 'blobby', lobby.id); lobbies.delete(lobby.id); resolveArcadeLobbyPush('blobby', lobby); emitLobbies(io);
       startArcadeSession(realPlayerIds(match.players), 'blobby', match);
       const beginsAt = Date.now() + COUNTDOWN_MS;
       emitArcadeRoom(io, room, 'blobby:match:start', {

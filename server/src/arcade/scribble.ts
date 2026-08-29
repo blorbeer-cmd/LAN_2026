@@ -14,17 +14,15 @@ import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { playerMayUseArcadeAi } from './adminAccess';
-import { notifyPlayers, resolvePushTopic } from '../push';
 import { matchesAnswer } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from './realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
-import { shouldSendLobbyPush } from './lobbyPush';
+import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { recordArcadeResult } from './arcadeData';
 import { arcadeTiming } from './timing';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, emitArcadeSocket, socketArcadeScope, socketCanUseArcadeScope } from './scope';
-import { communicationRecipientIds } from '../communicationRecipients';
 import {
   buildHintSchedule,
   HintStep,
@@ -36,10 +34,6 @@ import {
   pointsForGuess,
   wordMask,
 } from './scribbleLogic';
-
-function scribbleLobbyPushKey(lobbyId: string): string {
-  return `arcade-lobby:scribble:${lobbyId}`;
-}
 
 const CHOICE_MS = 15_000;
 const REVEAL_MS = 3_000;
@@ -203,7 +197,7 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
     if (lobby.host.id === entry[0]) {
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'scribble', id);
       lobbies.delete(id);
-      resolvePushTopic(scribbleLobbyPushKey(id), false, lobby);
+      resolveArcadeLobbyPush('scribble', lobby);
     } else {
       releaseLobbyMembership(entry[0], 'scribble', id);
       lobby.socketIds.delete(entry[0]);
@@ -719,20 +713,7 @@ export function registerScribbleSockets(io: Server): void {
       // so a real push is the only way the rest of the LAN finds out a lobby
       // is waiting for them. Throttled per game type (see lobbyPush.ts) so
       // rapid re-creation cannot spam every phone on the LAN.
-      if (lobby.eventId && shouldSendLobbyPush('scribble')) {
-        const otherPlayerIds = communicationRecipientIds(lobby.groupId, lobby.eventId).filter((id) => id !== player.id);
-        notifyPlayers(
-          otherPlayerIds,
-          {
-            title: 'Neue Scribble-Lobby',
-            body: `${player.name} hat eine Scribble-Lobby geöffnet – jetzt beitreten!`,
-            url: '/#arcade',
-          },
-          'all',
-          { key: scribbleLobbyPushKey(lobby.id) },
-          lobby,
-        );
-      }
+      notifyArcadeLobbyOpened('scribble', lobby);
     });
     socket.on('scribble:lobby:bot', (payload: { playerId?: string }, ack?: (res: unknown) => void) => {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
@@ -766,7 +747,7 @@ export function registerScribbleSockets(io: Server): void {
       if (lobby.host.id === payload.playerId) {
         releaseLobbyMemberships(lobby.players.map((p) => p.id), 'scribble', lobby.id);
         lobbies.delete(lobby.id);
-        resolvePushTopic(scribbleLobbyPushKey(lobby.id), false, lobby);
+        resolveArcadeLobbyPush('scribble', lobby);
       } else {
         releaseLobbyMembership(payload.playerId, 'scribble', lobby.id);
         lobby.socketIds.delete(payload.playerId);
@@ -846,7 +827,7 @@ export function registerScribbleSockets(io: Server): void {
         matches.set(match.id, match);
         releaseLobbyMemberships(lobby.players.map((p) => p.id), 'scribble', lobby.id);
         lobbies.delete(lobby.id);
-        resolvePushTopic(scribbleLobbyPushKey(lobby.id), false, lobby);
+        resolveArcadeLobbyPush('scribble', lobby);
         emitLobbies(io);
         startArcadeSession(realPlayerIds(match.players), 'scribble', match);
 

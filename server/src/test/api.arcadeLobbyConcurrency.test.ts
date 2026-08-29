@@ -9,6 +9,12 @@ import { createTestApp, installTestSocketIdentity } from './testApp';
 import { db } from '../db';
 import { registerArcadeSockets } from '../arcade/arcade';
 import { registerTetrisSockets } from '../arcade/tetris';
+import { registerScribbleSockets } from '../arcade/scribble';
+import { registerPongSockets } from '../arcade/pong';
+import { registerBlobbySockets } from '../arcade/blobby';
+import { registerSnakeSockets } from '../arcade/snake';
+import { registerBattleshipSockets } from '../arcade/battleship';
+import { registerChallengeRushSockets } from '../arcade/challengeRush';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
 import { clearLobbyPushThrottle } from '../arcade/lobbyPush';
 
@@ -20,9 +26,75 @@ function connect(baseUrl: string): Promise<ClientSocket> {
   });
 }
 
-function emitAck(socket: ClientSocket, event: string, payload: unknown): Promise<{ ok: boolean; error?: string }> {
+function emitAck(socket: ClientSocket, event: string, payload: unknown): Promise<{ ok: boolean; error?: string; lobbyId?: string }> {
   return new Promise((resolve) => socket.emit(event, payload, resolve));
 }
+
+test('every human Arcade lobby creates and resolves a join notification', async () => {
+  clearLobbyMemberships();
+  clearLobbyPushThrottle();
+  db.prepare("DELETE FROM push_log WHERE topic_key LIKE 'arcade-lobby:%'").run();
+  const httpServer = http.createServer(createTestApp());
+  const io = new Server(httpServer);
+  installTestSocketIdentity(io);
+  registerArcadeSockets(io);
+  registerTetrisSockets(io);
+  registerScribbleSockets(io);
+  registerPongSockets(io);
+  registerBlobbySockets(io);
+  registerSnakeSockets(io);
+  registerBattleshipSockets(io);
+  registerChallengeRushSockets(io);
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+  const client = await connect(baseUrl);
+  const games = [
+    { type: 'quiz', name: 'Quiz', create: 'arcade:lobby:create', leave: 'arcade:lobby:leave', createPayload: { gameType: 'quiz' } },
+    { type: 'tetris', name: 'Tetris', create: 'tetris:lobby:create', leave: 'tetris:lobby:leave', createPayload: {} },
+    { type: 'scribble', name: 'Scribble', create: 'scribble:lobby:create', leave: 'scribble:lobby:leave', createPayload: {} },
+    { type: 'pong', name: 'Pong', create: 'pong:lobby:create', leave: 'pong:lobby:leave', createPayload: {} },
+    { type: 'blobby', name: 'Blobby-Volley', create: 'blobby:lobby:create', leave: 'blobby:lobby:leave', createPayload: {} },
+    { type: 'snake', name: 'Snake', create: 'snake:lobby:create', leave: 'snake:lobby:leave', createPayload: {} },
+    { type: 'battleship', name: 'Battleship', create: 'battleship:lobby:create', leave: 'battleship:lobby:leave', createPayload: {} },
+    { type: 'challenge-rush', name: 'Challenge-Rush', create: 'challenge-rush:lobby:create', leave: 'challenge-rush:lobby:leave', createPayload: {} },
+  ] as const;
+
+  try {
+    const bystander = await request(baseUrl).post('/api/players').send({ name: 'Arcade Push Bystander' });
+    assert.equal(bystander.status, 201);
+
+    for (const game of games) {
+      const host = await request(baseUrl).post('/api/players').send({ name: `${game.name} Push Host` });
+      assert.equal(host.status, 201);
+      const created = await emitAck(client, game.create, { playerId: host.body.id, ...game.createPayload });
+      assert.equal(created.ok, true, `${game.name} lobby creation must succeed`);
+      assert.ok(created.lobbyId, `${game.name} lobby creation must return an id`);
+
+      const topicKey = `arcade-lobby:${game.type}:${created.lobbyId}`;
+      const notification = db.prepare(
+        'SELECT title, url, resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?',
+      ).get(topicKey) as { title: string; url: string; resolvedAt: number | null } | undefined;
+      assert.deepEqual(notification, {
+        title: `Neue ${game.name}-Lobby`,
+        url: `/#arcade/${game.type}`,
+        resolvedAt: null,
+      });
+
+      const left = await emitAck(client, game.leave, { lobbyId: created.lobbyId, playerId: host.body.id });
+      assert.equal(left.ok, true, `${game.name} host must be able to close the lobby`);
+      const resolved = db.prepare('SELECT resolved_at AS resolvedAt FROM push_log WHERE topic_key = ?').get(topicKey) as {
+        resolvedAt: number | null;
+      };
+      assert.equal(typeof resolved.resolvedAt, 'number', `${game.name} notification must resolve with its lobby`);
+    }
+  } finally {
+    client.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearLobbyMemberships();
+    clearLobbyPushThrottle();
+  }
+});
 
 test('parallel Arcade lobby creation allows exactly one lobby per player', async () => {
   clearLobbyMemberships();
