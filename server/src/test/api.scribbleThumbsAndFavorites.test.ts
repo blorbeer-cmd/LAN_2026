@@ -311,6 +311,90 @@ test('Scribble rejoin restores the live drawing and thumb vote, then exposes a b
   }
 });
 
+test('Scribble keeps a two-player match alive during the reconnect grace period and coalesces stream snapshots', async () => {
+  clearLobbyMemberships();
+  const previousGrace = process.env.SCRIBBLE_RECONNECT_GRACE_MS;
+  process.env.SCRIBBLE_RECONNECT_GRACE_MS = '250';
+  const httpServer = http.createServer(createTestApp());
+  const io = new Server(httpServer);
+  installTestSocketIdentity(io);
+  registerScribbleSockets(io);
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+
+  const hostSocket = await connect(baseUrl);
+  const guestSocket = await connect(baseUrl);
+  let rejoinedSocket: ClientSocket | null = null;
+  try {
+    const [hostId, guestId] = await makePlayers(baseUrl, ['Grace Host', 'Grace Guest']);
+    const { matchId } = await startMatchAndBeginDrawing(hostSocket, guestSocket, hostId, guestId);
+
+    let streamSnapshots = 0;
+    hostSocket.on('arcade:kiosk:game', (payload: { gameType?: string; matchId?: string; strokes?: unknown[] }) => {
+      if (payload.gameType === 'scribble' && payload.matchId === matchId && payload.strokes?.length) streamSnapshots += 1;
+    });
+    await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        emitAck(hostSocket, 'scribble:stroke', {
+          matchId,
+          playerId: hostId,
+          strokeId: `coalesced-${index}`,
+          color: '#123456',
+          size: 5,
+          erase: false,
+          points: [[index / 20, index / 20]],
+        })
+      )
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(streamSnapshots, 1, 'a rapid stroke burst should produce one full spectator snapshot');
+
+    let ended = false;
+    hostSocket.once('scribble:match:end', () => {
+      ended = true;
+    });
+    const offlinePresence = new Promise<void>((resolve) => {
+      const onPresence = (payload: { playerId: string; online: boolean }) => {
+        if (payload.playerId !== guestId || payload.online) return;
+        hostSocket.off('scribble:presence', onPresence);
+        resolve();
+      };
+      hostSocket.on('scribble:presence', onPresence);
+    });
+    guestSocket.close();
+    await offlinePresence;
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    assert.equal(ended, false, 'a transient disconnect must not end a two-player match immediately');
+
+    rejoinedSocket = await connect(baseUrl);
+    const onlinePresence = new Promise<void>((resolve) => {
+      const onPresence = (payload: { playerId: string; online: boolean }) => {
+        if (payload.playerId !== guestId || !payload.online) return;
+        hostSocket.off('scribble:presence', onPresence);
+        resolve();
+      };
+      hostSocket.on('scribble:presence', onPresence);
+    });
+    const rejoin = await emitAck(rejoinedSocket, 'scribble:rejoin', { matchId, playerId: guestId });
+    await onlinePresence;
+    assert.equal(rejoin.ok, true);
+    assert.equal((rejoin.sync as { phase?: string }).phase, 'drawing');
+    await new Promise((resolve) => setTimeout(resolve, 225));
+    assert.equal(ended, false, 'the cancelled grace timer must not end the restored match later');
+
+    const finished = await emitAck(hostSocket, 'scribble:match:finish', { matchId, playerId: hostId });
+    assert.equal(finished.ok, true);
+  } finally {
+    hostSocket.close();
+    guestSocket.close();
+    rejoinedSocket?.close();
+    io.close();
+    httpServer.close();
+    if (previousGrace === undefined) delete process.env.SCRIBBLE_RECONNECT_GRACE_MS;
+    else process.env.SCRIBBLE_RECONNECT_GRACE_MS = previousGrace;
+  }
+});
+
 test('Scribble final favorite: pickable once the match ends, spans every drawing, rejects a lone artist voting for themself', async () => {
   clearLobbyMemberships();
   const httpServer = http.createServer(createTestApp());

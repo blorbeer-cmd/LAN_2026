@@ -49,6 +49,8 @@ const DEFAULT_TURN_MS = 60_000;
 const MIN_TURN_MS = 20_000;
 const MAX_TURN_MS = 120_000;
 const MAX_STROKE_BATCHES = 4000; // guards memory if a client sends nonstop for a whole turn
+const DEFAULT_RECONNECT_GRACE_MS = 15_000;
+const STREAM_SNAPSHOT_INTERVAL_MS = 100;
 const BOT_ID = 'scribble-bot';
 const BOT = { id: BOT_ID, name: 'Scribble-Bot' };
 
@@ -107,6 +109,8 @@ interface ScribbleMatchState {
   players: PlayerRef[]; // fixed roster, draw order = lobby join order
   socketIds: Map<string, string>;
   online: Set<string>;
+  departed: Set<string>;
+  reconnectTimers: Map<string, NodeJS.Timeout>;
   scores: Map<string, number>;
   rounds: number;
   turnDurationMs: number;
@@ -131,6 +135,7 @@ interface ScribbleMatchState {
   nextTurnTimer: NodeJS.Timeout | null;
   startTimer: NodeJS.Timeout | null; // the pre-first-turn "3, 2, 1" delay
   botTimer: NodeJS.Timeout | null;
+  streamTimer: NodeJS.Timeout | null;
   paused: boolean;
   startedAt: number;
   // Live "thumbs up" — the only rating mechanic left: a lightweight,
@@ -170,6 +175,11 @@ function roundsValue(value: unknown): number | null {
 function turnDurationValue(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isInteger(value)) return null;
   return value >= MIN_TURN_MS && value <= MAX_TURN_MS ? value : null;
+}
+
+function reconnectGraceMs(): number {
+  const configured = Number(process.env.SCRIBBLE_RECONNECT_GRACE_MS);
+  return Number.isFinite(configured) ? Math.max(50, Math.min(60_000, configured)) : DEFAULT_RECONNECT_GRACE_MS;
 }
 
 function publicLobbies(groupId: string, eventId: string | null) {
@@ -248,6 +258,20 @@ function kioskSnapshot(io: Server, match: ScribbleMatchState): void {
   });
 }
 
+// Live participants receive compact incremental draw operations immediately.
+// Spectator/kiosk state is a growing full-canvas snapshot, so coalesce those
+// updates instead of serializing and broadcasting the complete drawing for
+// every animation frame. This prevents the large stream from delaying guesses,
+// chat and the incremental strokes that players actually interact with.
+function scheduleKioskSnapshot(io: Server, match: ScribbleMatchState): void {
+  if (match.streamTimer) return;
+  match.streamTimer = setTimeout(() => {
+    match.streamTimer = null;
+    if (matches.get(match.id) === match) kioskSnapshot(io, match);
+  }, STREAM_SNAPSHOT_INTERVAL_MS);
+  match.streamTimer.unref();
+}
+
 function realPlayerIds(players: PlayerRef[]): string[] {
   return players.filter((p) => p.id !== BOT_ID).map((p) => p.id);
 }
@@ -271,13 +295,20 @@ function clearAllTimers(match: ScribbleMatchState): void {
   if (match.nextTurnTimer) clearTimeout(match.nextTurnTimer);
   if (match.startTimer) clearTimeout(match.startTimer);
   if (match.botTimer) clearTimeout(match.botTimer);
+  if (match.streamTimer) clearTimeout(match.streamTimer);
   match.hintTimers.forEach(clearTimeout);
   match.choiceTimer = null;
   match.turnTimer = null;
   match.nextTurnTimer = null;
   match.startTimer = null;
   match.botTimer = null;
+  match.streamTimer = null;
   match.hintTimers = [];
+}
+
+function clearReconnectTimers(match: ScribbleMatchState): void {
+  for (const timer of match.reconnectTimers.values()) clearTimeout(timer);
+  match.reconnectTimers.clear();
 }
 
 function loadWordPool(match: ScribbleMatchState): WordRow[] {
@@ -462,6 +493,7 @@ function freezeLiveThumbs(match: ScribbleMatchState): void {
 
 function finishMatch(io: Server, match: ScribbleMatchState, winner: PlayerRef | null, reason: string): void {
   clearAllTimers(match);
+  clearReconnectTimers(match);
   freezeLiveThumbs(match);
   endArcadeSession(realPlayerIds(match.players), 'scribble', match);
   const scores = scorePayload(match);
@@ -811,6 +843,8 @@ export function registerScribbleSockets(io: Server): void {
           players: lobby.players,
           socketIds: new Map(lobby.socketIds),
           online: new Set(lobby.players.map((p) => p.id)),
+          departed: new Set(),
+          reconnectTimers: new Map(),
           scores: new Map(lobby.players.map((p) => [p.id, 0])),
           rounds,
           turnDurationMs,
@@ -835,6 +869,7 @@ export function registerScribbleSockets(io: Server): void {
           nextTurnTimer: null,
           startTimer: null,
           botTimer: null,
+          streamTimer: null,
           paused: false,
           startedAt: Date.now(),
           liveThumbsToken: null,
@@ -910,7 +945,7 @@ export function registerScribbleSockets(io: Server): void {
         const strokeCount = new Set(match.strokes.map((stroke) => stroke.strokeId)).size;
         emitArcadeRoom(io, match.room, 'scribble:stroke', { matchId: match.id, ...batch, strokeCount }, match, socket.id);
         ack?.({ ok: true, strokeCount });
-        kioskSnapshot(io, match);
+        scheduleKioskSnapshot(io, match);
       }
     );
 
@@ -930,7 +965,7 @@ export function registerScribbleSockets(io: Server): void {
         const strokeCount = new Set(match.strokes.map((stroke) => stroke.strokeId)).size;
         emitArcadeRoom(io, match.room, 'scribble:fill', { matchId: match.id, x: fill.x, y: fill.y, color: fill.color, strokeCount }, match, socket.id);
         ack?.({ ok: true, strokeCount });
-        kioskSnapshot(io, match);
+        scheduleKioskSnapshot(io, match);
       }
     );
 
@@ -1127,8 +1162,15 @@ export function registerScribbleSockets(io: Server): void {
     socket.on('scribble:rejoin', (payload: { matchId?: string; playerId?: string }, ack?: (res: unknown) => void) => {
       const match = typeof payload?.matchId === 'string' ? matches.get(payload.matchId) : null;
       const player = match?.players.find((p) => p.id === payload?.playerId);
-      if (!match || !canUseLobby(socket, match) || !player) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      if (!match || !canUseLobby(socket, match) || !player || !socketArcadeScope(socket, player.id) || match.departed.has(player.id)) {
+        return ack?.({ ok: false, error: 'Match nicht gefunden.' });
+      }
 
+      const reconnectTimer = match.reconnectTimers.get(player.id);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      match.reconnectTimers.delete(player.id);
+      const previousSocketId = match.socketIds.get(player.id);
+      if (previousSocketId && previousSocketId !== socket.id) io.sockets.sockets.get(previousSocketId)?.leave(match.room);
       match.socketIds.set(player.id, socket.id);
       match.online.add(player.id);
       socket.join(match.room);
@@ -1168,13 +1210,18 @@ export function registerScribbleSockets(io: Server): void {
       });
     });
 
-    // Shared by an actual socket disconnect and an explicit "Verlassen" tap:
-    // mark the player offline and let the round adapt (skip the drawer's
-    // turn, resolve a gallery nobody's left to react to, or end the whole
-    // match once fewer than 2 players remain).
-    function handlePlayerLeft(playerId: string, match: ScribbleMatchState) {
+    // Shared by an explicit "Verlassen" tap and an expired reconnect grace
+    // period: remove the player permanently and let the round adapt (skip the
+    // drawer's turn or end the match once fewer than two players remain).
+    function handlePlayerLeft(playerId: string, match: ScribbleMatchState, announce = true) {
+      if (matches.get(match.id) !== match || match.departed.has(playerId)) return;
+      const reconnectTimer = match.reconnectTimers.get(playerId);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      match.reconnectTimers.delete(playerId);
+      match.socketIds.delete(playerId);
+      match.departed.add(playerId);
       match.online.delete(playerId);
-      emitArcadeRoom(io, match.room, 'scribble:presence', { matchId: match.id, playerId, online: false }, match);
+      if (announce) emitArcadeRoom(io, match.room, 'scribble:presence', { matchId: match.id, playerId, online: false }, match);
 
       if (match.online.size < 2) {
         finishMatch(io, match, null, 'player-left');
@@ -1199,16 +1246,27 @@ export function registerScribbleSockets(io: Server): void {
       if (!match || !canUseLobby(socket, match)) return ack?.({ ok: false, error: 'Match nicht gefunden.' });
       const leaver = match.players.find((p) => p.id === payload?.playerId);
       if (!leaver) return ack?.({ ok: false, error: 'Du bist kein Teilnehmer dieses Matches.' });
+      if (match.socketIds.get(leaver.id) !== socket.id) return ack?.({ ok: false, error: 'Du kannst nur dein eigenes Match verlassen.' });
       handlePlayerLeft(leaver.id, match);
+      socket.leave(match.room);
       ack?.({ ok: true });
     });
 
     socket.on('disconnect', () => {
       removeFromOpenLobbies(io, socket.id);
-      for (const match of matches.values()) {
+      for (const match of [...matches.values()]) {
         const entry = [...match.socketIds.entries()].find(([, sid]) => sid === socket.id);
         if (!entry) continue;
-        handlePlayerLeft(entry[0], match);
+        const playerId = entry[0];
+        match.socketIds.delete(playerId);
+        emitArcadeRoom(io, match.room, 'scribble:presence', { matchId: match.id, playerId, online: false }, match);
+        if (match.reconnectTimers.has(playerId)) continue;
+        const timer = setTimeout(() => {
+          if (matches.get(match.id) !== match || match.socketIds.has(playerId) || match.departed.has(playerId)) return;
+          handlePlayerLeft(playerId, match, false);
+        }, reconnectGraceMs());
+        timer.unref();
+        match.reconnectTimers.set(playerId, timer);
       }
     });
   });

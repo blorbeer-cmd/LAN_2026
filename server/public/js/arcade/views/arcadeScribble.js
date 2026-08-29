@@ -69,6 +69,7 @@ let finalFavoriteDrawingId = null;
 
 let tool = { color: SWATCHES[0], size: SIZES[1], mode: 'pen' }; // mode: 'pen' | 'erase' | 'fill'
 let countdownInterval = null;
+let guessSequence = 0;
 
 // DOM refs captured after each render of the match room, used for
 // high-frequency updates that must not go through a full rerender().
@@ -156,6 +157,7 @@ function resetMatchState() {
   thumbsCount = 0;
   myThumbActive = false;
   finalFavoriteDrawingId = null;
+  guessSequence = 0;
   stopCountdown();
 }
 
@@ -185,6 +187,13 @@ function updateCountdownBadge() {
   countdownEl.classList.toggle('badge-paused', paused || left <= 5);
   countdownEl.classList.toggle('badge-playing', !paused && left > 5);
   if (!paused && turn?.phase === 'drawing' && left > 0 && left <= 5) playArcadeSound('scribble-tick');
+}
+
+function countdownBadgeHtml() {
+  const left = secondsLeft();
+  const label = paused ? 'Pause' : `${left}s`;
+  const stateClass = paused || left <= 5 ? 'badge-paused' : 'badge-playing';
+  return `<span class="badge ${stateClass}" id="scribble-countdown" role="timer" aria-label="Verbleibende Zeit">${label}</span>`;
 }
 
 function setupCanvas(el) {
@@ -482,14 +491,16 @@ function updateRosterDisplay() {
 }
 
 function wordChoiceHtml() {
-  if (!wordOptions || turn?.phase !== 'choosing' || !isDrawer()) return '';
+  if (turn?.phase !== 'choosing') return '';
+  const prompt = isDrawer() ? 'Wähle ein Wort' : `${escapeHtml(turn.drawer?.name ?? 'Der Zeichner')} wählt ein Wort`;
   return `
     <div class="card stack" style="margin-top:var(--space-3);">
-      <div class="grid">
+      <div class="row-between" style="gap:var(--space-2);"><strong>${prompt}</strong>${countdownBadgeHtml()}</div>
+      ${wordOptions && isDrawer() ? `<div class="grid">
         ${wordOptions
           .map((w) => `<button type="button" class="btn btn-block scribble-word-choice-btn" data-word-id="${w.id}">${escapeHtml(w.word)}</button>`)
           .join('')}
-      </div>
+      </div>` : ''}
     </div>`;
 }
 
@@ -568,10 +579,13 @@ function winnerCelebrationHtml() {
 function guessFormHtml() {
   if (isDrawer() || turn?.phase !== 'drawing') return '';
   return `
-    <form id="scribble-guess-form" class="row" style="margin-top:var(--space-2);">
-      <input type="text" id="scribble-guess-input" autocomplete="off" placeholder="Dein Tipp" style="flex:1;" ${paused ? 'disabled' : ''} />
-      <button type="submit" class="btn btn-primary" ${paused ? 'disabled' : ''}>Raten</button>
-    </form>`;
+    <div class="stack" style="margin-top:var(--space-2);">
+      <form id="scribble-guess-form" class="row">
+        <input type="text" id="scribble-guess-input" autocomplete="off" placeholder="Dein Tipp" style="flex:1;" ${paused ? 'disabled' : ''} />
+        <button type="submit" class="btn btn-primary" ${paused ? 'disabled' : ''}>Raten</button>
+      </form>
+      <div class="muted" id="scribble-guess-feedback" aria-live="polite" aria-atomic="true"></div>
+    </div>`;
 }
 
 // Live thumbs-up for whichever drawing is currently votable (the one being
@@ -590,7 +604,10 @@ function drawingAreaHtml() {
   const thumb = thumbButtonHtml();
   return `
     <div class="card stack scribble-stage-card" style="margin-top:var(--space-3);">
-      ${thumb ? `<div class="row-between" style="gap:var(--space-2);">${wordMaskHtml}${thumb}</div>` : wordMaskHtml}
+      <div class="row-between" style="gap:var(--space-2);">
+        ${wordMaskHtml}
+        <div class="row" style="gap:var(--space-2);">${countdownBadgeHtml()}${thumb}</div>
+      </div>
       <div class="scribble-canvas-wrap ${!isDrawer() ? 'scribble-canvas-locked' : ''}">
         <canvas id="scribble-canvas"></canvas>
       </div>
@@ -800,8 +817,15 @@ export function ensureScribbleSocket() {
 
   socket.on('connect', () => {
     if (!match || matchEnded) return;
-    socket.emit('scribble:rejoin', { matchId: match.matchId, playerId: myId() }, (res) => {
-      if (!res?.ok) return;
+    const requestedMatchId = match.matchId;
+    socket.emit('scribble:rejoin', { matchId: requestedMatchId, playerId: myId() }, (res) => {
+      if (!match || match.matchId !== requestedMatchId || matchEnded) return;
+      if (!res?.ok) {
+        resetMatchState();
+        showToast('Das Scribble-Match ist nicht mehr verfügbar.', { error: true });
+        navigate('arcade');
+        return;
+      }
       const sync = res.sync;
       // Only a drawing-phase sync carries ops for a live canvas. A sync
       // during reveal/choosing must reset the mirror instead — the next
@@ -1099,8 +1123,20 @@ function wireRoom(container) {
     // immediately replaces the form during the turn transition, while this
     // state remains available to diagnostics and browser synchronization.
     container.dataset.scribbleGuessResult = 'pending';
+    const sequence = ++guessSequence;
+    const feedback = container.querySelector('#scribble-guess-feedback');
+    if (feedback) feedback.textContent = 'Tipp wird geprüft …';
     socket.emit('scribble:guess', { matchId: match.matchId, playerId: myId(), text }, (res) => {
       container.dataset.scribbleGuessResult = !res?.ok ? 'rejected' : res.correct ? 'correct' : 'wrong';
+      if (sequence === guessSequence && feedback?.isConnected) {
+        feedback.textContent = !res?.ok
+          ? res?.error || 'Tipp nicht angenommen.'
+          : res.correct
+            ? `Richtig! +${res.points ?? 0} Punkte`
+            : res.close
+              ? 'Knapp dran!'
+              : 'Noch nicht richtig.';
+      }
       if (!res?.ok) return showToast(res?.error || 'Tipp nicht angenommen.', { error: true });
       // Shown only to this guesser (the server never broadcasts it) - a
       // wrong-but-close guess is otherwise indistinguishable from any other
