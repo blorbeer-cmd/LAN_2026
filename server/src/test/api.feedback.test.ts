@@ -69,6 +69,39 @@ test('POST /api/feedback rejects unauthenticated requests', async () => {
   assert.equal(res.status, 401);
 });
 
+test('PATCH /api/feedback/:id lets admins complete and reopen feedback idempotently', async () => {
+  const player = await request(app).post('/api/players').send({ name: 'Feedback Completion' });
+  const created = await request(app)
+    .post('/api/feedback')
+    .set('x-test-player-id', player.body.id)
+    .send({ message: 'Bitte als erledigt markieren.', view: 'adminFeedback', device: 'desktop', sentiment: 'problem' });
+  assert.equal(created.status, 201);
+
+  const asMember = await request(app)
+    .patch(`/api/feedback/${created.body.id}`)
+    .set('x-test-player-id', player.body.id)
+    .send({ resolved: true });
+  assert.equal(asMember.status, 403);
+  assert.equal((await request(app).patch(`/api/feedback/${created.body.id}`).send({ resolved: 'yes' })).status, 400);
+  assert.equal((await request(app).patch('/api/feedback/unknown-feedback').send({ resolved: true })).status, 404);
+
+  const completed = await request(app).patch(`/api/feedback/${created.body.id}`).send({ resolved: true });
+  assert.equal(completed.status, 200);
+  assert.equal(typeof completed.body.resolvedAt, 'number');
+
+  const completedAgain = await request(app).patch(`/api/feedback/${created.body.id}`).send({ resolved: true });
+  assert.equal(completedAgain.status, 200);
+  assert.equal(completedAgain.body.resolvedAt, completed.body.resolvedAt, 'repeated completion must keep the first timestamp');
+
+  const listed = await request(app).get('/api/feedback');
+  const entry = (listed.body as Array<Record<string, unknown>>).find((item) => item.id === created.body.id);
+  assert.equal(entry?.resolvedAt, completed.body.resolvedAt);
+
+  const reopened = await request(app).patch(`/api/feedback/${created.body.id}`).send({ resolved: false });
+  assert.equal(reopened.status, 200);
+  assert.equal(reopened.body.resolvedAt, null);
+});
+
 test('deleting the account cascades to its feedback entries instead of orphaning them', async () => {
   const player = await request(app).post('/api/players').send({ name: 'Feedback Deleted Account' });
   const created = await request(app)
