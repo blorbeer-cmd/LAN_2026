@@ -4751,6 +4751,21 @@ registerMigration({
   up: addPerEventKioskAccounts,
 });
 
+// Admins work through feedback as an inbox. Persist the completion timestamp
+// so the state survives restarts and can be reopened without deleting the
+// original submission or its captured context.
+function addFeedbackResolutionState(): void {
+  const columns = db.prepare('PRAGMA table_info(feedback_entries)').all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'resolved_at')) {
+    db.exec('ALTER TABLE feedback_entries ADD COLUMN resolved_at INTEGER');
+  }
+}
+registerMigration({
+  version: 96,
+  name: 'add feedback resolution state',
+  up: addFeedbackResolutionState,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

@@ -1380,7 +1380,7 @@ textarea {
   :root[data-layout-mode='desktop'] .more-subpage-title-row > [data-navigate='more'] {
     display: none;
   }
-  :root[data-layout-mode='desktop'] .more-subpage-title-row {
+  :root[data-layout-mode='desktop'] .more-subpage-title-row:has(> [data-navigate='more']) {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 }

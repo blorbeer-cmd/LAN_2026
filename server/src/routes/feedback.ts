@@ -54,7 +54,7 @@ feedbackRouter.get('/', requireAdmin, (req, res) => {
   const rows = db
     .prepare(
       `SELECT f.id, f.event_id AS eventId, e.name AS eventName, f.player_id AS playerId, p.name AS playerName,
-              f.view, f.sentiment, f.message, f.device, f.created_at AS createdAt
+              f.view, f.sentiment, f.message, f.device, f.created_at AS createdAt, f.resolved_at AS resolvedAt
        FROM feedback_entries f
        LEFT JOIN players p ON p.id = f.player_id
        LEFT JOIN events e ON e.id = f.event_id
@@ -64,4 +64,29 @@ feedbackRouter.get('/', requireAdmin, (req, res) => {
     )
     .all(req.group!.id, limit);
   res.json(rows);
+});
+
+// PATCH /api/feedback/:id - body: { resolved: boolean }
+// Setting an already-resolved entry again is idempotent and keeps its first
+// completion timestamp. Sending false reopens it.
+feedbackRouter.patch('/:id', requireAdmin, (req, res) => {
+  const { resolved } = req.body ?? {};
+  if (typeof resolved !== 'boolean') {
+    return res.status(400).json({ error: 'resolved muss true oder false sein.' });
+  }
+
+  const now = Date.now();
+  const result = db
+    .prepare(
+      `UPDATE feedback_entries
+       SET resolved_at = CASE WHEN ? = 1 THEN COALESCE(resolved_at, ?) ELSE NULL END
+       WHERE id = ? AND group_id = ?`,
+    )
+    .run(resolved ? 1 : 0, now, req.params.id, req.group!.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Feedback nicht gefunden.' });
+
+  const row = db
+    .prepare('SELECT id, resolved_at AS resolvedAt FROM feedback_entries WHERE id = ? AND group_id = ?')
+    .get(req.params.id, req.group!.id);
+  res.json(row);
 });
