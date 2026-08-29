@@ -10,11 +10,42 @@ export function cancelCountdown() {
   if (active) active.cancel();
 }
 
-export function showCountdown(beginsAt, onDone) {
+export function showCountdown(beginsAt, onDone, options = {}) {
   cancelCountdown();
 
   const overlay = document.createElement('div');
   overlay.className = 'countdown-overlay';
+  const content = document.createElement('div');
+  content.className = 'countdown-content';
+  const announcement = options.announcement;
+  if (announcement?.label && announcement?.color) {
+    const identity = document.createElement('div');
+    identity.className = 'countdown-player-identity';
+    identity.setAttribute('role', 'status');
+    identity.style.setProperty('--countdown-player-color', announcement.color);
+
+    const swatch = document.createElement('span');
+    swatch.className = 'countdown-player-color';
+    swatch.setAttribute('aria-hidden', 'true');
+    const copy = document.createElement('span');
+    copy.className = 'countdown-player-identity-copy';
+    const prompt = document.createElement('span');
+    prompt.className = 'countdown-player-identity-prompt';
+    prompt.textContent = announcement.prompt || 'Du bist';
+    const label = document.createElement('strong');
+    label.textContent = announcement.label;
+    copy.appendChild(prompt);
+    copy.appendChild(label);
+    if (announcement.detail) {
+      const detail = document.createElement('span');
+      detail.className = 'countdown-player-identity-detail';
+      detail.textContent = announcement.detail;
+      copy.appendChild(detail);
+    }
+    identity.appendChild(swatch);
+    identity.appendChild(copy);
+    content.appendChild(identity);
+  }
   // Two stacked, identically-positioned text nodes instead of one element
   // trying to be both glowing AND gradient-filled: combining `filter`/
   // `text-shadow` with `background-clip: text` on the *same* element gets
@@ -31,7 +62,8 @@ export function showCountdown(beginsAt, onDone) {
   num.className = 'countdown-num countdown-num-fill';
   wrap.appendChild(glow);
   wrap.appendChild(num);
-  overlay.appendChild(wrap);
+  content.appendChild(wrap);
+  overlay.appendChild(content);
   document.body.appendChild(overlay);
 
   let shown = null;
