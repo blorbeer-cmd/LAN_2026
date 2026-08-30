@@ -13,6 +13,13 @@ import { drawArcadeStreamCanvas } from './arcade/shared/arcadeStreamRenderer.js'
 import { domainIcon, installDomainIcons } from './domainIcons.js';
 import { snakeArenaLegendHtml } from './arcade/shared/snakeArenaLegend.js';
 import { emptyStateHtml } from './emptyState.js';
+import {
+  connectLocalSpotifyPlayer,
+  localSpotifyPlaybackStatus,
+  localSpotifyPlayerInfo,
+  preloadSpotifyPlaybackSdk,
+  LOCAL_CONTROLLER_URL,
+} from './spotifyBrowserPlayer.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -532,6 +539,46 @@ function updateAlertLayout() {
 
 let kioskMusicSession = null;
 let kioskMusicProgressFrame = null;
+let kioskLocalPlayback = null;
+
+function renderKioskLocalPlayback(element) {
+  if (!kioskLocalPlayback) {
+    element.hidden = true;
+    element.innerHTML = '';
+    delete element.dataset.renderKey;
+    return;
+  }
+  const connectedPlayer = localSpotifyPlayerInfo();
+  const action = connectedPlayer
+    ? '<strong>Als Spotify-Gerät bereit</strong><span class="muted">Jam jetzt auf einem Handy oder im Respawn-Tab starten.</span>'
+    : kioskLocalPlayback.ready
+      ? '<strong>Ton über diesen Kiosk/TV</strong><span class="muted">Aktiviert den Browser als Spotify-Gerät; der Ton läuft über HDMI oder den gewählten Computer-Ausgang.</span><button type="button" class="btn btn-primary" id="kiosk-enable-local-playback">Kiosk-Ton aktivieren</button>'
+      : `<strong>Browser-Wiedergabe freigeben</strong><span class="muted">${escapeHtml(kioskLocalPlayback.message || 'Spotify im lokalen Controller neu freigeben.')}</span><a class="btn btn-primary" href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">Lokalen Controller öffnen</a>`;
+  element.innerHTML = `<span class="kiosk-music-local">${action}</span>`;
+  element.hidden = false;
+  element.dataset.renderKey = connectedPlayer ? `local:${connectedPlayer.deviceId}` : `local:${kioskLocalPlayback.ready}`;
+
+  element.querySelector('#kiosk-enable-local-playback')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = 'Spotify wird verbunden…';
+    try {
+      await connectLocalSpotifyPlayer({ name: kioskLocalPlayback.playerName });
+      renderKioskLocalPlayback(element);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = 'Erneut versuchen';
+      const status = element.querySelector('.muted');
+      if (status) status.textContent = error.message;
+    }
+  });
+}
+
+async function prepareKioskLocalPlayback() {
+  kioskLocalPlayback = await localSpotifyPlaybackStatus();
+  if (kioskLocalPlayback?.ready) void preloadSpotifyPlaybackSdk().catch(() => {});
+  if (!kioskMusicSession) renderKioskLocalPlayback(document.getElementById('kiosk-music'));
+}
 
 function estimatedMusicProgress(session, now = Date.now()) {
   if (!session?.currentTrack) return 0;
@@ -589,9 +636,7 @@ function renderMusicBar(payload) {
   const session = stabilizedMusicSession(payload?.session);
   kioskMusicSession = session ?? null;
   if (!session) {
-    element.hidden = true;
-    element.innerHTML = '';
-    delete element.dataset.renderKey;
+    renderKioskLocalPlayback(element);
     return;
   }
   const track = session.currentTrack;
@@ -831,6 +876,7 @@ async function main() {
   setInterval(updateClock, 1000);
   setInterval(refreshMusic, 5_000);
   setInterval(refreshAll, KIOSK_REFRESH_INTERVAL_MS);
+  void prepareKioskLocalPlayback();
 
   const socket = connectSocket({ kiosk: true });
 

@@ -7,10 +7,15 @@ import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { confirmDialog } from '../modal.js';
 import { backButtonHtml } from '../backButton.js';
+import {
+  connectLocalSpotifyPlayer,
+  localSpotifyPlaybackStatus,
+  preloadSpotifyPlaybackSdk,
+  LOCAL_CONTROLLER_URL,
+} from '../spotifyBrowserPlayer.js';
 
 const JAM_HELP =
-  'Ein Musik-PC oder Kiosk-Pi steuert Spotify lokal; nur dort ist ein Spotify-Konto nötig. Alle können Wiedergabe, Playlists und Songwünsche gemeinsam steuern.';
-const LOCAL_CONTROLLER_URL = 'http://127.0.0.1:43821';
+  'Ein Musik-PC oder Kiosk-Pi steuert Spotify lokal; nur dort ist ein Spotify-Premium-Konto nötig. Für Ton über HDMI, TV oder die angeschlossene Soundbar kann dieser Browser selbst als Musikgerät gestartet werden.';
 
 let cache = null;
 let cacheStale = true;
@@ -163,6 +168,61 @@ function connectionHtml(status) {
         </div>
       </div>
     </section>`;
+}
+
+export function musicDevicePickerHtml(devices, localPlayback = null) {
+  const spotifyDevices = Array.isArray(devices) ? devices : [];
+  if (!spotifyDevices.length && !localPlayback) {
+    return emptyStateHtml('Spotify auf einem Connect-Gerät öffnen oder diese Seite direkt auf dem Musik-PC/Kiosk aufrufen.');
+  }
+  const spotifyPicker = spotifyDevices.length ? `
+    <div class="card stack">
+      <strong>Vorhandenes Spotify-Gerät</strong>
+      <div class="music-device-picker">
+        <select id="music-device-select" aria-label="Spotify-Gerät">
+          ${spotifyDevices.map((device) => `<option value="${escapeHtml(device.id)}" ${device.active ? 'selected' : ''}>${escapeHtml(device.name)}${device.type ? ` · ${escapeHtml(device.type)}` : ''}</option>`).join('')}
+        </select>
+        <button type="button" class="btn btn-primary" id="music-start">Session starten</button>
+      </div>
+    </div>` : '';
+  const localPlayer = localPlayback ? `
+    <div class="card stack">
+      <strong>Ton über diesen Browser, TV oder HDMI</strong>
+      <p class="muted">Der Browser auf dem Musik-PC wird selbst zum Spotify-Gerät. Der Ton folgt dem Audioausgang dieses Computers; das Handy wird nicht benötigt.</p>
+      ${localPlayback.ready
+        ? '<button type="button" class="btn btn-primary btn-block" id="music-start-local-player">Diesen Browser als Musikgerät starten</button>'
+        : `<p class="muted">${escapeHtml(localPlayback.message || 'Spotify muss für die Browser-Wiedergabe neu freigegeben werden.')}</p><a class="btn btn-primary" href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">Spotify-Freigabe öffnen</a>`}
+    </div>` : '';
+  return `${spotifyPicker}${localPlayer}
+    <p class="muted">Hinweis: Eine reine Bluetooth-Soundbar ist kein eigenes Spotify-Gerät. Sie wird als Audioausgang des Handys oder Computers verwendet.</p>`;
+}
+
+async function startLocalMusicSession(ctx, button, localPlayback) {
+  button.disabled = true;
+  button.textContent = 'Browser wird verbunden…';
+  try {
+    const localPlayer = await connectLocalSpotifyPlayer({ name: localPlayback.playerName });
+    let lastError = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        await api.music.start(getMyId(), localPlayer.deviceId);
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+        if (error.status !== 404 || attempt === 4) break;
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+    }
+    if (lastError) throw lastError;
+    showToast('Jam läuft über den Audioausgang dieses Browsers.');
+    invalidateMusic();
+    ctx.rerender();
+  } catch (error) {
+    showToast(error.message, { error: true });
+    button.disabled = false;
+    button.textContent = 'Diesen Browser als Musikgerät starten';
+  }
 }
 
 function nowPlayingHtml(session) {
@@ -511,19 +571,13 @@ function wireConnection(container, ctx) {
     const area = container.querySelector('#music-device-area');
     area.innerHTML = emptyStateHtml('Geräte werden geladen…');
     try {
-      const { devices } = await api.music.devices();
-      if (!devices.length) {
-        area.innerHTML = emptyStateHtml('Spotify auf dem gewünschten Gerät öffnen und dort kurz Musik starten.');
-        return;
-      }
-      area.innerHTML = `
-        <div class="music-device-picker">
-          <select id="music-device-select" aria-label="Spotify-Gerät">
-            ${devices.map((device) => `<option value="${escapeHtml(device.id)}" ${device.active ? 'selected' : ''}>${escapeHtml(device.name)}${device.type ? ` · ${escapeHtml(device.type)}` : ''}</option>`).join('')}
-          </select>
-          <button type="button" class="btn btn-primary" id="music-start">Session starten</button>
-        </div>`;
-      area.querySelector('#music-start').addEventListener('click', async () => {
+      const [{ devices }, localPlayback] = await Promise.all([
+        api.music.devices(),
+        localSpotifyPlaybackStatus(),
+      ]);
+      if (localPlayback?.ready) void preloadSpotifyPlaybackSdk().catch(() => {});
+      area.innerHTML = musicDevicePickerHtml(devices, localPlayback);
+      area.querySelector('#music-start')?.addEventListener('click', async () => {
         try {
           await api.music.start(getMyId(), area.querySelector('#music-device-select').value);
           invalidateMusic();
@@ -531,6 +585,9 @@ function wireConnection(container, ctx) {
         } catch (error) {
           showToast(error.message, { error: true });
         }
+      });
+      area.querySelector('#music-start-local-player')?.addEventListener('click', (event) => {
+        void startLocalMusicSession(ctx, event.currentTarget, localPlayback);
       });
     } catch (error) {
       area.innerHTML = emptyStateHtml(error.message);

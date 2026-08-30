@@ -147,3 +147,75 @@ test('Jam controller can re-pair in place and stays online when Spotify needs a 
   assert.match(page, /Spotify-Anmeldung erneuern/);
   assert.doesNotMatch(page, /Controller-Paket erneut/);
 });
+
+test('Jam controller exposes a scoped Web Playback token only to its Respawn origin', async (t) => {
+  const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-jam-web-player-'));
+  const probe = http.createServer();
+  const controllerPort = await listen(probe);
+  await new Promise((resolve) => probe.close(resolve));
+  const respawnOrigin = 'https://respawn.example.test';
+
+  fs.writeFileSync(path.join(storeDir, 'jam-controller.json'), JSON.stringify({
+    respawnBaseUrl: `${respawnOrigin}/`,
+    label: 'TV-Musik-PC',
+    clientId: 'spotify-client',
+    spotifyDisplayName: 'LAN DJ',
+    spotifyScopes: 'user-read-playback-state user-modify-playback-state streaming user-read-email user-read-private',
+    accessTokenSpotify: 'short-lived-browser-token',
+    refreshToken: 'refresh-token',
+    expiresAt: Date.now() + 10 * 60_000,
+  }));
+
+  const controller = spawn(process.execPath, [SCRIPT], {
+    env: {
+      ...process.env,
+      JAM_CONTROLLER_PORT: String(controllerPort),
+      JAM_CONTROLLER_STORE_DIR: storeDir,
+      JAM_CONTROLLER_NO_OPEN: '1',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  t.after(() => {
+    controller.kill('SIGTERM');
+    fs.rmSync(storeDir, { recursive: true, force: true });
+  });
+
+  const localUrl = `http://127.0.0.1:${controllerPort}`;
+  await waitFor(async () => (await fetch(localUrl)).ok);
+
+  const rejected = await fetch(`${localUrl}/web-player/status`, {
+    headers: { Origin: 'https://attacker.example' },
+  });
+  assert.equal(rejected.status, 403);
+  assert.equal(rejected.headers.get('access-control-allow-origin'), null);
+
+  const preflight = await fetch(`${localUrl}/web-player/token`, {
+    method: 'OPTIONS',
+    headers: {
+      Origin: respawnOrigin,
+      'Access-Control-Request-Private-Network': 'true',
+    },
+  });
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get('access-control-allow-origin'), respawnOrigin);
+  assert.equal(preflight.headers.get('access-control-allow-private-network'), 'true');
+
+  const statusResponse = await fetch(`${localUrl}/web-player/status`, {
+    headers: { Origin: respawnOrigin },
+  });
+  assert.equal(statusResponse.status, 200);
+  assert.deepEqual(await statusResponse.json(), {
+    available: true,
+    ready: true,
+    playerName: 'Respawn · TV-Musik-PC',
+    message: null,
+  });
+
+  const tokenResponse = await fetch(`${localUrl}/web-player/token`, {
+    headers: { Origin: respawnOrigin },
+  });
+  assert.equal(tokenResponse.status, 200);
+  assert.equal(tokenResponse.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(await tokenResponse.json(), { accessToken: 'short-lived-browser-token' });
+});
