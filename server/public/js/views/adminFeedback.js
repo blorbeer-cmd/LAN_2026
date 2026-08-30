@@ -7,6 +7,7 @@ import { currentPlayerHasAdminRole } from '../adminAccess.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { backButtonHtml } from '../backButton.js';
 import { showToast } from '../toast.js';
+import { icon } from '../icons.js';
 
 const SENTIMENT_LABEL = { positive: 'Positiv', negative: 'Negativ', problem: 'Problem', idea: 'Idee' };
 
@@ -14,6 +15,7 @@ let feedbackEntries = null;
 let feedbackLoading = false;
 let feedbackError = null;
 let feedbackSentimentFilter = 'all'; // 'all' | 'positive' | 'negative' | 'problem' | 'idea'
+let completedSectionOpen = false;
 const updatingFeedbackIds = new Set();
 
 async function loadFeedbackEntries(ctx, force = false) {
@@ -35,6 +37,11 @@ async function loadFeedbackEntries(ctx, force = false) {
 function feedbackEntryHtml(entry) {
   const sentiment = entry.sentiment ? ` <span class="badge">${escapeHtml(SENTIMENT_LABEL[entry.sentiment] ?? entry.sentiment)}</span>` : '';
   const updating = updatingFeedbackIds.has(entry.id);
+  const nextResolved = !entry.resolvedAt;
+  const actionLabel = nextResolved ? 'Erledigen' : 'Wieder öffnen';
+  const accessibleActionLabel = nextResolved
+    ? `Feedback von ${entry.playerName || 'Unbekannt'} erledigen`
+    : `Feedback von ${entry.playerName || 'Unbekannt'} wieder öffnen`;
   return `
     <div class="card stack" style="padding:var(--space-3);" data-feedback-entry="${escapeHtml(entry.id)}">
       <div class="row-between" style="align-items:flex-start;flex-wrap:wrap;">
@@ -42,10 +49,8 @@ function feedbackEntryHtml(entry) {
           <strong>${escapeHtml(entry.playerName || 'Unbekannt')}</strong>${sentiment}
           <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(entry.view)} · ${escapeHtml(entry.eventName || '')} · ${formatDateTime(entry.createdAt)} Uhr</div>
         </span>
-        <label class="check-row">
-          <input type="checkbox" data-feedback-resolved="${escapeHtml(entry.id)}" ${entry.resolvedAt ? 'checked' : ''} ${updating ? 'disabled' : ''} />
-          <span>Erledigt</span>
-        </label>
+        <button type="button" class="btn btn-sm" data-feedback-resolution="${escapeHtml(entry.id)}"
+          data-next-resolved="${nextResolved}" aria-label="${escapeHtml(accessibleActionLabel)}" ${updating ? 'disabled' : ''}>${actionLabel}</button>
       </div>
       <p style="margin:0;">${escapeHtml(entry.message)}</p>
     </div>`;
@@ -80,10 +85,13 @@ function feedbackSentimentFilterHtml() {
     </div>`;
 }
 
-function feedbackBodyHtml() {
-  const visibleEntries = (feedbackEntries || []).filter(
+function filteredFeedbackEntries() {
+  return (feedbackEntries || []).filter(
     (entry) => feedbackSentimentFilter === 'all' || entry.sentiment === feedbackSentimentFilter,
   );
+}
+
+function openFeedbackBodyHtml(entries) {
   if (feedbackError) {
     return `<div class="notice notice-warning row-between" style="gap:var(--space-2);">
       <span>Feedback konnte nicht geladen werden.</span>
@@ -91,10 +99,28 @@ function feedbackBodyHtml() {
     </div>`;
   }
   if (feedbackLoading && feedbackEntries === null) return '<div class="card muted">Feedback wird geladen…</div>';
-  if (visibleEntries.length === 0) {
-    return emptyStateHtml((feedbackEntries || []).length === 0 ? 'Noch kein Feedback eingegangen.' : 'Kein Feedback dieser Art.');
+  if (entries.length === 0) {
+    if ((feedbackEntries || []).length === 0) return emptyStateHtml('Noch kein Feedback eingegangen.');
+    return emptyStateHtml(feedbackSentimentFilter === 'all' ? 'Kein offenes Feedback.' : 'Kein offenes Feedback dieser Art.');
   }
-  return `<div class="stack">${visibleEntries.map(feedbackEntryHtml).join('')}</div>`;
+  return `<div class="stack">${entries.map(feedbackEntryHtml).join('')}</div>`;
+}
+
+function completedFeedbackSectionHtml(entries) {
+  if (entries.length === 0) return '';
+  return `
+    <details class="card grouped-page-section collapsible-section" data-admin-feedback-completed ${completedSectionOpen ? 'open' : ''}>
+      <summary class="collapsible-section-header">
+        <h2>Erledigt</h2>
+        <span class="collapsible-section-summary-end">
+          <span class="badge">${entries.length}</span>
+          <span class="collapsible-section-chevron">${icon('chevronRight')}</span>
+        </span>
+      </summary>
+      <div class="collapsible-section-content">
+        <div class="stack">${entries.map(feedbackEntryHtml).join('')}</div>
+      </div>
+    </details>`;
 }
 
 function renderAccessDenied(container) {
@@ -114,6 +140,9 @@ export function renderAdminFeedback(container, ctx) {
     return;
   }
   if (feedbackEntries === null && !feedbackLoading && !feedbackError) loadFeedbackEntries(ctx);
+  const visibleEntries = filteredFeedbackEntries();
+  const openEntries = visibleEntries.filter((entry) => !entry.resolvedAt);
+  const completedEntries = visibleEntries.filter((entry) => Boolean(entry.resolvedAt));
 
   container.innerHTML = `
     <div class="more-subpage-header">
@@ -125,12 +154,13 @@ export function renderAdminFeedback(container, ctx) {
     <div class="grouped-page-sections">
       <section class="card stack grouped-page-section" aria-labelledby="admin-feedback-title">
         <div class="grouped-page-section-title">
-          <h2 id="admin-feedback-title">Feedback</h2>
+          <h2 id="admin-feedback-title">Offen</h2>
           <button type="button" class="btn btn-sm" id="admin-feedback-refresh" ${feedbackLoading ? 'disabled' : ''}>Aktualisieren</button>
         </div>
         ${feedbackError || (feedbackEntries || []).length === 0 ? '' : feedbackSentimentFilterHtml()}
-        ${feedbackBodyHtml()}
+        ${openFeedbackBodyHtml(openEntries)}
       </section>
+      ${feedbackError ? '' : completedFeedbackSectionHtml(completedEntries)}
     </div>`;
 
   container.querySelector('#admin-feedback-refresh')?.addEventListener('click', () => loadFeedbackEntries(ctx, true));
@@ -141,9 +171,13 @@ export function renderAdminFeedback(container, ctx) {
       ctx.rerender();
     });
   });
-  container.querySelectorAll('[data-feedback-resolved]').forEach((input) => {
-    input.addEventListener('change', () => {
-      void setFeedbackResolved(input.dataset.feedbackResolved, input.checked, ctx);
+  const completedSection = container.querySelector('[data-admin-feedback-completed]');
+  completedSection?.addEventListener('toggle', () => {
+    completedSectionOpen = completedSection.open;
+  });
+  container.querySelectorAll('[data-feedback-resolution]').forEach((button) => {
+    button.addEventListener('click', () => {
+      void setFeedbackResolved(button.dataset.feedbackResolution, button.dataset.nextResolved === 'true', ctx);
     });
   });
 }

@@ -960,21 +960,38 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
     await memberContext.close();
   }
   await page.click('#admin-feedback-refresh');
-  const feedbackToggle = page.locator(`[data-feedback-resolved="${feedbackId}"]`);
-  await feedbackToggle.waitFor();
-  await feedbackToggle.check();
+  const feedbackAction = page.locator(`[data-feedback-resolution="${feedbackId}"]`);
+  await feedbackAction.waitFor();
+  assert.equal(await feedbackAction.evaluate((element) => element.tagName), 'BUTTON');
+  assert.equal(await feedbackAction.textContent(), 'Erledigen');
+  assert.equal(
+    await feedbackAction.evaluate((element) => element.classList.contains('btn') && element.classList.contains('btn-sm')),
+    true,
+  );
+  assert.equal(await page.locator(`[data-admin-feedback-completed] [data-feedback-entry="${feedbackId}"]`).count(), 0);
+  await feedbackAction.click();
   await page.waitForFunction(
     (id) => {
-      const input = document.querySelector(`[data-feedback-resolved="${id}"]`) as HTMLInputElement | null;
-      return Boolean(input?.checked && !input.disabled);
+      const section = document.querySelector('[data-admin-feedback-completed]');
+      return Boolean(section?.querySelector(`[data-feedback-entry="${id}"]`));
     },
     feedbackId,
   );
-  await feedbackToggle.uncheck();
+  const completedFeedback = page.locator('[data-admin-feedback-completed]');
+  assert.equal(await completedFeedback.evaluate((section) => (section as HTMLDetailsElement).open), false);
+  await completedFeedback.locator('summary').click();
+  await page.click('#admin-feedback-refresh');
+  await page.waitForFunction(() => {
+    const section = document.querySelector('[data-admin-feedback-completed]') as HTMLDetailsElement | null;
+    return Boolean(section?.open && section.querySelector('[data-feedback-resolution]'));
+  });
+  const reopenFeedbackAction = page.locator(`[data-feedback-resolution="${feedbackId}"]`);
+  assert.equal(await reopenFeedbackAction.textContent(), 'Wieder öffnen');
+  await reopenFeedbackAction.click();
   await page.waitForFunction(
     (id) => {
-      const input = document.querySelector(`[data-feedback-resolved="${id}"]`) as HTMLInputElement | null;
-      return Boolean(input && !input.checked && !input.disabled);
+      const entry = document.querySelector(`[data-feedback-entry="${id}"]`);
+      return Boolean(entry && !entry.closest('[data-admin-feedback-completed]'));
     },
     feedbackId,
   );
