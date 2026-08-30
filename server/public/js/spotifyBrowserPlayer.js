@@ -46,6 +46,20 @@ export async function localSpotifyPlaybackStatus(options = {}) {
   }
 }
 
+export async function waitForLocalSpotifyPlaybackReady({
+  status = localSpotifyPlaybackStatus,
+  attempts = 60,
+  intervalMs = 2_000,
+  delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+} = {}) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const localPlayback = await status();
+    if (localPlayback?.ready) return localPlayback;
+    if (attempt < attempts - 1) await delay(intervalMs);
+  }
+  return null;
+}
+
 async function localSpotifyToken() {
   const data = await fetchLocalJson('/web-player/token', { timeoutMs: 10_000 });
   if (typeof data.accessToken !== 'string' || !data.accessToken) {
@@ -111,6 +125,15 @@ function resetPlayer() {
 
 export function localSpotifyPlayerInfo() {
   return playerInfo;
+}
+
+export function localSpotifySessionNeedsRecovery(session, localPlayback, info = playerInfo) {
+  return Boolean(
+    session &&
+    localPlayback?.ready &&
+    session.deviceName === localPlayback.playerName &&
+    session.deviceId !== info?.deviceId,
+  );
 }
 
 export async function connectLocalSpotifyPlayer({ name = 'Respawn · Browser' } = {}) {

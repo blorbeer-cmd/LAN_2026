@@ -26,6 +26,10 @@ Installation.
   Controller auf demselben Gerät läuft. Danach erscheint der Kiosk-Browser als Spotify-Gerät. In
   der laufenden Session zeigt er Titel, Fortschritt und nächsten Songwunsch, aber keine gemeinsame
   Bedienung oder Spotify-Zugangsdaten.
+- Wird der Browser oder Kiosk während einer laufenden Browser-Session neu geladen, erscheint
+  **Browser-Ton wiederherstellen** beziehungsweise **Kiosk-Ton wiederherstellen**. Die bestehende
+  Jam-Session und ihre Warteschlange bleiben dabei erhalten; Respawn akzeptiert nur das neu
+  registrierte Spotify-Gerät mit demselben bisherigen Gerätenamen.
 
 ## Voraussetzungen
 
@@ -79,7 +83,8 @@ Musik-PCs an TV oder Soundbar weiter.
   vorhandene Spotify-Anmeldung bleibt erhalten.
 - Ist nur die Spotify-Anmeldung abgelaufen oder widerrufen, den lokalen Controller öffnen und
   **Spotify-Anmeldung erneuern** wählen. Controller-Paket und Respawn-Kopplung bleiben dabei
-  unverändert.
+  unverändert. Der ursprüngliche Jam-Tab und der Kiosk prüfen die Freigabe danach automatisch erneut;
+  ein manueller Reload ist nicht nötig.
 - Die lokale Seite zeigt beide Verbindungszustände getrennt, kann sofort einen neuen Versuch
   auslösen und bietet unter **Verbindung verwalten** als letzte Option einen vollständigen Reset.
   Einen neuen Download braucht es nur auf einem Ersatzgerät oder wenn die lokale Installation

@@ -17,6 +17,7 @@ import {
   connectLocalSpotifyPlayer,
   localSpotifyPlaybackStatus,
   localSpotifyPlayerInfo,
+  localSpotifySessionNeedsRecovery,
   preloadSpotifyPlaybackSdk,
   LOCAL_CONTROLLER_URL,
 } from './spotifyBrowserPlayer.js';
@@ -544,8 +545,10 @@ let kioskLocalPlayback = null;
 function renderKioskLocalPlayback(element) {
   if (!kioskLocalPlayback) {
     element.hidden = true;
-    element.innerHTML = '';
-    delete element.dataset.renderKey;
+    if (element.dataset.renderKey !== 'local:hidden') {
+      element.innerHTML = '';
+      element.dataset.renderKey = 'local:hidden';
+    }
     return;
   }
   const connectedPlayer = localSpotifyPlayerInfo();
@@ -554,9 +557,16 @@ function renderKioskLocalPlayback(element) {
     : kioskLocalPlayback.ready
       ? '<strong>Ton über diesen Kiosk/TV</strong><span class="muted">Aktiviert den Browser als Spotify-Gerät; der Ton läuft über HDMI oder den gewählten Computer-Ausgang.</span><button type="button" class="btn btn-primary" id="kiosk-enable-local-playback">Kiosk-Ton aktivieren</button>'
       : `<strong>Browser-Wiedergabe freigeben</strong><span class="muted">${escapeHtml(kioskLocalPlayback.message || 'Spotify im lokalen Controller neu freigeben.')}</span><a class="btn btn-primary" href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">Lokalen Controller öffnen</a>`;
+  const renderKey = connectedPlayer
+    ? `local:${connectedPlayer.deviceId}`
+    : `local:${kioskLocalPlayback.ready}:${kioskLocalPlayback.playerName}:${kioskLocalPlayback.message || ''}`;
+  if (element.dataset.renderKey === renderKey) {
+    element.hidden = false;
+    return;
+  }
   element.innerHTML = `<span class="kiosk-music-local">${action}</span>`;
   element.hidden = false;
-  element.dataset.renderKey = connectedPlayer ? `local:${connectedPlayer.deviceId}` : `local:${kioskLocalPlayback.ready}`;
+  element.dataset.renderKey = renderKey;
 
   element.querySelector('#kiosk-enable-local-playback')?.addEventListener('click', async (event) => {
     const button = event.currentTarget;
@@ -572,12 +582,6 @@ function renderKioskLocalPlayback(element) {
       if (status) status.textContent = error.message;
     }
   });
-}
-
-async function prepareKioskLocalPlayback() {
-  kioskLocalPlayback = await localSpotifyPlaybackStatus();
-  if (kioskLocalPlayback?.ready) void preloadSpotifyPlaybackSdk().catch(() => {});
-  if (!kioskMusicSession) renderKioskLocalPlayback(document.getElementById('kiosk-music'));
 }
 
 function estimatedMusicProgress(session, now = Date.now()) {
@@ -646,14 +650,20 @@ function renderMusicBar(payload) {
   const request = (session.requests || []).find(
     (entry) => entry.status === 'playing' && entry.trackUri === track?.uri,
   );
+  const needsBrowserRecovery = localSpotifySessionNeedsRecovery(
+    session,
+    kioskLocalPlayback,
+    localSpotifyPlayerInfo(),
+  );
   const renderKey = JSON.stringify({
     track: track?.uri ?? null,
     playing: session.isPlaying,
     device: session.deviceName,
     requester: request?.requestedByName ?? null,
     next: queued[0]?.id ?? queued[0]?.trackUri ?? null,
+    browserRecovery: needsBrowserRecovery,
   });
-  const html = track ? `
+  const playbackHtml = track ? `
     <span class="kiosk-music-current">
       ${track.imageUrl ? `<img class="kiosk-music-cover" src="${escapeHtml(track.imageUrl)}" alt="" />` : `<span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span>`}
       <span class="kiosk-music-copy">
@@ -676,9 +686,31 @@ function renderMusicBar(payload) {
         </span>` : `<span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span><span class="kiosk-music-copy"><span class="muted kiosk-music-next-label">${icon('music')} Als Nächstes</span><strong>Noch keine Wünsche</strong></span>`}
     </span>` : `
       <span class="kiosk-music-current kiosk-music-empty"><span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span><span class="kiosk-music-copy"><strong>Jam aktiv</strong><span class="muted">Auf ${escapeHtml(session.deviceName)} läuft gerade kein Titel.</span></span></span>`;
+  const recoveryHtml = needsBrowserRecovery ? `
+    <span class="kiosk-music-local">
+      <strong>Browser-Ton getrennt</strong>
+      <span class="muted">Nach dem Neuladen muss der Kiosk einmal wieder mit dem laufenden Jam verbunden werden.</span>
+      <button type="button" class="btn btn-primary" id="kiosk-recover-local-playback">Kiosk-Ton wiederherstellen</button>
+    </span>` : '';
+  const html = `${playbackHtml}${recoveryHtml}`;
   if (element.dataset.renderKey !== renderKey) {
     element.innerHTML = html;
     element.dataset.renderKey = renderKey;
+    element.querySelector('#kiosk-recover-local-playback')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = 'Spotify wird wieder verbunden…';
+      try {
+        const localPlayer = await connectLocalSpotifyPlayer({ name: kioskLocalPlayback.playerName });
+        await api.music.recoverDevice(localPlayer.deviceId);
+        await refreshMusic();
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = 'Erneut versuchen';
+        const status = button.parentElement?.querySelector('.muted');
+        if (status) status.textContent = error.message;
+      }
+    });
   }
   element.hidden = false;
   scheduleMusicBarProgress();
@@ -687,8 +719,13 @@ function renderMusicBar(payload) {
 async function refreshMusic() {
   const requestVersion = nextRefreshVersion('music');
   try {
-    const music = await api.music.kiosk();
+    const [music, browserPlayback] = await Promise.all([
+      api.music.kiosk(),
+      localSpotifyPlaybackStatus(),
+    ]);
     if (!isLatestRefresh('music', requestVersion)) return;
+    kioskLocalPlayback = browserPlayback;
+    if (kioskLocalPlayback?.ready) void preloadSpotifyPlaybackSdk().catch(() => {});
     renderMusicBar(music);
   } catch (error) {
     // Music is optional; a Spotify outage must never disturb the four
@@ -876,8 +913,6 @@ async function main() {
   setInterval(updateClock, 1000);
   setInterval(refreshMusic, 5_000);
   setInterval(refreshAll, KIOSK_REFRESH_INTERVAL_MS);
-  void prepareKioskLocalPlayback();
-
   const socket = connectSocket({ kiosk: true });
 
   socket.on('arcade:kiosk:game', renderArcadeStream);

@@ -3,6 +3,8 @@ import test from 'node:test';
 import {
   connectLocalSpotifyPlayer,
   localSpotifyPlaybackStatus,
+  localSpotifySessionNeedsRecovery,
+  waitForLocalSpotifyPlaybackReady,
 } from './spotifyBrowserPlayer.js';
 
 test('local Spotify playback capability validates the controller response', async () => {
@@ -96,4 +98,28 @@ test('local Spotify player registers the browser device with a loopback token', 
   assert.equal(instance.options.enableMediaSession, true);
   assert.equal(instance.activated, true);
   assert.equal(suppliedToken, 'browser-access-token');
+});
+
+test('local Spotify playback waits for renewed browser scopes', async () => {
+  const states = [
+    { available: true, ready: false, playerName: 'Respawn · TV' },
+    { available: true, ready: true, playerName: 'Respawn · TV' },
+  ];
+  let delays = 0;
+  const ready = await waitForLocalSpotifyPlaybackReady({
+    status: async () => states.shift(),
+    attempts: 3,
+    intervalMs: 1,
+    delay: async () => { delays += 1; },
+  });
+  assert.equal(ready.ready, true);
+  assert.equal(delays, 1);
+});
+
+test('local Spotify playback detects a stale browser device after reload', () => {
+  const session = { deviceId: 'old-device', deviceName: 'Respawn · TV' };
+  const localPlayback = { ready: true, playerName: 'Respawn · TV' };
+  assert.equal(localSpotifySessionNeedsRecovery(session, localPlayback, null), true);
+  assert.equal(localSpotifySessionNeedsRecovery(session, localPlayback, { deviceId: 'old-device' }), false);
+  assert.equal(localSpotifySessionNeedsRecovery(session, { ...localPlayback, playerName: 'Andere Box' }, null), false);
 });

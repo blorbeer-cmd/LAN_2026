@@ -81,6 +81,25 @@ test('music session places the queue directly below the current playback', () =>
   assert.ok(html.indexOf('Als Nächstes') < html.indexOf('Musik suchen'));
 });
 
+test('music session offers browser recovery after a reload changed the Spotify device id', () => {
+  const html = musicActiveSessionHtml({
+    warning: null,
+    session: {
+      deviceId: 'stale-browser-device',
+      deviceName: 'Respawn · TV-PC',
+      currentTrack: null,
+      playbackContext: null,
+      requests: [],
+      hostPlayerId: '',
+      isPlaying: false,
+      progressMs: 0,
+      playbackUpdatedAt: null,
+    },
+  }, { ready: true, playerName: 'Respawn · TV-PC', message: null });
+  assert.match(html, /Browser-Ton wieder verbinden/);
+  assert.match(html, /id="music-recover-local-player"/);
+});
+
 test('music queue shows the remaining playlist tracks separately from requests', () => {
   const html = musicActiveSessionHtml({
     warning: null,
@@ -132,6 +151,7 @@ test('music device picker offers local browser audio without pretending Bluetoot
     message: 'Spotify <neu> freigeben.',
   });
   assert.match(needsPermission, /Spotify &lt;neu&gt; freigeben/);
+  assert.match(needsPermission, /id="music-authorize-local-player"/);
   assert.match(needsPermission, /Spotify-Freigabe öffnen/);
   assert.doesNotMatch(needsPermission, /id="music-start-local-player"/);
 });

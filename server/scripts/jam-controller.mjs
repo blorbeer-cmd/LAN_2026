@@ -518,6 +518,14 @@ async function executeCommand(type, payload = {}) {
     });
     return { ok: true };
   }
+  if (type === 'transfer') {
+    await spotify('/me/player', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_ids: [payload.deviceId], play: Boolean(payload.playing) }),
+    });
+    return { ok: true };
+  }
   if (type === 'queueTrack') {
     await spotify(`/me/player/queue?uri=${encodeURIComponent(payload.uri)}&device_id=${encodeURIComponent(payload.deviceId)}`, { method: 'POST' });
     return { ok: true };

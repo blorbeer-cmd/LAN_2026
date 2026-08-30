@@ -10,7 +10,10 @@ import { backButtonHtml } from '../backButton.js';
 import {
   connectLocalSpotifyPlayer,
   localSpotifyPlaybackStatus,
+  localSpotifyPlayerInfo,
+  localSpotifySessionNeedsRecovery,
   preloadSpotifyPlaybackSdk,
+  waitForLocalSpotifyPlaybackReady,
   LOCAL_CONTROLLER_URL,
 } from '../spotifyBrowserPlayer.js';
 
@@ -27,6 +30,7 @@ let searchResults = null;
 let searchResultType = 'tracks';
 let searchLoading = false;
 let pairing = null;
+let localPlayback = null;
 
 export function invalidateMusic({ hard = false } = {}) {
   cacheStale = true;
@@ -48,6 +52,7 @@ async function load(ctx, silent = false, container = null) {
   loading = true;
   try {
     cache = await api.music.status();
+    localPlayback = cache.session ? await localSpotifyPlaybackStatus() : null;
     cacheStale = false;
   } catch (error) {
     cacheStale = false;
@@ -191,7 +196,7 @@ export function musicDevicePickerHtml(devices, localPlayback = null) {
       <p class="muted">Der Browser auf dem Musik-PC wird selbst zum Spotify-Gerät. Der Ton folgt dem Audioausgang dieses Computers; das Handy wird nicht benötigt.</p>
       ${localPlayback.ready
         ? '<button type="button" class="btn btn-primary btn-block" id="music-start-local-player">Diesen Browser als Musikgerät starten</button>'
-        : `<p class="muted">${escapeHtml(localPlayback.message || 'Spotify muss für die Browser-Wiedergabe neu freigegeben werden.')}</p><a class="btn btn-primary" href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">Spotify-Freigabe öffnen</a>`}
+        : `<p class="muted">${escapeHtml(localPlayback.message || 'Spotify muss für die Browser-Wiedergabe neu freigegeben werden.')}</p><a class="btn btn-primary" id="music-authorize-local-player" href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">Spotify-Freigabe öffnen</a>`}
     </div>` : '';
   return `${spotifyPicker}${localPlayer}
     <p class="muted">Hinweis: Eine reine Bluetooth-Soundbar ist kein eigenes Spotify-Gerät. Sie wird als Audioausgang des Handys oder Computers verwendet.</p>`;
@@ -308,10 +313,20 @@ function requestQueueHtml(session) {
     </section>`;
 }
 
-export function musicActiveSessionHtml(status) {
+export function musicActiveSessionHtml(status, browserPlayback = localPlayback) {
   if (!status.session) return '';
+  const needsBrowserRecovery = localSpotifySessionNeedsRecovery(
+    status.session,
+    browserPlayback,
+    localSpotifyPlayerInfo(),
+  );
   return `
     ${status.warning ? `<div class="card music-warning">${escapeHtml(status.warning)}</div>` : ''}
+    ${needsBrowserRecovery ? `<section class="card stack grouped-page-section music-warning">
+      <strong>Browser-Ton wieder verbinden</strong>
+      <p>Dieser Jam lief über den Browser. Nach dem Neuladen muss Spotify einmal wieder mit der laufenden Session verbunden werden.</p>
+      <button type="button" class="btn btn-primary" id="music-recover-local-player">Browser-Ton wiederherstellen</button>
+    </section>` : ''}
     ${nowPlayingHtml(status.session)}
     ${requestQueueHtml(status.session)}
     <section class="card stack grouped-page-section" aria-labelledby="music-search-title">
@@ -549,6 +564,36 @@ function wireSetup(container, ctx) {
   });
 }
 
+function renderDevicePicker(area, ctx, devices, browserPlayback) {
+  if (!area.isConnected) return;
+  if (browserPlayback?.ready) void preloadSpotifyPlaybackSdk().catch(() => {});
+  area.innerHTML = musicDevicePickerHtml(devices, browserPlayback);
+  area.querySelector('#music-start')?.addEventListener('click', async () => {
+    try {
+      await api.music.start(getMyId(), area.querySelector('#music-device-select').value);
+      invalidateMusic();
+      ctx.rerender();
+    } catch (error) {
+      showToast(error.message, { error: true });
+    }
+  });
+  area.querySelector('#music-start-local-player')?.addEventListener('click', (event) => {
+    void startLocalMusicSession(ctx, event.currentTarget, browserPlayback);
+  });
+  area.querySelector('#music-authorize-local-player')?.addEventListener('click', (event) => {
+    event.currentTarget.textContent = 'Freigabe geöffnet – Status wird geprüft…';
+    void waitForLocalSpotifyPlaybackReady().then((readyPlayback) => {
+      if (!area.isConnected) return;
+      if (readyPlayback) {
+        showToast('Browser-Wiedergabe ist jetzt freigegeben.');
+        renderDevicePicker(area, ctx, devices, readyPlayback);
+      } else {
+        renderDevicePicker(area, ctx, devices, browserPlayback);
+      }
+    });
+  });
+}
+
 function wireConnection(container, ctx) {
   container.querySelector('#music-disconnect')?.addEventListener('click', async () => {
     try {
@@ -575,20 +620,7 @@ function wireConnection(container, ctx) {
         api.music.devices(),
         localSpotifyPlaybackStatus(),
       ]);
-      if (localPlayback?.ready) void preloadSpotifyPlaybackSdk().catch(() => {});
-      area.innerHTML = musicDevicePickerHtml(devices, localPlayback);
-      area.querySelector('#music-start')?.addEventListener('click', async () => {
-        try {
-          await api.music.start(getMyId(), area.querySelector('#music-device-select').value);
-          invalidateMusic();
-          ctx.rerender();
-        } catch (error) {
-          showToast(error.message, { error: true });
-        }
-      });
-      area.querySelector('#music-start-local-player')?.addEventListener('click', (event) => {
-        void startLocalMusicSession(ctx, event.currentTarget, localPlayback);
-      });
+      renderDevicePicker(area, ctx, devices, localPlayback);
     } catch (error) {
       area.innerHTML = emptyStateHtml(error.message);
     }
@@ -596,6 +628,21 @@ function wireConnection(container, ctx) {
 }
 
 function wireSession(container, ctx) {
+  container.querySelector('#music-recover-local-player')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = 'Browser wird wieder verbunden…';
+    try {
+      const localPlayer = await connectLocalSpotifyPlayer({ name: localPlayback.playerName });
+      cache = { ...cache, session: await api.music.recoverDevice(localPlayer.deviceId) };
+      showToast('Der laufende Jam ist wieder mit diesem Browser verbunden.');
+      ctx.rerender();
+    } catch (error) {
+      showToast(error.message, { error: true });
+      button.disabled = false;
+      button.textContent = 'Erneut versuchen';
+    }
+  });
   container.querySelector('#music-search-input')?.addEventListener('input', (event) => {
     searchQuery = event.currentTarget.value;
   });

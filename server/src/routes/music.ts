@@ -472,6 +472,40 @@ musicRouter.post('/sessions', ...withBodyPlayerIdentity, asyncRoute(async (req, 
   res.status(201).json(sessionPayload(session));
 }));
 
+musicRouter.patch('/sessions/device', asyncRoute(async (req, res) => {
+  const session = requestActiveSession(req, res);
+  if (!session) return res.status(404).json({ error: 'Jam nicht gefunden.' });
+  if (!controllerSummary(req.group!.id)?.online) return res.status(409).json({ error: 'Jam-Controller ist nicht erreichbar.' });
+  const deviceId = req.body?.deviceId;
+  if (typeof deviceId !== 'string' || !deviceId) return res.status(400).json({ error: 'Spotify-Gerät auswählen.' });
+  if (deviceId === session.device_id) return res.json(sessionPayload(session));
+
+  const data = await issueMusicControllerCommand<{ devices?: Array<Record<string, unknown>> }>(req.group!.id, 'devices');
+  const device = data.devices?.find((entry) => entry.id === deviceId);
+  if (!device || typeof device.name !== 'string') return res.status(404).json({ error: 'Spotify-Gerät ist nicht mehr verfügbar.' });
+  if (device.name !== session.device_name) {
+    return res.status(409).json({ error: 'Nur das bisherige Browser-Musikgerät kann wieder verbunden werden.' });
+  }
+  const currentSession = requestActiveSession(req, res);
+  if (currentSession?.id !== session.id) return res.status(409).json({ error: 'Der Jam wurde inzwischen beendet.' });
+
+  await issueMusicControllerCommand(req.group!.id, 'transfer', {
+    deviceId,
+    playing: Boolean(currentSession.playback_is_playing),
+  });
+  const updated = db.prepare(
+    "UPDATE music_sessions SET device_id = ?, device_name = ? WHERE id = ? AND status = 'active'",
+  ).run(deviceId, device.name, session.id);
+  if (updated.changes !== 1) {
+    try { await issueMusicControllerCommand(req.group!.id, 'pause', { deviceId }); } catch { /* best effort */ }
+    return res.status(409).json({ error: 'Der Jam wurde inzwischen beendet.' });
+  }
+  const recoveredSession = requestActiveSession(req, res)!;
+  await rescheduleQueue(req.group!.id, recoveredSession);
+  musicChanged(req.group!.id, requestEventId(res));
+  res.json(sessionPayload(recoveredSession));
+}));
+
 musicRouter.get('/search', asyncRoute(async (req, res) => {
   if (!requestActiveSession(req, res)) return res.status(409).json({ error: 'Kein Jam aktiv.' });
   const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';

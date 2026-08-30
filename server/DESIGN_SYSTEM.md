@@ -1144,7 +1144,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   track, progress and next request without exposing controls or Spotify credentials. The fixed
   music bar offers one local setup action before a session when the Jam controller runs on that
   kiosk device. It registers the kiosk browser as a Spotify Connect player, so its audio follows the
-  computer's HDMI/TV output; after activation the kiosk returns to its read-only display role. The
+  computer's HDMI/TV output; after activation the kiosk returns to its read-only display role. A
+  reloaded local browser exposes a recovery action for the still-running Jam. Recovery preserves
+  session and queue state, and the server only retargets playback to a newly registered Spotify
+  device whose name exactly matches the session's previous device. The
   regular Jam device picker exposes the same local-browser path only on the controller computer and
   explains that a Bluetooth-only soundbar is an audio output rather than its own Spotify device. The fixed
   loopback redirect `http://127.0.0.1:43821/callback` makes controller setup independent of the
