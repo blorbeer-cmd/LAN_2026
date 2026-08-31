@@ -807,7 +807,21 @@ export function ensureScribbleSocket() {
   socket.on('connect', () => {
     if (!match || matchEnded) return;
     socket.emit('scribble:rejoin', { matchId: match.matchId, playerId: myId() }, (res) => {
-      if (!res?.ok) return;
+      if (!res?.ok) {
+        // A 2-player match ends immediately once fewer than 2 players stay
+        // online (handlePlayerLeft in scribble.ts), deleting it — the most
+        // common Scribble match size, so this is the ordinary case, not an
+        // edge case. There is nothing left to sync back into and no way to
+        // learn the match's outcome, so recover to the launcher instead of
+        // leaving a stale match — and a guess stuck on 'pending' forever —
+        // on screen with no way out.
+        const staleContainer = document.getElementById('view-container');
+        if (staleContainer?.dataset.scribbleGuessResult === 'pending') delete staleContainer.dataset.scribbleGuessResult;
+        resetMatchState();
+        showToast('Die Verbindung wurde unterbrochen und das Match ist beendet.', { error: true });
+        navigate('arcade');
+        return;
+      }
       const sync = res.sync;
       // Only a drawing-phase sync carries ops for a live canvas. A sync
       // during reveal/choosing must reset the mirror instead — the next
