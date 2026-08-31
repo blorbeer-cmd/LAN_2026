@@ -61,7 +61,7 @@ function arcadeFlowTest(
 }
 
 async function waitForArcadeStylesheet(targetPage: Page): Promise<void> {
-  await targetPage.waitForSelector('#arcade-stylesheet[href="/css/arcade.css?v=3"]', { state: 'attached' });
+  await targetPage.waitForSelector('#arcade-stylesheet[href="/css/arcade.css?v=6"]', { state: 'attached' });
   await targetPage.waitForFunction(() => {
     const link = document.querySelector('#arcade-stylesheet');
     return link instanceof HTMLLinkElement && link.sheet !== null;
@@ -149,17 +149,23 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
 
   const mobileViewport = page.viewportSize();
   await page.setViewportSize({ width: 1280, height: 800 });
-  const createButtonLayout = async (selector: string) => page.locator(selector).evaluate((button) => {
-    const buttonRect = button.getBoundingClientRect();
-    const cardRect = button.closest('.arcade-lobby-card')!.getBoundingClientRect();
-    return {
-      left: Math.round(buttonRect.left - cardRect.left),
-      right: Math.round(cardRect.right - buttonRect.right),
-      top: Math.round(buttonRect.top - cardRect.top),
-      width: Math.round(buttonRect.width),
-      height: Math.round(buttonRect.height),
-    };
-  });
+  const createButtonLayout = async (selector: string) => {
+    await page.waitForFunction((candidate) => {
+      const button = document.querySelector(candidate);
+      return Boolean(button && button.getClientRects().length > 0);
+    }, selector);
+    return page.locator(selector).evaluate((button) => {
+      const buttonRect = button.getBoundingClientRect();
+      const cardRect = button.closest('.arcade-lobby-card')!.getBoundingClientRect();
+      return {
+        left: Math.round(buttonRect.left - cardRect.left),
+        right: Math.round(cardRect.right - buttonRect.right),
+        top: Math.round(buttonRect.top - cardRect.top),
+        width: Math.round(buttonRect.width),
+        height: Math.round(buttonRect.height),
+      };
+    });
+  };
   const noModeLayout = await createButtonLayout('#quiz-create-lobby');
   assert.ok(Math.abs(noModeLayout.left - noModeLayout.right) <= 1, 'the no-mode create action must be centered');
   await selectArcadeGame(page, 'scribble');
@@ -187,6 +193,30 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
   await page.waitForSelector('#quiz-create-lobby');
   await page.click('#quiz-create-lobby');
   await page.waitForSelector('[data-close-lobby]');
+  assert.equal(await page.locator('.arcade-game-picker').isVisible(), true);
+  assert.equal(await page.locator('.arcade-tiles').isVisible(), true);
+
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'desktop');
+  const ownedLobbyLayout = await page.evaluate(() => {
+    const activeGame = document.querySelector('[aria-labelledby="arcade-active-game-title"]')?.getBoundingClientRect();
+    const gamePicker = document.querySelector('.arcade-game-picker')?.getBoundingClientRect();
+    const gameGrid = document.querySelector('.arcade-tiles');
+    if (!activeGame || !gamePicker || !gameGrid) return null;
+    return {
+      activeLeft: Math.round(activeGame.left),
+      activeTop: Math.round(activeGame.top),
+      pickerLeft: Math.round(gamePicker.left),
+      pickerBottom: Math.round(gamePicker.bottom),
+      gameColumns: getComputedStyle(gameGrid).gridTemplateColumns.split(' ').length,
+    };
+  });
+  assert.ok(ownedLobbyLayout);
+  assert.equal(ownedLobbyLayout.pickerLeft, ownedLobbyLayout.activeLeft);
+  assert.ok(ownedLobbyLayout.pickerBottom < ownedLobbyLayout.activeTop);
+  assert.equal(ownedLobbyLayout.gameColumns, 3);
+  if (mobileViewport) await page.setViewportSize(mobileViewport);
+
   await guestPage.click('#notifications-btn');
   await guestPage.waitForSelector('#notifications-panel:has-text("Neue Quiz-Lobby")');
   await guestPage.click('[data-notification-close]');

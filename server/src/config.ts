@@ -55,7 +55,7 @@ export const config = {
   // Shared password for the automatically created per-event kiosk accounts.
   // Existing installations can keep using KIOSK_TOKEN as the password; a
   // separate value is optional when the direct legacy token should differ.
-  kioskPassword: process.env.KIOSK_PASSWORD ?? process.env.KIOSK_TOKEN ?? '',
+  kioskPassword: process.env.KIOSK_PASSWORD || process.env.KIOSK_TOKEN || '',
 
   // Session cookies are Secure by default (required for SameSite cookies to
   // survive real browsers, and this server is reachable from the cloud).

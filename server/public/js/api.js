@@ -470,6 +470,7 @@ export const api = {
 
   admin: {
     readiness: () => apiFetch('/api/admin/readiness'),
+    kioskPassword: () => apiFetch('/api/admin/kiosk-password'),
     players: () => apiFetch('/api/admin/players'),
     audit: (limit = 100) => apiFetch(`/api/admin/audit?limit=${limit}`),
     agentDiagnostics: () => apiFetch('/api/admin/agent-diagnostics'),
@@ -490,6 +491,11 @@ export const api = {
   feedback: {
     create: (data) => apiFetch('/api/feedback', { method: 'POST', body: JSON.stringify(data) }),
     list: (limit = 50) => apiFetch(`/api/feedback?limit=${limit}`),
+    setResolved: (id, resolved) =>
+      apiFetch(`/api/feedback/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ resolved }),
+      }),
   },
 
   foodOrders: {

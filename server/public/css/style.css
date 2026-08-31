@@ -46,7 +46,10 @@
   --shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
   --nav-height: 64px;
   --topbar-height: 56px;
+  --shell-bottom-inset: calc(var(--nav-height) + env(safe-area-inset-bottom));
   --content-max-width: 720px;
+  --desktop-nav-width: 176px;
+  --desktop-supporting-pane-min-width: 320px;
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
   /* Spacing scale — every card/row/section gap and padding in this file
@@ -456,7 +459,7 @@ textarea {
   right: 0;
   z-index: 30;
   width: min(var(--notification-panel-width), calc(100vw - var(--space-4)));
-  max-height: calc(100dvh - var(--topbar-height) - var(--nav-height) - var(--space-6));
+  max-height: calc(100dvh - var(--topbar-height) - var(--shell-bottom-inset) - var(--space-6));
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -603,7 +606,6 @@ textarea {
   align-items: center;
   gap: var(--space-1);
 }
-
 @media (max-width: 479px) { /* --bp-sm */
   .topbar-title .brand-title {
     display: none;
@@ -1175,7 +1177,7 @@ textarea {
      but the scrollbar parks at the window's right edge instead of floating
      mid-screen at the column's edge on a wide display. */
   padding: var(--space-4) max(var(--space-4), calc((100% - var(--content-max-width)) / 2))
-    calc(var(--nav-height) + env(safe-area-inset-bottom) + var(--space-6));
+    calc(var(--shell-bottom-inset) + var(--space-6));
   width: 100%;
 }
 /* Re-applied by switchView() on every tab change (and only there — realtime
@@ -1195,19 +1197,39 @@ textarea {
 }
 
 /* On a laptop/desktop screen, a 720px-capped column leaves most of the
-   display empty. Widen the content area in steps as there's room for it —
-   the bottom nav intentionally does NOT follow this (see .bottom-nav-inner
-   below), so navigation stays a tight, thumb/click-friendly cluster instead
-   of spreading thin across a wide window. */
+   display empty. Widen the content area in steps as there's room for it.
+   At --bp-xl, the compact bottom bar gives way to the grouped desktop rail;
+   routes and permissions remain shared while frequent secondary areas become
+   direct destinations. */
 @media (min-width: 860px) { /* --bp-lg */
   :root {
     --content-max-width: 1080px;
   }
 }
 @media (min-width: 1280px) { /* --bp-xl */
-  :root {
-    --content-max-width: 1320px;
+  :root[data-layout-mode='desktop'] {
+    --content-max-width: 1600px;
+    --shell-bottom-inset: 0px;
   }
+  :root[data-layout-mode='desktop'] .notification-highlight,
+  :root[data-layout-mode='desktop'] .connection-status,
+  :root[data-layout-mode='desktop'] .admin-banner,
+  :root[data-layout-mode='desktop'] .view-container {
+    margin-left: var(--desktop-nav-width);
+  }
+  :root[data-layout-mode='desktop'] .view-container {
+    width: calc(100% - var(--desktop-nav-width));
+    padding: var(--space-4)
+      max(var(--space-4), calc((100% - var(--desktop-nav-width) - var(--content-max-width)) / 2))
+      var(--space-6);
+  }
+  :root[data-layout-mode='desktop'] .topbar #feedback-btn {
+    display: none;
+  }
+}
+
+.desktop-nav {
+  display: none;
 }
 
 .bottom-nav {
@@ -1234,6 +1256,133 @@ textarea {
   max-width: 720px;
   height: 100%;
   margin: 0 auto;
+}
+
+@media (min-width: 1280px) { /* --bp-xl */
+  :root[data-layout-mode='desktop'] .bottom-nav {
+    display: none;
+  }
+  :root[data-layout-mode='desktop'] .desktop-nav {
+    position: fixed;
+    top: var(--topbar-height);
+    bottom: 0;
+    left: 0;
+    z-index: 10;
+    display: flex;
+    width: var(--desktop-nav-width);
+    min-height: 0;
+    flex-direction: column;
+    background: var(--bg-elevated);
+    border-right: 1px solid var(--border);
+  }
+  :root[data-layout-mode='desktop'] .desktop-nav-main {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: var(--space-3);
+    scrollbar-gutter: stable;
+  }
+  :root[data-layout-mode='desktop'] .desktop-nav-utilities {
+    flex: 0 0 auto;
+    padding: var(--space-2) var(--space-3) var(--space-3);
+    border-top: 1px solid var(--border);
+    background: var(--bg-elevated);
+  }
+  :root[data-layout-mode='desktop'] .desktop-nav-group + .desktop-nav-group {
+    margin-top: var(--space-3);
+    padding-top: var(--space-2);
+    border-top: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+  }
+  :root[data-layout-mode='desktop'] .desktop-nav-heading {
+    display: block;
+    padding: 0 var(--space-2) var(--space-1);
+    color: var(--text-muted);
+    font-size: var(--font-size-2xs);
+    font-weight: var(--font-weight-bold);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  :root[data-layout-mode='desktop'] .desktop-nav-btn {
+    position: relative;
+    display: flex;
+    width: 100%;
+    min-height: var(--tap-target-size);
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+  :root[data-layout-mode='desktop'] .desktop-nav-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: var(--space-1);
+    height: calc(100% - var(--space-2));
+    border-radius: var(--radius-full);
+    background: var(--accent-gradient);
+    opacity: 0;
+    transform: translateY(-50%) scaleY(0.55);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    pointer-events: none;
+  }
+  :root[data-layout-mode='desktop'] .desktop-nav-btn.active {
+    color: var(--accent);
+    font-weight: var(--font-weight-bold);
+    background: var(--accent-bg);
+  }
+  :root[data-layout-mode='desktop'] .desktop-nav-btn.active::before {
+    opacity: 1;
+    transform: translateY(-50%) scaleY(1);
+  }
+  :root[data-layout-mode='desktop'] .desktop-nav-icon {
+    position: relative;
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+  }
+  :root[data-layout-mode='desktop'] .desktop-nav-icon .ui-icon {
+    width: 18px;
+    height: 18px;
+  }
+  :root[data-layout-mode='desktop'] .desktop-nav-btn.needs-setup .desktop-nav-icon::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--state-paused);
+    box-shadow: 0 0 0 2px var(--bg-elevated);
+  }
+}
+
+@media (min-width: 1280px) and (hover: hover) { /* --bp-xl */
+  :root[data-layout-mode='desktop'] .desktop-nav-btn:hover:not(.active) {
+    color: var(--text);
+    background: var(--bg-elevated-2);
+  }
+}
+
+@media (min-width: 1280px) { /* --bp-xl */
+  /* These destinations are direct desktop navigation items. Their compact
+     mobile back control would otherwise lead to the now-hidden More hub and
+     contradict the browser's real history. */
+  :root[data-layout-mode='desktop'] .more-subpage-title-row > [data-navigate='more'] {
+    display: none;
+  }
+  :root[data-layout-mode='desktop'] .more-subpage-title-row:has(> [data-navigate='more']) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
 }
 
 .nav-btn {
@@ -2001,6 +2150,19 @@ input[type='number']::-webkit-inner-spin-button {
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
 }
+.profile-layout-hint {
+  margin: 0;
+}
+.profile-layout-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.profile-layout-option {
+  min-width: 0;
+  padding-right: var(--space-2);
+  padding-left: var(--space-2);
+}
 @media (min-width: 640px) { /* --bp-md */
   .profile-password-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2430,6 +2592,18 @@ button.draft-pool-player {
   color: var(--text);
   font-size: var(--font-size-lg);
   line-height: var(--line-height-tight);
+}
+.kiosk-password-credential {
+  flex: 0 0 auto;
+}
+.kiosk-password-credential strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-md);
+}
+.kiosk-open-link {
+  text-align: center;
+  text-decoration: none;
 }
 .tournament-lobby-copy {
   width: var(--tap-target-size);

@@ -84,21 +84,12 @@ async function openArcadeAs(
     expanded
   );
   await page.reload();
-  await page.waitForSelector('.nav-btn[data-view="more"]');
-  // Freshly created players still broadcast players:changed refreshes that
-  // re-render the "Mehr" view mid-click — retry the two-step navigation
-  // instead of failing on a detached button.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.click('.nav-btn[data-view="more"]', { timeout: 4000 }).catch(() => undefined);
-    try {
-      await page.click('[data-navigate="arcade"]', { timeout: 4000 });
-      await page.waitForSelector('.arcade-tiles', { timeout: 4000 });
-      return { context, page };
-    } catch {
-      // late realtime re-render replaced the view — try again
-    }
-  }
-  throw new Error('could not open the Arcade view');
+  await page.waitForFunction(() =>
+    Array.from(document.querySelectorAll<HTMLElement>(
+      '.desktop-nav-btn[data-view="arcade"], .nav-btn[data-view="more"]',
+    )).some((button) => button.getClientRects().length > 0));
+  await navigateToArcade(page);
+  return { context, page };
 }
 
 async function openHomeAs(playerId: string): Promise<Actor> {
@@ -116,10 +107,21 @@ async function openHomeAs(playerId: string): Promise<Actor> {
   return { context, page };
 }
 
+async function clickArcadeDestination(page: Page): Promise<void> {
+  const desktopArcade = page.locator('.desktop-nav-btn[data-view="arcade"]:visible');
+  if (await desktopArcade.count()) {
+    await desktopArcade.click({ timeout: 4_000 });
+    return;
+  }
+  await page.click('.nav-btn[data-view="more"]:visible', { timeout: 4_000 });
+  await page.click('[data-navigate="arcade"]', { timeout: 4_000 });
+}
+
 async function navigateToArcade(page: Page): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.click('.nav-btn[data-view="more"]');
-    await page.click('[data-navigate="arcade"]');
+    // Freshly created players still broadcast players:changed refreshes that
+    // can replace the mobile "Mehr" view or a direct desktop item mid-click.
+    await clickArcadeDestination(page).catch(() => undefined);
     try {
       await page.waitForSelector('.arcade-tiles', { timeout: 4_000 });
       return;
@@ -257,17 +259,18 @@ arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and s
       await actor.page.locator('#arcade-active-game-title').evaluate((heading) => {
         const active = heading.closest('.grouped-page-section')?.getBoundingClientRect();
         const picker = document.querySelector('.arcade-game-picker')?.getBoundingClientRect();
-        return Boolean(active && picker && active.top < picker.top);
+        return Boolean(active && picker && picker.top < active.top);
       }),
       true,
-      'the active game is placed before the compact game switcher',
+      'the selected game lobby is placed below the game selection',
     );
+    assert.equal(await actor.page.locator('#arcade-game-back').count(), 0);
     await actor.page.goBack();
     await actor.page.waitForSelector('#arcade-active-game-title', { state: 'detached' });
     assert.equal(new URL(actor.page.url()).hash, '#arcade');
     await actor.page.goForward();
     await actor.page.waitForSelector('#arcade-active-game-title:has-text("Snake")');
-    await actor.page.click('#arcade-game-back');
+    await actor.page.click('[data-game="snake"]');
     await actor.page.waitForSelector('#arcade-active-game-title', { state: 'detached' });
     assert.equal(new URL(actor.page.url()).hash, '#arcade');
 
@@ -289,7 +292,8 @@ arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and s
     assert.equal(await activeView(direct), 'arcade');
     await direct.reload();
     await direct.waitForSelector('#arcade-active-game-title:has-text("Snake")');
-    await direct.click('#arcade-game-back');
+    assert.equal(await direct.locator('#arcade-game-back').count(), 0);
+    await direct.click('[data-game="snake"]');
     await direct.waitForSelector('#arcade-active-game-title', { state: 'detached' });
     assert.equal(new URL(direct.url()).hash, '#arcade');
     await direct.close();
@@ -310,8 +314,7 @@ arcadeTest('navigation', 'an obsolete or failed Arcade import cannot replace or 
   await stale.page.route('**/js/arcade/views/arcade.js', delayArcade);
 
   try {
-    await stale.page.click('.nav-btn[data-view="more"]');
-    await stale.page.click('[data-navigate="arcade"]');
+    await clickArcadeDestination(stale.page);
     await stale.page.waitForSelector('text=Arcade wird geladen');
     await stale.page.click('.nav-btn[data-view="home"]');
     releaseImport();
@@ -327,8 +330,7 @@ arcadeTest('navigation', 'an obsolete or failed Arcade import cannot replace or 
   const failArcade = (route: import('playwright').Route) => route.abort('failed');
   await failed.page.route('**/js/arcade/views/arcade.js', failArcade);
   try {
-    await failed.page.click('.nav-btn[data-view="more"]');
-    await failed.page.click('[data-navigate="arcade"]');
+    await clickArcadeDestination(failed.page);
     await failed.page.waitForSelector('text=Arcade konnte nicht geladen werden.');
     await failed.page.click('.nav-btn[data-view="home"]');
     assert.equal(await activeView(failed.page), 'home');
@@ -343,7 +345,7 @@ arcadeTest('navigation', 'an obsolete or failed Arcade import cannot replace or 
 arcadeTest('navigation', 'classic Snake guest returns to the Arcade immediately after leaving', async () => {
   const hostPlayer = await createPlayer('Snake Leave Host');
   const guestPlayer = await createPlayer('Snake Leave Guest');
-  const host = await openArcadeAs(hostPlayer.id);
+  const host = await openArcadeAs(hostPlayer.id, { viewport: { width: 568, height: 320 } });
   const guest = await openArcadeAs(guestPlayer.id);
   try {
     await host.page.click('[data-game="snake"]');
@@ -356,9 +358,37 @@ arcadeTest('navigation', 'classic Snake guest returns to the Arcade immediately 
     await host.page.waitForSelector('#snake-start:not([disabled])');
     await host.page.click('#snake-start');
     await Promise.all([
+      host.page.waitForSelector('.countdown-player-identity'),
+      guest.page.waitForSelector('.countdown-player-identity'),
+    ]);
+    assert.match(await host.page.locator('.countdown-player-identity').innerText(), /Du bist\s+Blau/);
+    assert.match(await guest.page.locator('.countdown-player-identity').innerText(), /Du bist\s+Pink/);
+    const countdownIdentityBox = await host.page.locator('.countdown-player-identity').boundingBox();
+    const countdownColorBox = await host.page.locator('.countdown-player-color').boundingBox();
+    const viewportHeight = await host.page.evaluate(() => window.innerHeight);
+    assert.ok(
+      countdownIdentityBox
+        && countdownIdentityBox.y >= 0
+        && countdownIdentityBox.y + countdownIdentityBox.height <= viewportHeight,
+      'the Snake player identity must remain fully visible in a short viewport',
+    );
+    assert.ok(
+      countdownColorBox && countdownColorBox.width >= 32,
+      'the countdown player colour must remain prominent',
+    );
+    const countdownBackdropFilter = await host.page.locator('.countdown-overlay').evaluate((element) => {
+      const styles = getComputedStyle(element);
+      return `${styles.backdropFilter} ${styles.getPropertyValue('-webkit-backdrop-filter')}`;
+    });
+    assert.doesNotMatch(countdownBackdropFilter, /blur/i);
+    await Promise.all([
       guest.page.waitForSelector('#snake-canvas'),
       host.page.waitForSelector('#snake-pause'),
     ]);
+    assert.match(await host.page.locator('.snake-player-identity').innerText(), /Deine Farbe\s+Blau/);
+    assert.match(await guest.page.locator('.snake-player-identity').innerText(), /Deine Farbe\s+Pink/);
+    const playerColorBox = await host.page.locator('.snake-player-color').boundingBox();
+    assert.ok(playerColorBox && playerColorBox.width >= 32);
     // Keep the match alive while the guest handles the confirmation dialog.
     // Under loaded CI runners an unpaused classic round can end first and
     // replace the view, turning this navigation assertion into a timing race.

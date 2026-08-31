@@ -16,9 +16,9 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
   <!-- bump ?v= when the stylesheet changes so no cached copy survives a reload -->
-  <link rel="stylesheet" href="/css/style.css?v=43" />
-  <link rel="stylesheet" href="/css/domains.css?v=1" />
-  <link rel="stylesheet" href="/css/overlays.css?v=1" />
+  <link rel="stylesheet" href="/css/style.css?v=48" />
+  <link rel="stylesheet" href="/css/domains.css?v=6" />
+  <link rel="stylesheet" href="/css/overlays.css?v=2" />
   <!-- app.js adds this sheet only while an Arcade view is active. -->
 </head>
 <body>
@@ -59,6 +59,11 @@
     </div>
 
     <main id="view-container" class="view-container"></main>
+
+    <nav class="desktop-nav" aria-label="Desktop-Navigation">
+      <div id="desktop-nav-main" class="desktop-nav-main"></div>
+      <div id="desktop-nav-utilities" class="desktop-nav-utilities"></div>
+    </nav>
 
     <nav class="bottom-nav" aria-label="Hauptnavigation">
       <div class="bottom-nav-inner">

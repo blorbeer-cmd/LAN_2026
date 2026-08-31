@@ -13,6 +13,12 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+@media (min-width: 1280px) { /* --bp-xl */
+  :root[data-layout-mode='desktop'] .arcade-tiles,
+  :root[data-layout-mode='desktop'] [aria-labelledby='arcade-stats-title'] .leaderboard-list-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
 .arcade-tile {
   display: flex;
   align-items: center;
@@ -55,6 +61,58 @@
   flex: 0 0 auto;
   margin-left: auto;
 }
+
+/* A narrow connector joins only segments of the same Battleship vessel.
+   The repeated letter keeps touching ships distinguishable without relying
+   on color or the connector shape alone. */
+.battleship-cell.battleship-ship-segment {
+  position: relative;
+}
+
+.battleship-cell.battleship-ship-segment.has-next-segment::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.battleship-cell.battleship-ship-segment.is-ship-horizontal.has-next-segment::before {
+  inset-block: var(--space-2);
+  inset-inline-start: 100%;
+  width: var(--space-1);
+}
+
+.battleship-cell.battleship-ship-segment.is-ship-vertical.has-next-segment::before {
+  inset-block-start: 100%;
+  inset-inline: var(--space-2);
+  height: var(--space-1);
+}
+
+.battleship-cell.battleship-ship-segment.is-sunk.has-next-segment::before {
+  background: var(--danger);
+}
+
+.battleship-cell.battleship-ship-segment::after {
+  content: attr(data-ship-code);
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--accent-text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-black);
+  line-height: var(--line-height-tight);
+  pointer-events: none;
+}
+
+.battleship-cell.battleship-ship-segment:is(.is-hit, .is-sunk)::after {
+  inset: var(--space-1) auto auto var(--space-1);
+  display: block;
+  font-size: var(--font-size-2xs);
+}
+
 .challenge-rush-stage { max-width: var(--challenge-rush-stage-max-width); margin-inline: auto; }
 .challenge-rush-playfield { position: relative; min-height: var(--challenge-rush-playfield-min-height); display: grid; place-items: center; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
 .challenge-rush-playfield.is-concealed { background: var(--bg-elevated-2); }
@@ -1072,6 +1130,54 @@
   border-radius: var(--radius);
   box-shadow: 0 0 30px color-mix(in srgb, var(--accent-2) 18%, transparent); /* design-token-ok: broad low-opacity glow is scaled to the game canvas */
   touch-action: none;
+}
+
+.snake-player-identity {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--snake-player-color);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--snake-player-color) 10%, var(--bg-elevated));
+  box-shadow: 0 0 var(--space-4) color-mix(in srgb, var(--snake-player-color) 30%, transparent);
+}
+
+.snake-player-color {
+  width: var(--space-8);
+  height: var(--space-8);
+  flex: 0 0 auto;
+  border: 1px solid var(--text);
+  border-radius: var(--radius-full);
+  background: var(--snake-player-color);
+  box-shadow: 0 0 var(--space-3) var(--snake-player-color);
+}
+
+.snake-player-identity-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0 var(--space-2);
+  line-height: var(--line-height-tight);
+}
+
+.snake-player-identity-prompt,
+.snake-player-identity-detail {
+  color: var(--text-muted);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-medium);
+}
+
+.snake-player-identity-copy strong {
+  color: var(--snake-player-color);
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-black);
+  text-shadow: 0 0 var(--space-3) color-mix(in srgb, var(--snake-player-color) 55%, transparent);
 }
 
 .snake-overlay {

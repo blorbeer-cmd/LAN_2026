@@ -1,5 +1,5 @@
-export const SNAKE_WIDTH = 32;
-export const SNAKE_HEIGHT = 20;
+export const SNAKE_WIDTH = 48;
+export const SNAKE_HEIGHT = 30;
 export const SNAKE_ARENA_MIN_PLAYERS = 3;
 export const SNAKE_ARENA_MAX_PLAYERS = 8;
 export const SNAKE_ARENA_SHRINK_TICKS = 80;
@@ -20,14 +20,14 @@ const vectors: Record<Direction, Cell> = { up: { x: 0, y: -1 }, down: { x: 0, y:
 const INITIAL_BOUNDS: SafeBounds = { minX: 0, maxX: SNAKE_WIDTH - 1, minY: 0, maxY: SNAKE_HEIGHT - 1 };
 
 const SPAWNS: Array<{ head: Cell; direction: Direction }> = [
-  { head: { x: 6, y: 10 }, direction: 'right' },
-  { head: { x: 25, y: 10 }, direction: 'left' },
-  { head: { x: 16, y: 4 }, direction: 'down' },
-  { head: { x: 15, y: 15 }, direction: 'up' },
-  { head: { x: 6, y: 5 }, direction: 'right' },
-  { head: { x: 25, y: 14 }, direction: 'left' },
-  { head: { x: 25, y: 5 }, direction: 'left' },
-  { head: { x: 6, y: 14 }, direction: 'right' },
+  { head: { x: 9, y: 15 }, direction: 'right' },
+  { head: { x: 38, y: 15 }, direction: 'left' },
+  { head: { x: 24, y: 6 }, direction: 'down' },
+  { head: { x: 23, y: 23 }, direction: 'up' },
+  { head: { x: 9, y: 8 }, direction: 'right' },
+  { head: { x: 38, y: 21 }, direction: 'left' },
+  { head: { x: 38, y: 8 }, direction: 'left' },
+  { head: { x: 9, y: 21 }, direction: 'right' },
 ];
 
 function spawnSnake({ head, direction }: { head: Cell; direction: Direction }): Snake {
@@ -48,7 +48,7 @@ export function createWorld(playerCount = 2, mode: SnakeMode = 'classic'): Snake
   if (!valid) throw new RangeError(mode === 'classic' ? 'Classic Snake requires exactly 2 players.' : 'Snake Arena requires 3 to 8 players.');
   return {
     snakes: SPAWNS.slice(0, playerCount).map(spawnSnake),
-    food: mode === 'arena' ? { x: 16, y: 8 } : { x: 16, y: 5 },
+    food: mode === 'arena' ? { x: 24, y: 12 } : { x: 24, y: 8 },
     tick: 0,
     mode,
     safeBounds: { ...INITIAL_BOUNDS },

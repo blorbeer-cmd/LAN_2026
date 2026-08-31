@@ -10,6 +10,7 @@ import { detachPushSubscription, rebindExistingPushSubscription } from './push.j
 import { setAdmin } from './admin.js';
 import { setTestIdentity } from './testFilter.js';
 import { showToast } from './toast.js';
+import { applyLayoutModeForPlayer } from './layoutMode.js';
 
 const SESSION_ACCOUNT_KEY = 'respawn_session_account';
 
@@ -33,6 +34,7 @@ function applySession(account) {
   localStorage.setItem(SESSION_ACCOUNT_KEY, account.id);
   lockMyIdToSession(account.id);
   setTestIdentity(Boolean(account.isTest));
+  applyLayoutModeForPlayer(account.id);
 }
 
 export async function logout() {

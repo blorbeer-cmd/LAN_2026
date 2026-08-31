@@ -195,6 +195,7 @@ const KIOSK_DELIVERED_EVENTS = new Set<string>([
   'live:changed',
   'players:changed',
   'votes:changed',
+  'events:changed',
   'leaderboard:changed',
   'tournaments:changed',
   'matchmaking:generated',

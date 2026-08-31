@@ -22,6 +22,7 @@ import { broadcastArcadeKiosk } from './realtime';
 import { recordArcadeResult } from './arcadeData';
 import { arcadeTiming } from './timing';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
+import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 
 const TICK_MS = 125;
@@ -157,7 +158,7 @@ function removeFromLobbies(io: Server, socketId: string) {
     const entry = [...lobby.socketIds].find(([, id]) => id === socketId);
     if (!entry) continue;
     const playerId = entry[0];
-    if (playerId === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'snake', id); lobbies.delete(id); }
+    if (playerId === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'snake', id); lobbies.delete(id); resolveArcadeLobbyPush('snake', lobby); }
     else {
       releaseLobbyMembership(playerId, 'snake', id);
       lobby.players = lobby.players.filter((player) => player.id !== playerId);
@@ -217,6 +218,7 @@ function startMatch(io: Server, lobby: Lobby) {
   matches.set(id, match);
   releaseLobbyMemberships(lobby.players.map((p) => p.id), 'snake', lobby.id);
   lobbies.delete(lobby.id);
+  resolveArcadeLobbyPush('snake', lobby);
   emitLobbies(io);
   startArcadeSession(realPlayerIds(match.players), 'snake', match);
   const beginsAt = Date.now() + COUNTDOWN_MS;
@@ -255,6 +257,7 @@ export function registerSnakeSockets(io: Server): void {
       lobbies.set(lobby.id, lobby);
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
+      notifyArcadeLobbyOpened('snake', lobby);
     });
     socket.on('snake:lobby:bot', (payload: { playerId?: string; mode?: SnakeMode }, ack?: (result: unknown) => void) => {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
@@ -290,7 +293,7 @@ export function registerSnakeSockets(io: Server): void {
     });
     socket.on('snake:lobby:leave', (payload: { lobbyId?: string; playerId?: string }, ack?: (result: unknown) => void) => {
       const lobby = payload?.lobbyId ? lobbies.get(payload.lobbyId) : null;
-      if (lobby && payload.playerId === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'snake', lobby.id); lobbies.delete(lobby.id); }
+      if (lobby && payload.playerId === lobby.host.id) { releaseLobbyMemberships(lobby.players.map((p) => p.id), 'snake', lobby.id); lobbies.delete(lobby.id); resolveArcadeLobbyPush('snake', lobby); }
       else if (lobby && payload.playerId) {
         releaseLobbyMembership(payload.playerId, 'snake', lobby.id);
         lobby.players = lobby.players.filter((player) => player.id !== payload.playerId);

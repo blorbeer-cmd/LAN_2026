@@ -15,11 +15,11 @@ import { backButtonHtml } from '../../backButton.js';
 
 const SIZE = 10;
 const SHIPS = [
-  { id: 'carrier', name: 'Flugzeugträger', length: 5 },
-  { id: 'battleship', name: 'Schlachtschiff', length: 4 },
-  { id: 'cruiser', name: 'Kreuzer', length: 3 },
-  { id: 'submarine', name: 'U-Boot', length: 3 },
-  { id: 'destroyer', name: 'Zerstörer', length: 2 },
+  { id: 'carrier', name: 'Flugzeugträger', code: 'F', length: 5 },
+  { id: 'battleship', name: 'Schlachtschiff', code: 'S', length: 4 },
+  { id: 'cruiser', name: 'Kreuzer', code: 'K', length: 3 },
+  { id: 'submarine', name: 'U-Boot', code: 'U', length: 3 },
+  { id: 'destroyer', name: 'Zerstörer', code: 'Z', length: 2 },
 ];
 
 let socket = null;
@@ -38,6 +38,9 @@ const myId = () => getMyId();
 const currentView = () => document.getElementById('view-container')?.dataset.view;
 const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
 const navigate = (view) => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: view }));
+const rerenderIfBattleshipVisible = () => {
+  if (currentView() === 'battleship' || currentView() === 'arcade') rerender();
+};
 const emitAck = (event, payload) => new Promise((resolve) => {
   if (pendingAction) return resolve({ ok: false, error: 'Eine Aktion wird noch verarbeitet.' });
   pendingAction = event;
@@ -76,10 +79,10 @@ export function ensureBattleshipSocket() {
       };
       cancelCountdown();
     }
-    rerender();
+    rerenderIfBattleshipVisible();
   });
-  socket.on('disconnect', () => { connectionState = 'offline'; rerender(); });
-  socket.on('connect_error', () => { connectionState = 'offline'; rerender(); });
+  socket.on('disconnect', () => { connectionState = 'offline'; rerenderIfBattleshipVisible(); });
+  socket.on('connect_error', () => { connectionState = 'offline'; rerenderIfBattleshipVisible(); });
   socket.on('battleship:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
     if (!match && currentView() === 'arcade') rerender();
@@ -133,7 +136,8 @@ function placementCells() {
     const ship = SHIPS.find((entry) => entry.id === placement.shipId);
     const cells = ship ? cellsForPlacement(placement, ship.length) : null;
     if (!cells) continue;
-    cells.forEach((cell) => occupied.set(cell, placement.shipId));
+    const placedShip = { shipId: ship.id, name: ship.name, cells };
+    cells.forEach((cell) => occupied.set(cell, placedShip));
   }
   return occupied;
 }
@@ -149,14 +153,35 @@ function placementValid(next, complete = true) {
   return complete ? next.length === SHIPS.length : true;
 }
 
+function shipCellPresentation(ship, cell) {
+  const definition = SHIPS.find((entry) => entry.id === ship?.shipId);
+  const cells = Array.isArray(ship?.cells) ? ship.cells : [];
+  const index = cells.indexOf(cell);
+  if (!definition || index < 0) return null;
+  const orientation = cells.length > 1 && Math.abs(cells[1] - cells[0]) === SIZE ? 'vertical' : 'horizontal';
+  const className = [
+    'is-ship',
+    'battleship-ship-segment',
+    `is-ship-${orientation}`,
+    index === 0 ? 'is-ship-start' : '',
+    index === cells.length - 1 ? 'is-ship-end' : '',
+    index < cells.length - 1 ? 'has-next-segment' : '',
+  ].filter(Boolean).join(' ');
+  return {
+    className,
+    attributes: `data-ship-id="${escapeHtml(definition.id)}" data-ship-code="${escapeHtml(definition.code)}"`,
+    name: definition.name,
+  };
+}
+
 function placementGridHtml() {
   const occupied = placementCells();
   return `<div class="battleship-grid battleship-placement-grid" role="grid" aria-label="Eigenes Flottenraster">
     ${Array.from({ length: SIZE * SIZE }, (_, cell) => {
-      const shipId = occupied.get(cell);
+      const segment = shipCellPresentation(occupied.get(cell), cell);
       const row = Math.floor(cell / SIZE);
       const col = cell % SIZE;
-      return `<button type="button" class="battleship-cell ${shipId ? 'is-ship' : ''}" data-place-cell="${cell}" role="gridcell" aria-label="${String.fromCharCode(65 + col)} ${row + 1}${shipId ? `, ${escapeHtml(SHIPS.find((ship) => ship.id === shipId).name)}` : ''}">${shipId ? '■' : ''}</button>`;
+      return `<button type="button" class="battleship-cell ${segment?.className ?? ''}" data-place-cell="${cell}" ${segment?.attributes ?? ''} role="gridcell" aria-label="${String.fromCharCode(65 + col)} ${row + 1}${segment ? `, ${escapeHtml(segment.name)}` : ''}"></button>`;
     }).join('')}
   </div>`;
 }
@@ -174,7 +199,7 @@ function renderPlacement() {
     <section class="card stack battleship-setup" aria-labelledby="battleship-setup-title">
       <div class="grouped-page-section-title"><h2 id="battleship-setup-title">Flotte platzieren</h2>${infoTooltipHtml('battleship-setup-help', 'Flotte platzieren', 'Wähle ein Schiff und tippe auf das Startfeld. Berührungen zwischen Schiffen sind erlaubt.')}</div>
       <div class="battleship-ship-picker" role="list" aria-label="Schiffe">
-        ${SHIPS.map((ship) => `<button type="button" class="btn btn-sm ${selectedShip === ship.id ? 'btn-primary' : ''}" data-select-ship="${ship.id}" aria-pressed="${selectedShip === ship.id}" ${locked ? 'disabled' : ''}>${escapeHtml(ship.name)} · ${ship.length}</button>`).join('')}
+        ${SHIPS.map((ship) => `<button type="button" class="btn btn-sm ${selectedShip === ship.id ? 'btn-primary' : ''}" data-select-ship="${ship.id}" aria-pressed="${selectedShip === ship.id}" ${locked ? 'disabled' : ''}>${ship.code} · ${escapeHtml(ship.name)} · ${ship.length}</button>`).join('')}
       </div>
       <div class="row battleship-setup-actions">
         <button type="button" class="btn btn-sm" id="battleship-rotate" aria-pressed="${orientation === 'vertical'}" ${locked ? 'disabled' : ''}>Ausrichtung: ${orientation === 'horizontal' ? 'Waagerecht' : 'Senkrecht'}</button>
@@ -224,9 +249,9 @@ function ownGridHtml(player) {
       const coordinateName = `${String.fromCharCode(65 + col)}${row + 1}`;
       const isHit = hits.has(cell);
       const isMiss = !isHit && misses.has(cell);
-      const isShip = ships.has(cell);
-      const label = isHit ? 'Treffer' : isMiss ? 'Wasser beschossen' : isShip ? 'Schiff' : 'Unbeschossen';
-      return `<div class="battleship-cell ${isShip ? 'is-ship' : ''} ${isHit ? 'is-hit' : ''} ${isMiss ? 'is-miss' : ''}" data-own-cell="${cell}" role="gridcell" aria-label="${coordinateName}, ${label}">${isHit ? '×' : isMiss ? '·' : isShip ? '■' : ''}</div>`;
+      const segment = shipCellPresentation(ships.get(cell), cell);
+      const label = isHit ? `Treffer auf ${segment?.name ?? 'Schiff'}` : isMiss ? 'Wasser beschossen' : segment ? segment.name : 'Unbeschossen';
+      return `<div class="battleship-cell ${segment?.className ?? ''} ${isHit ? 'is-hit' : ''} ${isMiss ? 'is-miss' : ''}" data-own-cell="${cell}" ${segment?.attributes ?? ''} role="gridcell" aria-label="${coordinateName}, ${escapeHtml(label)}">${isHit ? '×' : isMiss ? '·' : ''}</div>`;
     }).join('')}
   </div>`;
 }
@@ -265,9 +290,9 @@ function revealGridHtml(player, fleet, shotsAgainst) {
       const isSunk = sunkCells.has(cell);
       const isHit = !isSunk && hitCells.has(cell);
       const isMiss = !isSunk && !isHit && missCells.has(cell);
-      const isShip = ships.has(cell);
-      const label = isSunk ? 'Versenkt' : isHit ? 'Treffer' : isMiss ? 'Wasser' : isShip ? 'Schiff' : 'Unbeschossen';
-      return `<div class="battleship-cell ${isShip ? 'is-ship' : ''} ${isHit ? 'is-hit' : ''} ${isSunk ? 'is-sunk' : ''} ${isMiss ? 'is-miss' : ''}" data-reveal-cell="${cell}" role="gridcell" aria-label="${coordinateName}, ${label}">${isSunk || isHit ? '×' : isMiss ? '·' : isShip ? '■' : ''}</div>`;
+      const segment = shipCellPresentation(ships.get(cell), cell);
+      const label = isSunk ? `${segment?.name ?? 'Schiff'} versenkt` : isHit ? `Treffer auf ${segment?.name ?? 'Schiff'}` : isMiss ? 'Wasser' : segment ? segment.name : 'Unbeschossen';
+      return `<div class="battleship-cell ${segment?.className ?? ''} ${isHit ? 'is-hit' : ''} ${isSunk ? 'is-sunk' : ''} ${isMiss ? 'is-miss' : ''}" data-reveal-cell="${cell}" ${segment?.attributes ?? ''} role="gridcell" aria-label="${coordinateName}, ${escapeHtml(label)}">${isSunk || isHit ? '×' : isMiss ? '·' : ''}</div>`;
     }).join('')}
   </div>`;
 }

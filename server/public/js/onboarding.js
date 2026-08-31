@@ -17,7 +17,16 @@ import { eventHasFeature, viewIsEnabledForEvent } from './eventFeatures.js';
 // into the mandatory rating mode below (see nextCoreStep()). Admin-only
 // insights are appended only for admins, after the Admin step has introduced
 // their entry point.
-const MEHR_TARGET = '.nav-btn[data-view="more"]';
+const MEHR_TARGET = '.desktop-nav, .nav-btn[data-view="more"]';
+
+function navigationTarget(view, { compactFallback = view } = {}) {
+  return `.desktop-nav-btn[data-view="${view}"], .nav-btn[data-view="${compactFallback}"]`;
+}
+
+export function visibleOnboardingTarget(selector, queryRoot = document) {
+  return [...queryRoot.querySelectorAll(selector)]
+    .find((element) => element.getClientRects().length > 0) ?? null;
+}
 
 export function buildOnboardingSteps(isAdmin = currentPlayerHasAdminRole()) {
   const steps = [
@@ -25,29 +34,29 @@ export function buildOnboardingSteps(isAdmin = currentPlayerHasAdminRole()) {
       title: 'Home',
       text: 'Hier siehst du auf einen Blick, wer online ist, was gerade gespielt wird und wie die Rangliste steht. Tippe im Live-Status auf eine Person, um ihr Profil mit Bock- und Skill-Werten zu öffnen.',
       view: 'home',
-      target: '.nav-btn[data-view="home"]',
+      target: navigationTarget('home'),
     },
     {
       title: 'Match',
       text: 'Hier lost ihr Teams aus, startet Captain-Drafts und legt Turniere an. Die Suchfelder in der Spieler- und Captain-Auswahl helfen euch, bei vielen Teilnehmenden schnell die richtigen Leute zu finden.',
       view: 'matchmaking',
-      target: '.nav-btn[data-view="matchmaking"]',
+      target: navigationTarget('matchmaking'),
     },
     {
       title: 'Vote',
       text: 'Hier startet ihr Abstimmungen, welche Spiele als Nächstes gespielt werden, und seht die Top 10 nach Bock-Level. Bei Gleichstand lässt sich direkt aus dem letzten Ergebnis eine Stichwahl starten.',
       view: 'votes',
-      target: '.nav-btn[data-view="votes"]',
+      target: navigationTarget('votes'),
     },
     {
       title: 'Essen',
       text: 'Hier organisiert ihr Sammelbestellungen mit Artikeln, Preisen und Bezahlstatus. Jede Person bezahlt ihren vollständigen Block über PayPal und bestätigt ihn anschließend mit „Bezahlt?“',
       view: 'foodOrders',
-      target: '.nav-btn[data-view="foodOrders"]',
+      target: navigationTarget('foodOrders'),
     },
     {
-      title: 'Mehr',
-      text: 'Hier findet ihr weitere Bereiche wie Profil, Arcade, Durchsage, Jam und Orga. Über die Suche oben (oder Strg/Cmd+K am Laptop) erreicht ihr jeden Bereich und Inhalt auch direkt, ohne über Mehr zu navigieren.',
+      title: 'Weitere Bereiche',
+      text: 'Am Laptop findet ihr weitere Bereiche unter Mehr. In der Desktop-Ansicht sind sie links direkt nach LAN, Orga und Sonstiges sortiert. Über die Suche oben erreicht ihr jeden Bereich ebenfalls direkt.',
       view: 'more',
       target: MEHR_TARGET,
     },
@@ -55,31 +64,31 @@ export function buildOnboardingSteps(isAdmin = currentPlayerHasAdminRole()) {
       title: 'Mein Profil',
       text: 'Im Profil verwaltest du Avatar-Farbe, Gamertag und den Tracking-Agent für deinen PC. Aktiviere Push, um Durchsagen und wichtige Updates auch außerhalb der App zu bekommen.',
       view: 'profile',
-      target: MEHR_TARGET,
+      target: navigationTarget('profile', { compactFallback: 'more' }),
     },
     {
       title: 'Arcade',
       text: 'Hier spielt ihr Zwischendurch-Games wie Tetris, Snake oder Pong gegeneinander in eigenen Lobbys. Unter Statistiken seht ihr eure persönliche Bilanz für jedes Arcade-Spiel.',
       view: 'arcade',
-      target: MEHR_TARGET,
+      target: navigationTarget('arcade', { compactFallback: 'more' }),
     },
     {
       title: 'Durchsage',
       text: 'Hier verschickt ihr Durchsagen an alle im Netzwerk, zum Beispiel wenn das Essen da ist. Die letzten Durchsagen bleiben in der Historie nachlesbar, falls jemand eine verpasst hat.',
       view: 'broadcast',
-      target: MEHR_TARGET,
+      target: navigationTarget('broadcast', { compactFallback: 'more' }),
     },
     {
       title: 'Jam',
       text: 'Hier steuert ihr gemeinsam die Musik: Titel suchen, zur Warteschlange hinzufügen und die Reihenfolge per Drag & Drop anpassen. Nur das Gerät, das die Session startet, braucht einen Spotify-Zugang.',
       view: 'music',
-      target: MEHR_TARGET,
+      target: navigationTarget('music', { compactFallback: 'more' }),
     },
     {
       title: 'Orga',
       text: 'Hier organisiert ihr die LAN mit An- und Abreise, Events, Packliste und To-Do-Liste als eigene Reiter. Im To-Do-Reiter siehst du unter „Mir zugewiesen“ sofort deine eigenen offenen Aufgaben inklusive Fälligkeit.',
       view: sectionEntryView('orga'),
-      target: MEHR_TARGET,
+      target: navigationTarget(sectionEntryView('orga'), { compactFallback: 'more' }),
     },
   ];
   if (isAdmin) {
@@ -87,7 +96,7 @@ export function buildOnboardingSteps(isAdmin = currentPlayerHasAdminRole()) {
       title: 'Admin',
       text: 'Hier behältst du als Admin die LAN-Bereitschaft im Blick und verwaltest Nutzer, Sitzplan und Backups. Über den Werkzeug-Eintrag „Auswertung“ erreichst du außerdem Rangliste, Statistiken und Hall of Fame, die sonst nirgends verlinkt sind.',
       view: 'admin',
-      target: MEHR_TARGET,
+      target: navigationTarget('admin', { compactFallback: 'more' }),
     });
     steps.push({
       title: 'Event-Auswahl',
@@ -183,7 +192,13 @@ function positionTargetRing() {
   if (!ring) return;
   if (!target || !document.contains(target)) {
     const step = runtime?.mode === 'core' ? runtime.steps[runtime.step] : null;
-    target = step?.target ? document.querySelector(step.target) : null;
+    target = step?.target ? visibleOnboardingTarget(step.target) : null;
+    if (!target) return;
+    runtime.targetElement = target;
+  }
+  if (target.getClientRects().length === 0) {
+    const step = runtime?.mode === 'core' ? runtime.steps[runtime.step] : null;
+    target = step?.target ? visibleOnboardingTarget(step.target) : null;
     if (!target) return;
     runtime.targetElement = target;
   }
@@ -208,7 +223,7 @@ function syncTarget() {
     root()?.querySelector('.onboarding-dialog')?.classList.remove('onboarding-dialog--top');
     return;
   }
-  const target = document.querySelector(step.target);
+  const target = visibleOnboardingTarget(step.target);
   if (!target) return;
   runtime.targetElement = target;
   const ring = document.createElement('div');
@@ -488,6 +503,7 @@ export async function initOnboarding({ navigate, rerender, getCurrentView }) {
       targetPositioningInstalled = true;
       window.addEventListener('resize', syncOverlayGeometry);
       window.addEventListener('scroll', syncOverlayGeometry, true);
+      window.addEventListener('respawn:layout-mode-changed', syncTarget);
     }
   } catch {
     runtime = null;

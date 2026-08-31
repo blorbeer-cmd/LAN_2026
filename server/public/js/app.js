@@ -34,10 +34,15 @@ import { initOnboarding, maybeStartOnboarding } from './onboarding.js';
 import { captureViewRenderState, restoreViewRenderState } from './viewRenderState.js';
 import { realtimeEventAffectsView } from './realtimeRefreshPolicy.js';
 import { viewIsEnabledForEvent } from './eventFeatures.js';
-import { bottomNavItemsForEvent } from './bottomNav.js';
+import {
+  bottomNavItemsForEvent,
+  desktopNavItemsForEvent,
+  desktopNavTargetForView,
+} from './bottomNav.js';
 import { invalidateEventScopedViews, invalidateViewCaches, invalidateViewsAfterReconnect } from './viewLifecycle.js';
 import { viewDefinition } from './viewManifest.js';
 import { appHash, localRouteKey, parseAppHash } from './appRoute.js';
+import { applyLayoutModeForPlayer, layoutModeForPlayer, LAYOUT_MODES } from './layoutMode.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -55,10 +60,12 @@ let appReady = false;
 let playerDataReady = false;
 const viewContainer = document.getElementById('view-container');
 let pendingSearchTarget = null;
+let pendingViewHeadingFocus = false;
 let renderRevision = 0;
 let sharedRefreshPromise = null;
 let sharedRefreshDirty = false;
 let sharedRefreshShouldRender = false;
+let pendingEventActivations = 0;
 
 function syncArcadeStylesheet(entry) {
   const linkId = 'arcade-stylesheet';
@@ -76,7 +83,7 @@ function syncArcadeStylesheet(entry) {
     link.rel = 'stylesheet';
     // bump ?v= when arcade.css changes so no cached copy survives a reload
     // (keep in sync with kiosk.html's static link)
-    link.href = '/css/arcade.css?v=3';
+    link.href = '/css/arcade.css?v=6';
     const loaded = new Promise((resolve, reject) => {
       link.addEventListener('load', () => {
         link.dataset.loaded = 'true';
@@ -147,17 +154,65 @@ function syncFeatureNavigation() {
     button.title = routeAvailable ? '' : `${item.label} sind in diesem Stand noch nicht verfügbar.`;
     button.hidden = !viewIsEnabledForEvent(button.dataset.view, state.activeEvent);
   });
+  renderDesktopNavigation();
   syncBottomNavigationActiveState();
 }
 
 function syncBottomNavigationActiveState() {
   const activeGroup = navGroupForView(currentView, state.activeEvent);
   document.querySelectorAll('.nav-btn').forEach((button) => {
-    button.classList.toggle(
-      'active',
-      !button.disabled && navGroupForView(button.dataset.view, state.activeEvent) === activeGroup,
-    );
+    const active = !button.disabled && navGroupForView(button.dataset.view, state.activeEvent) === activeGroup;
+    button.classList.toggle('active', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
   });
+}
+
+function syncDesktopNavigationActiveState() {
+  const activeTarget = desktopNavTargetForView(currentView);
+  document.querySelectorAll('.desktop-nav-btn[data-view]').forEach((button) => {
+    const active = button.dataset.view === activeTarget;
+    button.classList.toggle('active', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+  document.querySelector('.desktop-nav-btn[data-view="profile"]')
+    ?.classList.toggle('needs-setup', !getMyId());
+}
+
+function desktopNavButtonHtml(entry) {
+  const target = entry.action
+    ? `data-desktop-action="${entry.action}"`
+    : `data-view="${entry.view}"`;
+  return `<button type="button" class="desktop-nav-btn" ${target} aria-label="${entry.label}">
+    <span class="desktop-nav-icon">${icon(domainIcon(entry.iconKey))}</span>
+    <span class="desktop-nav-label">${entry.label}</span>
+  </button>`;
+}
+
+function renderDesktopNavigation() {
+  const desktopNav = desktopNavItemsForEvent(state.activeEvent, {
+    isAdmin: currentPlayerHasAdminRole(),
+  });
+  const root = document.querySelector('.desktop-nav');
+  const main = document.getElementById('desktop-nav-main');
+  const utilities = document.getElementById('desktop-nav-utilities');
+  const signature = JSON.stringify(desktopNav);
+  if (root.dataset.signature !== signature) {
+    main.innerHTML = desktopNav.groups.map((group) => `
+      <div class="desktop-nav-group" data-desktop-nav-group="${group.key}">
+        ${group.label ? `<span class="desktop-nav-heading">${group.label}</span>` : ''}
+        ${group.entries.map(desktopNavButtonHtml).join('')}
+      </div>`).join('');
+    utilities.innerHTML = desktopNav.utilities.map(desktopNavButtonHtml).join('');
+    root.dataset.signature = signature;
+    root.querySelectorAll('.desktop-nav-btn[data-view]').forEach((button) => {
+      button.addEventListener('click', () => switchView(button.dataset.view, { localRoute: null }));
+    });
+    root.querySelector('[data-desktop-action="feedback"]')
+      ?.addEventListener('click', () => openFeedbackModal(lastSubstantiveView));
+  }
+  syncDesktopNavigationActiveState();
 }
 
 function queueSharedRefresh({ render = true } = {}) {
@@ -207,7 +262,17 @@ function renderEventContextSwitcher() {
   // next render once the reader closes it again.
   const openSearch = container.querySelector('#event-context-switcher-search');
   const openList = container.querySelector('#event-context-switcher-list');
-  if (openList && !openList.hidden && document.activeElement === openSearch) return;
+  if (openList && !openList.hidden && document.activeElement === openSearch) {
+    // A queued activation (e.g. from a deep link) still has to disable the
+    // switcher even while the reader keeps it open and focused, so a pick
+    // made in this window is visibly blocked instead of only silently queued.
+    if (pendingEventActivations > 0) {
+      const toggle = container.querySelector('.search-select-toggle');
+      openSearch.disabled = true;
+      if (toggle) toggle.disabled = true;
+    }
+    return;
+  }
   const events = selectableEventWorkspaces();
   container.hidden = events.length === 0;
   if (events.length === 0) {
@@ -260,6 +325,12 @@ function renderEventContextSwitcher() {
       }
     },
   });
+  if (pendingEventActivations > 0) {
+    const search = container.querySelector('#event-context-switcher-search');
+    const toggle = container.querySelector('.search-select-toggle');
+    if (search) search.disabled = true;
+    if (toggle) toggle.disabled = true;
+  }
 }
 
 // Every caller (the switcher above and followEventDeepLink) funnels through
@@ -271,20 +342,36 @@ let activateEventQueue = Promise.resolve();
 
 async function activateEvent(eventId, { navigate, searchTarget = null } = {}) {
   const run = async () => {
-    // A missing eventId is not an error: a notification stored before this
-    // release carries no event, and its destination is still the thing the
-    // reader tapped. Skip the switch, keep the navigation.
-    if (eventId && state.activeEvent?.id !== eventId) {
-      await api.events.activate(eventId);
-      invalidateEventScopedViews(VIEW_REGISTRY);
-      await loadAll();
+    try {
+      // A missing eventId is not an error: a notification stored before this
+      // release carries no event, and its destination is still the thing the
+      // reader tapped. Skip the switch, keep the navigation.
+      if (eventId && state.activeEvent?.id !== eventId) {
+        await api.events.activate(eventId);
+        invalidateEventScopedViews(VIEW_REGISTRY);
+        // A socket echo can start a newer central snapshot while this request
+        // is in flight. loadAll() deliberately declines to commit the older
+        // response in that case, so keep reconciling until this switch owns a
+        // committed snapshot instead of rendering whichever workspace was in
+        // state before the collision.
+        let committed = false;
+        while (!committed) committed = await loadAll();
+        syncFeatureNavigation();
+        await refreshNotificationBanner();
+        renderCurrent();
+      }
+      if (navigate && isKnownView(navigate)) switchView(navigate, { searchTarget });
+    } finally {
+      pendingEventActivations = Math.max(0, pendingEventActivations - 1);
+      // A realtime refresh may rebuild the switcher while activation is
+      // pending. Rebuild it one final time only after the queued switch has
+      // reconciled every event-scoped surface, so no intermediate enabled
+      // control can be mistaken for completion.
       renderEventContextSwitcher();
-      syncFeatureNavigation();
-      await refreshNotificationBanner();
-      renderCurrent();
     }
-    if (navigate && isKnownView(navigate)) switchView(navigate, { searchTarget });
   };
+  pendingEventActivations += 1;
+  renderEventContextSwitcher();
   const queued = activateEventQueue.then(run, run);
   // A failure must not wedge every switch queued after it — only the caller
   // that triggered it should see the rejection.
@@ -340,7 +427,7 @@ function renderCurrent({ preserveState = true } = {}) {
   if (entry.render) {
     entry.render(viewContainer, ctx);
     restoreViewRenderState(viewContainer, renderState);
-    focusPendingSearchTarget();
+    finishRenderedViewFocus();
     return;
   }
 
@@ -350,7 +437,7 @@ function renderCurrent({ preserveState = true } = {}) {
       if (revision !== renderRevision || view !== currentView) return;
       renderFn(viewContainer, ctx);
       restoreViewRenderState(viewContainer, renderState);
-      focusPendingSearchTarget();
+      finishRenderedViewFocus();
     })
     .catch((error) => {
       if (revision !== renderRevision || view !== currentView) return;
@@ -362,8 +449,25 @@ function renderCurrent({ preserveState = true } = {}) {
     });
 }
 
+function focusPendingViewHeading() {
+  if (!pendingViewHeadingFocus) return;
+  const heading = viewContainer.querySelector('h1, h2');
+  if (!(heading instanceof HTMLElement)) return;
+  heading.tabIndex = -1;
+  heading.focus({ preventScroll: true });
+  pendingViewHeadingFocus = false;
+}
+
+function finishRenderedViewFocus() {
+  if (!focusPendingSearchTarget()) focusPendingViewHeading();
+}
+
+// Returns whether a pending search target was found and focused on this
+// render pass, so the caller does not also steal that focus back to the
+// view heading. A target that isn't found yet (e.g. it hasn't rendered into
+// the DOM on this pass) stays pending and is retried on the next render.
 function focusPendingSearchTarget() {
-  if (!pendingSearchTarget || pendingSearchTarget.view !== currentView) return;
+  if (!pendingSearchTarget || pendingSearchTarget.view !== currentView) return false;
   const { type, id } = pendingSearchTarget.target;
   // No `player`/`info` entry: both open as a dialog instead of navigating to a
   // view that would then have to highlight a row (see initGlobalSearch below).
@@ -377,7 +481,7 @@ function focusPendingSearchTarget() {
     poll: [...viewContainer.querySelectorAll('[data-poll-card]')].filter((el) => el.dataset.pollCard === id),
   }[type] ?? [];
   const element = candidates[0];
-  if (!element) return;
+  if (!element) return false;
   let enclosingDetails = element.closest('details');
   while (enclosingDetails) {
     enclosingDetails.open = true;
@@ -386,8 +490,10 @@ function focusPendingSearchTarget() {
   element.classList.add('search-target-highlight');
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   element.scrollIntoView({ block: 'center', behavior: reducedMotion ? 'auto' : 'smooth' });
-  if (element.matches('button, a, input, [tabindex]')) element.focus({ preventScroll: true });
+  const focused = element.matches('button, a, input, [tabindex]');
+  if (focused) element.focus({ preventScroll: true });
   pendingSearchTarget = null;
+  return focused;
 }
 
 function viewRequiresAdminRole(view) {
@@ -432,11 +538,19 @@ function switchView(
   const nextLocalRoute = localRoute === undefined ? (view === currentView ? currentLocalRoute : null) : localRoute;
   const changed = view !== currentView || localRouteKey(nextLocalRoute) !== localRouteKey(currentLocalRoute);
   const localParent = !fromHistory && changed && Boolean(nextLocalRoute);
+  const navigationOrigin = document.activeElement;
+  pendingViewHeadingFocus = changed && (
+    fromHistory
+    || navigationOrigin === document.body
+    || navigationOrigin === viewContainer
+    || (navigationOrigin instanceof HTMLElement && viewContainer.contains(navigationOrigin))
+  );
   if (view !== 'foodOrders') clearFoodOrderTarget();
   pendingSearchTarget = searchTarget ? { view, target: searchTarget } : null;
   if (view === 'foodOrders' && searchTarget?.type === 'order') prepareFoodOrderTarget(searchTarget.id);
   currentView = view;
   currentLocalRoute = nextLocalRoute;
+  document.title = `${viewDefinition(view)?.label ?? 'Respawn'} · Respawn`;
   if (view !== 'more') lastSubstantiveView = view;
   // Realtime game modules use this marker to ignore updates while another
   // view is active. Without it, a running game can rebuild the current DOM
@@ -445,16 +559,19 @@ function switchView(
   // A nav button stands for a whole area, so every route inside that area
   // (e.g. Teams inside Wettkampf) keeps its button lit — see sectionNav.js.
   syncBottomNavigationActiveState();
+  syncDesktopNavigationActiveState();
   // Restart the view-enter animation (see .view-enter in style.css). Only on
   // deliberate navigation — realtime-triggered re-renders of the same view
   // must never flash, so renderCurrent() alone doesn't do this.
   viewContainer.classList.remove('view-enter');
   void viewContainer.offsetWidth; // force reflow so removing+adding re-triggers
   viewContainer.classList.add('view-enter');
-  // A little indicator on the "Mehr" nav button (which now leads to "Mein
-  // Profil") points new/unset devices at self-onboarding (name, avatar,
-  // skills, agent key) instead of leaving them to stumble onto it.
+  // A little indicator points new/unset devices at self-onboarding (name,
+  // avatar, skills, agent key). Phones use "Mehr"; wide desktops expose the
+  // direct profile utility at the bottom of the side rail.
   document.querySelector('.nav-btn[data-view="more"]').classList.toggle('needs-setup', !getMyId());
+  document.querySelector('.desktop-nav-btn[data-view="profile"]')
+    ?.classList.toggle('needs-setup', !getMyId());
   renderCurrent({ preserveState: !changed && !searchTarget });
   if (!searchTarget) viewContainer.scrollTop = 0;
   if (replace) {
@@ -510,6 +627,7 @@ function wireNav() {
   document.getElementById('info-btn').innerHTML = icon(domainIcon('infoBoard'));
   document.getElementById('feedback-btn').innerHTML = icon(domainIcon('feedback'));
   document.querySelector('.admin-banner-label').insertAdjacentHTML('afterbegin', icon('shield'));
+  renderDesktopNavigation();
 
   document.querySelectorAll('.nav-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -519,6 +637,15 @@ function wireNav() {
   // Feedback is reachable from every view via this topbar icon; the view it
   // was opened from is captured automatically (see lastSubstantiveView).
   document.getElementById('feedback-btn').addEventListener('click', () => openFeedbackModal(lastSubstantiveView));
+  const desktopLayoutQuery = window.matchMedia('(min-width: 1280px)');
+  desktopLayoutQuery.addEventListener('change', () => {
+    if (layoutModeForPlayer(getMyId()) !== LAYOUT_MODES.auto) return;
+    const previous = document.documentElement.dataset.layoutMode;
+    applyLayoutModeForPlayer(getMyId(), { wide: desktopLayoutQuery.matches });
+    if (document.documentElement.dataset.layoutMode !== previous) {
+      window.dispatchEvent(new Event('respawn:layout-mode-changed'));
+    }
+  });
   // Info is reference material people look up mid-conversation, so it opens
   // over whatever they were doing instead of costing them their current view.
   document.getElementById('info-btn').addEventListener('click', () => openInfoBoard());

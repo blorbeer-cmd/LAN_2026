@@ -11,6 +11,7 @@ import { deleteAllTestData, seedHallOfFameTestData } from '../testData';
 import { writeAdminAudit } from '../adminAudit';
 import { requireRecentReauthentication } from '../sessions';
 import { getReadiness } from '../readiness';
+import { getKioskPassword } from '../kioskAccounts';
 import { getOrRepairActiveEvent } from '../eventContext';
 import { computeFeatureUsage } from '../featureUsage';
 import { isAdminTestMode } from '../testDataVisibility';
@@ -38,6 +39,13 @@ adminRouter.get('/readiness', requireAdmin, async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+// The shared password every kiosk-<eventId> account logs in with — explicitly
+// configured (KIOSK_PASSWORD/KIOSK_TOKEN) or generated once on first use (see
+// kioskAccounts.ts). Admin-only: it is a live credential, not a display name.
+adminRouter.get('/kiosk-password', requireAdmin, (_req, res) => {
+  res.json({ password: getKioskPassword() });
 });
 
 // POST /api/admin/test-users - body: { count }. Creates fully seeded test

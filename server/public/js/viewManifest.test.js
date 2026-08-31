@@ -7,6 +7,7 @@ import {
   bottomNavigationEntries,
   createLazyRenderer,
   createViewRegistry,
+  desktopNavigationEntries,
   moreNavigationEntries,
   searchableViewEntries,
   sectionViews,
@@ -71,6 +72,10 @@ test('every route carries the shared navigation and lifecycle contract', () => {
   assert.deepEqual(bottomNavigationEntries('lan').map((entry) => entry.view), ['home', 'matchmaking', 'votes', 'foodOrders', 'gameCatalog', 'more']);
   assert.deepEqual(bottomNavigationEntries('general').map((entry) => entry.view), ['home', 'arrivals', 'checklistPacking', 'checklist', 'eventPolls', 'more']);
   assert.deepEqual(moreNavigationEntries('lan').map((entry) => entry.view ?? entry.section), ['profile', 'admin', 'arcade', 'broadcast', 'music', 'orga']);
+  assert.deepEqual(
+    desktopNavigationEntries('lan').map((entry) => entry.view),
+    ['home', 'matchmaking', 'votes', 'gameCatalog', 'events', 'eventPolls', 'arrivals', 'checklistPacking', 'checklist', 'foodOrders', 'broadcast', 'arcade', 'music', 'admin', 'profile'],
+  );
   assert.ok(searchableViewEntries().every((entry) => entry.view && entry.title && entry.description));
 });
 

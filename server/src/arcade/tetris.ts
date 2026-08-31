@@ -24,6 +24,7 @@ import { broadcastArcadeKiosk } from './realtime';
 import { recordArcadeResult } from './arcadeData';
 import { arcadeTiming } from './timing';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
+import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 import {
   TetrisMode,
@@ -630,6 +631,7 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
     if (lobby.host.id === entry[0]) {
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'tetris', id);
       lobbies.delete(id);
+      resolveArcadeLobbyPush('tetris', lobby);
     } else {
       releaseLobbyMembership(entry[0], 'tetris', id);
       lobby.socketIds.delete(entry[0]);
@@ -713,6 +715,7 @@ export function registerTetrisSockets(io: Server): void {
       lobbies.set(lobby.id, lobby);
       emitLobbies(io);
       ack?.({ ok: true, lobbyId: lobby.id });
+      notifyArcadeLobbyOpened('tetris', lobby);
     });
     socket.on('tetris:lobby:bot', (payload: { playerId?: string; mode?: TetrisMode }, ack?: (res: unknown) => void) => {
       if (!playerMayUseArcadeAi(payload?.playerId)) return ack?.({ ok: false, error: 'KI-Modus ist nur für Admins.' });
@@ -762,6 +765,7 @@ export function registerTetrisSockets(io: Server): void {
       if (lobby.host.id === payload.playerId) {
         releaseLobbyMemberships(lobby.players.map((p) => p.id), 'tetris', lobby.id);
         lobbies.delete(lobby.id);
+        resolveArcadeLobbyPush('tetris', lobby);
       } else {
         releaseLobbyMembership(payload.playerId, 'tetris', lobby.id);
         lobby.socketIds.delete(payload.playerId);
@@ -865,6 +869,7 @@ export function registerTetrisSockets(io: Server): void {
       matches.set(matchId, match);
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'tetris', lobby.id);
       lobbies.delete(lobby.id);
+      resolveArcadeLobbyPush('tetris', lobby);
       emitLobbies(io);
       startArcadeSession(realPlayerIds(match.players), 'tetris', match);
 

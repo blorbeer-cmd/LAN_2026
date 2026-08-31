@@ -49,8 +49,19 @@ test('general-event planning routes each represent their own bottom-nav entry', 
   assert.equal(navGroupForView('checklistPacking', generalEvent), 'checklistPacking');
   assert.equal(navGroupForView('checklist', generalEvent), 'checklist');
   assert.equal(navGroupForView('eventPolls', generalEvent), 'eventPolls');
-  assert.equal(navGroupForView('events', generalEvent), 'events');
-  assert.equal(navGroupForView('arrivals', { eventType: 'lan' }), 'orga');
+  assert.equal(navGroupForView('events', generalEvent), 'more');
+  assert.equal(navGroupForView('arrivals', { eventType: 'lan' }), 'more');
+});
+
+test('routes presented through Mehr keep the persistent parent navigation active', () => {
+  for (const eventType of ['lan', 'general']) {
+    const event = { eventType };
+    assert.equal(navGroupForView('profile', event), 'more');
+    assert.equal(navGroupForView('admin', event), 'more');
+    assert.equal(navGroupForView('arcade', event), 'more');
+  }
+  assert.equal(navGroupForView('votes', { eventType: 'lan' }), 'votes');
+  assert.equal(navGroupForView('eventPolls', { eventType: 'general' }), 'eventPolls');
 });
 
 test('section tabs follow the active event feature snapshot', () => {

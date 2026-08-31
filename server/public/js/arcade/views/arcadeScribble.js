@@ -111,6 +111,10 @@ function myId() {
   return getMyId();
 }
 
+function currentView() {
+  return document.getElementById('view-container')?.dataset.view;
+}
+
 // Nudge whichever view is currently mounted to re-render, and switch views,
 // without this module needing a handle on app.js — both are thin CustomEvent
 // hooks app.js listens for (same pattern as tetris.js).
@@ -663,8 +667,10 @@ export function ensureScribbleSocket() {
   socket.on('scribble:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
     // Only refresh the lobby UI while no match is running — never interrupt
-    // a live match's canvas with a full rebuild.
-    if (!match) rerender();
+    // a live match's canvas with a full rebuild. The socket can finish its
+    // initial connection after another Arcade game has already taken over
+    // the view, so the current view must be part of this guard as well.
+    if (!match && currentView() === 'arcade') rerender();
   });
 
   socket.on('scribble:match:start', (payload) => {

@@ -1043,6 +1043,11 @@ input[type='number'].tournament-score-input {
   justify-content: flex-end;
   margin-left: auto;
 }
+.admin-dashboard-row {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-4);
+}
 .admin-role-select {
   width: auto;
   min-width: var(--assignment-select-width);
@@ -1687,10 +1692,6 @@ input.food-order-price-input {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-.home-leaderboard-columns {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-}
 .home-page-subsection > h3 {
   margin: 0;
   color: var(--text-muted);
@@ -1699,12 +1700,80 @@ input.food-order-price-input {
 .home-my-status {
   flex-wrap: wrap;
 }
-.home-leaderboard-column {
+.home-priority-grid {
+  display: grid;
   min-width: 0;
+  gap: var(--space-4);
 }
-@media (min-width: 640px) { /* --bp-md */
-  .home-leaderboard-columns {
+
+/* Dashboard columns are semantic reading groups: the primary column is read
+   first, followed by supporting content. They remain a single, matching
+   reading/focus order below the desktop breakpoint and flow independently on
+   wide screens, so a tall card never pushes the next card in the other column
+   down by hundreds of pixels. */
+.adaptive-dashboard-columns,
+.adaptive-dashboard-column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+@media (min-width: 1280px) { /* --bp-xl */
+  :root[data-layout-mode='desktop'] .adaptive-dashboard-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(var(--desktop-supporting-pane-min-width), 1fr);
+    align-items: start;
+  }
+  :root[data-layout-mode='desktop'] .profile-dashboard-columns {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: var(--space-6);
+  }
+  :root[data-layout-mode='desktop'] .profile-dashboard-columns > :only-child {
+    grid-column: 1 / -1;
+  }
+  :root[data-layout-mode='desktop'] .home-priority-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+  :root[data-layout-mode='desktop'] .home-priority-grid > :only-child {
+    grid-column: 1 / -1;
+  }
+  :root[data-layout-mode='desktop'] .home-live-grid,
+  :root[data-layout-mode='desktop'] .home-leaderboard-grid,
+  :root[data-layout-mode='desktop'] #view-container[data-view='matchmaking'] .tournament-player-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  :root[data-layout-mode='desktop'] .home-live-grid > :last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+  :root[data-layout-mode='desktop'] .admin-dashboard-overview,
+  :root[data-layout-mode='desktop'] .admin-dashboard-access {
+    grid-template-columns: minmax(0, 2fr) minmax(var(--desktop-supporting-pane-min-width), 1fr);
+    align-items: start;
+  }
+  :root[data-layout-mode='desktop'] .admin-dashboard-row > :only-child {
+    grid-column: 1 / -1;
+  }
+  :root[data-layout-mode='desktop'] .admin-player-list,
+  :root[data-layout-mode='desktop'] .admin-diagnostics-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+    gap: var(--space-3);
+    background: transparent;
+  }
+  :root[data-layout-mode='desktop'] .admin-player-row,
+  :root[data-layout-mode='desktop'] .agent-diagnostic-row {
+    height: 100%;
+    align-content: start;
+    padding: var(--space-3) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius-sm);
+    background: var(--bg-elevated-2);
+  }
+  :root[data-layout-mode='desktop'] .admin-player-actions {
+    width: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
   }
 }

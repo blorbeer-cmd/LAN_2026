@@ -202,6 +202,14 @@ viewport-responsive on phones.
 descriptions while the shared modal remains full-width on phones.
 `--search-select-results-max-height` (320px) keeps a long searchable option list usable without
 letting it cover the full page; additional results scroll inside the dark listbox.
+`--shell-bottom-inset` reserves the phone/laptop bottom navigation plus safe area and becomes zero
+for the wide desktop side rail. `--desktop-nav-width` (176px) keeps that rail compact while labels
+remain visible, while `--desktop-supporting-pane-min-width` (320px) prevents supporting dashboard
+cards from collapsing below a useful scan width. Wide-desktop content may grow to 1600px; its
+centering calculation explicitly subtracts the rail so the navigation never narrows the usable
+content column by accident. Mein Profil offers Automatic/Desktop/Laptop as one account-scoped shell
+choice. Automatic follows `--bp-xl`; below that breakpoint every preference intentionally retains
+compact geometry.
 
 ## Breakpoints
 
@@ -215,7 +223,7 @@ not consumed via `var()`.
 | `--bp-sm` | 480px | View-title size bump |
 | `--bp-md` | 640px | Card grid columns, modal layout (sheet → centered dialog) |
 | `--bp-lg` | 860px | Content max-width bump |
-| `--bp-xl` | 1280px | Content max-width bump (wide desktop) |
+| `--bp-xl` | 1280px | Wide desktop side rail, adaptive page columns and content max-width bump |
 
 The kiosk dashboard's own breakpoint (900px, `kiosk.css`) is intentionally
 **not** `--bp-lg` — it's a different device class (TV/monitor) with its own
@@ -267,11 +275,19 @@ view and to new views unless a documented domain constraint requires a different
 10. **Keep account management behind the authenticated boundary.** The current roster is readable
     by every signed-in member, while only the session account can edit its own profile. Player
     creation, deletion, roles and foreign-profile editing remain admin-only actions.
-11. **Match primary navigation to the event type.** For LAN events, the bottom nav carries exactly
+11. **Match primary navigation to the event type.** For LAN events, primary navigation carries exactly
     the six during-party destinations Home, Match, Vote, Essen, Spiele and Mehr. A general event
     instead promotes its planning workflow to Home, An & Abreise, Packliste, To-Do, Umfragen
-    and Mehr; the remaining destinations live directly under „Mehr“. Everything else lives under
-    „Mehr“, the topbar, or (for the merged Rangliste/Statistiken/
+    and Mehr; the remaining destinations live directly under „Mehr“. It is a bottom bar below
+    `--bp-xl`. At `--bp-xl`, the account's Profile setting chooses between that
+    compact shell and a grouped direct rail: Home, LAN, Orga and Sonstiges form the main scrollable
+    area; Feedback, role-gated Admin and Mein Profil stay pinned below it. The choice is stored as
+    `respawn_layout_mode:<verified-account-id>`, survives logout/reload and is restored before the
+    authenticated app becomes visible. Automatic is the default and resolves against `--bp-xl` on
+    every breakpoint change. It changes neither routes nor permissions. The active event
+    snapshot and the same role checks filter both navigation surfaces. Everything else lives under
+    „Mehr“ on compact layouts, in the topbar, or (for the
+    merged Rangliste/Statistiken/
     Hall-of-Fame area, „Auswertung“) inside the role-protected Admin area. Auswertung is not a
     bottom-nav destination: reaching it now always requires the real owner/admin role
     (`switchView()`'s redirect guard in `app.js`, checked via `currentPlayerHasAdminRole()`), so it
@@ -453,7 +469,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Only the chosen mode's `.tournament-section-panel` renders below — the two workflows never compete
   for space — while the shared game picker and the loaded history stay visible regardless of mode.
   Draw participants and draft participants are independent `.tournament-player-grid` checkbox
-  selections; captains are then chosen only from the prepared draft roster. One tooltip beside
+  selections; captains are then chosen only from the prepared draft roster. In Desktop mode these
+  Match-specific player grids use three equal columns; Laptop and phone keep the existing responsive
+  one/two-column fallback. One tooltip beside
   „Captain Draft“ explains the complete participant/captain/pick sequence; the Captains label has no
   duplicate tooltip or empty-state instruction. `.captain-selection-group` keeps its label close to
   the associated player grid. Both selections use the standard checkbox-card state without an
@@ -592,6 +610,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Server/SQLite, Event and participants, agent coverage/version, process mappings, Kiosk and the
   latest persistent backup start inside „Prüfdetails“. Every card pairs its semantic badge with a
   textual summary and actionable detail; loading and retry errors stay inside the group.
+  In Desktop mode, Werkzeuge/Bereitschaft and Kontozugang/Testdaten form two priority rows. Benutzer
+  and Agent-Diagnose then span the content width and lay out their repeated entries in three columns.
+  Long diagnostics remain below the frequent tools instead of narrowing the complete admin workflow.
   Backup and seating-plan editing are absent from regular member views and live
   together as nested tool cards in the role-protected Admin area. Admin settings and tools remain
   visible to owners/admins without activating the device-local Admin mode; that mode only reveals
@@ -664,12 +685,21 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Nested `.card` surfaces use the secondary elevated background so their hierarchy remains visible.
   `.two-column-card-grid` keeps repeated cards in one column on phones and exactly two columns from
   `--bp-md`; a lone or final odd card spans the full row instead of leaving an accidental hole.
+  `.adaptive-dashboard-columns` contains two semantic `.adaptive-dashboard-column` reading groups
+  for views such as Profile. They stack in DOM/focus order on compact layouts and flow independently
+  when Desktop is selected at `--bp-xl`; never recreate the former single grid where a tall card in
+  one column delayed the next card in the other. Home and Admin instead use explicit priority rows
+  whose repeated participant/user collections become three columns only in Desktop mode.
   The LAN „Mehr“ hub holds Mein Profil, Admin, Arcade, Durchsage, Jam and Orga. For a general event,
-  it replaces the Orga wrapper with direct entries for Events and Essen; An & Abreise, Packliste,
-  To-Do and Umfragen already occupy the bottom nav. Mein Profil moved here from its former topbar icon
-  (`#profile-btn`) to make room for the always-available Feedback icon there (see „Feedback“
-  below); the needs-setup indicator that used to sit on that topbar icon now sits on the „Mehr“
-  bottom-nav icon instead. Essen is listed here only for general events; LAN events retain its
+    it replaces the Orga wrapper with direct entries for Events and Essen; An & Abreise, Packliste,
+    To-Do and Umfragen already occupy the bottom nav. Mein Profil remains here as the compact/mobile
+    path. From `--bp-xl`, selecting Desktop replaces the bottom bar and „Mehr“ detour visually with
+    a grouped direct rail: Home; LAN; Orga; Sonstiges; plus the bottom utilities Feedback,
+    role-gated Admin and Mein Profil. The active event feature snapshot removes unavailable entries
+    and empty groups. Profile and Feedback are not duplicated in the desktop top ribbon; the ribbon
+    contains only global tools. The account-scoped Automatic/Desktop/Laptop choice lives in Mein
+    Profil so it remains reachable in every shell. Essen is listed in „Mehr“ only for
+    general events; LAN events retain its
   unconditional bottom-nav slot (`more.js`). Auswertung is never listed here —
   it has no general-audience entry point at all, living only behind Admin's „Auswertung“ tool card
   (see „Admin tools“). It keeps each destination's canonical icon
@@ -678,9 +708,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   remains independently aligned at the right.
   The destinations below „Mehr“ follow this same hierarchy without adding decorative accent rails:
   their major workflows and datasets are main groups, while entries, players, orders and results
-  remain subordinate cards or rows inside those groups. Every destination returns to „Mehr“ from
-  the shared compact subpage header; Profile keeps „Abmelden“ as that header's trailing action,
-  while Orga alone uses the reserved second row for its tabs and may therefore start lower.
+  remain subordinate cards or rows inside those groups. Phone and laptop destinations return to
+  „Mehr“ from the shared compact subpage header; the corresponding control is hidden on wide desktop
+  because the destination is already direct in the rail. Profile keeps „Abmelden“ as that header's
+  trailing action, while Orga alone uses the reserved second row for its tabs and may therefore start
+  lower.
 - **Broadcasts** — „Neue Durchsage“ and the recent history are separate grouped sections. Delivery
   channels live in the shared contextual tooltip directly beside „Neue Durchsage“ instead of a
   persistent explanation below the form. Recent broadcasts live in one standard, initially
@@ -947,8 +979,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   window, using durable reminder state independent of push history. TV-Kiosk (Admin's „Kioskverwaltung“
   card, not an Orga tab) stays one grouped section but lists one automatic account for every LAN
   event, including its stable `kiosk-<eventId>` username and a prefilled link to `/kiosk.html`.
-  The standalone page shows a centered account/password card until its event-scoped credential is
-  established; this identity never becomes a player or a regular app session.
+  The section leads directly with the shared login password itself (configured or generated once
+  on first use — see server/OPERATIONS.md) as one compact label/value/copy-icon row, so admins never
+  need server/.env access just to read out a working kiosk login. It has no repeated explanation or
+  unscoped login action above the event cards. Each event card provides one primary `Kiosk öffnen`
+  action with its account already selected. The standalone page shows a centered
+  account/password card until its event-scoped credential is established; this identity never
+  becomes a player or a regular app session.
 - **Hall of Fame and Info** — Hall-of-Fame all-time rankings use the shared two-column leaderboard
   grid. „Nach LAN“ uses one directly labeled event dropdown and shows every overall placement for
   the selected LAN, followed by tournament winners in the same leaderboard-row structure. Blue and
@@ -964,15 +1001,20 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   `openModal()` instance, its entry form and delete confirmation can open on top of it — `modal.js`
   delivers Escape only to the topmost open `.modal-backdrop`, so cancelling a nested confirmation
   never takes the dialog underneath it down too.
-- **Feedback** — the topbar's `#feedback-btn` (the canonical `feedback` icon from
-  `domainIcons.js`) opens the feedback dialog as a modal over whatever view is open, the same
-  reachable-from-anywhere pattern as Info. It automatically captures the view that was open when
-  the icon was tapped, so a report never needs to explain where it happened. A submission picks one
+- **Feedback** — the compact topbar's `#feedback-btn` and the wide desktop rail utility (both using
+  the canonical `feedback` icon from `domainIcons.js`) open the same feedback dialog over whatever
+  view is open. It automatically captures the view that was open when the action was used, so a
+  report never needs to explain where it happened. A submission picks one
   of four distinct sentiments — Positiv, Negativ, Problem, Idee — through the shared
   `.selection-toolbar` toggle rather than a free-text category, plus a message field. Admin's
-  Feedback section lists submissions newest first and filters them by the same four sentiments plus
-  „Alle“ through the shared `.chip`/`.chip.is-active` pattern (mirroring Spiele's genre chips and
-  Orga's To-Do Art filter).
+  Feedback section lists open submissions first and orders each state newest first. It filters them
+  by the same four sentiments plus „Alle“ through the shared `.chip`/`.chip.is-active` pattern
+  (mirroring Spiele's genre chips and
+  Orga's To-Do Art filter). Open entries expose the compact primary action „Erledigt“ through
+  `.btn.btn-sm.btn-primary`. Completed entries move into a separate, initially collapsed
+  „Erledigt“ section whose open state survives live re-renders; their secondary `.btn.btn-sm`
+  action „Wieder öffnen“ moves them back without deleting the original message or its captured
+  context.
 - **Arrival carpools** — the „An- & Abreise“ tab of Orga. Anreise and Abreise remain separate
   full-width accented panels. Their
   carpool cards use two columns from `--bp-md`, but an odd final card deliberately keeps one-column
@@ -986,11 +1028,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   action uses the primary button treatment next to the destructive delete action.
 - **Arcade** — The launcher follows the grouped-page hierarchy with separate full-width cards for
   „Spiele“, optional running games, the selected game and „Statistiken“.
-  Without a selection, the game grid remains the launcher. With a selection, the active game moves
-  first and the grid becomes the collapsed „Spiel wechseln“ control below it. The selected game is
-  represented by `#arcade/<spiel>` so browser back/forward, reload and „Spielauswahl“ agree.
+  The game grid remains the first visible group with or without a selection. Once a game is selected,
+  its lobby group follows directly below the grid; there is no separate „Spielauswahl“ back action.
+  The selected game is represented by `#arcade/<spiel>` so browser back/forward, reload and the
+  highlighted game tile agree.
   Game choices are horizontal nested cards with their Lucide game icon, name and an explicit
-  „… offen“ lobby badge; they form one column on phones and exactly two from `--bp-md`. Running
+  „… offen“ lobby badge; they form one column on phones, exactly two from `--bp-md` and three in
+  desktop mode from `--bp-xl`. Running
   games reuse the same responsive two-column rhythm. The tile badge is the only separate open-lobby
   overview; selecting a game reveals all of its lobbies in the dedicated main group. Goal and
   controls live in one tooltip directly beside that selected game's title instead of a second
@@ -1041,14 +1085,21 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   two explicit teams with two slots each, require all four participants to be ready and award the
   shared team score and win to both teammates. Pong follows Atari's Pong-4 rules: each participant
   controls a separate paddle that remains in its assigned upper/lower half, player initials and roster
-  lane labels identify all four paddles, and Doppel defaults to 21 points.
+  lane labels identify all four paddles, and Doppel defaults to 21 points. Each Doppel paddle is
+  shorter than a Duell paddle so four defended lanes do not make rallies automatic. The ball gains
+  speed continuously during a rally as well as on paddle contact; the browser predicts the short
+  interval between authoritative server snapshots so that this higher speed still renders smoothly.
   Both games reach a Doppel AI match through the same two switches — „Doppel“ plus „KI“ — where
   the host and one bot teammate play against two bot opponents.
   Statistics use the concise title „Statistiken“ and one full-width game dropdown whose options
-  include each game's match count. The selected game is not repeated above its results. Those
+  include each game's match count. Picking a game tile above auto-syncs this dropdown to the same
+  game (matched by its own gameType/statsKey) so its stats show without a second, redundant
+  selection; a manual dropdown choice stays in place until the tile selection above changes again.
+  The selected game is not repeated above its results. Those
   results follow directly without another enclosing card or accent rail; player rows reuse
-  `.leaderboard-list-grid` for the shared one-/two-column ranking presentation and spell out wins
-  and losses in German. Tetris Duell and Tetris Arena are separate dropdown entries so an Arena's
+  `.leaderboard-list-grid` for the shared one-/two-column ranking presentation, gain a third column
+  in desktop mode from `--bp-xl` and spell out wins and losses in German. Tetris Duell and Tetris
+  Arena are separate dropdown entries so an Arena's
   many non-winning placements do not distort the duel win rate. Arena rows instead show wins,
   Top-3 finishes, average placement, cleared lines, sent garbage and knockouts. Matches containing
   bots appear as separate „KI-Test“ entries and never alter the human-only Duell/Arena rankings.
@@ -1060,7 +1111,12 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Arena matches keep eliminated players visibly in the roster with a textual status, while the
   canvas dims their snake and marks the shrinking safe zone with the shared danger treatment.
   Numbered head markers and a matching `Schlange N · Name` legend identify every participant
-  without relying on color; the same legend appears in player, spectator and kiosk contexts.
+  without relying on color; the same legend appears in player, spectator and kiosk contexts. The
+  local match view names the current participant's color in a large full-width banner from the start.
+  The same color and snake number appear in the countdown itself, whose translucent overlay leaves the
+  board unblurred so players can orient themselves before movement begins.
+  Snake uses a 48×30 logical field in the existing 8:5 canvas, making cells and snakes smaller in
+  relation to the available play area without shrinking the visible board.
   Challenge Rush also exposes the Admin-mode-gated opponent switch plus its test-challenge
   selection; playing the bot solo draws
   from its ten original single-payload challenges, since the bot cannot yet play the thirty
@@ -1133,7 +1189,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   with „Event öffnen“; the invitation becomes read notification history and the action switches the
   active event. Security, Agent, notifications and visible monitors are clearly named collapsible
   groups below the always-visible identity editor. They start expanded; a user's manual collapse
-  survives same-view re-renders.
+  survives same-view re-renders. In Desktop mode, identity/password/notifications form the account
+  column while ratings/visible monitors/statistics form the LAN-profile column. Pending invitations
+  remain above both columns; the three-step Agent setup remains full width below them. The account
+  column also contains the three-way view preference; changing it updates the shell without losing
+  the current profile state.
 - **Leaderboard** — the „Rangliste“ tab and default entry of the „Auswertung“ area, reached only
   through Admin's „Auswertung“ tool card (see „Admin tools“). The filtered „Rangliste“ and per-player
   „Spielzeit“ share one main card titled „Rangliste & Spielzeit“ with the game picker above them;
@@ -1159,7 +1219,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   „Live-Status“ rather than a competing page-level group. A pending event invitation appears here as
   a plain linking nudge into „Mein Profil“ (see aktuellStatus.js); the full card with
   Annehmen/Ablehnen lives only in Profile, not in this list. Main groups stay in one continuous column
-  at phone and laptop widths while their existing internal grids remain responsive. A general event
+  at phone and laptop widths while their existing internal grids remain responsive. In Desktop mode,
+  „Meine To-Dos“ and „Aktuell“ share the first priority row, followed by a three-column Live-Status,
+  the full-width seating plan and a three-column top-six ranking. If only one priority card exists it
+  spans the row. A general event
   replaces the LAN-only live and ranking groups with a leading event overview containing its type,
   period, optional location/note, participant count and contribution. A separate „Organisation“
   group links to the existing Eventdetails, To-Dos, An- & Abreise, Essen and Jam workflows; the
