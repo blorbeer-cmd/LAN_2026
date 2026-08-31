@@ -1,5 +1,3 @@
-import { MEMORY_REVEAL_TOTAL_MS } from './challengeRushLogic';
-
 interface ChallengeRushTimingEnv {
   NODE_ENV?: string;
   CHALLENGE_RUSH_FAST_TIMERS?: string;
@@ -9,8 +7,14 @@ interface ChallengeRushTimingEnv {
 export interface ChallengeRushTiming {
   countdownMs: number;
   challengeDurationMs: number | null;
-  memoryRevealMs: number;
-  trafficLightGreenMs: number | null;
+  /**
+   * Overrides a trial's own memorize-phase length. `null` keeps the generated
+   * value (createTrial's previewMs), which is the only production behavior.
+   * The socket suite shortens the whole challenge deadline, so without this a
+   * real 2.5–5 s preview could never finish inside a 1.2 s round and the
+   * server-driven preview → input switch would be untestable there.
+   */
+  previewMs: number | null;
 }
 
 const CHALLENGE_RUSH_COUNTDOWN_MS = 5_000;
@@ -31,21 +35,18 @@ export function resolveChallengeRushTiming(env: ChallengeRushTimingEnv): Challen
       // lets players read it while the answer-bearing playfield stays hidden.
       countdownMs: CHALLENGE_RUSH_COUNTDOWN_MS,
       challengeDurationMs: null,
-      memoryRevealMs: MEMORY_REVEAL_TOTAL_MS,
-      trafficLightGreenMs: null,
+      previewMs: null,
     };
   }
   if (useSocketTestTimers) return {
     countdownMs: 50,
     challengeDurationMs: 1_200,
-    memoryRevealMs: 50,
-    trafficLightGreenMs: 100,
+    previewMs: 50,
   };
   return {
     countdownMs: 50,
     challengeDurationMs: null,
-    memoryRevealMs: 50,
-    trafficLightGreenMs: 100,
+    previewMs: null,
   };
 }
 

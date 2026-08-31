@@ -2,11 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CHALLENGES, challengeOrder, challengePayload, createTrial, difficultyFor, isCurrentChallenge, isReadyForNext, isTrialChallenge, planBotChallenge, previewTrialData, remainingUntil, safeScoreInput,
-  seenBeforeSelection, timedTargetWindowMs, validateTrialInput,
-  scoreAimTrainer, scoreColorWord, scoreCps, scoreMemorySequence, scoreNumberSalad, scoreOddOneOut,
-  scoreReaction, scoreTiming10, scoreTrafficLight, scoreWhackAMole, winnerIdForScores,
-  AIM_TRAINER_TARGET_COUNT, MEMORY_SEQUENCE_LENGTH, MEMORY_SEQUENCE_TILE_COUNT, ODD_ONE_OUT_TILE_COUNT,
-  WHACK_A_MOLE_HOLE_COUNT, WHACK_A_MOLE_SEQUENCE_LENGTH, COLOR_WORD_ROUND_COUNT,
+  validateTrialInput,
+  scoreColorWord, scoreCps, scoreNumberSalad, scoreOddOneOut,
+  scoreReaction, scoreTiming10, winnerIdForScores,
+  ODD_ONE_OUT_TILE_COUNT, COLOR_WORD_ROUND_COUNT,
   type ChallengeKey, type InternalTrial,
 } from './challengeRushLogic';
 
@@ -27,9 +26,9 @@ test('trial IDs are opaque and independent from deterministic generator inputs',
 // challenges; the thirty trial-based ones (see isTrialChallenge) generate a
 // fresh per-player trial on demand instead of one fixed payload, so a bot
 // simply sits those out (see challengeRush.ts's beginChallenge/runMatchTick).
-test('Challenge Rush bot plans valid inputs for all ten original challenge types', () => {
+test('Challenge Rush bot plans valid inputs for every single-payload challenge type', () => {
   const originalChallenges = CHALLENGES.filter((challenge) => !isTrialChallenge(challenge.key));
-  assert.equal(originalChallenges.length, 10);
+  assert.equal(originalChallenges.length, 6);
   const plans = new Map(originalChallenges.map((challenge, index) => {
     const payload = challengePayload(challenge.key, 1_000 + index);
     const plan = planBotChallenge(payload);
@@ -40,17 +39,14 @@ test('Challenge Rush bot plans valid inputs for all ten original challenge types
   }));
 
   assert.deepEqual(plans.get('number-salad')?.plan.map((step) => step.value), [1, 2, 3, 4, 5, 6, 7, 8]);
-  assert.deepEqual(plans.get('aim-trainer')?.plan.map((step) => step.value), plans.get('aim-trainer')?.payload.data.targets);
-  assert.deepEqual(plans.get('memory-sequence')?.plan.map((step) => step.value), plans.get('memory-sequence')?.payload.data.sequence);
-  assert.deepEqual(plans.get('whack-a-mole')?.plan.map((step) => step.value), plans.get('whack-a-mole')?.payload.data.sequence);
   assert.deepEqual(
     plans.get('color-word')?.plan.map((step) => step.value),
     (plans.get('color-word')?.payload.data.rounds as Array<{ textColor: string }>).map((round) => round.textColor),
   );
 });
-test('Challenge Rush bot plans nothing for the thirty trial-based challenges instead of crashing', () => {
+test('Challenge Rush bot plans nothing for the trial-based challenges instead of crashing', () => {
   const trialChallenges = CHALLENGES.filter((challenge) => isTrialChallenge(challenge.key));
-  assert.equal(trialChallenges.length, 30);
+  assert.equal(trialChallenges.length, 25);
   for (const challenge of trialChallenges) {
     assert.deepEqual(planBotChallenge(challengePayload(challenge.key, 42)), []);
   }
@@ -108,23 +104,6 @@ test('difficulty rises with continued play even when a streak breaks', () => {
   assert.equal(difficultyFor(0, 12), 5);
   assert.ok(difficultyFor(6, 3) > difficultyFor(0, 3));
 });
-test('timed targets become faster but retain a playable minimum window', () => {
-  assert.equal(timedTargetWindowMs('aim-trainer', 0), 1_800);
-  assert.ok(timedTargetWindowMs('aim-trainer', 7) < timedTargetWindowMs('aim-trainer', 0));
-  assert.equal(timedTargetWindowMs('aim-trainer', 99), 650);
-  assert.equal(timedTargetWindowMs('whack-a-mole', 0), 1_400);
-  assert.equal(timedTargetWindowMs('whack-a-mole', 99), 500);
-});
-test('clock-angle keeps exact half-degree answers', () => {
-  for (let seed = 0; seed < 400; seed += 1) {
-    const trial = createTrial('clock-angle', seed, 0, 1);
-    if (String(trial.data.prompt).includes(':15') || String(trial.data.prompt).includes(':45')) {
-      const [hour, minute] = [...String(trial.data.prompt).matchAll(/\d+/g)].map((match) => Number(match[0]));
-      const difference = Math.abs((hour % 12) * 30 + minute * 0.5 - minute * 6);
-      if (difference % 1 !== 0) assert.equal(trial.expected, String(Math.min(difference, 360 - difference)));
-    }
-  }
-});
 test('isReadyForNext requires every still-connected, non-forfeited player to confirm', () => {
   const entries = [
     { playerId: 'a', connected: true, forfeited: false },
@@ -144,18 +123,27 @@ test('isReadyForNext ignores disconnected or forfeited players and never fires w
   assert.equal(isReadyForNext([{ playerId: 'a', connected: false, forfeited: false }], new Set()), false);
 });
 
-test('all forty 30-second challenges are registered and matches select ten deterministically', () => {
-  assert.equal(CHALLENGES.length, 40);
+test('all thirty-one 30-second challenges are registered and matches select ten deterministically', () => {
+  assert.equal(CHALLENGES.length, 31);
   assert.ok(CHALLENGES.every((challenge) => challenge.durationMs === 30_000));
   assert.equal(challengeOrder(123).length, 10);
   assert.deepEqual(challengeOrder(123), challengeOrder(123));
-  for (const key of ['aim-trainer', 'memory-sequence', 'odd-one-out', 'whack-a-mole', 'traffic-light', 'color-word']) {
+  for (const key of ['reaction-circle', 'cps', 'number-salad', 'timing-10', 'odd-one-out', 'color-word']) {
     assert.ok(CHALLENGES.some((entry) => entry.key === key), `${key} missing from CHALLENGES`);
   }
 });
 
+// The nine challenges dropped for being the most failure-prone (per-player
+// step deadlines, cross-trial state, a client-side reveal/hide state machine)
+// or degenerate in content must not reappear by accident.
+test('retired challenges stay out of the catalog', () => {
+  for (const key of ['aim-trainer', 'whack-a-mole', 'traffic-light', 'memory-sequence', 'memory-pairs', 'n-back', 'seen-before', 'sequence-transform', 'clock-angle']) {
+    assert.equal(CHALLENGES.some((entry) => entry.key === key), false, `${key} should no longer be registered`);
+  }
+});
+
 test('Phase 3 challenge payloads are deterministic per seed', () => {
-  for (const key of ['aim-trainer', 'memory-sequence', 'odd-one-out', 'whack-a-mole', 'traffic-light', 'color-word'] as const) {
+  for (const key of ['reaction-circle', 'number-salad', 'odd-one-out', 'color-word'] as const) {
     assert.deepEqual(challengePayload(key, 555).data, challengePayload(key, 555).data);
   }
 });
@@ -164,23 +152,12 @@ test('Phase 3 challenge payloads vary across seeds', () => {
   // odd-one-out excluded here: its payload is a single index in [0,16), so a
   // same-value collision across two arbitrary seeds is expected ~6% of the
   // time and is not itself a sign of broken randomization.
-  for (const key of ['aim-trainer', 'memory-sequence', 'whack-a-mole', 'traffic-light', 'color-word'] as const) {
+  for (const key of ['reaction-circle', 'number-salad', 'color-word'] as const) {
     assert.notDeepEqual(challengePayload(key, 555).data, challengePayload(key, 556).data);
   }
 });
 
-test('aim-trainer payload has the expected target count within playfield bounds', () => {
-  const { targets } = challengePayload('aim-trainer', 42).data as { targets: Array<{ x: number; y: number }> };
-  assert.equal(targets.length, AIM_TRAINER_TARGET_COUNT);
-  for (const target of targets) { assert.ok(target.x >= 15 && target.x <= 85); assert.ok(target.y >= 20 && target.y <= 80); }
-});
 
-test('memory-sequence payload has no immediate tile repeats', () => {
-  const { sequence, tileCount } = challengePayload('memory-sequence', 7).data as { sequence: number[]; tileCount: number };
-  assert.equal(sequence.length, MEMORY_SEQUENCE_LENGTH);
-  assert.equal(tileCount, MEMORY_SEQUENCE_TILE_COUNT);
-  for (let index = 1; index < sequence.length; index += 1) assert.notEqual(sequence[index], sequence[index - 1]);
-});
 
 test('odd-one-out payload picks a single tile within the grid', () => {
   const { oddIndex, tileCount } = challengePayload('odd-one-out', 9).data as { oddIndex: number; tileCount: number };
@@ -188,17 +165,7 @@ test('odd-one-out payload picks a single tile within the grid', () => {
   assert.ok(oddIndex >= 0 && oddIndex < ODD_ONE_OUT_TILE_COUNT);
 });
 
-test('whack-a-mole payload has the expected hole sequence without immediate repeats', () => {
-  const { sequence, holeCount } = challengePayload('whack-a-mole', 3).data as { sequence: number[]; holeCount: number };
-  assert.equal(sequence.length, WHACK_A_MOLE_SEQUENCE_LENGTH);
-  assert.equal(holeCount, WHACK_A_MOLE_HOLE_COUNT);
-  for (let index = 1; index < sequence.length; index += 1) assert.notEqual(sequence[index], sequence[index - 1]);
-});
 
-test('traffic-light payload keeps the green delay inside a fair window', () => {
-  const { greenAtMs } = challengePayload('traffic-light', 11).data as { greenAtMs: number };
-  assert.ok(greenAtMs >= 2_000 && greenAtMs < 5_500);
-});
 
 test('color-word payload has the expected round count with valid options', () => {
   const { rounds } = challengePayload('color-word', 21).data as { rounds: Array<{ word: string; textColor: string; options: string[] }> };
@@ -207,25 +174,15 @@ test('color-word payload has the expected round count with valid options', () =>
 });
 
 test('Phase 3 score helpers stay in the normalized 0..100 range', () => {
-  assert.equal(scoreAimTrainer(AIM_TRAINER_TARGET_COUNT, 2_000), 100);
-  assert.equal(scoreAimTrainer(0, 0), 0);
-  assert.equal(scoreMemorySequence(MEMORY_SEQUENCE_LENGTH), 100);
-  assert.equal(scoreMemorySequence(0), 0);
   assert.equal(scoreOddOneOut(0), 100);
   assert.equal(scoreOddOneOut(99_999), 0);
   assert.equal(scoreOddOneOut(0, 1), 85);
   assert.ok(scoreOddOneOut(0, 1) < scoreOddOneOut(400, 0), 'a wrong guess should not beat an honest, slightly slower hit');
-  assert.equal(scoreWhackAMole(WHACK_A_MOLE_SEQUENCE_LENGTH, 0, 3_000), 100);
-  assert.equal(scoreWhackAMole(0, 99, 3_000), 0);
-  assert.equal(scoreTrafficLight(120, false), 100);
-  assert.equal(scoreTrafficLight(0, true), 0);
-  assert.equal(scoreTrafficLight(99_999, false), 0);
   assert.equal(scoreColorWord(COLOR_WORD_ROUND_COUNT, 0, 3_000), 100);
   assert.equal(scoreColorWord(0, COLOR_WORD_ROUND_COUNT, 3_000), 0);
   for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
-    assert.equal(safeScoreInput(scoreAimTrainer(value, value)), scoreAimTrainer(value, value));
+    assert.equal(safeScoreInput(scoreColorWord(value, value, value)), scoreColorWord(value, value, value));
     assert.ok(scoreOddOneOut(value) >= 0 && scoreOddOneOut(value) <= 100);
-    assert.ok(scoreWhackAMole(value, value, value) >= 0 && scoreWhackAMole(value, value, value) <= 100);
   }
 });
 
@@ -318,11 +275,6 @@ const REFERENCE_SOLUTIONS: Record<string, (trial: InternalTrial) => string> = {
     return prime ? 'Ja' : 'Nein';
   },
   'balance-scale': (trial) => { const [known, total] = numbersIn(String(trial.data.prompt)); return String(total - known); },
-  'clock-angle': (trial) => {
-    const [hour, minute] = numbersIn(String(trial.data.prompt));
-    const difference = Math.abs((hour % 12) * 30 + minute * 0.5 - minute * 6);
-    return String(Math.min(difference, 360 - difference));
-  },
   'binary-pattern': (trial) => String(nextPeriodicValue(numbersIn(String(trial.data.prompt)))),
   'rule-switch': (trial) => {
     const prompt = String(trial.data.prompt); const evenIsBlue = prompt.startsWith('Gerade Zahlen = Blau'); const number = numbersIn(prompt)[0];
@@ -332,16 +284,11 @@ const REFERENCE_SOLUTIONS: Record<string, (trial: InternalTrial) => string> = {
   'coin-change': (trial) => String(minimumCoins(numbersIn(String(trial.data.prompt))[0])),
   'letter-order': (trial) => [...(trial.data.letters as string[])].sort()[0],
   'digit-sum': (trial) => String(String(numbersIn(String(trial.data.prompt))[0]).split('').reduce((sum, digit) => sum + Number(digit), 0)),
-  'sequence-transform': (trial) => {
-    const terms = numbersIn(String(trial.data.prompt));
-    assert.ok(terms.every((term, index) => index === 0 || term === terms[index - 1] * 2 + 1));
-    return String(terms.at(-1)! * 2 + 1);
-  },
 };
 
-test('all twenty logic generators agree with independent reference solutions', () => {
+test('all eighteen logic generators agree with independent reference solutions', () => {
   const keys = CHALLENGES.map((challenge) => challenge.key).filter((key) => key in REFERENCE_SOLUTIONS);
-  assert.equal(keys.length, 20);
+  assert.equal(keys.length, 18);
   const coinAmounts = new Set<number>();
   for (const key of keys) {
     for (let seed = 0; seed < 120; seed += 1) for (let difficulty = 1; difficulty <= 5; difficulty += 1) {
@@ -364,27 +311,7 @@ test('formerly repetitive challenges generate a broad task pool at high difficul
   assert.ok(uniquePrompts('digit-sum') >= 100);
 });
 
-test('sequence-transform asks for the first unseen term and never shows its answer', () => {
-  for (let seed = 0; seed < 200; seed += 1) {
-    const trial = createTrial('sequence-transform', seed, 0, 1 + (seed % 5));
-    assert.equal(numbersIn(String(trial.data.prompt)).includes(Number(trial.expected)), false);
-    assert.equal(REFERENCE_SOLUTIONS['sequence-transform'](trial), String(trial.expected));
-  }
-});
 
-test('seen-before keeps both answers reachable without redefining an old symbol as new', () => {
-  let seen: string[] = []; let yes = 0; let no = 0;
-  for (let index = 0; index < 1_000; index += 1) {
-    const selection = seenBeforeSelection(index % 3 === 0, seen, index);
-    if (selection.repeated) {
-      yes += 1; assert.ok(seen.includes(selection.symbol));
-    } else {
-      no += 1; assert.equal(seen.includes(selection.symbol), false);
-    }
-    seen = selection.seenSymbols;
-  }
-  assert.ok(yes > 0); assert.ok(no > 0);
-});
 
 test('word-scramble never presents the source word verbatim as its own scramble', () => {
   for (let seed = 0; seed < 500; seed += 1) {

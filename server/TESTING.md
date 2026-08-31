@@ -162,11 +162,13 @@ Wiederholungsfall ab.
   und Vorschauphasen im Browser nicht vorzeitig abgeschnitten werden.
 - Die Socket-Integrationssuite `src/test/api.challengeRush.test.ts` setzt zusätzlich
   `CHALLENGE_RUSH_FAST_TIMERS=1` zusammen mit `NODE_ENV=test`. Dieses Profil verkürzt zusätzlich die
-  Challenge-Deadline für protokollnahe Zustandsprüfungen. Außerhalb von `NODE_ENV=test` werden
-  beide Flags ignoriert.
+  Challenge-Deadline für protokollnahe Zustandsprüfungen sowie die Merkphase eines Trials
+  (`previewMs`), damit der serverseitige Wechsel von `preview` auf `input` innerhalb der
+  verkürzten Runde überhaupt stattfinden kann. Im Browserprofil bleibt die Merkphase echt.
+  Außerhalb von `NODE_ENV=test` werden beide Flags ignoriert.
 - Zielgerichtete Challenge-Rush-Integrationstests wählen über den admin-geschützten
   `challengeKeys`-Pfad genau ihre relevante Challenge. Nur der vollständige Lifecycle-Test spielt
-  weiterhin einmal den gesamten 40-Challenge-Katalog durch.
+  weiterhin einmal den gesamten Challenge-Katalog durch.
 - Der Produktions-Build (`npm run build`) schließt alle Testdateien aus – sie landen nie in `dist/`.
 - `index.ts` startet den Server nur, wenn es direkt ausgeführt wird (`require.main === module`),
   damit Tests die App importieren können, ohne einen Port zu belegen.

@@ -11,9 +11,9 @@ import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
 import { emptyStateHtml } from '../../emptyState.js';
 import { backButtonHtml } from '../../backButton.js';
 
+const PREVIEW_RETRY_MS = 1_000;
 const COLOR_WORD_LABELS = { red: 'Rot', blue: 'Blau', green: 'Grün', yellow: 'Gelb' };
 const COLOR_WORD_VARS = { red: 'var(--danger)', blue: 'var(--accent)', green: 'var(--state-playing)', yellow: 'var(--state-paused)' };
-const MEMORY_REVEAL_STEP_MS = 700; const MEMORY_REVEAL_SHOW_MS = 500;
 
 let socket = null; let lobbies = []; let challengeCatalog = []; let match = null; let numberOrder = 1; let prevMyScore = null;
 let countdownKey = null; let startedKey = null; let presentationKey = null;
@@ -21,18 +21,14 @@ let countdownDeadline = null; let countdownTimer = null;
 const selectedChallengeKeys = new Set();
 let challengeSelectorOpen = false;
 let challengeRushOpponent = 'human';
-let currentTrial = null; let trialTimer = null; let interaction = freshInteraction(null);
-// Shared "how far into the current sequence" pointer for aim-trainer,
-// whack-a-mole, memory-sequence and color-word — only one of them is ever
-// the active challenge at a time, so one counter is enough.
+let currentTrial = null; let trialTimer = null; let previewRetryTimer = null; let interaction = freshInteraction(null);
+// "How far into the current round sequence" pointer for color-word.
 let progressStep = 0;
-let memoryRevealDone = false; let memoryRevealIndex = -1; let trafficGreen = false;
 // Whether this player has already completed the current challenge — the
 // match itself stays in 'playing' until every player is done, but this
 // player's own controls must stop accepting input immediately instead of
 // silently swallowing further clicks as server-side duplicate-acks.
 let iCompleted = false;
-let revealTimers = [];
 let oddOneOutSheet = null;
 const myId = () => getMyId();
 const currentView = () => document.getElementById('view-container')?.dataset.view;
@@ -41,8 +37,8 @@ function navigate(view, options = {}) {
   window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: { view, ...options } }));
 }
 function emit(event, payload) { return new Promise((resolve) => socket?.emit(event, payload, resolve)); }
-function clearRevealTimers() { revealTimers.forEach(clearTimeout); revealTimers = []; }
-function clearTrialTimer() { if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null; }
+function clearTrialTimer() { if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null; clearPreviewRetry(); }
+function clearPreviewRetry() { if (previewRetryTimer !== null) clearInterval(previewRetryTimer); previewRetryTimer = null; }
 function clearReadingCountdown() { if (countdownTimer !== null) clearInterval(countdownTimer); countdownTimer = null; countdownDeadline = null; }
 function readingCountdownSeconds() { return Math.max(0, Math.ceil(Math.max(0, Number(countdownDeadline) - Date.now()) / 1000)); }
 function updateReadingCountdown() {
@@ -55,70 +51,21 @@ function startReadingCountdown(remainingMs) {
   updateReadingCountdown();
   countdownTimer = setInterval(updateReadingCountdown, 200);
 }
-function scheduleAt(delayMs, callback) { revealTimers.push(setTimeout(callback, Math.max(0, delayMs))); }
 function rerenderIfVisible() { if (currentView() === 'challengeRush') rerender(); }
-export function memoryRevealSchedule(memoryRevealMs, sequenceLength) {
-  const count = Number.isInteger(sequenceLength) && sequenceLength > 0 ? sequenceLength : 0;
-  const configuredTotal = Number(memoryRevealMs);
-  const totalMs = Number.isFinite(configuredTotal) && configuredTotal >= 0
-    ? configuredTotal
-    : count * MEMORY_REVEAL_STEP_MS;
-  const stepMs = count > 0 ? totalMs / count : 0;
-  const showMs = stepMs * (MEMORY_REVEAL_SHOW_MS / MEMORY_REVEAL_STEP_MS);
-  return { stepMs, showMs, totalMs };
-}
-function focusTimedChallengeTarget(state) {
-  const selector = timedChallengeFocusSelector(state);
-  if (!selector) return;
-  // Arcade rerenders resolve their cached dynamic import asynchronously. Wait for the next frame
-  // so app.js has replaced the DOM before restoring keyboard focus to the timed target.
-  requestAnimationFrame(() => {
-    if (currentView() !== 'challengeRush') return;
-    document.querySelector(selector)?.focus();
-  });
-}
-function elapsedInChallenge(state) { return (state.challenge?.durationMs ?? 0) - (state.remainingMs ?? 0); }
-export function freshInteraction(trialId, resume = {}) {
-  const found = new Set(Array.isArray(resume.found) ? resume.found : []);
-  const pair = Array.isArray(resume.revealed) ? [...resume.revealed] : [];
-  const cards = [...(Array.isArray(resume.foundCards) ? resume.foundCards : []), ...(Array.isArray(resume.revealedCards) ? resume.revealedCards : [])];
-  const values = new Map(cards.map((card) => [card.index, card.value]));
-  return { trialId, sequence: [], cells: [], pair, found, values, revealSeq: Number(resume.revealSeq ?? 0) };
+export function freshInteraction(trialId) {
+  return { trialId, sequence: [], cells: [] };
 }
 // Re-sent events for the same trial occur after pause/resume and reconnect.
-// Keep unsent sequence/matrix input, but merge the server's newer authoritative
-// pair state so a lost reveal acknowledgement cannot leave the board stale.
+// Keep the player's unsent sequence/matrix input across those so a resend
+// never silently discards what they already tapped.
 export function nextInteractionState(previous, trial) {
-  if (previous.trialId !== trial?.trialId) return freshInteraction(trial?.trialId, trial?.resume);
-  const resumed = freshInteraction(trial?.trialId, trial?.resume);
-  if (resumed.revealSeq < previous.revealSeq) return { ...previous };
-  return {
-    ...previous,
-    pair: resumed.pair,
-    found: resumed.found,
-    values: resumed.values,
-    revealSeq: Math.max(previous.revealSeq, resumed.revealSeq),
-  };
-}
-export function pairHideStillApplies(state, trialId, revealSeq) {
-  return state.trialId === trialId && state.revealSeq === revealSeq;
+  return previous.trialId === trial?.trialId ? { ...previous } : freshInteraction(trial?.trialId);
 }
 export function shouldPreserveInteractionOnMatchStart(previousMatch, nextMatch) {
   return nextMatch?.reconnected === true && previousMatch?.matchId === nextMatch?.matchId;
 }
 export function focusableTrialSelector() {
-  return '[data-cr-choice], [data-cr-bool], [data-cr-sequence-cell], [data-cr-matrix-cell], [data-cr-number-position], [data-cr-pair-card]';
-}
-export function timedChallengeFocusSelector(state) {
-  if (state?.phase !== 'playing' || state?.paused) return '';
-  if (state?.challenge?.key === 'aim-trainer') return '.challenge-rush-circle';
-  if (state?.challenge?.key === 'whack-a-mole') return '.challenge-rush-tile.is-active';
-  return '';
-}
-export function acknowledgedRevealSeq(currentRevealSeq, serverRevealSeq) {
-  return Number.isSafeInteger(serverRevealSeq) && serverRevealSeq >= 0
-    ? serverRevealSeq
-    : Number(currentRevealSeq) + 1;
+  return '[data-cr-choice], [data-cr-sequence-cell], [data-cr-matrix-cell], [data-cr-number-position]';
 }
 function clearOddOneOutPresentation() {
   oddOneOutSheet?.replaceSync('');
@@ -136,6 +83,26 @@ function applyOddOneOutPresentation(container, oddIndex) {
   // the answer. Computed geometry remains available to visual browser tests.
   oddOneOutSheet.replaceSync(`.challenge-rush-odd-grid > .challenge-rush-tile:nth-child(${position + 1}) { border-radius: var(--cr-odd-radius); background: color-mix(in srgb, var(--bg-elevated-2) 88%, var(--accent) 12%); }`);
 }
+function requestCurrentTrial() {
+  if (!socket || !match?.matchId || match.phase !== 'playing') return;
+  socket.emit('challenge-rush:trial:get', { matchId: match.matchId, playerId: myId(), challengeIndex: match.challengeIndex });
+}
+// Belt and braces alongside the server's own preview timer: the input phase
+// still arrives if this client's preview request is never answered (a socket
+// that dropped right after the emit). Unlike the input branch below there is
+// no player action to fall back on during 'Merken', so the request repeats on
+// a fixed interval until the server's 'challenge-rush:trial' replaces it.
+function schedulePreviewRetry() {
+  clearPreviewRetry();
+  const trialId = currentTrial?.trialId;
+  previewRetryTimer = setInterval(() => {
+    if (currentTrial?.trialId !== trialId || currentTrial?.phase !== 'preview' || match?.paused || match?.phase !== 'playing') {
+      clearPreviewRetry();
+      return;
+    }
+    requestCurrentTrial();
+  }, PREVIEW_RETRY_MS);
+}
 function scheduleTrialPhase() {
   clearTrialTimer();
   if (!currentTrial || match?.paused || match?.phase !== 'playing') return;
@@ -143,7 +110,8 @@ function scheduleTrialPhase() {
   if (currentTrial.phase === 'preview') {
     trialTimer = setTimeout(() => {
       if (currentTrial?.trialId !== trialId || currentTrial.phase !== 'preview' || match?.paused) return;
-      socket?.emit('challenge-rush:trial:get', { matchId: match.matchId, playerId: myId(), challengeIndex: match.challengeIndex });
+      requestCurrentTrial();
+      schedulePreviewRetry();
     }, Math.max(0, Number(currentTrial.phaseRemainingMs ?? currentTrial.phaseMs ?? 0)) + 20);
     return;
   }
@@ -152,38 +120,16 @@ function scheduleTrialPhase() {
     socket?.emit('challenge-rush:challenge:input', { matchId: match.matchId, playerId: myId(), challengeIndex: match.challengeIndex, trialId, action: 'timeout' });
   }, Math.max(0, Number(currentTrial.inputRemainingMs ?? currentTrial.inputMs ?? 0)) + 20);
 }
-// The reveal animation is purely presentational: the server independently
-// validates timing from its own elapsed clock, so a client that paused,
-// reconnected or drifted only ever sees a wrong *animation*, never an unfair
-// score. Scheduling is re-derived from remainingMs on every relevant state
-// push while actually playing (challenge start, resume) instead of running
-// once, so it stays correct across those transitions. Unlike the sequence
-// itself (which the player is meant to see and memorize), the traffic
-// light's exact green moment is never sent to the client at all — the
-// server pushes a dedicated event right when it happens (see
-// 'challenge-rush:traffic-light:green' below), so no script can precompute
-// the reaction window.
-function scheduleMemoryReveal(state) {
-  clearRevealTimers();
-  const sequence = state.challenge?.data?.sequence ?? [];
-  const timing = memoryRevealSchedule(state.challenge?.data?.memoryRevealMs, sequence.length);
-  const elapsed = elapsedInChallenge(state);
-  memoryRevealIndex = -1;
-  sequence.forEach((tile, index) => {
-    const showAt = index * timing.stepMs; const hideAt = showAt + timing.showMs;
-    // The first tile's showAt is exactly 0, so "elapsed < showAt" never fires
-    // for it (elapsed is never negative) — a tile already inside its show
-    // window (covers both that boundary case and a mid-reveal reconnect)
-    // must be shown immediately instead of only ever being scheduled.
-    if (elapsed >= showAt && elapsed < hideAt) memoryRevealIndex = tile;
-    else if (elapsed < showAt) scheduleAt(showAt - elapsed, () => { memoryRevealIndex = tile; rerenderIfVisible(); });
-    if (elapsed < hideAt) scheduleAt(hideAt - elapsed, () => { memoryRevealIndex = -1; rerenderIfVisible(); });
-  });
-  const doneAt = timing.totalMs;
-  if (elapsed < doneAt) scheduleAt(doneAt - elapsed, () => { memoryRevealDone = true; memoryRevealIndex = -1; rerenderIfVisible(); });
-  else memoryRevealDone = true;
+// A backgrounded tab has its timers throttled or suspended, so the local
+// preview/input countdown above can come back arbitrarily late. Re-deriving
+// the schedule from the server's own remaining-ms on the way back, and asking
+// for the current trial, keeps a phone that was locked mid-challenge from
+// resuming on a stale screen.
+function handleVisibilityChange() {
+  if (document.visibilityState !== 'visible' || !match?.matchId || match.phase !== 'playing') return;
+  scheduleTrialPhase();
+  requestCurrentTrial();
 }
-
 // Keeps the five-second in-card reading countdown and start sound stable per
 // challenge. The global full-screen overlay is deliberately not used here:
 // title and explanation must remain readable while answer-bearing playfields
@@ -191,8 +137,8 @@ function scheduleMemoryReveal(state) {
 function syncPresentation(state) {
   const key = `${state.matchId}:${state.challengeIndex}`;
   if (key !== presentationKey) {
-    presentationKey = key; clearRevealTimers(); clearTrialTimer();
-    progressStep = 0; memoryRevealDone = false; memoryRevealIndex = -1; trafficGreen = false; iCompleted = false;
+    presentationKey = key; clearTrialTimer();
+    progressStep = 0; iCompleted = false;
     currentTrial = null; interaction = freshInteraction(null);
   }
   if (state.phase === 'countdown' && !state.paused) {
@@ -204,26 +150,13 @@ function syncPresentation(state) {
     cancelCountdown(); clearReadingCountdown();
   }
   if (state.phase === 'playing' && startedKey !== key) { startedKey = key; playArcadeSound('challenge-start'); }
-  // Pausing mid-'playing' must stop the reveal timers too, not just leaving
-  // 'playing' entirely — otherwise the memory-reveal animation keeps running
-  // in real time while the match is frozen, and replays part of the
-  // sequence again once resumed.
-  if (state.phase === 'playing' && !state.paused && state.challenge?.key === 'memory-sequence') scheduleMemoryReveal(state);
-  else clearRevealTimers();
-  // The server-derived boolean (see publicState's trafficLightGreen) is the
-  // source of truth for whether the light has already turned green — a
-  // reload/reconnect only ever gets a fresh state push, never a replay of
-  // the one-shot 'challenge-rush:traffic-light:green' event, so relying on
-  // that event alone would leave a reconnected client stuck on red forever.
-  if (state.challenge?.key === 'traffic-light') trafficGreen = state.trafficLightGreen === true;
 }
 
 // Restores this client's own progress within the current challenge from the
 // server's authoritative count instead of always starting from 0 — without
-// this, a reload/reconnect mid-round would desync the client (e.g. Aim
-// Trainer rendering target 0 again while the server already expects the
-// next one) and reject every further input as "Ungültiges Ziel." until the
-// round times out.
+// this, a reload/reconnect mid-round would desync the client (e.g. Farbwort-
+// Chaos rendering an already-answered round again) and leave the counter
+// wrong until the round times out.
 function syncProgressFromServer(state) {
   const mine = state.progress?.find((entry) => entry.playerId === myId());
   if (!mine) return;
@@ -235,6 +168,9 @@ export function ensureChallengeRushSocket() {
   if (socket) return socket;
   resetArcadeOpponentWhenAiUnavailable(() => { challengeRushOpponent = 'human'; });
   socket = connectSocket();
+  // Registered once alongside the socket (this whole block runs a single
+  // time), so returning to a backgrounded tab always re-syncs the trial.
+  document.addEventListener('visibilitychange', handleVisibilityChange);
   socket.on('challenge-rush:lobbies', (payload) => {
     lobbies = payload?.lobbies ?? [];
     challengeCatalog = payload?.challenges ?? challengeCatalog;
@@ -248,7 +184,7 @@ export function ensureChallengeRushSocket() {
   });
   socket.on('challenge-rush:match:state', (payload) => {
     match = { ...match, ...payload };
-    if (currentView() === 'challengeRush') { rerender(); focusTimedChallengeTarget(match); }
+    rerenderIfVisible();
   });
   socket.on('challenge-rush:state', (payload) => {
     match = { ...match, ...payload };
@@ -257,7 +193,7 @@ export function ensureChallengeRushSocket() {
     syncProgressFromServer(payload);
     if (payload.phase !== 'playing') { currentTrial = null; clearTrialTimer(); }
     else if (currentTrial && payload.paused === false) scheduleTrialPhase();
-    if (currentView() === 'challengeRush') { rerender(); focusTimedChallengeTarget(match); }
+    rerenderIfVisible();
   });
   socket.on('challenge-rush:trial', (payload) => {
     if (!match || payload?.matchId !== match.matchId || payload.challengeIndex !== match.challengeIndex) return;
@@ -266,11 +202,6 @@ export function ensureChallengeRushSocket() {
     scheduleTrialPhase();
     rerenderIfVisible();
     queueMicrotask(() => document.querySelector(focusableTrialSelector())?.focus());
-  });
-  socket.on('challenge-rush:traffic-light:green', (payload) => {
-    if (!match || payload?.matchId !== match.matchId || payload?.challengeIndex !== match.challengeIndex) return;
-    trafficGreen = true;
-    rerenderIfVisible();
   });
   socket.on('challenge-rush:challenge:end', (payload) => {
     const myScore = payload.scores?.find((score) => score.playerId === myId())?.score;
@@ -281,7 +212,7 @@ export function ensureChallengeRushSocket() {
     if (currentView() === 'challengeRush') rerender();
   });
   socket.on('challenge-rush:match:end', (payload) => {
-    cancelCountdown(); clearReadingCountdown(); clearTrialTimer(); clearRevealTimers(); currentTrial = null;
+    cancelCountdown(); clearReadingCountdown(); clearTrialTimer(); currentTrial = null;
     match = { ...match, phase: 'ended', scores: payload.scores, draw: payload.draw === true, history: payload.history ?? match?.history ?? [] };
     if (payload.winnerId) playArcadeSound(payload.winnerId === myId() ? 'challenge-highscore' : 'challenge-gameover');
     else if (!payload.draw) playArcadeSound('challenge-gameover');
@@ -434,14 +365,6 @@ function trialNumberBlind(trial, playing) {
   }
   return `${trialGrid(size, interaction.sequence, 'number-position', !playing, true, true)}<p class="muted">${interaction.sequence.length} / ${Number(data.numberCount ?? 0)} Zahlen</p>`;
 }
-function trialPairs(trial, playing) {
-  const cards = Array.isArray(trial.data?.cards) ? trial.data.cards : [];
-  return `<div class="challenge-rush-pairs-grid" style="--cr-grid-columns:${Number(trial.data?.boardSize) || 2}">${cards.map((card) => {
-    const found = interaction.found.has(card.index); const visible = found || interaction.pair.includes(card.index);
-    const value = interaction.values.get(card.index);
-    return `<button type="button" class="btn challenge-rush-memory-card${visible ? ' is-selected' : ''}" data-cr-pair-card="${card.index}" aria-label="Karte ${card.index + 1}${visible && value ? `: ${escapeHtml(String(value))}` : ''}" ${playing && !found ? '' : 'disabled'}>${visible ? escapeHtml(String(value ?? '')) : '?'}</button>`;
-  }).join('')}</div>`;
-}
 function trialChoice(trial, playing) {
   const data = trial.data ?? {};
   const matrix = Array.isArray(data.matrix) ? `<div class="challenge-rush-logic-matrix" role="grid" aria-label="Zwei mal zwei Zahlenmatrix">${data.matrix.flat().map((value, index) => `<span role="gridcell" aria-label="${index === 3 ? 'Gesuchte Zahl' : `Zahl ${escapeHtml(String(value))}`}">${value === null ? '?' : escapeHtml(String(value))}</span>`).join('')}</div>` : '';
@@ -453,16 +376,10 @@ function trialChoice(trial, playing) {
 export function renderChallengeRushTrial(challenge, trial, playing = true) {
   if (!trial) return '<p class="muted">Der erste Trial erscheint gleich …</p>';
   const data = trial.data ?? {};
-  if (['number-sequence', 'logic-equation', 'pattern-complete', 'category-sort', 'direction-match', 'mental-rotation', 'word-scramble', 'count-shapes', 'logic-order', 'delayed-recall', 'prime-check', 'balance-scale', 'clock-angle', 'binary-pattern', 'rule-switch', 'matrix-missing', 'coin-change', 'letter-order', 'digit-sum', 'sequence-transform'].includes(challenge.key)) return trialChoice(trial, playing);
+  if (['number-sequence', 'logic-equation', 'pattern-complete', 'category-sort', 'direction-match', 'mental-rotation', 'word-scramble', 'count-shapes', 'logic-order', 'delayed-recall', 'prime-check', 'balance-scale', 'binary-pattern', 'rule-switch', 'matrix-missing', 'coin-change', 'letter-order', 'digit-sum'].includes(challenge.key)) return trialChoice(trial, playing);
   if (challenge.key === 'sequence-echo' || challenge.key === 'reverse-echo' || challenge.key === 'path-memory') return trialSequence(trial, playing);
   if (challenge.key === 'memory-matrix') return trialMatrix(trial, playing);
   if (challenge.key === 'number-blind') return trialNumberBlind(trial, playing);
-  if (challenge.key === 'memory-pairs') return trialPairs(trial, playing);
-  if (challenge.key === 'n-back' || challenge.key === 'seen-before') {
-    const n = Number(data.n) || 1;
-    const question = challenge.key === 'n-back' ? `Gleich wie vor ${n} ${n === 1 ? 'Schritt' : 'Schritten'}?` : 'War dieses Symbol schon zu sehen?';
-    return `<p class="challenge-rush-logic-prompt">${question}</p><div class="challenge-rush-symbol">${escapeHtml(String(data.symbol ?? ''))}</div><div class="challenge-rush-choice-grid"><button type="button" class="btn challenge-rush-choice" data-cr-bool="true" ${playing ? '' : 'disabled'}>Ja</button><button type="button" class="btn challenge-rush-choice" data-cr-bool="false" ${playing ? '' : 'disabled'}>Nein</button></div>`;
-  }
   if (challenge.key === 'missing-item') {
     if (trial.phase === 'preview') return `<div class="challenge-rush-item-list">${(data.originalItems ?? data.items ?? []).map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}</div><p class="muted">Merken …</p>`;
     return `<div class="challenge-rush-item-list">${(data.items ?? []).map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}</div><p class="challenge-rush-logic-prompt">Welcher Gegenstand fehlt?</p>${trialOptions(trial, playing)}`;
@@ -499,54 +416,11 @@ function challengeView() {
   if (challenge?.key === 'cps') body = `<button type="button" class="challenge-rush-big-button" ${playing ? '' : 'disabled'}>KLICKEN</button><p class="muted">Klicks: <strong id="cr-clicks">0</strong></p>`;
   if (challenge?.key === 'number-salad') body = `<div class="challenge-rush-number-grid">${(data.numbers ?? []).map((number) => `<button type="button" class="btn challenge-rush-number" data-cr-number="${number}" ${playing ? '' : 'disabled'}>${number}</button>`).join('')}</div><p class="muted">Nächste Zahl: <strong>${numberOrder}</strong></p>`;
   if (challenge?.key === 'timing-10') body = `<button type="button" class="challenge-rush-big-button" data-cr-stop ${playing ? '' : 'disabled'}>STOPP</button><p class="muted">Keine laufende Zeit sichtbar – vertraue deinem Gefühl.</p>`;
-  if (challenge?.key === 'aim-trainer') {
-    // The server only ever sends the single current target (data.target),
-    // not the full targets array — otherwise a script could read every
-    // remaining position at once and blast through every target with only the
-    // input floor as a delay. targetCount is a separate, non-secret constant
-    // sent alongside it purely for the hit counter.
-    const target = playing ? data.target : null;
-    body = target
-      ? `<button type="button" class="challenge-rush-circle" data-cr-x="${target.x}" data-cr-y="${target.y}" aria-label="Ziel treffen" style="left:${target.x}%;top:${target.y}%"></button>`
-      : '<p class="muted">Die Ziele erscheinen, sobald es losgeht.</p>';
-    // Positioned as an absolute corner badge, not a normal-flow paragraph:
-    // the target button is itself position:absolute (so it can sit anywhere
-    // in the field), which pulls it out of the grid's auto-placed rows and
-    // leaves a flow paragraph centered in the same cell — directly on top of
-    // whichever target happens to render near the field's center.
-    body += `<p class="muted challenge-rush-playfield-badge">${Math.min(progressStep, data.targetCount ?? 6)} / ${data.targetCount ?? 6} getroffen</p>`;
-  }
-  if (challenge?.key === 'memory-sequence') {
-    const tileCount = data.tileCount ?? 9;
-    // The reveal only toggles `is-active` visually; a screen reader gets no
-    // signal that a tile just flashed unless the accessible name says so too.
-    const tiles = Array.from({ length: tileCount }, (_, index) => {
-      const isActive = memoryRevealIndex === index;
-      return `<button type="button" class="challenge-rush-tile ${isActive ? 'is-active' : ''}" data-cr-tile="${index}" ${playing && memoryRevealDone ? '' : 'disabled'} aria-label="Feld ${index + 1}${isActive ? ' (leuchtet gerade)' : ''}"></button>`;
-    }).join('');
-    body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));">${tiles}</div><p class="muted" aria-live="polite">${!playing ? 'Bereithalten …' : memoryRevealDone ? `Feld ${progressStep + 1} von ${data.sequence?.length ?? 0}` : 'Merke dir die Reihenfolge …'}</p>`;
-  }
   if (challenge?.key === 'odd-one-out') {
     // Every field has the same classes, attributes and accessible name. The
     // grid applies the visual shape difference through nth-child, keeping the
     // answer out of both the target element and the accessibility tree.
     body = renderOddOneOut(data, playing);
-  }
-  if (challenge?.key === 'whack-a-mole') {
-    // Same minimization as Aim Trainer: only the current active hole
-    // (data.activeHole) is sent, not the whole sequence.
-    const holeCount = data.holeCount ?? 9; const active = playing ? data.activeHole : null;
-    const totalHits = data.totalHits ?? 8;
-    // As with the odd-one-out tile, `is-active` alone conveys nothing to a
-    // screen reader — the active hole's accessible name says so directly.
-    const tiles = Array.from({ length: holeCount }, (_, index) => {
-      const isActive = active === index;
-      return `<button type="button" class="challenge-rush-tile ${isActive ? 'is-active' : ''}" data-cr-tile="${index}" ${playing ? '' : 'disabled'} aria-label="Loch ${index + 1}${isActive ? ' (aktiv)' : ''}"></button>`;
-    }).join('');
-    body = `<div class="challenge-rush-tile-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));">${tiles}</div><p class="muted challenge-rush-target-progress">${Math.min(progressStep, totalHits)} / ${totalHits} getroffen</p>`;
-  }
-  if (challenge?.key === 'traffic-light') {
-    body = `<button type="button" class="challenge-rush-traffic-light ${trafficGreen ? 'is-green' : 'is-red'}" data-cr-traffic ${playing ? '' : 'disabled'} aria-label="Klicken sobald Grün">${trafficGreen ? 'GRÜN' : 'ROT'}</button><p class="muted">Zu früh klicken zählt als Fehlstart.</p>`;
   }
   if (challenge?.key === 'color-word') {
     // Same minimization: only the current round (data.round) is sent, not
@@ -618,8 +492,8 @@ export function renderChallengeRush(container, _ctx) {
   container.querySelector('[data-cr-finish]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich für alle beenden?', { confirmText: 'Beenden', danger: true }))) return; const result = await emit('challenge-rush:match:finish', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Beenden fehlgeschlagen.', { error: true }); });
   container.querySelector('[data-cr-leave-match]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return; const result = await emit('challenge-rush:match:leave', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) return showToast(result?.error || 'Verlassen fehlgeschlagen.', { error: true }); clearTrialTimer(); currentTrial = null; match = null; navigate('arcade'); });
   container.querySelector('#cr-ready-next')?.addEventListener('click', async () => { const result = await emit('challenge-rush:challenge:ready', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Bereit-Status fehlgeschlagen.', { error: true }); });
-  // The ack's optional `next` field (only set for aim-trainer/whack-a-mole/
-  // color-word) carries the freshly revealed current step — merged in here
+  // The ack's optional `next` field (only set for color-word) carries the
+  // freshly revealed current round — merged in here
   // so every send() caller automatically sees it, since individual accepted
   // inputs don't otherwise trigger a full state broadcast.
   const send = (action, value, onAccepted = () => {}) => {
@@ -643,25 +517,21 @@ export function renderChallengeRush(container, _ctx) {
     }
     });
   };
-  container.querySelector('.challenge-rush-circle')?.addEventListener('click', (event) => { const circle = event.currentTarget; send('hit', { x: Number(circle.dataset.crX), y: Number(circle.dataset.crY) }, (progress) => { if (match?.challenge?.key === 'aim-trainer') { progressStep = progress.correct; rerender(); container.querySelector('.challenge-rush-circle')?.focus(); } }); });
+  container.querySelector('.challenge-rush-circle')?.addEventListener('click', (event) => { const circle = event.currentTarget; send('hit', { x: Number(circle.dataset.crX), y: Number(circle.dataset.crY) }); });
   container.querySelector('.challenge-rush-big-button:not([data-cr-stop])')?.addEventListener('click', () => send('click', undefined, (progress) => { const counter = container.querySelector('#cr-clicks'); if (counter) counter.textContent = String(progress.clicks); }));
   container.querySelector('[data-cr-stop]')?.addEventListener('click', () => send('stop'));
   container.querySelectorAll('[data-cr-number]').forEach((button) => button.addEventListener('click', () => { const value = Number(button.dataset.crNumber); send('number', value, (progress) => { numberOrder = progress.correct + 1; if (progress.correct === value) button.disabled = true; }); }));
   // Refocusing the equivalent element after each rerender (instead of
   // leaving focus on `<body>`, where the full innerHTML replace drops it)
-  // keeps these rapid, timed challenges actually playable by keyboard —
+  // keeps this rapid, timed challenge actually playable by keyboard —
   // otherwise a keyboard user would have to tab back in from the top of the
   // page after every single tile.
   container.querySelectorAll('[data-cr-tile]').forEach((button) => button.addEventListener('click', () => {
-    const value = Number(button.dataset.crTile); const key = match?.challenge?.key;
-    if (key === 'memory-sequence') send('tile', value, (progress) => { progressStep = progress.correct; rerender(); container.querySelector(`[data-cr-tile="${value}"]`)?.focus(); });
-    else if (key === 'odd-one-out') send('select', value, () => { rerender(); container.querySelector(`[data-cr-tile="${value}"]`)?.focus(); });
-    else if (key === 'whack-a-mole') send('hit', value, (progress) => { progressStep = progress.correct; rerender(); container.querySelector('.challenge-rush-tile.is-active')?.focus(); });
+    const value = Number(button.dataset.crTile);
+    if (match?.challenge?.key === 'odd-one-out') send('select', value, () => { rerender(); container.querySelector(`[data-cr-tile="${value}"]`)?.focus(); });
   }));
-  container.querySelector('[data-cr-traffic]')?.addEventListener('click', () => send('click', undefined, () => rerender()));
   container.querySelectorAll('[data-cr-color]').forEach((button) => button.addEventListener('click', () => send('answer', button.dataset.crColor, (progress) => { progressStep = progress.correct + progress.errors; rerender(); container.querySelector('.challenge-rush-color-option')?.focus(); })));
   container.querySelectorAll('[data-cr-choice]').forEach((button) => button.addEventListener('click', () => send('choice', button.dataset.crChoice, () => { rerender(); container.querySelector('[data-cr-choice]')?.focus(); })));
-  container.querySelectorAll('[data-cr-bool]').forEach((button) => button.addEventListener('click', () => send('choice', button.dataset.crBool === 'true', () => { rerender(); container.querySelector('[data-cr-bool]')?.focus(); })));
   container.querySelectorAll('[data-cr-sequence-cell]').forEach((button) => button.addEventListener('click', () => {
     const value = Number(button.dataset.crSequenceCell);
     if (interaction.sequence.includes(value)) return;
@@ -686,38 +556,5 @@ export function renderChallengeRush(container, _ctx) {
     if (interaction.sequence.length >= Number(currentTrial?.data?.numberCount ?? 0)) send('sequence', [...interaction.sequence]);
     rerender();
     container.querySelector(`[data-cr-number-position="${value}"]`)?.focus();
-  }));
-  container.querySelectorAll('[data-cr-pair-card]').forEach((button) => button.addEventListener('click', () => {
-    const value = Number(button.dataset.crPairCard);
-    if (interaction.found.has(value) || interaction.pair.includes(value)) return;
-    const trialId = currentTrial?.trialId;
-    send('reveal', value, (result) => {
-      if (result.trial?.trialId !== trialId) return;
-      const revealed = Array.isArray(result.revealedCards) ? result.revealedCards : [];
-      revealed.forEach((card) => interaction.values.set(card.index, card.value));
-      interaction.pair = revealed.map((card) => card.index);
-      interaction.revealSeq = acknowledgedRevealSeq(interaction.revealSeq, result.revealSeq);
-      const revealSeq = interaction.revealSeq;
-      if (result.correct === true) {
-        interaction.pair.forEach((entry) => interaction.found.add(entry));
-        interaction.pair = [];
-        rerender();
-        container.querySelector('[data-cr-pair-card]:not([disabled])')?.focus();
-        return;
-      }
-      if (result.correct === false) {
-        rerender();
-        container.querySelector(`[data-cr-pair-card="${value}"]`)?.focus();
-        window.setTimeout(() => {
-          if (currentTrial?.trialId !== trialId || !pairHideStillApplies(interaction, trialId, revealSeq)) return;
-          for (const card of revealed) if (!interaction.found.has(card.index)) interaction.values.delete(card.index);
-          interaction.pair = [];
-          rerender();
-          container.querySelector('[data-cr-pair-card]:not([disabled])')?.focus();
-        }, 650);
-        return;
-      }
-      rerender();
-    });
   }));
 }
