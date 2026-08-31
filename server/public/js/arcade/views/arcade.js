@@ -297,8 +297,14 @@ function arcadeStatsHtml() {
   const topGame = currentGame();
   if (topGame !== statsGameSyncedFor) {
     const topGameStats = games.find((g) => (g.statsKey ?? g.gameType) === topGame);
-    if (topGameStats) activeStatsGame = topGameStats.statsKey ?? topGameStats.gameType;
-    statsGameSyncedFor = topGame;
+    // Only mark this game as synced once a matching stats entry actually exists — a tile
+    // picked before its first completed match keeps retrying on every render until stats
+    // for it show up (e.g. after the next `arcade:match:end` reload), instead of getting
+    // stuck showing an unrelated fallback game forever.
+    if (topGameStats) {
+      activeStatsGame = topGameStats.statsKey ?? topGameStats.gameType;
+      statsGameSyncedFor = topGame;
+    }
   }
   if (!games.some((g) => (g.statsKey ?? g.gameType) === activeStatsGame)) activeStatsGame = games[0].statsKey ?? games[0].gameType;
 
