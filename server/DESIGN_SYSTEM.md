@@ -1007,12 +1007,14 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   report never needs to explain where it happened. A submission picks one
   of four distinct sentiments — Positiv, Negativ, Problem, Idee — through the shared
   `.selection-toolbar` toggle rather than a free-text category, plus a message field. Admin's
-  Feedback section lists submissions newest first and filters them by the same four sentiments plus
-  „Alle“ through the shared `.chip`/`.chip.is-active` pattern (mirroring Spiele's genre chips and
-  Orga's To-Do Art filter). Open entries expose the compact standard action „Erledigen“. Completed
-  entries move into a separate, initially collapsed „Erledigt“ section whose open state survives
-  live re-renders; their „Wieder öffnen“ action moves them back without deleting the original
-  message or its captured context.
+  Feedback section lists open submissions first and orders each state newest first. It filters them
+  by the same four sentiments plus „Alle“ through the shared `.chip`/`.chip.is-active` pattern
+  (mirroring Spiele's genre chips and
+  Orga's To-Do Art filter). Open entries expose the compact primary action „Erledigt“ through
+  `.btn.btn-sm.btn-primary`. Completed entries move into a separate, initially collapsed
+  „Erledigt“ section whose open state survives live re-renders; their secondary `.btn.btn-sm`
+  action „Wieder öffnen“ moves them back without deleting the original message or its captured
+  context.
 - **Arrival carpools** — the „An- & Abreise“ tab of Orga. Anreise and Abreise remain separate
   full-width accented panels. Their
   carpool cards use two columns from `--bp-md`, but an odd final card deliberately keeps one-column
