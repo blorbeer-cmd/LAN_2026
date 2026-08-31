@@ -4,6 +4,7 @@ import {
   connectLocalSpotifyPlayer,
   localSpotifyPlaybackStatus,
   localSpotifySessionNeedsRecovery,
+  preloadSpotifyPlaybackSdk,
   waitForLocalSpotifyPlaybackReady,
 } from './spotifyBrowserPlayer.js';
 
@@ -44,6 +45,45 @@ test('local Spotify playback capability stays hidden on ordinary client devices'
     fetchImpl: async () => ({ ok: true, json: async () => ({ available: true }) }),
   });
   assert.equal(malformed, null);
+});
+
+test('Spotify Playback SDK retries with a fresh script after a load error', async (t) => {
+  const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
+  let currentScript = null;
+  let createdScripts = 0;
+
+  globalThis.window = {};
+  globalThis.document = {
+    querySelector: () => currentScript,
+    createElement: () => {
+      createdScripts += 1;
+      const listeners = new Map();
+      const script = {
+        dataset: {},
+        addEventListener: (name, listener) => listeners.set(name, listener),
+        fail: () => listeners.get('error')?.(),
+        remove: () => { if (currentScript === script) currentScript = null; },
+      };
+      return script;
+    },
+    body: { appendChild: (script) => { currentScript = script; } },
+  };
+  t.after(() => {
+    globalThis.window = originalWindow;
+    globalThis.document = originalDocument;
+  });
+
+  const failedLoad = preloadSpotifyPlaybackSdk();
+  currentScript.fail();
+  await assert.rejects(failedLoad, /konnte nicht geladen/);
+  assert.equal(currentScript, null, 'the failed script is removed before a retry');
+
+  const retriedLoad = preloadSpotifyPlaybackSdk();
+  assert.equal(createdScripts, 2);
+  globalThis.window.Spotify = { Player: class FakeSpotifyPlayer {} };
+  globalThis.window.onSpotifyWebPlaybackSDKReady();
+  assert.equal(await retriedLoad, globalThis.window.Spotify);
 });
 
 test('local Spotify player registers the browser device with a loopback token', async (t) => {

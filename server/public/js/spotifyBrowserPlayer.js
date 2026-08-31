@@ -77,11 +77,13 @@ export function preloadSpotifyPlaybackSdk() {
 
   sdkPromise = new Promise((resolve, reject) => {
     let settled = false;
+    let script = null;
     const fail = (error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       sdkPromise = null;
+      script?.remove();
       reject(error);
     };
     const previousReady = window.onSpotifyWebPlaybackSDKReady;
@@ -102,7 +104,7 @@ export function preloadSpotifyPlaybackSdk() {
     );
     window.onSpotifyWebPlaybackSDKReady = finish;
 
-    let script = document.querySelector('script[data-respawn-spotify-sdk]');
+    script = document.querySelector('script[data-respawn-spotify-sdk]');
     if (!script) {
       script = document.createElement('script');
       script.src = SPOTIFY_SDK_URL;
