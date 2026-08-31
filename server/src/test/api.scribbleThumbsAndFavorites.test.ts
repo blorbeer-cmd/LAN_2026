@@ -244,12 +244,14 @@ test('Scribble rejoin restores the live drawing and thumb vote, then exposes a b
       thumbsToken: string;
       thumbsCount: number;
       myThumbActive: boolean;
+      hasGuessedCorrectly: boolean;
     };
     assert.equal(drawingSync.phase, 'drawing');
     assert.deepEqual(drawingSync.strokes, [{ type: 'stroke', ...stroke }]);
     assert.equal(drawingSync.thumbsToken, drawingTurn.thumbsToken);
     assert.equal(drawingSync.thumbsCount, 1);
     assert.equal(drawingSync.myThumbActive, true);
+    assert.equal(drawingSync.hasGuessedCorrectly, false, 'the guest has not guessed yet at this point');
 
     // The replacement socket must own the restored vote, not merely receive
     // a cosmetically correct snapshot.
@@ -275,6 +277,21 @@ test('Scribble rejoin restores the live drawing and thumb vote, then exposes a b
       text: selectedWord.word,
     });
     assert.equal(guestGuess.correct, true);
+
+    // A guess whose acknowledgement never reaches the client (a further
+    // disconnect right after the correct guess was recorded) must still be
+    // recoverable on the next rejoin instead of leaving the client's UI
+    // stuck on "pending" forever - the turn has not ended yet since the
+    // third player has not guessed, so this checks the mid-turn record.
+    const midTurnRejoin = await emitAck(rejoinedSocket, 'scribble:rejoin', {
+      matchId,
+      playerId: guestId,
+    });
+    assert.equal(midTurnRejoin.ok, true);
+    const midTurnSync = midTurnRejoin.sync as { phase: string; hasGuessedCorrectly: boolean };
+    assert.equal(midTurnSync.phase, 'drawing', 'the turn has not ended yet - the third player has not guessed');
+    assert.equal(midTurnSync.hasGuessedCorrectly, true);
+
     const thirdGuess = await emitAck(thirdSocket, 'scribble:guess', {
       matchId,
       playerId: thirdId,

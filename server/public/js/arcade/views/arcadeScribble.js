@@ -833,6 +833,16 @@ export function ensureScribbleSocket() {
       thumbsToken = sync.thumbsToken ?? null;
       thumbsCount = sync.thumbsCount ?? 0;
       myThumbActive = !!sync.myThumbActive;
+      // A guess whose emit or ack got lost to the disconnect stays 'pending'
+      // forever otherwise. A correct guess is durably recorded server-side
+      // for the turn, so it can be recovered here; anything else is cleared
+      // back to unanswered so the form becomes usable again for a retry —
+      // there is no durable record of a merely wrong guess to recover.
+      const viewContainer = document.getElementById('view-container');
+      if (viewContainer?.dataset.scribbleGuessResult === 'pending') {
+        if (sync.hasGuessedCorrectly) viewContainer.dataset.scribbleGuessResult = 'correct';
+        else delete viewContainer.dataset.scribbleGuessResult;
+      }
       rerender();
     });
   });

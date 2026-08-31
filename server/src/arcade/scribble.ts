@@ -1141,6 +1141,11 @@ export function registerScribbleSockets(io: Server): void {
           thumbsToken: match.liveThumbsToken,
           thumbsCount: match.liveThumbs.size,
           myThumbActive: match.liveThumbs.has(player.id),
+          // Lets a reconnecting guesser resolve a guess whose acknowledgement
+          // was lost to the disconnect: a correct guess is durably recorded
+          // here for the current turn, so the client can recover 'correct'
+          // instead of leaving its UI stuck on 'pending' forever.
+          hasGuessedCorrectly: match.guessedPlayerIds.has(player.id),
           wordOptions:
             match.phase === 'choosing' && match.players[match.drawIndex]?.id === player.id
               ? match.wordOptions?.map((w) => ({ id: w.id, word: w.word })) ?? null
