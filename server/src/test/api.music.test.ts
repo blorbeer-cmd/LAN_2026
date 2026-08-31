@@ -310,6 +310,19 @@ test('local controller pairs without sending Spotify credentials to Respawn', as
   assert.equal(recoveredDevice.body.deviceId, 'speaker-2');
   assert.ok(controllerCommands.some((command) => command.type === 'transfer' && command.payload.deviceId === 'speaker-2'));
 
+  db.prepare('UPDATE music_sessions SET device_id = ? WHERE id = ?').run('speaker-1', started.body.id);
+  const transferCountBeforeRace = controllerCommands.filter((command) => command.type === 'transfer').length;
+  const concurrentRecoveries = await Promise.all([
+    request(app).patch('/api/music/sessions/device').send({ deviceId: 'speaker-2' }),
+    request(app).patch('/api/music/sessions/device').send({ deviceId: 'speaker-2' }),
+  ]);
+  assert.deepEqual(concurrentRecoveries.map((response) => response.status).sort(), [200, 409]);
+  assert.equal(
+    controllerCommands.filter((command) => command.type === 'transfer').length,
+    transferCountBeforeRace + 1,
+    'concurrent recovery requests issue exactly one Spotify transfer',
+  );
+
   failNextControllerCommand = { type: 'pause', message: 'Player command failed: Restriction violated' };
   const ended = await request(app).post('/api/music/end').send({});
   assert.equal(ended.status, 200);

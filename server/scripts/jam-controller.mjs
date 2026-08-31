@@ -104,6 +104,11 @@ function respawnOrigin() {
 }
 
 function localApiHeaders(req) {
+  // This is a browser-origin boundary: it prevents an arbitrary website from
+  // reading the Spotify token through loopback. It is deliberately not an OS
+  // process boundary. A process running as this user can already read the
+  // same token from STORE_FILE; LOCAL_FORM_TOKEN protects state-changing HTML
+  // forms but cannot be shared with the cross-origin Respawn Web Player.
   const origin = String(req.headers.origin || '');
   if (!origin || origin !== respawnOrigin()) return null;
   return {

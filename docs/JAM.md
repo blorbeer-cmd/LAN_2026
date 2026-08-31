@@ -99,7 +99,10 @@ Client-ID sowie Spotify-Zugriffs- und Refresh-Token liegen ausschließlich lokal
 sondern nur einen gehashten Controller-Schlüssel und öffentliche Wiedergabedaten. Für die optionale
 Browser-Ausgabe liefert der Controller dem Browser auf demselben Rechner einen kurzlebigen Token
 über `127.0.0.1`; die lokale Schnittstelle akzeptiert ausschließlich die im Controller konfigurierte
-Respawn-Origin. Der Controller ist
+Respawn-Origin. Diese Origin-Prüfung schützt vor fremden Webseiten im Browser. Sie ist keine
+Sicherheitsgrenze gegenüber Prozessen desselben Betriebssystemkontos: Diese können auch die lokale
+Datei mit den Spotify-Tokens lesen, weshalb auf dem Musik-PC nur vertrauenswürdige Software unter
+diesem Konto laufen darf. Der Controller ist
 kein Respawn-Spieler und erscheint nicht in Spielerlisten oder Statistiken. Nur Gruppen-Owner und
 Admins dürfen ihn koppeln oder entkoppeln; die gemeinsame Musiksuche und Wiedergabesteuerung steht
 allen aktiven Gruppenmitgliedern offen.

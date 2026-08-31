@@ -148,7 +148,7 @@ test('Jam controller can re-pair in place and stays online when Spotify needs a 
   assert.doesNotMatch(page, /Controller-Paket erneut/);
 });
 
-test('Jam controller exposes a scoped Web Playback token only to its Respawn origin', async (t) => {
+test('Jam controller blocks foreign browser origins from its scoped Web Playback token', async (t) => {
   const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-jam-web-player-'));
   const probe = http.createServer();
   const controllerPort = await listen(probe);
