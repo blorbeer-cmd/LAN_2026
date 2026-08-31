@@ -2,26 +2,20 @@ import { Server, Socket } from 'socket.io';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import { playerMayUseArcadeAi } from './adminAccess';
-import { notifyPlayers, resolvePushTopic } from '../push';
 import { matchesAnswer, pickQuestion } from './quizLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
 import { broadcastArcadeKiosk } from './realtime';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
-import { shouldSendLobbyPush } from './lobbyPush';
+import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { recordArcadeResult } from './arcadeData';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
-import { communicationRecipientIds } from '../communicationRecipients';
 import { arcadeTiming } from './timing';
 
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
 const COUNTDOWN_MS = arcadeTiming.countdownMs; // "3, 2, 1" intro before the first question
 const QUIZ_BOT = { id: 'quiz-bot', name: 'Quiz-Bot' };
-
-function quizLobbyPushKey(lobbyId: string): string {
-  return `arcade-lobby:quiz:${lobbyId}`;
-}
 
 interface PlayerRef {
   id: string;
@@ -266,7 +260,7 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
     if (lobby.host.id === player[0]) {
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', id);
       lobbies.delete(id);
-      resolvePushTopic(quizLobbyPushKey(id), false, lobby);
+      resolveArcadeLobbyPush('quiz', lobby);
     } else {
       releaseLobbyMembership(player[0], 'quiz', id);
       lobby.socketIds.delete(player[0]);
@@ -318,20 +312,7 @@ export function registerArcadeSockets(io: Server): void {
       // so a real push is the only way the rest of the LAN finds out a lobby
       // is waiting for them. Throttled per game type (see lobbyPush.ts) so
       // rapid re-creation cannot spam every phone on the LAN.
-      if (lobby.eventId && shouldSendLobbyPush('quiz')) {
-        const otherPlayerIds = communicationRecipientIds(lobby.groupId, lobby.eventId).filter((id) => id !== player.id);
-        notifyPlayers(
-          otherPlayerIds,
-          {
-            title: 'Neue Quiz-Lobby',
-            body: `${player.name} hat eine Quiz-Lobby geöffnet – jetzt beitreten!`,
-            url: '/#arcade',
-          },
-          'all',
-          { key: quizLobbyPushKey(lobby.id) },
-          lobby,
-        );
-      }
+      notifyArcadeLobbyOpened('quiz', lobby);
     });
 
     socket.on('arcade:lobby:bot', (payload: { playerId?: string }, ack?: (res: unknown) => void) => {
@@ -356,7 +337,7 @@ export function registerArcadeSockets(io: Server): void {
 
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', lobby.id);
       lobbies.delete(lobby.id);
-      resolvePushTopic(quizLobbyPushKey(lobby.id), false, lobby);
+      resolveArcadeLobbyPush('quiz', lobby);
       emitLobbies(io);
       ack?.({ ok: true });
     });
@@ -383,7 +364,7 @@ export function registerArcadeSockets(io: Server): void {
       if (lobby.host.id === payload.playerId) {
         releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', lobby.id);
         lobbies.delete(lobby.id);
-        resolvePushTopic(quizLobbyPushKey(lobby.id), false, lobby);
+        resolveArcadeLobbyPush('quiz', lobby);
       } else {
         releaseLobbyMembership(payload.playerId, 'quiz', lobby.id);
         lobby.socketIds.delete(payload.playerId);
@@ -437,7 +418,7 @@ export function registerArcadeSockets(io: Server): void {
       matches.set(match.id, match);
       releaseLobbyMemberships(lobby.players.map((p) => p.id), 'quiz', lobby.id);
       lobbies.delete(lobby.id);
-      resolvePushTopic(quizLobbyPushKey(lobby.id), false, lobby);
+      resolveArcadeLobbyPush('quiz', lobby);
       emitLobbies(io);
       startArcadeSession(realPlayerIds(match.players), 'quiz', match);
       const beginsAt = Date.now() + COUNTDOWN_MS;

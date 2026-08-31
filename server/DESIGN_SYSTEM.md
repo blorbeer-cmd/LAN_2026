@@ -1007,9 +1007,14 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   report never needs to explain where it happened. A submission picks one
   of four distinct sentiments — Positiv, Negativ, Problem, Idee — through the shared
   `.selection-toolbar` toggle rather than a free-text category, plus a message field. Admin's
-  Feedback section lists submissions newest first and filters them by the same four sentiments plus
-  „Alle“ through the shared `.chip`/`.chip.is-active` pattern (mirroring Spiele's genre chips and
-  Orga's To-Do Art filter).
+  Feedback section lists open submissions first and orders each state newest first. It filters them
+  by the same four sentiments plus „Alle“ through the shared `.chip`/`.chip.is-active` pattern
+  (mirroring Spiele's genre chips and
+  Orga's To-Do Art filter). Open entries expose the compact primary action „Erledigt“ through
+  `.btn.btn-sm.btn-primary`. Completed entries move into a separate, initially collapsed
+  „Erledigt“ section whose open state survives live re-renders; their secondary `.btn.btn-sm`
+  action „Wieder öffnen“ moves them back without deleting the original message or its captured
+  context.
 - **Arrival carpools** — the „An- & Abreise“ tab of Orga. Anreise and Abreise remain separate
   full-width accented panels. Their
   carpool cards use two columns from `--bp-md`, but an odd final card deliberately keeps one-column
@@ -1087,7 +1092,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Both games reach a Doppel AI match through the same two switches — „Doppel“ plus „KI“ — where
   the host and one bot teammate play against two bot opponents.
   Statistics use the concise title „Statistiken“ and one full-width game dropdown whose options
-  include each game's match count. The selected game is not repeated above its results. Those
+  include each game's match count. Picking a game tile above auto-syncs this dropdown to the same
+  game (matched by its own gameType/statsKey) so its stats show without a second, redundant
+  selection; a manual dropdown choice stays in place until the tile selection above changes again.
+  The selected game is not repeated above its results. Those
   results follow directly without another enclosing card or accent rail; player rows reuse
   `.leaderboard-list-grid` for the shared one-/two-column ranking presentation, gain a third column
   in desktop mode from `--bp-xl` and spell out wins and losses in German. Tetris Duell and Tetris

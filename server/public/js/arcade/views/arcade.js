@@ -94,6 +94,7 @@ let stats = null;
 let statsLoading = false;
 let scribbleGallery = [];
 let activeStatsGame = null;
+let statsGameSyncedFor = undefined; // last top-level game the stats picker was auto-synced to
 let activeGame = null; // which game tile is expanded
 let appliedRouteKey = null;
 let quizOpponent = 'human';
@@ -288,6 +289,23 @@ function arcadeStatsHtml() {
   if (statsLoading && !stats) return emptyStateHtml('Statistiken laden…', { style: 'padding:var(--space-4);' });
   const games = stats?.games ?? [];
   if (!games.length) return emptyStateHtml('Noch keine abgeschlossenen Arcade-Runden.', { style: 'padding:var(--space-4);' });
+
+  // Picking a game up top should show its stats without a second, redundant
+  // selection here — but only re-sync when the top-level pick actually
+  // changes, so a manual choice in this dropdown isn't clobbered on every
+  // render (e.g. by an unrelated lobby/socket update).
+  const topGame = currentGame();
+  if (topGame !== statsGameSyncedFor) {
+    const topGameStats = games.find((g) => (g.statsKey ?? g.gameType) === topGame);
+    // Only mark this game as synced once a matching stats entry actually exists — a tile
+    // picked before its first completed match keeps retrying on every render until stats
+    // for it show up (e.g. after the next `arcade:match:end` reload), instead of getting
+    // stuck showing an unrelated fallback game forever.
+    if (topGameStats) {
+      activeStatsGame = topGameStats.statsKey ?? topGameStats.gameType;
+      statsGameSyncedFor = topGame;
+    }
+  }
   if (!games.some((g) => (g.statsKey ?? g.gameType) === activeStatsGame)) activeStatsGame = games[0].statsKey ?? games[0].gameType;
 
   const statsGameOptions = games.map((g) => ({ value: g.statsKey ?? g.gameType, label: `${g.title} · ${arcadeMatchCountLabel(g.matches)}` }));
