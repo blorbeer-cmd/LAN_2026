@@ -102,6 +102,29 @@ test('PATCH /api/feedback/:id lets admins complete and reopen feedback idempoten
   assert.equal(reopened.body.resolvedAt, null);
 });
 
+test('GET /api/feedback keeps open entries ahead of newer completed history before limiting', async () => {
+  const openId = 'feedback-open-before-limit';
+  const completedId = 'feedback-completed-before-limit';
+  const now = Date.now();
+  const insert = db.prepare(
+    `INSERT INTO feedback_entries
+       (id, group_id, event_id, player_id, view, sentiment, message, device, created_at, resolved_at)
+     VALUES (?, 'default-group', ?, NULL, 'adminFeedback', 'problem', ?, 'desktop', ?, ?)`,
+  );
+
+  try {
+    insert.run(openId, BASE_EVENT_ID, 'Älteres offenes Feedback', now + 1_000, null);
+    insert.run(completedId, BASE_EVENT_ID, 'Neueres erledigtes Feedback', now + 2_000, now + 2_000);
+
+    const listed = await request(app).get('/api/feedback?limit=1');
+    assert.equal(listed.status, 200);
+    assert.equal(listed.body.length, 1);
+    assert.equal(listed.body[0].id, openId, 'completed history must not hide actionable feedback behind the limit');
+  } finally {
+    db.prepare('DELETE FROM feedback_entries WHERE id IN (?, ?)').run(openId, completedId);
+  }
+});
+
 test('deleting the account cascades to its feedback entries instead of orphaning them', async () => {
   const player = await request(app).post('/api/players').send({ name: 'Feedback Deleted Account' });
   const created = await request(app)

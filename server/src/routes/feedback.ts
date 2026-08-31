@@ -47,7 +47,9 @@ feedbackRouter.post('/', requireUser, (req, res) => {
   res.status(201).json({ id, createdAt: now });
 });
 
-// GET /api/feedback?limit= - admin-only history, newest first.
+// GET /api/feedback?limit= - admin-only inbox. Open entries come first so
+// completed history cannot push still-actionable feedback past the limit;
+// each state remains newest first.
 feedbackRouter.get('/', requireAdmin, (req, res) => {
   const limitRaw = Number(req.query.limit ?? 50);
   const limit = Number.isInteger(limitRaw) ? Math.min(LIST_LIMIT, Math.max(1, limitRaw)) : 50;
@@ -59,7 +61,7 @@ feedbackRouter.get('/', requireAdmin, (req, res) => {
        LEFT JOIN players p ON p.id = f.player_id
        LEFT JOIN events e ON e.id = f.event_id
        WHERE f.group_id = ?
-       ORDER BY f.created_at DESC
+       ORDER BY (f.resolved_at IS NOT NULL) ASC, f.created_at DESC
        LIMIT ?`,
     )
     .all(req.group!.id, limit);
