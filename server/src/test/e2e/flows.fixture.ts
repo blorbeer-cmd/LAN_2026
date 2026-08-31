@@ -963,9 +963,14 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   const feedbackAction = page.locator(`[data-feedback-resolution="${feedbackId}"]`);
   await feedbackAction.waitFor();
   assert.equal(await feedbackAction.evaluate((element) => element.tagName), 'BUTTON');
-  assert.equal(await feedbackAction.textContent(), 'Erledigen');
+  assert.equal(await feedbackAction.textContent(), 'Erledigt');
   assert.equal(
-    await feedbackAction.evaluate((element) => element.classList.contains('btn') && element.classList.contains('btn-sm')),
+    await feedbackAction.evaluate(
+      (element) =>
+        element.classList.contains('btn') &&
+        element.classList.contains('btn-sm') &&
+        element.classList.contains('btn-primary'),
+    ),
     true,
   );
   assert.equal(await page.locator(`[data-admin-feedback-completed] [data-feedback-entry="${feedbackId}"]`).count(), 0);
