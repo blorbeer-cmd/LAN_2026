@@ -1090,7 +1090,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   Both games reach a Doppel AI match through the same two switches — „Doppel“ plus „KI“ — where
   the host and one bot teammate play against two bot opponents.
   Statistics use the concise title „Statistiken“ and one full-width game dropdown whose options
-  include each game's match count. The selected game is not repeated above its results. Those
+  include each game's match count. Picking a game tile above auto-syncs this dropdown to the same
+  game (matched by its own gameType/statsKey) so its stats show without a second, redundant
+  selection; a manual dropdown choice stays in place until the tile selection above changes again.
+  The selected game is not repeated above its results. Those
   results follow directly without another enclosing card or accent rail; player rows reuse
   `.leaderboard-list-grid` for the shared one-/two-column ranking presentation, gain a third column
   in desktop mode from `--bp-xl` and spell out wins and losses in German. Tetris Duell and Tetris
