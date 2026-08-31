@@ -29,7 +29,9 @@ Installation.
 - Wird der Browser oder Kiosk während einer laufenden Browser-Session neu geladen, erscheint
   **Browser-Ton wiederherstellen** beziehungsweise **Kiosk-Ton wiederherstellen**. Die bestehende
   Jam-Session und ihre Warteschlange bleiben dabei erhalten; Respawn akzeptiert nur das neu
-  registrierte Spotify-Gerät mit demselben bisherigen Gerätenamen.
+  registrierte Spotify-Gerät mit demselben bisherigen Gerätenamen. Der Kiosk-Token darf nur diesen
+  eng begrenzten Wiederherstellungsaufruf zusätzlich zu seinen Lesezugriffen ausführen; Start,
+  Wiedergabesteuerung und alle anderen Änderungen bleiben gesperrt.
 
 ## Voraussetzungen
 

@@ -1147,7 +1147,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   computer's HDMI/TV output; after activation the kiosk returns to its read-only display role. A
   reloaded local browser exposes a recovery action for the still-running Jam. Recovery preserves
   session and queue state, and the server only retargets playback to a newly registered Spotify
-  device whose name exactly matches the session's previous device. The
+  device whose name exactly matches the session's previous device. The otherwise read-only kiosk
+  credential is accepted only for this exact recovery PATCH; every other kiosk mutation remains
+  behind participant authentication. The
   regular Jam device picker exposes the same local-browser path only on the controller computer and
   explains that a Bluetooth-only soundbar is an audio output rather than its own Spotify device. The fixed
   loopback redirect `http://127.0.0.1:43821/callback` makes controller setup independent of the
