@@ -807,7 +807,27 @@ export function ensureScribbleSocket() {
   socket.on('connect', () => {
     if (!match || matchEnded) return;
     socket.emit('scribble:rejoin', { matchId: match.matchId, playerId: myId() }, (res) => {
-      if (!res?.ok) return;
+      if (!res?.ok) {
+        // A 2-player match ends immediately once fewer than 2 players stay
+        // online (handlePlayerLeft in scribble.ts), deleting it — the most
+        // common Scribble match size, so this is the ordinary case, not an
+        // edge case. There is nothing left to sync back into and no way to
+        // learn the match's outcome, so recover to the launcher instead of
+        // leaving a stale match — and a guess stuck on 'pending' forever —
+        // on screen with no way out.
+        const staleContainer = document.getElementById('view-container');
+        if (staleContainer?.dataset.scribbleGuessResult === 'pending') delete staleContainer.dataset.scribbleGuessResult;
+        resetMatchState();
+        showToast('Die Verbindung wurde unterbrochen und das Match ist beendet.', { error: true });
+        // Mirrors the normal scribble:match:end handler below: finishMatch
+        // already recorded this result server-side, but this socket never
+        // received that broadcast (it wasn't in the room yet), so the
+        // Arcade view's cached stats would otherwise stay stale until some
+        // unrelated event invalidates them or the page reloads.
+        window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
+        navigate('arcade');
+        return;
+      }
       const sync = res.sync;
       // Only a drawing-phase sync carries ops for a live canvas. A sync
       // during reveal/choosing must reset the mirror instead — the next
@@ -833,6 +853,16 @@ export function ensureScribbleSocket() {
       thumbsToken = sync.thumbsToken ?? null;
       thumbsCount = sync.thumbsCount ?? 0;
       myThumbActive = !!sync.myThumbActive;
+      // A guess whose emit or ack got lost to the disconnect stays 'pending'
+      // forever otherwise. A correct guess is durably recorded server-side
+      // for the turn, so it can be recovered here; anything else is cleared
+      // back to unanswered so the form becomes usable again for a retry —
+      // there is no durable record of a merely wrong guess to recover.
+      const viewContainer = document.getElementById('view-container');
+      if (viewContainer?.dataset.scribbleGuessResult === 'pending') {
+        if (sync.hasGuessedCorrectly) viewContainer.dataset.scribbleGuessResult = 'correct';
+        else delete viewContainer.dataset.scribbleGuessResult;
+      }
       rerender();
     });
   });
