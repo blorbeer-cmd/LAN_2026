@@ -38,7 +38,7 @@ function feedbackEntryHtml(entry) {
   const sentiment = entry.sentiment ? ` <span class="badge">${escapeHtml(SENTIMENT_LABEL[entry.sentiment] ?? entry.sentiment)}</span>` : '';
   const updating = updatingFeedbackIds.has(entry.id);
   const nextResolved = !entry.resolvedAt;
-  const actionLabel = nextResolved ? 'Erledigen' : 'Wieder öffnen';
+  const actionLabel = nextResolved ? 'Erledigt' : 'Wieder öffnen';
   const accessibleActionLabel = nextResolved
     ? `Feedback von ${entry.playerName || 'Unbekannt'} erledigen`
     : `Feedback von ${entry.playerName || 'Unbekannt'} wieder öffnen`;
@@ -49,7 +49,7 @@ function feedbackEntryHtml(entry) {
           <strong>${escapeHtml(entry.playerName || 'Unbekannt')}</strong>${sentiment}
           <div class="muted" style="font-size:var(--font-size-xs);">${escapeHtml(entry.view)} · ${escapeHtml(entry.eventName || '')} · ${formatDateTime(entry.createdAt)} Uhr</div>
         </span>
-        <button type="button" class="btn btn-sm" data-feedback-resolution="${escapeHtml(entry.id)}"
+        <button type="button" class="btn btn-sm${nextResolved ? ' btn-primary' : ''}" data-feedback-resolution="${escapeHtml(entry.id)}"
           data-next-resolved="${nextResolved}" aria-label="${escapeHtml(accessibleActionLabel)}" ${updating ? 'disabled' : ''}>${actionLabel}</button>
       </div>
       <p style="margin:0;">${escapeHtml(entry.message)}</p>
