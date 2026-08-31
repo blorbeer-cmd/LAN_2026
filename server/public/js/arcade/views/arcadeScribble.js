@@ -819,6 +819,12 @@ export function ensureScribbleSocket() {
         if (staleContainer?.dataset.scribbleGuessResult === 'pending') delete staleContainer.dataset.scribbleGuessResult;
         resetMatchState();
         showToast('Die Verbindung wurde unterbrochen und das Match ist beendet.', { error: true });
+        // Mirrors the normal scribble:match:end handler below: finishMatch
+        // already recorded this result server-side, but this socket never
+        // received that broadcast (it wasn't in the room yet), so the
+        // Arcade view's cached stats would otherwise stay stale until some
+        // unrelated event invalidates them or the page reloads.
+        window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
         navigate('arcade');
         return;
       }
