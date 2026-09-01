@@ -138,6 +138,10 @@ function schedulePreviewPhase(io: Server, match: Match, playerId: string, progre
     progress.previewTimer = null;
     if (matches.get(match.id) !== match || match.paused || match.phase !== 'playing') return;
     if (progress.trial !== trial || trial.phase !== 'preview' || progress.completed) return;
+    if (publicTrial(progress)?.phase === 'preview') {
+      schedulePreviewPhase(io, match, playerId, progress);
+      return;
+    }
     emitTrial(io, match, playerId);
   }, remaining);
   progress.previewTimer.unref();
