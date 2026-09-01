@@ -58,6 +58,13 @@ test('a token-only kiosk loads one exact event and honours archival', () => {
     function eventKioskGet(app, pathname) {
       return request(app).get(pathname).set('x-kiosk-mode', '1').set('x-access-token', 'event-kiosk-token');
     }
+    function kioskPatch(app, pathname, body) {
+      return request(app)
+        .patch(pathname)
+        .set('x-kiosk-mode', '1')
+        .set('x-access-token', KIOSK)
+        .send(body);
+    }
 
     // Direct group-wide push rows: an empty player_ids array satisfies the
     // NOT NULL column and the recipient trigger (json_each('[]') is empty),
@@ -135,6 +142,24 @@ test('a token-only kiosk loads one exact event and honours archival', () => {
       for (const p of ['/api/live', '/api/votes', '/api/leaderboard', '/api/food-orders']) {
         assert.equal((await kioskGet(app, p)).status, 200, 'kiosk GET ' + p);
       }
+
+      // A reloaded Kiosk must reach exactly the narrow Jam-device recovery
+      // mutation. With no active session the route itself returns 404; a 401
+      // here would mean the central Kiosk auth boundary rejected the PATCH.
+      const recoveryWithoutSession = await kioskPatch(app, '/api/music/sessions/device', {
+        deviceId: 'Respawn Kiosk',
+      });
+      assert.equal(recoveryWithoutSession.status, 404, JSON.stringify(recoveryWithoutSession.body));
+      assert.match(recoveryWithoutSession.body.error, /Jam nicht gefunden/);
+      assert.equal(
+        (await request(app)
+          .patch('/api/players/not-a-player')
+          .set('x-kiosk-mode', '1')
+          .set('x-access-token', KIOSK)
+          .send({ name: 'Nicht erlaubt' })).status,
+        401,
+        'all unrelated Kiosk mutations stay behind user authentication',
+      );
 
       // #4 — a group kiosk unions its group room with its current tracking
       // event and returns the newest active 'all' entry across both.

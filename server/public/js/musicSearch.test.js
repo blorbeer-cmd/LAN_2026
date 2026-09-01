@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   musicActiveSessionHtml,
   musicControllerRecoveryHtml,
+  musicDevicePickerHtml,
   musicSearchResultsHtml,
   musicSetupHtml,
 } from './views/music.js';
@@ -80,6 +81,25 @@ test('music session places the queue directly below the current playback', () =>
   assert.ok(html.indexOf('Als Nächstes') < html.indexOf('Musik suchen'));
 });
 
+test('music session offers browser recovery after a reload changed the Spotify device id', () => {
+  const html = musicActiveSessionHtml({
+    warning: null,
+    session: {
+      deviceId: 'stale-browser-device',
+      deviceName: 'Respawn · TV-PC',
+      currentTrack: null,
+      playbackContext: null,
+      requests: [],
+      hostPlayerId: '',
+      isPlaying: false,
+      progressMs: 0,
+      playbackUpdatedAt: null,
+    },
+  }, { ready: true, playerName: 'Respawn · TV-PC', message: null });
+  assert.match(html, /Browser-Ton wieder verbinden/);
+  assert.match(html, /id="music-recover-local-player"/);
+});
+
 test('music queue shows the remaining playlist tracks separately from requests', () => {
   const html = musicActiveSessionHtml({
     warning: null,
@@ -112,4 +132,26 @@ test('music controller recovery distinguishes Spotify login from a transient out
   assert.match(outage, /automatisch erneut/);
   assert.doesNotMatch(outage, /Skript-Neustart/);
   assert.equal(musicControllerRecoveryHtml({ spotify: 'connected', message: null }), '');
+});
+
+test('music device picker offers local browser audio without pretending Bluetooth is Spotify Connect', () => {
+  const html = musicDevicePickerHtml(
+    [{ id: 'phone-1', name: 'Handy <Bob>', type: 'Smartphone', active: true }],
+    { ready: true, playerName: 'Respawn · TV-PC', message: null },
+  );
+
+  assert.match(html, /Handy &lt;Bob&gt; · Smartphone/);
+  assert.match(html, /id="music-start-local-player"/);
+  assert.match(html, /Ton über diesen Browser, TV oder HDMI/);
+  assert.match(html, /Bluetooth-Soundbar ist kein eigenes Spotify-Gerät/);
+
+  const needsPermission = musicDevicePickerHtml([], {
+    ready: false,
+    playerName: 'Respawn · TV-PC',
+    message: 'Spotify <neu> freigeben.',
+  });
+  assert.match(needsPermission, /Spotify &lt;neu&gt; freigeben/);
+  assert.match(needsPermission, /id="music-authorize-local-player"/);
+  assert.match(needsPermission, /Spotify-Freigabe öffnen/);
+  assert.doesNotMatch(needsPermission, /id="music-start-local-player"/);
 });

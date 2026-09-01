@@ -91,14 +91,25 @@ const KIOSK_GET_PATHS = [
   /^\/push\/last\/?$/,
 ];
 
+// The shared-screen credential is read-only except for this single recovery
+// command. It cannot start or control a Jam: the handler only retargets the
+// already active session to a Spotify device with the exact previous name.
+// This lets a reloaded kiosk restore its own short-lived Web Playback device
+// id without granting the kiosk any of the participant mutation surface.
+const KIOSK_RECOVERY_PATH = /^\/music\/sessions\/device\/?$/;
+
+function kioskRouteAllowed(method: string, pathname: string): boolean {
+  if (method === 'GET') return KIOSK_GET_PATHS.some((pattern) => pattern.test(pathname));
+  return method === 'PATCH' && KIOSK_RECOVERY_PATH.test(pathname);
+}
+
 apiRouter.use((req, res, next) => {
-  const kioskRead =
-    req.method === 'GET' &&
+  const kioskAccess =
     req.header('x-kiosk-mode') === '1' &&
     Boolean(config.kioskToken || resolveKioskToken(extractToken(req))) &&
     (extractToken(req) === config.kioskToken || Boolean(resolveKioskToken(extractToken(req)))) &&
-    KIOSK_GET_PATHS.some((pattern) => pattern.test(req.path));
-  if (kioskRead) {
+    kioskRouteAllowed(req.method, req.path);
+  if (kioskAccess) {
     const tokenScope = resolveKioskToken(extractToken(req));
     const groupId = tokenScope?.groupId ?? DEFAULT_GROUP_ID;
     const requestedGroup = req.headers['x-group-id'];

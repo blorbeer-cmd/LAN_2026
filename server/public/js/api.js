@@ -590,6 +590,8 @@ export const api = {
     devices: () => apiFetch('/api/music/devices'),
     start: (playerId, deviceId) =>
       apiFetch('/api/music/sessions', { method: 'POST', body: JSON.stringify({ playerId, deviceId }) }),
+    recoverDevice: (deviceId) =>
+      apiFetch('/api/music/sessions/device', { method: 'PATCH', body: JSON.stringify({ deviceId }) }),
     search: (query) => apiFetch(`/api/music/search?q=${encodeURIComponent(query)}`),
     playPlaylist: (playerId, playlistId) =>
       apiFetch(`/api/music/playlists/${encodeURIComponent(playlistId)}/play`, {
