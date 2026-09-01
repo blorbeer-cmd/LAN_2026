@@ -244,12 +244,14 @@ test('Scribble rejoin restores the live drawing and thumb vote, then exposes a b
       thumbsToken: string;
       thumbsCount: number;
       myThumbActive: boolean;
+      hasGuessedCorrectly: boolean;
     };
     assert.equal(drawingSync.phase, 'drawing');
     assert.deepEqual(drawingSync.strokes, [{ type: 'stroke', ...stroke }]);
     assert.equal(drawingSync.thumbsToken, drawingTurn.thumbsToken);
     assert.equal(drawingSync.thumbsCount, 1);
     assert.equal(drawingSync.myThumbActive, true);
+    assert.equal(drawingSync.hasGuessedCorrectly, false, 'the guest has not guessed yet at this point');
 
     // The replacement socket must own the restored vote, not merely receive
     // a cosmetically correct snapshot.
@@ -275,6 +277,21 @@ test('Scribble rejoin restores the live drawing and thumb vote, then exposes a b
       text: selectedWord.word,
     });
     assert.equal(guestGuess.correct, true);
+
+    // A guess whose acknowledgement never reaches the client (a further
+    // disconnect right after the correct guess was recorded) must still be
+    // recoverable on the next rejoin instead of leaving the client's UI
+    // stuck on "pending" forever - the turn has not ended yet since the
+    // third player has not guessed, so this checks the mid-turn record.
+    const midTurnRejoin = await emitAck(rejoinedSocket, 'scribble:rejoin', {
+      matchId,
+      playerId: guestId,
+    });
+    assert.equal(midTurnRejoin.ok, true);
+    const midTurnSync = midTurnRejoin.sync as { phase: string; hasGuessedCorrectly: boolean };
+    assert.equal(midTurnSync.phase, 'drawing', 'the turn has not ended yet - the third player has not guessed');
+    assert.equal(midTurnSync.hasGuessedCorrectly, true);
+
     const thirdGuess = await emitAck(thirdSocket, 'scribble:guess', {
       matchId,
       playerId: thirdId,
@@ -384,6 +401,45 @@ test('Scribble keeps a two-player match alive during the reconnect grace period 
 
     const finished = await emitAck(hostSocket, 'scribble:match:finish', { matchId, playerId: hostId });
     assert.equal(finished.ok, true);
+  } finally {
+    hostSocket.close();
+    guestSocket.close();
+    rejoinedSocket?.close();
+    io.close();
+    httpServer.close();
+    if (previousGrace === undefined) delete process.env.SCRIBBLE_RECONNECT_GRACE_MS;
+    else process.env.SCRIBBLE_RECONNECT_GRACE_MS = previousGrace;
+  }
+});
+
+// Once the grace period expires, a 2-player match is deleted and rejoin must
+// fail cleanly. The client uses this response to clear any guess whose socket
+// acknowledgement was lost and return to the Arcade launcher.
+test('Scribble rejoin cannot recover a two-player match after the reconnect grace expires', async () => {
+  clearLobbyMemberships();
+  const previousGrace = process.env.SCRIBBLE_RECONNECT_GRACE_MS;
+  process.env.SCRIBBLE_RECONNECT_GRACE_MS = '40';
+  const httpServer = http.createServer(createTestApp());
+  const io = new Server(httpServer);
+  installTestSocketIdentity(io);
+  registerScribbleSockets(io);
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+
+  const hostSocket = await connect(baseUrl);
+  const guestSocket = await connect(baseUrl);
+  let rejoinedSocket: ClientSocket | null = null;
+  try {
+    const [hostId, guestId] = await makePlayers(baseUrl, ['Expired Host', 'Expired Guest']);
+    const { matchId } = await startMatchAndBeginDrawing(hostSocket, guestSocket, hostId, guestId);
+
+    const matchEndPromise = waitForEvent(hostSocket, 'scribble:match:end');
+    guestSocket.close();
+    await matchEndPromise;
+
+    rejoinedSocket = await connect(baseUrl);
+    const rejoin = await emitAck(rejoinedSocket, 'scribble:rejoin', { matchId, playerId: guestId });
+    assert.equal(rejoin.ok, false, 'the match no longer exists after the reconnect grace expires');
   } finally {
     hostSocket.close();
     guestSocket.close();

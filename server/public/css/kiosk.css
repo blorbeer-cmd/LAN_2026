@@ -103,6 +103,21 @@
 .kiosk-music[hidden] {
   display: none;
 }
+.kiosk-music-local {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.kiosk-music-local > .muted {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.kiosk-music-local > .btn {
+  flex: 0 0 auto;
+}
 .kiosk-music-cover {
   width: var(--avatar-size-lg);
   height: var(--avatar-size-lg);

@@ -833,8 +833,20 @@ export function ensureScribbleSocket() {
     socket.emit('scribble:rejoin', { matchId: requestedMatchId, playerId: myId() }, (res) => {
       if (!match || match.matchId !== requestedMatchId || matchEnded) return;
       if (!res?.ok) {
+        // The reconnect grace may have expired, or the match may have ended
+        // for another reason while this socket was away. There is nothing
+        // left to sync, so recover to the launcher instead of leaving stale
+        // match state or a guess stuck on "pending".
+        const staleContainer = document.getElementById('view-container');
+        if (staleContainer?.dataset.scribbleGuessResult === 'pending') delete staleContainer.dataset.scribbleGuessResult;
         resetMatchState();
         showToast('Das Scribble-Match ist nicht mehr verfügbar.', { error: true });
+        // Mirrors the normal scribble:match:end handler below: finishMatch
+        // already recorded this result server-side, but this socket never
+        // received that broadcast (it wasn't in the room yet), so the
+        // Arcade view's cached stats would otherwise stay stale until some
+        // unrelated event invalidates them or the page reloads.
+        window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
         navigate('arcade');
         return;
       }
@@ -863,6 +875,16 @@ export function ensureScribbleSocket() {
       thumbsToken = sync.thumbsToken ?? null;
       thumbsCount = sync.thumbsCount ?? 0;
       myThumbActive = !!sync.myThumbActive;
+      // A guess whose emit or ack got lost to the disconnect stays 'pending'
+      // forever otherwise. A correct guess is durably recorded server-side
+      // for the turn, so it can be recovered here; anything else is cleared
+      // back to unanswered so the form becomes usable again for a retry —
+      // there is no durable record of a merely wrong guess to recover.
+      const viewContainer = document.getElementById('view-container');
+      if (viewContainer?.dataset.scribbleGuessResult === 'pending') {
+        if (sync.hasGuessedCorrectly) viewContainer.dataset.scribbleGuessResult = 'correct';
+        else delete viewContainer.dataset.scribbleGuessResult;
+      }
       rerender();
     });
   });
