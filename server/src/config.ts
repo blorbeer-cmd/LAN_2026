@@ -49,7 +49,8 @@ export const config = {
   // clients on another version before a LAN starts.
   expectedAgentVersion: (process.env.EXPECTED_AGENT_VERSION ?? '1.0.0').trim(),
 
-  // Dedicated read-only credential for the shared kiosk.
+  // Dedicated shared-kiosk credential. It is read-only except for the narrow
+  // same-device Jam recovery route documented in routes/index.ts.
   kioskToken: process.env.KIOSK_TOKEN ?? '',
 
   // Shared password for the automatically created per-event kiosk accounts.

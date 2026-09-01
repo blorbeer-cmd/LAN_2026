@@ -15,7 +15,14 @@ const STORE_DIR = process.env.JAM_CONTROLLER_STORE_DIR
   ? path.resolve(process.env.JAM_CONTROLLER_STORE_DIR)
   : path.join(os.homedir(), '.respawn');
 const STORE_FILE = path.join(STORE_DIR, 'jam-controller.json');
-const SCOPES = 'user-read-playback-state user-modify-playback-state';
+const SCOPES = [
+  'user-read-playback-state',
+  'user-modify-playback-state',
+  'streaming',
+  'user-read-email',
+  'user-read-private',
+].join(' ');
+const WEB_PLAYBACK_SCOPES = ['streaming', 'user-read-email', 'user-read-private'];
 const DEFAULT_RESPAWN_URL = 'https://lan.dbehnke.dev';
 const REQUEST_TIMEOUT_MS = Math.max(100, Number(process.env.JAM_CONTROLLER_REQUEST_TIMEOUT_MS || 10_000));
 const LOCAL_FORM_TOKEN = crypto.randomBytes(24).toString('base64url');
@@ -79,6 +86,48 @@ function pageHeaders() {
   };
 }
 
+function spotifyScopes() {
+  return new Set(String(state.spotifyScopes || '').split(/\s+/).filter(Boolean));
+}
+
+function webPlaybackAuthorized() {
+  const scopes = spotifyScopes();
+  return Boolean(state.refreshToken) && WEB_PLAYBACK_SCOPES.every((scope) => scopes.has(scope));
+}
+
+function respawnOrigin() {
+  try {
+    return new URL(state.respawnBaseUrl).origin;
+  } catch {
+    return null;
+  }
+}
+
+function localApiHeaders(req) {
+  // This is a browser-origin boundary: it prevents an arbitrary website from
+  // reading the Spotify token through loopback. It is deliberately not an OS
+  // process boundary. A process running as this user can already read the
+  // same token from STORE_FILE; LOCAL_FORM_TOKEN protects state-changing HTML
+  // forms but cannot be shared with the cross-origin Respawn Web Player.
+  const origin = String(req.headers.origin || '');
+  if (!origin || origin !== respawnOrigin()) return null;
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Private-Network': 'true',
+    'Cache-Control': 'no-store',
+    'Content-Type': 'application/json; charset=utf-8',
+    'Vary': 'Origin',
+    'X-Content-Type-Options': 'nosniff',
+  };
+}
+
+function writeJson(res, status, data, headers = {}) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...headers });
+  res.end(JSON.stringify(data));
+}
+
 function xmlEscape(value) {
   return htmlEscape(value);
 }
@@ -137,7 +186,7 @@ function setupFields({ includePairing }) {
   return `
     <label><span class="field-label">Respawn-Adresse ${help('Ist vorausgefüllt. Nur ändern, wenn der Controller einen anderen Respawn-Server verwenden soll.')}</span><input name="respawnBaseUrl" type="url" required value="${htmlEscape(state.respawnBaseUrl || DEFAULT_RESPAWN_URL)}"></label>
     ${includePairing ? `<div class="row"><label><span class="field-label">Kopplungscode ${help('Beim ersten Download ist der Code vorausgefüllt. Für eine vorhandene Installation auf der Jam-Seite „Vorhandenen Controller koppeln“ oder „Wiederverbindung vorbereiten“ wählen und den neuen Code hier eintragen.')}</span><input name="pairingCode" required autocomplete="off" maxlength="12" value="${htmlEscape(state.pairingCode || '')}"></label><label><span class="field-label">Gerätename</span><input name="label" required value="${htmlEscape(state.label || 'LAN-Musik-PC')}"></label></div>` : ''}
-    <label><span class="field-label">Spotify Client-ID ${help('Im Spotify Developer Dashboard unter deiner App in „Basic Information“. Dank PKCE wird kein Client-Secret benötigt oder gespeichert.')}</span><input name="clientId" required autocomplete="off" value="${htmlEscape(state.clientId || '')}"></label>
+    <label><span class="field-label">Spotify Client-ID ${help('Im Spotify Developer Dashboard unter deiner App in „Basic Information“. Für Ton im Browser muss dort Web Playback SDK aktiviert sein. Dank PKCE wird kein Client-Secret benötigt oder gespeichert.')}</span><input name="clientId" required autocomplete="off" value="${htmlEscape(state.clientId || '')}"></label>
     <label><span class="field-label">Redirect URI ${help('Diesen Wert im Spotify Developer Dashboard unter „Redirect URIs“ exakt hinzufügen. Er bleibt unabhängig von der Respawn-Adresse gleich.')}</span><code>${REDIRECT_URI}</code></label>
     <details><summary>Erweitert</summary><label><span class="field-label">Respawn-Zugangstoken ${help('Nur für einen Respawn-Server mit altem gemeinsamen Zugangsschutz erforderlich.')}</span><input name="accessToken" type="password" value="${htmlEscape(state.accessToken || '')}"></label></details>`;
 }
@@ -147,6 +196,7 @@ function page(message = '', isError = false) {
   const hasSpotify = Boolean(state.refreshToken);
   const needsPairing = !hasController || runtime.needsPairing;
   const autostart = autostartEnabled();
+  const browserPlaybackReady = webPlaybackAuthorized();
   const csrf = `<input type="hidden" name="_csrf" value="${LOCAL_FORM_TOKEN}">`;
   const statusLabel = (value) => value === 'connected' ? 'Verbunden' : value === 'connecting' ? 'Verbindet…' : value === 'authorization_required' ? 'Anmeldung nötig' : value === 'setup' ? 'Einrichtung nötig' : 'Automatischer Neuversuch';
   return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -180,8 +230,13 @@ function page(message = '', isError = false) {
     <p><strong>${htmlEscape(state.label)}</strong> · ${htmlEscape(state.spotifyDisplayName || 'Spotify')}</p>
     <div class="status"><span>Respawn</span><strong class="${runtime.respawn === 'connected' ? 'ok' : 'warning'}">${htmlEscape(statusLabel(runtime.respawn))}</strong></div>
     <div class="status"><span>Spotify</span><strong class="${runtime.spotify === 'connected' ? 'ok' : 'warning'}">${htmlEscape(statusLabel(runtime.spotify))}</strong></div>
+    <div class="status"><span>Browser-/Kiosk-Ton</span><strong class="${browserPlaybackReady ? 'ok' : 'warning'}">${browserPlaybackReady ? 'Bereit' : 'Freigabe nötig'}</strong></div>
     ${runtime.respawnMessage ? `<p class="muted">${htmlEscape(runtime.respawnMessage)}</p>` : ''}
     ${runtime.spotifyMessage ? `<p class="muted">${htmlEscape(runtime.spotifyMessage)}</p>` : ''}
+    ${browserPlaybackReady ? '' : `<div class="stack">
+      <p class="warning">Damit der Musik-PC den Ton direkt über Browser, HDMI oder den TV ausgeben kann, Spotify bitte einmal neu freigeben.</p>
+      <form method="post" action="/setup" class="stack">${csrf}<input type="hidden" name="intent" value="spotify">${setupFields({ includePairing: false })}<button>Browser-Wiedergabe freigeben</button></form>
+    </div>`}
     <p class="muted">Verbunden mit ${htmlEscape(state.respawnBaseUrl)}. Der Controller führt Titel-, Playlist- und Wiedergabebefehle aus. Netzwerkabbrüche werden automatisch erneut versucht; diese Browserseite muss nicht offen bleiben.</p>
     <form method="post" action="/retry">${csrf}<button>Verbindung jetzt prüfen</button></form>
     <form method="post" action="/autostart">${csrf}<input type="hidden" name="enabled" value="${autostart ? '0' : '1'}"><button class="secondary">${autostart ? 'Autostart deaktivieren' : 'Beim Anmelden automatisch starten'}</button></form>
@@ -306,6 +361,7 @@ async function finishOauth(url) {
     controllerToken: registration.controllerToken,
     groupId: registration.groupId,
     spotifyDisplayName: profile.display_name || profile.id,
+    spotifyScopes: tokens.scope || SCOPES,
     accessTokenSpotify: tokens.access_token,
     refreshToken: tokens.refresh_token,
     expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000,
@@ -381,6 +437,7 @@ async function spotifyToken() {
   }
   state.accessTokenSpotify = data.access_token;
   if (data.refresh_token) state.refreshToken = data.refresh_token;
+  if (data.scope) state.spotifyScopes = data.scope;
   state.expiresAt = Date.now() + Number(data.expires_in || 3600) * 1000;
   saveState();
   return state.accessTokenSpotify;
@@ -463,6 +520,14 @@ async function executeCommand(type, payload = {}) {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ context_uri: payload.uri, position_ms: 0 }),
+    });
+    return { ok: true };
+  }
+  if (type === 'transfer') {
+    await spotify('/me/player', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_ids: [payload.deviceId], play: Boolean(payload.playing) }),
     });
     return { ok: true };
   }
@@ -578,6 +643,39 @@ async function sendHeartbeat() {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || '/', `http://${HOST}:${PORT}`);
+    if (url.pathname === '/web-player/status' || url.pathname === '/web-player/token') {
+      const headers = localApiHeaders(req);
+      if (!headers) {
+        writeJson(res, 403, { error: 'Diese lokale Anfrage ist für die konfigurierte Respawn-Adresse nicht freigegeben.' });
+        return;
+      }
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, headers).end();
+        return;
+      }
+      if (req.method !== 'GET') {
+        writeJson(res, 405, { error: 'Methode nicht erlaubt.' }, headers);
+        return;
+      }
+      const ready = webPlaybackAuthorized();
+      if (url.pathname === '/web-player/status') {
+        writeJson(res, 200, {
+          available: true,
+          ready,
+          playerName: `Respawn · ${state.label || 'Musik-PC'}`,
+          message: ready ? null : 'Spotify im lokalen Controller einmal für Browser-Wiedergabe neu freigeben.',
+        }, headers);
+        return;
+      }
+      if (!ready) {
+        writeJson(res, 409, {
+          error: 'Spotify im lokalen Controller einmal für Browser-Wiedergabe neu freigeben.',
+        }, headers);
+        return;
+      }
+      writeJson(res, 200, { accessToken: await spotifyToken() }, headers);
+      return;
+    }
     if (req.method === 'POST' && url.pathname === '/setup') {
       await beginOauth(await readLocalForm(req), res);
       return;

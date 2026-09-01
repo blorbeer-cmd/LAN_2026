@@ -34,6 +34,7 @@ test('portable Jam controller package needs neither a repository nor npm', () =>
   assert.match(readme, /ZIP vollständig entpacken/);
   assert.match(readme, /Raspberry Pi\/Linux/);
   assert.match(readme, /Titel, Playlists, Songwünsche/);
+  assert.match(readme, /Browser selbst als Spotify-Gerät/);
   assert.match(readme, /SPÄTER STARTEN UND WIEDERVERBINDEN/);
   assert.match(readme, /Kein neuer Download nötig/);
   assert.match(readme, /DATENSCHUTZ/);
