@@ -100,9 +100,13 @@ Bei Zielkonflikten gewinnt die weiter oben stehende Priorität.
   Einstellungen nicht aus Bequemlichkeit aufweichen.
 - Nutzerinhalte vor HTML-Ausgabe escapen und dynamische SQL-Werte parametrisieren.
 - SQL-Bezeichner oder SQL-Fragmente nur aus internen Allow-Lists zusammensetzen.
-- Neue oder geänderte Logik erhält Tests für Happy Path, relevante Validierungsfehler und
-  Zustandskonflikte. Tests verwenden keine produktiven Daten, fremden Ports oder echte
-  Nutzerkonfigurationen.
+- Neue oder geänderte Logik muss gegen relevante Regressionen abgesichert sein. Vor neuen Tests
+  zuerst die vorhandene Abdeckung prüfen; zusätzliche Tests nur anlegen, wenn sie gegenüber der
+  bestehenden Suite zusätzliche Fehlererkennung liefern. Happy Path, relevante Validierungsfehler
+  und Zustandskonflikte sind risikobasiert abzudecken, nicht schematisch je durch einen eigenen
+  neuen Test. Tests verwenden keine produktiven Daten, fremden Ports oder echte
+  Nutzerkonfigurationen. Für Arbeiten unter `server/` gelten zusätzlich die verbindlichen
+  Test-Design-Regeln in `server/TESTING.md`.
 - Tests nicht löschen, lockern oder mit pauschalen Timeouts kaschieren, nur damit ein Lauf grün wird.
 - Flaky Tests ursächlich stabilisieren.
 - Nach jeder Umsetzung erfasst CI die reine Laufzeit der einschlägigen Testsuiten getrennt von
@@ -111,7 +115,8 @@ Bei Zielkonflikten gewinnt die weiter oben stehende Priorität.
   Testlauf-Regression. Ein automatischer Wiederholungslauf muss den Verdacht bestätigen, bevor der
   Check fehlschlägt. Bestätigte Regressionen ursächlich untersuchen und reduzieren; notwendige,
   nicht weiter vermeidbare Laufzeit durch zusätzliche belastbare Abdeckung im PR begründen. Dabei
-  niemals Tests löschen, lockern oder mit größeren Timeouts kaschieren.
+  niemals relevante Abdeckung löschen, Assertions lockern oder mit größeren Timeouts kaschieren;
+  das begründete Entfernen nachweislich redundanter Tests bleibt davon unberührt.
 
 ## 5. Arbeitsbaum und Git
 
