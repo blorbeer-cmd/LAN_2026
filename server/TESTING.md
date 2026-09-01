@@ -4,6 +4,57 @@ Qualität wird über automatisierte Tests abgesichert. Bewusst schlank gehalten 
 Framework, sondern der **eingebaute Node-Test-Runner** (`node:test`) plus **supertest** für die API
 und **Playwright** für echte Browser-Klickpfade.
 
+## Verbindliche Test-Design-Regeln
+
+Gelten für neue Tests und für Änderungen an bestehenden Tests. Ziel ist maximale Fehlererkennung
+bei minimaler Testmenge, geringer Komplexität und hoher Deterministik. Mehr Tests, mehr Assertions
+oder höhere Coverage sind für sich genommen kein Qualitätsgewinn.
+
+1. **Niedrigste geeignete Testebene wählen.** Unit für isolierte Logik, Integration für API,
+   Datenbank und Realtime, Browser-E2E nur für Verhalten, das tatsächlich einen echten Browser oder
+   einen vollständigen Benutzerpfad braucht. Verhalten, das ein Unit- oder Integrationstest
+   zuverlässig beweist, wird nicht zusätzlich als E2E-Test dupliziert. E2E-Tests sind bewusst teuer
+   und brauchen einen eigenen Integrationsnutzen.
+2. **Vor einem neuen Test die vorhandene Abdeckung prüfen.** Zuerst nach Tests für dasselbe
+   fachliche Verhalten suchen und prüfen, ob ein bestehender Test es sinnvoll mit abdecken kann.
+   Eine Produktionscodeänderung allein rechtfertigt keinen neuen Test; ein neuer Test braucht
+   zusätzliche Fehlererkennung gegenüber der bestehenden Suite.
+3. **Beobachtbares Verhalten prüfen, keine Implementierungsdetails.** Keine internen
+   Aufrufreihenfolgen ohne fachliche Bedeutung, keine internen Datenstrukturen ohne
+   Vertragscharakter, keine trivialen Framework- oder Sprachfunktionen. Ein Refactoring ohne
+   Verhaltensänderung soll möglichst keine Teständerung erzwingen.
+4. **Auf Zustände warten, nicht auf Zeit.** `waitForTimeout`, `setTimeout` als Synchronisationshilfe
+   und vergleichbare Pauschalwartezeiten sind unzulässig; gewartet wird auf ein konkret
+   beobachtbares Ereignis oder einen konkreten Zustand. Zulässig bleibt das Verstreichenlassen einer
+   echten, produktiv existierenden Frist, die selbst Prüfgegenstand ist — etwa Countdown-, Reveal-
+   und Deadline-Übergänge in den Fast-Timer-Profilen. Solche Stellen benennen im Kommentar die
+   Frist, auf die gewartet wird.
+5. **Tests sind unabhängig** von Ausführungsreihenfolge, anderen Tests, realer Uhrzeit,
+   ungeseedetem Zufall, fremden Ports, externem Netzwerk, Produktionsdaten sowie bereits
+   vorhandenem Prozess- oder Browserzustand. Die unten benannte E2E-Ausnahme gilt ausschließlich
+   für geteilten Zustand zwischen Geschwistertests desselben Owners; alle anderen Anforderungen
+   bleiben bestehen. Ein sporadisch fehlschlagender Test gilt als defekt und wird ursächlich
+   behoben, nicht durch größere Timeouts, zusätzliche Retries, schwächere Assertions oder
+   Überspringen. Retries bleiben reine Diagnose- und Infrastrukturhilfe (siehe
+   „Laufzeitregressionen“) und machen einen roten Lauf nie grün.
+6. **Bestehende Tests dürfen vereinfacht, zusammengeführt oder entfernt werden**, wenn sie
+   nachweislich dasselbe Verhalten redundant abdecken, ausschließlich Implementierungsdetails
+   prüfen, unnötig komplex sind oder durch einen kleineren stabilen Test auf niedrigerer Ebene
+   ersetzt werden können. *Relevante* Abdeckung darf dabei nie verloren gehen. Jede Entfernung oder
+   Zusammenführung wird im Abschluss kurz begründet und benennt den Test, der die betroffene
+   Regression weiterhin erkennt.
+
+Bewusste Ausnahmen:
+
+- Der Parallel-Request-Integrationstest für race-relevante Handler aus Abschnitt 3 der
+  Server-Richtlinie [`DEVELOPMENT_GUIDELINES.md`](DEVELOPMENT_GUIDELINES.md) bleibt eine
+  schematische Pflicht, weil er Produktziel 1 unmittelbar absichert.
+- Die unter „Konventionen“ dokumentierten, absichtlich zustandsbehafteten Cross-View-Owner und der
+  Event-Workspace-Switch sind von der Unabhängigkeit zwischen Geschwistertests innerhalb ihres
+  Owner-Prozesses ausgenommen. Auf Owner-Ebene bleiben sie isoliert: Jeder Prozess startet mit
+  frischem Server, Browser und Datenbestand; nach dem ersten Fehler greift die Cascade Suppression,
+  und ein gezielter Retry startet den Owner in einem neuen Prozess.
+
 ## Test-Arten
 
 | Art               | Womit                                                   | Was                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -35,9 +86,11 @@ Unter Linux kann bei fehlenden Systembibliotheken zusätzlich `npx playwright in
 nötig sein.
 
 `test:coverage` nutzt Node's eingebautes `--experimental-test-coverage` (keine zusätzliche
-Abhängigkeit) und blendet Testdateien selbst aus dem Report aus. Kein hartes Minimum hinterlegt –
-der Report ist als Signal beim Review gedacht (sinkt die Zeilen-/Branch-Abdeckung einer Datei durch
-eine Änderung spürbar, ist das ein Hinweis, neue Pfade mitzutesten statt nur den Happy Path).
+Abhängigkeit) und blendet Testdateien selbst aus dem Report aus. Kein hartes Minimum hinterlegt,
+und Coverage ist ein Diagnosewert, keine Erfolgsmetrik. Ein spürbarer Abfall der
+Zeilen-/Branch-Abdeckung einer Datei ist ein Anlass zu prüfen, ob ein neu entstandener Pfad eine
+relevante Regression ungeschützt lässt; ein zusätzlicher Test folgt daraus nur, wenn genau das der
+Fall ist.
 
 - Unit/Integration laufen gegen eine **In-Memory-SQLite** (`DB_FILE=:memory:`), berühren also nie
   echte Daten.
@@ -192,8 +245,9 @@ bestätigter Rückschritt oder ein technischer Fehler wird rot. Nur dieser stabi
 Branch-Schutz. Seine Zusammenfassung nennt Suite, Median-Basis, aktuelle Dauer, Abweichung und
 Ergebnis. Bei Rot sind die langsamsten Testdateien beziehungsweise Testfälle und die verursachende
 Änderung zu untersuchen. Zusätzliche sinnvolle Abdeckung darf eine begründete Laufzeiterhöhung
-verursachen; Optimierung darf niemals Abdeckung entfernen, Assertions lockern oder Wartezeiten
-pauschal erhöhen.
+verursachen; Optimierung darf niemals relevante Abdeckung entfernen, Assertions lockern oder
+Wartezeiten pauschal erhöhen. Das Entfernen nachweislich redundanter Abdeckung nach Regel 6 der
+Test-Design-Regeln ist davon ausgenommen und im Pull Request zu begründen.
 
 Die Pfadklassifikation liegt testbar in `scripts/ci-path-classifier.mjs`. Reine Arcade-Änderungen
 starten nur Arcade-E2E. Gekapselte Auth-, Checklisten- und allgemeine Flow-Pfade wählen nur ihre

@@ -46,7 +46,8 @@ Check-dann-Schreiben-Races.
 - Mehrschrittige, nur gemeinsam gültige DB-Änderungen laufen in einer Transaktion. Socket-Events
   werden erst nach erfolgreicher Transaktion ausgesendet.
 - Für jeden geänderten Race-relevanten Handler einen Integrationstest mit parallelen Requests
-  (`Promise.all`) ergänzen.
+  (`Promise.all`) ergänzen. Diese schematische Pflicht gilt bewusst weiter und geht der allgemeinen
+  Zurückhaltung bei neuen Tests aus `TESTING.md` vor, weil sie Produktziel 1 unmittelbar absichert.
 - Schemaänderungen migrationssicher für bestehende Installationen umsetzen. Produktive DBs niemals
   neu aufbauen oder zurücksetzen, um Migrationen zu vereinfachen.
 - Migrationen bleiben nummeriert, idempotent und in historischer Reihenfolge. Änderungen erhalten
