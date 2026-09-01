@@ -2,7 +2,7 @@
 
 ## Status
 
-Lokaler Arbeitsbranch, noch ohne Pull Request.
+Draft-PR [#533](https://github.com/blorbeer-cmd/LAN_2026/pull/533) gegen `main`.
 
 ## Themenstrang
 
@@ -11,4 +11,3 @@ Interaktionsformen reduziert: Kreisreaktion, Zehn-Sekunden-Stopp sowie serversei
 Auswahl-/Memory-Matrix-Trials. Zehn besonders fehleranfällige oder redundante Aufgaben,
 der unvollständige KI-Gegner und die zugehörigen Server-, Browser-, CSS- und Testpfade wurden
 entfernt. Lobby-, Pause-, Reconnect-, Forfeit-, Ergebnis- und Admin-Testauswahl bleiben erhalten.
-
