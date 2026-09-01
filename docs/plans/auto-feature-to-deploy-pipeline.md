@@ -278,8 +278,8 @@ stabile Required Check `Test performance` aggregiert Detektor und Wiederholung f
 bestätigter Rückschritt oder ein technischer Fehler wird zum CI-Fehler und durchläuft die normale
 CI-Fix-Schleife. Der
 Implementierungs-Agent untersucht dann Ursache und langsamste Tests und reduziert die Laufzeit,
-ohne Abdeckung oder Assertions zu schwächen. Ist zusätzliche Laufzeit wegen notwendiger neuer
-Abdeckung unvermeidbar, wird sie im PR nachvollziehbar begründet und im Review bewertet.
+ohne relevante Abdeckung zu entfernen oder Assertions zu schwächen. Ist zusätzliche Laufzeit wegen
+notwendiger neuer Abdeckung unvermeidbar, wird sie im PR nachvollziehbar begründet und im Review bewertet.
 
 Core- und Arcade-E2E sind getrennte Checks. Eine getestete Pfadklassifikation startet den
 vollständigen Arcade-Lauf nur für Arcade-spezifische Bereiche. Gemeinsame Dateien und unbekannte
