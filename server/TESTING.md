@@ -31,9 +31,11 @@ oder höhere Coverage sind für sich genommen kein Qualitätsgewinn.
    Frist, auf die gewartet wird.
 5. **Tests sind unabhängig** von Ausführungsreihenfolge, anderen Tests, realer Uhrzeit,
    ungeseedetem Zufall, fremden Ports, externem Netzwerk, Produktionsdaten sowie bereits
-   vorhandenem Prozess- oder Browserzustand. Ein sporadisch fehlschlagender Test gilt als defekt und
-   wird ursächlich behoben, nicht durch größere Timeouts, zusätzliche Retries, schwächere
-   Assertions oder Überspringen. Retries bleiben reine Diagnose- und Infrastrukturhilfe (siehe
+   vorhandenem Prozess- oder Browserzustand. Die unten benannte E2E-Ausnahme gilt ausschließlich
+   für geteilten Zustand zwischen Geschwistertests desselben Owners; alle anderen Anforderungen
+   bleiben bestehen. Ein sporadisch fehlschlagender Test gilt als defekt und wird ursächlich
+   behoben, nicht durch größere Timeouts, zusätzliche Retries, schwächere Assertions oder
+   Überspringen. Retries bleiben reine Diagnose- und Infrastrukturhilfe (siehe
    „Laufzeitregressionen“) und machen einen roten Lauf nie grün.
 6. **Bestehende Tests dürfen vereinfacht, zusammengeführt oder entfernt werden**, wenn sie
    nachweislich dasselbe Verhalten redundant abdecken, ausschließlich Implementierungsdetails
@@ -42,9 +44,16 @@ oder höhere Coverage sind für sich genommen kein Qualitätsgewinn.
    Zusammenführung wird im Abschluss kurz begründet und benennt den Test, der die betroffene
    Regression weiterhin erkennt.
 
-Bewusste Ausnahme: Der Parallel-Request-Integrationstest für race-relevante Handler aus Abschnitt 3
-der Server-Richtlinie [`DEVELOPMENT_GUIDELINES.md`](DEVELOPMENT_GUIDELINES.md) bleibt eine
-schematische Pflicht, weil er Produktziel 1 unmittelbar absichert.
+Bewusste Ausnahmen:
+
+- Der Parallel-Request-Integrationstest für race-relevante Handler aus Abschnitt 3 der
+  Server-Richtlinie [`DEVELOPMENT_GUIDELINES.md`](DEVELOPMENT_GUIDELINES.md) bleibt eine
+  schematische Pflicht, weil er Produktziel 1 unmittelbar absichert.
+- Die unter „Konventionen“ dokumentierten, absichtlich zustandsbehafteten Cross-View-Owner und der
+  Event-Workspace-Switch sind von der Unabhängigkeit zwischen Geschwistertests innerhalb ihres
+  Owner-Prozesses ausgenommen. Auf Owner-Ebene bleiben sie isoliert: Jeder Prozess startet mit
+  frischem Server, Browser und Datenbestand; nach dem ersten Fehler greift die Cascade Suppression,
+  und ein gezielter Retry startet den Owner in einem neuen Prozess.
 
 ## Test-Arten
 
