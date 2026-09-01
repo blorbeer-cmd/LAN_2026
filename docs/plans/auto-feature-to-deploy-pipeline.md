@@ -505,7 +505,8 @@ Produktionsdeployment.
 - Änderung von Produktion, Infrastruktur oder Deployment,
 - neue Architektur, neues Framework oder wesentliche Produktionsabhängigkeit,
 - mehrere plausible Produktauslegungen mit deutlich unterschiedlichem Verhalten,
-- notwendiges Löschen, Lockern oder Umgehen von Tests,
+- notwendiges Löschen von Tests, wenn dabei relevante Abdeckung verloren geht, sowie Lockern oder
+  Umgehen von Tests,
 - semantisch riskanter Mergekonflikt,
 - fachliche Uneinigkeit nach drei Reviewrunden,
 - drei erfolglose echte CI-Fix-Runden,
