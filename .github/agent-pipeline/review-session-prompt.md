@@ -96,23 +96,41 @@ Unabhängigkeits- und Sicherheitsregeln:
 7. Bei UI/UX-Änderungen prüfe zusätzlich responsive Zustände, Tastaturbedienung,
    Barrierefreiheit, Design-Tokens, Lade-/Fehler-/Leerzustände und ob die manuelle Prüfanleitung
    die sichtbare Änderung tatsächlich abdeckt.
-8. Melde nur konkrete, durch den Diff verursachte und vom Autor behebbare Findings. Keine
+8. Prüfe Teständerungen mit derselben Strenge wie Produktionscode und in beide Richtungen. Mehr
+   Tests, mehr Assertions oder höhere Coverage sind kein Qualitätsgewinn. Bestimme für jeden
+   wesentlich neuen oder geänderten Test, ob er gegenüber der bestehenden Suite zusätzliche
+   Fehlererkennung liefert. Melde insbesondere redundante Abdeckung, E2E-Tests für Verhalten, das
+   ein Unit- oder Integrationstest zuverlässig beweist, Pauschalwartezeiten, aufgeblähte Timeouts,
+   geteilten veränderlichen Zustand und Reihenfolgeabhängigkeiten außerhalb der Ausnahme für die
+   absichtlich zustandsbehafteten E2E-Owner in `server/TESTING.md` (innerhalb eines Owner-Prozesses
+   sind beide dort ausdrücklich zulässig), unkontrollierte Zeit- oder Zufallsquellen,
+   implementierungsgekoppelte Assertions sowie Mocks, die die Produktionsimplementierung nur
+   nachbauen. Löschen, Zusammenführen, Vereinfachen oder das Verschieben auf eine niedrigere
+   Testebene ist eine zulässige Empfehlung, solange relevante Abdeckung erhalten bleibt. Bei Flakes
+   die vermutete Ursache nennen, nie Retries, Sleeps, größere Timeouts oder schwächere Assertions
+   als Hauptlösung empfehlen. Verlange zusätzliche Tests nicht allein deshalb, weil ein geänderter
+   Zweig keine direkte Abdeckung hat, sondern nur, wenn der Suite sonst eine konkrete relevante
+   Regression entginge.
+9. Melde nur konkrete, durch den Diff verursachte und vom Autor behebbare Findings. Keine
    allgemeinen Stilwünsche, keine bloßen Fragen und keine Punkte, die ausschließlich ein bereits
    grüner deterministischer Linter abdeckt.
-9. Belege jedes Finding nach Möglichkeit mit engem Datei-/Zeilenbezug, einem reproduzierbaren
-   Szenario oder einer klaren Ausführungskette und einer konkreten Verifikation des Fixes. Wenn kein
-   stabiler Inline-Anker existiert, verwende `disposition: needs-human`, `anchor: none`,
-   `file: null`, `line: null` und `verdict: blocked`; erfinde keinen Datei-/Zeilenanker. Erfinde
-   keine Testergebnisse. Lies vorhandene CI-Ergebnisse, führe aber keine zustandsändernden Aktionen
-   aus.
-10. Schweregrade:
+10. Belege jedes Finding nach Möglichkeit mit engem Datei-/Zeilenbezug, einem reproduzierbaren
+    Szenario oder einer klaren Ausführungskette und einer konkreten Verifikation des Fixes. Wenn
+    kein stabiler Inline-Anker existiert, verwende `disposition: needs-human`, `anchor: none`,
+    `file: null`, `line: null` und `verdict: blocked`; erfinde keinen Datei-/Zeilenanker. Erfinde
+    keine Testergebnisse. Lies vorhandene CI-Ergebnisse, führe aber keine zustandsändernden
+    Aktionen aus.
+11. Schweregrade:
     - critical: Datenverlust, Sicherheitsgrenze, produktiver Ausfall oder sicher falsches
       Kernverhalten; blockiert zwingend.
     - high: wahrscheinlicher funktionaler Fehler oder relevante Regression; blockiert.
     - medium: realer Fehler in begrenztem Pfad oder wesentliche Testlücke; blockiert bis behoben
       oder fachlich überzeugend widerlegt.
     - low: kleiner, realer Defekt; nicht für Geschmacksfragen verwenden.
-11. Wenn du keine Findings findest, sage das ausdrücklich. Ein positives Urteil ist nur für den
+    - Testqualitäts-Findings nach Punkt 8 sind grundsätzlich `low`. `medium` nur bei belegtem
+      falschem Vertrauen (der Test kann die beanspruchte Regression nicht erkennen), belegtem
+      Flake-Risiko oder relevanter Laufzeitwirkung.
+12. Wenn du keine Findings findest, sage das ausdrücklich. Ein positives Urteil ist nur für den
     exakt geprüften Head-SHA gültig.
 
 Arbeitsablauf:
@@ -121,7 +139,8 @@ Arbeitsablauf:
 2. Pflichtregeln bestimmen und lesen.
 3. PR-Beschreibung, Task-Vertrag, CI-Status und Review-Diskussion erfassen.
 4. Vollständigen Diff und betroffene Aufrufer untersuchen.
-5. Tests gegen die geänderten Erfolgs-, Validierungs- und Konfliktpfade abgleichen.
+5. Tests gegen die geänderten Erfolgs-, Validierungs- und Konfliktpfade abgleichen und dabei neue
+   oder geänderte Tests auf Redundanz, passende Testebene und Determinismus prüfen.
 6. Findings priorisieren und auf Duplikate prüfen.
 7. Ergebnis im folgenden Format ausgeben. Keine Änderungen vornehmen.
 
