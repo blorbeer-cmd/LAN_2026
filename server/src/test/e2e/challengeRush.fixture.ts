@@ -215,15 +215,9 @@ challengeRushTest('scenarios', 'Challenge Rush pauses active time and reconnects
 });
 
 // Drives one round of whichever challenge is currently active based on the
-// stage's data-challenge-key, exercising every Phase 3 renderer's real click
+// stage's data-challenge-key, exercising every retained renderer's real click
 // wiring in a browser instead of just the socket protocol (already covered
 // by the integration tests in api.challengeRush.test.ts).
-//
-// Every loop below re-checks isStillPlaying(key) before each click instead of
-// only checking "does my target selector still exist": odd-one-out uses the
-// generic `.challenge-rush-tile` class, so once a round ends the *next*
-// challenge's elements can satisfy a stale selector and a queued click would
-// silently land on the wrong challenge instead of failing loudly.
 async function isStillPlaying(page: Page, key: string): Promise<boolean> {
   return (await page.locator(`.challenge-rush-stage[data-phase="playing"][data-challenge-key="${key}"]`).count()) > 0;
 }
@@ -246,35 +240,12 @@ async function playCurrentChallenge(page: Page): Promise<void> {
     while (await isStillPlaying(page, key) && await page.locator('.challenge-rush-circle').count() > 0) { await page.click('.challenge-rush-circle'); await page.waitForTimeout(80); }
     return;
   }
-  if (key === 'cps') { await page.click('.challenge-rush-big-button:not([data-cr-stop])'); return; }
-  if (key === 'number-salad') {
-    const numbers = await page.locator('.challenge-rush-number').evaluateAll((nodes) => nodes.map((node) => Number(node.getAttribute('data-cr-number'))).sort((a, b) => a - b));
-    for (const value of numbers) { if (!(await isStillPlaying(page, key))) break; await page.click(`.challenge-rush-number[data-cr-number="${value}"]`); await page.waitForTimeout(80); }
-    return;
-  }
   if (key === 'timing-10') { await page.click('[data-cr-stop]'); return; }
-  if (key === 'odd-one-out') {
-    const position = await page.locator('.challenge-rush-odd-grid').evaluate((grid) => {
-      const signatures = Array.from(grid.children).map((node) => {
-        const style = getComputedStyle(node);
-        return [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius].join('|');
-      });
-      const counts = new Map(signatures.map((signature) => [signature, signatures.filter((entry) => entry === signature).length]));
-      return signatures.findIndex((signature) => counts.get(signature) === 1);
-    });
-    assert.ok(position >= 0, 'Odd-One-Out muss über seine berechnete Form erkennbar sein.');
-    await page.locator('.challenge-rush-tile').nth(position).click();
-    return;
-  }
-  if (key === 'color-word') {
-    for (let attempt = 0; attempt < 8 && await isStillPlaying(page, key) && await page.locator('.challenge-rush-color-option').count() > 0; attempt += 1) { await page.locator('.challenge-rush-color-option').first().click(); await page.waitForTimeout(80); }
-    return;
-  }
-  const actionSelector = '[data-cr-choice]:not([disabled]), [data-cr-sequence-cell]:not([disabled]), [data-cr-matrix-cell]:not([disabled]), [data-cr-number-position]:not([disabled])';
+  const actionSelector = '[data-cr-choice]:not([disabled]), [data-cr-matrix-cell]:not([disabled])';
   if (!(await waitForAction(page, key, actionSelector))) throw new Error(`${key} wurde nach der Vorschau nicht bedienbar.`);
   if (await page.locator('[data-cr-choice]:not([disabled])').count()) { await page.locator('[data-cr-choice]:not([disabled])').first().click(); return; }
   for (let attempt = 0; attempt < 25 && await isStillPlaying(page, key); attempt += 1) {
-    const cell = page.locator('[data-cr-sequence-cell]:not([disabled]), [data-cr-matrix-cell]:not([disabled]), [data-cr-number-position]:not([disabled])').first();
+    const cell = page.locator('[data-cr-matrix-cell]:not([disabled])').first();
     if (!(await cell.count())) break;
     try {
       await cell.click({ timeout: 1_000 });
@@ -355,7 +326,7 @@ challengeRushTest('scenarios', 'Challenge Rush hides the reaction target until p
   }
 });
 
-challengeRushTest('lifecycle', 'Challenge Rush plays every Phase 3 mini-challenge to a final summary in the browser', async () => {
+challengeRushTest('lifecycle', 'Challenge Rush plays every retained mini-challenge to a final summary in the browser', async () => {
   const actor = await openArcade(await createPlayer());
   try {
     await actor.page.click('[data-game="challenge-rush"]');
@@ -378,7 +349,7 @@ challengeRushTest('lifecycle', 'Challenge Rush plays every Phase 3 mini-challeng
 
     await actor.page.waitForSelector('.challenge-rush-final-breakdown');
     const titles = await actor.page.locator('.challenge-rush-final-breakdown').first().textContent();
-    for (const title of ['Klick den Kreis', 'CPS-Test', 'Zahlensalat', 'Finde den Unterschied', 'Farbwort-Chaos', 'Münzwechsel', 'Memory-Matrix', 'Pfad-Gedächtnis', 'Kofferpacken', 'Was fehlt?']) {
+    for (const { title } of CHALLENGES) {
       assert.ok(titles?.includes(title), `Ergebnis-Aufschlüsselung sollte "${title}" enthalten`);
     }
   } finally {

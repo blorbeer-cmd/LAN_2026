@@ -2,7 +2,7 @@ import { escapeHtml } from '../../format.js';
 import { connectSocket } from '../../socket.js';
 import { getMyId } from '../../whoami.js';
 import { showToast } from '../../toast.js';
-import { arcadeLobbyEntryHtml, arcadeLobbyOpponentToggleHtml, readyToggleHtml, resetArcadeOpponentWhenAiUnavailable, wireArcadeOpponentToggle, wireReadyToggle } from '../lobbyReady.js';
+import { arcadeLobbyEntryHtml, readyToggleHtml, wireReadyToggle } from '../lobbyReady.js';
 import { arcadeMuteControlHtml, wireArcadeMuteControl, playArcadeSound } from '../arcadeSound.js';
 import { infoTooltipHtml } from '../../infoTooltip.js';
 import { cancelCountdown } from '../countdown.js';
@@ -12,24 +12,18 @@ import { emptyStateHtml } from '../../emptyState.js';
 import { backButtonHtml } from '../../backButton.js';
 
 const PREVIEW_RETRY_MS = 1_000;
-const COLOR_WORD_LABELS = { red: 'Rot', blue: 'Blau', green: 'Grün', yellow: 'Gelb' };
-const COLOR_WORD_VARS = { red: 'var(--danger)', blue: 'var(--accent)', green: 'var(--state-playing)', yellow: 'var(--state-paused)' };
 
-let socket = null; let lobbies = []; let challengeCatalog = []; let match = null; let numberOrder = 1; let prevMyScore = null;
+let socket = null; let lobbies = []; let challengeCatalog = []; let match = null; let prevMyScore = null;
 let countdownKey = null; let startedKey = null; let presentationKey = null;
 let countdownDeadline = null; let countdownTimer = null;
 const selectedChallengeKeys = new Set();
 let challengeSelectorOpen = false;
-let challengeRushOpponent = 'human';
 let currentTrial = null; let trialTimer = null; let previewRetryTimer = null; let interaction = freshInteraction(null);
-// "How far into the current round sequence" pointer for color-word.
-let progressStep = 0;
 // Whether this player has already completed the current challenge — the
 // match itself stays in 'playing' until every player is done, but this
 // player's own controls must stop accepting input immediately instead of
 // silently swallowing further clicks as server-side duplicate-acks.
 let iCompleted = false;
-let oddOneOutSheet = null;
 const myId = () => getMyId();
 const currentView = () => document.getElementById('view-container')?.dataset.view;
 const rerender = () => window.dispatchEvent(new CustomEvent('respawn:rerender'));
@@ -53,7 +47,7 @@ function startReadingCountdown(remainingMs) {
 }
 function rerenderIfVisible() { if (currentView() === 'challengeRush') rerender(); }
 export function freshInteraction(trialId) {
-  return { trialId, sequence: [], cells: [] };
+  return { trialId, cells: [] };
 }
 // Re-sent events for the same trial occur after pause/resume and reconnect.
 // Keep the player's unsent sequence/matrix input across those so a resend
@@ -65,23 +59,7 @@ export function shouldPreserveInteractionOnMatchStart(previousMatch, nextMatch) 
   return nextMatch?.reconnected === true && previousMatch?.matchId === nextMatch?.matchId;
 }
 export function focusableTrialSelector() {
-  return '[data-cr-choice], [data-cr-sequence-cell], [data-cr-matrix-cell], [data-cr-number-position]';
-}
-function clearOddOneOutPresentation() {
-  oddOneOutSheet?.replaceSync('');
-}
-function applyOddOneOutPresentation(container, oddIndex) {
-  const grid = container.querySelector('.challenge-rush-odd-grid');
-  const position = Number(oddIndex);
-  if (!grid || !Number.isInteger(position) || position < 0 || position >= grid.children.length) return;
-  if (!oddOneOutSheet) {
-    oddOneOutSheet = new CSSStyleSheet();
-    document.adoptedStyleSheets = [...document.adoptedStyleSheets, oddOneOutSheet];
-  }
-  // The selected index lives only in a constructed presentation stylesheet:
-  // no field or ancestor attribute, text node, or accessible name identifies
-  // the answer. Computed geometry remains available to visual browser tests.
-  oddOneOutSheet.replaceSync(`.challenge-rush-odd-grid > .challenge-rush-tile:nth-child(${position + 1}) { border-radius: var(--cr-odd-radius); background: color-mix(in srgb, var(--bg-elevated-2) 88%, var(--accent) 12%); }`);
+  return '[data-cr-choice], [data-cr-matrix-cell]';
 }
 function requestCurrentTrial() {
   if (!socket || !match?.matchId || match.phase !== 'playing') return;
@@ -138,7 +116,7 @@ function syncPresentation(state) {
   const key = `${state.matchId}:${state.challengeIndex}`;
   if (key !== presentationKey) {
     presentationKey = key; clearTrialTimer();
-    progressStep = 0; iCompleted = false;
+    iCompleted = false;
     currentTrial = null; interaction = freshInteraction(null);
   }
   if (state.phase === 'countdown' && !state.paused) {
@@ -152,21 +130,14 @@ function syncPresentation(state) {
   if (state.phase === 'playing' && startedKey !== key) { startedKey = key; playArcadeSound('challenge-start'); }
 }
 
-// Restores this client's own progress within the current challenge from the
-// server's authoritative count instead of always starting from 0 — without
-// this, a reload/reconnect mid-round would desync the client (e.g. Farbwort-
-// Chaos rendering an already-answered round again) and leave the counter
-// wrong until the round times out.
 function syncProgressFromServer(state) {
   const mine = state.progress?.find((entry) => entry.playerId === myId());
   if (!mine) return;
-  progressStep = state.challenge?.key === 'color-word' ? mine.correct + mine.errors : mine.correct;
   iCompleted = mine.completed === true;
 }
 
 export function ensureChallengeRushSocket() {
   if (socket) return socket;
-  resetArcadeOpponentWhenAiUnavailable(() => { challengeRushOpponent = 'human'; });
   socket = connectSocket();
   // Registered once alongside the socket (this whole block runs a single
   // time), so returning to a backgrounded tab always re-syncs the trial.
@@ -188,7 +159,6 @@ export function ensureChallengeRushSocket() {
   });
   socket.on('challenge-rush:state', (payload) => {
     match = { ...match, ...payload };
-    if (payload.phase === 'countdown' && payload.challenge?.key === 'number-salad') numberOrder = 1;
     syncPresentation(payload);
     syncProgressFromServer(payload);
     if (payload.phase !== 'playing') { currentTrial = null; clearTrialTimer(); }
@@ -301,18 +271,15 @@ export function renderChallengeRushLobbyCard() {
         ? 'Du hast bereits eine offene Lobby.'
         : '';
   const createDisabled = current || activeMatch || noMe;
-  const mayUseAi = currentPlayerMayUseArcadeAi();
-  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions">${adminChallengeSelectorHtml(Boolean(createDisabled))}<div class="arcade-lobby-create-row arcade-lobby-create-row--no-mode${mayUseAi ? '' : ' arcade-lobby-create-row--no-opponent'}"><button type="button" class="btn btn-primary btn-sm" id="cr-create" ${createDisabled ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('cr-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}${mayUseAi ? arcadeLobbyOpponentToggleHtml('cr-opponent', challengeRushOpponent, Boolean(createDisabled)) : ''}</div></div>${cards || emptyStateHtml('Keine offene Challenge-Rush-Lobby.', { style: 'padding:var(--space-4);' })}</div>`;
+  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions">${adminChallengeSelectorHtml(Boolean(createDisabled))}<div class="arcade-lobby-create-row arcade-lobby-create-row--no-mode arcade-lobby-create-row--no-opponent"><button type="button" class="btn btn-primary btn-sm" id="cr-create" ${createDisabled ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('cr-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</div></div>${cards || emptyStateHtml('Keine offene Challenge-Rush-Lobby.', { style: 'padding:var(--space-4);' })}</div>`;
 }
 export function wireChallengeRushLobbyCard(container, { beforeCreate = async () => true, beforeJoin = async () => true } = {}) {
   const createPayload = () => { const keys = challengeSelectionPayload(); return keys.length ? { playerId: myId(), challengeKeys: keys } : { playerId: myId() }; };
   container.querySelector('.challenge-rush-test-selector')?.addEventListener('toggle', (event) => { challengeSelectorOpen = event.currentTarget.open; });
-  wireArcadeOpponentToggle(container, 'cr-opponent', (value) => { challengeRushOpponent = value; rerender(); });
   container.querySelector('#cr-create')?.addEventListener('click', async () => {
     if (!(await beforeCreate())) return;
-    const bot = challengeRushOpponent === 'bot';
-    const result = await emit(bot ? 'challenge-rush:lobby:bot' : 'challenge-rush:lobby:create', createPayload());
-    if (!result?.ok) showToast(result?.error || (bot ? 'KI-Lobby konnte nicht erstellt werden.' : 'Lobby konnte nicht erstellt werden.'), { error: true });
+    const result = await emit('challenge-rush:lobby:create', createPayload());
+    if (!result?.ok) showToast(result?.error || 'Lobby konnte nicht erstellt werden.', { error: true });
   });
   container.querySelectorAll('[data-cr-challenge-key]').forEach((checkbox) => checkbox.addEventListener('change', () => { if (checkbox.checked) selectedChallengeKeys.add(checkbox.dataset.crChallengeKey); else selectedChallengeKeys.delete(checkbox.dataset.crChallengeKey); syncChallengeSelectionControls(container); }));
   container.querySelector('[data-cr-select-all]')?.addEventListener('click', () => { challengeCatalog.forEach(({ key }) => selectedChallengeKeys.add(key)); container.querySelectorAll('[data-cr-challenge-key]').forEach((checkbox) => { checkbox.checked = true; }); syncChallengeSelectionControls(container); });
@@ -345,25 +312,10 @@ function trialOptions(trial, playing) {
   const options = Array.isArray(trial.data?.options) ? trial.data.options : [];
   return `<div class="challenge-rush-choice-grid">${options.map((option) => `<button type="button" class="btn challenge-rush-choice" data-cr-choice="${escapeHtml(String(option))}" ${playing && trial.phase === 'input' ? '' : 'disabled'}>${escapeHtml(String(option))}</button>`).join('')}</div>`;
 }
-function trialSequence(trial, playing) {
-  const data = trial.data ?? {};
-  const preview = Array.isArray(data.sequence) ? data.sequence : Array.isArray(data.path) ? data.path : [];
-  if (trial.phase === 'preview') return `${trialGrid(Number(data.size) || 3, preview, 'preview-cell', true, true)}<p class="muted">Merken …</p>`;
-  const length = Number(data.sequenceLength ?? data.pathLength ?? 0);
-  return `${trialGrid(Number(data.size) || 3, interaction.sequence, 'sequence-cell', !playing, true, true)}<p class="muted">${interaction.sequence.length} / ${length} Felder</p>`;
-}
 function trialMatrix(trial, playing) {
   const data = trial.data ?? {};
   if (trial.phase === 'preview') return `${trialGrid(Number(data.size) || 3, data.highlights ?? [], 'preview-cell', true)}<p class="muted">Positionen merken …</p>`;
   return `${trialGrid(Number(data.size) || 3, interaction.cells, 'matrix-cell', !playing, false, true)}<p class="muted">${interaction.cells.length} / ${Number(data.highlightCount ?? 0)} Felder</p>`;
-}
-function trialNumberBlind(trial, playing) {
-  const data = trial.data ?? {}; const size = Number(data.size) || 3;
-  if (trial.phase === 'preview') {
-    const numbers = new Map((data.numbers ?? []).map((entry) => [entry.position, entry.number]));
-    return `<div class="challenge-rush-memory-grid" style="--cr-grid-columns:${size}">${Array.from({ length: size * size }, (_, index) => `<button type="button" class="btn challenge-rush-memory-cell${numbers.has(index) ? ' is-selected' : ''}" disabled aria-label="${numbers.has(index) ? `Zahl ${numbers.get(index)}` : `Leeres Feld ${index + 1}`}">${numbers.get(index) ?? ''}</button>`).join('')}</div><p class="muted">Positionen merken …</p>`;
-  }
-  return `${trialGrid(size, interaction.sequence, 'number-position', !playing, true, true)}<p class="muted">${interaction.sequence.length} / ${Number(data.numberCount ?? 0)} Zahlen</p>`;
 }
 function trialChoice(trial, playing) {
   const data = trial.data ?? {};
@@ -375,29 +327,9 @@ function trialChoice(trial, playing) {
 }
 export function renderChallengeRushTrial(challenge, trial, playing = true) {
   if (!trial) return '<p class="muted">Der erste Trial erscheint gleich …</p>';
-  const data = trial.data ?? {};
   if (['number-sequence', 'logic-equation', 'pattern-complete', 'category-sort', 'direction-match', 'mental-rotation', 'word-scramble', 'count-shapes', 'logic-order', 'delayed-recall', 'prime-check', 'balance-scale', 'binary-pattern', 'rule-switch', 'matrix-missing', 'coin-change', 'letter-order', 'digit-sum'].includes(challenge.key)) return trialChoice(trial, playing);
-  if (challenge.key === 'sequence-echo' || challenge.key === 'reverse-echo' || challenge.key === 'path-memory') return trialSequence(trial, playing);
   if (challenge.key === 'memory-matrix') return trialMatrix(trial, playing);
-  if (challenge.key === 'number-blind') return trialNumberBlind(trial, playing);
-  if (challenge.key === 'missing-item') {
-    if (trial.phase === 'preview') return `<div class="challenge-rush-item-list">${(data.originalItems ?? data.items ?? []).map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}</div><p class="muted">Merken …</p>`;
-    return `<div class="challenge-rush-item-list">${(data.items ?? []).map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}</div><p class="challenge-rush-logic-prompt">Welcher Gegenstand fehlt?</p>${trialOptions(trial, playing)}`;
-  }
-  if (challenge.key === 'suitcase-memory') {
-    if (trial.phase === 'preview') return `<div class="challenge-rush-item-list">${(data.items ?? []).map((item) => `<span class="chip">${escapeHtml(String(item))}</span>`).join('')}</div><p class="muted">Merken …</p>`;
-    return `<p class="challenge-rush-logic-prompt">Welcher Gegenstand lag an Position ${escapeHtml(String(data.position ?? '?'))}?</p>${trialOptions(trial, playing)}`;
-  }
   return '<p class="muted">Trial wird vorbereitet …</p>';
-}
-export function renderOddOneOut(data, playing = true) {
-  const tileCount = data.tileCount ?? 25;
-  const columnCount = Math.max(1, Math.ceil(Math.sqrt(tileCount)));
-  const oddPosition = playing ? Math.max(0, Math.min(tileCount - 1, Number(data.oddIndex))) : -1;
-  const subtlety = Math.max(1, Math.min(5, Math.round(Number(data.subtlety)) || 1));
-  const shapeLabel = (isOdd) => isOdd ? ['kreisförmig', 'stark abgerundet', 'diagonal abgerundet', 'eckig', 'halb abgerundet'][subtlety - 1] : 'normal abgerundet';
-  const tiles = Array.from({ length: tileCount }, (_, index) => `<button type="button" class="challenge-rush-tile" data-cr-tile="${index}" ${playing ? '' : 'disabled'} aria-label="Feld ${index + 1}, Form ${shapeLabel(index === oddPosition)}"></button>`).join('');
-  return `<div class="challenge-rush-tile-grid challenge-rush-odd-grid" data-cr-subtlety="${subtlety}" style="grid-template-columns:repeat(${columnCount},minmax(0,1fr));">${tiles}</div>`;
 }
 function challengeView() {
   const challenge = match?.challenge;
@@ -413,29 +345,7 @@ function challengeView() {
   // starts, so nobody can pre-aim at it during the countdown (requirement:
   // reaction challenges must stay invisible until "Los!").
   if (!currentTrial && challenge?.key === 'reaction-circle') body = playing ? `<button type="button" class="challenge-rush-circle" data-cr-x="${data.x}" data-cr-y="${data.y}" style="left:${data.x}%;top:${data.y}%" aria-label="Kreis treffen"></button>` : '<p class="muted">Der Kreis erscheint, sobald es losgeht.</p>';
-  if (challenge?.key === 'cps') body = `<button type="button" class="challenge-rush-big-button" ${playing ? '' : 'disabled'}>KLICKEN</button><p class="muted">Klicks: <strong id="cr-clicks">0</strong></p>`;
-  if (challenge?.key === 'number-salad') body = `<div class="challenge-rush-number-grid">${(data.numbers ?? []).map((number) => `<button type="button" class="btn challenge-rush-number" data-cr-number="${number}" ${playing ? '' : 'disabled'}>${number}</button>`).join('')}</div><p class="muted">Nächste Zahl: <strong>${numberOrder}</strong></p>`;
   if (challenge?.key === 'timing-10') body = `<button type="button" class="challenge-rush-big-button" data-cr-stop ${playing ? '' : 'disabled'}>STOPP</button><p class="muted">Keine laufende Zeit sichtbar – vertraue deinem Gefühl.</p>`;
-  if (challenge?.key === 'odd-one-out') {
-    // Every field has the same classes, attributes and accessible name. The
-    // grid applies the visual shape difference through nth-child, keeping the
-    // answer out of both the target element and the accessibility tree.
-    body = renderOddOneOut(data, playing);
-  }
-  if (challenge?.key === 'color-word') {
-    // Same minimization: only the current round (data.round) is sent, not
-    // every remaining word/color/option set.
-    const round = playing ? data.round : null;
-    const roundCount = data.roundCount ?? 6;
-    // The correct answer is the rendered font color, not the printed word —
-    // a sighted player sees that directly, but a screen reader only reads
-    // the text content, never an inline CSS color. The accessible name
-    // states the actual color explicitly so both paths carry the same
-    // information.
-    const word = round ? `<div class="challenge-rush-color-word" style="color:${COLOR_WORD_VARS[round.textColor] ?? 'inherit'}" aria-label="Schriftfarbe: ${COLOR_WORD_LABELS[round.textColor] ?? round.textColor}">${escapeHtml(round.word)}</div>` : '<p class="muted">Bereithalten …</p>';
-    const options = round ? `<div class="challenge-rush-color-options">${round.options.map((key) => `<button type="button" class="btn challenge-rush-color-option" data-cr-color="${key}" style="border-color:${COLOR_WORD_VARS[key]};"><span class="challenge-rush-color-dot" style="background:${COLOR_WORD_VARS[key]};"></span>${COLOR_WORD_LABELS[key] ?? key}</button>`).join('')}</div>` : '';
-    body = `${word}${options}<p class="muted challenge-rush-target-progress">${Math.min(progressStep, roundCount)} / ${roundCount}</p>`;
-  }
   if (iCompleted && match?.phase === 'playing' && !match?.paused) {
     body = '<p class="muted">Fertig! Warte auf die anderen Mitspieler …</p>';
   }
@@ -473,7 +383,6 @@ function finalSummaryHtml(scores) {
 }
 export function renderChallengeRush(container, _ctx) {
   ensureChallengeRushSocket();
-  clearOddOneOutPresentation();
   const scores = match?.scores ?? [];
   const body = match?.phase === 'ended'
     ? finalSummaryHtml(scores)
@@ -482,9 +391,6 @@ export function renderChallengeRush(container, _ctx) {
       : `${challengeView()}${matchControlsHtml()}<section class="card stack"><h2>Zwischenstand</h2><div class="challenge-rush-scoreboard">${scoreText(scores)}</div></section>`;
   container.innerHTML = `<div class="arcade-game-shell">${backButtonHtml({ view: 'arcade' })}<h1 class="view-title">Challenge Rush</h1><div class="arcade-toolbar">${arcadeMuteControlHtml()}</div>${body}</div>`;
   if (match?.phase === 'countdown' && !match?.paused) updateReadingCountdown();
-  if (match?.challenge?.key === 'odd-one-out' && match.phase === 'playing' && !match.paused && !iCompleted) {
-    applyOddOneOutPresentation(container, match.challenge.data?.oddIndex);
-  }
   wireArcadeMuteControl(container);
   container.querySelector('#cr-back')?.addEventListener('click', () => { clearReadingCountdown(); clearTrialTimer(); currentTrial = null; match = null; navigate('arcade'); });
   container.querySelector('[data-navigate="arcade"]')?.addEventListener('click', () => navigate('arcade'));
@@ -492,10 +398,6 @@ export function renderChallengeRush(container, _ctx) {
   container.querySelector('[data-cr-finish]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich für alle beenden?', { confirmText: 'Beenden', danger: true }))) return; const result = await emit('challenge-rush:match:finish', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Beenden fehlgeschlagen.', { error: true }); });
   container.querySelector('[data-cr-leave-match]')?.addEventListener('click', async () => { if (!(await confirmDialog('Challenge Rush wirklich verlassen?', { confirmText: 'Verlassen', danger: true }))) return; const result = await emit('challenge-rush:match:leave', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) return showToast(result?.error || 'Verlassen fehlgeschlagen.', { error: true }); clearTrialTimer(); currentTrial = null; match = null; navigate('arcade'); });
   container.querySelector('#cr-ready-next')?.addEventListener('click', async () => { const result = await emit('challenge-rush:challenge:ready', { matchId: match.matchId, playerId: myId() }); if (!result?.ok) showToast(result?.error || 'Bereit-Status fehlgeschlagen.', { error: true }); });
-  // The ack's optional `next` field (only set for color-word) carries the
-  // freshly revealed current round — merged in here
-  // so every send() caller automatically sees it, since individual accepted
-  // inputs don't otherwise trigger a full state broadcast.
   const send = (action, value, onAccepted = () => {}) => {
     const sentTrialId = currentTrial?.trialId;
     socket.emit('challenge-rush:challenge:input', { matchId: match.matchId, playerId: myId(), challengeIndex: match.challengeIndex, trialId: sentTrialId, action, value }, (result) => {
@@ -506,7 +408,6 @@ export function renderChallengeRush(container, _ctx) {
         interaction = nextInteractionState(interaction, currentTrial);
         scheduleTrialPhase();
       }
-      if (result.next && match?.challenge) match = { ...match, challenge: { ...match.challenge, data: { ...match.challenge.data, ...result.next } } };
       // Reflected immediately from this ack instead of waiting for the next
       // full state broadcast — the match stays 'playing' until every player
       // finishes, so this player's own controls must stop accepting input
@@ -518,29 +419,8 @@ export function renderChallengeRush(container, _ctx) {
     });
   };
   container.querySelector('.challenge-rush-circle')?.addEventListener('click', (event) => { const circle = event.currentTarget; send('hit', { x: Number(circle.dataset.crX), y: Number(circle.dataset.crY) }); });
-  container.querySelector('.challenge-rush-big-button:not([data-cr-stop])')?.addEventListener('click', () => send('click', undefined, (progress) => { const counter = container.querySelector('#cr-clicks'); if (counter) counter.textContent = String(progress.clicks); }));
   container.querySelector('[data-cr-stop]')?.addEventListener('click', () => send('stop'));
-  container.querySelectorAll('[data-cr-number]').forEach((button) => button.addEventListener('click', () => { const value = Number(button.dataset.crNumber); send('number', value, (progress) => { numberOrder = progress.correct + 1; if (progress.correct === value) button.disabled = true; }); }));
-  // Refocusing the equivalent element after each rerender (instead of
-  // leaving focus on `<body>`, where the full innerHTML replace drops it)
-  // keeps this rapid, timed challenge actually playable by keyboard —
-  // otherwise a keyboard user would have to tab back in from the top of the
-  // page after every single tile.
-  container.querySelectorAll('[data-cr-tile]').forEach((button) => button.addEventListener('click', () => {
-    const value = Number(button.dataset.crTile);
-    if (match?.challenge?.key === 'odd-one-out') send('select', value, () => { rerender(); container.querySelector(`[data-cr-tile="${value}"]`)?.focus(); });
-  }));
-  container.querySelectorAll('[data-cr-color]').forEach((button) => button.addEventListener('click', () => send('answer', button.dataset.crColor, (progress) => { progressStep = progress.correct + progress.errors; rerender(); container.querySelector('.challenge-rush-color-option')?.focus(); })));
   container.querySelectorAll('[data-cr-choice]').forEach((button) => button.addEventListener('click', () => send('choice', button.dataset.crChoice, () => { rerender(); container.querySelector('[data-cr-choice]')?.focus(); })));
-  container.querySelectorAll('[data-cr-sequence-cell]').forEach((button) => button.addEventListener('click', () => {
-    const value = Number(button.dataset.crSequenceCell);
-    if (interaction.sequence.includes(value)) return;
-    interaction.sequence.push(value);
-    const expectedLength = Number(currentTrial?.data?.sequenceLength ?? currentTrial?.data?.pathLength ?? 0);
-    if (interaction.sequence.length >= expectedLength) send('sequence', [...interaction.sequence]);
-    rerender();
-    container.querySelector(`[data-cr-sequence-cell="${value}"]`)?.focus();
-  }));
   container.querySelectorAll('[data-cr-matrix-cell]').forEach((button) => button.addEventListener('click', () => {
     const value = Number(button.dataset.crMatrixCell);
     if (interaction.cells.includes(value)) return;
@@ -548,13 +428,5 @@ export function renderChallengeRush(container, _ctx) {
     if (interaction.cells.length >= Number(currentTrial?.data?.highlightCount ?? 0)) send('cells', [...interaction.cells]);
     rerender();
     container.querySelector(`[data-cr-matrix-cell="${value}"]`)?.focus();
-  }));
-  container.querySelectorAll('[data-cr-number-position]').forEach((button) => button.addEventListener('click', () => {
-    const value = Number(button.dataset.crNumberPosition);
-    if (interaction.sequence.includes(value)) return;
-    interaction.sequence.push(value);
-    if (interaction.sequence.length >= Number(currentTrial?.data?.numberCount ?? 0)) send('sequence', [...interaction.sequence]);
-    rerender();
-    container.querySelector(`[data-cr-number-position="${value}"]`)?.focus();
   }));
 }

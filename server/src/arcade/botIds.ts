@@ -1,6 +1,8 @@
 const ARCADE_BOT_IDS = new Set([
   'battleship-bot',
   'blobby-bot',
+  // Historical Challenge Rush results can still contain this retired bot ID.
+  // Keep classifying it as non-human even though new matches cannot create it.
   'challenge-rush-bot',
   'pong-bot',
   'quiz-bot',

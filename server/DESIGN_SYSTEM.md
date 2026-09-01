@@ -1117,12 +1117,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   board unblurred so players can orient themselves before movement begins.
   Snake uses a 48×30 logical field in the existing 8:5 canvas, making cells and snakes smaller in
   relation to the available play area without shrinking the visible board.
-  Challenge Rush also exposes the Admin-mode-gated opponent switch plus its test-challenge
-  selection; playing the bot solo draws
-  from its six single-payload challenges, since the bot cannot yet play the twenty-five
-  logic/memory trial challenges. A lobby that further humans join before it starts keeps the
-  full challenge catalog like any other match, and the bot then simply scores 0 on
-  whichever trial challenges come up.
+  Challenge Rush is a human lobby without an AI-opponent switch. Admin mode only adds the exact
+  test-challenge selection. Its deliberately reduced catalog contains 21 challenges: two direct
+  interactions (reaction circle and ten-second stop), eighteen choice-based logic trials and one
+  memory-matrix trial. These three interaction shapes share the same lobby, round, pause,
+  reconnect and result lifecycle.
 - **Jam sessions** — Jam is a grouped page below „Mehr“. Its page heading always exposes an info
   tooltip explaining the shared title/playlist workflow, controller lifecycle and that only the
   controller device needs Spotify. The setup card is shown whenever no controller is paired yet or

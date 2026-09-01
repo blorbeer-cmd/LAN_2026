@@ -221,7 +221,10 @@ Wiederholungsfall ab.
   Außerhalb von `NODE_ENV=test` werden beide Flags ignoriert.
 - Zielgerichtete Challenge-Rush-Integrationstests wählen über den admin-geschützten
   `challengeKeys`-Pfad genau ihre relevante Challenge. Nur der vollständige Lifecycle-Test spielt
-  weiterhin einmal den gesamten Challenge-Katalog durch.
+  weiterhin einmal den gesamten, auf 21 Aufgaben reduzierten Challenge-Katalog durch. Die
+  Browser-Fixture deckt dabei die drei verbliebenen Interaktionsformen ab: direkte Reaktion,
+  Zeitstopp sowie serverseitige Auswahl-/Memory-Matrix-Trials. Challenge Rush besitzt keinen
+  Bot-Pfad mehr.
 - Der Produktions-Build (`npm run build`) schließt alle Testdateien aus – sie landen nie in `dist/`.
 - `index.ts` startet den Server nur, wenn es direkt ausgeführt wird (`require.main === module`),
   damit Tests die App importieren können, ohne einen Port zu belegen.

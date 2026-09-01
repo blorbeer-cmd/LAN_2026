@@ -120,8 +120,6 @@
 .challenge-rush-concealed strong { font-size: var(--font-size-xl); }
 .challenge-rush-circle { position: absolute; width: var(--space-8); height: var(--space-8); transform: translate(-50%, -50%); border: 0; border-radius: var(--radius-full); background: var(--accent-gradient); box-shadow: var(--shadow-glow-accent); cursor: pointer; }
 .challenge-rush-big-button { min-width: var(--challenge-rush-button-min-width); min-height: var(--challenge-rush-button-min-height); border: 0; border-radius: var(--radius); color: var(--accent-text); background: var(--accent-gradient); font-size: var(--font-size-xl); font-weight: var(--font-weight-black); cursor: pointer; }
-.challenge-rush-number-grid { display: grid; grid-template-columns: repeat(4, minmax(var(--challenge-rush-number-min-width), 1fr)); gap: var(--space-2); width: min(100%, var(--challenge-rush-number-grid-width)); }
-.challenge-rush-number { min-height: var(--space-8); font-size: var(--font-size-lg); }
 .challenge-rush-scoreboard { display: grid; gap: var(--space-1); }
 .challenge-rush-score-row { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--bg-elevated-2); }
 .challenge-rush-result { max-width: var(--challenge-rush-stage-max-width); margin-inline: auto; text-align: center; }
@@ -129,17 +127,6 @@
 .challenge-rush-final-row { flex-direction: column; align-items: stretch; gap: var(--space-1); text-align: left; }
 .challenge-rush-final-row-main { display: flex; justify-content: space-between; gap: var(--space-3); }
 .challenge-rush-final-breakdown { font-size: var(--font-size-xs); }
-.challenge-rush-target-progress { text-align: center; }
-/* Columns use minmax(0, 1fr) rather than a plain 1fr (equivalent to
-   minmax(auto, 1fr)): auto would floor each track at .challenge-rush-tile's
-   content size, which together with a fixed per-tile min-width/min-height
-   made the grid unable to shrink below tileCount/cols * min-size at narrow
-   effective widths (e.g. a zoomed-in phone) — the outer playfield's
-   `overflow: hidden` then clipped the outer tiles instead of letting the
-   grid reflow. Tiles now scale down together with the container instead. */
-.challenge-rush-tile-grid { display: grid; gap: var(--space-2); width: min(100%, var(--challenge-rush-tile-grid-width)); }
-.challenge-rush-tile { aspect-ratio: 1; width: 100%; min-width: 0; min-height: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated-2); cursor: pointer; }
-.challenge-rush-tile:disabled { cursor: default; opacity: 0.7; }
 .challenge-rush-memory-grid { display: grid; grid-template-columns: repeat(var(--cr-grid-columns, 3), minmax(0, 1fr)); gap: var(--space-2); width: min(100%, var(--challenge-rush-trial-grid-max-width)); margin-inline: auto; }
 .challenge-rush-memory-cell { min-width: var(--tap-target-size); min-height: var(--tap-target-size); padding: var(--space-2); font-size: var(--font-size-lg); }
 .challenge-rush-memory-cell.is-selected { color: var(--accent-text); background: var(--accent-gradient); }
@@ -151,19 +138,6 @@
 .challenge-rush-letter-row { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-3); margin-block: var(--space-3); }
 .challenge-rush-letter-row > span { display: grid; place-items: center; min-width: var(--space-8); min-height: var(--space-8); padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated-2); font-size: var(--font-size-2xl); font-weight: var(--font-weight-black); }
 .challenge-rush-item-list { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--space-2); min-height: var(--space-8); }
-/* The differing field never receives a distinguishing class, attribute or
-   accessible label. The parent selects it visually, with a shape difference
-   at every difficulty level so color perception is not required. */
-.challenge-rush-tile-grid[data-cr-subtlety='1'] { --cr-odd-radius: var(--radius-full); }
-.challenge-rush-tile-grid[data-cr-subtlety='2'] { --cr-odd-radius: var(--radius-lg); }
-.challenge-rush-tile-grid[data-cr-subtlety='3'] { --cr-odd-radius: 40% 10%; }
-.challenge-rush-tile-grid[data-cr-subtlety='4'] { --cr-odd-radius: 0; }
-.challenge-rush-tile-grid[data-cr-subtlety='5'] { --cr-odd-radius: 50% 0; }
-.challenge-rush-odd-grid > .challenge-rush-tile { transition: border-radius var(--motion-fast); }
-.challenge-rush-color-word { text-align: center; font-size: var(--font-size-3xl); font-weight: var(--font-weight-black); }
-.challenge-rush-color-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2); width: 100%; }
-.challenge-rush-color-option { display: flex; align-items: center; justify-content: center; gap: var(--space-2); border-width: 2px; }
-.challenge-rush-color-dot { width: var(--challenge-rush-color-dot-size); height: var(--challenge-rush-color-dot-size); border-radius: var(--radius-full); }
 .arcade-tile-count {
   background: var(--state-playing-bg);
   color: var(--state-playing);

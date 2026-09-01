@@ -9,7 +9,7 @@ import { createTestApp, installTestSocketIdentity } from './testApp';
 import { registerChallengeRushSockets } from '../arcade/challengeRush';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
 import { challengeRushTiming } from '../arcade/challengeRushTiming';
-import { CHALLENGES, isTrialChallenge, type ChallengeKey } from '../arcade/challengeRushLogic';
+import { CHALLENGES, type ChallengeKey } from '../arcade/challengeRushLogic';
 import { db } from '../db';
 
 process.env.CHALLENGE_RUSH_RECONNECT_GRACE_MS = '100';
@@ -17,7 +17,7 @@ process.env.NODE_ENV = 'test';
 process.env.CHALLENGE_RUSH_FAST_TIMERS = '1';
 
 type Ack = { ok: boolean; error?: string; [key: string]: unknown };
-type State = { matchId: string; phase: string; challengeIndex: number; challenge: { key: string; data: Record<string, unknown> }; scores: Array<{ playerId: string; score: number; connected: boolean; forfeited: boolean; isBot?: boolean }>; history: Array<{ key: string; title: string; scores: Array<{ playerId: string; name: string; score: number }> }>; readyNext: string[]; remainingMs: number | null; paused: boolean; trafficLightGreen?: boolean };
+type State = { matchId: string; phase: string; challengeIndex: number; challenge: { key: string; data: Record<string, unknown> }; scores: Array<{ playerId: string; score: number; connected: boolean; forfeited: boolean }>; history: Array<{ key: string; title: string; scores: Array<{ playerId: string; name: string; score: number }> }>; readyNext: string[]; remainingMs: number | null; paused: boolean };
 
 function connect(baseUrl: string, playerId?: string): Promise<ClientSocket> {
   return new Promise((resolve, reject) => {
@@ -115,120 +115,6 @@ test('Challenge Rush lets only admins select exact challenges for a targeted tes
     assert.equal(firstResult.history[0].key, selected[0]);
   } finally {
     socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
-  }
-});
-
-test('Challenge Rush AI quick start is admin-gated, plays and ends when its human leaves', async () => {
-  clearLobbyMemberships();
-  const server = await makeServer();
-  const socket = await connect(server.baseUrl);
-  const extraSockets: ClientSocket[] = [];
-  try {
-    const playerId = await player(server.baseUrl, 'Challenge Rush KI Host');
-    const denied = await emitAck(socket, 'challenge-rush:lobby:bot', { playerId });
-    assert.equal(denied.ok, false);
-    assert.match(denied.error ?? '', /nur für Admins/);
-
-    db.prepare('UPDATE players SET is_admin = 1 WHERE id = ?').run(playerId);
-    const normalLobbySocket = await connect(server.baseUrl);
-    extraSockets.push(normalLobbySocket);
-    const normalLobbyHostId = await player(server.baseUrl, 'Challenge Rush Parallel Normal Host');
-    const normalLobby = await emitAck(normalLobbySocket, 'challenge-rush:lobby:create', { playerId: normalLobbyHostId });
-    assert.equal(normalLobby.ok, true);
-
-    const aiLobbySocket = await connect(server.baseUrl);
-    extraSockets.push(aiLobbySocket);
-    const aiLobbyHostId = await player(server.baseUrl, 'Challenge Rush Parallel KI Host');
-    db.prepare('UPDATE players SET is_admin = 1 WHERE id = ?').run(aiLobbyHostId);
-    const aiLobby = await emitAck(aiLobbySocket, 'challenge-rush:lobby:bot', { playerId: aiLobbyHostId });
-    assert.equal(aiLobby.ok, true);
-
-    const lobbiesPromise = nextEvent<{ lobbies: Array<{ id: string; players: Array<{ id: string; ready: boolean }> }> }>(socket, 'challenge-rush:lobbies');
-    const created = await emitAck(socket, 'challenge-rush:lobby:bot', { playerId });
-    assert.equal(created.ok, true);
-    const lobby = (await lobbiesPromise).lobbies.find((entry) => entry.id === created.lobbyId);
-    assert.deepEqual(lobby?.players.map((entry) => entry.id), [playerId, 'challenge-rush-bot']);
-    assert.equal(lobby?.players.find((entry) => entry.id === 'challenge-rush-bot')?.ready, true);
-
-    const startedPromise = nextEvent<{ matchId: string; players: Array<{ id: string }>; challengeCount: number }>(socket, 'challenge-rush:match:start');
-    const playingPromise = nextState(socket, (state) => state.phase === 'playing');
-    assert.equal((await emitAck(socket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId })).ok, true);
-    const started = await startedPromise;
-    assert.equal(started.players.length, 2);
-    // A bot only ever plays the single-payload challenges (see
-    // planBotChallenge/BOT_CHALLENGE_POOL); drawing from the full catalog
-    // here would silently spend most of a bot match on trial challenges the
-    // bot always scores 0 on. Derived from CHALLENGES so retiring or adding a
-    // challenge does not need this number edited by hand.
-    assert.equal(started.challengeCount, CHALLENGES.filter((entry) => !isTrialChallenge(entry.key)).length);
-    const playing = await playingPromise;
-    assert.equal(playing.scores.find((score) => score.playerId === 'challenge-rush-bot')?.isBot, true);
-    assert.equal(isTrialChallenge(playing.challenge.key as ChallengeKey), false, `bot match must not draw a trial challenge, got ${playing.challenge.key}`);
-
-    const secondBotLobby = await emitAck(socket, 'challenge-rush:lobby:bot', { playerId });
-    assert.equal(secondBotLobby.ok, false);
-    assert.match(secondBotLobby.error ?? '', /laufendes Challenge-Rush-Match/);
-    const secondHumanLobby = await emitAck(socket, 'challenge-rush:lobby:create', { playerId });
-    assert.equal(secondHumanLobby.ok, false);
-    assert.match(secondHumanLobby.error ?? '', /laufendes Challenge-Rush-Match/);
-    for (const lobbyId of [normalLobby.lobbyId, aiLobby.lobbyId]) {
-      const joined = await emitAck(socket, 'challenge-rush:lobby:join', { lobbyId, playerId });
-      assert.equal(joined.ok, false);
-      assert.match(joined.error ?? '', /laufendes Challenge-Rush-Match/);
-    }
-
-    const spoofedBotInput = await emitAck(socket, 'challenge-rush:challenge:input', {
-      matchId: started.matchId,
-      playerId: 'challenge-rush-bot',
-      challengeIndex: playing.challengeIndex,
-      action: 'click',
-    });
-    assert.equal(spoofedBotInput.ok, false);
-
-    const result = await nextState(socket, (state) => state.phase === 'result');
-    assert.equal(result.scores.find((score) => score.playerId === 'challenge-rush-bot')?.isBot, true);
-
-    assert.equal((await emitAck(socket, 'challenge-rush:match:leave', { matchId: started.matchId, playerId })).ok, true);
-    const recorded = db.prepare(
-      `SELECT reason, scores FROM arcade_results
-       WHERE game_type = 'challenge-rush' AND players LIKE ?
-       ORDER BY ended_at DESC LIMIT 1`,
-    ).get(`%${playerId}%`) as { reason: string; scores: string };
-    assert.equal(recorded.reason, 'no-human-players');
-    const recordedScores = JSON.parse(recorded.scores) as Array<{ playerId: string; isBot: boolean }>;
-    assert.equal(recordedScores.find((score) => score.playerId === 'challenge-rush-bot')?.isBot, true);
-  } finally {
-    for (const extraSocket of extraSockets) extraSocket.close();
-    socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
-  }
-});
-
-test('a bot lobby joined by a second human keeps the full challenge catalog', async () => {
-  clearLobbyMemberships();
-  const server = await makeServer();
-  const hostSocket = await connect(server.baseUrl);
-  const guestSocket = await connect(server.baseUrl);
-  try {
-    const hostId = await player(server.baseUrl, 'Challenge Rush KI Lobby Host');
-    db.prepare('UPDATE players SET is_admin = 1 WHERE id = ?').run(hostId);
-    const guestId = await player(server.baseUrl, 'Challenge Rush KI Lobby Guest');
-
-    const created = await emitAck(hostSocket, 'challenge-rush:lobby:bot', { playerId: hostId });
-    assert.equal(created.ok, true);
-    assert.equal((await emitAck(guestSocket, 'challenge-rush:lobby:join', { lobbyId: created.lobbyId, playerId: guestId })).ok, true);
-    assert.equal((await emitAck(guestSocket, 'challenge-rush:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true })).ok, true);
-
-    const startedPromise = nextEvent<{ matchId: string; players: Array<{ id: string }>; challengeCount: number }>(hostSocket, 'challenge-rush:match:start');
-    assert.equal((await emitAck(hostSocket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId: hostId })).ok, true);
-    const started = await startedPromise;
-    assert.equal(started.players.length, 3);
-    // Only a solo human-vs-bot lobby narrows the draw to the bot's ten
-    // playable challenges (see BOT_CHALLENGE_POOL in challengeRush.ts); once
-    // a second human joins before start, the match keeps the full catalog
-    // like any other match — the bot just scores 0 on trial challenges.
-    assert.equal(started.challengeCount, CHALLENGES.length);
-  } finally {
-    hostSocket.close(); guestSocket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
   }
 });
 
@@ -463,34 +349,6 @@ test('Challenge Rush lets a player leave without ending the match for the others
 
 function sleep(ms: number): Promise<void> { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
-// Each step waits out the server's 30ms per-player input throttle so a fast
-// local round trip never gets silently ignored and forces a full-duration
-// timeout instead (still correct, just needlessly slow for this test).
-async function sendSequence<T>(send: (action: string, value?: unknown) => Promise<unknown>, action: string, items: T[], toValue: (item: T) => unknown): Promise<void> {
-  for (const item of items) { await send(action, toValue(item)); await sleep(35); }
-}
-
-// color-word only ever exposes the current step in `data` (see
-// challengeRush.ts's challengeForPlayer/nextStepPayload data minimization) —
-// the following step's value comes back on the accepted ack's `next` field
-// instead of being readable up front.
-async function sendSteps(
-  send: (action: string, value?: unknown) => Promise<unknown>,
-  action: string,
-  count: number,
-  firstValue: unknown,
-  nextValue: (next: Record<string, unknown> | undefined) => unknown,
-): Promise<unknown> {
-  let value = firstValue;
-  let last: unknown;
-  for (let index = 0; index < count; index += 1) {
-    last = await send(action, value);
-    await sleep(35);
-    if (index < count - 1) value = nextValue((last as { next?: Record<string, unknown> }).next);
-  }
-  return last;
-}
-
 // Targeted behavior tests use the admin-only exact challenge selection. This
 // avoids spending most of their runtime completing unrelated shuffled rounds;
 // the full challenge-catalog lifecycle remains covered once below.
@@ -517,21 +375,14 @@ async function completeChallenge(socket: ClientSocket, matchId: string, playerId
   const challengeIndex = state.challengeIndex;
   const send = (action: string, value?: unknown) => emitAck(socket, 'challenge-rush:challenge:input', { matchId, playerId, challengeIndex, action, value });
   if (key === 'reaction-circle') { const target = data as unknown as { x: number; y: number }; return send('hit', { x: target.x, y: target.y }); }
-  if (key === 'cps') return send('click');
-  if (key === 'number-salad') { const sorted = [...(data.numbers as number[])].sort((a, b) => a - b); return sendSequence(send, 'number', sorted, (n) => n); }
   if (key === 'timing-10') return send('stop');
-  if (key === 'odd-one-out') return send('select', data.oddIndex);
-  if (key === 'color-word') {
-    const round = data.round as { textColor: string };
-    return sendSteps(send, 'answer', (data.roundCount as number) ?? 6, round.textColor, (next) => (next?.round as { textColor: string } | undefined)?.textColor);
-  }
   const trialResponse = await emitAck(socket, 'challenge-rush:trial:get', { matchId, playerId, challengeIndex });
   const trial = trialResponse.trial as { trialId?: string } | undefined;
   assert.ok(trial?.trialId, `Trial für ${key} fehlt`);
   return emitAck(socket, 'challenge-rush:challenge:input', { matchId, playerId, challengeIndex, trialId: trial.trialId, action: 'timeout' });
 }
 
-test('Challenge Rush plays through every Phase 3 mini-challenge and records a complete history', async () => {
+test('Challenge Rush plays through every registered mini-challenge and records a complete history', async () => {
   clearLobbyMemberships();
   const server = await makeServer();
   const socket = await connect(server.baseUrl);
@@ -570,78 +421,6 @@ test('Challenge Rush plays through every Phase 3 mini-challenge and records a co
 
 
 
-
-test('Challenge Rush times out odd-one-out without a click at a score of 0', async () => {
-  clearLobbyMemberships();
-  const server = await makeServer();
-  const socket = await connect(server.baseUrl);
-  try {
-    const { playerId, playing } = await startSelectedChallenge(socket, server.baseUrl, 'Challenge Rush Odd Timeout', 'odd-one-out');
-    const resultPromise = nextState(socket, (state) => state.phase === 'result' && state.challengeIndex === playing.challengeIndex);
-    // Deliberately never click a tile — the challenge must time out on its
-    // own real duration and fall back to a score of 0 via timeoutScore.
-    const result = await resultPromise;
-    assert.equal(result.history[result.history.length - 1].scores.find((s) => s.playerId === playerId)?.score, 0);
-  } finally {
-    socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
-  }
-});
-
-test('Challenge Rush gives two players independent scores on the same color-word challenge', async () => {
-  clearLobbyMemberships();
-  const server = await makeServer();
-  const hostSocket = await connect(server.baseUrl);
-  const guestSocket = await connect(server.baseUrl);
-  try {
-    const hostId = await player(server.baseUrl, 'Challenge Rush Color Host');
-    const guestId = await player(server.baseUrl, 'Challenge Rush Color Guest');
-    db.prepare('UPDATE players SET is_admin = 1 WHERE id = ?').run(hostId);
-    const created = await emitAck(hostSocket, 'challenge-rush:lobby:create', { playerId: hostId, challengeKeys: ['color-word'] });
-    await emitAck(guestSocket, 'challenge-rush:lobby:join', { lobbyId: created.lobbyId, playerId: guestId });
-    await emitAck(guestSocket, 'challenge-rush:lobby:ready', { lobbyId: created.lobbyId, playerId: guestId, ready: true });
-    const started = nextEvent<{ matchId: string }>(hostSocket, 'challenge-rush:match:start');
-    await emitAck(hostSocket, 'challenge-rush:lobby:start', { lobbyId: created.lobbyId, playerId: hostId });
-    const match = await started;
-
-    const playing = await nextState(hostSocket, (state) => state.phase === 'playing' && state.challengeIndex === 0);
-    assert.equal(playing.challenge.key, 'color-word');
-    const roundCount = (playing.challenge.data.roundCount as number) ?? 6;
-    const initialRound = playing.challenge.data.round as { textColor: string };
-    const resultPromise = nextState(hostSocket, (state) => state.phase === 'result' && state.challengeIndex === playing.challengeIndex);
-    // Host answers every round correctly; guest answers every round wrong —
-    // each player's own progress must only reflect their own inputs. Each
-    // socket walks its own per-player round chain via the accepted ack's
-    // `next` field (see sendSteps), since the server only ever exposes the
-    // current step's round to each player.
-    const wrongColor = (color: string) => ['red', 'blue', 'green', 'yellow'].find((candidate) => candidate !== color)!;
-    let hostRound = initialRound;
-    let guestRound = initialRound;
-    for (let index = 0; index < roundCount; index += 1) {
-      // Both players act independently in production. Submit their answers
-      // together so this test does not spend most of the 1.2s fast-test
-      // challenge window serializing otherwise unrelated socket round trips.
-      const [hostResult, guestResult] = await Promise.all([
-        emitAck(hostSocket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId: hostId, challengeIndex: playing.challengeIndex, action: 'answer', value: hostRound.textColor }),
-        emitAck(guestSocket, 'challenge-rush:challenge:input', { matchId: match.matchId, playerId: guestId, challengeIndex: playing.challengeIndex, action: 'answer', value: wrongColor(guestRound.textColor) }),
-      ]);
-      assert.equal(hostResult.accepted, true);
-      assert.equal(guestResult.accepted, true);
-      await sleep(35);
-      if (index < roundCount - 1) {
-        hostRound = (hostResult.next as { round: { textColor: string } }).round;
-        guestRound = (guestResult.next as { round: { textColor: string } }).round;
-      }
-    }
-    const result = await resultPromise;
-    const entry = result.history[result.history.length - 1];
-    const hostScore = entry.scores.find((s) => s.playerId === hostId)?.score ?? 0;
-    const guestScore = entry.scores.find((s) => s.playerId === guestId)?.score ?? 0;
-    assert.equal(hostScore, 100);
-    assert.equal(guestScore, 0);
-  } finally {
-    hostSocket.close(); guestSocket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
-  }
-});
 
 
 // The memorize → answer switch must not depend on the client noticing its own
@@ -763,32 +542,6 @@ test('Challenge Rush re-sends the same redacted trial across pause, resume and r
     }
   } finally {
     socket.close(); server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve())); clearLobbyMemberships();
-  }
-});
-
-// Each data-minimization assertion starts the relevant challenge directly so
-// it cannot depend on, or wait for, a random full-catalog ordering.
-async function assertStepBasedDataMinimization(server: { baseUrl: string }, targetKey: ChallengeKey, verify: (data: Record<string, unknown>) => void): Promise<void> {
-  clearLobbyMemberships();
-  const socket = await connect(server.baseUrl);
-  try {
-    const { playing } = await startSelectedChallenge(socket, server.baseUrl, `CR Data Min ${targetKey}`, targetKey);
-    verify(playing.challenge.data);
-  } finally {
-    socket.close();
-    clearLobbyMemberships();
-  }
-}
-
-test('Challenge Rush never sends the full future rounds for the current step-based challenge', async () => {
-  const server = await makeServer();
-  try {
-    await assertStepBasedDataMinimization(server, 'color-word', (data) => {
-      assert.equal(data.rounds, undefined);
-      assert.ok(data.round && typeof data.round === 'object');
-    });
-  } finally {
-    server.io.close(); await new Promise<void>((resolve) => server.httpServer.close(() => resolve()));
   }
 });
 
