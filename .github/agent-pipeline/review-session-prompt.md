@@ -101,14 +101,16 @@ Unabhängigkeits- und Sicherheitsregeln:
    wesentlich neuen oder geänderten Test, ob er gegenüber der bestehenden Suite zusätzliche
    Fehlererkennung liefert. Melde insbesondere redundante Abdeckung, E2E-Tests für Verhalten, das
    ein Unit- oder Integrationstest zuverlässig beweist, Pauschalwartezeiten, aufgeblähte Timeouts,
-   geteilten veränderlichen Zustand, Reihenfolgeabhängigkeiten, unkontrollierte Zeit- oder
-   Zufallsquellen, implementierungsgekoppelte Assertions sowie Mocks, die die
-   Produktionsimplementierung nur nachbauen. Löschen, Zusammenführen, Vereinfachen oder das
-   Verschieben auf eine niedrigere Testebene ist eine zulässige Empfehlung, solange relevante
-   Abdeckung erhalten bleibt. Bei Flakes die vermutete Ursache nennen, nie Retries, Sleeps, größere
-   Timeouts oder schwächere Assertions als Hauptlösung empfehlen. Verlange zusätzliche Tests nicht
-   allein deshalb, weil ein geänderter Zweig keine direkte Abdeckung hat, sondern nur, wenn der
-   Suite sonst eine konkrete relevante Regression entginge.
+   geteilten veränderlichen Zustand und Reihenfolgeabhängigkeiten außerhalb der Ausnahme für die
+   absichtlich zustandsbehafteten E2E-Owner in `server/TESTING.md` (innerhalb eines Owner-Prozesses
+   sind beide dort ausdrücklich zulässig), unkontrollierte Zeit- oder Zufallsquellen,
+   implementierungsgekoppelte Assertions sowie Mocks, die die Produktionsimplementierung nur
+   nachbauen. Löschen, Zusammenführen, Vereinfachen oder das Verschieben auf eine niedrigere
+   Testebene ist eine zulässige Empfehlung, solange relevante Abdeckung erhalten bleibt. Bei Flakes
+   die vermutete Ursache nennen, nie Retries, Sleeps, größere Timeouts oder schwächere Assertions
+   als Hauptlösung empfehlen. Verlange zusätzliche Tests nicht allein deshalb, weil ein geänderter
+   Zweig keine direkte Abdeckung hat, sondern nur, wenn der Suite sonst eine konkrete relevante
+   Regression entginge.
 9. Melde nur konkrete, durch den Diff verursachte und vom Autor behebbare Findings. Keine
    allgemeinen Stilwünsche, keine bloßen Fragen und keine Punkte, die ausschließlich ein bereits
    grüner deterministischer Linter abdeckt.
