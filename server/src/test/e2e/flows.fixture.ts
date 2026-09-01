@@ -746,8 +746,18 @@ flowTest('shell', 'Orga Events tab and Profil use grouped help while admin tools
   assert.equal(await page.locator('#event-starts-time').evaluate((element) => element.tagName), 'INPUT');
   assert.equal(await page.locator('[data-dt-field="event-starts"] select').count(), 0);
 
-  const invalidEnd = new Date(Date.now() - 86_400_000);
-  const invalidEndLabel = `${String(invalidEnd.getDate()).padStart(2, '0')}.${String(invalidEnd.getMonth() + 1).padStart(2, '0')}.${invalidEnd.getFullYear()}`;
+  // Pin the start instead of leaning on the form's default of "now". The end
+  // field's calendar opens on the month of its minimum (the start plus the
+  // range gap) and renders day buttons only for that month's own days --
+  // leading cells carry no button. With a start on the first of a month, no
+  // rendered day precedes the minimum and the disabled-day assertions below
+  // have nothing to match, so the ambient default made them fail on every 1st.
+  await page.fill('#event-starts-date', '15062027');
+  await page.fill('#event-starts-time', '1200');
+  // One day before the pinned start: rejected by the range rule regardless of
+  // today's date. Setting the start first matters, because wireDateTimeRange
+  // pulls an earlier end forward whenever the start moves past it.
+  const invalidEndLabel = '14.06.2027';
   await page.fill('#event-ends-date', invalidEndLabel);
   await page.locator('#event-ends-date').blur();
   assert.equal(await page.locator('#event-ends-date').getAttribute('aria-invalid'), 'true');
