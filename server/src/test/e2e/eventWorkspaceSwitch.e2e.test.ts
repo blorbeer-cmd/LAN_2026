@@ -245,19 +245,55 @@ test('the personal statistics event filter only offers accepted workspaces', asy
   // for owner/admin, which contains events this account never accepted. Those
   // are rejected by resolveAnalyticsEvents with a 404, so offering them here
   // produced an error toast and an empty dashboard for every pick.
+  const isStatsRequest = (url: string) => url.includes('/api/players/');
   const notFound: string[] = [];
   page.on('response', (response) => {
-    if (response.url().includes('/api/players/') && response.status() === 404) notFound.push(response.url());
+    if (isStatsRequest(response.url()) && response.status() === 404) notFound.push(response.url());
   });
-  for (const option of options) {
-    await page.click('#my-stats-event-search');
-    await Promise.all([
-      // The pick refetches the dashboard for the chosen event; that response
-      // is the observable end of the interaction, and its status is exactly
-      // what this test collects below.
-      page.waitForResponse((response) => response.url().includes('/api/players/')),
-      page.click(`#my-stats-event-list [data-search-select-value="${option.value}"]`),
-    ]);
+
+  // Picking an event applies it to the hidden input and refetches the
+  // dashboard — except when that event is already selected, which issues no
+  // request at all. So the per-pick gate is the applied selection, and the
+  // outstanding requests are drained once at the end: only then does the 404
+  // collection above cover every pick.
+  // Tracked by identity rather than counted: a stats request that started
+  // before this listener was attached would otherwise settle here without ever
+  // having been counted up, and the drain below would wait for one request too
+  // many.
+  const pending = new Set<unknown>();
+  let onDrained: (() => void) | null = null;
+  const trackRequest = (request: { url(): string }) => {
+    if (isStatsRequest(request.url())) pending.add(request);
+  };
+  const trackSettled = (request: { url(): string }) => {
+    if (!pending.delete(request)) return;
+    if (pending.size === 0) onDrained?.();
+  };
+  page.on('request', trackRequest);
+  page.on('requestfinished', trackSettled);
+  page.on('requestfailed', trackSettled);
+  try {
+    for (const option of options) {
+      await page.click('#my-stats-event-search');
+      await page.click(`#my-stats-event-list [data-search-select-value="${option.value}"]`);
+      await page.waitForFunction(
+        (expected) => (document.getElementById('my-stats-event') as HTMLInputElement | null)?.value === expected,
+        option.value,
+      );
+    }
+    if (pending.size > 0) {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error(`${pending.size} personal-stats requests never answered`)),
+          10_000,
+        );
+        onDrained = () => { clearTimeout(timer); resolve(); };
+      });
+    }
+  } finally {
+    page.off('request', trackRequest);
+    page.off('requestfinished', trackSettled);
+    page.off('requestfailed', trackSettled);
   }
   assert.deepEqual(notFound, [], 'no offered event may answer the personal stats request with 404');
 });
