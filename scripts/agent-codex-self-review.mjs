@@ -6,6 +6,7 @@
 // the PR head and posts one COMMENT review whose body and inline findings are commit-bound.
 
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   closeSync,
   existsSync,
@@ -14,6 +15,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -491,17 +493,57 @@ function run(executable, args, options = {}) {
   return result.stdout.trim();
 }
 
+/**
+ * Takes the per-head lock, or returns null while another invocation still holds it.
+ *
+ * The file carries a token, because a takeover leaves two invocations running against one head:
+ * releasing by path alone would let the first one delete the second one's lock and admit a third
+ * alongside it.
+ */
 export function acquireLock(repository, pullNumber, headSha, timeoutMs) {
-  const lockPath = join(tmpdir(), `agent-codex-self-${repository.replace("/", "-")}-${pullNumber}-${headSha}.lock`);
+  const path = join(tmpdir(), `agent-codex-self-${repository.replace("/", "-")}-${pullNumber}-${headSha}.lock`);
+  const token = randomUUID();
+  const claim = () => {
+    const handle = openSync(path, "wx");
+    try {
+      writeFileSync(handle, token);
+    } finally {
+      closeSync(handle);
+    }
+  };
   try {
-    closeSync(openSync(lockPath, "wx"));
+    claim();
   } catch (error) {
     if (error.code !== "EEXIST") throw error;
-    if (Date.now() - statSync(lockPath).mtimeMs < timeoutMs + LOCK_GRACE_MS) return null;
-    rmSync(lockPath);
-    closeSync(openSync(lockPath, "wx"));
+    if (Date.now() - statSync(path).mtimeMs < timeoutMs + LOCK_GRACE_MS) return null;
+    rmSync(path);
+    claim();
   }
-  return lockPath;
+  return { path, token };
+}
+
+/**
+ * Restarts the staleness window for the phase the timeout actually bounds.
+ *
+ * `timeoutMs` covers the Codex subprocess, not the untimed setup ahead of it — the GitHub
+ * requests, the fetch, the worktree. Without this stamp a timeout configured below the grace
+ * period could expire the lock while its own launcher was still preparing the review.
+ */
+export function refreshLock(lock) {
+  if (!lock || !existsSync(lock.path)) return;
+  const now = new Date();
+  utimesSync(lock.path, now, now);
+}
+
+/** Removes the lock only while this invocation still owns it. */
+export function releaseLock(lock) {
+  if (!lock || !existsSync(lock.path)) return;
+  try {
+    if (readFileSync(lock.path, "utf8") !== lock.token) return;
+  } catch {
+    return;
+  }
+  rmSync(lock.path);
 }
 
 function safeRemoveTemp(path) {
@@ -586,8 +628,8 @@ export async function runCommand(args, dependencies = {}) {
   const { owner, repo } = repositoryParts(repository);
   const config = dependencies.config ?? loadConfig();
   const token = dependencies.token ?? ghToken();
-  const lockPath = acquireLock(repository, pullNumber, expectedHead, reviewTimeoutMs(config));
-  if (!lockPath) return { status: "already-running", headSha: expectedHead };
+  const lock = acquireLock(repository, pullNumber, expectedHead, reviewTimeoutMs(config));
+  if (!lock) return { status: "already-running", headSha: expectedHead };
   let temp = null;
   let worktree = null;
   let publisherAuthorized = false;
@@ -688,6 +730,7 @@ export async function runCommand(args, dependencies = {}) {
       headSha: expectedHead,
       sessionId,
     });
+    refreshLock(lock);
     const codex = spawnSync(
       dependencies.codexExecutable ?? "codex",
       codexReviewArgs({ schemaPath, outputPath }),
@@ -742,7 +785,7 @@ export async function runCommand(args, dependencies = {}) {
       try { run("git", ["worktree", "remove", "--force", worktree], { cwd: resolve(option(args, "--repository-root") ?? process.cwd()) }); } catch {}
     }
     if (temp && existsSync(temp)) safeRemoveTemp(temp);
-    if (existsSync(lockPath)) rmSync(lockPath);
+    releaseLock(lock);
   }
 }
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { rmSync, utimesSync } from "node:fs";
+import { existsSync, rmSync, utimesSync } from "node:fs";
 import { test } from "node:test";
 
 import {
@@ -13,6 +13,8 @@ import {
   renderReviewBody,
   resultSchema,
   reviewerEnvironment,
+  refreshLock,
+  releaseLock,
   reviewComments,
   reviewTimeoutMs,
   trustedReviewRequest,
@@ -22,6 +24,12 @@ import {
 
 const HEAD = "a".repeat(40);
 const SESSION = "codex-self-run-1";
+
+/** Backdates a held lock so the staleness window can be exercised without waiting. */
+function age(lock, minutes) {
+  const stamp = (Date.now() - minutes * 60 * 1000) / 1000;
+  utimesSync(lock.path, stamp, stamp);
+}
 
 function output(overrides = {}) {
   return {
@@ -240,11 +248,37 @@ test("the lock waits for the configured review timeout, not a fixed one", () => 
   assert.ok(held);
   try {
     // 70 minutes in: past the old hardcoded 45+15 window, still inside the configured one.
-    const aged = (Date.now() - 70 * 60 * 1000) / 1000;
-    utimesSync(held, aged, aged);
+    age(held, 70);
     assert.equal(acquireLock("owner/repo", pullNumber, HEAD, configured), null);
     assert.ok(acquireLock("owner/repo", pullNumber, HEAD, 45 * 60 * 1000));
   } finally {
-    rmSync(held, { force: true });
+    rmSync(held.path, { force: true });
+  }
+});
+
+test("the window restarts at the timed subprocess, and only the owner releases the lock", () => {
+  // The timeout bounds the Codex subprocess, not the setup before it. With a timeout shorter than
+  // the grace period, an unrefreshed lock would expire while its own launcher was still working.
+  const short = reviewTimeoutMs({ reviewTimeoutMinutes: 5 });
+  const pullNumber = `${process.pid}-refresh`;
+  const held = acquireLock("owner/repo", pullNumber, HEAD, short);
+  assert.ok(held);
+  try {
+    age(held, 25);
+    refreshLock(held);
+    assert.equal(acquireLock("owner/repo", pullNumber, HEAD, short), null);
+
+    // After a takeover both invocations are alive. The first must not delete the second's lock,
+    // which would admit a third review against the same head.
+    age(held, 25);
+    const taken = acquireLock("owner/repo", pullNumber, HEAD, short);
+    assert.ok(taken);
+    assert.notEqual(taken.token, held.token);
+    releaseLock(held);
+    assert.equal(existsSync(taken.path), true);
+    releaseLock(taken);
+    assert.equal(existsSync(taken.path), false);
+  } finally {
+    rmSync(held.path, { force: true });
   }
 });
