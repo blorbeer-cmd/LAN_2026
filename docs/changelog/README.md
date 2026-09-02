@@ -10,12 +10,13 @@ geschlossen oder unter einer anderen PR-Nummer im selben Branch gelandet) und er
 eigenen Eintrag. Beim früheren Vollabgleich fielen außerdem neun ältere, nicht zu R5 gehörende
 Lücken auf: #90, #93, #94, #96, #97, #99, #197, #204 und #205. Die Zusammenfassungen der am
 2026-08-05 nachgetragenen PRs #261–#351 stammen aus dem PR-Titel, nicht aus einer vollständigen
-Diff-Analyse.
+Diff-Analyse. Zusätzlich dokumentiert ist der am 2026-09-01 gemergte PR #529; der Bereich
+#353–#528 ist noch nicht erfasst.
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 229 (Dateien unter `pr/`)
-- Branch-Seiten dokumentiert: 188 (Dateien unter `branches/`)
+- Gemergte PRs dokumentiert: 230 (Dateien unter `pr/`)
+- Branch-Seiten dokumentiert: 191 (Dateien unter `branches/`)
 - Gemergte PRs #214–#352: 83 von 83 dokumentiert
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 
@@ -23,6 +24,7 @@ Diff-Analyse.
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-09-01 | [#529](https://github.com/blorbeer-cmd/LAN_2026/pull/529) | [Retire nine fragile Challenge Rush challenges and push preview phases from the server](pr/pr-529-retire-nine-fragile-challenge-rush-challenges-and-push-preview-phases-from-the-server.md) | `claude/arcade-games-evaluation-s4ctmx` |
 | 2026-08-05 | [#352](https://github.com/blorbeer-cmd/LAN_2026/pull/352) | [Show the matchmaking fallback rating in team skill displays](pr/pr-352-show-the-matchmaking-fallback-rating-in-team-skill-displays.md) | `claude/unbewertet-spieler-skill-anzeige-yn6zxv` |
 | 2026-08-04 | [#350](https://github.com/blorbeer-cmd/LAN_2026/pull/350) | [Allow claude[bot] as agent-pipeline PR author](pr/pr-350-allow-claudebot-as-agent-pipeline-pr-author.md) | `claude/codex-review-pipeline-qp77ud` |
 | 2026-08-04 | [#349](https://github.com/blorbeer-cmd/LAN_2026/pull/349) | [Prio 3: Konsistenz-/Politur-Punkte aus der UI/UX-Analyse](pr/pr-349-prio-3-konsistenz-politur-punkte-aus-der-uiux-analyse.md) | `claude/prio3-consistency-polish` |
