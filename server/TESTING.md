@@ -25,10 +25,23 @@ oder höhere Coverage sind für sich genommen kein Qualitätsgewinn.
    Verhaltensänderung soll möglichst keine Teständerung erzwingen.
 4. **Auf Zustände warten, nicht auf Zeit.** `waitForTimeout`, `setTimeout` als Synchronisationshilfe
    und vergleichbare Pauschalwartezeiten sind unzulässig; gewartet wird auf ein konkret
-   beobachtbares Ereignis oder einen konkreten Zustand. Zulässig bleibt das Verstreichenlassen einer
-   echten, produktiv existierenden Frist, die selbst Prüfgegenstand ist — etwa Countdown-, Reveal-
-   und Deadline-Übergänge in den Fast-Timer-Profilen. Solche Stellen benennen im Kommentar die
-   Frist, auf die gewartet wird.
+   beobachtbares Ereignis oder einen konkreten Zustand. Zwei Fälle bleiben zulässig und benennen
+   sich jeweils im Kommentar:
+   - Das Verstreichenlassen einer echten, produktiv existierenden Frist, die selbst Prüfgegenstand
+     ist — etwa Countdown-, Reveal- und Deadline-Übergänge in den Fast-Timer-Profilen. Der Kommentar
+     nennt die Frist, auf die gewartet wird.
+   - Ein begrenztes Negativfenster, wenn die Zusicherung gerade das *Ausbleiben* eines Ereignisses
+     ist: dort gibt es keinen Zustand, auf den gewartet werden könnte. Der Kommentar nennt, was
+     nicht passieren darf und warum die gewählte Dauer dafür reicht. Wo sich das Ausbleiben an eine
+     nachweisbare Ordnung koppeln lässt, ist diese Kopplung vorzuziehen — sie muss dann aber
+     tatsächlich beweisen, dass der verbotene Weg abgearbeitet ist: eine Quittung auf *einem*
+     Kanal sagt nichts über die Warteschlange eines zweiten, unabhängigen Kanals. Belastbar ist
+     eine Ordnung auf demselben Kanal wie das verbotene Ereignis, etwa ein quittierter Rundlauf
+     über genau die Verbindung, die nichts empfangen darf, nachdem der Server das verbotene Paket
+     bereits geschrieben hätte.
+
+   Nicht gemeint ist absichtlich verzögerte Latenz im Testaufbau (etwa eine künstlich langsame
+   Route, die eine Reihenfolge deterministisch macht): das ist Stimulus, keine Synchronisation.
 5. **Tests sind unabhängig** von Ausführungsreihenfolge, anderen Tests, realer Uhrzeit,
    ungeseedetem Zufall, fremden Ports, externem Netzwerk, Produktionsdaten sowie bereits
    vorhandenem Prozess- oder Browserzustand. Die unten benannte E2E-Ausnahme gilt ausschließlich
@@ -61,7 +74,7 @@ Bewusste Ausnahmen:
 | ----------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Unit**          | `node:test` + `assert`                                  | Reine Logik ohne I/O: Zugangs-Guard, Live-Status-Ableitung, Matchmaking-Balancing, Leaderboard-Scoring (`src/*.test.ts`). Ebenso die DOM-freien Frontend-Helfer (Formatierung, Avatar-Palette, Prozessnamen-Vorschläge, State-Lookups, `dateTimeFieldHtml`) direkt unter `public/js/*.test.js` — läuft ohne Build-Step als ESM (`public/package.json` setzt `"type": "module"` nur für den Node-Testlauf, ohne Auswirkung auf die im Browser statisch ausgelieferten Dateien). |
 | **Integration**   | `node:test` + `supertest`                               | Echte HTTP-Requests gegen die Express-App (`src/test/*.test.ts`), gegen eine **In-Memory-DB**.                                                                                                                                                                                                                                                                                                                                                                                 |
-| **E2E (Browser)** | `node:test` + Playwright (`src/test/e2e/*.e2e.test.ts`) | Startet den echten gebauten Server + einen echten Chromium und klickt durch die Web-UI: Spieler anlegen, Teams auslosen, abstimmen, Ergebnis eintragen, Zugangs-Token-Login und Event-Einladungen mit zwei offenen Clients.                                                                                                                                                                                                                                                    |
+| **E2E (Browser)** | `node:test` + Playwright (`src/test/e2e/*.e2e.test.ts`) | Startet den echten gebauten Server + einen echten Chromium und klickt durch die Web-UI: Spieler anlegen, Teams auslosen, abstimmen, Ergebnis eintragen, Zugangs-Token-Login und Event-Einladungen mit zwei offenen Clients. Ausnahme ohne Browser: `phase5eIsolation.e2e.test.ts` prüft am gebauten Server, dass `dist/index.js` den Socket-Scope-Guard tatsächlich registriert und die Cookie-Authentifizierung über eine echte HTTP-/WS-Verbindung greift — die Zustellmatrix selbst liegt prozessintern in `realtime.delivery.required.test.ts`.                                                                                                                                                                                                                                                    |
 
 ## Ausführen
 
@@ -170,7 +183,11 @@ Wiederholungsfall ab.
   Arcade-Partition.
 - Die E2E-Dateien laufen parallel (eine pro Prozess) und starten je einen eigenen Server. Der
   Runner begrenzt die Dateiparallelität auf sechs, damit zusätzliche Shards nicht unbegrenzt viele
-  Chromium-Prozesse starten. Die längsten Arcade-Fixtures stehen zuerst in der Partition. Der
+  Chromium-Prozesse starten. Jeder über `trackE2EContext` registrierte Browser-Kontext erhält
+  `E2E_DEFAULT_TIMEOUT_MS` (15 s) statt Playwrights impliziter 30 s: kein Schritt dieser Suite
+  braucht so lange, und die 30 s verzögerten echte Fehler nur und reduzierten sie auf ein
+  nichtssagendes „Timeout 30000ms exceeded". Das ist ein Diagnosebudget, kein Stabilitätsregler —
+  ein Timeout zu erhöhen bleibt nach Regel 5 nie die Antwort auf einen Flake. Die längsten Arcade-Fixtures stehen zuerst in der Partition. Der
   gemeinsame Helfer `src/test/e2e/e2eServer.ts` startet ihn mit `PORT=0`, liest den tatsächlich
   gebundenen Port aus der Startmeldung und liefert die passende Basis-URL. Dadurch kollidieren
   parallele Läufe und andere Worktrees nicht mehr auf statisch reservierten Ports. Das gilt auch
@@ -208,6 +225,12 @@ Wiederholungsfall ab.
   Wurzelverzeichnis wählen. Derselbe arbeitsverzeichnisunabhängige Default gilt für Produzenten und
   einen lokalen gezielten Retry. `E2E_TRACE=1` aktiviert dort bei Bedarf dieselben Traces wie in CI.
   Erfolgreiche Tests entfernen ihre temporären Trace-Daten und Prozessmarker wieder.
+- `npm test` setzt `NODE_ENV=test ARCADE_FAST_TIMERS=1`. Die Socket-Integrationstests fahren
+  dieselben Arcade-Lobbys wie der Browser, prüfen aber Lobby-Gates, Teamzuordnung, Wertung und
+  Leave-/Disconnect-Persistenz — nie den Countdown selbst. Ohne dieses Profil verstrichen dort je
+  Match die produktiven drei Sekunden Intro (und zwölf Sekunden Endreveal bei Schiffe versenken),
+  zusammen rund 56 Sekunden reine Wartezeit pro Lauf. Die Produktionswerte bleiben in
+  `src/arcade/timing.test.ts` abgesichert; beide Flags wirken nur zusammen mit `NODE_ENV=test`.
 - `npm run test:e2e` setzt `E2E_FAST_TIMERS=1`. Der Schnellmodus verkürzt Arcade- und
   Challenge-Rush-Countdowns nur zusammen mit `NODE_ENV=test`; in Produktion und bei allen anderen
   Aufrufen bleiben die regulären Zeiten aktiv. Challenge Rush verkürzt im E2E-Schnellmodus seine

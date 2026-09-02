@@ -17,7 +17,17 @@ import { withQueryPlayerIdentity } from '../sessions';
 
 export const agentDownloadRouter = Router();
 
-const EXE_PATH = path.join(__dirname, '..', '..', 'agent-dist', 'respawn-agent.exe');
+// Directory holding the prebuilt agent executable this download packs into
+// its ZIP. Resolved per request rather than once at module load: a deployment
+// can relocate the ~90 MB binary to a mounted volume, and the integration test
+// can install a small stub instead of compressing the real executable just to
+// assert that the response is a real archive.
+export function agentExePath(): string {
+  const configured = process.env.AGENT_DIST_DIR;
+  return configured
+    ? path.resolve(configured, 'respawn-agent.exe')
+    : path.join(__dirname, '..', '..', 'agent-dist', 'respawn-agent.exe');
+}
 
 interface PlayerRow {
   id: string;
@@ -123,7 +133,8 @@ agentDownloadRouter.get('/', ...withQueryPlayerIdentity, (req, res) => {
     | undefined;
   if (!player) return res.status(404).json({ error: 'Spieler nicht gefunden.' });
 
-  if (!fs.existsSync(EXE_PATH)) {
+  const exePath = agentExePath();
+  if (!fs.existsSync(exePath)) {
     return res.status(503).json({
       error:
         'Der Agent wurde auf dem Server noch nicht bereitgestellt (agent-dist/respawn-agent.exe fehlt). Bitte den Organisator informieren.',
@@ -146,7 +157,7 @@ agentDownloadRouter.get('/', ...withQueryPlayerIdentity, (req, res) => {
     res.end();
   });
   archive.pipe(res);
-  archive.file(EXE_PATH, { name: 'respawn-agent.exe' });
+  archive.file(exePath, { name: 'respawn-agent.exe' });
   archive.append(JSON.stringify(config, null, 2), { name: 'agent.config.json' });
   archive.append(buildInstallBat(), { name: 'install.bat' });
   archive.append(buildUninstallBat(), { name: 'uninstall.bat' });

@@ -8,6 +8,7 @@ import {
   createE2EAccount,
   loginE2EAdmin,
   promoteE2EAdmin,
+  waitForPlayerData,
 } from './authHelpers';
 import {
   deferE2EContextClose,
@@ -72,19 +73,14 @@ async function openArcade(playerId: string, baseUrl: string = BASE_URL, { adminM
     await page.click('#admin-mode-activate');
     await page.waitForSelector('#admin-banner:not([hidden])');
   }
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.click('.nav-btn[data-view="more"]', { timeout: 4_000 }).catch(() => undefined);
-    try {
-      await page.click('[data-navigate="arcade"]', { timeout: 4_000 });
-      await page.waitForSelector('.arcade-tiles', { timeout: 4_000 });
-      return { context, page };
-    } catch {
-      // A late realtime refresh can replace the navigation target. Retry from
-      // the stable top-level navigation instead of extending every timeout.
-    }
-  }
-  await deferE2EContextClose(context);
-  throw new Error('could not open the Arcade view');
+  // See arcade.fixture.ts: the retry loop that used to sit here hid a real
+  // navigation race instead of reporting it. app.js now keeps the rail's nodes
+  // alive across a refresh, so one pass is enough.
+  await waitForPlayerData(page);
+  await page.click('.nav-btn[data-view="more"]');
+  await page.click('[data-navigate="arcade"]');
+  await page.waitForSelector('.arcade-tiles');
+  return { context, page };
 }
 
 before(async () => {
@@ -184,6 +180,9 @@ challengeRushTest('scenarios', 'Challenge Rush pauses active time and reconnects
     assert.equal(await actor.page.locator('.challenge-rush-stage h2').textContent(), beforePause.title);
     assert.equal(await actor.page.locator('.challenge-rush-stage > p.muted').textContent(), beforePause.description);
     assert.equal(await actor.page.locator('.challenge-rush-concealed').count(), 1);
+    // Negative assertion window (TESTING.md rule 4): the remaining time must
+    // *not* move while the match is paused, so there is no state to wait for.
+    // A second is far longer than the display's own refresh interval.
     await actor.page.waitForTimeout(1_000);
     assert.equal(Number(await actor.page.locator('.challenge-rush-stage').getAttribute('data-remaining-ms')), paused.remainingMs);
 
@@ -222,15 +221,22 @@ async function isStillPlaying(page: Page, key: string): Promise<boolean> {
   return (await page.locator(`.challenge-rush-stage[data-phase="playing"][data-challenge-key="${key}"]`).count()) > 0;
 }
 
+// Memory previews intentionally last up to five seconds in production (the
+// browser profile keeps them real), so the playfield only becomes operable
+// after the server pushes the input phase. Race that against the challenge
+// ending: whichever happens first decides, and neither is polled by hand.
+const PREVIEW_TO_INPUT_BUDGET_MS = 7_000;
+
 async function waitForAction(page: Page, key: string, selector: string): Promise<boolean> {
-  // Memory previews intentionally last up to five seconds in production.
-  // Keep enough headroom for the preview transition and a busy CI browser.
-  for (let attempt = 0; attempt < 280; attempt += 1) {
-    if (!(await isStillPlaying(page, key))) return false;
-    if (await page.locator(selector).count()) return true;
-    await page.waitForTimeout(25);
-  }
-  return false;
+  const operable = page.locator(selector).first()
+    .waitFor({ state: 'attached', timeout: PREVIEW_TO_INPUT_BUDGET_MS })
+    .then(() => true)
+    .catch(() => false);
+  const finished = page.locator(`.challenge-rush-stage[data-challenge-key="${key}"]:not([data-phase="playing"])`)
+    .waitFor({ state: 'attached', timeout: PREVIEW_TO_INPUT_BUDGET_MS })
+    .then(() => false)
+    .catch(() => false);
+  return Promise.race([operable, finished]);
 }
 
 async function playCurrentChallenge(page: Page): Promise<void> {

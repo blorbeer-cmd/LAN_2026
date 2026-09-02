@@ -43,6 +43,7 @@ import { invalidateEventScopedViews, invalidateViewCaches, invalidateViewsAfterR
 import { viewDefinition } from './viewManifest.js';
 import { appHash, localRouteKey, parseAppHash } from './appRoute.js';
 import { applyLayoutModeForPlayer, layoutModeForPlayer, LAYOUT_MODES } from './layoutMode.js';
+import { createStartupDataGate } from './startupDataGate.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -57,7 +58,6 @@ let currentLocalRoute = null;
 // itself carries no content of its own to report feedback about.
 let lastSubstantiveView = 'home';
 let appReady = false;
-let playerDataReady = false;
 const viewContainer = document.getElementById('view-container');
 let pendingSearchTarget = null;
 let pendingViewHeadingFocus = false;
@@ -108,23 +108,55 @@ function syncArcadeStylesheet(entry) {
 let lastVoteRound = null;
 let voteRealtimeRefreshVersion = 0;
 
+// Every central load shares this gate. A committed snapshot publishes ready;
+// any failure before the first commit publishes failed and releases startup,
+// no matter which caller won the generation race. Later failures cannot
+// retract a snapshot that is already usable.
+const startupData = createStartupDataGate((state) => {
+  const app = document.getElementById('app');
+  if (app) app.dataset.playerData = state;
+});
+
+// Every central snapshot in this module goes through here, so a load that
+// actually commits always publishes readiness and releases the startup
+// barrier — no matter which caller happened to win the generation. Doing it
+// per call site instead left the barrier waiting forever whenever a winner
+// without that line (the event-context signal below) committed first.
+async function loadAllAndPublish() {
+  return startupData.loadAndPublish(loadAll);
+}
+
 async function runSharedRefresh() {
   // Give the socket echo and the mutation response one task window to meet.
   // Every signal received while the requests are in flight marks the batch
   // dirty again; all network reconciliation finishes before a single render.
   await new Promise((resolve) => setTimeout(resolve, 24));
+  // Read before the loop: loadAllAndPublish() publishes readiness as soon as
+  // any snapshot commits, so afterwards this can no longer tell whether this
+  // refresh was the first one to have data.
+  const firstCommit = !startupData.ready;
   let committed = false;
   do {
     sharedRefreshDirty = false;
-    committed = await loadAll();
+    committed = await loadAllAndPublish();
     // loadAll() intentionally discards its response when a newer caller
     // started another central snapshot in parallel. Do not render the old
     // state or resolve mutation callers in that case: retry until this
     // coordinator owns the snapshot that actually committed.
   } while (sharedRefreshDirty || !committed);
+  // Overtaking the initial load inherits its render obligation: this is then
+  // the first committed snapshot the app ever had, so the current view has
+  // never been drawn from real data and must be rendered even when this
+  // refresh itself was queued render-free (a realtime signal for some other
+  // view). Without that the startup view keeps showing the empty pre-load
+  // state until the next user action.
   renderEventContextSwitcher();
   syncFeatureNavigation();
-  if (sharedRefreshShouldRender) renderCurrent();
+  if (firstCommit) {
+    if (appReady) renderCurrentAfterPlayerDataLoad();
+  } else if (sharedRefreshShouldRender) {
+    renderCurrent();
+  }
 }
 
 function syncFeatureNavigation() {
@@ -180,16 +212,85 @@ function syncDesktopNavigationActiveState() {
     ?.classList.toggle('needs-setup', !getMyId());
 }
 
-function desktopNavButtonHtml(entry) {
-  const target = entry.action
-    ? `data-desktop-action="${entry.action}"`
-    : `data-view="${entry.view}"`;
-  return `<button type="button" class="desktop-nav-btn" ${target} aria-label="${entry.label}">
-    <span class="desktop-nav-icon">${icon(domainIcon(entry.iconKey))}</span>
-    <span class="desktop-nav-label">${entry.label}</span>
-  </button>`;
+function desktopNavKey(entry) {
+  return entry.action ? `action:${entry.action}` : `view:${entry.view}`;
 }
 
+function desktopNavKeyOfButton(button) {
+  return button.dataset.desktopAction
+    ? `action:${button.dataset.desktopAction}`
+    : `view:${button.dataset.view}`;
+}
+
+function createDesktopNavButton() {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'desktop-nav-btn';
+  const iconElement = document.createElement('span');
+  iconElement.className = 'desktop-nav-icon';
+  const labelElement = document.createElement('span');
+  labelElement.className = 'desktop-nav-label';
+  button.append(iconElement, labelElement);
+  return button;
+}
+
+function syncDesktopNavButton(button, entry) {
+  if (entry.action) {
+    button.dataset.desktopAction = entry.action;
+    delete button.dataset.view;
+  } else {
+    button.dataset.view = entry.view;
+    delete button.dataset.desktopAction;
+  }
+  button.setAttribute('aria-label', entry.label);
+  if (button.dataset.iconKey !== entry.iconKey) {
+    button.querySelector('.desktop-nav-icon').innerHTML = icon(domainIcon(entry.iconKey));
+    button.dataset.iconKey = entry.iconKey;
+  }
+  const labelElement = button.querySelector('.desktop-nav-label');
+  if (labelElement.textContent !== entry.label) labelElement.textContent = entry.label;
+  return button;
+}
+
+// Places `entries` as the trailing children of `container`, reusing whichever
+// button an earlier render already built for the same target. append() moves
+// an existing node rather than recreating it, so a button that survives the
+// change keeps its identity — see renderDesktopNavigation() for why that is
+// the whole point. `keepFirst` is the group heading, which is not an entry.
+function reconcileDesktopNavEntries(container, entries, pool, keepFirst) {
+  const buttons = entries.map((entry) =>
+    syncDesktopNavButton(pool.get(desktopNavKey(entry)) ?? createDesktopNavButton(), entry));
+  for (const child of [...container.children]) {
+    if (child !== keepFirst && !buttons.includes(child)) child.remove();
+  }
+  container.append(...buttons);
+}
+
+// One delegated listener on the rail itself. Per-button listeners had to be
+// re-attached after every rebuild, which is exactly what tied them to the
+// node replacement this function no longer performs.
+function wireDesktopNavigation(root) {
+  if (root.dataset.wired === '1') return;
+  root.dataset.wired = '1';
+  root.addEventListener('click', (event) => {
+    const button = event.target.closest('.desktop-nav-btn');
+    if (!button || !root.contains(button)) return;
+    if (button.dataset.desktopAction === 'feedback') {
+      openFeedbackModal(lastSubstantiveView);
+      return;
+    }
+    if (button.dataset.view) switchView(button.dataset.view, { localRoute: null });
+  });
+}
+
+// Navigation is chrome, not view content: it has to survive a re-render that
+// happens while a finger is already down on one of its buttons. Replacing the
+// rail's innerHTML detached that button between pointerdown and pointerup, and
+// a click event needs one common target for both — so the tap was silently
+// dropped. The window opens on every signature change, most reliably right
+// after the initial snapshot resolves and the admin role appears, which is
+// also when a user is most likely to be reaching for the nav. Reconcile in
+// place instead: surviving buttons keep their identity and only move.
 function renderDesktopNavigation() {
   const desktopNav = desktopNavItemsForEvent(state.activeEvent, {
     isAdmin: currentPlayerHasAdminRole(),
@@ -197,20 +298,44 @@ function renderDesktopNavigation() {
   const root = document.querySelector('.desktop-nav');
   const main = document.getElementById('desktop-nav-main');
   const utilities = document.getElementById('desktop-nav-utilities');
+  wireDesktopNavigation(root);
   const signature = JSON.stringify(desktopNav);
   if (root.dataset.signature !== signature) {
-    main.innerHTML = desktopNav.groups.map((group) => `
-      <div class="desktop-nav-group" data-desktop-nav-group="${group.key}">
-        ${group.label ? `<span class="desktop-nav-heading">${group.label}</span>` : ''}
-        ${group.entries.map(desktopNavButtonHtml).join('')}
-      </div>`).join('');
-    utilities.innerHTML = desktopNav.utilities.map(desktopNavButtonHtml).join('');
-    root.dataset.signature = signature;
-    root.querySelectorAll('.desktop-nav-btn[data-view]').forEach((button) => {
-      button.addEventListener('click', () => switchView(button.dataset.view, { localRoute: null }));
+    // Collect before touching the DOM: gaining the admin role regroups the
+    // rail, so the same button can move between groups and must come through
+    // that move as the same node.
+    const pool = new Map();
+    for (const button of root.querySelectorAll('.desktop-nav-btn')) {
+      pool.set(desktopNavKeyOfButton(button), button);
+    }
+    const groups = desktopNav.groups.map((group) => {
+      let element = main.querySelector(`[data-desktop-nav-group="${group.key}"]`);
+      if (!element) {
+        element = document.createElement('div');
+        element.className = 'desktop-nav-group';
+        element.dataset.desktopNavGroup = group.key;
+      }
+      let heading = element.querySelector('.desktop-nav-heading');
+      if (group.label) {
+        if (!heading) {
+          heading = document.createElement('span');
+          heading.className = 'desktop-nav-heading';
+          element.prepend(heading);
+        }
+        heading.textContent = group.label;
+      } else {
+        heading?.remove();
+        heading = null;
+      }
+      reconcileDesktopNavEntries(element, group.entries, pool, heading);
+      return element;
     });
-    root.querySelector('[data-desktop-action="feedback"]')
-      ?.addEventListener('click', () => openFeedbackModal(lastSubstantiveView));
+    for (const child of [...main.children]) {
+      if (!groups.includes(child)) child.remove();
+    }
+    main.append(...groups);
+    reconcileDesktopNavEntries(utilities, desktopNav.utilities, pool, null);
+    root.dataset.signature = signature;
   }
   syncDesktopNavigationActiveState();
 }
@@ -355,7 +480,7 @@ async function activateEvent(eventId, { navigate, searchTarget = null } = {}) {
         // committed snapshot instead of rendering whichever workspace was in
         // state before the collision.
         let committed = false;
-        while (!committed) committed = await loadAll();
+        while (!committed) committed = await loadAllAndPublish();
         syncFeatureNavigation();
         await refreshNotificationBanner();
         renderCurrent();
@@ -411,7 +536,7 @@ function wireEventContextSwitcher() {
 }
 
 function renderCurrent({ preserveState = true } = {}) {
-  if (playerDataReady && !viewIsEnabledForEvent(currentView, state.activeEvent)) {
+  if (startupData.ready && !viewIsEnabledForEvent(currentView, state.activeEvent)) {
     switchView('home', { replace: true });
     showToast('Dieser Bereich ist für das aktive Event nicht aktiviert.');
     return;
@@ -502,7 +627,7 @@ function viewRequiresAdminRole(view) {
 }
 
 function renderCurrentAfterPlayerDataLoad() {
-  if (playerDataReady && viewRequiresAdminRole(currentView) && !currentPlayerHasAdminRole()) {
+  if (startupData.ready && viewRequiresAdminRole(currentView) && !currentPlayerHasAdminRole()) {
     switchView(currentView, { fromHistory: true, replace: true });
     return;
   }
@@ -528,10 +653,10 @@ function switchView(
 ) {
   // Admin-only areas stay reachable through Admin links and deep links alike,
   // but never render for an account whose role no longer permits them.
-  if (viewRequiresAdminRole(view) && playerDataReady && !currentPlayerHasAdminRole()) {
+  if (viewRequiresAdminRole(view) && startupData.ready && !currentPlayerHasAdminRole()) {
     view = viewDefinition(view).deniedView;
   }
-  if (playerDataReady && !viewIsEnabledForEvent(view, state.activeEvent)) {
+  if (startupData.ready && !viewIsEnabledForEvent(view, state.activeEvent)) {
     view = 'home';
     replace = true;
   }
@@ -730,14 +855,16 @@ function wireSocket() {
       // transport reconnects.
       invalidateViewsAfterReconnect(VIEW_REGISTRY);
       await refreshGroupContext({ throwOnError: true });
-      await Promise.all([loadAll(), refreshNotificationBanner({ throwOnError: true })]);
-      playerDataReady = true;
+      await Promise.all([loadAllAndPublish(), refreshNotificationBanner({ throwOnError: true })]);
       if (appReady) renderCurrentAfterPlayerDataLoad();
     },
     onRecovered: () => {
       reconnectFailureNotified = false;
     },
     onFailure: () => {
+      // refreshGroupContext() and the notification refresh can fail outside
+      // loadAllAndPublish(), so the coordinator settles the same gate too.
+      startupData.markFailed();
       if (reconnectFailureNotified) return;
       showToast('Aktualisierung fehlgeschlagen – neuer Versuch läuft.', { error: true });
       reconnectFailureNotified = true;
@@ -985,7 +1112,7 @@ function wireSocket() {
   });
   socket.on('event-context:changed', async () => {
     invalidateEventScopedViews(VIEW_REGISTRY);
-    await loadAll();
+    await loadAllAndPublish();
     renderEventContextSwitcher();
     await refreshNotificationBanner();
     renderCurrent();
@@ -999,7 +1126,13 @@ function wireSocket() {
 
 async function main() {
   await ensureLogin();
-  document.getElementById('app').hidden = false;
+  const app = document.getElementById('app');
+  app.hidden = false;
+  // The shell is deliberately interactive before the first central snapshot
+  // arrives (see initialDataLoad below). Publish which of the two states it is
+  // in, so anything that genuinely depends on the roster - the onboarding tour,
+  // and the browser tests - can wait for a state instead of guessing a delay.
+  app.dataset.playerData = 'loading';
   await initGroupContext();
   wireNav();
   initGlobalSearch((entry) => {
@@ -1030,14 +1163,23 @@ async function main() {
   // Socket connection and REST cache recovery are background concerns. The
   // app shell and onboarding must still become usable when a single refresh
   // request fails temporarily (or keeps retrying in the background).
-  const initialDataLoad = loadAll()
-    .then(() => {
-      playerDataReady = true;
+  const initialDataLoad = loadAllAndPublish()
+    .then((committed) => {
+      // loadAll() resolves false when a newer central snapshot took over the
+      // generation — during startup that is the refresh the first socket
+      // connection triggers. Publishing readiness anyway would release
+      // waitForPlayerData() while the roster is still the pre-load one, which
+      // is the very race these changes remove. That refresh runs through
+      // runSharedRefresh() and marks readiness itself once it commits. Everything
+      // downstream that needs loaded data waits for that commit through the
+      // startup barrier, so resolving early here cannot hand them stale state.
+      if (!committed) return startupData.settled;
       renderEventContextSwitcher();
       syncFeatureNavigation();
       if (appReady) renderCurrentAfterPlayerDataLoad();
     })
     .catch((error) => {
+      // loadAllAndPublish() already settled and published the shared gate.
       if (error?.status !== 401) showToast('Daten konnten noch nicht geladen werden – neuer Versuch läuft.', { error: true });
     });
   // Start the initial snapshot before opening the socket. This gives it the

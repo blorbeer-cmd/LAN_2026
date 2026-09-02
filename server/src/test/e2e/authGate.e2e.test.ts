@@ -13,6 +13,7 @@ import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
 import { createE2EDiagnosticTest, trackE2EContext } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
+import { waitForPlayerData } from './authHelpers';
 
 let BASE_URL: string;
 const RECOVERY_CODE = 'e2e-admin-recovery-code';
@@ -120,15 +121,9 @@ test('an invite link registers a new account and logs it straight in', async () 
   await page.click('[data-password-toggle]');
   await page.click('#auth-form button[type="submit"]');
 
-  await page.waitForSelector('#app:not([hidden])');
+  await waitForPlayerData(page);
   const search = new URL(page.url()).search;
   assert.equal(search, '', 'the consumed invite code should be dropped from the URL');
-  // #app unhides as soon as the gate resolves, before main()'s subsequent
-  // loadAll() populates state.players — navigating to Profile before that
-  // finishes would find no matching player and show the "pick an identity"
-  // fallback instead of the real profile (with its Logout button). A brief
-  // settle avoids racing that unrelated, pre-existing boot-order timing.
-  await page.waitForTimeout(500);
 
   await page.waitForSelector('#onboarding-root [role="dialog"]');
 
@@ -222,8 +217,18 @@ test('an invite link registers a new account and logs it straight in', async () 
         slider.value = '5';
         slider.dispatchEvent(new Event('input', { bubbles: true }));
       });
-      await page.waitForTimeout(350);
     }
+    // Each slider saves through its own debounce (see views/gameCatalog.js),
+    // and the dialog counts a required game as done only once both of its
+    // sliders came back. Wait for that counter to include this row instead of
+    // guessing how long the round trip takes.
+    await page.waitForFunction(
+      (expected) => {
+        const progress = document.querySelector('.onboarding-rating-progress')?.textContent ?? '';
+        return Number(progress.split(' von ')[0]) >= expected;
+      },
+      rowIndex + 1,
+    );
   }
   await page.waitForSelector('[data-onboarding-finish]:not([disabled])');
   await page.click('[data-onboarding-finish]');
@@ -336,8 +341,7 @@ test('logging out drops back to the login gate, and logging back in works', asyn
   await page.fill('#auth-password', PASSWORD);
   await page.click('#auth-form button[type="submit"]');
 
-  await page.waitForSelector('#app:not([hidden])');
-  await page.waitForTimeout(500); // see the comment on the previous test
+  await waitForPlayerData(page);
 });
 
 test('a wrong password on the login gate shows an error and does not proceed', async () => {
@@ -418,8 +422,7 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await adminPage.fill('#auth-name', 'E2E Bootstrap Admin');
     await adminPage.fill('#auth-password', 'e2e bootstrap password');
     await adminPage.click('#auth-form button[type="submit"]');
-    await adminPage.waitForSelector('#app:not([hidden])');
-    await adminPage.waitForTimeout(500);
+    await waitForPlayerData(adminPage);
 
     const startsAt = Date.now() + 24 * 60 * 60 * 1000;
     for (let index = 0; index < 4; index += 1) {
@@ -568,8 +571,7 @@ test('switching from an admin to a new account clears the local admin mode', asy
     await switchPage.fill('#auth-name', 'E2E Switched Person');
     await switchPage.fill('#auth-password', 'e2e switched password');
     await switchPage.click('#auth-form button[type="submit"]');
-    await switchPage.waitForSelector('#app:not([hidden])');
-    await switchPage.waitForTimeout(300);
+    await waitForPlayerData(switchPage);
 
     assert.equal(await switchPage.locator('#admin-banner').isHidden(), true);
     assert.equal(
@@ -709,8 +711,7 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
     await adminPage.fill('#auth-name', 'E2E Bootstrap Admin');
     await adminPage.fill('#auth-password', 'e2e bootstrap password');
     await adminPage.click('#auth-form button[type="submit"]');
-    await adminPage.waitForSelector('#app:not([hidden])');
-    await adminPage.waitForTimeout(500);
+    await waitForPlayerData(adminPage);
 
     await adminPage.click('.nav-btn[data-view="more"]');
     await adminPage.click('[data-navigate="admin"]');
@@ -735,9 +736,8 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
     await testPage.goto(testSessionLink);
     await testPage.waitForSelector('#auth-screen:not([hidden])');
     await testPage.click('#auth-form button[type="submit"]');
-    await testPage.waitForSelector('#app:not([hidden])');
+    await waitForPlayerData(testPage);
     assert.equal(new URL(testPage.url()).search, '', 'the consumed test-session code should be dropped from the URL');
-    await testPage.waitForTimeout(500);
 
     // The session behind this browser is the redeemed test player itself.
     const me = await (await testPage.request.get(`${BASE_URL}/api/me`)).json();

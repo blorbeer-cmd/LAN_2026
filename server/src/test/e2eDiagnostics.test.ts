@@ -74,6 +74,9 @@ function createFakeBrowser(
   const browserContext = {
     pages: () => [page],
     on: () => browserContext,
+    // Present because trackE2EContext sets it; deliberately not recorded, since
+    // `events` asserts the diagnostics capture order and nothing else.
+    setDefaultTimeout: () => {},
     close: async () => {
       events.push('close');
       if (failures.close) throw new Error('close failed');

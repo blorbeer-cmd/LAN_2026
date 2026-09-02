@@ -97,7 +97,27 @@ test('a socket receives only its subscribed group scope, and an unknown group id
       body: JSON.stringify({ note: 'nur diese Gruppe' }),
     }, groupId);
     assert.equal(changed.status, 200);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    // Wait for the delivery that must happen before asserting on the one that
+    // must not.
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('live:changed never reached the subscribed socket')), 5_000);
+      const settle = () => { clearTimeout(timer); resolve(); };
+      if (browserEvents > 0) settle();
+      else browserSocket.once('live:changed', settle);
+    });
+    // A receipt on the browser connection says nothing about the agent
+    // connection's own queue, so it is no barrier for the negative assertion:
+    // both are independent transports. Order that assertion on the agent
+    // socket itself instead. The route broadcasts synchronously before it
+    // answers the HTTP request, so a leaked packet is already written to this
+    // socket by the time the rejected round trip below is even sent — and the
+    // client dispatches packets in receive order, so its ack cannot arrive
+    // before the leak would have been counted. The unknown group id is
+    // rejected without touching any scope, so the barrier changes nothing.
+    const drained = await new Promise<{ ok: boolean }>((resolve) => {
+      agentSocket.emit('scope:subscribe', { groupId: 'unknown-group' }, resolve);
+    });
+    assert.equal(drained.ok, false);
     assert.equal(browserEvents, 1);
     assert.equal(agentEvents, 0, 'a socket that never subscribed to a real scope receives nothing (default-deny)');
   } finally {

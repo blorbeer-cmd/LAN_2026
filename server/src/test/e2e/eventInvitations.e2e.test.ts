@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { readFile } from 'node:fs/promises';
 import { chromium, Browser, Page } from 'playwright';
-import { finishE2EOnboarding } from './authHelpers';
+import { finishE2EOnboarding, waitForPlayerData } from './authHelpers';
 import { createE2EDiagnosticTest, trackE2EContext } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 
@@ -40,8 +40,7 @@ async function login(page: Page, name: string, password: string): Promise<void> 
   await page.fill('#auth-name', name);
   await page.fill('#auth-password', password);
   await page.click('#auth-form button[type="submit"]');
-  await page.waitForSelector('#app:not([hidden])');
-  await page.waitForTimeout(300);
+  await waitForPlayerData(page);
 }
 
 before(async () => {
