@@ -250,7 +250,7 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
   await page.waitForSelector('#quiz-create-lobby:not([disabled])');
 });
 
-arcadeFlowTest('full', 'Arcade: joining Pong or Blobby warns and closes the owned lobby first', async () => {
+arcadeFlowTest('full', 'Arcade: joining Pong or Blobby closes the owned lobby and keeps Blobby team choice', async () => {
   await page.click('.nav-btn[data-view="more"]');
   await page.click('[data-navigate="arcade"]');
   await waitForArcadeStylesheet(page);
@@ -282,6 +282,17 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby warns and closes the owne
 
       await selectArcadeGame(guestPage, game);
       await guestPage.waitForSelector(`#${game}-create:not([disabled])`);
+      if (game === 'blobby') {
+        assert.equal(
+          await guestPage.locator('#blobby-mode [data-arcade-mode="duel"]').getAttribute('aria-pressed'),
+          'true',
+        );
+        await guestPage.click('#blobby-mode [data-arcade-mode="doubles"]');
+        assert.equal(
+          await guestPage.locator('#blobby-mode [data-arcade-mode="doubles"]').getAttribute('aria-pressed'),
+          'true',
+        );
+      }
       await guestPage.click(`#${game}-create`);
       const targetStateHandle = await guestPage.waitForFunction((gameName) => {
         const visibleSelects = Array.from(document.querySelectorAll<HTMLSelectElement>(
@@ -303,8 +314,11 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby warns and closes the owne
       assert.deepEqual(targetState, { visibleCount: 1, value: '7', height: 32 });
 
       await selectArcadeGame(page, game);
-      await page.waitForSelector(`[data-${game}-join]`);
-      await page.click(`[data-${game}-join]`);
+      const joinSelector = game === 'blobby'
+        ? '[data-blobby-join][data-blobby-team="right"]'
+        : '[data-pong-join]';
+      await page.waitForSelector(joinSelector);
+      await page.click(joinSelector);
       await page.waitForSelector('text=Wenn du dieser Lobby beitrittst, wird deine eigene Lobby aufgelöst.');
 
       // Cancelling must keep the owned lobby intact.
@@ -313,9 +327,17 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby warns and closes the owne
       await page.waitForSelector('[data-close-lobby]');
 
       await selectArcadeGame(page, game);
-      await page.click(`[data-${game}-join]`);
+      await page.click(joinSelector);
       await page.click('[data-confirm]');
       await page.waitForSelector(`[data-${game}-leave]`);
+      if (game === 'blobby') {
+        const pinkPlayers = await page
+          .locator('.two-column-card-grid > .stack')
+          .filter({ hasText: 'Team Pink' })
+          .locator('.player-name')
+          .allTextContents();
+        assert.deepEqual(pinkPlayers, [alice.name]);
+      }
       assert.deepEqual(
         await page.locator('.arcade-lobby-entry-actions > button').allTextContents(),
         ['Verlassen', 'Bereit?'],

@@ -795,16 +795,9 @@ arcadeTest('multiplayer', 'Tetris Arena supports four ready players with one lar
   }
 });
 
-// The Blobby doubles walkthrough used to sit here. It drove the same shared
-// browser modules as the Pong one below — lobbyReady.js (mode buttons, team
-// picks, ready toggle) and arcadeUi.js (match roster) — through a second game,
-// for another ~13 s of the Arcade partition. What stays: the Pong walkthrough
-// covers that shared path in the browser and additionally spans both viewports
-// (desktop host, mobile guests); Blobby's own server contract is a separate
-// implementation and keeps its own guard in api.blobbyMultiplayer.test.ts; the
-// shared lobby markup is unit-tested in public/js/arcade/lobbyReady.test.js;
-// and the Blobby browser view stays covered by "joining Pong or Blobby warns
-// and closes the owned lobby first".
+// The focused Blobby browser flow keeps its game-specific doubles toggle and
+// team payload covered without repeating this complete four-player start.
+// The full Blobby match contract remains in api.blobbyMultiplayer.test.ts.
 arcadeTest('multiplayer', 'Pong Doppel: mobile and desktop lobbies assign two full teams and start four players', async () => {
   const players = await Promise.all([
     createPlayer('Pong Blau Host'),
