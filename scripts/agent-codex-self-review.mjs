@@ -442,10 +442,8 @@ export function codexReviewArgs({ schemaPath, outputPath }) {
     "--ephemeral",
     "--ignore-user-config",
     "--ignore-rules",
-    // The preferred elevated Windows sandbox cannot execute the desktop runtime's bundled
-    // PowerShell on every host. OpenAI documents unelevated as the bounded fallback for that
-    // compatibility case; read-only remains the effective filesystem policy.
-    "--config", 'windows.sandbox="unelevated"',
+    // Keep the CLI's default Windows sandbox implementation. The read-only policy must remain
+    // enforced by the runtime instead of being weakened to accommodate a tool invocation.
     // A self-review only needs the local shell. Remove side channels that could inspect or mutate
     // GitHub independently of the credential-free detached checkout.
     "--disable", "apps",
@@ -462,7 +460,7 @@ export function codexReviewArgs({ schemaPath, outputPath }) {
   ];
 }
 
-export function assertCodexExecution(result, { outputAvailable = false } = {}) {
+export function assertCodexExecution(result) {
   if (result.error?.code === "ETIMEDOUT") {
     throw Object.assign(new Error("Codex review timed out."), { reviewCode: "timeout" });
   }
@@ -473,10 +471,7 @@ export function assertCodexExecution(result, { outputAvailable = false } = {}) {
     );
   }
   const transcript = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-  if (
-    !outputAvailable &&
-    /tools::router: error=|rejected:\s*blocked by policy|CreateProcess \{ message: "Rejected/i.test(transcript)
-  ) {
+  if (/tools::router: error=|rejected:\s*blocked by policy|CreateProcess \{ message: "Rejected/i.test(transcript)) {
     throw Object.assign(
       new Error("Codex could not inspect the checkout because a review tool was denied by the sandbox."),
       { reviewCode: "read-only" },
@@ -814,7 +809,7 @@ export async function runCommand(args, dependencies = {}) {
         maxBuffer: 20 * 1024 * 1024,
       },
     );
-    assertCodexExecution(codex, { outputAvailable: existsSync(outputPath) });
+    assertCodexExecution(codex);
     const dirty = run("git", ["status", "--porcelain"], { cwd: worktree });
     const actualHead = run("git", ["rev-parse", "HEAD"], { cwd: worktree });
     if (dirty || actualHead !== expectedHead) {
