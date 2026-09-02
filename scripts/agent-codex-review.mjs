@@ -19,6 +19,7 @@ import { loadConfig } from "./agent-pipeline.mjs";
 import {
   deriveReadiness,
   fetchSnapshot,
+  REVIEW_START_NOTICE_PATTERN,
 } from "./agent-pipeline-reconcile.mjs";
 // Both cross-review workflows announce a review that never started through the same marker and the
 // same comment, so the notice has exactly one implementation. Only the way-out text is per provider.
@@ -30,6 +31,10 @@ import {
 export const CODEX_REVIEW_REQUEST_MARKER = "<!-- agent-pipeline:codex-review-request";
 const CODEX_REVIEW_REQUEST_PATTERN =
   /<!--\s*agent-pipeline:codex-review-request\s+([0-9a-f]{40})\s*-->/;
+export const CODEX_SELF_REVIEW_REQUEST_MARKER =
+  "<!-- agent-pipeline:codex-self-review-request";
+export const CODEX_SELF_REVIEW_REQUEST_PATTERN =
+  /<!--\s*agent-pipeline:codex-self-review-request\s+([0-9a-f]{40})\s+attempt=([A-Za-z0-9._-]+)\s*-->/;
 
 // The identity that answers `@codex review` — with a review when it accepts the request, and with
 // the refusal below when it does not know the requesting account.
@@ -132,6 +137,17 @@ export function deriveCodexReviewDispatch(readiness) {
       reason: `phase is ${readiness.phase}`,
     };
   }
+  if (
+    readiness.details?.reviewMode === "self" &&
+    readiness.contract?.implementer === "codex"
+  ) {
+    return {
+      shouldRun: true,
+      code: REQUEST_CODES.run,
+      mode: "self",
+      reason: "current head is ready for one isolated Codex self-review",
+    };
+  }
   if (readiness.details?.reviewMode !== "cross") {
     return {
       shouldRun: false,
@@ -156,6 +172,7 @@ export function deriveCodexReviewDispatch(readiness) {
   return {
     shouldRun: true,
     code: REQUEST_CODES.run,
+    mode: "cross",
     reason: "current head is ready for one Codex cross-review",
   };
 }
@@ -163,6 +180,23 @@ export function deriveCodexReviewDispatch(readiness) {
 export function renderCodexReviewRequest(headSha) {
   const currentHeadSha = requireHeadSha(headSha);
   return `@codex review\n\n${CODEX_REVIEW_REQUEST_MARKER} ${currentHeadSha} -->\n`;
+}
+
+export function renderCodexSelfReviewRequest(headSha, attempt) {
+  const currentHeadSha = requireHeadSha(headSha);
+  if (!/^[A-Za-z0-9._-]+$/.test(attempt ?? "")) {
+    throw new Error("attempt must be a stable token.");
+  }
+  return [
+    "## Codex Self-Review queued",
+    "",
+    `The trusted host monitor may review exact head \`${currentHeadSha}\` in a fresh, ephemeral,`,
+    "repository-credential-free, read-only Codex session. This comment is an outbox record only; it is not",
+    "review evidence and cannot open the merge gate.",
+    "",
+    `${CODEX_SELF_REVIEW_REQUEST_MARKER} ${currentHeadSha} attempt=${attempt} -->`,
+    "",
+  ].join("\n");
 }
 
 /**
@@ -325,9 +359,21 @@ export function renderCodexRequestNotice({
   code,
   reason,
   runUrl,
+  mode = "cross",
 }) {
+  const guidance =
+    mode === "self"
+      ? [
+          "Der vertrauenswürdige Host-Auftrag konnte nicht angelegt werden. Es wurde weder eine",
+          "Review-Session gestartet noch ein Ergebnis veröffentlicht.",
+          "",
+          "Abhilfe: den verlinkten Lauf prüfen und den Reviewmodus für den aktuellen Head erneut wählen.",
+          "Der Anbieter oder Modus wird nicht automatisch gewechselt.",
+        ].join("\n")
+      : codexRequestGuidance(code, reason);
   return renderReviewStartNotice({
     provider: "codex",
+    mode,
     repository,
     pullNumber,
     headSha,
@@ -335,7 +381,7 @@ export function renderCodexRequestNotice({
     code,
     reason,
     runUrl,
-    guidance: codexRequestGuidance(code, reason),
+    guidance,
   });
 }
 
@@ -459,12 +505,63 @@ export async function requestCommand(
     base_sha: snapshot.baseSha,
     base_branch: snapshot.baseBranch,
     implementer: readiness.contract?.implementer ?? "",
+    mode: decision.mode ?? "",
   };
   for (const [name, value] of Object.entries(values)) output(name, value);
 
   if (!decision.shouldRun) {
     console.log(JSON.stringify({ phase: readiness.phase, ...values }, null, 2));
     decline(decision.code, decision.reason);
+    return;
+  }
+
+  if (decision.mode === "self") {
+    const comments = await pullComments({ owner, repo, pullNumber, token }, githubApiFn);
+    const existing = comments.find((comment) => {
+      const request = String(comment?.body ?? "").match(CODEX_SELF_REVIEW_REQUEST_PATTERN);
+      if (
+        request?.[1] !== snapshot.headSha ||
+        !(config.codexSelfReviewRequestAuthors ?? []).includes(comment.user?.login ?? comment.author)
+      ) {
+        return false;
+      }
+      // A terminal failure invalidates only the request that exhausted its two attempts. Once the
+      // reconciler removes the label, an explicit re-selection on the same head must be able to
+      // create a fresh request instead of inheriting that old terminal state forever.
+      return !comments.some((notice) => {
+        const failure = String(notice?.body ?? "").match(REVIEW_START_NOTICE_PATTERN);
+        return (
+          failure?.[1] === snapshot.headSha &&
+          failure[2] === "self" &&
+          failure[3] === "failed" &&
+          failure[5] === `${request[2]}-2` &&
+          (config.reviewStartFailureAuthors ?? []).includes(notice.user?.login ?? notice.author)
+        );
+      });
+    });
+    if (existing) {
+      output("requested", "true");
+      output("code", REQUEST_CODES.requestExists);
+      output("reason", "this head already has an outstanding Codex self-review request");
+      return;
+    }
+    const currentPull = await githubApiFn(`/repos/${owner}/${repo}/pulls/${pullNumber}`, { token });
+    if (currentPull.head?.sha !== snapshot.headSha) {
+      throw new Error(
+        `Pull request #${pullNumber} moved from ${snapshot.headSha} to ${currentPull.head?.sha}; ` +
+          "Codex self-review request discarded.",
+      );
+    }
+    const attempt = `${process.env.GITHUB_RUN_ID ?? "manual"}-${process.env.GITHUB_RUN_ATTEMPT ?? "1"}`;
+    const comment = await githubApiFn(`/repos/${owner}/${repo}/issues/${pullNumber}/comments`, {
+      token,
+      method: "POST",
+      body: { body: renderCodexSelfReviewRequest(snapshot.headSha, attempt) },
+    });
+    output("comment_url", comment.html_url ?? "");
+    output("requested", "true");
+    output("code", REQUEST_CODES.run);
+    console.log(`Queued isolated Codex self-review: ${comment.html_url ?? "comment created"}`);
     return;
   }
 
@@ -603,6 +700,7 @@ export async function noticeCommand(
   const code = option(args, "--code") || REQUEST_CODES.failed;
   const reason = option(args, "--reason") || "unknown";
   const runUrl = option(args, "--run-url") || "";
+  let mode = option(args, "--mode") || "cross";
   const { owner, repo } = repositoryParts(repository);
 
   if (!shouldAnnounceCodexRequestFailure(code)) {
@@ -619,10 +717,14 @@ export async function noticeCommand(
   // decision about the provider. Re-derive eligibility before touching the head's shared notice.
   if (code === REQUEST_CODES.failed) {
     const { snapshot } = await fetchSnapshotFn({ owner, repo, pullNumber, token });
-    if (!mayAnnounceUndecidedFailure(deriveReadinessFn(snapshot, loadConfigFn()))) {
+    const undecided = deriveCodexReviewDispatch(
+      deriveReadinessFn(snapshot, loadConfigFn()),
+    );
+    if (!undecided.shouldRun) {
       console.log("No notice needed: this head's cross-review does not belong to Codex.");
       return;
     }
+    mode = undecided.mode ?? mode;
   }
 
   // The request reports the head it judged. When it never got that far, the pull request's current
@@ -638,6 +740,7 @@ export async function noticeCommand(
     code,
     reason,
     runUrl,
+    mode,
   });
   const comments = await pullComments({ owner, repo, pullNumber, token }, githubApiFn);
   const existing = findReviewStartNotice(
@@ -648,6 +751,7 @@ export async function noticeCommand(
       body: comment.body,
     })),
     headSha,
+    mode,
   );
 
   const posted = existing

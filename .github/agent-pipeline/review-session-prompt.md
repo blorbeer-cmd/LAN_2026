@@ -200,7 +200,22 @@ Beende die Antwort mit genau einem JSON-Block und danach keinem weiteren Text:
 
 Bei `anchor: none` müssen `file` und `line` stattdessen als JSON-`null` ausgegeben werden.
 
-## Step-by-step: Codex separate session
+## Codex self-review: automated host path
+
+For a Codex implementation, `review:self` is consumed automatically by the dedicated desktop host
+monitor. The trusted default-branch workflow creates an exact-head outbox request; the monitor runs
+`scripts/agent-codex-self-review.mjs` in a fresh detached worktree. The runner invokes the official
+non-interactive `codex exec review` command with `--sandbox read-only`, `--ask-for-approval never`,
+`--ephemeral`, `--ignore-user-config`, a strict output schema and no GitHub credentials. A separate
+host publisher validates provider, mode, session, SHA, enforcement, verdict and every finding,
+rechecks the current PR head, verifies the untouched worktree and posts a COMMENT review with its
+inline threads. A normal editable task, subagent or prompt-only claim is not equivalent and cannot
+satisfy `selfReviewMinimumEnforcement=verified`.
+
+The checklist below is retained only as an emergency operator diagnostic. It is not the normal
+Codex self-review route and its manually copied marker is not evidence for the automated publisher.
+
+## Emergency diagnostic: Codex separate session
 
 1. Fetch the PR metadata with the command above and fill every placeholder.
 2. In the Codex app, set **Settings → General → Code review → Detached**, open a completely new task
@@ -256,10 +271,9 @@ working; it stays the way to review interactively, to inspect the prompt with `-
 get a result when the workflow itself cannot run.
 
 **The local launcher only ever runs `claude`, and only for `--mode self`.** Every other combination
-is rejected before anything is created, and `--print-only` prepares its prompt. This limitation is
-not a statement that Codex self-review is unavailable: for a Codex implementation in `self` mode,
-use the detached Codex `/review` route above and publish its marker only after the independent
-before/after verification succeeds.
+is rejected before anything is created, and `--print-only` prepares its prompt. This limitation
+applies only to the legacy Claude launcher. Codex self-review is executed by
+`scripts/agent-codex-self-review.mjs`, not by this command.
 
 - Whenever `reviewerFor()` resolves to codex — a Claude implementation in `cross` mode, a Codex
   implementation in `self` mode — launching would run Claude while prompt, session id and marker all
@@ -270,8 +284,8 @@ before/after verification succeeds.
   Claude `self` review of a Claude implementation is launched the same way by
   `agent-pipeline-claude-self-review.yml`. This local launcher still handles only `self`, and only
   for a Claude implementer — running it is now optional there, not the only way to satisfy the
-  label; use the `review:cross` label for either automated cross-review direction, and the detached
-  Codex `/review` route for a Codex self-review. The Codex adapter posts `@codex review` for a
+  label; use the `review:cross` label for either automated cross-review direction. The Codex adapter
+  posts `@codex review` for a
   Claude implementation, while the Claude adapters run their restricted workflows for a Codex
   implementation (`cross`) or a Claude implementation (`self`).
 

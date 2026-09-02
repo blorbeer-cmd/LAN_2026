@@ -1,8 +1,8 @@
-name: Agent pipeline Codex cross-review
+name: Agent pipeline Codex review
 
-# Requests exactly one native Codex review after the user chooses `review:cross` for a Claude
-# implementation. The trusted default branch decides eligibility and posts only the review request;
-# Codex owns the actual head-bound GitHub review and the reconciler owns the merge gate.
+# Dispatches the Codex path selected by the user. `review:cross` retains the native connector
+# request. `review:self` for a Codex implementation writes a trusted, exact-head outbox record for
+# the local host monitor; no pull-request code is checked out or executed here.
 
 on:
   pull_request_target:
@@ -46,7 +46,7 @@ jobs:
           set -euo pipefail
           selected=""
           if [[ "${EVENT_NAME}" == "pull_request_target" ]]; then
-            if [[ "${EVENT_LABEL}" == "review:cross" ]]; then
+            if [[ "${EVENT_LABEL}" == "review:cross" || "${EVENT_LABEL}" == "review:self" ]]; then
               selected="${EVENT_PR}"
             fi
           else
@@ -60,7 +60,7 @@ jobs:
           echo "Selected pull request: ${selected:-none}"
 
   request:
-    name: Request Codex cross-review
+    name: Request Codex review
     needs: select
     if: needs.select.outputs.pull_request != ''
     runs-on: ubuntu-latest
@@ -76,6 +76,7 @@ jobs:
       reason: ${{ steps.request.outputs.reason }}
       head_sha: ${{ steps.request.outputs.head_sha }}
       requested: ${{ steps.request.outputs.requested }}
+      mode: ${{ steps.request.outputs.mode }}
     steps:
       - name: Check out trusted pipeline code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -88,7 +89,7 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - name: Request native Codex review
+      - name: Dispatch Codex review
         id: request
         shell: bash
         env:
@@ -121,7 +122,7 @@ jobs:
           exit 1
 
   notice:
-    name: Announce missing Codex cross-review
+    name: Announce missing Codex review
     needs: [select, request]
     # Runs whenever a chosen cross-review never reached Codex: the missing request credential, a
     # refused request, a decline, or a job that failed before any request existed. Without it the
@@ -161,6 +162,7 @@ jobs:
           CODE: ${{ needs.request.outputs.code || 'failed' }}
           REASON: ${{ needs.request.outputs.reason || 'the review-request job failed before a request existed' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MODE: ${{ needs.request.outputs.mode || 'cross' }}
         run: |
           node scripts/agent-codex-review.mjs notice \
             --repository "${REPOSITORY}" \
@@ -169,10 +171,11 @@ jobs:
             --outcome "${OUTCOME}" \
             --code "${CODE}" \
             --reason "${REASON}" \
-            --run-url "${RUN_URL}"
+            --run-url "${RUN_URL}" \
+            --mode "${MODE}"
 
   reconcile:
-    name: Reconcile missing Codex cross-review
+    name: Reconcile missing Codex review
     needs: [select, notice]
     # The notice is written with the repository `GITHUB_TOKEN`, and GitHub starts no workflow run
     # from an event created with that token, so the `issue_comment` trigger of

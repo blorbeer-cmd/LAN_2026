@@ -18,6 +18,7 @@ import {
 } from "./agent-pipeline.mjs";
 import {
   CLAUDE_CROSS_REVIEW_HEADING,
+  CODEX_SELF_REVIEW_HEADING,
   dedupeCheckRunsByName,
   evaluateChecks,
   parseProviderCleanPass,
@@ -25,6 +26,8 @@ import {
   REVIEW_RESULT_SOURCE,
   REVIEW_START_NOTICE_PATTERN,
 } from "./agent-pipeline-reconcile.mjs";
+import { CODEX_SELF_REVIEW_REQUEST_PATTERN } from "./agent-codex-review.mjs";
+import { CODEX_SELF_REVIEW_ATTEMPT_PATTERN } from "./agent-codex-self-review.mjs";
 
 export const CODEX_DELIVERY_MARKER = "<!-- agent-pipeline:codex-delivery";
 export const CODEX_THREAD_ID_PATTERN =
@@ -256,7 +259,120 @@ export function collectCodexDeliveryEvents(
   const reviewLabels = Object.values(config.reviewModeLabels ?? {});
   const hasReviewChoice = reviewLabels.some((label) => labels.includes(label));
   const hasCrossReviewChoice = labels.includes(config.reviewModeLabels?.cross);
+  const hasSelfReviewChoice = labels.includes(config.reviewModeLabels?.self);
   let latestCurrentChoiceAt = null;
+
+  // Codex self-review is deliberately not delivered into the implementation task. A trusted
+  // default-branch request becomes a host command for a fresh, ephemeral process. Result and
+  // attempt records are durable GitHub state, so duplicate scans and monitor restarts remain
+  // idempotent without acknowledging delivery to the implementation conversation.
+  if (hasSelfReviewChoice) {
+    const request = [...(comments ?? [])].reverse().find((comment) => {
+      const match = String(comment.body ?? "").match(CODEX_SELF_REVIEW_REQUEST_PATTERN);
+      return (
+        match?.[1] === pullRequest.headSha &&
+        (config.codexSelfReviewRequestAuthors ?? []).includes(comment.author)
+      );
+    });
+    if (request) {
+      const requestMatch = request.body.match(CODEX_SELF_REVIEW_REQUEST_PATTERN);
+      const requestId = requestMatch[2];
+      const bodies = [...(comments ?? []), ...(reviews ?? [])];
+      const selfResult = bodies.find((entry) => {
+        const body = String(entry.body ?? "");
+        const marker = [...body.matchAll(new RegExp(REVIEW_RESULT_SOURCE, "g"))].find(
+          (match) => match[1] === pullRequest.headSha && match[2] === "self",
+        );
+        return (
+          marker &&
+          body.startsWith(`${CODEX_SELF_REVIEW_HEADING}\n`) &&
+          (config.codexSelfReviewPublisherAuthors ?? []).includes(entry.author)
+        );
+      });
+      const terminalFailure = (comments ?? []).some((comment) => {
+        const match = String(comment.body ?? "").match(REVIEW_START_NOTICE_PATTERN);
+        return (
+          match?.[1] === pullRequest.headSha &&
+          match[2] === "self" &&
+          match[3] === "failed" &&
+          match[5] === `${requestId}-2` &&
+          (config.reviewStartFailureAuthors ?? []).includes(comment.author)
+        );
+      });
+      const attemptRecords = (comments ?? [])
+        .map((comment) => ({
+          author: comment.author,
+          createdAt: comment.createdAt ?? null,
+          match: String(comment.body ?? "").match(CODEX_SELF_REVIEW_ATTEMPT_PATTERN),
+        }))
+        .filter(
+          ({ author, match }) =>
+            match?.[1] === pullRequest.headSha &&
+            match[2] === requestId &&
+            (config.codexSelfReviewPublisherAuthors ?? []).includes(author),
+        )
+        .map(({ match, createdAt }) => ({
+          attempt: Number(match[3]),
+          outcome: match[4],
+          createdAt,
+        }));
+      const latestRecord = attemptRecords.at(-1) ?? null;
+      const timeoutMs = Number(config.reviewTimeoutMinutes ?? 45) * 60 * 1000;
+      const latestStartedAt = Date.parse(latestRecord?.createdAt ?? "");
+      const startedStillRunning =
+        latestRecord?.outcome === "started" &&
+        Number.isFinite(latestStartedAt) &&
+        Date.now() - latestStartedAt < timeoutMs;
+      const maxAttempt = attemptRecords.length
+        ? Math.max(...attemptRecords.map((record) => record.attempt))
+        : 0;
+      // Re-emit an expired second start with attempt=2: the runner recognizes the durable marker
+      // and publishes the terminal abandoned-attempt notice without launching a third review.
+      const attempt = latestRecord?.outcome === "started" && maxAttempt === 2
+        ? 2
+        : maxAttempt + 1;
+      if (selfResult) {
+        const marker = [...String(selfResult.body).matchAll(new RegExp(REVIEW_RESULT_SOURCE, "g"))].find(
+          (match) => match[1] === pullRequest.headSha && match[2] === "self",
+        );
+        const eventId = `review-completed-${pullRequest.headSha}-${marker[4]}`;
+        const event = eventBase(pullRequest, contract, "review-completed", eventId);
+        addCandidate(
+          {
+            ...event,
+            verdict: marker[3],
+            sessionId: marker[4],
+            message: renderTaskPrompt({ ...event, verdict: marker[3] }, selfResult.body),
+          },
+          selfResult.createdAt ?? selfResult.submittedAt,
+        );
+      }
+      if (!selfResult && !terminalFailure && !startedStillRunning && attempt <= 2) {
+        const eventId = `codex-self-review-${pullRequest.headSha}-${requestId}-${attempt}`;
+        const event = {
+          ...eventBase(pullRequest, contract, "codex-self-review-required", eventId),
+          requestId,
+          attempt,
+          command: [
+            "node",
+            "scripts/agent-codex-self-review.mjs",
+            "run",
+            "--repository",
+            pullRequest.repository,
+            "--pr",
+            String(pullRequest.number),
+            "--head-sha",
+            pullRequest.headSha,
+            "--request-id",
+            requestId,
+            "--attempt",
+            String(attempt),
+          ],
+        };
+        addCandidate(event, request.createdAt, "self-review");
+      }
+    }
+  }
 
   for (const comment of comments ?? []) {
     if (!(config.reviewDecisionNotificationAuthors ?? []).includes(comment.author)) continue;
@@ -483,7 +599,7 @@ export function collectCodexDeliveryEvents(
   }
   const unique = [...uniqueById.values()];
   const selected = [];
-  for (const category of ["ci", "lifecycle"]) {
+  for (const category of ["self-review", "ci", "lifecycle"]) {
     const newest = unique
       .filter((candidate) => candidate.category === category)
       .sort((left, right) => left.time - right.time || left.sequence - right.sequence)

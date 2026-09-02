@@ -20,10 +20,15 @@
   },
   "//selfReviewResultAuthors": "Trusted workflow identities that may publish a structured, head-bound self-review result on a provider's behalf, alongside resultAuthorsFor's manual identities (the provider's own bot account or its human operator running the local launcher). Kept separate for the same reason as crossReviewResultAuthors: a workflow identity is not itself one of the provider's own identities.",
   "selfReviewResultAuthors": {
-    "claude": ["github-actions[bot]"]
+    "claude": ["github-actions[bot]"],
+    "codex": ["blorbeer-cmd"]
   },
+  "//codexSelfReviewRequestAuthors": "Trusted default-branch workflow identities that may enqueue a Codex self-review. The local reviewer never trusts request markers from arbitrary commenters.",
+  "codexSelfReviewRequestAuthors": ["github-actions[bot]"],
+  "//codexSelfReviewPublisherAuthors": "Host identities allowed to publish the validated Codex self-review after the credential-free reviewer exits.",
+  "codexSelfReviewPublisherAuthors": ["blorbeer-cmd"],
   "//reviewStartFailureAuthors": "Trusted workflow identities that publish a head-bound start failure for either cross-review provider.",
-  "reviewStartFailureAuthors": ["github-actions[bot]"],
+  "reviewStartFailureAuthors": ["github-actions[bot]", "blorbeer-cmd"],
   "//reviewModeLabels": "Set by the user, never by an agent: they decide who reviews the current head. The reconciler only removes one that was bound to an earlier head, so the choice is asked again per head SHA.",
   "reviewModeLabels": {
     "cross": "review:cross",
@@ -44,7 +49,7 @@
   "//reviewCheckNames": "The head-bound check-run name a given reviewer provider publishes, keyed by `reviewerProvider`. The delivery adapter uses it to recognise that a selected cross-review is really queued or running instead of treating a workflow trigger as proof. These names must stay in sync with the job names in `reviewWorkflowFiles` and with `selfCheckNames`.",
   "reviewCheckNames": {
     "claude": "Run Claude cross-review",
-    "codex": "Request Codex cross-review"
+    "codex": "Request Codex review"
   },
   "//deploymentWorkflowFile": "The workflow whose completed runs on the default base branch describe the post-merge CI/CD state. The delivery adapter reads only this file, never a workflow name taken from pull-request-controlled text.",
   "deploymentWorkflowFile": "deploy.yml",
@@ -93,9 +98,9 @@
     "Publish Claude cross-review",
     "Reconcile Claude review result",
     "Select Codex review target",
-    "Request Codex cross-review",
-    "Announce missing Codex cross-review",
-    "Reconcile missing Codex cross-review",
+    "Request Codex review",
+    "Announce missing Codex review",
+    "Reconcile missing Codex review",
     "Select Claude self-review target",
     "Run Claude self-review",
     "Announce missing Claude self-review",

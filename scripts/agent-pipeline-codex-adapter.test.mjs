@@ -11,6 +11,8 @@ import {
   scan,
   unresolvedMainWorkflowFailures,
 } from "./agent-pipeline-codex-adapter.mjs";
+import { renderCodexSelfReviewRequest } from "./agent-codex-review.mjs";
+import { CODEX_SELF_REVIEW_ATTEMPT_MARKER, renderReviewBody } from "./agent-codex-self-review.mjs";
 
 const config = loadConfig();
 const HEAD = "a".repeat(40);
@@ -190,6 +192,135 @@ test("a self-review start failure is not a Codex event", () => {
   ];
 
   assert.deepEqual(collectCodexDeliveryEvents(pull(), comments, [], config), []);
+});
+
+test("Codex self-review is emitted as a host command, never an implementation-task prompt", () => {
+  const comments = [{
+    id: 50,
+    author: "github-actions[bot]",
+    createdAt: "2026-09-02T08:00:00Z",
+    body: renderCodexSelfReviewRequest(HEAD, "run-50"),
+  }];
+  const events = collectCodexDeliveryEvents(
+    pull({ labels: [{ name: "agent:pipeline" }, { name: "review:self" }] }),
+    comments,
+    [],
+    config,
+  );
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "codex-self-review-required");
+  assert.equal(events[0].attempt, 1);
+  assert.equal(events[0].message, undefined);
+  assert.deepEqual(events[0].command.slice(0, 3), ["node", "scripts/agent-codex-self-review.mjs", "run"]);
+});
+
+test("duplicate events retry once, while a result or terminal failure suppresses the host command", () => {
+  const request = {
+    id: 60,
+    author: "github-actions[bot]",
+    createdAt: "2026-09-02T08:00:00Z",
+    body: renderCodexSelfReviewRequest(HEAD, "run-60"),
+  };
+  const selected = pull({ labels: [{ name: "agent:pipeline" }, { name: "review:self" }] });
+  const first = collectCodexDeliveryEvents(selected, [request], [], config);
+  const duplicate = collectCodexDeliveryEvents(selected, [request], [], config);
+  assert.equal(first[0].eventId, duplicate[0].eventId);
+
+  const failed = {
+    id: 61,
+    author: "blorbeer-cmd",
+    createdAt: "2026-09-02T08:10:00Z",
+    body: `${CODEX_SELF_REVIEW_ATTEMPT_MARKER} ${HEAD} request=run-60 attempt=1 outcome=failed code=timeout -->`,
+  };
+  assert.equal(collectCodexDeliveryEvents(selected, [request, failed], [], config)[0].attempt, 2);
+
+  const terminal = {
+    id: 62,
+    author: "blorbeer-cmd",
+    body: `<!-- agent-pipeline:review-start-notice ${HEAD} mode=self outcome=failed code=timeout attempt=run-60-2 -->`,
+  };
+  assert.deepEqual(collectCodexDeliveryEvents(selected, [request, failed, terminal], [], config), []);
+
+  const reselected = {
+    id: 64,
+    author: "github-actions[bot]",
+    createdAt: "2026-09-02T08:20:00Z",
+    body: renderCodexSelfReviewRequest(HEAD, "run-64"),
+  };
+  const fresh = collectCodexDeliveryEvents(selected, [request, failed, terminal, reselected], [], config);
+  assert.equal(fresh[0].type, "codex-self-review-required");
+  assert.equal(fresh[0].requestId, "run-64");
+  assert.equal(fresh[0].attempt, 1);
+
+  const activeStart = {
+    id: 65,
+    author: "blorbeer-cmd",
+    createdAt: new Date().toISOString(),
+    body: `${CODEX_SELF_REVIEW_ATTEMPT_MARKER} ${HEAD} request=run-64 attempt=1 outcome=started -->`,
+  };
+  assert.deepEqual(
+    collectCodexDeliveryEvents(selected, [request, failed, terminal, reselected, activeStart], [], config),
+    [],
+  );
+  const expiredStart = { ...activeStart, createdAt: "2020-01-01T00:00:00Z" };
+  const recovered = collectCodexDeliveryEvents(
+    selected,
+    [request, failed, terminal, reselected, expiredStart],
+    [],
+    config,
+  );
+  assert.equal(recovered[0].requestId, "run-64");
+  assert.equal(recovered[0].attempt, 2);
+  const expiredSecondStart = {
+    id: 66,
+    author: "blorbeer-cmd",
+    createdAt: "2020-01-01T01:00:00Z",
+    body: `${CODEX_SELF_REVIEW_ATTEMPT_MARKER} ${HEAD} request=run-64 attempt=2 outcome=started -->`,
+  };
+  const finalize = collectCodexDeliveryEvents(
+    selected,
+    [request, failed, terminal, reselected, expiredStart, expiredSecondStart],
+    [],
+    config,
+  );
+  assert.equal(finalize[0].requestId, "run-64");
+  assert.equal(finalize[0].attempt, 2);
+
+  const result = {
+    id: 63,
+    author: "blorbeer-cmd",
+    commitSha: HEAD,
+    state: "COMMENTED",
+    body: renderReviewBody({
+      provider: "codex",
+      mode: "self",
+      sessionId: "codex-self-run-60-1",
+      headSha: HEAD,
+      readOnly: "verified",
+      verdict: "pass",
+      findings: [],
+      residualRisks: [],
+    }),
+  };
+  const completed = collectCodexDeliveryEvents(selected, [request], [result], config);
+  assert.equal(completed.length, 1);
+  assert.equal(completed[0].type, "review-completed");
+  assert.equal(completed[0].verdict, "pass");
+});
+
+test("untrusted requests and requests for an earlier head cannot start Codex self-review", () => {
+  const selected = pull({ labels: [{ name: "agent:pipeline" }, { name: "review:self" }] });
+  const forged = {
+    id: 70,
+    author: "outsider",
+    body: renderCodexSelfReviewRequest(HEAD, "forged"),
+  };
+  const stale = {
+    id: 71,
+    author: "github-actions[bot]",
+    body: renderCodexSelfReviewRequest("b".repeat(40), "stale"),
+  };
+  assert.deepEqual(collectCodexDeliveryEvents(selected, [forged, stale], [], config), []);
 });
 
 test("delivery events require the centrally validated task contract", () => {
