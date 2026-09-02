@@ -130,6 +130,10 @@ async function runSharedRefresh() {
     // state or resolve mutation callers in that case: retry until this
     // coordinator owns the snapshot that actually committed.
   } while (sharedRefreshDirty || !committed);
+  // The loop only exits on a snapshot this coordinator actually committed, so
+  // this is a truthful point to publish readiness from — and it has to, since
+  // a refresh that overtakes the initial load leaves that one uncommitted.
+  markPlayerDataReady();
   renderEventContextSwitcher();
   syncFeatureNavigation();
   if (sharedRefreshShouldRender) renderCurrent();
@@ -1138,7 +1142,14 @@ async function main() {
   // app shell and onboarding must still become usable when a single refresh
   // request fails temporarily (or keeps retrying in the background).
   const initialDataLoad = loadAll()
-    .then(() => {
+    .then((committed) => {
+      // loadAll() resolves false when a newer central snapshot took over the
+      // generation — during startup that is the refresh the first socket
+      // connection triggers. Publishing readiness anyway would release
+      // waitForPlayerData() while the roster is still the pre-load one, which
+      // is the very race these changes remove. That refresh runs through
+      // runSharedRefresh() and marks readiness itself once it commits.
+      if (!committed) return;
       markPlayerDataReady();
       renderEventContextSwitcher();
       syncFeatureNavigation();

@@ -245,55 +245,27 @@ test('the personal statistics event filter only offers accepted workspaces', asy
   // for owner/admin, which contains events this account never accepted. Those
   // are rejected by resolveAnalyticsEvents with a 404, so offering them here
   // produced an error toast and an empty dashboard for every pick.
-  const isStatsRequest = (url: string) => url.includes('/api/players/');
   const notFound: string[] = [];
   page.on('response', (response) => {
-    if (isStatsRequest(response.url()) && response.status() === 404) notFound.push(response.url());
+    if (response.url().includes('/api/players/') && response.status() === 404) notFound.push(response.url());
   });
 
-  // Picking an event applies it to the hidden input and refetches the
-  // dashboard — except when that event is already selected, which issues no
-  // request at all. So the per-pick gate is the applied selection, and the
-  // outstanding requests are drained once at the end: only then does the 404
-  // collection above cover every pick.
-  // Tracked by identity rather than counted: a stats request that started
-  // before this listener was attached would otherwise settle here without ever
-  // having been counted up, and the drain below would wait for one request too
-  // many.
-  const pending = new Set<unknown>();
-  let onDrained: (() => void) | null = null;
-  const trackRequest = (request: { url(): string }) => {
-    if (isStatsRequest(request.url())) pending.add(request);
-  };
-  const trackSettled = (request: { url(): string }) => {
-    if (!pending.delete(request)) return;
-    if (pending.size === 0) onDrained?.();
-  };
-  page.on('request', trackRequest);
-  page.on('requestfinished', trackSettled);
-  page.on('requestfailed', trackSettled);
-  try {
-    for (const option of options) {
-      await page.click('#my-stats-event-search');
-      await page.click(`#my-stats-event-list [data-search-select-value="${option.value}"]`);
-      await page.waitForFunction(
-        (expected) => (document.getElementById('my-stats-event') as HTMLInputElement | null)?.value === expected,
-        option.value,
-      );
-    }
-    if (pending.size > 0) {
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(
-          () => reject(new Error(`${pending.size} personal-stats requests never answered`)),
-          10_000,
-        );
-        onDrained = () => { clearTimeout(timer); resolve(); };
-      });
-    }
-  } finally {
-    page.off('request', trackRequest);
-    page.off('requestfinished', trackSettled);
-    page.off('requestfailed', trackSettled);
+  // One completed request per option, and no guessed delay for it. renderMyStats()
+  // starts a load only while no other one is running (`!statsLoading`), so clicking
+  // straight through the list would coalesce the middle options away: the first and
+  // the last would be requested and the ones between them silently never covered.
+  // The dashboard renders "Lädt…" for exactly as long as its request is in flight,
+  // so its absence is the observable end of a pick — and for the already-selected
+  // option, which changes nothing and therefore issues no request at all, it is
+  // absent from the start instead of deadlocking on a response that never comes.
+  const statsSettled = () =>
+    page.locator('#view-container').getByText('Lädt…', { exact: true }).waitFor({ state: 'detached' });
+
+  await statsSettled();
+  for (const option of options) {
+    await page.click('#my-stats-event-search');
+    await page.click(`#my-stats-event-list [data-search-select-value="${option.value}"]`);
+    await statsSettled();
   }
   assert.deepEqual(notFound, [], 'no offered event may answer the personal stats request with 404');
 });
