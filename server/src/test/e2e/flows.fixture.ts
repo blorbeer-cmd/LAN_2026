@@ -81,6 +81,22 @@ function flowTest(
   }
 }
 
+// The claim is "the Bezahlt marker does not jump when the group's state
+// changes", not "two getBoundingClientRect() reads return bit-identical
+// floats". Comparing them with deepEqual made a sub-pixel difference — a late
+// font, a scrollbar, a different device pixel ratio — a failure with nothing
+// behind it, while a real jump moves the control by far more than a pixel.
+function assertMarkerStaysPut(
+  actual: { left: number; width: number },
+  expected: { left: number; width: number },
+  because: string,
+): void {
+  assert.ok(
+    Math.abs(actual.left - expected.left) <= 1 && Math.abs(actual.width - expected.width) <= 1,
+    `${because} must not move the paid marker (${JSON.stringify(expected)} -> ${JSON.stringify(actual)})`,
+  );
+}
+
 async function setDateTimeField(id: string, value: string): Promise<void> {
   await page.locator(`#${id}`).evaluate((element, nextValue) => {
     (element as HTMLInputElement).value = nextValue;
@@ -2617,7 +2633,7 @@ flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und
     const rect = marker.getBoundingClientRect();
     return { left: rect.left, width: rect.width };
   });
-  assert.deepEqual(paidMarkerGeometry, openMarkerGeometry);
+  assertMarkerStaysPut(paidMarkerGeometry, openMarkerGeometry, 'marking the group paid');
   await waitForTextDecoration(group.locator('.food-order-group-amount'), 'line-through');
   await waitForTextDecoration(marghieRow.locator('.food-order-item-description'), 'line-through');
   await waitForTextDecoration(marghieRow.locator('.food-order-item-amount'), 'line-through');
@@ -2675,7 +2691,7 @@ flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und
     const rect = marker.getBoundingClientRect();
     return { left: rect.left, width: rect.width };
   });
-  assert.deepEqual(changedTotalMarkerGeometry, openMarkerGeometry);
+  assertMarkerStaysPut(changedTotalMarkerGeometry, openMarkerGeometry, 'adding a position to a paid group');
   assert.equal(await group.locator('[data-group-pay]').isDisabled(), false);
   await group.locator('[data-group-pay]').click();
   await page.waitForSelector('.modal h2:has-text("Bezahlt?")');

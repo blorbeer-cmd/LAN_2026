@@ -1,25 +1,37 @@
-// Integration tests for the personalized agent-download ZIP. Whether the
-// success path (streamed ZIP) or the graceful "not built yet" 503 applies
-// depends on whether a prebuilt server/agent-dist/respawn-agent.exe is
-// present — the repo ships one, but a stripped-down deployment might not —
-// so the test asserts whichever branch matches the actual repo state
-// instead of hardcoding one of them.
+// Integration tests for the personalized agent-download ZIP.
+//
+// The download packs server/agent-dist/respawn-agent.exe — a committed ~90 MB
+// binary — through archiver at deflate level 9. Compressing it twice cost this
+// file about 15 seconds, roughly a tenth of the whole unit/integration suite,
+// to assert a status code and four bytes of ZIP magic. It also made the
+// assertions conditional: with the executable absent, the success branch
+// silently disappeared and the test still passed. AGENT_DIST_DIR therefore
+// points at a small stub here, so both branches are exercised deterministically
+// and neither depends on what happens to sit in the repository.
 
-import { test } from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import request from 'supertest';
 import { createTestApp } from './testApp';
-import { buildAgentConfig, resolveAgentServerUrl } from '../routes/agentDownload';
-
-const EXE_PATH = path.join(__dirname, '..', '..', 'agent-dist', 'respawn-agent.exe');
+import { agentExePath, buildAgentConfig, resolveAgentServerUrl } from '../routes/agentDownload';
 
 const app = createTestApp();
-const exeExists = fs.existsSync(
-  path.join(__dirname, '..', '..', 'agent-dist', 'respawn-agent.exe')
-);
+let stubDistDir: string;
 let playerId: string;
+
+before(() => {
+  stubDistDir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-agent-dist-'));
+  fs.writeFileSync(path.join(stubDistDir, 'respawn-agent.exe'), 'stub agent executable');
+  process.env.AGENT_DIST_DIR = stubDistDir;
+});
+
+after(() => {
+  delete process.env.AGENT_DIST_DIR;
+  fs.rmSync(stubDistDir, { recursive: true, force: true });
+});
 
 test('buildAgentConfig defaults trackActivity to off', () => {
   const config = buildAgentConfig('http://192.168.1.50:3000', 'the-key', undefined);
@@ -42,6 +54,13 @@ test('resolveAgentServerUrl prefers the configured public URL', () => {
   assert.equal(resolveAgentServerUrl('https', 'lan.example', ''), 'https://lan.example');
 });
 
+test('agentExePath honours AGENT_DIST_DIR and falls back to the shipped directory', () => {
+  assert.equal(agentExePath(), path.join(stubDistDir, 'respawn-agent.exe'));
+  delete process.env.AGENT_DIST_DIR;
+  assert.match(agentExePath(), /agent-dist[/\\]respawn-agent\.exe$/);
+  process.env.AGENT_DIST_DIR = stubDistDir;
+});
+
 test('setup: a player', async () => {
   const p = await request(app).post('/api/players').send({ name: 'Download Tester' });
   playerId = p.body.id;
@@ -57,7 +76,7 @@ test('GET /api/agent-download 404s for an unknown player', async () => {
   assert.equal(res.status, 401);
 });
 
-test('GET /api/agent-download streams a ZIP (or a clear 503 while the exe is missing)', async () => {
+test('GET /api/agent-download streams a real ZIP named after the player', async () => {
   const res = await request(app)
     .get(`/api/agent-download?playerId=${playerId}`)
     .buffer(true)
@@ -67,34 +86,23 @@ test('GET /api/agent-download streams a ZIP (or a clear 503 while the exe is mis
       r.on('end', () => cb(null, Buffer.concat(chunks)));
     });
 
-  if (exeExists) {
-    assert.equal(res.status, 200);
-    assert.equal(res.headers['content-type'], 'application/zip');
-    assert.match(res.headers['content-disposition'] ?? '', /Respawn-Agent-Download_Tester\.zip/);
-    // ZIP local-file-header magic ("PK\x03\x04") proves a real archive got
-    // streamed, not an error page with ZIP headers.
-    assert.equal((res.body as Buffer).subarray(0, 4).toString('binary'), 'PK\x03\x04');
-  } else {
-    assert.equal(res.status, 503);
-    assert.match(JSON.parse((res.body as Buffer).toString()).error, /agent-dist/);
-  }
+  assert.equal(res.status, 200);
+  assert.equal(res.headers['content-type'], 'application/zip');
+  assert.match(res.headers['content-disposition'] ?? '', /Respawn-Agent-Download_Tester\.zip/);
+  // ZIP local-file-header magic ("PK\x03\x04") proves a real archive got
+  // streamed, not an error page with ZIP headers.
+  assert.equal((res.body as Buffer).subarray(0, 4).toString('binary'), 'PK\x03\x04');
 });
 
 test('GET /api/agent-download returns a clean 503 when the exe is not deployed', async () => {
-  // Whether this repo happens to ship a prebuilt exe or not, the "not
-  // deployed yet" branch must behave the same way — stub existsSync so it's
-  // exercised deterministically regardless of the actual repo state.
-  const originalExistsSync = fs.existsSync;
-  fs.existsSync = ((p: fs.PathLike) => {
-    if (p === EXE_PATH) return false;
-    return originalExistsSync(p);
-  }) as typeof fs.existsSync;
-
+  const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'respawn-agent-dist-empty-'));
+  process.env.AGENT_DIST_DIR = emptyDir;
   try {
     const res = await request(app).get(`/api/agent-download?playerId=${playerId}`);
     assert.equal(res.status, 503);
     assert.match(res.body.error, /agent-dist\/respawn-agent\.exe fehlt/);
   } finally {
-    fs.existsSync = originalExistsSync;
+    process.env.AGENT_DIST_DIR = stubDistDir;
+    fs.rmSync(emptyDir, { recursive: true, force: true });
   }
 });

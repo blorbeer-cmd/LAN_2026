@@ -235,7 +235,17 @@ class E2EDiagnosticRun {
   }
 }
 
+// Playwright's implicit default is 30 s. Nothing in this suite legitimately
+// takes that long: the slowest observed browser step runs well under ten
+// seconds even with six files sharing the runner. A 30 s cap therefore only
+// delayed real failures and reduced every one of them to the same
+// "Timeout 30000ms exceeded" with no hint of how far off the step actually
+// was. This is a diagnosis budget, not a stability knob — raising it is never
+// the answer to a flake (see TESTING.md rule 5).
+export const E2E_DEFAULT_TIMEOUT_MS = 15_000;
+
 export async function trackE2EContext(context: BrowserContext, label: string): Promise<void> {
+  context.setDefaultTimeout(E2E_DEFAULT_TIMEOUT_MS);
   await activeRun?.trackContext(context, label);
 }
 

@@ -108,6 +108,14 @@ function syncArcadeStylesheet(entry) {
 let lastVoteRound = null;
 let voteRealtimeRefreshVersion = 0;
 
+// Both the initial snapshot and every reconnect refresh land here, so the
+// published boot state can never drift from the flag it mirrors.
+function markPlayerDataReady() {
+  playerDataReady = true;
+  const app = document.getElementById('app');
+  if (app) app.dataset.playerData = 'ready';
+}
+
 async function runSharedRefresh() {
   // Give the socket echo and the mutation response one task window to meet.
   // Every signal received while the requests are in flight marks the batch
@@ -180,16 +188,85 @@ function syncDesktopNavigationActiveState() {
     ?.classList.toggle('needs-setup', !getMyId());
 }
 
-function desktopNavButtonHtml(entry) {
-  const target = entry.action
-    ? `data-desktop-action="${entry.action}"`
-    : `data-view="${entry.view}"`;
-  return `<button type="button" class="desktop-nav-btn" ${target} aria-label="${entry.label}">
-    <span class="desktop-nav-icon">${icon(domainIcon(entry.iconKey))}</span>
-    <span class="desktop-nav-label">${entry.label}</span>
-  </button>`;
+function desktopNavKey(entry) {
+  return entry.action ? `action:${entry.action}` : `view:${entry.view}`;
 }
 
+function desktopNavKeyOfButton(button) {
+  return button.dataset.desktopAction
+    ? `action:${button.dataset.desktopAction}`
+    : `view:${button.dataset.view}`;
+}
+
+function createDesktopNavButton() {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'desktop-nav-btn';
+  const iconElement = document.createElement('span');
+  iconElement.className = 'desktop-nav-icon';
+  const labelElement = document.createElement('span');
+  labelElement.className = 'desktop-nav-label';
+  button.append(iconElement, labelElement);
+  return button;
+}
+
+function syncDesktopNavButton(button, entry) {
+  if (entry.action) {
+    button.dataset.desktopAction = entry.action;
+    delete button.dataset.view;
+  } else {
+    button.dataset.view = entry.view;
+    delete button.dataset.desktopAction;
+  }
+  button.setAttribute('aria-label', entry.label);
+  if (button.dataset.iconKey !== entry.iconKey) {
+    button.querySelector('.desktop-nav-icon').innerHTML = icon(domainIcon(entry.iconKey));
+    button.dataset.iconKey = entry.iconKey;
+  }
+  const labelElement = button.querySelector('.desktop-nav-label');
+  if (labelElement.textContent !== entry.label) labelElement.textContent = entry.label;
+  return button;
+}
+
+// Places `entries` as the trailing children of `container`, reusing whichever
+// button an earlier render already built for the same target. append() moves
+// an existing node rather than recreating it, so a button that survives the
+// change keeps its identity — see renderDesktopNavigation() for why that is
+// the whole point. `keepFirst` is the group heading, which is not an entry.
+function reconcileDesktopNavEntries(container, entries, pool, keepFirst) {
+  const buttons = entries.map((entry) =>
+    syncDesktopNavButton(pool.get(desktopNavKey(entry)) ?? createDesktopNavButton(), entry));
+  for (const child of [...container.children]) {
+    if (child !== keepFirst && !buttons.includes(child)) child.remove();
+  }
+  container.append(...buttons);
+}
+
+// One delegated listener on the rail itself. Per-button listeners had to be
+// re-attached after every rebuild, which is exactly what tied them to the
+// node replacement this function no longer performs.
+function wireDesktopNavigation(root) {
+  if (root.dataset.wired === '1') return;
+  root.dataset.wired = '1';
+  root.addEventListener('click', (event) => {
+    const button = event.target.closest('.desktop-nav-btn');
+    if (!button || !root.contains(button)) return;
+    if (button.dataset.desktopAction === 'feedback') {
+      openFeedbackModal(lastSubstantiveView);
+      return;
+    }
+    if (button.dataset.view) switchView(button.dataset.view, { localRoute: null });
+  });
+}
+
+// Navigation is chrome, not view content: it has to survive a re-render that
+// happens while a finger is already down on one of its buttons. Replacing the
+// rail's innerHTML detached that button between pointerdown and pointerup, and
+// a click event needs one common target for both — so the tap was silently
+// dropped. The window opens on every signature change, most reliably right
+// after the initial snapshot resolves and the admin role appears, which is
+// also when a user is most likely to be reaching for the nav. Reconcile in
+// place instead: surviving buttons keep their identity and only move.
 function renderDesktopNavigation() {
   const desktopNav = desktopNavItemsForEvent(state.activeEvent, {
     isAdmin: currentPlayerHasAdminRole(),
@@ -197,20 +274,44 @@ function renderDesktopNavigation() {
   const root = document.querySelector('.desktop-nav');
   const main = document.getElementById('desktop-nav-main');
   const utilities = document.getElementById('desktop-nav-utilities');
+  wireDesktopNavigation(root);
   const signature = JSON.stringify(desktopNav);
   if (root.dataset.signature !== signature) {
-    main.innerHTML = desktopNav.groups.map((group) => `
-      <div class="desktop-nav-group" data-desktop-nav-group="${group.key}">
-        ${group.label ? `<span class="desktop-nav-heading">${group.label}</span>` : ''}
-        ${group.entries.map(desktopNavButtonHtml).join('')}
-      </div>`).join('');
-    utilities.innerHTML = desktopNav.utilities.map(desktopNavButtonHtml).join('');
-    root.dataset.signature = signature;
-    root.querySelectorAll('.desktop-nav-btn[data-view]').forEach((button) => {
-      button.addEventListener('click', () => switchView(button.dataset.view, { localRoute: null }));
+    // Collect before touching the DOM: gaining the admin role regroups the
+    // rail, so the same button can move between groups and must come through
+    // that move as the same node.
+    const pool = new Map();
+    for (const button of root.querySelectorAll('.desktop-nav-btn')) {
+      pool.set(desktopNavKeyOfButton(button), button);
+    }
+    const groups = desktopNav.groups.map((group) => {
+      let element = main.querySelector(`[data-desktop-nav-group="${group.key}"]`);
+      if (!element) {
+        element = document.createElement('div');
+        element.className = 'desktop-nav-group';
+        element.dataset.desktopNavGroup = group.key;
+      }
+      let heading = element.querySelector('.desktop-nav-heading');
+      if (group.label) {
+        if (!heading) {
+          heading = document.createElement('span');
+          heading.className = 'desktop-nav-heading';
+          element.prepend(heading);
+        }
+        heading.textContent = group.label;
+      } else {
+        heading?.remove();
+        heading = null;
+      }
+      reconcileDesktopNavEntries(element, group.entries, pool, heading);
+      return element;
     });
-    root.querySelector('[data-desktop-action="feedback"]')
-      ?.addEventListener('click', () => openFeedbackModal(lastSubstantiveView));
+    for (const child of [...main.children]) {
+      if (!groups.includes(child)) child.remove();
+    }
+    main.append(...groups);
+    reconcileDesktopNavEntries(utilities, desktopNav.utilities, pool, null);
+    root.dataset.signature = signature;
   }
   syncDesktopNavigationActiveState();
 }
@@ -731,7 +832,7 @@ function wireSocket() {
       invalidateViewsAfterReconnect(VIEW_REGISTRY);
       await refreshGroupContext({ throwOnError: true });
       await Promise.all([loadAll(), refreshNotificationBanner({ throwOnError: true })]);
-      playerDataReady = true;
+      markPlayerDataReady();
       if (appReady) renderCurrentAfterPlayerDataLoad();
     },
     onRecovered: () => {
@@ -999,7 +1100,13 @@ function wireSocket() {
 
 async function main() {
   await ensureLogin();
-  document.getElementById('app').hidden = false;
+  const app = document.getElementById('app');
+  app.hidden = false;
+  // The shell is deliberately interactive before the first central snapshot
+  // arrives (see initialDataLoad below). Publish which of the two states it is
+  // in, so anything that genuinely depends on the roster - the onboarding tour,
+  // and the browser tests - can wait for a state instead of guessing a delay.
+  app.dataset.playerData = 'loading';
   await initGroupContext();
   wireNav();
   initGlobalSearch((entry) => {
@@ -1032,12 +1139,14 @@ async function main() {
   // request fails temporarily (or keeps retrying in the background).
   const initialDataLoad = loadAll()
     .then(() => {
-      playerDataReady = true;
+      markPlayerDataReady();
       renderEventContextSwitcher();
       syncFeatureNavigation();
       if (appReady) renderCurrentAfterPlayerDataLoad();
     })
     .catch((error) => {
+      const app = document.getElementById('app');
+      if (app) app.dataset.playerData = 'failed';
       if (error?.status !== 401) showToast('Daten konnten noch nicht geladen werden – neuer Versuch läuft.', { error: true });
     });
   // Start the initial snapshot before opening the socket. This gives it the

@@ -163,6 +163,17 @@ jobs:
             Änderung verursachte Fehler, Regressionen, Sicherheitsprobleme, Zustandskonflikte und
             relevante Testlücken.
 
+            Teständerungen prüfst du mit derselben Strenge wie Produktionscode und in beide
+            Richtungen (Punkt 8 aus .github/agent-pipeline/review-session-prompt.md): mehr Tests,
+            mehr Assertions oder höhere Coverage sind kein Qualitätsgewinn. Melde redundante
+            Abdeckung, E2E für Verhalten, das ein Unit- oder Integrationstest zuverlässig beweist,
+            Pauschalwartezeiten, aufgeblähte Timeouts, unkontrollierte Zeit- oder Zufallsquellen,
+            implementierungsgekoppelte Assertions und Mocks, die die Produktionsimplementierung nur
+            nachbauen — ausgenommen die in server/TESTING.md ausdrücklich zugelassenen Fälle.
+            Verlange zusätzliche Tests nicht allein deshalb, weil ein geänderter Zweig keine
+            direkte Abdeckung hat. Testqualitäts-Findings erhalten `low`; `medium` nur bei belegtem
+            falschem Vertrauen, belegtem Flake-Risiko oder relevanter Laufzeitwirkung.
+
             Technischer Hinweis zu review.diff:
             - Die Datei ist die vollständige stdout-Ausgabe von `git diff` und besitzt absichtlich
               weder eine Diff-Fußzeile noch eine besondere Abschlussmarke.

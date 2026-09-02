@@ -686,6 +686,10 @@ test('Challenge Rush holds the preview switch across a pause and completes it af
     let switchedWhilePaused = false;
     const onTrial = (payload: { trial?: { phase?: string } }) => { if (payload.trial?.phase === 'input') switchedWhilePaused = true; };
     socket.on('challenge-rush:trial', onTrial);
+    // Negative assertion window (TESTING.md rule 4): no trial may arrive at
+    // all, so nothing can be awaited. 150 ms is three times the 50 ms preview
+    // length of this profile, i.e. well past when an unpaused match would have
+    // pushed the input phase.
     await sleep(150);
     socket.off('challenge-rush:trial', onTrial);
     assert.equal(switchedWhilePaused, false, 'a paused match must not advance the memorize phase');
@@ -721,6 +725,8 @@ test('Challenge Rush stops pushing preview trials once the match has ended', asy
     let pushedAfterEnd = false;
     const onTrial = () => { pushedAfterEnd = true; };
     socket.on('challenge-rush:trial', onTrial);
+    // Negative assertion window (TESTING.md rule 4): same budget as above —
+    // an armed timer would have fired well inside it.
     await sleep(150);
     socket.off('challenge-rush:trial', onTrial);
     assert.equal(pushedAfterEnd, false, 'a finished match must not keep an armed preview timer');

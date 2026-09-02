@@ -6,6 +6,54 @@ Maßstab: die verbindlichen Test-Design-Regeln in [`server/TESTING.md`](../../se
 Reiner Analyseauftrag. Es wurde kein Test, kein Produktionscode und keine Testkonfiguration
 geändert; die einzige Änderung dieses Arbeitspakets ist dieses Dokument.
 
+## 0. Umsetzungsstand (Nachtrag 2026-09-01)
+
+Der Bericht selbst bleibt als Momentaufnahme des Bestands unverändert. Dieser Abschnitt hält fest,
+was daraufhin tatsächlich geändert wurde.
+
+| Finding | Stand | Umsetzung |
+|---|---|---|
+| P1-1 Retry-Schleifen | behoben | `app.js` gleicht die Desktop-Navigation in place ab statt sie zu ersetzen (`renderDesktopNavigation`, delegierter Listener); alle drei Retry-Schleifen entfernt |
+| P1-2 Schlaf-Pausen nach Login | behoben | `#app[data-player-data]` publiziert `loading`/`ready`/`failed`; `waitForPlayerData()` ersetzt sechs feste Pausen |
+| P1-3 PayPal-Handoff-Flake | **offen** | Ursache nicht belegt; unverändert |
+| P2-1 Arcade-Countdowns | behoben | `ARCADE_FAST_TIMERS` in `timing.ts`, `npm test` setzt es; `END_REVEAL_MS` zentralisiert |
+| P2-2 `api.agentDownload` | behoben | `AGENT_DIST_DIR` + lazy `agentExePath()`; Test packt einen Stub, beide Zweige unbedingt geprüft |
+| P2-3 `openView`-Pausen | behoben | wartet auf `#view-container[data-view=…]`, Options-Schleife auf die Antwort |
+| P2-4 Doppel-Duplikat | behoben | Blobby-Doppel-Browsertest entfernt, Begründung im Code |
+| P2-5 Scribble-Flake | bewusst offen | vermutlich durch #528 behoben; erst nachbeobachten |
+| P2-6 30-s-Standardtimeout | behoben | `E2E_DEFAULT_TIMEOUT_MS` (15 s) je registriertem Kontext; 4-s-Adhoc-Werte entfernt |
+| P2-7 Geometrie-Assertions | teilweise | die beiden exakten Rect-Vergleiche haben jetzt 1 px Toleranz; DOM-Reihenfolge-Assertions unverändert |
+| P3-1 `phase5eIsolation` | behoben | Settle-Pause an das positive Ereignis gekoppelt; E2E-Definition in `TESTING.md` korrigiert |
+| P3-2 `flows.fixture.ts` aufteilen | bewusst offen | laut Bericht ein eigener PR |
+| P3-3 `format.test.js` | behoben | literale Erwartung statt Nachbau der Implementierung |
+| P3-4 `waitForAction` | behoben | `Promise.race` zweier `waitFor` statt 280×25 ms Polling; Klick-Taktung unverändert |
+| P3-5 Katalogdurchlauf | **offen** | 24,2 s unverändert; Messung des `sleep(35)`-Anteils steht aus |
+| R-1 Review-Launcher | behoben | `DEFAULT_FOCUS` risikobasiert, Punkt 8 und die `low`-Voreinstellung in den erzeugten Prompt übernommen |
+| R-2 Review-Workflows | behoben | beide Prompts tragen Punkt 8 und die Schweregrad-Einordnung |
+| R-3 Ausnahme aus Regel 4 | behoben | in Punkt 8 ergänzt |
+| R-4 Negativfenster | behoben | Regel 4 um den Fall erweitert; fünf Stellen im Code entsprechend benannt |
+| R-5 E2E-Definition | behoben | Ausnahme in `TESTING.md` dokumentiert |
+
+Gemessene Wirkung auf den Unit-/Integrationslauf (`node --test`, dieselbe Maschine):
+
+| | vorher | nachher |
+|---|---|---|
+| gesamter gemessener Schritt | 79,9 s | **54,9 s** |
+| `api.battleship` | 19,5 s | 1,2 s |
+| `api.scribbleThumbsAndFavorites` | 16,2 s | 4,5 s |
+| `api.agentDownload` | 14,9 s | 0,7 s |
+| `api.tetrisArena` | 7,4 s | 1,4 s |
+| `api.arcadeMatchLeave` | 7,0 s | 1,1 s |
+| `api.blobbyMultiplayer` | 6,9 s | 1,0 s |
+| `api.pongMultiplayer` | 6,8 s | 1,0 s |
+| `arcade.snakeArena` | 3,9 s | 1,0 s |
+
+Unverändert: `api.challengeRush` (24,2 s — P3-5 offen) und `db.migrations` (18,2 s, nicht untersucht).
+
+Die Browser-E2E-Suiten konnten lokal nicht ausgeführt werden (kein Chromium in der Arbeitsumgebung).
+Alle E2E-Änderungen sind ausschließlich durch Typecheck, Lint und Codeanalyse abgesichert; CI ist
+dafür die eigentliche Prüfung.
+
 ## 1. Datenbasis
 
 Belastbare Messungen statt Schätzungen, erhoben aus CI-Läufen auf `main` und aus einem lokalen

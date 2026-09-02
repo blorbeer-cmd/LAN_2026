@@ -152,6 +152,25 @@ Prüfschwerpunkte:
 
 ${focus}
 
+Teständerungen (Punkt 8 aus .github/agent-pipeline/review-session-prompt.md):
+
+- Prüfe sie mit derselben Strenge wie Produktionscode und in beide Richtungen. Mehr Tests, mehr
+  Assertions oder höhere Coverage sind kein Qualitätsgewinn. Bestimme für jeden wesentlich neuen
+  oder geänderten Test, ob er gegenüber der bestehenden Suite zusätzliche Fehlererkennung liefert.
+- Melde insbesondere redundante Abdeckung, E2E-Tests für Verhalten, das ein Unit- oder
+  Integrationstest zuverlässig beweist, Pauschalwartezeiten, aufgeblähte Timeouts, geteilten
+  veränderlichen Zustand und Reihenfolgeabhängigkeiten, unkontrollierte Zeit- oder Zufallsquellen,
+  implementierungsgekoppelte Assertions sowie Mocks, die die Produktionsimplementierung nur
+  nachbauen.
+- Ausgenommen sind die in server/TESTING.md ausdrücklich zugelassenen Fälle: die absichtlich
+  zustandsbehafteten E2E-Owner (innerhalb eines Owner-Prozesses sind geteilter Zustand und
+  Reihenfolgeabhängigkeit zulässig) sowie Wartezeiten, die eine echte produktive Frist oder ein
+  benanntes Negativfenster verstreichen lassen.
+- Löschen, Zusammenführen, Vereinfachen oder das Verschieben auf eine niedrigere Testebene ist eine
+  zulässige Empfehlung, solange relevante Abdeckung erhalten bleibt. Bei Flakes die vermutete
+  Ursache nennen, nie Retries, Sleeps, größere Timeouts oder schwächere Assertions als
+  Hauptlösung empfehlen.
+
 Bewertungsregeln:
 
 - Melde nur konkrete, durch den Diff verursachte und vom Autor behebbare Findings. Keine
@@ -168,6 +187,9 @@ Bewertungsregeln:
   - medium: realer Fehler in begrenztem Pfad oder wesentliche Testlücke; blockiert bis behoben oder
     fachlich überzeugend widerlegt.
   - low: kleiner, realer Defekt; nicht für Geschmacksfragen verwenden.
+  - Testqualitäts-Findings sind grundsätzlich \`low\`. \`medium\` nur bei belegtem falschem Vertrauen
+    (der Test kann die beanspruchte Regression nicht erkennen), belegtem Flake-Risiko oder
+    relevanter Laufzeitwirkung.
 - Findest du keine Findings, sage das ausdrücklich. Ein positives Urteil gilt nur für den exakt
   geprüften Head-SHA.
 
@@ -220,8 +242,9 @@ export const DEFAULT_FOCUS = `- Korrektheit, Regressionen, Zustandskonflikte, Ne
 - Authentifizierung, Admin-Rechte, Gruppen- und Mandantengrenzen, LAN-/Loopback-Bindung.
 - Datenverlust und riskante Datenbankmigrationen.
 - Escaping von Nutzerinhalten vor HTML-Ausgabe und Parametrisierung dynamischer SQL-Werte.
-- Testlücken: Happy Path, relevante Validierungsfehler und Zustandskonflikte für jede geänderte
-  Logik; sind neue Tests echte Zusicherungen oder Tautologien?
+- Testlücken risikobasiert: nur, wenn der Suite sonst eine konkrete relevante Regression
+  entginge — nicht, weil ein geänderter Zweig keine eigene Abdeckung hat. Sind neue Tests echte
+  Zusicherungen oder Tautologien?
 - Wurden bestehende Tests durch geänderte gemeinsame Fixtures still entschärft?
 - Widersprüche zwischen Dokumentation und tatsächlichem Verhalten, auch zwischen Dokumenten.
 - Bei UI/UX-Änderungen zusätzlich: responsive Zustände, Tastaturbedienung, Barrierefreiheit,

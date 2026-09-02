@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import type { BrowserContext } from 'playwright';
+import type { BrowserContext, Page } from 'playwright';
 
 export const E2E_ADMIN_NAME = 'E2E Bootstrap Admin';
 export const E2E_ADMIN_PASSWORD = 'e2e-bootstrap-admin-password';
@@ -101,4 +101,16 @@ export async function addSessionCookie(context: BrowserContext, baseUrl: string,
       url: baseUrl,
     },
   ]);
+}
+
+// The shell unhides as soon as the auth gate resolves, but main() then loads
+// the central snapshot in the background and only afterwards re-renders the
+// current view and rebuilds the navigation. Everything that reads the roster —
+// Profile, the admin tools, the desktop rail — is only trustworthy from that
+// point on. app.js publishes the transition as #app[data-player-data]; waiting
+// for it replaces the fixed settle delays this suite used to sprinkle after
+// every login, which guessed at a duration instead of observing the state.
+export async function waitForPlayerData(page: Page): Promise<void> {
+  await page.waitForSelector('#app:not([hidden])');
+  await page.waitForSelector('#app[data-player-data="ready"]');
 }

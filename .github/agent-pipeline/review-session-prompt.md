@@ -100,10 +100,12 @@ Unabhängigkeits- und Sicherheitsregeln:
    Tests, mehr Assertions oder höhere Coverage sind kein Qualitätsgewinn. Bestimme für jeden
    wesentlich neuen oder geänderten Test, ob er gegenüber der bestehenden Suite zusätzliche
    Fehlererkennung liefert. Melde insbesondere redundante Abdeckung, E2E-Tests für Verhalten, das
-   ein Unit- oder Integrationstest zuverlässig beweist, Pauschalwartezeiten, aufgeblähte Timeouts,
-   geteilten veränderlichen Zustand und Reihenfolgeabhängigkeiten außerhalb der Ausnahme für die
-   absichtlich zustandsbehafteten E2E-Owner in `server/TESTING.md` (innerhalb eines Owner-Prozesses
-   sind beide dort ausdrücklich zulässig), unkontrollierte Zeit- oder Zufallsquellen,
+   ein Unit- oder Integrationstest zuverlässig beweist, Pauschalwartezeiten außerhalb der Ausnahme
+   aus Regel 4 (eine echte produktive Frist oder ein im Kommentar benanntes Negativfenster),
+   aufgeblähte Timeouts, geteilten veränderlichen Zustand und Reihenfolgeabhängigkeiten außerhalb
+   der Ausnahme für die absichtlich zustandsbehafteten E2E-Owner in `server/TESTING.md` (innerhalb
+   eines Owner-Prozesses sind beide dort ausdrücklich zulässig), unkontrollierte Zeit- oder
+   Zufallsquellen,
    implementierungsgekoppelte Assertions sowie Mocks, die die Produktionsimplementierung nur
    nachbauen. Löschen, Zusammenführen, Vereinfachen oder das Verschieben auf eine niedrigere
    Testebene ist eine zulässige Empfehlung, solange relevante Abdeckung erhalten bleibt. Bei Flakes

@@ -11,11 +11,12 @@ import type { ChildProcess } from 'child_process';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { laidOutRect } from './canvasHelpers';
 import {
+  E2E_KIOSK_TOKEN,
   addSessionCookie,
   authenticatedServerEnv,
   createE2EAccount,
-  E2E_KIOSK_TOKEN,
   loginE2EAdmin,
+  waitForPlayerData,
 } from './authHelpers';
 import { runWithE2EDiagnostics, trackE2EContext } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
@@ -110,26 +111,23 @@ async function openHomeAs(playerId: string): Promise<Actor> {
 async function clickArcadeDestination(page: Page): Promise<void> {
   const desktopArcade = page.locator('.desktop-nav-btn[data-view="arcade"]:visible');
   if (await desktopArcade.count()) {
-    await desktopArcade.click({ timeout: 4_000 });
+    await desktopArcade.click();
     return;
   }
-  await page.click('.nav-btn[data-view="more"]:visible', { timeout: 4_000 });
-  await page.click('[data-navigate="arcade"]', { timeout: 4_000 });
+  await page.click('.nav-btn[data-view="more"]:visible');
+  await page.click('[data-navigate="arcade"]');
 }
 
+// No retry loop any more. The three attempts here used to paper over a real
+// defect: a players:changed refresh rebuilt the navigation and detached the
+// button between resolving it and clicking it — which drops a real user's tap
+// the same way. app.js now reconciles the rail in place and publishes when the
+// roster has landed, so waiting for that state is enough and a failure here is
+// a genuine one again.
 async function navigateToArcade(page: Page): Promise<void> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    // Freshly created players still broadcast players:changed refreshes that
-    // can replace the mobile "Mehr" view or a direct desktop item mid-click.
-    await clickArcadeDestination(page).catch(() => undefined);
-    try {
-      await page.waitForSelector('.arcade-tiles', { timeout: 4_000 });
-      return;
-    } catch {
-      // A player refresh can replace More while the transition is in flight.
-    }
-  }
-  throw new Error('could not navigate to Arcade');
+  await waitForPlayerData(page);
+  await clickArcadeDestination(page);
+  await page.waitForSelector('.arcade-tiles');
 }
 
 function activeView(page: Page): Promise<string | undefined> {
@@ -137,19 +135,10 @@ function activeView(page: Page): Promise<string | undefined> {
 }
 
 async function openArcadeGame(page: Page, game: string, readySelector: string): Promise<void> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    if ((await page.locator(readySelector).count()) > 0) return;
-    await page.waitForSelector('.arcade-tiles', { timeout: 4_000 });
-    await page.click(`[data-game="${game}"]`, { timeout: 4_000 }).catch(() => undefined);
-    try {
-      await page.waitForSelector(readySelector, { timeout: 4_000 });
-      return;
-    } catch {
-      // A realtime refresh can replace the launcher during the click. Retry
-      // from the stable Arcade tile view instead of waiting for a stale node.
-    }
-  }
-  throw new Error(`could not open the ${game} game view`);
+  if ((await page.locator(readySelector).count()) > 0) return;
+  await page.waitForSelector('.arcade-tiles');
+  await page.click(`[data-game="${game}"]`);
+  await page.waitForSelector(readySelector);
 }
 
 async function startQuizMatch(host: Page, guest: Page): Promise<void> {
@@ -806,55 +795,16 @@ arcadeTest('multiplayer', 'Tetris Arena supports four ready players with one lar
   }
 });
 
-arcadeTest('multiplayer', 'Blobby Doppel: mobile lobby assigns two full teams and starts four players', async () => {
-  const players = await Promise.all([
-    createPlayer('Blobby Blau Host'),
-    createPlayer('Blobby Blau Zwei'),
-    createPlayer('Blobby Pink Eins'),
-    createPlayer('Blobby Pink Zwei'),
-  ]);
-  const actors = await Promise.all(players.map((player) => openArcadeAs(player.id)));
-
-  try {
-    for (const actor of actors) {
-      await actor.page.click('[data-game="blobby"]');
-      await actor.page.waitForSelector('#blobby-create');
-    }
-    const [host, blue, pinkA, pinkB] = actors;
-    assert.equal(await host.page.locator('#blobby-mode [data-arcade-mode="duel"]').getAttribute('aria-pressed'), 'true');
-    await host.page.click('#blobby-mode [data-arcade-mode="doubles"]');
-    assert.equal(await host.page.locator('#blobby-mode [data-arcade-mode="doubles"]').getAttribute('aria-pressed'), 'true');
-    await host.page.click('#blobby-create');
-    await host.page.waitForSelector('text=Team Blau');
-    await host.page.waitForSelector('text=Team Pink');
-    await host.page.waitForSelector('#blobby-start:disabled');
-
-    await blue.page.waitForSelector('[data-blobby-team="left"]');
-    await blue.page.click('[data-blobby-team="left"]');
-    await blue.page.waitForSelector('[data-blobby-ready][data-ready="1"]');
-    await blue.page.click('[data-blobby-ready][data-ready="1"]');
-
-    for (const actor of [pinkA, pinkB]) {
-      await actor.page.waitForSelector('[data-blobby-team="right"]');
-      await actor.page.click('[data-blobby-team="right"]');
-      await actor.page.waitForSelector('[data-blobby-ready][data-ready="1"]');
-      await actor.page.click('[data-blobby-ready][data-ready="1"]');
-    }
-
-    await host.page.waitForSelector('#blobby-start:not([disabled])');
-    assert.equal(await host.page.locator('.arcade-lobby-member-row .player-name').count(), 4);
-    await host.page.click('#blobby-start');
-
-    for (const actor of actors) {
-      await actor.page.waitForSelector('#blobby-canvas');
-      await actor.page.waitForSelector('.arcade-player-tile');
-      assert.equal(await actor.page.locator('.arcade-player-tile').count(), 4);
-    }
-  } finally {
-    await Promise.all(actors.map((actor) => actor.context.close()));
-  }
-});
-
+// The Blobby doubles walkthrough used to sit here. It drove the same shared
+// browser modules as the Pong one below — lobbyReady.js (mode buttons, team
+// picks, ready toggle) and arcadeUi.js (match roster) — through a second game,
+// for another ~13 s of the Arcade partition. What stays: the Pong walkthrough
+// covers that shared path in the browser and additionally spans both viewports
+// (desktop host, mobile guests); Blobby's own server contract is a separate
+// implementation and keeps its own guard in api.blobbyMultiplayer.test.ts; the
+// shared lobby markup is unit-tested in public/js/arcade/lobbyReady.test.js;
+// and the Blobby browser view stays covered by "joining Pong or Blobby warns
+// and closes the owned lobby first".
 arcadeTest('multiplayer', 'Pong Doppel: mobile and desktop lobbies assign two full teams and start four players', async () => {
   const players = await Promise.all([
     createPlayer('Pong Blau Host'),

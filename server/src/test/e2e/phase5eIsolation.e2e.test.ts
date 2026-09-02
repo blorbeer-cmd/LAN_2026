@@ -97,7 +97,15 @@ test('a socket receives only its subscribed group scope, and an unknown group id
       body: JSON.stringify({ note: 'nur diese Gruppe' }),
     }, groupId);
     assert.equal(changed.status, 200);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    // Wait for the delivery that must happen, then assert on the one that must
+    // not: once the subscribed socket has its event, an unsubscribed socket
+    // that was going to receive anything would already have received it.
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('live:changed never reached the subscribed socket')), 5_000);
+      const settle = () => { clearTimeout(timer); resolve(); };
+      if (browserEvents > 0) settle();
+      else browserSocket.once('live:changed', () => setImmediate(settle));
+    });
     assert.equal(browserEvents, 1);
     assert.equal(agentEvents, 0, 'a socket that never subscribed to a real scope receives nothing (default-deny)');
   } finally {
