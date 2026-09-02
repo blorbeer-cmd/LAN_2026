@@ -133,10 +133,21 @@ async function runSharedRefresh() {
   // The loop only exits on a snapshot this coordinator actually committed, so
   // this is a truthful point to publish readiness from — and it has to, since
   // a refresh that overtakes the initial load leaves that one uncommitted.
+  // Overtaking it also inherits its render obligation: this is then the first
+  // committed snapshot the app ever had, so the current view has never been
+  // drawn from real data and must be rendered even when this refresh itself
+  // was queued render-free (a realtime signal for some other view). Without
+  // that the startup view keeps showing the empty pre-load state until the
+  // next user action.
+  const firstCommit = !playerDataReady;
   markPlayerDataReady();
   renderEventContextSwitcher();
   syncFeatureNavigation();
-  if (sharedRefreshShouldRender) renderCurrent();
+  if (firstCommit) {
+    if (appReady) renderCurrentAfterPlayerDataLoad();
+  } else if (sharedRefreshShouldRender) {
+    renderCurrent();
+  }
 }
 
 function syncFeatureNavigation() {
