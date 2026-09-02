@@ -33,6 +33,7 @@ import { searchSelectHtml, wireSearchSelect } from '../../searchSelect.js';
 import { emptyStateHtml } from '../../emptyState.js';
 import { backButtonHtml } from '../../backButton.js';
 import { localRouteKey } from '../../appRoute.js';
+import { createDeferredInteractiveRender } from '../../deferredInteractiveRender.js';
 
 // The Arcade opens as a launcher: a compact grid of playable game tiles.
 // Picking one reveals that game's lobby below.
@@ -104,13 +105,17 @@ let lastResult = null;
 let quizAnswerHadFocusBeforePause = false;
 let countdownInterval = null;
 let customTarget = '5';
+const deferredArcadeRender = createDeferredInteractiveRender({ trackPointerInteractions: true });
 
 function currentView() {
   return document.getElementById('view-container')?.dataset.view;
 }
 
 function rerenderIfView(ctx, view) {
-  if (currentView() === view) ctx.rerender();
+  if (currentView() !== view) return;
+  const container = document.getElementById('view-container');
+  if (!container || deferredArcadeRender.deferIfNeeded(container, ctx)) return;
+  ctx.rerender();
 }
 
 // The Tetris view lives in its own module; when one of its matches finishes it
@@ -528,7 +533,7 @@ function openLobbyCount(gameId) {
 
 function gameTileHtml(game, active, count) {
   return `
-    <button type="button" class="card arcade-tile ${active === game.id ? 'is-active' : ''} ${game.soon ? 'is-soon' : ''}" data-game="${game.id}" aria-pressed="${active === game.id}">
+    <button type="button" class="card arcade-tile ${active === game.id ? 'is-active' : ''} ${game.soon ? 'is-soon' : ''}" data-game="${game.id}"${active === game.id ? ' aria-current="page"' : ''}>
       <span class="arcade-tile-icon" aria-hidden="true">${game.icon}</span>
       <span class="arcade-tile-name">${escapeHtml(game.name)}</span>
       ${game.soon ? `<span class="badge arcade-tile-state">Bald</span>` : count > 0 ? `<span class="badge arcade-tile-count">${count} offen</span>` : ''}
@@ -596,6 +601,7 @@ function activeGameHtml() {
 }
 
 export function renderArcade(container, ctx) {
+  deferredArcadeRender.observe(container);
   const route = ctx.localRoute();
   const routeKey = localRouteKey(route);
   if (routeKey !== appliedRouteKey) {
@@ -666,7 +672,7 @@ export function renderArcade(container, ctx) {
       const id = btn.dataset.game;
       const def = GAMES.find((g) => g.id === id);
       if (def?.soon) return showToast(`${def.name} kommt bald!`);
-      ctx.navigateLocal(activeGame === id ? null : { kind: 'game', id });
+      ctx.navigateLocal({ kind: 'game', id });
     });
   });
   container.querySelectorAll('[data-watch-match]').forEach((btn) => {

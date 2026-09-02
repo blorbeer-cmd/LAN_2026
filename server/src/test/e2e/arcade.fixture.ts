@@ -260,8 +260,8 @@ arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and s
     await actor.page.goForward();
     await actor.page.waitForSelector('#arcade-active-game-title:has-text("Snake")');
     await actor.page.click('[data-game="snake"]');
-    await actor.page.waitForSelector('#arcade-active-game-title', { state: 'detached' });
-    assert.equal(new URL(actor.page.url()).hash, '#arcade');
+    await actor.page.waitForSelector('#arcade-active-game-title:has-text("Snake")');
+    assert.equal(new URL(actor.page.url()).hash, '#arcade/snake');
 
     await actor.page.click('.nav-btn[data-view="home"]');
     await actor.page.waitForFunction(() => !document.getElementById('arcade-stylesheet'));
@@ -283,11 +283,61 @@ arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and s
     await direct.waitForSelector('#arcade-active-game-title:has-text("Snake")');
     assert.equal(await direct.locator('#arcade-game-back').count(), 0);
     await direct.click('[data-game="snake"]');
-    await direct.waitForSelector('#arcade-active-game-title', { state: 'detached' });
-    assert.equal(new URL(direct.url()).hash, '#arcade');
+    await direct.waitForSelector('#arcade-active-game-title:has-text("Snake")');
+    assert.equal(new URL(direct.url()).hash, '#arcade/snake');
     await direct.close();
   } finally {
     await actor.context.close();
+  }
+});
+
+arcadeTest('navigation', 'a background stats update does not detach an active Arcade tile click', async () => {
+  const player = await createPlayer('Arcade Pointer Host');
+  const host = await openArcadeAs(player.id);
+  let releaseStats!: () => void;
+  const statsReleased = new Promise<void>((resolve) => { releaseStats = resolve; });
+  let statsStarted!: () => void;
+  const statsRequestStarted = new Promise<void>((resolve) => { statsStarted = resolve; });
+  await host.page.route('**/api/arcade/stats', async (route) => {
+    statsStarted();
+    await statsReleased;
+    await route.continue();
+  });
+  try {
+    const navigation = host.page.evaluate(() => {
+      window.dispatchEvent(new Event('respawn:arcade-stats-dirty'));
+      window.dispatchEvent(new Event('respawn:rerender'));
+    });
+    await statsRequestStarted;
+    await navigation;
+    await host.page.waitForSelector('.arcade-tiles');
+    await host.page.waitForSelector('#arcade-stylesheet[data-loaded="true"]', { state: 'attached' });
+
+    const tile = host.page.locator('[data-game="quiz"]');
+    const tileHandle = await tile.elementHandle();
+    assert.ok(tileHandle, 'Quiz tile must be present before the pointer interaction');
+    const rect = await tile.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    });
+    assert.ok(
+      rect.width > 0 && rect.height > 0,
+      `Quiz tile must be visible before the pointer interaction (rect=${JSON.stringify(rect)})`,
+    );
+    await host.page.bringToFront();
+    await host.page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    await host.page.mouse.down();
+
+    const statsResponse = host.page.waitForResponse((response) => response.url().endsWith('/api/arcade/stats') && response.status() === 200);
+    releaseStats();
+    await statsResponse;
+    assert.equal(await tileHandle.evaluate((element) => element.isConnected), true);
+    await host.page.mouse.up();
+
+    await host.page.waitForSelector('#arcade-active-game-title:has-text("Gaming-Quiz")');
+    assert.equal(new URL(host.page.url()).hash, '#arcade/quiz');
+  } finally {
+    await host.context.close();
   }
 });
 
