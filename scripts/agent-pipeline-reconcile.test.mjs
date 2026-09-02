@@ -2147,6 +2147,36 @@ test("the newer of a manual and a workflow-published self-review result wins", (
   assert.equal(newerManual.ready, false);
 });
 
+test("a newer marker outranks an earlier native review whatever the list order", () => {
+  // `fetchSnapshot` passes one array concatenated from the comments and the native reviews, so a
+  // result's position says which list it came from, not when it was published. Without the
+  // timestamps the appended review would win here and open the gate on a superseded pass.
+  const supersedingComment = {
+    ...selfResultComment(HEAD, { verdict: "changes-required", session: "manual-2" }),
+    createdAt: "2026-09-02T13:00:00Z",
+  };
+  const earlierReview = {
+    author: "blorbeer-cmd",
+    authorAssociation: "OWNER",
+    commitSha: HEAD,
+    state: "COMMENTED",
+    submittedAt: "2026-09-02T12:00:00Z",
+    body:
+      `${CODEX_SELF_REVIEW_HEADING}\n\n<!-- agent-pipeline:review-result ${HEAD} mode=self ` +
+      "verdict=pass session=codex-self-run-1 read-only=verified -->",
+  };
+  const readiness = deriveReadiness(
+    codexImplementationSnapshot({
+      labels: [SELF_LABEL],
+      statusCommentBody: decisionRecord(HEAD, "self"),
+      reviewResults: parseReviewResults([supersedingComment, earlierReview]),
+    }),
+    config,
+  );
+  assert.equal(readiness.details.selfResult.sessionId, "manual-2");
+  assert.equal(readiness.ready, false);
+});
+
 test("a self-review with no read-only backing at all does not count", () => {
   const readiness = deriveReadiness(
     readySnapshot({

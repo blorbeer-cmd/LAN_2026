@@ -623,7 +623,10 @@ export function parseReviewResults(comments) {
             : String(comment.body).startsWith(`${CODEX_SELF_REVIEW_HEADING}\n`)
               ? CODEX_SELF_REVIEW_SOURCE
             : null,
-        createdAt: comment.createdAt ?? null,
+        // Native reviews carry `submittedAt` where issue comments carry `createdAt`. Both are the
+        // moment the result became visible, and `latestReviewResult` orders by it, so a review
+        // without this fallback would look older than every comment instead of newer.
+        createdAt: comment.createdAt ?? comment.submittedAt ?? null,
       });
     }
   }
@@ -790,12 +793,36 @@ export function latestReviewResult(
   requiredSource = null,
 ) {
   const allowed = allowedAuthors ?? [];
+  return newestReviewResult(
+    results,
+    (result) =>
+      result.headSha === headSha &&
+      result.mode === mode &&
+      allowed.includes(result.author) &&
+      (!requiredSource || result.source === requiredSource),
+  );
+}
+
+/**
+ * The newest result a caller accepts, by publication time with list position as the tiebreak.
+ *
+ * Position alone cannot answer "newest" here: `fetchSnapshot` hands these helpers one array
+ * concatenated from two separately fetched lists, the issue comments and the native reviews. Its
+ * order is therefore the order of those lists, not of publication, and a manually posted marker
+ * would lose to every native review merely because the reviews were appended last. Ordering by the
+ * published timestamp — the same rule `previousReviewedHead` applies to the same two sources —
+ * restores the intended meaning. Results without a timestamp compare as oldest and keep their
+ * relative order, which is what callers that build results from bodies alone still rely on.
+ */
+function newestReviewResult(results, accepts) {
   let found = null;
+  let foundAt = "";
   for (const result of results ?? []) {
-    if (result.headSha !== headSha || result.mode !== mode) continue;
-    if (!allowed.includes(result.author)) continue;
-    if (requiredSource && result.source !== requiredSource) continue;
+    if (!accepts(result)) continue;
+    const at = result.createdAt ?? "";
+    if (found && at.localeCompare(foundAt) < 0) continue;
     found = result;
+    foundAt = at;
   }
   return found;
 }
@@ -806,21 +833,20 @@ export function latestReviewResult(
  * A `self` review has two legitimate origins: a manually posted marker from one of the
  * implementation provider's own identities (no source heading required), or a structured result
  * from the trusted, credential-read-only workflow (author plus its self-review source heading,
- * exactly like the cross-review publisher). Both are valid evidence, and whichever comment is
- * newest — by iteration order, the same rule `latestReviewResult` uses — wins.
+ * exactly like the cross-review publisher). Both are valid evidence, and whichever result is
+ * newest — by the same rule `latestReviewResult` uses — wins.
  */
 export function latestReviewResultFromAny(results, headSha, mode, candidates) {
-  let found = null;
-  for (const result of results ?? []) {
-    if (result.headSha !== headSha || result.mode !== mode) continue;
-    const eligible = candidates.some(
-      ({ authors, source }) =>
-        (authors ?? []).includes(result.author) && (!source || result.source === source),
-    );
-    if (!eligible) continue;
-    found = result;
-  }
-  return found;
+  return newestReviewResult(
+    results,
+    (result) =>
+      result.headSha === headSha &&
+      result.mode === mode &&
+      candidates.some(
+        ({ authors, source }) =>
+          (authors ?? []).includes(result.author) && (!source || result.source === source),
+      ),
+  );
 }
 
 /** Identities that may publish a review result for a provider: its agent and its human operator. */

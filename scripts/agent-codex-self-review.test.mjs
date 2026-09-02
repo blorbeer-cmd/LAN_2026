@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { existsSync, rmSync, utimesSync } from "node:fs";
 import { test } from "node:test";
 
 import {
+  acquireLock,
   assertCodexExecution,
   attemptRecords,
   CODEX_SELF_REVIEW_ATTEMPT_MARKER,
@@ -11,7 +13,10 @@ import {
   renderReviewBody,
   resultSchema,
   reviewerEnvironment,
+  refreshLock,
+  releaseLock,
   reviewComments,
+  reviewTimeoutMs,
   trustedReviewRequest,
   validateFindingAnchors,
   validateReviewOutput,
@@ -19,6 +24,12 @@ import {
 
 const HEAD = "a".repeat(40);
 const SESSION = "codex-self-run-1";
+
+/** Backdates a held lock so the staleness window can be exercised without waiting. */
+function age(lock, minutes) {
+  const stamp = (Date.now() - minutes * 60 * 1000) / 1000;
+  utimesSync(lock.path, stamp, stamp);
+}
 
 function output(overrides = {}) {
   return {
@@ -218,4 +229,56 @@ test("trusted requests and durable attempt starts are exact-head and identity bo
     { attempt: 1, outcome: "started", code: null },
     { attempt: 1, outcome: "failed", code: "timeout" },
   ]);
+});
+
+test("the lock waits for the configured review timeout, not a fixed one", () => {
+  // The lock decides whether a second invocation may declare the first one dead. Deriving its
+  // window from the same `reviewTimeoutMinutes` the review process runs under is what keeps a
+  // raised timeout from producing two Codex reviews against one head.
+  const configured = reviewTimeoutMs({ reviewTimeoutMinutes: 90 });
+  assert.equal(configured, 90 * 60 * 1000);
+  // A value that cannot be a duration must not turn the lock into a no-op.
+  assert.equal(reviewTimeoutMs({ reviewTimeoutMinutes: "soon" }), 45 * 60 * 1000);
+  assert.equal(reviewTimeoutMs({}), 45 * 60 * 1000);
+
+  // The lock file lives in the shared temp directory and is keyed by repository, pull request and
+  // head, so the process id keeps a leftover from an interrupted run out of this one.
+  const pullNumber = String(process.pid);
+  const held = acquireLock("owner/repo", pullNumber, HEAD, configured);
+  assert.ok(held);
+  try {
+    // 70 minutes in: past the old hardcoded 45+15 window, still inside the configured one.
+    age(held, 70);
+    assert.equal(acquireLock("owner/repo", pullNumber, HEAD, configured), null);
+    assert.ok(acquireLock("owner/repo", pullNumber, HEAD, 45 * 60 * 1000));
+  } finally {
+    rmSync(held.path, { force: true });
+  }
+});
+
+test("the window restarts at the timed subprocess, and only the owner releases the lock", () => {
+  // The timeout bounds the Codex subprocess, not the setup before it. With a timeout shorter than
+  // the grace period, an unrefreshed lock would expire while its own launcher was still working.
+  const short = reviewTimeoutMs({ reviewTimeoutMinutes: 5 });
+  const pullNumber = `${process.pid}-refresh`;
+  const held = acquireLock("owner/repo", pullNumber, HEAD, short);
+  assert.ok(held);
+  try {
+    age(held, 25);
+    refreshLock(held);
+    assert.equal(acquireLock("owner/repo", pullNumber, HEAD, short), null);
+
+    // After a takeover both invocations are alive. The first must not delete the second's lock,
+    // which would admit a third review against the same head.
+    age(held, 25);
+    const taken = acquireLock("owner/repo", pullNumber, HEAD, short);
+    assert.ok(taken);
+    assert.notEqual(taken.token, held.token);
+    releaseLock(held);
+    assert.equal(existsSync(taken.path), true);
+    releaseLock(taken);
+    assert.equal(existsSync(taken.path), false);
+  } finally {
+    rmSync(held.path, { force: true });
+  }
 });
