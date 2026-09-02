@@ -328,16 +328,10 @@ test('Scribble rejoin restores the live drawing and thumb vote, then exposes a b
   }
 });
 
-// A 2-player match — the common Scribble "Duell" size, unlike the 3-player
-// setup above — ends the instant one side drops below the 2-online floor
-// (handlePlayerLeft in scribble.ts), deleting the match entirely. A guess
-// whose acknowledgement was lost to that same disconnect therefore cannot be
-// recovered from a rejoin sync — there is no match left to sync. This is
-// exactly the gap a Cross-Review finding caught in the client's reconnect
-// recovery: the client must also handle rejoin failing outright, not only a
-// successful sync missing the guess.
-test('Scribble rejoin cannot recover a 2-player match that ended while disconnected', async () => {
+test('Scribble keeps a two-player match alive during the reconnect grace period and coalesces stream snapshots', async () => {
   clearLobbyMemberships();
+  const previousGrace = process.env.SCRIBBLE_RECONNECT_GRACE_MS;
+  process.env.SCRIBBLE_RECONNECT_GRACE_MS = '250';
   const httpServer = http.createServer(createTestApp());
   const io = new Server(httpServer);
   installTestSocketIdentity(io);
@@ -349,7 +343,94 @@ test('Scribble rejoin cannot recover a 2-player match that ended while disconnec
   const guestSocket = await connect(baseUrl);
   let rejoinedSocket: ClientSocket | null = null;
   try {
-    const [hostId, guestId] = await makePlayers(baseUrl, ['Duel Host', 'Duel Guest']);
+    const [hostId, guestId] = await makePlayers(baseUrl, ['Grace Host', 'Grace Guest']);
+    const { matchId } = await startMatchAndBeginDrawing(hostSocket, guestSocket, hostId, guestId);
+
+    let streamSnapshots = 0;
+    hostSocket.on('arcade:kiosk:game', (payload: { gameType?: string; matchId?: string; strokes?: unknown[] }) => {
+      if (payload.gameType === 'scribble' && payload.matchId === matchId && payload.strokes?.length) streamSnapshots += 1;
+    });
+    await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        emitAck(hostSocket, 'scribble:stroke', {
+          matchId,
+          playerId: hostId,
+          strokeId: `coalesced-${index}`,
+          color: '#123456',
+          size: 5,
+          erase: false,
+          points: [[index / 20, index / 20]],
+        })
+      )
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(streamSnapshots, 1, 'a rapid stroke burst should produce one full spectator snapshot');
+
+    let ended = false;
+    hostSocket.once('scribble:match:end', () => {
+      ended = true;
+    });
+    const offlinePresence = new Promise<void>((resolve) => {
+      const onPresence = (payload: { playerId: string; online: boolean }) => {
+        if (payload.playerId !== guestId || payload.online) return;
+        hostSocket.off('scribble:presence', onPresence);
+        resolve();
+      };
+      hostSocket.on('scribble:presence', onPresence);
+    });
+    guestSocket.close();
+    await offlinePresence;
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    assert.equal(ended, false, 'a transient disconnect must not end a two-player match immediately');
+
+    rejoinedSocket = await connect(baseUrl);
+    const onlinePresence = new Promise<void>((resolve) => {
+      const onPresence = (payload: { playerId: string; online: boolean }) => {
+        if (payload.playerId !== guestId || !payload.online) return;
+        hostSocket.off('scribble:presence', onPresence);
+        resolve();
+      };
+      hostSocket.on('scribble:presence', onPresence);
+    });
+    const rejoin = await emitAck(rejoinedSocket, 'scribble:rejoin', { matchId, playerId: guestId });
+    await onlinePresence;
+    assert.equal(rejoin.ok, true);
+    assert.equal((rejoin.sync as { phase?: string }).phase, 'drawing');
+    await new Promise((resolve) => setTimeout(resolve, 225));
+    assert.equal(ended, false, 'the cancelled grace timer must not end the restored match later');
+
+    const finished = await emitAck(hostSocket, 'scribble:match:finish', { matchId, playerId: hostId });
+    assert.equal(finished.ok, true);
+  } finally {
+    hostSocket.close();
+    guestSocket.close();
+    rejoinedSocket?.close();
+    io.close();
+    httpServer.close();
+    if (previousGrace === undefined) delete process.env.SCRIBBLE_RECONNECT_GRACE_MS;
+    else process.env.SCRIBBLE_RECONNECT_GRACE_MS = previousGrace;
+  }
+});
+
+// Once the grace period expires, a 2-player match is deleted and rejoin must
+// fail cleanly. The client uses this response to clear any guess whose socket
+// acknowledgement was lost and return to the Arcade launcher.
+test('Scribble rejoin cannot recover a two-player match after the reconnect grace expires', async () => {
+  clearLobbyMemberships();
+  const previousGrace = process.env.SCRIBBLE_RECONNECT_GRACE_MS;
+  process.env.SCRIBBLE_RECONNECT_GRACE_MS = '40';
+  const httpServer = http.createServer(createTestApp());
+  const io = new Server(httpServer);
+  installTestSocketIdentity(io);
+  registerScribbleSockets(io);
+  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+  const baseUrl = `http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;
+
+  const hostSocket = await connect(baseUrl);
+  const guestSocket = await connect(baseUrl);
+  let rejoinedSocket: ClientSocket | null = null;
+  try {
+    const [hostId, guestId] = await makePlayers(baseUrl, ['Expired Host', 'Expired Guest']);
     const { matchId } = await startMatchAndBeginDrawing(hostSocket, guestSocket, hostId, guestId);
 
     const matchEndPromise = waitForEvent(hostSocket, 'scribble:match:end');
@@ -358,12 +439,15 @@ test('Scribble rejoin cannot recover a 2-player match that ended while disconnec
 
     rejoinedSocket = await connect(baseUrl);
     const rejoin = await emitAck(rejoinedSocket, 'scribble:rejoin', { matchId, playerId: guestId });
-    assert.equal(rejoin.ok, false, 'the match no longer exists once the second-to-last player dropped');
+    assert.equal(rejoin.ok, false, 'the match no longer exists after the reconnect grace expires');
   } finally {
     hostSocket.close();
     guestSocket.close();
     rejoinedSocket?.close();
+    io.close();
     httpServer.close();
+    if (previousGrace === undefined) delete process.env.SCRIBBLE_RECONNECT_GRACE_MS;
+    else process.env.SCRIBBLE_RECONNECT_GRACE_MS = previousGrace;
   }
 });
 

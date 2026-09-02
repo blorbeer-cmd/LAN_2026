@@ -55,6 +55,7 @@ let turnExpiresAt = null;
 let paused = false;
 let pausedRemainingMs = null;
 let guessHadFocusBeforePause = false;
+let lastGuessFeedback = null; // { result: 'correct' | 'wrong' | 'rejected', text: string }
 let lastTurnEnd = null; // { word, reason } shown briefly during 'reveal'
 let matchEnded = null; // { winner, scores, drawings } once finished
 // Live thumbs-up: valid for exactly one drawing at a time (whichever is
@@ -69,6 +70,7 @@ let finalFavoriteDrawingId = null;
 
 let tool = { color: SWATCHES[0], size: SIZES[1], mode: 'pen' }; // mode: 'pen' | 'erase' | 'fill'
 let countdownInterval = null;
+let guessSequence = 0;
 
 // DOM refs captured after each render of the match room, used for
 // high-frequency updates that must not go through a full rerender().
@@ -154,12 +156,14 @@ function resetMatchState() {
   turnExpiresAt = null;
   paused = false;
   pausedRemainingMs = null;
+  lastGuessFeedback = null;
   lastTurnEnd = null;
   matchEnded = null;
   thumbsToken = null;
   thumbsCount = 0;
   myThumbActive = false;
   finalFavoriteDrawingId = null;
+  guessSequence = 0;
   stopCountdown();
 }
 
@@ -189,6 +193,13 @@ function updateCountdownBadge() {
   countdownEl.classList.toggle('badge-paused', paused || left <= 5);
   countdownEl.classList.toggle('badge-playing', !paused && left > 5);
   if (!paused && turn?.phase === 'drawing' && left > 0 && left <= 5) playArcadeSound('scribble-tick');
+}
+
+function countdownBadgeHtml() {
+  const left = secondsLeft();
+  const label = paused ? 'Pause' : `${left}s`;
+  const stateClass = paused || left <= 5 ? 'badge-paused' : 'badge-playing';
+  return `<span class="badge ${stateClass}" id="scribble-countdown" role="timer" aria-label="Verbleibende Zeit">${label}</span>`;
 }
 
 function setupCanvas(el) {
@@ -486,14 +497,16 @@ function updateRosterDisplay() {
 }
 
 function wordChoiceHtml() {
-  if (!wordOptions || turn?.phase !== 'choosing' || !isDrawer()) return '';
+  if (turn?.phase !== 'choosing') return '';
+  const prompt = isDrawer() ? 'Wähle ein Wort' : `${escapeHtml(turn.drawer?.name ?? 'Der Zeichner')} wählt ein Wort`;
   return `
     <div class="card stack" style="margin-top:var(--space-3);">
-      <div class="grid">
+      <div class="row-between" style="gap:var(--space-2);"><strong>${prompt}</strong>${countdownBadgeHtml()}</div>
+      ${wordOptions && isDrawer() ? `<div class="grid">
         ${wordOptions
           .map((w) => `<button type="button" class="btn btn-block scribble-word-choice-btn" data-word-id="${w.id}">${escapeHtml(w.word)}</button>`)
           .join('')}
-      </div>
+      </div>` : ''}
     </div>`;
 }
 
@@ -572,10 +585,13 @@ function winnerCelebrationHtml() {
 function guessFormHtml() {
   if (isDrawer() || turn?.phase !== 'drawing') return '';
   return `
-    <form id="scribble-guess-form" class="row" style="margin-top:var(--space-2);">
-      <input type="text" id="scribble-guess-input" autocomplete="off" placeholder="Dein Tipp" style="flex:1;" ${paused ? 'disabled' : ''} />
-      <button type="submit" class="btn btn-primary" ${paused ? 'disabled' : ''}>Raten</button>
-    </form>`;
+    <div class="stack" style="margin-top:var(--space-2);">
+      <form id="scribble-guess-form" class="row">
+        <input type="text" id="scribble-guess-input" autocomplete="off" placeholder="Dein Tipp" style="flex:1;" ${paused ? 'disabled' : ''} />
+        <button type="submit" class="btn btn-primary" ${paused ? 'disabled' : ''}>Raten</button>
+      </form>
+      <div class="muted" id="scribble-guess-feedback" aria-live="polite" aria-atomic="true"></div>
+    </div>`;
 }
 
 // Live thumbs-up for whichever drawing is currently votable (the one being
@@ -594,7 +610,10 @@ function drawingAreaHtml() {
   const thumb = thumbButtonHtml();
   return `
     <div class="card stack scribble-stage-card" style="margin-top:var(--space-3);">
-      ${thumb ? `<div class="row-between" style="gap:var(--space-2);">${wordMaskHtml}${thumb}</div>` : wordMaskHtml}
+      <div class="row-between" style="gap:var(--space-2);">
+        ${wordMaskHtml}
+        <div class="row" style="gap:var(--space-2);">${countdownBadgeHtml()}${thumb}</div>
+      </div>
       <div class="scribble-canvas-wrap ${!isDrawer() ? 'scribble-canvas-locked' : ''}">
         <canvas id="scribble-canvas"></canvas>
       </div>
@@ -613,7 +632,10 @@ function drawingAreaHtml() {
 function lastDrawingThumbHtml() {
   if (!lastTurnEnd?.drawing || turn?.phase === 'drawing') return '';
   return `<div class="row-between" style="margin-top:var(--space-3);gap:var(--space-2);">
-    <span class="muted">Wort war: ${escapeHtml(lastTurnEnd.word ?? '')}</span>
+    <div class="row" style="gap:var(--space-2);">
+      <span class="muted">Wort war: ${escapeHtml(lastTurnEnd.word ?? '')}</span>
+      ${lastGuessFeedback?.result === 'correct' ? `<span class="badge badge-playing" data-scribble-guess-feedback-result="correct">${escapeHtml(lastGuessFeedback.text)}</span>` : ''}
+    </div>
     ${thumbButtonHtml()}
   </div>`;
 }
@@ -688,6 +710,7 @@ export function ensureScribbleSocket() {
     turnExpiresAt = payload.phase === 'drawing' ? payload.expiresAt : null;
     paused = false;
     if (payload.phase === 'drawing') {
+      lastGuessFeedback = null;
       thumbsToken = payload.thumbsToken ?? null;
       thumbsCount = 0;
       myThumbActive = false;
@@ -806,19 +829,18 @@ export function ensureScribbleSocket() {
 
   socket.on('connect', () => {
     if (!match || matchEnded) return;
-    socket.emit('scribble:rejoin', { matchId: match.matchId, playerId: myId() }, (res) => {
+    const requestedMatchId = match.matchId;
+    socket.emit('scribble:rejoin', { matchId: requestedMatchId, playerId: myId() }, (res) => {
+      if (!match || match.matchId !== requestedMatchId || matchEnded) return;
       if (!res?.ok) {
-        // A 2-player match ends immediately once fewer than 2 players stay
-        // online (handlePlayerLeft in scribble.ts), deleting it — the most
-        // common Scribble match size, so this is the ordinary case, not an
-        // edge case. There is nothing left to sync back into and no way to
-        // learn the match's outcome, so recover to the launcher instead of
-        // leaving a stale match — and a guess stuck on 'pending' forever —
-        // on screen with no way out.
+        // The reconnect grace may have expired, or the match may have ended
+        // for another reason while this socket was away. There is nothing
+        // left to sync, so recover to the launcher instead of leaving stale
+        // match state or a guess stuck on "pending".
         const staleContainer = document.getElementById('view-container');
         if (staleContainer?.dataset.scribbleGuessResult === 'pending') delete staleContainer.dataset.scribbleGuessResult;
         resetMatchState();
-        showToast('Die Verbindung wurde unterbrochen und das Match ist beendet.', { error: true });
+        showToast('Das Scribble-Match ist nicht mehr verfügbar.', { error: true });
         // Mirrors the normal scribble:match:end handler below: finishMatch
         // already recorded this result server-side, but this socket never
         // received that broadcast (it wasn't in the room yet), so the
@@ -1135,8 +1157,28 @@ function wireRoom(container) {
     // immediately replaces the form during the turn transition, while this
     // state remains available to diagnostics and browser synchronization.
     container.dataset.scribbleGuessResult = 'pending';
+    const sequence = ++guessSequence;
+    const feedback = container.querySelector('#scribble-guess-feedback');
+    if (feedback) feedback.textContent = 'Tipp wird geprüft …';
     socket.emit('scribble:guess', { matchId: match.matchId, playerId: myId(), text }, (res) => {
-      container.dataset.scribbleGuessResult = !res?.ok ? 'rejected' : res.correct ? 'correct' : 'wrong';
+      const result = !res?.ok ? 'rejected' : res.correct ? 'correct' : 'wrong';
+      const resultText = !res?.ok
+        ? res?.error || 'Tipp nicht angenommen.'
+        : res.correct
+          ? `Richtig! +${res.points ?? 0} Punkte`
+          : res.close
+            ? 'Knapp dran!'
+            : 'Noch nicht richtig.';
+      container.dataset.scribbleGuessResult = result;
+      lastGuessFeedback = { result, text: resultText };
+      if (sequence === guessSequence && feedback?.isConnected) {
+        feedback.textContent = resultText;
+      } else if (result === 'correct' && turn?.phase !== 'drawing') {
+        // A correct guess can end the turn immediately. If the phase-change
+        // render already removed the form before this acknowledgement arrives,
+        // redraw once more so the persistent result badge is still visible.
+        rerender();
+      }
       if (!res?.ok) return showToast(res?.error || 'Tipp nicht angenommen.', { error: true });
       // Shown only to this guesser (the server never broadcasts it) - a
       // wrong-but-close guess is otherwise indistinguishable from any other
