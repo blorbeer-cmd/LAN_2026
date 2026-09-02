@@ -32,9 +32,13 @@ oder höhere Coverage sind für sich genommen kein Qualitätsgewinn.
      nennt die Frist, auf die gewartet wird.
    - Ein begrenztes Negativfenster, wenn die Zusicherung gerade das *Ausbleiben* eines Ereignisses
      ist: dort gibt es keinen Zustand, auf den gewartet werden könnte. Der Kommentar nennt, was
-     nicht passieren darf und warum die gewählte Dauer dafür reicht. Wo sich das Ausbleiben an ein
-     anderes, beobachtbares Ereignis koppeln lässt („nachdem der abonnierte Socket geliefert hat,
-     hätte ein unabonnierter es auch"), ist diese Kopplung vorzuziehen.
+     nicht passieren darf und warum die gewählte Dauer dafür reicht. Wo sich das Ausbleiben an eine
+     nachweisbare Ordnung koppeln lässt, ist diese Kopplung vorzuziehen — sie muss dann aber
+     tatsächlich beweisen, dass der verbotene Weg abgearbeitet ist: eine Quittung auf *einem*
+     Kanal sagt nichts über die Warteschlange eines zweiten, unabhängigen Kanals. Belastbar ist
+     eine Ordnung auf demselben Kanal wie das verbotene Ereignis, etwa ein quittierter Rundlauf
+     über genau die Verbindung, die nichts empfangen darf, nachdem der Server das verbotene Paket
+     bereits geschrieben hätte.
 
    Nicht gemeint ist absichtlich verzögerte Latenz im Testaufbau (etwa eine künstlich langsame
    Route, die eine Reihenfolge deterministisch macht): das ist Stimulus, keine Synchronisation.

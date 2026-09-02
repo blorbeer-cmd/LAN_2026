@@ -23,7 +23,7 @@ was daraufhin tatsächlich geändert wurde.
 | P2-5 Scribble-Flake | bewusst offen | vermutlich durch #528 behoben; erst nachbeobachten |
 | P2-6 30-s-Standardtimeout | behoben | `E2E_DEFAULT_TIMEOUT_MS` (15 s) je registriertem Kontext; 4-s-Adhoc-Werte entfernt |
 | P2-7 Geometrie-Assertions | teilweise | die beiden exakten Rect-Vergleiche haben jetzt 1 px Toleranz; DOM-Reihenfolge-Assertions unverändert |
-| P3-1 `phase5eIsolation` | behoben | Settle-Pause an das positive Ereignis gekoppelt; E2E-Definition in `TESTING.md` korrigiert |
+| P3-1 `phase5eIsolation` | behoben | Pauschalpause durch einen quittierten Rundlauf auf der Agent-Verbindung als Ordnungs-Barriere ersetzt (Cross-Review-Nachbesserung); E2E-Definition in `TESTING.md` korrigiert |
 | P3-2 `flows.fixture.ts` aufteilen | bewusst offen | laut Bericht ein eigener PR |
 | P3-3 `format.test.js` | behoben | literale Erwartung statt Nachbau der Implementierung |
 | P3-4 `waitForAction` | behoben | `Promise.race` zweier `waitFor` statt 280×25 ms Polling; Klick-Taktung unverändert |
@@ -588,6 +588,14 @@ E2E-Definition entsprechend präzisieren. (b) Umziehen und die Definition unange
 dann aber nicht nach `src/test/*.test.ts`, weil `npm test` laut Dokumentation ohne Serverprozess
 auskommen soll. Empfehlung: (a). In beiden Fällen `:100` durch das Warten auf den empfangenen
 `live:changed`-Event mit knapper Frist ersetzen, statt 150 ms pauschal zu warten.
+
+**Nachtrag aus dem Cross-Review:** Das positive Ereignis allein trägt die negative Zusicherung
+nicht, weil Browser- und Agent-Socket zwei unabhängige Verbindungen sind — eine Quittung auf der
+einen beweist nichts über die Warteschlange der anderen. Umgesetzt ist deshalb ein quittierter,
+abgelehnter `scope:subscribe`-Rundlauf **auf der Agent-Verbindung selbst**: die Route sendet ihren
+Broadcast synchron vor der HTTP-Antwort, also liegt ein durchgesickertes Paket auf genau dieser
+Verbindung vor der Quittung. Damit ist die Ordnung bewiesen statt wahrscheinlich, und es bleibt
+keine Pauschalfrist übrig.
 
 **Weiterhin erkannte Regression:** unverändert; die Zustellmatrix bleibt in
 `realtime.delivery.required.test.ts`, die Verdrahtung des gebauten Servers in dieser Datei.

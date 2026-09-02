@@ -835,8 +835,12 @@ function wireSocket() {
       // transport reconnects.
       invalidateViewsAfterReconnect(VIEW_REGISTRY);
       await refreshGroupContext({ throwOnError: true });
-      await Promise.all([loadAll(), refreshNotificationBanner({ throwOnError: true })]);
-      markPlayerDataReady();
+      const [committed] = await Promise.all([loadAll(), refreshNotificationBanner({ throwOnError: true })]);
+      // Same rule as the initial load: loadAll() resolves false when a newer
+      // central snapshot took over the generation, and readiness belongs to
+      // the refresh that actually commits. Publishing it here would release
+      // waitForPlayerData() against the pre-refresh roster.
+      if (committed) markPlayerDataReady();
       if (appReady) renderCurrentAfterPlayerDataLoad();
     },
     onRecovered: () => {
@@ -1157,7 +1161,11 @@ async function main() {
     })
     .catch((error) => {
       const app = document.getElementById('app');
-      if (app) app.dataset.playerData = 'failed';
+      // A newer generation may already have committed and published `ready`
+      // while this batch was still in flight. A late rejection of the
+      // superseded batch must not retract that: the app is loaded, and
+      // downgrading the attribute would strand every waiter on `ready`.
+      if (app && !playerDataReady) app.dataset.playerData = 'failed';
       if (error?.status !== 401) showToast('Daten konnten noch nicht geladen werden – neuer Versuch läuft.', { error: true });
     });
   // Start the initial snapshot before opening the socket. This gives it the
