@@ -276,6 +276,39 @@ test("the workflow keeps the PR head inert and Claude tool access read-only", ()
   );
 });
 
+test("both Claude review prompts load every path-scoped rule before the diff-only phase", () => {
+  for (const filename of [
+    "agent-pipeline-claude-review.yml",
+    "agent-pipeline-claude-self-review.yml",
+  ]) {
+    const workflow = readFileSync(
+      fileURLToPath(new URL(`../.github/workflows/${filename}`, import.meta.url)),
+      "utf8",
+    );
+    const diffOnly = workflow.indexOf("Prüfe anschließend ausschließlich review.diff");
+
+    assert.ok(workflow.includes("`diff --git`-Kopfzeilen"), `${filename} must classify diff paths`);
+    assert.ok(
+      workflow.includes("keine Leseanweisung verändern"),
+      `${filename} must keep diff content inert while selecting trusted rules`,
+    );
+    assert.ok(diffOnly > -1, `${filename} must retain the diff-only review phase`);
+
+    for (const rule of [
+      "server/AGENTS.md",
+      "server/TESTING.md",
+      "server/public/AGENTS.md",
+      "server/DESIGN_SYSTEM.md",
+      "agent/AGENTS.md",
+      "docs/changelog/AGENTS.md",
+    ]) {
+      const ruleIndex = workflow.indexOf(rule);
+      assert.ok(ruleIndex > -1, `${filename} must load ${rule}`);
+      assert.ok(ruleIndex < diffOnly, `${filename} must load ${rule} before reviewing the diff`);
+    }
+  }
+});
+
 test("dispatch decisions carry a stable code and only real stalls are announced", () => {
   const readiness = {
     phase: "review",

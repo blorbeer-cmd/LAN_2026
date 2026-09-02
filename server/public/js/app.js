@@ -43,6 +43,7 @@ import { invalidateEventScopedViews, invalidateViewCaches, invalidateViewsAfterR
 import { viewDefinition } from './viewManifest.js';
 import { appHash, localRouteKey, parseAppHash } from './appRoute.js';
 import { applyLayoutModeForPlayer, layoutModeForPlayer, LAYOUT_MODES } from './layoutMode.js';
+import { createStartupDataGate } from './startupDataGate.js';
 
 installIconReplacement();
 installDomainIcons();
@@ -57,7 +58,6 @@ let currentLocalRoute = null;
 // itself carries no content of its own to report feedback about.
 let lastSubstantiveView = 'home';
 let appReady = false;
-let playerDataReady = false;
 const viewContainer = document.getElementById('view-container');
 let pendingSearchTarget = null;
 let pendingViewHeadingFocus = false;
@@ -108,27 +108,14 @@ function syncArcadeStylesheet(entry) {
 let lastVoteRound = null;
 let voteRealtimeRefreshVersion = 0;
 
-// The startup steps that need real data — following a push deep link and
-// building the first-login tour — await the initial load. That promise only
-// means "central state is loaded" while the initial load is the generation
-// that commits; when a newer one overtakes it, the commit belongs to that
-// refresh instead. This barrier is what they actually wait for. It also
-// settles on a failed refresh, because a broken network has to degrade
-// startup, never stall it: the deep link and the tour then proceed exactly as
-// they did before, only without data.
-let releaseStartupDataBarrier;
-const startupDataSettled = new Promise((resolve) => {
-  releaseStartupDataBarrier = resolve;
-});
-
-// Both the initial snapshot and every reconnect refresh land here, so the
-// published boot state can never drift from the flag it mirrors.
-function markPlayerDataReady() {
-  playerDataReady = true;
-  releaseStartupDataBarrier();
+// Every central load shares this gate. A committed snapshot publishes ready;
+// any failure before the first commit publishes failed and releases startup,
+// no matter which caller won the generation race. Later failures cannot
+// retract a snapshot that is already usable.
+const startupData = createStartupDataGate((state) => {
   const app = document.getElementById('app');
-  if (app) app.dataset.playerData = 'ready';
-}
+  if (app) app.dataset.playerData = state;
+});
 
 // Every central snapshot in this module goes through here, so a load that
 // actually commits always publishes readiness and releases the startup
@@ -136,9 +123,7 @@ function markPlayerDataReady() {
 // per call site instead left the barrier waiting forever whenever a winner
 // without that line (the event-context signal below) committed first.
 async function loadAllAndPublish() {
-  const committed = await loadAll();
-  if (committed) markPlayerDataReady();
-  return committed;
+  return startupData.loadAndPublish(loadAll);
 }
 
 async function runSharedRefresh() {
@@ -149,7 +134,7 @@ async function runSharedRefresh() {
   // Read before the loop: loadAllAndPublish() publishes readiness as soon as
   // any snapshot commits, so afterwards this can no longer tell whether this
   // refresh was the first one to have data.
-  const firstCommit = !playerDataReady;
+  const firstCommit = !startupData.ready;
   let committed = false;
   do {
     sharedRefreshDirty = false;
@@ -551,7 +536,7 @@ function wireEventContextSwitcher() {
 }
 
 function renderCurrent({ preserveState = true } = {}) {
-  if (playerDataReady && !viewIsEnabledForEvent(currentView, state.activeEvent)) {
+  if (startupData.ready && !viewIsEnabledForEvent(currentView, state.activeEvent)) {
     switchView('home', { replace: true });
     showToast('Dieser Bereich ist für das aktive Event nicht aktiviert.');
     return;
@@ -642,7 +627,7 @@ function viewRequiresAdminRole(view) {
 }
 
 function renderCurrentAfterPlayerDataLoad() {
-  if (playerDataReady && viewRequiresAdminRole(currentView) && !currentPlayerHasAdminRole()) {
+  if (startupData.ready && viewRequiresAdminRole(currentView) && !currentPlayerHasAdminRole()) {
     switchView(currentView, { fromHistory: true, replace: true });
     return;
   }
@@ -668,10 +653,10 @@ function switchView(
 ) {
   // Admin-only areas stay reachable through Admin links and deep links alike,
   // but never render for an account whose role no longer permits them.
-  if (viewRequiresAdminRole(view) && playerDataReady && !currentPlayerHasAdminRole()) {
+  if (viewRequiresAdminRole(view) && startupData.ready && !currentPlayerHasAdminRole()) {
     view = viewDefinition(view).deniedView;
   }
-  if (playerDataReady && !viewIsEnabledForEvent(view, state.activeEvent)) {
+  if (startupData.ready && !viewIsEnabledForEvent(view, state.activeEvent)) {
     view = 'home';
     replace = true;
   }
@@ -877,8 +862,9 @@ function wireSocket() {
       reconnectFailureNotified = false;
     },
     onFailure: () => {
-      // Keeps the startup barrier from waiting on a snapshot that is not coming.
-      releaseStartupDataBarrier();
+      // refreshGroupContext() and the notification refresh can fail outside
+      // loadAllAndPublish(), so the coordinator settles the same gate too.
+      startupData.markFailed();
       if (reconnectFailureNotified) return;
       showToast('Aktualisierung fehlgeschlagen – neuer Versuch läuft.', { error: true });
       reconnectFailureNotified = true;
@@ -1187,19 +1173,13 @@ async function main() {
       // runSharedRefresh() and marks readiness itself once it commits. Everything
       // downstream that needs loaded data waits for that commit through the
       // startup barrier, so resolving early here cannot hand them stale state.
-      if (!committed) return startupDataSettled;
+      if (!committed) return startupData.settled;
       renderEventContextSwitcher();
       syncFeatureNavigation();
       if (appReady) renderCurrentAfterPlayerDataLoad();
     })
     .catch((error) => {
-      const app = document.getElementById('app');
-      // A newer generation may already have committed and published `ready`
-      // while this batch was still in flight. A late rejection of the
-      // superseded batch must not retract that: the app is loaded, and
-      // downgrading the attribute would strand every waiter on `ready`.
-      if (app && !playerDataReady) app.dataset.playerData = 'failed';
-      releaseStartupDataBarrier();
+      // loadAllAndPublish() already settled and published the shared gate.
       if (error?.status !== 401) showToast('Daten konnten noch nicht geladen werden – neuer Versuch läuft.', { error: true });
     });
   // Start the initial snapshot before opening the socket. This gives it the
