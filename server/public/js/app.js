@@ -108,10 +108,24 @@ function syncArcadeStylesheet(entry) {
 let lastVoteRound = null;
 let voteRealtimeRefreshVersion = 0;
 
+// The startup steps that need real data — following a push deep link and
+// building the first-login tour — await the initial load. That promise only
+// means "central state is loaded" while the initial load is the generation
+// that commits; when a newer one overtakes it, the commit belongs to that
+// refresh instead. This barrier is what they actually wait for. It also
+// settles on a failed refresh, because a broken network has to degrade
+// startup, never stall it: the deep link and the tour then proceed exactly as
+// they did before, only without data.
+let releaseStartupDataBarrier;
+const startupDataSettled = new Promise((resolve) => {
+  releaseStartupDataBarrier = resolve;
+});
+
 // Both the initial snapshot and every reconnect refresh land here, so the
 // published boot state can never drift from the flag it mirrors.
 function markPlayerDataReady() {
   playerDataReady = true;
+  releaseStartupDataBarrier();
   const app = document.getElementById('app');
   if (app) app.dataset.playerData = 'ready';
 }
@@ -858,6 +872,8 @@ function wireSocket() {
       reconnectFailureNotified = false;
     },
     onFailure: () => {
+      // Keeps the startup barrier from waiting on a snapshot that is not coming.
+      releaseStartupDataBarrier();
       if (reconnectFailureNotified) return;
       showToast('Aktualisierung fehlgeschlagen – neuer Versuch läuft.', { error: true });
       reconnectFailureNotified = true;
@@ -1163,8 +1179,10 @@ async function main() {
       // connection triggers. Publishing readiness anyway would release
       // waitForPlayerData() while the roster is still the pre-load one, which
       // is the very race these changes remove. That refresh runs through
-      // runSharedRefresh() and marks readiness itself once it commits.
-      if (!committed) return;
+      // runSharedRefresh() and marks readiness itself once it commits. Everything
+      // downstream that needs loaded data waits for that commit through the
+      // startup barrier, so resolving early here cannot hand them stale state.
+      if (!committed) return startupDataSettled;
       markPlayerDataReady();
       renderEventContextSwitcher();
       syncFeatureNavigation();
@@ -1177,6 +1195,7 @@ async function main() {
       // superseded batch must not retract that: the app is loaded, and
       // downgrading the attribute would strand every waiter on `ready`.
       if (app && !playerDataReady) app.dataset.playerData = 'failed';
+      releaseStartupDataBarrier();
       if (error?.status !== 401) showToast('Daten konnten noch nicht geladen werden – neuer Versuch läuft.', { error: true });
     });
   // Start the initial snapshot before opening the socket. This gives it the
