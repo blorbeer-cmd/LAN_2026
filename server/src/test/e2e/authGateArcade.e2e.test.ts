@@ -60,7 +60,7 @@ test('a required-mode member can open an Arcade lobby with a scoped game socket'
   assert.equal(await page.locator('.challenge-rush-test-selector').count(), 0);
 });
 
-test('an admin sees settings without admin mode and Arcade AI only after activation', async () => {
+test('an admin sees test settings only after activation while Challenge Rush remains multiplayer-only', async () => {
   const adminContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await trackE2EContext(adminContext, 'arcade-auth-admin');
   await addSessionCookie(adminContext, BASE_URL, adminCookie);
@@ -97,21 +97,21 @@ test('an admin sees settings without admin mode and Arcade AI only after activat
     await selectArcadeGame(adminPage, 'tetris');
     await adminPage.waitForSelector('#tetris-opponent');
     await selectArcadeGame(adminPage, 'challenge-rush');
-    await adminPage.waitForSelector('#cr-opponent');
+    await adminPage.waitForSelector('#cr-create:not([disabled])');
+    assert.equal(await adminPage.locator('#cr-opponent').count(), 0);
     await adminPage.waitForSelector('.challenge-rush-test-selector');
 
-    // "Lobby öffnen" is flanked by the mode switch on the left and the
-    // opponent switch on the right. A game that has no mode switch reserves
-    // that side anyway, so the create action keeps one width and equal insets
-    // across games instead of sliding sideways from game to game.
+    // Challenge Rush has neither a mode nor an opponent switch. Its create
+    // action still keeps the shared lobby button width and remains centered.
     await adminPage.setViewportSize({ width: 1280, height: 900 });
     await selectArcadeGame(adminPage, 'tetris');
     await adminPage.waitForSelector('#tetris-mode');
     const withMode = (await adminPage.locator('#tetris-create').boundingBox())!;
     const modeRow = (await adminPage.locator('#tetris-create').locator('xpath=..').boundingBox())!;
     await selectArcadeGame(adminPage, 'challenge-rush');
-    await adminPage.waitForSelector('#cr-opponent');
+    await adminPage.waitForSelector('#cr-create');
     assert.equal(await adminPage.locator('#cr-mode').count(), 0);
+    assert.equal(await adminPage.locator('#cr-opponent').count(), 0);
     const withoutMode = (await adminPage.locator('#cr-create').boundingBox())!;
     const plainRow = (await adminPage.locator('#cr-create').locator('xpath=..').boundingBox())!;
     assert.equal(withoutMode.width, withMode.width);
@@ -149,24 +149,17 @@ test('an admin sees settings without admin mode and Arcade AI only after activat
     await adminPage.click('[data-tetris-close]');
     await adminPage.waitForSelector('#tetris-create:not([disabled])');
 
-    // Leaving Admin mode revokes Arcade AI just like switching identity does,
-    // so a selected 'KI' must not linger: the switch stops rendering, and a
-    // stale selection would make "Lobby öffnen" emit an admin-only bot event.
+    // Leaving Admin mode hides the exact challenge selector in place. The
+    // normal multiplayer lobby action remains available.
     await selectArcadeGame(adminPage, 'challenge-rush');
     await adminPage.waitForSelector('#cr-create:not([disabled])');
-    await adminPage.click('#cr-opponent [data-arcade-opponent="bot"]');
-    await adminPage.waitForSelector('#cr-opponent [data-arcade-opponent="bot"][aria-pressed="true"]');
-    // Leaving Admin mode refreshes the mounted Arcade view in place, so the
-    // switch has to disappear without a navigation or reload — a reload would
-    // drop the module state this guards and prove nothing.
     await adminPage.click('#admin-banner-leave');
     await adminPage.waitForSelector('#admin-banner', { state: 'hidden' });
-    await adminPage.waitForSelector('#cr-opponent', { state: 'detached' });
+    await adminPage.waitForSelector('.challenge-rush-test-selector', { state: 'detached' });
+    assert.equal(await adminPage.locator('#cr-opponent').count(), 0);
     await adminPage.waitForSelector('#cr-create:not([disabled])');
     await adminPage.click('#cr-create');
     await adminPage.waitForSelector('[data-cr-start]');
-    const roster = await adminPage.locator('.arcade-lobby-entry').innerText();
-    assert.doesNotMatch(roster, /Challenge-Bot/, 'the reset opponent choice opens a human lobby, not an AI one');
   } finally {
     await adminContext.close();
   }
