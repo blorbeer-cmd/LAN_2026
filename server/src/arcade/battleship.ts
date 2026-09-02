@@ -13,7 +13,7 @@ import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './
 import { applyShot, chooseBotShot, createRandomPlacements, fleetSnapshot, remainingSegments, remainingShips, ShipState, validatePlacements } from './battleshipLogic';
 
 const COUNTDOWN_MS = arcadeTiming.countdownMs;
-const END_REVEAL_MS = process.env.NODE_ENV === 'test' && process.env.E2E_FAST_TIMERS === '1' ? 250 : 12_000;
+const END_REVEAL_MS = arcadeTiming.endRevealMs;
 const BOT_TURN_MS = process.env.NODE_ENV === 'test' ? 20 : 650;
 const BOT_ID = 'battleship-bot';
 const BOT = { id: BOT_ID, name: 'Flotten-Bot', avatar: null, color: '#9163f5' };

@@ -12,7 +12,7 @@ import { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
-import { authenticatedServerEnv, loginE2EAdmin, finishE2EOnboarding, E2E_ADMIN_NAME, E2E_ADMIN_PASSWORD } from './authHelpers';
+import { E2E_ADMIN_NAME, E2E_ADMIN_PASSWORD, authenticatedServerEnv, finishE2EOnboarding, loginE2EAdmin, waitForPlayerData } from './authHelpers';
 import { createStatefulE2EDiagnosticTest } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 
@@ -115,7 +115,10 @@ async function openView(view: string): Promise<void> {
     await page.waitForSelector(`[data-navigate="${view}"]`);
     await page.click(`[data-navigate="${view}"]`);
   }
-  await page.waitForTimeout(1_000);
+  // The container carries the route it actually settled on, so there is a
+  // state to wait for instead of a second of guessing. Ten call sites below
+  // used to pay that second each.
+  await page.waitForSelector(`#view-container[data-view="${view}"]`);
 }
 
 function viewText(): Promise<string> {
@@ -157,8 +160,7 @@ before(async () => {
   await page.fill('#auth-name', E2E_ADMIN_NAME);
   await page.fill('#auth-password', E2E_ADMIN_PASSWORD);
   await page.click('#auth-form button[type="submit"]');
-  await page.waitForSelector('#app:not([hidden])');
-  await page.waitForTimeout(1_000);
+  await waitForPlayerData(page);
 });
 
 after(async () => {
@@ -247,10 +249,23 @@ test('the personal statistics event filter only offers accepted workspaces', asy
   page.on('response', (response) => {
     if (response.url().includes('/api/players/') && response.status() === 404) notFound.push(response.url());
   });
+
+  // One completed request per option, and no guessed delay for it. renderMyStats()
+  // starts a load only while no other one is running (`!statsLoading`), so clicking
+  // straight through the list would coalesce the middle options away: the first and
+  // the last would be requested and the ones between them silently never covered.
+  // The dashboard renders "Lädt…" for exactly as long as its request is in flight,
+  // so its absence is the observable end of a pick — and for the already-selected
+  // option, which changes nothing and therefore issues no request at all, it is
+  // absent from the start instead of deadlocking on a response that never comes.
+  const statsSettled = () =>
+    page.locator('#view-container').getByText('Lädt…', { exact: true }).waitFor({ state: 'detached' });
+
+  await statsSettled();
   for (const option of options) {
     await page.click('#my-stats-event-search');
     await page.click(`#my-stats-event-list [data-search-select-value="${option.value}"]`);
-    await page.waitForTimeout(400);
+    await statsSettled();
   }
   assert.deepEqual(notFound, [], 'no offered event may answer the personal stats request with 404');
 });
@@ -393,6 +408,10 @@ test('an open, actively-searched switcher survives an unrelated background refre
     body: JSON.stringify({ name: 'Background Refresh Probe', startsAt: Date.now(), endsAt: Date.now() + 3_600_000 }),
   });
   assert.equal(created.status, 201, JSON.stringify(created.body));
+  // Negative assertion window (TESTING.md rule 4): nothing is expected to
+  // appear here — the point is that the refresh triggered above does *not*
+  // discard the query below. One second comfortably covers the socket round
+  // trip plus the rebuild it would have caused.
   await page.waitForTimeout(1_000);
 
   assert.equal(

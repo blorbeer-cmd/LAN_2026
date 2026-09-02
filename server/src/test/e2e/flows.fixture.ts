@@ -10,6 +10,7 @@ import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page, type Locator } from 'playwright';
 import {
   addSessionCookie,
+  switchSessionCookie,
   authenticatedServerEnv,
   createE2EAccount,
   E2E_ADMIN_PASSWORD,
@@ -79,6 +80,22 @@ function flowTest(
       flowDiagnostics.run(context, name, () => fn(context)),
     );
   }
+}
+
+// The claim is "the Bezahlt marker does not jump when the group's state
+// changes", not "two getBoundingClientRect() reads return bit-identical
+// floats". Comparing them with deepEqual made a sub-pixel difference — a late
+// font, a scrollbar, a different device pixel ratio — a failure with nothing
+// behind it, while a real jump moves the control by far more than a pixel.
+function assertMarkerStaysPut(
+  actual: { left: number; width: number },
+  expected: { left: number; width: number },
+  because: string,
+): void {
+  assert.ok(
+    Math.abs(actual.left - expected.left) <= 1 && Math.abs(actual.width - expected.width) <= 1,
+    `${because} must not move the paid marker (${JSON.stringify(expected)} -> ${JSON.stringify(actual)})`,
+  );
 }
 
 async function setDateTimeField(id: string, value: string): Promise<void> {
@@ -153,8 +170,7 @@ async function openProfile(): Promise<void> {
 async function switchIdentityAndOpenArrivals(label: string): Promise<void> {
   const account = accountsByName.get(label);
   assert.ok(account, `missing E2E account for ${label}`);
-  await addSessionCookie(page.context(), BASE_URL, account.cookie);
-  await page.reload();
+  await switchSessionCookie(page, BASE_URL, account.cookie);
   await page.waitForSelector('#app:not([hidden])');
   await openOrgaTab('arrivals');
   await page.waitForSelector('[data-new-carpool="arrival"]');
@@ -163,8 +179,7 @@ async function switchIdentityAndOpenArrivals(label: string): Promise<void> {
 async function switchIdentityAndOpenFoodOrders(label: string): Promise<void> {
   const account = accountsByName.get(label);
   assert.ok(account, `missing E2E account for ${label}`);
-  await addSessionCookie(page.context(), BASE_URL, account.cookie);
-  await page.reload();
+  await switchSessionCookie(page, BASE_URL, account.cookie);
   await page.waitForSelector('#app:not([hidden])');
   await page.click('#nav-food-orders');
   await page.waitForSelector('#order-new-btn');
@@ -442,10 +457,17 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   assert.equal(adminColumns.readinessTop, adminColumns.toolsTop);
   assert.ok(adminColumns.usersTop - adminColumns.accessBottom >= 8);
   assert.ok(adminColumns.usersTop - adminColumns.accessBottom <= 32);
-  assert.equal(
-    await page.locator('.admin-player-list').evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length),
-    3,
-  );
+  // getComputedStyle reports `gridTemplateColumns: none` — a single token —
+  // until the admin view has actually been laid out, so a one-shot read here
+  // can see 1 instead of the real column count and did so under parallel load.
+  // Wait for a resolved template, then assert its width, so a genuinely wrong
+  // column count still fails with a readable difference instead of a timeout.
+  const adminPlayerColumns = await page.waitForFunction(() => {
+    const grid = document.querySelector('.admin-player-list');
+    const columns = grid ? getComputedStyle(grid).gridTemplateColumns : '';
+    return columns && columns !== 'none' ? columns.split(' ').length : null;
+  });
+  assert.equal(await adminPlayerColumns.jsonValue(), 3);
 
   await page.click('.desktop-nav-btn[data-view="arcade"]');
   await page.waitForSelector('#arcade-games-title');
@@ -924,7 +946,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   // admin-role load race instead of the onboarding tour taking over the
   // requested initial view.
   await finishE2EOnboarding(BASE_URL, adminCookie);
-  await addSessionCookie(page.context(), BASE_URL, adminCookie);
+  await switchSessionCookie(page, BASE_URL, adminCookie);
   await page.goto(`${BASE_URL}/#adminFeatureUsage`);
   // Playwright may treat a hash-only goto as same-document navigation when
   // the shared page is already on the app root. Reload to exercise the real
@@ -2617,7 +2639,7 @@ flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und
     const rect = marker.getBoundingClientRect();
     return { left: rect.left, width: rect.width };
   });
-  assert.deepEqual(paidMarkerGeometry, openMarkerGeometry);
+  assertMarkerStaysPut(paidMarkerGeometry, openMarkerGeometry, 'marking the group paid');
   await waitForTextDecoration(group.locator('.food-order-group-amount'), 'line-through');
   await waitForTextDecoration(marghieRow.locator('.food-order-item-description'), 'line-through');
   await waitForTextDecoration(marghieRow.locator('.food-order-item-amount'), 'line-through');
@@ -2675,7 +2697,7 @@ flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und
     const rect = marker.getBoundingClientRect();
     return { left: rect.left, width: rect.width };
   });
-  assert.deepEqual(changedTotalMarkerGeometry, openMarkerGeometry);
+  assertMarkerStaysPut(changedTotalMarkerGeometry, openMarkerGeometry, 'adding a position to a paid group');
   assert.equal(await group.locator('[data-group-pay]').isDisabled(), false);
   await group.locator('[data-group-pay]').click();
   await page.waitForSelector('.modal h2:has-text("Bezahlt?")');

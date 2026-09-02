@@ -37,11 +37,12 @@ test('formatSince shows relative minutes under an hour', () => {
   assert.equal(formatSince(Date.now() - 5 * 60_000), 'seit 5 Min.');
 });
 
-test('formatSince falls back to a clock time past an hour', () => {
-  const ts = Date.now() - 90 * 60_000;
-  const d = new Date(ts);
-  const expected = `seit ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} Uhr`;
-  assert.equal(formatSince(ts), expected);
+test('formatSince falls back to a zero-padded local clock time past an hour', () => {
+  // A literal expectation, like toDatetimeLocal's below: deriving it from
+  // getHours()/getMinutes() again would only restate the implementation and
+  // could never catch a bug inside it.
+  assert.equal(formatSince(new Date(2026, 6, 8, 14, 30).getTime()), 'seit 14:30 Uhr');
+  assert.equal(formatSince(new Date(2026, 0, 5, 3, 7).getTime()), 'seit 03:07 Uhr');
 });
 
 test('formatDateTime and formatDate return the placeholder dash for a falsy timestamp', () => {

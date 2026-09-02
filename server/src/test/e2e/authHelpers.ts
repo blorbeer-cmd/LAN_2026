@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import type { BrowserContext } from 'playwright';
+import type { BrowserContext, Page } from 'playwright';
 
 export const E2E_ADMIN_NAME = 'E2E Bootstrap Admin';
 export const E2E_ADMIN_PASSWORD = 'e2e-bootstrap-admin-password';
@@ -101,4 +101,42 @@ export async function addSessionCookie(context: BrowserContext, baseUrl: string,
       url: baseUrl,
     },
   ]);
+}
+
+// Swapping the session cookie on a *live* page races the server's own sliding
+// session refresh: requireUser re-issues a Set-Cookie for whatever session the
+// request carried (src/sessions.ts), and the app fires a burst of background
+// requests on every view. A response belonging to the previous identity that
+// lands after the write below restores that identity's cookie, and every later
+// request acts as the old account. An explicit playerId in a request body does
+// not save it either — bindBodyPlayerId overwrites it with the session's
+// player, so the write silently lands on the wrong account instead of failing.
+// Park the page on a blank document first: that ends every app request of the
+// old identity, so no response can write a cookie after this one.
+export async function switchSessionCookie(page: Page, baseUrl: string, cookie: string): Promise<void> {
+  // `networkidle` is the load-bearing part: parking the page alone only stops
+  // the app from *starting* new requests, while the ones already in flight are
+  // cancelled asynchronously and can still deliver their Set-Cookie after the
+  // write below. Waiting for the blank document to reach a quiet network means
+  // every old-identity response has been processed before the cookie changes.
+  // Return to the exact URL the page was on, hash route included: callers used
+  // to reload in place, and landing on the app root instead would enter their
+  // view through a different path and reset per-view state they rely on.
+  const current = page.url();
+  const destination = current.startsWith(baseUrl) ? current : baseUrl;
+  await page.goto('about:blank', { waitUntil: 'networkidle' });
+  await addSessionCookie(page.context(), baseUrl, cookie);
+  await page.goto(destination);
+}
+
+// The shell unhides as soon as the auth gate resolves, but main() then loads
+// the central snapshot in the background and only afterwards re-renders the
+// current view and rebuilds the navigation. Everything that reads the roster —
+// Profile, the admin tools, the desktop rail — is only trustworthy from that
+// point on. app.js publishes the transition as #app[data-player-data]; waiting
+// for it replaces the fixed settle delays this suite used to sprinkle after
+// every login, which guessed at a duration instead of observing the state.
+export async function waitForPlayerData(page: Page): Promise<void> {
+  await page.waitForSelector('#app:not([hidden])');
+  await page.waitForSelector('#app[data-player-data="ready"]');
 }
