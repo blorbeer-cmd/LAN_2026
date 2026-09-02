@@ -130,31 +130,41 @@ function markPlayerDataReady() {
   if (app) app.dataset.playerData = 'ready';
 }
 
+// Every central snapshot in this module goes through here, so a load that
+// actually commits always publishes readiness and releases the startup
+// barrier — no matter which caller happened to win the generation. Doing it
+// per call site instead left the barrier waiting forever whenever a winner
+// without that line (the event-context signal below) committed first.
+async function loadAllAndPublish() {
+  const committed = await loadAll();
+  if (committed) markPlayerDataReady();
+  return committed;
+}
+
 async function runSharedRefresh() {
   // Give the socket echo and the mutation response one task window to meet.
   // Every signal received while the requests are in flight marks the batch
   // dirty again; all network reconciliation finishes before a single render.
   await new Promise((resolve) => setTimeout(resolve, 24));
+  // Read before the loop: loadAllAndPublish() publishes readiness as soon as
+  // any snapshot commits, so afterwards this can no longer tell whether this
+  // refresh was the first one to have data.
+  const firstCommit = !playerDataReady;
   let committed = false;
   do {
     sharedRefreshDirty = false;
-    committed = await loadAll();
+    committed = await loadAllAndPublish();
     // loadAll() intentionally discards its response when a newer caller
     // started another central snapshot in parallel. Do not render the old
     // state or resolve mutation callers in that case: retry until this
     // coordinator owns the snapshot that actually committed.
   } while (sharedRefreshDirty || !committed);
-  // The loop only exits on a snapshot this coordinator actually committed, so
-  // this is a truthful point to publish readiness from — and it has to, since
-  // a refresh that overtakes the initial load leaves that one uncommitted.
-  // Overtaking it also inherits its render obligation: this is then the first
-  // committed snapshot the app ever had, so the current view has never been
-  // drawn from real data and must be rendered even when this refresh itself
-  // was queued render-free (a realtime signal for some other view). Without
-  // that the startup view keeps showing the empty pre-load state until the
-  // next user action.
-  const firstCommit = !playerDataReady;
-  markPlayerDataReady();
+  // Overtaking the initial load inherits its render obligation: this is then
+  // the first committed snapshot the app ever had, so the current view has
+  // never been drawn from real data and must be rendered even when this
+  // refresh itself was queued render-free (a realtime signal for some other
+  // view). Without that the startup view keeps showing the empty pre-load
+  // state until the next user action.
   renderEventContextSwitcher();
   syncFeatureNavigation();
   if (firstCommit) {
@@ -485,7 +495,7 @@ async function activateEvent(eventId, { navigate, searchTarget = null } = {}) {
         // committed snapshot instead of rendering whichever workspace was in
         // state before the collision.
         let committed = false;
-        while (!committed) committed = await loadAll();
+        while (!committed) committed = await loadAllAndPublish();
         syncFeatureNavigation();
         await refreshNotificationBanner();
         renderCurrent();
@@ -860,12 +870,7 @@ function wireSocket() {
       // transport reconnects.
       invalidateViewsAfterReconnect(VIEW_REGISTRY);
       await refreshGroupContext({ throwOnError: true });
-      const [committed] = await Promise.all([loadAll(), refreshNotificationBanner({ throwOnError: true })]);
-      // Same rule as the initial load: loadAll() resolves false when a newer
-      // central snapshot took over the generation, and readiness belongs to
-      // the refresh that actually commits. Publishing it here would release
-      // waitForPlayerData() against the pre-refresh roster.
-      if (committed) markPlayerDataReady();
+      await Promise.all([loadAllAndPublish(), refreshNotificationBanner({ throwOnError: true })]);
       if (appReady) renderCurrentAfterPlayerDataLoad();
     },
     onRecovered: () => {
@@ -1121,7 +1126,7 @@ function wireSocket() {
   });
   socket.on('event-context:changed', async () => {
     invalidateEventScopedViews(VIEW_REGISTRY);
-    await loadAll();
+    await loadAllAndPublish();
     renderEventContextSwitcher();
     await refreshNotificationBanner();
     renderCurrent();
@@ -1172,7 +1177,7 @@ async function main() {
   // Socket connection and REST cache recovery are background concerns. The
   // app shell and onboarding must still become usable when a single refresh
   // request fails temporarily (or keeps retrying in the background).
-  const initialDataLoad = loadAll()
+  const initialDataLoad = loadAllAndPublish()
     .then((committed) => {
       // loadAll() resolves false when a newer central snapshot took over the
       // generation — during startup that is the refresh the first socket
@@ -1183,7 +1188,6 @@ async function main() {
       // downstream that needs loaded data waits for that commit through the
       // startup barrier, so resolving early here cannot hand them stale state.
       if (!committed) return startupDataSettled;
-      markPlayerDataReady();
       renderEventContextSwitcher();
       syncFeatureNavigation();
       if (appReady) renderCurrentAfterPlayerDataLoad();
