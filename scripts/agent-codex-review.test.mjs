@@ -16,6 +16,7 @@ import {
   REQUEST_CODES,
   renderCodexRequestNotice,
   renderCodexReviewRequest,
+  renderCodexSelfReviewRequest,
   requestCommand,
   shouldAnnounceCodexRequestFailure,
 } from "./agent-codex-review.mjs";
@@ -182,6 +183,75 @@ test("dispatch starts only an outstanding Codex cross-review", () => {
   ]) {
     assert.equal(shouldAnnounceCodexRequestFailure(code), true);
   }
+});
+
+test("Codex self-review dispatch requires the Codex implementer and queues with the job token", async () => {
+  const self = {
+    phase: "review",
+    reviewerProvider: "claude",
+    contract: { implementer: "codex" },
+    details: { reviewMode: "self", reviews: { reviewedByProvider: false } },
+  };
+  assert.deepEqual(deriveCodexReviewDispatch(self), {
+    shouldRun: true,
+    code: REQUEST_CODES.run,
+    mode: "self",
+    reason: "current head is ready for one isolated Codex self-review",
+  });
+  assert.equal(
+    deriveCodexReviewDispatch({ ...self, contract: { implementer: "claude" } }).code,
+    REQUEST_CODES.mode,
+  );
+  assert.match(renderCodexSelfReviewRequest(HEAD, "run-1"), /codex-self-review-request/);
+
+  const selfHarness = harness();
+  selfHarness.dependencies.loadConfigFn = () => ({
+    codexSelfReviewRequestAuthors: ["github-actions[bot]"],
+  });
+  selfHarness.dependencies.deriveReadinessFn = () => self;
+  await runRequest(selfHarness.dependencies, {
+    AGENT_PIPELINE_REVIEW_REQUEST_TOKEN: null,
+    GITHUB_RUN_ID: "123",
+    GITHUB_RUN_ATTEMPT: "1",
+  });
+  assert.equal(selfHarness.posted.length, 1);
+  assert.equal(selfHarness.posted[0].token, "read-token");
+  assert.match(selfHarness.posted[0].body, new RegExp(`codex-self-review-request ${HEAD} attempt=123-1`));
+  assert.match(
+    renderCodexRequestNotice({
+      repository: "owner/repo",
+      pullNumber: 381,
+      headSha: HEAD,
+      outcome: "failed",
+      code: REQUEST_CODES.failed,
+      reason: "boom",
+      mode: "self",
+    }),
+    new RegExp(`mode=self outcome=failed`),
+  );
+
+  const afterTerminal = harness({ comments: [
+    {
+      user: { login: "github-actions[bot]" },
+      body: renderCodexSelfReviewRequest(HEAD, "old-run"),
+    },
+    {
+      user: { login: "blorbeer-cmd" },
+      body: `<!-- agent-pipeline:review-start-notice ${HEAD} mode=self outcome=failed code=timeout attempt=old-run-2 -->`,
+    },
+  ] });
+  afterTerminal.dependencies.loadConfigFn = () => ({
+    codexSelfReviewRequestAuthors: ["github-actions[bot]"],
+    reviewStartFailureAuthors: ["blorbeer-cmd"],
+  });
+  afterTerminal.dependencies.deriveReadinessFn = () => self;
+  await runRequest(afterTerminal.dependencies, {
+    AGENT_PIPELINE_REVIEW_REQUEST_TOKEN: null,
+    GITHUB_RUN_ID: "fresh-run",
+    GITHUB_RUN_ATTEMPT: "1",
+  });
+  assert.equal(afterTerminal.posted.length, 1);
+  assert.match(afterTerminal.posted[0].body, /attempt=fresh-run-1/);
 });
 
 test("the request is bound to the exact head and to the requesting identity", () => {
@@ -601,7 +671,8 @@ test("the workflow requests Codex through the trusted default branch", () => {
   assert.doesNotMatch(workflow, /issues: write/);
   assert.match(workflow, /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/);
   assert.match(workflow, /persist-credentials: false/);
-  assert.match(workflow, /name: Request Codex cross-review/);
+  assert.match(workflow, /name: Request Codex review/);
+  assert.match(workflow, /EVENT_LABEL.*review:self/);
   assert.match(workflow, /node scripts\/agent-codex-review\.mjs request/);
   assert.match(
     workflow,
@@ -631,7 +702,7 @@ test("the review request carries its own credential and reports when it cannot",
     workflow,
     /if: steps\.request\.outputs\.should_run == 'true' && steps\.request\.outputs\.requested != 'true'/,
   );
-  assert.match(workflow, /name: Announce missing Codex cross-review/);
+  assert.match(workflow, /name: Announce missing Codex review/);
   assert.match(workflow, /node scripts\/agent-codex-review\.mjs notice/);
   assert.match(
     workflow,
@@ -641,7 +712,7 @@ test("the review request carries its own credential and reports when it cannot",
   // status would not show the failure until the half-hourly sweep without this reconcile.
   assert.match(
     workflow,
-    /reconcile:\s*\n\s+name: Reconcile missing Codex cross-review[\s\S]*?needs\.notice\.result == 'success'/,
+    /reconcile:\s*\n\s+name: Reconcile missing Codex review[\s\S]*?needs\.notice\.result == 'success'/,
   );
   assert.match(
     workflow,

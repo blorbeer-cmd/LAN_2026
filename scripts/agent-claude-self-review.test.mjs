@@ -288,7 +288,7 @@ test("the workflow keeps the PR head inert and Claude tool access read-only", ()
   // Same-provider judgement of the same implementation is exactly what the prompt has to name so a
   // reader of the transcript understands why this review counts as reduced independence.
   assert.match(workflow, /Review-Modus: self/);
-  assert.match(workflow, /reduzierte\n\s+Unabhängigkeit/);
+  assert.match(workflow, /reduzierte\r?\n\s+Unabhängigkeit/);
 });
 
 test("the workflow announces every stalled self-review from a write-scoped job", () => {

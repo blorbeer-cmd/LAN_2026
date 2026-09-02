@@ -8,6 +8,7 @@ import {
   buildReviewDecisionPayload,
   CLAUDE_CROSS_REVIEW_HEADING,
   CLAUDE_SELF_REVIEW_HEADING,
+  CODEX_SELF_REVIEW_HEADING,
   dedupeCheckRunsByName,
   DEFAULT_WAITING_ESCALATION_HOURS,
   deriveReadiness,
@@ -743,7 +744,7 @@ test("the reconciler's own check runs never gate readiness", () => {
         { name: "Collect pull requests", status: "completed", conclusion: "cancelled" },
         { name: "Reconcile pull request (351)", status: "in_progress", conclusion: null },
         { name: "Reconcile Claude review result", status: "completed", conclusion: "cancelled" },
-        { name: "Request Codex cross-review", status: "in_progress", conclusion: null },
+        { name: "Request Codex review", status: "in_progress", conclusion: null },
         { name: "server tests", status: "completed", conclusion: "success" },
       ],
     },
@@ -759,7 +760,7 @@ test("own check runs are recognised including matrix suffixes", () => {
   assert.equal(isOwnCheckRun("Reconcile pull request (7)", config), true);
   assert.equal(isOwnCheckRun("Reconcile Claude review result", config), true);
   assert.equal(isOwnCheckRun("Select Codex review target", config), true);
-  assert.equal(isOwnCheckRun("Request Codex cross-review", config), true);
+  assert.equal(isOwnCheckRun("Request Codex review", config), true);
   assert.equal(isOwnCheckRun(config.statusContext, config), true);
   // A foreign check that merely starts similarly must still count.
   assert.equal(isOwnCheckRun("Reconcile pull requests upstream", config), false);
@@ -2063,6 +2064,39 @@ test("a structured self-review result from the trusted workflow opens the gate l
   assert.equal(readiness.ready, true);
   assert.equal(readiness.phase, "ready-for-merge");
   assert.equal(readiness.details.selfResult.sessionId, "claude-self-action-123-1");
+});
+
+test("a native COMMENT review from the trusted Codex host publisher opens only its exact head", () => {
+  const reviewBody = `${CODEX_SELF_REVIEW_HEADING}\n\n<!-- agent-pipeline:review-result ${HEAD} mode=self verdict=pass session=codex-self-run-1 read-only=verified -->`;
+  const results = parseReviewResults([{
+    author: "blorbeer-cmd",
+    authorAssociation: "OWNER",
+    commitSha: HEAD,
+    state: "COMMENTED",
+    body: reviewBody,
+  }]);
+  const readiness = deriveReadiness(
+    codexImplementationSnapshot({
+      labels: [SELF_LABEL],
+      statusCommentBody: decisionRecord(HEAD, "self"),
+      reviewResults: results,
+    }),
+    config,
+  );
+  assert.equal(readiness.ready, true);
+  assert.equal(readiness.details.selfResult.sessionId, "codex-self-run-1");
+
+  const stale = deriveReadiness(
+    codexImplementationSnapshot({
+      headSha: OLD_HEAD,
+      labels: [SELF_LABEL],
+      statusCommentBody: decisionRecord(OLD_HEAD, "self"),
+      reviewResults: results,
+    }),
+    config,
+  );
+  assert.equal(stale.ready, false);
+  assert.match(stale.blockers.join("\n"), /No self-review result/);
 });
 
 test("a github-actions[bot] self marker without the trusted self-review heading is not evidence", () => {

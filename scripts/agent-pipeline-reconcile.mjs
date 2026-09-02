@@ -124,6 +124,8 @@ export const CLAUDE_CROSS_REVIEW_SOURCE = "claude-cross-review";
 // from one of the implementation provider's own identities.
 export const CLAUDE_SELF_REVIEW_HEADING = "## Claude Self-Review";
 export const CLAUDE_SELF_REVIEW_SOURCE = "claude-self-review";
+export const CODEX_SELF_REVIEW_HEADING = "## Codex Self-Review";
+export const CODEX_SELF_REVIEW_SOURCE = "codex-self-review";
 export const REVIEW_START_FAILURE_MARKER = "<!-- agent-pipeline:review-start-failure";
 const REVIEW_START_FAILURE_PATTERN =
   /<!--\s*agent-pipeline:review-start-failure\s+([0-9a-f]{40})\s+attempt=([A-Za-z0-9._-]+)\s*-->/;
@@ -618,6 +620,8 @@ export function parseReviewResults(comments) {
           ? CLAUDE_CROSS_REVIEW_SOURCE
           : String(comment.body).startsWith(`${CLAUDE_SELF_REVIEW_HEADING}\n`)
             ? CLAUDE_SELF_REVIEW_SOURCE
+            : String(comment.body).startsWith(`${CODEX_SELF_REVIEW_HEADING}\n`)
+              ? CODEX_SELF_REVIEW_SOURCE
             : null,
         createdAt: comment.createdAt ?? null,
       });
@@ -633,6 +637,7 @@ function reviewEvidenceAuthors(config) {
     ...Object.values(config.providerAuthorAllowlist ?? {}).flat(),
     ...Object.values(config.providerReviewerAllowlist ?? {}).flat(),
     ...Object.values(config.crossReviewResultAuthors ?? {}).flat(),
+    ...Object.values(config.selfReviewResultAuthors ?? {}).flat(),
   ]);
 }
 
@@ -668,9 +673,9 @@ export function summarizeReviewFindings(
 
   for (const body of bodies) {
     for (const line of body.split(/\r?\n/)) {
-      const named = line.match(/\[(high|medium|low)\]/i)?.[1]?.toLowerCase();
-      if (named && FINDING_SEVERITIES.includes(named)) {
-        counts[named] += 1;
+      const named = line.match(/\[(critical|high|medium|low)\]/i)?.[1]?.toLowerCase();
+      if (named && (named === "critical" || FINDING_SEVERITIES.includes(named))) {
+        counts[named === "critical" ? "high" : named] += 1;
         known = true;
         continue;
       }
@@ -1222,7 +1227,10 @@ export function deriveReadiness(snapshot, config = loadConfig()) {
     { authors: resultAuthorsFor(contract.implementer, config) },
     {
       authors: config.selfReviewResultAuthors?.[contract.implementer] ?? [],
-      source: CLAUDE_SELF_REVIEW_SOURCE,
+      source:
+        contract.implementer === "codex"
+          ? CODEX_SELF_REVIEW_SOURCE
+          : CLAUDE_SELF_REVIEW_SOURCE,
     },
   ]);
   // Repository policy, not a per-run choice: how strongly a self-review session must have been kept
@@ -2455,7 +2463,10 @@ export async function fetchSnapshot({ owner, repo, pullNumber, token }) {
     submittedAt: review.submitted_at,
     body: review.body ?? "",
   }));
-  const reviewResults = parseReviewResults(trustedComments);
+  // A trusted publisher may submit the result as a native COMMENT review so its findings and
+  // resolvable inline threads are created atomically. Review bodies carry the same author and
+  // exact commit binding as issue comments and therefore pass through the identical parser.
+  const reviewResults = parseReviewResults([...trustedComments, ...normalizedReviews]);
   const priorHeadSha = previousReviewedHead(
     reviewResults,
     normalizedReviews,

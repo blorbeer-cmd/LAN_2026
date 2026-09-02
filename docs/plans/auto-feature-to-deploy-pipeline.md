@@ -7,14 +7,22 @@ Claude-Cross-Review und Claude-Implementierung → Codex-Cross-Review umgesetzt;
 in beiden Provider-Richtungen pilotiert. Für Claude-Selbst-Review existiert zusätzlich zum lokalen
 `agent-review-session.mjs --headless`-Launcher ein automatisierter, credential-read-only
 Workflow (`agent-pipeline-claude-self-review.yml`), der bei `review:self` für eine
-Claude-Implementierung ohne manuellen Aufruf startet; für eine Codex-Implementierung bleibt Self-
-Review beim dedizierten Codex-`/review`-Weg. Die Sechs-Felder-Matrix ist table-driven abgesichert.
+Claude-Implementierung ohne manuellen Aufruf startet. Für Codex-Implementierungen legt der
+vertrauenswürdige Default-Branch-Workflow einen exact-head Host-Auftrag ab; der Desktop-Monitor
+startet `agent-codex-self-review.mjs` ephemer, sandbox-read-only und ohne GitHub-Credentials, bevor
+ein getrennter Host-Publisher das validierte Ergebnis veröffentlicht. Die Sechs-Felder-Matrix ist table-driven abgesichert.
 Die post-#396 Human-Pilotfälle in beiden Implementierer-Richtungen sind noch nicht abgenommen.
 Für Codex-Implementierungen liefert der externe Task-Monitor inzwischen jeden distinkten
 Current-Head-CI-Fehlversuch sowie fehlgeschlagene post-merge `main`-CI/CD-Läufe zurück an die
 ursprüngliche Task; diese informiert den Nutzer und führt die sichere Fix-/Retry-Arbeit automatisch
 fort. Ein unabhängiger Fix-Worker, Claude-Session-Zustellung, Konflikt-Fixes, formale Rundenzähler
-und die vollständige Findings-Fix-Schleife fehlen weiterhin. Stand: 2026-08-14
+und die vollständige Findings-Fix-Schleife fehlen weiterhin. Stand: 2026-09-02
+
+Der Codex-Self-Review-Pfad ist architektonisch und lokal pilotiert. Sein erster echter GitHub-
+End-to-End-Lauf ist erst nach Merge dieses Stands beweiskräftig: `pull_request_target` sowie der
+Host-Monitor laden absichtlich ausschließlich Code vom vertrauenswürdigen Default-Branch. Bis
+dahin belegen Unit-/Adaptertests, CLI-Help und ein lokaler exact-head Review-Pilot die Schnittstelle,
+nicht jedoch einen bereits auf `main` veröffentlichten Workflow-Lauf.
 
 Der Reviewer wird nicht mehr automatisch bestimmt, sondern vom Nutzer pro Head-SHA gewählt. Die
 Herleitung dieser Änderung steht in [`review-mode-selection.md`](review-mode-selection.md), der
@@ -658,8 +666,15 @@ dessen `github-actions[bot]`-Identität als zweite gültige Quelle neben `claude
 menschlichen Betreiber), sodass der jeweils neuere Marker zählt. Ein automatisiertes erneutes
 Auslösen nach einem zunächst noch nicht bereiten Head (wie `planReviewRetrigger` es für `cross`
 bereits leistet) existiert für `self` noch nicht; ein deklinierter Versuch bleibt bis zu einer
-erneuten Label-Wahl liegen. Codex-Selbst-Review läuft weiterhin ausschließlich über den dedizierten
-Codex-`/review`-Weg. Die Sechs-Felder-Matrix ist als table-driven Akzeptanzstandard getestet. Die
+erneuten Label-Wahl liegen. Codex-Selbst-Review läuft automatisiert über den vertrauenswürdigen
+GitHub-Outbox-/Host-Monitor-Weg. Ein technischer Fehlschlag wird für denselben Head einmal
+markergebunden wiederholt; ein zweiter Fehlschlag geht zurück zur Auswahl. Der Terminalmarker ist
+an die Request-ID gebunden, sodass eine ausdrückliche Neuwahl auf demselben Head einen neuen
+Zwei-Versuche-Zyklus startet. Der Host prüft den vertrauenswürdigen exact-head Request nochmals
+selbst und schreibt vor jedem Providerstart einen dauerhaften Versuchsmarker; ein Prozess- oder
+Maschinenabbruch kann deshalb nach Ablauf des Review-Timeouts weder unbegrenzt Versuch 1 wiederholen
+noch einen begonnenen Versuch 2 offen lassen. Die Sechs-Felder-Matrix ist als table-driven
+Akzeptanzstandard getestet. Die
 Findings-Fix-Schleife, automatische CI-/Konfliktkorrektur und Rundenzähler bleiben außerhalb
 dieses Auftrags.
 

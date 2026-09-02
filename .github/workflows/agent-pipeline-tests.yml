@@ -64,5 +64,8 @@ jobs:
       - name: Test Codex cross-review adapter
         run: node --test scripts/agent-codex-review.test.mjs
 
+      - name: Test Codex self-review runner and publisher
+        run: node --test scripts/agent-codex-self-review.test.mjs
+
       - name: Test Codex task delivery adapter
         run: node --test scripts/agent-pipeline-codex-adapter.test.mjs
