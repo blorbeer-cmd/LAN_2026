@@ -15,7 +15,7 @@ was daraufhin tatsächlich geändert wurde.
 |---|---|---|
 | P1-1 Retry-Schleifen | behoben | `app.js` gleicht die Desktop-Navigation in place ab statt sie zu ersetzen (`renderDesktopNavigation`, delegierter Listener); alle drei Retry-Schleifen entfernt |
 | P1-2 Schlaf-Pausen nach Login | behoben | `#app[data-player-data]` publiziert `loading`/`ready`/`failed`; `waitForPlayerData()` ersetzt sechs feste Pausen |
-| P1-3 PayPal-Handoff-Flake | **offen** | Ursache nicht belegt; unverändert |
+| P1-3 PayPal-Handoff-Flake | behoben | Ursache belegt: Identitätswechsel verlor die Session an die gleitende Cookie-Auffrischung; `switchSessionCookie()` schließt das Fenster |
 | P2-1 Arcade-Countdowns | behoben | `ARCADE_FAST_TIMERS` in `timing.ts`, `npm test` setzt es; `END_REVEAL_MS` zentralisiert |
 | P2-2 `api.agentDownload` | behoben | `AGENT_DIST_DIR` + lazy `agentExePath()`; Test packt einen Stub, beide Zweige unbedingt geprüft |
 | P2-3 `openView`-Pausen | behoben | wartet auf `#view-container[data-view=…]`, Options-Schleife auf die Antwort |
@@ -50,9 +50,11 @@ Gemessene Wirkung auf den Unit-/Integrationslauf (`node --test`, dieselbe Maschi
 
 Unverändert: `api.challengeRush` (24,2 s — P3-5 offen) und `db.migrations` (18,2 s, nicht untersucht).
 
-Die Browser-E2E-Suiten konnten lokal nicht ausgeführt werden (kein Chromium in der Arbeitsumgebung).
-Alle E2E-Änderungen sind ausschließlich durch Typecheck, Lint und Codeanalyse abgesichert; CI ist
-dafür die eigentliche Prüfung.
+**Korrektur gegenüber früheren Fassungen dieses Berichts:** Die Browser-E2E-Suiten *sind* in dieser
+Arbeitsumgebung ausführbar — Chromium liegt unter `/opt/pw-browsers` und startet. Die frühere
+Aussage, sie ließen sich hier nicht ausführen, war falsch und hat die E2E-Änderungen länger als
+nötig allein auf CI abgestützt. Die Core-Partition wurde inzwischen lokal mehrfach vollständig
+ausgeführt; darauf beruht die Ursachenklärung zu P1-3.
 
 ## 1. Datenbasis
 
@@ -225,7 +227,26 @@ entfernter PayPal-Link) sind serverseitig in `src/test/api.foodOrders.test.ts` a
 Browsertest deckt zusätzlich den PayPal-Popup-Handoff und die Toast-Rückmeldung ab, also einen
 echten Integrationsnutzen. Der Test ist nicht redundant — nur instabil.
 
-**Empfohlene Maßnahme:** Ursache eingrenzen und beheben, nicht die Selektion weiter härten.
+**Ursache (belegt, nicht mehr Hypothese):** Der Fehlschlag wurde lokal in der vollständigen
+Core-Partition reproduziert; der DOM-Snapshot des Fehlschlags zeigt die Szenario-Bestellung als
+`von E2E Bob` mit der Gruppenüberschrift `E2E Bob (du)` — der Test wartet also auf eine
+Alice-Gruppe, die es in dieser Karte nie geben wird. Grund: `requireUser` erneuert bei *jedem*
+authentifizierten Request das Session-Cookie (`src/sessions.ts:211`, gleitende Gültigkeit). Der
+Identitätswechsel schrieb Alices Cookie, während noch Hintergrund-Requests der vorigen Identität
+liefen; deren Antwort setzte Bobs Cookie danach wieder. `bindBodyPlayerId` (`src/sessions.ts:216`)
+überschreibt zudem ein `playerId` im Body mit dem der Session, sodass der explizit mitgegebene
+`alice.id` den Fehler nicht auffangen konnte — die Bestellung entstand still unter dem falschen
+Konto. Unter Last dauert die Abarbeitung dieser Requests länger, was die Last-Abhängigkeit erklärt
+(Vollpartition rot, isolierter Owner-Retry grün).
+
+**Behebung:** `switchSessionCookie()` in `authHelpers.ts` parkt die Seite vor dem Cookie-Wechsel auf
+einem leeren Dokument und wartet dessen Netzwerkruhe ab, sodass keine Antwort der alten Identität
+mehr nach dem Schreiben eintreffen kann; danach kehrt es auf genau die vorige URL zurück. Die drei
+Wechsel auf lebender Seite (`switchIdentityAndOpenArrivals`, `switchIdentityAndOpenFoodOrders`,
+`checklist.e2e.test.ts`) nutzen ihn. Verifiziert: Owner isoliert 6/6 grün, Core-Vollpartition in
+drei Läufen ohne diesen Fehlschlag, während er auf unverändertem Stand lokal reproduzierbar war.
+
+**Ursprünglich empfohlene Maßnahme:** Ursache eingrenzen und beheben, nicht die Selektion weiter härten.
 Konkrete Ansatzpunkte in dieser Reihenfolge: (1) den 409 im Browser-Netzwerkprotokoll zuordnen —
 `createScenario` legt über `page.request.post` eine neue Sammelbestellung an, während der
 Single-Open-Guard in `src/routes/foodOrders.ts` möglicherweise noch eine offene Bestellung des
@@ -896,13 +917,17 @@ gesuchte Klassen wurden untersucht und für in Ordnung befunden:
   Umgebung keine 24er-Laufzeit verfügbar war. Die Verhältniszahlen sind belastbar (alle Vergleiche
   auf derselben Laufzeit), die Absolutwerte können auf CI leicht abweichen. Die
   CI-Schrittlaufzeiten in Abschnitt 1 stammen dagegen direkt aus GitHub Actions.
-- Die Browser-E2E-Suiten wurden **nicht** lokal ausgeführt (kein Chromium-Setup ohne Dateiänderung
-  im Zeitrahmen). Alle E2E-Laufzeiten stammen aus CI-Logs.
+- Die E2E-Laufzeiten in diesem Bericht stammen aus CI-Logs. Die *Fehleranalyse* zu P1-3 beruht
+  dagegen auf lokalen Vollläufen der Core-Partition: entgegen der ursprünglichen Annahme ist
+  Chromium hier verfügbar. Lokal ist die Maschine allerdings stärker ausgelastet als ein
+  CI-Runner — vereinzelte Fehlschläge in Auth-Tests treten dort auch ohne jede Änderung auf
+  (mit unverändertem Arbeitsbaum reproduziert) und sind Umgebungsrauschen, keine Befunde.
 - Die Flake-Auswertung beruht auf zwölf `main`-Läufen. Für Aussagen über die Häufigkeit einzelner
   Flakes ist das eine kleine Stichprobe; die *Existenz* der beiden Flakes ist durch Log und
   Retry-Ergebnis belegt.
-- P1-3 und P2-5 nennen Ursachenhypothesen, keine Feststellungen; die Unsicherheit ist dort jeweils
-  ausgewiesen.
+- P2-5 nennt eine Ursachenhypothese, keine Feststellung; die Unsicherheit ist dort ausgewiesen.
+  P1-3 war ebenfalls als Hypothese formuliert und ist inzwischen am DOM-Snapshot eines lokal
+  reproduzierten Fehlschlags belegt und behoben.
 - Nicht systematisch untersucht wurden: `db.migrations.test.ts` (19,4 s, 46 Tests, jeder mit
   eigenem Kindprozess) auf inhaltliche Redundanz zwischen den Migrationsfixtures, sowie die
   Agent-Suiten unter `agent/`. Beide waren im Vergleich unauffällig, aber die Migrationsdatei ist

@@ -10,6 +10,7 @@ import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page } from 'playwright';
 import {
   addSessionCookie,
+  switchSessionCookie,
   authenticatedServerEnv,
   createE2EAccount,
   E2EAccount,
@@ -37,8 +38,7 @@ async function openChecklist(): Promise<void> {
 }
 
 async function switchAccount(account: E2EAccount): Promise<void> {
-  await addSessionCookie(page.context(), BASE_URL, account.cookie);
-  await page.reload();
+  await switchSessionCookie(page, BASE_URL, account.cookie);
   await page.waitForSelector('#app:not([hidden])');
 }
 

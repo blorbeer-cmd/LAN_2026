@@ -10,6 +10,7 @@ import type { ChildProcess } from 'child_process';
 import { chromium, Browser, Page, type Locator } from 'playwright';
 import {
   addSessionCookie,
+  switchSessionCookie,
   authenticatedServerEnv,
   createE2EAccount,
   E2E_ADMIN_PASSWORD,
@@ -169,8 +170,7 @@ async function openProfile(): Promise<void> {
 async function switchIdentityAndOpenArrivals(label: string): Promise<void> {
   const account = accountsByName.get(label);
   assert.ok(account, `missing E2E account for ${label}`);
-  await addSessionCookie(page.context(), BASE_URL, account.cookie);
-  await page.reload();
+  await switchSessionCookie(page, BASE_URL, account.cookie);
   await page.waitForSelector('#app:not([hidden])');
   await openOrgaTab('arrivals');
   await page.waitForSelector('[data-new-carpool="arrival"]');
@@ -179,8 +179,7 @@ async function switchIdentityAndOpenArrivals(label: string): Promise<void> {
 async function switchIdentityAndOpenFoodOrders(label: string): Promise<void> {
   const account = accountsByName.get(label);
   assert.ok(account, `missing E2E account for ${label}`);
-  await addSessionCookie(page.context(), BASE_URL, account.cookie);
-  await page.reload();
+  await switchSessionCookie(page, BASE_URL, account.cookie);
   await page.waitForSelector('#app:not([hidden])');
   await page.click('#nav-food-orders');
   await page.waitForSelector('#order-new-btn');
@@ -947,7 +946,7 @@ flowTest('shell', 'the authenticated admin role owns the seating editor and back
   // admin-role load race instead of the onboarding tour taking over the
   // requested initial view.
   await finishE2EOnboarding(BASE_URL, adminCookie);
-  await addSessionCookie(page.context(), BASE_URL, adminCookie);
+  await switchSessionCookie(page, BASE_URL, adminCookie);
   await page.goto(`${BASE_URL}/#adminFeatureUsage`);
   // Playwright may treat a hash-only goto as same-document navigation when
   // the shared page is already on the app root. Reload to exercise the real
