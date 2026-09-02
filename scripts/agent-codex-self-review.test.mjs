@@ -61,6 +61,27 @@ function finding(overrides = {}) {
   };
 }
 
+function rawOutput(overrides = {}) {
+  return {
+    schema_version: 1,
+    repository: "owner/repo",
+    pull_request: "42",
+    reviewer_provider: "codex",
+    review_mode: "self",
+    review_session_id: SESSION,
+    isolated_session: true,
+    read_only_enforced: "verified",
+    implementer: "codex",
+    base_branch: "main",
+    head_branch: "feature",
+    reviewed_head_sha: HEAD,
+    verdict: "pass",
+    findings: [],
+    residual_risks: [],
+    ...overrides,
+  };
+}
+
 test("pass, changes-required and blocked outputs are validated fail-closed", () => {
   assert.equal(validateReviewOutput(output(), { headSha: HEAD, sessionId: SESSION }).verdict, "pass");
   const changes = output({ verdict: "changes-required", findings: [finding()] });
@@ -149,9 +170,9 @@ test("reviewer environment strips every GitHub write credential and schema pins 
   assert.equal("GITHUB_TOKEN" in env, false);
   assert.equal("GH_TOKEN" in env, false);
   const schema = resultSchema({ headSha: HEAD, sessionId: SESSION });
-  assert.equal(schema.properties.headSha.const, HEAD);
-  assert.equal(schema.properties.sessionId.const, SESSION);
-  assert.equal(schema.properties.readOnly.const, "verified");
+  assert.equal(schema.properties.reviewed_head_sha.const, HEAD);
+  assert.equal(schema.properties.review_session_id.const, SESSION);
+  assert.equal(schema.properties.read_only_enforced.const, "verified");
 });
 
 test("the prompt binds the detached review and forbids editable PR actions", () => {
@@ -169,7 +190,7 @@ test("the prompt binds the detached review and forbids editable PR actions", () 
   assert.match(prompt, /Return only the JSON object/);
 });
 
-test("the executable receives approval policy before exec and a schema-bound review prompt", () => {
+test("the executable receives approval policy before exec and invokes the documented review command", () => {
   assert.deepEqual(codexReviewArgs({ schemaPath: "schema.json", outputPath: "result.json" }), [
     "--ask-for-approval", "never",
     "exec",
@@ -185,8 +206,18 @@ test("the executable receives approval policy before exec and a schema-bound rev
     "--config", "project_doc_max_bytes=0",
     "--output-schema", "schema.json",
     "--output-last-message", "result.json",
+    "review",
     "-",
   ]);
+});
+
+test("the official review output is normalized from the documented snake_case contract", () => {
+  const result = validateReviewOutput(rawOutput(), { headSha: HEAD, sessionId: SESSION });
+  assert.equal(result.provider, "codex");
+  assert.equal(result.mode, "self");
+  assert.equal(result.readOnly, "verified");
+  assert.deepEqual(result.residualRisks, []);
+  assert.equal(resultSchema({ headSha: HEAD, sessionId: SESSION }).properties.reviewed_head_sha.const, HEAD);
 });
 
 test("a nominally successful Codex process fails closed after sandbox tool denial", () => {

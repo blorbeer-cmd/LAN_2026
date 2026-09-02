@@ -46,6 +46,23 @@ export const RESULT_KEYS = [
   "findings",
   "residualRisks",
 ];
+const RAW_RESULT_KEYS = [
+  "schema_version",
+  "repository",
+  "pull_request",
+  "reviewer_provider",
+  "review_mode",
+  "review_session_id",
+  "isolated_session",
+  "read_only_enforced",
+  "implementer",
+  "base_branch",
+  "head_branch",
+  "reviewed_head_sha",
+  "verdict",
+  "findings",
+  "residual_risks",
+];
 const VERDICTS = new Set(["pass", "changes-required", "blocked"]);
 const SEVERITIES = new Set(["critical", "high", "medium", "low"]);
 const DISPOSITIONS = new Set(["actionable", "needs-human"]);
@@ -61,6 +78,7 @@ const FINDING_KEYS = [
   "evidence",
   "verification",
 ];
+const RAW_FINDING_KEYS = ["id", "severity", "disposition", "anchor", ...FINDING_KEYS.slice(3)];
 const DEFAULT_REVIEW_TIMEOUT_MINUTES = 45;
 // How long past its own timeout a review process may still be winding down — writing the result,
 // removing the worktree — before another invocation may take its lock.
@@ -111,13 +129,20 @@ export function resultSchema({ headSha, sessionId }) {
   return {
     type: "object",
     additionalProperties: false,
-    required: RESULT_KEYS,
+    required: RAW_RESULT_KEYS,
     properties: {
-      provider: { type: "string", const: "codex" },
-      mode: { type: "string", const: "self" },
-      sessionId: { type: "string", const: sessionId },
-      headSha: { type: "string", const: headSha },
-      readOnly: { type: "string", const: "verified" },
+      schema_version: { type: "integer", const: 1 },
+      repository: { type: "string", minLength: 1 },
+      pull_request: { type: "string", minLength: 1 },
+      reviewer_provider: { type: "string", const: "codex" },
+      review_mode: { type: "string", const: "self" },
+      review_session_id: { type: "string", const: sessionId },
+      isolated_session: { type: "boolean", const: true },
+      read_only_enforced: { type: "string", const: "verified" },
+      implementer: { type: "string", const: "codex" },
+      base_branch: { type: "string", minLength: 1 },
+      head_branch: { type: "string", minLength: 1 },
+      reviewed_head_sha: { type: "string", const: headSha },
       verdict: { type: "string", enum: [...VERDICTS] },
       findings: {
         type: "array",
@@ -125,11 +150,12 @@ export function resultSchema({ headSha, sessionId }) {
         items: {
           type: "object",
           additionalProperties: false,
-          required: FINDING_KEYS,
+          required: RAW_FINDING_KEYS,
           properties: {
-            id: { type: "string", pattern: "^codex-[a-z0-9-]{3,80}$" },
+            id: { type: "string", pattern: "^(?:codex-[a-z0-9-]{3,80}|R[1-9][0-9]{0,2})$" },
             severity: { type: "string", enum: [...SEVERITIES] },
             disposition: { type: "string", enum: [...DISPOSITIONS] },
+            anchor: { type: "string", enum: ["inline", "none"] },
             title: { type: "string", minLength: 1, maxLength: 120 },
             file: { type: ["string", "null"] },
             line: { type: ["integer", "null"], minimum: 1 },
@@ -140,7 +166,7 @@ export function resultSchema({ headSha, sessionId }) {
           },
         },
       },
-      residualRisks: { type: "array", maxItems: 20, items: { type: "string", maxLength: 1000 } },
+      residual_risks: { type: "array", maxItems: 20, items: { type: "string", maxLength: 1000 } },
     },
   };
 }
@@ -154,6 +180,45 @@ export function validateReviewOutput(raw, { headSha, sessionId }) {
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Codex output must be an object.");
+  }
+  if ("schema_version" in value || "reviewer_provider" in value) {
+    rejectUnknown(value, RAW_RESULT_KEYS, "review output");
+    for (const key of RAW_RESULT_KEYS) {
+      if (!(key in value)) throw new Error(`review output is missing ${key}.`);
+    }
+    if (value.schema_version !== 1 || value.isolated_session !== true) {
+      throw new Error("review output has invalid schema version or isolation metadata.");
+    }
+    if (
+      value.reviewer_provider !== "codex" ||
+      value.review_mode !== "self" ||
+      value.implementer !== "codex"
+    ) {
+      throw new Error("review provider/mode/implementer must be codex/self/codex.");
+    }
+    if (value.review_session_id !== sessionId || value.reviewed_head_sha !== headSha) {
+      throw new Error("review session or head SHA does not match the launch.");
+    }
+    if (value.read_only_enforced !== "verified") {
+      throw new Error("review did not report read_only_enforced=verified.");
+    }
+    value = {
+      provider: value.reviewer_provider,
+      mode: value.review_mode,
+      sessionId: value.review_session_id,
+      headSha: value.reviewed_head_sha,
+      readOnly: value.read_only_enforced,
+      verdict: value.verdict,
+      findings: value.findings.map((finding) => {
+        const expectedAnchor = finding.disposition === "actionable" ? "inline" : "none";
+        if (finding.anchor !== expectedAnchor) {
+          throw new Error(`finding ${finding.id} has an invalid anchor disposition.`);
+        }
+        const { anchor: _anchor, ...normalized } = finding;
+        return normalized;
+      }),
+      residualRisks: value.residual_risks,
+    };
   }
   rejectUnknown(value, RESULT_KEYS, "review output");
   for (const key of RESULT_KEYS) {
@@ -179,8 +244,8 @@ export function validateReviewOutput(raw, { headSha, sessionId }) {
     for (const key of FINDING_KEYS) {
       if (!(key in finding)) throw new Error(`finding is missing ${key}.`);
     }
-    if (!/^codex-[a-z0-9-]{3,80}$/.test(finding.id) || ids.has(finding.id)) {
-      throw new Error("finding ids must be unique stable codex-* tokens.");
+    if (!/^(?:codex-[a-z0-9-]{3,80}|R[1-9][0-9]{0,2})$/.test(finding.id) || ids.has(finding.id)) {
+      throw new Error("finding ids must be unique stable codex-* or Rn tokens.");
     }
     ids.add(finding.id);
     if (!SEVERITIES.has(finding.severity) || !DISPOSITIONS.has(finding.disposition)) {
@@ -357,11 +422,13 @@ export function renderPrompt({ repository, pullNumber, baseSha, headSha, session
     `Session: ${sessionId}`,
     "",
     `Inspect the complete diff with \`git diff ${baseSha}...${headSha}\` and relevant tests. Every actionable`,
-    "finding must have a stable codex-* id and anchor to a RIGHT-side diff line. Use needs-human",
+    "finding must have a stable Rn or codex-* id and anchor to a RIGHT-side diff line. Use needs-human",
     "with null file/line only when no reliable inline anchor or safe technical judgment exists.",
     "pass requires zero findings; changes-required requires actionable findings; blocked requires",
-    "at least one needs-human finding. Set provider=codex, mode=self, the exact session/head above,",
-    "and readOnly=verified. Do not print or invent an agent-pipeline marker.",
+    "at least one needs-human finding. Set reviewer_provider=codex, review_mode=self, the exact",
+    "review_session_id/reviewed_head_sha above, isolated_session=true, read_only_enforced=verified,",
+    "and implementer=codex. Use the exact snake_case JSON keys from the supplied schema. Do not print",
+    "or invent an agent-pipeline marker.",
   ].join("\n");
 }
 
@@ -390,6 +457,7 @@ export function codexReviewArgs({ schemaPath, outputPath }) {
     "--config", "project_doc_max_bytes=0",
     "--output-schema", schemaPath,
     "--output-last-message", outputPath,
+    "review",
     "-",
   ];
 }
