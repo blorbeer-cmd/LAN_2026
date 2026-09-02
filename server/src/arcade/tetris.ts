@@ -109,6 +109,7 @@ interface PlayerState {
   eliminatedAt: number | null;
   eliminationReason: string | null;
   lastGarbageSourceId: string | null;
+  lastGarbageTargetId: string | null;
   botPlan: InputAction[];
   botPlanKey: string | null;
   nextBotMoveAt: number;
@@ -204,6 +205,16 @@ function previewTypes(match: TetrisMatch, state: PlayerState, count: number): Pi
 }
 
 function serializeState(match: TetrisMatch, state: PlayerState) {
+  const target = state.targetId ? match.states.get(state.targetId)?.ref ?? null : null;
+  const lastGarbageTarget = state.lastGarbageTargetId
+    ? match.states.get(state.lastGarbageTargetId)?.ref ?? null
+    : null;
+  const incomingSources = [...state.incoming.reduce((sources, packet) => {
+    const current = sources.get(packet.sourcePlayerId) ?? { playerId: packet.sourcePlayerId, name: match.states.get(packet.sourcePlayerId)?.ref.name ?? 'Unbekannt', lines: 0 };
+    current.lines += packet.lines;
+    sources.set(packet.sourcePlayerId, current);
+    return sources;
+  }, new Map<string, { playerId: string; name: string; lines: number }>()).values()];
   return {
     playerId: state.ref.id,
     name: state.ref.name,
@@ -216,7 +227,11 @@ function serializeState(match: TetrisMatch, state: PlayerState) {
     lines: state.lines,
     level: state.level,
     incoming: state.incoming.reduce((sum, packet) => sum + packet.lines, 0),
+    incomingSources,
     targetId: state.targetId,
+    targetName: target?.name ?? null,
+    lastGarbageTargetId: state.lastGarbageTargetId,
+    lastGarbageTargetName: lastGarbageTarget?.name ?? null,
     garbageSent: state.garbageSent,
     garbageReceived: state.garbageReceived,
     knockouts: state.knockouts,
@@ -488,6 +503,7 @@ function lockAndAdvance(match: TetrisMatch, state: PlayerState, pendingEliminati
       if (target) {
         target.incoming.push({ sourcePlayerId: state.ref.id, lines: attack });
         state.garbageSent += attack;
+        state.lastGarbageTargetId = target.ref.id;
       }
     }
   } else if (state.incoming.length > 0) {
@@ -852,6 +868,7 @@ export function registerTetrisSockets(io: Server): void {
           eliminatedAt: null,
           eliminationReason: null,
           lastGarbageSourceId: null,
+          lastGarbageTargetId: null,
           botPlan: [],
           botPlanKey: null,
           nextBotMoveAt: Date.now(),

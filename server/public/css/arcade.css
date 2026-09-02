@@ -627,6 +627,40 @@
   font-size: var(--font-size-2xs);
   font-variant-numeric: tabular-nums;
 }
+.tetris-arena-info {
+  margin: var(--space-3) auto 0;
+}
+.tetris-arena-info h2 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-md);
+}
+.tetris-arena-info-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+}
+.tetris-arena-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+.tetris-arena-info-item strong {
+  overflow-wrap: anywhere;
+}
+.tetris-arena-info-item small {
+  color: var(--text-muted);
+  font-size: var(--font-size-2xs);
+}
+@media (min-width: 640px) { /* --bp-md */
+  .tetris-arena-info-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
 /* Incoming-garbage warning, pinned to the top-right of a board. */
 .tetris-incoming {
   position: absolute;
@@ -1141,6 +1175,19 @@
   font-size: var(--font-size-3xl);
   font-weight: var(--font-weight-black);
   text-shadow: 0 0 var(--space-3) color-mix(in srgb, var(--snake-player-color) 55%, transparent);
+}
+
+.snake-arena-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  text-align: center;
+}
+.snake-arena-status strong {
+  color: var(--accent);
 }
 
 .snake-overlay {

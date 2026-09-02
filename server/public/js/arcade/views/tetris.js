@@ -342,7 +342,7 @@ function triggerClearFx(prefix, cleared) {
 function updateStatLine(prefix, playerState) {
   const el = document.querySelector(`#${prefix}-stats`);
   if (el && playerState) {
-    el.innerHTML = `Level ${playerState.level} · ${playerState.lines} Zeilen · ${playerState.score} Pkt`;
+    el.innerHTML = `Level ${playerState.level} · ${playerState.lines} Zeilen · ${playerState.garbageSent ?? 0} gesendet · ${playerState.garbageReceived ?? 0} erhalten · ${playerState.knockouts ?? 0} K.o. · ${playerState.score} Pkt`;
   }
   const warn = document.querySelector(`#${prefix}-incoming`);
   if (warn) {
@@ -350,6 +350,22 @@ function updateStatLine(prefix, playerState) {
     warn.textContent = n > 0 ? `Gefahr: ${n}` : '';
     warn.classList.toggle('tetris-incoming-hot', n >= 4);
   }
+}
+
+function updateArenaInfo() {
+  const info = document.querySelector('#tetris-arena-info');
+  if (!info || !latestState || match?.mode !== 'arena') return;
+  const me = latestState.players.find((player) => player.playerId === myId());
+  if (!me) return;
+  const incoming = (me.incomingSources ?? [])
+    .map((source) => `${escapeHtml(source.name)} (${source.lines} ${source.lines === 1 ? 'Zeile' : 'Zeilen'})`)
+    .join(', ');
+  const target = me.targetName ? escapeHtml(me.targetName) : 'kein lebendes Ziel';
+  const lastTarget = me.lastGarbageTargetName ? escapeHtml(me.lastGarbageTargetName) : 'noch niemand';
+  info.innerHTML = `
+    <div class="tetris-arena-info-item"><span class="muted">Dein aktuelles Ziel</span><strong>${target}</strong><small>Neue Angriffszeilen gehen dorthin.</small></div>
+    <div class="tetris-arena-info-item"><span class="muted">Eingehende Zeilen</span><strong>${incoming || 'Keine'}</strong><small>${incoming ? 'Absender der noch offenen Pakete' : 'Aktuell wartet kein Angriff.'}</small></div>
+    <div class="tetris-arena-info-item"><span class="muted">Deine Bilanz</span><strong>${me.garbageSent ?? 0} Zeilen gesendet · ${me.garbageReceived ?? 0} erhalten · ${me.knockouts ?? 0} Spieler besiegt</strong><small>Zuletzt gesendet an: ${lastTarget}</small></div>`;
 }
 
 function updateRosterDisplay() {
@@ -365,7 +381,9 @@ function updateRosterDisplay() {
       const state = latestState.players.find((p) => p.playerId === player.id);
       if (!state) return '';
       if (state.placement) return `Platz ${state.placement}`;
-      return state.alive ? `${state.knockouts ?? 0} K.o. · ${state.garbageSent ?? 0} Angriff` : 'Ausgeschieden';
+      return state.alive
+        ? `${state.knockouts ?? 0} Spieler besiegt · ${state.garbageSent ?? 0} Zeilen gesendet`
+        : `Ausgeschieden · ${state.knockouts ?? 0} Spieler besiegt`;
     },
   });
 }
@@ -403,6 +421,7 @@ function paint() {
     column.classList.toggle('is-target', me?.targetId === playerState?.playerId);
   });
   updateRosterDisplay();
+  updateArenaInfo();
   paintOverlay();
 }
 
@@ -573,7 +592,7 @@ function endResultHtml() {
       const score = scores.get(player.id);
       if (!score) return '';
       const placement = score.placement ? `Platz ${score.placement}` : 'Ohne Platzierung';
-      return `${placement} · ${score.knockouts ?? 0} K.o.`;
+       return `${placement} · ${score.garbageSent ?? 0} Zeilen gesendet · ${score.knockouts ?? 0} Spieler besiegt`;
     },
   });
   return `
@@ -645,7 +664,11 @@ export function renderTetris(container, _ctx) {
     detailFor: (player) => {
       const state = latestState?.players?.find((p) => p.playerId === player.id);
       if (!state) return '';
-      return state.placement ? `Platz ${state.placement}` : state.alive ? `${state.knockouts ?? 0} K.o.` : 'Ausgeschieden';
+       return state.placement
+         ? `Platz ${state.placement} · ${state.knockouts ?? 0} Spieler besiegt · ${state.garbageSent ?? 0} Zeilen gesendet`
+         : state.alive
+           ? `${state.knockouts ?? 0} Spieler besiegt · ${state.garbageSent ?? 0} Zeilen gesendet`
+           : `Ausgeschieden · ${state.knockouts ?? 0} Spieler besiegt`;
     },
   });
   const boardFor = (player, index, primary = false) => {
@@ -663,6 +686,7 @@ export function renderTetris(container, _ctx) {
   container.innerHTML = `
     <div class="arcade-game-shell"><h1 class="view-title">${match.mode === 'arena' ? 'Tetris Arena' : 'Tetris Duell'}</h1>
     ${arcadeToolbarHtml()}
+    ${match.mode === 'arena' ? '<section class="card tetris-arena-info" aria-labelledby="tetris-arena-info-title"><h2 id="tetris-arena-info-title">Arena-Übersicht</h2><div id="tetris-arena-info" class="tetris-arena-info-grid" aria-live="polite"></div></section>' : ''}
     <div id="tetris-game">
       <div id="tetris-roster">${roster}</div>
       <div id="tetris-boards" class="tetris-boards ${match.mode === 'arena' ? 'is-arena' : 'is-duel'}">
