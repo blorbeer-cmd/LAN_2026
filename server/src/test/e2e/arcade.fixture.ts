@@ -977,6 +977,8 @@ arcadeTest('scribble', 'Scribble: live thumbs-up stays synchronized and the next
 
     // Round 1, turn 1: the host draws.
     await host.page.waitForSelector('.scribble-word-choice-btn');
+    await guest.page.waitForSelector('#scribble-countdown');
+    assert.match((await guest.page.locator('#scribble-countdown').textContent()) ?? '', /^\d+s$/);
     const firstWordBtn = host.page.locator('.scribble-word-choice-btn').first();
     const firstWord = (await firstWordBtn.textContent())!.trim();
     await firstWordBtn.click();
@@ -1004,6 +1006,12 @@ arcadeTest('scribble', 'Scribble: live thumbs-up stays synchronized and the next
       () => document.querySelector('[data-scribble-thumb-count]')?.textContent === '2'
     );
 
+    await guest.page.fill('#scribble-guess-input', 'zzzz-kein-scribble-wort-zzzz');
+    await guest.page.locator('#scribble-guess-form').evaluate((form) => (form as HTMLFormElement).requestSubmit());
+    await guest.page.waitForFunction(
+      () => document.getElementById('scribble-guess-feedback')?.textContent === 'Noch nicht richtig.',
+    );
+
     await guest.page.fill('#scribble-guess-input', firstWord);
     await guest.page.locator('#scribble-guess-form').evaluate((form) => (form as HTMLFormElement).requestSubmit());
     await guest.page.waitForFunction(
@@ -1013,6 +1021,11 @@ arcadeTest('scribble', 'Scribble: live thumbs-up stays synchronized and the next
       await guest.page.locator('#view-container').getAttribute('data-scribble-guess-result'),
       'correct',
       'the first guess must be acknowledged as correct before the turn transition',
+    );
+    await guest.page.waitForSelector('[data-scribble-guess-feedback-result="correct"]');
+    assert.match(
+      (await guest.page.locator('[data-scribble-guess-feedback-result="correct"]').textContent()) ?? '',
+      /^Richtig! \+\d+ Punkte$/,
     );
     await guest.page.waitForSelector('.scribble-word-choice-btn');
 
