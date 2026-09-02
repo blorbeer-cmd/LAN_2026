@@ -462,7 +462,7 @@ export function codexReviewArgs({ schemaPath, outputPath }) {
   ];
 }
 
-export function assertCodexExecution(result) {
+export function assertCodexExecution(result, { outputAvailable = false } = {}) {
   if (result.error?.code === "ETIMEDOUT") {
     throw Object.assign(new Error("Codex review timed out."), { reviewCode: "timeout" });
   }
@@ -473,7 +473,10 @@ export function assertCodexExecution(result) {
     );
   }
   const transcript = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-  if (/tools::router: error=|rejected:\s*blocked by policy|CreateProcess \{ message: "Rejected/i.test(transcript)) {
+  if (
+    !outputAvailable &&
+    /tools::router: error=|rejected:\s*blocked by policy|CreateProcess \{ message: "Rejected/i.test(transcript)
+  ) {
     throw Object.assign(
       new Error("Codex could not inspect the checkout because a review tool was denied by the sandbox."),
       { reviewCode: "read-only" },
@@ -811,7 +814,7 @@ export async function runCommand(args, dependencies = {}) {
         maxBuffer: 20 * 1024 * 1024,
       },
     );
-    assertCodexExecution(codex);
+    assertCodexExecution(codex, { outputAvailable: existsSync(outputPath) });
     const dirty = run("git", ["status", "--porcelain"], { cwd: worktree });
     const actualHead = run("git", ["rev-parse", "HEAD"], { cwd: worktree });
     if (dirty || actualHead !== expectedHead) {

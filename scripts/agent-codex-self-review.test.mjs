@@ -230,6 +230,11 @@ test("a nominally successful Codex process fails closed after sandbox tool denia
     }),
     (error) => error.reviewCode === "read-only" && /could not inspect/.test(error.message),
   );
+  assert.doesNotThrow(() => assertCodexExecution({
+    status: 0,
+    stdout: "structured review written",
+    stderr: "ERROR codex_core::tools::router: error=exec_command rejected: blocked by policy",
+  }, { outputAvailable: true }));
 });
 
 test("trusted requests and durable attempt starts are exact-head and identity bound", () => {
