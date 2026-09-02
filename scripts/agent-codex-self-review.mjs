@@ -59,8 +59,25 @@ const FINDING_KEYS = [
   "evidence",
   "verification",
 ];
-const MAX_REVIEW_MS = 45 * 60 * 1000;
+const DEFAULT_REVIEW_TIMEOUT_MINUTES = 45;
+// How long past its own timeout a review process may still be winding down — writing the result,
+// removing the worktree — before another invocation may take its lock.
+const LOCK_GRACE_MS = 15 * 60 * 1000;
 const MAX_REVIEW_BODY = 60_000;
+
+/**
+ * How long one review may run, from configuration.
+ *
+ * The lock derives its staleness window from this same value, so a raised
+ * `reviewTimeoutMinutes` can no longer let a second invocation declare a still-running review
+ * dead and start a duplicate against the same head. A missing or nonsensical value falls back to
+ * the default rather than yielding `NaN`, which the lock would read as "expired".
+ */
+export function reviewTimeoutMs(config) {
+  const minutes = Number(config?.reviewTimeoutMinutes ?? DEFAULT_REVIEW_TIMEOUT_MINUTES);
+  const valid = Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_REVIEW_TIMEOUT_MINUTES;
+  return valid * 60 * 1000;
+}
 
 function option(args, name) {
   const index = args.indexOf(name);
@@ -474,13 +491,13 @@ function run(executable, args, options = {}) {
   return result.stdout.trim();
 }
 
-function acquireLock(repository, pullNumber, headSha) {
+export function acquireLock(repository, pullNumber, headSha, timeoutMs) {
   const lockPath = join(tmpdir(), `agent-codex-self-${repository.replace("/", "-")}-${pullNumber}-${headSha}.lock`);
   try {
     closeSync(openSync(lockPath, "wx"));
   } catch (error) {
     if (error.code !== "EEXIST") throw error;
-    if (Date.now() - statSync(lockPath).mtimeMs < MAX_REVIEW_MS + 15 * 60 * 1000) return null;
+    if (Date.now() - statSync(lockPath).mtimeMs < timeoutMs + LOCK_GRACE_MS) return null;
     rmSync(lockPath);
     closeSync(openSync(lockPath, "wx"));
   }
@@ -569,7 +586,7 @@ export async function runCommand(args, dependencies = {}) {
   const { owner, repo } = repositoryParts(repository);
   const config = dependencies.config ?? loadConfig();
   const token = dependencies.token ?? ghToken();
-  const lockPath = acquireLock(repository, pullNumber, expectedHead);
+  const lockPath = acquireLock(repository, pullNumber, expectedHead, reviewTimeoutMs(config));
   if (!lockPath) return { status: "already-running", headSha: expectedHead };
   let temp = null;
   let worktree = null;
@@ -680,7 +697,7 @@ export async function runCommand(args, dependencies = {}) {
         input: prompt,
         encoding: "utf8",
         windowsHide: true,
-        timeout: Number(config.reviewTimeoutMinutes ?? 45) * 60 * 1000,
+        timeout: reviewTimeoutMs(config),
         maxBuffer: 20 * 1024 * 1024,
       },
     );

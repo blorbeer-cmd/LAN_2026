@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { rmSync, utimesSync } from "node:fs";
 import { test } from "node:test";
 
 import {
+  acquireLock,
   assertCodexExecution,
   attemptRecords,
   CODEX_SELF_REVIEW_ATTEMPT_MARKER,
@@ -12,6 +14,7 @@ import {
   resultSchema,
   reviewerEnvironment,
   reviewComments,
+  reviewTimeoutMs,
   trustedReviewRequest,
   validateFindingAnchors,
   validateReviewOutput,
@@ -218,4 +221,30 @@ test("trusted requests and durable attempt starts are exact-head and identity bo
     { attempt: 1, outcome: "started", code: null },
     { attempt: 1, outcome: "failed", code: "timeout" },
   ]);
+});
+
+test("the lock waits for the configured review timeout, not a fixed one", () => {
+  // The lock decides whether a second invocation may declare the first one dead. Deriving its
+  // window from the same `reviewTimeoutMinutes` the review process runs under is what keeps a
+  // raised timeout from producing two Codex reviews against one head.
+  const configured = reviewTimeoutMs({ reviewTimeoutMinutes: 90 });
+  assert.equal(configured, 90 * 60 * 1000);
+  // A value that cannot be a duration must not turn the lock into a no-op.
+  assert.equal(reviewTimeoutMs({ reviewTimeoutMinutes: "soon" }), 45 * 60 * 1000);
+  assert.equal(reviewTimeoutMs({}), 45 * 60 * 1000);
+
+  // The lock file lives in the shared temp directory and is keyed by repository, pull request and
+  // head, so the process id keeps a leftover from an interrupted run out of this one.
+  const pullNumber = String(process.pid);
+  const held = acquireLock("owner/repo", pullNumber, HEAD, configured);
+  assert.ok(held);
+  try {
+    // 70 minutes in: past the old hardcoded 45+15 window, still inside the configured one.
+    const aged = (Date.now() - 70 * 60 * 1000) / 1000;
+    utimesSync(held, aged, aged);
+    assert.equal(acquireLock("owner/repo", pullNumber, HEAD, configured), null);
+    assert.ok(acquireLock("owner/repo", pullNumber, HEAD, 45 * 60 * 1000));
+  } finally {
+    rmSync(held, { force: true });
+  }
 });
