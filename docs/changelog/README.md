@@ -10,13 +10,13 @@ geschlossen oder unter einer anderen PR-Nummer im selben Branch gelandet) und er
 eigenen Eintrag. Beim früheren Vollabgleich fielen außerdem neun ältere, nicht zu R5 gehörende
 Lücken auf: #90, #93, #94, #96, #97, #99, #197, #204 und #205. Die Zusammenfassungen der am
 2026-08-05 nachgetragenen PRs #261–#351 stammen aus dem PR-Titel, nicht aus einer vollständigen
-Diff-Analyse. Zusätzlich dokumentiert ist der am 2026-09-01 gemergte PR #529; der Bereich
-#353–#528 ist noch nicht erfasst.
+Diff-Analyse. Zusätzlich lückenlos dokumentiert sind die am 2026-09-01 und 2026-09-02 gemergten
+PRs #529–#535; der Bereich #353–#528 ist noch nicht erfasst.
 
 ## Übersicht
 
-- Gemergte PRs dokumentiert: 230 (Dateien unter `pr/`)
-- Branch-Seiten dokumentiert: 191 (Dateien unter `branches/`)
+- Gemergte PRs dokumentiert: 236 (Dateien unter `pr/`)
+- Branch-Seiten dokumentiert: 195 (Dateien unter `branches/`)
 - Gemergte PRs #214–#352: 83 von 83 dokumentiert
 - Technische Synchronisations-Merges ohne eigenen PR sind nicht als eigene Feature-Einträge aufgeführt.
 
@@ -24,7 +24,13 @@ Diff-Analyse. Zusätzlich dokumentiert ist der am 2026-09-01 gemergte PR #529; d
 
 | Datum | PR | Änderung | Branch |
 |---|---:|---|---|
+| 2026-09-02 | [#535](https://github.com/blorbeer-cmd/LAN_2026/pull/535) | [Order review results by publication, tie the review lock to its timeout](pr/pr-535-order-review-results-by-publication-tie-the-review-lock-to-its-timeout.md) | `claude/session-f1se9g` |
+| 2026-09-02 | [#532](https://github.com/blorbeer-cmd/LAN_2026/pull/532) | [Audit the test suite and fix its findings](pr/pr-532-audit-the-test-suite-and-fix-its-findings.md) | `claude/test-suite-audit-9rqxl7` |
+| 2026-09-02 | [#534](https://github.com/blorbeer-cmd/LAN_2026/pull/534) | [Automate Codex self-review pipeline](pr/pr-534-automate-codex-self-review-pipeline.md) | `codex/automate-codex-self-review` |
+| 2026-09-02 | [#533](https://github.com/blorbeer-cmd/LAN_2026/pull/533) | [Simplify Challenge Rush to a stable 21-game catalog](pr/pr-533-simplify-challenge-rush-to-a-stable-21-game-catalog.md) | `codex/slim-challenge-rush-catalog` |
+| 2026-09-01 | [#531](https://github.com/blorbeer-cmd/LAN_2026/pull/531) | [Record merged PR #529 in the project changelog](pr/pr-531-record-merged-pr-529-in-the-project-changelog.md) | `claude/arcade-games-evaluation-s4ctmx` |
 | 2026-09-01 | [#529](https://github.com/blorbeer-cmd/LAN_2026/pull/529) | [Retire nine fragile Challenge Rush challenges and push preview phases from the server](pr/pr-529-retire-nine-fragile-challenge-rush-challenges-and-push-preview-phases-from-the-server.md) | `claude/arcade-games-evaluation-s4ctmx` |
+| 2026-09-01 | [#530](https://github.com/blorbeer-cmd/LAN_2026/pull/530) | [Make test design rules binding and stop schematic test growth](pr/pr-530-make-test-design-rules-binding-and-stop-schematic-test-growth.md) | `claude/test-quality-stability-dn92zn` |
 | 2026-08-05 | [#352](https://github.com/blorbeer-cmd/LAN_2026/pull/352) | [Show the matchmaking fallback rating in team skill displays](pr/pr-352-show-the-matchmaking-fallback-rating-in-team-skill-displays.md) | `claude/unbewertet-spieler-skill-anzeige-yn6zxv` |
 | 2026-08-04 | [#350](https://github.com/blorbeer-cmd/LAN_2026/pull/350) | [Allow claude[bot] as agent-pipeline PR author](pr/pr-350-allow-claudebot-as-agent-pipeline-pr-author.md) | `claude/codex-review-pipeline-qp77ud` |
 | 2026-08-04 | [#349](https://github.com/blorbeer-cmd/LAN_2026/pull/349) | [Prio 3: Konsistenz-/Politur-Punkte aus der UI/UX-Analyse](pr/pr-349-prio-3-konsistenz-politur-punkte-aus-der-uiux-analyse.md) | `claude/prio3-consistency-polish` |
