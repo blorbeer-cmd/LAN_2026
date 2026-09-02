@@ -20,10 +20,24 @@ The pipeline reports state and has narrow provider actions for both regular cros
 - `scripts/agent-claude-review.mjs` reuses the readiness snapshot, validates Claude's structured
   result and publishes its head-bound marker.
 - `.github/workflows/agent-pipeline-codex-review.yml` requests one native Codex cross-review after
-  the user chooses `review:cross` for a Claude implementation.
+  `review:cross`, or writes one trusted exact-head host-outbox request after `review:self` for a
+  Codex implementation.
 - `scripts/agent-codex-review.mjs` reuses the readiness snapshot and posts one exact-head-bound
   `@codex review` request under the identity in `AGENT_PIPELINE_REVIEW_REQUEST_TOKEN`; Codex submits
-  the native GitHub review and the reconciler evaluates it.
+  the native GitHub review and the reconciler evaluates it. For self mode the workflow uses only
+  its job token to enqueue work; it never executes pull-request code or the reviewer.
+- `scripts/agent-codex-self-review.mjs` consumes that host request in a fresh detached worktree. It
+  runs non-interactive ephemeral `codex exec review` with the OS `read-only` sandbox, approvals set
+  to `never`, user configuration ignored, Apps/browser/web search disabled and all GitHub
+  credentials removed. Native Windows execution uses OpenAI's documented `unelevated` sandbox
+  fallback because the elevated sandbox cannot execute the desktop runtime's bundled PowerShell on
+  every host; the filesystem policy remains `read-only`. A denied review tool is a failed attempt,
+  even if the CLI process exits zero. Before launch the runner independently requires the matching
+  trusted exact-head request and publishes a durable request-ID/attempt start marker. An expired
+  start consumes that attempt, including after process or machine interruption. After Codex exits,
+  a trusted host publisher verifies the untouched exact head, revalidates the trusted request,
+  validates the complete structured result and current PR head, then atomically posts a COMMENT
+  review plus resolvable inline threads.
 - `.github/workflows/agent-pipeline-claude-self-review.yml` starts one read-only Claude review after
   the user chooses `review:self` for a Claude implementation — the automated, credential-read-only
   equivalent of running `scripts/agent-review-session.mjs --mode self --headless` locally. It shares
@@ -33,13 +47,14 @@ The pipeline reports state and has narrow provider actions for both regular cros
 - `scripts/agent-claude-self-review.mjs` reuses the readiness snapshot, validates Claude's
   structured result and publishes its head-bound `mode=self` marker; `selfReviewResultAuthors` adds
   this workflow's `github-actions[bot]` identity as a second accepted source for that marker,
-  alongside a manually posted one from `claude[bot]` or the human operator. It only ever fires for a
-  Claude implementer — a Codex self-review still runs through the detached Codex `/review` route
-  described in `review-session-prompt.md`, which this workflow does not touch.
+  alongside a manually posted one from `claude[bot]` or the human operator. It only fires for a
+  Claude implementer; the Codex host runner owns the other self-review path.
 - `scripts/agent-pipeline-codex-adapter.mjs` exposes the trusted GitHub outbox to the single
   persistent Codex heartbeat monitor. It emits undelivered review choices, positively observed
   review starts, completed reviews, provider-start failures, failing current-head CI attempts and
-  failed post-merge `main` CI/CD runs only for Codex implementations. It maps them to an explicit
+  failed post-merge `main` CI/CD runs only for Codex implementations. Codex self-review requests
+  are emitted separately as host commands and are never sent into the implementation task. It maps
+  ordinary task events to an explicit
   `codex-thread-id` or a unique matching head branch and records a durable GitHub acknowledgement
   only after the task message was sent successfully. Claude implementations have no Codex target:
   their GitHub comments remain the documented outbox until a real Claude-session connector exists.
@@ -54,18 +69,35 @@ The pipeline reports state and has narrow provider actions for both regular cros
   only long enough to render an inert diff, then removes the checkout before the provider secret is
   exposed. Claude receives the diff but no PR-owned `CLAUDE.md`, `AGENTS.md` or `.claude` settings;
   no pull-request code, tests, hooks or package-manager commands are executed.
+
+The Codex host design follows the current official interfaces: [`codex review` is the documented
+non-interactive review command](https://learn.chatgpt.com/docs/developer-commands?surface=cli), while
+`codex exec` exposes the read-only sandbox, ephemeral execution, strict output schema and last-
+message file used by the launcher. The official [code-review documentation](https://learn.chatgpt.com/docs/code-review)
+also states that the dedicated review surface reports findings without changing the working tree.
+The official [Windows sandbox documentation](https://learn.chatgpt.com/docs/windows/windows-sandbox)
+defines `unelevated` as the bounded fallback when elevated setup cannot run on a host. The host
+still verifies the worktree afterwards; documentation is not treated as runtime evidence.
 - The provider adapters have no automatic provider retry, independent fix worker, approval or
   merge. The Codex task delivery adapter wakes the original Codex implementation task for review
   findings and every distinct failing CI attempt and tells that task to run the normal bounded
   fix/re-review procedure automatically. A failed post-merge `main` run returns to the same task
   with the rule that a code fix starts on a new branch and pull request. A trusted terminal review-
   start failure is reconciled back to the user's review choice, where the user may select the same
-  provider again. The merge-gate status is active as a required check on `main`.
+  provider again. Codex terminal failures are request-ID-bound, so a deliberate new selection on
+  the unchanged head creates a fresh two-attempt request instead of inheriting the exhausted one;
+  started attempts are durable and expire after the configured review timeout rather than being
+  spent repeatedly after a monitor or machine restart.
+  The merge-gate status is active as a required check on `main`.
 
 The local automation `agent-pipeline-codex-zustellung` is a five-minute heartbeat bound to exactly
 one dedicated monitor task. Empty scans use `failed_runs_only` and produce no notification. The
 monitor never changes `review:*` labels and acknowledges an event only after the thread send
-returns successfully. Review-start events tell the implementation task to report that the selected
+returns successfully. For `codex-self-review-required`, it instead executes the event's fixed
+`scripts/agent-codex-self-review.mjs run` command from a trusted current `main` checkout; it never
+uses `send_message_to_thread` or `ack` for that event. A published result, terminal failure, stale
+head or durable first-attempt failure makes the next scan suppress or advance the event.
+Review-start events tell the implementation task to report that the selected
 provider is actually queued/running and to keep following it; a workflow trigger alone is no longer
 presented as proof. CI and CI/CD failure events tell the task to inform the user immediately,
 inspect the linked jobs, automatically fix reproducible failures or safely retry proven transient
@@ -352,9 +384,18 @@ running `scripts/agent-review-session.mjs --mode self --headless`; both are vali
 whichever is newer for the current head wins. Because the same provider that implemented the change
 also reviews it here, this stays reduced independence regardless of how the review was launched —
 the merge gate already reflects that in the `self` mode row, and choosing this mode remains the
-user's decision, never the pipeline's. A Codex self-review is not covered by any workflow: it still
-runs through the detached Codex `/review` route in `review-session-prompt.md`, verified by an
-operator independent of the implementation session before its marker is published by hand.
+user's decision, never the pipeline's.
+
+For a Codex implementation, the same label makes the trusted Codex workflow enqueue one current-
+head request. The single host monitor launches `agent-codex-self-review.mjs`; a regular editable
+task, a fork of the implementation conversation, a subagent, or prompt-only self-attestation is not
+accepted. The reviewer has no GitHub credentials and cannot write through its sandbox. The host
+publisher is a separate phase and is the only component allowed to create the COMMENT review. It
+checks the current head immediately before the POST. Actionable findings become right-side inline
+threads in that same POST; unanchorable findings are `needs-human` and force `blocked`. A technical
+failure or timeout is retried once for the same request/head after a trusted failure marker; the
+second failure writes the ordinary start notice and returns the choice to the user. Duplicate
+events, existing terminal results and stale heads are no-ops. Neither phase approves or merges.
 
 Escalations the reconciler cannot derive from GitHub state — an exhausted round limit, a critical
 decision, the 24-hour waiting escalation — stay with `agent:needs-human`, exactly as the plan
@@ -506,6 +547,8 @@ node --test scripts/agent-pipeline-select-prs.test.mjs
 node --test scripts/agent-claude-review.test.mjs
 node --test scripts/agent-claude-self-review.test.mjs
 node --test scripts/agent-codex-review.test.mjs
+node --test scripts/agent-codex-self-review.test.mjs
+node --test scripts/agent-pipeline-codex-adapter.test.mjs
 node --test scripts/agent-preflight.test.mjs
 git diff --check
 ```
@@ -514,8 +557,9 @@ The validator and the test suites write nothing to GitHub. With `--apply`, the r
 only pipeline labels, its own sticky status comment, the once-per-head review-choice notification
 and the `Agent pipeline / ready for human merge` status. It never sets a review-mode label. The
 Claude adapter writes one validated review result comment and then invokes that same reconciler;
-the Codex adapter writes one `@codex review` request. Codex then submits the native review that the
-reconciler evaluates. `config.json` already declares the labels and timeouts later phases will use;
+the Codex adapter writes either one `@codex review` cross request or one self-review host request.
+Codex then submits the native cross review, or the trusted host publisher submits the validated
+self-review that the reconciler evaluates. `config.json` already declares the labels and timeouts later phases will use;
 the ones this rollout does not own are inert until then.
 
 For a manual Codex cross-review or fallback review during the rollout, follow
