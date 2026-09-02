@@ -458,10 +458,17 @@ flowTest('shell', 'wide desktop adapts the shared shell and pilot views without 
   assert.equal(adminColumns.readinessTop, adminColumns.toolsTop);
   assert.ok(adminColumns.usersTop - adminColumns.accessBottom >= 8);
   assert.ok(adminColumns.usersTop - adminColumns.accessBottom <= 32);
-  assert.equal(
-    await page.locator('.admin-player-list').evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length),
-    3,
-  );
+  // getComputedStyle reports `gridTemplateColumns: none` — a single token —
+  // until the admin view has actually been laid out, so a one-shot read here
+  // can see 1 instead of the real column count and did so under parallel load.
+  // Wait for a resolved template, then assert its width, so a genuinely wrong
+  // column count still fails with a readable difference instead of a timeout.
+  const adminPlayerColumns = await page.waitForFunction(() => {
+    const grid = document.querySelector('.admin-player-list');
+    const columns = grid ? getComputedStyle(grid).gridTemplateColumns : '';
+    return columns && columns !== 'none' ? columns.split(' ').length : null;
+  });
+  assert.equal(await adminPlayerColumns.jsonValue(), 3);
 
   await page.click('.desktop-nav-btn[data-view="arcade"]');
   await page.waitForSelector('#arcade-games-title');
