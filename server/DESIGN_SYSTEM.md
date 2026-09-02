@@ -1119,9 +1119,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   relation to the available play area without shrinking the visible board.
   Challenge Rush also exposes the Admin-mode-gated opponent switch plus its test-challenge
   selection; playing the bot solo draws
-  from its ten original single-payload challenges, since the bot cannot yet play the thirty
+  from its six single-payload challenges, since the bot cannot yet play the twenty-five
   logic/memory trial challenges. A lobby that further humans join before it starts keeps the
-  full forty-challenge catalog like any other match, and the bot then simply scores 0 on
+  full challenge catalog like any other match, and the bot then simply scores 0 on
   whichever trial challenges come up.
 - **Jam sessions** — Jam is a grouped page below „Mehr“. Its page heading always exposes an info
   tooltip explaining the shared title/playlist workflow, controller lifecycle and that only the

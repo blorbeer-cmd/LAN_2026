@@ -12,11 +12,10 @@ import { challengeRushTiming } from './challengeRushTiming';
 import { playerMayUseArcadeAi } from './adminAccess';
 import {
   CHALLENGES, challengeOrder, challengePayload, createTrial, difficultyFor, isCurrentChallenge, isReadyForNext,
-  isTrialChallenge, planBotChallenge, remainingUntil, scoreRepeatedTrials, seenBeforeSelection, validateTrialInput,
-  timedTargetWindowMs,
-  scoreAimTrainer, scoreColorWord, scoreCps, scoreMemorySequence, scoreNumberSalad, scoreOddOneOut,
-  scoreReaction, scoreTiming10, scoreTrafficLight, scoreWhackAMole, winnerIdForScores, previewTrialData,
-  COLOR_WORD_ROUND_COUNT, MEMORY_SEQUENCE_LENGTH, WHACK_A_MOLE_SEQUENCE_LENGTH, AIM_TRAINER_TARGET_COUNT,
+  isTrialChallenge, planBotChallenge, remainingUntil, scoreRepeatedTrials, validateTrialInput,
+  scoreColorWord, scoreCps, scoreNumberSalad, scoreOddOneOut,
+  scoreReaction, scoreTiming10, winnerIdForScores, previewTrialData,
+  COLOR_WORD_ROUND_COUNT,
   type BotChallengeStep, type ChallengeKey, type ChallengePayload, type InternalTrial, type TrialPayload,
 } from './challengeRushLogic';
 
@@ -27,9 +26,9 @@ const END_REVEAL_MS = 12_000;
 const BOT_TICK_MS = 50;
 const BOT_ID = 'challenge-rush-bot';
 const BOT = { id: BOT_ID, name: 'Challenge-Bot', avatar: null, color: '#9163f5' };
-// The bot only ever plays the ten original single-payload challenges (see
+// The bot only ever plays the single-payload challenges (see
 // planBotChallenge/isTrialChallenge) — a bot match draws its order from just
-// this pool instead of the full forty, so it doesn't spend most matches on
+// this pool instead of the full catalog, so it doesn't spend most matches on
 // trial challenges the bot always scores 0 on.
 const BOT_CHALLENGE_POOL: ChallengeKey[] = CHALLENGES.filter((challenge) => !isTrialChallenge(challenge.key)).map((challenge) => challenge.key);
 
@@ -44,8 +43,14 @@ interface Progress {
   startedAt: number; elapsedBeforePause: number; lastInputAt: number;
   rawScore: number; trials: number; streak: number; trialIndex: number; partialHits: number;
   trial: InternalTrial | null; trialStartedAt: number; trialElapsedBeforePause: number;
-  seenSymbols: string[]; symbolHistory: string[];
-  stepIndex: number; stepDeadlineAt: number | null; stepPausedRemainingMs: number | null;
+  // Server-side end of the current trial's 'preview' (memorize) phase. Without
+  // it the switch to 'input' would depend solely on the client's own
+  // setTimeout re-requesting the trial, which browsers throttle or suspend in
+  // a backgrounded tab — a phone that locks mid-preview would then sit on the
+  // memorize screen until the whole challenge deadline expired. Cleared on
+  // pause and re-armed from the already-frozen trial elapsed on resume, the
+  // same way the challenge deadline itself is handled.
+  previewTimer: NodeJS.Timeout | null;
 }
 interface HistoryEntry { key: ChallengeKey; title: string; scores: Array<{ playerId: string; name: string; score: number }> }
 interface Match {
@@ -54,12 +59,6 @@ interface Match {
   current: ReturnType<typeof challengePayload>; progress: Map<string, Progress>; scores: Map<string, number>;
   startedAt: number; timer: NodeJS.Timeout | null; deadlineAt: number | null; pausedRemainingMs: number | null; paused: boolean;
   reconnectTimers: Map<string, NodeJS.Timeout>; forfeited: Set<string>; readyNext: Set<string>; history: HistoryEntry[];
-  // Separate from `timer`/`deadlineAt` (which drive the challenge's overall
-  // deadline): a second, independently pausable countdown that only exists
-  // while the current challenge is 'traffic-light', so the exact green
-  // moment is a server push instead of client-known data (see
-  // scheduleGreenLight below).
-  greenTimer: NodeJS.Timeout | null; greenDeadlineAt: number | null; greenPausedRemainingMs: number | null;
   botLoop: NodeJS.Timeout | null; botPlan: BotChallengeStep[]; botPlanCursor: number;
 }
 
@@ -98,25 +97,15 @@ function lobbyPayload(groupId: string, eventId: string | null) {
 function runtimeChallengePayload(key: ChallengeKey, seed: number): ChallengePayload {
   const payload = challengePayload(key, seed);
   const timing = challengeRushTiming();
-  const data = key === 'traffic-light' && timing.trafficLightGreenMs !== null
-    ? { ...payload.data, greenAtMs: timing.trafficLightGreenMs }
-    : key === 'memory-sequence'
-      ? { ...payload.data, memoryRevealMs: timing.memoryRevealMs }
-    : payload.data;
-  if (timing.challengeDurationMs === null && data === payload.data) return payload;
-  return {
-    ...payload,
-    ...(timing.challengeDurationMs === null ? {} : { durationMs: timing.challengeDurationMs }),
-    data,
-  };
+  if (timing.challengeDurationMs === null) return payload;
+  return { ...payload, durationMs: timing.challengeDurationMs };
 }
 
 function freshProgress(completed = false): Progress {
   return {
     clicks: 0, errors: 0, correct: 0, completed, score: 0, startedAt: 0, elapsedBeforePause: 0, lastInputAt: 0,
     rawScore: 0, trials: 0, streak: 0, trialIndex: 0, partialHits: 0, trial: null,
-    trialStartedAt: 0, trialElapsedBeforePause: 0, seenSymbols: [], symbolHistory: [],
-    stepIndex: 0, stepDeadlineAt: null, stepPausedRemainingMs: null,
+    trialStartedAt: 0, trialElapsedBeforePause: 0, previewTimer: null,
   };
 }
 
@@ -130,21 +119,44 @@ function trialElapsed(progress: Progress, now = Date.now()): number {
   return progress.trialElapsedBeforePause + (progress.trialStartedAt > 0 ? Math.max(0, now - progress.trialStartedAt) : 0);
 }
 
-function createPlayerTrial(match: Match, playerId: string, progress: Progress): void {
+function clearPreviewTimer(progress: Progress): void {
+  if (progress.previewTimer) clearTimeout(progress.previewTimer);
+  progress.previewTimer = null;
+}
+
+// Fires the 'preview' → 'input' switch from the server instead of waiting for
+// the client to notice its own preview countdown ended and re-request the
+// trial. publicTrial() still performs the switch lazily on read, so this timer
+// is purely the guaranteed trigger: it makes the transition independent of a
+// browser that throttled or suspended its timers while backgrounded.
+function schedulePreviewPhase(io: Server, match: Match, playerId: string, progress: Progress): void {
+  clearPreviewTimer(progress);
+  const trial = progress.trial;
+  if (!trial || trial.phase !== 'preview' || match.paused || progress.completed) return;
+  const remaining = Math.max(0, trial.phaseMs - trialElapsed(progress));
+  progress.previewTimer = setTimeout(() => {
+    progress.previewTimer = null;
+    if (matches.get(match.id) !== match || match.paused || match.phase !== 'playing') return;
+    if (progress.trial !== trial || trial.phase !== 'preview' || progress.completed) return;
+    if (publicTrial(progress)?.phase === 'preview') {
+      schedulePreviewPhase(io, match, playerId, progress);
+      return;
+    }
+    emitTrial(io, match, playerId);
+  }, remaining);
+  progress.previewTimer.unref();
+}
+
+function createPlayerTrial(io: Server, match: Match, playerId: string, progress: Progress): void {
   const difficulty = difficultyFor(progress.streak, progress.trials);
-  const trial = createTrial(match.current.key, playerSeed(match, playerId, progress.trialIndex), progress.trialIndex, difficulty, progress.symbolHistory);
-  if (match.current.key === 'seen-before') {
-    const selected = seenBeforeSelection(Boolean(trial.expected), progress.seenSymbols, progress.trialIndex);
-    progress.seenSymbols = selected.seenSymbols;
-    trial.data = { ...trial.data, symbol: selected.symbol };
-    trial.expected = selected.repeated;
-  } else if (match.current.key === 'n-back') {
-    const symbol = String(trial.data.symbol ?? '');
-    if (symbol) progress.symbolHistory.push(symbol);
-  }
+  const trial = createTrial(match.current.key, playerSeed(match, playerId, progress.trialIndex), progress.trialIndex, difficulty);
+  const previewOverride = challengeRushTiming().previewMs;
+  if (previewOverride !== null && trial.phase === 'preview') trial.phaseMs = previewOverride;
+  clearPreviewTimer(progress);
   progress.trial = trial;
   progress.trialStartedAt = Date.now();
   progress.trialElapsedBeforePause = 0;
+  schedulePreviewPhase(io, match, playerId, progress);
 }
 
 function inputTrialData(trial: InternalTrial): Record<string, unknown> {
@@ -169,22 +181,11 @@ function publicTrial(progress: Progress, now = Date.now()): TrialPayload | null 
     progress.trialElapsedBeforePause = 0;
     elapsed = 0;
   }
-  const board = Array.isArray(trial.expected) ? trial.expected as string[] : [];
-  const found = Array.isArray(trial.state.found) ? trial.state.found as number[] : [];
-  const revealed = Array.isArray(trial.state.revealed) ? trial.state.revealed as number[] : [];
-  const resume = String(trial.data.type ?? '') === 'pairs'
-    ? {
-        found, revealed,
-        foundCards: found.map((index) => ({ index, value: board[index] })),
-        revealedCards: revealed.map((index) => ({ index, value: board[index] })),
-        revealSeq: Number(trial.state.revealSeq ?? 0),
-      }
-    : {};
   return {
     trialId: trial.trialId, index: trial.index, difficulty: trial.difficulty, phase: trial.phase,
     phaseMs: trial.phaseMs, phaseRemainingMs: trial.phase === 'preview' ? Math.max(0, trial.phaseMs - elapsed) : 0,
     inputMs: trial.inputMs, inputRemainingMs: trial.phase === 'input' ? Math.max(0, trial.inputMs - elapsed) : trial.inputMs,
-    resume, data: trial.phase === 'preview' ? previewTrialData(trial) : inputTrialData(trial),
+    resume: {}, data: trial.phase === 'preview' ? previewTrialData(trial) : inputTrialData(trial),
   };
 }
 
@@ -208,19 +209,22 @@ function finishPlayerTrial(io: Server, match: Match, playerId: string, progress:
   }
   progress.trialIndex += 1;
   // The existing API/E2E fast-timer profile treats one completed trial as a
-  // complete challenge so the full forty-game lifecycle remains practical in
+  // complete challenge so the full catalog lifecycle remains practical in
   // CI. Production (where challengeDurationMs is null) always continues
   // generating trials until the shared 30-second deadline.
   if (isFastTest()) {
     progress.score = scoreRepeatedTrials(progress.rawScore, progress.trials, progress.correct, progress.partialHits, match.current.durationMs);
     progress.completed = true;
+    clearPreviewTimer(progress);
     progress.trial = null;
     if ([...match.progress.values()].every((entry) => entry.completed)) finishChallenge(io, match);
     return;
   }
   if (match.phase === 'playing' && !match.paused && !match.forfeited.has(playerId)) {
-    createPlayerTrial(match, playerId, progress);
+    createPlayerTrial(io, match, playerId, progress);
     emitTrial(io, match, playerId);
+  } else {
+    clearPreviewTimer(progress);
   }
 }
 
@@ -252,50 +256,32 @@ function matchProgressPayload(match: Match) {
 
 // The wire-visible challenge payload: never the answer/target data for a
 // round that hasn't started yet (data is withheld entirely during
-// 'countdown'), and never traffic-light's exact green delay at any point —
-// that transition is a dedicated server push (see scheduleGreenLight)
-// instead of client-computed data, so no script can pre-calculate the exact
-// reaction window.
+// 'countdown').
 function sanitizeChallengeForClient(match: Match): ChallengePayload {
   // The seed deterministically regenerates the entire challenge payload
   // (challengePayload/seededRandom), so it must never reach the client —
-  // otherwise it would defeat every other redaction below and the
-  // per-player step trimming in challengeForPlayer, since anyone holding it
-  // can just recompute the withheld targets/sequence/rounds/greenAtMs
-  // locally instead of waiting for the server to reveal them. The client
-  // never reads `seed`, so it's always zeroed out rather than conditionally
-  // included.
+  // otherwise it would defeat the per-player round trimming in
+  // challengeForPlayer, since anyone holding it can just recompute the
+  // withheld rounds locally instead of waiting for the server to reveal
+  // them. The client never reads `seed`, so it's always zeroed out rather
+  // than conditionally included.
   if (match.phase === 'countdown') return { ...match.current, seed: 0, data: {} };
-  if (match.current.key === 'traffic-light') {
-    const { greenAtMs: _greenAtMs, ...safeData } = match.current.data as { greenAtMs?: number };
-    return { ...match.current, seed: 0, data: safeData };
-  }
   return { ...match.current, seed: 0 };
 }
 
-// Per-recipient view of the current challenge: aim-trainer, whack-a-mole and
-// color-word each hold a full array of future targets/holes/rounds server-
-// side, but a player is only ever meant to see the one they're currently on
-// — sending the whole array during 'playing' would let a script read every
-// remaining answer at once and blast through the 30ms input floor for a
-// guaranteed-perfect score. memory-sequence and odd-one-out are
-// intentionally excluded: the former's whole point is the player seeing and
-// memorizing the sequence via the reveal animation, and the latter's
-// oddIndex is required just to render which tile looks different.
+// Per-recipient view of the current challenge: color-word holds the full
+// array of future rounds server-side, but a player is only ever meant to see
+// the one they're currently on — sending the whole array during 'playing'
+// would let a script read every remaining answer at once and blast through
+// the 30ms input floor for a guaranteed-perfect score. odd-one-out is
+// intentionally excluded: its oddIndex is required just to render which tile
+// looks different.
 function challengeForPlayer(match: Match, playerId: string): ChallengePayload {
   const sanitized = sanitizeChallengeForClient(match);
   if (match.phase !== 'playing') return sanitized;
   const p = match.progress.get(playerId);
   if (!p) return sanitized;
   if (isTrialChallenge(match.current.key)) return { ...sanitized, data: {} };
-  if (match.current.key === 'aim-trainer') {
-    const { targets, ...rest } = sanitized.data as { targets: Array<{ x: number; y: number }> };
-    return { ...sanitized, data: { ...rest, target: targets[p.stepIndex] ?? null } };
-  }
-  if (match.current.key === 'whack-a-mole') {
-    const { sequence, ...rest } = sanitized.data as { sequence: number[] };
-    return { ...sanitized, data: { ...rest, activeHole: sequence[p.stepIndex] ?? null } };
-  }
   if (match.current.key === 'color-word') {
     const { rounds, ...rest } = sanitized.data as { rounds: Array<{ word: string; textColor: string; options: string[] }> };
     return { ...sanitized, data: { ...rest, round: rounds[p.correct + p.errors] ?? null } };
@@ -309,8 +295,6 @@ function challengeForPlayer(match: Match, playerId: string): ChallengePayload {
 // instead of waiting for a full state broadcast, since individual accepted
 // inputs don't otherwise trigger one.
 function nextStepPayload(match: Match, p: Progress): Record<string, unknown> | undefined {
-  if (match.current.key === 'aim-trainer') { const targets = (match.current.data as { targets: Array<{ x: number; y: number }> }).targets; return { target: targets[p.stepIndex] ?? null }; }
-  if (match.current.key === 'whack-a-mole') { const sequence = (match.current.data as { sequence: number[] }).sequence; return { activeHole: sequence[p.stepIndex] ?? null }; }
   if (match.current.key === 'color-word') { const rounds = (match.current.data as { rounds: Array<{ word: string; textColor: string; options: string[] }> }).rounds; return { round: rounds[p.correct + p.errors] ?? null }; }
   return undefined;
 }
@@ -349,40 +333,9 @@ function applyChallengeInput(io: Server, match: Match, playerId: string, input: 
   } else if (match.current.key === 'timing-10') {
     if (input.action !== 'stop') return { ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) };
     p.score = scoreTiming10(elapsed); p.completed = true;
-  } else if (match.current.key === 'aim-trainer') {
-    const targets = match.current.data.targets as Array<{ x: number; y: number }>;
-    if (input.action !== 'hit' || !hitsPoint(targets[p.stepIndex] ?? {})) return { ok: false, error: 'Ungültiges Ziel.', progress: progressPayload(p) };
-    p.correct += 1; p.stepIndex += 1;
-    if (p.stepIndex >= AIM_TRAINER_TARGET_COUNT) { p.score = scoreAimTrainer(p.correct, elapsed); p.completed = true; p.stepDeadlineAt = null; }
-    else p.stepDeadlineAt = now + timedTargetWindowMs(match.current.key, p.stepIndex);
-  } else if (match.current.key === 'memory-sequence') {
-    const sequence = match.current.data.sequence as number[];
-    if (input.action !== 'tile' || typeof input.value !== 'number') return { ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) };
-    if (elapsed < challengeRushTiming().memoryRevealMs) return { ok: false, error: 'Bitte die Reihenfolge erst abwarten.', progress: progressPayload(p) };
-    if (input.value === sequence[p.correct]) p.correct += 1; else p.errors += 1;
-    if (p.errors > 0 || p.correct >= MEMORY_SEQUENCE_LENGTH) { p.score = scoreMemorySequence(p.correct); p.completed = true; }
   } else if (match.current.key === 'odd-one-out') {
     if (input.action !== 'select' || typeof input.value !== 'number') return { ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) };
     if (input.value === match.current.data.oddIndex) { p.score = scoreOddOneOut(elapsed, p.errors); p.completed = true; } else p.errors += 1;
-  } else if (match.current.key === 'whack-a-mole') {
-    const sequence = match.current.data.sequence as number[];
-    if (input.action !== 'hit' || typeof input.value !== 'number') return { ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) };
-    if (input.value === sequence[p.stepIndex]) {
-      p.correct += 1; p.stepIndex += 1;
-      if (p.stepIndex < WHACK_A_MOLE_SEQUENCE_LENGTH) p.stepDeadlineAt = now + timedTargetWindowMs(match.current.key, p.stepIndex);
-    } else p.errors += 1;
-    if (p.stepIndex >= WHACK_A_MOLE_SEQUENCE_LENGTH) { p.score = scoreWhackAMole(p.correct, p.errors, elapsed); p.completed = true; p.stepDeadlineAt = null; }
-  } else if (match.current.key === 'traffic-light') {
-    if (input.action !== 'click') return { ok: false, error: 'Ungültige Eingabe.', progress: progressPayload(p) };
-    const greenAtMs = Number(match.current.data.greenAtMs);
-    // The timer is the authoritative state used by the public view and the
-    // one-shot green event. Comparing a separately rounded elapsed value with
-    // greenAtMs could still classify the first click after that event as a
-    // false start when the timer fired just below the millisecond boundary.
-    const falseStart = match.greenTimer !== null || match.greenPausedRemainingMs !== null;
-    p.score = scoreTrafficLight(Math.max(0, elapsed - greenAtMs), falseStart);
-    if (falseStart) p.errors += 1;
-    p.completed = true;
   } else {
     const rounds = match.current.data.rounds as Array<{ textColor: string }>;
     const roundIndex = p.correct + p.errors;
@@ -390,8 +343,8 @@ function applyChallengeInput(io: Server, match: Match, playerId: string, input: 
     if (input.value === rounds[roundIndex].textColor) p.correct += 1; else p.errors += 1;
     if (p.correct + p.errors >= COLOR_WORD_ROUND_COUNT) { p.score = scoreColorWord(p.correct, p.errors, elapsed); p.completed = true; }
   }
-  // Browser E2E exercises the real renderer/click wiring for all forty
-  // challenges. One valid interaction is enough there; production still
+  // Browser E2E exercises the real renderer/click wiring for every
+  // challenge. One valid interaction is enough there; production still
   // uses the complete 30-second or challenge-specific completion rules.
   if (isE2EFastTest() && !p.completed) {
     p.score = timeoutScore(match.current.key, p, elapsed);
@@ -401,39 +354,9 @@ function applyChallengeInput(io: Server, match: Match, playerId: string, input: 
   return { ok: true, accepted: true, progress: progressPayload(p), next: p.completed ? undefined : nextStepPayload(match, p) };
 }
 
-function processTimedStepTimeouts(io: Server, match: Match): void {
-  if (match.phase !== 'playing' || match.paused || !['aim-trainer', 'whack-a-mole'].includes(match.current.key)) return;
-  const now = Date.now(); const changedPlayers: string[] = [];
-  const stepCount = match.current.key === 'aim-trainer' ? AIM_TRAINER_TARGET_COUNT : WHACK_A_MOLE_SEQUENCE_LENGTH;
-  for (const [playerId, progress] of match.progress) {
-    if (progress.completed || progress.stepDeadlineAt === null || now < progress.stepDeadlineAt) continue;
-    progress.errors += 1;
-    progress.stepIndex += 1;
-    if (progress.stepIndex >= stepCount) {
-      const elapsed = Math.min(activeElapsed(progress, now), match.current.durationMs);
-      progress.score = match.current.key === 'aim-trainer'
-        ? scoreAimTrainer(progress.correct, elapsed)
-        : scoreWhackAMole(progress.correct, progress.errors, elapsed);
-      progress.completed = true;
-      progress.stepDeadlineAt = null;
-    } else {
-      progress.stepDeadlineAt = now + timedTargetWindowMs(match.current.key, progress.stepIndex);
-    }
-    changedPlayers.push(playerId);
-  }
-  if (changedPlayers.length === 0) return;
-  if ([...match.progress.values()].every((entry) => entry.completed)) return finishChallenge(io, match);
-  for (const playerId of changedPlayers) {
-    const socketId = match.socketIds.get(playerId);
-    const target = socketId ? io.sockets.sockets.get(socketId) : undefined;
-    if (target) emitState(io, match, target, playerId);
-  }
-}
-
 function runMatchTick(io: Server, match: Match): void {
   if (match.phase !== 'playing' || match.paused) return;
-  processTimedStepTimeouts(io, match);
-  if (match.phase !== 'playing' || !match.players.some((player) => player.id === BOT_ID)) return;
+  if (!match.players.some((player) => player.id === BOT_ID)) return;
   const progress = match.progress.get(BOT_ID);
   const step = match.botPlan[match.botPlanCursor];
   if (!progress || progress.completed || !step || activeElapsed(progress) < step.atMs) return;
@@ -454,21 +377,6 @@ function clearTimer(match: Match): void {
   match.deadlineAt = null;
 }
 
-function clearGreenTimer(match: Match): void {
-  if (match.greenTimer) clearTimeout(match.greenTimer);
-  match.greenTimer = null;
-}
-
-function scheduleGreenLight(io: Server, match: Match, delayMs: number): void {
-  clearGreenTimer(match);
-  const delay = Math.max(0, delayMs);
-  match.greenDeadlineAt = Date.now() + delay;
-  match.greenTimer = setTimeout(() => {
-    match.greenTimer = null;
-    match.greenDeadlineAt = null;
-    emitArcadeRoom(io, match.room, 'challenge-rush:traffic-light:green', { matchId: match.id, challengeIndex: match.index }, match);
-  }, delay);
-}
 
 function schedule(match: Match, delayMs: number, callback: () => void): void {
   clearTimer(match);
@@ -482,10 +390,6 @@ function pauseMatch(match: Match): void {
   if (match.phase === 'playing') {
     const now = Date.now();
     for (const progress of match.progress.values()) {
-      if (!progress.completed && progress.stepDeadlineAt !== null) {
-        progress.stepPausedRemainingMs = Math.max(0, progress.stepDeadlineAt - now);
-        progress.stepDeadlineAt = null;
-      }
       if (!progress.completed && progress.startedAt > 0) {
         progress.elapsedBeforePause += now - progress.startedAt;
         progress.startedAt = 0;
@@ -494,14 +398,14 @@ function pauseMatch(match: Match): void {
           progress.trialStartedAt = 0;
         }
       }
+      // The trial's own elapsed is frozen above, so the preview timer needs no
+      // separate remaining-ms bookkeeping: resumeMatch re-arms it from that
+      // frozen elapsed.
+      clearPreviewTimer(progress);
     }
   }
   match.pausedRemainingMs = match.deadlineAt === null ? null : Math.max(0, match.deadlineAt - Date.now());
   clearTimer(match);
-  if (match.greenTimer) {
-    match.greenPausedRemainingMs = match.greenDeadlineAt === null ? null : Math.max(0, match.greenDeadlineAt - Date.now());
-    clearGreenTimer(match);
-  }
   match.paused = true;
 }
 
@@ -515,28 +419,15 @@ function resumeMatch(io: Server, match: Match): void {
       if (progress.completed) continue;
       progress.startedAt = Date.now();
       if (progress.trial) progress.trialStartedAt = Date.now();
-      if (progress.stepPausedRemainingMs !== null) {
-        progress.stepDeadlineAt = Date.now() + progress.stepPausedRemainingMs;
-        progress.stepPausedRemainingMs = null;
-      }
+      schedulePreviewPhase(io, match, playerId, progress);
       emitTrial(io, match, playerId);
     }
   }
   if (match.phase === 'countdown') schedule(match, remaining, () => beginChallenge(io, match));
   else if (match.phase === 'playing') schedule(match, remaining, () => finishChallenge(io, match));
   else if (match.phase === 'result') schedule(match, remaining, () => nextChallenge(io, match));
-  if (match.phase === 'playing' && match.greenPausedRemainingMs !== null) {
-    const remainingGreen = match.greenPausedRemainingMs;
-    match.greenPausedRemainingMs = null;
-    scheduleGreenLight(io, match, remainingGreen);
-  }
 }
 
-// trafficLightGreen tells every player whether the light has already turned
-// green, independent of any single client having received (or missed, via a
-// reload/reconnect) the one-shot 'challenge-rush:traffic-light:green' push —
-// it's derived from whether the green timer has already fired, not from the
-// hidden greenAtMs delay itself, so it reveals nothing before the fact.
 function publicState(match: Match, playerId: string) {
   return {
     matchId: match.id, phase: match.phase, challengeIndex: match.index, challengeCount: match.order.length,
@@ -544,7 +435,6 @@ function publicState(match: Match, playerId: string) {
     remainingMs: match.paused ? match.pausedRemainingMs : remainingUntil(match.deadlineAt, Date.now()),
     history: match.history, readyNext: match.phase === 'result' ? [...match.readyNext] : [],
     progress: matchProgressPayload(match),
-    trafficLightGreen: match.phase === 'playing' && match.current.key === 'traffic-light' && match.greenTimer === null && match.greenPausedRemainingMs === null,
   };
 }
 
@@ -567,38 +457,28 @@ function beginChallenge(io: Server, match: Match): void {
   for (const [playerId, progress] of match.progress) {
     progress.startedAt = now;
     progress.elapsedBeforePause = 0;
-    if (isTrialChallenge(match.current.key) && !progress.completed) createPlayerTrial(match, playerId, progress);
-    if (!progress.completed && ['aim-trainer', 'whack-a-mole'].includes(match.current.key)) {
-      progress.stepDeadlineAt = now + timedTargetWindowMs(match.current.key, progress.stepIndex);
-    }
+    if (isTrialChallenge(match.current.key) && !progress.completed) createPlayerTrial(io, match, playerId, progress);
   }
-  // planBotChallenge only plans the original ten single-payload challenges;
-  // the thirty trial-based ones have no precomputable step list (each trial
-  // is generated fresh per player once the previous one completes), so the
-  // bot simply stays idle and scores 0 on those for now instead of guessing.
-  match.botPlan = planBotChallenge(match.current, { memoryRevealMs: challengeRushTiming().memoryRevealMs });
+  // planBotChallenge only plans the single-payload challenges; the trial-based
+  // ones have no precomputable step list (each trial is generated fresh per
+  // player once the previous one completes), so the bot simply stays idle and
+  // scores 0 on those for now instead of guessing.
+  match.botPlan = planBotChallenge(match.current);
   match.botPlanCursor = 0;
   schedule(match, match.current.durationMs, () => finishChallenge(io, match));
-  if (match.current.key === 'traffic-light') {
-    const greenAtMs = Number((match.current.data as { greenAtMs?: number }).greenAtMs ?? 0);
-    scheduleGreenLight(io, match, greenAtMs);
-  }
   emitState(io, match);
   if (isTrialChallenge(match.current.key)) for (const playerId of match.socketIds.keys()) emitTrial(io, match, playerId);
 }
 
 // Score for a player who never reached their own completion condition before
 // the shared challenge deadline hit (e.g. didn't hit every aim target). Time-
-// only challenges without a completable end state (reaction-circle, traffic-
-// light) fall through to 0, matching "no reaction recorded".
+// only challenges without a completable end state (reaction-circle) fall
+// through to 0, matching "no reaction recorded".
 function timeoutScore(key: ChallengeKey, progress: Progress, elapsedMs: number): number {
   if (isTrialChallenge(key)) return scoreRepeatedTrials(progress.rawScore, progress.trials, progress.correct, progress.partialHits, elapsedMs);
   if (key === 'cps') return scoreCps(progress.clicks);
   if (key === 'number-salad') return scoreNumberSalad(progress.correct, progress.errors, elapsedMs);
   if (key === 'timing-10') return scoreTiming10(elapsedMs);
-  if (key === 'aim-trainer') return scoreAimTrainer(progress.correct, elapsedMs);
-  if (key === 'memory-sequence') return scoreMemorySequence(progress.correct);
-  if (key === 'whack-a-mole') return scoreWhackAMole(progress.correct, progress.errors, elapsedMs);
   if (key === 'color-word') return scoreColorWord(progress.correct, progress.errors, elapsedMs);
   return 0;
 }
@@ -607,8 +487,6 @@ function finishChallenge(io: Server, match: Match): void {
   if (match.phase !== 'playing' || match.paused) return;
   match.phase = 'result';
   clearTimer(match);
-  clearGreenTimer(match);
-  match.greenPausedRemainingMs = null;
   match.readyNext = new Set();
   for (const player of match.players) {
     const progress = match.progress.get(player.id)!;
@@ -617,8 +495,7 @@ function finishChallenge(io: Server, match: Match): void {
       progress.score = timeoutScore(match.current.key, progress, elapsed);
       progress.completed = true;
     }
-    progress.stepDeadlineAt = null;
-    progress.stepPausedRemainingMs = null;
+    clearPreviewTimer(progress);
     match.scores.set(player.id, (match.scores.get(player.id) ?? 0) + progress.score);
   }
   match.history.push({ key: match.current.key, title: match.current.title, scores: match.players.map((player) => ({ playerId: player.id, name: player.name, score: match.progress.get(player.id)!.score })) });
@@ -672,7 +549,8 @@ function cleanupMatch(io: Server, match: Match): void {
 
 function finishMatch(io: Server, match: Match, reason = 'completed'): void {
   if (match.phase === 'ended') return;
-  match.phase = 'ended'; clearTimer(match); clearGreenTimer(match);
+  match.phase = 'ended'; clearTimer(match);
+  for (const progress of match.progress.values()) clearPreviewTimer(progress);
   if (match.botLoop) clearInterval(match.botLoop);
   match.botLoop = null;
   const scores = scorePayload(match);
@@ -699,7 +577,7 @@ function forfeitPlayer(io: Server, match: Match, playerId: string): void {
     io.sockets.sockets.get(socketId)?.leave(match.room);
   }
   const progress = match.progress.get(playerId);
-  if (progress && !progress.completed) { progress.completed = true; progress.score = 0; progress.stepDeadlineAt = null; progress.stepPausedRemainingMs = null; }
+  if (progress) { clearPreviewTimer(progress); if (!progress.completed) { progress.completed = true; progress.score = 0; } }
   if (match.players.some((player) => player.id === BOT_ID) && real(match.players).every((humanId) => match.forfeited.has(humanId))) return finishMatch(io, match, 'no-human-players');
   if (match.players.every((player) => match.forfeited.has(player.id))) return finishMatch(io, match, 'all-forfeited');
   emitState(io, match);
@@ -737,7 +615,7 @@ function startMatch(io: Server, lobby: Lobby): Match {
     : soloAgainstBot
       ? challengeOrder(seed, isFastTest() ? BOT_CHALLENGE_POOL.length : 10, BOT_CHALLENGE_POOL)
       : challengeOrder(seed, isFastTest() ? CHALLENGES.length : 10);
-  const match: Match = { id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds), order, index: -1, phase: 'countdown', seed, current: runtimeChallengePayload(order[0], seed), progress: new Map(), scores: new Map(lobby.players.map((player) => [player.id, 0])), startedAt: Date.now(), timer: null, deadlineAt: null, pausedRemainingMs: null, paused: false, reconnectTimers: new Map(), forfeited: new Set(), readyNext: new Set(), history: [], greenTimer: null, greenDeadlineAt: null, greenPausedRemainingMs: null, botLoop: null, botPlan: [], botPlanCursor: 0 };
+  const match: Match = { id, groupId: lobby.groupId, eventId: lobby.eventId, room, host: lobby.host, players: [...lobby.players], socketIds: new Map(lobby.socketIds), order, index: -1, phase: 'countdown', seed, current: runtimeChallengePayload(order[0], seed), progress: new Map(), scores: new Map(lobby.players.map((player) => [player.id, 0])), startedAt: Date.now(), timer: null, deadlineAt: null, pausedRemainingMs: null, paused: false, reconnectTimers: new Map(), forfeited: new Set(), readyNext: new Set(), history: [], botLoop: null, botPlan: [], botPlanCursor: 0 };
   matches.set(id, match); releaseLobbyMemberships(lobby.players.map((player) => player.id), 'challenge-rush', lobby.id); lobbies.delete(lobby.id); resolveArcadeLobbyPush('challenge-rush', lobby); emitLobbies(io);
   match.botLoop = setInterval(() => runMatchTick(io, match), BOT_TICK_MS);
   match.botLoop.unref();
@@ -847,31 +725,6 @@ export function registerChallengeRushSockets(io: Server): void {
       if (payload.action === 'timeout' || trialElapsed(p, now) >= p.trial.inputMs) {
         finishPlayerTrial(io, match, payload.playerId as string, p, { accepted: true, complete: true, correct: false, errors: 1, rawScore: 0, error: 'Zeit abgelaufen.' });
         return ack?.({ ok: true, accepted: true, timedOut: true, progress: progressPayload(p), trial: publicTrial(p) });
-      }
-      if (match.current.key === 'memory-pairs' && payload.action === 'reveal') {
-        const cardIndex = payload.value;
-        const board = p.trial.expected as string[];
-        const found = Array.isArray(p.trial.state.found) ? p.trial.state.found as number[] : [];
-        const revealed = Array.isArray(p.trial.state.revealed) ? p.trial.state.revealed as number[] : [];
-        if (!Number.isInteger(cardIndex) || Number(cardIndex) < 0 || Number(cardIndex) >= board.length || found.includes(Number(cardIndex)) || revealed.includes(Number(cardIndex))) {
-          return ack?.({ ok: false, error: 'Ungültige Karte.', progress: progressPayload(p), trial: publicTrial(p) });
-        }
-        revealed.push(Number(cardIndex));
-        p.trial.state.revealed = revealed;
-        p.trial.state.revealSeq = Number(p.trial.state.revealSeq ?? 0) + 1;
-        const revealedCards = revealed.map((index) => ({ index, value: board[index] }));
-        const revealSeq = Number(p.trial.state.revealSeq);
-        if (revealed.length < 2) return ack?.({ ok: true, accepted: true, progress: progressPayload(p), trial: publicTrial(p), revealedCards, revealSeq });
-        const result = validateTrialInput(match.current.key, p.trial, 'pair', [...revealed]);
-        p.trial.state.revealed = [];
-        const fastRound = isFastTest();
-        if (result.complete || fastRound) finishPlayerTrial(io, match, payload.playerId as string, p, fastRound ? { ...result, complete: true } : result);
-        else {
-          p.rawScore += result.rawScore;
-          p.errors += result.errors;
-          if (result.correct) p.partialHits += 1;
-        }
-        return ack?.({ ok: true, accepted: result.accepted, correct: result.correct, progress: progressPayload(p), trial: publicTrial(p), revealedCards, revealSeq });
       }
       const result = validateTrialInput(match.current.key, p.trial, payload.action ?? '', payload.value);
       if (!result.accepted) return ack?.({ ok: false, error: result.error, progress: progressPayload(p), trial: publicTrial(p) });

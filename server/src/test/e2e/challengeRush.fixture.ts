@@ -15,6 +15,7 @@ import {
   trackE2EContext,
 } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
+import { CHALLENGES } from '../../arcade/challengeRushLogic';
 
 let BASE_URL: string;
 let serverProcess: ChildProcess;
@@ -156,45 +157,6 @@ challengeRushTest('scenarios', 'Challenge Rush drops a hidden admin selection af
   }
 });
 
-challengeRushTest('scenarios', 'Challenge Rush focuses timed targets after start and server-side expiry', async () => {
-  for (const challenge of [
-    { key: 'aim-trainer', selector: '.challenge-rush-circle' },
-    { key: 'whack-a-mole', selector: '.challenge-rush-tile.is-active' },
-  ]) {
-    const playerId = await createPlayer();
-    await makeAdmin(playerId);
-    const actor = await openArcade(playerId, BASE_URL, { adminMode: true });
-    try {
-      await actor.page.click('[data-game="challenge-rush"]');
-      await actor.page.click('.challenge-rush-test-selector > summary');
-      const challengeOption = actor.page.locator(`[data-cr-challenge-key="${challenge.key}"]`);
-      await challengeOption.evaluate((option: HTMLInputElement) => {
-        option.checked = true;
-        option.dispatchEvent(new Event('change', { bubbles: true }));
-      });
-      await actor.page.click('#cr-create');
-      await actor.page.waitForSelector('[data-cr-start]');
-      await actor.page.click('[data-cr-start]');
-      await actor.page.waitForSelector(`${challenge.selector}:focus`);
-      const initialTarget = await actor.page.locator(challenge.selector).elementHandle();
-      assert.ok(initialTarget);
-      const focusedReplacement = await actor.page.waitForFunction(
-        ({ selector, previousTarget }) => {
-          const currentTarget = document.querySelector(selector);
-          return currentTarget !== null && currentTarget !== previousTarget && document.activeElement === currentTarget;
-        },
-        { selector: challenge.selector, previousTarget: initialTarget },
-      );
-      await focusedReplacement.dispose();
-      await initialTarget.dispose();
-      await actor.page.locator(challenge.selector).press('Space');
-      await actor.page.waitForSelector('#cr-ready-next:not([disabled])');
-    } finally {
-      await deferE2EContextClose(actor.context);
-    }
-  }
-});
-
 challengeRushTest('scenarios', 'Challenge Rush pauses active time and reconnects the same match', async () => {
   const actor = await openArcade(await createPlayer());
   try {
@@ -258,11 +220,10 @@ challengeRushTest('scenarios', 'Challenge Rush pauses active time and reconnects
 // by the integration tests in api.challengeRush.test.ts).
 //
 // Every loop below re-checks isStillPlaying(key) before each click instead of
-// only checking "does my target selector still exist": several challenges
-// (memory-sequence, odd-one-out, whack-a-mole) share the generic
-// `.challenge-rush-tile` class, so once a round ends the *next* challenge's
-// tiles can satisfy a stale selector and a queued click would silently land
-// on the wrong challenge instead of failing loudly.
+// only checking "does my target selector still exist": odd-one-out uses the
+// generic `.challenge-rush-tile` class, so once a round ends the *next*
+// challenge's elements can satisfy a stale selector and a queued click would
+// silently land on the wrong challenge instead of failing loudly.
 async function isStillPlaying(page: Page, key: string): Promise<boolean> {
   return (await page.locator(`.challenge-rush-stage[data-phase="playing"][data-challenge-key="${key}"]`).count()) > 0;
 }
@@ -281,7 +242,7 @@ async function waitForAction(page: Page, key: string, selector: string): Promise
 async function playCurrentChallenge(page: Page): Promise<void> {
   const key = await page.locator('.challenge-rush-stage').getAttribute('data-challenge-key');
   if (!key) throw new Error('Keine aktive Challenge im E2E-Test gefunden.');
-  if (key === 'reaction-circle' || key === 'aim-trainer') {
+  if (key === 'reaction-circle') {
     while (await isStillPlaying(page, key) && await page.locator('.challenge-rush-circle').count() > 0) { await page.click('.challenge-rush-circle'); await page.waitForTimeout(80); }
     return;
   }
@@ -292,12 +253,6 @@ async function playCurrentChallenge(page: Page): Promise<void> {
     return;
   }
   if (key === 'timing-10') { await page.click('[data-cr-stop]'); return; }
-  if (key === 'memory-sequence') {
-    if (!(await waitForAction(page, key, '.challenge-rush-tile:not([disabled])'))) throw new Error(`${key} wurde nach der Vorschau nicht bedienbar.`);
-    const tileCount = await page.locator('.challenge-rush-tile').count();
-    for (let index = 0; index < tileCount; index += 1) { if (!(await isStillPlaying(page, key))) break; await page.click(`.challenge-rush-tile[data-cr-tile="${index}"]`); await page.waitForTimeout(80); }
-    return;
-  }
   if (key === 'odd-one-out') {
     const position = await page.locator('.challenge-rush-odd-grid').evaluate((grid) => {
       const signatures = Array.from(grid.children).map((node) => {
@@ -311,25 +266,13 @@ async function playCurrentChallenge(page: Page): Promise<void> {
     await page.locator('.challenge-rush-tile').nth(position).click();
     return;
   }
-  if (key === 'whack-a-mole') {
-    for (let attempt = 0; attempt < 10 && await isStillPlaying(page, key) && await page.locator('.challenge-rush-tile.is-active').count() > 0; attempt += 1) { await page.click('.challenge-rush-tile.is-active'); await page.waitForTimeout(80); }
-    return;
-  }
-  if (key === 'traffic-light') { await page.click('[data-cr-traffic]'); return; }
   if (key === 'color-word') {
     for (let attempt = 0; attempt < 8 && await isStillPlaying(page, key) && await page.locator('.challenge-rush-color-option').count() > 0; attempt += 1) { await page.locator('.challenge-rush-color-option').first().click(); await page.waitForTimeout(80); }
     return;
   }
-  const actionSelector = '[data-cr-choice]:not([disabled]), [data-cr-bool]:not([disabled]), [data-cr-sequence-cell]:not([disabled]), [data-cr-matrix-cell]:not([disabled]), [data-cr-number-position]:not([disabled]), [data-cr-pair-card]:not([disabled])';
+  const actionSelector = '[data-cr-choice]:not([disabled]), [data-cr-sequence-cell]:not([disabled]), [data-cr-matrix-cell]:not([disabled]), [data-cr-number-position]:not([disabled])';
   if (!(await waitForAction(page, key, actionSelector))) throw new Error(`${key} wurde nach der Vorschau nicht bedienbar.`);
   if (await page.locator('[data-cr-choice]:not([disabled])').count()) { await page.locator('[data-cr-choice]:not([disabled])').first().click(); return; }
-  if (await page.locator('[data-cr-bool]:not([disabled])').count()) { await page.locator('[data-cr-bool]:not([disabled])').first().click(); return; }
-  if (await page.locator('[data-cr-pair-card]:not([disabled])').count()) {
-    await page.locator('[data-cr-pair-card]:not([disabled])').first().click();
-    await page.waitForTimeout(80);
-    await page.locator('[data-cr-pair-card]:not([disabled])').nth(1).click();
-    return;
-  }
   for (let attempt = 0; attempt < 25 && await isStillPlaying(page, key); attempt += 1) {
     const cell = page.locator('[data-cr-sequence-cell]:not([disabled]), [data-cr-matrix-cell]:not([disabled]), [data-cr-number-position]:not([disabled])').first();
     if (!(await cell.count())) break;
@@ -420,7 +363,7 @@ challengeRushTest('lifecycle', 'Challenge Rush plays every Phase 3 mini-challeng
     await actor.page.waitForSelector('[data-cr-start]');
     await actor.page.click('[data-cr-start]');
 
-    for (let index = 0; index < 40; index += 1) {
+    for (let index = 0; index < CHALLENGES.length; index += 1) {
       await actor.page.waitForFunction((expectedIndex) => {
         const node = document.querySelector('.challenge-rush-stage');
         return node?.getAttribute('data-phase') === 'playing' && node.getAttribute('data-challenge-index') === String(expectedIndex);
@@ -435,7 +378,7 @@ challengeRushTest('lifecycle', 'Challenge Rush plays every Phase 3 mini-challeng
 
     await actor.page.waitForSelector('.challenge-rush-final-breakdown');
     const titles = await actor.page.locator('.challenge-rush-final-breakdown').first().textContent();
-    for (const title of ['Klick den Kreis', 'Aim Trainer', 'Merk dir die Reihenfolge', 'Finde den Unterschied', 'Whack-a-Mole', 'Ampel-Reaktion', 'Farbwort-Chaos', 'Münzwechsel', 'Folgen-Operator', 'Schon gesehen?']) {
+    for (const title of ['Klick den Kreis', 'CPS-Test', 'Zahlensalat', 'Finde den Unterschied', 'Farbwort-Chaos', 'Münzwechsel', 'Memory-Matrix', 'Pfad-Gedächtnis', 'Kofferpacken', 'Was fehlt?']) {
       assert.ok(titles?.includes(title), `Ergebnis-Aufschlüsselung sollte "${title}" enthalten`);
     }
   } finally {
