@@ -390,7 +390,6 @@ export function codexReviewArgs({ schemaPath, outputPath }) {
     "--config", "project_doc_max_bytes=0",
     "--output-schema", schemaPath,
     "--output-last-message", outputPath,
-    "review",
     "-",
   ];
 }

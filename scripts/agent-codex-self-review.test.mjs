@@ -169,7 +169,7 @@ test("the prompt binds the detached review and forbids editable PR actions", () 
   assert.match(prompt, /Return only the JSON object/);
 });
 
-test("the executable receives approval policy before exec and a schema-bound review target", () => {
+test("the executable receives approval policy before exec and a schema-bound review prompt", () => {
   assert.deepEqual(codexReviewArgs({ schemaPath: "schema.json", outputPath: "result.json" }), [
     "--ask-for-approval", "never",
     "exec",
@@ -185,7 +185,6 @@ test("the executable receives approval policy before exec and a schema-bound rev
     "--config", "project_doc_max_bytes=0",
     "--output-schema", "schema.json",
     "--output-last-message", "result.json",
-    "review",
     "-",
   ]);
 });
