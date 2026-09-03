@@ -978,18 +978,26 @@ textarea {
 }
 @media (max-width: 639px) { /* --bp-md */
   .event-poll-card-header {
+    flex-wrap: wrap;
     align-items: center;
   }
   .event-poll-card-toggle {
+    flex-basis: 100%;
     grid-template-columns: auto minmax(0, 1fr);
   }
+  /* Status, response count and the "Aktion" menu move to their own row
+     instead of squeezing next to the title — otherwise all of that had to
+     share one cramped line with the toggle button on a phone. */
   .event-poll-card-side {
+    flex: 1 1 100%;
     align-self: stretch;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
   }
   .event-poll-card-meta {
     min-width: 0;
+    align-items: flex-start;
+    text-align: left;
   }
   .event-poll-best-result {
     max-width: 8rem;

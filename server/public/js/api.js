@@ -351,7 +351,7 @@ export const api = {
     reopen: (eventId, pollId, responseDueOn) =>
       apiFetch(`/api/events/${eventId}/polls/${pollId}/reopen`, {
         method: 'POST',
-        body: JSON.stringify(responseDueOn ? { responseDueOn } : {}),
+        body: JSON.stringify({ responseDueOn }),
       }),
     remove: (eventId, pollId) => apiFetch(`/api/events/${eventId}/polls/${pollId}`, { method: 'DELETE' }),
   },

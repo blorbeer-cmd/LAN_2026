@@ -4766,6 +4766,61 @@ registerMigration({
   up: addFeedbackResolutionState,
 });
 
+// A submission deadline is no longer mandatory: some polls just want an
+// open-ended answer window. SQLite cannot drop a NOT NULL constraint in
+// place, so the table is rebuilt with the same columns and indices, minus
+// the constraint on response_due_at.
+function makeEventPollDeadlineOptional(): void {
+  const columns = db.prepare('PRAGMA table_info(event_date_polls)').all() as Array<{ name: string; notnull: number }>;
+  const responseDueAtColumn = columns.find((column) => column.name === 'response_due_at');
+  if (!responseDueAtColumn || responseDueAtColumn.notnull === 0) return;
+  db.exec(`
+    CREATE TABLE event_date_polls_rebuilt_97 (
+      id                 TEXT PRIMARY KEY,
+      event_id           TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      round_number       INTEGER NOT NULL,
+      note               TEXT,
+      created_by         TEXT REFERENCES players(id) ON DELETE SET NULL,
+      response_due_at    INTEGER,
+      status             TEXT NOT NULL DEFAULT 'open'
+                          CHECK (status IN ('open', 'closed', 'scheduled', 'superseded', 'cancelled')),
+      selected_option_id TEXT REFERENCES event_date_poll_options(id) ON DELETE SET NULL,
+      created_at         INTEGER NOT NULL,
+      updated_at         INTEGER NOT NULL,
+      topic              TEXT NOT NULL DEFAULT 'custom'
+                          CHECK (topic IN ('date_range', 'location', 'duration', 'budget', 'custom')),
+      decision_key       TEXT NOT NULL,
+      title              TEXT NOT NULL,
+      response_mode      TEXT NOT NULL DEFAULT 'feasibility'
+                          CHECK (response_mode IN ('feasibility', 'single_choice', 'multiple_choice', 'rating_1_5')),
+      decision_note      TEXT,
+      max_selections     INTEGER CHECK (max_selections IS NULL OR max_selections >= 1),
+      is_anonymous       INTEGER NOT NULL DEFAULT 0 CHECK (is_anonymous IN (0, 1)),
+      UNIQUE (event_id, decision_key, round_number)
+    );
+    INSERT INTO event_date_polls_rebuilt_97
+      (id, event_id, round_number, note, created_by, response_due_at, status, selected_option_id,
+       created_at, updated_at, topic, decision_key, title, response_mode, decision_note, max_selections, is_anonymous)
+    SELECT id, event_id, round_number, note, created_by, response_due_at, status, selected_option_id,
+           created_at, updated_at, topic, decision_key, title, response_mode, decision_note, max_selections, is_anonymous
+    FROM event_date_polls;
+    DROP TABLE event_date_polls;
+    ALTER TABLE event_date_polls_rebuilt_97 RENAME TO event_date_polls;
+    CREATE UNIQUE INDEX idx_event_polls_undecided
+      ON event_date_polls(event_id, decision_key) WHERE status = 'open';
+    CREATE UNIQUE INDEX idx_event_polls_decided
+      ON event_date_polls(event_id, decision_key) WHERE status = 'scheduled';
+    CREATE INDEX idx_event_date_polls_event
+      ON event_date_polls(event_id, decision_key, round_number);
+  `);
+}
+registerMigration({
+  version: 97,
+  name: 'make event poll deadline optional',
+  up: makeEventPollDeadlineOptional,
+  disableForeignKeysForRebuild: true,
+});
+
 runRegisteredMigrations();
 
 // The active default-group role is the source of truth for instance admin

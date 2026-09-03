@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 96);
+  assert.equal(migrations.length, 97);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 96 }, (_, index) => index + 1),
+    Array.from({ length: 97 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1342,8 +1342,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 96 }, (_, index) => index + 1),
-    'every version 1..96 runs exactly once',
+    Array.from({ length: 97 }, (_, index) => index + 1),
+    'every version 1..97 runs exactly once',
   );
 });
 
@@ -3257,6 +3257,66 @@ test('migrations 86 through 88 preserve poll history and allow a new round after
                'custom', 'migration-86', 'Migration 88 Round 3', 'feasibility', 0)`,
     ).run(),
     /UNIQUE constraint failed/,
+  );
+  assert.deepEqual(migrated.pragma('foreign_key_check'), []);
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
+test('migration 97 makes the event poll deadline optional without losing existing due dates', () => {
+  const dbFile = makeTempDbPath('event-poll-optional-deadline');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  const existingDueAt = now + 7 * 86_400_000;
+  fixture.exec(`
+    INSERT INTO players (id, name, api_key, created_at)
+      VALUES ('migration-97-player', 'Migration 97 Player', 'migration-97-key', ${now});
+    INSERT INTO event_date_polls
+      (id, event_id, round_number, response_due_at, status, created_at, updated_at,
+       topic, decision_key, title, response_mode, is_anonymous)
+      VALUES ('migration-97-poll', 'instance-base-event', 1, ${existingDueAt}, 'open', ${now}, ${now},
+              'custom', 'migration-97', 'Migration 97 Poll', 'feasibility', 0);
+    INSERT INTO event_date_poll_options
+      (id, poll_id, starts_on, ends_on, position, label, payload_json)
+      VALUES ('migration-97-option', 'migration-97-poll', '0001-01-01', '0001-01-01', 0, 'Option', '{}');
+    INSERT INTO event_date_poll_invitees (poll_id, player_id, invited_at)
+      VALUES ('migration-97-poll', 'migration-97-player', ${now});
+    DELETE FROM schema_migrations WHERE version = 97;
+  `);
+  fixture.close();
+
+  runMigrations(dbFile);
+  runMigrations(dbFile);
+
+  const migrated = new Database(dbFile);
+  const pollColumns = migrated.prepare('PRAGMA table_info(event_date_polls)').all() as Array<{ name: string; notnull: number }>;
+  const responseDueAtColumn = pollColumns.find((column) => column.name === 'response_due_at');
+  assert.equal(responseDueAtColumn?.notnull, 0, 'response_due_at must no longer be NOT NULL after the rebuild');
+  assert.equal(
+    (migrated
+      .prepare('SELECT response_due_at AS responseDueAt FROM event_date_polls WHERE id = ?')
+      .get('migration-97-poll') as { responseDueAt: number }).responseDueAt,
+    existingDueAt,
+    'an existing deadline survives the rebuild unchanged',
+  );
+  assert.equal(
+    (migrated
+      .prepare('SELECT player_id AS playerId FROM event_date_poll_invitees WHERE poll_id = ?')
+      .get('migration-97-poll') as { playerId: string }).playerId,
+    'migration-97-player',
+    'invitees referencing the rebuilt table survive intact',
+  );
+  assert.doesNotThrow(
+    () => migrated.prepare(
+      `INSERT INTO event_date_polls
+         (id, event_id, round_number, response_due_at, status, created_at, updated_at,
+          topic, decision_key, title, response_mode, is_anonymous)
+       VALUES ('migration-97-open-ended', 'instance-base-event', 1, NULL, 'open', ?, ?,
+               'custom', 'migration-97-open-ended', 'Open-ended poll', 'feasibility', 0)`,
+    ).run(now, now),
+    'a new poll can now omit a deadline entirely',
   );
   assert.deepEqual(migrated.pragma('foreign_key_check'), []);
   migrated.close();
