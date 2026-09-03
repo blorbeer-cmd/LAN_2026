@@ -38,6 +38,7 @@ import {
   groupPaymentState,
   parsePriceToCents,
 } from '../foodOrderModel.js';
+import { createDeferredInteractiveRender } from '../deferredInteractiveRender.js';
 
 export { normalizePaypalInput, paypalEmailFromLink, paypalPayUrl } from '../paypal.js';
 export {
@@ -52,83 +53,14 @@ let cache = null;
 let loading = false;
 let historyOpen = false;
 
-// Realtime updates may arrive several times while a suggestion option is
-// being targeted. Replacing the complete view in that window detaches the
-// option between pointerdown and click, so Playwright (and a quick real user)
-// can chase an element that never stays connected long enough to select.
-// Keep applying responses to the cache, but defer that one DOM replacement
-// until the active suggestion interaction has closed.
-let deferredInteractiveRender = null; // { container, ctx } | null
-let deferredInteractiveRenderScheduled = false;
-let forceInteractiveRender = false;
-let outsidePointerInteractionPending = false;
-
-function flushDeferredInteractiveRender() {
-  if (!deferredInteractiveRender || deferredInteractiveRenderScheduled) return;
-  deferredInteractiveRenderScheduled = true;
-  // A macrotask lets the click/default action that closed the dropdown finish
-  // before the form containing its target is replaced.
-  setTimeout(() => {
-    deferredInteractiveRenderScheduled = false;
-    const pending = deferredInteractiveRender;
-    if (!pending) return;
-    if (!pending.container.isConnected) {
-      deferredInteractiveRender = null;
-      return;
-    }
-    if (pending.container.querySelector('[data-desc-suggest].is-open')) return;
-    deferredInteractiveRender = null;
-    pending.ctx.rerender();
-  }, 0);
-}
-
-function flushDeferredInteractiveRenderAfterPointer(pointerId) {
-  outsidePointerInteractionPending = true;
-  let pointerReleased = false;
-  let fallbackTimer = null;
-
-  const cleanup = () => {
-    document.removeEventListener('pointerup', onPointerUp, true);
-    document.removeEventListener('pointercancel', onPointerCancel, true);
-    document.removeEventListener('click', onClick, true);
-    window.removeEventListener('blur', onWindowBlur);
-    if (fallbackTimer !== null) clearTimeout(fallbackTimer);
-  };
-  const finish = () => {
-    cleanup();
-    outsidePointerInteractionPending = false;
-    flushDeferredInteractiveRender();
-  };
-  const onPointerUp = (event) => {
-    if (event.pointerId !== pointerId) return;
-    pointerReleased = true;
-    document.removeEventListener('pointerup', onPointerUp, true);
-    // Normal taps emit click immediately after pointerup. A drag or another
-    // gesture may not emit one at all, so release the deferred render after a
-    // bounded fallback without racing a delayed touch click.
-    fallbackTimer = setTimeout(finish, 500);
-  };
-  const onPointerCancel = (event) => {
-    if (event.pointerId === pointerId) finish();
-  };
-  const onClick = () => {
-    if (pointerReleased) finish();
-  };
-  const onWindowBlur = () => finish();
-
-  document.addEventListener('pointerup', onPointerUp, true);
-  document.addEventListener('pointercancel', onPointerCancel, true);
-  document.addEventListener('click', onClick, true);
-  window.addEventListener('blur', onWindowBlur, { once: true });
-}
+const deferredFoodOrderRender = createDeferredInteractiveRender({
+  isInteractive: (container) => Boolean(container.querySelector('[data-desc-suggest].is-open')),
+});
 
 function rerenderLocalMutation(ctx) {
-  forceInteractiveRender = true;
-  try {
+  deferredFoodOrderRender.runForced(() => {
     ctx.rerender();
-  } finally {
-    forceInteractiveRender = false;
-  }
+  });
 }
 
 // Orderer-group expand/collapse state: `orderId -> Set<playerId>` of currently
@@ -854,7 +786,7 @@ function wireDescSuggest(wrapper) {
     updateExpanded(false);
     input.removeAttribute('aria-activedescendant');
     activeIndex = -1;
-    if (wasOpen && flush) flushDeferredInteractiveRender();
+    if (wasOpen && flush) deferredFoodOrderRender.flush();
   };
   const selectSuggestion = (suggestion) => {
     input.value = suggestion.label;
@@ -937,7 +869,7 @@ function wireDescSuggest(wrapper) {
     }
     if (isOpen() && !wrapper.contains(event.target)) {
       close({ flush: false });
-      flushDeferredInteractiveRenderAfterPointer(event.pointerId);
+      deferredFoodOrderRender.deferAfterPointer(event.pointerId);
     }
   };
   document.addEventListener('pointerdown', closeFromOutsidePointer);
@@ -1628,14 +1560,7 @@ function openDetailsForm(ctx, order) {
 }
 
 export function renderFoodOrders(container, ctx) {
-  if (
-    !forceInteractiveRender &&
-    (outsidePointerInteractionPending || container.querySelector('[data-desc-suggest].is-open'))
-  ) {
-    deferredInteractiveRender = { container, ctx };
-    return;
-  }
-  if (deferredInteractiveRender?.container === container) deferredInteractiveRender = null;
+  if (deferredFoodOrderRender.deferIfNeeded(container, ctx)) return;
 
   if (cache === null && !loading) load(ctx);
 
@@ -1746,7 +1671,7 @@ export function renderFoodOrders(container, ctx) {
       // A submit started by the pointer interaction that just closed the
       // dropdown will reconcile and render from its own response. Do not let
       // the older deferred background render replace the form mid-request.
-      deferredInteractiveRender = null;
+      deferredFoodOrderRender.clear(container);
       submitBtn.disabled = true;
       try {
         const mutationWorkspaceVersion = foodOrderWorkspaceVersion;
