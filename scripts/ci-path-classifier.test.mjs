@@ -106,7 +106,8 @@ test("isolated Core domains select only their owned browser fixtures", () => {
     ["server/src/routes/checklist.ts", "checklist"],
     ["server/src/test/e2e/eventInvitations.e2e.test.ts", "invitations"],
     ["server/src/routes/votes.ts", "flows"],
-    ["server/src/test/e2e/flows.fixture.ts", "flows"],
+    ["server/src/test/e2e/flowsShared.fixture.ts", "flows"],
+    ["server/src/test/e2e/foodOrders.fixture.ts", "flows"],
   ];
   for (const [file, scope] of cases) {
     const result = selected([file]);

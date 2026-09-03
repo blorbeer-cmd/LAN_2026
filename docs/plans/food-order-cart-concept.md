@@ -202,7 +202,7 @@ bezahlt“ fremde, längst erledigte Zahlungen zurückdrehen.
 - `server/public/js/icons.js` — `shoppingCart`, `wallet` ergänzen; `creditCard` prüfen.
 - `server/public/css/style.css` — `.food-order-*`; neu: Gruppen-Kopf, Klapp-Zustand, Korbzeilen.
 - `server/public/js/modal.js` — bestehende Dialoge wiederverwenden, keine neue Komponente.
-- `server/src/test/e2e/flows.fixture.ts` — Essensbestellung-Flow je Arbeitspaket erweitern.
+- `server/src/test/e2e/foodOrders.fixture.ts` — Essensbestellung-Flow je Arbeitspaket erweitern.
 - `server/DESIGN_SYSTEM.md` — Positionszeile, Warenkorb, Gruppen, Bestellübersicht.
 
 ## Offene Entscheidungen
