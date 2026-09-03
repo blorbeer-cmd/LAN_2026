@@ -260,7 +260,7 @@ Neue und geänderte Logik bekommt Tests für Happy Path, Validierungsfehler und 
 - **Erinnerung**: frühestens eine Stunde nach dem Abschicken, Aggregation je Person/Event, dauerhafte
   Stundensperre auch ohne Push-Log-Eintrag und Ende nach vollständiger Bezahlung.
 
-Der Essensbestellung-E2E-Flow in `server/src/test/e2e/flows.fixture.ts` wird mitgeführt, nicht am
+Der Essensbestellung-E2E-Flow in `server/src/test/e2e/foodOrders.fixture.ts` wird mitgeführt, nicht am
 Ende nachgezogen. Tests nicht löschen, lockern oder mit Timeouts kaschieren.
 
 ## Betroffene Stellen
@@ -273,7 +273,7 @@ Ende nachgezogen. Tests nicht löschen, lockern oder mit Timeouts kaschieren.
 - `server/public/js/app.js` — `focusPendingSearchTarget()`.
 - `server/src/routes/foodOrders.ts` — Push-URL mit Bestell-ID.
 - `server/src/foodOrderReminders.ts` und `server/src/db.ts` — stündlicher Job und dauerhafte Sperre.
-- `server/src/test/e2e/flows.fixture.ts` und die Essen-Tests.
+- `server/src/test/e2e/foodOrders.fixture.ts` und die Essen-Tests.
 - `server/DESIGN_SYSTEM.md` — Abschnitt „Food orders“ im selben PR nachziehen.
 - `docs/plans/food-order-direct-payment.md` — an den Zielzustand angleichen (steht auf Runde 6).
 

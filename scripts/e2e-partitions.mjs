@@ -24,7 +24,11 @@ export const CORE_E2E_DOMAIN_ORDER = Object.freeze(Object.keys(CORE_E2E_DOMAINS)
 // classify a fixture-only change as narrowly as the wrappers that import it.
 export const E2E_SUPPORT_FILES = Object.freeze({
   core: Object.freeze({
-    "flows.fixture.ts": "flows",
+    "flowsShared.fixture.ts": "flows",
+    "flowsShell.fixture.ts": "flows",
+    "flowsCompetition.fixture.ts": "flows",
+    "flowsCommunity.fixture.ts": "flows",
+    "foodOrders.fixture.ts": "flows",
   }),
   arcade: Object.freeze([
     "arcade.fixture.ts",

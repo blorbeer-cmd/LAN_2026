@@ -24,7 +24,7 @@ was daraufhin tatsächlich geändert wurde.
 | P2-6 30-s-Standardtimeout | behoben | `E2E_DEFAULT_TIMEOUT_MS` (15 s) je registriertem Kontext; 4-s-Adhoc-Werte entfernt |
 | P2-7 Geometrie-Assertions | teilweise | die beiden exakten Rect-Vergleiche haben jetzt 1 px Toleranz; DOM-Reihenfolge-Assertions unverändert |
 | P3-1 `phase5eIsolation` | behoben | Pauschalpause durch einen quittierten Rundlauf auf der Agent-Verbindung als Ordnungs-Barriere ersetzt (Cross-Review-Nachbesserung); E2E-Definition in `TESTING.md` korrigiert |
-| P3-2 `flows.fixture.ts` aufteilen | bewusst offen | laut Bericht ein eigener PR |
+| P3-2 `flows.fixture.ts` aufteilen | behoben (nachgetragen 2026-09-03) | in `flowsShared.fixture.ts` (Zustand, Lifecycle, Navigationshelfer) plus je eine Fixture pro Shard zerlegt; alle 35 `flowTest`-Fälle byte-identisch und in unveränderter Reihenfolge übernommen. `flowTest` braucht kein Shard-Argument mehr, die `E2E_FLOW_SHARD`-Umgebungsvariable entfällt, `E2E_SUPPORT_FILES.core` führt jetzt fünf Einträge |
 | P3-3 `format.test.js` | behoben | literale Erwartung statt Nachbau der Implementierung |
 | P3-4 `waitForAction` | behoben | `Promise.race` zweier `waitFor` statt 280×25 ms Polling; Klick-Taktung unverändert |
 | P3-5 Katalogdurchlauf | behoben (nachgetragen 2026-09-03) | 24,2 s → 8,7 s. Ursache sind #529 (neun fragile Challenges entfernt) und #533 (Katalog auf 21 Spiele), **nicht** das `ARCADE_FAST_TIMERS`-Flag aus #532 — mit und ohne Flag misst die Datei identisch 8,7 s. Die vier verbliebenen `sleep`-Aufrufe sind regelkonform: einer wartet eine echte Produktionsfrist ab, drei sind dokumentierte Negativfenster nach Regel 4 |
