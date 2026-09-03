@@ -28,6 +28,11 @@ function getActivePlayer(playerId: string): { id: string } | undefined {
     { id: string } | undefined;
 }
 
+// Never a test-fixture event: every caller assigns or validates a *real*
+// account's event context (registration, claim, invite creation/validity).
+// A real account accepted into a hidden Test-LAN/Allgemeines-Testevent
+// fixture would lose access to its own active event the moment Admin mode
+// is off, since is_test events are filtered out of every other read path.
 export function getSelectableEvent(eventId: string): EventContextEvent | undefined {
   if (eventId === OUTSIDE_EVENTS_ID) return undefined;
   return db
@@ -35,7 +40,7 @@ export function getSelectableEvent(eventId: string): EventContextEvent | undefin
       `SELECT id, name, starts_at, ends_at, status, group_id,
               event_type_key, preset_version, schedule_revision, is_test
        FROM events
-       WHERE id = ? AND group_id = ? AND status = 'published' AND ended_at IS NULL`,
+       WHERE id = ? AND group_id = ? AND status = 'published' AND ended_at IS NULL AND is_test = 0`,
     )
     .get(eventId, DEFAULT_GROUP_ID) as EventContextEvent | undefined;
 }
