@@ -294,6 +294,7 @@ arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and s
 arcadeTest('navigation', 'a background stats update does not detach an active Arcade tile click', async () => {
   const player = await createPlayer('Arcade Pointer Host');
   const host = await openArcadeAs(player.id);
+  await host.page.waitForSelector('text=Noch keine abgeschlossenen Arcade-Runden.');
   let releaseStats!: () => void;
   const statsReleased = new Promise<void>((resolve) => { releaseStats = resolve; });
   let statsStarted!: () => void;
@@ -314,27 +315,50 @@ arcadeTest('navigation', 'a background stats update does not detach an active Ar
     await host.page.waitForSelector('#arcade-stylesheet[data-loaded="true"]', { state: 'attached' });
 
     const tile = host.page.locator('[data-game="quiz"]');
-    const tileHandle = await tile.elementHandle();
-    assert.ok(tileHandle, 'Quiz tile must be present before the pointer interaction');
-    const rect = await tile.evaluate((element) => {
-      const bounds = element.getBoundingClientRect();
-      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    await tile.dispatchEvent('pointerdown', {
+      button: 0,
+      buttons: 1,
+      isPrimary: true,
+      pointerId: 1,
+      pointerType: 'mouse',
     });
-    assert.ok(
-      rect.width > 0 && rect.height > 0,
-      `Quiz tile must be visible before the pointer interaction (rect=${JSON.stringify(rect)})`,
-    );
-    await host.page.bringToFront();
-    await host.page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
-    await host.page.mouse.down();
+    const tileHandle = await tile.elementHandle();
+    assert.ok(tileHandle, 'Quiz tile must remain present after pointerdown');
 
     const statsResponse = host.page.waitForResponse((response) => response.url().endsWith('/api/arcade/stats') && response.status() === 200);
     releaseStats();
     await statsResponse;
     assert.equal(await tileHandle.evaluate((element) => element.isConnected), true);
-    await host.page.mouse.up();
+    await host.page.evaluate(() => {
+      document.documentElement.removeAttribute('data-arcade-direct-render-connected');
+      const container = document.getElementById('view-container');
+      if (!container) throw new Error('Arcade view container is missing');
+      const observer = new MutationObserver(() => {
+        const directRenderTitle = document.getElementById('arcade-active-game-title');
+        if (!directRenderTitle) return;
+        observer.disconnect();
+        setTimeout(() => {
+          document.documentElement.dataset.arcadeDirectRenderConnected = String(directRenderTitle.isConnected);
+        }, 50);
+      });
+      observer.observe(container, { childList: true, subtree: true });
+    });
+    await tileHandle.dispatchEvent('pointerup', {
+      button: 0,
+      buttons: 0,
+      isPrimary: true,
+      pointerId: 1,
+      pointerType: 'mouse',
+    });
+    await tileHandle.dispatchEvent('click', { button: 0 });
 
     await host.page.waitForSelector('#arcade-active-game-title:has-text("Gaming-Quiz")');
+    await host.page.waitForFunction(() => document.documentElement.dataset.arcadeDirectRenderConnected);
+    assert.equal(
+      await host.page.evaluate(() => document.documentElement.dataset.arcadeDirectRenderConnected),
+      'true',
+      'the click render must supersede the deferred background render',
+    );
     assert.equal(new URL(host.page.url()).hash, '#arcade/quiz');
   } finally {
     await host.context.close();

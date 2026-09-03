@@ -2,11 +2,15 @@
 // renderers may still replace their complete DOM, but never while the user is
 // in the middle of activating one of their controls.
 
-export function createDeferredInteractiveRender({ isInteractive = () => false, trackPointerInteractions = false } = {}) {
+export function createDeferredInteractiveRender({
+  isInteractive = () => false,
+  shouldTrackPointerInteraction = () => true,
+  trackPointerInteractions = false,
+} = {}) {
   let deferredRender = null;
   let deferredRenderScheduled = false;
   let forceRender = false;
-  let pointerInteractionPending = false;
+  const pointerInteractions = new Set();
   const observedContainers = new WeakSet();
 
   function flush() {
@@ -29,7 +33,8 @@ export function createDeferredInteractiveRender({ isInteractive = () => false, t
   }
 
   function deferAfterPointer(pointerId) {
-    pointerInteractionPending = true;
+    const interaction = {};
+    pointerInteractions.add(interaction);
     let pointerReleased = false;
     let fallbackTimer = null;
 
@@ -42,8 +47,8 @@ export function createDeferredInteractiveRender({ isInteractive = () => false, t
     };
     const finish = () => {
       cleanup();
-      pointerInteractionPending = false;
-      flush();
+      if (!pointerInteractions.delete(interaction)) return;
+      if (pointerInteractions.size === 0) flush();
     };
     const onPointerUp = (event) => {
       if (event.pointerId !== pointerId) return;
@@ -71,12 +76,13 @@ export function createDeferredInteractiveRender({ isInteractive = () => false, t
     if (!trackPointerInteractions || observedContainers.has(container)) return;
     observedContainers.add(container);
     container.addEventListener('pointerdown', (event) => {
+      if (!shouldTrackPointerInteraction(event)) return;
       deferAfterPointer(event.pointerId);
     }, true);
   }
 
   function deferIfNeeded(container, ctx) {
-    if (!forceRender && (pointerInteractionPending || isInteractive(container))) {
+    if (!forceRender && (pointerInteractions.size > 0 || isInteractive(container))) {
       deferredRender = { container, ctx };
       return true;
     }

@@ -62,6 +62,7 @@ const viewContainer = document.getElementById('view-container');
 let pendingSearchTarget = null;
 let pendingViewHeadingFocus = false;
 let renderRevision = 0;
+const resolvedLazyRenderers = new Map();
 let sharedRefreshPromise = null;
 let sharedRefreshDirty = false;
 let sharedRefreshShouldRender = false;
@@ -549,8 +550,9 @@ function renderCurrent({ preserveState = true } = {}) {
     ? captureViewRenderState(viewContainer)
     : null;
   const stylesheetReady = syncArcadeStylesheet(entry);
-  if (entry.render) {
-    entry.render(viewContainer, ctx);
+  const renderer = entry.render ?? resolvedLazyRenderers.get(view);
+  if (renderer) {
+    renderer(viewContainer, ctx);
     restoreViewRenderState(viewContainer, renderState);
     finishRenderedViewFocus();
     return;
@@ -559,6 +561,7 @@ function renderCurrent({ preserveState = true } = {}) {
   viewContainer.innerHTML = '<section class="card grouped-page-section"><p class="muted">Arcade wird geladen…</p></section>';
   Promise.all([entry.resolveRenderer(), stylesheetReady])
     .then(([renderFn]) => {
+      resolvedLazyRenderers.set(view, renderFn);
       if (revision !== renderRevision || view !== currentView) return;
       renderFn(viewContainer, ctx);
       restoreViewRenderState(viewContainer, renderState);

@@ -105,7 +105,10 @@ let lastResult = null;
 let quizAnswerHadFocusBeforePause = false;
 let countdownInterval = null;
 let customTarget = '5';
-const deferredArcadeRender = createDeferredInteractiveRender({ trackPointerInteractions: true });
+const deferredArcadeRender = createDeferredInteractiveRender({
+  shouldTrackPointerInteraction: () => currentView() === 'arcade',
+  trackPointerInteractions: true,
+});
 
 function currentView() {
   return document.getElementById('view-container')?.dataset.view;
@@ -604,6 +607,11 @@ export function renderArcade(container, ctx) {
   deferredArcadeRender.observe(container);
   const route = ctx.localRoute();
   const routeKey = localRouteKey(route);
+  // Same-route renders are background refreshes, including those dispatched
+  // by sibling Arcade modules. Route navigation from the click itself must
+  // render immediately and supersede any older deferred refresh.
+  if (routeKey === appliedRouteKey && deferredArcadeRender.deferIfNeeded(container, ctx)) return;
+  deferredArcadeRender.clear(container);
   if (routeKey !== appliedRouteKey) {
     activeGame = route?.kind === 'game' && GAMES.some((game) => game.id === route.id && !game.soon)
       ? route.id
