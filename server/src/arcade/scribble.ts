@@ -305,6 +305,23 @@ function clearReconnectTimers(match: ScribbleMatchState): void {
   match.reconnectTimers.clear();
 }
 
+// Test-only teardown, the match-state counterpart to clearLobbyMemberships().
+// A test that stops while a match is still running leaves that match in the
+// module-global map with its timers armed. Closing the Socket.IO and HTTP
+// server does not reach them: the word-choice timer (CHOICE_MS) is ref'd, so
+// it alone keeps the whole test process alive until the unref'd reconnect
+// grace disposes the match ~15 s later - runtime that is pure waiting and
+// detects nothing.
+export function clearScribbleState(): void {
+  for (const match of matches.values()) {
+    clearAllTimers(match);
+    clearReconnectTimers(match);
+  }
+  matches.clear();
+  lobbies.clear();
+  recentMatchRosters.clear();
+}
+
 function loadWordPool(match: ScribbleMatchState): WordRow[] {
   return db.prepare('SELECT id, word, difficulty FROM scribble_words WHERE group_id = ? ORDER BY created_at')
     .all(match.groupId) as WordRow[];
