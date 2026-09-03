@@ -125,23 +125,30 @@ function rejectUnknown(value, allowed, name) {
   if (unknown.length) throw new Error(`${name} has unknown fields: ${unknown.join(", ")}.`);
 }
 
-export function resultSchema({ headSha, sessionId }) {
+export function resultSchema({
+  repository,
+  pullNumber,
+  baseBranch,
+  headBranch,
+  headSha,
+  sessionId,
+}) {
   return {
     type: "object",
     additionalProperties: false,
     required: RAW_RESULT_KEYS,
     properties: {
       schema_version: { type: "integer", const: 1 },
-      repository: { type: "string", minLength: 1 },
-      pull_request: { type: "string", minLength: 1 },
+      repository: { type: "string", const: repository },
+      pull_request: { type: "string", const: String(pullNumber) },
       reviewer_provider: { type: "string", const: "codex" },
       review_mode: { type: "string", const: "self" },
       review_session_id: { type: "string", const: sessionId },
       isolated_session: { type: "boolean", const: true },
       read_only_enforced: { type: "string", const: "verified" },
       implementer: { type: "string", const: "codex" },
-      base_branch: { type: "string", minLength: 1 },
-      head_branch: { type: "string", minLength: 1 },
+      base_branch: { type: "string", const: baseBranch },
+      head_branch: { type: "string", const: headBranch },
       reviewed_head_sha: { type: "string", const: headSha },
       verdict: { type: "string", enum: [...VERDICTS] },
       findings: {
@@ -171,7 +178,14 @@ export function resultSchema({ headSha, sessionId }) {
   };
 }
 
-export function validateReviewOutput(raw, { headSha, sessionId }) {
+export function validateReviewOutput(raw, {
+  repository,
+  pullNumber,
+  baseBranch,
+  headBranch,
+  headSha,
+  sessionId,
+}) {
   let value;
   try {
     value = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -198,6 +212,14 @@ export function validateReviewOutput(raw, { headSha, sessionId }) {
     }
     if (value.review_session_id !== sessionId || value.reviewed_head_sha !== headSha) {
       throw new Error("review session or head SHA does not match the launch.");
+    }
+    if (
+      value.repository !== repository ||
+      value.pull_request !== String(pullNumber) ||
+      value.base_branch !== baseBranch ||
+      value.head_branch !== headBranch
+    ) {
+      throw new Error("review repository, pull request, or branches do not match the launch.");
     }
     if (value.read_only_enforced !== "verified") {
       throw new Error("review did not report read_only_enforced=verified.");
@@ -404,7 +426,15 @@ export function reviewerEnvironment(environment = process.env, credentialDir = j
   };
 }
 
-export function renderPrompt({ repository, pullNumber, baseSha, headSha, sessionId }) {
+export function renderPrompt({
+  repository,
+  pullNumber,
+  baseBranch,
+  headBranch,
+  baseSha,
+  headSha,
+  sessionId,
+}) {
   return [
     "Perform an independent code review of the full diff for the exact detached commit below.",
     `Read the trusted base versions with \`git show ${baseSha}:AGENTS.md\`,`,
@@ -419,6 +449,8 @@ export function renderPrompt({ repository, pullNumber, baseSha, headSha, session
     "",
     `Repository: ${repository}`,
     `Pull request: #${pullNumber}`,
+    `Base branch: ${baseBranch}`,
+    `Head branch: ${headBranch}`,
     `Base commit: ${baseSha}`,
     `Head commit: ${headSha}`,
     `Session: ${sessionId}`,
@@ -789,12 +821,22 @@ export async function runCommand(args, dependencies = {}) {
     const schemaPath = join(temp, "schema.json");
     const outputPath = join(temp, "result.json");
     const sessionId = `codex-self-${requestId}-${attempt}`;
-    writeFileSync(schemaPath, `${JSON.stringify(resultSchema({ headSha: expectedHead, sessionId }), null, 2)}\n`);
+    const reviewContext = {
+      repository,
+      pullNumber: Number(pullNumber),
+      baseBranch: snapshot.baseBranch,
+      headBranch: snapshot.headBranch,
+      headSha: expectedHead,
+      sessionId,
+    };
+    writeFileSync(schemaPath, `${JSON.stringify(resultSchema(reviewContext), null, 2)}\n`);
     run("git", ["fetch", "origin", expectedHead], { cwd: root });
     run("git", ["worktree", "add", "--detach", worktree, expectedHead], { cwd: root });
     const prompt = renderPrompt({
       repository,
       pullNumber: Number(pullNumber),
+      baseBranch: snapshot.baseBranch,
+      headBranch: snapshot.headBranch,
       baseSha: snapshot.baseSha,
       headSha: expectedHead,
       sessionId,
@@ -821,7 +863,7 @@ export async function runCommand(args, dependencies = {}) {
     }
     if (!existsSync(outputPath)) throw Object.assign(new Error("Codex produced no structured result."), { reviewCode: "no-result" });
     const result = validateFindingAnchors(
-      validateReviewOutput(readFileSync(outputPath, "utf8"), { headSha: expectedHead, sessionId }),
+      validateReviewOutput(readFileSync(outputPath, "utf8"), reviewContext),
       files,
     );
     if (!await trustedRequestOnGithub({
