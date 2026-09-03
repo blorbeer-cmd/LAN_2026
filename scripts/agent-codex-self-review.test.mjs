@@ -24,6 +24,14 @@ import {
 
 const HEAD = "a".repeat(40);
 const SESSION = "codex-self-run-1";
+const REVIEW_CONTEXT = {
+  repository: "owner/repo",
+  pullNumber: 42,
+  baseBranch: "main",
+  headBranch: "feature",
+  headSha: HEAD,
+  sessionId: SESSION,
+};
 
 /** Backdates a held lock so the staleness window can be exercised without waiting. */
 function age(lock, minutes) {
@@ -61,17 +69,38 @@ function finding(overrides = {}) {
   };
 }
 
+function rawOutput(overrides = {}) {
+  return {
+    schema_version: 1,
+    repository: "owner/repo",
+    pull_request: "42",
+    reviewer_provider: "codex",
+    review_mode: "self",
+    review_session_id: SESSION,
+    isolated_session: true,
+    read_only_enforced: "verified",
+    implementer: "codex",
+    base_branch: "main",
+    head_branch: "feature",
+    reviewed_head_sha: HEAD,
+    verdict: "pass",
+    findings: [],
+    residual_risks: [],
+    ...overrides,
+  };
+}
+
 test("pass, changes-required and blocked outputs are validated fail-closed", () => {
-  assert.equal(validateReviewOutput(output(), { headSha: HEAD, sessionId: SESSION }).verdict, "pass");
+  assert.equal(validateReviewOutput(output(), REVIEW_CONTEXT).verdict, "pass");
   const changes = output({ verdict: "changes-required", findings: [finding()] });
-  assert.equal(validateReviewOutput(changes, { headSha: HEAD, sessionId: SESSION }).findings.length, 1);
+  assert.equal(validateReviewOutput(changes, REVIEW_CONTEXT).findings.length, 1);
   const blocked = output({
     verdict: "blocked",
     findings: [finding({ disposition: "needs-human", file: null, line: null })],
   });
-  assert.equal(validateReviewOutput(blocked, { headSha: HEAD, sessionId: SESSION }).verdict, "blocked");
+  assert.equal(validateReviewOutput(blocked, REVIEW_CONTEXT).verdict, "blocked");
   assert.throws(
-    () => validateReviewOutput(output({ verdict: "pass", findings: [finding()] }), { headSha: HEAD, sessionId: SESSION }),
+    () => validateReviewOutput(output({ verdict: "pass", findings: [finding()] }), REVIEW_CONTEXT),
     /pass cannot contain findings/,
   );
 });
@@ -86,7 +115,7 @@ test("provider, mode, session, SHA and read-only enforcement are exact", () => {
     ["readOnly", "true"],
   ]) {
     assert.throws(
-      () => validateReviewOutput(output({ [field]: value }), { headSha: HEAD, sessionId: SESSION }),
+      () => validateReviewOutput(output({ [field]: value }), REVIEW_CONTEXT),
       /provider\/mode|session or head SHA|readOnly/,
       `${field} must be rejected`,
     );
@@ -98,7 +127,7 @@ test("actionable findings require unique ids and stable right-side diff anchors"
   assert.deepEqual([...patchRightLines(patch)], [10, 11, 12]);
   const result = validateReviewOutput(
     output({ verdict: "changes-required", findings: [finding()] }),
-    { headSha: HEAD, sessionId: SESSION },
+    REVIEW_CONTEXT,
   );
   assert.equal(
     validateFindingAnchors(result, [{ filename: "scripts/example.mjs", patch }]),
@@ -109,7 +138,7 @@ test("actionable findings require unique ids and stable right-side diff anchors"
     /not anchored/,
   );
   assert.throws(
-    () => validateReviewOutput(output({ verdict: "changes-required", findings: [finding(), finding()] }), { headSha: HEAD, sessionId: SESSION }),
+    () => validateReviewOutput(output({ verdict: "changes-required", findings: [finding(), finding()] }), REVIEW_CONTEXT),
     /unique/,
   );
 });
@@ -148,28 +177,36 @@ test("reviewer environment strips every GitHub write credential and schema pins 
   assert.equal(env.GIT_CONFIG_VALUE_2, "disabled://agent-pipeline-read-only");
   assert.equal("GITHUB_TOKEN" in env, false);
   assert.equal("GH_TOKEN" in env, false);
-  const schema = resultSchema({ headSha: HEAD, sessionId: SESSION });
-  assert.equal(schema.properties.headSha.const, HEAD);
-  assert.equal(schema.properties.sessionId.const, SESSION);
-  assert.equal(schema.properties.readOnly.const, "verified");
+  const schema = resultSchema(REVIEW_CONTEXT);
+  assert.equal(schema.properties.reviewed_head_sha.const, HEAD);
+  assert.equal(schema.properties.review_session_id.const, SESSION);
+  assert.equal(schema.properties.read_only_enforced.const, "verified");
+  assert.equal(schema.properties.repository.const, "owner/repo");
+  assert.equal(schema.properties.pull_request.const, "42");
+  assert.equal(schema.properties.base_branch.const, "main");
+  assert.equal(schema.properties.head_branch.const, "feature");
 });
 
 test("the prompt binds the detached review and forbids editable PR actions", () => {
   const prompt = renderPrompt({
     repository: "owner/repo",
     pullNumber: 42,
+    baseBranch: "main",
+    headBranch: "feature",
     baseSha: "b".repeat(40),
     headSha: HEAD,
     sessionId: SESSION,
   });
   assert.match(prompt, new RegExp(HEAD));
   assert.match(prompt, new RegExp(`git show ${"b".repeat(40)}:AGENTS\\.md`));
+  assert.match(prompt, /Base branch: main/);
+  assert.match(prompt, /Head branch: feature/);
   assert.match(prompt, /current\s+worktree is untrusted PR input/);
   assert.match(prompt, /Do not modify files, Git state,/);
   assert.match(prompt, /Return only the JSON object/);
 });
 
-test("the executable receives approval policy before exec and a schema-bound review target", () => {
+test("the executable receives approval policy before exec and invokes the documented review command", () => {
   assert.deepEqual(codexReviewArgs({ schemaPath: "schema.json", outputPath: "result.json" }), [
     "--ask-for-approval", "never",
     "exec",
@@ -188,6 +225,30 @@ test("the executable receives approval policy before exec and a schema-bound rev
     "review",
     "-",
   ]);
+});
+
+test("the official review output is normalized from the documented snake_case contract", () => {
+  const result = validateReviewOutput(rawOutput(), REVIEW_CONTEXT);
+  assert.equal(result.provider, "codex");
+  assert.equal(result.mode, "self");
+  assert.equal(result.readOnly, "verified");
+  assert.deepEqual(result.residualRisks, []);
+  assert.equal(resultSchema(REVIEW_CONTEXT).properties.reviewed_head_sha.const, HEAD);
+});
+
+test("the official review output is bound to the repository, PR and branch context", () => {
+  for (const [field, value] of [
+    ["repository", "attacker/repo"],
+    ["pull_request", "43"],
+    ["base_branch", "release"],
+    ["head_branch", "attacker/branch"],
+  ]) {
+    assert.throws(
+      () => validateReviewOutput(rawOutput({ [field]: value }), REVIEW_CONTEXT),
+      /repository, pull request, or branches do not match/,
+      `${field} must be rejected`,
+    );
+  }
 });
 
 test("a nominally successful Codex process fails closed after sandbox tool denial", () => {

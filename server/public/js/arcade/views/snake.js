@@ -80,6 +80,7 @@ export function ensureSnakeSocket() {
     }
     paintBoard();
     updateRosterDisplay();
+    updateArenaStatusDisplay();
     if (hostChanged && currentView() === 'snake') rerender();
     if (!document.querySelector('#snake-canvas') && currentView() === 'arcade') rerender();
   });
@@ -291,8 +292,34 @@ function updateRosterDisplay() {
   roster.innerHTML = matchRosterHtml(match.players, {
     winnerId: match.winner?.id ?? null,
     scoreFor: (_player, index) => `${world.snakes?.[index]?.score ?? 0} Punkte`,
-    detailFor: (_player, index) => match.mode === 'arena' ? `Schlange ${index + 1} · ${world.snakes?.[index]?.alive ? 'Im Rennen' : 'Ausgeschieden'}` : '',
+    detailFor: (_player, index) => {
+      if (match.mode !== 'arena') return '';
+      const snake = world.snakes?.[index];
+      const eliminator = snake?.eliminatedBy === null || snake?.eliminatedBy === undefined
+        ? null
+        : match.players[snake.eliminatedBy];
+      if (snake?.alive) return `Schlange ${index + 1} · Im Rennen · ${world.snakes.filter((entry) => entry.eliminatedBy === index).length} Spieler rausgeworfen`;
+      return `Schlange ${index + 1} · ${eliminator ? `Rausgeworfen von ${escapeHtml(eliminator.name)}` : 'Ausgeschieden'}`;
+    },
   });
+}
+
+function updateArenaStatusDisplay() {
+  const status = document.querySelector('#snake-arena-status');
+  if (!status || !match || !world || match.mode !== 'arena') return;
+  const playerIndex = match.players.findIndex((player) => player.id === myId());
+  const snake = playerIndex >= 0 ? world.snakes?.[playerIndex] : null;
+  if (!snake) return;
+  const eliminator = snake.eliminatedBy === null || snake.eliminatedBy === undefined
+    ? null
+    : match.players[snake.eliminatedBy];
+  const statusText = snake.alive
+    ? 'Du bist im Rennen.'
+    : eliminator
+      ? `Du wurdest von ${escapeHtml(eliminator.name)} rausgeworfen.`
+      : 'Du bist ausgeschieden.';
+  const knockouts = world.snakes.filter((entry) => entry.eliminatedBy === playerIndex).length;
+  status.innerHTML = `<strong>${statusText}</strong><span class="muted">Du hast ${knockouts} andere ${knockouts === 1 ? 'Schlange' : 'Schlangen'} rausgeworfen.</span>`;
 }
 
 export function renderSnake(container) {
@@ -307,7 +334,15 @@ export function renderSnake(container) {
   const roster = matchRosterHtml(match.players, {
     winnerId: match.winner?.id ?? null,
     scoreFor: (_player, index) => `${world?.snakes?.[index]?.score ?? 0} Punkte`,
-    detailFor: (_player, index) => match.mode === 'arena' && world ? `Schlange ${index + 1} · ${world.snakes?.[index]?.alive ? 'Im Rennen' : 'Ausgeschieden'}` : '',
+    detailFor: (_player, index) => {
+      if (match.mode !== 'arena' || !world) return '';
+      const snake = world.snakes?.[index];
+      const eliminator = snake?.eliminatedBy === null || snake?.eliminatedBy === undefined
+        ? null
+        : match.players[snake.eliminatedBy];
+      if (snake?.alive) return `Schlange ${index + 1} · Im Rennen · ${world.snakes.filter((entry) => entry.eliminatedBy === index).length} Spieler rausgeworfen`;
+      return `Schlange ${index + 1} · ${eliminator ? `Rausgeworfen von ${escapeHtml(eliminator.name)}` : 'Ausgeschieden'}`;
+    },
   });
   const result = match.ended ? `<div class="card arcade-winner-card"><strong>${endedText}</strong><button type="button" class="btn btn-primary" id="snake-back">Zur Arcade</button></div>` : '';
   const isPlayer = match.players.some((p) => p.id === myId());
@@ -327,11 +362,13 @@ export function renderSnake(container) {
     ? `<div class="snake-player-identity" style="--snake-player-color:var(${identity.token});" role="status"><span class="snake-player-color" aria-hidden="true"></span><span class="snake-player-identity-copy"><span class="snake-player-identity-prompt">Deine Farbe</span><strong>${identity.label}</strong>${match.mode === 'arena' ? `<span class="snake-player-identity-detail">Schlange ${playerIndex + 1}</span>` : ''}</span></div>`
     : '';
   container.innerHTML = `<div class="arcade-game-shell"><div class="row"><h1 class="view-title">Snake</h1>${match.mode === 'arena' ? '<span class="badge">Arena</span>' : ''}</div>${arcadeToolbarHtml()}${identityHtml}
-    <div id="snake-roster">${roster}</div>
+     ${match.mode === 'arena' ? '<section id="snake-arena-status" class="card snake-arena-status" aria-label="Snake-Arena-Status" aria-live="polite"></section>' : ''}
+     <div id="snake-roster">${roster}</div>
     <div class="card snake-game"><canvas id="snake-canvas"></canvas>${match.paused ? '<div class="snake-overlay">Pause</div>' : ''}</div>
     ${controls}${result}</div>`;
   wireArcadeToolbar(container);
   paintBoard();
+  updateArenaStatusDisplay();
   wireSwipeControls(container.querySelector('#snake-canvas'));
   container.querySelector('#snake-pause')?.addEventListener('click', async () => {
     await emitAck(match.paused ? 'snake:match:resume' : 'snake:match:pause', { matchId: match.matchId, playerId: myId() });

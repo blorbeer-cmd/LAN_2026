@@ -317,6 +317,8 @@ function arcadeStatsHtml() {
 
   const game = games.find((g) => (g.statsKey ?? g.gameType) === activeStatsGame);
   const isArenaStats = game.mode?.startsWith('arena');
+  const isTetrisArenaStats = isArenaStats && game.baseGameType === 'tetris';
+  const isSnakeArenaStats = isArenaStats && game.baseGameType === 'snake';
   const rows = game.players
     .slice(0, 5)
     .map(
@@ -327,12 +329,15 @@ function arcadeStatsHtml() {
             <strong class="player-name leaderboard-row-name">${escapeHtml(p.name)}</strong>
             <span class="muted leaderboard-row-stat">${
               isArenaStats
-                ? `${p.wins} ${p.wins === 1 ? 'Sieg' : 'Siege'} · ${p.topThree}× Top 3 · Ø Platz ${p.averagePlacement?.toFixed(1) ?? '–'}`
+                ? isSnakeArenaStats
+                  ? `${p.wins} ${p.wins === 1 ? 'Sieg' : 'Siege'} · ${p.matches} ${p.matches === 1 ? 'Match' : 'Matches'}`
+                  : `${p.wins} ${p.wins === 1 ? 'Sieg' : 'Siege'} · ${p.topThree}× Top 3 · Ø Platz ${p.averagePlacement?.toFixed(1) ?? '–'}`
                 : arcadeResultLabel(p.wins, p.losses)
             }</span>
-            ${isArenaStats ? `<span class="muted leaderboard-row-stat">${p.lines} Zeilen · ${p.garbageSent} Angriff · ${p.knockouts} K.o.</span>` : ''}
+            ${isTetrisArenaStats ? `<span class="muted leaderboard-row-stat">${p.garbageSent ?? 0} Zeilen gesendet · ${p.knockouts ?? 0} Spieler besiegt</span>` : ''}
+            ${isSnakeArenaStats ? `<span class="muted leaderboard-row-stat">${p.knockouts ?? 0} Spieler rausgeworfen</span>` : ''}
           </span>
-          <strong class="lb-points">${isArenaStats ? `${p.knockouts} K.o.` : `${Math.round(p.winRate * 100)}%`}</strong>
+          <strong class="lb-points">${isTetrisArenaStats ? `${p.knockouts ?? 0} K.o.` : isSnakeArenaStats ? `${p.knockouts ?? 0} K.o.` : `${Math.round(p.winRate * 100)}%`}</strong>
         </div>`
     )
     .join('');

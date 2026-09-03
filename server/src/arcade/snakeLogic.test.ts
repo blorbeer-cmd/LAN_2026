@@ -9,6 +9,7 @@ import {
   SNAKE_HEIGHT,
   SNAKE_WIDTH,
   stepWorld,
+  stepWorldWithCauses,
 } from './snakeLogic';
 
 test('classic Snake uses the expanded two-player board', () => {
@@ -61,6 +62,39 @@ test('all colliding Snake Arena heads are eliminated in the same turn', () => {
 
   assert.deepEqual(deaths, [0, 1]);
   assert.equal(world.snakes[2].alive, true);
+});
+
+test('Snake Arena records the opposing snake responsible for a collision', () => {
+  const world = createWorld(3, 'arena');
+  world.snakes[0].body = [{ x: 9, y: 10 }, { x: 8, y: 10 }, { x: 7, y: 10 }];
+  world.snakes[1].body = [{ x: 11, y: 10 }, { x: 12, y: 10 }, { x: 13, y: 10 }];
+  world.snakes[0].direction = world.snakes[0].nextDirection = 'right';
+  world.snakes[1].direction = world.snakes[1].nextDirection = 'left';
+
+  const result = stepWorldWithCauses(world);
+
+  assert.deepEqual(result.eliminations.slice(0, 2), [
+    { victimIndex: 0, culpritIndex: 1, reason: 'collision' },
+    { victimIndex: 1, culpritIndex: 0, reason: 'collision' },
+  ]);
+  assert.equal(world.snakes[0].eliminatedBy, 1);
+  assert.equal(world.snakes[0].eliminationReason, 'collision');
+});
+
+test('Snake Arena keeps eliminated snake bodies hazardous and attributes the collision', () => {
+  const world = createWorld(3, 'arena');
+  world.snakes[0].body = [{ x: 9, y: 10 }, { x: 8, y: 10 }, { x: 7, y: 10 }];
+  world.snakes[0].direction = world.snakes[0].nextDirection = 'right';
+  world.snakes[1].body = [{ x: 10, y: 10 }, { x: 11, y: 10 }, { x: 12, y: 10 }];
+  world.snakes[1].alive = false;
+
+  const result = stepWorldWithCauses(world);
+
+  assert.deepEqual(result.eliminations, [
+    { victimIndex: 0, culpritIndex: 1, reason: 'collision' },
+  ]);
+  assert.equal(world.snakes[0].alive, false);
+  assert.equal(world.snakes[0].eliminatedBy, 1);
 });
 
 test('Snake Arena respawns food even when every snake reaching it dies in the same turn', () => {

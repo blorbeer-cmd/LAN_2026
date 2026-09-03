@@ -14,7 +14,7 @@ import {
   SNAKE_WIDTH,
   SnakeMode,
   SnakeWorld,
-  stepWorld,
+  stepWorldWithCauses,
 } from './snakeLogic';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { startArcadeSession, endArcadeSession } from './arcadeTracking';
@@ -77,13 +77,28 @@ export function openLobbySummaries(groupId?: string, eventId?: string | null) {
     createdAt: lobby.createdAt,
   }));
 }
+function knockoutCount(match: Match, playerIndex: number): number {
+  return match.world.snakes.filter((snake) => snake.eliminatedBy === playerIndex).length;
+}
+function scoreEntries(match: Match) {
+  const livingCount = match.world.snakes.filter((snake) => snake.alive).length;
+  return match.players.map((player, index) => {
+    const snake = match.world.snakes[index];
+    return {
+      playerId: player.id,
+      name: player.name,
+      mode: match.mode,
+      score: snake?.score ?? 0,
+      isBot: isSnakeBotId(player.id),
+      isWinner: snake?.alive === true && livingCount === 1,
+      // Individual attribution lives in `world.snakes` for the live elimination message. Historical
+      // stats intentionally persist the requested per-player knockout total, not a victim ledger.
+      knockouts: knockoutCount(match, index),
+    };
+  });
+}
 function snapshot(io: Server, match: Match) {
-  const scores = match.players.map((player, index) => ({
-    playerId: player.id,
-    name: player.name,
-    score: match.world.snakes[index]?.score ?? 0,
-    isBot: isSnakeBotId(player.id),
-  }));
+  const scores = scoreEntries(match);
   const payload = {
     matchId: match.id,
     world: match.world,
@@ -105,25 +120,17 @@ function finish(io: Server, match: Match, winner: Player | null, reason: string)
   match.loop = null;
   endArcadeSession(realPlayerIds(match.players).filter((playerId) => !match.departedPlayerIds.has(playerId)), 'snake', match);
   const winnerId = winner && !isSnakeBotId(winner.id) ? winner.id : null;
-  // Store per-player score entries (playerId/name/score), like every other
-  // arcade game, so the stats route can attribute results to players. The
-  // live emit below still sends the raw score array the client expects.
-  const scoreEntries = match.players.map((player, index) => ({
-    playerId: player.id,
-    name: player.name,
-    score: match.world.snakes[index]?.score ?? 0,
-    isBot: isSnakeBotId(player.id),
-  }));
+  const scores = scoreEntries(match);
   recordArcadeResult({
     gameType: 'snake',
     winnerId,
     players: match.players,
-    scores: scoreEntries,
+    scores,
     reason,
     startedAt: match.startedAt,
     scope: match,
   });
-  emitArcadeRoom(io, match.room, 'snake:match:end', { winner, reason, scores: match.world.snakes.map((snake) => snake.score) }, match);
+  emitArcadeRoom(io, match.room, 'snake:match:end', { winner, reason, scores }, match);
   broadcastArcadeKiosk(io, { gameType: null, matchId: match.id, groupId: match.groupId, eventId: match.eventId });
   matches.delete(match.id);
 }
@@ -227,7 +234,7 @@ function startMatch(io: Server, lobby: Lobby) {
   match.loop = setInterval(() => {
     if (!match.running || match.paused) return;
     steerBot(match);
-    const deaths = stepWorld(match.world);
+    const { deaths } = stepWorldWithCauses(match.world);
     snapshot(io, match);
     if (deaths.length && match.world.snakes.filter((snake) => snake.alive).length <= 1) {
       const survivor = match.players.find((_, index) => match.world.snakes[index].alive) ?? null;

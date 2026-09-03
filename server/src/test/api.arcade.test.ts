@@ -475,6 +475,30 @@ test('GET /api/arcade/stats attributes Snake results to named players (title cap
   assert.equal(snake.players.every((p: { name?: string }) => typeof p.name === 'string'), true);
 });
 
+test('GET /api/arcade/stats exposes Snake Arena knockouts separately', async () => {
+  const winner = await request(app).post('/api/players').send({ name: 'Snake Arena Sieger' });
+  const rival = await request(app).post('/api/players').send({ name: 'Snake Arena Rivale' });
+  const victim = await request(app).post('/api/players').send({ name: 'Snake Arena Opfer' });
+  const now = Date.now();
+  const scores = [
+    { playerId: winner.body.id, name: winner.body.name, mode: 'arena', score: 14, isWinner: true, knockouts: 2 },
+    { playerId: rival.body.id, name: rival.body.name, mode: 'arena', score: 8, knockouts: 0 },
+    { playerId: victim.body.id, name: victim.body.name, mode: 'arena', score: 5, knockouts: 0 },
+  ];
+  db.prepare(
+    `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run('snake-arena-stats-result', 'snake', winner.body.id, JSON.stringify(scores), JSON.stringify(scores), 'completed', now - 1000, now);
+
+  const res = await getArcadeStats();
+  assert.equal(res.status, 200);
+  const arena = res.body.games.find((game: { statsKey: string }) => game.statsKey === 'snake:arena');
+  assert.equal(arena.title, 'Snake Arena');
+  assert.equal(arena.matches, 1);
+  assert.equal(arena.leader.name, 'Snake Arena Sieger');
+  assert.equal(arena.leader.knockouts, 2);
+});
+
 test('GET /api/arcade/stats ignores legacy Snake rows that stored a bare score array', async () => {
   const now = Date.now();
   // Old snake results serialized `scores` as [12, 8] instead of per-player

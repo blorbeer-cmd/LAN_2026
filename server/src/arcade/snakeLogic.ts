@@ -12,7 +12,16 @@ export function snakeArenaBotCount(mode: SnakeMode): number {
 }
 export interface Cell { x: number; y: number }
 export interface SafeBounds { minX: number; maxX: number; minY: number; maxY: number }
-export interface Snake { body: Cell[]; direction: Direction; nextDirection: Direction; score: number; alive: boolean }
+export type SnakeEliminationReason = 'collision' | 'wall' | 'self' | null;
+export interface Snake {
+  body: Cell[];
+  direction: Direction;
+  nextDirection: Direction;
+  score: number;
+  alive: boolean;
+  eliminatedBy: number | null;
+  eliminationReason: SnakeEliminationReason;
+}
 export interface SnakeWorld { snakes: Snake[]; food: Cell; tick: number; mode: SnakeMode; safeBounds: SafeBounds }
 
 const opposites: Record<Direction, Direction> = { up: 'down', down: 'up', left: 'right', right: 'left' };
@@ -38,6 +47,8 @@ function spawnSnake({ head, direction }: { head: Cell; direction: Direction }): 
     nextDirection: direction,
     score: 0,
     alive: true,
+    eliminatedBy: null,
+    eliminationReason: null,
   };
 }
 
@@ -93,7 +104,12 @@ function shrinkArena(world: SnakeWorld): void {
   if (!isInsideSafeBounds(world.food, world.safeBounds)) world.food = randomFood(world);
 }
 
-export function stepWorld(world: SnakeWorld): number[] {
+export interface SnakeStepResult {
+  deaths: number[];
+  eliminations: Array<{ victimIndex: number; culpritIndex: number | null; reason: Exclude<SnakeEliminationReason, null> }>;
+}
+
+export function stepWorldWithCauses(world: SnakeWorld): SnakeStepResult {
   shrinkArena(world);
   const next = world.snakes.map((snake) => {
     if (!snake.alive) return snake;
@@ -106,18 +122,34 @@ export function stepWorld(world: SnakeWorld): number[] {
     return snake;
   });
   const deaths: number[] = [];
+  const eliminations: SnakeStepResult['eliminations'] = [];
   next.forEach((snake, index) => {
     if (!snake.alive) return;
     const head = snake.body[0];
     const wall = !isInsideSafeBounds(head, world.safeBounds);
     const self = snake.body.slice(1).some((part) => same(part, head));
-    const other = next.some((opponent, opponentIndex) => opponentIndex !== index && opponent.body.some((part) => same(part, head)));
+    const culpritIndex = next.findIndex((opponent, opponentIndex) =>
+      opponentIndex !== index && opponent.body.some((part) => same(part, head)),
+    );
+    const reason = culpritIndex >= 0 ? 'collision' : wall ? 'wall' : 'self';
+    const other = culpritIndex >= 0;
     if (wall || self || other) {
       snake.alive = false;
+      snake.eliminatedBy = other ? culpritIndex : null;
+      snake.eliminationReason = reason;
       deaths.push(index);
+      eliminations.push({
+        victimIndex: index,
+        culpritIndex: other ? culpritIndex : null,
+        reason,
+      });
     }
   });
   if (next.some((snake) => same(snake.body[0], world.food))) world.food = randomFood(world);
   world.tick += 1;
-  return deaths;
+  return { deaths, eliminations };
+}
+
+export function stepWorld(world: SnakeWorld): number[] {
+  return stepWorldWithCauses(world).deaths;
 }

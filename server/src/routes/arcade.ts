@@ -248,13 +248,20 @@ arcadeRouter.get('/stats', (req, res) => {
     const mode =
       row.game_type === 'tetris'
         ? `${baseMode}${hasBot ? '-ai' : ''}`
-        : null;
+        : row.game_type === 'snake' && baseMode === 'arena'
+          ? 'arena'
+          : null;
     const statsKey = mode ? `${row.game_type}:${mode}` : row.game_type;
     if (row.game_type === 'tetris') {
       // Preserve the legacy unique tetris entry and expose mode-specific
       // variants under their own versioned gameType/statsKey values.
       addResultToGame('tetris', 'tetris', 'tetris', null, row, scores);
       addResultToGame(statsKey, statsKey, 'tetris', mode, row, scores);
+    } else if (row.game_type === 'snake' && mode) {
+      // Snake Arena keeps the existing all-Snake aggregate and also exposes a
+      // dedicated Arena tab so eliminations can be compared independently.
+      addResultToGame('snake', 'snake', 'snake', null, row, scores);
+      addResultToGame(statsKey, statsKey, 'snake', mode, row, scores);
     } else {
       addResultToGame(statsKey, row.game_type, row.game_type, mode, row, scores);
     }
@@ -317,6 +324,8 @@ arcadeRouter.get('/stats', (req, res) => {
         title:
           game.baseGameType === 'tetris' && game.mode
             ? `Tetris ${game.mode?.startsWith('arena') ? 'Arena' : 'Duell'}${game.mode?.endsWith('-ai') ? ' · KI-Test' : ''}`
+            : game.baseGameType === 'snake' && game.mode?.startsWith('arena')
+              ? 'Snake Arena'
             : ARCADE_TITLES[game.baseGameType] ?? game.baseGameType,
         matches: game.matches,
         leader: players[0] ?? null,
