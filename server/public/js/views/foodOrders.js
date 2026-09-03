@@ -159,6 +159,8 @@ async function fetchFoodOrders(ctx) {
       const requestTargetId = activeOrderTargetId;
       const requestTargetStateVersion = orderTargetStateVersion;
       const requestScopeVersion = foodOrderScopeVersion;
+      const previousCache = cache;
+      let skipRerender = false;
       try {
         const res = await api.foodOrders.list(requestTargetId);
         const responseIsCurrent =
@@ -166,6 +168,21 @@ async function fetchFoodOrders(ctx) {
           requestTargetId === activeOrderTargetId &&
           requestScopeVersion === foodOrderScopeVersion;
         if (responseIsCurrent) {
+          // Every mutation endpoint already applies its own authoritative
+          // response locally (see reconcileLocalOrderMutation) before this
+          // quiet follow-up GET is even sent; that GET exists to pick up
+          // concurrent changes from other devices, not to redraw the view
+          // for a response it already knows about. Replacing the complete
+          // DOM here anyway raced a Playwright read of the paid marker's
+          // just-settled layout against this fetch's resolution: the marker
+          // got detached between locating it and reading its rect, reporting
+          // a spurious ({"left":0,"width":0}) move. Skipping the render when
+          // the two payloads already match removes that race and the
+          // pointless extra reflow alike; the sort order matches (both the
+          // server and sortCachedOrders order by createdAt descending) and
+          // every order comes from the same serializeOrder() call, so a
+          // plain structural comparison reliably detects "nothing changed".
+          skipRerender = !showPlaceholder && previousCache !== null && JSON.stringify(previousCache) === JSON.stringify(res.orders);
           cache = res.orders;
           succeeded = true;
         } else {
@@ -189,7 +206,7 @@ async function fetchFoodOrders(ctx) {
         }
       } finally {
         if (showPlaceholder) loading = false;
-        ctx.rerender();
+        if (!skipRerender) ctx.rerender();
       }
     } while (refetchPending);
     return succeeded;
