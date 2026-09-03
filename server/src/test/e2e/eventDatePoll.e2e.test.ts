@@ -96,12 +96,13 @@ async function selectActiveEvent(page: Page, eventId: string): Promise<void> {
 
 async function createPoll(
   page: Page,
-  { title, options, mode = 'feasibility', maxSelections, anonymous = false }: {
+  { title, options, mode = 'feasibility', maxSelections, anonymous = false, withoutDeadline = false }: {
     title: string;
     options: Array<string | { label: string; description?: string; url?: string }>;
     mode?: 'feasibility' | 'single_choice' | 'multiple_choice' | 'rating_1_5';
     maxSelections?: number;
     anonymous?: boolean;
+    withoutDeadline?: boolean;
   },
 ): Promise<void> {
   await page.click('#new-event-poll');
@@ -111,6 +112,7 @@ async function createPoll(
   await page.fill('#poll-title', title);
   await page.selectOption('#poll-mode', mode);
   if (anonymous) await page.check('#poll-anonymous');
+  if (withoutDeadline) await page.locator('[data-dt-field="poll-due"] [data-dt-clear]').click();
   if (maxSelections !== undefined) await page.fill('#poll-max', String(maxSelections));
   while ((await page.locator('[data-poll-option-input]').count()) > options.length) {
     await page.locator('[data-remove-poll-option]').last().click();
@@ -215,9 +217,12 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await createPoll(ownerPage, {
     title: 'Welcher Zeitraum passt?',
     options: ['Erstes Wochenende', 'Zweites Wochenende'],
+    withoutDeadline: true,
   });
   const ownerPoll = ownerPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
   await ownerPoll.waitFor();
+  assert.match(await ownerPoll.locator('.event-poll-card-title').innerText(), /Keine Frist/);
+  assert.doesNotMatch(await ownerPoll.innerText(), /01\.01\.1970/);
   await ownerPoll.locator('[data-toggle-poll]').click();
   assert.equal(await ownerPoll.locator('[data-poll-round]:visible').count(), 0, 'the poll can be collapsed');
   assert.equal(await ownerPoll.locator('.event-poll-action-menu > summary:visible').count(), 1, 'management actions stay available in one collapsed-header menu');
@@ -236,6 +241,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await navigate(memberPage, 'eventPolls');
   const memberPoll = memberPage.locator('[data-poll-group]', { hasText: 'Welcher Zeitraum passt?' });
   await memberPoll.waitFor();
+  assert.match(await memberPoll.locator('.event-poll-card-title').innerText(), /Keine Frist/);
   const memberOptions = memberPoll.locator('.event-poll-option');
   await memberOptions.nth(0).locator('[data-poll-response="can"]').tap();
   await memberOptions.nth(1).locator('[data-poll-response="cannot"]').tap();
@@ -290,6 +296,9 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   assert.match(previousRoundText, /Sieger: Erstes Wochenende/, 'the earlier round exposes its winner directly');
   assert.match(previousRoundText, /Gestartet: .* von E2E Poll Owner/, 'the earlier round exposes when and by whom it started');
   assert.match(previousRoundText, /Beendet:/, 'the earlier round exposes when it ended');
+  assert.match(previousRoundText, /Keine Frist/, 'an earlier open-ended round keeps its missing deadline');
+  assert.doesNotMatch(previousRoundText, /01\.01\.1970/);
+  assert.match(await repeated.locator('.event-poll-card-title').innerText(), /Frist: \d{2}\.\d{2}\.\d{4}/, 'the new dated round still displays its deadline');
 
   await createPoll(memberPage, {
     title: 'Welche Verpflegung?',

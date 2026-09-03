@@ -53,7 +53,9 @@ interface PollOverrides {
   decisionKey?: string;
   previousPollId?: string;
   options?: Array<{ label: string; description?: string; payload?: { url?: string } }>;
-  responseDueOn?: string;
+  // undefined (the default) picks a 5-days-out deadline; explicit null omits
+  // the field entirely so tests can exercise an open-ended poll.
+  responseDueOn?: string | null;
   anonymous?: boolean;
 }
 
@@ -68,7 +70,7 @@ async function createPoll(eventId: string, creatorId: string, overrides: PollOve
       maxSelections: overrides.maxSelections,
       decisionKey: overrides.decisionKey,
       previousPollId: overrides.previousPollId,
-      responseDueOn: overrides.responseDueOn ?? isoDate(5),
+      responseDueOn: overrides.responseDueOn === undefined ? isoDate(5) : overrides.responseDueOn,
       anonymous: overrides.anonymous,
       options: overrides.options ?? [{ label: 'Köln' }, { label: 'Hamburg' }],
     });
@@ -1223,4 +1225,61 @@ test('expired rounds close lazily with audit, realtime and reminder cleanup on l
   } finally {
     setIo(null);
   }
+});
+
+test('a poll can run without a deadline: it never lazily expires or schedules an automatic reminder, and a deadline can be added or cleared later', async () => {
+  const alice = 'poll-open-ended-alice';
+  const bob = 'poll-open-ended-bob';
+  createMember(alice, 'Poll Open Ended Alice');
+  createMember(bob, 'Poll Open Ended Bob');
+  const eventId = await createEvent('Poll Open Ended Event', [alice, bob]);
+
+  const created = await createPoll(eventId, alice, { responseDueOn: null });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.responseDueAt, null);
+  const pollId = created.body.id as string;
+
+  // A far-future "now" must not lazily close a poll with no deadline.
+  const future = await request(app)
+    .get(`/api/events/${eventId}/polls/${pollId}`)
+    .set('x-test-player-id', alice);
+  assert.equal(future.body.status, 'open');
+
+  const dueRow = db
+    .prepare('SELECT automatic_reminder_due_at AS dueAt FROM event_date_poll_invitees WHERE poll_id = ? AND player_id = ?')
+    .get(pollId, bob) as { dueAt: number | null };
+  assert.equal(dueRow.dueAt, null, 'no automatic reminder is scheduled without a deadline');
+
+  const withDeadline = await request(app)
+    .patch(`/api/events/${eventId}/polls/${pollId}`)
+    .set('x-test-player-id', alice)
+    .send({ responseDueOn: isoDate(5) });
+  assert.equal(withDeadline.status, 200, JSON.stringify(withDeadline.body));
+  assert.ok(withDeadline.body.responseDueAt > Date.now());
+  const scheduledRow = db
+    .prepare('SELECT automatic_reminder_due_at AS dueAt FROM event_date_poll_invitees WHERE poll_id = ? AND player_id = ?')
+    .get(pollId, bob) as { dueAt: number | null };
+  assert.ok(scheduledRow.dueAt !== null, 'adding a deadline schedules an automatic reminder');
+
+  const cleared = await request(app)
+    .patch(`/api/events/${eventId}/polls/${pollId}`)
+    .set('x-test-player-id', alice)
+    .send({ responseDueOn: null });
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.body));
+  assert.equal(cleared.body.responseDueAt, null);
+  const clearedRow = db
+    .prepare('SELECT automatic_reminder_due_at AS dueAt FROM event_date_poll_invitees WHERE poll_id = ? AND player_id = ?')
+    .get(pollId, bob) as { dueAt: number | null };
+  assert.equal(clearedRow.dueAt, null, 'clearing the deadline also clears the scheduled automatic reminder');
+
+  const closed = await request(app).post(`/api/events/${eventId}/polls/${pollId}/close`).set('x-test-player-id', alice);
+  assert.equal(closed.status, 200, JSON.stringify(closed.body));
+
+  const reopened = await request(app)
+    .post(`/api/events/${eventId}/polls/${pollId}/reopen`)
+    .set('x-test-player-id', alice)
+    .send({ responseDueOn: null });
+  assert.equal(reopened.status, 200, JSON.stringify(reopened.body));
+  assert.equal(reopened.body.status, 'open');
+  assert.equal(reopened.body.responseDueAt, null, 'reopening without a deadline keeps the poll open-ended');
 });
