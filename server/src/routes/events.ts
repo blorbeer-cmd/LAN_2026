@@ -502,7 +502,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        FROM events e
        JOIN event_participants ep ON ep.event_id = e.id
        WHERE ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
-         AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
+         AND e.id != ? AND e.group_id = ? AND e.status IN ('published', 'draft') AND e.ended_at IS NULL
          ${testEventClause}
        ORDER BY e.id = ? DESC, e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
     )
@@ -513,7 +513,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        FROM events e
        JOIN event_participants ep ON ep.event_id = e.id
        WHERE ep.player_id = ? AND ep.status = 'invited'
-         AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
+         AND e.id != ? AND e.group_id = ? AND e.status IN ('published', 'draft') AND e.ended_at IS NULL
          ${testEventClause}
        ORDER BY e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
     )
@@ -528,7 +528,7 @@ eventsRouter.get('/', requireConfiguredGroupMembership, (req, res) => {
        FROM events e
        JOIN event_participants ep ON ep.event_id = e.id
        WHERE ep.player_id = ? AND ep.status = 'declined'
-         AND e.id != ? AND e.group_id = ? AND e.status = 'published' AND e.ended_at IS NULL
+         AND e.id != ? AND e.group_id = ? AND e.status IN ('published', 'draft') AND e.ended_at IS NULL
          ${testEventClause}
        ORDER BY e.starts_at IS NULL, e.starts_at ASC, e.name COLLATE NOCASE`,
     )
@@ -685,11 +685,6 @@ eventsRouter.post('/:id/invitations', resolveEvent, requireGroupRole('admin'), (
   }
   if (event.ended_at || event.status === 'ended') {
     return res.status(409).json({ error: 'Für beendete Events können keine neuen Einladungen gesendet werden.' });
-  }
-  if (event.status === 'draft' && event.starts_at === null) {
-    return res.status(409).json({
-      error: 'Für ein Planungs-Event ohne festen Termin können noch keine regulären Einladungen gesendet werden.',
-    });
   }
   const { playerId } = req.body ?? {};
   if (typeof playerId !== 'string' || !playerId || playerId.length > 200) {
@@ -979,8 +974,7 @@ function parseOptionalText(
   return { ok: true, value: value.trim() };
 }
 
-// Optional timestamp parser for PATCH (undefined = not provided). Event
-// boundaries themselves stay mandatory; the route rejects a parsed null.
+// Optional timestamp parser for PATCH (undefined = not provided).
 function parseOptionalTimestamp(
   value: unknown,
   label: string,
@@ -988,16 +982,6 @@ function parseOptionalTimestamp(
   if (value === undefined || value === null) return { ok: true, value: null };
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return { ok: false, error: `${label} muss ein Zeitstempel (ms) sein.` };
-  }
-  return { ok: true, value };
-}
-
-function parseRequiredTimestamp(
-  value: unknown,
-  label: string,
-): { ok: true; value: number } | { ok: false; error: string } {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return { ok: false, error: `${label} ist erforderlich (Zeitstempel in ms).` };
   }
   return { ok: true, value };
 }
@@ -1042,7 +1026,7 @@ function parseOptionalPaypalLink(
 // POST /api/events - create a new event. Tracking starts OFF — several
 // events can exist side by side, so creating one never touches whichever
 // event (if any) is currently tracking.
-// Body: { name, startsAt, endsAt, eventType?, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
+// Body: { name, startsAt?, endsAt?, eventType?, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
 eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin'), (req, res) => {
   if (requestsReadOnlyEventConfiguration(req.body)) return rejectReadOnlyEventConfiguration(res);
   const {
@@ -1066,11 +1050,15 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
     return res.status(400).json({ error: 'eventType muss lan oder general sein.' });
   }
 
-  const parsedStartsAt = parseRequiredTimestamp(startsAt, 'startsAt');
+  const parsedStartsAt = parseOptionalTimestamp(startsAt, 'startsAt');
   if (!parsedStartsAt.ok) return res.status(400).json({ error: parsedStartsAt.error });
-  const parsedEndsAt = parseRequiredTimestamp(endsAt, 'endsAt');
+  const parsedEndsAt = parseOptionalTimestamp(endsAt, 'endsAt');
   if (!parsedEndsAt.ok) return res.status(400).json({ error: parsedEndsAt.error });
-  if (parsedEndsAt.value < parsedStartsAt.value + EVENT_MINIMUM_DURATION_MS) {
+  const parsedEndValue = parsedEndsAt.value;
+  if ((parsedStartsAt.value === null) !== (parsedEndValue === null)) {
+    return res.status(400).json({ error: 'Der Zeitraum muss entweder vollständig oder gar nicht angegeben werden.' });
+  }
+  if (parsedStartsAt.value !== null && parsedEndValue !== null && parsedEndValue < parsedStartsAt.value + EVENT_MINIMUM_DURATION_MS) {
     return res.status(400).json({ error: 'endsAt muss mindestens fünf Minuten nach startsAt liegen.' });
   }
   const parsedLocation = parseOptionalText(location, 500, 'location');
@@ -1100,7 +1088,7 @@ eventsRouter.post('/', requireConfiguredGroupMembership, requireGroupRole('admin
   const event = createEvent(name.trim(), {
     groupId: req.player ? req.group!.id : undefined,
     startsAt: parsedStartsAt.value,
-    endsAt: parsedEndsAt.value,
+    endsAt: parsedEndValue,
     location: parsedLocation.value,
     description: parsedDescription.value,
     costCents: parsedCostCents.value,
@@ -1416,11 +1404,6 @@ eventsRouter.put('/:id/participants', resolveEvent, requireGroupRole('admin'), (
   if (!event || event.id === OUTSIDE_EVENTS_ID) return res.status(404).json({ error: 'Event nicht gefunden.' });
   if (event.id === BASE_EVENT_ID) {
     return res.status(409).json({ error: 'Die Teilnehmerliste des Basis-Events wird automatisch gepflegt.' });
-  }
-  if (event.status === 'draft' && event.starts_at === null && Array.isArray(req.body?.playerIds) && req.body.playerIds.length > 0) {
-    return res.status(409).json({
-      error: 'Für ein Planungs-Event ohne festen Termin können noch keine regulären Einladungen gesendet werden.',
-    });
   }
 
   const { playerIds } = req.body ?? {};

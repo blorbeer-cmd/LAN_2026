@@ -47,6 +47,20 @@ function cleanupFixture(eventId: string, playerId: string): void {
   db.prepare('DELETE FROM players WHERE id = ?').run(playerId);
 }
 
+test('calendar reminders wait until an event has a complete period', () => {
+  const now = Date.now();
+  const fixture = createReminderFixture(now + 30 * 24 * 60 * 60 * 1000);
+  try {
+    db.prepare("UPDATE events SET starts_at = NULL, ends_at = NULL, status = 'draft' WHERE id = ?").run(fixture.eventId);
+    assert.deepEqual(
+      runEventReminderSweepOnce(fixture.acceptedAt + EVENT_CALENDAR_FIRST_REMINDER_DELAY_MS),
+      { calendar: 0, upcoming: 0 },
+    );
+  } finally {
+    cleanupFixture(fixture.eventId, fixture.playerId);
+  }
+});
+
 test('calendar reminders start two hours after acceptance, repeat weekly and stop after confirmation', () => {
   const acceptedAt = Date.now();
   const fixture = createReminderFixture(acceptedAt + 30 * 24 * 60 * 60 * 1000);

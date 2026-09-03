@@ -80,7 +80,7 @@ function renderMyForm(myId, draft) {
             ${dateTimeFieldHtml('departure-at', departureAt, { clearable: true, disabled: !myId, label: 'Abreise' })}
           </div>
         </div>
-        <textarea class="arrival-note-input" id="arrival-note" maxlength="240" rows="1" placeholder="Notiz (optional)" ${myId ? '' : 'disabled'}>${escapeHtml(note)}</textarea>
+        <textarea class="arrival-note-input" id="arrival-note" maxlength="240" rows="1" placeholder="Notiz" ${myId ? '' : 'disabled'}>${escapeHtml(note)}</textarea>
         <button type="submit" class="btn btn-primary btn-block" ${myId ? '' : 'disabled'}>Speichern</button>
       </form>
     </section>
@@ -358,6 +358,7 @@ function openCarpoolForm(direction, myId, ctx, existing = null) {
     title,
     `
       <form id="carpool-form" class="stack">
+        <label for="carpool-label" class="field-label is-required">Bezeichnung</label>
         <input type="text" id="carpool-label" maxlength="120" required autofocus placeholder="z.B. Auto Tim" value="${escapeHtml(existing?.label ?? '')}" />
         <div>
           <label for="carpool-location" class="field-label">Von wo</label>

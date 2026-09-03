@@ -162,6 +162,14 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.match((await ownerEventCard.locator('.event-settlement').textContent()) ?? '', /100,00/);
   assert.equal(await ownerEventCard.locator('.event-card-info [data-edit-event]').count(), 1);
   assert.equal(await ownerEventCard.locator('.event-card-actions [data-edit-event]').count(), 0);
+  await ownerEventCard.locator('.event-card-info [data-edit-event]').click();
+  const editEventModal = ownerPage.locator('.modal-backdrop', { hasText: 'Event bearbeiten' });
+  await editEventModal.waitFor();
+  assert.equal(await editEventModal.locator('[data-dt-field="event-ends"] [data-dt-clear]').count(), 0);
+  await editEventModal.locator('[data-close]').click();
+  const discardChanges = ownerPage.locator('.modal-backdrop [data-confirm]');
+  if (await discardChanges.count()) await discardChanges.click();
+  await editEventModal.waitFor({ state: 'detached' });
   assert.equal(await ownerEventCard.locator('.event-calendar-actions').count(), 1);
   assert.equal(await ownerEventCard.locator('[data-event-calendar], [data-download-event-calendar]').count(), 3);
   assert.equal(await ownerEventCard.locator('.event-card-kicker').count(), 0, 'event cards do not repeat their type above the title');

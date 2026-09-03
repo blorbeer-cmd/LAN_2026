@@ -1381,23 +1381,23 @@ function openNewOrderForm(ctx, myId) {
     'Neue Sammelbestellung',
     `
       <form id="order-form" class="stack">
-        <label for="order-title" class="field-label">Titel</label>
+        <label for="order-title" class="field-label is-required">Titel</label>
         <input type="text" id="order-title" maxlength="80" required autofocus placeholder="z.B. Pizza bei Luigi's" />
         <div>
-          <label for="order-sendat-date" class="field-label">Versand (optional)</label>
+          <label for="order-sendat-date" class="field-label">Versand</label>
           ${dateTimeFieldHtml('order-sendat', null, { clearable: true, label: 'Versand' })}
         </div>
         <div>
-          <label for="order-notes" class="field-label">Info (optional)</label>
+          <label for="order-notes" class="field-label">Info</label>
           <textarea id="order-notes" rows="1" maxlength="500" placeholder="z.B. Mindestbestellwert 15€, bar zahlen"></textarea>
         </div>
         <div>
-          <label for="order-link" class="field-label">Speisekarte (optional)</label>
+          <label for="order-link" class="field-label">Speisekarte</label>
           <input type="url" id="order-link" maxlength="300" placeholder="https://…" />
         </div>
         <div>
           <div class="food-order-paypal-label">
-            <label for="order-paypal" class="field-label">PayPal (optional)</label>
+            <label for="order-paypal" class="field-label">PayPal</label>
             ${infoTooltipHtml(
               'order-paypal-help',
               'PayPal',
@@ -1407,7 +1407,7 @@ function openNewOrderForm(ctx, myId) {
           <input type="text" id="order-paypal" maxlength="300" placeholder="E-Mail-Adresse oder https://paypal.me/name" />
         </div>
         <div>
-          <label for="order-tip" class="field-label">Trinkgeld in % (optional)</label>
+          <label for="order-tip" class="field-label">Trinkgeld in %</label>
           <input type="number" id="order-tip" min="0" max="100" inputmode="numeric" placeholder="z.B. 10" />
         </div>
         <button type="submit" class="btn btn-primary btn-block">Bestellung öffnen</button>

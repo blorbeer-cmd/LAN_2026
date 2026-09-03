@@ -100,7 +100,7 @@ export function listEvents(groupId = DEFAULT_GROUP_ID): EventRow[] {
 
 export interface CreateEventOptions {
   groupId?: string;
-  startsAt: number;
+  startsAt: number | null;
   endsAt: number | null;
   location?: string | null;
   description?: string | null;
@@ -114,21 +114,20 @@ export interface CreateEventOptions {
 
 // Just creates the event — tracking starts off, so this never wipes live
 // status or conflicts with an already-tracking event. Call startTracking
-// separately once you actually want this event to go live. A fixed date is
-// known from the start (no date poll involved), so this counts as schedule
-// revision 1 right away — the same revision a poll's first "Termin
-// festlegen" would produce, and what existing accept/decline writes compare
-// against (see ACCEPTED_EVENT_PARTICIPANT_SQL).
+// separately once you actually want this event to go live. An event without a
+// period starts as a planning event and receives its first schedule revision
+// only once a period is fixed.
 export function createEvent(name: string, options: CreateEventOptions): EventRow {
   const id = nanoid();
   const eventTypeKey = options.eventTypeKey ?? DEFAULT_EVENT_TYPE_KEY;
+  const hasSchedule = options.startsAt !== null;
   return db.transaction(() => {
     db.prepare(
       `INSERT INTO events
          (id, name, starts_at, ends_at, location, description, tracking_enabled, ended_at,
           group_id, status, visibility_scope, cost_cents, accommodation_cost_cents, paypal_link, payment_due_at,
           created_by, event_type_key, preset_version, schedule_revision)
-       VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, 'published', 'participants', ?, ?, ?, ?, ?, ?, ?, 1)`
+       VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, 'participants', ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       name,
@@ -137,6 +136,7 @@ export function createEvent(name: string, options: CreateEventOptions): EventRow
       options.location ?? null,
       options.description ?? null,
       options.groupId ?? DEFAULT_GROUP_ID,
+      hasSchedule ? 'published' : 'draft',
       options.costCents ?? null,
       options.accommodationCostCents ?? null,
       options.paypalLink ?? null,
@@ -146,6 +146,7 @@ export function createEvent(name: string, options: CreateEventOptions): EventRow
       eventTypeKey === DEFAULT_EVENT_TYPE_KEY
         ? DEFAULT_EVENT_PRESET_VERSION
         : EVENT_TYPE_PRESETS[eventTypeKey].version,
+      hasSchedule ? 1 : 0,
     );
     createEventFeatureSnapshot(id, eventTypeKey, options.createdBy ?? null);
     return getEvent(id)!;
@@ -316,11 +317,10 @@ export function endEvent(id: string): EventRow | undefined {
 }
 
 // A planning event stays draft — even after its date poll schedules a date —
-// until the creator actually invites people, matching the concept's "Das
-// Event bleibt draft, bis der Ersteller die regulären Einladungen ...
+// until the creator actually sends an invitation, matching the concept's
+// "Das Event bleibt draft, bis der Ersteller die regulären Einladungen ...
 // bestätigt". Called from the first successful invite on such an event;
-// guarded by starts_at IS NOT NULL so it can only fire once a date exists
-// (routes/events.ts separately rejects inviting before that).
+// guarded by starts_at IS NOT NULL so it can only fire once a date exists.
 export function publishPlanningEventIfScheduled(id: string): void {
   db.prepare("UPDATE events SET status = 'published' WHERE id = ? AND status = 'draft' AND starts_at IS NOT NULL").run(id);
 }

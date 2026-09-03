@@ -274,7 +274,7 @@ function openClaimForm(ctx, myId, taskId) {
           id="claim-comment"
           maxlength="200"
           autofocus
-          placeholder="Kommentar (optional), z.B. Bringe einen XBOX Controller mit."
+          placeholder="Kommentar, z.B. Bringe einen XBOX Controller mit."
         />
         <button type="submit" class="btn btn-primary btn-block">Übernehmen</button>
       </form>
@@ -373,13 +373,13 @@ async function openCreateTodoForm(ctx, myId) {
           <button type="button" class="btn btn-sm${form.kind === 'item_request' ? ' btn-primary' : ''}" data-todo-kind="item_request" aria-pressed="${form.kind === 'item_request'}">Mitbring-Anfrage</button>
         </div>
         <div>
-          <span class="field-label">Titel</span>
+          <span class="field-label is-required">Titel</span>
           <input type="text" id="todo-title" maxlength="80" required value="${escapeHtml(prev.title)}" placeholder="${
             form.kind === 'todo' ? 'z.B. Mehrfachsteckdosen mitbringen' : 'z.B. Kann mir jemand einen Controller mitnehmen?'
           }" />
         </div>
         <div>
-          <span class="field-label">Beschreibung (optional)</span>
+          <span class="field-label">Beschreibung</span>
           <textarea id="todo-description" rows="2" maxlength="300">${escapeHtml(prev.description)}</textarea>
         </div>
         <div class="checklist-assignment-section">
@@ -400,7 +400,7 @@ async function openCreateTodoForm(ctx, myId) {
           }
         </div>
         <div>
-          <label for="todo-due-date" class="field-label">Fällig bis (optional)</label>
+          <label for="todo-due-date" class="field-label">Fällig bis</label>
           ${dateTimeFieldHtml('todo-due', prev.dueAtMs, { dateOnly: true, clearable: true, label: 'Fällig bis' })}
         </div>
         <button type="submit" class="btn btn-primary btn-block">To-Do erstellen</button>

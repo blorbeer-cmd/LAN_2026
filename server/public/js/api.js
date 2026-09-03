@@ -313,7 +313,7 @@ export const api = {
     active: () => apiFetch('/api/events/active'),
     activate: (eventId) =>
       apiFetch('/api/me/active-event', { method: 'PUT', body: JSON.stringify({ eventId }) }),
-    // data: { name, startsAt, endsAt, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
+    // data: { name, startsAt?, endsAt?, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
     create: (data) => apiFetch('/api/events', { method: 'POST', body: JSON.stringify(data) }),
     // fields: any subset of { name?, startsAt?, endsAt?, location?, description?, costCents?, accommodationCostCents?, paypalLink?, paymentDueAt? }
     update: (id, fields) => apiFetch(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(fields) }),

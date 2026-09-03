@@ -22,7 +22,7 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
   await page.click('#nav-food-orders');
   await page.waitForSelector('#order-new-btn');
   await page.click('#order-new-btn');
-  await page.getByLabel('Speisekarte (optional)', { exact: true }).waitFor();
+  await page.getByLabel('Speisekarte', { exact: true }).waitFor();
   await page.fill('#order-title', "Pizza bei Luigi's");
   await setDateTimeField('order-sendat', '2026-12-24T20:00');
   await page.fill('#order-notes', 'Mindestbestellwert 15€, bar zahlen');

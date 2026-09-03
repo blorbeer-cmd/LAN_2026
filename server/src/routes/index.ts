@@ -181,7 +181,7 @@ apiRouter.get('/me', requireUser, (req, res) => {
 });
 
 // The selected workspace is account-wide rather than tab-local. Switching is
-// limited to published events for which the account is an accepted participant.
+// limited to open events for which the account is an accepted participant.
 apiRouter.get('/me/active-event', requireUser, (req, res) => {
   res.json(serializeActiveEvent(visibleActiveEvent(req)));
 });

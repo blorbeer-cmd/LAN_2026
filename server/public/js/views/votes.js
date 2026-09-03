@@ -588,11 +588,11 @@ export function renderVotes(container, ctx) {
           </h2>
         </div>
         <label class="stack" style="gap:var(--space-1);">
-          <span class="muted" style="font-size:var(--font-size-xs);">Titel (optional)</span>
+          <span class="muted" style="font-size:var(--font-size-xs);">Titel</span>
           <input type="text" id="votes-title" maxlength="80" placeholder="z.B. Samstagabend" />
         </label>
         <label class="stack" style="gap:var(--space-1);">
-          <span class="muted" style="font-size:var(--font-size-xs);">Info (optional)</span>
+          <span class="muted" style="font-size:var(--font-size-xs);">Info</span>
           <textarea class="vote-info-input" id="votes-info" maxlength="500" rows="1" placeholder="z.B. Nur Spiele für 4 Leute"></textarea>
         </label>
         <div id="votes-game-select-wrap" class="stack vote-game-select-wrap">

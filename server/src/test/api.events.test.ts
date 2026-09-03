@@ -298,12 +298,27 @@ test('general events reject mutations in LAN-only areas before domain validation
   assert.equal(restored.status, 200);
 });
 
-test('event creation validates name, required timestamps and ordering', async () => {
+test('event creation validates name, optional periods and ordering', async () => {
   assert.equal(
     (await request(app).post('/api/events').send({ name: '  ', startsAt: Date.now(), endsAt: Date.now() + 1_000 })).status,
     400,
   );
-  assert.equal((await request(app).post('/api/events').send({ name: 'Missing end', startsAt: Date.now() })).status, 400);
+  const planning = await request(app).post('/api/events').send({ name: 'Termin wird abgestimmt' });
+  assert.equal(planning.status, 201, JSON.stringify(planning.body));
+  assert.equal(planning.body.startsAt, null);
+  assert.equal(planning.body.endsAt, null);
+  assert.equal(planning.body.status, 'draft');
+  accept(planning.body.id, TEST_ADMIN_ID);
+  const planningEvents = await request(app).get('/api/events');
+  assert.ok(planningEvents.body.availableEvents.some((event: { id: string; startsAt: number | null }) => event.id === planning.body.id && event.startsAt === null));
+  assert.equal(
+    (await request(app).post('/api/events').send({ name: 'Missing end', startsAt: Date.now() })).status,
+    400,
+  );
+  assert.equal(
+    (await request(app).post('/api/events').send({ name: 'Missing start', endsAt: Date.now() + 60_000 })).status,
+    400,
+  );
   const startsAt = Date.now() + 60_000;
   assert.equal(
     (await request(app).post('/api/events').send({ name: 'Zeitreise', startsAt, endsAt: startsAt - 1 })).status,

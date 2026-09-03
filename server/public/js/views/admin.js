@@ -299,13 +299,13 @@ function openRegisterInviteDialog(ctx) {
     `<form id="admin-register-invite-form" class="stack">
       <p class="muted admin-register-invite-note">Der Link kann innerhalb der gewählten Dauer von mehreren neuen Personen genutzt werden.</p>
       <div>
-        <label for="admin-register-expires" class="field-label">Gültig für</label>
+        <label for="admin-register-expires" class="field-label is-required">Gültig für</label>
         <select id="admin-register-expires" required>
           ${REGISTER_INVITE_DURATION_OPTIONS.map((option) => `<option value="${option.value}" ${option.value === DEFAULT_REGISTER_INVITE_DURATION_MS ? 'selected' : ''}>${option.label}</option>`).join('')}
         </select>
       </div>
       <div>
-        <label for="admin-register-event-search" class="field-label">Direkte Event-Einladung (optional)</label>
+        <label for="admin-register-event-search" class="field-label">Direkte Event-Einladung</label>
         ${searchSelectHtml('admin-register-event', eventOptions, '', {
           placeholder: 'Event auswählen…',
           label: 'Events für die Einladung',

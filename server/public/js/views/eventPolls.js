@@ -437,15 +437,15 @@ function optionRowHtml(index, value = {}) {
   return `
     <div class="event-poll-form-option" data-poll-option-row="${index}"${value.id ? ` data-poll-option-id="${escapeHtml(value.id)}"` : ''}>
       <div class="row-between">
-        <label for="poll-option-${index}" class="field-label">Option ${index + 1}</label>
+        <label for="poll-option-${index}" class="field-label is-required">Option ${index + 1}</label>
         ${value.id ? '' : `<button type="button" class="icon-btn" data-remove-poll-option aria-label="Option entfernen" title="Option entfernen">${icon('trash')}</button>`}
       </div>
       <input type="text" id="poll-option-${index}" data-poll-option-input maxlength="120" required value="${escapeHtml(value.label ?? '')}" placeholder="z. B. Ferienhaus am See" />
       <details class="event-poll-form-option-details" ${showDetails ? 'open' : ''}>
         <summary>Notiz oder Link hinzufügen</summary>
         <div class="field-row event-poll-option-extra-fields">
-          <div><label for="poll-option-note-${index}" class="field-label">Kurze Notiz (optional)</label><input type="text" id="poll-option-note-${index}" data-poll-option-note maxlength="500" value="${escapeHtml(value.description ?? '')}" placeholder="Zusätzliche Information" /></div>
-          <div><label for="poll-option-url-${index}" class="field-label">Link (optional)</label><input type="url" id="poll-option-url-${index}" data-poll-option-url maxlength="500" value="${escapeHtml(value.url ?? '')}" placeholder="https://…" /></div>
+          <div><label for="poll-option-note-${index}" class="field-label">Kurze Notiz</label><input type="text" id="poll-option-note-${index}" data-poll-option-note maxlength="500" value="${escapeHtml(value.description ?? '')}" placeholder="Zusätzliche Information" /></div>
+          <div><label for="poll-option-url-${index}" class="field-label">Link</label><input type="url" id="poll-option-url-${index}" data-poll-option-url maxlength="500" value="${escapeHtml(value.url ?? '')}" placeholder="https://…" /></div>
         </div>
       </details>
     </div>`;
@@ -484,11 +484,11 @@ function openPollForm(event, ctx, previousRound = null) {
   let capturedModal;
   const { close } = openModal(previousRound ? `Neue Runde · ${previousRound.title}` : 'Umfrage starten', `
     <form id="event-poll-form" class="stack">
-      <div><label for="poll-title" class="field-label">Titel</label><input type="text" id="poll-title" maxlength="100" required value="${escapeHtml(previousRound?.title ?? '')}" placeholder="Was möchtet ihr gemeinsam klären?" autofocus /></div>
-      <div><label for="poll-note" class="field-label">Beschreibung (optional)</label><textarea id="poll-note" maxlength="500" rows="2" placeholder="Kurzer Kontext für alle Teilnehmer">${escapeHtml(previousRound?.note ?? '')}</textarea></div>
+      <div><label for="poll-title" class="field-label is-required">Titel</label><input type="text" id="poll-title" maxlength="100" required value="${escapeHtml(previousRound?.title ?? '')}" placeholder="Was möchtet ihr gemeinsam klären?" autofocus /></div>
+      <div><label for="poll-note" class="field-label">Beschreibung</label><textarea id="poll-note" maxlength="500" rows="2" placeholder="Kurzer Kontext für alle Teilnehmer">${escapeHtml(previousRound?.note ?? '')}</textarea></div>
       <div>
         <div class="title-with-info">
-          <label for="poll-mode" class="field-label">Antwortart</label>
+          <label for="poll-mode" class="field-label is-required">Antwortart</label>
           ${infoTooltipHtml('poll-mode-help', 'Antwortart', 'Wähle Einzel- oder Mehrfachauswahl, eine Bewertung jeder Option als Passt/Wenn nötig/Passt nicht oder eine Punktzahl von 1 bis 5.')}
         </div>
         <select id="poll-mode">
@@ -513,7 +513,7 @@ function openPollForm(event, ctx, previousRound = null) {
       </div>
       <div>
         <div class="title-with-info">
-          <label for="poll-due-date" class="field-label">Antwortfrist (optional)</label>
+          <label for="poll-due-date" class="field-label">Antwortfrist</label>
           ${infoTooltipHtml('poll-due-help', 'Antwortfrist', 'Ohne Frist läuft die Umfrage, bis sie manuell beendet wird. Ist eine Frist gesetzt, werden Teilnehmer mit noch offener Antwort automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
         </div>
         ${dateTimeFieldHtml('poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: true, label: 'Antwortfrist' })}
@@ -598,8 +598,8 @@ function openEditPollForm(event, poll, ctx) {
   const mode = MODE_INFO[poll.responseMode] ?? MODE_INFO.feasibility;
   const { close } = openModal('Umfrage bearbeiten', `
     <form id="event-poll-edit-form" class="stack">
-      <div><label for="poll-edit-title" class="field-label">Titel</label><input type="text" id="poll-edit-title" maxlength="100" required value="${escapeHtml(poll.title)}" autofocus /></div>
-      <div><label for="poll-edit-note" class="field-label">Beschreibung (optional)</label><textarea id="poll-edit-note" maxlength="500" rows="2" placeholder="Kurzer Kontext für alle Teilnehmer">${escapeHtml(poll.note ?? '')}</textarea></div>
+      <div><label for="poll-edit-title" class="field-label is-required">Titel</label><input type="text" id="poll-edit-title" maxlength="100" required value="${escapeHtml(poll.title)}" autofocus /></div>
+      <div><label for="poll-edit-note" class="field-label">Beschreibung</label><textarea id="poll-edit-note" maxlength="500" rows="2" placeholder="Kurzer Kontext für alle Teilnehmer">${escapeHtml(poll.note ?? '')}</textarea></div>
       <div class="stack event-poll-edit-mode">
         <span class="field-label">Antwortart</span>
         <span class="muted">${escapeHtml(mode.label)}${poll.anonymous ? ' · Anonym' : ''}</span>
@@ -611,7 +611,7 @@ function openEditPollForm(event, poll, ctx) {
       </div>
       <div>
         <div class="title-with-info">
-          <label for="poll-edit-due-date" class="field-label">Antwortfrist (optional)</label>
+          <label for="poll-edit-due-date" class="field-label">Antwortfrist</label>
           ${infoTooltipHtml(`poll-edit-due-help-${poll.id}`, 'Antwortfrist', 'Ohne Frist läuft die Umfrage, bis sie manuell beendet wird. Ist eine Frist gesetzt, werden Teilnehmer mit noch offener Antwort automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
         </div>
         ${dateTimeFieldHtml('poll-edit-due', poll.responseDueAt, { dateOnly: true, clearable: true, label: 'Antwortfrist' })}
@@ -680,7 +680,7 @@ function openReopenForm(event, poll, ctx) {
   const { close } = openModal('Umfrage wieder öffnen', `
     <form id="reopen-poll-form" class="stack">
       <p class="muted">Danach können alle bestätigten Eventteilnehmer ihre Antwort wieder ändern.</p>
-      <div><label for="reopen-poll-due-date" class="field-label">Neue Antwortfrist (optional)</label>${dateTimeFieldHtml('reopen-poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: true, label: 'Neue Antwortfrist' })}</div>
+      <div><label for="reopen-poll-due-date" class="field-label">Neue Antwortfrist</label>${dateTimeFieldHtml('reopen-poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: true, label: 'Neue Antwortfrist' })}</div>
       <button type="submit" class="btn btn-primary btn-block">Umfrage wieder öffnen</button>
     </form>`, {
     confirmClose: () => (dirty ? 'Die gewählte Frist geht verloren.' : null),

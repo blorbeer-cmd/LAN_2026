@@ -710,7 +710,7 @@ export function renderEventCard(event) {
       <div class="event-card-actions">
         ${trackingBtn}
         ${endBtn}
-        ${hasDate ? `<button type="button" class="btn btn-sm" data-participants-event="${event.id}">${icon('users')} Teilnehmende verwalten</button>` : ''}
+        ${hasDate || event.status === 'draft' || event.isEnded ? `<button type="button" class="btn btn-sm" data-participants-event="${event.id}">${icon('users')} Teilnehmende verwalten</button>` : ''}
         ${hasDate && eventPdfExportAvailable(event) ? `<button type="button" class="btn btn-sm" data-export-event="${event.id}" title="Als PDF exportieren">${icon('file')} PDF</button>` : ''}
         ${ownParticipationAction(event, { primary: false })}
       </div>
@@ -969,8 +969,8 @@ async function downloadExport(eventId) {
 // touches tracking state.
 function openEventForm(ctx, existing) {
   const isEdit = Boolean(existing);
-  const now = Date.now();
-  const defaultEnd = now + 24 * 60 * 60 * 1000;
+  const isPlanningEvent = isEdit && existing.status === 'draft' && existing.startsAt == null;
+  const dateRequired = isEdit && !isPlanningEvent;
   const eventTypes = availableEventTypeOptions(state.eventTypeOptions);
   const selectedEventType = existing?.eventType ?? 'lan';
   const eventTypeSelectOptions = eventTypes
@@ -985,29 +985,29 @@ function openEventForm(ctx, existing) {
     `
       <form id="event-form" class="stack">
         <div>
-          <label for="event-name" class="field-label">Name</label>
+          <label for="event-name" class="field-label is-required">Name</label>
           <input type="text" id="event-name" maxlength="80" required autofocus value="${escapeHtml(existing?.name ?? '')}" placeholder="z.B. LAN Winter 2027" />
         </div>
         <div>
-          <label for="event-type" class="field-label">Eventtyp</label>
+          <label for="event-type" class="field-label is-required">Eventtyp</label>
           <select id="event-type" ${isEdit ? 'disabled' : ''}>${eventTypeSelectOptions}</select>
         </div>
         <div class="field-row">
           <div>
-            <label for="event-starts-date" class="field-label">Beginnt am</label>
-            ${dateTimeFieldHtml('event-starts', existing?.startsAt ?? now, { clearable: false, label: 'Beginnt am' })}
+            <label for="event-starts-date" class="field-label${dateRequired ? ' is-required' : ''}">Beginnt am</label>
+            ${dateTimeFieldHtml('event-starts', existing?.startsAt ?? null, { clearable: !isEdit, disabled: isPlanningEvent, label: 'Beginnt am' })}
           </div>
           <div>
-            <label for="event-ends-date" class="field-label">Endet am</label>
-            ${dateTimeFieldHtml('event-ends', existing?.endsAt ?? defaultEnd, { clearable: isEdit, label: 'Endet am' })}
+            <label for="event-ends-date" class="field-label${dateRequired ? ' is-required' : ''}">Endet am</label>
+            ${dateTimeFieldHtml('event-ends', existing?.endsAt ?? null, { clearable: !isEdit, disabled: isPlanningEvent, label: 'Endet am' })}
           </div>
         </div>
         <div>
-          <label for="event-location" class="field-label">Ort oder Karten-Link (optional)</label>
+          <label for="event-location" class="field-label">Ort oder Karten-Link</label>
           <input type="text" id="event-location" maxlength="500" placeholder="z.B. https://maps.google.com/…" value="${escapeHtml(existing?.location ?? '')}" />
         </div>
         <div>
-          <label for="event-description" class="field-label">Notiz (optional)</label>
+          <label for="event-description" class="field-label">Notiz</label>
           <textarea id="event-description" maxlength="500" rows="2" placeholder="z.B. Hinweise, Ablauf oder Treffpunkt">${escapeHtml(existing?.description ?? '')}</textarea>
         </div>
         <div class="field-row event-payment-fields">
@@ -1062,16 +1062,23 @@ function openEventForm(ctx, existing) {
         const accommodationCost = capturedEl.querySelector('#event-accommodation-cost').value.trim();
         const paypal = capturedEl.querySelector('#event-paypal').value.trim();
         const paymentDueAt = capturedEl.querySelector('#event-payment-due').value;
+        const startsAt = capturedEl.querySelector('#event-starts').value;
+        const endsAt = capturedEl.querySelector('#event-ends').value;
+        const scheduleChanged = !isPlanningEvent && (
+          (startsAt ? new Date(startsAt).getTime() : null) !== (existing?.startsAt ?? null) ||
+          (endsAt ? new Date(endsAt).getTime() : null) !== (existing?.endsAt ?? null)
+        );
         const paymentDueChanged = (paymentDueAt ? new Date(paymentDueAt).getTime() : null) !== (existing?.paymentDueAt ?? null);
         const dirty = isEdit
-          ? name !== (existing.name ?? '') ||
+          ? scheduleChanged ||
+            name !== (existing.name ?? '') ||
             location !== (existing.location ?? '') ||
             description !== (existing.description ?? '') ||
             cost !== (existing.costCents ? (existing.costCents / 100).toFixed(2).replace('.', ',') : '') ||
             accommodationCost !== (existing.accommodationCostCents ? (existing.accommodationCostCents / 100).toFixed(2).replace('.', ',') : '') ||
             paypal !== (paypalEmailFromLink(existing.paypalLink) ?? existing.paypalLink ?? '') ||
             paymentDueChanged
-          : Boolean(name || location || description || cost || accommodationCost || paypal || paymentDueAt);
+          : Boolean(name || startsAt || endsAt || location || description || cost || accommodationCost || paypal || paymentDueAt);
         return dirty ? 'Die Event-Daten (Name, Zeitraum, Ort, Notiz, Beiträge, Unterkunftskosten, PayPal und Zahlungsziel) gehen verloren.' : null;
       },
       onMount: (modalEl) => {
@@ -1119,11 +1126,16 @@ function openEventForm(ctx, existing) {
             return;
           }
 
+          const schedulePayload = isPlanningEvent
+            ? {}
+            : {
+                startsAt: startsVal ? new Date(startsVal).getTime() : null,
+                endsAt: endsVal ? new Date(endsVal).getTime() : null,
+              };
           const payload = {
             name,
             ...(!isEdit ? { eventType: modalEl.querySelector('#event-type').value } : {}),
-            startsAt: startsVal ? new Date(startsVal).getTime() : undefined,
-            endsAt: endsVal ? new Date(endsVal).getTime() : null,
+            ...schedulePayload,
             location: location || null,
             description: description || null,
             costCents,
