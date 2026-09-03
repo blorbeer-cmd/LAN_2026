@@ -12,7 +12,7 @@ import { Server } from 'socket.io';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import request from 'supertest';
 import { createTestApp, installTestSocketIdentity } from './testApp';
-import { registerScribbleSockets } from '../arcade/scribble';
+import { registerScribbleSockets, clearScribbleState } from '../arcade/scribble';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
 import { db } from '../db';
 
@@ -126,7 +126,9 @@ test('Scribble live thumbs-up: toggles, rejects the artist and stale tokens, nev
   } finally {
     hostSocket.close();
     guestSocket.close();
-    httpServer.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearScribbleState();
   }
 });
 
@@ -324,7 +326,9 @@ test('Scribble rejoin restores the live drawing and thumb vote, then exposes a b
     guestSocket.close();
     thirdSocket.close();
     rejoinedSocket?.close();
-    httpServer.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearScribbleState();
   }
 });
 
@@ -406,7 +410,8 @@ test('Scribble keeps a two-player match alive during the reconnect grace period 
     guestSocket.close();
     rejoinedSocket?.close();
     io.close();
-    httpServer.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearScribbleState();
     if (previousGrace === undefined) delete process.env.SCRIBBLE_RECONNECT_GRACE_MS;
     else process.env.SCRIBBLE_RECONNECT_GRACE_MS = previousGrace;
   }
@@ -445,7 +450,8 @@ test('Scribble rejoin cannot recover a two-player match after the reconnect grac
     guestSocket.close();
     rejoinedSocket?.close();
     io.close();
-    httpServer.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearScribbleState();
     if (previousGrace === undefined) delete process.env.SCRIBBLE_RECONNECT_GRACE_MS;
     else process.env.SCRIBBLE_RECONNECT_GRACE_MS = previousGrace;
   }
@@ -524,7 +530,9 @@ test('Scribble final favorite: pickable once the match ends, spans every drawing
   } finally {
     hostSocket.close();
     guestSocket.close();
-    httpServer.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearScribbleState();
   }
 });
 
@@ -564,6 +572,8 @@ test('Scribble leave with 3+ remaining players: the match keeps running for the 
     hostSocket.close();
     guestSocket.close();
     thirdSocket.close();
-    httpServer.close();
+    io.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    clearScribbleState();
   }
 });

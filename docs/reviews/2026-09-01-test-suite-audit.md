@@ -27,7 +27,7 @@ was daraufhin tatsächlich geändert wurde.
 | P3-2 `flows.fixture.ts` aufteilen | bewusst offen | laut Bericht ein eigener PR |
 | P3-3 `format.test.js` | behoben | literale Erwartung statt Nachbau der Implementierung |
 | P3-4 `waitForAction` | behoben | `Promise.race` zweier `waitFor` statt 280×25 ms Polling; Klick-Taktung unverändert |
-| P3-5 Katalogdurchlauf | **offen** | 24,2 s unverändert; Messung des `sleep(35)`-Anteils steht aus |
+| P3-5 Katalogdurchlauf | behoben (nachgetragen 2026-09-03) | 24,2 s → 8,7 s. Ursache sind #529 (neun fragile Challenges entfernt) und #533 (Katalog auf 21 Spiele), **nicht** das `ARCADE_FAST_TIMERS`-Flag aus #532 — mit und ohne Flag misst die Datei identisch 8,7 s. Die vier verbliebenen `sleep`-Aufrufe sind regelkonform: einer wartet eine echte Produktionsfrist ab, drei sind dokumentierte Negativfenster nach Regel 4 |
 | R-1 Review-Launcher | behoben | `DEFAULT_FOCUS` risikobasiert, Punkt 8 und die `low`-Voreinstellung in den erzeugten Prompt übernommen |
 | R-2 Review-Workflows | behoben | beide Prompts tragen Punkt 8 und die Schweregrad-Einordnung |
 | R-3 Ausnahme aus Regel 4 | behoben | in Punkt 8 ergänzt |
@@ -40,15 +40,44 @@ Gemessene Wirkung auf den Unit-/Integrationslauf (`node --test`, dieselbe Maschi
 |---|---|---|
 | gesamter gemessener Schritt | 79,9 s | **54,9 s** |
 | `api.battleship` | 19,5 s | 1,2 s |
-| `api.scribbleThumbsAndFavorites` | 16,2 s | 4,5 s |
+| `api.scribbleThumbsAndFavorites` | 16,2 s | 5,0 s ¹ |
 | `api.agentDownload` | 14,9 s | 0,7 s |
 | `api.tetrisArena` | 7,4 s | 1,4 s |
-| `api.arcadeMatchLeave` | 7,0 s | 1,1 s |
+| `api.arcadeMatchLeave` | 7,0 s | 1,1 s ¹ |
 | `api.blobbyMultiplayer` | 6,9 s | 1,0 s |
 | `api.pongMultiplayer` | 6,8 s | 1,0 s |
 | `arcade.snakeArena` | 3,9 s | 1,0 s |
 
-Unverändert: `api.challengeRush` (24,2 s — P3-5 offen) und `db.migrations` (18,2 s, nicht untersucht).
+Unverändert: `db.migrations` (18,2 s, nicht untersucht). `api.challengeRush` steht inzwischen bei 8,7 s, siehe P3-5.
+
+¹ **Korrektur der beiden Scribble-Zeilen (nachgetragen 2026-09-03):** Die ursprünglich
+genannten „nachher"-Werte 4,5 s und 1,1 s waren auf `main` nicht reproduzierbar; isoliert gemessen
+liefen die beiden Dateien 20,0 s und 16,0 s. Die Ursache liegt nicht im Audit: Zwischen seiner
+Messbasis `d326a4b` und seinem Merge `8649eb8` landete #510 (Scribble-Reconnect). Seitdem lässt eine
+beendete Suite ihre Runde samt Timern im modulglobalen `matches` von `arcade/scribble.ts` stehen;
+`io.close()` und `httpServer.close()` erreichen sie nicht. Der Wortwahl-Timer (`CHOICE_MS`, 15 s)
+ist ref'd und hält den Testprozess allein offen, bis die unref'te Reconnect-Frist die Runde rund
+15 s nach der letzten Assertion verwirft — ein flacher Leerlaufschwanz, der außerhalb jedes
+Testkörpers liegt. Auf `d326a4b` misst `api.arcadeMatchLeave` weiterhin 7,0 s, der „vorher"-Wert des
+Berichts stimmt also; und die Summe der Testkörper fiel wie beschrieben (4,3 s bzw. 0,4 s). Im
+parallelen `npm run test:run` überlappt der Leerlauf mit anderen Dateien, weshalb die Aggregatwirkung
+79,9 → 54,9 s echt bleibt und nur die beiden Einzelzeilen falsch waren. `clearScribbleState()` räumt
+die Runden jetzt im `finally` beider Suiten ab; damit erreichen die Dateien die genannten Werte
+tatsächlich (5,0 s bzw. 1,1 s, isoliert gemessen, Streuung < 0,2 s).
+
+Messbasis der Nachmessung: Node 24.20.0, isoliert je Datei mit
+`env DB_FILE=:memory: NODE_ENV=test ARCADE_FAST_TIMERS=1 node --test <datei>`, jeder Wert mindestens
+zweimal. Als Maschinennormierung dient die unangetastete `db.migrations` (Bericht: 18,2 s; hier
+17,1–17,5 s) — die Nachmessmaschine liegt damit rund 5 % über der Audit-Maschine, die Zahlen sind
+direkt vergleichbar. Serielle Summe über die 120 Unit-/Integrationsdateien danach: 115,1 s (vorher
+auf derselben Maschine 145,0 s). Voller `npm run test:run`: 50,3 s, 1103 + 385 Tests, 0 Fehler — die
+Parallelität verdeckt den Leerlauf, der Gewinn liegt in der seriellen Summe und in Einzelläufen.
+
+Offenes Finding, bewusst nicht umgesetzt: `db.migrations` ist mit 17,3 s jetzt die mit Abstand
+teuerste Unit-/Integrationsdatei. Sie hat keinen Leerlaufschwanz — 46 Tests à rund 380 ms sind echte
+Rechenzeit, weil jeder Test die vollständige Legacy-Migrationskette neu abspielt. Eine Reduktion
+bräuchte eine geteilte, einmal migrierte Fixture und damit einen eigenen Auftrag; der Bericht führt
+die Datei weiterhin als „nicht untersucht".
 
 **Korrektur gegenüber früheren Fassungen dieses Berichts:** Die Browser-E2E-Suiten *sind* in dieser
 Arbeitsumgebung ausführbar — Chromium liegt unter `/opt/pw-browsers` und startet. Die frühere
