@@ -869,13 +869,24 @@
   display: flex;
   justify-content: center;
 }
+.arcade-game-shell.is-expanded .tetris-primary-board .tetris-canvas-wrap {
+  /* The primary Arena board uses half the height budget, so it stays visibly
+     larger than the opponent boards while the layout still fits vertically. */
+  width: min(100%, calc(var(--arcade-h-budget) / 2));
+}
 .arcade-game-shell.is-expanded .tetris-canvas {
   width: 100%;
   height: auto;
   max-width: 100%;
 }
 .arcade-game-shell.is-expanded .tetris-opponent-grid .tetris-canvas-wrap {
-  width: 100%;
+  /* Three Arena opponents share the other half of the row. Tie their width
+     to the same height budget instead of letting them ignore it. */
+  width: min(100%, calc(var(--arcade-h-budget) / 3));
+}
+.arcade-game-shell.is-expanded .tetris-opponent-grid.is-spectator .tetris-canvas-wrap {
+  /* Spectators see four equal boards without a dedicated primary board. */
+  width: min(100%, calc(var(--arcade-h-budget) / 4));
 }
 @media (max-width: 639px) { /* --bp-md */
   .tetris-boards.is-arena {
