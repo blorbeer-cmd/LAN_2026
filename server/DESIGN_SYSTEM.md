@@ -1031,7 +1031,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   The game grid remains the first visible group with or without a selection. Once a game is selected,
   its lobby group follows directly below the grid; there is no separate „Spielauswahl“ back action.
   The selected game is represented by `#arcade/<spiel>` so browser back/forward, reload and the
-  highlighted game tile agree.
+  highlighted game tile agree. Selecting a game is not a toggle: clicking the already active tile
+  keeps the selection and route unchanged. The active tile keeps `.is-active` and carries
+  `aria-current="page"` rather than `aria-pressed`; the route `#arcade` via browser back remains
+  the only way to return to the unselected launcher.
   Game choices are horizontal nested cards with their Lucide game icon, name and an explicit
   „… offen“ lobby badge; they form one column on phones, exactly two from `--bp-md` and three in
   desktop mode from `--bp-xl`. Running
