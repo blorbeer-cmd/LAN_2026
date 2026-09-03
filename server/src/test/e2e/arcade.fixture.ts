@@ -834,6 +834,10 @@ arcadeTest('multiplayer', 'Tetris Arena supports six ready players across multip
     assert.equal(await host.page.locator('.tetris-canvas').count(), 6);
     assert.equal(await host.page.locator('.tetris-primary-board .tetris-canvas').count(), 1);
     assert.equal(await host.page.locator('.tetris-opponent-grid .tetris-canvas').count(), 5);
+    await host.page.waitForFunction(() => {
+      const shell = document.querySelector('.arcade-game-shell') as HTMLElement | null;
+      return Boolean(shell?.style.getPropertyValue('--arcade-h-budget').trim());
+    });
 
     const layout = await host.page.evaluate(() => {
       const primary = document.querySelector('.tetris-primary-board .tetris-canvas') as HTMLElement;
