@@ -88,7 +88,7 @@ export function myTetrisLobby() {
 }
 
 export function hasTetrisMatch() {
-  return Boolean(match);
+  return Boolean(match && !match.ended);
 }
 
 export function tetrisLobbies() {
@@ -156,7 +156,7 @@ export function ensureTetrisSocket() {
     // A finished match adds a new highscore row — let the Arcade view know its
     // cached stats are stale so they refresh when the player heads back.
     window.dispatchEvent(new CustomEvent('respawn:arcade-stats-dirty'));
-    if (tetrisViewMounted()) rerender();
+    if (tetrisViewMounted() || currentView() === 'arcade') rerender();
   });
 
   socket.on('tetris:opponent-left', (payload) => {
@@ -484,11 +484,12 @@ function renderLobbyList() {
 // The Arcade view embeds this whole card in place of a separate sub-view.
 export function renderTetrisLobbyCard() {
   const lobby = myTetrisLobby();
+  const activeMatch = match && !match.ended;
   // Without a chosen identity there's nothing to open a lobby *as* — make that
   // obvious (disabled button + hint) instead of only flashing a toast on click,
   // which reads as "nothing happened".
   const noMe = !myId();
-  const createReason = !noMe && match
+  const createReason = !noMe && activeMatch
     ? 'Beende zuerst dein aktuelles Spiel.'
     : !noMe && lobby
       ? 'Du bist bereits in einer Lobby.'
@@ -503,11 +504,12 @@ export function renderTetrisLobbyCard() {
             { value: 'duel', label: 'Duell' },
             { value: 'arena', label: 'Arena' },
           ], lobbyMode) : ''}
-          <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${match || lobby || noMe ? 'disabled' : ''}>Lobby öffnen</button>
+          <button type="button" class="btn btn-primary btn-sm" id="tetris-create" ${activeMatch || lobby || noMe ? 'disabled' : ''}>Lobby öffnen</button>
           ${createReason ? infoTooltipHtml('tetris-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}
-          ${mayUseAi ? arcadeLobbyOpponentToggleHtml('tetris-opponent', tetrisOpponent, Boolean(match || lobby || noMe)) : ''}
+          ${mayUseAi ? arcadeLobbyOpponentToggleHtml('tetris-opponent', tetrisOpponent, Boolean(activeMatch || lobby || noMe)) : ''}
         </div>
       </div>
+      ${activeMatch ? `<div class="arcade-match-controls"><button type="button" class="btn btn-primary" id="tetris-return">Zum laufenden Spiel</button></div>` : ''}
       ${renderLobbyList()}
     </div>`;
 }
@@ -519,6 +521,7 @@ export async function leaveMyTetrisLobby() {
 }
 
 export function wireTetrisLobbyCard(container, { beforeCreate, beforeJoin } = {}) {
+  container.querySelector('#tetris-return')?.addEventListener('click', () => navigate('tetris'));
   container.querySelectorAll('#tetris-mode [data-arcade-mode]').forEach((button) => button.addEventListener('click', () => {
     lobbyMode = button.dataset.arcadeMode === 'arena' ? 'arena' : 'duel';
     rerender();
