@@ -123,14 +123,13 @@ export function stepWorldWithCauses(world: SnakeWorld): SnakeStepResult {
   });
   const deaths: number[] = [];
   const eliminations: SnakeStepResult['eliminations'] = [];
-  const aliveBeforeStep = next.map((snake) => snake.alive);
   next.forEach((snake, index) => {
     if (!snake.alive) return;
     const head = snake.body[0];
     const wall = !isInsideSafeBounds(head, world.safeBounds);
     const self = snake.body.slice(1).some((part) => same(part, head));
     const culpritIndex = next.findIndex((opponent, opponentIndex) =>
-      opponentIndex !== index && aliveBeforeStep[opponentIndex] && opponent.body.some((part) => same(part, head)),
+      opponentIndex !== index && opponent.body.some((part) => same(part, head)),
     );
     const reason = culpritIndex >= 0 ? 'collision' : wall ? 'wall' : 'self';
     const other = culpritIndex >= 0;

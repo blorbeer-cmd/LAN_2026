@@ -81,6 +81,22 @@ test('Snake Arena records the opposing snake responsible for a collision', () =>
   assert.equal(world.snakes[0].eliminationReason, 'collision');
 });
 
+test('Snake Arena keeps eliminated snake bodies hazardous and attributes the collision', () => {
+  const world = createWorld(3, 'arena');
+  world.snakes[0].body = [{ x: 9, y: 10 }, { x: 8, y: 10 }, { x: 7, y: 10 }];
+  world.snakes[0].direction = world.snakes[0].nextDirection = 'right';
+  world.snakes[1].body = [{ x: 10, y: 10 }, { x: 11, y: 10 }, { x: 12, y: 10 }];
+  world.snakes[1].alive = false;
+
+  const result = stepWorldWithCauses(world);
+
+  assert.deepEqual(result.eliminations, [
+    { victimIndex: 0, culpritIndex: 1, reason: 'collision' },
+  ]);
+  assert.equal(world.snakes[0].alive, false);
+  assert.equal(world.snakes[0].eliminatedBy, 1);
+});
+
 test('Snake Arena respawns food even when every snake reaching it dies in the same turn', () => {
   const world = createWorld(3, 'arena');
   world.food = { x: 10, y: 10 };
