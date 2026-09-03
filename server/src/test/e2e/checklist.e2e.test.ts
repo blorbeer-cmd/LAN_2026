@@ -109,6 +109,20 @@ test('create a To-Do as one member, claim and complete it as another, "Mir zugew
     const calendar = page.locator('.dt-popover');
     const monthSelect = calendar.locator('[data-dt-month-select]');
     const yearSelect = calendar.locator('[data-dt-year-select]');
+    const pickerGeometry = await calendar.evaluate((popover) => {
+      const month = (popover.querySelector('[data-dt-month-select]') as HTMLElement).getBoundingClientRect();
+      const year = (popover.querySelector('[data-dt-year-select]') as HTMLElement).getBoundingClientRect();
+      const bounds = popover.getBoundingClientRect();
+      return {
+        monthWidth: month.width,
+        yearWidth: year.width,
+        rightEdge: Math.max(month.right, year.right),
+        popoverRight: bounds.right,
+      };
+    });
+    assert.ok(pickerGeometry.monthWidth >= 128, `month selector keeps room at ${width}px`);
+    assert.ok(pickerGeometry.yearWidth >= 90, `year selector keeps room at ${width}px`);
+    assert.ok(pickerGeometry.rightEdge <= pickerGeometry.popoverRight + 1, `selectors stay inside picker at ${width}px`);
     const heights = [];
     const todayPositions = [];
     for (const month of ['1', '2', '4']) {

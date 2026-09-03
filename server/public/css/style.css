@@ -74,6 +74,7 @@
   --row-icon-size: 36px;
   --tap-target-size: 44px;
   --info-popover-max-width: 320px;
+  --date-picker-width: 360px;
   --selection-card-min-width: 160px;
   --seating-seat-width: var(--selection-card-min-width);
   --seating-seat-height: calc(var(--avatar-size-lg) + var(--space-2));
@@ -2737,7 +2738,7 @@ button.draft-pool-player {
 }
 
 .dt-popover {
-  width: 320px;
+  width: var(--date-picker-width);
   max-width: calc(100vw - 2 * var(--space-2));
   z-index: 80;
   box-shadow: var(--shadow);
