@@ -195,11 +195,19 @@ function buildGridRows(viewYear, viewMonth, selectedMs, focusedMs, minMs, rangeS
   const cells = Array(startOffset).fill(null);
   for (let day = 1; day <= daysInMonth; day += 1) cells.push(day);
   while (cells.length % 7 !== 0) cells.push(null);
+  // Always render 6 full weeks so the grid — and everything below it, like
+  // the "Heute" button — stays the same height across every month. Without
+  // this, a 4- or 5-row month made the popover shrink and shift the day the
+  // pointer landed on while paging through months quickly.
+  while (cells.length < 42) cells.push(null);
   const rows = [];
   for (let index = 0; index < cells.length; index += 7) rows.push(cells.slice(index, index + 7));
 
   return rows.map((row) => `<tr role="row">${row.map((day) => {
-    if (day === null) return '<td role="gridcell"></td>';
+    // A filler keeps the same aspect-ratio-driven sizing as a real day button,
+    // so a row of nothing but leading/trailing/padding cells doesn't collapse
+    // to a different height than a row with actual days in it.
+    if (day === null) return '<td role="gridcell"><span class="dt-day dt-day-filler" aria-hidden="true"></span></td>';
     const currentDayMs = dayMs(viewYear, viewMonth, day);
     const key = dateKey(new Date(currentDayMs));
     const classes = ['dt-day'];
@@ -211,12 +219,38 @@ function buildGridRows(viewYear, viewMonth, selectedMs, focusedMs, minMs, rangeS
   }).join('')}</tr>`).join('');
 }
 
+// Keeps the current view's year selectable even far outside the default
+// window (repeated PageUp/PageDown), while normally offering a decade-ish
+// span around today so jumping there needs one tap instead of dozens of
+// month clicks.
+const YEAR_SELECT_PAST = 5;
+const YEAR_SELECT_FUTURE = 8;
+
+function monthOptionsHtml(selectedMonth) {
+  return MONTH_NAMES.map((name, index) => `<option value="${index}"${index === selectedMonth ? ' selected' : ''}>${name}</option>`).join('');
+}
+
+function yearOptionsHtml(selectedYear) {
+  const todayYear = new Date().getFullYear();
+  const minYear = Math.min(todayYear - YEAR_SELECT_PAST, selectedYear);
+  const maxYear = Math.max(todayYear + YEAR_SELECT_FUTURE, selectedYear);
+  const options = [];
+  for (let year = minYear; year <= maxYear; year += 1) {
+    options.push(`<option value="${year}"${year === selectedYear ? ' selected' : ''}>${year}</option>`);
+  }
+  return options.join('');
+}
+
 function popoverHtml(viewYear, viewMonth, selectedMs, focusedMs, minMs, rangeStartMs, rangeEndMs, label) {
   return `
     <div class="dt-popover card" role="dialog" aria-label="Kalender für ${escapeHtml(label)}">
       <div class="dt-popover-header">
         <button type="button" class="btn btn-sm icon-btn" data-dt-nav="-1" aria-label="Vorheriger Monat">${icon('chevronLeft')}</button>
-        <strong data-dt-month aria-live="polite">${MONTH_NAMES[viewMonth]} ${viewYear}</strong>
+        <span class="dt-popover-month-year">
+          <select class="dt-month-select" data-dt-month-select aria-label="Monat">${monthOptionsHtml(viewMonth)}</select>
+          <select class="dt-year-select" data-dt-year-select aria-label="Jahr">${yearOptionsHtml(viewYear)}</select>
+        </span>
+        <span class="visually-hidden" data-dt-month aria-live="polite">${MONTH_NAMES[viewMonth]} ${viewYear}</span>
         <button type="button" class="btn btn-sm icon-btn" data-dt-nav="1" aria-label="Nächster Monat">${icon('chevronRight')}</button>
       </div>
       <table class="dt-calendar" role="grid">
@@ -326,10 +360,18 @@ export function wireDateTimeField(container, id) {
     positionPopover(popover, trigger);
 
     function rerender({ focus = false } = {}) {
+      popover.querySelector('[data-dt-month-select]').value = String(viewMonth);
+      // Rebuilt (not just re-valued) so the visible year list keeps sliding
+      // to include whatever year keyboard/PageUp/PageDown navigation reaches.
+      popover.querySelector('[data-dt-year-select]').innerHTML = yearOptionsHtml(viewYear);
       popover.querySelector('[data-dt-month]').textContent = `${MONTH_NAMES[viewMonth]} ${viewYear}`;
       popover.querySelector('.dt-calendar tbody').innerHTML = buildGridRows(viewYear, viewMonth, currentMs(), focusedMs, minimumMs, rangeStartMs, rangeEndMs);
       positionPopover(popover, trigger);
       if (focus) popover.querySelector('[data-dt-day][tabindex="0"]')?.focus();
+    }
+
+    function jumpToYearMonth(year, month) {
+      changeMonth((year - viewYear) * 12 + (month - viewMonth), false);
     }
 
     function selectDay(year, month, day) {
@@ -393,6 +435,13 @@ export function wireDateTimeField(container, id) {
       }
     }
 
+    function onChange(event) {
+      if (!event.target.closest('[data-dt-month-select], [data-dt-year-select]')) return;
+      const month = Number(popover.querySelector('[data-dt-month-select]').value);
+      const year = Number(popover.querySelector('[data-dt-year-select]').value);
+      jumpToYearMonth(year, month);
+    }
+
     function onOutside(event) {
       if (!popover.contains(event.target) && !trigger.contains(event.target)) closeActive();
     }
@@ -401,6 +450,7 @@ export function wireDateTimeField(container, id) {
     }
 
     popover.addEventListener('click', onClick);
+    popover.addEventListener('change', onChange);
     popover.addEventListener('keydown', onKeydown);
     document.addEventListener('mousedown', onOutside, true);
     window.addEventListener('resize', onReposition);

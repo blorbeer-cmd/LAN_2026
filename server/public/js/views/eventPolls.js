@@ -509,10 +509,10 @@ function openPollForm(event, ctx, previousRound = null) {
       </div>
       <div>
         <div class="title-with-info">
-          <label for="poll-due-date" class="field-label">Antwortfrist</label>
-          ${infoTooltipHtml('poll-due-help', 'Antwortfrist', 'Teilnehmer mit noch offener Antwort werden automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
+          <label for="poll-due-date" class="field-label">Antwortfrist (optional)</label>
+          ${infoTooltipHtml('poll-due-help', 'Antwortfrist', 'Ohne Frist läuft die Umfrage, bis sie manuell beendet wird. Ist eine Frist gesetzt, werden Teilnehmer mit noch offener Antwort automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
         </div>
-        ${dateTimeFieldHtml('poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: false, label: 'Antwortfrist' })}
+        ${dateTimeFieldHtml('poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: true, label: 'Antwortfrist' })}
       </div>
       <button type="submit" class="btn btn-primary btn-block">${previousRound ? 'Neue Runde starten' : 'Umfrage starten'}</button>
     </form>`, {
@@ -551,7 +551,6 @@ function openPollForm(event, ctx, previousRound = null) {
         const optionError = validateOptionValues(options);
         if (optionError) return showToast(optionError, { error: true });
         const responseDueOn = readIsoDate(modal, 'poll-due');
-        if (!responseDueOn) return showToast('Bitte eine Antwortfrist wählen.', { error: true });
         const responseMode = modal.querySelector('#poll-mode').value;
         const rawMax = modal.querySelector('#poll-max').value;
         const maxSelections = responseMode === 'multiple_choice' && rawMax ? Number(rawMax) : null;
@@ -608,10 +607,10 @@ function openEditPollForm(event, poll, ctx) {
       </div>
       <div>
         <div class="title-with-info">
-          <label for="poll-edit-due-date" class="field-label">Antwortfrist</label>
-          ${infoTooltipHtml(`poll-edit-due-help-${poll.id}`, 'Antwortfrist', 'Teilnehmer mit noch offener Antwort werden automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
+          <label for="poll-edit-due-date" class="field-label">Antwortfrist (optional)</label>
+          ${infoTooltipHtml(`poll-edit-due-help-${poll.id}`, 'Antwortfrist', 'Ohne Frist läuft die Umfrage, bis sie manuell beendet wird. Ist eine Frist gesetzt, werden Teilnehmer mit noch offener Antwort automatisch zwei Tage und zwei Stunden vor Fristende erinnert.')}
         </div>
-        ${dateTimeFieldHtml('poll-edit-due', poll.responseDueAt, { dateOnly: true, clearable: false, label: 'Antwortfrist' })}
+        ${dateTimeFieldHtml('poll-edit-due', poll.responseDueAt, { dateOnly: true, clearable: true, label: 'Antwortfrist' })}
       </div>
       <button type="submit" class="btn btn-primary btn-block">Speichern</button>
     </form>`, {
@@ -643,7 +642,6 @@ function openEditPollForm(event, poll, ctx) {
         const optionError = validateOptionValues(options);
         if (optionError) return showToast(optionError, { error: true });
         const responseDueOn = readIsoDate(modal, 'poll-edit-due');
-        if (!responseDueOn) return showToast('Bitte eine Antwortfrist wählen.', { error: true });
         submitEvent.submitter.disabled = true;
         try {
           const updatedPoll = await api.eventPolls.update(event.id, poll.id, {
@@ -677,8 +675,8 @@ function openReopenForm(event, poll, ctx) {
   let dirty = false;
   const { close } = openModal('Umfrage wieder öffnen', `
     <form id="reopen-poll-form" class="stack">
-      <p class="muted">Lege eine neue Frist fest. Danach können alle bestätigten Eventteilnehmer ihre Antwort wieder ändern.</p>
-      <div><label for="reopen-poll-due-date" class="field-label">Neue Antwortfrist</label>${dateTimeFieldHtml('reopen-poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: false, label: 'Neue Antwortfrist' })}</div>
+      <p class="muted">Danach können alle bestätigten Eventteilnehmer ihre Antwort wieder ändern.</p>
+      <div><label for="reopen-poll-due-date" class="field-label">Neue Antwortfrist (optional)</label>${dateTimeFieldHtml('reopen-poll-due', Date.now() + 7 * 86_400_000, { dateOnly: true, clearable: true, label: 'Neue Antwortfrist' })}</div>
       <button type="submit" class="btn btn-primary btn-block">Umfrage wieder öffnen</button>
     </form>`, {
     confirmClose: () => (dirty ? 'Die gewählte Frist geht verloren.' : null),
@@ -688,7 +686,6 @@ function openReopenForm(event, poll, ctx) {
       modal.querySelector('#reopen-poll-form').addEventListener('submit', async (eventSubmit) => {
         eventSubmit.preventDefault();
         const responseDueOn = readIsoDate(modal, 'reopen-poll-due');
-        if (!responseDueOn) return;
         eventSubmit.submitter.disabled = true;
         try {
           const updatedPoll = await api.eventPolls.reopen(event.id, poll.id, responseDueOn);

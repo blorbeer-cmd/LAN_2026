@@ -237,6 +237,20 @@ textarea {
   color: var(--text-muted);
 }
 
+/* Keeps content in the accessibility tree and announced by aria-live
+   without taking any visible space. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px; /* design-token-ok: standard 1px clip-rect offset for the visually-hidden pattern, tied to the 1x1px box above, not a spacing choice */
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .error-text {
   color: var(--danger);
   font-size: var(--font-size-sm);
@@ -963,18 +977,26 @@ textarea {
 }
 @media (max-width: 639px) { /* --bp-md */
   .event-poll-card-header {
+    flex-wrap: wrap;
     align-items: center;
   }
   .event-poll-card-toggle {
+    flex-basis: 100%;
     grid-template-columns: auto minmax(0, 1fr);
   }
+  /* Status, response count and the "Aktion" menu move to their own row
+     instead of squeezing next to the title — otherwise all of that had to
+     share one cramped line with the toggle button on a phone. */
   .event-poll-card-side {
+    flex: 1 1 100%;
     align-self: stretch;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
   }
   .event-poll-card-meta {
     min-width: 0;
+    align-items: flex-start;
+    text-align: left;
   }
   .event-poll-best-result {
     max-width: 8rem;
@@ -2723,8 +2745,28 @@ button.draft-pool-player {
 .dt-popover-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-1);
   margin-bottom: var(--space-2);
+}
+.dt-popover-month-year {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: var(--space-1);
+}
+.dt-popover-month-year select {
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-align: center;
+  text-align-last: center;
+}
+.dt-popover-month-year .dt-month-select {
+  flex: 1.4;
+}
+.dt-popover-month-year .dt-year-select {
+  flex: 1;
 }
 .dt-calendar {
   width: 100%;
@@ -2758,6 +2800,10 @@ button.draft-pool-player {
   color: var(--state-offline);
   cursor: not-allowed;
   opacity: 0.55;
+}
+.dt-day-filler {
+  cursor: default;
+  pointer-events: none;
 }
 @media (hover: hover) {
   .dt-day:not(:disabled):hover {
