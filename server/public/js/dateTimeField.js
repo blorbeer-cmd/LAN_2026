@@ -371,7 +371,7 @@ export function wireDateTimeField(container, id) {
     }
 
     function jumpToYearMonth(year, month) {
-      changeMonth((year - viewYear) * 12 + (month - viewMonth), false);
+      changeMonth((year - viewYear) * 12 + (month - viewMonth), { keepDay: false, focus: false });
     }
 
     function selectDay(year, month, day) {
@@ -393,17 +393,17 @@ export function wireDateTimeField(container, id) {
       rerender({ focus: true });
     }
 
-    function changeMonth(delta, keepDay = true) {
+    function changeMonth(delta, { keepDay = true, focus = true } = {}) {
       focusedMs = calendarMonthTargetMs(focusedMs, delta, minimumMs, keepDay);
       const target = new Date(focusedMs);
       viewYear = target.getFullYear();
       viewMonth = target.getMonth();
-      rerender({ focus: true });
+      rerender({ focus });
     }
 
     function onClick(event) {
       const navigation = event.target.closest('[data-dt-nav]');
-      if (navigation) return changeMonth(Number(navigation.dataset.dtNav), false);
+      if (navigation) return changeMonth(Number(navigation.dataset.dtNav), { keepDay: false });
       const day = event.target.closest('[data-dt-day]');
       if (day && !day.disabled) return selectDay(viewYear, viewMonth, Number(day.dataset.dtDay));
       if (event.target.closest('[data-dt-today]')) {

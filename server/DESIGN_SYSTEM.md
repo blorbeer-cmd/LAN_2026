@@ -856,7 +856,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   response-details disclosure is rendered only after a non-anonymous round has
   ended; the server withholds those identities while a poll is open and for anonymous polls at every
   status. Avatar, name and response timestamp share one vertically aligned voter row. Progress and
-  deadline appear once in the card header, not again above the option rows. Poll re-renders preserve
+  deadline appear once in the card header, not again above the option rows. A round without a
+  deadline shows „Keine Frist“ in its header and round history; automatic deadline reminders apply
+  only to dated rounds. Poll re-renders preserve
   the visible card's scroll anchor. Ending a round immediately turns
   its counts into the read-only result overview; there is no separate result-recording action. Event
   cards do not embed or link to poll controls. A poll result changes no event field, schedule revision
@@ -1360,6 +1362,9 @@ space pattern rather than content-dependent card heights.
 - Every interactive element must be usable by keyboard and show a visible focus state.
   Focus order follows the visual and logical order; opening a modal moves focus inside,
   closing it returns focus to the trigger.
+- The shared calendar reserves six equally high week rows, including empty filler rows. Changing
+  its month or year select keeps focus on that select; day-grid keyboard navigation keeps focus
+  on the target day.
 - Status, validation and selection cannot be communicated by color alone. Pair color
   with German text and, where helpful, an icon or shape.
 - Form errors identify the affected field and explain how to recover. Disabled actions

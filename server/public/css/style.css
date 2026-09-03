@@ -2787,6 +2787,7 @@ button.draft-pool-player {
   padding: var(--space-1);
 }
 .dt-day {
+  display: block;
   width: 100%;
   aspect-ratio: 1;
   background: none;

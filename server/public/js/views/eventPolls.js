@@ -90,6 +90,10 @@ function formatDate(timestamp) {
   return new Date(timestamp).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function formatDeadline(timestamp) {
+  return timestamp === null ? 'Keine Frist' : `Frist: ${formatDate(timestamp)}`;
+}
+
 function formatDateTime(timestamp) {
   return new Date(timestamp).toLocaleString('de-DE', {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -370,7 +374,7 @@ function renderHistoryRound(poll) {
       <div class="row-between"><strong>Runde ${poll.roundNumber}</strong><span class="badge ${status.badge}">${status.label}</span></div>
       <span class="event-poll-history-result">${bestResult ? `Sieger: ${escapeHtml(bestResult)}` : 'Ergebnis: Keine Stimmen'}</span>
       <span class="muted">Gestartet: ${formatDateTime(poll.createdAt)} · von ${escapeHtml(poll.createdByName ?? 'Unbekannt')}</span>
-      <span class="muted">Beendet: ${formatDateTime(poll.updatedAt)} · Frist: ${formatDate(poll.responseDueAt)} · ${answered} von ${poll.invitees.length} beantwortet${poll.anonymous ? ' · Anonym' : ''}</span>
+      <span class="muted">Beendet: ${formatDateTime(poll.updatedAt)} · ${formatDeadline(poll.responseDueAt)} · ${answered} von ${poll.invitees.length} beantwortet${poll.anonymous ? ' · Anonym' : ''}</span>
       <details class="event-poll-history-details">
         <summary>Ergebnisdetails</summary>
         <div class="stack event-poll-options">${poll.options.map((option) => renderOption(poll, option)).join('')}</div>
@@ -414,7 +418,7 @@ function renderPollGroup(group) {
       <header class="event-poll-card-header">
         <button type="button" class="event-poll-card-toggle" data-toggle-poll="${escapeHtml(group.key)}" aria-expanded="${expanded}">
           <span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span>
-          <span class="event-poll-card-title"><strong>${escapeHtml(latest.title)}</strong><span class="muted">von ${escapeHtml(latest.createdByName ?? 'Unbekannt')} · Runde ${latest.roundNumber}</span><span class="muted">Gestartet: ${formatDate(latest.createdAt)} · Frist: ${formatDate(latest.responseDueAt)}</span></span>
+          <span class="event-poll-card-title"><strong>${escapeHtml(latest.title)}</strong><span class="muted">von ${escapeHtml(latest.createdByName ?? 'Unbekannt')} · Runde ${latest.roundNumber}</span><span class="muted">Gestartet: ${formatDate(latest.createdAt)} · ${formatDeadline(latest.responseDueAt)}</span></span>
         </button>
         <div class="event-poll-card-side">
           <span class="event-poll-card-meta"><span class="badge ${status.badge}">${status.label}</span><span class="muted">${answered}/${latest.invitees.length} beantwortet</span>${bestResult ? `<span class="event-poll-best-result" title="Bestes Ergebnis: ${escapeHtml(bestResult)}">Ergebnis: ${escapeHtml(bestResult)}</span>` : ''}</span>
