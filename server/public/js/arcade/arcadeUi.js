@@ -34,9 +34,27 @@ function syncExpandedPlayfieldHeight(shell) {
     // address bar.
     const currentHeight = playfield.getBoundingClientRect().height;
     // A spectator Tetris Arena has no primary board. Its first opponent board
-    // is half as tall as the shared budget (four columns), so convert the
-    // measured height back to that budget before shrinking it.
+    // is half as tall as the shared budget, so convert the measured height back
+    // to that budget before shrinking it.
     const budgetScale = playfield.closest('.tetris-opponent-grid.is-spectator') ? 2 : 1;
+    const tetrisBoards = shell.querySelector('.tetris-boards.is-arena');
+    const opponentGrid = tetrisBoards?.querySelector('.tetris-opponent-grid');
+    if (tetrisBoards && opponentGrid) {
+      // Arena opponents can span multiple grid rows. The first canvas alone
+      // does not describe the layout height, so derive the budget from the
+      // complete board group and its actual row count before applying the
+      // overflow correction.
+      const columns = getComputedStyle(opponentGrid).gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length || 1;
+      const rows = Math.ceil(opponentGrid.children.length / columns);
+      const rowGap = Number.parseFloat(getComputedStyle(opponentGrid).rowGap) || 0;
+      const currentBudget = currentHeight * budgetScale;
+      const currentBoardHeight = tetrisBoards.getBoundingClientRect().height;
+      const scalableBoardHeight = Math.max(1, currentBoardHeight - rowGap * Math.max(0, rows - 1));
+      const layoutScale = scalableBoardHeight / Math.max(1, currentBudget);
+      const target = Math.max(160, (scalableBoardHeight - overflow) / layoutScale - 8);
+      shell.style.setProperty('--arcade-h-budget', `${target}px`);
+      return;
+    }
     const target = Math.max(160, (currentHeight - overflow) * budgetScale - 8);
     shell.style.setProperty('--arcade-h-budget', `${target}px`);
   });

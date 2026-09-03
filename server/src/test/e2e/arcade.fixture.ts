@@ -786,7 +786,7 @@ arcadeTest('multiplayer', 'expanded Tetris keeps the page free of horizontal scr
 
     // Leaving the Arcade area must not strand an active match. The launcher
     // keeps a direct return action so the host can still finish it explicitly.
-    await host.page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'home' })));
+    await host.page.locator('.desktop-nav-btn[data-view="home"]:visible').click();
     await host.page.waitForFunction(() => (document.getElementById('view-container') as HTMLElement | null)?.dataset.view === 'home');
     await navigateToArcade(host.page);
     await host.page.waitForSelector('#tetris-return');
@@ -803,13 +803,13 @@ arcadeTest('multiplayer', 'expanded Tetris keeps the page free of horizontal scr
   }
 });
 
-arcadeTest('multiplayer', 'Tetris Arena supports four ready players with one large local board and three opponent boards', async () => {
+arcadeTest('multiplayer', 'Tetris Arena supports six ready players across multiple opponent rows', async () => {
   const players = await Promise.all(
-    ['Arena Browser Host', 'Arena Browser Zwei', 'Arena Browser Drei', 'Arena Browser Vier'].map(createPlayer),
+    ['Arena Browser Host', 'Arena Browser Zwei', 'Arena Browser Drei', 'Arena Browser Vier', 'Arena Browser Fünf', 'Arena Browser Sechs'].map(createPlayer),
   );
   const actors = await Promise.all(players.map((player, index) => openArcadeAs(
     player.id,
-    index === 0 ? { viewport: { width: 1280, height: 800 }, expanded: true } : undefined,
+    index === 0 ? { viewport: { width: 1280, height: 1000 }, expanded: true } : undefined,
   )));
   const [host, ...guests] = actors;
   let hostClosed = false;
@@ -831,9 +831,9 @@ arcadeTest('multiplayer', 'Tetris Arena supports four ready players with one lar
     await host.page.waitForSelector('#tetris-start:not([disabled])');
     await host.page.click('#tetris-start');
     await host.page.waitForSelector('.tetris-boards.is-arena');
-    assert.equal(await host.page.locator('.tetris-canvas').count(), 4);
+    assert.equal(await host.page.locator('.tetris-canvas').count(), 6);
     assert.equal(await host.page.locator('.tetris-primary-board .tetris-canvas').count(), 1);
-    assert.equal(await host.page.locator('.tetris-opponent-grid .tetris-canvas').count(), 3);
+    assert.equal(await host.page.locator('.tetris-opponent-grid .tetris-canvas').count(), 5);
 
     const layout = await host.page.evaluate(() => {
       const primary = document.querySelector('.tetris-primary-board .tetris-canvas') as HTMLElement;
@@ -841,11 +841,16 @@ arcadeTest('multiplayer', 'Tetris Arena supports four ready players with one lar
       return {
         primaryWidth: primary.getBoundingClientRect().width,
         opponentWidth: opponent.getBoundingClientRect().width,
+        opponentGridHeight: (document.querySelector('.tetris-opponent-grid') as HTMLElement).getBoundingClientRect().height,
+        primaryHeight: primary.getBoundingClientRect().height,
+        heightBudget: Number.parseFloat(getComputedStyle(document.querySelector('.arcade-game-shell') as HTMLElement).getPropertyValue('--arcade-h-budget')),
         scrollWidth: document.documentElement.scrollWidth,
         clientWidth: document.documentElement.clientWidth,
       };
     });
     assert.ok(layout.primaryWidth > layout.opponentWidth);
+    assert.ok(layout.opponentGridHeight > layout.primaryHeight, 'multiple opponent rows must be represented by the full opponent grid');
+    assert.ok(layout.heightBudget > 160, `multi-row arena must not collapse to the minimum height budget (${layout.heightBudget})`);
     assert.ok(layout.scrollWidth <= layout.clientWidth);
 
     await host.page.locator('.tetris-primary-board .tetris-canvas').evaluate((canvas) => {
@@ -873,7 +878,7 @@ arcadeTest('multiplayer', 'Tetris Arena supports four ready players with one lar
     const rosterNames = await guests[0].page
       .locator('.arcade-winner-card .arcade-player-tile-body strong')
       .allTextContents();
-    assert.equal(rosterNames.length, 4);
+    assert.equal(rosterNames.length, players.length);
     for (const player of players) assert.ok(rosterNames.includes(player.name), `missing full name for ${player.name}`);
   } finally {
     if (!hostClosed) await host.context.close();
