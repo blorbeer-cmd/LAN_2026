@@ -444,8 +444,10 @@ export function codexReviewArgs({ schemaPath, outputPath }) {
     "--ephemeral",
     "--ignore-user-config",
     "--ignore-rules",
-    // Keep the CLI's default Windows sandbox implementation. The read-only policy must remain
-    // enforced by the runtime instead of being weakened to accommodate a tool invocation.
+    // The preferred elevated Windows sandbox cannot execute the desktop runtime's bundled
+    // PowerShell on every host. OpenAI documents unelevated as the bounded fallback for that
+    // compatibility case; read-only remains the effective filesystem policy.
+    "--config", 'windows.sandbox="unelevated"',
     // A self-review only needs the local shell. Remove side channels that could inspect or mutate
     // GitHub independently of the credential-free detached checkout.
     "--disable", "apps",

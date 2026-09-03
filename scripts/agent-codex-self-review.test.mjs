@@ -198,6 +198,7 @@ test("the executable receives approval policy before exec and invokes the docume
     "--ephemeral",
     "--ignore-user-config",
     "--ignore-rules",
+    "--config", 'windows.sandbox="unelevated"',
     "--disable", "apps",
     "--disable", "browser_use",
     "--disable", "computer_use",
