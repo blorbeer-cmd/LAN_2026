@@ -188,6 +188,8 @@ scale step worth adding here instead).
 `--tap-target-size` (44px) is the shared minimum square for icon-only touch controls.
 `--info-popover-max-width` (320px) caps contextual-help popovers while their actual width remains
 responsive on smaller screens.
+`--date-picker-width` (360px) gives the shared calendar's month and year selectors enough room on
+laptop-sized layouts while the popover remains viewport-responsive on phones.
 `--selection-card-min-width` (160px) controls when player checkbox cards reflow into additional
 columns without making names or avatars too cramped.
 `--seating-seat-width` / `--seating-seat-height` and their compact counterparts keep every place
