@@ -51,9 +51,6 @@ interface ScoreEntry {
   garbageSent?: number;
   garbageReceived?: number;
   knockouts?: number;
-  eliminatedByPlayerId?: string | null;
-  eliminatedByName?: string | null;
-  eliminationReason?: string | null;
 }
 
 interface ScribbleArtStatsRow {

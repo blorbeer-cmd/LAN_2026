@@ -84,10 +84,6 @@ function scoreEntries(match: Match) {
   const livingCount = match.world.snakes.filter((snake) => snake.alive).length;
   return match.players.map((player, index) => {
     const snake = match.world.snakes[index];
-    const eliminatedBy = snake?.eliminatedBy;
-    const eliminator = eliminatedBy === null || eliminatedBy === undefined
-      ? null
-      : match.players[eliminatedBy] ?? null;
     return {
       playerId: player.id,
       name: player.name,
@@ -95,10 +91,9 @@ function scoreEntries(match: Match) {
       score: snake?.score ?? 0,
       isBot: isSnakeBotId(player.id),
       isWinner: snake?.alive === true && livingCount === 1,
+      // Individual attribution lives in `world.snakes` for the live elimination message. Historical
+      // stats intentionally persist the requested per-player knockout total, not a victim ledger.
       knockouts: knockoutCount(match, index),
-      eliminatedByPlayerId: eliminator?.id ?? null,
-      eliminatedByName: eliminator?.name ?? null,
-      eliminationReason: snake?.eliminationReason ?? null,
     };
   });
 }

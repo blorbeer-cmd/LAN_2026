@@ -482,8 +482,8 @@ test('GET /api/arcade/stats exposes Snake Arena knockouts separately', async () 
   const now = Date.now();
   const scores = [
     { playerId: winner.body.id, name: winner.body.name, mode: 'arena', score: 14, isWinner: true, knockouts: 2 },
-    { playerId: rival.body.id, name: rival.body.name, mode: 'arena', score: 8, knockouts: 0, eliminatedByPlayerId: winner.body.id, eliminatedByName: winner.body.name },
-    { playerId: victim.body.id, name: victim.body.name, mode: 'arena', score: 5, knockouts: 0, eliminatedByPlayerId: winner.body.id, eliminatedByName: winner.body.name },
+    { playerId: rival.body.id, name: rival.body.name, mode: 'arena', score: 8, knockouts: 0 },
+    { playerId: victim.body.id, name: victim.body.name, mode: 'arena', score: 5, knockouts: 0 },
   ];
   db.prepare(
     `INSERT INTO arcade_results (id, game_type, winner_id, players, scores, reason, started_at, ended_at)
