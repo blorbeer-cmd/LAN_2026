@@ -5,7 +5,7 @@ import { showToast } from '../../toast.js';
 import { icon } from '../../icons.js';
 import { getMyId } from '../../whoami.js';
 import { currentPlayerMayUseArcadeAi } from '../arcadeAdmin.js';
-import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard, myTetrisLobby, tetrisLobbies, leaveMyTetrisLobby } from './tetris.js';
+import { ensureTetrisSocket, renderTetrisLobbyCard, wireTetrisLobbyCard, myTetrisLobby, tetrisLobbies, leaveMyTetrisLobby, hasTetrisMatch } from './tetris.js';
 import {
   ensureScribbleSocket,
   renderScribbleLobbyCard,
@@ -448,6 +448,7 @@ function renderMatch() {
 
 function engagedGame() {
   if (match || myLobby()) return 'quiz';
+  if (hasTetrisMatch()) return 'tetris';
   if (myTetrisLobby()) return 'tetris';
   if (myScribbleLobby() || hasScribbleMatch()) return 'scribble';
   if (myPongLobby() || hasPongMatch()) return 'pong';

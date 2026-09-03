@@ -710,6 +710,15 @@ arcadeTest('multiplayer', 'expanded Tetris keeps the page free of horizontal scr
       `overlays anchor to the wrap, so it must match the canvas width (canvas ${alignment.canvasWidth}, wrap ${alignment.wrapWidth})`
     );
 
+    // Leaving the Arcade area must not strand an active match. The launcher
+    // keeps a direct return action so the host can still finish it explicitly.
+    await host.page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'home' })));
+    await host.page.waitForFunction(() => (document.getElementById('view-container') as HTMLElement | null)?.dataset.view === 'home');
+    await navigateToArcade(host.page);
+    await host.page.waitForSelector('#tetris-return');
+    await host.page.click('#tetris-return');
+    await host.page.waitForSelector('#tetris-finish');
+
     await host.page.click('#tetris-finish');
     await host.page.click('[data-confirm]');
     await host.page.waitForSelector('#tetris-back');
@@ -724,7 +733,10 @@ arcadeTest('multiplayer', 'Tetris Arena supports four ready players with one lar
   const players = await Promise.all(
     ['Arena Browser Host', 'Arena Browser Zwei', 'Arena Browser Drei', 'Arena Browser Vier'].map(createPlayer),
   );
-  const actors = await Promise.all(players.map((player) => openArcadeAs(player.id)));
+  const actors = await Promise.all(players.map((player, index) => openArcadeAs(
+    player.id,
+    index === 0 ? { viewport: { width: 1280, height: 800 }, expanded: true } : undefined,
+  )));
   const [host, ...guests] = actors;
   let hostClosed = false;
   try {

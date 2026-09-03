@@ -27,14 +27,17 @@ function syncExpandedPlayfieldHeight(shell) {
     if (!shell.isConnected || !shell.classList.contains('is-expanded')) return;
     const overflow = viewContainer.scrollHeight - viewContainer.clientHeight;
     if (overflow <= 0) return;
-    // The playfield's own current rendered height already *is* the CSS
-    // budget in pixels (each formula is `width: budget * ratio; height:
-    // auto` via aspect-ratio) — measuring it directly instead of
-    // reconstructing "100dvh - 18rem" from window.innerHeight avoids a
-    // second hardcoded 18rem and sidesteps dvh/innerHeight drift on mobile
-    // browsers with a collapsing address bar.
+    // The playfield's own current rendered height is the most reliable source
+    // for the CSS budget. Measuring it directly instead of reconstructing
+    // "100dvh - 18rem" from window.innerHeight avoids a second hardcoded 18rem
+    // and sidesteps dvh/innerHeight drift on mobile browsers with a collapsing
+    // address bar.
     const currentHeight = playfield.getBoundingClientRect().height;
-    const target = Math.max(160, currentHeight - overflow - 8);
+    // A spectator Tetris Arena has no primary board. Its first opponent board
+    // is half as tall as the shared budget (four columns), so convert the
+    // measured height back to that budget before shrinking it.
+    const budgetScale = playfield.closest('.tetris-opponent-grid.is-spectator') ? 2 : 1;
+    const target = Math.max(160, (currentHeight - overflow) * budgetScale - 8);
     shell.style.setProperty('--arcade-h-budget', `${target}px`);
   });
 }
