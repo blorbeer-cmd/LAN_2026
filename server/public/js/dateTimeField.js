@@ -413,13 +413,6 @@ export function wireDateTimeField(container, id) {
       }
     }
 
-    function onChange(event) {
-      if (!event.target.closest('[data-dt-month-select], [data-dt-year-select]')) return;
-      const month = Number(popover.querySelector('[data-dt-month-select]').value);
-      const year = Number(popover.querySelector('[data-dt-year-select]').value);
-      jumpToYearMonth(year, month);
-    }
-
     function onKeydown(event) {
       const day = event.target.closest('[data-dt-day]');
       if (event.key === 'Escape') {
@@ -440,6 +433,13 @@ export function wireDateTimeField(container, id) {
         if (event.key === 'PageUp') changeMonth(event.shiftKey ? -12 : -1);
         if (event.key === 'PageDown') changeMonth(event.shiftKey ? 12 : 1);
       }
+    }
+
+    function onChange(event) {
+      if (!event.target.closest('[data-dt-month-select], [data-dt-year-select]')) return;
+      const month = Number(popover.querySelector('[data-dt-month-select]').value);
+      const year = Number(popover.querySelector('[data-dt-year-select]').value);
+      jumpToYearMonth(year, month);
     }
 
     function onOutside(event) {
