@@ -99,6 +99,49 @@ test('create a To-Do as one member, claim and complete it as another, "Mir zugew
   await page.click('[data-dt-field="todo-due"] [data-dt-trigger]');
   await page.waitForSelector('.dt-popover');
   assert.equal(await page.locator('[data-dt-field="todo-due"] [data-dt-time]').count(), 0, 'due date picker has no time-of-day controls');
+  await page.keyboard.press('Escape');
+  for (const width of [390, 1024]) {
+    await page.setViewportSize({ width, height: 844 });
+    // February 2027 has four weeks, March five and May six.
+    await page.fill('#todo-due-date', '15022027');
+    await page.locator('#todo-due-date').blur();
+    await page.click('[data-dt-field="todo-due"] [data-dt-trigger]');
+    const calendar = page.locator('.dt-popover');
+    const monthSelect = calendar.locator('[data-dt-month-select]');
+    const yearSelect = calendar.locator('[data-dt-year-select]');
+    const heights = [];
+    const todayPositions = [];
+    for (const month of ['1', '2', '4']) {
+      await monthSelect.selectOption(month);
+      const rowHeights = await calendar.locator('tbody tr').evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
+      assert.equal(rowHeights.length, 6);
+      assert.ok(Math.max(...rowHeights) - Math.min(...rowHeights) <= 1, `all calendar rows reserve equal height at ${width}px: ${rowHeights}`);
+      heights.push((await calendar.boundingBox())!.height);
+      todayPositions.push((await calendar.locator('[data-dt-today]').boundingBox())!.y);
+    }
+    assert.ok(Math.max(...heights) - Math.min(...heights) <= 1, `calendar height stays stable at ${width}px: ${heights}`);
+    assert.ok(Math.max(...todayPositions) - Math.min(...todayPositions) <= 1, `Today stays put at ${width}px: ${todayPositions}`);
+    await monthSelect.focus();
+    for (const month of ['5', '6']) {
+      await page.keyboard.press('ArrowDown');
+      assert.equal(await monthSelect.inputValue(), month);
+      assert.equal(await monthSelect.evaluate((element) => element === document.activeElement), true, 'month changes retain select focus');
+    }
+    await page.keyboard.press('Tab');
+    assert.equal(await yearSelect.evaluate((element) => element === document.activeElement), true, 'Tab moves from month to year');
+    for (const year of ['2028', '2029']) {
+      await page.keyboard.press('ArrowDown');
+      assert.equal(await yearSelect.inputValue(), year);
+      assert.equal(await yearSelect.evaluate((element) => element === document.activeElement), true, 'year changes retain select focus');
+    }
+    await calendar.locator('[data-dt-day][tabindex="0"]').focus();
+    await page.keyboard.press('PageDown');
+    assert.equal(await monthSelect.inputValue(), '7');
+    assert.equal(await calendar.locator('[data-dt-day]:focus').count(), 1, 'grid paging still moves day focus');
+    await page.keyboard.press('Escape');
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.click('[data-dt-field="todo-due"] [data-dt-trigger]');
   await page.click('.dt-popover [data-dt-today]');
   await page.waitForSelector('.dt-popover', { state: 'detached' });
 

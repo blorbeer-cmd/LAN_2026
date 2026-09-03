@@ -31,7 +31,7 @@ export interface DatePollRow {
   round_number: number;
   note: string | null;
   created_by: string | null;
-  response_due_at: number;
+  response_due_at: number | null;
   status: DatePollStatus;
   selected_option_id: string | null;
   topic: EventPollTopic;
@@ -175,7 +175,9 @@ export function materializeExpiredPollIfNeeded(pollId: string, now = Date.now())
   return db.transaction((): MaterializeResult | undefined => {
     const poll = getDatePoll(pollId);
     if (!poll) return undefined;
-    if (poll.status !== 'open' || poll.response_due_at > now) return { poll, transitioned: false };
+    if (poll.status !== 'open' || poll.response_due_at === null || poll.response_due_at > now) {
+      return { poll, transitioned: false };
+    }
 
     const updated = db
       .prepare(`UPDATE event_date_polls SET status = 'closed', updated_at = ? WHERE id = ? AND status = 'open'`)
@@ -210,7 +212,7 @@ export interface DatePollOptionInput {
 
 export interface CreateDatePollInput {
   options: DatePollOptionInput[];
-  responseDueOn: string;
+  responseDueOn?: string;
   note?: string | null;
   inviteePlayerIds: string[];
   topic?: EventPollTopic;
@@ -227,8 +229,8 @@ export type CreateDatePollResult =
 
 export function createDatePoll(event: EventRow, input: CreateDatePollInput, createdBy: string): CreateDatePollResult {
   const now = Date.now();
-  const responseDueAt = endOfIsoDateUtcMs(input.responseDueOn);
-  if (responseDueAt <= now) {
+  const responseDueAt = input.responseDueOn !== undefined ? endOfIsoDateUtcMs(input.responseDueOn) : null;
+  if (responseDueAt !== null && responseDueAt <= now) {
     return { ok: false, code: 'invalid', error: 'responseDueOn muss in der Zukunft liegen.' };
   }
   return db.transaction((): CreateDatePollResult => {
@@ -294,14 +296,15 @@ export function createDatePoll(event: EventRow, input: CreateDatePollInput, crea
   })();
 }
 
-function insertInvitees(pollId: string, playerIds: string[], now: number, responseDueAt: number): number {
+function insertInvitees(pollId: string, playerIds: string[], now: number, responseDueAt: number | null): number {
   const insertInvitee = db.prepare(
     `INSERT INTO event_date_poll_invitees
        (poll_id, player_id, invited_at, automatic_reminder_stage, automatic_reminder_due_at)
      VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(poll_id, player_id) DO NOTHING`,
   );
-  const plan = initialReminderPlan(responseDueAt, now);
+  // An open-ended poll (no deadline) never schedules an automatic reminder.
+  const plan = responseDueAt !== null ? initialReminderPlan(responseDueAt, now) : { stage: STAGE_NONE, dueAt: null };
   let inserted = 0;
   for (const playerId of new Set(playerIds)) {
     inserted += insertInvitee.run(pollId, playerId, now, plan.stage, plan.dueAt).changes;
@@ -392,7 +395,8 @@ export type PollMutationResult =
 export interface UpdateDatePollFields {
   title?: string;
   note?: string | null;
-  responseDueOn?: string;
+  // undefined = no change, null = clear the deadline (open-ended), string = set it.
+  responseDueOn?: string | null;
   options?: Array<{
     id?: string;
     label: string;
@@ -415,7 +419,7 @@ export function updateDatePoll(poll: DatePollRow, fields: UpdateDatePollFields):
     return { ok: false, code: 'not_open', error: 'Nur eine laufende Abstimmung kann bearbeitet werden.' };
   }
   const now = Date.now();
-  if (fields.responseDueOn !== undefined && endOfIsoDateUtcMs(fields.responseDueOn) <= now) {
+  if (fields.responseDueOn !== undefined && fields.responseDueOn !== null && endOfIsoDateUtcMs(fields.responseDueOn) <= now) {
     return { ok: false, code: 'invalid', error: 'responseDueOn muss in der Zukunft liegen.' };
   }
   return db.transaction((): UpdateDatePollResult => {
@@ -457,7 +461,9 @@ export function updateDatePoll(poll: DatePollRow, fields: UpdateDatePollFields):
 
     const title = fields.title !== undefined ? fields.title : current.title;
     const note = fields.note !== undefined ? fields.note : current.note;
-    const responseDueAt = fields.responseDueOn !== undefined ? endOfIsoDateUtcMs(fields.responseDueOn) : current.response_due_at;
+    const responseDueAt = fields.responseDueOn !== undefined
+      ? (fields.responseDueOn === null ? null : endOfIsoDateUtcMs(fields.responseDueOn))
+      : current.response_due_at;
     db.prepare('UPDATE event_date_polls SET title = ?, note = ?, response_due_at = ?, updated_at = ? WHERE id = ?').run(
       title,
       note,
@@ -504,9 +510,9 @@ export function updateDatePoll(poll: DatePollRow, fields: UpdateDatePollFields):
 // hasn't fully answered yet — including re-arming the 48h stage even if it
 // already fired against the old deadline, since "the plan is recalculated"
 // and earlier sends only stay in history, never blocking a fresh stage.
-function rescheduleRemindersForStillOpenInvitees(pollId: string, responseDueAt: number, now: number): void {
+function rescheduleRemindersForStillOpenInvitees(pollId: string, responseDueAt: number | null, now: number): void {
   const invitees = getDatePollInvitees(pollId);
-  const plan = initialReminderPlan(responseDueAt, now);
+  const plan = responseDueAt !== null ? initialReminderPlan(responseDueAt, now) : { stage: STAGE_NONE, dueAt: null };
   const update = db.prepare(
     'UPDATE event_date_poll_invitees SET automatic_reminder_stage = ?, automatic_reminder_due_at = ? WHERE poll_id = ? AND player_id = ?',
   );
@@ -679,13 +685,15 @@ export type ReopenResult =
   | { ok: true; poll: DatePollRow }
   | { ok: false; code: 'not_closed' | 'conflict' | 'invalid'; error: string };
 
-export function reopenDatePoll(poll: DatePollRow, responseDueOn: string | undefined): ReopenResult {
+// undefined = keep the current deadline (or lack of one), null = explicitly
+// clear it (reopen open-ended), string = set a new one.
+export function reopenDatePoll(poll: DatePollRow, responseDueOn: string | null | undefined): ReopenResult {
   const now = Date.now();
   let responseDueAt = poll.response_due_at;
   if (responseDueOn !== undefined) {
-    responseDueAt = endOfIsoDateUtcMs(responseDueOn);
+    responseDueAt = responseDueOn === null ? null : endOfIsoDateUtcMs(responseDueOn);
   }
-  if (responseDueAt <= now) {
+  if (responseDueAt !== null && responseDueAt <= now) {
     return {
       ok: false,
       code: 'invalid',
@@ -793,7 +801,11 @@ export function dueAutomaticReminders(now = Date.now()): DueAutomaticReminder[] 
 export function advanceAutomaticReminder(pollId: string, playerId: string, sentStage: number, now = Date.now()): void {
   const poll = getDatePoll(pollId);
   if (!poll) return;
-  const plan = nextReminderPlan(poll.response_due_at, sentStage, now);
+  // response_due_at can only be null here if the deadline was cleared after
+  // this reminder was scheduled, in which case the reschedule that cleared
+  // it already wiped every pending automatic_reminder_due_at too — kept as a
+  // defensive fallback rather than an invariant the sweep silently relies on.
+  const plan = poll.response_due_at !== null ? nextReminderPlan(poll.response_due_at, sentStage, now) : { stage: STAGE_NONE, dueAt: null };
   db.prepare(
     `UPDATE event_date_poll_invitees
      SET last_reminder_at = ?, automatic_reminder_stage = ?, automatic_reminder_due_at = ?

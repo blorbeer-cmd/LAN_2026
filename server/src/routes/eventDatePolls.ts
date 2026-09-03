@@ -519,7 +519,7 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
     }
     duplicateKey.add(key);
   }
-  if (!isValidIsoDate(responseDueOn)) {
+  if (responseDueOn !== undefined && responseDueOn !== null && !isValidIsoDate(responseDueOn)) {
     return res.status(400).json({ error: 'responseDueOn muss ein gültiges Kalenderdatum sein.' });
   }
   if (note !== undefined && note !== null && (typeof note !== 'string' || note.trim().length > 500)) {
@@ -555,7 +555,7 @@ eventDatePollsRouter.post('/', resolveEventForPolls, (req, res) => {
     event,
     {
       options: parsedOptions,
-      responseDueOn,
+      responseDueOn: responseDueOn ?? undefined,
       note: note?.trim() || null,
       inviteePlayerIds: inviteeIds,
       topic,
@@ -631,7 +631,7 @@ eventDatePollsRouter.patch('/:pollId', resolveEventForPolls, (req, res) => {
     fields.note = typeof note === 'string' ? note.trim() || null : null;
   }
   if (responseDueOn !== undefined) {
-    if (!isValidIsoDate(responseDueOn)) {
+    if (responseDueOn !== null && !isValidIsoDate(responseDueOn)) {
       return res.status(400).json({ error: 'responseDueOn muss ein gültiges Kalenderdatum sein.' });
     }
     fields.responseDueOn = responseDueOn;
@@ -862,7 +862,7 @@ eventDatePollsRouter.post('/:pollId/reopen', resolveEventForPolls, (req, res) =>
     return res.status(409).json({ error: 'Nur die letzte Runde einer Abstimmung kann wieder geöffnet werden.' });
   }
   const { responseDueOn } = req.body ?? {};
-  if (responseDueOn !== undefined && !isValidIsoDate(responseDueOn)) {
+  if (responseDueOn !== undefined && responseDueOn !== null && !isValidIsoDate(responseDueOn)) {
     return res.status(400).json({ error: 'responseDueOn muss ein gültiges Kalenderdatum sein.' });
   }
   const result = reopenDatePoll(poll, responseDueOn);
