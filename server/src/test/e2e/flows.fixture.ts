@@ -98,6 +98,24 @@ function assertMarkerStaysPut(
   );
 }
 
+// group.locator(...).evaluate(fn) resolves the element in one round trip and
+// invokes fn against that handle in a separate, later one (Locator._withElement
+// in playwright-core). The food-orders view can legitimately re-render between
+// those two round trips - its own optimistic update plus the quiet background
+// refetch that reconciles concurrent changes from other devices - which
+// detaches the handle and makes a mid-flight getBoundingClientRect() read
+// report an all-zero rect for a marker that is actually on screen. Querying
+// by the marker's own stable data attribute inside a single page.evaluate()
+// keeps the lookup and the read in one atomic page-side turn, so there is no
+// gap left for a re-render to land in.
+async function readPaidMarkerRect(playerId: string): Promise<{ left: number; width: number }> {
+  return page.evaluate((id) => {
+    const marker = document.querySelector(`[data-toggle-group-paid="${id}"]`);
+    const rect = marker!.getBoundingClientRect();
+    return { left: rect.left, width: rect.width };
+  }, playerId);
+}
+
 async function setDateTimeField(id: string, value: string): Promise<void> {
   await page.locator(`#${id}`).evaluate((element, nextValue) => {
     (element as HTMLInputElement).value = nextValue;
@@ -2529,7 +2547,10 @@ flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und
   assert.equal(await page.locator('[data-item-quantity]').inputValue(), '');
   assert.equal(await page.locator('[data-item-quantity]').getAttribute('placeholder'), 'Anzahl');
   assert.equal(await page.locator('.food-order-quantity-field > span').count(), 0);
-  assert.equal(await page.locator('[data-item-quantity]').evaluate((input) => getComputedStyle(input).textAlign), 'left');
+  assert.equal(
+    await page.evaluate(() => getComputedStyle(document.querySelector('[data-item-quantity]')!).textAlign),
+    'left',
+  );
   await page.fill('[data-item-desc]', 'Margherita groß');
   await page.fill('[data-item-quantity]', '2');
   await page.fill('[data-item-price]', '9,50');
@@ -2568,10 +2589,7 @@ flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und
   const group = page.locator('.food-order-group', { hasText: alice.name });
   await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt?")');
   assert.equal(await group.locator('.food-order-paid-marker').getAttribute('aria-pressed'), 'false');
-  const openMarkerGeometry = await group.locator('.food-order-paid-marker').evaluate((marker) => {
-    const rect = marker.getBoundingClientRect();
-    return { left: rect.left, width: rect.width };
-  });
+  const openMarkerGeometry = await readPaidMarkerRect(alice.id);
   assert.equal(await group.locator('.food-order-group-amount').innerText(), '20,90 €');
   assert.equal(await group.locator('[data-group-pay]').count(), 1);
   assert.equal(await page.locator('.food-order-item [data-group-pay]').count(), 0);
@@ -2635,10 +2653,7 @@ flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und
   await page.click('[data-confirm-ok]');
   await page.waitForSelector('text=1 Position als bezahlt markiert.');
   await page.waitForSelector('.food-order-paid-marker[aria-pressed="true"]:has-text("Bezahlt")');
-  const paidMarkerGeometry = await group.locator('.food-order-paid-marker').evaluate((marker) => {
-    const rect = marker.getBoundingClientRect();
-    return { left: rect.left, width: rect.width };
-  });
+  const paidMarkerGeometry = await readPaidMarkerRect(alice.id);
   assertMarkerStaysPut(paidMarkerGeometry, openMarkerGeometry, 'marking the group paid');
   await waitForTextDecoration(group.locator('.food-order-group-amount'), 'line-through');
   await waitForTextDecoration(marghieRow.locator('.food-order-item-description'), 'line-through');
@@ -2693,10 +2708,7 @@ flowTest('food-orders', 'Essensbestellung: direkte Zahlung pro Personenblock und
   await page.waitForSelector('text=Nachtrag nach Bestätigung');
   await page.waitForSelector('.food-order-paid-marker[aria-pressed="false"]:has-text("Bezahlt?")');
   assert.equal(await group.locator('.food-order-group-amount').innerText(), '25,30 €');
-  const changedTotalMarkerGeometry = await group.locator('.food-order-paid-marker').evaluate((marker) => {
-    const rect = marker.getBoundingClientRect();
-    return { left: rect.left, width: rect.width };
-  });
+  const changedTotalMarkerGeometry = await readPaidMarkerRect(alice.id);
   assertMarkerStaysPut(changedTotalMarkerGeometry, openMarkerGeometry, 'adding a position to a paid group');
   assert.equal(await group.locator('[data-group-pay]').isDisabled(), false);
   await group.locator('[data-group-pay]').click();
