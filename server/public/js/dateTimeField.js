@@ -442,13 +442,6 @@ export function wireDateTimeField(container, id) {
       }
     }
 
-    function onChange(event) {
-      if (!event.target.closest('[data-dt-month-select], [data-dt-year-select]')) return;
-      const month = Number(popover.querySelector('[data-dt-month-select]').value);
-      const year = Number(popover.querySelector('[data-dt-year-select]').value);
-      jumpToYearMonth(year, month);
-    }
-
     function onOutside(event) {
       if (!popover.contains(event.target) && !trigger.contains(event.target)) closeActive();
     }
