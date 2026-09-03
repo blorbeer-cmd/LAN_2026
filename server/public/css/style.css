@@ -74,6 +74,7 @@
   --row-icon-size: 36px;
   --tap-target-size: 44px;
   --info-popover-max-width: 320px;
+  --date-picker-width: 360px;
   --selection-card-min-width: 160px;
   --seating-seat-width: var(--selection-card-min-width);
   --seating-seat-height: calc(var(--avatar-size-lg) + var(--space-2));
@@ -235,6 +236,20 @@ textarea {
 
 .muted {
   color: var(--text-muted);
+}
+
+/* Keeps content in the accessibility tree and announced by aria-live
+   without taking any visible space. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px; /* design-token-ok: standard 1px clip-rect offset for the visually-hidden pattern, tied to the 1x1px box above, not a spacing choice */
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .error-text {
@@ -2715,7 +2730,7 @@ button.draft-pool-player {
 }
 
 .dt-popover {
-  width: 320px;
+  width: var(--date-picker-width);
   max-width: calc(100vw - 2 * var(--space-2));
   z-index: 80;
   box-shadow: var(--shadow);
@@ -2723,8 +2738,28 @@ button.draft-pool-player {
 .dt-popover-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-1);
   margin-bottom: var(--space-2);
+}
+.dt-popover-month-year {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: var(--space-1);
+}
+.dt-popover-month-year select {
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-align: center;
+  text-align-last: center;
+}
+.dt-popover-month-year .dt-month-select {
+  flex: 1.4;
+}
+.dt-popover-month-year .dt-year-select {
+  flex: 1;
 }
 .dt-calendar {
   width: 100%;
@@ -2745,6 +2780,7 @@ button.draft-pool-player {
   padding: var(--space-1);
 }
 .dt-day {
+  display: block;
   width: 100%;
   aspect-ratio: 1;
   background: none;
@@ -2758,6 +2794,10 @@ button.draft-pool-player {
   color: var(--state-offline);
   cursor: not-allowed;
   opacity: 0.55;
+}
+.dt-day-filler {
+  cursor: default;
+  pointer-events: none;
 }
 @media (hover: hover) {
   .dt-day:not(:disabled):hover {

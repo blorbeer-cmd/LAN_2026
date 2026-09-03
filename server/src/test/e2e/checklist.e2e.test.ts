@@ -99,6 +99,23 @@ test('create a To-Do as one member, claim and complete it as another, "Mir zugew
   await page.click('[data-dt-field="todo-due"] [data-dt-trigger]');
   await page.waitForSelector('.dt-popover');
   assert.equal(await page.locator('[data-dt-field="todo-due"] [data-dt-time]').count(), 0, 'due date picker has no time-of-day controls');
+  for (const width of [390, 1024]) {
+    await page.setViewportSize({ width, height: 844 });
+    const pickerGeometry = await page.locator('.dt-popover').evaluate((popover) => {
+      const month = (popover.querySelector('[data-dt-month-select]') as HTMLElement).getBoundingClientRect();
+      const year = (popover.querySelector('[data-dt-year-select]') as HTMLElement).getBoundingClientRect();
+      const bounds = popover.getBoundingClientRect();
+      return {
+        monthWidth: month.width,
+        yearWidth: year.width,
+        rightEdge: Math.max(month.right, year.right),
+        popoverRight: bounds.right,
+      };
+    });
+    assert.ok(pickerGeometry.monthWidth >= 128, `month selector keeps room at ${width}px`);
+    assert.ok(pickerGeometry.yearWidth >= 90, `year selector keeps room at ${width}px`);
+    assert.ok(pickerGeometry.rightEdge <= pickerGeometry.popoverRight + 1, `selectors stay inside picker at ${width}px`);
+  }
   await page.click('.dt-popover [data-dt-today]');
   await page.waitForSelector('.dt-popover', { state: 'detached' });
 
