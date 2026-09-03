@@ -16,7 +16,7 @@ import { registerTetrisSockets } from '../arcade/tetris';
 import { registerPongSockets } from '../arcade/pong';
 import { registerBlobbySockets } from '../arcade/blobby';
 import { registerSnakeSockets } from '../arcade/snake';
-import { registerScribbleSockets } from '../arcade/scribble';
+import { registerScribbleSockets, clearScribbleState } from '../arcade/scribble';
 import { clearLobbyMemberships } from '../arcade/lobbyMembership';
 
 function connect(baseUrl: string): Promise<ClientSocket> {
@@ -180,6 +180,7 @@ test('a non-host participant can leave a running match in every arcade game', as
     io.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     clearLobbyMemberships();
+    clearScribbleState();
   }
 });
 
@@ -243,6 +244,7 @@ test('leaving a running match never shows the leaver their own "opponent left" t
     io.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     clearLobbyMemberships();
+    clearScribbleState();
   }
 });
 
@@ -315,6 +317,7 @@ test('scribble: leaving revokes guess authorization instead of letting a departe
     io.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     clearLobbyMemberships();
+    clearScribbleState();
   }
 });
 
@@ -356,5 +359,6 @@ test('a host finishing a match at the same instant a guest leaves it resolves cl
     io.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     clearLobbyMemberships();
+    clearScribbleState();
   }
 });
