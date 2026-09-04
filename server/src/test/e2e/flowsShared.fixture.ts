@@ -102,6 +102,24 @@ export function assertMarkerStaysPut(
   );
 }
 
+// group.locator(...).evaluate(fn) resolves the element in one round trip and
+// invokes fn against that handle in a separate, later one (Locator._withElement
+// in playwright-core). The food-orders view can legitimately re-render between
+// those two round trips - its own optimistic update plus the quiet background
+// refetch that reconciles concurrent changes from other devices - which
+// detaches the handle and makes a mid-flight getBoundingClientRect() read
+// report an all-zero rect for a marker that is actually on screen. Querying
+// by the marker's own stable data attribute inside a single page.evaluate()
+// keeps the lookup and the read in one atomic page-side turn, so there is no
+// gap left for a re-render to land in.
+export async function readPaidMarkerRect(playerId: string): Promise<{ left: number; width: number }> {
+  return page.evaluate((id) => {
+    const marker = document.querySelector(`[data-toggle-group-paid="${id}"]`);
+    const rect = marker!.getBoundingClientRect();
+    return { left: rect.left, width: rect.width };
+  }, playerId);
+}
+
 export async function setDateTimeField(id: string, value: string): Promise<void> {
   await page.locator(`#${id}`).evaluate((element, nextValue) => {
     (element as HTMLInputElement).value = nextValue;
