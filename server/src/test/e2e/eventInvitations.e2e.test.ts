@@ -89,6 +89,7 @@ before(async () => {
   await finishE2EOnboarding(BASE_URL, memberCookie);
 
   const now = Date.now();
+  const paymentDueAt = Math.floor((now + 24 * 60 * 60 * 1000) / 60_000) * 60_000;
   const event = await fetch(`${BASE_URL}/api/events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: ownerCookie },
@@ -101,7 +102,7 @@ before(async () => {
       costCents: 2550,
       accommodationCostCents: 10000,
       paypalLink: 'https://paypal.me/respawn-e2e',
-      paymentDueAt: now + 24 * 60 * 60 * 1000,
+      paymentDueAt,
     }),
   });
   assert.equal(event.status, 201);
@@ -168,7 +169,7 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.equal(await editEventModal.locator('[data-dt-field="event-ends"] [data-dt-clear]').count(), 0);
   await editEventModal.locator('[data-close]').click();
   const discardChanges = ownerPage.locator('.modal-backdrop [data-confirm]');
-  if (await discardChanges.count()) await discardChanges.click();
+  assert.equal(await discardChanges.count(), 0, 'opening and closing an unchanged event must not ask to discard changes');
   await editEventModal.waitFor({ state: 'detached' });
   assert.equal(await ownerEventCard.locator('.event-calendar-actions').count(), 1);
   assert.equal(await ownerEventCard.locator('[data-event-calendar], [data-download-event-calendar]').count(), 3);

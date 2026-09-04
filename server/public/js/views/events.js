@@ -19,7 +19,7 @@ import { state } from '../state.js';
 import { icon } from '../icons.js';
 import { avatarHtml, escapeHtml } from '../format.js';
 import { showToast } from '../toast.js';
-import { dateTimeFieldHtml, wireDateTimeField, wireDateTimeRange } from '../dateTimeField.js';
+import { dateTimeFieldHtml, normalizeDatetimeLocalMs, wireDateTimeField, wireDateTimeRange } from '../dateTimeField.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { getMyId } from '../whoami.js';
 import { emptyStateHtml } from '../emptyState.js';
@@ -1065,8 +1065,8 @@ function openEventForm(ctx, existing) {
         const startsAt = capturedEl.querySelector('#event-starts').value;
         const endsAt = capturedEl.querySelector('#event-ends').value;
         const scheduleChanged = !isPlanningEvent && (
-          (startsAt ? new Date(startsAt).getTime() : null) !== (existing?.startsAt ?? null) ||
-          (endsAt ? new Date(endsAt).getTime() : null) !== (existing?.endsAt ?? null)
+          (startsAt ? normalizeDatetimeLocalMs(new Date(startsAt).getTime()) : null) !== (existing?.startsAt == null ? null : normalizeDatetimeLocalMs(existing.startsAt)) ||
+          (endsAt ? normalizeDatetimeLocalMs(new Date(endsAt).getTime()) : null) !== (existing?.endsAt == null ? null : normalizeDatetimeLocalMs(existing.endsAt))
         );
         const paymentDueChanged = (paymentDueAt ? new Date(paymentDueAt).getTime() : null) !== (existing?.paymentDueAt ?? null);
         const dirty = isEdit
