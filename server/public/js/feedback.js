@@ -40,13 +40,13 @@ export function openFeedbackModal(view) {
     'Feedback',
     `<form id="feedback-form" class="stack">
       <div>
-        <span class="field-label" id="feedback-sentiment-label">Art (optional)</span>
+        <span class="field-label" id="feedback-sentiment-label">Art</span>
         <div class="selection-toolbar" role="group" aria-labelledby="feedback-sentiment-label" id="feedback-sentiment-toggle">
           ${sentimentButtonsHtml()}
         </div>
       </div>
       <div>
-        <label for="feedback-message" class="field-label">Nachricht</label>
+        <label for="feedback-message" class="field-label is-required">Nachricht</label>
         <textarea id="feedback-message" rows="4" maxlength="${MAX_MESSAGE_LENGTH}" required
           placeholder="Was fällt dir auf?"></textarea>
       </div>

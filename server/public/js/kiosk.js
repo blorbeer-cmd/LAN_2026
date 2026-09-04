@@ -203,11 +203,11 @@ function renderKioskLogin() {
           </div>
         </div>
         <label>
-          <span class="field-label">Kiosk-Konto</span>
+          <span class="field-label is-required">Kiosk-Konto</span>
           <input name="username" type="text" autocomplete="username" maxlength="100" required value="${escapeHtml(account)}" />
         </label>
         <label>
-          <span class="field-label">Passwort</span>
+          <span class="field-label is-required">Passwort</span>
           <input name="password" type="password" autocomplete="current-password" maxlength="200" required />
         </label>
         <p class="form-error" data-kiosk-login-error role="alert" hidden></p>

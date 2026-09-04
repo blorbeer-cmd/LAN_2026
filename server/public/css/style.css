@@ -1866,6 +1866,11 @@ input[type='number']::-webkit-inner-spin-button {
   color: var(--text-muted);
   margin: 0 0 var(--space-1) 2px; /* design-token-ok: 2px optical indent aligns the label with the input's inset text */
 }
+.field-label.is-required::after {
+  content: ' *';
+  color: var(--accent);
+  font-weight: var(--font-weight-bold);
+}
 
 /* ---------- Layout helpers ---------- */
 

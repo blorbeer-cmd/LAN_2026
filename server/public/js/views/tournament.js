@@ -380,7 +380,7 @@ function renderCreateForm(el, ctx) {
         <div class="tournament-create-step-title">
           <h3 id="tournament-draw-step-title">Auslosung</h3>
         </div>
-        <label class="field-label" for="tourn-game-search">Spiel auswählen</label>
+        <label class="field-label is-required" for="tourn-game-search">Spiel auswählen</label>
         ${searchSelectHtml('tourn-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen…' })}
         ${rosterPickerHtml({
           id: 'tourn-create-roster',
@@ -422,7 +422,7 @@ function renderCreateForm(el, ctx) {
           <h3 id="tournament-mode-step-title">Modus</h3>
         </div>
         <div class="title-with-info tournament-format-label">
-          <label class="field-label" for="tourn-format">Turnierformat</label>
+          <label class="field-label is-required" for="tourn-format">Turnierformat</label>
           ${
             createFormat === 'group_knockout'
               ? infoTooltipHtml(
@@ -440,11 +440,11 @@ function renderCreateForm(el, ctx) {
           createFormat === 'group_knockout'
             ? `<div class="row" style="align-items:flex-start;">
                  <div style="flex:1;">
-                   <label for="tourn-group-count" class="field-label">Anzahl Gruppen</label>
+                   <label for="tourn-group-count" class="field-label is-required">Anzahl Gruppen</label>
                    <input type="number" id="tourn-group-count" min="2" value="${createGroupCount}" />
                  </div>
                  <div style="flex:1;">
-                   <label for="tourn-advancers" class="field-label">Aufsteiger pro Gruppe</label>
+                   <label for="tourn-advancers" class="field-label is-required">Aufsteiger pro Gruppe</label>
                    <input type="number" id="tourn-advancers" min="1" value="${createAdvancersPerGroup}" />
                  </div>
                </div>`
@@ -465,7 +465,7 @@ function renderCreateForm(el, ctx) {
         <div class="field-row">
           <div>
             <div class="title-with-info tournament-field-label">
-              <label for="tourn-lobby-name" class="field-label">Lobby-Basisname (optional)</label>
+              <label for="tourn-lobby-name" class="field-label">Lobby-Basisname</label>
               ${infoTooltipHtml(
                   'tournament-lobby-help',
                   'Lobby-Basisname',
@@ -476,7 +476,7 @@ function renderCreateForm(el, ctx) {
           </div>
           <div>
             <div class="tournament-field-label">
-              <label for="tourn-lobby-password" class="field-label">Lobby-Passwort (optional)</label>
+              <label for="tourn-lobby-password" class="field-label">Lobby-Passwort</label>
             </div>
             <input type="text" id="tourn-lobby-password" maxlength="60" value="${escapeHtml(createLobbyPassword)}" placeholder="z. B. zocken123" />
           </div>

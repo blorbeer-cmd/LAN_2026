@@ -372,7 +372,7 @@ function openSuggestForm(ctx) {
     `
       <form id="suggest-form" class="stack">
         <div>
-          <label class="field-label" for="suggest-title">Titel</label>
+          <label class="field-label is-required" for="suggest-title">Titel</label>
           <input type="text" id="suggest-title" maxlength="60" required autofocus />
         </div>
         <div>

@@ -35,6 +35,10 @@ function snapToStep(ms) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, snapped, 0, 0).getTime();
 }
 
+export function normalizeDatetimeLocalMs(ms) {
+  return ms === null ? null : snapToStep(ms);
+}
+
 function formatDateInput(ms) {
   if (!ms) return '';
   const date = new Date(ms);
@@ -139,7 +143,7 @@ function closeActive({ restoreFocus = false } = {}) {
 }
 
 export function dateTimeFieldHtml(id, rawValueMs, opts = {}) {
-  const valueMs = rawValueMs ? (opts.dateOnly ? rawValueMs : snapToStep(rawValueMs)) : null;
+  const valueMs = rawValueMs ? (opts.dateOnly ? rawValueMs : normalizeDatetimeLocalMs(rawValueMs)) : null;
   const hasValue = valueMs !== null;
   const label = escapeHtml(opts.label || 'Datum');
   const disabled = opts.disabled ? ' disabled' : '';
@@ -309,7 +313,7 @@ export function wireDateTimeField(container, id) {
   }
 
   function applyMs(ms, { dispatch = true } = {}) {
-    const normalized = ms === null ? null : (dateOnly ? ms : snapToStep(ms));
+    const normalized = ms === null ? null : (dateOnly ? ms : normalizeDatetimeLocalMs(ms));
     hidden.value = normalized === null ? '' : toDatetimeLocal(normalized);
     dateInput.value = formatDateInput(normalized);
     if (timeInput) timeInput.value = formatTimeInput(normalized);

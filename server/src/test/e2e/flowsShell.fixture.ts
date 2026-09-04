@@ -547,6 +547,8 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   // have nothing to match, so the ambient default made them fail on every 1st.
   await page.fill('#event-starts-date', '15062027');
   await page.fill('#event-starts-time', '1200');
+  await page.fill('#event-ends-date', '15.06.2027');
+  await page.fill('#event-ends-time', '12:00');
   // One day before the pinned start: rejected by the range rule regardless of
   // today's date. Setting the start first matters, because wireDateTimeRange
   // pulls an earlier end forward whenever the start moves past it.
@@ -571,6 +573,7 @@ flowTest('Orga Events tab and Profil use grouped help while admin tools stay out
   assert.equal(await page.locator('.event-payment-label').count(), 0);
   assert.match(await page.locator('#event-paypal').getAttribute('placeholder') ?? '', /E-Mail-Adresse/);
   await page.click('.modal[aria-label="Neues Event"] [data-close]');
+  await page.click('[data-confirm]');
   // TV-Kiosk is not an Orga tab (only "Kioskverwaltung" in Admin reaches it,
   // see "the authenticated admin role owns the seating editor and backup
   // tools" below) — Orga itself only ever exposes these five tabs, sorted

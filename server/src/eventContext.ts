@@ -5,7 +5,7 @@ import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 export interface EventContextEvent {
   id: string;
   name: string;
-  starts_at: number;
+  starts_at: number | null;
   ends_at: number | null;
   status: 'draft' | 'published' | 'cancelled' | 'ended';
   group_id: string | null;
@@ -35,7 +35,7 @@ export function getSelectableEvent(eventId: string): EventContextEvent | undefin
       `SELECT id, name, starts_at, ends_at, status, group_id,
               event_type_key, preset_version, schedule_revision, is_test
        FROM events
-       WHERE id = ? AND group_id = ? AND status = 'published' AND ended_at IS NULL`,
+       WHERE id = ? AND group_id = ? AND status IN ('published', 'draft') AND ended_at IS NULL`,
     )
     .get(eventId, DEFAULT_GROUP_ID) as EventContextEvent | undefined;
 }
@@ -43,9 +43,8 @@ export function getSelectableEvent(eventId: string): EventContextEvent | undefin
 // Takes the event's schedule_revision (not just its id) so the roster row
 // this writes is immediately a CURRENT confirmed participation, not just an
 // 'accepted' status — see eventParticipation.ts's ACCEPTED_EVENT_PARTICIPANT_SQL.
-// Every caller already has the event from getSelectableEvent() (which only
-// ever returns published, i.e. dated, events), so this never needs to look
-// the revision up separately.
+// Every caller already has the event from getSelectableEvent(), so this never
+// needs to look the revision up separately.
 function acceptEventParticipation(playerId: string, event: EventContextEvent): void {
   db.prepare(
     `INSERT INTO event_participants (event_id, player_id, status, confirmed_schedule_revision)
@@ -118,7 +117,7 @@ export function getOrRepairActiveEvent(playerId: string): EventContextEvent {
          JOIN event_participants ep
            ON ep.event_id = e.id AND ep.player_id = pec.player_id AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          WHERE pec.player_id = ? AND e.id != ? AND e.group_id = ?
-           AND e.status = 'published' AND e.ended_at IS NULL`,
+           AND e.status IN ('published', 'draft') AND e.ended_at IS NULL`,
       )
       .get(playerId, OUTSIDE_EVENTS_ID, DEFAULT_GROUP_ID) as EventContextEvent | undefined;
     if (current) return current;
@@ -140,7 +139,7 @@ export function setActiveEventForPlayer(playerId: string, eventId: string): Even
          JOIN event_participants ep
            ON ep.event_id = e.id AND ep.player_id = ? AND ${ACCEPTED_EVENT_PARTICIPANT_SQL}
          WHERE e.id = ? AND e.id != ? AND e.group_id = ?
-           AND e.status = 'published' AND e.ended_at IS NULL`,
+           AND e.status IN ('published', 'draft') AND e.ended_at IS NULL`,
       )
       .get(playerId, eventId, OUTSIDE_EVENTS_ID, DEFAULT_GROUP_ID) as EventContextEvent | undefined;
     if (!event) return undefined;

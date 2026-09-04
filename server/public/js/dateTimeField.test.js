@@ -5,6 +5,7 @@ import {
   dateTimeFieldHtml,
   formatDateTyping,
   formatTimeTyping,
+  normalizeDatetimeLocalMs,
   parseDateInput,
   parseTimeInput,
 } from './dateTimeField.js';
@@ -30,6 +31,13 @@ test('the minute value snaps to the shared 5-minute step', () => {
   const html = dateTimeFieldHtml('my-field', value);
   assert.match(html, /value="2026-07-08T14:35"/);
   assert.match(html, /data-dt-time[^>]+value="14:35"/);
+});
+
+test('datetime normalization matches the value shown by the editable field', () => {
+  const raw = new Date(2026, 6, 8, 14, 37, 12).getTime();
+  const normalized = normalizeDatetimeLocalMs(raw);
+  assert.equal(normalized, new Date(2026, 6, 8, 14, 35).getTime());
+  assert.equal(normalizeDatetimeLocalMs(null), null);
 });
 
 test('clearable controls the clear action and required state', () => {

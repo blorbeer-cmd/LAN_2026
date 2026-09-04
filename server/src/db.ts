@@ -4000,9 +4000,9 @@ registerMigration({
   up: addEventAccommodationAccounting,
 });
 
-// Integrated event date poll (docs/plans/event-date-poll-concept.md): a
-// planning event ("In Planung", status draft) can exist before a fixed date is
-// known, and the poll that later fixes it — and can fix it again on a later
+// Integrated event date poll (docs/plans/event-date-poll-concept.md): an event
+// with internal draft status can exist before a fixed date is known, and the
+// poll that later fixes it — and can fix it again on a later
 // reschedule — lives inside the same event/participant tables rather than a
 // separate object that gets "converted" into an event.
 //

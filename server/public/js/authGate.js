@@ -67,7 +67,7 @@ function cardShell(title, subtitle, bodyHtml) {
 function nameField() {
   return `
     <div>
-      <label for="auth-name" class="field-label">Name</label>
+      <label for="auth-name" class="field-label is-required">Name</label>
       <input id="auth-name" type="text" autocomplete="username" required autofocus />
     </div>
   `;
@@ -76,7 +76,7 @@ function nameField() {
 function passwordField({ autofocus = false, autocomplete = 'current-password', label = 'Passwort' } = {}) {
   return `
     <div>
-      <label for="auth-password" class="field-label">${escapeHtml(label)}</label>
+      <label for="auth-password" class="field-label is-required">${escapeHtml(label)}</label>
       <div class="row">
         <input id="auth-password" style="flex:1;min-width:0;" type="password" autocomplete="${autocomplete}" required minlength="1" ${autofocus ? 'autofocus' : ''} />
         <button type="button" class="btn btn-sm" data-password-toggle aria-label="Passwort anzeigen" title="Passwort anzeigen">${icon('eye')}</button>
@@ -104,7 +104,7 @@ function renderRegisterForm() {
 function renderClaimForm(bootstrapAccounts = null) {
   const accountPicker = bootstrapAccounts
     ? `<div>
-        <label for="auth-player" class="field-label">Bestehendes Profil</label>
+        <label for="auth-player" class="field-label is-required">Bestehendes Profil</label>
         <select id="auth-player" required ${bootstrapAccounts.length ? '' : 'disabled'}>
           ${bootstrapAccounts.map((player) => `<option value="${escapeHtml(player.id)}">${escapeHtml(player.name)}</option>`).join('')}
         </select>

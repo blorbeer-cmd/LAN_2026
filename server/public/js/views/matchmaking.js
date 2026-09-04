@@ -222,11 +222,11 @@ function openDrawResultEdit(draw, ctx) {
         <div class="muted" style="font-size:var(--font-size-xs);">${team.players.map((player) => escapeHtml(player.name)).join(', ')}</div>
         <div class="field-row">
           <div>
-            <label class="field-label" for="edit-draw-score-${index}">Wert (optional)</label>
+            <label class="field-label" for="edit-draw-score-${index}">Wert</label>
             <input type="number" id="edit-draw-score-${index}" data-edit-draw-score="${index}" step="any" value="${team.score ?? ''}" />
           </div>
           <div>
-            <label class="field-label" for="edit-draw-rank-${index}">Platz (optional)</label>
+            <label class="field-label" for="edit-draw-rank-${index}">Platz</label>
             <input type="number" id="edit-draw-rank-${index}" data-edit-draw-rank="${index}" min="1" value="${team.rank ?? ''}" />
           </div>
         </div>
@@ -632,7 +632,7 @@ export function renderMatchmaking(container, ctx) {
   container.innerHTML = `
     <div class="card stack">
       <div>
-        <label class="field-label" for="mm-game-search">Spiel auswählen</label>
+        <label class="field-label is-required" for="mm-game-search">Spiel auswählen</label>
         ${searchSelectHtml('mm-game', gameSelectOptions, selectedGameId, { placeholder: 'Spiel suchen…' })}
       </div>
       ${modeToggleHtml}

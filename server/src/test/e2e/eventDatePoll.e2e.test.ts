@@ -193,6 +193,21 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await eventCard.waitFor();
   const eventId = (await eventCard.getAttribute('data-event-card')) as string;
 
+  await eventCard.locator('[data-edit-event]').click();
+  const editEventModal = ownerPage.locator('.modal-backdrop', { hasText: 'Event bearbeiten' });
+  await editEventModal.waitFor();
+  assert.equal(await editEventModal.locator('#event-starts-date:disabled').count(), 0, 'an undated event can receive its period later');
+  await editEventModal.locator('#event-starts-date').fill('08072027');
+  await editEventModal.locator('#event-starts-time').fill('1200');
+  await editEventModal.locator('#event-ends-date').fill('10.07.2027');
+  await editEventModal.locator('#event-ends-time').fill('1600');
+  await editEventModal.locator('#event-form button[type="submit"]').click();
+  await editEventModal.waitFor({ state: 'detached' });
+  await ownerPage.waitForFunction((name) => {
+    const card = Array.from(document.querySelectorAll('.event-card')).find((candidate) => candidate.textContent?.includes(name));
+    return card?.textContent?.includes('8.7.2027') && card?.textContent?.includes('10.7.2027');
+  }, EVENT_NAME);
+
   const ownerId = await currentPlayerId(ownerPage);
   const memberId = await currentPlayerId(memberPage);
   await invitePlayer(ownerPage, eventId, ownerId);

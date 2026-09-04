@@ -73,9 +73,9 @@ function openEntryForm(existing) {
     isEdit ? 'Eintrag bearbeiten' : 'Neuer Eintrag',
     `
       <form id="info-form" class="stack">
-        <label for="info-title" class="field-label">Titel</label>
+        <label for="info-title" class="field-label is-required">Titel</label>
         <input type="text" id="info-title" maxlength="80" required autofocus placeholder="z.B. WLAN" value="${escapeHtml(existing?.title ?? '')}" />
-        <label for="info-content" class="field-label">Inhalt</label>
+        <label for="info-content" class="field-label is-required">Inhalt</label>
         <textarea id="info-content" maxlength="1000" rows="4" required placeholder="z.B. Netz: Respawn / Passwort: …">${escapeHtml(existing?.content ?? '')}</textarea>
         <button type="submit" class="btn btn-primary btn-block">${isEdit ? 'Speichern' : 'Anlegen'}</button>
       </form>
