@@ -653,7 +653,7 @@ export function renderMatchmaking(container, ctx) {
           selectAllId: 'mm-select-all',
           selectNoneId: 'mm-select-none',
           toolbarLeadingHtml: `<div class="tournament-team-count-field">
-            <label class="field-label is-required" for="mm-teamcount">Anzahl Teams</label>
+            <label class="field-label" for="mm-teamcount">Anzahl Teams</label>
             <input type="number" id="mm-teamcount" min="2" value="${escapeHtml(teamCountValue)}" />
           </div>`,
           renderTrailing: (player) => playerSkillHtml(player, selectedGameId),

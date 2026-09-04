@@ -21,8 +21,8 @@ export { OUTSIDE_EVENTS_ID };
 export interface EventRow {
   id: string;
   name: string;
-  // Only NULL while status is 'draft' (a planning event whose date poll
-  // hasn't been scheduled yet) — enforced by a DB CHECK, not just this type.
+  // Dateless events use internal draft status; a period can be added later
+  // without changing the event's lifecycle state.
   starts_at: number | null;
   ends_at: number | null;
   location: string | null;
@@ -115,8 +115,7 @@ export interface CreateEventOptions {
 // Just creates the event — tracking starts off, so this never wipes live
 // status or conflicts with an already-tracking event. Call startTracking
 // separately once you actually want this event to go live. An event without a
-// period starts as a planning event and receives its first schedule revision
-// only once a period is fixed.
+// period starts with internal draft status and can receive a period later.
 export function createEvent(name: string, options: CreateEventOptions): EventRow {
   const id = nanoid();
   const eventTypeKey = options.eventTypeKey ?? DEFAULT_EVENT_TYPE_KEY;
@@ -238,7 +237,7 @@ function startTrackingInternal(id: string, reopenEnded: boolean): StartTrackingR
     return {
       ok: false,
       code: 'invalid',
-      error: 'Ein Planungs-Event ohne festen Termin kann nicht getrackt werden.',
+      error: 'Ein Event ohne festen Zeitraum kann nicht getrackt werden.',
     };
   }
   if (event.tracking_enabled) return { ok: true, event };
@@ -316,11 +315,9 @@ export function endEvent(id: string): EventRow | undefined {
   return getEvent(id);
 }
 
-// A planning event stays draft — even after its date poll schedules a date —
-// until the creator actually sends an invitation, matching the concept's
-// "Das Event bleibt draft, bis der Ersteller die regulären Einladungen ...
-// bestätigt". Called from the first successful invite on such an event;
-// guarded by starts_at IS NOT NULL so it can only fire once a date exists.
+// Keep the existing draft-to-published transition for invitation and roster
+// workflows. Updating the period itself deliberately does not change status:
+// planning continues after a period has been entered.
 export function publishPlanningEventIfScheduled(id: string): void {
   db.prepare("UPDATE events SET status = 'published' WHERE id = ? AND status = 'draft' AND starts_at IS NOT NULL").run(id);
 }

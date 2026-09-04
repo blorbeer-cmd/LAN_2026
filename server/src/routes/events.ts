@@ -1146,15 +1146,6 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
     if (!isNonEmptyString(name, 80)) return res.status(400).json({ error: 'Name muss 1-80 Zeichen lang sein.' });
     fields.name = name.trim();
   }
-  // A planning event's date is set exclusively through its date poll's
-  // schedule action (see routes/eventDatePolls.ts) — never through this
-  // generic metadata PATCH, so there is only ever one place that writes
-  // starts_at/ends_at/schedule_revision together in a single transaction.
-  if (existing.status === 'draft' && (startsAt !== undefined || endsAt !== undefined)) {
-    return res.status(409).json({
-      error: 'Der Termin eines Planungs-Events wird ausschließlich über die Terminabstimmung festgelegt.',
-    });
-  }
   if (startsAt !== undefined) {
     const parsed = parseOptionalTimestamp(startsAt, 'startsAt');
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
@@ -1169,10 +1160,14 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
   }
   // Validated against the EFFECTIVE start/end (existing values merged with
   // whatever this request is changing), so e.g. patching just endsAt on an
-  // event whose existing startsAt is later still gets caught. endsAt is
-  // required for any non-draft event and remains required during PATCH.
+  // event whose existing startsAt is later still gets caught. A planning
+  // event may remain undated, but a period update must always provide both
+  // boundaries.
   const effectiveStartsAt = fields.startsAt ?? existing.starts_at;
   const effectiveEndsAt = fields.endsAt !== undefined ? fields.endsAt : existing.ends_at;
+  if ((effectiveStartsAt === null) !== (effectiveEndsAt === null)) {
+    return res.status(400).json({ error: 'Der Zeitraum muss entweder vollständig oder gar nicht angegeben werden.' });
+  }
   if (effectiveStartsAt !== null) {
     if (effectiveEndsAt === null || effectiveEndsAt < effectiveStartsAt + EVENT_MINIMUM_DURATION_MS) {
       return res.status(400).json({ error: 'endsAt muss mindestens fünf Minuten nach startsAt liegen.' });

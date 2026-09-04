@@ -969,8 +969,8 @@ async function downloadExport(eventId) {
 // touches tracking state.
 function openEventForm(ctx, existing) {
   const isEdit = Boolean(existing);
-  const isPlanningEvent = isEdit && existing.status === 'draft' && existing.startsAt == null;
-  const dateRequired = isEdit && !isPlanningEvent;
+  const periodOptional = isEdit && existing.startsAt == null;
+  const dateRequired = isEdit && !periodOptional;
   const eventTypes = availableEventTypeOptions(state.eventTypeOptions);
   const selectedEventType = existing?.eventType ?? 'lan';
   const eventTypeSelectOptions = eventTypes
@@ -995,11 +995,11 @@ function openEventForm(ctx, existing) {
         <div class="field-row">
           <div>
             <label for="event-starts-date" class="field-label${dateRequired ? ' is-required' : ''}">Beginnt am</label>
-            ${dateTimeFieldHtml('event-starts', existing?.startsAt ?? null, { clearable: !isEdit, disabled: isPlanningEvent, label: 'Beginnt am' })}
+            ${dateTimeFieldHtml('event-starts', existing?.startsAt ?? null, { clearable: !isEdit, label: 'Beginnt am' })}
           </div>
           <div>
             <label for="event-ends-date" class="field-label${dateRequired ? ' is-required' : ''}">Endet am</label>
-            ${dateTimeFieldHtml('event-ends', existing?.endsAt ?? null, { clearable: !isEdit, disabled: isPlanningEvent, label: 'Endet am' })}
+            ${dateTimeFieldHtml('event-ends', existing?.endsAt ?? null, { clearable: !isEdit, label: 'Endet am' })}
           </div>
         </div>
         <div>
@@ -1064,7 +1064,7 @@ function openEventForm(ctx, existing) {
         const paymentDueAt = capturedEl.querySelector('#event-payment-due').value;
         const startsAt = capturedEl.querySelector('#event-starts').value;
         const endsAt = capturedEl.querySelector('#event-ends').value;
-        const scheduleChanged = !isPlanningEvent && (
+        const scheduleChanged = (
           (startsAt ? normalizeDatetimeLocalMs(new Date(startsAt).getTime()) : null) !== (existing?.startsAt == null ? null : normalizeDatetimeLocalMs(existing.startsAt)) ||
           (endsAt ? normalizeDatetimeLocalMs(new Date(endsAt).getTime()) : null) !== (existing?.endsAt == null ? null : normalizeDatetimeLocalMs(existing.endsAt))
         );
@@ -1126,12 +1126,12 @@ function openEventForm(ctx, existing) {
             return;
           }
 
-          const schedulePayload = isPlanningEvent
-            ? {}
-            : {
+          const schedulePayload = startsVal || endsVal
+            ? {
                 startsAt: startsVal ? new Date(startsVal).getTime() : null,
                 endsAt: endsVal ? new Date(endsVal).getTime() : null,
-              };
+              }
+            : {};
           const payload = {
             name,
             ...(!isEdit ? { eventType: modalEl.querySelector('#event-type').value } : {}),

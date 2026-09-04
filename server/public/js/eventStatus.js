@@ -15,19 +15,15 @@ export const EVENT_STATUS = Object.freeze({
   ended: { key: 'ended', label: 'Beendet', icon: 'circleCheck', badge: 'badge-offline' },
   tracking: { key: 'tracking', label: 'Trackt gerade', icon: 'radioTower', badge: 'badge-playing' },
   idle: { key: 'idle', label: 'Nicht aktiv', icon: 'pause', badge: 'badge-paused' },
-  // A planning event (docs/plans/event-date-poll-concept.md) has no fixed
-  // date yet — its own date poll section explains the terminfindung itself,
-  // this badge just needs to say up front that it isn't a normal event yet.
-  planning: { key: 'planning', label: 'In Planung', icon: 'vote', badge: 'badge-paused' },
 });
 
 // Order matters: an ended event never counts as tracking, the permanent base
-// workspace has no lifecycle of its own to report, and a still-dateless
-// planning event is neither tracking nor idle in the normal sense.
+// workspace has no lifecycle of its own to report. Whether an event already
+// has a period is not itself a lifecycle state: planning continues after a
+// period is entered, and an undated event simply remains inactive.
 export function eventStatus(event) {
   if (!event) return EVENT_STATUS.idle;
   if (event.isBase) return EVENT_STATUS.base;
-  if (event.startsAt == null) return EVENT_STATUS.planning;
   if (event.isEnded) return EVENT_STATUS.ended;
   if (event.trackingEnabled) return EVENT_STATUS.tracking;
   return EVENT_STATUS.idle;
@@ -73,8 +69,8 @@ export function eventSelectOption(event) {
 }
 
 // Fixed dates read chronologically from the event that starts first to the
-// one that starts last. A planning event without a date cannot be the next
-// event, so it follows every scheduled event.
+// one that starts last. An event without a date cannot be the next event, so
+// it follows every scheduled event.
 export function compareEventsByStartAscending(a, b) {
   if (a.startsAt == null) return b.startsAt == null ? 0 : 1;
   if (b.startsAt == null) return -1;

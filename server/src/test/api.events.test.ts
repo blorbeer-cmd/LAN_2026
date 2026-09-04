@@ -311,6 +311,14 @@ test('event creation validates name, optional periods and ordering', async () =>
   accept(planning.body.id, TEST_ADMIN_ID);
   const planningEvents = await request(app).get('/api/events');
   assert.ok(planningEvents.body.availableEvents.some((event: { id: string; startsAt: number | null }) => event.id === planning.body.id && event.startsAt === null));
+  const planningStart = Date.now() + 60_000;
+  const scheduledPlanning = await request(app)
+    .patch(`/api/events/${planning.body.id}`)
+    .send({ startsAt: planningStart, endsAt: planningStart + EVENT_MINIMUM_DURATION_MS });
+  assert.equal(scheduledPlanning.status, 200, JSON.stringify(scheduledPlanning.body));
+  assert.equal(scheduledPlanning.body.startsAt, planningStart);
+  assert.equal(scheduledPlanning.body.endsAt, planningStart + EVENT_MINIMUM_DURATION_MS);
+  assert.equal(scheduledPlanning.body.status, 'draft');
   assert.equal(
     (await request(app).post('/api/events').send({ name: 'Missing end', startsAt: Date.now() })).status,
     400,

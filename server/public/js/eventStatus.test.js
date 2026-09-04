@@ -33,14 +33,13 @@ test('a missing event falls back to the neutral state instead of throwing', () =
   assert.equal(eventStatus(null).key, 'idle');
 });
 
-// A planning event (docs/plans/event-date-poll-concept.md) has no fixed
-// date yet — neither "tracking" nor "idle" describes that, and ended/base
-// still take priority the same way they always have.
-test('an event without a fixed date reports as planning', () => {
-  assert.equal(eventStatus({ startsAt: null }).key, 'planning');
-  assert.equal(eventStatus({ startsAt: null, trackingEnabled: false }).key, 'planning');
+// A missing period is not a lifecycle state. Planning can continue after a
+// period is entered, while an undated event uses the normal inactive state.
+test('an event without a fixed date has no separate planning status', () => {
+  assert.equal(eventStatus({ startsAt: null }).key, 'idle');
+  assert.equal(eventStatus({ startsAt: null, trackingEnabled: false }).key, 'idle');
   assert.equal(eventStatus({ startsAt: null, isBase: true }).key, 'base');
-  assert.equal(eventStatus({ startsAt: null, isEnded: true }).key, 'planning');
+  assert.equal(eventStatus({ startsAt: null, isEnded: true }).key, 'ended');
 });
 
 test('every state carries a German label and an icon for accessible status output', () => {
@@ -103,11 +102,11 @@ test('event dropdown options show the earliest fixed start first and undated eve
   );
   assert.deepEqual(
     options.map((option) => option.iconState),
-    ['ended', 'tracking', 'planning'],
+    ['ended', 'tracking', 'idle'],
   );
 });
 
-test('the shared event comparator keeps two undated planning events stable', () => {
+test('the shared event comparator keeps two undated events stable', () => {
   assert.equal(compareEventsByStartAscending({ startsAt: null }, { startsAt: undefined }), 0);
 });
 

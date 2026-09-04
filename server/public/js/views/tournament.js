@@ -394,7 +394,7 @@ function renderCreateForm(el, ctx) {
           selectAllId: 'tourn-select-all',
           selectNoneId: 'tourn-select-none',
           toolbarLeadingHtml: `<div class="tournament-team-count-field">
-            <label class="field-label is-required" for="tourn-teamcount">Anzahl Teams</label>
+            <label class="field-label" for="tourn-teamcount">Anzahl Teams</label>
             <input type="number" id="tourn-teamcount" min="2" value="${escapeHtml(createTeamCount)}" />
           </div>`,
           renderTrailing: (player) => playerSkillHtml(player, selectedGameId),
