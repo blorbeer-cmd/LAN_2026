@@ -339,6 +339,9 @@ test('event creation validates name, optional periods and ordering', async () =>
     .post('/api/events')
     .send({ name: 'Teilnehmende', startsAt, endsAt: startsAt + EVENT_MINIMUM_DURATION_MS, visibilityScope: 'participants' });
   assert.equal(participantsOnly.status, 201, JSON.stringify(participantsOnly.body));
+  const clearedStart = await request(app).patch(`/api/events/${participantsOnly.body.id}`).send({ startsAt: null });
+  assert.equal(clearedStart.status, 400, JSON.stringify(clearedStart.body));
+  assert.match(clearedStart.body.error, /startsAt darf nicht leer sein/);
   const invalidType = await request(app)
     .post('/api/events')
     .send({ name: 'Unbekannter Typ', startsAt, endsAt: startsAt + EVENT_MINIMUM_DURATION_MS, eventType: 'trip' });

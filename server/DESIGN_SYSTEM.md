@@ -366,6 +366,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   choice among alternatives.
 - **Input** — plain `<input>`/`<select>`/`<textarea>` are styled globally by
   type selector; no class needed.
+- **Required fields** — mark required labels with `class="field-label is-required"`; the shared
+  CSS adds the visual `*`. Optional fields remain unmarked, so `(optional)` is not used as a
+  default label suffix. Keep the native `required` attribute on inputs where browser validation
+  is required; the visual marker is not a substitute for validation semantics.
 - **Number stepper** — every `input[type="number"]` is enhanced app-wide by
   `numberStepper.js` (no per-view wiring, same auto-enhancement approach as
   `icons.js`'s emoji replacement): a compact `.number-stepper-btn` pair

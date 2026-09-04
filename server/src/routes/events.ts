@@ -1158,7 +1158,8 @@ eventsRouter.patch('/:id', resolveEvent, requireGroupRole('admin'), (req, res) =
   if (startsAt !== undefined) {
     const parsed = parseOptionalTimestamp(startsAt, 'startsAt');
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
-    if (parsed.value !== null) fields.startsAt = parsed.value;
+    if (parsed.value === null) return res.status(400).json({ error: 'startsAt darf nicht leer sein.' });
+    fields.startsAt = parsed.value;
   }
   if (endsAt !== undefined) {
     const parsed = parseOptionalTimestamp(endsAt, 'endsAt');
