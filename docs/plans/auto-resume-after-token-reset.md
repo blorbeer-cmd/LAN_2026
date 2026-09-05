@@ -1,5 +1,8 @@
 # Konzept: Automatische Wiederaufnahme von Claude-Code- und Codex-Sessions nach Token-Reset (Windows)
 
+> Historischer Plan: Die PR-Pipeline und ihre automatische Review-Zustellung sind abgelöst.
+> Für PR-Reviews gilt [der manuelle Ablauf](../manual-pr-review.md); dieser Plan aktiviert keine Monitore.
+
 Ziel dieses Dokuments: ein Konzept und eine Schritt-für-Schritt-Anleitung, damit lokal auf dem
 Windows-Rechner unterbrochene Claude-Code- und Codex-Sessions nach dem Zurücksetzen des
 Nutzungslimits (Token-Reset) **automatisch weiterarbeiten**, ohne dass jede Session manuell neu

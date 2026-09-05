@@ -320,8 +320,8 @@ test("does not bootstrap dependencies after a branch safety stop", () => {
   assert.equal(existsSync(mainModulesPath), false);
 });
 
-test("names the agent-pipeline test for infrastructure work", () => {
+test("names the retained preflight test for infrastructure work", () => {
   const result = runPreflight(["--scope", "infra"]);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /node --test scripts\/agent-pipeline\.test\.mjs/);
+  assert.match(result.stdout, /node --test scripts\/agent-preflight\.test\.mjs/);
 });
