@@ -94,6 +94,10 @@ technisch erzwungene Garantie. Ohne Warteauftrag erfolgt keine automatische Sess
 
 ## Umstellung und Prüfung
 
+Die alte Automatik ist über einen gepushten Git-Tag, ursprüngliche GitHub-Einstellungen und ein
+lokales ZIP gesichert. Die [Wiederherstellungsanleitung](review-automation-backup/README.md)
+beschreibt die sichere Reihenfolge einschließlich Anbieterzugriff und Host-Monitor.
+
 Diese Umstellung folgt dem Pilot in [PR #546](https://github.com/blorbeer-cmd/LAN_2026/pull/546).
 Dessen Review fand keine konkreten Fehler, meldete aber fehlende technische Isolation. Der Nutzer
 hat daraufhin ausdrücklich den manuellen Ablauf mit frischer Unterhaltung und den Rückbau der
