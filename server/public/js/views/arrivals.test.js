@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { state } from '../state.js';
-import { arrivalsPeopleRows } from './arrivals.js';
+import { arrivalsPeopleRows, eventArrivalDepartureDefaults } from './arrivals.js';
 
 const PLAYERS = [
   { id: 'p1', name: 'Alice' },
@@ -57,4 +57,17 @@ test('the full roster is kept while the active event has no participant ids yet'
     arrivalsPeopleRows([]).map(({ player }) => player.id),
     ['p1', 'p2', 'p3'],
   );
+});
+
+test("own Ankunft/Abreise defaults to the event's start/end once both are set", () => {
+  assert.deepEqual(
+    eventArrivalDepartureDefaults({ startsAt: 1000, endsAt: 2000 }),
+    { arrivalAt: 1000, departureAt: 2000 },
+  );
+});
+
+test('a one-sided event period (only start or only end) yields no default', () => {
+  assert.deepEqual(eventArrivalDepartureDefaults({ startsAt: 1000, endsAt: null }), { arrivalAt: null, departureAt: null });
+  assert.deepEqual(eventArrivalDepartureDefaults({ startsAt: null, endsAt: 2000 }), { arrivalAt: null, departureAt: null });
+  assert.deepEqual(eventArrivalDepartureDefaults(null), { arrivalAt: null, departureAt: null });
 });
