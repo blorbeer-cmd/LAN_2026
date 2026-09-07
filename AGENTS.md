@@ -82,9 +82,30 @@ Push des eigenen Feature-Branches und Draft-PR. Der Nutzer kann diesen Abschluss
   Threads direkt von GitHub, prüft deren Commit-Bezug und bewertet Findings selbst. Berechtigte
   Findings und eigene CI-Fehler beheben, Zurückweisungen begründen und erledigte oder nachweislich
   obsolete Inline-Threads auflösen. Keine Entscheidungen allein aus Session-Erinnerungen ableiten.
-- Es gibt keinen automatischen Reviewstart, Anbieterwechsel oder dauerhaften Pipeline-Monitor.
-  Eine ausdrücklich gewünschte, zeitlich begrenzte Beobachtung darf neue Ergebnisse an die
-  Implementierung übergeben. Bei Merge, Schließen oder Ablauf endet sie; Details und Beispiele:
+- Sobald die Umsetzung vollständig, der offene PR konfliktfrei und die erforderliche CI für
+  den aktuellen Head grün ist, ausdrücklich „Bereit für Review“ melden. Dazu den exakten
+  PR-Link, Head-SHA und je einen kopierfertigen Befehl für Claude (`/pr-review URL`) und
+  Codex (`$pr-review URL`) in separaten Codeblöcken ausgeben. Echte URLs ohne Markdown-Link-
+  Syntax im Befehl verwenden. Pro Head nur einmal melden; ein Draft ist reviewfähig.
+- Gleichzeitig richtet der Implementierungs-Agent ohne weitere Rückfrage genau eine
+  PR-bezogene Beobachtung alle 15 Minuten in seiner Implementierungs-Session ein. In Codex
+  einen Thread-Heartbeat verwenden, in Claude die verfügbaren Session-Scheduling-Werkzeuge.
+  Vorher vorhandene Aufgaben prüfen und eine passende Beobachtung aktualisieren statt duplizieren.
+  PR-Link, Worktree, erwarteten Head und bearbeitete Review-IDs/Änderungsstände im Auftrag
+  beziehungsweise dauerhaftem Task-Kontext festhalten. Einrichtung und Scheduler-ID bestätigen;
+  bei fehlenden Werkzeugen oder Fehlern die fehlende Beobachtung ausdrücklich melden.
+- Bei jedem Check Zustand, Head, Reviews, normale PR-Kommentare und Inline-Threads von GitHub
+  lesen. Ohne neue relevante Ergebnisse still bleiben. Neue Findings im bestehenden Auftrag
+  selbst bewerten und berechtigte Fixes bearbeiten; unvollständige Reviews als solche melden.
+  Historische Ergebnisse nicht als Review des aktuellen Heads werten. Geänderte Kommentare
+  erneut bewerten; unveränderte Ergebnisse nicht mehrfach bearbeiten oder melden.
+- Nach Head-Wechsel alte Review-Zuordnung verwerfen, CI/Konflikte erneut prüfen und bei erneuter
+  Bereitschaft die Startbefehle für den neuen Head melden. Dieselbe Beobachtung aktualisieren.
+  Bei vollständig bearbeitetem Review ohne offene Findings für den aktuellen Head Beobachtung
+  beenden und den Nutzer informieren; ebenso bei Merge, Schließen oder Nutzerstopp. Falls nach
+  Fixes ein neuer Head entstanden ist, bleibt die Beobachtung für dessen nächste Review-Runde.
+  Bei nicht behebbaren Zugriffs-/Schedulerfehlern pausieren und das Hindernis einmal melden.
+  Es gibt keinen automatischen Reviewstart oder Anbieterwechsel. Details:
   [Manuelle PR-Reviews](docs/manual-pr-review.md).
 - Kein Agent approvt, merged, aktiviert Auto-Merge oder pusht auf `main`. Änderungen an
   Schutzregeln, Workflows, Infrastruktur, Secrets und Deploy-Berechtigungen brauchen einen
