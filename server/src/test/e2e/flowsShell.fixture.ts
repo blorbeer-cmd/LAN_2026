@@ -384,6 +384,13 @@ flowTest('icon-only controls keep the shared minimum touch target on phones', as
   await assertTouchTargets('.topbar-title', 'logo link');
   await assertTouchTargets('#event-context .search-select-toggle', 'event selector');
   await assertTouchTargets('.game-icon-btn', 'game actions');
+  const gameActionGaps = await page.locator('[data-game-catalog-search-item]').first().locator('.game-icon-btn')
+    .evaluateAll((elements) => elements.slice(1).map((element, index) => {
+      const previous = elements[index].getBoundingClientRect();
+      const current = element.getBoundingClientRect();
+      return Math.round(current.left - previous.right);
+    }));
+  assert.deepEqual(gameActionGaps, [0, 0], 'full-size game touch targets should not add visual gaps');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
 
   await openProfile();

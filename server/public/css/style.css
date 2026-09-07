@@ -3419,14 +3419,14 @@ button.card {
    another pill button competing with the sliders. Both trailer and Details
    use icons whose own glyph fills a roughly square area (monitorPlay's
    monitor frame, info's circle), so the controls stay visually even despite
-   the varying glyphs. Held in its own .game-row-links wrapper so it can sit
-   a bit further from the title than .game-row-name's own flex gap alone would
-   put it. */
+   the varying glyphs. Held in its own .game-row-links wrapper so the full
+   touch targets can sit directly beside each other without extra visual
+   distance or overlapping hit areas. */
 .game-row-links {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  margin-left: var(--space-2);
+  gap: 0;
+  margin-left: 0;
 }
 .game-icon-btn {
   display: inline-flex;
