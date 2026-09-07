@@ -361,6 +361,42 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
   assert.equal(await page.locator('.nav-btn:not([hidden])').count(), 6);
 });
 
+flowTest('icon-only controls keep the shared minimum touch target on phones', async () => {
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const assertTouchTargets = async (selector: string, label: string) => {
+    const sizes = await page.locator(selector).evaluateAll((elements) =>
+      elements
+        .map((element) => element.getBoundingClientRect())
+        .filter((box) => box.width > 0 && box.height > 0)
+        .map((box) => ({ width: Math.round(box.width), height: Math.round(box.height) })),
+    );
+    assert.ok(sizes.length > 0, `${label} should expose at least one visible touch target`);
+    assert.deepEqual(
+      sizes.filter(({ width, height }) => width < 44 || height < 44),
+      [],
+      `${label} should keep every visible target at least 44 × 44 px: ${JSON.stringify(sizes)}`,
+    );
+  };
+
+  await page.click('.nav-btn[data-view="gameCatalog"]');
+  await page.waitForSelector('.game-icon-btn');
+  await assertTouchTargets('.topbar-title', 'logo link');
+  await assertTouchTargets('#event-context .search-select-toggle', 'event selector');
+  await assertTouchTargets('.game-icon-btn', 'game actions');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+
+  await openProfile();
+  await page.waitForSelector('.profile-password-fields [data-password-toggle]');
+  await assertTouchTargets('.icon-btn', 'shared icon buttons in the profile');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+
+  await openOrgaTab('checklistPacking');
+  await page.waitForSelector('.checklist-item-list [data-remove-item]');
+  await assertTouchTargets('.icon-btn', 'shared icon buttons in the packing list');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+});
+
 flowTest('Umfragen: works for the permanently open "Allgemein" base event without forcing an event switch', async () => {
   await openOrgaTab('eventPolls');
   await page.waitForSelector('#new-event-poll');
