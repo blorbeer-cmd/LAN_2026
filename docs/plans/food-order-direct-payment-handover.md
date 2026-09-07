@@ -291,5 +291,5 @@ npm --prefix server run test:e2e
 
 Alle Tippziele bleiben bei mindestens 32 px, es werden ausschließlich bestehende Abstands-, Farb- und
 Typo-Token verwendet, `check:tokens` bleibt grün. Zustände nie allein über Farbe. Ergebnis bei Handy-
-und Laptopbreite prüfen. Abschluss über Commit, Push des Feature-Branches und Draft-PR mit gültigem
-Task-Vertrag; kein Approve, kein Merge, kein Push auf `main`.
+und Laptopbreite prüfen. Abschluss über Commit, Push des Feature-Branches und Draft-PR mit Ziel,
+Änderungen und Prüfergebnissen; kein Approve, kein Merge, kein Push auf `main`.

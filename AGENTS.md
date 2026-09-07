@@ -93,7 +93,10 @@ Push des eigenen Feature-Branches und Draft-PR. Der Nutzer kann diesen Abschluss
   Vorher vorhandene Aufgaben prüfen und eine passende Beobachtung aktualisieren statt duplizieren.
   PR-Link, Worktree, erwarteten Head und bearbeitete Review-IDs/Änderungsstände im Auftrag
   beziehungsweise dauerhaftem Task-Kontext festhalten. Einrichtung und Scheduler-ID bestätigen;
-  bei fehlenden Werkzeugen oder Fehlern die fehlende Beobachtung ausdrücklich melden.
+  bei fehlenden Werkzeugen oder Fehlern die fehlende Beobachtung ausdrücklich melden. Bei Claude
+  ausdrücklich sagen: Implementierungs-Session geöffnet halten; Session-Jobs können beim Beenden
+  verloren gehen und laufen spätestens nach sieben Tagen ab. „Review ist durch“ in der
+  Implementierungs-Session bleibt der direkte Auslöser, falls Scheduling nicht läuft.
 - Bei jedem Check Zustand, Head, Reviews, normale PR-Kommentare und Inline-Threads von GitHub
   lesen. Ohne neue relevante Ergebnisse still bleiben. Neue Findings im bestehenden Auftrag
   selbst bewerten und berechtigte Fixes bearbeiten; unvollständige Reviews als solche melden.

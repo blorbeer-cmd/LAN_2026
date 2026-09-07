@@ -31,11 +31,24 @@ keine Zusicherung, dass Tokens, Anbieter-Integrationen und externe APIs künftig
 
 1. **Zeitpunkt klären.** Solange PR #547 noch nicht gemergt ist, liegen die alten Dateien bereits
    auf `main`. Dann keinen Code-Revert durchführen. Nach einem Merge einen neuen Feature-Branch
-   und eigenen Worktree vom aktuellen `origin/main` erstellen. Den Rückbau-Commit
-   `77e4ffe744c7a4b9780182c6895a42c405576f94` mit `git revert` auf diesem Branch rückgängig machen.
-   Auch bei einem Squash-Merge kann dessen inverse Änderung angewendet werden; Konflikte mit
-   späteren Änderungen inhaltlich lösen. Niemals `main` auf den alten Tag zurücksetzen.
-   Der Tag ist Referenz zum Vergleichen und eine unabhängige Quelle für einzelne alte Dateien.
+   und eigenen Worktree vom aktuellen `origin/main` erstellen. Der ursprüngliche Rückbau-Commit
+   ist zusätzlich durch den Remote-Tag `backup/review-automation-removal-commit-20260907`
+   gesichert. Auch in einem frischen Clone nach Squash-Merge und Branch-Löschung zuerst laden:
+
+   ```powershell
+   git fetch origin tag backup/review-automation-removal-commit-20260907
+   git rev-parse 'backup/review-automation-removal-commit-20260907^{commit}'
+   git revert --no-commit 77e4ffe744c7a4b9780182c6895a42c405576f94
+   ```
+
+   Die SHA-Ausgabe muss `77e4ffe744c7a4b9780182c6895a42c405576f94` sein; andernfalls stoppen.
+   Der inverse Patch benötigt keine Vorfahrenbeziehung zu `main`. Konflikte mit späteren
+   Änderungen inhaltlich lösen und vor dem Commit den gesamten Diff prüfen. Insbesondere
+   später ergänzte manuelle Beobachtungsregeln mit den wiederhergestellten Pipeline-Regeln
+   abstimmen. Nicht den gesamten Squash-Commit von PR #547 revertieren: Das würde auch die
+   später hinzugefügte Sicherungsanleitung und Konfigurationssnapshots entfernen. Diese Dateien
+   erhalten. Niemals `main` auf einen alten Tag zurücksetzen. Der Vorher-Tag bleibt die
+   unabhängige Quelle zum Vergleichen und für einzelne alte Dateien.
 2. **Code und Regeln gemeinsam zurückholen.** Der Revert stellt Workflow-Dateien, alle neun
    Pipeline-Skriptpaare samt Tests, Konfiguration, PR-Task-Vertrag und alte Agenten-Regeln wieder
    her. Er entfernt auch die neu eingeführten manuellen Skillvorlagen und den Ersatz-Tooling-
