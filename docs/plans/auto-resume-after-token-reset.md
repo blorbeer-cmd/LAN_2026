@@ -1,11 +1,14 @@
 # Konzept: Automatische Wiederaufnahme von Claude-Code- und Codex-Sessions nach Token-Reset (Windows)
 
+> Historischer Plan: Die PR-Pipeline und ihre automatische Review-Zustellung sind abgelöst.
+> Für PR-Reviews gilt [der manuelle Ablauf](../manual-pr-review.md); dieser Plan aktiviert keine Monitore.
+
 Ziel dieses Dokuments: ein Konzept und eine Schritt-für-Schritt-Anleitung, damit lokal auf dem
 Windows-Rechner unterbrochene Claude-Code- und Codex-Sessions nach dem Zurücksetzen des
 Nutzungslimits (Token-Reset) **automatisch weiterarbeiten**, ohne dass jede Session manuell neu
 angestoßen werden muss.
 
-Abgrenzung: `docs/plans/auto-feature-to-deploy-pipeline.md` behandelt Nutzungslimits auf der
+Abgrenzung: [historisches Pipeline-Konzept](https://github.com/blorbeer-cmd/LAN_2026/blob/e91a3f47006750ae46e6fcdb335c4b10fdb857b4/docs/plans/auto-feature-to-deploy-pipeline.md) behandelt Nutzungslimits auf der
 GitHub-Seite (PR-Automatik, Label `auto:waiting`). Dieses Dokument behandelt die **lokale Seite**:
 Sessions in Terminals bzw. Konversationen auf dem eigenen Windows-Rechner.
 
@@ -245,4 +248,4 @@ automatisch nach dem nächsten Token-Reset; das Ergebnis steht im Log und im Ses
 - Keine Umgehung von Nutzungslimits – der Mechanismus wartet ausschließlich auf den regulären
   Reset.
 - Die GitHub-seitige Limit-Behandlung der PR-Automatik bleibt unverändert
-  (`docs/plans/auto-feature-to-deploy-pipeline.md`, Abschnitt 6).
+  ([historisches Pipeline-Konzept](https://github.com/blorbeer-cmd/LAN_2026/blob/e91a3f47006750ae46e6fcdb335c4b10fdb857b4/docs/plans/auto-feature-to-deploy-pipeline.md), Abschnitt 6).

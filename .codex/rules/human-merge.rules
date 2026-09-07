@@ -2,17 +2,7 @@
 #
 # GitHub sees local Codex sessions as the signed-in maintainer, so branch protection cannot tell a
 # human click from these common shell commands. Block the direct command paths while keeping
-# feature-branch pushes and the read/write PR operations used by the pipeline available.
-
-prefix_rule(
-    pattern = ["node", "scripts/agent-pipeline-codex-adapter.mjs", ["scan", "ack"]],
-    decision = "allow",
-    justification = "Allow only the reviewed adapter entry points used by the scheduled Codex delivery monitor.",
-    match = [
-        "node scripts/agent-pipeline-codex-adapter.mjs scan --repo blorbeer-cmd/LAN_2026",
-        "node scripts/agent-pipeline-codex-adapter.mjs ack --repo blorbeer-cmd/LAN_2026 --pull 401 --event-id review-choice-abc --thread-id 019ff043-2b15-7923-bd6d-dfaac7d41c81",
-    ],
-)
+# feature-branch pushes and the read/write PR operations used for manual reviews available.
 
 prefix_rule(
     pattern = ["gh", "pr", "merge"],

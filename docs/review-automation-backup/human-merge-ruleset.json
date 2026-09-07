@@ -1,0 +1,56 @@
+{
+  "id": 20390411,
+  "name": "Human merge only",
+  "target": "branch",
+  "source_type": "Repository",
+  "source": "blorbeer-cmd/LAN_2026",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "exclude": [],
+      "include": [
+        "~DEFAULT_BRANCH"
+      ]
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "update"
+    }
+  ],
+  "node_id": "RRS_lACqUmVwb3NpdG9yec5M-jmxzgE3Igs",
+  "created_at": "2026-08-04T17:21:56.011+02:00",
+  "updated_at": "2026-08-05T20:42:51.929+02:00",
+  "bypass_actors": [
+    {
+      "actor_id": 2,
+      "actor_type": "RepositoryRole",
+      "bypass_mode": "always"
+    },
+    {
+      "actor_id": 4,
+      "actor_type": "RepositoryRole",
+      "bypass_mode": "always"
+    },
+    {
+      "actor_id": 5,
+      "actor_type": "RepositoryRole",
+      "bypass_mode": "always"
+    }
+  ],
+  "current_user_can_bypass": "always",
+  "_links": {
+    "self": {
+      "href": "https://api.github.com/repos/blorbeer-cmd/LAN_2026/rulesets/20390411"
+    },
+    "html": {
+      "href": "https://github.com/blorbeer-cmd/LAN_2026/rules/20390411"
+    }
+  }
+}
