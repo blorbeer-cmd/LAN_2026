@@ -57,9 +57,20 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
     await page.setViewportSize({ width: 390, height: 844 });
   });
 
+  // "Meine To-Dos" only renders once it has something to show (see
+  // renderAssignedTodos() in home.js); the desktop priority-grid layout
+  // check below needs it beside "Aktuell" to exercise the two-column case.
+  const createdTodo = await fetch(`${BASE_URL}/api/checklist/tasks/todo`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: alice.cookie },
+    body: JSON.stringify({ playerId: alice.id, title: 'Kabelbinder mitbringen' }),
+  });
+  assert.equal(createdTodo.status, 201, await createdTodo.text());
+
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.click('.desktop-nav-btn[data-view="home"]');
   await page.waitForSelector('#view-container h1:text-is("Home")');
+  await page.waitForSelector('[aria-labelledby="home-todos-title"]');
 
   const desktopShell = await page.evaluate(() => {
     const topbar = document.querySelector('.topbar')?.getBoundingClientRect();

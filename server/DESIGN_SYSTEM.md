@@ -1229,8 +1229,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   result entry. Team and free-for-all result inputs use the same aligned responsive grid.
 - **Home overview** — Home follows the same full-width grouped-card hierarchy as Tournaments,
   Teams and Vote. „Aktuell“, „Live-Status“, „Rangliste“ and „Sitzplan“ are separate main cards with
-  their heading inside the surface. „Meine To-Dos“ shows up to three tasks assigned to the signed-in
-  identity for every event type, ordered by due date, and links to the complete list. Every current
+  their heading inside the surface. „Meine To-Dos“ only renders once there is something to act on:
+  up to three tasks assigned to the signed-in identity, ordered by due date, or — while none are
+  assigned yet — a single row nudging toward the shared pool's still-open To-Dos; with neither, the
+  tile stays hidden rather than offering an empty link into the full list. Every current
   item pairs its full-row navigation action with a
   separate icon action that hides only that live occurrence for the signed-in identity and active
   event on the current device; a new vote round, order, tournament or lobby remains visible again.

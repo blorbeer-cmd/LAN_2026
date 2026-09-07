@@ -140,6 +140,14 @@ export function openTaskCount() {
   return assignedTasks()?.length ?? 0;
 }
 
+// How many unclaimed To-Dos sit in the shared pool, independent of the
+// signed-in identity. Home's "Meine To-Dos" tile treats these "free" To-Dos
+// as reason enough to show up even when nothing is assigned to this identity
+// yet. Returns 0 while nothing is loaded yet, same as openTaskCount().
+export function freeTaskCount() {
+  return tasksCache?.filter((task) => task.status === 'open').length ?? 0;
+}
+
 // Shared dashboard projection for the signed-in identity. `null` deliberately
 // means "still loading", while an empty array is a loaded list without work.
 // Keeping the due-date ordering here prevents Home and the full To-Do view
