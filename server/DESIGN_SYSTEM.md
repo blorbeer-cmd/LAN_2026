@@ -1039,7 +1039,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   The game grid remains the first visible group with or without a selection. Once a game is selected,
   its lobby group follows directly below the grid; there is no separate „Spielauswahl“ back action.
   The selected game is represented by `#arcade/<spiel>` so browser back/forward, reload and the
-  highlighted game tile agree. Selecting a game is not a toggle: clicking the already active tile
+  highlighted game tile agree. That route refines the launcher in place rather than opening a
+  sub-page: the tile grid stays exactly where it is, so switching games keeps the reader's scroll
+  position and focus and does not replay the view-enter animation — on a phone a reset to the top
+  read as a full reload of the page. The Arcade route declares this through `inPlaceLocalRoutes`
+  in `viewManifest.js`; a local route that replaces the whole page (Turniere's list becoming a
+  tournament board) leaves the flag off and keeps entering like any other screen.
+  Selecting a game is not a toggle: clicking the already active tile
   keeps the selection and route unchanged. The active tile keeps `.is-active` and carries
   `aria-current="page"` rather than `aria-pressed`; the route `#arcade` via browser back remains
   the only way to return to the unselected launcher.
