@@ -857,6 +857,26 @@
 .music-connect-card {
   align-items: stretch;
 }
+/* The unconnected Jam setup stacks its two controller actions ("koppeln" /
+   "Lokalen Controller öffnen") on phones so they never overlap, and places
+   them side by side from --bp-md where both labels stay on one line. The
+   download button stays a separate action below this row. */
+.music-setup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.music-setup-actions .btn {
+  text-align: center;
+}
+@media (min-width: 640px) { /* --bp-md */
+  .music-setup-actions {
+    flex-direction: row;
+  }
+  .music-setup-actions > .btn {
+    flex: 1;
+  }
+}
 .music-config-list {
   display: grid;
   gap: var(--space-2);
