@@ -263,6 +263,11 @@
 .kiosk-standing-row strong,
 .kiosk-match-team strong {
   min-width: 0;
+  /* In the live grid the name sits in a column flex with align-items:
+     flex-start, so it shrink-wraps to its own content width and grows past
+     the card instead of triggering the ellipsis. Capping it at the parent's
+     width keeps every name inside its card and lets the ellipsis work. */
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

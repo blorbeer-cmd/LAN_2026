@@ -106,20 +106,11 @@ zusätzlich `LEGACY_ROLLBACK_ACCESS_TOKEN`; nur das Rollback-Skript übersetzt i
 Login-Umstellung in `AUTH_MODE=required` und `ACCESS_TOKEN`. Der laufende aktuelle Server ignoriert
 diese Kompatibilitätswerte.
 
-Ein Merge allein gilt ausdrücklich nicht als Deployment-Nachweis. Der fünfminütige Codex-
-Pipeline-Monitor liest die ungelöste Fehlerfolge abgeschlossener `CI/CD`-Runs seit dem letzten
-erfolgreichen `main`-Lauf, ordnet deren Commit dem gemergten Agenten-PR zu und weckt bei einer
-Codex-Implementierung die ursprüngliche Task mit
-Run-Link und fehlgeschlagenen Jobs. Die Task informiert den Nutzer, prüft bei einem Deploy-Fehler
-Rollback und Produktionszustand und bearbeitet sichere Fixes automatisch; ein Code-Fix beginnt
-nach dem Merge immer auf einem neuen Branch und PR. Die erfolgreiche Zustellung wird im
-Ursprungs-PR mit `agent-pipeline:codex-delivery` quittiert. Der Monitor blättert die abgeschlossenen
-`main`-Läufe so weit zurück, bis der letzte erfolgreiche sichtbar ist. Ist innerhalb dieser Grenze
-kein Erfolg erreichbar, gilt das Fenster als abgeschnittene Historie und es wird bewusst nichts
-zugestellt: Bleibt `main` dauerhaft rot, ist das ein Betriebsfall für den Nutzer und kein Anlass,
-alle betroffenen Tasks zu wecken. Für ursprüngliche Claude-Tasks fehlt weiterhin eine belastbare
-Session-Wakeup-Schnittstelle; deren GitHub-Run bleibt die operative Outbox und muss bis zu einer
-eigenen Connector-Integration über GitHub überwacht werden.
+Ein Merge allein gilt ausdrücklich nicht als Deployment-Nachweis. Nach dem Merge den zugehörigen
+`CI/CD`-Run auf GitHub bis zum Abschluss prüfen. Bei Deploy-Fehlern Rollback und Produktionszustand
+kontrollieren; ein Code-Fix beginnt auf einem neuen Branch und PR. Die frühere automatische
+Zustellung an Codex- oder Claude-Sessions ist entfallen. GitHub-Benachrichtigungen oder eine
+explizit beauftragte, begrenzte Beobachtung ersetzen keinen erfolgreichen Deployment-Nachweis.
 
 Die Pflichtchecks laufen als parallele Jobs (Server-Checks, Browser-E2E, Agent, Runtime-Image-Build)
 statt als eine serielle Kette; der `publish`-Job veröffentlicht das Image nach grünen Checks aus dem
