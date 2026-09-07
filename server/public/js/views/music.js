@@ -129,7 +129,7 @@ export function musicSetupHtml(status, activePairing = pairing) {
           </div>
           <p class="muted music-pairing-hint">Code im lokalen Controller unter „Wieder verbinden“ eingeben.</p>` : ''}
           ${status.canManageController
-            ? `<div class="button-row">
+            ? `<div class="music-setup-actions">
                   <button type="button" class="btn btn-primary" id="music-reconnect-controller" ${getMyId() ? '' : 'disabled'}>${activePairing ? 'Neuen Code erzeugen' : reconnecting ? 'Wiederverbindung vorbereiten' : 'Vorhandenen Controller koppeln'}</button>
                   <a class="btn" href="${LOCAL_CONTROLLER_URL}" target="_blank" rel="noopener">Lokalen Controller öffnen</a>
                 </div>
