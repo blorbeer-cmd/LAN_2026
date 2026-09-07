@@ -578,6 +578,8 @@ textarea {
 .topbar-title {
   font-size: var(--font-size-lg);
   display: flex;
+  min-width: var(--tap-target-size);
+  min-height: var(--tap-target-size);
   align-items: center;
   gap: var(--space-2);
   color: inherit;
@@ -1151,6 +1153,8 @@ textarea {
 
 .icon-btn {
   display: inline-flex;
+  min-width: var(--tap-target-size);
+  min-height: var(--tap-target-size);
   align-items: center;
   justify-content: center;
   background: none;
@@ -1164,8 +1168,8 @@ textarea {
   text-decoration: none;
 }
 .topbar .icon-btn {
-  width: 44px;
-  height: 44px;
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
   padding: var(--space-3);
 }
 .nav-btn.needs-setup .nav-icon {
@@ -1636,6 +1640,7 @@ select {
   position: relative;
 }
 .search-select-control > input {
+  min-height: var(--tap-target-size);
   padding-right: calc(var(--tap-target-size) + var(--space-2));
 }
 .search-select-toggle {
@@ -1646,6 +1651,7 @@ select {
   display: grid;
   place-items: center;
   width: var(--tap-target-size);
+  min-height: var(--tap-target-size);
   padding: 0;
   border: 0;
   border-left: 1px solid var(--border);
@@ -3407,27 +3413,28 @@ button.card {
   width: 18px;
   height: 18px;
 }
-/* Details/Plattform/Trailer as one group of plain icon buttons, same size and
-   no background/border so they read as row chrome rather than as another
-   pill button competing with the sliders. Both trailer and Details use
-   icons whose own glyph fills a roughly square area (monitorPlay's monitor
-   frame, info's circle) so the tap targets stay visually even despite the
-   varying glyphs. Held in its own .game-row-links wrapper so it can sit a
-   bit further from the title than .game-row-name's own flex gap alone would
-   put it. */
+/* Details/Plattform/Trailer as one group of plain icon buttons with the full
+   shared touch target. Their glyphs stay visually compact and the controls
+   keep no background/border, so they still read as row chrome rather than as
+   another pill button competing with the sliders. Both trailer and Details
+   use icons whose own glyph fills a roughly square area (monitorPlay's
+   monitor frame, info's circle), so the controls stay visually even despite
+   the varying glyphs. Held in its own .game-row-links wrapper so the full
+   touch targets can sit directly beside each other without extra visual
+   distance or overlapping hit areas. */
 .game-row-links {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  margin-left: var(--space-2);
+  gap: 0;
+  margin-left: 0;
 }
 .game-icon-btn {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: var(--space-6);
-  height: var(--space-6);
+  width: var(--tap-target-size);
+  height: var(--tap-target-size);
   border-radius: var(--radius-sm);
   background: none;
   border: none;
