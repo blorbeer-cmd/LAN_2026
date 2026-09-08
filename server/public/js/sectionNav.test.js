@@ -66,7 +66,7 @@ test('routes presented through Mehr keep the persistent parent navigation active
 
 test('section tabs follow the active event feature snapshot', () => {
   const generalEvent = {
-    enabledFeatures: ['tasks', 'travel', 'food', 'costs', 'music', 'seating'],
+    enabledFeatures: ['tasks', 'travel', 'food', 'costs', 'music', 'arcade'],
   };
   assert.equal(sectionEntryView('competition', generalEvent), null);
   assert.equal(sectionEntryView('insights', generalEvent), null);

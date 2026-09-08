@@ -762,10 +762,10 @@ test('records the complete migration history and does not duplicate it on restar
     name: string;
   }>;
 
-  assert.equal(migrations.length, 97);
+  assert.equal(migrations.length, 98);
   assert.deepEqual(
     migrations.map((migration) => migration.version),
-    Array.from({ length: 97 }, (_, index) => index + 1),
+    Array.from({ length: 98 }, (_, index) => index + 1),
   );
   assert.ok(migrations.every((migration) => migration.name.length > 0));
   for (const table of ['scribble_drawings', 'scribble_drawing_reactions', 'scribble_drawing_favorites']) {
@@ -1342,8 +1342,8 @@ test('runs migrations in ascending version order regardless of declaration order
   );
   assert.deepEqual(
     order,
-    Array.from({ length: 97 }, (_, index) => index + 1),
-    'every version 1..97 runs exactly once',
+    Array.from({ length: 98 }, (_, index) => index + 1),
+    'every version 1..98 runs exactly once',
   );
 });
 
@@ -2895,6 +2895,51 @@ test('migration 83 makes starts_at nullable for drafts, adds schedule revisions,
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+test('migration 98 disables general-event seating and preserves LAN and layout data', () => {
+  const dbFile = makeTempDbPath('general-event-seating');
+  runMigrations(dbFile);
+  const fixture = new Database(dbFile);
+  fixture.exec(`
+    DELETE FROM schema_migrations WHERE version = 98;
+    INSERT INTO events (id, name, group_id, event_type_key, preset_version, status)
+      VALUES ('general-seating', 'General', 'default-group', 'general', 2, 'draft'),
+             ('lan-seating', 'LAN', 'default-group', 'lan', 1, 'draft');
+    INSERT INTO event_features (event_id, feature_key, enabled, changed_at)
+      VALUES ('general-seating', 'seating', 1, 123),
+             ('general-seating', 'tasks', 1, 123),
+             ('lan-seating', 'seating', 1, 123);
+    INSERT INTO seating_layouts (group_id, event_id, top_seats, assignments, updated_at)
+      VALUES ('default-group', 'general-seating', 5, '[]', 123);
+  `);
+  fixture.close();
+
+  runMigrations(dbFile);
+  const migrated = new Database(dbFile, { readonly: true });
+  try {
+    assert.deepEqual(
+      migrated.prepare("SELECT id, preset_version FROM events WHERE id IN ('general-seating', 'lan-seating') ORDER BY id").all(),
+      [{ id: 'general-seating', preset_version: 3 }, { id: 'lan-seating', preset_version: 1 }],
+    );
+    assert.deepEqual(
+      migrated.prepare("SELECT top_seats, assignments, updated_at FROM seating_layouts WHERE event_id = 'general-seating'").get(),
+      { top_seats: 5, assignments: '[]', updated_at: 123 },
+      'layouts and assignments of a general event survive the migration untouched',
+    );
+    const features = migrated
+      .prepare('SELECT * FROM event_features ORDER BY event_id, feature_key')
+      .all() as Array<{ event_id: string; feature_key: string; enabled: number; changed_at: number }>;
+    assert.equal(features.find((row) => row.event_id === 'general-seating' && row.feature_key === 'seating')?.enabled, 0);
+    for (const [eventId, featureKey] of [['general-seating', 'tasks'], ['lan-seating', 'seating']]) {
+      const row = features.find((entry) => entry.event_id === eventId && entry.feature_key === featureKey);
+      assert.equal(row?.enabled, 1);
+      assert.equal(row?.changed_at, 123);
+    }
+  } finally {
+    migrated.close();
+  }
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('migrations 89 through 91 add event types, collapse legacy presets and enable Arcade', () => {
   const dbFile = makeTempDbPath('event-type-feature-migrations');
   runMigrations(dbFile);
@@ -2959,13 +3004,13 @@ test('migrations 89 through 91 add event types, collapse legacy presets and enab
     collapsed
       .prepare('SELECT event_type_key AS eventType, preset_version AS presetVersion FROM events WHERE id = ?')
       .get('legacy-trip-event'),
-    { eventType: 'general', presetVersion: 2 },
+    { eventType: 'general', presetVersion: 3 },
   );
   assert.deepEqual(
     (collapsed
       .prepare('SELECT feature_key AS featureKey FROM event_features WHERE event_id = ? AND enabled = 1 ORDER BY rowid')
       .all('legacy-trip-event') as Array<{ featureKey: string }>).map((row) => row.featureKey),
-    ['tasks', 'travel', 'food', 'costs', 'music', 'arcade', 'seating'],
+    ['tasks', 'travel', 'food', 'costs', 'music', 'arcade'],
   );
 
   collapsed
@@ -2982,7 +3027,7 @@ test('migrations 89 through 91 add event types, collapse legacy presets and enab
     arcadeEnabled
       .prepare('SELECT preset_version AS presetVersion FROM events WHERE id = ?')
       .get('legacy-trip-event'),
-    { presetVersion: 2 },
+    { presetVersion: 3 },
   );
   assert.deepEqual(
     arcadeEnabled

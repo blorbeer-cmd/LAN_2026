@@ -1292,9 +1292,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the full-width seating plan and a three-column top-six ranking. If only one priority card exists it
   spans the row. A general event
   replaces the LAN-only live and ranking groups with a leading event overview containing its type,
-  period, optional location/note, participant count and contribution. A separate „Organisation“
-  group links to the existing Eventdetails, To-Dos, An- & Abreise, Essen and Jam workflows; the
-  read-only seating plan remains its own full-width group below them. Arcade stays available for
+  period, optional location/note, participant count and contribution. It has no „Organisation“
+  shortcut group; planning workflows remain reachable through navigation. Seating is LAN-only,
+  including Home's read-only plan and Admin's editor. Arcade stays available for
   both event types because its browser games do not depend on LAN tracking or competition areas.
   The personal live-state action says only „Pause“ while active and „Bin wieder da“ while paused;
   it stores the equally concise manual note „Pause“ instead of combining several possible reasons
