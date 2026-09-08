@@ -329,7 +329,14 @@ test('manager invites a member who accepts and both open clients update', async 
   assert.match(calendarContents, new RegExp(`UID:${eventId}@respawn\\.local`));
   assert.match(calendarContents, /SUMMARY:E2E Einladung LAN\r?\n/);
   assert.match(calendarContents, /LOCATION:https:\/\/maps\.example\.test\/respawn\r?\n/);
-  assert.match((await memberEventCard.textContent()) ?? '', /Beendet die Kalender-Erinnerungen/);
+  const calendarConfirmationHelp = memberEventCard.locator('[aria-label="Mehr Informationen zu Kalenderübernahme"]');
+  assert.equal(await calendarConfirmationHelp.count(), 1);
+  const calendarConfirmationHelpPanel = memberEventCard.locator('#event-calendar-confirmation-help-' + eventId);
+  assert.equal(await calendarConfirmationHelpPanel.isHidden(), true);
+  await calendarConfirmationHelp.focus();
+  await calendarConfirmationHelp.press('Enter');
+  await calendarConfirmationHelpPanel.waitFor({ state: 'visible' });
+  assert.match((await calendarConfirmationHelpPanel.textContent()) ?? '', /Beendet die Kalender-Erinnerungen/);
   const confirmationResponse = memberPage.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
