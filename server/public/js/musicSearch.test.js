@@ -116,7 +116,7 @@ test('music queue shows the remaining playlist tracks separately from requests',
   });
   assert.match(html, /4 Titel folgen/);
   assert.match(html, /aus „LAN &lt;Playlist&gt;“/);
-  assert.match(html, /Keine zusätzlichen Songwünsche/);
+  assert.match(html, /Noch keine Songwünsche\./);
 });
 
 test('music controller recovery distinguishes Spotify login from a transient outage', () => {

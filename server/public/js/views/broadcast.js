@@ -13,7 +13,6 @@ import {
 } from '../dateTimeField.js';
 import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
-import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { backButtonHtml } from '../backButton.js';
 
@@ -54,7 +53,7 @@ function renderHistory(myId) {
     return emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' });
   }
   if (historyCache.length === 0) {
-    return emptyStateHtml('Noch keine Durchsagen.', { icon: icon(domainIcon('broadcast')) });
+    return emptyStateHtml('Noch keine Durchsagen.');
   }
   const now = Date.now();
   const rows = historyCache

@@ -8,7 +8,6 @@ import { accessibleEvents, state } from '../state.js';
 import { escapeHtml, formatDateTime } from '../format.js';
 import { getMyId } from '../whoami.js';
 import { showToast } from '../toast.js';
-import { icon } from '../icons.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { eventSelectOptions } from '../eventStatus.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
@@ -121,7 +120,7 @@ function renderStats() {
           )
           .join('')}
       </div>`
-    : emptyStateHtml('Noch keine eigenen Awards.', { style: 'padding:var(--space-4);' });
+    : emptyStateHtml('Noch keine Awards.', { style: 'padding:var(--space-4);' });
 
   const gamesHtml = s.games.length
     ? s.games
@@ -137,7 +136,7 @@ function renderStats() {
         </div>`
         )
         .join('')
-    : emptyStateHtml('Noch keine Spielzeit erfasst.', { style: 'padding:var(--space-4);' });
+    : emptyStateHtml('Noch keine Spielzeit.', { style: 'padding:var(--space-4);' });
 
   const eventsHtml = s.events.length
     ? s.events
@@ -149,7 +148,7 @@ function renderStats() {
         </div>`
         )
         .join('')
-    : emptyStateHtml('Noch keine Events mit Spielzeit.', { style: 'padding:var(--space-4);' });
+    : emptyStateHtml('Noch keine Events.', { style: 'padding:var(--space-4);' });
 
   const longestHtml = s.longestSessions.length
     ? s.longestSessions
@@ -205,7 +204,7 @@ export function renderMyStats(container, ctx) {
   if (!me) {
     container.innerHTML = `
       ${subpageHeaderHtml}
-      ${emptyStateHtml('Bitte erst dein Profil einrichten.', { style: 'margin-top:var(--space-4);', icon: icon('user') })}
+      ${emptyStateHtml('Bitte erst dein Profil einrichten.', { style: 'margin-top:var(--space-4);' })}
     `;
     return;
   }

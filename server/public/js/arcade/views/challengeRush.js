@@ -271,7 +271,7 @@ export function renderChallengeRushLobbyCard() {
         ? 'Du hast bereits eine offene Lobby.'
         : '';
   const createDisabled = current || activeMatch || noMe;
-  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions">${adminChallengeSelectorHtml(Boolean(createDisabled))}<div class="arcade-lobby-create-row arcade-lobby-create-row--no-mode arcade-lobby-create-row--no-opponent"><button type="button" class="btn btn-primary btn-sm" id="cr-create" ${createDisabled ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('cr-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</div></div>${cards || emptyStateHtml('Keine offene Challenge-Rush-Lobby.', { style: 'padding:var(--space-4);' })}</div>`;
+  return `<div class="card stack arcade-lobby-card"><div class="arcade-lobby-create-actions">${adminChallengeSelectorHtml(Boolean(createDisabled))}<div class="arcade-lobby-create-row arcade-lobby-create-row--no-mode arcade-lobby-create-row--no-opponent"><button type="button" class="btn btn-primary btn-sm" id="cr-create" ${createDisabled ? 'disabled' : ''}>Lobby öffnen</button>${createReason ? infoTooltipHtml('cr-create-info', 'Lobby öffnen nicht möglich', createReason, 'warning') : ''}</div></div>${cards || emptyStateHtml('Noch keine Challenge-Rush-Lobby.', { style: 'padding:var(--space-4);' })}</div>`;
 }
 export function wireChallengeRushLobbyCard(container, { beforeCreate = async () => true, beforeJoin = async () => true } = {}) {
   const createPayload = () => { const keys = challengeSelectionPayload(); return keys.length ? { playerId: myId(), challengeKeys: keys } : { playerId: myId() }; };

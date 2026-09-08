@@ -1,7 +1,7 @@
 // Shared markup for the app's ubiquitous empty/loading placeholders. Simple
-// states use the safe text shorthand. A state with title, explanation or CTA
-// uses the structured form so views cannot smuggle arbitrary copy HTML into
-// this otherwise canonical component.
+// states use the safe text shorthand. A state with an illustration or CTA uses
+// the structured form so views cannot smuggle arbitrary copy HTML into this
+// otherwise canonical component. Empty-state copy is always one plain line.
 
 import { escapeHtml } from './format.js';
 
@@ -28,12 +28,11 @@ function actionHtml(action) {
 export function emptyStateHtml(content, presentation = {}) {
   const structured = content !== null && typeof content === 'object' && !Array.isArray(content);
   const options = structured ? content : presentation;
-  const iconHtml = options.icon ? `<span class="empty-state-icon">${options.icon}</span>` : '';
   const illustration = structured ? illustrationHtml(options.illustration) : '';
   const copy = structured
-    ? `${options.title ? `<strong class="empty-state-title">${escapeHtml(options.title)}</strong>` : ''}${options.body ? `<p class="empty-state-body">${escapeHtml(options.body)}</p>` : ''}${actionHtml(options.action)}`
+    ? `${options.text ? `<span class="empty-state-text">${escapeHtml(options.text)}</span>` : ''}${actionHtml(options.action)}`
     : escapeHtml(content);
   const classes = `empty-state${structured ? ' empty-state-structured' : ''}${options.className ? ` ${escapeHtml(options.className)}` : ''}`;
   const styleAttr = options.style ? ` style="${escapeHtml(options.style)}"` : '';
-  return `<div class="${classes}"${styleAttr}>${iconHtml}${illustration}${copy}</div>`;
+  return `<div class="${classes}"${styleAttr}>${illustration}${copy}</div>`;
 }

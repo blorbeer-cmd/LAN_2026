@@ -10,8 +10,6 @@ import { state, catalogGames, gamesWithHistory, gameById } from '../state.js';
 import { escapeHtml, avatarHtml } from '../format.js';
 import { openModal } from '../modal.js';
 import { showToast } from '../toast.js';
-import { icon } from '../icons.js';
-import { domainIcon } from '../domainIcons.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
@@ -109,7 +107,7 @@ export function renderLeaderboard(container, ctx) {
               <h2 id="leaderboard-ranking-title">Rangliste</h2>
             </div>
             <div class="leaderboard-list-grid">
-              ${standings.length === 0 ? emptyStateHtml('Noch keine Ergebnisse.', { icon: icon(domainIcon('leaderboard')) }) : rows}
+              ${standings.length === 0 ? emptyStateHtml('Noch keine Ergebnisse.') : rows}
             </div>
           </section>
           <section class="tournament-section-panel stack" aria-labelledby="leaderboard-playtime-title">
@@ -117,7 +115,7 @@ export function renderLeaderboard(container, ctx) {
               <h2 id="leaderboard-playtime-title">Spielzeit</h2>
             </div>
             <div class="leaderboard-list-grid">
-              ${playtime.length === 0 ? emptyStateHtml('Noch keine erfasste Spielzeit.', { icon: icon('timer') }) : playtimeRows}
+              ${playtime.length === 0 ? emptyStateHtml('Noch keine Spielzeit.') : playtimeRows}
             </div>
           </section>
         </div>
@@ -128,7 +126,7 @@ export function renderLeaderboard(container, ctx) {
           <h2 id="leaderboard-games-playtime-title">Spielzeit pro Spiel</h2>
         </div>
         <div class="leaderboard-list-grid">
-          ${playtimeByGame.length === 0 ? emptyStateHtml('Noch keine erfasste Spielzeit.', { icon: icon('timer') }) : playtimeByGameRows}
+          ${playtimeByGame.length === 0 ? emptyStateHtml('Noch keine Spielzeit.') : playtimeByGameRows}
         </div>
       </section>
     </div>

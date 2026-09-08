@@ -131,7 +131,7 @@ function renderKioskSection() {
   return `
     <section class="card stack grouped-page-section">
       ${renderKioskPasswordRow()}
-      ${accounts || emptyStateHtml('Noch kein LAN-Event vorhanden.')}
+      ${accounts || emptyStateHtml('Noch keine LAN-Events.')}
     </section>
   `;
 }
@@ -763,11 +763,11 @@ function renderEventSection() {
     .slice()
     .sort(compareEventsByStartAscending);
   const activeEmptyText = events.length === 0
-    ? (canManage ? 'Noch keine Events angelegt.' : 'Du nimmst noch an keinem eigenen Event teil.')
+    ? 'Noch keine Events.'
     : (canManage ? 'Keine laufenden Events.' : 'Aktuell kein laufendes Event.');
 
   return `
-    <section class="card stack grouped-page-section" aria-labelledby="orga-events-title">
+    <section class="card stack grouped-page-section primary-collection-section" aria-labelledby="orga-events-title">
       <div class="grouped-page-section-title">
         <span class="title-with-info">
           <h2 id="orga-events-title" tabindex="-1">Events</h2>
@@ -783,7 +783,7 @@ function renderEventSection() {
       </div>
       ${
         activeEvents.length === 0
-          ? emptyStateHtml(activeEmptyText, { icon: icon('calendar') })
+          ? emptyStateHtml(activeEmptyText)
           : `<div class="stack orga-event-grid">${activeEvents.map(renderCard).join('')}</div>`
       }
       ${

@@ -460,7 +460,7 @@ test('confirmed participants use clear poll modes, finish a round and keep resul
   await ownerPage.keyboard.press('Escape');
   assert.equal(await anonymousActionMenu.evaluate((details) => (details as HTMLDetailsElement).open), false, 'Escape closes the action menu');
   await anonymousActionMenu.locator('summary').click();
-  await ownerPage.locator('.event-polls-page-actions').click({ position: { x: 1, y: 1 } });
+  await ownerPage.locator('#event-poll-current-title').click();
   assert.equal(await anonymousActionMenu.evaluate((details) => (details as HTMLDetailsElement).open), false, 'clicking outside closes the action menu');
   assert.match((await anonymousPoll.locator('[data-poll-round]').textContent()) ?? '', /Anonym/);
   await anonymousPoll.locator('[data-poll-choice]').first().click();

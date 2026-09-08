@@ -268,7 +268,7 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
   await page.waitForSelector('[data-close-lobby]');
 
   await page.click('[data-close-lobby]');
-  await page.waitForSelector('text=Keine offene Quiz-Lobby.');
+  await page.waitForSelector('text=Noch keine Quiz-Lobby.');
 
   // Closed - the create button is enabled again.
   await page.waitForSelector('#quiz-create-lobby:not([disabled])');
@@ -366,12 +366,12 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby closes the owned lobby an
       );
 
       await selectArcadeGame(page, 'quiz');
-      await page.waitForSelector('text=Keine offene Quiz-Lobby.');
+      await page.waitForSelector('text=Noch keine Quiz-Lobby.');
 
       await guestPage.waitForSelector(`[data-${game}-close]`);
       await guestPage.click(`[data-${game}-close]`);
       await selectArcadeGame(page, game);
-      await page.waitForSelector(`text=Keine offene ${game === 'pong' ? 'Pong' : 'Blobby-Volley'}-Lobby.`);
+      await page.waitForSelector(`text=Noch keine ${game === 'pong' ? 'Pong' : 'Blobby-Volley'}-Lobby.`);
     }
   } finally {
     // Keep the shared host page usable after a failed assertion instead of
@@ -382,7 +382,7 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby closes the owned lobby an
       const closeOwnedLobby = page.locator('[data-close-lobby]:visible');
       if ((await closeOwnedLobby.count()) > 0) {
         await closeOwnedLobby.click();
-        await page.waitForSelector('text=Keine offene Quiz-Lobby.');
+        await page.waitForSelector('text=Noch keine Quiz-Lobby.');
       }
     }
     await guestContext.close();
@@ -427,7 +427,7 @@ arcadeFlowTest('full', 'Arcade: a lobby guest flags themselves ready and the hos
   } finally {
     // Leave no lobby behind for the tests that follow.
     await page.click('[data-close-lobby]');
-    await page.waitForSelector('text=Keine offene Quiz-Lobby.');
+    await page.waitForSelector('text=Noch keine Quiz-Lobby.');
     await guestContext.close();
   }
 });

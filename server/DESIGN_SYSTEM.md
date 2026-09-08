@@ -275,8 +275,11 @@ view and to new views unless a documented domain constraint requires a different
    `.collapsible-section` header, start collapsed when they are secondary to the active workflow,
    and preserve their open state across live re-renders. Use the concise visible title „Historie“
    unless the domain requires a more specific active/completed label.
-8. **Make states structural, not ornamental.** Empty states center their short text and optional
-   canonical icon in the available surface. Selection remains recognizable through its semantic
+8. **Make states structural, not ornamental.** Empty states center one short, regular-weight text
+   line in the available surface and stay free of decorative icons. Nearby headings and controls
+   provide the context, so the line does not repeat a section or explain the next action. The
+   established mascot illustration on Home remains the explicit brand exception. Selection remains
+   recognizable through its semantic
    control; winner, unread, running and error states use border/background plus text or accessible
    labeling rather than a redundant „Neu“ or result badge. Loading, disabled and long-content
    states must retain the same geometry as the populated state.
@@ -324,11 +327,18 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   hand-roll the arrow, use Unicode chevrons or repeat the destination in the visible label when the
   surrounding header already names it.
 - **Empty state** — `emptyStateHtml()` in `emptyState.js` accepts a safe plain-text shorthand for
-  loading and one-line states. States that need hierarchy use the structured contract
-  `{ title, body, icon, illustration, action, className, style }`; title, body and action labels are
-  escaped and the action is rendered as a standard button. This replaces raw HTML fragments and
-  keeps the visible vocabulary concise: „Noch keine …“ for an unused collection, „Keine … gefunden“
-  for a filtered result and a direct action such as „Event wählen“ when recovery is possible.
+  loading and one-line states. States that also need an established illustration or direct recovery
+  action use `{ text, illustration, action, className, style }`; text and action labels are escaped
+  and the action is rendered as a standard button. The text remains one regular-weight line in
+  either form. Empty states do not accept decorative icons. `illustration` is reserved for an
+  established, explicitly documented brand illustration. This replaces raw HTML fragments and
+  keeps the visible vocabulary concise: „Noch keine …“ for an unused collection and „Keine …
+  gefunden“ for a filtered result. Nearby headings supply qualifiers such as „offen“, „abgeschlossen“
+  or the current event, so the empty-state line does not repeat them.
+- **Primary collection** — `.primary-collection-section` gives the current collection of Events,
+  polls, food orders and tournaments one shared main-card treatment. The title and primary action
+  stay together in the card header. Border, empty-state height and spacing therefore remain stable
+  across these areas.
 - **Area tabs** — `.section-tabs` with `.section-tab` is the tab row of a merged top-level area
   (Match, Auswertung and LAN Orga; defined in `sectionNav.js`). General events present every Orga
   route as a standalone page with its own title because those routes are their primary navigation,
@@ -1327,7 +1337,7 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   started with for its whole life: a game demoted mid-round keeps the votes already cast for it,
   stays votable for everyone else and can still win, and „Stichwahl starten“ still offers every
   tied winner of the closed round. Only a fresh selection is restricted.
-  Vote-specific empty states center icon and copy vertically in both overview and history.
+  Vote-specific empty states center their copy vertically in both overview and history.
   Every identity can submit only once per round: the server enforces this atomically with `409`,
   empty points submissions are invalid, and the client replaces the submit action with a green
   „Bewertung/Stimme abgegeben“ state while locking that identity's controls.
@@ -1380,7 +1390,8 @@ space pattern rather than content-dependent card heights.
 - New or changed interface icons must use the local Lucide-style helper in
   `server/public/js/icons.js` (`icon(...)` or a suitable specialized helper).
 - Repeated domain meanings use `server/public/js/domainIcons.js` as their semantic source of truth
-  across navigation-adjacent cards, empty states, cross-links, kiosk content and notifications.
+  across navigation-adjacent cards, cross-links, kiosk content and notifications. Empty states stay
+  icon-free.
   Bottom navigation and the entries under „Mehr“ define the canonical view symbols; other
   appearances of one of those views must request the icon by its view key instead of choosing an
   icon locally. In particular, crossed swords mean an active tournament, scales mean team

@@ -497,7 +497,7 @@ function openGameDetail(gameId, ctx) {
         </div>
 
         <div class="section-title">Prozessname</div>
-        <div class="chip-list">${processChips || '<span class="muted">Noch keine.</span>'}</div>
+        <div class="chip-list">${processChips || '<span class="muted">Noch keine Prozessnamen.</span>'}</div>
         ${
           suggestedProcessNames.length
             ? `<button type="button" class="btn btn-sm" id="use-suggested-process" style="align-self:flex-start;">${icon('lightbulb')} Vorschlag übernehmen: ${escapeHtml(suggestedProcessNames.join(', '))}</button>`
@@ -721,9 +721,9 @@ export function renderGameCatalog(container, ctx) {
   // down to nothing" - the rating filter case gets a positive framing since
   // reaching it is the point of using that filter, not an error state.
   const emptyTabMessages = {
-    suggestions: 'Noch keine vorgeschlagenen Spiele.',
-    catalog: 'Noch keine Spiele im Katalog.',
-    all: 'Noch keine Spiele eingetragen.',
+    suggestions: 'Noch keine Vorschläge.',
+    catalog: 'Noch keine Spiele.',
+    all: 'Noch keine Spiele.',
   };
   const emptyMessage =
     tabGames.length === 0
@@ -784,7 +784,7 @@ export function renderGameCatalog(container, ctx) {
         <div class="game-table${ratingMode ? ' onboarding-rating-list' : ''}">
           ${
             rows.length === 0
-              ? emptyStateHtml(emptyMessage, { icon: icon(domainIcon('gameCatalog')) })
+              ? emptyStateHtml(emptyMessage)
               : rows.map((g) => gameRowHtml(g, myId, activeTab === 'all', ratingMode && requiredRatingIds.has(g.id))).join('')
           }
         </div>
