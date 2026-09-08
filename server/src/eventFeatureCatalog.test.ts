@@ -51,7 +51,6 @@ test('event type presets only reference known features and satisfy hard dependen
     'costs',
     'music',
     'arcade',
-    'seating',
   ]);
   assert.equal(isEventTypeKey('general'), true);
   assert.equal(isEventTypeKey('trip'), false);

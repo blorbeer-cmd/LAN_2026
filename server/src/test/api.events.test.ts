@@ -256,8 +256,8 @@ test('general events persist the shared planning and arcade feature snapshot', a
   const created = await createEvent('Allgemeines Treffen', EVENT_MINIMUM_DURATION_MS, { eventType: 'general' });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.eventType, 'general');
-  assert.equal(created.body.presetVersion, 2);
-  assert.deepEqual(created.body.enabledFeatures, ['tasks', 'travel', 'food', 'costs', 'music', 'arcade', 'seating']);
+  assert.equal(created.body.presetVersion, 3);
+  assert.deepEqual(created.body.enabledFeatures, ['tasks', 'travel', 'food', 'costs', 'music', 'arcade']);
 
   const featureRows = db
     .prepare(
@@ -269,7 +269,7 @@ test('general events persist the shared planning and arcade feature snapshot', a
     featureRows,
     EVENT_FEATURE_KEYS.map((featureKey) => ({
       featureKey,
-      enabled: ['tasks', 'travel', 'food', 'costs', 'music', 'arcade', 'seating'].includes(featureKey) ? 1 : 0,
+      enabled: ['tasks', 'travel', 'food', 'costs', 'music', 'arcade'].includes(featureKey) ? 1 : 0,
       changedBy: TEST_ADMIN_ID,
     })),
   );
@@ -293,6 +293,10 @@ test('general events reject mutations in LAN-only areas before domain validation
   const tracking = await request(app).post(`/api/events/${created.body.id}/tracking/start`);
   assert.equal(tracking.status, 404);
   assert.match(tracking.body.error, /nicht aktiviert/);
+
+  const seating = await request(app).put('/api/seating/layout').send({});
+  assert.equal(seating.status, 404);
+  assert.match(seating.body.error, /nicht aktiviert/);
 
   const restored = await request(app).put('/api/me/active-event').send({ eventId: BASE_EVENT_ID });
   assert.equal(restored.status, 200);
