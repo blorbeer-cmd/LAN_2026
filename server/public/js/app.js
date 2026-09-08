@@ -1119,6 +1119,10 @@ function wireSocket() {
     // Every Orga tab re-renders, not just the two checklist ones: the To-Dos
     // tab count belongs to the area shell and is visible from all of them.
     if (sectionKeyForView(currentView) === 'orga') renderCurrent();
+    // Home's "Meine To-Dos" tile visibility itself now depends on this data
+    // (see renderAssignedTodos() in home.js), not just its content, so a
+    // stale cache on an already-open Home view has to trigger a re-render too.
+    else if (currentView === 'home') renderCurrent();
   });
 
   socket.on('music:changed', () => {
