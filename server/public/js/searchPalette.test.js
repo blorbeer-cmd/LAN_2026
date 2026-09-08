@@ -64,13 +64,14 @@ test('Auswertung destinations require the real admin role, same as the rest of A
 
 test('general events remove LAN-only areas from search results', () => {
   const visibleViews = searchEntriesVisibleForEvent(SEARCH_ENTRIES, {
-    enabledFeatures: ['tasks', 'travel', 'food', 'costs', 'music', 'seating'],
+    enabledFeatures: ['tasks', 'travel', 'food', 'costs', 'music', 'arcade'],
   }).map((entry) => entry.view);
   assert.equal(visibleViews.includes('foodOrders'), true);
   assert.equal(visibleViews.includes('arrivals'), true);
+  assert.equal(visibleViews.includes('arcade'), true);
   assert.equal(visibleViews.includes('matchmaking'), false);
   assert.equal(visibleViews.includes('votes'), false);
-  assert.equal(visibleViews.includes('arcade'), false);
+  assert.equal(visibleViews.includes('seating'), false);
   assert.equal(visibleViews.includes('leaderboard'), false);
 });
 

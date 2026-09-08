@@ -839,6 +839,13 @@ arcadeTest('multiplayer', 'Tetris Arena supports six ready players across multip
       return Boolean(shell?.style.getPropertyValue('--arcade-h-budget').trim());
     });
 
+    // Home's background current-item refresh may finish after entering a
+    // match. Deliver that completion between layout and measurement: it must
+    // not rebuild the active game or reset its measured height budget.
+    await host.page.locator('.tetris-primary-board .tetris-canvas').evaluate((canvas) => {
+      canvas.dataset.renderIdentity = 'before-pause';
+      window.dispatchEvent(new CustomEvent('respawn:aktuell-changed'));
+    });
     const layout = await host.page.evaluate(() => {
       const primary = document.querySelector('.tetris-primary-board .tetris-canvas') as HTMLElement;
       const opponent = document.querySelector('.tetris-opponent-grid .tetris-canvas') as HTMLElement;
@@ -857,9 +864,11 @@ arcadeTest('multiplayer', 'Tetris Arena supports six ready players across multip
     assert.ok(layout.heightBudget > 160, `multi-row arena must not collapse to the minimum height budget (${layout.heightBudget})`);
     assert.ok(layout.scrollWidth <= layout.clientWidth);
 
-    await host.page.locator('.tetris-primary-board .tetris-canvas').evaluate((canvas) => {
-      canvas.dataset.renderIdentity = 'before-pause';
-    });
+    assert.equal(
+      await host.page.locator('.tetris-primary-board .tetris-canvas').getAttribute('data-render-identity'),
+      'before-pause',
+      'a background Home refresh must preserve the active game canvas',
+    );
     await host.page.click('#tetris-pause');
     await host.page.waitForSelector('#tetris-resume');
     assert.equal(

@@ -19,20 +19,11 @@ import { emptyStateHtml } from '../emptyState.js';
 import { isAdmin } from '../admin.js';
 import { eventHasFeature, viewIsEnabledForEvent } from '../eventFeatures.js';
 import { eventTypeTitle } from '../eventTypes.js';
-import { domainIcon } from '../domainIcons.js';
 import { formatEuroCents } from '../paypal.js';
 import { dueBadgeInfo } from '../checklistDue.js';
-import { assignedTasks, ensureTasksLoaded, openTaskCount } from './checklist.js';
+import { assignedTasks, ensureTasksLoaded, freeTaskCount } from './checklist.js';
 
 const STATE_RANK = { playing: 0, online: 1, paused: 2, offline: 3 };
-
-const GENERAL_EVENT_LINKS = Object.freeze([
-  Object.freeze({ view: 'events', title: 'Eventdetails & Kosten', description: 'Zeitraum, Ort, Teilnehmende und Beiträge' }),
-  Object.freeze({ view: 'checklist', title: 'To-Dos', description: 'Aufgaben und Mitbring-Anfragen' }),
-  Object.freeze({ view: 'arrivals', title: 'An- & Abreise', description: 'Zeiten und Fahrgemeinschaften' }),
-  Object.freeze({ view: 'foodOrders', title: 'Essen', description: 'Gemeinsame Bestellungen' }),
-  Object.freeze({ view: 'music', title: 'Jam', description: 'Musik und gemeinsame Warteschlange' }),
-]);
 
 let seatingCache = null;
 let seatingLoading = false;
@@ -141,22 +132,6 @@ function eventPeriod(event) {
   return event.endsAt == null ? `Ab ${start}` : `${start} – ${formatDateTime(event.endsAt)}`;
 }
 
-function generalEventLinkHtml(item) {
-  const taskCount = item.view === 'checklist' ? openTaskCount() : 0;
-  const description = taskCount > 0
-    ? `${taskCount} ${taskCount === 1 ? 'To-Do ist' : 'To-Dos sind'} dir zugewiesen`
-    : item.description;
-  return `
-    <button type="button" class="card row list-row" data-navigate="${item.view}">
-      <span class="list-row-icon">${icon(domainIcon(item.view))}</span>
-      <span class="home-current-copy">
-        <span class="player-name">${escapeHtml(item.title)}</span>
-        <span class="muted list-row-desc">${escapeHtml(description)}</span>
-      </span>
-      <span class="muted">${icon('chevronRight')}</span>
-    </button>`;
-}
-
 function renderGeneralEventOverview() {
   const event = state.activeEvent;
   if (!event || event.eventType !== 'general') return '';
@@ -208,20 +183,6 @@ function renderGeneralEventOverview() {
     </section>`;
 }
 
-function renderGeneralEventOrganisation() {
-  const event = state.activeEvent;
-  if (!event || event.eventType !== 'general') return '';
-  const links = GENERAL_EVENT_LINKS
-    .filter((item) => viewIsEnabledForEvent(item.view, event))
-    .map(generalEventLinkHtml)
-    .join('');
-  return `
-    <section class="card grouped-page-section stack" aria-labelledby="home-organisation-title">
-      <div class="grouped-page-section-title"><h2 id="home-organisation-title">Organisation</h2></div>
-      <div class="card-grid">${links}</div>
-    </section>`;
-}
-
 function homeTaskHtml(task) {
   const due = dueBadgeInfo(task.dueAt);
   return `
@@ -235,14 +196,41 @@ function homeTaskHtml(task) {
     </button>`;
 }
 
+// A row nudging toward the shared pool when nothing is assigned to this
+// identity yet — the tile is only visible at all because these exist (see
+// renderAssignedTodos), so it still needs one clickable way into the list.
+function homeFreeTodosHtml(count) {
+  return `
+    <button type="button" class="card row list-row" data-navigate="checklist">
+      <span class="list-row-icon">${icon('check')}</span>
+      <span class="home-current-copy">
+        <span class="player-name">${count === 1 ? 'Ein offenes To-Do' : `${count} offene To-Dos`}</span>
+        <span class="muted list-row-desc">Noch nicht übernommen</span>
+      </span>
+      <span class="muted">${icon('chevronRight')}</span>
+    </button>`;
+}
+
+// Only worth a tile when there is something to act on: To-Dos assigned to
+// this identity, or free ones still waiting in the shared pool for anyone to
+// claim. An empty pool with nothing assigned needs no dedicated link — every
+// row here already navigates to the full list on click. Nothing is known yet
+// while tasksCache is still loading, so the tile stays out entirely rather
+// than flashing a "Lädt…" placeholder that may immediately disappear again.
 function renderAssignedTodos() {
   if (!eventHasFeature(state.activeEvent, 'tasks')) return '';
   const tasks = assignedTasks();
+  if (tasks === null) return '';
+  const freeCount = freeTaskCount();
+  if (tasks.length === 0 && freeCount === 0) return '';
   const myId = getMyId();
   let content;
-  if (tasks === null) content = emptyStateHtml('Lädt…');
-  else if (!myId) content = '<p class="muted">Wähle oben, wer du bist, um deine To-Dos zu sehen.</p>';
-  else if (tasks.length === 0) content = emptyStateHtml('Noch keine To-Dos.');
+  // assignedTasks() is always [] without an identity, so this only renders
+  // once freeCount > 0 (the gate above already hid the tile otherwise) — the
+  // pool row keeps a navigable way in even before an identity is chosen.
+  if (!myId) {
+    content = `<p class="muted">Wähle oben, wer du bist, um deine To-Dos zu sehen.</p><div class="card-grid">${homeFreeTodosHtml(freeCount)}</div>`;
+  } else if (tasks.length === 0) content = `<div class="card-grid">${homeFreeTodosHtml(freeCount)}</div>`;
   else {
     const visibleTasks = tasks.slice(0, 3);
     const remaining = tasks.length - visibleTasks.length;
@@ -254,7 +242,6 @@ function renderAssignedTodos() {
     <section class="card grouped-page-section stack" aria-labelledby="home-todos-title" data-home-assigned-todos>
       <div class="grouped-page-section-title">
         <h2 id="home-todos-title">Meine To-Dos</h2>
-        <button type="button" class="btn btn-sm" data-navigate="checklist">Alle To-Dos</button>
       </div>
       ${content}
     </section>`;
@@ -426,7 +413,6 @@ export function renderHome(container, ctx) {
         ${renderAssignedTodos()}
         ${renderStatus()}
       </div>
-      ${renderGeneralEventOrganisation()}
       ${
         trackingEnabled
           ? `<section class="card grouped-page-section stack" aria-labelledby="home-live-title">

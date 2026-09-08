@@ -56,7 +56,7 @@ export function rosterPickerHtml({
       ${renderTrailing(player)}
     </label>`).join('');
 
-  return `<div data-roster-picker="${escapeHtml(id)}">
+  return `<div class="stack" data-roster-picker="${escapeHtml(id)}">
     <div class="selection-toolbar">
       ${toolbarLabel ? `<span class="field-label">${escapeHtml(toolbarLabel)}</span>` : ''}
       ${toolbarLeadingHtml}

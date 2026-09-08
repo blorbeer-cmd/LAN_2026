@@ -1275,8 +1275,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   result entry. Team and free-for-all result inputs use the same aligned responsive grid.
 - **Home overview** — Home follows the same full-width grouped-card hierarchy as Tournaments,
   Teams and Vote. „Aktuell“, „Live-Status“, „Rangliste“ and „Sitzplan“ are separate main cards with
-  their heading inside the surface. „Meine To-Dos“ shows up to three tasks assigned to the signed-in
-  identity for every event type, ordered by due date, and links to the complete list. Every current
+  their heading inside the surface. „Meine To-Dos“ only renders once there is something to act on:
+  up to three tasks assigned to the signed-in identity, ordered by due date, or — while none are
+  assigned yet — a single row nudging toward the shared pool's still-open To-Dos; with neither, the
+  tile stays hidden rather than offering an empty link into the full list. Every current
   item pairs its full-row navigation action with a
   separate icon action that hides only that live occurrence for the signed-in identity and active
   event on the current device; a new vote round, order, tournament or lobby remains visible again.
@@ -1290,9 +1292,9 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   the full-width seating plan and a three-column top-six ranking. If only one priority card exists it
   spans the row. A general event
   replaces the LAN-only live and ranking groups with a leading event overview containing its type,
-  period, optional location/note, participant count and contribution. A separate „Organisation“
-  group links to the existing Eventdetails, To-Dos, An- & Abreise, Essen and Jam workflows; the
-  read-only seating plan remains its own full-width group below them. Arcade stays available for
+  period, optional location/note, participant count and contribution. It has no „Organisation“
+  shortcut group; planning workflows remain reachable through navigation. Seating is LAN-only,
+  including Home's read-only plan and Admin's editor. Arcade stays available for
   both event types because its browser games do not depend on LAN tracking or competition areas.
   The personal live-state action says only „Pause“ while active and „Bin wieder da“ while paused;
   it stores the equally concise manual note „Pause“ instead of combining several possible reasons
