@@ -1,6 +1,7 @@
 import { eventCalendarLinks } from './calendarExport.js';
 import { escapeHtml } from './format.js';
 import { icon } from './icons.js';
+import { infoTooltipHtml } from './infoTooltip.js';
 
 // Legacy planning events may have neither startsAt nor endsAt. The base
 // workspace is permanently open (startsAt set, endsAt null).
@@ -44,7 +45,7 @@ export function renderEventCalendarActions(event, { invitation = false } = {}) {
       ? `<span class="badge badge-online event-calendar-confirmed" tabindex="-1" data-event-calendar-confirmed="${escapeHtml(event.id)}">Im Kalender eingetragen</span>`
       : `<div class="event-calendar-confirmation">
            <button type="button" class="btn btn-sm btn-primary" data-confirm-event-calendar="${escapeHtml(event.id)}">Übernahme bestätigen</button>
-           <span class="muted">Beendet die Kalender-Erinnerungen.</span>
+           ${infoTooltipHtml(`event-calendar-confirmation-help-${event.id}`, 'Kalenderübernahme', 'Beendet die Kalender-Erinnerungen.')}
          </div>`
     : '';
   return `
