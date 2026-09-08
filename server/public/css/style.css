@@ -1502,6 +1502,7 @@ textarea {
 /* ---------- Buttons & inputs ---------- */
 
 .btn {
+  display: inline-block;
   border: none;
   border-radius: var(--radius-sm);
   padding: var(--space-3) var(--space-5);
@@ -1510,6 +1511,7 @@ textarea {
   cursor: pointer;
   background: var(--bg-elevated-2);
   color: var(--text);
+  text-decoration: none;
   transition: transform 0.05s ease, opacity 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
 }
 /* Hover feedback only where hover exists — on touch screens :hover sticks
@@ -2599,7 +2601,6 @@ button.draft-pool-player {
 }
 .kiosk-open-link {
   text-align: center;
-  text-decoration: none;
 }
 .tournament-lobby-copy {
   width: var(--tap-target-size);
@@ -3084,63 +3085,15 @@ button.draft-pool-player {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
-/* A card's primary action(s), pinned to the bottom of the viewport (just
-   above the fixed bottom nav) while the card itself is scrolling through —
-   so a long preceding list (vote game rows, player-selection grids, ...)
-   never forces a scroll just to reach submit/cancel. Bounded by the card's
-   own box (position:sticky's containing block), so it releases and scrolls
-   away normally once that card is fully passed instead of covering
-   unrelated cards further down the page.
-
-   bottom: 0, not the nav's height — .view-container's own bottom padding
-   (see above) already reserves exactly that much space (plus a space-6
-   gap) below the true end of the scrollable content, and a sticky
-   element's offset is resolved against that reserved edge. Re-adding the
-   nav height here double-counts it and parks the bar a full nav-height
-   too high, floating over mid-list rows with a dead gap above the nav.
-
-   While it's stuck, whatever list row is scrolling past directly behind it
-   is briefly hidden — measured on a full ~17-player roster, that's a real,
-   reproducible overlap at common sizes like 1366x768, not just a mobile
-   edge case. A permanent fix (reserving matching blank space above the bar
-   so no real row ever lines up behind it) needs the reserved amount to
-   track live content height — every row can pass behind the bar at some
-   scroll position, not only the last one, so the reservation would have to
-   span the whole scrollable region, i.e. effectively turn each long list
-   into its own internally-scrolling box instead of scrolling with the
-   page. That's a materially different, riskier interaction model for a
-   narrow, self-resolving annoyance (scrolling a little further always
-   clears it). Instead: keep the same frosted-glass treatment already used
-   for the topbar/bottom nav below so a covered row stays legible through
-   the bar, and let clicks fall through the bar's own empty background onto
-   whatever row is currently behind it — the annoyance shrinks from "can't
-   see or reach it" to "reads dimmer for a moment", without the bigger
-   rework's risk. */
-.sticky-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
+/* A card's primary action(s), set off from a long preceding list (vote game
+   rows, player-selection grids, ...) with a hairline divider. Scrolls with
+   the page like any other card content — no longer pinned to the viewport
+   (see GitHub issue 557: a fixed bar over a scrolling list briefly covered
+   whatever row passed behind it, which was worse than just scrolling a
+   little further to reach the button). */
+.card-footer-actions {
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
-  background: var(--bg-elevated);
-  pointer-events: none;
-}
-/* Re-enable only actual controls, not their wrapping layout divs (e.g. the
-   flex `.row` around a button) — those wrappers can span wider than the
-   control itself, and giving pointer-events back to the whole wrapper would
-   silently reopen the same dead zone this rule exists to remove. */
-.sticky-actions button,
-.sticky-actions a,
-.sticky-actions input,
-.sticky-actions [tabindex] {
-  pointer-events: auto;
-}
-@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .sticky-actions {
-    background: rgba(23, 30, 46, 0.7);
-    -webkit-backdrop-filter: blur(16px) saturate(1.4);
-    backdrop-filter: blur(16px) saturate(1.4);
-  }
 }
 
 /* Cards that ARE buttons (game rows, tournament list, "Mehr" hub): lift

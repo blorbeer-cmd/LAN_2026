@@ -415,7 +415,7 @@ function renderCreateForm(el, ctx) {
               )}
           </span>
         </div>
-        <div class="sticky-actions">
+        <div class="card-footer-actions">
           <button type="button" class="btn btn-primary" id="tourn-propose">Teams auslosen</button>
         </div>
 
