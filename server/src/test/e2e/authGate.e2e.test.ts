@@ -14,6 +14,7 @@ import { chromium, Browser, Page } from 'playwright';
 import { createE2EDiagnosticTest, trackE2EContext } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 import { waitForPlayerData } from './authHelpers';
+import { openMoreViewEntry } from './navHelpers';
 
 let BASE_URL: string;
 const RECOVERY_CODE = 'e2e-admin-recovery-code';
@@ -440,8 +441,7 @@ test('admin creates, displays and revokes a registration link in the UI', async 
     await adminPage.reload();
     await adminPage.waitForSelector('#app:not([hidden])');
 
-    await adminPage.click('.nav-btn[data-view="more"]');
-    await adminPage.click('[data-navigate="admin"]');
+    await openMoreViewEntry(adminPage, '[data-navigate="admin"]');
     await adminPage.waitForSelector('#admin-mode-activate');
     assert.equal(await adminPage.locator('#admin-banner').isHidden(), true);
     await adminPage.waitForSelector('#admin-register-link');
@@ -561,8 +561,7 @@ test('switching from an admin to a new account clears the local admin mode', asy
     await switchPage.fill('#auth-password', 'e2e bootstrap password');
     await switchPage.click('#auth-form button[type="submit"]');
     await switchPage.waitForSelector('#app:not([hidden])');
-    await switchPage.click('.nav-btn[data-view="more"]');
-    await switchPage.click('[data-navigate="admin"]');
+    await openMoreViewEntry(switchPage, '[data-navigate="admin"]');
     await switchPage.click('#admin-mode-activate');
     await switchPage.waitForSelector('#admin-banner:not([hidden])');
 
@@ -618,8 +617,7 @@ test('admin roster retries role loading, serializes changes and follows group ro
     await adminPage.fill('#auth-password', 'e2e bootstrap password');
     await adminPage.click('#auth-form button[type="submit"]');
     await adminPage.waitForSelector('#app:not([hidden])');
-    await adminPage.click('.nav-btn[data-view="more"]');
-    await adminPage.click('[data-navigate="admin"]');
+    await openMoreViewEntry(adminPage, '[data-navigate="admin"]');
     if (await adminPage.locator('#admin-mode-activate').count()) {
       await adminPage.click('#admin-mode-activate');
       // Activating admin mode drops the cached roster and refetches it with the
@@ -713,8 +711,7 @@ test('admin mints a test-session link; a second browser opens it as the seeded t
     await adminPage.click('#auth-form button[type="submit"]');
     await waitForPlayerData(adminPage);
 
-    await adminPage.click('.nav-btn[data-view="more"]');
-    await adminPage.click('[data-navigate="admin"]');
+    await openMoreViewEntry(adminPage, '[data-navigate="admin"]');
     if (await adminPage.locator('#admin-mode-activate').count()) await adminPage.click('#admin-mode-activate');
     const testSessionButton = adminPage.locator(`[data-test-session="${testPlayer.id}"]`);
     await testSessionButton.waitFor();

@@ -21,6 +21,7 @@ import {
 import { StatefulE2EDiagnosticGuard, trackE2EContext } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 import { selectArcadeGame } from './arcadeHelpers';
+import { openMoreViewEntry } from './navHelpers';
 
 let BASE_URL: string;
 
@@ -130,8 +131,7 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
   await guestPage.goto(BASE_URL);
   await guestPage.waitForSelector('.nav-btn[data-view="home"]');
 
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="arcade"]');
+  await openMoreViewEntry(page, '[data-navigate="arcade"]');
   await waitForArcadeStylesheet(page);
   // Arcade is a launcher; select the quiz tile before its lobby controls
   // become visible (module state is intentionally reset on a fresh run).
@@ -275,8 +275,7 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
 });
 
 arcadeFlowTest('full', 'Arcade: joining Pong or Blobby closes the owned lobby and keeps Blobby team choice', async () => {
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="arcade"]');
+  await openMoreViewEntry(page, '[data-navigate="arcade"]');
   await waitForArcadeStylesheet(page);
 
   const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -286,8 +285,7 @@ arcadeFlowTest('full', 'Arcade: joining Pong or Blobby closes the owned lobby an
     await addSessionCookie(guestContext, BASE_URL, bob.cookie);
     await guestPage.goto(BASE_URL);
     await guestPage.waitForSelector('.nav-btn[data-view="more"]');
-    await guestPage.click('.nav-btn[data-view="more"]');
-    await guestPage.click('[data-navigate="arcade"]');
+    await openMoreViewEntry(guestPage, '[data-navigate="arcade"]');
     await waitForArcadeStylesheet(guestPage);
 
     for (const game of ['pong', 'blobby'] as const) {
@@ -402,8 +400,7 @@ arcadeFlowTest('full', 'Arcade: a lobby guest flags themselves ready and the hos
     await addSessionCookie(guestContext, BASE_URL, bob.cookie);
     await guestPage.goto(BASE_URL);
     await guestPage.waitForSelector('.nav-btn[data-view="more"]');
-    await guestPage.click('.nav-btn[data-view="more"]');
-    await guestPage.click('[data-navigate="arcade"]');
+    await openMoreViewEntry(guestPage, '[data-navigate="arcade"]');
     await selectArcadeGame(guestPage, 'quiz');
 
     // Host opens the lobby, guest joins. The quiz tile is a toggle and the
@@ -448,8 +445,7 @@ arcadeFlowTest('full', 'Arcade: a non-player can watch a running quiz without se
     await addSessionCookie(guestContext, BASE_URL, bob.cookie);
     await guestPage.goto(BASE_URL);
     await guestPage.waitForSelector('.nav-btn[data-view="more"]');
-    await guestPage.click('.nav-btn[data-view="more"]');
-    await guestPage.click('[data-navigate="arcade"]');
+    await openMoreViewEntry(guestPage, '[data-navigate="arcade"]');
     await selectArcadeGame(guestPage, 'quiz');
 
     if ((await page.locator('#quiz-create-lobby').count()) === 0) await selectArcadeGame(page, 'quiz');
@@ -467,8 +463,7 @@ arcadeFlowTest('full', 'Arcade: a non-player can watch a running quiz without se
     await addSessionCookie(spectatorContext, BASE_URL, analyticsPlayer.cookie);
     await spectatorPage.goto(BASE_URL);
     await spectatorPage.waitForSelector('.nav-btn[data-view="more"]');
-    await spectatorPage.click('.nav-btn[data-view="more"]');
-    await spectatorPage.click('[data-navigate="arcade"]');
+    await openMoreViewEntry(spectatorPage, '[data-navigate="arcade"]');
     await spectatorPage.waitForSelector('[data-watch-match]');
     await spectatorPage.click('[data-watch-match]');
     await spectatorPage.waitForSelector('.arcade-watch-safe-note');
@@ -510,21 +505,18 @@ arcadeFlowTest('full', 'Arcade: Scribble - host draws, a second device guesses c
     await addSessionCookie(guesserContext, BASE_URL, bob.cookie);
     await guesserPage.goto(BASE_URL);
     await guesserPage.waitForSelector('.nav-btn[data-view="more"]');
-    await guesserPage.click('.nav-btn[data-view="more"]');
-    await guesserPage.click('[data-navigate="arcade"]');
+    await openMoreViewEntry(guesserPage, '[data-navigate="arcade"]');
     await selectArcadeGame(guesserPage, 'scribble');
 
     await addSessionCookie(spectatorContext, BASE_URL, analyticsPlayer.cookie);
     await spectatorPage.goto(BASE_URL);
     await spectatorPage.waitForSelector('.nav-btn[data-view="more"]');
-    await spectatorPage.click('.nav-btn[data-view="more"]');
-    await spectatorPage.click('[data-navigate="arcade"]');
+    await openMoreViewEntry(spectatorPage, '[data-navigate="arcade"]');
 
     // Host (the shared device driving `page` through this whole suite) opens
     // the lobby — draw order is lobby join order, so the host always draws
     // first, keeping this test deterministic about who does what.
-    await page.click('.nav-btn[data-view="more"]');
-    await page.click('[data-navigate="arcade"]');
+    await openMoreViewEntry(page, '[data-navigate="arcade"]');
     await selectArcadeGame(page, 'scribble');
     await page.waitForSelector('#scribble-create:not([disabled])');
     await page.click('#scribble-create');

@@ -18,6 +18,7 @@ import {
 } from './authHelpers';
 import { createE2EDiagnosticTest } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
+import { openMoreViewEntry } from './navHelpers';
 
 let BASE_URL: string;
 
@@ -31,8 +32,7 @@ let bob: E2EAccount;
 const test = createE2EDiagnosticTest(() => ({ browser, server: e2eServer }));
 
 async function openChecklist(): Promise<void> {
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="eventPolls"]');
+  await openMoreViewEntry(page, '[data-navigate="eventPolls"]');
   await page.waitForSelector('.view-title:has-text("Orga")');
   await page.click('[data-section-tab="checklist"]');
 }
