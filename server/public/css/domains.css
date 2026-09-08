@@ -510,7 +510,7 @@ input[type='range'].preference-row-slider {
   justify-content: space-between;
   gap: var(--space-2);
   font-weight: var(--font-weight-bold);
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 .tournament-team-skill-header input {
   width: auto;
