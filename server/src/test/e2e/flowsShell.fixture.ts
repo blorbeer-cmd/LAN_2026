@@ -778,7 +778,7 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   // the shared page is already on the app root. Reload to exercise the real
   // startup path that a bookmarked hash link uses.
   await page.reload();
-  await page.waitForSelector('#admin-feature-usage-title');
+  await page.waitForSelector('#admin-feature-usage-refresh');
   await assertCompactAdminHeader('Nutzungsauswertung');
   await page.goto(`${BASE_URL}/#adminFeedback`);
   await page.reload();
@@ -794,12 +794,12 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
     await memberPage.waitForFunction(() => {
       const container = document.querySelector('#view-container');
       return Boolean(
-        container?.querySelector('#admin-feature-usage-title')
+        container?.querySelector('#admin-feature-usage-refresh')
         || container?.querySelector('#order-new-btn')
         || container?.textContent?.includes('Dieses Konto hat keine Admin-Rechte.'),
       );
     });
-    assert.equal(await memberPage.locator('#admin-feature-usage-title').count(), 0);
+    assert.equal(await memberPage.locator('#admin-feature-usage-refresh').count(), 0);
     feedbackId = await memberPage.evaluate(async () => {
       const response = await fetch('/api/feedback', {
         method: 'POST',
@@ -920,17 +920,17 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   assert.equal(await page.locator('[data-navigate="leaderboard"]').count(), 1);
   assert.equal(await page.locator('[data-navigate="adminFeatureUsage"]').count(), 1);
   assert.equal(await page.locator('[data-navigate="adminFeedback"]').count(), 1);
-  assert.equal(await page.locator('#admin-feature-usage-title').count(), 0);
+  assert.equal(await page.locator('#admin-feature-usage-refresh').count(), 0);
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);
   assert.equal(await page.locator('.admin-tool-row').count(), 7);
   await page.click('[data-navigate="adminFeatureUsage"]');
-  await page.waitForSelector('#admin-feature-usage-title');
+  await page.waitForSelector('#admin-feature-usage-refresh');
   assert.equal(await page.locator('#admin-feedback-title').count(), 0);
   await page.click('[data-navigate="admin"]');
   await page.waitForSelector('#admin-tools-title');
   await page.click('[data-navigate="adminFeedback"]');
   await page.waitForSelector('#admin-feedback-title');
-  assert.equal(await page.locator('#admin-feature-usage-title').count(), 0);
+  assert.equal(await page.locator('#admin-feature-usage-refresh').count(), 0);
   await page.click('[data-navigate="admin"]');
   await page.waitForSelector('#admin-tools-title');
   let rejectFirstKioskPasswordRequest = true;
@@ -997,7 +997,9 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   await page.waitForSelector('.seating-plan.is-editable');
   await assertCompactAdminHeader('Sitzplan');
   assert.equal(await page.locator('.seating-editor > .grouped-page-section').count(), 3);
-  assert.deepEqual(await page.locator('.seating-editor > .grouped-page-section h2 > span:first-child, .seating-editor > .grouped-page-section h2:not(:has(> span:first-child))').allTextContents(), ['Sitzplan', 'Teilnehmende', 'Konfiguration']);
+  // The plan card leads the page without repeating the „Sitzplan“ page title;
+  // only the two supporting cards carry their own headings.
+  assert.deepEqual(await page.locator('.seating-editor > .grouped-page-section h2 > span:first-child, .seating-editor > .grouped-page-section h2:not(:has(> span:first-child))').allTextContents(), ['Teilnehmende', 'Konfiguration']);
   assert.equal(await page.locator('.seating-pool-player').evaluateAll((players) => players.every((player) => getComputedStyle(player).borderRadius !== '999px')), true);
   // The unassigned-player pool is one column on phones and two from --bp-md
   // (DESIGN_SYSTEM.md: "phones keep one column"). The old bare 2-column
@@ -1029,7 +1031,7 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   assert.equal(await page.getByText('Automatisch gespeichert', { exact: true }).count(), 0);
   assert.equal(await page.locator('#seating-monitors-help').count(), 1);
   assert.equal(await page.locator('#seating-save-help').count(), 0);
-  assert.equal(await page.locator('#seating-plan-title [data-info-tooltip-trigger]').count(), 1);
+  assert.equal(await page.locator('.more-subpage-title-row .view-title [data-info-tooltip-trigger]').count(), 1);
   await page.click('[aria-label="Mehr Informationen zu Sitzplan"]');
   await page.waitForSelector('#seating-monitors-help:not([hidden])');
 });
