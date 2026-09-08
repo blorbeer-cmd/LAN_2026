@@ -24,6 +24,7 @@ import { arcadeTiming } from './timing';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
+import { registerSocketConnection } from '../socketConnections';
 
 const TICK_MS = 125;
 const COUNTDOWN_MS = arcadeTiming.countdownMs;
@@ -245,8 +246,8 @@ function startMatch(io: Server, lobby: Lobby) {
   return id;
 }
 
-export function registerSnakeSockets(io: Server): void {
-  io.on('connection', (socket: Socket) => {
+export function registerSnakeSockets(io: Server): () => void {
+  return registerSocketConnection(io, 'arcade-snake', (socket: Socket) => {
     const emitSocketLobbies = () => { const scope = socketArcadeScope(socket); if (scope) socket.emit('snake:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) }); };
     emitSocketLobbies();
     socket.on('snake:lobbies:get', emitSocketLobbies);

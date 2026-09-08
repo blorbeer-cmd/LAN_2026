@@ -8,6 +8,7 @@ import { isSessionActive, parseCookieHeader, verifySession, SESSION_COOKIE_NAME 
 import { resolveKioskToken } from './kioskTokens';
 import { isParticipant } from './events';
 import { getOrRepairActiveEvent } from './eventContext';
+import { registerSocketConnection } from './socketConnections';
 
 let io: Server | null = null;
 let authSessionSweep: NodeJS.Timeout | null = null;
@@ -79,8 +80,8 @@ function revalidateSocketScopes(server: Server, socket: Socket): void {
   void server;
 }
 
-export function registerScopedSockets(server: Server): void {
-  server.on('connection', (socket) => {
+export function registerScopedSockets(server: Server): () => void {
+  return registerSocketConnection(server, 'scope', (socket) => {
     const subscribe = (payload: { groupId?: unknown; eventId?: unknown }, ack?: (result: unknown) => void) => {
       const groupId = payload?.groupId;
       const playerId = socket.data.authPlayerId;
