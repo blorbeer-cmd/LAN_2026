@@ -376,9 +376,11 @@ export function renderProfile(container, ctx) {
 
       <section class="card stack grouped-page-section" aria-labelledby="profile-layout-title">
         <div class="grouped-page-section-title">
-          <h2 id="profile-layout-title">Ansicht</h2>
+          <h2 id="profile-layout-title" class="title-with-info">
+            <span>Ansicht</span>
+            ${infoTooltipHtml('profile-layout-help', 'Ansicht', 'Automatisch nutzt auf großen Bildschirmen die Desktop-Leiste und sonst die kompakte Laptop-Navigation.')}
+          </h2>
         </div>
-        <p class="muted profile-layout-hint">Automatisch nutzt auf großen Bildschirmen die Desktop-Leiste und sonst die kompakte Laptop-Navigation.</p>
         <div class="profile-layout-options" role="group" aria-label="Ansichtsmodus">
           ${[
             { value: LAYOUT_MODES.auto, label: 'Automatisch' },
