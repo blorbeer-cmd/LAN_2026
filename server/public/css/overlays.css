@@ -310,11 +310,11 @@
   /* Only the dialog's own controls stay clickable (see the button rule
      below) - everything else, including its own background, lets clicks
      and taps fall through to whatever required game row is scrolled behind
-     it, the same passthrough technique `.sticky-actions` already uses for
-     the same "fixed bar over a scrollable list" shape. Combined with the
-     onboarding-rating-list spacer below, every required row is reachable
-     either way; this is the fallback for the brief moments (a resize, a
-     font-size change) where the measured spacer hasn't caught up yet. */
+     it, since this dialog stays fixed over a scrollable list. Combined with
+     the onboarding-rating-list spacer below, every required row is
+     reachable either way; this is the fallback for the brief moments (a
+     resize, a font-size change) where the measured spacer hasn't caught up
+     yet. */
   background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
   pointer-events: none;
 }

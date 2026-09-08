@@ -666,7 +666,7 @@ export function renderMatchmaking(container, ctx) {
               )}
           </span>
         </div>
-        <div class="sticky-actions">
+        <div class="card-footer-actions">
           <div class="row" style="flex-wrap:wrap;">
             <button type="button" class="btn btn-primary" id="mm-generate" ${drawReady ? '' : 'disabled'}>Teams auslosen</button>
             ${drawReady ? '' : infoTooltipHtml(
@@ -721,7 +721,7 @@ export function renderMatchmaking(container, ctx) {
             renderTrailing: (player) => playerSkillHtml(player, selectedGameId, { balanced: false }),
           })}
         </div>
-        <div class="sticky-actions">
+        <div class="card-footer-actions">
           <div class="row" style="flex-wrap:wrap;">
             <button type="button" class="btn btn-primary" id="draft-start" ${draftReady ? '' : 'disabled'}>Draft starten</button>
             ${draftReady ? '' : infoTooltipHtml(

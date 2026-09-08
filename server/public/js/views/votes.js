@@ -549,7 +549,7 @@ export function renderVotes(container, ctx) {
         ${progressHtml}
         ${votes.info ? `<p class="muted" style="font-size:var(--font-size-xs);margin:0;">${escapeHtml(votes.info)}</p>` : ''}
         ${rows}
-        <div class="vote-action-stack sticky-actions">
+        <div class="vote-action-stack card-footer-actions">
           ${
             hasSubmitted
               ? `<div class="vote-submitted-state">${icon('circleCheck')} ${submittedLabel}</div>`
@@ -601,7 +601,7 @@ export function renderVotes(container, ctx) {
           <div id="votes-game-select" class="vote-game-grid">${gameCheckboxes}</div>
           <p class="muted" data-vote-game-search-empty role="status" style="font-size:var(--font-size-xs);" hidden>Keine passenden Spiele gefunden.</p>
         </div>
-        <div class="sticky-actions">
+        <div class="card-footer-actions">
           <button type="button" class="btn btn-primary btn-block" id="votes-start">Abstimmung starten</button>
         </div>
       </section>`;
