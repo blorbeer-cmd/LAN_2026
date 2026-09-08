@@ -1470,11 +1470,13 @@ input[type='number'].tournament-score-input {
   text-decoration: line-through;
 }
 @media (max-width: 639px) { /* --bp-md */
-  /* Keep the name row and its action row independent on narrow phones. The
-     group header has too many deliberate, fixed-width controls to compress
-     into one line without clipping the payment marker or action buttons. */
+  /* Three deliberate, left-anchored rows per orderer group: who, how much,
+     what you can do about it. The header's four fixed-width controls need
+     240px on one line, which no supported phone width leaves beside the name,
+     so identity, amount and actions each own a full-width row instead of
+     letting flex wrapping drop a single control onto a ragged extra line. */
   .food-order-group-header {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     align-items: center;
   }
   .food-order-group-toggle,
@@ -1483,32 +1485,68 @@ input[type='number'].tournament-score-input {
     grid-row: 1;
     width: 100%;
   }
+  /* The sum belongs to the person named directly above it, so it starts at
+     the same edge instead of floating alone against the opposite one, and
+     keeps its tip note on the same line. */
   .food-order-group-amount-wrap {
-    grid-column: 2;
+    grid-column: 1 / -1;
     grid-row: 2;
-    justify-self: end;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-self: start;
+    gap: var(--space-2);
   }
   .food-order-group-actions {
     grid-column: 1 / -1;
     grid-row: 3;
     min-width: 0;
     width: 100%;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: flex-end;
+    column-gap: 0;
     margin-left: 0;
+  }
+  /* The marker keeps its token width wherever it fits and only gives up the
+     few pixels a 360px group box is short, so the whole cluster stays on one
+     line. It never grows past the token, so the `Bezahlt?`/`Bezahlt` flip
+     still cannot move it or its neighbours. */
+  .food-order-group-actions .payment-paid-marker {
+    flex: 0 1 var(--payment-marker-width);
+    width: auto;
+    min-width: 0;
+    padding-inline: var(--space-1);
   }
   .food-order-group-items {
     padding-left: 0;
   }
-  /* Keep the amount on its own line on narrow phones. */
+  /* Two rows per position: the description, then amount and actions sharing
+     one line so the icons keep the same right edge as the group's action row
+     instead of trailing under the amount. */
+  .food-order-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+  }
+  .food-order-item-description {
+    grid-column: 1 / -1;
+  }
   .food-order-item-amount {
-    flex-basis: 100%;
     align-items: flex-start;
   }
   .food-order-total {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--space-1);
+  }
+  /* Stacked full-width secondary actions: wrapping them left an always
+     present `Bestellübersicht` pushed to the right edge of its own line. */
+  .food-order-detail-links {
+    display: grid;
+    grid-auto-flow: row;
+  }
+  .food-order-detail-links [data-open-order-list] {
+    margin-left: 0;
   }
   .food-order-item-form {
     grid-template-columns: minmax(0, 1fr);
@@ -1522,12 +1560,12 @@ input[type='number'].tournament-score-input {
   }
 }
 @media (max-width: 359px) { /* design-token-ok: compact payment marker below the smallest supported phone width */
-  /* At the narrowest supported width all four full-size touch targets wrap
-     inside the header instead of shrinking or getting clipped. Both payment
-     states retain the same compact marker width. */
+  /* Below the smallest supported phone width the three icon targets plus a
+     readable marker label no longer share one line. Wrapping keeps every
+     label complete instead of clipping the marker's text. */
   .food-order-group-actions {
     --payment-marker-width: 88px;
-    column-gap: 0;
+    flex-wrap: wrap;
     row-gap: var(--space-1);
   }
 }
