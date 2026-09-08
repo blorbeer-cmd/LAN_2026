@@ -105,6 +105,19 @@ flowTest('Essensbestellung: direkte Zahlung pro Personenblock und Lebenszyklus',
     })
   );
   assert.deepEqual(groupActionOrder, ['copy', 'paypal', 'paid', 'remove']);
+  // Phone layout: a position's trailing action ends on the same edge as the
+  // group's action row, so per-person and per-position controls read as one
+  // column instead of drifting apart.
+  const phoneActionEdges = await group.evaluate((groupElement) => ({
+    actionsRight: Math.round(groupElement.querySelector('.food-order-group-actions')!.getBoundingClientRect().right),
+    itemActionsRight: Array.from(groupElement.querySelectorAll('.food-order-item')).map((row) =>
+      Math.round(row.children[row.children.length - 1].getBoundingClientRect().right)
+    ),
+  }));
+  assert.ok(phoneActionEdges.itemActionsRight.length > 0, JSON.stringify(phoneActionEdges));
+  for (const right of phoneActionEdges.itemActionsRight) {
+    assert.ok(Math.abs(right - phoneActionEdges.actionsRight) <= 1, JSON.stringify(phoneActionEdges));
+  }
 
   await page.evaluate(() => {
     const original = window.open;
@@ -375,26 +388,29 @@ flowTest('Essensbestellung: orderer groups collapse/expand and pay as a group', 
   assert.equal(await bobGroupAfterLink.locator('.food-order-item .food-order-paid-marker').count(), 0);
   assert.equal(await bobGroupAfterLink.locator('[data-remove-group]').count(), 0);
 
-  // The compact payment marker plus three action slots must remain inside the
-  // header at the narrowest supported phone width instead of being clipped.
-  await page.setViewportSize({ width: 320, height: 720 });
-  const narrowGroupLayout = await bobGroupAfterLink.locator('.food-order-group-header').evaluate((header) => {
+  // The payment marker plus three action slots must stay inside the header at
+  // narrow phone widths instead of being clipped, and from the smallest
+  // supported width upwards they must also share a single row: a wrapped
+  // cluster drops one lone control onto a ragged extra line.
+  const readNarrowGroupLayout = async (): Promise<{
+    markerWidth: number;
+    markerHeight: number;
+    markerLabelClipped: boolean;
+    actionRowCount: number;
+    controlsVisible: boolean;
+    pageFits: boolean;
+  }> => bobGroupAfterLink.evaluate((groupElement) => {
+    const header = groupElement.querySelector('.food-order-group-header')!;
+    const actions = groupElement.querySelector('.food-order-group-actions')!;
     const box = header.getBoundingClientRect();
     const marker = header.querySelector('.food-order-paid-marker');
+    const markerLabel = marker?.querySelector('span');
     const controls = Array.from(header.querySelectorAll('.food-order-paid-marker, .food-order-group-amount, .food-order-group-actions button'));
     return {
       markerWidth: marker?.getBoundingClientRect().width ?? 0,
       markerHeight: marker?.getBoundingClientRect().height ?? 0,
-      controlBounds: controls.map((control) => {
-        const rect = control.getBoundingClientRect();
-        return {
-          name: control.getAttribute('aria-label') ?? control.textContent?.trim() ?? control.tagName,
-          left: rect.left,
-          right: rect.right,
-          width: rect.width,
-        };
-      }),
-      headerBounds: { left: box.left, right: box.right },
+      markerLabelClipped: markerLabel ? markerLabel.scrollWidth > markerLabel.clientWidth + 1 : true,
+      actionRowCount: new Set(Array.from(actions.children).map((child) => Math.round(child.getBoundingClientRect().top))).size,
       controlsVisible: controls.every((control) => {
         const rect = control.getBoundingClientRect();
         return rect.width > 0 && rect.left >= box.left - 1 && rect.right <= box.right + 1;
@@ -402,8 +418,19 @@ flowTest('Essensbestellung: orderer groups collapse/expand and pay as a group', 
       pageFits: document.documentElement.scrollWidth <= window.innerWidth,
     };
   });
+
+  await page.setViewportSize({ width: 360, height: 780 });
+  const smallestSupportedLayout = await readNarrowGroupLayout();
+  assert.equal(smallestSupportedLayout.actionRowCount, 1, JSON.stringify(smallestSupportedLayout));
+  assert.equal(smallestSupportedLayout.markerLabelClipped, false, JSON.stringify(smallestSupportedLayout));
+  assert.equal(smallestSupportedLayout.controlsVisible, true, JSON.stringify(smallestSupportedLayout));
+  assert.equal(smallestSupportedLayout.pageFits, true);
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  const narrowGroupLayout = await readNarrowGroupLayout();
   assert.ok(narrowGroupLayout.markerWidth <= 100);
   assert.ok(narrowGroupLayout.markerHeight >= 32);
+  assert.equal(narrowGroupLayout.markerLabelClipped, false, JSON.stringify(narrowGroupLayout));
   assert.equal(narrowGroupLayout.controlsVisible, true, JSON.stringify(narrowGroupLayout));
   assert.equal(narrowGroupLayout.pageFits, true);
   await page.setViewportSize({ width: 390, height: 844 });
