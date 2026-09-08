@@ -54,12 +54,11 @@ export {
 } from '../eventModel.js';
 
 const EVENT_HELP = 'Eventtyp, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
-// Starting tracking is the moment an organizer switches on data collection on
-// other people's PCs, so both the button's tooltip and its confirmation name
-// what the agent actually reports and what it is used for. The scope sentence
-// is shared so the two never drift apart.
+// Starting tracking enables event processing, not the agent's diagnostic reports.
+// Both the tooltip and confirmation explain the selected-event and consent
+// prerequisites from activeTrackingContexts. Share the sentence to avoid drift.
 const TRACKING_SCOPE_SENTENCE =
-  'Der Agent der Teilnehmenden meldet dann, welche Spiele aus dem Spielekatalog laufen – daraus entstehen Live-Status, Spielzeit und Auswertungen wie Rangliste und Awards. Andere Programme liest er nicht aus, und jede Person kann das Tracking im eigenen Profil pausieren.';
+  'Während dieses Event läuft und Tracking aktiviert ist, entstehen aus den Agent-Meldungen Live-Status, Spielzeit und Auswertungen nur für zugesagte Teilnehmende, die dieses Event aktuell in ihrem Konto ausgewählt haben und deren Einwilligung zum Event-Tracking gültig ist. Der Agent meldet nur laufende Spiele aus der Server-Liste, keine anderen Programme. Die Agent-Diagnose erhält erkannte Spielnamen auch unabhängig vom Event. Jede Person kann das Tracking im eigenen Profil pausieren.';
 const TRACKING_BUTTON_HELP = `Schaltet die Erfassung für dieses Event ein und aus. ${TRACKING_SCOPE_SENTENCE}`;
 const TRACKING_START_CONFIRM = (name) => `Tracking für „${name}“ starten? ${TRACKING_SCOPE_SENTENCE}`;
 const TRACKING_STOP_CONFIRM = (name) =>

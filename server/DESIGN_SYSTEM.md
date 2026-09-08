@@ -608,7 +608,11 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   both explanations live in contextual tooltips beside their checkboxes. The first step's own title
   carries a third tooltip covering the feature as a whole — what the agent reads on the PC, what
   reaches the server and what it is used for — so the naming („Tracking“) never stands without
-  that scope. The profile header owns
+  that scope. Live status, playtime and derived evaluations apply only to the account's currently
+  selected, running event with accepted participation, enabled tracking and valid event consent;
+  without that context, an unpaused agent still reports matched game names for admin diagnostics.
+  The event tracking tooltip and start confirmation explain the same prerequisites.
+  The profile header owns
   its spacing to the first group. The unlabeled profile image, Farbe, Gamertag and optional name form one row from
   `--bp-md`; the three controls align their own centers to the image while their labels sit above.
   Phones wrap the two text fields below the visual controls. The shared save action stays

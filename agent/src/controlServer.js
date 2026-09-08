@@ -83,7 +83,7 @@ function renderPage() {
     <div class="row">
       <div>
         <div>Tracking</div>
-        <div class="hint">Fragt den PC nur nach den Spielen aus der Server-Liste und meldet, welche davon laufen. Während eines laufenden Events entstehen daraus Live-Status, Spielzeit und Auswertungen, sonst nur ein Eintrag in der Agent-Diagnose. Andere Programme werden nicht ausgelesen.</div>
+        <div class="hint">Fragt den PC nur nach den Spielen aus der Server-Liste und meldet, welche davon laufen. Live-Status, Spielzeit und Auswertungen entstehen nur für das aktuell in deinem Konto ausgewählte Event, wenn es läuft, du zugesagt hast, die Orga Tracking aktiviert hat und deine Einwilligung zum Event-Tracking gültig ist. Andere gleichzeitig laufende Events erhalten daraus keine Live-Daten oder Spielzeit. Ohne diese Voraussetzungen landen die erkannten Spielnamen nur in der Agent-Diagnose, solange der Agent läuft und nicht pausiert ist. Andere Programme werden nicht ausgelesen.</div>
       </div>
       <button class="btn-primary" id="toggleBtn">…</button>
     </div>
