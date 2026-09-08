@@ -110,18 +110,15 @@ export function renderAdminFeatureUsage(container, ctx) {
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
         ${backButtonHtml({ view: 'admin' })}
-        <h1 class="view-title">Nutzungsauswertung</h1>
+        <h1 class="view-title title-with-info">
+          <span>Nutzungsauswertung</span>
+          ${infoTooltipHtml('admin-feature-usage-help', 'Nutzungsauswertung', FEATURE_USAGE_HELP)}
+        </h1>
+        <button type="button" class="btn btn-sm" id="admin-feature-usage-refresh" ${featureUsageLoading ? 'disabled' : ''}>Aktualisieren</button>
       </div>
     </div>
     <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section" aria-labelledby="admin-feature-usage-title">
-        <div class="grouped-page-section-title">
-          <span class="title-with-info">
-            <h2 id="admin-feature-usage-title">Nutzungsauswertung</h2>
-            ${infoTooltipHtml('admin-feature-usage-help', 'Nutzungsauswertung', FEATURE_USAGE_HELP)}
-          </span>
-          <button type="button" class="btn btn-sm" id="admin-feature-usage-refresh" ${featureUsageLoading ? 'disabled' : ''}>Aktualisieren</button>
-        </div>
+      <section class="card stack grouped-page-section" aria-label="Nutzungsauswertung">
         ${searchSelectHtml('admin-feature-usage-event', featureUsageEventOptions(), featureUsageFilters.eventId, {
           placeholder: 'Event suchen…',
           ariaLabel: 'Event',

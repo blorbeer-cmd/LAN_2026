@@ -84,7 +84,7 @@ function renderStats() {
       : '';
 
   const kpis = `
-    <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));">
+    <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));margin-top:var(--space-5);">
       <div class="card">
         <div class="muted" style="font-size:var(--font-size-xs);">Gesamtspielzeit</div>
         <div class="lb-points">${escapeHtml(s.formatted)}</div>
@@ -121,7 +121,7 @@ function renderStats() {
           )
           .join('')}
       </div>`
-    : emptyStateHtml('Noch keine eigenen Awards.', { style: 'padding:var(--space-4);', icon: icon('award') });
+    : emptyStateHtml('Noch keine eigenen Awards.', { style: 'padding:var(--space-4);' });
 
   const gamesHtml = s.games.length
     ? s.games
@@ -191,12 +191,20 @@ function renderStats() {
   `;
 }
 
+const subpageHeaderHtml = `
+  <div class="more-subpage-header">
+    <div class="more-subpage-title-row">
+      ${backButtonHtml({ view: 'profile' })}
+      <h1 class="view-title">Meine Statistiken</h1>
+    </div>
+  </div>`;
+
 export function renderMyStats(container, ctx) {
   const myId = getMyId();
   const me = state.players.find((p) => p.id === myId);
   if (!me) {
     container.innerHTML = `
-      ${backButtonHtml({ view: 'profile' })}
+      ${subpageHeaderHtml}
       ${emptyStateHtml('Bitte erst dein Profil einrichten.', { style: 'margin-top:var(--space-4);', icon: icon('user') })}
     `;
     return;
@@ -207,8 +215,7 @@ export function renderMyStats(container, ctx) {
   }
 
   container.innerHTML = `
-    ${backButtonHtml({ view: 'profile' })}
-    <h1 class="view-title">Meine Statistiken</h1>
+    ${subpageHeaderHtml}
     ${renderStats()}
   `;
 

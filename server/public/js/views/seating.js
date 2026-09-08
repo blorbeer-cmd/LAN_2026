@@ -126,13 +126,7 @@ function renderPool(layout, players) {
 function renderEditor() {
   const { layout, players } = cache;
   return `<div class="seating-editor grouped-page-sections">
-    <section class="card stack grouped-page-section" aria-labelledby="seating-plan-title">
-      <div class="grouped-page-section-title">
-        <h2 id="seating-plan-title" class="title-with-info">
-          <span>Sitzplan</span>
-          ${infoTooltipHtml('seating-monitors-help', 'Sitzplan', 'Sitznachbarn werden automatisch als sichtbare Monitore eingetragen.')}
-        </h2>
-      </div>
+    <section class="card stack grouped-page-section" aria-label="Sitzplan">
       ${renderSeatingPlan(layout, players, { editable: true })}
     </section>
     ${renderPool(layout, players)}
@@ -318,12 +312,15 @@ export function renderSeating(container, ctx) {
     <div class="more-subpage-header">
       <div class="more-subpage-title-row">
         ${backButtonHtml({ view: 'admin' })}
-        <h1 class="view-title">Sitzplan</h1>
+        <h1 class="view-title title-with-info">
+          <span>Sitzplan</span>
+          ${infoTooltipHtml('seating-monitors-help', 'Sitzplan', 'Sitznachbarn werden automatisch als sichtbare Monitore eingetragen.')}
+        </h1>
       </div>
     </div>
     ${cache === null ? (loading ? emptyStateHtml('Lädt…') : emptyStateHtml('Fehler beim Laden.')) : renderEditor()}`;
+  wireInfoTooltips(container);
   if (cache) {
-    wireInfoTooltips(container);
     wireEditor(container, ctx);
   }
 }
