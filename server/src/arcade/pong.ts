@@ -10,6 +10,7 @@ import { arcadeTiming } from './timing';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
+import { registerSocketConnection } from '../socketConnections';
 
 const TICK_MS = 1000 / 60;
 const SNAPSHOT_MS = 30;
@@ -261,8 +262,8 @@ function removeFromLobbies(io: Server, socketId: string) {
   if (changed) emitLobbies(io);
 }
 
-export function registerPongSockets(io: Server): void {
-  io.on('connection', (socket: Socket) => {
+export function registerPongSockets(io: Server): () => void {
+  return registerSocketConnection(io, 'arcade-pong', (socket: Socket) => {
     const emitSocketLobbies = () => {
       const scope = socketArcadeScope(socket);
       if (scope) socket.emit('pong:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) });

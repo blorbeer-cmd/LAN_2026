@@ -10,6 +10,7 @@ import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { challengeRushTiming } from './challengeRushTiming';
 import { playerMayUseArcadeAi } from './adminAccess';
+import { registerSocketConnection } from '../socketConnections';
 import {
   CHALLENGES, challengeOrder, challengePayload, createTrial, difficultyFor, isCurrentChallenge, isReadyForNext,
   isTrialChallenge, remainingUntil, scoreRepeatedTrials, validateTrialInput,
@@ -533,8 +534,8 @@ function removeDisconnectedLobbySocket(io: Server, socketId: string): void {
   emitLobbies(io);
 }
 
-export function registerChallengeRushSockets(io: Server): void {
-  io.on('connection', (socket: Socket) => {
+export function registerChallengeRushSockets(io: Server): () => void {
+  return registerSocketConnection(io, 'arcade-challenge-rush', (socket: Socket) => {
     const sendLobbies = () => { const scope = socketArcadeScope(socket); if (scope) socket.emit('challenge-rush:lobbies', lobbyPayload(scope.groupId, scope.eventId)); };
     sendLobbies(); socket.on('challenge-rush:lobbies:get', sendLobbies); socket.on('scope:subscribe', sendLobbies); socket.on('room:subscribe', sendLobbies);
     const authPlayerId = socket.data.authPlayerId;

@@ -23,6 +23,7 @@ import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { recordArcadeResult } from './arcadeData';
 import { arcadeTiming } from './timing';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, emitArcadeSocket, socketArcadeScope, socketCanUseArcadeScope } from './scope';
+import { registerSocketConnection } from '../socketConnections';
 import {
   buildHintSchedule,
   HintStep,
@@ -728,8 +729,8 @@ function endTurn(io: Server, match: ScribbleMatchState, reason: string): void {
   }, REVEAL_MS);
 }
 
-export function registerScribbleSockets(io: Server): void {
-  io.on('connection', (socket: Socket) => {
+export function registerScribbleSockets(io: Server): () => void {
+  return registerSocketConnection(io, 'arcade-scribble', (socket: Socket) => {
     const emitSocketLobbies = () => { const scope = socketArcadeScope(socket); if (scope) socket.emit('scribble:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) }); };
     emitSocketLobbies();
 

@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { db } from '../db';
 import { activeEventAccess, activeGroupMember, kioskDeliveryAllowed } from '../realtime';
+import { registerSocketConnection } from '../socketConnections';
 
 interface ArcadeDeliveryScope {
   groupId: string;
@@ -198,8 +199,8 @@ export function broadcastArcadeKiosk(io: Server, payload: unknown): void {
   }
 }
 
-export function registerArcadeSockets(server: Server): void {
-  server.on('connection', (socket) => {
+export function registerArcadeSockets(server: Server): () => void {
+  return registerSocketConnection(server, 'arcade-realtime', (socket) => {
     socket.on('scope:subscribe', () => emitArcadeWatchListToSocket(socket));
     socket.on('room:subscribe', () => emitArcadeWatchListToSocket(socket));
     socket.on(
