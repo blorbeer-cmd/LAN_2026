@@ -267,6 +267,15 @@ flowTest('wide desktop adapts the shared shell and pilot views without changing 
 
   await page.click('.desktop-nav-btn[data-view="profile"]');
   await page.waitForSelector('button[data-layout-preference="laptop"]');
+  assert.equal(await page.locator('.profile-layout-hint').count(), 0);
+  assert.equal(await page.locator('#profile-layout-help').count(), 1);
+  await page.click('[aria-label="Mehr Informationen zu Ansicht"]');
+  await page.waitForSelector('#profile-layout-help:not([hidden])');
+  const layoutHelpTrigger = page.locator('[aria-controls="profile-layout-help"]');
+  await layoutHelpTrigger.press('Escape');
+  await page.waitForFunction(() => document.getElementById('profile-layout-help')?.hidden === true);
+  await layoutHelpTrigger.press('Enter');
+  await page.waitForSelector('#profile-layout-help:not([hidden])');
   await page.click('button[data-layout-preference="laptop"]');
   await page.waitForFunction(() => document.documentElement.dataset.layoutMode === 'laptop');
   assert.equal(await page.getAttribute('html', 'data-layout-preference'), 'laptop');
