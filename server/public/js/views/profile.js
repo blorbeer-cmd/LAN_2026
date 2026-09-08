@@ -29,8 +29,26 @@ import { eventHasFeature } from '../eventFeatures.js';
 import { backButtonHtml } from '../backButton.js';
 import { layoutModeForPlayer, LAYOUT_MODES, setLayoutModeForPlayer } from '../layoutMode.js';
 
-const TRACKING_PAUSE_HELP = 'Pausiert Live-Status und Spielzeit. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
-const ACTIVITY_TRACKING_HELP = 'Erfasst zusätzlich, ob das Spielfenster im Vordergrund ist. Der Wert lässt sich später in der Agent-Steuerung ändern.';
+// Tracking is the one feature that runs on a private PC, so its labels alone
+// ("Tracking pausieren") read like surveillance without saying what leaves the
+// machine. These tooltips therefore state the actual scope and purpose: the
+// agent asks the OS only about the mapped game processes and never reads
+// anything else (see agent/src/systemProbe.js), so this is a factual
+// description of the probe, not a reassurance.
+// Boundaries the wording must not overstate, because a privacy promise
+// that outruns the code is worse than none: the allow-list spans every active
+// group the account belongs to (allowedProcessNames(activePlayerGroupIds(...))
+// in routes/agent.ts), and a report writes agent_diagnostics before any event
+// context is resolved — so reporting does not stop outside an event, only
+// live status and playtime are bound to the account's selected event, with
+// accepted participation, enabled tracking and valid consent while it runs
+// (activeTrackingContexts in trackingContexts.ts).
+const TRACKING_OVERVIEW_HELP =
+  'Der Agent fragt deinen PC nur nach den Spielen aus den Spielekatalogen deiner Gruppen – andere Programme, Fenstertitel oder Dateien liest er gar nicht erst aus. Live-Status, Spielzeit und Auswertungen entstehen nur für das aktuell in deinem Konto ausgewählte Event: Es muss gerade laufen, du musst zugesagt haben, die Orga muss Tracking aktiviert haben und deine Einwilligung zum Event-Tracking muss gültig sein. Andere gleichzeitig laufende Events erhalten daraus keine Live-Daten oder Spielzeit. Solange der Agent läuft und nicht pausiert ist, meldet er auch ohne diese Voraussetzungen weiter: Die erkannten Spielnamen landen dann nur in der Agent-Diagnose für die Administration.';
+const TRACKING_PAUSE_HELP =
+  'Stoppt die Erfassung sofort: Der Agent meldet dann kein laufendes Spiel und keine Spielzeit mehr, und du erscheinst auf dem Board als „pausiert“. Bereits erfasste Spielzeit bleibt erhalten. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
+const ACTIVITY_TRACKING_HELP =
+  'Meldet zusätzlich, ob eines dieser Spiele gerade im Vordergrund ist und wie lange du keine Taste und keine Maus benutzt hast. Ab zwei Minuten ohne Eingabe zählt die Zeit nicht mehr als aktiv – so wird echte Spielzeit von einem nur nebenbei offenen Spiel unterschieden. Fenster außerhalb des Spielekatalogs bleiben auch hier ungelesen. Der Wert lässt sich später in der Agent-Steuerung ändern.';
 const PUSH_HELP = 'Benachrichtigt dich auch, wenn Respawn nicht geöffnet ist.';
 const RATING_HELP = 'Bock unterstützt die Spielauswahl, Skill die Teamaufteilung.';
 const AGENT_DOWNLOAD_HELP = 'Das ZIP enthält bereits Server-Adresse und deinen persönlichen Key.';
@@ -234,7 +252,7 @@ async function loadNeighbors(playerId, ctx) {
 function renderNeighbors(myId) {
   const others = state.players.filter((p) => p.id !== myId);
   if (others.length === 0) {
-    return emptyStateHtml('Noch keine anderen Teilnehmenden da.', { style: 'padding:var(--space-4);' });
+    return emptyStateHtml('Noch keine weiteren Teilnehmenden.', { style: 'padding:var(--space-4);' });
   }
   if (neighborsLoading || neighborsCache === null) {
     return emptyStateHtml('Lädt…', { style: 'padding:var(--space-4);' });
@@ -413,7 +431,10 @@ export function renderProfile(container, ctx) {
         <div class="profile-agent-steps">
           <div class="card stack profile-agent-step">
             <span class="muted profile-agent-step-label">Schritt 1</span>
-            <strong>Tracking festlegen</strong>
+            <strong class="title-with-info">
+              <span>Tracking festlegen</span>
+              ${infoTooltipHtml('profile-tracking-overview-help', 'Tracking festlegen', TRACKING_OVERVIEW_HELP)}
+            </strong>
             <label class="check-row">
               <input type="checkbox" id="tracking-paused" ${me.tracking_paused ? 'checked' : ''} />
               <span class="title-with-info" style="flex:1;">

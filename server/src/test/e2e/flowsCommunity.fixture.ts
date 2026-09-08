@@ -19,6 +19,7 @@ import {
   switchIdentityAndOpenArrivals,
   createAccountForFlow,
 } from './flowsShared.fixture';
+import { openMoreViewEntry } from './navHelpers';
 
 registerFlowFixture('community');
 
@@ -205,7 +206,7 @@ flowTest('An- & Abreise: carpool marks the driver, enforces seats, driver can on
   // Deleting for real still works through an explicit confirm click.
   await page.click('[data-remove-carpool]');
   await page.click('[data-confirm]');
-  await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
+  await page.waitForSelector('text=Noch keine Fahrgemeinschaften.');
 });
 
 flowTest(
@@ -273,8 +274,7 @@ flowTest(
 );
 
 flowTest('Durchsage: notification center can navigate, mark read and remove without duplicating Home', async () => {
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="broadcast"]');
+  await openMoreViewEntry(page, '[data-navigate="broadcast"]');
   await page.waitForSelector('#broadcast-message');
   const defaultEndsAt = new Date(await page.inputValue('#broadcast-ends-at')).getTime();
   assert.ok(defaultEndsAt >= Date.now() + 55 * 60 * 1000);
@@ -336,8 +336,7 @@ flowTest('Durchsage: notification center can navigate, mark read and remove with
 
   // A second message can be ended early by its creator; it remains a past
   // notification until this player removes it from the center.
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="broadcast"]');
+  await openMoreViewEntry(page, '[data-navigate="broadcast"]');
   await page.fill('#broadcast-message', 'Turnier startet gleich!');
   await page.click('#broadcast-form button[type="submit"]');
   const activeRow = page.locator('.lb-row:has-text("Turnier startet gleich!")');
@@ -801,7 +800,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   });
   await page.waitForSelector('.kiosk-vote-overview >> text=Stichwahl läuft');
   await page.request.post(`${BASE_URL}/api/votes/cancel`);
-  await page.waitForSelector('#kiosk-votes >> text=Keine offene Abstimmung.');
+  await page.waitForSelector('#kiosk-votes >> text=Noch keine Abstimmung.');
   assert.equal(await page.locator('.kiosk-vote-overview').count(), 0);
   assert.ok(await page.locator('#kiosk-votes .kiosk-vote-state').evaluate((emptyState) => {
     const emptyBox = emptyState.getBoundingClientRect();

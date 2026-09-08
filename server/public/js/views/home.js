@@ -383,7 +383,7 @@ export function renderHome(container, ctx) {
       <div class="grouped-page-sections home-desktop-layout">
         <div class="home-priority-grid">${renderAssignedTodos()}</div>
         ${emptyStateHtml({
-          title: 'Noch keine Spieler angelegt',
+          text: 'Noch keine Spieler.',
           illustration: { src: '/img/mascot.svg', alt: '', width: 72, height: 66, className: 'mascot' },
           action: { label: 'Eigenes Profil anlegen', navigate: 'profile' },
         })}

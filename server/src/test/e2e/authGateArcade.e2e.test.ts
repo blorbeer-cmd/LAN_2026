@@ -6,6 +6,7 @@ import { addSessionCookie, authenticatedServerEnv, createE2EAccount, loginE2EAdm
 import { createE2EDiagnosticTest, trackE2EContext } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 import { selectArcadeGame } from './arcadeHelpers';
+import { openMoreViewEntry } from './navHelpers';
 
 let BASE_URL: string;
 
@@ -68,16 +69,14 @@ test('an admin sees test settings only after activation while Challenge Rush rem
   try {
     await adminPage.goto(BASE_URL);
     await adminPage.waitForSelector('#app:not([hidden])');
-    await adminPage.click('.nav-btn[data-view="more"]');
-    await adminPage.click('[data-navigate="admin"]');
+    await openMoreViewEntry(adminPage, '[data-navigate="admin"]');
     await adminPage.waitForSelector('#admin-mode-activate');
     await adminPage.waitForSelector('#admin-tools-title');
     await adminPage.waitForSelector('#admin-register-link');
     assert.equal(await adminPage.locator('#admin-test-players-title').count(), 0);
     assert.equal(await adminPage.locator('#admin-banner').isHidden(), true);
 
-    await adminPage.click('.nav-btn[data-view="more"]');
-    await adminPage.click('[data-navigate="arcade"]');
+    await openMoreViewEntry(adminPage, '[data-navigate="arcade"]');
     await adminPage.waitForSelector('.arcade-tiles');
     await selectArcadeGame(adminPage, 'tetris');
     await adminPage.waitForSelector('#tetris-create:not([disabled])');
@@ -87,13 +86,11 @@ test('an admin sees test settings only after activation while Challenge Rush rem
     assert.equal(await adminPage.locator('#cr-opponent').count(), 0);
     assert.equal(await adminPage.locator('.challenge-rush-test-selector').count(), 0);
 
-    await adminPage.click('.nav-btn[data-view="more"]');
-    await adminPage.click('[data-navigate="admin"]');
+    await openMoreViewEntry(adminPage, '[data-navigate="admin"]');
     await adminPage.click('#admin-mode-activate');
     await adminPage.waitForSelector('#admin-banner:not([hidden])');
     await adminPage.waitForSelector('#admin-test-players-title');
-    await adminPage.click('.nav-btn[data-view="more"]');
-    await adminPage.click('[data-navigate="arcade"]');
+    await openMoreViewEntry(adminPage, '[data-navigate="arcade"]');
     await selectArcadeGame(adminPage, 'tetris');
     await adminPage.waitForSelector('#tetris-opponent');
 

@@ -285,7 +285,7 @@ function kioskVoteScore(vote, result) {
 
 function renderKioskVoteRows(vote, { concealed = false, highlightLeading = true } = {}) {
   const scored = vote.results.filter((result) => result.score > 0);
-  if (scored.length === 0) return `<div class="muted kiosk-vote-empty">Noch keine Stimmen.</div>`;
+  if (scored.length === 0) return emptyStateHtml('Noch keine Stimmen.', { className: 'kiosk-vote-empty' });
   const maxScore = Math.max(...scored.map((result) => result.score));
   const visibleResults = scored.slice(0, 10);
   let previousScore = null;
@@ -372,7 +372,7 @@ function renderVotes(votes) {
     clearVoteDisplayTimer();
   }
   if (!vote) {
-    return emptyStateHtml('Keine offene Abstimmung.', { className: 'kiosk-vote-state' });
+    return emptyStateHtml('Noch keine Abstimmung.', { className: 'kiosk-vote-state' });
   }
   const heading = vote.mode === 'single' ? 'Stichwahl läuft' : 'Abstimmung läuft';
   const eligibleVoters = Number.isFinite(vote.eligibleVoters) ? vote.eligibleVoters : vote.totalVoters;
@@ -420,7 +420,7 @@ function tournamentStandingRow(name, standing, index, { compact = false } = {}) 
 }
 
 function renderTournament(t) {
-  if (!t) return emptyStateHtml('Kein Turnier.');
+  if (!t) return emptyStateHtml('Noch kein Turnier.');
   const teamsById = new Map(t.teams.map((team) => [team.id, team]));
   const teamName = (id) => (id ? escapeHtml(teamsById.get(id)?.name ?? 'TBD') : 'TBD');
 
@@ -683,7 +683,7 @@ function renderMusicBar(payload) {
           <span class="muted kiosk-music-next-label">${icon('music')} Als Nächstes</span>
           <strong>${escapeHtml(queued[0].name)}</strong>
           <span class="muted">${escapeHtml(queued[0].artist)} · gewünscht von ${escapeHtml(queued[0].requestedByName)}</span>
-        </span>` : `<span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span><span class="kiosk-music-copy"><span class="muted kiosk-music-next-label">${icon('music')} Als Nächstes</span><strong>Noch keine Wünsche</strong></span>`}
+        </span>` : `<span class="kiosk-music-copy"><span class="muted kiosk-music-next-label">Als Nächstes</span><span class="muted">Noch keine Songwünsche.</span></span>`}
     </span>` : `
       <span class="kiosk-music-current kiosk-music-empty"><span class="kiosk-music-cover kiosk-music-placeholder">${icon('music')}</span><span class="kiosk-music-copy"><strong>Jam aktiv</strong><span class="muted">Auf ${escapeHtml(session.deviceName)} läuft gerade kein Titel.</span></span></span>`;
   const recoveryHtml = needsBrowserRecovery ? `
@@ -804,7 +804,7 @@ async function refreshTournament() {
       if (!isLatestRefresh('tournament', requestVersion)) return;
       updateHtml('kiosk-tournament', renderTournament(detail));
     } else {
-      updateHtml('kiosk-tournament', emptyStateHtml('Kein offenes Turnier.'));
+      updateHtml('kiosk-tournament', emptyStateHtml('Noch kein Turnier.'));
     }
   } catch (err) {
     logRefreshFailure('tournament', err);

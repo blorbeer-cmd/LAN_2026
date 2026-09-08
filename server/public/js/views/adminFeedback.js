@@ -100,7 +100,7 @@ function openFeedbackBodyHtml(entries) {
   }
   if (feedbackLoading && feedbackEntries === null) return '<div class="card muted">Feedback wird geladen…</div>';
   if (entries.length === 0) {
-    if ((feedbackEntries || []).length === 0) return emptyStateHtml('Noch kein Feedback eingegangen.');
+    if ((feedbackEntries || []).length === 0) return emptyStateHtml('Noch kein Feedback.');
     return emptyStateHtml(feedbackSentimentFilter === 'all' ? 'Kein offenes Feedback.' : 'Kein offenes Feedback dieser Art.');
   }
   return `<div class="stack">${entries.map(feedbackEntryHtml).join('')}</div>`;

@@ -878,9 +878,6 @@ input[type='number'].tournament-score-input {
   width: 100%;
   min-height: calc(var(--row-min-h) * 2);
 }
-.vote-empty-state .empty-state-icon {
-  margin-right: 0;
-}
 .vote-info-input {
   height: var(--tap-target-size);
   min-height: var(--tap-target-size);
@@ -945,6 +942,9 @@ input[type='number'].tournament-score-input {
 .grouped-page-section {
   min-width: 0;
 }
+.primary-collection-section {
+  border-color: var(--accent);
+}
 .grouped-page-section-title {
   display: flex;
   align-items: flex-start;
@@ -961,6 +961,9 @@ input[type='number'].tournament-score-input {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+}
+.primary-collection-section > .empty-state {
+  min-height: calc(var(--row-min-h) * 2);
 }
 .grouped-page-section-title h2 {
   margin: 0;

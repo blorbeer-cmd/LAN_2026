@@ -240,7 +240,7 @@ function renderArcadeContent() {
         </div>`
         )
         .join('')
-    : emptyStateHtml('Noch keine abgeschlossenen Arcade-Matches.', { style: 'padding:var(--space-4);' });
+    : emptyStateHtml('Noch keine Arcade-Matches.', { style: 'padding:var(--space-4);' });
 
   return `
     <section class="card stack grouped-page-section" aria-labelledby="analytics-arcade-total-title">
@@ -281,7 +281,7 @@ function renderPlaytimeContent() {
         </div>`
         )
         .join('')
-    : emptyStateHtml('Keine Sessions für dieses Event.', { style: 'padding:var(--space-4);' });
+    : emptyStateHtml('Noch keine Sessions.', { style: 'padding:var(--space-4);' });
 
   const awardsHtml = awards.length
     ? awards
@@ -300,7 +300,7 @@ function renderPlaytimeContent() {
         </div>`
         )
         .join('')
-    : emptyStateHtml('Noch keine Awards für dieses Event.', { style: 'padding:var(--space-4);' });
+    : emptyStateHtml('Noch keine Awards.', { style: 'padding:var(--space-4);' });
 
   const longestPerGameHtml = overview.longestSessionsPerGame.length
     ? overview.longestSessionsPerGame
@@ -313,7 +313,7 @@ function renderPlaytimeContent() {
         </div>`
         )
         .join('')
-    : emptyStateHtml('Keine Sessions für dieses Event.', { style: 'padding:var(--space-4);' });
+    : emptyStateHtml('Noch keine Sessions.', { style: 'padding:var(--space-4);' });
 
   const sessionRows = sessions
     .slice(0, 100)
@@ -353,7 +353,7 @@ function renderPlaytimeContent() {
       </summary>
       <div class="collapsible-section-content">
         <div class="leaderboard-list-grid">
-          ${sessionRows || emptyStateHtml('Keine Sessions für dieses Event.', { style: 'padding:var(--space-4);' })}
+          ${sessionRows || emptyStateHtml('Noch keine Sessions.', { style: 'padding:var(--space-4);' })}
         </div>
       </div>
     </details>
@@ -383,7 +383,7 @@ function renderMatchesContent() {
         </div>`
         )
         .join('')
-    : emptyStateHtml('Noch keine Ergebnisse eingetragen.', { style: 'padding:var(--space-4);' });
+    : emptyStateHtml('Noch keine Ergebnisse.', { style: 'padding:var(--space-4);' });
 
   const tournamentByGameRows = tournaments.byGame.length
     ? tournaments.byGame
@@ -419,7 +419,7 @@ function renderMatchesContent() {
         </div>`
         )
         .join('')
-    : emptyStateHtml('Noch keine Teams ausgelost.', { style: 'padding:var(--space-4);' });
+    : emptyStateHtml('Noch keine Teams.', { style: 'padding:var(--space-4);' });
 
   const funCards = [];
   if (fun.biggestRivalry) {

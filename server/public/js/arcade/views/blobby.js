@@ -161,7 +161,7 @@ function startReason(lobby) {
   return waiting > 0 ? `${waiting} nicht bereit` : '';
 }
 function lobbyList() {
-  if (!lobbies.length) return emptyStateHtml('Keine offene Blobby-Volley-Lobby.', { style: 'padding:var(--space-4);' });
+  if (!lobbies.length) return emptyStateHtml('Noch keine Blobby-Volley-Lobby.', { style: 'padding:var(--space-4);' });
   return lobbies.map((l) => {
     const isHost = l.host.id === myId();
     const joined = l.players.some((p) => p.id === myId());
@@ -402,7 +402,7 @@ function matchControlsHtml(host) {
 }
 export function renderBlobby(container) {
   ensureBlobbySocket();
-  if (!match) { container.innerHTML = `${backButtonHtml({ view: 'arcade' })}${emptyStateHtml('Kein laufendes Blobby-Volley-Match.')}`; return; }
+  if (!match) { container.innerHTML = `${backButtonHtml({ view: 'arcade' })}${emptyStateHtml('Noch kein Blobby-Volley-Match.')}`; return; }
   const host = match.host?.id === myId();
   const roster = matchRosterHtml(match.players, {
     winnerIds: match.winners?.map((winner) => winner.id) ?? [],

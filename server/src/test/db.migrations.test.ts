@@ -1819,6 +1819,68 @@ test('migration 63 creates the base event and repairs missing account event cont
   fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
 });
 
+test('migration 63 orders eligible events by tracking recency when choosing the active workspace', () => {
+  const dbFile = makeTempDbPath('player-event-context-ordering');
+  runMigrations(dbFile);
+
+  const fixture = new Database(dbFile);
+  const now = Date.now();
+  fixture.prepare('DELETE FROM schema_migrations WHERE version = 63').run();
+  fixture
+    .prepare('INSERT INTO players (id, name, api_key, created_at) VALUES (?, ?, ?, ?)')
+    .run('ordered-player', 'Ordered Player', 'ordered-player-key', now);
+  fixture
+    .prepare(
+      `INSERT INTO group_memberships
+         (group_id, player_id, role, status, joined_at, outside_tracking_enabled)
+       VALUES ('default-group', 'ordered-player', 'member', 'active', ?, 0)`,
+    )
+    .run(now);
+
+  // Two eligible, accepted, currently-open tracked events. The recently started
+  // one carries the older tracking heartbeat; the older one carries the newest.
+  // The ORDER BY must prefer the newest heartbeat over the later start date, so
+  // the correct pick proves the correlated last_seen subquery still targets the
+  // right player and event after the p.id -> ep.player_id rewrite.
+  for (const [id, startsAt, lastSeen] of [
+    ['recent-start-event', now - 1_000, now - 50_000],
+    ['recent-heartbeat-event', now - 100_000, now],
+  ] as const) {
+    fixture
+      .prepare(
+        `INSERT INTO events
+           (id, name, starts_at, ends_at, tracking_enabled, group_id, status, visibility_scope)
+         VALUES (?, ?, ?, ?, 1, 'default-group', 'published', 'participants')`,
+      )
+      .run(id, id, startsAt, now + 60_000);
+    fixture
+      .prepare(
+        `INSERT INTO event_participants (event_id, player_id, status)
+         VALUES (?, 'ordered-player', 'accepted')`,
+      )
+      .run(id);
+    fixture
+      .prepare(
+        `INSERT INTO tracking_live_contexts
+           (player_id, group_id, event_id, last_seen, manual_note, activity_tracked)
+         VALUES ('ordered-player', 'default-group', ?, ?, NULL, 1)`,
+      )
+      .run(id, lastSeen);
+  }
+  fixture.close();
+
+  assert.doesNotThrow(() => runMigrations(dbFile));
+
+  const migrated = new Database(dbFile, { readonly: true });
+  assert.deepEqual(
+    migrated.prepare('SELECT active_event_id FROM player_event_contexts WHERE player_id = ?').get('ordered-player'),
+    { active_event_id: 'recent-heartbeat-event' },
+    'the event with the most recent tracking heartbeat must win over a later start date',
+  );
+  migrated.close();
+  fs.rmSync(path.dirname(dbFile), { recursive: true, force: true });
+});
+
 test('migration 53 preserves legacy event participants as accepted and is restart-safe', () => {
   const dbFile = makeTempDbPath('event-participant-status');
   runMigrations(dbFile);

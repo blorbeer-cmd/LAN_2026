@@ -423,7 +423,7 @@ function wireBattle(container) {
 }
 
 function lobbyList() {
-  if (!lobbies.length) return emptyStateHtml('Keine offene Battleship-Lobby.', { style: 'padding:var(--space-4);' });
+  if (!lobbies.length) return emptyStateHtml('Noch keine Battleship-Lobby.', { style: 'padding:var(--space-4);' });
   return lobbies.map((lobby) => {
     const joined = lobby.players.some((player) => player.id === myId());
     const isHost = lobby.host.id === myId();
