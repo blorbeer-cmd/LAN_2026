@@ -1111,8 +1111,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   outer inset as lobby footers. Whichever of the two flanking switches a game or player does not
   get reserves its width anyway (`.arcade-lobby-create-row--no-mode` /
   `--no-opponent`), so from `--bp-md` „Lobby öffnen“ keeps one width and equal left and right
-  insets across every game; on phones the
-  primary action remains full-width. Tetris, Pong, Snake and
+  insets across every game. On phones the primary action forms the full-width first row. The mode
+  and opponent switches form the second row in that order and split its available width evenly;
+  every label stays inside its segment.
+  Tetris, Pong, Snake and
   Blobby Volley all select Duell by default. A disabled „Lobby
   öffnen“ or „Start“ carries the same red `.info-tooltip-trigger--warning` reason pattern as Team
   formation's „Teams auslosen“/„Draft starten“.

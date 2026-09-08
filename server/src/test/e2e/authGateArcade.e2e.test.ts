@@ -96,6 +96,57 @@ test('an admin sees test settings only after activation while Challenge Rush rem
     await adminPage.click('[data-navigate="arcade"]');
     await selectArcadeGame(adminPage, 'tetris');
     await adminPage.waitForSelector('#tetris-opponent');
+
+    const readCreateLayout = () => adminPage.evaluate(() => {
+      const row = document.querySelector('.arcade-lobby-create-row')!.getBoundingClientRect();
+      const mode = document.querySelector('#tetris-mode')!.getBoundingClientRect();
+      const create = document.querySelector('#tetris-create')!.getBoundingClientRect();
+      const opponent = document.querySelector('#tetris-opponent')!.getBoundingClientRect();
+      return {
+        row: { left: Math.round(row.left), right: Math.round(row.right) },
+        mode: { left: Math.round(mode.left), top: Math.round(mode.top), bottom: Math.round(mode.bottom) },
+        create: {
+          left: Math.round(create.left),
+          right: Math.round(create.right),
+          top: Math.round(create.top),
+          bottom: Math.round(create.bottom),
+        },
+        opponent: {
+          left: Math.round(opponent.left),
+          top: Math.round(opponent.top),
+          bottom: Math.round(opponent.bottom),
+        },
+      };
+    });
+    for (const width of [390, 1024, 1440]) {
+      await adminPage.setViewportSize({ width, height: 900 });
+      const layout = await readCreateLayout();
+      if (width < 640) {
+        assert.equal(layout.create.left, layout.row.left, 'the phone create action starts at the row edge');
+        assert.equal(layout.create.right, layout.row.right, 'the phone create action ends at the row edge');
+        assert.ok(layout.create.bottom < layout.mode.top, 'the phone create action sits above the settings row');
+        assert.equal(layout.mode.top, layout.opponent.top, 'phone mode and opponent settings share one row');
+        assert.ok(layout.mode.left < layout.opponent.left, 'phone settings keep mode before opponent');
+        const overflowingLabels = await adminPage.locator('.arcade-mode-toggle-btn').evaluateAll((buttons) =>
+          buttons
+            .filter((button) => button.scrollWidth > button.clientWidth)
+            .map((button) => button.textContent?.trim()),
+        );
+        assert.deepEqual(overflowingLabels, [], 'phone setting labels stay inside their segments');
+      } else {
+        assert.ok(
+          Math.abs(layout.mode.top + layout.mode.bottom - layout.create.top - layout.create.bottom) <= 1,
+          'laptop and desktop controls share one center line',
+        );
+        assert.ok(
+          Math.abs(layout.create.top + layout.create.bottom - layout.opponent.top - layout.opponent.bottom) <= 1,
+          'laptop and desktop controls share one center line',
+        );
+        assert.ok(layout.mode.left < layout.create.left, 'laptop and desktop keep mode before create');
+        assert.ok(layout.create.right < layout.opponent.left, 'laptop and desktop keep create before opponent');
+      }
+    }
+
     await selectArcadeGame(adminPage, 'challenge-rush');
     await adminPage.waitForSelector('#cr-create:not([disabled])');
     assert.equal(await adminPage.locator('#cr-opponent').count(), 0);
@@ -103,7 +154,7 @@ test('an admin sees test settings only after activation while Challenge Rush rem
 
     // Challenge Rush has neither a mode nor an opponent switch. Its create
     // action still keeps the shared lobby button width and remains centered.
-    await adminPage.setViewportSize({ width: 1280, height: 900 });
+    await adminPage.setViewportSize({ width: 1440, height: 900 });
     await selectArcadeGame(adminPage, 'tetris');
     await adminPage.waitForSelector('#tetris-mode');
     const withMode = (await adminPage.locator('#tetris-create').boundingBox())!;
