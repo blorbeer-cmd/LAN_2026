@@ -280,3 +280,88 @@ test('the To-Dos tab count is present on every Orga tab, not only on the To-Dos 
   await page.waitForSelector('[data-section-tab="checklist"] [data-section-tab-count]:text("(1)")');
   assert.equal(await page.locator('[data-section-tab="checklist"][aria-current="page"]').count(), 0);
 });
+
+test('an already-open Home re-renders when a free To-Do appears and disappears elsewhere', async () => {
+  // Regression for the visibility contract in renderAssignedTodos() (home.js):
+  // the tile's presence, not just its content, now depends on checklist
+  // data, so a Home view left open has to react to checklist:changed the
+  // same way it already does for foodOrders:changed - not only on the next
+  // navigation.
+
+  // Earlier tests in this shared owner process leave To-Dos behind (e.g.
+  // Alice's self-assigned "Beamer mitbringen" from the realtime-re-render
+  // test above); clear anything still assigned to Alice, and anything still
+  // sitting open in the shared pool, so the tile's visibility gate (mine AND
+  // free) starts from a genuinely empty state instead of assuming a fixed
+  // prior history for either half of it.
+  const existing = await fetch(`${BASE_URL}/api/checklist/tasks`, { headers: { cookie: alice.cookie } });
+  const existingBody = (await existing.json()) as {
+    tasks: Array<{ id: string; status: string; assignee: { id: string } | null; createdBy: { id: string } | null }>;
+  };
+  assert.equal(existing.status, 200, JSON.stringify(existingBody));
+  const { tasks: existingTasks } = existingBody;
+  for (const task of existingTasks) {
+    if (task.status === 'taken' && task.assignee?.id === alice.id) {
+      const done = await fetch(`${BASE_URL}/api/checklist/tasks/${task.id}/done`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie: alice.cookie },
+        body: JSON.stringify({ playerId: alice.id }),
+      });
+      assert.equal(done.status, 200, await done.text());
+    } else if (task.status === 'open' && task.createdBy?.id === alice.id) {
+      const cancelled = await fetch(`${BASE_URL}/api/checklist/tasks/${task.id}`, {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json', cookie: alice.cookie },
+        body: JSON.stringify({ playerId: alice.id }),
+      });
+      assert.equal(cancelled.status, 204, await cancelled.text());
+    } else if (task.status === 'open') {
+      const claimed = await fetch(`${BASE_URL}/api/checklist/tasks/${task.id}/claim`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: alice.cookie },
+        body: JSON.stringify({ playerId: alice.id }),
+      });
+      assert.equal(claimed.status, 200, await claimed.text());
+      const done = await fetch(`${BASE_URL}/api/checklist/tasks/${task.id}/done`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie: alice.cookie },
+        body: JSON.stringify({ playerId: alice.id }),
+      });
+      assert.equal(done.status, 200, await done.text());
+    }
+  }
+
+  await switchAccount(alice);
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('respawn:navigate', { detail: 'home' })));
+  await page.waitForSelector('#view-container[data-view="home"]');
+  await page.waitForSelector('[data-home-assigned-todos]', { state: 'detached' });
+
+  // An open To-Do nobody has claimed yet - the shared pool alone is reason
+  // enough for the tile to appear, even though Alice created it herself.
+  // Kept out of page.request: an authenticated response renews its cookie in
+  // the shared BrowserContext and could otherwise switch Alice's open page
+  // to a different identity.
+  const created = await fetch(`${BASE_URL}/api/checklist/tasks/todo`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: alice.cookie },
+    body: JSON.stringify({ playerId: alice.id, title: 'Grillkohle besorgen' }),
+  });
+  const createdBody = (await created.json()) as { tasks: Array<{ id: string }> };
+  assert.equal(created.status, 201, JSON.stringify(createdBody));
+  const { tasks } = createdBody;
+
+  await page.waitForSelector('[data-home-assigned-todos]');
+  assert.match(await page.locator('[data-home-assigned-todos]').innerText(), /Ein offenes To-Do/);
+
+  // Bob claims it: it leaves the pool without becoming assigned to Alice, so
+  // her still-open Home has nothing left to show and the tile disappears
+  // again, still without navigating away.
+  const claimed = await fetch(`${BASE_URL}/api/checklist/tasks/${tasks[0].id}/claim`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: bob.cookie },
+    body: JSON.stringify({ playerId: bob.id }),
+  });
+  assert.equal(claimed.status, 200, await claimed.text());
+
+  await page.waitForSelector('[data-home-assigned-todos]', { state: 'detached' });
+});

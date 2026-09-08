@@ -654,6 +654,15 @@ export function renderTetris(container, _ctx) {
     return;
   }
 
+  // Shared background refreshes can render the active view at any time.
+  // Keep a live match's canvases and measured layout mounted; only a new
+  // match, perspective, mode or host needs a different board/control shell.
+  const renderKey = JSON.stringify([match.matchId, myId(), match.mode, match.host?.id]);
+  if (!match.ended && container.querySelector('#tetris-boards')?.dataset.renderKey === renderKey) {
+    updatePauseUi();
+    return;
+  }
+
   const mine = match.players.find((player) => player.id === myId());
   const orderedPlayers = mine ? [mine, ...match.players.filter((player) => player.id !== mine.id)] : match.players;
   const winnerId = match.winner?.id ?? null;
@@ -698,6 +707,7 @@ export function renderTetris(container, _ctx) {
       ${matchControls()}
       ${endResultHtml()}
     </div></div>`;
+  container.querySelector('#tetris-boards').dataset.renderKey = renderKey;
   paint();
   wireMatch(container);
   wireArcadeToolbar(container);
@@ -748,6 +758,7 @@ function updatePauseUi() {
   paint();
   const button = document.querySelector('#tetris-pause, #tetris-resume');
   if (!button) return;
+  if (button.id === (match.paused ? 'tetris-resume' : 'tetris-pause')) return;
   button.outerHTML = match.paused
     ? '<button type="button" class="btn btn-sm btn-equal btn-primary" id="tetris-resume">Fortsetzen</button>'
     : '<button type="button" class="btn btn-sm btn-equal" id="tetris-pause">Pausieren</button>';
