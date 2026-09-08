@@ -197,7 +197,10 @@ around the physical seating plan the same size; the compact size preserves that 
 `--assignment-select-width` (112px) keeps repeated player-to-team selectors aligned independently
 of player-name length.
 `--payment-marker-width` (96px, 88px only below 360px) keeps the food-order payment toggle stable
-directly beside its PayPal action while the label, position count and amount change.
+beside its PayPal action while the label, position count and amount change. It is the toggle's
+width wherever the group box has room for it; on phones, where the cluster owns a full-width row of
+its own, the marker may only give up the few pixels a 360px box is short and never grows past the
+token, so its width still follows the layout rather than the label.
 `--notification-panel-width` (360px) caps the header notification center while it remains
 viewport-responsive on phones.
 `--search-panel-width` (640px) gives the global search palette enough room for titles and short
@@ -754,6 +757,15 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   affirmative answer marks all group items paid. The local `paypal` icon is the filled brand path in
   `icons.js`; other icons remain line icons.
 
+  Below `--bp-md` an orderer group becomes three deliberate rows instead of one: the person, then
+  their sum with its tip note beside it at the same left edge as the name, then the action cluster
+  on a full-width row of its own. The four fixed-width controls need 240px on one line, which no
+  supported phone width leaves next to a name, and flex wrapping would otherwise drop a single
+  control onto a ragged extra line. Position rows follow the same split: the description takes the
+  first row, amount and actions share the second, so every position's trailing action ends on the
+  group action row's right edge. The order's detail links stack full-width there for the same
+  reason — wrapped, `Bestellübersicht`'s `margin-left:auto` left it alone against the right edge.
+
   Position rows contain only quantity × description, amount, copy and delete. The displayed amount
   includes quantity and tip; copy uses exactly that display string. There is no position-level paid
   marker, selection state or row divider; their strike-through is derived from the person-level paid
@@ -1039,7 +1051,13 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   The game grid remains the first visible group with or without a selection. Once a game is selected,
   its lobby group follows directly below the grid; there is no separate „Spielauswahl“ back action.
   The selected game is represented by `#arcade/<spiel>` so browser back/forward, reload and the
-  highlighted game tile agree. Selecting a game is not a toggle: clicking the already active tile
+  highlighted game tile agree. That route refines the launcher in place rather than opening a
+  sub-page: the tile grid stays exactly where it is, so switching games keeps the reader's scroll
+  position and focus and does not replay the view-enter animation — on a phone a reset to the top
+  read as a full reload of the page. The Arcade route declares this through `inPlaceLocalRoutes`
+  in `viewManifest.js`; a local route that replaces the whole page (Turniere's list becoming a
+  tournament board) leaves the flag off and keeps entering like any other screen.
+  Selecting a game is not a toggle: clicking the already active tile
   keeps the selection and route unchanged. The active tile keeps `.is-active` and carries
   `aria-current="page"` rather than `aria-pressed`; the route `#arcade` via browser back remains
   the only way to return to the unselected launcher.

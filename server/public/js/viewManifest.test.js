@@ -65,8 +65,17 @@ test('every route carries the shared navigation and lifecycle contract', () => {
     assert.ok(Array.isArray(entry.lifecycle.invalidateOn), `${view}: invalidateOn`);
     assert.ok(Array.isArray(entry.lifecycle.refreshOn), `${view}: refreshOn`);
     assert.equal(typeof entry.lifecycle.preserveState, 'boolean', `${view}: preserveState`);
+    assert.equal(typeof entry.inPlaceLocalRoutes, 'boolean', `${view}: inPlaceLocalRoutes`);
     if (entry.requiresRole) assert.equal(entry.requiresRole, 'admin', `${view}: requiresRole`);
   }
+
+  // Only the Arcade launcher refines itself in place; a local route that swaps
+  // the whole page (a tournament board replacing the tournament list) must
+  // keep entering like any other screen, scroll reset included.
+  assert.deepEqual(
+    Object.entries(VIEW_MANIFEST).filter(([, entry]) => entry.inPlaceLocalRoutes).map(([view]) => view),
+    ['arcade'],
+  );
 
   assert.deepEqual(sectionViews('competition').map((entry) => entry.view), ['matchmaking', 'tournaments']);
   assert.deepEqual(bottomNavigationEntries('lan').map((entry) => entry.view), ['home', 'matchmaking', 'votes', 'foodOrders', 'gameCatalog', 'more']);

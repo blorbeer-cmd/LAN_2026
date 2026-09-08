@@ -10,11 +10,17 @@ const CORE_REALTIME_EVENTS = Object.freeze({
   events: 'events:changed',
 });
 
+// `inPlaceLocalRoutes` distinguishes the two shapes a local route can have.
+// The default is a sub-page: the route replaces what the view shows (the
+// tournament list becoming a tournament board), so it enters like any other
+// screen. A view opts in here when its local routes only refine the page that
+// is already on screen, leaving the control that switches them in place.
 function defineView(definition) {
   return Object.freeze({
     area: 'core',
     requiresRole: null,
     eventFeature: null,
+    inPlaceLocalRoutes: false,
     ...definition,
     lifecycle: Object.freeze({
       eventScoped: false,
@@ -266,6 +272,9 @@ export const VIEW_MANIFEST = Object.freeze({
   }),
   arcade: defineView({
     area: 'arcade', label: 'Arcade', iconKey: 'joystick', eventFeature: 'arcade', module: './arcade/views/arcade.js', exportName: 'renderArcade',
+    // Picking a game only reveals its lobby below the tile grid, which itself
+    // stays put — see the Arcade section of DESIGN_SYSTEM.md.
+    inPlaceLocalRoutes: true,
     search: search('Bereich', 'Minigame-Lobbies öffnen und mitspielen', 'quiz tetris scribble pong blobby snake minigame', 74),
     navigation: Object.freeze({
       more: Object.freeze({ eventTypes: Object.freeze(['lan', 'general']), order: 2 }),
