@@ -248,11 +248,11 @@
   background: var(--bg-elevated-2);
 }
 .arcade-mode-toggle-btn {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-width: 0;
   border: none;
   border-radius: var(--radius-full);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   color: var(--text-muted);
@@ -297,6 +297,11 @@
 @media (min-width: 640px) { /* --bp-md */
   .arcade-mode-toggle {
     width: var(--arcade-lobby-mode-toggle-width);
+  }
+  .arcade-mode-toggle-btn {
+    flex-basis: 0;
+    padding-right: var(--space-3);
+    padding-left: var(--space-3);
   }
   .arcade-lobby-create-row > .btn {
     width: auto;

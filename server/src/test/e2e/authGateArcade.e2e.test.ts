@@ -127,6 +127,12 @@ test('an admin sees test settings only after activation while Challenge Rush rem
         assert.ok(layout.create.bottom < layout.mode.top, 'the phone create action sits above the settings row');
         assert.equal(layout.mode.top, layout.opponent.top, 'phone mode and opponent settings share one row');
         assert.ok(layout.mode.left < layout.opponent.left, 'phone settings keep mode before opponent');
+        const overflowingLabels = await adminPage.locator('.arcade-mode-toggle-btn').evaluateAll((buttons) =>
+          buttons
+            .filter((button) => button.scrollWidth > button.clientWidth)
+            .map((button) => button.textContent?.trim()),
+        );
+        assert.deepEqual(overflowingLabels, [], 'phone setting labels stay inside their segments');
       } else {
         assert.ok(
           Math.abs(layout.mode.top + layout.mode.bottom - layout.create.top - layout.create.bottom) <= 1,
