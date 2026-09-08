@@ -66,6 +66,22 @@ export function eventArrivalDepartureDefaults(event) {
   return { arrivalAt: event.startsAt, departureAt: event.endsAt };
 }
 
+// Merges the persisted "own" row, the event default and any unsaved draft
+// into what the form should show. `own` existing at all - even with a
+// `null` field - means the player has a saved arrivals row and that null
+// was an explicit choice (PUT /mine can store null directly, and
+// leaving/losing a carpool resets the synced field to null server-side via
+// syncOwnDirectionField in src/routes/arrivals.ts). Only the complete
+// absence of a row falls back to the event default; a stored null sticks.
+export function resolveMyArrivalFields(own, defaults, draft) {
+  if (draft) return { arrivalAt: draft.arrivalAt, departureAt: draft.departureAt, note: draft.note };
+  return {
+    arrivalAt: own ? own.arrival_at : defaults.arrivalAt,
+    departureAt: own ? own.departure_at : defaults.departureAt,
+    note: own ? (own.note || '') : '',
+  };
+}
+
 // `draft`, if given, overrides the persisted "own" values with whatever was
 // still sitting unsaved in the form at the moment of a background re-render
 // (see renderArrivals' snapshot below) - same survives-its-own-rerender
@@ -73,9 +89,7 @@ export function eventArrivalDepartureDefaults(event) {
 function renderMyForm(myId, draft) {
   const own = (cache?.arrivals || []).find((a) => a.player_id === myId);
   const defaults = eventArrivalDepartureDefaults(state.activeEvent);
-  const arrivalAt = draft ? draft.arrivalAt : (own?.arrival_at ?? defaults.arrivalAt);
-  const departureAt = draft ? draft.departureAt : (own?.departure_at ?? defaults.departureAt);
-  const note = draft ? draft.note : (own?.note || '');
+  const { arrivalAt, departureAt, note } = resolveMyArrivalFields(own, defaults, draft);
   return `
     <section class="card stack grouped-page-section arrivals-block" aria-labelledby="arrivals-mine-title">
       <div class="grouped-page-section-title"><h2 id="arrivals-mine-title">Meine An-/Abreise</h2></div>
