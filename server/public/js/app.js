@@ -665,9 +665,18 @@ function switchView(
   }
   const nextLocalRoute = localRoute === undefined ? (view === currentView ? currentLocalRoute : null) : localRoute;
   const changed = view !== currentView || localRouteKey(nextLocalRoute) !== localRouteKey(currentLocalRoute);
+  // A route that only refines the view already on screen (Arcade's tile grid
+  // revealing another game's lobby underneath itself) is not a screen change:
+  // it keeps scroll position, focus and the enter animation exactly as a
+  // background re-render does. Without this, picking a game on a phone looked
+  // like a reload and threw the reader back to the top of the launcher.
+  const refinesCurrentView = changed
+    && view === currentView
+    && !searchTarget
+    && viewDefinition(view)?.inPlaceLocalRoutes === true;
   const localParent = !fromHistory && changed && Boolean(nextLocalRoute);
   const navigationOrigin = document.activeElement;
-  pendingViewHeadingFocus = changed && (
+  pendingViewHeadingFocus = changed && !refinesCurrentView && (
     fromHistory
     || navigationOrigin === document.body
     || navigationOrigin === viewContainer
@@ -690,18 +699,21 @@ function switchView(
   syncDesktopNavigationActiveState();
   // Restart the view-enter animation (see .view-enter in style.css). Only on
   // deliberate navigation — realtime-triggered re-renders of the same view
-  // must never flash, so renderCurrent() alone doesn't do this.
-  viewContainer.classList.remove('view-enter');
-  void viewContainer.offsetWidth; // force reflow so removing+adding re-triggers
-  viewContainer.classList.add('view-enter');
+  // and in-place local routes must never flash, so renderCurrent() alone
+  // doesn't do this.
+  if (!refinesCurrentView) {
+    viewContainer.classList.remove('view-enter');
+    void viewContainer.offsetWidth; // force reflow so removing+adding re-triggers
+    viewContainer.classList.add('view-enter');
+  }
   // A little indicator points new/unset devices at self-onboarding (name,
   // avatar, skills, agent key). Phones use "Mehr"; wide desktops expose the
   // direct profile utility at the bottom of the side rail.
   document.querySelector('.nav-btn[data-view="more"]').classList.toggle('needs-setup', !getMyId());
   document.querySelector('.desktop-nav-btn[data-view="profile"]')
     ?.classList.toggle('needs-setup', !getMyId());
-  renderCurrent({ preserveState: !changed && !searchTarget });
-  if (!searchTarget) viewContainer.scrollTop = 0;
+  renderCurrent({ preserveState: refinesCurrentView || (!changed && !searchTarget) });
+  if (!searchTarget && !refinesCurrentView) viewContainer.scrollTop = 0;
   if (replace) {
     history.replaceState(
       { view, localRoute: currentLocalRoute, localParent: history.state?.localParent === true },
