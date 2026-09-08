@@ -147,6 +147,30 @@ arcadeFlowTest('smoke', 'Arcade: open a quiz lobby, see it on Home, then close i
   });
   assert.deepEqual(mobileInsets, { left: 0, right: 0 });
 
+  // Picking another game only swaps the lobby group below the tile grid, so the
+  // launcher must keep its scroll offset. It used to reset to the top on every
+  // pick, which on a phone reads as a reload of the whole page.
+  const launcherScroll = async (next?: number) => page.evaluate((target) => {
+    const container = document.getElementById('view-container')!;
+    if (target !== null) container.scrollTop = target;
+    return { top: Math.round(container.scrollTop), max: Math.round(container.scrollHeight - container.clientHeight) };
+  }, next ?? null);
+  const scrolledLauncher = await launcherScroll(200);
+  assert.ok(scrolledLauncher.max > 200, 'the Arcade launcher must be scrollable on a phone viewport');
+  assert.equal(scrolledLauncher.top, 200);
+  await selectArcadeGame(page, 'tetris');
+  await page.waitForSelector('#tetris-create');
+  const switchedLauncher = await launcherScroll();
+  // Scroll anchoring may settle the rebuilt tiles by a pixel; the regression is
+  // the jump back to the top, not that single pixel.
+  assert.ok(
+    Math.abs(switchedLauncher.top - 200) <= 2,
+    `picking another game must keep the launcher scroll offset, got ${switchedLauncher.top}`,
+  );
+  await selectArcadeGame(page, 'quiz');
+  await page.waitForSelector('#quiz-create-lobby');
+  await launcherScroll(0);
+
   const mobileViewport = page.viewportSize();
   await page.setViewportSize({ width: 1280, height: 800 });
   const createButtonLayout = async (selector: string) => {
