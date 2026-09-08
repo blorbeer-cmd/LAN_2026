@@ -1,0 +1,137 @@
+{
+  "total_count": 11,
+  "workflows": [
+    {
+      "id": 330335257,
+      "node_id": "W_kwDOTPo5sc4TsIQZ",
+      "name": "Agent pipeline Claude cross-review",
+      "path": ".github/workflows/agent-pipeline-claude-review.yml",
+      "state": "active",
+      "created_at": "2026-08-09T07:32:34.000+02:00",
+      "updated_at": "2026-08-09T07:32:34.000+02:00",
+      "url": "https://api.github.com/repos/blorbeer-cmd/LAN_2026/actions/workflows/330335257",
+      "html_url": "https://github.com/blorbeer-cmd/LAN_2026/blob/main/.github/workflows/agent-pipeline-claude-review.yml",
+      "badge_url": "https://github.com/blorbeer-cmd/LAN_2026/workflows/Agent%20pipeline%20Claude%20cross-review/badge.svg"
+    },
+    {
+      "id": 334586866,
+      "node_id": "W_kwDOTPo5sc4T8WPy",
+      "name": "Agent pipeline Claude self-review",
+      "path": ".github/workflows/agent-pipeline-claude-self-review.yml",
+      "state": "active",
+      "created_at": "2026-08-14T21:48:24.000+02:00",
+      "updated_at": "2026-08-14T21:48:24.000+02:00",
+      "url": "https://api.github.com/repos/blorbeer-cmd/LAN_2026/actions/workflows/334586866",
+      "html_url": "https://github.com/blorbeer-cmd/LAN_2026/blob/main/.github/workflows/agent-pipeline-claude-self-review.yml",
+      "badge_url": "https://github.com/blorbeer-cmd/LAN_2026/workflows/Agent%20pipeline%20Claude%20self-review/badge.svg"
+    },
+    {
+      "id": 330697536,
+      "node_id": "W_kwDOTPo5sc4TtgtA",
+      "name": "Agent pipeline Codex review",
+      "path": ".github/workflows/agent-pipeline-codex-review.yml",
+      "state": "active",
+      "created_at": "2026-08-09T23:50:22.000+02:00",
+      "updated_at": "2026-09-02T15:01:29.000+02:00",
+      "url": "https://api.github.com/repos/blorbeer-cmd/LAN_2026/actions/workflows/330697536",
+      "html_url": "https://github.com/blorbeer-cmd/LAN_2026/blob/main/.github/workflows/agent-pipeline-codex-review.yml",
+      "badge_url": "https://github.com/blorbeer-cmd/LAN_2026/workflows/Agent%20pipeline%20Codex%20review/badge.svg"
+    },
+    {
+      "id": 320507855,
+      "node_id": "W_kwDOTPo5sc4TGo_P",
+      "name": "Agent pipeline contract",
+      "path": ".github/workflows/agent-pipeline-contract.yml",
+      "state": "active",
+      "created_at": "2026-07-26T01:34:19.000+02:00",
+      "updated_at": "2026-07-27T15:35:22.000+02:00",
+      "url": "https://api.github.com/repos/blorbeer-cmd/LAN_2026/actions/workflows/320507855",
+      "html_url": "https://github.com/blorbeer-cmd/LAN_2026/blob/main/.github/workflows/agent-pipeline-contract.yml",
+      "badge_url": "https://github.com/blorbeer-cmd/LAN_2026/workflows/Agent%20pipeline%20contract/badge.svg"
+    },
+    {
+      "id": 327784872,
+      "node_id": "W_kwDOTPo5sc4TiZmo",
+      "name": "Agent pipeline reconcile",
+      "path": ".github/workflows/agent-pipeline-reconcile.yml",
+      "state": "active",
+      "created_at": "2026-08-05T14:15:01.000+02:00",
+      "updated_at": "2026-08-05T14:15:01.000+02:00",
+      "url": "https://api.github.com/repos/blorbeer-cmd/LAN_2026/actions/workflows/327784872",
+      "html_url": "https://github.com/blorbeer-cmd/LAN_2026/blob/main/.github/workflows/agent-pipeline-reconcile.yml",
+      "badge_url": "https://github.com/blorbeer-cmd/LAN_2026/workflows/Agent%20pipeline%20reconcile/badge.svg"
+    },
+    {
+      "id": 327144941,
+      "node_id": "W_kwDOTPo5sc4Tf9Xt",
+      "name": "Agent pipeline tests",
+      "path": ".github/workflows/agent-pipeline-tests.yml",
+      "state": "active",
+      "created_at": "2026-08-04T18:03:34.000+02:00",
+      "updated_at": "2026-08-05T14:15:01.000+02:00",
+      "url": "https://api.github.com/repos/blorbeer-cmd/LAN_2026/actions/workflows/327144941",
+      "html_url": "https://github.com/blorbeer-cmd/LAN_2026/blob/main/.github/workflows/agent-pipeline-tests.yml",
+      "badge_url": "https://github.com/blorbeer-cmd/LAN_2026/workflows/Agent%20pipeline%20tests/badge.svg"
+    },
+    {
+      "id": 310284089,
+      "node_id": "W_kwDOTPo5sc4Sfo85",
+      "name": "CI/CD",
+      "path": ".github/workflows/deploy.yml",
+      "state": "active",
+      "created_at": "2026-07-09T23:56:31.000+02:00",
+      "updated_at": "2026-07-09T23:56:31.000+02:00",
+      "url": "https://api.github.com/repos/blorbeer-cmd/LAN_2026/actions/workflows/310284089",
+      "html_url": "https://github.com/blorbeer-cmd/LAN_2026/blob/main/.github/workflows/deploy.yml",
+      "badge_url": "https://github.com/blorbeer-cmd/LAN_2026/workflows/CI/CD/badge.svg"
+    },
+    {
+      "id": 315460855,
+      "node_id": "W_kwDOTPo5sc4SzYz3",
+      "name": "Ops - Disk Cleanup",
+      "path": ".github/workflows/ops-disk-cleanup.yml",
+      "state": "active",
+      "created_at": "2026-07-18T01:10:26.000+02:00",
+      "updated_at": "2026-07-18T01:10:26.000+02:00",
+      "url": "https://api.github.com/repos/blorbeer-cmd/LAN_2026/actions/workflows/315460855",
+      "html_url": "https://github.com/blorbeer-cmd/LAN_2026/blob/main/.github/workflows/ops-disk-cleanup.yml",
+      "badge_url": "https://github.com/blorbeer-cmd/LAN_2026/workflows/Ops%20-%20Disk%20Cleanup/badge.svg"
+    },
+    {
+      "id": 310284090,
+      "node_id": "W_kwDOTPo5sc4Sfo86",
+      "name": "Provision Hetzner Server",
+      "path": ".github/workflows/provision.yml",
+      "state": "active",
+      "created_at": "2026-07-09T23:56:31.000+02:00",
+      "updated_at": "2026-07-09T23:56:31.000+02:00",
+      "url": "https://api.github.com/repos/blorbeer-cmd/LAN_2026/actions/workflows/310284090",
+      "html_url": "https://github.com/blorbeer-cmd/LAN_2026/blob/main/.github/workflows/provision.yml",
+      "badge_url": "https://github.com/blorbeer-cmd/LAN_2026/workflows/Provision%20Hetzner%20Server/badge.svg"
+    },
+    {
+      "id": 319103599,
+      "node_id": "W_kwDOTPo5sc4TBSJv",
+      "name": "Update server .env",
+      "path": ".github/workflows/update-env.yml",
+      "state": "active",
+      "created_at": "2026-07-23T20:08:19.000+02:00",
+      "updated_at": "2026-07-23T20:08:19.000+02:00",
+      "url": "https://api.github.com/repos/blorbeer-cmd/LAN_2026/actions/workflows/319103599",
+      "html_url": "https://github.com/blorbeer-cmd/LAN_2026/blob/main/.github/workflows/update-env.yml",
+      "badge_url": "https://github.com/blorbeer-cmd/LAN_2026/workflows/Update%20server%20.env/badge.svg"
+    },
+    {
+      "id": 312162811,
+      "node_id": "W_kwDOTPo5sc4Smzn7",
+      "name": "Dependabot Updates",
+      "path": "dynamic/dependabot/dependabot-updates",
+      "state": "active",
+      "created_at": "2026-07-13T11:14:43.000+02:00",
+      "updated_at": "2026-07-13T11:14:43.000+02:00",
+      "url": "https://api.github.com/repos/blorbeer-cmd/LAN_2026/actions/workflows/312162811",
+      "html_url": "https://github.com/blorbeer-cmd/LAN_2026/actions/workflows/dependabot/dependabot-updates",
+      "badge_url": "https://github.com/blorbeer-cmd/LAN_2026/actions/workflows/dependabot/dependabot-updates/badge.svg"
+    }
+  ]
+}
