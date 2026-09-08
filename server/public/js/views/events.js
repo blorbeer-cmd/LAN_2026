@@ -65,6 +65,13 @@ const TRACKING_STOP_CONFIRM = (name) =>
   `Tracking für „${name}“ stoppen? Laufende Spielzeiten werden abgeschlossen und der Live-Status geleert; bereits erfasste Spielzeit und der Event-Workspace bleiben erhalten.`;
 const KIOSK_HELP = 'Jedes LAN-Event besitzt ein eigenes Kiosk-Konto. Alle Konten verwenden dasselbe gemeinsame Kiosk-Passwort und können ausschließlich die TV-Ansicht öffnen.';
 const expandedEventParticipants = new Set();
+// Mirrors foodOrders.js's card-header-toggle pattern: an event card becomes
+// collapsible only once its list holds more than one card (a lone card gets
+// no collapse chrome), and — because the set starts empty — every card
+// defaults to collapsed the first time its list crosses that threshold. Kept
+// as one flat set across active and ended events so an event's expand state
+// survives its move into Historie.
+const expandedEventCards = new Set();
 // Mirrors foodOrders.js's Historie collapse: ended events start collapsed and
 // this survives the section's own live re-renders.
 let eventHistoryOpen = false;
@@ -630,22 +637,34 @@ function ownDeclinedBadge(event) {
     : '';
 }
 
+// Same header-toggle button foodOrders.js uses for its own collapsible cards.
+function renderEventCardToggle(event, expanded, titleHtml) {
+  return `<button type="button" class="food-order-card-header-toggle" data-event-card-toggle="${escapeHtml(event.id)}" aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="event-card-body-${escapeHtml(event.id)}" aria-label="Event ${escapeHtml(event.name)} ${expanded ? 'einklappen' : 'ausklappen'}">
+    ${icon('chevronRight', { className: 'food-order-card-chevron' })}
+    ${titleHtml}
+  </button>`;
+}
+
 // Read-only card for a member's own accepted events. The same information is
 // useful to admins, so both card variants share the detail and accepted-roster
 // blocks while only the management card receives lifecycle actions.
-function renderMemberEventCard(event) {
+function renderMemberEventCard(event, { collapsible = false } = {}) {
+  const expanded = !collapsible || expandedEventCards.has(event.id);
+  const titleHtml = `<h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>`;
   return `
     <article class="card stack event-card event-card-member" data-event-card="${escapeHtml(event.id)}">
       <div class="row-between food-order-card-header event-card-header">
-        <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
+        ${collapsible ? renderEventCardToggle(event, expanded, titleHtml) : titleHtml}
         <span class="event-card-header-badges">
           <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
           ${eventStatusBadgeHtml(event)}
         </span>
       </div>
-      ${renderEventInfo(event)}
-      ${renderAcceptedParticipants(event)}
-      ${renderOwnParticipationActions(event)}
+      <div class="food-order-card-body stack" id="event-card-body-${escapeHtml(event.id)}" ${expanded ? '' : 'hidden'}>
+        ${renderEventInfo(event)}
+        ${renderAcceptedParticipants(event)}
+        ${renderOwnParticipationActions(event)}
+      </div>
     </article>
   `;
 }
@@ -687,7 +706,7 @@ function renderInvitationPayment(event) {
     </div>`;
 }
 
-export function renderEventCard(event) {
+export function renderEventCard(event, { collapsible = false } = {}) {
   // Nothing about tracking, ending, the regular roster or the PDF keepsake is
   // meaningful before this event has an actual date — the date poll section
   // above already covers what to do instead ("Termin abstimmen"/"Termin
@@ -707,25 +726,29 @@ export function renderEventCard(event) {
   const endBtn = !hasDate || event.isEnded
     ? ''
     : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
+  const expanded = !collapsible || expandedEventCards.has(event.id);
+  const titleHtml = `<h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>`;
 
   return `
     <article class="card stack event-card event-card-managed" data-event-card="${escapeHtml(event.id)}">
       <div class="row-between food-order-card-header event-card-header">
-        <h3 class="food-order-card-title">${escapeHtml(event.name)}</h3>
+        ${collapsible ? renderEventCardToggle(event, expanded, titleHtml) : titleHtml}
         <span class="event-card-header-badges">
           <span class="badge">${escapeHtml(eventTypeTitle(event.eventType, state.eventTypeOptions))}</span>
           ${ownDeclinedBadge(event)}
           ${eventStatusBadgeHtml(event)}
         </span>
       </div>
-      ${renderEventInfo(event, { editable: true })}
-      ${renderAcceptedParticipants(event, { includeInvitationStatuses: true })}
-      <div class="event-card-actions">
-        ${trackingBtn}
-        ${endBtn}
-        ${hasDate || event.status === 'draft' || event.isEnded ? `<button type="button" class="btn btn-sm" data-participants-event="${event.id}">${icon('users')} Teilnehmende verwalten</button>` : ''}
-        ${hasDate && eventPdfExportAvailable(event) ? `<button type="button" class="btn btn-sm" data-export-event="${event.id}" title="Als PDF exportieren">${icon('file')} PDF</button>` : ''}
-        ${ownParticipationAction(event, { primary: false })}
+      <div class="food-order-card-body stack" id="event-card-body-${escapeHtml(event.id)}" ${expanded ? '' : 'hidden'}>
+        ${renderEventInfo(event, { editable: true })}
+        ${renderAcceptedParticipants(event, { includeInvitationStatuses: true })}
+        <div class="event-card-actions">
+          ${trackingBtn}
+          ${endBtn}
+          ${hasDate || event.status === 'draft' || event.isEnded ? `<button type="button" class="btn btn-sm" data-participants-event="${event.id}">${icon('users')} Teilnehmende verwalten</button>` : ''}
+          ${hasDate && eventPdfExportAvailable(event) ? `<button type="button" class="btn btn-sm" data-export-event="${event.id}" title="Als PDF exportieren">${icon('file')} PDF</button>` : ''}
+          ${ownParticipationAction(event, { primary: false })}
+        </div>
       </div>
     </article>
   `;
@@ -752,9 +775,13 @@ function renderEventSection() {
         (e) => !e.isBase,
       );
   const events = (canManage ? realEvents : memberEvents).slice().sort(compareEventsByStartAscending);
-  const renderCard = (event) => (canManage ? renderEventCard(event) : renderMemberEventCard(event));
+  const renderCard = (event, opts) => (canManage ? renderEventCard(event, opts) : renderMemberEventCard(event, opts));
   const activeEvents = events.filter((e) => !e.isEnded);
   const endedEvents = events.filter((e) => e.isEnded);
+  // Mirrors foodOrders.js's open/closed cards: a lone card gets no collapse
+  // chrome, since there is nothing to declutter yet.
+  const activeCollapsible = activeEvents.length > 1;
+  const endedCollapsible = endedEvents.length > 1;
   // An owner/admin already sees every event of the group as a management card,
   // so their own declined ones must not appear a second time down here.
   const renderedIds = new Set(events.map((e) => e.id));
@@ -784,7 +811,9 @@ function renderEventSection() {
       ${
         activeEvents.length === 0
           ? emptyStateHtml(activeEmptyText)
-          : `<div class="stack orga-event-grid">${activeEvents.map(renderCard).join('')}</div>`
+          : `<div class="stack orga-event-grid">${activeEvents
+              .map((event) => renderCard(event, { collapsible: activeCollapsible }))
+              .join('')}</div>`
       }
       ${
         declinedEvents.length > 0
@@ -813,7 +842,9 @@ function renderEventSection() {
                  </span>
                </summary>
                <div class="collapsible-section-content">
-                 <div class="stack orga-event-grid">${endedEvents.map(renderCard).join('')}</div>
+                 <div class="stack orga-event-grid">${endedEvents
+                   .map((event) => renderCard(event, { collapsible: endedCollapsible }))
+                   .join('')}</div>
                </div>
              </details>`
           : ''
@@ -1331,6 +1362,15 @@ export function renderOrgaEvents(container, ctx) {
 
   container.querySelector('[data-declined-events]')?.addEventListener('toggle', (e) => {
     declinedEventsOpen = e.currentTarget.open;
+  });
+
+  container.querySelectorAll('[data-event-card-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const eventId = button.dataset.eventCardToggle;
+      if (expandedEventCards.has(eventId)) expandedEventCards.delete(eventId);
+      else expandedEventCards.add(eventId);
+      ctx.rerender();
+    });
   });
 
   wireParticipationAnswerActions(container, ctx);
