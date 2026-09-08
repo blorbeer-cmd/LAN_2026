@@ -32,11 +32,17 @@ import { layoutModeForPlayer, LAYOUT_MODES, setLayoutModeForPlayer } from '../la
 // Tracking is the one feature that runs on a private PC, so its labels alone
 // ("Tracking pausieren") read like surveillance without saying what leaves the
 // machine. These tooltips therefore state the actual scope and purpose: the
-// agent asks the OS only about the group's mapped game processes and never
-// reads anything else (see agent/src/systemProbe.js), so this is a factual
+// agent asks the OS only about the mapped game processes and never reads
+// anything else (see agent/src/systemProbe.js), so this is a factual
 // description of the probe, not a reassurance.
+// Two boundaries the wording must not overstate, because a privacy promise
+// that outruns the code is worse than none: the allow-list spans every active
+// group the account belongs to (allowedProcessNames(activePlayerGroupIds(...))
+// in routes/agent.ts), and a report writes agent_diagnostics before any event
+// context is resolved — so reporting does not stop outside an event, only
+// live status and playtime are bound to one.
 const TRACKING_OVERVIEW_HELP =
-  'Der Agent fragt deinen PC nur nach den Spielen aus dem Spielekatalog dieser Gruppe – andere Programme, Fenstertitel oder Dateien liest er gar nicht erst aus. Gemeldet wird, welches dieser Spiele läuft und seit wann. Daraus entstehen dein Live-Status auf dem Board, deine Spielzeit und Auswertungen wie Rangliste, Statistiken und Awards. Erfasst wird nur, solange ein Event läuft, dessen Einladung du angenommen hast.';
+  'Der Agent fragt deinen PC nur nach den Spielen aus den Spielekatalogen deiner Gruppen – andere Programme, Fenstertitel oder Dateien liest er gar nicht erst aus. Läuft ein Event, dessen Einladung du angenommen hast, entstehen daraus dein Live-Status auf dem Board, deine Spielzeit und Auswertungen wie Rangliste, Statistiken und Awards. Außerhalb eines Events meldet der Agent weiter, solange er läuft und nicht pausiert ist: Die erkannten Spielnamen landen dann nur in der Agent-Diagnose für die Administration, ohne Spielzeit und ohne Live-Status.';
 const TRACKING_PAUSE_HELP =
   'Stoppt die Erfassung sofort: Der Agent meldet dann kein laufendes Spiel und keine Spielzeit mehr, und du erscheinst auf dem Board als „pausiert“. Bereits erfasste Spielzeit bleibt erhalten. Agent und Steuerung bleiben verbunden; beide Schalter zeigen denselben Stand.';
 const ACTIVITY_TRACKING_HELP =
