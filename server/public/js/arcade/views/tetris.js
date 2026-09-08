@@ -448,7 +448,7 @@ function paintOverlay() {
 // ---------- Lobby card (rendered inline inside the Arcade view) ----------
 
 function renderLobbyList() {
-  if (lobbies.length === 0) return emptyStateHtml('Keine offene Tetris-Lobby.', { style: 'padding:var(--space-4);' });
+  if (lobbies.length === 0) return emptyStateHtml('Noch keine Tetris-Lobby.', { style: 'padding:var(--space-4);' });
   return lobbies
     .map((l) => {
       const isHost = l.host.id === myId();
@@ -650,7 +650,7 @@ export function renderTetris(container, _ctx) {
     // The play view is only for live matches; anything else belongs in Arcade.
     container.innerHTML = `
       ${backButtonHtml({ view: 'arcade' })}
-      ${emptyStateHtml('Kein laufendes Tetris-Match.', { style: 'margin-top:var(--space-4);' })}`;
+      ${emptyStateHtml('Noch kein Tetris-Match.', { style: 'margin-top:var(--space-4);' })}`;
     return;
   }
 

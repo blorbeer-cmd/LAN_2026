@@ -161,7 +161,7 @@ function startReason(lobby) {
 }
 
 function lobbyList() {
-  if (!lobbies.length) return emptyStateHtml('Keine offene Pong-Lobby.', { style: 'padding:var(--space-4);' });
+  if (!lobbies.length) return emptyStateHtml('Noch keine Pong-Lobby.', { style: 'padding:var(--space-4);' });
   return lobbies.map((lobby) => {
     const isHost = lobby.host.id === myId();
     const joined = lobby.players.some((player) => player.id === myId());

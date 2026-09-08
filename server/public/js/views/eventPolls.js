@@ -399,7 +399,7 @@ function renderEndedPolls(groups, eventId) {
   if (!groups.length) return '';
   const key = `${eventId}:ended-polls`;
   return `
-    <details class="collapsible-section event-poll-ended-history" data-poll-history="${escapeHtml(key)}" ${expandedHistories.has(key) ? 'open' : ''}>
+    <details class="card grouped-page-section collapsible-section event-poll-ended-history" data-poll-history="${escapeHtml(key)}" ${expandedHistories.has(key) ? 'open' : ''}>
       <summary class="collapsible-section-header">
         <span class="row"><span class="collapsible-section-chevron" aria-hidden="true">${icon('chevronRight')}</span><span>Beendete Umfragen (${groups.length})</span></span>
       </summary>
@@ -961,25 +961,23 @@ export function renderEventPolls(container, ctx) {
     const preferred = activeGroups[0];
     if (preferred) expandedPolls.add(preferred.key);
   }
-  let content;
-  if (cached?.loading && !groups.length) content = emptyStateHtml('Umfragen werden geladen…');
-  else if (cached?.error) content = `<div class="card stack"><p class="muted">${escapeHtml(cached.error)}</p><button type="button" class="btn btn-sm" id="retry-event-polls">Erneut versuchen</button></div>`;
-  else if (!groups.length) content = emptyStateHtml({
-    title: 'Noch keine Umfrage',
-    body: 'Starte eine freie Event-Umfrage.',
-    icon: icon('vote'),
-  });
-  else content = `
-    ${activeGroups.length ? `<div class="stack event-poll-list">${activeGroups.map(renderPollGroup).join('')}</div>` : ''}
-    ${renderEndedPolls(endedGroups, event.id)}`;
+  let currentContent;
+  if (cached?.loading && !groups.length) currentContent = emptyStateHtml('Umfragen werden geladen…');
+  else if (cached?.error) currentContent = `<div class="card stack"><p class="muted">${escapeHtml(cached.error)}</p><button type="button" class="btn btn-sm" id="retry-event-polls">Erneut versuchen</button></div>`;
+  else if (!activeGroups.length) currentContent = emptyStateHtml('Noch keine Umfrage.');
+  else currentContent = `<div class="stack event-poll-list">${activeGroups.map(renderPollGroup).join('')}</div>`;
   const scrollTop = pollScrollContainer(container).scrollTop;
   const viewportAnchors = visiblePollViewportAnchors(container);
   container.innerHTML = `
-    <div class="stack event-polls-page" data-event-polls-event="${escapeHtml(event.id)}">
-      <div class="row view-actions event-polls-page-actions">
-        <button type="button" class="btn btn-primary btn-sm" id="new-event-poll">Umfrage starten</button>
-      </div>
-      ${content}
+    <div class="grouped-page-sections event-polls-page" data-event-polls-event="${escapeHtml(event.id)}">
+      <section class="card stack grouped-page-section primary-collection-section event-poll-current-section" aria-labelledby="event-poll-current-title">
+        <div class="grouped-page-section-title">
+          <h2 id="event-poll-current-title">Aktuelle Umfragen</h2>
+          <button type="button" class="btn btn-primary btn-sm" id="new-event-poll">Umfrage starten</button>
+        </div>
+        ${currentContent}
+      </section>
+      ${renderEndedPolls(endedGroups, event.id)}
     </div>`;
   schedulePollViewportAnchorRestore(container, viewportAnchors, scrollTop);
   wireInfoTooltips(container);

@@ -229,7 +229,7 @@ function renderCarpoolSection(direction, title, myId) {
       ${
         rows.length
           ? `<div class="two-column-card-grid arrivals-carpool-grid">${rows.map((c) => renderCarpool(c, myId, committed && c.driverId !== myId && !c.members.some((m) => m.id === myId))).join('')}</div>`
-          : `<div class="muted arrivals-carpool-empty">Noch keine Fahrgemeinschaft.</div>`
+          : emptyStateHtml('Noch keine Fahrgemeinschaften.', { className: 'arrivals-carpool-empty' })
       }
     </section>`;
 }
@@ -351,7 +351,7 @@ function renderPeopleList() {
                  <span role="columnheader">${renderPeopleSortButton('departure', 'Abreise')}</span>
                  <span role="columnheader">Notiz</span>
                </div>${rows}`
-            : emptyStateHtml('Noch hat niemand zugesagt.')
+            : emptyStateHtml('Noch keine Mitfahrenden.')
         }
       </div>
     </section>`;

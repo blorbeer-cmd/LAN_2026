@@ -294,7 +294,7 @@ arcadeTest('navigation', 'Arcade JavaScript and CSS stay lazy, are cached, and s
 arcadeTest('navigation', 'a background stats update does not detach an active Arcade tile click', async () => {
   const player = await createPlayer('Arcade Pointer Host');
   const host = await openArcadeAs(player.id);
-  await host.page.waitForSelector('text=Noch keine abgeschlossenen Arcade-Runden.');
+  await host.page.waitForSelector('text=Noch keine Arcade-Runden.');
   let releaseStats!: () => void;
   const statsReleased = new Promise<void>((resolve) => { releaseStats = resolve; });
   let statsStarted!: () => void;
@@ -729,7 +729,7 @@ arcadeTest('navigation', 'rapid fire: lobby-create burst keeps one lobby, ready 
     await host.page.waitForSelector('.arcade-lobby-member-role:has-text("Mitspieler")');
 
     await host.page.click('[data-close-lobby]');
-    await host.page.waitForSelector('text=Keine offene Quiz-Lobby.');
+    await host.page.waitForSelector('text=Noch keine Quiz-Lobby.');
   } finally {
     await host.context.close();
     await guest.context.close();

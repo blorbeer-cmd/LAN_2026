@@ -242,7 +242,7 @@ function renderAssignedTodos() {
   let content;
   if (tasks === null) content = emptyStateHtml('Lädt…');
   else if (!myId) content = '<p class="muted">Wähle oben, wer du bist, um deine To-Dos zu sehen.</p>';
-  else if (tasks.length === 0) content = '<p class="muted">Noch keine To-Dos für dich.</p>';
+  else if (tasks.length === 0) content = emptyStateHtml('Noch keine To-Dos.');
   else {
     const visibleTasks = tasks.slice(0, 3);
     const remaining = tasks.length - visibleTasks.length;
@@ -363,7 +363,7 @@ export function renderHome(container, ctx) {
       <div class="grouped-page-sections home-desktop-layout">
         <div class="home-priority-grid">${renderAssignedTodos()}</div>
         ${emptyStateHtml({
-          title: 'Noch keine Spieler angelegt',
+          text: 'Noch keine Spieler.',
           illustration: { src: '/img/mascot.svg', alt: '', width: 72, height: 66, className: 'mascot' },
           action: { label: 'Eigenes Profil anlegen', navigate: 'profile' },
         })}

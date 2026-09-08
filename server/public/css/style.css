@@ -1451,19 +1451,6 @@ textarea {
 .inline-icon + .inline-icon {
   margin-left: var(--space-1);
 }
-.empty-state-icon {
-  display: inline-flex;
-  width: 42px;
-  height: 42px;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: var(--space-2);
-  color: var(--text-muted);
-}
-.empty-state-icon .ui-icon {
-  width: 42px;
-  height: 42px;
-}
 .list-row-icon .ui-icon {
   width: 24px;
   height: 24px;
@@ -2355,25 +2342,8 @@ button.draft-pool-player {
 .card-grid.tournament-list-grid {
   grid-template-columns: minmax(0, 1fr);
 }
-.tournament-list-section {
-  margin-top: var(--space-4);
-}
 .tournament-create-slot:not(:empty) {
   margin-top: var(--space-4);
-}
-.tournament-list-section.is-active {
-  border-color: var(--accent);
-}
-.tournament-list-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-}
-.tournament-list-section-header h2 {
-  margin: 0;
-  font-size: var(--font-size-lg);
 }
 .collapsible-section-header {
   display: flex;
@@ -2410,9 +2380,6 @@ button.draft-pool-player {
 }
 .tournament-list-section .tournament-list-card {
   background: var(--bg-elevated-2);
-}
-.tournament-list-empty {
-  padding: var(--space-3) 0;
 }
 .tournament-list-card {
   width: 100%;
@@ -3012,14 +2979,6 @@ button.draft-pool-player {
   .section-tab {
     flex: 0 0 auto;
   }
-}
-
-/* Right-aligned page-level action next to an area's tab row (for example
-   Turnier anlegen) — these used to share a row with the view title the area
-   shell now owns. */
-.view-actions {
-  justify-content: flex-end;
-  margin-bottom: var(--space-3);
 }
 
 .title-with-info {
@@ -3851,17 +3810,6 @@ button.card {
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-}
-.empty-state-structured .empty-state-icon {
-  margin-bottom: 0;
-}
-.empty-state-title {
-  color: var(--text);
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
-}
-.empty-state-body {
-  margin: 0;
 }
 .empty-state-actions {
   margin-top: var(--space-1);

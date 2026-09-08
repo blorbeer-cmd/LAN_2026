@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyStateHtml } from './emptyState.js';
 
-test('plain text renders a bare empty-state div with no icon span', () => {
+test('plain text renders a bare empty-state div', () => {
   const html = emptyStateHtml('Noch keine Daten.');
   assert.equal(html, '<div class="empty-state">Noch keine Daten.</div>');
 });
@@ -13,14 +13,6 @@ test('plain text renders a bare empty-state div with no icon span', () => {
 test('plain text is escaped', () => {
   const html = emptyStateHtml('<strong>x</strong>');
   assert.equal(html, '<div class="empty-state">&lt;strong&gt;x&lt;/strong&gt;</div>');
-});
-
-test('an icon option wraps it in the empty-state-icon span before the text', () => {
-  const html = emptyStateHtml('Noch keine Events.', { icon: '<svg>x</svg>' });
-  assert.equal(
-    html,
-    '<div class="empty-state"><span class="empty-state-icon"><svg>x</svg></span>Noch keine Events.</div>',
-  );
 });
 
 test('className appends an extra class alongside empty-state', () => {
@@ -33,22 +25,20 @@ test('style renders a style attribute matching existing call sites', () => {
   assert.match(html, /^<div class="empty-state" style="padding:var\(--space-4\);">/);
 });
 
-test('structured content renders escaped title, body and a canonical action', () => {
+test('structured content renders escaped one-line text and a canonical action', () => {
   const html = emptyStateHtml({
-    title: 'Event <wählen>',
-    body: 'Aktives Event & Kontext',
+    text: 'Noch keine Events & Umfragen.',
     action: { id: 'choose-event', label: 'Event wählen' },
   });
   assert.match(html, /empty-state-structured/);
-  assert.match(html, /Event &lt;wählen&gt;/);
-  assert.match(html, /Aktives Event &amp; Kontext/);
+  assert.match(html, /Noch keine Events &amp; Umfragen\./);
   assert.match(html, /id="choose-event"/);
   assert.match(html, />Event wählen<\/button>/);
 });
 
 test('structured illustration attributes are escaped', () => {
   const html = emptyStateHtml({
-    title: 'Leer',
+    text: 'Noch keine Spieler.',
     illustration: { src: '/img/mascot.svg', alt: '', width: 72, height: 66, className: 'mascot' },
   });
   assert.match(html, /<img src="\/img\/mascot\.svg" alt="" width="72" height="66" class="mascot" \/>/);

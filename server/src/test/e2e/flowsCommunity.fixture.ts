@@ -206,7 +206,7 @@ flowTest('An- & Abreise: carpool marks the driver, enforces seats, driver can on
   // Deleting for real still works through an explicit confirm click.
   await page.click('[data-remove-carpool]');
   await page.click('[data-confirm]');
-  await page.waitForSelector('text=Noch keine Fahrgemeinschaft.');
+  await page.waitForSelector('text=Noch keine Fahrgemeinschaften.');
 });
 
 flowTest(
@@ -800,7 +800,7 @@ flowTest('Kiosk: centers tournament content and shows only the latest feature pu
   });
   await page.waitForSelector('.kiosk-vote-overview >> text=Stichwahl läuft');
   await page.request.post(`${BASE_URL}/api/votes/cancel`);
-  await page.waitForSelector('#kiosk-votes >> text=Keine offene Abstimmung.');
+  await page.waitForSelector('#kiosk-votes >> text=Noch keine Abstimmung.');
   assert.equal(await page.locator('.kiosk-vote-overview').count(), 0);
   assert.ok(await page.locator('#kiosk-votes .kiosk-vote-state').evaluate((emptyState) => {
     const emptyBox = emptyState.getBoundingClientRect();

@@ -11,7 +11,6 @@ import { escapeHtml, avatarHtml, seatConflictIconHtml } from '../format.js';
 import { showToast } from '../toast.js';
 import { icon } from '../icons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
-import { domainIcon } from '../domainIcons.js';
 import { moveTournamentDraftPlayer } from '../tournamentTeamDraft.js';
 import { createTournamentPresentation } from '../tournamentPresentation.js';
 import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
@@ -227,10 +226,16 @@ function renderList(container, ctx) {
       </button>`
     )
     .join('')}</div>`;
-  const tournamentSection = (title, tournaments, { active = false, collapsible = false } = {}) => {
-    const content = tournaments.length
-      ? tournamentCards(tournaments)
-      : `<div class="muted tournament-list-empty">${active ? 'Gerade läuft kein Turnier.' : 'Noch keine abgeschlossenen Turniere.'}</div>`;
+  const tournamentSection = (
+    title,
+    tournaments,
+    { active = false, collapsible = false, loading = false, emptyText } = {},
+  ) => {
+    const content = loading
+      ? emptyStateHtml('Lädt…', { className: 'tournament-list-empty' })
+      : tournaments.length
+        ? tournamentCards(tournaments)
+        : emptyStateHtml(emptyText ?? 'Noch keine Turniere.', { className: 'tournament-list-empty' });
     if (collapsible) {
       return `<details class="card tournament-list-section collapsible-section" data-completed-tournaments ${completedSectionOpen ? 'open' : ''}>
         <summary class="collapsible-section-header">
@@ -244,10 +249,10 @@ function renderList(container, ctx) {
       </details>`;
     }
 
-    return `<section class="card tournament-list-section${active ? ' is-active' : ''}" aria-label="${title}">
-      <div class="tournament-list-section-header">
+    return `<section class="card stack grouped-page-section${active ? ' primary-collection-section' : ''} tournament-list-section" aria-label="${title}">
+      <div class="grouped-page-section-title">
         <h2>${title}</h2>
-        <span class="badge ${active ? 'badge-playing' : 'badge-offline'}">${tournaments.length}</span>
+        ${active ? '<button type="button" class="btn btn-primary btn-sm" id="tourn-new-btn">Turnier anlegen</button>' : ''}
       </div>
       ${content}
     </section>`;
@@ -256,9 +261,12 @@ function renderList(container, ctx) {
   let currentListHtml;
   let completedListHtml = '';
   if (listCache === null) {
-    currentListHtml = emptyStateHtml('Lädt…');
+    currentListHtml = tournamentSection('Aktuelle Turniere', [], { active: true, loading: true });
   } else if (listCache.length === 0) {
-    currentListHtml = emptyStateHtml('Noch keine Turniere.', { icon: icon(domainIcon('tournaments')) });
+    currentListHtml = tournamentSection('Aktuelle Turniere', [], {
+      active: true,
+      emptyText: 'Noch keine Turniere.',
+    });
   } else {
     const activeTournaments = listCache.filter((t) => t.status !== 'completed');
     const completedTournaments = listCache.filter((t) => t.status === 'completed');
@@ -267,9 +275,6 @@ function renderList(container, ctx) {
   }
 
   container.innerHTML = `
-    <div class="row view-actions">
-      <button type="button" class="btn btn-primary btn-sm" id="tourn-new-btn">Turnier anlegen</button>
-    </div>
     ${currentListHtml}
     <div id="tourn-create" class="tournament-create-slot"></div>
     ${completedListHtml}
