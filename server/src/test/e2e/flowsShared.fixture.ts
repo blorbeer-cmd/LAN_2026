@@ -23,6 +23,7 @@ import {
 } from './authHelpers';
 import { StatefulE2EDiagnosticGuard } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
+import { openMoreViewEntry } from './navHelpers';
 
 export let BASE_URL: string;
 
@@ -147,8 +148,7 @@ export async function openTeams(): Promise<void> {
 // "Mehr" entry of its own any more - it lives behind Admin's own
 // "Auswertung" tool card, gated by the real admin role instead.
 export async function openAuswertungTab(tab: string): Promise<void> {
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="admin"]');
+  await openMoreViewEntry(page, '[data-navigate="admin"]');
   await page.click('[data-navigate="leaderboard"]');
   await page.click(`[data-section-tab="${tab}"]`);
 }
@@ -172,8 +172,7 @@ export async function openOrgaTab(tab: string): Promise<void> {
     await desktopEntry.click();
     return;
   }
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="eventPolls"]');
+  await openMoreViewEntry(page, '[data-navigate="eventPolls"]');
   await page.click(`[data-section-tab="${tab}"]`);
 }
 
@@ -185,8 +184,7 @@ export async function openProfile(): Promise<void> {
     await desktopEntry.click();
     return;
   }
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="profile"]');
+  await openMoreViewEntry(page, '[data-navigate="profile"]');
 }
 
 export async function switchIdentityAndOpenArrivals(label: string): Promise<void> {

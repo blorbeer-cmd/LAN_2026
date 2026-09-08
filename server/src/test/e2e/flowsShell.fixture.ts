@@ -21,6 +21,7 @@ import {
   openOrgaTab,
   openProfile,
 } from './flowsShared.fixture';
+import { openMoreViewEntry } from './navHelpers';
 
 registerFlowFixture('shell');
 
@@ -46,8 +47,7 @@ flowTest('fresh device uses the personal login and reaches the app with its veri
     { fontStyle: 'normal', transform: 'none' },
   );
 
-  await loginPage.click('.nav-btn[data-view="more"]');
-  await loginPage.click('[data-navigate="profile"]');
+  await openMoreViewEntry(loginPage, '[data-navigate="profile"]');
   await loginPage.waitForSelector('#profile-name');
   assert.equal(await loginPage.inputValue('#profile-name'), alice.name);
 });
@@ -896,8 +896,7 @@ flowTest('the authenticated admin role owns the seating editor and backup tools'
   } finally {
     await wideMemberContext.close();
   }
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="admin"]');
+  await openMoreViewEntry(page, '[data-navigate="admin"]');
   await ensureAdminMode();
   await page.waitForSelector('#admin-tools-title');
   assert.equal(await page.locator('#download-backup').count(), 1);
@@ -1178,11 +1177,9 @@ flowTest('Sitzplan: the real name set in Mein Profil shows in small everywhere t
   // Seat her via the editor's tap-to-place path (select the pool chip, then
   // tap an empty seat) rather than HTML5 drag & drop, which Playwright can't
   // simulate reliably.
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="admin"]');
+  await openMoreViewEntry(page, '[data-navigate="admin"]');
   await ensureAdminMode();
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="admin"]');
+  await openMoreViewEntry(page, '[data-navigate="admin"]');
   await page.click('[data-navigate="seating"]');
   await page.waitForSelector('[data-seat-pool] [data-player-id]');
   await page.locator('[data-seat-pool] [data-player-id]', { hasText: 'E2E Alice Pro' }).click();
@@ -1541,8 +1538,7 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
   await page.waitForSelector('#app:not([hidden])');
 
   // Enter admin mode explicitly; opening the Admin area alone must not enable it.
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="admin"]');
+  await openMoreViewEntry(page, '[data-navigate="admin"]');
   await ensureAdminMode();
 
   await page.waitForSelector('#admin-readiness-refresh:not([disabled])');
@@ -1579,8 +1575,7 @@ flowTest('Admin: the verified role exposes tools and can temporarily hide seeded
   await page.unroute('**/api/admin/readiness');
 
   // Seed test users from the role-protected panel.
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="admin"]');
+  await openMoreViewEntry(page, '[data-navigate="admin"]');
   await ensureAdminMode();
   const reauthenticated = await page.request.post(`${BASE_URL}/api/auth/reauth`, {
     data: { password: alice.password },

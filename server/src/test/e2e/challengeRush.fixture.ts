@@ -17,6 +17,7 @@ import {
 } from './e2eDiagnostics';
 import { startE2EServer, type E2EServer } from './e2eServer';
 import { CHALLENGES } from '../../arcade/challengeRushLogic';
+import { openMoreViewEntry } from './navHelpers';
 
 let BASE_URL: string;
 let serverProcess: ChildProcess;
@@ -68,8 +69,7 @@ async function openArcade(playerId: string, baseUrl: string = BASE_URL, { adminM
   await page.goto(baseUrl);
   await page.waitForSelector('.nav-btn[data-view="more"]');
   if (adminMode) {
-    await page.click('.nav-btn[data-view="more"]');
-    await page.click('[data-navigate="admin"]');
+    await openMoreViewEntry(page, '[data-navigate="admin"]');
     await page.click('#admin-mode-activate');
     await page.waitForSelector('#admin-banner:not([hidden])');
   }
@@ -77,8 +77,7 @@ async function openArcade(playerId: string, baseUrl: string = BASE_URL, { adminM
   // navigation race instead of reporting it. app.js now keeps the rail's nodes
   // alive across a refresh, so one pass is enough.
   await waitForPlayerData(page);
-  await page.click('.nav-btn[data-view="more"]');
-  await page.click('[data-navigate="arcade"]');
+  await openMoreViewEntry(page, '[data-navigate="arcade"]');
   await page.waitForSelector('.arcade-tiles');
   return { context, page };
 }
@@ -140,8 +139,7 @@ challengeRushTest('scenarios', 'Challenge Rush drops a hidden admin selection af
     await actor.page.check('[data-cr-challenge-key="digit-sum"]');
     await addSessionCookie(actor.context, BASE_URL, playerCookies.get(`${BASE_URL}:${playerId}`)!);
     await actor.page.reload();
-    await actor.page.click('.nav-btn[data-view="more"]');
-    await actor.page.click('[data-navigate="arcade"]');
+    await openMoreViewEntry(actor.page, '[data-navigate="arcade"]');
     await actor.page.click('[data-game="challenge-rush"]');
     await actor.page.waitForSelector('#cr-create');
     assert.equal(await actor.page.locator('.challenge-rush-test-selector').count(), 0);
