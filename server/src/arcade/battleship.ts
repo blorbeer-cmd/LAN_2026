@@ -11,6 +11,7 @@ import { isLobbyReady, setLobbyReady } from './lobbyReady';
 import { recordArcadeResult } from './arcadeData';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 import { applyShot, chooseBotShot, createRandomPlacements, fleetSnapshot, remainingSegments, remainingShips, ShipState, validatePlacements } from './battleshipLogic';
+import { registerSocketConnection } from '../socketConnections';
 
 const COUNTDOWN_MS = arcadeTiming.countdownMs;
 const END_REVEAL_MS = arcadeTiming.endRevealMs;
@@ -257,8 +258,8 @@ function removeFromLobbies(io: Server, socketId: string) {
   if (changed) emitLobbies(io);
 }
 
-export function registerBattleshipSockets(io: Server): void {
-  io.on('connection', (socket: Socket) => {
+export function registerBattleshipSockets(io: Server): () => void {
+  return registerSocketConnection(io, 'arcade-battleship', (socket: Socket) => {
     const emitSocketLobbies = () => {
       const scope = socketArcadeScope(socket);
       if (scope) socket.emit('battleship:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) });

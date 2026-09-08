@@ -28,6 +28,37 @@ import { registerArcadeSockets as registerArcadeRealtimeSockets } from './arcade
 
 const isProduction = process.env.NODE_ENV === 'production';
 
+const socketFeatureRegistrars = [
+  registerScopedSockets,
+  registerArcadeRealtimeSockets,
+  registerArcadeSockets,
+  registerTetrisSockets,
+  registerScribbleSockets,
+  registerBlobbySockets,
+  registerPongSockets,
+  registerSnakeSockets,
+  registerBattleshipSockets,
+  registerChallengeRushSockets,
+  startOfflineSweeper,
+] as const;
+
+export function registerSocketFeatures(io: Server): () => void {
+  const cleanups: Array<() => void> = [];
+  try {
+    for (const register of socketFeatureRegistrars) cleanups.push(register(io));
+  } catch (error) {
+    for (let index = cleanups.length - 1; index >= 0; index -= 1) cleanups[index]();
+    throw error;
+  }
+
+  let cleaned = false;
+  return () => {
+    if (cleaned) return;
+    cleaned = true;
+    for (let index = cleanups.length - 1; index >= 0; index -= 1) cleanups[index]();
+  };
+}
+
 // Boots the full runtime: HTTP server + Socket.IO + offline sweeper + listen.
 // Wrapped in a function guarded by require.main so importing this file (e.g.
 // from a test) never binds a port or starts timers.
@@ -60,20 +91,7 @@ function start(): void {
   setIo(io);
 
   io.use(createSocketAuthGuard());
-  registerScopedSockets(io);
-  registerArcadeRealtimeSockets(io);
-
-  registerArcadeSockets(io);
-  registerTetrisSockets(io);
-  registerScribbleSockets(io);
-  registerBlobbySockets(io);
-  registerPongSockets(io);
-  registerSnakeSockets(io);
-  registerBattleshipSockets(io);
-  registerChallengeRushSockets(io);
-
-  // Periodically flip stale players to offline.
-  startOfflineSweeper(io);
+  registerSocketFeatures(io);
   // Remind participants about every kind of open payment every two hours.
   startFoodOrderPaymentReminder();
   startEventPaymentReminder();
