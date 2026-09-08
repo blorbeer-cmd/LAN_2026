@@ -6,8 +6,6 @@
 import { api } from '../api.js';
 import { escapeHtml, avatarHtml, formatDate } from '../format.js';
 import { showToast } from '../toast.js';
-import { icon } from '../icons.js';
-import { domainIcon } from '../domainIcons.js';
 import { emptyStateHtml } from '../emptyState.js';
 import { accessibleEvents } from '../state.js';
 import { eventSelectOption } from '../eventStatus.js';
@@ -48,7 +46,7 @@ async function load(ctx) {
 
 function rankedRows(entries, suffix) {
   if (entries.length === 0) {
-    return emptyStateHtml('Noch keine Daten.', { style: 'padding:var(--space-4);' });
+    return emptyStateHtml('Noch keine Platzierungen.', { style: 'padding:var(--space-4);' });
   }
   return entries
     .map(
@@ -96,7 +94,7 @@ function renderEvent(e) {
   const standings = e.overallStandings ?? [];
   const standingsHtml = standings.length
     ? `<div class="leaderboard-list-grid">${standings.map(renderEventStanding).join('')}</div>`
-    : `<div class="muted hall-of-fame-empty-result">Noch keine Platzierungen.</div>`;
+    : emptyStateHtml('Noch keine Platzierungen.', { className: 'hall-of-fame-empty-result' });
 
   const tournamentsHtml = e.tournamentChampions.length
     ? `<div class="leaderboard-list-grid">${e.tournamentChampions.map(renderTournamentChampion).join('')}</div>`
@@ -155,7 +153,7 @@ export function renderHallOfFame(container, ctx) {
           <div class="grouped-page-section-title"><h2 id="hall-events-title">Nach LAN</h2></div>
           ${
             events.length === 0
-              ? emptyStateHtml('Noch keine Events.', { icon: icon(domainIcon('hallOfFame')) })
+              ? emptyStateHtml('Noch keine Events.')
               : `${searchSelectHtml('hall-event-select', eventPickerOptions(events), selectedEventId, {
                   placeholder: 'LAN suchen…',
                   ariaLabel: 'LAN',

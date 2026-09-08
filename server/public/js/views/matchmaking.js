@@ -12,7 +12,6 @@ import { showToast } from '../toast.js';
 import { openMatchForm } from './leaderboard.js';
 import { getMyId } from '../whoami.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
-import { domainIcon } from '../domainIcons.js';
 import { playerSkillHtml, teamSkillHtml } from '../skillDisplay.js';
 import { searchSelectHtml, wireSearchSelect } from '../searchSelect.js';
 import { emptyStateHtml } from '../emptyState.js';
@@ -450,7 +449,7 @@ function renderHistory(selectedGameId) {
     return renderHistoryDetails(
       'Historie',
       0,
-      emptyStateHtml('Noch keine Auslosungen für dieses Spiel.', { style: 'padding:var(--space-4);' })
+      emptyStateHtml('Noch keine Auslosungen.', { style: 'padding:var(--space-4);' })
     );
   }
 
@@ -547,9 +546,7 @@ export function renderMatchmaking(container, ctx) {
   // Drawing and drafting stay blocked for such a game (see drawDisabledReason).
   const pickableGames = gamesWithHistory([state.lastMatchmaking?.gameId]);
   if (catalogGames().length === 0 || eventPlayers().length === 0) {
-    container.innerHTML = emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.', {
-      icon: icon(domainIcon('matchmaking')),
-    });
+    container.innerHTML = emptyStateHtml('Dafür braucht es mindestens ein Spiel im Katalog und 2 Spieler.');
     return;
   }
 

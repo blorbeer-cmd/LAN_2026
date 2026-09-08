@@ -548,7 +548,9 @@ function renderGroupHeader(order, playerId, items, myId, { collapsible, expanded
 
 function renderItems(order, myId, { locked = false } = {}) {
   if (order.items.length === 0) {
-    return `<div class="muted" style="font-size:var(--font-size-sm);padding:var(--space-2) 0;">Noch keine Positionen.</div>`;
+    return emptyStateHtml('Noch keine Positionen.', {
+      style: 'font-size:var(--font-size-sm);padding:var(--space-2) 0;',
+    });
   }
   const grouped = itemsGroupedByPlayer(order);
 
@@ -1617,7 +1619,7 @@ export function renderFoodOrders(container, ctx) {
     loading || cache === null
       ? emptyStateHtml('Lädt…')
       : openOrders.length === 0
-        ? emptyStateHtml('Noch keine offene Bestellung.')
+        ? emptyStateHtml('Noch keine Bestellungen.')
         : `<div class="two-column-card-grid food-order-grid">${openOrders
             .map((o) => renderOpenOrder(o, myId, { collapsible: openOrders.length > 1 }))
             .join('')}</div>`;
@@ -1627,13 +1629,13 @@ export function renderFoodOrders(container, ctx) {
   // keeps e.g. marking several positions paid in a row from jumping the
   // whole view back to the top after every single toggle.
   container.innerHTML = `
-    <div class="row-between page-title-row">
-      <h1 class="view-title">Essen</h1>
-      <button type="button" class="btn btn-primary btn-sm" id="order-new-btn" ${myId ? '' : 'disabled'}>Bestellung öffnen</button>
-    </div>
+    <h1 class="view-title">Essen</h1>
     <div class="grouped-page-sections">
-      <section class="card stack grouped-page-section" aria-labelledby="food-open-title">
-        <div class="grouped-page-section-title"><h2 id="food-open-title">Offene Bestellungen</h2></div>
+      <section class="card stack grouped-page-section primary-collection-section" aria-labelledby="food-open-title">
+        <div class="grouped-page-section-title">
+          <h2 id="food-open-title">Offene Bestellungen</h2>
+          <button type="button" class="btn btn-primary btn-sm" id="order-new-btn" ${myId ? '' : 'disabled'}>Bestellung öffnen</button>
+        </div>
         ${openHtml}
       </section>
       ${

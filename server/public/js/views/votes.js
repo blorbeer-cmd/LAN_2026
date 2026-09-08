@@ -35,7 +35,6 @@ import { escapeHtml, formatDate, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
 import { getMyId } from '../whoami.js';
-import { domainIcon } from '../domainIcons.js';
 import { infoTooltipHtml, wireInfoTooltips } from '../infoTooltip.js';
 import { matchesSelectionSearch, selectionSearchHtml, wireSelectionSearch } from '../selectionSearch.js';
 import { emptyStateHtml } from '../emptyState.js';
@@ -275,7 +274,7 @@ function submissionCountLabel(count, mode) {
 function renderTop10(results) {
   const top10 = topByPreference(results, 10);
   if (top10.length === 0) {
-    return emptyStateHtml('Noch keine Spiele im Katalog.', { style: 'padding:var(--space-4);' });
+    return emptyStateHtml('Noch keine Spiele.', { style: 'padding:var(--space-4);' });
   }
   const rowHtml = (r, i) => `
     <div class="lb-row ${i === 0 ? 'rank-1' : ''}">
@@ -386,10 +385,9 @@ function renderCurrentVote({ allowRunoff = false } = {}) {
     return emptyStateHtml('Lädt…', { className: 'vote-empty-state', style: 'padding:var(--space-4);' });
   }
   if (historyCache.length === 0) {
-    return emptyStateHtml('Noch keine Abstimmung durchgeführt.', {
+    return emptyStateHtml('Noch keine Abstimmung.', {
       className: 'vote-empty-state',
       style: 'padding:var(--space-4);',
-      icon: icon(domainIcon('votes')),
     });
   }
   const h = historyCache[0];
@@ -420,10 +418,9 @@ function renderHistory() {
     return emptyStateHtml('Lädt…', { className: 'vote-empty-state', style: 'padding:var(--space-4);' });
   }
   if (historyCache.length === 0) {
-    return emptyStateHtml('Noch keine vergangenen Abstimmungen.', {
+    return emptyStateHtml('Noch keine Abstimmungen.', {
       className: 'vote-empty-state',
       style: 'padding:var(--space-4);',
-      icon: icon(domainIcon('votes')),
     });
   }
   // Each round stays visually separate and repeats the same compact ranking

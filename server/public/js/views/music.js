@@ -309,7 +309,7 @@ function requestQueueHtml(session) {
             <button type="button" class="icon-btn" data-music-move="down" aria-label="${escapeHtml(entry.name)} nach unten" ${index === queued.length - 1 ? 'disabled' : ''}>${icon('arrowDown')}</button>` : ''}
             <button type="button" class="icon-btn" data-music-remove aria-label="${escapeHtml(entry.name)} entfernen">${icon('trash')}</button>
           </span>` : ''}
-        </div>`).join('')}</div>` : emptyStateHtml(playlistMode ? 'Keine zusätzlichen Songwünsche.' : 'Noch keine Songwünsche.')}
+        </div>`).join('')}</div>` : emptyStateHtml('Noch keine Songwünsche.')}
     </section>`;
 }
 

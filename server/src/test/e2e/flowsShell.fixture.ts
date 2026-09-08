@@ -417,7 +417,7 @@ flowTest('Umfragen: works for the permanently open "Allgemein" base event withou
   await openOrgaTab('eventPolls');
   await page.waitForSelector('#new-event-poll');
   assert.equal(await page.locator('#choose-event-context').count(), 0);
-  assert.equal((await page.locator('.empty-state-title').textContent())?.trim(), 'Noch keine Umfrage');
+  assert.equal((await page.locator('.empty-state').textContent())?.trim(), 'Noch keine Umfrage.');
 });
 
 flowTest('untabbed areas align compact cards while tabbed areas reserve a second row', async (t) => {

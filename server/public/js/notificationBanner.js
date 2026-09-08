@@ -125,7 +125,7 @@ function panelContentHtml(myId) {
     return emptyStateHtml('Mitteilungen konnten nicht geladen werden.', { className: 'notification-center-empty' });
   }
   if (entries.length === 0) {
-    return emptyStateHtml('Keine Mitteilungen.', { className: 'notification-center-empty' });
+    return emptyStateHtml('Noch keine Mitteilungen.', { className: 'notification-center-empty' });
   }
   return `<div class="notification-center-list">${entries.slice(0, FEED_LIMIT).map(entryHtml).join('')}</div>`;
 }
