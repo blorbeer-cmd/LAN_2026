@@ -83,7 +83,7 @@ function renderPage() {
     <div class="row">
       <div>
         <div>Tracking</div>
-        <div class="hint">Meldet laufende Spiele an den Server</div>
+        <div class="hint">Fragt den PC nur nach den Spielen aus der Server-Liste und meldet, welche davon laufen. Daraus entstehen Live-Status, Spielzeit und Auswertungen. Andere Programme werden nicht ausgelesen.</div>
       </div>
       <button class="btn-primary" id="toggleBtn">…</button>
     </div>
@@ -134,7 +134,7 @@ async function loadStatus() {
   const activityToggle = document.getElementById('activityToggle');
   activityToggle.checked = s.trackActivity;
   document.getElementById('activityHint').textContent = s.activityTrackingSupported
-    ? 'Aktives Fenster + Leerlaufzeit, nur für bekannte Spiele (siehe README).'
+    ? 'Zusätzlich: ob eines dieser Spiele im Vordergrund ist und wie lange keine Eingabe kam. Trennt aktive Spielzeit von einem nur nebenbei offenen Spiel (siehe README).'
     : 'Nur unter Windows wirksam, hier ohne Effekt.';
   const autostartToggle = document.getElementById('autostartToggle');
   autostartToggle.checked = s.autostart;

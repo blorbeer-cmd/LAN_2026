@@ -54,6 +54,16 @@ export {
 } from '../eventModel.js';
 
 const EVENT_HELP = 'Eventtyp, Zeitraum, Teilnehmende und organisatorische Angaben werden hier verwaltet.';
+// Starting tracking is the moment an organizer switches on data collection on
+// other people's PCs, so both the button's tooltip and its confirmation name
+// what the agent actually reports and what it is used for. The scope sentence
+// is shared so the two never drift apart.
+const TRACKING_SCOPE_SENTENCE =
+  'Der Agent der Teilnehmenden meldet dann, welche Spiele aus dem Spielekatalog laufen – daraus entstehen Live-Status, Spielzeit und Auswertungen wie Rangliste und Awards. Andere Programme liest er nicht aus, und jede Person kann das Tracking im eigenen Profil pausieren.';
+const TRACKING_BUTTON_HELP = `Schaltet die Erfassung für dieses Event ein und aus. ${TRACKING_SCOPE_SENTENCE}`;
+const TRACKING_START_CONFIRM = (name) => `Tracking für „${name}“ starten? ${TRACKING_SCOPE_SENTENCE}`;
+const TRACKING_STOP_CONFIRM = (name) =>
+  `Tracking für „${name}“ stoppen? Laufende Spielzeiten werden abgeschlossen und der Live-Status geleert; bereits erfasste Spielzeit und der Event-Workspace bleiben erhalten.`;
 const KIOSK_HELP = 'Jedes LAN-Event besitzt ein eigenes Kiosk-Konto. Alle Konten verwenden dasselbe gemeinsame Kiosk-Passwort und können ausschließlich die TV-Ansicht öffnen.';
 const expandedEventParticipants = new Set();
 // Mirrors foodOrders.js's Historie collapse: ended events start collapsed and
@@ -684,13 +694,17 @@ export function renderEventCard(event) {
   // above already covers what to do instead ("Termin abstimmen"/"Termin
   // festlegen").
   const hasDate = event.startsAt != null;
+  // The tooltip sits with the running/stopping pair only: "Event wieder
+  // starten" is an event-lifecycle action whose confirmation already spells the
+  // tracking part out.
+  const trackingHelp = infoTooltipHtml(`event-tracking-help-${event.id}`, 'Tracking', TRACKING_BUTTON_HELP);
   const trackingBtn = !hasDate || !eventHasFeature(event, 'tracking')
     ? ''
     : event.isEnded
       ? `<button type="button" class="btn btn-sm btn-primary" data-restart-event="${event.id}">Event wieder starten</button>`
       : event.trackingEnabled
-        ? `<button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">${icon('pause')} Tracking stoppen</button>`
-        : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${event.id}">Tracking starten</button>`;
+        ? `<button type="button" class="btn btn-sm" data-stop-tracking="${event.id}">${icon('pause')} Tracking stoppen</button>${trackingHelp}`
+        : `<button type="button" class="btn btn-sm btn-primary" data-start-tracking="${event.id}">Tracking starten</button>${trackingHelp}`;
   const endBtn = !hasDate || event.isEnded
     ? ''
     : `<button type="button" class="btn btn-sm btn-danger" data-end-event="${event.id}">Beenden</button>`;
@@ -1409,7 +1423,7 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.startTracking);
       if (!event) return;
-      if (!(await confirmDialog(`Tracking für „${event.name}" starten? Live-Status und Spielzeit werden ab jetzt für die Teilnehmenden erfasst.`, { confirmText: 'Tracking starten' }))) return;
+      if (!(await confirmDialog(TRACKING_START_CONFIRM(event.name), { title: 'Tracking starten', confirmText: 'Tracking starten' }))) return;
       try {
         await api.events.startTracking(event.id);
         await ctx.refresh();
@@ -1423,7 +1437,7 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.managedEvents || []).find((e) => e.id === btn.dataset.stopTracking);
       if (!event) return;
-      if (!(await confirmDialog(`Tracking für „${event.name}" stoppen? Der Event-Workspace bleibt erhalten.`, { confirmText: 'Tracking stoppen' }))) return;
+      if (!(await confirmDialog(TRACKING_STOP_CONFIRM(event.name), { title: 'Tracking stoppen', confirmText: 'Tracking stoppen' }))) return;
       try {
         await api.events.stopTracking(event.id);
         await ctx.refresh();
@@ -1437,7 +1451,7 @@ export function renderOrgaEvents(container, ctx) {
     btn.addEventListener('click', async () => {
       const event = (state.events || []).find((e) => e.id === btn.dataset.restartEvent);
       if (!event) return;
-      if (!(await confirmDialog(`Event „${event.name}" wieder starten? Das Event wird geöffnet und Tracking für die Teilnehmenden aktiviert.`, { confirmText: 'Event wieder starten' }))) return;
+      if (!(await confirmDialog(`Event „${event.name}“ wieder starten? Das Event wird geöffnet. ${TRACKING_SCOPE_SENTENCE}`, { title: 'Event wieder starten', confirmText: 'Event wieder starten' }))) return;
       try {
         await api.events.restart(event.id);
         await ctx.refresh();
