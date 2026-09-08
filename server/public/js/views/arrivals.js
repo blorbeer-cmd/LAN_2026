@@ -3,7 +3,7 @@
 // or departure.
 
 import { api } from '../api.js';
-import { eventPlayers } from '../state.js';
+import { eventPlayers, state } from '../state.js';
 import { escapeHtml, avatarHtml, formatDateTime } from '../format.js';
 import { openModal, confirmDialog } from '../modal.js';
 import { showToast } from '../toast.js';
@@ -57,15 +57,39 @@ function parseDatetimeValue(value) {
   return Number.isFinite(timestamp) ? timestamp : NaN;
 }
 
+// Nobody has entered their own Ankunft/Abreise yet on a fresh event, so the
+// still-empty fields default to the event's own start/end instead of a blank
+// widget - only once both are actually set, since a one-sided default (e.g.
+// arrival prefilled, departure left open) would look like a stray guess.
+export function eventArrivalDepartureDefaults(event) {
+  if (event?.startsAt == null || event?.endsAt == null) return { arrivalAt: null, departureAt: null };
+  return { arrivalAt: event.startsAt, departureAt: event.endsAt };
+}
+
+// Merges the persisted "own" row, the event default and any unsaved draft
+// into what the form should show. `own` existing at all - even with a
+// `null` field - means the player has a saved arrivals row and that null
+// was an explicit choice (PUT /mine can store null directly, and
+// leaving/losing a carpool resets the synced field to null server-side via
+// syncOwnDirectionField in src/routes/arrivals.ts). Only the complete
+// absence of a row falls back to the event default; a stored null sticks.
+export function resolveMyArrivalFields(own, defaults, draft) {
+  if (draft) return { arrivalAt: draft.arrivalAt, departureAt: draft.departureAt, note: draft.note };
+  return {
+    arrivalAt: own ? own.arrival_at : defaults.arrivalAt,
+    departureAt: own ? own.departure_at : defaults.departureAt,
+    note: own ? (own.note || '') : '',
+  };
+}
+
 // `draft`, if given, overrides the persisted "own" values with whatever was
 // still sitting unsaved in the form at the moment of a background re-render
 // (see renderArrivals' snapshot below) - same survives-its-own-rerender
 // pattern the Checkliste's add-item field and Vote's round fields use.
 function renderMyForm(myId, draft) {
   const own = (cache?.arrivals || []).find((a) => a.player_id === myId);
-  const arrivalAt = draft ? draft.arrivalAt : (own?.arrival_at ?? null);
-  const departureAt = draft ? draft.departureAt : (own?.departure_at ?? null);
-  const note = draft ? draft.note : (own?.note || '');
+  const defaults = eventArrivalDepartureDefaults(state.activeEvent);
+  const { arrivalAt, departureAt, note } = resolveMyArrivalFields(own, defaults, draft);
   return `
     <section class="card stack grouped-page-section arrivals-block" aria-labelledby="arrivals-mine-title">
       <div class="grouped-page-section-title"><h2 id="arrivals-mine-title">Meine An-/Abreise</h2></div>
@@ -311,17 +335,9 @@ function renderPeopleList() {
   return `
     <section class="card stack grouped-page-section" aria-labelledby="arrivals-times-title">
       <div class="grouped-page-section-title">
-        <h2 id="arrivals-times-title" class="title-with-info">
-          <span>Alle Zeiten</span>
-          ${infoTooltipHtml(
-            'arrivals-times-scope-help',
-            'Wer steht hier?',
-            'Nur Personen, die für dieses Event zugesagt haben. Wer eingeladen ist, abgesagt oder die Zusage zurückgezogen hat, taucht hier nicht auf.'
-          )}
-        </h2>
+        <h2 id="arrivals-times-title">Alle Zeiten</h2>
       </div>
       <div class="arrivals-mobile-sort" aria-label="Zeiten sortieren">
-        <span class="muted">Sortieren:</span>
         ${renderPeopleSortButton('player', 'Person')}
         ${renderPeopleSortButton('arrival', 'Ankunft')}
         ${renderPeopleSortButton('departure', 'Abreise')}
