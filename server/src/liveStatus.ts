@@ -10,6 +10,7 @@ import { db } from './db';
 import { config } from './config';
 import { ACCEPTED_EVENT_PARTICIPANT_SQL } from './eventParticipation';
 import { broadcast, Events, isPlayerConnected } from './realtime';
+import { registerSocketConnection } from './socketConnections';
 
 export interface LiveGameEntry {
   game_id: string;
@@ -271,8 +272,8 @@ export function sweepOnce(now: number = Date.now()): void {
 
 // Periodically re-broadcasts the board so clients transition players to
 // "offline" even when no new report arrives (e.g. a PC was switched off).
-export function startOfflineSweeper(io: Server): void {
-  io.on('connection', (socket) => {
+export function startOfflineSweeper(io: Server): () => void {
+  const unregisterConnection = registerSocketConnection(io, 'live-status', (socket) => {
     const playerId = socket.data.authPlayerId;
     if (typeof playerId !== 'string') return;
 
@@ -293,5 +294,17 @@ export function startOfflineSweeper(io: Server): void {
 
   // Half the timeout is a good cadence: reacts quickly without busy-looping.
   const interval = Math.max(5_000, Math.floor(config.offlineTimeoutMs / 2));
-  setInterval(() => sweepOnce(), interval).unref();
+  const timer = setInterval(() => sweepOnce(), interval);
+  timer.unref();
+
+  let stopped = false;
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    unregisterConnection();
+    clearInterval(timer);
+    io.httpServer?.off('close', stop);
+  };
+  io.httpServer?.once('close', stop);
+  return stop;
 }

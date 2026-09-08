@@ -242,7 +242,14 @@ view and to new views unless a documented domain constraint requires a different
 1. **Build pages from three visible levels.** A page consists of full-width main groups, nested
    cards for repeated entities or independent subflows, and stable rows inside those cards. Main
    headings live inside their surface instead of floating between unrelated cards. Do not add a
-   fourth enclosing card that repeats the same title or selected value.
+   fourth enclosing card that repeats the same title or selected value. A page-level heading — the
+   `.view-title` of a secondary or untabbed page header — is never repeated verbatim as the first
+   card heading directly below it. Where that lead card would only restate the page title, it drops
+   its own heading and lets the header be the single heading for that surface: the card's contextual
+   info trigger moves onto the `.view-title` (the `title-with-info` header the Jam and TV-Kiosk
+   pages already use) and a refresh-style control moves into the header's trailing-action slot.
+   Supporting sibling cards keep their own content-naming headings, so a page never mixes a
+   restated title with a bare one.
 2. **Use space deliberately.** Repeated players, games, rankings and comparable cards normally use
    one column on phones and two equal columns from `--bp-md`. Choose whether an odd final item spans
    the row based on meaning: summary/list rows may span; entity cards such as players, carpools,
@@ -1113,8 +1120,10 @@ Components are plain CSS classes (no JS component library) in `style.css`:
   outer inset as lobby footers. Whichever of the two flanking switches a game or player does not
   get reserves its width anyway (`.arcade-lobby-create-row--no-mode` /
   `--no-opponent`), so from `--bp-md` „Lobby öffnen“ keeps one width and equal left and right
-  insets across every game; on phones the
-  primary action remains full-width. Tetris, Pong, Snake and
+  insets across every game. On phones the primary action forms the full-width first row. The mode
+  and opponent switches form the second row in that order and split its available width evenly;
+  every label stays inside its segment.
+  Tetris, Pong, Snake and
   Blobby Volley all select Duell by default. A disabled „Lobby
   öffnen“ or „Start“ carries the same red `.info-tooltip-trigger--warning` reason pattern as Team
   formation's „Teams auslosen“/„Draft starten“.

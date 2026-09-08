@@ -26,6 +26,7 @@ import { arcadeTiming } from './timing';
 import { claimLobbyMembership, releaseLobbyMembership, releaseLobbyMemberships } from './lobbyMembership';
 import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
+import { registerSocketConnection } from '../socketConnections';
 import {
   TetrisMode,
   canStartTetris,
@@ -699,8 +700,8 @@ function handleMatchDeparture(io: Server, match: TetrisMatch, playerId: string, 
   if (!checkGameOver(io, match)) broadcastState(io, match);
 }
 
-export function registerTetrisSockets(io: Server): void {
-  io.on('connection', (socket: Socket) => {
+export function registerTetrisSockets(io: Server): () => void {
+  return registerSocketConnection(io, 'arcade-tetris', (socket: Socket) => {
     const emitSocketLobbies = () => { const scope = socketArcadeScope(socket); if (scope) socket.emit('tetris:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) }); };
     emitSocketLobbies();
 

@@ -62,7 +62,7 @@ function arcadeFlowTest(
 }
 
 async function waitForArcadeStylesheet(targetPage: Page): Promise<void> {
-  await targetPage.waitForSelector('#arcade-stylesheet[href="/css/arcade.css?v=6"]', { state: 'attached' });
+  await targetPage.waitForSelector('#arcade-stylesheet[href="/css/arcade.css?v=7"]', { state: 'attached' });
   await targetPage.waitForFunction(() => {
     const link = document.querySelector('#arcade-stylesheet');
     return link instanceof HTMLLinkElement && link.sheet !== null;

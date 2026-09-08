@@ -11,6 +11,7 @@ import { notifyArcadeLobbyOpened, resolveArcadeLobbyPush } from './lobbyPush';
 import { recordArcadeResult } from './arcadeData';
 import { canJoinLobby, canUseLobby, emitArcadeRoom, socketArcadeScope } from './scope';
 import { arcadeTiming } from './timing';
+import { registerSocketConnection } from '../socketConnections';
 
 const DEFAULT_TARGET_SCORE = 5;
 const QUESTION_MS = 20_000;
@@ -272,8 +273,8 @@ function removeFromOpenLobbies(io: Server, socketId: string) {
   if (changed) emitLobbies(io);
 }
 
-export function registerArcadeSockets(io: Server): void {
-  io.on('connection', (socket: Socket) => {
+export function registerArcadeSockets(io: Server): () => void {
+  return registerSocketConnection(io, 'arcade-quiz', (socket: Socket) => {
     const emitSocketLobbies = () => {
       const scope = socketArcadeScope(socket);
       if (scope) socket.emit('arcade:lobbies', { lobbies: publicLobbies(scope.groupId, scope.eventId) });
